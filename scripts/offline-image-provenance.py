@@ -56,6 +56,7 @@ DART_AUDIT_VALIDATION_COMMAND = (
 DART_AUDIT_VALIDATION_COMMAND_SHA256 = (
     "e8c2ad1bc895b67920107e76caf327c54a740ab84f4b40018f59b5948cf46a47"
 )
+RUST_AUDIT_ROOT = "/var/tmp/rustdesk-rust-audit"
 
 
 class ProvenanceError(RuntimeError):
@@ -162,7 +163,78 @@ class DartAuditSpec:
         }
 
 
-ImageSpec = Union[Spec, VerifierSpec, DartAuditSpec]
+@dataclass(frozen=True)
+class RustAuditSpec:
+    role: str
+    image_id: str
+    base: str
+    dockerfile_sha256: str
+    rust_version: str
+    rustc_version: str
+    cargo_audit_version: str
+    cargo_deny_version: str
+    cargo_audit_sha256: str
+    cargo_deny_sha256: str
+    advisory_db_sha: str
+    advisory_db_epoch: int
+    config_id: str | None
+    manifest_id: str | None
+
+    @property
+    def archive_tags(self) -> None:
+        return None
+
+    @property
+    def root_annotations(self) -> None:
+        return None
+
+    @property
+    def labels(self) -> dict[str, str]:
+        return {
+            "org.opencontainers.image.source": (
+                "https://github.com/rust-lang/docker-rust"
+            ),
+            "org.rustdesk.audit.advisory-db": self.advisory_db_sha,
+            "org.rustdesk.audit.advisory-db-epoch": str(
+                self.advisory_db_epoch
+            ),
+            "org.rustdesk.audit.base": self.base,
+            "org.rustdesk.audit.cargo-audit": self.cargo_audit_version,
+            "org.rustdesk.audit.cargo-deny": self.cargo_deny_version,
+            "org.rustdesk.audit.run-user": "1000:1000",
+            "org.rustdesk.audit.rust": self.rust_version,
+        }
+
+    @property
+    def runtime_environment(self) -> list[str]:
+        return [
+            (
+                f"PATH={RUST_AUDIT_ROOT}/tools/bin:/usr/local/cargo/bin:"
+                "/usr/local/bin:/usr/bin:/bin"
+            ),
+            "RUSTUP_HOME=/usr/local/rustup",
+            f"CARGO_HOME={RUST_AUDIT_ROOT}/cargo-home",
+            f"RUST_VERSION={self.rustc_version}",
+            f"AUDIT_ROOT={RUST_AUDIT_ROOT}",
+            f"AUDIT_TOOLS={RUST_AUDIT_ROOT}/tools",
+            f"ADVISORY_DB={RUST_AUDIT_ROOT}/advisory-db",
+            f"CARGO_DENY_DB_PATH={RUST_AUDIT_ROOT}/cargo-deny-advisory-dbs",
+            "CARGO_DENY_DB_DIR=advisory-db-3157b0e258782691",
+            f"HOME={RUST_AUDIT_ROOT}/home",
+        ]
+
+    @property
+    def runtime_config(self) -> dict[str, object]:
+        return {
+            "User": "1000:1000",
+            "Env": self.runtime_environment,
+            "Cmd": ["bash"],
+            "Labels": self.labels,
+            "Shell": ["/bin/bash", "-euo", "pipefail", "-c"],
+        }
+
+
+ImageSpec = Union[Spec, VerifierSpec, DartAuditSpec, RustAuditSpec]
 
 
 def fail(message: str) -> None:
@@ -182,6 +254,62 @@ def require_image_id(value: str, label: str) -> str:
 
 
 def spec_from_args(args: argparse.Namespace) -> ImageSpec:
+    if args.role == "rust-audit":
+        if not re.fullmatch(
+            r"rust:1[.]88-bookworm@sha256:[0-9a-f]{64}",
+            args.base,
+        ):
+            fail("Rust audit base image identity is malformed or unsupported")
+        if args.rust_version != "1.88":
+            fail("Rust audit toolchain family is malformed")
+        if args.rustc_version != "1.88.0":
+            fail("Rust audit compiler version is malformed")
+        if args.rustc_version != f"{args.rust_version}.0":
+            fail("Rust audit compiler and toolchain-family pins disagree")
+        for value, label in (
+            (args.cargo_audit_version, "cargo-audit"),
+            (args.cargo_deny_version, "cargo-deny"),
+        ):
+            if not re.fullmatch(r"0[.][0-9]+[.][0-9]+", value or ""):
+                fail(f"Rust audit {label} version is malformed")
+        if not re.fullmatch(r"[0-9a-f]{40}", args.advisory_db_sha or ""):
+            fail("Rust audit advisory database commit is malformed")
+        if args.advisory_db_epoch is None or args.advisory_db_epoch <= 0:
+            fail("Rust audit advisory database epoch must be positive")
+        config_id = (
+            require_image_id(args.config_id, "Rust audit config ID")
+            if args.config_id
+            else None
+        )
+        manifest_id = (
+            require_image_id(args.manifest_id, "Rust audit manifest ID")
+            if args.manifest_id
+            else None
+        )
+        if (config_id is None) != (manifest_id is None):
+            fail("Rust audit config and manifest pins must be supplied together")
+        return RustAuditSpec(
+            role=args.role,
+            image_id=require_image_id(args.expected_id, "expected image ID"),
+            base=args.base,
+            dockerfile_sha256=require_sha(
+                args.dockerfile_sha, "Dockerfile SHA-256"
+            ),
+            rust_version=args.rust_version,
+            rustc_version=args.rustc_version,
+            cargo_audit_version=args.cargo_audit_version,
+            cargo_deny_version=args.cargo_deny_version,
+            cargo_audit_sha256=require_sha(
+                args.cargo_audit_sha or "", "cargo-audit SHA-256"
+            ),
+            cargo_deny_sha256=require_sha(
+                args.cargo_deny_sha or "", "cargo-deny SHA-256"
+            ),
+            advisory_db_sha=args.advisory_db_sha,
+            advisory_db_epoch=args.advisory_db_epoch,
+            config_id=config_id,
+            manifest_id=manifest_id,
+        )
     if args.role == "dart-audit":
         if not re.fullmatch(r"ubuntu:18[.]04@sha256:[0-9a-f]{64}", args.base):
             fail("Dart audit base image identity is malformed or unsupported")
@@ -302,6 +430,12 @@ def validate_inspect(payload: dict[str, object], image_ref: str, spec: ImageSpec
     config = payload.get("Config")
     if not isinstance(config, dict):
         fail("image inspect Config is absent or malformed")
+    if isinstance(spec, RustAuditSpec):
+        if payload.get("Os") != "linux" or payload.get("Architecture") != "amd64":
+            fail("Rust audit image platform must be exactly linux/amd64")
+        if config != spec.runtime_config:
+            fail("Rust audit image runtime config differs from the reviewed contract")
+        return
     if isinstance(spec, DartAuditSpec):
         if payload.get("Os") != "linux" or payload.get("Architecture") != "amd64":
             fail("Dart audit image platform must be exactly linux/amd64")
@@ -363,6 +497,73 @@ def verify_local(image_ref: str, spec: ImageSpec) -> None:
     if os.getuid() == 0 or os.getgid() == 0:
         fail("local image provenance verification refuses root execution")
     validate_inspect(inspect_image(image_ref), image_ref, spec)
+    if isinstance(spec, RustAuditSpec):
+        command = (
+            "set -euo pipefail; "
+            "[ \"$(id -u)\" = 1000 ] && [ \"$(id -g)\" = 1000 ]; "
+            "printf 'rustc=%s\\n' \"$(rustc --version)\"; "
+            "printf 'cargo-audit=%s\\n' \"$(cargo-audit --version)\"; "
+            "printf 'cargo-deny=%s\\n' \"$(cargo-deny --version)\"; "
+            "audit_sha=\"$(sha256sum \"$AUDIT_TOOLS/bin/cargo-audit\")\"; "
+            "audit_sha=\"${audit_sha%% *}\"; "
+            "deny_sha=\"$(sha256sum \"$AUDIT_TOOLS/bin/cargo-deny\")\"; "
+            "deny_sha=\"${deny_sha%% *}\"; "
+            "printf 'cargo-audit-sha=%s\\n' \"$audit_sha\"; "
+            "printf 'cargo-deny-sha=%s\\n' \"$deny_sha\"; "
+            "printf 'db-head=%s\\n' \"$(git -C \"$ADVISORY_DB\" rev-parse HEAD)\"; "
+            "printf 'db-epoch=%s\\n' "
+            "\"$(git -C \"$ADVISORY_DB\" show -s --format=%ct HEAD)\"; "
+            "[ -z \"$(git -C \"$ADVISORY_DB\" status "
+            "--porcelain --untracked-files=all)\" ]; "
+            "[ \"$(readlink \"$CARGO_DENY_DB_PATH/$CARGO_DENY_DB_DIR\")\" "
+            "= \"$ADVISORY_DB\" ]; "
+            "printf 'db-status=clean\\n'"
+        )
+        result = run(
+            [
+                DOCKER,
+                "run",
+                "--rm",
+                "--pull=never",
+                "--network=none",
+                "--read-only",
+                "--user",
+                "1000:1000",
+                "--cap-drop=ALL",
+                "--security-opt=no-new-privileges",
+                "--pids-limit=32",
+                "--memory=256m",
+                "--memory-swap=256m",
+                "--cpus=1",
+                "--tmpfs",
+                "/tmp:rw,noexec,nosuid,nodev,mode=1777,size=16m",
+                spec.image_id,
+                "/bin/bash",
+                "--noprofile",
+                "--norc",
+                "-c",
+                command,
+            ]
+        )
+        if result.returncode != 0:
+            fail(
+                "cannot verify Rust audit runtime contents: "
+                + result.stderr.decode(errors="replace").strip()
+            )
+        expected = (
+            f"rustc=rustc {spec.rustc_version} "
+            "(6b00bc388 2025-06-23)\n"
+            f"cargo-audit=cargo-audit {spec.cargo_audit_version}\n"
+            f"cargo-deny=cargo-deny {spec.cargo_deny_version}\n"
+            f"cargo-audit-sha={spec.cargo_audit_sha256}\n"
+            f"cargo-deny-sha={spec.cargo_deny_sha256}\n"
+            f"db-head={spec.advisory_db_sha}\n"
+            f"db-epoch={spec.advisory_db_epoch}\n"
+            "db-status=clean\n"
+        ).encode("ascii")
+        if result.stdout != expected or result.stderr:
+            fail("Rust audit runtime fingerprint differs from the reviewed pins")
+        return
     if isinstance(spec, DartAuditSpec):
         command = (
             "set -euo pipefail; "
@@ -568,6 +769,38 @@ def parse_json(data: bytes | None, label: str) -> object:
 
 
 def validate_config(config_json: object, layers: list[str], spec: ImageSpec) -> None:
+    if isinstance(spec, RustAuditSpec):
+        if not isinstance(config_json, dict) \
+           or config_json.get("architecture") != "amd64" \
+           or config_json.get("os") != "linux":
+            fail("Docker archive Rust audit config platform is malformed")
+        if config_json.get("config") != spec.runtime_config:
+            fail(
+                "Docker archive Rust audit runtime config differs from "
+                "the reviewed contract"
+            )
+        rootfs = config_json.get("rootfs")
+        if not isinstance(rootfs, dict) or rootfs.get("type") != "layers":
+            fail("Docker archive Rust audit rootfs metadata is malformed")
+        diff_ids = rootfs.get("diff_ids")
+        if not isinstance(diff_ids, list) \
+           or len(diff_ids) != len(layers) \
+           or len(diff_ids) != 9 \
+           or any(
+               not isinstance(value, str) or not IMAGE_ID.fullmatch(value)
+               for value in diff_ids
+           ):
+            fail(
+                "Docker archive Rust audit layer identities differ from "
+                "the nine-layer contract"
+            )
+        history = config_json.get("history")
+        if not isinstance(history, list) or len(history) != 21:
+            fail(
+                "Docker archive Rust audit history differs from "
+                "the reviewed build topology"
+            )
+        return
     if isinstance(spec, DartAuditSpec):
         if not isinstance(config_json, dict) \
            or config_json.get("architecture") != "amd64" \
@@ -934,6 +1167,426 @@ def validate_dart_audit_attestation(
         fail("Docker archive Dart audit provenance Dockerfile differs from its pin")
 
 
+def validate_rust_audit_attestation(
+    statement: object,
+    image_manifest_id: object,
+    spec: RustAuditSpec,
+) -> None:
+    def contains_vcs_authority(value: object) -> bool:
+        if isinstance(value, dict):
+            return any(
+                (
+                    isinstance(key, str)
+                    and (key == "vcs" or key.startswith("vcs:"))
+                )
+                or contains_vcs_authority(item)
+                for key, item in value.items()
+            )
+        if isinstance(value, list):
+            return any(contains_vcs_authority(item) for item in value)
+        return False
+
+    expected_digest = str(image_manifest_id).removeprefix("sha256:")
+    if not isinstance(statement, dict) \
+       or set(statement) != {"_type", "predicateType", "subject", "predicate"} \
+       or statement.get("subject") != [
+           {
+               "name": (
+                   "pkg:docker/rd-rust-audit-candidate@provenance-v1"
+                   "?platform=linux%2Famd64"
+               ),
+               "digest": {"sha256": expected_digest},
+           }
+       ]:
+        fail(
+            "Docker archive Rust audit provenance subject differs from "
+            "the image manifest"
+        )
+    if contains_vcs_authority(statement):
+        fail("Docker archive Rust audit provenance contains undeclared VCS authority")
+    predicate = statement.get("predicate")
+    if not isinstance(predicate, dict) \
+       or set(predicate) != {"buildDefinition", "runDetails"}:
+        fail("Docker archive Rust audit provenance predicate differs")
+    definition = predicate.get("buildDefinition")
+    base_digest = spec.base.rsplit("@", 1)[1]
+    if not isinstance(definition, dict) \
+       or set(definition) != {
+           "buildType",
+           "resolvedDependencies",
+           "externalParameters",
+           "internalParameters",
+       } \
+       or definition.get("buildType") != (
+           "https://github.com/moby/buildkit/blob/master/docs/attestations/"
+           "slsa-definitions.md"
+       ) \
+       or definition.get("resolvedDependencies") != [
+           {
+               "uri": (
+                   f"pkg:docker/rust@{spec.rust_version}-bookworm?"
+                   f"digest={base_digest}&platform=linux%2Famd64"
+               ),
+               "digest": {"sha256": base_digest.removeprefix("sha256:")},
+           }
+       ]:
+        fail("Docker archive Rust audit provenance does not bind the exact Rust base")
+    expected_args = {
+        "build-arg:ADVISORY_DB_COMMIT_EPOCH": str(spec.advisory_db_epoch),
+        "build-arg:ADVISORY_DB_SHA": spec.advisory_db_sha,
+        "build-arg:BASE_DIGEST": base_digest,
+        "build-arg:CARGO_AUDIT_VERSION": spec.cargo_audit_version,
+        "build-arg:CARGO_DENY_VERSION": spec.cargo_deny_version,
+        "build-arg:RUST_AUDIT_RUST_VERSION": spec.rust_version,
+        "no-cache": "",
+    }
+    expected_request = {
+        "args": expected_args,
+        "compatibilityVersion": 30,
+        "frontend": "dockerfile.v0",
+        "locals": [{"name": "context"}, {"name": "dockerfile"}],
+        "root": {
+            "configSource": {"path": "Dockerfile.audit"},
+            "request": {"args": expected_args},
+        },
+    }
+    if definition.get("externalParameters") != {
+        "configSource": {"path": "Dockerfile.audit"},
+        "request": expected_request,
+    }:
+        fail("Docker archive Rust audit provenance does not bind the reviewed recipe")
+    internal = definition.get("internalParameters")
+    build_config = internal.get("buildConfig") if isinstance(internal, dict) else None
+    llb = build_config.get("llbDefinition") if isinstance(build_config, dict) else None
+    if not isinstance(internal, dict) \
+       or set(internal) != {"buildConfig", "builderPlatform", "dockerfileVersion"} \
+       or internal.get("builderPlatform") != "linux/amd64" \
+       or internal.get("dockerfileVersion") != "1.25.0" \
+       or not isinstance(build_config, dict) \
+       or set(build_config) != {"digestMapping", "llbDefinition"} \
+       or not isinstance(build_config.get("digestMapping"), dict) \
+       or not isinstance(llb, list) \
+       or len(llb) != 9:
+        fail("Docker archive Rust audit provenance builder contract differs")
+
+    expected_inputs: list[list[str] | None] = [
+        None,
+        ["step0:0"],
+        ["step0:0"],
+        ["step2:0"],
+        ["step3:0"],
+        ["step1:0", "step4:0"],
+        ["step5:0", "step4:0"],
+        ["step6:0"],
+        ["step7:0"],
+    ]
+    expected_kinds = [
+        {"source"},
+        {"exec"},
+        {"exec"},
+        {"exec"},
+        {"exec"},
+        {"file"},
+        {"file"},
+        {"exec"},
+        set(),
+    ]
+    operations: list[dict[str, object]] = []
+    platform = {"Architecture": "amd64", "OS": "linux"}
+    for position, item in enumerate(llb):
+        expected_item_keys = {"id", "op"} if position == 0 else {
+            "id",
+            "inputs",
+            "op",
+        }
+        op_wrapper = item.get("op") if isinstance(item, dict) else None
+        operation = op_wrapper.get("Op") if isinstance(op_wrapper, dict) else None
+        expected_wrapper_keys = (
+            {"Op"}
+            if position == 8
+            else {"Op", "constraints"}
+            if position in (5, 6)
+            else {"Op", "constraints", "platform"}
+        )
+        if not isinstance(item, dict) \
+           or set(item) != expected_item_keys \
+           or item.get("id") != f"step{position}" \
+           or item.get("inputs") != expected_inputs[position] \
+           or not isinstance(op_wrapper, dict) \
+           or set(op_wrapper) != expected_wrapper_keys \
+           or op_wrapper.get("constraints") not in (None, {}) \
+           or (
+               position not in (5, 6, 8)
+               and op_wrapper.get("platform") != platform
+           ) \
+           or not isinstance(operation, dict) \
+           or set(operation) != expected_kinds[position]:
+            fail("Docker archive Rust audit provenance input graph differs")
+        operations.append(operation)
+    expected_source = {
+        "attrs": {"image.resolvemode": "pull"},
+        "identifier": (
+            "docker-image://docker.io/library/"
+            f"rust:{spec.rust_version}-bookworm@{base_digest}"
+        ),
+    }
+    if operations[0].get("source") != expected_source:
+        fail("Docker archive Rust audit provenance source operation differs")
+
+    common_environment = [
+        "RUSTUP_HOME=/usr/local/rustup",
+        f"RUST_VERSION={spec.rustc_version}",
+        f"RUST_AUDIT_RUST_VERSION={spec.rust_version}",
+        f"BASE_DIGEST={base_digest}",
+        f"CARGO_AUDIT_VERSION={spec.cargo_audit_version}",
+        f"CARGO_DENY_VERSION={spec.cargo_deny_version}",
+        f"ADVISORY_DB_SHA={spec.advisory_db_sha}",
+        f"ADVISORY_DB_COMMIT_EPOCH={spec.advisory_db_epoch}",
+    ]
+    builder_environment = common_environment + [
+        f"AUDIT_ROOT={RUST_AUDIT_ROOT}",
+        f"AUDIT_TOOLS={RUST_AUDIT_ROOT}/tools",
+        f"ADVISORY_DB={RUST_AUDIT_ROOT}/advisory-db",
+        f"CARGO_HOME={RUST_AUDIT_ROOT}/cargo-home",
+        f"HOME={RUST_AUDIT_ROOT}/home",
+        (
+            f"PATH={RUST_AUDIT_ROOT}/tools/bin:/usr/local/cargo/bin:"
+            "/usr/local/bin:/usr/bin:/bin"
+        ),
+    ]
+    runtime_environment = common_environment + [
+        f"AUDIT_ROOT={RUST_AUDIT_ROOT}",
+        f"AUDIT_TOOLS={RUST_AUDIT_ROOT}/tools",
+        f"ADVISORY_DB={RUST_AUDIT_ROOT}/advisory-db",
+        f"CARGO_DENY_DB_PATH={RUST_AUDIT_ROOT}/cargo-deny-advisory-dbs",
+        "CARGO_DENY_DB_DIR=advisory-db-3157b0e258782691",
+        f"CARGO_HOME={RUST_AUDIT_ROOT}/cargo-home",
+        f"HOME={RUST_AUDIT_ROOT}/home",
+        (
+            f"PATH={RUST_AUDIT_ROOT}/tools/bin:/usr/local/cargo/bin:"
+            "/usr/local/bin:/usr/bin:/bin"
+        ),
+    ]
+    commands = [
+        (
+            '[ "$(id -u)" = 1000 ]     && [ "$(id -g)" = 1000 ]     '
+            '&& umask 022     && mkdir -p "$CARGO_HOME" "$HOME" '
+            '"$CARGO_DENY_DB_PATH"'
+        ),
+        (
+            '[ "$(id -u)" = 1000 ]     && [ "$(id -g)" = 1000 ]     '
+            '&& umask 022     && mkdir -p "$AUDIT_TOOLS" "$CARGO_HOME" '
+            '"$AUDIT_ROOT/cargo-target" "$HOME"'
+        ),
+        (
+            'export CARGO_TARGET_DIR="$AUDIT_ROOT/cargo-target"     '
+            '&& cargo install --root "$AUDIT_TOOLS" --locked         '
+            '--version "$CARGO_AUDIT_VERSION" cargo-audit     '
+            '&& cargo install --root "$AUDIT_TOOLS" --locked         '
+            '--version "$CARGO_DENY_VERSION" cargo-deny     '
+            '&& [ "$(cargo-audit --version)" = '
+            '"cargo-audit $CARGO_AUDIT_VERSION" ]     '
+            '&& [ "$(cargo-deny --version)" = '
+            '"cargo-deny $CARGO_DENY_VERSION" ]     '
+            '&& rm -rf "$CARGO_HOME/registry" "$CARGO_HOME/git" '
+            '"$CARGO_TARGET_DIR"'
+        ),
+        (
+            'git init -q "$ADVISORY_DB"     '
+            '&& git -C "$ADVISORY_DB" remote add origin '
+            'https://github.com/RustSec/advisory-db     '
+            '&& git -c protocol.version=2 -C "$ADVISORY_DB" fetch -q '
+            '--depth=1 origin "$ADVISORY_DB_SHA"     '
+            '&& git -C "$ADVISORY_DB" checkout -q --detach FETCH_HEAD     '
+            '&& [ "$(git -C "$ADVISORY_DB" rev-parse HEAD)" = '
+            '"$ADVISORY_DB_SHA" ]     '
+            '&& [ "$(git -C "$ADVISORY_DB" show -s --format=%ct HEAD)" = '
+            '"$ADVISORY_DB_COMMIT_EPOCH" ]     '
+            '&& [ -z "$(git -C "$ADVISORY_DB" status '
+            '--porcelain --untracked-files=all)" ]'
+        ),
+        (
+            'ln -s "$ADVISORY_DB" '
+            '"$CARGO_DENY_DB_PATH/$CARGO_DENY_DB_DIR"     '
+            '&& [ "$(cargo-audit --version)" = '
+            '"cargo-audit $CARGO_AUDIT_VERSION" ]     '
+            '&& [ "$(cargo-deny --version)" = '
+            '"cargo-deny $CARGO_DENY_VERSION" ]     '
+            '&& [ "$(git -C "$ADVISORY_DB" rev-parse HEAD)" = '
+            '"$ADVISORY_DB_SHA" ]     '
+            '&& [ "$(git -C "$ADVISORY_DB" show -s --format=%ct HEAD)" = '
+            '"$ADVISORY_DB_COMMIT_EPOCH" ]     '
+            '&& [ -z "$(git -C "$ADVISORY_DB" status '
+            '--porcelain --untracked-files=all)" ]'
+        ),
+    ]
+    execution_positions = (1, 2, 3, 4, 7)
+    execution_environments = (
+        runtime_environment,
+        builder_environment,
+        builder_environment,
+        builder_environment,
+        runtime_environment,
+    )
+    execution_networks = (2, 2, None, None, 2)
+    for command, position, environment, network in zip(
+        commands,
+        execution_positions,
+        execution_environments,
+        execution_networks,
+    ):
+        expected_execution: dict[str, object] = {
+            "meta": {
+                "args": ["/bin/bash", "-euo", "pipefail", "-c", command],
+                "cwd": "/",
+                "env": environment,
+                "removeMountStubsRecursive": True,
+                "user": "1000:1000",
+            },
+            "mounts": [{"dest": "/"}],
+        }
+        if network is not None:
+            expected_execution["network"] = network
+        if operations[position].get("exec") != expected_execution:
+            fail(
+                "Docker archive Rust audit execution graph is not the exact "
+                "two-networked/three-networkless nonroot contract"
+            )
+
+    copy_owner = {
+        "group": {"User": {"byId": 1000}},
+        "user": {"User": {"byId": 1000}},
+    }
+    for position, suffix in (
+        (5, "tools"),
+        (6, "advisory-db"),
+    ):
+        path = f"{RUST_AUDIT_ROOT}/{suffix}"
+        expected_file = {
+            "actions": [
+                {
+                    "Action": {
+                        "copy": {
+                            "allowEmptyWildcard": True,
+                            "allowWildcard": True,
+                            "createDestPath": True,
+                            "dest": path,
+                            "dirCopyContents": True,
+                            "followSymlink": True,
+                            "mode": -1,
+                            "owner": copy_owner,
+                            "src": path,
+                            "timestamp": -1,
+                        }
+                    },
+                    "input": 0,
+                    "output": 0,
+                    "secondaryInput": 1,
+                }
+            ]
+        }
+        if operations[position].get("file") != expected_file:
+            fail("Docker archive Rust audit stage-copy graph differs")
+
+    run_details = predicate.get("runDetails")
+    metadata = run_details.get("metadata") if isinstance(run_details, dict) else None
+    if not isinstance(run_details, dict) \
+       or set(run_details) != {"builder", "metadata"} \
+       or run_details.get("builder") != {"id": ""} \
+       or not isinstance(metadata, dict) \
+       or set(metadata) != {
+           "buildkit_completeness",
+           "buildkit_metadata",
+           "finishedOn",
+           "invocationId",
+           "startedOn",
+       } \
+       or not all(
+           isinstance(metadata.get(name), str) and metadata.get(name)
+           for name in ("finishedOn", "invocationId", "startedOn")
+       ):
+        fail("Docker archive Rust audit provenance run metadata differs")
+    buildkit_metadata = metadata.get("buildkit_metadata")
+    completeness = metadata.get("buildkit_completeness")
+    source = (
+        buildkit_metadata.get("source")
+        if isinstance(buildkit_metadata, dict)
+        else None
+    )
+    infos = source.get("infos") if isinstance(source, dict) else None
+    if not isinstance(buildkit_metadata, dict) \
+       or set(buildkit_metadata) != {"layers", "source"} \
+       or not isinstance(buildkit_metadata.get("layers"), dict) \
+       or not isinstance(source, dict) \
+       or set(source) != {"infos", "locations"} \
+       or not isinstance(source.get("locations"), dict) \
+       or not isinstance(infos, list) \
+       or len(infos) != 1 \
+       or completeness != {"request": True, "resolvedDependencies": False}:
+        fail("Docker archive Rust audit provenance metadata differs")
+    source_info = infos[0]
+    digest_mapping = (
+        source_info.get("digestMapping")
+        if isinstance(source_info, dict)
+        else None
+    )
+    if not isinstance(source_info, dict) \
+       or set(source_info) != {
+           "data",
+           "digestMapping",
+           "filename",
+           "language",
+           "llbDefinition",
+       } \
+       or source_info.get("filename") != "Dockerfile.audit" \
+       or source_info.get("language") != "Dockerfile" \
+       or not isinstance(digest_mapping, dict) \
+       or len(digest_mapping) != 2 \
+       or not all(
+           isinstance(value, str) for value in digest_mapping.values()
+       ) \
+       or set(digest_mapping.values()) != {"step0", "step1"} \
+       or not isinstance(source_info.get("data"), str):
+        fail("Docker archive Rust audit provenance source record differs")
+    source_llb = source_info.get("llbDefinition")
+    if source_llb != [
+        {
+            "id": "step0",
+            "op": {
+                "Op": {
+                    "source": {
+                        "identifier": "local://dockerfile",
+                        "attrs": {
+                            "local.differ": "none",
+                            "local.followpaths": (
+                                '["Dockerfile.audit",'
+                                '"Dockerfile.audit.dockerignore"]'
+                            ),
+                            "local.sharedkeyhint": "dockerfile",
+                        },
+                    }
+                },
+                "constraints": {},
+            },
+        },
+        {
+            "id": "step1",
+            "op": {"Op": {}},
+            "inputs": ["step0:0"],
+        },
+    ]:
+        fail(
+            "Docker archive Rust audit provenance does not prove the "
+            "Dockerfile-only source graph"
+        )
+    try:
+        dockerfile = base64.b64decode(source_info["data"], validate=True)
+    except (ValueError, TypeError) as exc:
+        fail(f"Docker archive Rust audit provenance Dockerfile is malformed: {exc}")
+    if hashlib.sha256(dockerfile).hexdigest() != spec.dockerfile_sha256:
+        fail("Docker archive Rust audit provenance Dockerfile differs from its pin")
+
+
 def validate_modern_archive(
     item: dict[str, object],
     files: set[str],
@@ -957,7 +1610,7 @@ def validate_modern_archive(
     if not isinstance(root_descriptors, list) or len(root_descriptors) != 1:
         fail("Docker archive root OCI index must name exactly one captured image")
     root_descriptor = root_descriptors[0]
-    if isinstance(spec, DartAuditSpec):
+    if isinstance(spec, (DartAuditSpec, RustAuditSpec)):
         expected_annotations = None
     elif isinstance(spec, VerifierSpec):
         expected_annotations = spec.root_annotations
@@ -977,12 +1630,14 @@ def validate_modern_archive(
        or root_descriptor.get("digest") != expected_digest \
        or root_descriptor.get("annotations") != expected_annotations:
         fail("Docker archive root OCI descriptor does not bind the expected image identity")
-    if isinstance(spec, DartAuditSpec) and set(root_descriptor) != {
+    if isinstance(spec, (DartAuditSpec, RustAuditSpec)) and set(root_descriptor) != {
         "digest",
         "mediaType",
         "size",
     }:
-        fail("Docker archive Dart audit root descriptor has undeclared annotations")
+        fail(
+            f"Docker archive {spec.role} root descriptor has undeclared annotations"
+        )
     expected_index_name, image_index_bytes = descriptor_blob(
         root_descriptor, metadata, member_sizes, member_hashes, "image index"
     )
@@ -1002,7 +1657,7 @@ def validate_modern_archive(
     image_descriptor = image_descriptors[0]
     if image_descriptor.get("mediaType") != "application/vnd.oci.image.manifest.v1+json":
         fail("Docker archive image manifest media type is unsupported")
-    if isinstance(spec, (VerifierSpec, DartAuditSpec)):
+    if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):
         if spec.manifest_id is None:
             fail(f"Docker archive {spec.role} manifest pin is absent")
         if image_descriptor.get("digest") != spec.manifest_id:
@@ -1021,7 +1676,7 @@ def validate_modern_archive(
     if not isinstance(config_descriptor, dict) \
        or config_descriptor.get("mediaType") != "application/vnd.oci.image.config.v1+json":
         fail("Docker archive image config media type is unsupported")
-    if isinstance(spec, (VerifierSpec, DartAuditSpec)):
+    if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):
         if spec.config_id is None:
             fail(f"Docker archive {spec.role} config pin is absent")
         if config_descriptor.get("digest") != spec.config_id:
@@ -1111,7 +1766,12 @@ def validate_modern_archive(
             validate_verifier_attestation(statement, actual_digest, spec)
         elif isinstance(spec, DartAuditSpec):
             validate_dart_audit_attestation(statement, actual_digest, spec)
-    if isinstance(spec, (VerifierSpec, DartAuditSpec)) and len(attestations) != 1:
+        elif isinstance(spec, RustAuditSpec):
+            validate_rust_audit_attestation(statement, actual_digest, spec)
+    if isinstance(
+        spec,
+        (VerifierSpec, DartAuditSpec, RustAuditSpec),
+    ) and len(attestations) != 1:
         fail(f"Docker archive {spec.role} image must contain exactly one provenance attestation")
     blob_files = {name for name in files if name.startswith("blobs/sha256/")}
     if blob_files != expected_blobs:
@@ -1130,7 +1790,7 @@ def validate_legacy_archive(
     member_hashes: dict[str, str],
     spec: ImageSpec,
 ) -> None:
-    if isinstance(spec, (VerifierSpec, DartAuditSpec)):
+    if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):
         fail(f"{spec.role} recovery requires the content-addressed OCI archive layout")
     expected_config = spec.image_id.removeprefix("sha256:") + ".json"
     layers = item.get("Layers")
@@ -1211,7 +1871,7 @@ def validate_archive_stream(stream: BinaryIO, spec: ImageSpec) -> None:
     if not isinstance(manifest, list) or len(manifest) != 1 or not isinstance(manifest[0], dict):
         fail("Docker archive must contain exactly one compatibility image manifest")
     item = manifest[0]
-    if isinstance(spec, (VerifierSpec, DartAuditSpec)):
+    if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):
         expected_tags = spec.archive_tags
     else:
         expected_tags = [spec.capture_tag]
@@ -1253,7 +1913,7 @@ def verify_archive_fd(
     before = os.fstat(fd)
     if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
         fail("image archive must be one non-hardlinked regular file")
-    if isinstance(spec, (VerifierSpec, DartAuditSpec)):
+    if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):
         if before.st_uid != os.getuid() or before.st_gid != os.getgid():
             fail(f"{spec.role} image archive must be owned by the invoking identity")
         if stat.S_IMODE(before.st_mode) != 0o400:
@@ -1420,7 +2080,7 @@ def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:
     verify_local(spec.image_id, spec)
     if output.exists() or output.is_symlink():
         fail(f"refusing to replace existing image archive: {output}")
-    if isinstance(spec, (VerifierSpec, DartAuditSpec)):
+    if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):
         validate_private_output_parent(output.parent)
         save_ref = spec.image_id
     else:
@@ -1461,7 +2121,7 @@ def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:
         stderr = process.stderr.read() if process.stderr is not None else b""
         if process.wait() != 0:
             fail(f"docker save failed: {stderr.decode(errors='replace').strip()}")
-        if isinstance(spec, (VerifierSpec, DartAuditSpec)):
+        if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):
             temporary.chmod(0o400)
             archive_sha = digest.hexdigest()
             verify_archive(temporary, archive_sha, spec, count)
@@ -1482,7 +2142,9 @@ def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:
         output,
         archive_sha,
         spec,
-        count if isinstance(spec, (VerifierSpec, DartAuditSpec)) else None,
+        count
+        if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec))
+        else None,
     )
     return archive_sha, count
 
@@ -2249,6 +2911,589 @@ def create_dart_audit_fixture_archive(
     return spec
 
 
+def create_rust_audit_fixture_archive(
+    path: Path,
+    repo_tags: object = None,
+    *,
+    add_vcs: bool = False,
+    add_extra_source: bool = False,
+    embedded_dockerfile: bytes | None = None,
+    setup_network: int | None = 2,
+    acquisition_network: int | None = None,
+    execution_user: str = "1000:1000",
+    copy_user: int = 1000,
+    annotate_root: bool = False,
+    statement_type: str = "https://in-toto.io/Statement/v1",
+) -> RustAuditSpec:
+    def encoded(value: object) -> bytes:
+        return json.dumps(value, sort_keys=True, separators=(",", ":")).encode(
+            "ascii"
+        )
+
+    def blob_descriptor(
+        value: bytes,
+        media_type: str,
+        **extra: object,
+    ) -> dict[str, object]:
+        return {
+            "mediaType": media_type,
+            "digest": "sha256:" + hashlib.sha256(value).hexdigest(),
+            "size": len(value),
+            **extra,
+        }
+
+    dockerfile = (
+        b"FROM rust:1.88-bookworm@sha256:"
+        + b"b" * 64
+        + b"\nUSER 1000:1000\nRUN --network=none true\n"
+    )
+    source_dockerfile = (
+        dockerfile if embedded_dockerfile is None else embedded_dockerfile
+    )
+    base_digest = "b" * 64
+    preliminary = RustAuditSpec(
+        role="rust-audit",
+        image_id="sha256:" + "0" * 64,
+        base="rust:1.88-bookworm@sha256:" + base_digest,
+        dockerfile_sha256=hashlib.sha256(dockerfile).hexdigest(),
+        rust_version="1.88",
+        rustc_version="1.88.0",
+        cargo_audit_version="0.22.2",
+        cargo_deny_version="0.20.2",
+        cargo_audit_sha256="c" * 64,
+        cargo_deny_sha256="d" * 64,
+        advisory_db_sha="e" * 40,
+        advisory_db_epoch=1784303558,
+        config_id=None,
+        manifest_id=None,
+    )
+    layers = [
+        gzip.compress(
+            f"Rust audit fixture layer {position}".encode("ascii"),
+            mtime=0,
+        )
+        for position in range(9)
+    ]
+    layer_descriptors = [
+        blob_descriptor(layer, "application/vnd.oci.image.layer.v1.tar+gzip")
+        for layer in layers
+    ]
+    config = encoded(
+        {
+            "architecture": "amd64",
+            "config": preliminary.runtime_config,
+            "history": [{} for _ in range(21)],
+            "os": "linux",
+            "rootfs": {
+                "type": "layers",
+                "diff_ids": [
+                    "sha256:" + str(position) * 64
+                    for position in range(1, 10)
+                ],
+            },
+        }
+    )
+    config_descriptor = blob_descriptor(
+        config,
+        "application/vnd.oci.image.config.v1+json",
+    )
+    image_manifest = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": config_descriptor,
+            "layers": layer_descriptors,
+        }
+    )
+    image_descriptor = blob_descriptor(
+        image_manifest,
+        "application/vnd.oci.image.manifest.v1+json",
+        platform={"architecture": "amd64", "os": "linux"},
+    )
+    build_args = {
+        "build-arg:ADVISORY_DB_COMMIT_EPOCH": str(
+            preliminary.advisory_db_epoch
+        ),
+        "build-arg:ADVISORY_DB_SHA": preliminary.advisory_db_sha,
+        "build-arg:BASE_DIGEST": "sha256:" + base_digest,
+        "build-arg:CARGO_AUDIT_VERSION": preliminary.cargo_audit_version,
+        "build-arg:CARGO_DENY_VERSION": preliminary.cargo_deny_version,
+        "build-arg:RUST_AUDIT_RUST_VERSION": preliminary.rust_version,
+        "no-cache": "",
+    }
+    request = {
+        "args": build_args,
+        "compatibilityVersion": 30,
+        "frontend": "dockerfile.v0",
+        "locals": [{"name": "context"}, {"name": "dockerfile"}],
+        "root": {
+            "configSource": {"path": "Dockerfile.audit"},
+            "request": {"args": build_args},
+        },
+    }
+    common_environment = [
+        "RUSTUP_HOME=/usr/local/rustup",
+        f"RUST_VERSION={preliminary.rustc_version}",
+        f"RUST_AUDIT_RUST_VERSION={preliminary.rust_version}",
+        "BASE_DIGEST=sha256:" + base_digest,
+        f"CARGO_AUDIT_VERSION={preliminary.cargo_audit_version}",
+        f"CARGO_DENY_VERSION={preliminary.cargo_deny_version}",
+        f"ADVISORY_DB_SHA={preliminary.advisory_db_sha}",
+        f"ADVISORY_DB_COMMIT_EPOCH={preliminary.advisory_db_epoch}",
+    ]
+    builder_environment = common_environment + [
+        f"AUDIT_ROOT={RUST_AUDIT_ROOT}",
+        f"AUDIT_TOOLS={RUST_AUDIT_ROOT}/tools",
+        f"ADVISORY_DB={RUST_AUDIT_ROOT}/advisory-db",
+        f"CARGO_HOME={RUST_AUDIT_ROOT}/cargo-home",
+        f"HOME={RUST_AUDIT_ROOT}/home",
+        (
+            f"PATH={RUST_AUDIT_ROOT}/tools/bin:/usr/local/cargo/bin:"
+            "/usr/local/bin:/usr/bin:/bin"
+        ),
+    ]
+    runtime_environment = common_environment + [
+        f"AUDIT_ROOT={RUST_AUDIT_ROOT}",
+        f"AUDIT_TOOLS={RUST_AUDIT_ROOT}/tools",
+        f"ADVISORY_DB={RUST_AUDIT_ROOT}/advisory-db",
+        f"CARGO_DENY_DB_PATH={RUST_AUDIT_ROOT}/cargo-deny-advisory-dbs",
+        "CARGO_DENY_DB_DIR=advisory-db-3157b0e258782691",
+        f"CARGO_HOME={RUST_AUDIT_ROOT}/cargo-home",
+        f"HOME={RUST_AUDIT_ROOT}/home",
+        (
+            f"PATH={RUST_AUDIT_ROOT}/tools/bin:/usr/local/cargo/bin:"
+            "/usr/local/bin:/usr/bin:/bin"
+        ),
+    ]
+    commands = [
+        (
+            '[ "$(id -u)" = 1000 ]     && [ "$(id -g)" = 1000 ]     '
+            '&& umask 022     && mkdir -p "$CARGO_HOME" "$HOME" '
+            '"$CARGO_DENY_DB_PATH"'
+        ),
+        (
+            '[ "$(id -u)" = 1000 ]     && [ "$(id -g)" = 1000 ]     '
+            '&& umask 022     && mkdir -p "$AUDIT_TOOLS" "$CARGO_HOME" '
+            '"$AUDIT_ROOT/cargo-target" "$HOME"'
+        ),
+        (
+            'export CARGO_TARGET_DIR="$AUDIT_ROOT/cargo-target"     '
+            '&& cargo install --root "$AUDIT_TOOLS" --locked         '
+            '--version "$CARGO_AUDIT_VERSION" cargo-audit     '
+            '&& cargo install --root "$AUDIT_TOOLS" --locked         '
+            '--version "$CARGO_DENY_VERSION" cargo-deny     '
+            '&& [ "$(cargo-audit --version)" = '
+            '"cargo-audit $CARGO_AUDIT_VERSION" ]     '
+            '&& [ "$(cargo-deny --version)" = '
+            '"cargo-deny $CARGO_DENY_VERSION" ]     '
+            '&& rm -rf "$CARGO_HOME/registry" "$CARGO_HOME/git" '
+            '"$CARGO_TARGET_DIR"'
+        ),
+        (
+            'git init -q "$ADVISORY_DB"     '
+            '&& git -C "$ADVISORY_DB" remote add origin '
+            'https://github.com/RustSec/advisory-db     '
+            '&& git -c protocol.version=2 -C "$ADVISORY_DB" fetch -q '
+            '--depth=1 origin "$ADVISORY_DB_SHA"     '
+            '&& git -C "$ADVISORY_DB" checkout -q --detach FETCH_HEAD     '
+            '&& [ "$(git -C "$ADVISORY_DB" rev-parse HEAD)" = '
+            '"$ADVISORY_DB_SHA" ]     '
+            '&& [ "$(git -C "$ADVISORY_DB" show -s --format=%ct HEAD)" = '
+            '"$ADVISORY_DB_COMMIT_EPOCH" ]     '
+            '&& [ -z "$(git -C "$ADVISORY_DB" status '
+            '--porcelain --untracked-files=all)" ]'
+        ),
+        (
+            'ln -s "$ADVISORY_DB" '
+            '"$CARGO_DENY_DB_PATH/$CARGO_DENY_DB_DIR"     '
+            '&& [ "$(cargo-audit --version)" = '
+            '"cargo-audit $CARGO_AUDIT_VERSION" ]     '
+            '&& [ "$(cargo-deny --version)" = '
+            '"cargo-deny $CARGO_DENY_VERSION" ]     '
+            '&& [ "$(git -C "$ADVISORY_DB" rev-parse HEAD)" = '
+            '"$ADVISORY_DB_SHA" ]     '
+            '&& [ "$(git -C "$ADVISORY_DB" show -s --format=%ct HEAD)" = '
+            '"$ADVISORY_DB_COMMIT_EPOCH" ]     '
+            '&& [ -z "$(git -C "$ADVISORY_DB" status '
+            '--porcelain --untracked-files=all)" ]'
+        ),
+    ]
+
+    def execution(
+        command: str,
+        environment: list[str],
+        network: int | None,
+    ) -> dict[str, object]:
+        value: dict[str, object] = {
+            "meta": {
+                "args": ["/bin/bash", "-euo", "pipefail", "-c", command],
+                "cwd": "/",
+                "env": environment,
+                "removeMountStubsRecursive": True,
+                "user": execution_user,
+            },
+            "mounts": [{"dest": "/"}],
+        }
+        if network is not None:
+            value["network"] = network
+        return value
+
+    def execution_item(
+        position: int,
+        inputs: list[str],
+        command: str,
+        environment: list[str],
+        network: int | None,
+    ) -> dict[str, object]:
+        return {
+            "id": f"step{position}",
+            "inputs": inputs,
+            "op": {
+                "Op": {"exec": execution(command, environment, network)},
+                "constraints": {},
+                "platform": {"Architecture": "amd64", "OS": "linux"},
+            },
+        }
+
+    def copy_item(
+        position: int,
+        inputs: list[str],
+        suffix: str,
+    ) -> dict[str, object]:
+        location = f"{RUST_AUDIT_ROOT}/{suffix}"
+        return {
+            "id": f"step{position}",
+            "inputs": inputs,
+            "op": {
+                "Op": {
+                    "file": {
+                        "actions": [
+                            {
+                                "Action": {
+                                    "copy": {
+                                        "allowEmptyWildcard": True,
+                                        "allowWildcard": True,
+                                        "createDestPath": True,
+                                        "dest": location,
+                                        "dirCopyContents": True,
+                                        "followSymlink": True,
+                                        "mode": -1,
+                                        "owner": {
+                                            "group": {
+                                                "User": {"byId": copy_user}
+                                            },
+                                            "user": {
+                                                "User": {"byId": copy_user}
+                                            },
+                                        },
+                                        "src": location,
+                                        "timestamp": -1,
+                                    }
+                                },
+                                "input": 0,
+                                "output": 0,
+                                "secondaryInput": 1,
+                            }
+                        ]
+                    }
+                },
+                "constraints": {},
+            },
+        }
+
+    llb_definition: list[dict[str, object]] = [
+        {
+            "id": "step0",
+            "op": {
+                "Op": {
+                    "source": {
+                        "attrs": {"image.resolvemode": "pull"},
+                        "identifier": (
+                            "docker-image://docker.io/library/"
+                            "rust:1.88-bookworm@sha256:" + base_digest
+                        ),
+                    }
+                },
+                "constraints": {},
+                "platform": {"Architecture": "amd64", "OS": "linux"},
+            },
+        },
+        execution_item(
+            1,
+            ["step0:0"],
+            commands[0],
+            runtime_environment,
+            setup_network,
+        ),
+        execution_item(
+            2,
+            ["step0:0"],
+            commands[1],
+            builder_environment,
+            setup_network,
+        ),
+        execution_item(
+            3,
+            ["step2:0"],
+            commands[2],
+            builder_environment,
+            acquisition_network,
+        ),
+        execution_item(
+            4,
+            ["step3:0"],
+            commands[3],
+            builder_environment,
+            acquisition_network,
+        ),
+        copy_item(5, ["step1:0", "step4:0"], "tools"),
+        copy_item(6, ["step5:0", "step4:0"], "advisory-db"),
+        execution_item(
+            7,
+            ["step6:0"],
+            commands[4],
+            runtime_environment,
+            setup_network,
+        ),
+    ]
+    if add_extra_source:
+        llb_definition.append(
+            {
+                "id": "unexpected-source",
+                "op": {
+                    "Op": {
+                        "source": {
+                            "attrs": {"local.sharedkeyhint": "unexpected"},
+                            "identifier": "local://unexpected",
+                        }
+                    }
+                },
+            }
+        )
+    llb_definition.append(
+        {"id": "step8", "inputs": ["step7:0"], "op": {"Op": {}}}
+    )
+    buildkit_metadata: dict[str, object] = {
+        "layers": {},
+        "source": {
+            "infos": [
+                {
+                    "data": base64.b64encode(source_dockerfile).decode("ascii"),
+                    "digestMapping": {
+                        "sha256:" + "1" * 64: "step0",
+                        "sha256:" + "2" * 64: "step1",
+                    },
+                    "filename": "Dockerfile.audit",
+                    "language": "Dockerfile",
+                    "llbDefinition": [
+                        {
+                            "id": "step0",
+                            "op": {
+                                "Op": {
+                                    "source": {
+                                        "identifier": "local://dockerfile",
+                                        "attrs": {
+                                            "local.differ": "none",
+                                            "local.followpaths": (
+                                                '["Dockerfile.audit",'
+                                                '"Dockerfile.audit.dockerignore"]'
+                                            ),
+                                            "local.sharedkeyhint": "dockerfile",
+                                        },
+                                    }
+                                },
+                                "constraints": {},
+                            },
+                        },
+                        {
+                            "id": "step1",
+                            "op": {"Op": {}},
+                            "inputs": ["step0:0"],
+                        },
+                    ],
+                }
+            ],
+            "locations": {},
+        },
+    }
+    if add_vcs:
+        buildkit_metadata["vcs"] = {
+            "revision": "f" * 40,
+            "source": "https://example.invalid/repository.git",
+        }
+    statement = encoded(
+        {
+            "_type": statement_type,
+            "predicateType": "https://slsa.dev/provenance/v1",
+            "subject": [
+                {
+                    "name": (
+                        "pkg:docker/rd-rust-audit-candidate@provenance-v1"
+                        "?platform=linux%2Famd64"
+                    ),
+                    "digest": {
+                        "sha256": image_descriptor["digest"].removeprefix(
+                            "sha256:"
+                        )
+                    },
+                }
+            ],
+            "predicate": {
+                "buildDefinition": {
+                    "buildType": (
+                        "https://github.com/moby/buildkit/blob/master/docs/"
+                        "attestations/slsa-definitions.md"
+                    ),
+                    "externalParameters": {
+                        "configSource": {"path": "Dockerfile.audit"},
+                        "request": request,
+                    },
+                    "internalParameters": {
+                        "buildConfig": {
+                            "digestMapping": {},
+                            "llbDefinition": llb_definition,
+                        },
+                        "builderPlatform": "linux/amd64",
+                        "dockerfileVersion": "1.25.0",
+                    },
+                    "resolvedDependencies": [
+                        {
+                            "digest": {"sha256": base_digest},
+                            "uri": (
+                                "pkg:docker/rust@1.88-bookworm?"
+                                f"digest=sha256:{base_digest}"
+                                "&platform=linux%2Famd64"
+                            ),
+                        }
+                    ],
+                },
+                "runDetails": {
+                    "builder": {"id": ""},
+                    "metadata": {
+                        "buildkit_completeness": {
+                            "request": True,
+                            "resolvedDependencies": False,
+                        },
+                        "buildkit_metadata": buildkit_metadata,
+                        "finishedOn": "2026-07-25T00:00:01Z",
+                        "invocationId": "fixture",
+                        "startedOn": "2026-07-25T00:00:00Z",
+                    },
+                },
+            },
+        }
+    )
+    statement_descriptor = blob_descriptor(
+        statement,
+        "application/vnd.in-toto+json",
+        annotations={
+            "in-toto.io/predicate-type": "https://slsa.dev/provenance/v1"
+        },
+    )
+    attestation_config = encoded(
+        {
+            "architecture": "unknown",
+            "config": {},
+            "os": "unknown",
+            "rootfs": {
+                "type": "layers",
+                "diff_ids": [
+                    "sha256:" + hashlib.sha256(statement).hexdigest()
+                ],
+            },
+        }
+    )
+    attestation_config_descriptor = blob_descriptor(
+        attestation_config,
+        "application/vnd.oci.image.config.v1+json",
+    )
+    attestation_manifest = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": attestation_config_descriptor,
+            "layers": [statement_descriptor],
+        }
+    )
+    attestation_descriptor = blob_descriptor(
+        attestation_manifest,
+        "application/vnd.oci.image.manifest.v1+json",
+        annotations={
+            "vnd.docker.reference.digest": image_descriptor["digest"],
+            "vnd.docker.reference.type": "attestation-manifest",
+        },
+        platform={"architecture": "unknown", "os": "unknown"},
+    )
+    image_index = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": [image_descriptor, attestation_descriptor],
+        }
+    )
+    spec = replace(
+        preliminary,
+        image_id="sha256:" + hashlib.sha256(image_index).hexdigest(),
+        config_id=str(config_descriptor["digest"]),
+        manifest_id=str(image_descriptor["digest"]),
+    )
+    root_descriptor: dict[str, object] = {
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "digest": spec.image_id,
+        "size": len(image_index),
+    }
+    if annotate_root:
+        root_descriptor["annotations"] = {"unexpected": "authority"}
+    root_index = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": [root_descriptor],
+        }
+    )
+    config_name = "blobs/sha256/" + spec.config_id.removeprefix("sha256:")
+    layer_names = [
+        "blobs/sha256/" + str(descriptor["digest"]).removeprefix("sha256:")
+        for descriptor in layer_descriptors
+    ]
+    compatibility_manifest = encoded(
+        [{"Config": config_name, "RepoTags": repo_tags, "Layers": layer_names}]
+    )
+    members = {
+        "index.json": root_index,
+        "manifest.json": compatibility_manifest,
+        "oci-layout": encoded({"imageLayoutVersion": "1.0.0"}),
+        "blobs/sha256/" + spec.image_id.removeprefix("sha256:"): image_index,
+        "blobs/sha256/" + spec.manifest_id.removeprefix("sha256:"): (
+            image_manifest
+        ),
+        "blobs/sha256/"
+        + str(attestation_descriptor["digest"]).removeprefix("sha256:"): (
+            attestation_manifest
+        ),
+        "blobs/sha256/"
+        + str(attestation_config_descriptor["digest"]).removeprefix(
+            "sha256:"
+        ): attestation_config,
+        "blobs/sha256/"
+        + str(statement_descriptor["digest"]).removeprefix("sha256:"): (
+            statement
+        ),
+        config_name: config,
+    }
+    members.update(zip(layer_names, layers))
+    with path.open("wb") as raw:
+        with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as compressed:
+            with tarfile.open(fileobj=compressed, mode="w|") as archive:
+                for name, content in sorted(members.items()):
+                    info = tarfile.TarInfo(name)
+                    info.size = len(content)
+                    info.mtime = 0
+                    archive.addfile(info, io.BytesIO(content))
+    path.chmod(0o400)
+    return spec
+
+
 def expect_failure(operation: Callable[[], object], label: str) -> None:
     try:
         operation()
@@ -2672,6 +3917,216 @@ def self_test() -> None:
         if dart_checks != 21:
             fail(f"Dart audit image self-test count differs: {dart_checks}")
 
+        rust_archive = Path(temporary) / "rust-audit-image.tar.gz"
+        rust_spec = create_rust_audit_fixture_archive(rust_archive)
+        rust_bytes = rust_archive.read_bytes()
+        rust_sha = hashlib.sha256(rust_bytes).hexdigest()
+        rust_size = len(rust_bytes)
+        verify_archive(rust_archive, rust_sha, rust_spec, rust_size)
+        rust_payload = {
+            "Id": rust_spec.image_id,
+            "Os": "linux",
+            "Architecture": "amd64",
+            "Config": rust_spec.runtime_config,
+        }
+        validate_inspect(rust_payload, rust_spec.image_id, rust_spec)
+        rust_checks = 2
+
+        def rust_failure(operation: Callable[[], object], label: str) -> None:
+            nonlocal rust_checks
+            expect_failure(operation, label)
+            rust_checks += 1
+
+        rust_failure(
+            lambda: verify_archive(
+                rust_archive,
+                "f" * 64,
+                rust_spec,
+                rust_size,
+            ),
+            "Rust audit archive hash",
+        )
+        rust_failure(
+            lambda: verify_archive(
+                rust_archive,
+                rust_sha,
+                rust_spec,
+                rust_size + 1,
+            ),
+            "Rust audit archive size",
+        )
+        for label, mutation in (
+            (
+                "image identity",
+                replace(rust_spec, image_id="sha256:" + "f" * 64),
+            ),
+            (
+                "config identity",
+                replace(rust_spec, config_id="sha256:" + "f" * 64),
+            ),
+            (
+                "manifest identity",
+                replace(rust_spec, manifest_id="sha256:" + "f" * 64),
+            ),
+            (
+                "attested base",
+                replace(
+                    rust_spec,
+                    base="rust:1.88-bookworm@sha256:" + "f" * 64,
+                ),
+            ),
+            (
+                "embedded Dockerfile pin",
+                replace(rust_spec, dockerfile_sha256="f" * 64),
+            ),
+            (
+                "toolchain family",
+                replace(rust_spec, rust_version="1.89"),
+            ),
+            (
+                "compiler version",
+                replace(rust_spec, rustc_version="1.89.0"),
+            ),
+            (
+                "cargo-audit version",
+                replace(rust_spec, cargo_audit_version="0.22.1"),
+            ),
+            (
+                "cargo-deny version",
+                replace(rust_spec, cargo_deny_version="0.20.1"),
+            ),
+            (
+                "advisory database commit",
+                replace(rust_spec, advisory_db_sha="f" * 40),
+            ),
+            (
+                "advisory database epoch",
+                replace(rust_spec, advisory_db_epoch=1784303557),
+            ),
+        ):
+            rust_failure(
+                lambda mutation=mutation: verify_archive(
+                    rust_archive,
+                    rust_sha,
+                    mutation,
+                    rust_size,
+                ),
+                f"Rust audit {label}",
+            )
+        rust_failure(
+            lambda: validate_inspect(
+                {
+                    **rust_payload,
+                    "Config": {
+                        **rust_spec.runtime_config,
+                        "User": "0:0",
+                    },
+                },
+                rust_spec.image_id,
+                rust_spec,
+            ),
+            "Rust audit runtime config",
+        )
+        rust_archive.chmod(0o600)
+        rust_failure(
+            lambda: verify_archive(
+                rust_archive,
+                rust_sha,
+                rust_spec,
+                rust_size,
+            ),
+            "Rust audit archive mode",
+        )
+        rust_archive.chmod(0o400)
+        rust_link = Path(temporary) / "rust-audit-image-hardlink.tar.gz"
+        os.link(rust_archive, rust_link)
+        rust_failure(
+            lambda: verify_archive(
+                rust_archive,
+                rust_sha,
+                rust_spec,
+                rust_size,
+            ),
+            "Rust audit archive hardlink",
+        )
+        rust_link.unlink()
+
+        def reject_rust_fixture(
+            name: str,
+            label: str,
+            **arguments: object,
+        ) -> None:
+            candidate = Path(temporary) / name
+            candidate_spec = create_rust_audit_fixture_archive(
+                candidate,
+                **arguments,
+            )
+            candidate_bytes = candidate.read_bytes()
+            rust_failure(
+                lambda: verify_archive(
+                    candidate,
+                    hashlib.sha256(candidate_bytes).hexdigest(),
+                    candidate_spec,
+                    len(candidate_bytes),
+                ),
+                label,
+            )
+
+        reject_rust_fixture(
+            "tagged-rust-audit-image.tar.gz",
+            "Rust audit archive tag",
+            repo_tags=["rd-rust-audit-candidate:provenance-v1"],
+        )
+        reject_rust_fixture(
+            "vcs-rust-audit-image.tar.gz",
+            "Rust audit VCS attribution",
+            add_vcs=True,
+        )
+        reject_rust_fixture(
+            "source-drift-rust-audit-image.tar.gz",
+            "Rust audit embedded Dockerfile",
+            embedded_dockerfile=b"FROM unreviewed\n",
+        )
+        reject_rust_fixture(
+            "networked-setup-rust-audit-image.tar.gz",
+            "Rust audit networked setup",
+            setup_network=None,
+        )
+        reject_rust_fixture(
+            "networkless-acquisition-rust-audit-image.tar.gz",
+            "Rust audit networkless acquisition mismatch",
+            acquisition_network=2,
+        )
+        reject_rust_fixture(
+            "extra-source-rust-audit-image.tar.gz",
+            "Rust audit undeclared source",
+            add_extra_source=True,
+        )
+        reject_rust_fixture(
+            "root-rust-audit-image.tar.gz",
+            "Rust audit root execution",
+            execution_user="0:0",
+        )
+        reject_rust_fixture(
+            "root-copy-rust-audit-image.tar.gz",
+            "Rust audit root-owned stage copy",
+            copy_user=0,
+        )
+        reject_rust_fixture(
+            "annotated-rust-audit-image.tar.gz",
+            "Rust audit root descriptor annotation",
+            annotate_root=True,
+        )
+        reject_rust_fixture(
+            "wrong-statement-rust-audit-image.tar.gz",
+            "Rust audit in-toto statement type",
+            statement_type="https://in-toto.io/Statement/v0.1",
+        )
+        verify_archive(rust_archive, rust_sha, rust_spec, rust_size)
+        rust_checks += 1
+        if rust_checks != 29:
+            fail(f"Rust audit image self-test count differs: {rust_checks}")
+
 
 def add_spec_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--role", required=True)
@@ -2694,6 +4149,14 @@ def add_spec_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--database-size", type=int)
     parser.add_argument("--database-capture-epoch", type=int)
     parser.add_argument("--database-generation")
+    parser.add_argument("--rust-version")
+    parser.add_argument("--rustc-version")
+    parser.add_argument("--cargo-audit-version")
+    parser.add_argument("--cargo-deny-version")
+    parser.add_argument("--cargo-audit-sha")
+    parser.add_argument("--cargo-deny-sha")
+    parser.add_argument("--advisory-db-sha")
+    parser.add_argument("--advisory-db-epoch", type=int)
 
 
 def argument_parser() -> argparse.ArgumentParser:

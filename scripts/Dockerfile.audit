@@ -32,7 +32,7 @@ ENV AUDIT_ROOT=/var/tmp/rustdesk-rust-audit \
     HOME=/var/tmp/rustdesk-rust-audit/home \
     PATH=/var/tmp/rustdesk-rust-audit/tools/bin:/usr/local/cargo/bin:/usr/local/bin:/usr/bin:/bin
 
-RUN [ "$(id -u)" = 1000 ] \
+RUN --network=none [ "$(id -u)" = 1000 ] \
     && [ "$(id -g)" = 1000 ] \
     && umask 022 \
     && mkdir -p "$AUDIT_TOOLS" "$CARGO_HOME" "$AUDIT_ROOT/cargo-target" "$HOME"
@@ -40,7 +40,7 @@ RUN [ "$(id -u)" = 1000 ] \
 # Both released crates are compiled from their packaged lockfiles. Build-only
 # registry, Git, and target state is deleted before this layer is committed and
 # is never copied into the runtime stage.
-RUN export CARGO_TARGET_DIR="$AUDIT_ROOT/cargo-target" \
+RUN --network=default export CARGO_TARGET_DIR="$AUDIT_ROOT/cargo-target" \
     && cargo install --root "$AUDIT_TOOLS" --locked \
         --version "$CARGO_AUDIT_VERSION" cargo-audit \
     && cargo install --root "$AUDIT_TOOLS" --locked \
@@ -49,7 +49,7 @@ RUN export CARGO_TARGET_DIR="$AUDIT_ROOT/cargo-target" \
     && [ "$(cargo-deny --version)" = "cargo-deny $CARGO_DENY_VERSION" ] \
     && rm -rf "$CARGO_HOME/registry" "$CARGO_HOME/git" "$CARGO_TARGET_DIR"
 
-RUN git init -q "$ADVISORY_DB" \
+RUN --network=default git init -q "$ADVISORY_DB" \
     && git -C "$ADVISORY_DB" remote add origin https://github.com/RustSec/advisory-db \
     && git -c protocol.version=2 -C "$ADVISORY_DB" fetch -q --depth=1 origin "$ADVISORY_DB_SHA" \
     && git -C "$ADVISORY_DB" checkout -q --detach FETCH_HEAD \
@@ -78,7 +78,7 @@ ENV AUDIT_ROOT=/var/tmp/rustdesk-rust-audit \
     HOME=/var/tmp/rustdesk-rust-audit/home \
     PATH=/var/tmp/rustdesk-rust-audit/tools/bin:/usr/local/cargo/bin:/usr/local/bin:/usr/bin:/bin
 
-RUN [ "$(id -u)" = 1000 ] \
+RUN --network=none [ "$(id -u)" = 1000 ] \
     && [ "$(id -g)" = 1000 ] \
     && umask 022 \
     && mkdir -p "$CARGO_HOME" "$HOME" "$CARGO_DENY_DB_PATH"
@@ -90,7 +90,7 @@ COPY --from=builder --chown=1000:1000 \
     /var/tmp/rustdesk-rust-audit/advisory-db \
     /var/tmp/rustdesk-rust-audit/advisory-db
 
-RUN ln -s "$ADVISORY_DB" "$CARGO_DENY_DB_PATH/$CARGO_DENY_DB_DIR" \
+RUN --network=none ln -s "$ADVISORY_DB" "$CARGO_DENY_DB_PATH/$CARGO_DENY_DB_DIR" \
     && [ "$(cargo-audit --version)" = "cargo-audit $CARGO_AUDIT_VERSION" ] \
     && [ "$(cargo-deny --version)" = "cargo-deny $CARGO_DENY_VERSION" ] \
     && [ "$(git -C "$ADVISORY_DB" rev-parse HEAD)" = "$ADVISORY_DB_SHA" ] \

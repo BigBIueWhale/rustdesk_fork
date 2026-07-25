@@ -21235,7 +21235,10 @@ def validate_dart_audit_authority_contract(sources):
             "Dart audit provenance contract",
         ),
         (
-            "def contains_vcs_authority(value: object) -> bool:",
+            "def contains_vcs_authority(value: object) -> bool:\n"
+            "        if isinstance(value, dict):\n"
+            "            return any(\n"
+            "                isinstance(key, str)",
             "Dart audit VCS-attribution rejection",
         ),
         ("contains undeclared VCS authority", "Dart audit recursive VCS failure"),
@@ -21284,7 +21287,7 @@ def validate_dart_audit_authority_contract(sources):
             "Dart audit untagged root descriptor",
         ),
         (
-            "if isinstance(spec, (VerifierSpec, DartAuditSpec)):",
+            "if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):",
             "Dart audit image-ID capture selection",
         ),
         ("save_ref = spec.image_id", "Dart audit untagged save reference"),
@@ -21376,6 +21379,209 @@ def validate_dart_audit_authority_contract(sources):
         sources["hardening"],
         "Networkless construction and distribution:",
         "Dart audit acquisition/distribution evidence",
+    )
+
+
+def validate_rust_audit_distribution_contract(sources):
+    dockerfile = sources["rust_audit_dockerfile"]
+    authority = sources["rust_audit_authority_validator"]
+    pins = sources["pins"]
+    provenance = sources["offline_image_provenance"]
+    online_fetch = sources["online_fetch"]
+
+    for text, label in (
+        (
+            'RUST_AUDIT_IMAGE_ID="sha256:098829c8f12ac0cccc7a7ebe041230c73420b847a8d023bc54d615d5b39118fe"',
+            "Rust audit immutable image pin",
+        ),
+        (
+            'RUST_AUDIT_IMAGE_CONFIG_ID="sha256:6b150c10cb67c87b24f6167c8f7b5bb3cac92bd4f2fa58b03a1ff68fc7267491"',
+            "Rust audit image config pin",
+        ),
+        (
+            'RUST_AUDIT_IMAGE_MANIFEST_ID="sha256:ecaef27804954d5fa57c9ee265758220a147b67c133f521eb3ea5047b93f1010"',
+            "Rust audit image manifest pin",
+        ),
+        (
+            'SHA256_RUST_AUDIT_IMAGE_ARCHIVE="6899ae62957435904d2c9611d798ccfdee248535b942c11a1bc6e17b35cdfd1d"',
+            "Rust audit image archive pin",
+        ),
+        (
+            'SIZE_RUST_AUDIT_IMAGE_ARCHIVE="565547152"',
+            "Rust audit image archive size",
+        ),
+        (
+            'SHA256_RUST_AUDIT_DOCKERFILE="8d3e7bb30d1554b9c5b8469d46a950d6198296548e7132fb5621012c6798a840"',
+            "Rust audit Dockerfile pin",
+        ),
+    ):
+        require_text(pins, text, label)
+    require_exact_count(
+        dockerfile,
+        "\nRUN --network=none ",
+        3,
+        "Rust audit networkless build-step inventory",
+    )
+    require_exact_count(
+        dockerfile,
+        "\nRUN --network=default ",
+        2,
+        "Rust audit acquisition-network build-step inventory",
+    )
+    require_exact_count(
+        dockerfile,
+        "\nUSER 1000:1000\n",
+        2,
+        "Rust audit nonroot stage inventory",
+    )
+    if (
+        hashlib.sha256(dockerfile.encode("utf-8")).hexdigest()
+        != "8d3e7bb30d1554b9c5b8469d46a950d6198296548e7132fb5621012c6798a840"
+    ):
+        raise VerificationError(
+            "Rust audit Dockerfile bytes differ from the workspace pin"
+        )
+    for text, label in (
+        ("class RustAuditSpec:", "Rust audit image specification"),
+        (
+            "def validate_rust_audit_attestation(",
+            "Rust audit SLSA provenance validation",
+        ),
+        (
+            'execution_networks = (2, 2, None, None, 2)',
+            "Rust audit exact attested network graph",
+        ),
+        (
+            '"pkg:docker/rd-rust-audit-candidate@provenance-v1"',
+            "Rust audit exact provenance subject",
+        ),
+        (
+            'statement.get("_type") != "https://in-toto.io/Statement/v1"',
+            "Rust audit exact in-toto statement type",
+        ),
+        (
+            'if operations[position].get("exec") != expected_execution:',
+            "Rust audit exact nonroot execution graph",
+        ),
+        (
+            'if rust_checks != 29:',
+            "Rust audit archive behavioral inventory",
+        ),
+    ):
+        require_text(provenance, text, label)
+    for text, label in (
+        (
+            "rust_audit_image_spec_args() {",
+            "Rust audit image archive specification",
+        ),
+        (
+            "verify_or_load_rust_audit_image() {",
+            "Rust audit image archive recovery",
+        ),
+        (
+            "maintenance_capture_rust_audit_image() {",
+            "Rust audit image archive capture",
+        ),
+        (
+            "maintenance_build_rust_audit_image_candidate() {",
+            "Rust audit maintenance candidate build",
+        ),
+        (
+            '--archive "$ONLINE_DIR/verifier-images/rust-audit.docker.tar.gz"',
+            "Rust audit exact archive recovery path",
+        ),
+        (
+            "--network=default --pull=true --no-cache",
+            "Rust audit explicit acquisition build",
+        ),
+        (
+            "--platform=linux/amd64 --provenance=mode=max --load",
+            "Rust audit max-provenance build",
+        ),
+        (
+            "--maintenance-capture-rust-audit-image",
+            "Rust audit capture entry point",
+        ),
+        (
+            "--rust-audit-image",
+            "Rust audit recovery entry point",
+        ),
+    ):
+        require_text(online_fetch, text, label)
+    candidate = extract_between(
+        online_fetch,
+        "maintenance_build_rust_audit_image_candidate() {",
+        "\n}\n\ncapture_builder_image()",
+        "Rust audit candidate build",
+    )
+    for text, label in (
+        ("--network=host", "Rust audit candidate host network"),
+        ("--privileged", "Rust audit candidate privileged execution"),
+        ("--cap-add", "Rust audit candidate added capability"),
+        ("--publish", "Rust audit candidate published port"),
+        ("source=$REPO_ROOT", "Rust audit candidate repository mount"),
+        ("source=$SCRIPT_DIR", "Rust audit candidate script-tree mount"),
+    ):
+        require_absent(candidate, text, label)
+    for text, label in (
+        (
+            "verify-rust-audit-authority: ok ({} deliberate mutations rejected)",
+            "Rust audit focused mutation result",
+        ),
+        (
+            'Mutation("image_provenance", "execution_networks = (2, 2, None, None, 2)"',
+            "Rust audit provenance-network mutation",
+        ),
+        (
+            'Mutation("image_provenance", \'statement.get("_type") != "https://in-toto.io/Statement/v1"\'',
+            "Rust audit statement-type mutation",
+        ),
+        (
+            'Mutation("online_fetch", "--network=default --pull=true --no-cache", '
+            '"--network=host --pull=true --no-cache", '
+            '"Rust image candidate network authority"),',
+            "Rust audit candidate-network mutation",
+        ),
+        (
+            'Mutation("pins", \'SHA256_RUST_AUDIT_IMAGE_ARCHIVE="6899ae62\'',
+            "Rust audit archive-pin mutation",
+        ),
+    ):
+        require_text(authority, text, label)
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-rust-audit-authority.py --repo . --self-test",
+        "Rust audit focused authority shared-gate wiring",
+    )
+    requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11bf",
+        "Rust audit authority requirement",
+    )
+    for text in (
+        "Dockerfile-only",
+        "exactly two acquisition",
+        "three networkless",
+        "mode-0400",
+        "untagged OCI archive",
+        "BuildKit",
+        "Recovery remains outside the verdict path",
+    ):
+        require_text(requirement, text, "Rust audit authority requirement")
+    require_text(
+        sources["requirements"],
+        "<tr><td>183</td>",
+        "Rust audit Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11bf/R-S11e-72 — Rust advisory freshness, result finality, and scanner authority",
+        "Rust audit hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "Independently archived distribution:",
+        "Rust audit archive/provenance evidence",
     )
 
 
@@ -21689,6 +21895,7 @@ def validate_sources(sources):
     validate_ipc_lifecycle_checker_contract(sources)
     validate_dart_verifier_authority_contract(sources)
     validate_dart_audit_authority_contract(sources)
+    validate_rust_audit_distribution_contract(sources)
     validate_main_verifier_authority_contract(sources)
     validate_smoke_contract(
         sources["verify"],
@@ -34099,8 +34306,14 @@ def run_source_mutations(sources):
         ),
         (
             "offline_image_provenance",
-            "def contains_vcs_authority(value: object) -> bool:",
-            "def contains_vcs_authority_removed(value: object) -> bool:",
+            "def contains_vcs_authority(value: object) -> bool:\n"
+            "        if isinstance(value, dict):\n"
+            "            return any(\n"
+            "                isinstance(key, str)",
+            "def contains_vcs_authority_removed(value: object) -> bool:\n"
+            "        if isinstance(value, dict):\n"
+            "            return any(\n"
+            "                isinstance(key, str)",
             "Dart audit VCS-attribution rejection",
         ),
         (
@@ -34174,6 +34387,70 @@ def run_source_mutations(sources):
             "R-S11be/R-S11e-71 — Dart advisory result and scanner authority",
             "R-S11be/R-S11e-71 — Dart advisory closure deferred",
             "Dart audit authority hardening ledger",
+        ),
+        (
+            "rust_audit_dockerfile",
+            "RUN --network=none",
+            "RUN --network=default",
+            "Rust audit networkless build-step inventory",
+        ),
+        (
+            "pins",
+            'RUST_AUDIT_IMAGE_ID="sha256:098829c8f12ac0cccc7a7ebe041230c73420b847a8d023bc54d615d5b39118fe"',
+            'RUST_AUDIT_IMAGE_ID="sha256:0000000000000000000000000000000000000000000000000000000000000000"',
+            "Rust audit immutable image pin",
+        ),
+        (
+            "pins",
+            'SHA256_RUST_AUDIT_IMAGE_ARCHIVE="6899ae62957435904d2c9611d798ccfdee248535b942c11a1bc6e17b35cdfd1d"',
+            'SHA256_RUST_AUDIT_IMAGE_ARCHIVE="0000000000000000000000000000000000000000000000000000000000000000"',
+            "Rust audit image archive pin",
+        ),
+        (
+            "offline_image_provenance",
+            "execution_networks = (2, 2, None, None, 2)",
+            "execution_networks = (None, None, None, None, None)",
+            "Rust audit exact attested network graph",
+        ),
+        (
+            "offline_image_provenance",
+            'statement.get("_type") != "https://in-toto.io/Statement/v1"',
+            "False",
+            "Rust audit exact in-toto statement type",
+        ),
+        (
+            "online_fetch",
+            '--archive "$ONLINE_DIR/verifier-images/rust-audit.docker.tar.gz"',
+            '--archive "$ONLINE_DIR/verifier-images/other.docker.tar.gz"',
+            "Rust audit exact archive recovery path",
+        ),
+        (
+            "rust_audit_authority_validator",
+            'Mutation("online_fetch", "--network=default --pull=true --no-cache", '
+            '"--network=host --pull=true --no-cache", '
+            '"Rust image candidate network authority"),',
+            'Mutation("online_fetch", "--network=default --pull=true --no-cache-disabled", '
+            '"--network=host --pull=true --no-cache", '
+            '"Rust image candidate network authority"),',
+            "Rust audit candidate-network mutation",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-rust-audit-authority.py --repo . --self-test",
+            "python3 scripts/verify-rust-audit-authority.py --repo .",
+            "Rust audit focused authority shared-gate wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11bf</span>',
+            '<span class="id">R-S11bf-disabled</span>',
+            "Rust audit authority requirement",
+        ),
+        (
+            "hardening",
+            "R-S11bf/R-S11e-72 — Rust advisory freshness, result finality, and scanner authority",
+            "R-S11bf/R-S11e-72 — Rust advisory closure deferred",
+            "Rust audit hardening ledger",
         ),
         (
             "verifier_command_wrapper",
@@ -39004,6 +39281,12 @@ def main():
             ).read_text(encoding="utf-8"),
             "dart_audit_dockerfile": (
                 repo / "scripts/Dockerfile.dart-audit"
+            ).read_text(encoding="utf-8"),
+            "rust_audit_dockerfile": (
+                repo / "scripts/Dockerfile.audit"
+            ).read_text(encoding="utf-8"),
+            "rust_audit_authority_validator": (
+                repo / "scripts/verify-rust-audit-authority.py"
             ).read_text(encoding="utf-8"),
             "verifier_command_wrapper": (
                 repo / "scripts/verify-container-command.sh"

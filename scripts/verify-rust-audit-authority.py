@@ -37,6 +37,12 @@ def run_block(shell, start_token, end_token):
     return shell[start:end]
 
 
+def function_block(shell, name, next_name):
+    start = shell.index("{}() {{".format(name))
+    end = shell.index("{}() {{".format(next_name), start)
+    return shell[start:end]
+
+
 def validate_run(block, label):
     require_all(
         block,
@@ -101,12 +107,24 @@ def validate_dockerfile(dockerfile):
             'git -C "$ADVISORY_DB" checkout -q --detach FETCH_HEAD',
             "COPY --from=builder --chown=1000:1000",
             'org.rustdesk.audit.run-user="1000:1000"',
+            'RUN --network=none [ "$(id -u)" = 1000 ]',
+            'RUN --network=default export CARGO_TARGET_DIR="$AUDIT_ROOT/cargo-target"',
+            'RUN --network=default git init -q "$ADVISORY_DB"',
+            'RUN --network=none ln -s "$ADVISORY_DB"',
         ),
         "Rust audit acquisition recipe",
     )
     require(dockerfile.count("\nFROM ") == 2, "Rust audit recipe must have exactly two stages")
     require(dockerfile.count("\nUSER 1000:1000\n") == 2, "both audit-image stages must set numeric nonroot user")
     require(dockerfile.count("\nRUN ") == 5, "Rust audit recipe must have exactly five rootless RUN instructions")
+    require(
+        dockerfile.count("\nRUN --network=none ") == 3,
+        "Rust audit recipe must have exactly three networkless RUN instructions",
+    )
+    require(
+        dockerfile.count("\nRUN --network=default ") == 2,
+        "Rust audit recipe must have exactly two acquisition-network RUN instructions",
+    )
     require(dockerfile.count("--locked") == 2, "both scanner installs must use packaged lockfiles")
     copy_lines = [line for line in dockerfile.splitlines() if line.startswith("COPY ")]
     require(len(copy_lines) == 2, "runtime image must have exactly two COPY instructions")
@@ -132,6 +150,7 @@ def validate_dockerfile(dockerfile):
         "ENTRYPOINT ",
         "--privileged",
         "--cap-add",
+        "--network=host",
     ):
         require(forbidden not in dockerfile, "Rust audit recipe has forbidden authority {!r}".format(forbidden))
 
@@ -142,6 +161,8 @@ def validate_contract(sources):
     policy = sources["policy"]
     pins = sources["pins"]
     provenance = sources["provenance"]
+    image_provenance = sources["image_provenance"]
+    online_fetch = sources["online_fetch"]
     verify = sources["verify"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
@@ -312,10 +333,14 @@ def validate_contract(sources):
             'RUST_AUDIT_TOOLCHAIN="1.88.0-x86_64-unknown-linux-gnu"',
             'CARGO_AUDIT_VERSION="0.22.2"',
             'CARGO_DENY_VERSION="0.20.2"',
-            'RUST_AUDIT_IMAGE_ID="sha256:c8ef1aae7df528285a50bbf55d80bc6807d0beb75126f8a33e37e7bec5b862b9"',
+            'RUST_AUDIT_IMAGE_ID="sha256:098829c8f12ac0cccc7a7ebe041230c73420b847a8d023bc54d615d5b39118fe"',
+            'RUST_AUDIT_IMAGE_CONFIG_ID="sha256:6b150c10cb67c87b24f6167c8f7b5bb3cac92bd4f2fa58b03a1ff68fc7267491"',
+            'RUST_AUDIT_IMAGE_MANIFEST_ID="sha256:ecaef27804954d5fa57c9ee265758220a147b67c133f521eb3ea5047b93f1010"',
+            'SHA256_RUST_AUDIT_IMAGE_ARCHIVE="6899ae62957435904d2c9611d798ccfdee248535b942c11a1bc6e17b35cdfd1d"',
+            'SIZE_RUST_AUDIT_IMAGE_ARCHIVE="565547152"',
             'SHA256_RUST_AUDIT_CARGO_AUDIT="bcd015b7b140f87024349670d1fd4cae09415049394a96d8f82776032f9a76e0"',
             'SHA256_RUST_AUDIT_CARGO_DENY="5e4a31300be4ee99625751025b4c1a0c3965b747c60fecaebd7454f17dc944ad"',
-            'SHA256_RUST_AUDIT_DOCKERFILE="1daf24e5f6be11d832d2c1ab01b09906fa479b0c086fc44238ac39942c3366e7"',
+            'SHA256_RUST_AUDIT_DOCKERFILE="8d3e7bb30d1554b9c5b8469d46a950d6198296548e7132fb5621012c6798a840"',
             'RUST_AUDIT_BASE_IMAGE_DIGEST="sha256:af306cfa71d987911a781c37b59d7d67d934f49684058f96cf72079c3626bfe0"',
             'SHA256_CARGO_VENDOR_CLOSURE_V1="fb63f7daefc2c26fb73c04a7d77e9cb8a7658e3c899352e851bb1ebbacdc8c04"',
             'SHA256_CARGO_VENDOR_CONFIG="18a946aa319d64fa07e9616801981b1794c01764f9d870090de593cec412d62f"',
@@ -370,6 +395,147 @@ def validate_contract(sources):
         "vendor subtree provenance",
     )
     require_all(
+        image_provenance,
+        (
+            "class RustAuditSpec:",
+            "def validate_rust_audit_attestation(",
+            "def create_rust_audit_fixture_archive(",
+            'if args.role == "rust-audit":',
+            'if isinstance(spec, RustAuditSpec):',
+            '"User": "1000:1000"',
+            '"Shell": ["/bin/bash", "-euo", "pipefail", "-c"]',
+            '"pkg:docker/rd-rust-audit-candidate@provenance-v1"',
+            'statement.get("_type") != "https://in-toto.io/Statement/v1"',
+            '"image.resolvemode": "pull"',
+            'execution_networks = (2, 2, None, None, 2)',
+            'if operations[position].get("exec") != expected_execution:',
+            '"local://dockerfile"',
+            'if hashlib.sha256(dockerfile).hexdigest() != spec.dockerfile_sha256:',
+            "(VerifierSpec, DartAuditSpec, RustAuditSpec)",
+            "if rust_checks != 29:",
+        ),
+        "Rust audit image archive/provenance authority",
+    )
+    require(
+        image_provenance.count(
+            "(VerifierSpec, DartAuditSpec, RustAuditSpec)"
+        ) >= 8,
+        "Rust audit archive must share every strict modern-image boundary",
+    )
+    spec_block = function_block(
+        online_fetch,
+        "rust_audit_image_spec_args",
+        "require_rust_audit_image_pins",
+    )
+    require_block = function_block(
+        online_fetch,
+        "require_rust_audit_image_pins",
+        "verify_or_load_rust_audit_image",
+    )
+    load_block = function_block(
+        online_fetch,
+        "verify_or_load_rust_audit_image",
+        "maintenance_capture_rust_audit_image",
+    )
+    capture_block = function_block(
+        online_fetch,
+        "maintenance_capture_rust_audit_image",
+        "build_deb_builder_image",
+    )
+    build_block = function_block(
+        online_fetch,
+        "maintenance_build_rust_audit_image_candidate",
+        "capture_builder_image",
+    )
+    require_all(
+        spec_block,
+        (
+            "--role rust-audit",
+            '--expected-id "$RUST_AUDIT_IMAGE_ID"',
+            '--config-id "$RUST_AUDIT_IMAGE_CONFIG_ID"',
+            '--manifest-id "$RUST_AUDIT_IMAGE_MANIFEST_ID"',
+            '--cargo-audit-sha "$SHA256_RUST_AUDIT_CARGO_AUDIT"',
+            '--cargo-deny-sha "$SHA256_RUST_AUDIT_CARGO_DENY"',
+            '--advisory-db-sha "$ADVISORY_DB_COMMIT"',
+            '--advisory-db-epoch "$ADVISORY_DB_COMMIT_EPOCH"',
+        ),
+        "Rust audit image specification",
+    )
+    require_all(
+        require_block,
+        (
+            "RUST_AUDIT_IMAGE_CONFIG_ID",
+            "RUST_AUDIT_IMAGE_MANIFEST_ID",
+            "SHA256_RUST_AUDIT_DOCKERFILE",
+            'sha256sum "$SCRIPT_DIR/Dockerfile.audit"',
+        ),
+        "Rust audit image pin preflight",
+    )
+    require_all(
+        load_block,
+        (
+            "SHA256_RUST_AUDIT_IMAGE_ARCHIVE",
+            "SIZE_RUST_AUDIT_IMAGE_ARCHIVE",
+            "online_image_provenance verify-load",
+            'verifier-images/rust-audit.docker.tar.gz"',
+            '--archive-size "$SIZE_RUST_AUDIT_IMAGE_ARCHIVE"',
+        ),
+        "Rust audit image archive recovery",
+    )
+    require_all(
+        capture_block,
+        (
+            '"$directory/rust-audit.docker.tar.gz"',
+            "current-user-private mode 0700",
+            '"$FLOCK_BIN" --exclusive --nonblock',
+            "online_image_provenance maintenance-capture",
+        ),
+        "Rust audit image archive capture",
+    )
+    require_all(
+        build_block,
+        (
+            'local tag="rd-rust-audit-candidate:provenance-v1"',
+            'local context="$ONLINE_FETCH_TMP/rust-audit-build-context"',
+            '/usr/bin/install -m 0400',
+            '"$SCRIPT_DIR/Dockerfile.audit" "$context/Dockerfile.audit"',
+            '-type f | /usr/bin/wc -l)" -eq 1',
+            "--network=default --pull=true --no-cache",
+            "--platform=linux/amd64 --provenance=mode=max --load",
+            '--build-arg "BASE_DIGEST=${RUST_AUDIT_BASE_IMAGE_DIGEST}"',
+            "online_image_provenance verify-local",
+        ),
+        "Rust audit maintenance candidate build",
+    )
+    for forbidden in (
+        "--privileged",
+        "--cap-add",
+        "--network=host",
+        "--pid=host",
+        "--ipc=host",
+        "--uts=host",
+        "--publish",
+        "--expose",
+        "docker.sock",
+        "$REPO_ROOT,target=",
+    ):
+        require(
+            forbidden not in build_block,
+            "Rust audit candidate build has forbidden authority {!r}".format(
+                forbidden
+            ),
+        )
+    require_all(
+        online_fetch,
+        (
+            "--maintenance-build-rust-audit-image-candidate)",
+            "--maintenance-capture-rust-audit-image)",
+            "--rust-audit-image)",
+            "verify_or_load_rust_audit_image",
+        ),
+        "Rust audit online acquisition wiring",
+    )
+    require_all(
         verify,
         (
             "python3 scripts/rust-audit-policy.py --self-test",
@@ -396,6 +562,8 @@ def validate_contract(sources):
         (
             'Mutation("shell", "--network=none", "--network=bridge"',
             'Mutation("dockerfile", "USER 1000:1000", "USER 0:0"',
+            'Mutation("dockerfile", "RUN --network=none", "RUN --network=default"',
+            'Mutation("dockerfile", "RUN --network=default", "RUN --network=none"',
             'Mutation("dockerfile", "COPY --from=builder --chown=1000:1000"',
             'Mutation("shell", \'ulimit -Sf "$MAX_SCANNER_OUTPUT_BLOCKS"\'',
             'Mutation("shell", "scripts/rust-audit-policy.py check-freshness"',
@@ -404,6 +572,11 @@ def validate_contract(sources):
             'Mutation("policy", "metadata.st_mtime_ns", "opened.st_mtime_ns"',
             'Mutation("policy", \'value.get("warnings") == {}\'',
             'Mutation("policy", \'code == "advisory-not-detected" and severity == "warning"\'',
+            'Mutation("image_provenance", "class RustAuditSpec:"',
+            'Mutation("image_provenance", \'statement.get("_type") != "https://in-toto.io/Statement/v1"\'',
+            'Mutation("image_provenance", "execution_networks = (2, 2, None, None, 2)"',
+            'Mutation("online_fetch", \'--archive "$ONLINE_DIR/verifier-images/rust-audit.docker.tar.gz"\'',
+            'Mutation("online_fetch", "--network=default --pull=true --no-cache"',
             'Mutation("verify", "python3 scripts/verify-rust-audit-authority.py --repo . --self-test"',
             'Mutation("requirements", \'<span class="id">R-S11bf</span>\'',
             'Mutation("hardening", "R-S11bf/R-S11e-72 — Rust advisory freshness, result finality, and scanner authority"',
@@ -414,6 +587,8 @@ def validate_contract(sources):
 
 MUTATIONS = (
     Mutation("dockerfile", "USER 1000:1000", "USER 0:0", "rootless acquisition stage"),
+    Mutation("dockerfile", "RUN --network=none", "RUN --network=default", "networkless acquisition setup"),
+    Mutation("dockerfile", "RUN --network=default", "RUN --network=none", "scoped acquisition network"),
     Mutation("dockerfile", "--locked", "--force", "locked scanner acquisition"),
     Mutation("dockerfile", "--depth=1", "--depth=100", "bounded exact DB acquisition"),
     Mutation("dockerfile", "COPY --from=builder --chown=1000:1000", "COPY .", "empty-context runtime copy"),
@@ -459,9 +634,20 @@ MUTATIONS = (
     Mutation("policy", 'advisories["errors"] == 0', 'advisories["errors"] >= 0', "deny zero errors"),
     Mutation("policy", "require(checks == 20", "require(checks >= 0", "behavioral self-test count"),
     Mutation("pins", 'ADVISORY_DB_MAX_AGE_DAYS="90"', 'ADVISORY_DB_MAX_AGE_DAYS="900"', "freshness pin"),
-    Mutation("pins", 'RUST_AUDIT_IMAGE_ID="sha256:c8ef1aae', 'RUST_AUDIT_IMAGE_ID="rd-audit-', "image content pin"),
-    Mutation("pins", 'SHA256_RUST_AUDIT_DOCKERFILE="1daf24e5', 'SHA256_RUST_AUDIT_DOCKERFILE="00000000', "acquisition recipe pin"),
+    Mutation("pins", 'RUST_AUDIT_IMAGE_ID="sha256:098829c8', 'RUST_AUDIT_IMAGE_ID="rd-audit-', "image content pin"),
+    Mutation("pins", 'RUST_AUDIT_IMAGE_CONFIG_ID="sha256:6b150c10', 'RUST_AUDIT_IMAGE_CONFIG_ID="sha256:00000000', "image config pin"),
+    Mutation("pins", 'RUST_AUDIT_IMAGE_MANIFEST_ID="sha256:ecaef278', 'RUST_AUDIT_IMAGE_MANIFEST_ID="sha256:00000000', "image manifest pin"),
+    Mutation("pins", 'SHA256_RUST_AUDIT_IMAGE_ARCHIVE="6899ae62', 'SHA256_RUST_AUDIT_IMAGE_ARCHIVE="00000000', "image archive pin"),
+    Mutation("pins", 'SIZE_RUST_AUDIT_IMAGE_ARCHIVE="565547152"', 'SIZE_RUST_AUDIT_IMAGE_ARCHIVE="1"', "image archive length pin"),
+    Mutation("pins", 'SHA256_RUST_AUDIT_DOCKERFILE="8d3e7bb3', 'SHA256_RUST_AUDIT_DOCKERFILE="00000000', "acquisition recipe pin"),
     Mutation("provenance", "def verify_subtree(tree: Path, expected: str) -> Result:", "def ignored_subtree(tree: Path, expected: str) -> Result:", "subtree verifier"),
+    Mutation("image_provenance", "class RustAuditSpec:", "class IgnoredRustAuditSpec:", "Rust image specification"),
+    Mutation("image_provenance", 'statement.get("_type") != "https://in-toto.io/Statement/v1"', "False", "attested in-toto statement type"),
+    Mutation("image_provenance", "execution_networks = (2, 2, None, None, 2)", "execution_networks = (None, None, None, None, None)", "attested build network graph"),
+    Mutation("image_provenance", "if rust_checks != 29:", "if rust_checks < 0:", "Rust image behavioral self-test count"),
+    Mutation("online_fetch", '--archive "$ONLINE_DIR/verifier-images/rust-audit.docker.tar.gz"', '--archive "$ONLINE_DIR/verifier-images/other.docker.tar.gz"', "Rust image archive recovery path"),
+    Mutation("online_fetch", "--network=default --pull=true --no-cache", "--network=host --pull=true --no-cache", "Rust image candidate network authority"),
+    Mutation("online_fetch", '"$SCRIPT_DIR/Dockerfile.audit" "$context/Dockerfile.audit"', '"$REPO_ROOT" "$context/repository"', "Dockerfile-only candidate context"),
     Mutation("verify", "python3 scripts/verify-rust-audit-authority.py --repo . --self-test", "python3 scripts/verify-rust-audit-authority.py --repo .", "shared mutation gate"),
     Mutation("requirements", '<span class="id">R-S11bf</span>', '<span class="id">R-S11bf-disabled</span>', "normative requirement"),
     Mutation("requirements", "<tr><td>183</td>", "<tr><td>183-disabled</td>", "Appendix disposition"),
@@ -484,6 +670,12 @@ def load_sources(repo):
         "policy": (repo / "scripts/rust-audit-policy.py").read_text(encoding="utf-8"),
         "pins": (repo / "scripts/pins.env").read_text(encoding="utf-8"),
         "provenance": (repo / "scripts/online-input-provenance.py").read_text(encoding="utf-8"),
+        "image_provenance": (
+            repo / "scripts/offline-image-provenance.py"
+        ).read_text(encoding="utf-8"),
+        "online_fetch": (repo / "scripts/online-fetch.sh").read_text(
+            encoding="utf-8"
+        ),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),

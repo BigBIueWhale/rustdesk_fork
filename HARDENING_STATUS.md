@@ -4884,9 +4884,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `f6afc51f31b0c85c15e1497adfdaa18fe3736150f7149823298a6584d3b811b9`. Recovery remains outside the verdict:
   it verifies a stable descriptor, exact bytes and complete OCI/provenance graph, rehashes the same stream during
   `docker load`, repeats the mount-free runtime fingerprint, and created no tag; the pre-existing disposable
-  candidate tag set was unchanged. The canonical full `online/` closure now includes both fixed inputs and that
-  archive at root `672429137499995654db109cb0bfeb5823f5204528e352e3bb1904ac071f0b92`: 145,719 files,
-  42,858 directories, 41 symlinks, 26,604,397,097 content bytes, 16 hardlink groups, and 9 case collisions.
+  candidate tag set was unchanged. The canonical full `online/` closure now includes both fixed inputs, that
+  archive, and the exact Rust advisory archive at root
+  `be403f983979ad2a0d7682435a552b9489728a2715c004fbc0fb0c82f2c742b3`: 145,720 files, 42,858 directories,
+  41 symlinks, 27,169,944,249 content bytes, 16 hardlink groups, and 9 case collisions.
 
   Verification: the evaluator's 31 policy/freshness/status/schema decisions pass, including exact-age boundary and
   one-second-stale cases, future/noncanonical epochs, hardlink refusal, private staging, strict scanner telemetry,
@@ -4896,12 +4897,14 @@ unreachable and a source/test/AST gate prevents reintroduction.
   confinement, telemetry, JSON/status finality, R-S11be, Appendix C #182, and this ledger. The refreshed exact image
   passed its mount-free preflight and current offline scan: OSV status 0, 199 packages reported from the exact private
   lockfile, an explicit empty `results` list, and only the four accepted telemetry lines. Syntax, requirements-hash,
-  native-codec, diff, and publication evidence are recorded before publication. Rust advisory-image distribution,
-  other Docker consumers, exact clean-commit R-B2/R-B10 artifacts, installed-platform behavior, and R-V3 external
-  review remain open.
+  native-codec, diff, and publication evidence are recorded before publication. Rust advisory-image distribution
+  is now independently archived and provenance-verified; other Docker consumers, exact clean-commit R-B2/R-B10
+  artifacts, installed-platform behavior, scanner-crate publisher/source authentication, and R-V3 external review
+  remain open.
 - **R-S11bf/R-S11e-72 — Rust advisory freshness, result finality, and scanner authority — SOURCE
-  CLOSED/GATED; CURRENT SNAPSHOT/POLICY REVIEWED AND SCANNERS GREEN 2026-07-22; INDEPENDENT IMAGE DISTRIBUTION AND
-  BROADER RELEASE EVIDENCE OPEN.** Platform: the Linux Docker build host used by the release source-verification
+  CLOSED/GATED; CURRENT SNAPSHOT/POLICY REVIEWED AND SCANNERS GREEN 2026-07-22; INDEPENDENT IMAGE DISTRIBUTION
+  VERIFIED 2026-07-25; SCANNER-CRATE PUBLISHER/SOURCE AUTHENTICATION AND BROADER RELEASE EVIDENCE OPEN.** Platform:
+  the Linux Docker build host used by the release source-verification
   bundle. Endpoint/action: `scripts/audit.sh` validating `Cargo.lock` through pinned `cargo-audit` and `cargo-deny`
   plus the reason-bearing `deny.toml` policy. Boundary: live acquisition, mutable Docker/cache/index state,
   scanner/database failures, and machine output ↔ a green release verdict, the developer checkout, Docker daemon
@@ -4916,19 +4919,41 @@ unreachable and a source/test/AST gate prevents reintroduction.
   compromise, container escape, or privilege escalation.
 
   Acquisition closure: `scripts/Dockerfile.audit` is an explicit online recipe, never a verdict-time dependency.
-  It takes no filesystem context, uses the official `rust:1.88-bookworm` manifest-list digest
+  Maintenance construction copies it into a current-user mode-0700 private context as the sole mode-0400 regular
+  input; no repository file or mount is available to the build. The recipe uses the official
+  `rust:1.88-bookworm` manifest-list digest
   `sha256:af306cfa71d987911a781c37b59d7d67d934f49684058f96cf72079c3626bfe0`, and sets `USER 1000:1000` before every
-  one of its five project-owned `RUN` instructions across both stages. The builder installs released
+  one of its five project-owned `RUN` instructions across both stages. Exactly the scanner-build and RustSec-fetch
+  steps use the default outbound build network; both stage-setup steps and the final runtime validation declare
+  `RUN --network=none`. The builder installs released
   `cargo-audit 0.22.2` and `cargo-deny 0.20.2` from their packaged lockfiles, removes registry/Git/target state in
   the same build layer, and fetches only RustSec commit `b5fc89b8be99e96f79194d8a6f11e9b4143b99f0`, committer epoch
   1784303558 (2026-07-17T15:52:38Z). The runtime stage copies only the two tools and clean database with numeric
   ownership. A first candidate `sha256:cf6939d6...` was rejected because pre-`FROM` ARG scope left the Rust/base
-  provenance labels empty. The corrected, untagged 569-MB candidate is
-  `sha256:c8ef1aae7df528285a50bbf55d80bc6807d0beb75126f8a33e37e7bec5b862b9`; inspection and a mount-free,
+  provenance labels empty. A second `sha256:c8ef1aae...` candidate had correct runtime content but predated exact
+  max-provenance distribution and left setup/final-validation build steps on the acquisition network. The final,
+  untagged candidate is
+  `sha256:098829c8f12ac0cccc7a7ebe041230c73420b847a8d023bc54d615d5b39118fe`; inspection and a mount-free,
   networkless, read-only preflight proved Linux/amd64, default and effective UID:GID 1000, the complete base/tool/DB
   labels, Rust 1.88.0, clean exact database, and scanner hashes
   `bcd015b7b140f87024349670d1fd4cae09415049394a96d8f82776032f9a76e0` /
-  `5e4a31300be4ee99625751025b4c1a0c3965b747c60fecaebd7454f17dc944ad`. The recipe itself is SHA-256 pinned.
+  `5e4a31300be4ee99625751025b4c1a0c3965b747c60fecaebd7454f17dc944ad`. The recipe itself is SHA-256
+  `8d3e7bb30d1554b9c5b8469d46a950d6198296548e7132fb5621012c6798a840`.
+
+  Independently archived distribution: `online/verifier-images/rust-audit.docker.tar.gz` is a current-user-owned,
+  single-link mode-0400 file of exactly 565,547,152 bytes at SHA-256
+  `6899ae62957435904d2c9611d798ccfdee248535b942c11a1bc6e17b35cdfd1d`. Its untagged OCI root is the exact image
+  index above, with config `sha256:6b150c10cb67c87b24f6167c8f7b5bb3cac92bd4f2fa58b03a1ff68fc7267491`
+  and image manifest `sha256:ecaef27804954d5fa57c9ee265758220a147b67c133f521eb3ea5047b93f1010`.
+  The sole max-mode BuildKit/SLSA statement names that manifest subject, the digest-addressed Rust base, all six
+  exact build arguments plus no-cache, one VCS-free embedded `Dockerfile.audit`, and one exact nine-operation
+  graph: one pulled base, five UID:GID-1000 root-mount-only executions with the exact two-networked/three-networkless
+  inventory, two exact UID:GID-1000 stage copies, and one terminal operation. Any extra source, VCS attribution,
+  annotation, tag, blob, manifest, operation, mount, user, network, or copy path fails closed. Recovery verifies a
+  stable descriptor, exact archive bytes, the complete referenced OCI graph, runtime config, and statement before
+  `docker load`, rehashes the same descriptor stream during load, then repeats the exact mount-free nonroot runtime
+  fingerprint. Capture and recovery are explicit maintenance/acquisition operations; `audit.sh` remains unable to
+  build, load, pull, tag, or resolve this archive.
 
   Verdict closure: `scripts/audit.sh` refuses effective UID or primary GID zero, never builds/pulls/resolves a tag,
   and accepts only the locally present immutable image ID. Before Docker it validates `deny.toml` as exact
@@ -4984,7 +5009,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   vendor-subtree root and, independently, the lockfile package checksum plus every vendored file digest for each of
   the six upgraded crates. Rust 1.75.0 accepted locked/offline metadata for all 14 workspace packages. The normal
   dependency inventory and all 103 adversarial inventory fixtures passed; the semantic workspace verifier passed in
-  normal mode and rejected its complete source-mutation matrix; the Rust-audit authority verifier rejected all 53
+  normal mode and rejected its complete source-mutation matrix; the Rust-audit authority verifier rejected all 66
   deliberate mutations; and the native-codec watch passed both normal and mutation modes with the synchronized
   requirements hash. These are source and metadata gates, not new R-B2 artifact, installed-platform, device, or
   independent-review evidence.
@@ -4992,18 +5017,21 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Verification: production-equivalent confined scanner launches against the exact new image returned cargo-audit
   status 0 over 905 packages with exactly 41 accepts and zero stderr; cargo-deny returned status 0 with 76 policy
   notes and seven explicit obsolete-accept warnings, with no index/network failure. The existing strict result
-  validators accepted both schemas. The rootless image build and every scanner/probe ran in Docker; the host was
-  used only for source reads/edits, Git, and direct Docker control. The host orchestration script itself was not run
+  validators accepted both schemas. Every project-owned build execution and every scanner/probe ran in Docker as
+  numeric UID:GID 1000; the host was used only for source reads/edits, Git, direct Docker control, and streaming the
+  exact `docker save` bytes into the separately verified archive. The host orchestration script itself was not run
   outside Docker, and no Docker socket was delegated into a container. No full release build is counted here.
-  Final focused proof revalidated shell/Python syntax; all 20 policy/freshness/result decisions; all 53 deliberate
-  acquisition/verdict mutations; the exact 51,022-file vendor root; and both the normal and mutation-mode
-  native-codec requirements/hash gate. `git diff --check` was clean. The independent whole-workspace meta-verifier
-  is not counted as passing in this transaction: its pinned devcheck image is absent locally, and a supplemental
-  immutable image cannot supply the required live per-user systemd/D-Bus authority inside this deliberately
-  networkless, capability-free container. The test was not weakened and no host execution, image pull/build,
-  Docker-socket delegation, or privilege expansion was used to manufacture a result. Independently
-  archived/provenance-verified distribution of this image, exact clean R-B2/R-B10 artifacts, installed-platform
-  evidence, and R-V3 external review remain open; neither this item nor the overall release is claimed complete.
+  Final focused proof revalidated shell/Python syntax; all 20 policy/freshness/result decisions; all 66 deliberate
+  acquisition/verdict/distribution mutations; all 29 synthetic archive/provenance decisions plus the real
+  565,547,152-byte archive; the exact 51,022-file vendor root; and both the normal and mutation-mode native-codec
+  requirements/hash gate. The whole-workspace meta-verifier binds the new Dockerfile, pins, archive/recovery helper,
+  focused validator, requirements, and ledger through its normal and source-mutation modes. All confined execution
+  was networkless, read-only-root, nonroot, capability-free, no-new-privileges, and port/host-namespace/socket free
+  unless the exact two candidate-build acquisition steps required outbound build networking; no privilege
+  expansion was used to manufacture a result. `git diff --check` was clean. Independently archived,
+  provenance-verified distribution of this image is closed; exact clean R-B2/R-B10 artifacts, installed-platform
+  evidence, independent scanner-crate publisher/source authentication, and R-V3 external review remain open.
+  Neither this item nor the overall release is claimed complete.
 - **R-S11bg/R-S11e-73 — main verifier container, root-test, and recoverable image authority — SOURCE
   IMPLEMENTED/GATED; CONFINED FULL-GATE EXECUTION VERIFIED 2026-07-20; RECOVERABLE ARCHIVE DISTRIBUTION
   VERIFIED 2026-07-25; FRESH INDEPENDENT REBUILD AND BROADER RELEASE EVIDENCE OPEN.** Platform:
@@ -5107,10 +5135,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   verify/load/fingerprint transaction passed, and the image reference inventory remained unchanged afterward.
   The helper's synthetic archive suite rejects hash, size, image/config/manifest, attested-base, attested-source,
   runtime-environment, file-mode, hardlink, tag, and no-clobber publication mutations. The canonical `online/`
-  closure was subsequently extended, without changing the devcheck archive bytes, to include the two exact Dart
-  advisory inputs and their recoverable untagged image archive; its current root is
-  `672429137499995654db109cb0bfeb5823f5204528e352e3bb1904ac071f0b92`: 145,719 files, 42,858 directories,
-  41 symlinks, 26,604,397,097 content bytes, 16 hardlink groups, and 9 case collisions. This closes recoverable
+  closure was subsequently extended, without changing the devcheck archive bytes, to include the exact Dart
+  advisory inputs and both recoverable untagged advisory-image archives; its current root is
+  `be403f983979ad2a0d7682435a552b9489728a2715c004fbc0fb0c82f2c742b3`: 145,720 files, 42,858 directories,
+  41 symlinks, 27,169,944,249 content bytes, 16 hardlink groups, and 9 case collisions. This closes recoverable
   archive distribution of the reviewed devcheck image, not a fresh independent rebuild, signed or fully
   dual-sourced provenance, the intentionally
   release-blocking RustSec refresh, exact clean cold R-B2 artifacts, installed-platform behavior, or R-V3
@@ -11759,7 +11787,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-fc297964c6b8ba19367c50c9c43698b7f6ca72a81e2abb51619d6f8c512ea8b0  requirements.html
+43ac9886922b639fd3e32643bec083b53145ac0ee01610631f2dccf5bd2840a1  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cz, R-SV4a,

@@ -440,7 +440,12 @@ def validate_contract(sources):
         (
             "class DartAuditSpec:",
             "DART_AUDIT_CONTRACT = \"rustdesk-dart-audit-image-v1\"",
-            "def contains_vcs_authority(value: object) -> bool:",
+            (
+                "def contains_vcs_authority(value: object) -> bool:\n"
+                "        if isinstance(value, dict):\n"
+                "            return any(\n"
+                "                isinstance(key, str)"
+            ),
             "contains undeclared VCS authority",
             '"build-arg:DART_AUDIT_DOCKERFILE_SHA256"',
             '"force-network-mode": "none"',
@@ -465,7 +470,7 @@ def validate_contract(sources):
             "base64.b64decode(source_info[\"data\"], validate=True)",
             "provenance Dockerfile differs from its pin",
             "root descriptor has undeclared annotations",
-            "if isinstance(spec, (VerifierSpec, DartAuditSpec)):",
+            "if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):",
             "save_ref = spec.image_id",
             "create_dart_audit_fixture_archive(",
             "add_extra_source=True",
@@ -652,8 +657,18 @@ MUTATIONS = (
     ),
     Mutation(
         "provenance",
-        "def contains_vcs_authority(value: object) -> bool:",
-        "def contains_vcs_authority_removed(value: object) -> bool:",
+        (
+            "def contains_vcs_authority(value: object) -> bool:\n"
+            "        if isinstance(value, dict):\n"
+            "            return any(\n"
+            "                isinstance(key, str)"
+        ),
+        (
+            "def contains_vcs_authority_removed(value: object) -> bool:\n"
+            "        if isinstance(value, dict):\n"
+            "            return any(\n"
+            "                isinstance(key, str)"
+        ),
         "VCS-attribution rejection",
     ),
     Mutation(

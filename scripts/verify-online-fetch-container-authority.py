@@ -318,8 +318,27 @@ def validate(sources: Dict[str, str]) -> None:
         5,
         "ordinary, archive-expansion, Cargo/Pub semantic, and networked archive Docker primitives",
     )
+    require_count(
+        shell,
+        "--pull=never",
+        5,
+        "five runtime launch no-pull policies",
+    )
+    require_count(
+        shell,
+        "online_docker buildx build \\\n"
+        "        --network=none --pull=false --no-cache",
+        1,
+        "Dart advisory networkless no-pull candidate build",
+    )
+    require_count(
+        shell,
+        "online_docker buildx build \\\n"
+        "        --network=default --pull=true --no-cache",
+        1,
+        "Rust advisory networked pull-enabled candidate build",
+    )
     for token, label in (
-        ("--pull=", "pull policy"),
         ("--read-only", "root-filesystem policy"),
         ("--user ", "container identity"),
         ("--cap-drop=", "capability policy"),
@@ -340,13 +359,13 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(
         shell,
         'local builder="$ANDROID_BUILDER_IMAGE_ID"',
-        8,
+        9,
         "exact Android builder consumers",
     )
     require_count(
         shell,
         "require_online_fetch_builder_image ",
-        12,
+        13,
         "per-launch-site exact-image verification",
     )
 
@@ -596,6 +615,22 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "online_docker_run_pub_semantic() {\n"
         "    online_docker run --rm --pull=never --network=bridge --read-only",
         "Pub-cache semantic network removal",
+    ),
+    Mutation(
+        "shell",
+        "online_docker buildx build \\\n"
+        "        --network=none --pull=false --no-cache",
+        "online_docker buildx build \\\n"
+        "        --network=bridge --pull=true --no-cache",
+        "Dart advisory candidate build authority",
+    ),
+    Mutation(
+        "shell",
+        "online_docker buildx build \\\n"
+        "        --network=default --pull=true --no-cache",
+        "online_docker buildx build \\\n"
+        "        --network=none --pull=false --no-cache",
+        "Rust advisory candidate build authority",
     ),
     Mutation("shell", 'build_frb_codegen() {\n    local builder="$DEB_BUILDER_IMAGE_ID"',
              'build_frb_codegen() {\n    local builder="ubuntu:18.04"',

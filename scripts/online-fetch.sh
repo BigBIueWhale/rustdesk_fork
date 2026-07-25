@@ -1377,6 +1377,128 @@ maintenance_capture_devcheck_image() {
     printf '%s\n' "$result"
 }
 
+apple_check_image_spec_args() {
+    printf '%s\0' \
+        --role apple-check \
+        --expected-id "$APPLE_CHECK_IMAGE_ID" \
+        --base "rd-devcheck@${DEV_CHECK_IMAGE_ID}" \
+        --base-manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID" \
+        --dockerfile-sha "$SHA256_APPLE_CHECK_DOCKERFILE" \
+        --source-date-epoch "$APPLE_CHECK_SOURCE_DATE_EPOCH" \
+        --release-helper-sha "$SHA256_APPLE_TOOLCHAIN_RELEASE_HELPER" \
+        --provenance-helper-sha "$SHA256_APPLE_TOOLCHAIN_PROVENANCE_HELPER" \
+        --rust-version "$APPLE_RUST_RELEASE_VERSION" \
+        --release-date "$APPLE_RUST_RELEASE_DATE" \
+        --signing-fingerprint "$APPLE_RUST_RELEASE_SIGNING_FINGERPRINT" \
+        --release-public-key-sha "$SHA256_APPLE_RUST_RELEASE_PUBLIC_KEY" \
+        --release-manifest-sha "$SHA256_APPLE_RUST_RELEASE_MANIFEST" \
+        --release-manifest-signature-sha "$SHA256_APPLE_RUST_RELEASE_MANIFEST_SIGNATURE" \
+        --rustc-host-sha "$SHA256_APPLE_RUSTC_HOST_COMPONENT" \
+        --cargo-host-sha "$SHA256_APPLE_CARGO_HOST_COMPONENT" \
+        --rust-std-host-sha "$SHA256_APPLE_RUST_STD_HOST_COMPONENT" \
+        --rust-std-aarch64-darwin-sha "$SHA256_APPLE_RUST_STD_AARCH64_DARWIN_COMPONENT" \
+        --rust-std-x86-64-darwin-sha "$SHA256_APPLE_RUST_STD_X86_64_DARWIN_COMPONENT" \
+        --rust-std-aarch64-ios-sha "$SHA256_APPLE_RUST_STD_AARCH64_IOS_COMPONENT" \
+        --cargo-sha "$SHA256_APPLE_CHECK_CARGO" \
+        --rustc-sha "$SHA256_APPLE_CHECK_RUSTC" \
+        --dpkg-sha "$SHA256_APPLE_CHECK_DPKG_MANIFEST" \
+        --toolchain-tree-sha "$APPLE_TOOLCHAIN_TREE_SHA256" \
+        --toolchain-files "$APPLE_TOOLCHAIN_FILES" \
+        --toolchain-directories "$APPLE_TOOLCHAIN_DIRECTORIES" \
+        --toolchain-content-bytes "$APPLE_TOOLCHAIN_CONTENT_BYTES" \
+        --config-id "$APPLE_CHECK_IMAGE_CONFIG_ID" \
+        --manifest-id "$APPLE_CHECK_IMAGE_MANIFEST_ID"
+}
+
+require_apple_check_image_pins() {
+    local names=(
+        APPLE_CHECK_IMAGE_ID APPLE_CHECK_IMAGE_CONFIG_ID
+        APPLE_CHECK_IMAGE_MANIFEST_ID DEV_CHECK_IMAGE_ID
+        DEV_CHECK_IMAGE_MANIFEST_ID SHA256_APPLE_CHECK_DOCKERFILE
+        APPLE_CHECK_SOURCE_DATE_EPOCH
+        SHA256_APPLE_TOOLCHAIN_RELEASE_HELPER
+        SHA256_APPLE_TOOLCHAIN_PROVENANCE_HELPER
+        APPLE_RUST_RELEASE_VERSION APPLE_RUST_RELEASE_DATE
+        APPLE_RUST_RELEASE_SIGNING_FINGERPRINT
+        SHA256_APPLE_RUST_RELEASE_PUBLIC_KEY
+        SHA256_APPLE_RUST_RELEASE_MANIFEST
+        SHA256_APPLE_RUST_RELEASE_MANIFEST_SIGNATURE
+        SHA256_APPLE_RUSTC_HOST_COMPONENT
+        SHA256_APPLE_CARGO_HOST_COMPONENT
+        SHA256_APPLE_RUST_STD_HOST_COMPONENT
+        SHA256_APPLE_RUST_STD_AARCH64_DARWIN_COMPONENT
+        SHA256_APPLE_RUST_STD_X86_64_DARWIN_COMPONENT
+        SHA256_APPLE_RUST_STD_AARCH64_IOS_COMPONENT
+        SHA256_APPLE_CHECK_CARGO SHA256_APPLE_CHECK_RUSTC
+        SHA256_APPLE_CHECK_DPKG_MANIFEST
+        APPLE_TOOLCHAIN_TREE_SHA256 APPLE_TOOLCHAIN_FILES
+        APPLE_TOOLCHAIN_DIRECTORIES APPLE_TOOLCHAIN_CONTENT_BYTES
+    )
+    local name
+    for name in "${names[@]}"; do require_image_pin "$name"; done
+    for name in APPLE_TOOLCHAIN_FILES APPLE_TOOLCHAIN_DIRECTORIES \
+        APPLE_TOOLCHAIN_CONTENT_BYTES; do
+        case "${!name}" in
+            0|*[!0-9]*|'') die "$name is not one positive decimal integer" ;;
+        esac
+    done
+    [ "$(/usr/bin/sha256sum "$SCRIPT_DIR/Dockerfile.apple-check" \
+        | /usr/bin/awk '{print $1}')" = "$SHA256_APPLE_CHECK_DOCKERFILE" ] \
+        || die "current Apple check Dockerfile differs from the archived image recipe"
+    [ "$(/usr/bin/sha256sum "$SCRIPT_DIR/apple-toolchain-release.py" \
+        | /usr/bin/awk '{print $1}')" = "$SHA256_APPLE_TOOLCHAIN_RELEASE_HELPER" ] \
+        || die "current Apple release helper differs from the archived image input"
+    [ "$(/usr/bin/sha256sum "$SCRIPT_DIR/apple-toolchain-provenance.py" \
+        | /usr/bin/awk '{print $1}')" = "$SHA256_APPLE_TOOLCHAIN_PROVENANCE_HELPER" ] \
+        || die "current Apple provenance helper differs from the archived image input"
+}
+
+verify_or_load_apple_check_image() {
+    require_apple_check_image_pins
+    require_image_pin SHA256_APPLE_CHECK_IMAGE_ARCHIVE
+    require_image_pin SIZE_APPLE_CHECK_IMAGE_ARCHIVE
+    case "$SIZE_APPLE_CHECK_IMAGE_ARCHIVE" in
+        0|*[!0-9]*|'') die "SIZE_APPLE_CHECK_IMAGE_ARCHIVE is not one positive decimal integer" ;;
+    esac
+    local args=()
+    mapfile -d '' args < <(apple_check_image_spec_args)
+    online_image_provenance verify-load \
+        --archive "$ONLINE_DIR/verifier-images/apple-check.docker.tar.gz" \
+        --archive-sha "$SHA256_APPLE_CHECK_IMAGE_ARCHIVE" \
+        --archive-size "$SIZE_APPLE_CHECK_IMAGE_ARCHIVE" \
+        "${args[@]}"
+}
+
+maintenance_capture_apple_check_image() {
+    require_apple_check_image_pins
+    local directory="$ONLINE_DIR/verifier-images"
+    if [ -e "$directory" ] || [ -L "$directory" ]; then
+        [ -d "$directory" ] && [ ! -L "$directory" ] \
+            || die "Apple check image archive root is not one real directory"
+        [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+          = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+            || die "Apple check image archive root is not current-user-private mode 0700"
+    else
+        /usr/bin/install -d -m 0700 "$directory"
+    fi
+    local lock_fd
+    exec {lock_fd}<"$directory" \
+        || die "cannot open the Apple check image archive root for locking"
+    "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
+        || die "another Apple check image archive transaction owns the archive root"
+    local args=() result
+    mapfile -d '' args < <(apple_check_image_spec_args)
+    result="$(
+        online_image_provenance maintenance-capture \
+            --output "$directory/apple-check.docker.tar.gz" \
+            "${args[@]}"
+    )" || die "Apple check image archive capture failed"
+    "$FLOCK_BIN" --unlock "$lock_fd" \
+        || die "cannot release the Apple check image archive lock"
+    exec {lock_fd}<&-
+    printf '%s\n' "$result"
+}
+
 dart_audit_image_spec_args() {
     printf '%s\0' \
         --role dart-audit \
@@ -1622,6 +1744,98 @@ maintenance_build_image_candidates() {
     build_deb_builder_image
     build_android_builder_image
     build_windows_helper_image
+}
+
+maintenance_build_apple_check_image_candidate() {
+    require_devcheck_image_pins
+    require_apple_check_image_pins
+    verify_or_load_devcheck_image
+    local context="$ONLINE_FETCH_TMP/apple-check-build-context"
+    local candidate_archive="$ONLINE_FETCH_TMP/apple-check-candidate.docker.tar.gz"
+    local tag="rd-apple-check:authenticated-v1"
+    local image_id base_identity result
+    [ ! -e "$context" ] && [ ! -L "$context" ] \
+        || die "private Apple check build context already exists"
+    [ ! -e "$candidate_archive" ] && [ ! -L "$candidate_archive" ] \
+        || die "private Apple check candidate archive already exists"
+    /usr/bin/install -d -m 0700 "$context"
+    /usr/bin/install -m 0400 \
+        "$SCRIPT_DIR/Dockerfile.apple-check" "$context/Dockerfile"
+    /usr/bin/install -m 0400 \
+        "$SCRIPT_DIR/apple-toolchain-release.py" \
+        "$SCRIPT_DIR/apple-toolchain-provenance.py" \
+        "$context/"
+    [ "$(/usr/bin/find "$context" -mindepth 1 -maxdepth 1 -type f \
+        | /usr/bin/wc -l)" -eq 3 ] \
+        && [ -z "$(/usr/bin/find "$context" -mindepth 1 -maxdepth 1 \
+            ! -type f -print -quit)" ] \
+        || die "private Apple check build context has an unexpected inventory"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$context")" \
+       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "private Apple check build context metadata differs"
+    while IFS= read -r input; do
+        [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$input")" \
+           = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:400:1" ] \
+            || die "private Apple check input metadata differs: $input"
+    done < <(/usr/bin/find "$context" -mindepth 1 -maxdepth 1 \
+        -type f -print | LC_ALL=C /usr/bin/sort)
+    [ "$(/usr/bin/sha256sum "$context/Dockerfile" \
+        | /usr/bin/awk '{print $1}')" = "$SHA256_APPLE_CHECK_DOCKERFILE" ] \
+        || die "private Apple check Dockerfile bytes differ"
+    [ "$(/usr/bin/sha256sum "$context/apple-toolchain-release.py" \
+        | /usr/bin/awk '{print $1}')" = "$SHA256_APPLE_TOOLCHAIN_RELEASE_HELPER" ] \
+        || die "private Apple release helper bytes differ"
+    [ "$(/usr/bin/sha256sum "$context/apple-toolchain-provenance.py" \
+        | /usr/bin/awk '{print $1}')" = "$SHA256_APPLE_TOOLCHAIN_PROVENANCE_HELPER" ] \
+        || die "private Apple provenance helper bytes differ"
+    base_identity="$(
+        online_docker image inspect --format '{{.Id}}|{{.Os}}|{{.Architecture}}' \
+            "$DEV_CHECK_IMAGE_ID"
+    )" || die "the exact Apple check base image is not already present"
+    [ "$base_identity" = "$DEV_CHECK_IMAGE_ID|linux|amd64" ] \
+        || die "the local Apple check base image differs from its exact Linux/amd64 pin"
+    online_docker buildx build \
+        --network=default --pull=false --no-cache \
+        --platform=linux/amd64 --provenance=mode=max \
+        --output=type=docker,rewrite-timestamp=true \
+        --build-arg "DEV_CHECK_IMAGE_REF=rd-devcheck@${DEV_CHECK_IMAGE_ID}" \
+        --build-arg "DEV_CHECK_IMAGE_ID=${DEV_CHECK_IMAGE_ID}" \
+        --build-arg "DEV_CHECK_IMAGE_MANIFEST_ID=${DEV_CHECK_IMAGE_MANIFEST_ID}" \
+        --build-arg "SOURCE_DATE_EPOCH=${APPLE_CHECK_SOURCE_DATE_EPOCH}" \
+        --build-arg "APPLE_CHECK_DOCKERFILE_SHA256=${SHA256_APPLE_CHECK_DOCKERFILE}" \
+        --build-arg "APPLE_TOOLCHAIN_RELEASE_HELPER_SHA256=${SHA256_APPLE_TOOLCHAIN_RELEASE_HELPER}" \
+        --build-arg "APPLE_TOOLCHAIN_PROVENANCE_HELPER_SHA256=${SHA256_APPLE_TOOLCHAIN_PROVENANCE_HELPER}" \
+        --build-arg "APPLE_TOOLCHAIN_TREE_SHA256=${APPLE_TOOLCHAIN_TREE_SHA256}" \
+        --build-arg "APPLE_TOOLCHAIN_FILES=${APPLE_TOOLCHAIN_FILES}" \
+        --build-arg "APPLE_TOOLCHAIN_DIRECTORIES=${APPLE_TOOLCHAIN_DIRECTORIES}" \
+        --build-arg "APPLE_TOOLCHAIN_CONTENT_BYTES=${APPLE_TOOLCHAIN_CONTENT_BYTES}" \
+        --tag "$tag" \
+        --file "$context/Dockerfile" \
+        "$context"
+    image_id="$(online_docker image inspect --format '{{.Id}}' "$tag")" \
+        || die "cannot resolve the Apple check candidate"
+    local args=() position
+    mapfile -d '' args < <(apple_check_image_spec_args)
+    for ((position = 0; position + 1 < ${#args[@]}; position++)); do
+        if [ "${args[position]}" = "--expected-id" ]; then
+            args[position + 1]="$image_id"
+            break
+        fi
+    done
+    [ "${args[position]:-}" = "--expected-id" ] \
+        || die "Apple check candidate spec has no expected image identity"
+    online_image_provenance verify-local \
+        --image-ref "$tag" "${args[@]}" \
+        || die "Apple check candidate runtime verification failed"
+    result="$(
+        online_image_provenance maintenance-capture \
+            --output "$candidate_archive" \
+            "${args[@]}"
+    )" || die "Apple check candidate provenance capture failed"
+    /usr/bin/rm -f -- "$candidate_archive" \
+        || die "cannot remove the verified private Apple check candidate archive"
+    printf 'APPLE_CHECK_IMAGE_ID="%s"\n' "$image_id"
+    printf '%s\n' "$result"
 }
 
 maintenance_build_dart_audit_image_candidate() {
@@ -4064,6 +4278,11 @@ main() {
             maintenance_build_image_candidates
             return 0
             ;;
+        --maintenance-build-apple-check-image-candidate)
+            [ "$#" -eq 1 ] || die "--maintenance-build-apple-check-image-candidate takes no arguments"
+            maintenance_build_apple_check_image_candidate
+            return 0
+            ;;
         --maintenance-build-dart-audit-image-candidate)
             [ "$#" -eq 1 ] || die "--maintenance-build-dart-audit-image-candidate takes no arguments"
             maintenance_build_dart_audit_image_candidate
@@ -4089,6 +4308,11 @@ main() {
             maintenance_capture_devcheck_image
             return 0
             ;;
+        --maintenance-capture-apple-check-image)
+            [ "$#" -eq 1 ] || die "--maintenance-capture-apple-check-image takes no arguments"
+            maintenance_capture_apple_check_image
+            return 0
+            ;;
         --maintenance-capture-dart-audit-image)
             [ "$#" -eq 1 ] || die "--maintenance-capture-dart-audit-image takes no arguments"
             maintenance_capture_dart_audit_image
@@ -4102,6 +4326,11 @@ main() {
         --devcheck-image)
             [ "$#" -eq 1 ] || die "--devcheck-image takes no arguments"
             verify_or_load_devcheck_image
+            return 0
+            ;;
+        --apple-check-image)
+            [ "$#" -eq 1 ] || die "--apple-check-image takes no arguments"
+            verify_or_load_apple_check_image
             return 0
             ;;
         --dart-audit-image)
@@ -4129,6 +4358,7 @@ main() {
             verify_online_pinned_archives
             load_builder_images
             verify_or_load_devcheck_image
+            verify_or_load_apple_check_image
             verify_or_load_dart_audit_image
             verify_or_load_rust_audit_image
             require_online_complete
@@ -4140,11 +4370,12 @@ main() {
             return 0
             ;;
         '') ;;
-        *) die "usage: scripts/online-fetch.sh [--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-image-candidates|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-builder-images|--maintenance-capture-devcheck-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
+        *) die "usage: scripts/online-fetch.sh [--libvpx-distfiles|--wix-nuget-packages|--dart-audit-inputs|--maintenance-build-image-candidates|--maintenance-build-apple-check-image-candidate|--maintenance-build-dart-audit-image-candidate|--maintenance-build-rust-audit-image-candidate|--maintenance-capture-builder-images|--maintenance-capture-devcheck-image|--maintenance-capture-apple-check-image|--maintenance-capture-dart-audit-image|--maintenance-capture-rust-audit-image|--devcheck-image|--apple-check-image|--dart-audit-image|--rust-audit-image|--maintenance-print-online-closure|--maintenance-write-online-closure|--verify-offline-inputs|--debian-systemd-smoke-image]" ;;
     esac
     log "online-fetch: materializing the SHA-256-verified ./online cache (R-B10)"
     load_builder_images
     verify_or_load_devcheck_image
+    verify_or_load_apple_check_image
     verify_or_load_dart_audit_image
     verify_or_load_rust_audit_image
     stage_dart_audit_inputs

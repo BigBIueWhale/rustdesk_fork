@@ -78,6 +78,9 @@ readonly APPLE_DOCKER_CONFIG="$APPLE_CHECK_TMP/docker-config"
 readonly BUILD_UID="$(id -u)"
 readonly BUILD_GID="$(id -g)"
 readonly IMG="$APPLE_CHECK_IMAGE_ID"
+readonly APPLE_TOOLCHAIN_ROOT=/usr/local/rustup/toolchains/1.81.0-x86_64-unknown-linux-gnu
+readonly APPLE_TOOLCHAIN_BIN="$APPLE_TOOLCHAIN_ROOT/bin"
+readonly APPLE_CHECK_PATH="$APPLE_TOOLCHAIN_BIN:/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 readonly SELECTED_APPLE_TARGETS=(
   aarch64-apple-darwin
   x86_64-apple-darwin
@@ -104,6 +107,20 @@ apple_docker() {
     "$DOCKER_BIN" \
       --host "$APPLE_DOCKER_HOST" \
       --config "$APPLE_DOCKER_CONFIG" \
+      "$@" || status=$?
+  verify_apple_docker_authority
+  return "$status"
+}
+
+apple_image_provenance() {
+  local status=0
+  verify_apple_docker_authority
+  env -i \
+    PATH=/usr/bin:/bin \
+    HOME="$APPLE_CHECK_TMP" \
+    DOCKER_HOST="$APPLE_DOCKER_HOST" \
+    DOCKER_CONFIG="$APPLE_DOCKER_CONFIG" \
+    /usr/bin/python3 "$REPO/scripts/offline-image-provenance.py" \
       "$@" || status=$?
   verify_apple_docker_authority
   return "$status"
@@ -262,17 +279,59 @@ done
   || die "caller-selected Apple SDK authority is forbidden"
 [ -f "$REPO/scripts/apple-cc-shim.sh" ] || die "scripts/apple-cc-shim.sh missing"
 [ -f "$REPO/scripts/Dockerfile.apple-check" ] || die "scripts/Dockerfile.apple-check missing"
+[ -f "$REPO/scripts/apple-toolchain-release.py" ] \
+  || die "scripts/apple-toolchain-release.py missing"
+[ -f "$REPO/scripts/apple-toolchain-provenance.py" ] \
+  || die "scripts/apple-toolchain-provenance.py missing"
 : "${APPLE_CHECK_IMAGE_ID:?APPLE_CHECK_IMAGE_ID is unset}"
+: "${APPLE_CHECK_IMAGE_CONFIG_ID:?APPLE_CHECK_IMAGE_CONFIG_ID is unset}"
+: "${APPLE_CHECK_IMAGE_MANIFEST_ID:?APPLE_CHECK_IMAGE_MANIFEST_ID is unset}"
 : "${SHA256_APPLE_CHECK_DOCKERFILE:?SHA256_APPLE_CHECK_DOCKERFILE is unset}"
 : "${SHA256_APPLE_CHECK_CARGO:?SHA256_APPLE_CHECK_CARGO is unset}"
 : "${SHA256_APPLE_CHECK_RUSTC:?SHA256_APPLE_CHECK_RUSTC is unset}"
 : "${SHA256_APPLE_CHECK_DPKG_MANIFEST:?SHA256_APPLE_CHECK_DPKG_MANIFEST is unset}"
+: "${SHA256_APPLE_TOOLCHAIN_RELEASE_HELPER:?SHA256_APPLE_TOOLCHAIN_RELEASE_HELPER is unset}"
+: "${SHA256_APPLE_TOOLCHAIN_PROVENANCE_HELPER:?SHA256_APPLE_TOOLCHAIN_PROVENANCE_HELPER is unset}"
+: "${DEV_CHECK_IMAGE_ID:?DEV_CHECK_IMAGE_ID is unset}"
+: "${DEV_CHECK_IMAGE_MANIFEST_ID:?DEV_CHECK_IMAGE_MANIFEST_ID is unset}"
+: "${APPLE_CHECK_SOURCE_DATE_EPOCH:?APPLE_CHECK_SOURCE_DATE_EPOCH is unset}"
+: "${APPLE_RUST_RELEASE_VERSION:?APPLE_RUST_RELEASE_VERSION is unset}"
+: "${APPLE_RUST_RELEASE_DATE:?APPLE_RUST_RELEASE_DATE is unset}"
+: "${APPLE_RUST_RELEASE_SIGNING_FINGERPRINT:?APPLE_RUST_RELEASE_SIGNING_FINGERPRINT is unset}"
+: "${SHA256_APPLE_RUST_RELEASE_PUBLIC_KEY:?SHA256_APPLE_RUST_RELEASE_PUBLIC_KEY is unset}"
+: "${SHA256_APPLE_RUST_RELEASE_MANIFEST:?SHA256_APPLE_RUST_RELEASE_MANIFEST is unset}"
+: "${SHA256_APPLE_RUST_RELEASE_MANIFEST_SIGNATURE:?SHA256_APPLE_RUST_RELEASE_MANIFEST_SIGNATURE is unset}"
+: "${SHA256_APPLE_RUSTC_HOST_COMPONENT:?SHA256_APPLE_RUSTC_HOST_COMPONENT is unset}"
+: "${SHA256_APPLE_CARGO_HOST_COMPONENT:?SHA256_APPLE_CARGO_HOST_COMPONENT is unset}"
+: "${SHA256_APPLE_RUST_STD_HOST_COMPONENT:?SHA256_APPLE_RUST_STD_HOST_COMPONENT is unset}"
+: "${SHA256_APPLE_RUST_STD_AARCH64_DARWIN_COMPONENT:?SHA256_APPLE_RUST_STD_AARCH64_DARWIN_COMPONENT is unset}"
+: "${SHA256_APPLE_RUST_STD_X86_64_DARWIN_COMPONENT:?SHA256_APPLE_RUST_STD_X86_64_DARWIN_COMPONENT is unset}"
+: "${SHA256_APPLE_RUST_STD_AARCH64_IOS_COMPONENT:?SHA256_APPLE_RUST_STD_AARCH64_IOS_COMPONENT is unset}"
+: "${APPLE_TOOLCHAIN_TREE_SHA256:?APPLE_TOOLCHAIN_TREE_SHA256 is unset}"
+: "${APPLE_TOOLCHAIN_FILES:?APPLE_TOOLCHAIN_FILES is unset}"
+: "${APPLE_TOOLCHAIN_DIRECTORIES:?APPLE_TOOLCHAIN_DIRECTORIES is unset}"
+: "${APPLE_TOOLCHAIN_CONTENT_BYTES:?APPLE_TOOLCHAIN_CONTENT_BYTES is unset}"
 : "${SHA256_CARGO_VENDOR_CLOSURE_V1:?SHA256_CARGO_VENDOR_CLOSURE_V1 is unset}"
 : "${SHA256_CARGO_VENDOR_CONFIG:?SHA256_CARGO_VENDOR_CONFIG is unset}"
 [[ "$IMG" =~ ^sha256:[0-9a-f]{64}$ ]] \
   || die "malformed immutable Apple-check image ID"
+[[ "$APPLE_CHECK_IMAGE_CONFIG_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+  || die "malformed immutable Apple-check config ID"
+[[ "$APPLE_CHECK_IMAGE_MANIFEST_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+  || die "malformed immutable Apple-check manifest ID"
+[[ "$APPLE_TOOLCHAIN_TREE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+  || die "malformed Apple toolchain tree SHA-256"
+for value in "$APPLE_TOOLCHAIN_FILES" "$APPLE_TOOLCHAIN_DIRECTORIES" \
+    "$APPLE_TOOLCHAIN_CONTENT_BYTES"; do
+  [[ "$value" =~ ^[1-9][0-9]*$ ]] \
+    || die "malformed positive Apple toolchain closure count"
+done
 [ "$(sha256sum scripts/Dockerfile.apple-check | awk '{print $1}')" = "$SHA256_APPLE_CHECK_DOCKERFILE" ] \
   || die "Apple-check acquisition recipe differs from its reviewed pin"
+[ "$(sha256sum scripts/apple-toolchain-release.py | awk '{print $1}')" = "$SHA256_APPLE_TOOLCHAIN_RELEASE_HELPER" ] \
+  || die "Apple toolchain release helper differs from its reviewed pin"
+[ "$(sha256sum scripts/apple-toolchain-provenance.py | awk '{print $1}')" = "$SHA256_APPLE_TOOLCHAIN_PROVENANCE_HELPER" ] \
+  || die "Apple toolchain provenance helper differs from its reviewed pin"
 [ "$(sha256sum online/cargo-vendor-config.toml | awk '{print $1}')" = "$SHA256_CARGO_VENDOR_CONFIG" ] \
   || die "Cargo vendor source map differs from its reviewed pin"
 
@@ -285,6 +344,41 @@ IMAGE_ID="$(apple_docker image inspect --format '{{.Id}}' "$IMG")" \
   || die "immutable Apple-check image is not present locally"
 [ "$IMAGE_ID" = "$IMG" ] || die "local Apple-check image identity differs from its pin"
 readonly IMAGE_ID
+
+APPLE_IMAGE_SPEC=(
+  --role apple-check
+  --expected-id "$APPLE_CHECK_IMAGE_ID"
+  --base "rd-devcheck@${DEV_CHECK_IMAGE_ID}"
+  --base-manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID"
+  --dockerfile-sha "$SHA256_APPLE_CHECK_DOCKERFILE"
+  --source-date-epoch "$APPLE_CHECK_SOURCE_DATE_EPOCH"
+  --release-helper-sha "$SHA256_APPLE_TOOLCHAIN_RELEASE_HELPER"
+  --provenance-helper-sha "$SHA256_APPLE_TOOLCHAIN_PROVENANCE_HELPER"
+  --rust-version "$APPLE_RUST_RELEASE_VERSION"
+  --release-date "$APPLE_RUST_RELEASE_DATE"
+  --signing-fingerprint "$APPLE_RUST_RELEASE_SIGNING_FINGERPRINT"
+  --release-public-key-sha "$SHA256_APPLE_RUST_RELEASE_PUBLIC_KEY"
+  --release-manifest-sha "$SHA256_APPLE_RUST_RELEASE_MANIFEST"
+  --release-manifest-signature-sha "$SHA256_APPLE_RUST_RELEASE_MANIFEST_SIGNATURE"
+  --rustc-host-sha "$SHA256_APPLE_RUSTC_HOST_COMPONENT"
+  --cargo-host-sha "$SHA256_APPLE_CARGO_HOST_COMPONENT"
+  --rust-std-host-sha "$SHA256_APPLE_RUST_STD_HOST_COMPONENT"
+  --rust-std-aarch64-darwin-sha "$SHA256_APPLE_RUST_STD_AARCH64_DARWIN_COMPONENT"
+  --rust-std-x86-64-darwin-sha "$SHA256_APPLE_RUST_STD_X86_64_DARWIN_COMPONENT"
+  --rust-std-aarch64-ios-sha "$SHA256_APPLE_RUST_STD_AARCH64_IOS_COMPONENT"
+  --cargo-sha "$SHA256_APPLE_CHECK_CARGO"
+  --rustc-sha "$SHA256_APPLE_CHECK_RUSTC"
+  --dpkg-sha "$SHA256_APPLE_CHECK_DPKG_MANIFEST"
+  --toolchain-tree-sha "$APPLE_TOOLCHAIN_TREE_SHA256"
+  --toolchain-files "$APPLE_TOOLCHAIN_FILES"
+  --toolchain-directories "$APPLE_TOOLCHAIN_DIRECTORIES"
+  --toolchain-content-bytes "$APPLE_TOOLCHAIN_CONTENT_BYTES"
+  --config-id "$APPLE_CHECK_IMAGE_CONFIG_ID"
+  --manifest-id "$APPLE_CHECK_IMAGE_MANIFEST_ID"
+)
+apple_image_provenance verify-local \
+  --image-ref "$IMAGE_ID" "${APPLE_IMAGE_SPEC[@]}" \
+  || die "immutable Apple-check image provenance verification failed"
 
 readonly APPLE_SOURCE_ARCHIVE="$APPLE_CHECK_TMP/source.tar"
 readonly APPLE_SOURCE="$APPLE_CHECK_TMP/source"
@@ -325,19 +419,35 @@ apple_docker run --rm --pull=never --network=none --read-only \
   --env HOME=/tmp \
   --env RUSTUP_HOME=/usr/local/rustup \
   --env CARGO_HOME=/usr/local/cargo \
+  --env PATH="$APPLE_CHECK_PATH" \
   "$IMAGE_ID" /bin/bash --noprofile --norc -euo pipefail -c '
     [ "$(id -u)" -ne 0 ] && [ "$(id -g)" -ne 0 ]
-    printf "rustc=%s\n" "$(rustc +1.81.0 --version)"
-    printf "cargo=%s\n" "$(cargo +1.81.0 --version)"
-    cargo_path="$(rustup +1.81.0 which cargo)"
-    rustc_path="$(rustup +1.81.0 which rustc)"
+    toolchain=/usr/local/rustup/toolchains/1.81.0-x86_64-unknown-linux-gnu
+    cargo_path="$toolchain/bin/cargo"
+    rustc_path="$toolchain/bin/rustc"
+    [ "$(command -v cargo)" = "$cargo_path" ]
+    [ "$(command -v rustc)" = "$rustc_path" ]
+    printf "rustc=%s\n" "$(rustc --version)"
+    printf "cargo=%s\n" "$(cargo --version)"
+    printf "cargo-path=%s\n" "$(command -v cargo)"
+    printf "rustc-path=%s\n" "$(command -v rustc)"
     cargo_sha="$(sha256sum "$cargo_path")"; cargo_sha="${cargo_sha%% *}"
     rustc_sha="$(sha256sum "$rustc_path")"; rustc_sha="${rustc_sha%% *}"
+    release_helper_sha="$(sha256sum /usr/local/libexec/apple-toolchain-release.py)"
+    release_helper_sha="${release_helper_sha%% *}"
+    provenance_helper_sha="$(sha256sum /usr/local/libexec/apple-toolchain-provenance.py)"
+    provenance_helper_sha="${provenance_helper_sha%% *}"
     dpkg_sha="$(dpkg-query -W | LC_ALL=C sort | sha256sum)"; dpkg_sha="${dpkg_sha%% *}"
     printf "cargo-sha=%s\n" "$cargo_sha"
     printf "rustc-sha=%s\n" "$rustc_sha"
+    printf "release-helper-sha=%s\n" "$release_helper_sha"
+    printf "provenance-helper-sha=%s\n" "$provenance_helper_sha"
     printf "dpkg-sha=%s\n" "$dpkg_sha"
-    rustup target list --installed --toolchain 1.81.0 | LC_ALL=C sort
+    find "$toolchain/lib/rustlib" -mindepth 2 -maxdepth 2 \
+      -type d -name lib -printf "%h\n" \
+      | sed "s#^.*/rustlib/##" | LC_ALL=C sort
+    python3 /usr/local/libexec/apple-toolchain-provenance.py \
+      --root "$toolchain" --owner 1000 --group 1000
     printf "sodium=%s\n" "${SODIUM_USE_PKG_CONFIG-}"
   ' >"$IMAGE_PREFLIGHT_OUT" 2>"$IMAGE_PREFLIGHT_ERR"
 IMAGE_PREFLIGHT_STATUS=$?
@@ -348,13 +458,18 @@ readonly EXPECTED_IMAGE_PREFLIGHT="$APPLE_CHECK_TMP/image-preflight.expected"
 cat >"$EXPECTED_IMAGE_PREFLIGHT" <<EOF
 rustc=rustc 1.81.0 (eeb90cda1 2024-09-04)
 cargo=cargo 1.81.0 (2dbb1af80 2024-08-20)
+cargo-path=$APPLE_TOOLCHAIN_BIN/cargo
+rustc-path=$APPLE_TOOLCHAIN_BIN/rustc
 cargo-sha=$SHA256_APPLE_CHECK_CARGO
 rustc-sha=$SHA256_APPLE_CHECK_RUSTC
+release-helper-sha=$SHA256_APPLE_TOOLCHAIN_RELEASE_HELPER
+provenance-helper-sha=$SHA256_APPLE_TOOLCHAIN_PROVENANCE_HELPER
 dpkg-sha=$SHA256_APPLE_CHECK_DPKG_MANIFEST
 aarch64-apple-darwin
 aarch64-apple-ios
 x86_64-apple-darwin
 x86_64-unknown-linux-gnu
+{"content_bytes":$APPLE_TOOLCHAIN_CONTENT_BYTES,"contract":"rustdesk-apple-toolchain-tree-v1","directories":$APPLE_TOOLCHAIN_DIRECTORIES,"files":$APPLE_TOOLCHAIN_FILES,"sha256":"$APPLE_TOOLCHAIN_TREE_SHA256"}
 sodium=1
 EOF
 chmod 0600 "$EXPECTED_IMAGE_PREFLIGHT"
@@ -384,7 +499,7 @@ COMMON_CHECK=(apple_docker run --rm --interactive --pull=never --network=none --
   --env CARGO_TARGET_DIR=/build
   --env CARGO_INCREMENTAL=0
   --env CARGO_NET_OFFLINE=true
-  --env RUSTUP_TOOLCHAIN=1.81.0
+  --env PATH="$APPLE_CHECK_PATH"
   --env SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"
   --env PKG_CONFIG_ALLOW_CROSS=1
   --workdir /work)
@@ -3035,7 +3150,7 @@ for d in opus vpx libyuv; do
   [ -d "/usr/include/$d" ] && ln -s "/usr/include/$d" "$stub/installed/$triplet/include/$d"
 done
 export VCPKG_ROOT="$stub"
-cargo +1.81.0 check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \
+cargo check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \
   --package hbb_common --target "$target"
 SH
   anchor_rc=$?
@@ -3067,7 +3182,7 @@ for d in opus vpx libyuv; do
   [ -d "/usr/include/$d" ] && ln -s "/usr/include/$d" "$stub/installed/$triplet/include/$d"
 done
 export VCPKG_ROOT="$stub"
-cargo +1.81.0 check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \
+cargo check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \
   --target "$target" --features "$features"
 SH
   xrc=$?

@@ -83,6 +83,8 @@ def forbid_container_authority(source: str, label: str) -> None:
 def validate(sources: Dict[str, str]) -> None:
     apple = sources["apple"]
     pins = sources["pins"]
+    provenance = sources["offline_provenance"]
+    online_fetch = sources["online_fetch"]
     dockerfile_digest = hashlib.sha256(
         sources["dockerfile"].encode("utf-8")
     ).hexdigest()
@@ -169,6 +171,12 @@ def validate(sources: Dict[str, str]) -> None:
         ('IMAGE_ID="$(apple_docker image inspect --format \'{{.Id}}\' "$IMG")"',
          "local exact-image inspection"),
         ('[ "$IMAGE_ID" = "$IMG" ]', "exact-image equality"),
+        ('/usr/bin/python3 "$REPO/scripts/offline-image-provenance.py"',
+         "fixed offline image provenance verifier"),
+        ('apple_image_provenance verify-local',
+         "exact Apple image provenance verification"),
+        ('--image-ref "$IMAGE_ID" "${APPLE_IMAGE_SPEC[@]}"',
+         "content-addressed Apple provenance arguments"),
         ('[ "$(sha256sum scripts/Dockerfile.apple-check',
          "reviewed acquisition-recipe pin"),
         ('archive_current_source >"$APPLE_SOURCE_ARCHIVE"', "private source snapshot"),
@@ -180,7 +188,7 @@ def validate(sources: Dict[str, str]) -> None:
          "private Cargo source map"),
         ('chmod 0400 "$APPLE_CARGO_CONFIG"', "read-only Cargo source map"),
         ('"${APPLE_READ_RUN[@]}" python3 -', "confined metadata parser"),
-        ("cargo +1.81.0 check --locked --offline --config /tmp/cargo-config.toml --jobs 1",
+        ("cargo check --locked --offline --config /tmp/cargo-config.toml --jobs 1",
          "locked offline Apple cross-check"),
         ("check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \\\n"
          '  --package hbb_common --target "$target"',
@@ -226,6 +234,18 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require_count(apple, "APPLE_READ_RUN=(", 1, "metadata launch definition")
     require_count(apple, "COMMON_CHECK=(", 1, "cross-check launch definition")
+    require_count(
+        apple,
+        "apple_image_provenance verify-local",
+        1,
+        "offline image provenance invocation",
+    )
+    require_count(
+        apple,
+        'env -i \\\n    PATH=/usr/bin:/bin',
+        2,
+        "closed Docker/provenance environment inventory",
+    )
     require_count(apple, '"${APPLE_READ_RUN[@]}"', 1, "metadata launch use")
     require_count(apple, '"${COMMON_CHECK[@]}"', 2, "workspace-anchor/full-matrix launch sites")
     require_count(apple, "apple_docker run", 3, "complete Docker run inventory")
@@ -235,6 +255,7 @@ def validate(sources: Dict[str, str]) -> None:
         (
             'install -d -m 0700 "$APPLE_DOCKER_CONFIG"',
             'IMAGE_ID="$(apple_docker image inspect',
+            "apple_image_provenance verify-local",
             'archive_current_source >"$APPLE_SOURCE_ARCHIVE"',
             "snapshot-subtree-create",
             "apple_docker run --rm --pull=never",
@@ -319,7 +340,7 @@ def validate(sources: Dict[str, str]) -> None:
         ('--mount "type=bind,source=$APPLE_CARGO_CONFIG,target=/tmp/cargo-config.toml,readonly"',
          "read-only Cargo source map"),
         ("--env CARGO_NET_OFFLINE=true", "Cargo offline policy"),
-        ("--env RUSTUP_TOOLCHAIN=1.81.0", "exact Apple toolchain"),
+        ('--env PATH="$APPLE_CHECK_PATH"', "exact direct Apple toolchain path"),
     ):
         require(cross, token, "cross-check {}".format(label))
     require_count(cross, "--mount ", 4, "cross-check mount inventory")
@@ -344,12 +365,199 @@ def validate(sources: Dict[str, str]) -> None:
 
     for token, label in (
         ('APPLE_CHECK_IMAGE_ID="sha256:', "Apple image content pin"),
+        ('APPLE_CHECK_IMAGE_CONFIG_ID="sha256:', "Apple image config pin"),
+        ('APPLE_CHECK_IMAGE_MANIFEST_ID="sha256:', "Apple platform manifest pin"),
+        ('SHA256_APPLE_CHECK_IMAGE_ARCHIVE="', "Apple image archive pin"),
+        ('SIZE_APPLE_CHECK_IMAGE_ARCHIVE="', "Apple image archive size"),
         ('SHA256_APPLE_CHECK_DOCKERFILE="', "Apple acquisition-recipe pin"),
         ('SHA256_APPLE_CHECK_CARGO="', "Apple Cargo binary pin"),
         ('SHA256_APPLE_CHECK_RUSTC="', "Apple rustc binary pin"),
         ('SHA256_APPLE_CHECK_DPKG_MANIFEST="', "Apple package-manifest pin"),
+        ('SHA256_APPLE_TOOLCHAIN_RELEASE_HELPER="',
+         "Apple release-helper content pin"),
+        ('SHA256_APPLE_TOOLCHAIN_PROVENANCE_HELPER="',
+         "Apple provenance-helper content pin"),
+        ('SHA256_APPLE_RUST_RELEASE_MANIFEST="',
+         "signed Rust release manifest pin"),
+        ('APPLE_TOOLCHAIN_TREE_SHA256="', "Apple toolchain tree pin"),
     ):
         require(pins, token, label)
+    for token, label in (
+        (
+            'APPLE_CHECK_IMAGE_ID="sha256:'
+            '1845e16ca1b255cc41dc57736b50263304937699d5e23e1353b843c00a2ea15f"',
+            "exact Apple OCI index pin",
+        ),
+        (
+            'APPLE_CHECK_IMAGE_CONFIG_ID="sha256:'
+            'f75a07a3808620ebbc2188b5a4e7fb3d1de64dbeb534a9ec11f48f070067320c"',
+            "exact Apple image config pin",
+        ),
+        (
+            'APPLE_CHECK_IMAGE_MANIFEST_ID="sha256:'
+            'eb08db4dd16ba120a2fbb2957ea38a319203931de699d3b47c43ae7e9e6274cc"',
+            "exact reproducible Apple platform manifest pin",
+        ),
+        (
+            'SHA256_APPLE_CHECK_IMAGE_ARCHIVE="'
+            '9f675754d52962952a2bfc1d74e98d1a37b1b0d220e670780dca78f653d8a7cc"',
+            "exact Apple archive digest pin",
+        ),
+        (
+            'SIZE_APPLE_CHECK_IMAGE_ARCHIVE="1122604778"',
+            "exact Apple archive size pin",
+        ),
+        (
+            'APPLE_TOOLCHAIN_TREE_SHA256="'
+            '74f49c84298a448e020a5c5251ce59bf7b0cbda9ce75055986f5ecb19523e757"',
+            "exact Apple toolchain tree pin",
+        ),
+    ):
+        require(pins, token, label)
+
+    for token, label in (
+        ("class AppleCheckSpec:", "Apple archive provenance specification"),
+        (
+            "def validate_apple_check_attestation(",
+            "Apple SLSA provenance validator",
+        ),
+        (
+            "pkg:docker/rd-apple-check@authenticated-v1",
+            "Apple exact attestation subject",
+        ),
+        (
+            'pkg:docker/rd-devcheck?"',
+            "Apple exact attested base dependency",
+        ),
+        (
+            '\'["apple-toolchain-provenance.py",\'',
+            "Apple private helper context",
+        ),
+        (
+            "source_runs = [\n"
+            "        (network, command.lstrip())\n"
+            "        for network, command in dockerfile_run_contract(dockerfile)",
+            "Apple exact Dockerfile command normalization",
+        ),
+        (
+            '"default",\n        "none",\n        "none",',
+            "Apple one-networked/two-networkless build contract",
+        ),
+        (
+            '"user": "1000:1000"',
+            "Apple attested numeric nonroot execution",
+        ),
+        (
+            '"buildkit/rewritten-timestamp"',
+            "Apple layer timestamp rewrite proof",
+        ),
+        (
+            "create_apple_check_fixture_archive(",
+            "Apple archive behavioral fixture",
+        ),
+        (
+            "if apple_checks != 33:",
+            "Apple archive behavioral decision count",
+        ),
+        (
+            "networkless-acquisition-apple-check-image.tar.gz",
+            "Apple acquisition-network negative fixture",
+        ),
+        (
+            "networked-install-apple-check-image.tar.gz",
+            "Apple install-network negative fixture",
+        ),
+        (
+            "root-helper-copy-apple-check-image.tar.gz",
+            "Apple helper-owner negative fixture",
+        ),
+        (
+            "broad-context-apple-check-image.tar.gz",
+            "Apple context-authority negative fixture",
+        ),
+        (
+            "unattested-apple-check-image.tar.gz",
+            "Apple missing-attestation negative fixture",
+        ),
+    ):
+        require(provenance, token, label)
+
+    for token, label in (
+        (
+            "apple_check_image_spec_args() {",
+            "Apple online image specification",
+        ),
+        (
+            "verify_or_load_apple_check_image() {",
+            "Apple verified archive recovery",
+        ),
+        (
+            '        --archive "$ONLINE_DIR/verifier-images/apple-check.docker.tar.gz"',
+            "Apple exact offline archive path",
+        ),
+        (
+            '        --archive-sha "$SHA256_APPLE_CHECK_IMAGE_ARCHIVE"',
+            "Apple offline archive digest wiring",
+        ),
+        (
+            '        --archive-size "$SIZE_APPLE_CHECK_IMAGE_ARCHIVE"',
+            "Apple offline archive size wiring",
+        ),
+        (
+            "maintenance_build_apple_check_image_candidate() {",
+            "Apple explicit candidate acquisition",
+        ),
+        (
+            'local context="$ONLINE_FETCH_TMP/apple-check-build-context"',
+            "Apple private three-file context",
+        ),
+        (
+            "--platform=linux/amd64 --provenance=mode=max",
+            "Apple maximum BuildKit provenance",
+        ),
+        (
+            "--output=type=docker,rewrite-timestamp=true",
+            "Apple reproducible runtime export",
+        ),
+        (
+            '        --network=default --pull=false --no-cache',
+            "Apple explicit candidate acquisition policy",
+        ),
+        (
+            '            --output "$directory/apple-check.docker.tar.gz"',
+            "Apple explicit canonical archive capture",
+        ),
+        (
+            "--maintenance-build-apple-check-image-candidate",
+            "Apple candidate acquisition entry point",
+        ),
+        (
+            "--maintenance-capture-apple-check-image",
+            "Apple canonical capture entry point",
+        ),
+        (
+            "--apple-check-image",
+            "Apple archive recovery entry point",
+        ),
+    ):
+        require(online_fetch, token, label)
+    candidate = extract(
+        online_fetch,
+        "maintenance_build_apple_check_image_candidate() {",
+        "\n}\n\nmaintenance_build_dart_audit_image_candidate() {",
+        "Apple maintenance candidate acquisition",
+    )
+    forbid_container_authority(candidate, "Apple maintenance candidate")
+    for token, label in (
+        ("--privileged", "privileged execution"),
+        ("--cap-add", "added capability"),
+        ("--network=host", "host network"),
+        ("--publish", "published port"),
+        ("source=$REPO", "repository mount"),
+        ("source=$SCRIPT_DIR", "script-tree mount"),
+        ("/var/run/docker.sock", "nested Docker socket"),
+    ):
+        forbid(candidate, token, f"Apple maintenance candidate {label}")
 
     require(
         sources["verify"],
@@ -359,9 +567,20 @@ def validate(sources: Dict[str, str]) -> None:
     require(sources["requirements"], '<span class="id">R-S11ci</span>', "R-S11ci requirement")
     require(sources["requirements"], "<tr><td>228</td>", "Appendix C #228 disposition")
     require(
+        sources["requirements"],
+        "This closes the independently archived and provenance-verified "
+        "Apple checker-image input;",
+        "Apple image-provenance requirement disposition",
+    )
+    require(
         sources["hardening"],
         "R-S11ci/R-S11e-101 — Apple conformance verifier authority",
         "hardening-ledger disposition",
+    )
+    require(
+        sources["hardening"],
+        "`9f675754d52962952a2bfc1d74e98d1a37b1b0d220e670780dca78f653d8a7cc`",
+        "Apple canonical archive ledger evidence",
     )
     require(
         sources["workspace"],
@@ -382,8 +601,20 @@ MUTATIONS: Tuple[Mutation, ...] = (
              "readonly APPLE_DOCKER_HOST=tcp://127.0.0.1:2375", "fixed local Docker endpoint"),
     Mutation("apple", '"$BUILD_UID" -ne 0', '"$BUILD_UID" -ge 0', "host-root refusal"),
     Mutation("apple", '"$BUILD_GID" -ne 0', '"$BUILD_GID" -ge 0', "root-group refusal"),
-    Mutation("apple", "env -i \\\n    PATH=/usr/bin:/bin", "env \\\n    PATH=\"$PATH\"",
-             "closed Docker client environment"),
+    Mutation(
+        "apple",
+        "apple_docker() {\n"
+        "  local status=0\n"
+        "  verify_apple_docker_authority\n"
+        "  env -i \\\n"
+        "    PATH=/usr/bin:/bin",
+        "apple_docker() {\n"
+        "  local status=0\n"
+        "  verify_apple_docker_authority\n"
+        "  env \\\n"
+        '    PATH="$PATH"',
+        "closed Docker client environment",
+    ),
     Mutation("apple", "--host \"$APPLE_DOCKER_HOST\"", "--host \"$DOCKER_HOST\"",
              "explicit Docker endpoint"),
     Mutation("apple", "--config \"$APPLE_DOCKER_CONFIG\"", "--config \"$HOME/.docker\"",
@@ -395,6 +626,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("apple", 'readonly IMG="$APPLE_CHECK_IMAGE_ID"', "readonly IMG=rd-apple-check",
              "immutable image selection"),
     Mutation("apple", '[ "$IMAGE_ID" = "$IMG" ]', "true", "image identity equality"),
+    Mutation(
+        "apple",
+        "apple_image_provenance verify-local",
+        "true # image provenance verification removed",
+        "offline Apple image provenance verification",
+    ),
     Mutation("apple", "archive_current_source >\"$APPLE_SOURCE_ARCHIVE\"",
              "tar -cf \"$APPLE_SOURCE_ARCHIVE\" .", "private source snapshot"),
     Mutation("apple", "chmod -R a-w \"$APPLE_SOURCE\"", "chmod -R a+w \"$APPLE_SOURCE\"",
@@ -542,9 +779,41 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("pins", 'APPLE_CHECK_IMAGE_ID="sha256:', 'APPLE_CHECK_IMAGE_ID="tag:',
              "Apple image content pin"),
     Mutation(
+        "pins",
+        'APPLE_CHECK_IMAGE_MANIFEST_ID="sha256:',
+        'APPLE_CHECK_IMAGE_MANIFEST_ID="tag:',
+        "Apple image manifest pin",
+    ),
+    Mutation(
+        "pins",
+        'SHA256_APPLE_CHECK_IMAGE_ARCHIVE="'
+        '9f675754d52962952a2bfc1d74e98d1a37b1b0d220e670780dca78f653d8a7cc"',
+        'SHA256_APPLE_CHECK_IMAGE_ARCHIVE="'
+        '8f675754d52962952a2bfc1d74e98d1a37b1b0d220e670780dca78f653d8a7cc"',
+        "Apple archive digest pin",
+    ),
+    Mutation(
+        "offline_provenance",
+        "if apple_checks != 33:",
+        "if apple_checks != 32:",
+        "Apple archive behavioral decision count",
+    ),
+    Mutation(
+        "online_fetch",
+        "--output=type=docker,rewrite-timestamp=true",
+        "--output=type=docker,rewrite-timestamp=false",
+        "Apple reproducible runtime export",
+    ),
+    Mutation(
+        "online_fetch",
+        '        --archive "$ONLINE_DIR/verifier-images/apple-check.docker.tar.gz"',
+        '        --archive "$ONLINE_DIR/verifier-images/unreviewed.docker.tar.gz"',
+        "Apple exact offline archive path",
+    ),
+    Mutation(
         "dockerfile",
-        "This is an acquisition recipe only",
-        "This is an unreviewed acquisition recipe",
+        "This is an acquisition recipe, never a verdict-time fallback.",
+        "This is an unreviewed acquisition recipe.",
         "Apple acquisition-recipe content pin",
     ),
     Mutation("verify", "/usr/bin/python3 -I -S scripts/verify-apple-verifier-authority.py --repo . --self-test",
@@ -553,9 +822,22 @@ MUTATIONS: Tuple[Mutation, ...] = (
              '<span class="id">R-S11ci-disabled</span>', "R-S11ci requirement"),
     Mutation("requirements", "<tr><td>228</td>", "<tr><td>228-disabled</td>",
              "Appendix C #228 disposition"),
+    Mutation(
+        "requirements",
+        "This closes the independently archived and provenance-verified "
+        "Apple checker-image input;",
+        "The Apple checker-image input remains open;",
+        "Apple image-provenance requirement disposition",
+    ),
     Mutation("hardening", "R-S11ci/R-S11e-101 — Apple conformance verifier authority",
              "R-S11ci/R-S11e-101 — Apple ambient verifier authority",
              "hardening-ledger disposition"),
+    Mutation(
+        "hardening",
+        "`9f675754d52962952a2bfc1d74e98d1a37b1b0d220e670780dca78f653d8a7cc`",
+        "`8f675754d52962952a2bfc1d74e98d1a37b1b0d220e670780dca78f653d8a7cc`",
+        "Apple canonical archive ledger evidence",
+    ),
 )
 
 
@@ -564,6 +846,10 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         "apple": (repo / "scripts/apple-conform-check.sh").read_text(encoding="utf-8"),
         "dockerfile": (repo / "scripts/Dockerfile.apple-check").read_text(encoding="utf-8"),
         "pins": (repo / "scripts/pins.env").read_text(encoding="utf-8"),
+        "offline_provenance": (
+            repo / "scripts/offline-image-provenance.py"
+        ).read_text(encoding="utf-8"),
+        "online_fetch": (repo / "scripts/online-fetch.sh").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),

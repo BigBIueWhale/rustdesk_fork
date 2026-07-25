@@ -1,17 +1,283 @@
-# scripts/Dockerfile.apple-check — image for the R-R2 apple SOURCE-conformance cross-check.
+# scripts/Dockerfile.apple-check — authenticated Rust 1.81 image for the
+# R-R2 Apple source-conformance cross-check.
 #
-# Extends the Linux devcheck image (scripts/Dockerfile.devcheck — the apt deps + the
-# libsodium pkg-config wiring the apple build scripts also need on the host side) with the
-# macOS-pinned Rust 1.81 (R-B5a: "Rust 1.75 (macOS 1.81)") and the three apple std targets
-# the spec's gate names. This is an acquisition recipe only: the gate itself
-# accepts one separately reviewed local image content ID and never builds,
-# pulls, tags, or resolves this recipe's mutable name.
-#
-# NB: this produces NO Apple artifact (R-R2 — Apple is off the build matrix). It supports
-# SDK-free cross-checks only to the documented Apple SDK/header boundary; complete native
-# type-checking still requires an independently controlled Apple SDK/build host.
-FROM rd-devcheck
+# This is an acquisition recipe, never a verdict-time fallback. The base is the
+# exact independently archived devcheck image. Rust's exact signed 1.81 channel
+# manifest authenticates the six host/Apple component archives; acquisition and
+# installation are separate, and every project-owned RUN is numeric non-root.
+# Acquisition must use the image exporter with rewrite-timestamp=true and the
+# fixed SOURCE_DATE_EPOCH below. That makes the runtime manifest reproducible;
+# max provenance intentionally retains BuildKit's per-invocation metadata.
+ARG DEV_CHECK_IMAGE_REF=rd-devcheck@sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c
+ARG DEV_CHECK_IMAGE_ID=sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c
+ARG DEV_CHECK_IMAGE_MANIFEST_ID=sha256:93864e168e6c5f4e6b3afc9be219f7bb688701a460e13855dd793834b2a8c3a5
+ARG SOURCE_DATE_EPOCH=1725550767
+ARG RUST_RELEASE_VERSION=1.81.0
+ARG RUST_RELEASE_DATE=2024-09-05
+ARG RUST_RELEASE_SIGNING_FINGERPRINT=108F66205EAEB0AAA8DD5E1C85AB96E6FA1BE5FE
+ARG RUST_RELEASE_PUBLIC_KEY_SHA256=e54b09a439647e006b4831eec9785cbaaf3e07ab371c3a6ee6a68e1bdb9fbc6b
+ARG RUST_RELEASE_MANIFEST_SHA256=5596679723faf7e63772bacb1d0c898abaa51eb4ed193b328929d907c8c4bd5a
+ARG RUST_RELEASE_MANIFEST_SIGNATURE_SHA256=6b7afa73d126bdf675d0f277d3d5b4edefeb768c5f59bf93b965699be2532e8d
+ARG RUSTC_HOST_SHA256=988a4e4cdecebe4f4a0c52ec4ade5a5bfc58d6958969f5b1e8aac033bda2613e
+ARG CARGO_HOST_SHA256=c50ee4b1ae8695461930e36d5465dddb7c7a0e0f0aa6cbd60de120b17c38b841
+ARG RUST_STD_HOST_SHA256=6ddf80f254e8eea9956308ba89fd68e1ac7885853df9239b07bbc9f047b7562f
+ARG RUST_STD_AARCH64_DARWIN_SHA256=2dba5210a79617a9240570c1f7fcc24912a2c96689a3159324727e5a516c6326
+ARG RUST_STD_X86_64_DARWIN_SHA256=8319664a0b39ac47d9b52fce0f45bc9c37b06669ab4f1204a709fb0f2a5a03c3
+ARG RUST_STD_AARCH64_IOS_SHA256=796b9bef73b08dfd5a9ab864850ad751205d9b3610bab54e26bbaab642307665
+FROM ${DEV_CHECK_IMAGE_REF} AS builder
 
-RUN rustup toolchain install 1.81.0 --profile minimal \
- && rustup target add --toolchain 1.81.0 \
-      aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios
+ARG DEV_CHECK_IMAGE_REF
+ARG DEV_CHECK_IMAGE_ID
+ARG DEV_CHECK_IMAGE_MANIFEST_ID
+ARG SOURCE_DATE_EPOCH
+ARG APPLE_CHECK_DOCKERFILE_SHA256
+ARG APPLE_TOOLCHAIN_RELEASE_HELPER_SHA256
+ARG APPLE_TOOLCHAIN_PROVENANCE_HELPER_SHA256
+ARG RUST_RELEASE_VERSION
+ARG RUST_RELEASE_DATE
+ARG RUST_RELEASE_SIGNING_FINGERPRINT
+ARG RUST_RELEASE_PUBLIC_KEY_SHA256
+ARG RUST_RELEASE_MANIFEST_SHA256
+ARG RUST_RELEASE_MANIFEST_SIGNATURE_SHA256
+ARG RUSTC_HOST_SHA256
+ARG CARGO_HOST_SHA256
+ARG RUST_STD_HOST_SHA256
+ARG RUST_STD_AARCH64_DARWIN_SHA256
+ARG RUST_STD_X86_64_DARWIN_SHA256
+ARG RUST_STD_AARCH64_IOS_SHA256
+ARG APPLE_TOOLCHAIN_TREE_SHA256
+ARG APPLE_TOOLCHAIN_FILES
+ARG APPLE_TOOLCHAIN_DIRECTORIES
+ARG APPLE_TOOLCHAIN_CONTENT_BYTES
+
+COPY --chown=1000:1000 --chmod=0555 apple-toolchain-release.py \
+    /usr/local/libexec/apple-toolchain-release.py
+COPY --chown=1000:1000 --chmod=0555 apple-toolchain-provenance.py \
+    /usr/local/libexec/apple-toolchain-provenance.py
+
+USER 1000:1000
+SHELL ["/bin/bash", "--noprofile", "--norc", "-euo", "pipefail", "-c"]
+
+ENV APPLE_BUILD_ROOT=/var/tmp/rustdesk-apple-toolchain-build \
+    APPLE_TOOLCHAIN=/usr/local/rustup/toolchains/1.81.0-x86_64-unknown-linux-gnu \
+    HOME=/var/tmp/rustdesk-apple-toolchain-build/home \
+    RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo
+
+# Acquire only the exact key, signed versioned manifest, and six manifest-named
+# component archives. The channel manifest is the publisher-authenticated root;
+# each component is then checked against the SHA-256 recorded in that manifest.
+RUN --network=default \
+    [ "$(id -u)" = 1000 ] \
+    && [ "$(id -g)" = 1000 ] \
+    && [ -n "${DEV_CHECK_IMAGE_REF}" ] \
+    && [ -n "${DEV_CHECK_IMAGE_ID}" ] \
+    && [ -n "${DEV_CHECK_IMAGE_MANIFEST_ID}" ] \
+    && [ -n "${SOURCE_DATE_EPOCH}" ] \
+    && [ -n "${APPLE_CHECK_DOCKERFILE_SHA256}" ] \
+    && [ "$(sha256sum /usr/local/libexec/apple-toolchain-release.py | cut -d' ' -f1)" \
+        = "${APPLE_TOOLCHAIN_RELEASE_HELPER_SHA256}" ] \
+    && [ "$(sha256sum /usr/local/libexec/apple-toolchain-provenance.py | cut -d' ' -f1)" \
+        = "${APPLE_TOOLCHAIN_PROVENANCE_HELPER_SHA256}" ] \
+    && [ ! -e "${APPLE_TOOLCHAIN}" ] \
+    && umask 022 \
+    && mkdir -p "${APPLE_BUILD_ROOT}/downloads" "${APPLE_BUILD_ROOT}/gnupg" "${HOME}" \
+    && chmod 0700 "${APPLE_BUILD_ROOT}" "${APPLE_BUILD_ROOT}/gnupg" "${HOME}" \
+    && curl_flags=( \
+        --fail --silent --show-error --proto '=https' --tlsv1.2 \
+        --connect-timeout 20 --max-time 600 \
+    ) \
+    && curl "${curl_flags[@]}" \
+        https://static.rust-lang.org/rust-key.gpg.ascii \
+        --output "${APPLE_BUILD_ROOT}/downloads/rust-key.gpg.ascii" \
+    && curl "${curl_flags[@]}" \
+        "https://static.rust-lang.org/dist/channel-rust-${RUST_RELEASE_VERSION}.toml" \
+        --output "${APPLE_BUILD_ROOT}/downloads/channel.toml" \
+    && curl "${curl_flags[@]}" \
+        "https://static.rust-lang.org/dist/channel-rust-${RUST_RELEASE_VERSION}.toml.asc" \
+        --output "${APPLE_BUILD_ROOT}/downloads/channel.toml.asc" \
+    && printf '%s  %s\n' \
+        "${RUST_RELEASE_PUBLIC_KEY_SHA256}" \
+        "${APPLE_BUILD_ROOT}/downloads/rust-key.gpg.ascii" \
+        "${RUST_RELEASE_MANIFEST_SHA256}" \
+        "${APPLE_BUILD_ROOT}/downloads/channel.toml" \
+        "${RUST_RELEASE_MANIFEST_SIGNATURE_SHA256}" \
+        "${APPLE_BUILD_ROOT}/downloads/channel.toml.asc" \
+        | sha256sum --check --strict --status - \
+    && gpg --batch --homedir "${APPLE_BUILD_ROOT}/gnupg" \
+        --import "${APPLE_BUILD_ROOT}/downloads/rust-key.gpg.ascii" \
+        >/dev/null 2>&1 \
+    && fingerprint="$(gpg --batch --homedir "${APPLE_BUILD_ROOT}/gnupg" \
+        --with-colons --fingerprint rust-key@rust-lang.org \
+        | awk -F: '$1 == "fpr" { print $10; exit }')" \
+    && [ "${fingerprint}" = "${RUST_RELEASE_SIGNING_FINGERPRINT}" ] \
+    && gpg --batch --homedir "${APPLE_BUILD_ROOT}/gnupg" \
+        --verify \
+        "${APPLE_BUILD_ROOT}/downloads/channel.toml.asc" \
+        "${APPLE_BUILD_ROOT}/downloads/channel.toml" \
+        >/dev/null 2>&1 \
+    && python3 /usr/local/libexec/apple-toolchain-release.py manifest \
+        --path "${APPLE_BUILD_ROOT}/downloads/channel.toml" \
+        --rustc-host-sha256 "${RUSTC_HOST_SHA256}" \
+        --cargo-host-sha256 "${CARGO_HOST_SHA256}" \
+        --rust-std-host-sha256 "${RUST_STD_HOST_SHA256}" \
+        --rust-std-aarch64-darwin-sha256 "${RUST_STD_AARCH64_DARWIN_SHA256}" \
+        --rust-std-x86-64-darwin-sha256 "${RUST_STD_X86_64_DARWIN_SHA256}" \
+        --rust-std-aarch64-ios-sha256 "${RUST_STD_AARCH64_IOS_SHA256}" \
+        > "${APPLE_BUILD_ROOT}/downloads/components.tsv" \
+    && [ "$(wc -l < "${APPLE_BUILD_ROOT}/downloads/components.tsv")" = 6 ] \
+    && while IFS=$'\t' read -r output expected_hash url; do \
+        [ -n "${output}" ] \
+        && [ -n "${expected_hash}" ] \
+        && [ -n "${url}" ] \
+        && curl "${curl_flags[@]}" "${url}" \
+            --output "${APPLE_BUILD_ROOT}/downloads/${output}.tar.xz" \
+        && printf '%s  %s\n' \
+            "${expected_hash}" "${APPLE_BUILD_ROOT}/downloads/${output}.tar.xz" \
+            | sha256sum --check --strict --status -; \
+    done < "${APPLE_BUILD_ROOT}/downloads/components.tsv" \
+    && [ "$(find "${APPLE_BUILD_ROOT}/downloads" -mindepth 1 -maxdepth 1 \
+        -type f -name '*.tar.xz' -printf '.' | wc -c)" = 6 ] \
+    && find "${APPLE_BUILD_ROOT}/downloads" -mindepth 1 -maxdepth 1 \
+        -type f -exec chmod a-w {} +
+
+# Parse and install the already-authenticated components without networking.
+# Extraction is limited to ordinary files/directories below one archive root;
+# the signed publisher installer then writes only the fresh toolchain prefix.
+RUN --network=none \
+    [ "$(id -u)" = 1000 ] \
+    && [ "$(id -g)" = 1000 ] \
+    && [ ! -e "${APPLE_TOOLCHAIN}" ] \
+    && umask 022 \
+    && mkdir -p "${APPLE_BUILD_ROOT}/extract" \
+    && install_component() { \
+        local name="$1" archive="${APPLE_BUILD_ROOT}/downloads/$1.tar.xz"; \
+        local destination="${APPLE_BUILD_ROOT}/extract/$1"; \
+        mkdir "${destination}"; \
+        python3 /usr/local/libexec/apple-toolchain-release.py archive \
+            --path "${archive}" >/dev/null; \
+        tar --extract --xz --file="${archive}" --directory="${destination}" \
+            --no-same-owner --no-same-permissions; \
+        mapfile -t roots < <( \
+            find "${destination}" -mindepth 1 -maxdepth 1 -type d -print \
+        ); \
+        [ "${#roots[@]}" = 1 ]; \
+        "${roots[0]}/install.sh" \
+            --prefix="${APPLE_TOOLCHAIN}" --disable-ldconfig >/dev/null; \
+    } \
+    && install_component rustc-host \
+    && install_component cargo-host \
+    && install_component std-host \
+    && install_component std-aarch64-darwin \
+    && install_component std-x86_64-darwin \
+    && install_component std-aarch64-ios \
+    && description="$(python3 /usr/local/libexec/apple-toolchain-provenance.py \
+        --root "${APPLE_TOOLCHAIN}" --owner 1000 --group 1000)" \
+    && printf '%s\n' "${description}" \
+    && [ "${description}" = \
+        "{\"content_bytes\":${APPLE_TOOLCHAIN_CONTENT_BYTES},\"contract\":\"rustdesk-apple-toolchain-tree-v1\",\"directories\":${APPLE_TOOLCHAIN_DIRECTORIES},\"files\":${APPLE_TOOLCHAIN_FILES},\"sha256\":\"${APPLE_TOOLCHAIN_TREE_SHA256}\"}" ] \
+    && rm -rf "${APPLE_BUILD_ROOT}"
+
+FROM ${DEV_CHECK_IMAGE_REF} AS runtime
+
+ARG DEV_CHECK_IMAGE_REF
+ARG DEV_CHECK_IMAGE_ID
+ARG DEV_CHECK_IMAGE_MANIFEST_ID
+ARG SOURCE_DATE_EPOCH
+ARG APPLE_CHECK_DOCKERFILE_SHA256
+ARG APPLE_TOOLCHAIN_RELEASE_HELPER_SHA256
+ARG APPLE_TOOLCHAIN_PROVENANCE_HELPER_SHA256
+ARG RUST_RELEASE_VERSION
+ARG RUST_RELEASE_DATE
+ARG RUST_RELEASE_SIGNING_FINGERPRINT
+ARG RUST_RELEASE_PUBLIC_KEY_SHA256
+ARG RUST_RELEASE_MANIFEST_SHA256
+ARG RUST_RELEASE_MANIFEST_SIGNATURE_SHA256
+ARG RUSTC_HOST_SHA256
+ARG CARGO_HOST_SHA256
+ARG RUST_STD_HOST_SHA256
+ARG RUST_STD_AARCH64_DARWIN_SHA256
+ARG RUST_STD_X86_64_DARWIN_SHA256
+ARG RUST_STD_AARCH64_IOS_SHA256
+ARG APPLE_TOOLCHAIN_TREE_SHA256
+ARG APPLE_TOOLCHAIN_FILES
+ARG APPLE_TOOLCHAIN_DIRECTORIES
+ARG APPLE_TOOLCHAIN_CONTENT_BYTES
+
+COPY --chown=1000:1000 --chmod=0555 apple-toolchain-release.py \
+    /usr/local/libexec/apple-toolchain-release.py
+COPY --chown=1000:1000 --chmod=0555 apple-toolchain-provenance.py \
+    /usr/local/libexec/apple-toolchain-provenance.py
+COPY --from=builder --chown=1000:1000 \
+    /usr/local/rustup/toolchains/1.81.0-x86_64-unknown-linux-gnu \
+    /usr/local/rustup/toolchains/1.81.0-x86_64-unknown-linux-gnu
+
+USER 1000:1000
+SHELL ["/bin/bash", "--noprofile", "--norc", "-euo", "pipefail", "-c"]
+
+ENV RUSTUP_HOME=/usr/local/rustup \
+    CARGO_HOME=/usr/local/cargo \
+    RUST_VERSION=1.81.0 \
+    HOME=/tmp \
+    PATH=/usr/local/rustup/toolchains/1.81.0-x86_64-unknown-linux-gnu/bin:/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+RUN --network=none \
+    [ "$(id -u)" = 1000 ] \
+    && [ "$(id -g)" = 1000 ] \
+    && [ "$(sha256sum /usr/local/libexec/apple-toolchain-release.py | cut -d' ' -f1)" \
+        = "${APPLE_TOOLCHAIN_RELEASE_HELPER_SHA256}" ] \
+    && [ "$(sha256sum /usr/local/libexec/apple-toolchain-provenance.py | cut -d' ' -f1)" \
+        = "${APPLE_TOOLCHAIN_PROVENANCE_HELPER_SHA256}" ] \
+    && toolchain_bin="${RUSTUP_HOME}/toolchains/1.81.0-x86_64-unknown-linux-gnu/bin" \
+    && [ "$(command -v rustc)" = "${toolchain_bin}/rustc" ] \
+    && [ "$(command -v cargo)" = "${toolchain_bin}/cargo" ] \
+    && [ "$(rustc --version)" = \
+        'rustc 1.81.0 (eeb90cda1 2024-09-04)' ] \
+    && [ "$(cargo --version)" = \
+        'cargo 1.81.0 (2dbb1af80 2024-08-20)' ] \
+    && cargo_path="${toolchain_bin}/cargo" \
+    && rustc_path="${toolchain_bin}/rustc" \
+    && [ "$(sha256sum "${cargo_path}" | cut -d' ' -f1)" = \
+        '0e654dccd3501e5feb68aa570e5f780d5f7921c820e558ac5d3ef60016b5c0a7' ] \
+    && [ "$(sha256sum "${rustc_path}" | cut -d' ' -f1)" = \
+        '91f9ba0819d622cbb0f4f3298580d939173eb3258d95f7755b301a394eeb2ae0' ] \
+    && [ "$(find "${RUSTUP_HOME}/toolchains/1.81.0-x86_64-unknown-linux-gnu/lib/rustlib" \
+        -mindepth 2 -maxdepth 2 -type d -name lib -printf '%h\n' \
+        | sed 's#^.*/rustlib/##' | LC_ALL=C sort)" = \
+        $'aarch64-apple-darwin\naarch64-apple-ios\nx86_64-apple-darwin\nx86_64-unknown-linux-gnu' ] \
+    && python3 /usr/local/libexec/apple-toolchain-provenance.py \
+        --root "${RUSTUP_HOME}/toolchains/1.81.0-x86_64-unknown-linux-gnu" \
+        --owner 1000 --group 1000 \
+        --sha256 "${APPLE_TOOLCHAIN_TREE_SHA256}" \
+        --files "${APPLE_TOOLCHAIN_FILES}" \
+        --directories "${APPLE_TOOLCHAIN_DIRECTORIES}" \
+        --content-bytes "${APPLE_TOOLCHAIN_CONTENT_BYTES}" \
+    && [ "$(dpkg-query -W \
+        | LC_ALL=C sort | sha256sum | cut -d' ' -f1)" = \
+        '6aef89cdf99e9f69ae645354c4ca3f7229d0a5adfa3f97f6d9fa47e3d2317c5b' ]
+
+LABEL org.rustdesk.apple-check.contract="rustdesk-apple-check-image-v1" \
+      org.rustdesk.apple-check.base-reference="${DEV_CHECK_IMAGE_REF}" \
+      org.rustdesk.apple-check.base-index="${DEV_CHECK_IMAGE_ID}" \
+      org.rustdesk.apple-check.base-manifest="${DEV_CHECK_IMAGE_MANIFEST_ID}" \
+      org.rustdesk.apple-check.dockerfile-sha256="${APPLE_CHECK_DOCKERFILE_SHA256}" \
+      org.rustdesk.apple-check.source-date-epoch="${SOURCE_DATE_EPOCH}" \
+      org.rustdesk.apple-check.release-helper-sha256="${APPLE_TOOLCHAIN_RELEASE_HELPER_SHA256}" \
+      org.rustdesk.apple-check.provenance-helper-sha256="${APPLE_TOOLCHAIN_PROVENANCE_HELPER_SHA256}" \
+      org.rustdesk.apple-check.rust="${RUST_RELEASE_VERSION}" \
+      org.rustdesk.apple-check.release-date="${RUST_RELEASE_DATE}" \
+      org.rustdesk.apple-check.signing-fingerprint="${RUST_RELEASE_SIGNING_FINGERPRINT}" \
+      org.rustdesk.apple-check.release-public-key-sha256="${RUST_RELEASE_PUBLIC_KEY_SHA256}" \
+      org.rustdesk.apple-check.manifest-sha256="${RUST_RELEASE_MANIFEST_SHA256}" \
+      org.rustdesk.apple-check.manifest-signature-sha256="${RUST_RELEASE_MANIFEST_SIGNATURE_SHA256}" \
+      org.rustdesk.apple-check.rustc-host-sha256="${RUSTC_HOST_SHA256}" \
+      org.rustdesk.apple-check.cargo-host-sha256="${CARGO_HOST_SHA256}" \
+      org.rustdesk.apple-check.rust-std-host-sha256="${RUST_STD_HOST_SHA256}" \
+      org.rustdesk.apple-check.rust-std-aarch64-darwin-sha256="${RUST_STD_AARCH64_DARWIN_SHA256}" \
+      org.rustdesk.apple-check.rust-std-x86-64-darwin-sha256="${RUST_STD_X86_64_DARWIN_SHA256}" \
+      org.rustdesk.apple-check.rust-std-aarch64-ios-sha256="${RUST_STD_AARCH64_IOS_SHA256}" \
+      org.rustdesk.apple-check.toolchain-tree-sha256="${APPLE_TOOLCHAIN_TREE_SHA256}" \
+      org.rustdesk.apple-check.toolchain-files="${APPLE_TOOLCHAIN_FILES}" \
+      org.rustdesk.apple-check.toolchain-directories="${APPLE_TOOLCHAIN_DIRECTORIES}" \
+      org.rustdesk.apple-check.toolchain-content-bytes="${APPLE_TOOLCHAIN_CONTENT_BYTES}" \
+      org.rustdesk.apple-check.run-user="1000:1000"

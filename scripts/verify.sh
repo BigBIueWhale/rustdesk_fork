@@ -239,7 +239,7 @@ if [ -n "$r_s11ci" ]; then
   echo "  FAIL R-S11ci Apple conformance verifier authority:$r_s11ci"
   rc=1
 else
-  echo "  ok  R-S11ci exact Apple image + fixed three-target matrix + private source/vendor/output state + non-root/offline/no-pull/read-only-root/capability-free/resource-bounded execution"
+  echo "  ok  R-S11ci authenticated archived Apple image/provenance + reproducible runtime manifest + fixed three-target matrix + private source/vendor/output state + non-root/offline/no-pull/read-only-root/capability-free/resource-bounded execution"
 fi
 
 echo "== (0h) online acquisition container execution authority (R-S11cj/R-S11e-102) =="

@@ -43,6 +43,21 @@ DART_AUDIT_ENV = [
     "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
     "OSV_SCANNER_LOCAL_DB_CACHE_DIRECTORY=/opt/osv-db",
 ]
+APPLE_CHECK_LABEL_PREFIX = "org.rustdesk.apple-check."
+APPLE_TOOLCHAIN_ROOT = (
+    "/usr/local/rustup/toolchains/1.81.0-x86_64-unknown-linux-gnu"
+)
+APPLE_CHECK_ENV = [
+    (
+        f"PATH={APPLE_TOOLCHAIN_ROOT}/bin:/usr/local/cargo/bin:"
+        "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    ),
+    "RUSTUP_HOME=/usr/local/rustup",
+    "CARGO_HOME=/usr/local/cargo",
+    "RUST_VERSION=1.81.0",
+    "SODIUM_USE_PKG_CONFIG=1",
+    "HOME=/tmp",
+]
 DART_AUDIT_VALIDATION_COMMAND = (
     "set -eu;     printf '%s  %s\\n' \"${OSV_SCANNER_SHA256}\" "
     "/inputs/osv-scanner       | sha256sum --check --strict --status -;     "
@@ -167,6 +182,126 @@ class VerifierSpec:
     @property
     def root_annotations(self) -> dict[str, str]:
         return {"containerd.io/distribution.source.docker.io": "library/rd-devcheck"}
+
+
+@dataclass(frozen=True)
+class AppleCheckSpec:
+    role: str
+    image_id: str
+    base: str
+    base_manifest_id: str
+    dockerfile_sha256: str
+    source_date_epoch: int
+    release_helper_sha256: str
+    provenance_helper_sha256: str
+    rust_version: str
+    release_date: str
+    signing_fingerprint: str
+    release_public_key_sha256: str
+    release_manifest_sha256: str
+    release_manifest_signature_sha256: str
+    rustc_host_sha256: str
+    cargo_host_sha256: str
+    rust_std_host_sha256: str
+    rust_std_aarch64_darwin_sha256: str
+    rust_std_x86_64_darwin_sha256: str
+    rust_std_aarch64_ios_sha256: str
+    cargo_sha256: str
+    rustc_sha256: str
+    dpkg_sha256: str
+    toolchain_tree_sha256: str
+    toolchain_files: int
+    toolchain_directories: int
+    toolchain_content_bytes: int
+    config_id: str
+    manifest_id: str
+
+    @property
+    def base_image_id(self) -> str:
+        return self.base.rsplit("@", 1)[1]
+
+    @property
+    def archive_tags(self) -> None:
+        return None
+
+    @property
+    def root_annotations(self) -> None:
+        return None
+
+    @property
+    def labels(self) -> dict[str, str]:
+        return {
+            APPLE_CHECK_LABEL_PREFIX + "contract": (
+                "rustdesk-apple-check-image-v1"
+            ),
+            APPLE_CHECK_LABEL_PREFIX + "base-reference": self.base,
+            APPLE_CHECK_LABEL_PREFIX + "base-index": self.base_image_id,
+            APPLE_CHECK_LABEL_PREFIX + "base-manifest": self.base_manifest_id,
+            APPLE_CHECK_LABEL_PREFIX
+            + "dockerfile-sha256": self.dockerfile_sha256,
+            APPLE_CHECK_LABEL_PREFIX
+            + "source-date-epoch": str(self.source_date_epoch),
+            APPLE_CHECK_LABEL_PREFIX
+            + "release-helper-sha256": self.release_helper_sha256,
+            APPLE_CHECK_LABEL_PREFIX
+            + "provenance-helper-sha256": self.provenance_helper_sha256,
+            APPLE_CHECK_LABEL_PREFIX + "rust": self.rust_version,
+            APPLE_CHECK_LABEL_PREFIX + "release-date": self.release_date,
+            APPLE_CHECK_LABEL_PREFIX
+            + "signing-fingerprint": self.signing_fingerprint,
+            APPLE_CHECK_LABEL_PREFIX
+            + "release-public-key-sha256": self.release_public_key_sha256,
+            APPLE_CHECK_LABEL_PREFIX
+            + "manifest-sha256": self.release_manifest_sha256,
+            APPLE_CHECK_LABEL_PREFIX
+            + "manifest-signature-sha256": (
+                self.release_manifest_signature_sha256
+            ),
+            APPLE_CHECK_LABEL_PREFIX
+            + "rustc-host-sha256": self.rustc_host_sha256,
+            APPLE_CHECK_LABEL_PREFIX
+            + "cargo-host-sha256": self.cargo_host_sha256,
+            APPLE_CHECK_LABEL_PREFIX
+            + "rust-std-host-sha256": self.rust_std_host_sha256,
+            APPLE_CHECK_LABEL_PREFIX
+            + "rust-std-aarch64-darwin-sha256": (
+                self.rust_std_aarch64_darwin_sha256
+            ),
+            APPLE_CHECK_LABEL_PREFIX
+            + "rust-std-x86-64-darwin-sha256": (
+                self.rust_std_x86_64_darwin_sha256
+            ),
+            APPLE_CHECK_LABEL_PREFIX
+            + "rust-std-aarch64-ios-sha256": (
+                self.rust_std_aarch64_ios_sha256
+            ),
+            APPLE_CHECK_LABEL_PREFIX
+            + "toolchain-tree-sha256": self.toolchain_tree_sha256,
+            APPLE_CHECK_LABEL_PREFIX
+            + "toolchain-files": str(self.toolchain_files),
+            APPLE_CHECK_LABEL_PREFIX
+            + "toolchain-directories": str(self.toolchain_directories),
+            APPLE_CHECK_LABEL_PREFIX
+            + "toolchain-content-bytes": str(self.toolchain_content_bytes),
+            APPLE_CHECK_LABEL_PREFIX + "run-user": "1000:1000",
+        }
+
+    @property
+    def runtime_config(self) -> dict[str, object]:
+        return {
+            "User": "1000:1000",
+            "Env": APPLE_CHECK_ENV,
+            "Cmd": ["bash"],
+            "Labels": self.labels,
+            "Shell": [
+                "/bin/bash",
+                "--noprofile",
+                "--norc",
+                "-euo",
+                "pipefail",
+                "-c",
+            ],
+        }
 
 
 @dataclass(frozen=True)
@@ -306,7 +441,13 @@ class RustAuditSpec:
         }
 
 
-ImageSpec = Union[Spec, VerifierSpec, DartAuditSpec, RustAuditSpec]
+ImageSpec = Union[
+    Spec,
+    VerifierSpec,
+    AppleCheckSpec,
+    DartAuditSpec,
+    RustAuditSpec,
+]
 
 
 def fail(message: str) -> None:
@@ -326,6 +467,117 @@ def require_image_id(value: str, label: str) -> str:
 
 
 def spec_from_args(args: argparse.Namespace) -> ImageSpec:
+    if args.role == "apple-check":
+        if not re.fullmatch(
+            r"rd-devcheck@sha256:[0-9a-f]{64}",
+            args.base,
+        ):
+            fail("Apple check base image identity is malformed or unsupported")
+        if args.rust_version != "1.81.0":
+            fail("Apple check Rust release version is unsupported")
+        if args.release_date != "2024-09-05":
+            fail("Apple check Rust release date is unsupported")
+        if args.signing_fingerprint != (
+            "108F66205EAEB0AAA8DD5E1C85AB96E6FA1BE5FE"
+        ):
+            fail("Apple check Rust signing fingerprint is unsupported")
+        if args.source_date_epoch != 1725550767:
+            fail("Apple check source-date epoch is unsupported")
+        for value, label in (
+            (args.toolchain_files, "toolchain file count"),
+            (args.toolchain_directories, "toolchain directory count"),
+            (args.toolchain_content_bytes, "toolchain content size"),
+        ):
+            if value is None or value <= 0:
+                fail(f"Apple check {label} must be positive")
+        return AppleCheckSpec(
+            role=args.role,
+            image_id=require_image_id(args.expected_id, "expected image ID"),
+            base=args.base,
+            base_manifest_id=require_image_id(
+                args.base_manifest_id or "",
+                "Apple check base manifest ID",
+            ),
+            dockerfile_sha256=require_sha(
+                args.dockerfile_sha,
+                "Dockerfile SHA-256",
+            ),
+            source_date_epoch=args.source_date_epoch,
+            release_helper_sha256=require_sha(
+                args.release_helper_sha or "",
+                "Apple release helper SHA-256",
+            ),
+            provenance_helper_sha256=require_sha(
+                args.provenance_helper_sha or "",
+                "Apple provenance helper SHA-256",
+            ),
+            rust_version=args.rust_version,
+            release_date=args.release_date,
+            signing_fingerprint=args.signing_fingerprint,
+            release_public_key_sha256=require_sha(
+                args.release_public_key_sha or "",
+                "Rust release public key SHA-256",
+            ),
+            release_manifest_sha256=require_sha(
+                args.release_manifest_sha or "",
+                "Rust release manifest SHA-256",
+            ),
+            release_manifest_signature_sha256=require_sha(
+                args.release_manifest_signature_sha or "",
+                "Rust release manifest signature SHA-256",
+            ),
+            rustc_host_sha256=require_sha(
+                args.rustc_host_sha or "",
+                "Rust host compiler component SHA-256",
+            ),
+            cargo_host_sha256=require_sha(
+                args.cargo_host_sha or "",
+                "Rust host Cargo component SHA-256",
+            ),
+            rust_std_host_sha256=require_sha(
+                args.rust_std_host_sha or "",
+                "Rust host standard-library component SHA-256",
+            ),
+            rust_std_aarch64_darwin_sha256=require_sha(
+                args.rust_std_aarch64_darwin_sha or "",
+                "Rust aarch64 macOS standard-library component SHA-256",
+            ),
+            rust_std_x86_64_darwin_sha256=require_sha(
+                args.rust_std_x86_64_darwin_sha or "",
+                "Rust x86_64 macOS standard-library component SHA-256",
+            ),
+            rust_std_aarch64_ios_sha256=require_sha(
+                args.rust_std_aarch64_ios_sha or "",
+                "Rust aarch64 iOS standard-library component SHA-256",
+            ),
+            cargo_sha256=require_sha(
+                args.cargo_sha or "",
+                "Apple check Cargo SHA-256",
+            ),
+            rustc_sha256=require_sha(
+                args.rustc_sha or "",
+                "Apple check rustc SHA-256",
+            ),
+            dpkg_sha256=require_sha(
+                args.dpkg_sha or "",
+                "Apple check dpkg manifest SHA-256",
+            ),
+            toolchain_tree_sha256=require_sha(
+                args.toolchain_tree_sha or "",
+                "Apple toolchain tree SHA-256",
+            ),
+            toolchain_files=args.toolchain_files,
+            toolchain_directories=args.toolchain_directories,
+            toolchain_content_bytes=args.toolchain_content_bytes,
+            config_id=require_image_id(
+                args.config_id or "",
+                "Apple check config ID",
+            ),
+            manifest_id=require_image_id(
+                args.manifest_id or "",
+                "Apple check manifest ID",
+            ),
+        )
     if args.role == "rust-audit":
         if not re.fullmatch(
             r"rust:1[.]88-bookworm@sha256:[0-9a-f]{64}",
@@ -533,6 +785,12 @@ def validate_inspect(payload: dict[str, object], image_ref: str, spec: ImageSpec
     config = payload.get("Config")
     if not isinstance(config, dict):
         fail("image inspect Config is absent or malformed")
+    if isinstance(spec, AppleCheckSpec):
+        if payload.get("Os") != "linux" or payload.get("Architecture") != "amd64":
+            fail("Apple check image platform must be exactly linux/amd64")
+        if config != spec.runtime_config:
+            fail("Apple check image runtime config differs from the reviewed contract")
+        return
     if isinstance(spec, RustAuditSpec):
         if payload.get("Os") != "linux" or payload.get("Architecture") != "amd64":
             fail("Rust audit image platform must be exactly linux/amd64")
@@ -600,6 +858,92 @@ def verify_local(image_ref: str, spec: ImageSpec) -> None:
     if os.getuid() == 0 or os.getgid() == 0:
         fail("local image provenance verification refuses root execution")
     validate_inspect(inspect_image(image_ref), image_ref, spec)
+    if isinstance(spec, AppleCheckSpec):
+        command = (
+            "set -euo pipefail; "
+            "[ \"$(id -u)\" = 1000 ] && [ \"$(id -g)\" = 1000 ]; "
+            f"toolchain={APPLE_TOOLCHAIN_ROOT}; "
+            "[ \"$(command -v cargo)\" = \"$toolchain/bin/cargo\" ]; "
+            "[ \"$(command -v rustc)\" = \"$toolchain/bin/rustc\" ]; "
+            "printf 'cargo-path=%s\\n' \"$(command -v cargo)\"; "
+            "printf 'rustc-path=%s\\n' \"$(command -v rustc)\"; "
+            "printf 'cargo=%s\\n' \"$(cargo --version)\"; "
+            "printf 'rustc=%s\\n' \"$(rustc --version)\"; "
+            "printf 'cargo-sha=%s\\n' "
+            "\"$(sha256sum \"$toolchain/bin/cargo\" | cut -d' ' -f1)\"; "
+            "printf 'rustc-sha=%s\\n' "
+            "\"$(sha256sum \"$toolchain/bin/rustc\" | cut -d' ' -f1)\"; "
+            "printf 'release-helper-sha=%s\\n' "
+            "\"$(sha256sum /usr/local/libexec/apple-toolchain-release.py "
+            "| cut -d' ' -f1)\"; "
+            "printf 'provenance-helper-sha=%s\\n' "
+            "\"$(sha256sum /usr/local/libexec/apple-toolchain-provenance.py "
+            "| cut -d' ' -f1)\"; "
+            "printf 'dpkg-sha=%s\\n' "
+            "\"$(dpkg-query -W | LC_ALL=C sort | sha256sum | cut -d' ' -f1)\"; "
+            "printf 'targets=%s\\n' "
+            "\"$(find \"$toolchain/lib/rustlib\" -mindepth 2 -maxdepth 2 "
+            "-type d -name lib -printf '%h\\n' "
+            "| sed 's#^.*/rustlib/##' | LC_ALL=C sort | paste -sd, -)\"; "
+            "python3 /usr/local/libexec/apple-toolchain-provenance.py "
+            "--root \"$toolchain\" --owner 1000 --group 1000 "
+            f"--sha256 {spec.toolchain_tree_sha256} "
+            f"--files {spec.toolchain_files} "
+            f"--directories {spec.toolchain_directories} "
+            f"--content-bytes {spec.toolchain_content_bytes}"
+        )
+        result = run(
+            [
+                DOCKER,
+                "run",
+                "--rm",
+                "--pull=never",
+                "--network=none",
+                "--read-only",
+                "--user",
+                "1000:1000",
+                "--cap-drop=ALL",
+                "--security-opt=no-new-privileges",
+                "--pids-limit=32",
+                "--memory=256m",
+                "--memory-swap=256m",
+                "--cpus=1",
+                "--tmpfs",
+                "/tmp:rw,noexec,nosuid,nodev,mode=1777,size=16m",
+                spec.image_id,
+                "/bin/bash",
+                "--noprofile",
+                "--norc",
+                "-c",
+                command,
+            ]
+        )
+        if result.returncode != 0:
+            fail(
+                "cannot verify Apple check runtime contents: "
+                + result.stderr.decode(errors="replace").strip()
+            )
+        expected = (
+            f"cargo-path={APPLE_TOOLCHAIN_ROOT}/bin/cargo\n"
+            f"rustc-path={APPLE_TOOLCHAIN_ROOT}/bin/rustc\n"
+            "cargo=cargo 1.81.0 (2dbb1af80 2024-08-20)\n"
+            "rustc=rustc 1.81.0 (eeb90cda1 2024-09-04)\n"
+            f"cargo-sha={spec.cargo_sha256}\n"
+            f"rustc-sha={spec.rustc_sha256}\n"
+            f"release-helper-sha={spec.release_helper_sha256}\n"
+            f"provenance-helper-sha={spec.provenance_helper_sha256}\n"
+            f"dpkg-sha={spec.dpkg_sha256}\n"
+            "targets=aarch64-apple-darwin,aarch64-apple-ios,"
+            "x86_64-apple-darwin,x86_64-unknown-linux-gnu\n"
+            f'{{"content_bytes":{spec.toolchain_content_bytes},'
+            '"contract":"rustdesk-apple-toolchain-tree-v1",'
+            f'"directories":{spec.toolchain_directories},'
+            f'"files":{spec.toolchain_files},'
+            f'"sha256":"{spec.toolchain_tree_sha256}"}}\n'
+        ).encode("ascii")
+        if result.stdout != expected or result.stderr:
+            fail("Apple check runtime fingerprint differs from the reviewed pins")
+        return
     if isinstance(spec, RustAuditSpec):
         command = (
             "set -euo pipefail; "
@@ -872,6 +1216,45 @@ def parse_json(data: bytes | None, label: str) -> object:
 
 
 def validate_config(config_json: object, layers: list[str], spec: ImageSpec) -> None:
+    if isinstance(spec, AppleCheckSpec):
+        if not isinstance(config_json, dict) \
+           or config_json.get("architecture") != "amd64" \
+           or config_json.get("os") != "linux" \
+           or config_json.get("created") != "2024-09-05T15:39:27Z":
+            fail("Docker archive Apple check config platform or epoch is malformed")
+        if config_json.get("config") != spec.runtime_config:
+            fail(
+                "Docker archive Apple check runtime config differs from "
+                "the reviewed contract"
+            )
+        rootfs = config_json.get("rootfs")
+        if not isinstance(rootfs, dict) or rootfs.get("type") != "layers":
+            fail("Docker archive Apple check rootfs metadata is malformed")
+        diff_ids = rootfs.get("diff_ids")
+        if not isinstance(diff_ids, list) \
+           or len(diff_ids) != len(layers) \
+           or len(diff_ids) != 8 \
+           or any(
+               not isinstance(value, str) or not IMAGE_ID.fullmatch(value)
+               for value in diff_ids
+           ):
+            fail(
+                "Docker archive Apple check layer identities differ from "
+                "the eight-layer contract"
+            )
+        history = config_json.get("history")
+        if not isinstance(history, list) \
+           or len(history) != 38 \
+           or any(not isinstance(item, dict) for item in history) \
+           or any(
+               item.get("created") != "2024-09-05T15:39:27Z"
+               for item in history[7:]
+           ):
+            fail(
+                "Docker archive Apple check history differs from "
+                "the reviewed reproducible build topology"
+            )
+        return
     if isinstance(spec, RustAuditSpec):
         if not isinstance(config_json, dict) \
            or config_json.get("architecture") != "amd64" \
@@ -1046,6 +1429,508 @@ def validate_verifier_attestation(
            "resolvedDependencies": False,
        }:
         fail("Docker archive devcheck provenance metadata differs from the reviewed statement")
+
+
+def validate_apple_check_attestation(
+    statement: object,
+    image_manifest_id: object,
+    spec: AppleCheckSpec,
+) -> None:
+    def contains_vcs_authority(value: object) -> bool:
+        if isinstance(value, dict):
+            return any(
+                (
+                    isinstance(key, str)
+                    and (key == "vcs" or key.startswith("vcs:"))
+                )
+                or contains_vcs_authority(item)
+                for key, item in value.items()
+            )
+        if isinstance(value, list):
+            return any(contains_vcs_authority(item) for item in value)
+        return False
+
+    expected_digest = str(image_manifest_id).removeprefix("sha256:")
+    if not isinstance(statement, dict) \
+       or set(statement) != {"_type", "predicateType", "subject", "predicate"} \
+       or statement.get("subject") != [
+           {
+               "name": (
+                   "pkg:docker/rd-apple-check@authenticated-v1"
+                   "?platform=linux%2Famd64"
+               ),
+               "digest": {"sha256": expected_digest},
+           }
+       ]:
+        fail(
+            "Docker archive Apple check provenance subject differs from "
+            "the image manifest"
+        )
+    if contains_vcs_authority(statement):
+        fail(
+            "Docker archive Apple check provenance contains undeclared "
+            "VCS authority"
+        )
+    predicate = statement.get("predicate")
+    if not isinstance(predicate, dict) \
+       or set(predicate) != {"buildDefinition", "runDetails"}:
+        fail("Docker archive Apple check provenance predicate differs")
+    definition = predicate.get("buildDefinition")
+    base_digest = spec.base_image_id
+    if not isinstance(definition, dict) \
+       or set(definition) != {
+           "buildType",
+           "resolvedDependencies",
+           "externalParameters",
+           "internalParameters",
+       } \
+       or definition.get("buildType") != (
+           "https://github.com/moby/buildkit/blob/master/docs/attestations/"
+           "slsa-definitions.md"
+       ) \
+       or definition.get("resolvedDependencies") != [
+           {
+               "uri": (
+                   "pkg:docker/rd-devcheck?"
+                   f"digest={base_digest}&platform=linux%2Famd64"
+               ),
+               "digest": {
+                   "sha256": base_digest.removeprefix("sha256:")
+               },
+           }
+       ]:
+        fail(
+            "Docker archive Apple check provenance does not bind the "
+            "exact devcheck base"
+        )
+    expected_args = {
+        "build-arg:APPLE_CHECK_DOCKERFILE_SHA256": spec.dockerfile_sha256,
+        "build-arg:APPLE_TOOLCHAIN_CONTENT_BYTES": (
+            str(spec.toolchain_content_bytes)
+        ),
+        "build-arg:APPLE_TOOLCHAIN_DIRECTORIES": (
+            str(spec.toolchain_directories)
+        ),
+        "build-arg:APPLE_TOOLCHAIN_FILES": str(spec.toolchain_files),
+        "build-arg:APPLE_TOOLCHAIN_PROVENANCE_HELPER_SHA256": (
+            spec.provenance_helper_sha256
+        ),
+        "build-arg:APPLE_TOOLCHAIN_RELEASE_HELPER_SHA256": (
+            spec.release_helper_sha256
+        ),
+        "build-arg:APPLE_TOOLCHAIN_TREE_SHA256": (
+            spec.toolchain_tree_sha256
+        ),
+        "build-arg:DEV_CHECK_IMAGE_ID": base_digest,
+        "build-arg:DEV_CHECK_IMAGE_MANIFEST_ID": spec.base_manifest_id,
+        "build-arg:DEV_CHECK_IMAGE_REF": spec.base,
+        "build-arg:SOURCE_DATE_EPOCH": str(spec.source_date_epoch),
+        "no-cache": "",
+    }
+    expected_request = {
+        "args": expected_args,
+        "frontend": "dockerfile.v0",
+        "locals": [{"name": "context"}, {"name": "dockerfile"}],
+        "root": {
+            "configSource": {"path": "Dockerfile"},
+            "request": {"args": expected_args},
+        },
+        "compatibilityVersion": 30,
+    }
+    if definition.get("externalParameters") != {
+        "configSource": {"path": "Dockerfile"},
+        "request": expected_request,
+    }:
+        fail(
+            "Docker archive Apple check provenance does not bind the "
+            "reviewed private recipe"
+        )
+    internal = definition.get("internalParameters")
+    build_config = (
+        internal.get("buildConfig") if isinstance(internal, dict) else None
+    )
+    digest_mapping = (
+        build_config.get("digestMapping")
+        if isinstance(build_config, dict)
+        else None
+    )
+    llb = (
+        build_config.get("llbDefinition")
+        if isinstance(build_config, dict)
+        else None
+    )
+    if not isinstance(internal, dict) \
+       or set(internal) != {
+           "buildConfig",
+           "builderPlatform",
+           "dockerfileVersion",
+       } \
+       or internal.get("builderPlatform") != "linux/amd64" \
+       or internal.get("dockerfileVersion") != "1.25.0" \
+       or not isinstance(build_config, dict) \
+       or set(build_config) != {"digestMapping", "llbDefinition"} \
+       or not isinstance(digest_mapping, dict) \
+       or len(digest_mapping) != 9 \
+       or any(
+           not isinstance(key, str) or not IMAGE_ID.fullmatch(key)
+           for key in digest_mapping
+       ) \
+       or set(digest_mapping.values()) != {
+           f"step{position}" for position in range(9)
+       } \
+       or not isinstance(llb, list) \
+       or len(llb) != 9:
+        fail("Docker archive Apple check provenance builder contract differs")
+
+    expected_inputs: list[list[str] | None] = [
+        None,
+        None,
+        ["step0:0", "step1:0"],
+        ["step2:0", "step1:0"],
+        ["step3:0"],
+        ["step4:0"],
+        ["step3:0", "step5:0"],
+        ["step6:0"],
+        ["step7:0"],
+    ]
+    expected_kinds = [
+        {"source"},
+        {"source"},
+        {"file"},
+        {"file"},
+        {"exec"},
+        {"exec"},
+        {"file"},
+        {"exec"},
+        set(),
+    ]
+    platform = {"Architecture": "amd64", "OS": "linux"}
+    operations: list[dict[str, object]] = []
+    for position, item in enumerate(llb):
+        expected_item_keys = (
+            {"id", "op"}
+            if position in (0, 1)
+            else {"id", "inputs", "op"}
+        )
+        op_wrapper = item.get("op") if isinstance(item, dict) else None
+        operation = (
+            op_wrapper.get("Op") if isinstance(op_wrapper, dict) else None
+        )
+        if position == 8:
+            expected_wrapper_keys = {"Op"}
+        elif position in (1, 2, 3, 6):
+            expected_wrapper_keys = {"Op", "constraints"}
+        else:
+            expected_wrapper_keys = {"Op", "constraints", "platform"}
+        if not isinstance(item, dict) \
+           or set(item) != expected_item_keys \
+           or item.get("id") != f"step{position}" \
+           or item.get("inputs") != expected_inputs[position] \
+           or not isinstance(op_wrapper, dict) \
+           or set(op_wrapper) != expected_wrapper_keys \
+           or op_wrapper.get("constraints") not in (None, {}) \
+           or (
+               position not in (1, 2, 3, 6, 8)
+               and op_wrapper.get("platform") != platform
+           ) \
+           or not isinstance(operation, dict) \
+           or set(operation) != expected_kinds[position]:
+            fail("Docker archive Apple check provenance input graph differs")
+        operations.append(operation)
+    if operations[0].get("source") != {
+        "attrs": {"image.resolvemode": "local"},
+        "identifier": (
+            "docker-image://docker.io/library/"
+            f"rd-devcheck@{base_digest}"
+        ),
+    } \
+       or operations[1].get("source") != {
+           "attrs": {
+               "local.followpaths": (
+                   '["apple-toolchain-provenance.py",'
+                   '"apple-toolchain-release.py"]'
+               ),
+               "local.sharedkeyhint": "context",
+           },
+           "identifier": "local://context",
+       }:
+        fail("Docker archive Apple check provenance source operations differ")
+
+    copy_owner = {
+        "group": {"User": {"byId": 1000}},
+        "user": {"User": {"byId": 1000}},
+    }
+
+    def expected_copy(source: str, destination: str, mode: int) -> object:
+        return {
+            "actions": [
+                {
+                    "Action": {
+                        "copy": {
+                            "allowEmptyWildcard": True,
+                            "allowWildcard": True,
+                            "createDestPath": True,
+                            "dest": destination,
+                            "dirCopyContents": True,
+                            "followSymlink": True,
+                            "mode": mode,
+                            "owner": copy_owner,
+                            "src": source,
+                            "timestamp": -1,
+                        }
+                    },
+                    "input": 0,
+                    "output": 0,
+                    "secondaryInput": 1,
+                }
+            ]
+        }
+
+    if operations[2].get("file") != expected_copy(
+        "/apple-toolchain-release.py",
+        "/usr/local/libexec/apple-toolchain-release.py",
+        0o555,
+    ) \
+       or operations[3].get("file") != expected_copy(
+           "/apple-toolchain-provenance.py",
+           "/usr/local/libexec/apple-toolchain-provenance.py",
+           0o555,
+       ) \
+       or operations[6].get("file") != expected_copy(
+           APPLE_TOOLCHAIN_ROOT,
+           APPLE_TOOLCHAIN_ROOT,
+           -1,
+       ):
+        fail(
+            "Docker archive Apple check provenance stage-copy graph differs"
+        )
+
+    run_details = predicate.get("runDetails")
+    metadata = (
+        run_details.get("metadata") if isinstance(run_details, dict) else None
+    )
+    buildkit_metadata = (
+        metadata.get("buildkit_metadata")
+        if isinstance(metadata, dict)
+        else None
+    )
+    source = (
+        buildkit_metadata.get("source")
+        if isinstance(buildkit_metadata, dict)
+        else None
+    )
+    infos = source.get("infos") if isinstance(source, dict) else None
+    if not isinstance(run_details, dict) \
+       or set(run_details) != {"builder", "metadata"} \
+       or run_details.get("builder") != {"id": ""} \
+       or not isinstance(metadata, dict) \
+       or set(metadata) != {
+           "buildkit_completeness",
+           "buildkit_metadata",
+           "finishedOn",
+           "invocationId",
+           "startedOn",
+       } \
+       or any(
+           not isinstance(metadata.get(name), str) or not metadata.get(name)
+           for name in ("finishedOn", "invocationId", "startedOn")
+       ) \
+       or metadata.get("buildkit_completeness") != {
+           "request": True,
+           "resolvedDependencies": False,
+       } \
+       or not isinstance(buildkit_metadata, dict) \
+       or set(buildkit_metadata) != {"layers", "source"} \
+       or not isinstance(buildkit_metadata.get("layers"), dict) \
+       or set(buildkit_metadata["layers"]) != {
+           "step0:0",
+           "step2:0",
+           "step3:0",
+           "step6:0",
+           "step7:0",
+       } \
+       or not isinstance(source, dict) \
+       or set(source) != {"infos", "locations"} \
+       or not isinstance(source.get("locations"), dict) \
+       or set(source["locations"]) != {
+           f"step{position}" for position in range(8)
+       } \
+       or not isinstance(infos, list) \
+       or len(infos) != 1:
+        fail("Docker archive Apple check provenance run metadata differs")
+    source_info = infos[0]
+    source_digest_mapping = (
+        source_info.get("digestMapping")
+        if isinstance(source_info, dict)
+        else None
+    )
+    if not isinstance(source_info, dict) \
+       or set(source_info) != {
+           "data",
+           "digestMapping",
+           "filename",
+           "language",
+           "llbDefinition",
+       } \
+       or source_info.get("filename") != "Dockerfile" \
+       or source_info.get("language") != "Dockerfile" \
+       or not isinstance(source_info.get("data"), str) \
+       or not isinstance(source_digest_mapping, dict) \
+       or len(source_digest_mapping) != 2 \
+       or any(
+           not isinstance(key, str) or not IMAGE_ID.fullmatch(key)
+           for key in source_digest_mapping
+       ) \
+       or set(source_digest_mapping.values()) != {"step0", "step1"} \
+       or source_info.get("llbDefinition") != [
+           {
+               "id": "step0",
+               "op": {
+                   "Op": {
+                       "source": {
+                           "identifier": "local://dockerfile",
+                           "attrs": {
+                               "local.differ": "none",
+                               "local.followpaths": (
+                                   '["Dockerfile","Dockerfile.dockerignore",'
+                                   '"dockerfile"]'
+                               ),
+                               "local.sharedkeyhint": "dockerfile",
+                           },
+                       }
+                   },
+                   "constraints": {},
+               },
+           },
+           {
+               "id": "step1",
+               "op": {"Op": {}},
+               "inputs": ["step0:0"],
+           },
+       ]:
+        fail(
+            "Docker archive Apple check provenance does not prove the "
+            "three-file private source graph"
+        )
+    try:
+        dockerfile = base64.b64decode(source_info["data"], validate=True)
+    except (ValueError, TypeError) as exc:
+        fail(
+            "Docker archive Apple check provenance Dockerfile is malformed: "
+            f"{exc}"
+        )
+    if hashlib.sha256(dockerfile).hexdigest() != spec.dockerfile_sha256:
+        fail(
+            "Docker archive Apple check provenance Dockerfile differs "
+            "from its pin"
+        )
+    source_runs = [
+        (network, command.lstrip())
+        for network, command in dockerfile_run_contract(dockerfile)
+    ]
+    if [network for network, _ in source_runs] != [
+        "default",
+        "none",
+        "none",
+    ]:
+        fail("Docker archive Apple check Dockerfile RUN network contract differs")
+
+    common_environment = [
+        (
+            "PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:"
+            "/usr/sbin:/usr/bin:/sbin:/bin"
+        ),
+        "RUST_VERSION=1.75.0",
+        "SODIUM_USE_PKG_CONFIG=1",
+        f"DEV_CHECK_IMAGE_REF={spec.base}",
+        f"DEV_CHECK_IMAGE_ID={base_digest}",
+        f"DEV_CHECK_IMAGE_MANIFEST_ID={spec.base_manifest_id}",
+        f"SOURCE_DATE_EPOCH={spec.source_date_epoch}",
+        f"APPLE_CHECK_DOCKERFILE_SHA256={spec.dockerfile_sha256}",
+        (
+            "APPLE_TOOLCHAIN_RELEASE_HELPER_SHA256="
+            f"{spec.release_helper_sha256}"
+        ),
+        (
+            "APPLE_TOOLCHAIN_PROVENANCE_HELPER_SHA256="
+            f"{spec.provenance_helper_sha256}"
+        ),
+        f"RUST_RELEASE_VERSION={spec.rust_version}",
+        f"RUST_RELEASE_DATE={spec.release_date}",
+        f"RUST_RELEASE_SIGNING_FINGERPRINT={spec.signing_fingerprint}",
+        (
+            "RUST_RELEASE_PUBLIC_KEY_SHA256="
+            f"{spec.release_public_key_sha256}"
+        ),
+        f"RUST_RELEASE_MANIFEST_SHA256={spec.release_manifest_sha256}",
+        (
+            "RUST_RELEASE_MANIFEST_SIGNATURE_SHA256="
+            f"{spec.release_manifest_signature_sha256}"
+        ),
+        f"RUSTC_HOST_SHA256={spec.rustc_host_sha256}",
+        f"CARGO_HOST_SHA256={spec.cargo_host_sha256}",
+        f"RUST_STD_HOST_SHA256={spec.rust_std_host_sha256}",
+        (
+            "RUST_STD_AARCH64_DARWIN_SHA256="
+            f"{spec.rust_std_aarch64_darwin_sha256}"
+        ),
+        (
+            "RUST_STD_X86_64_DARWIN_SHA256="
+            f"{spec.rust_std_x86_64_darwin_sha256}"
+        ),
+        (
+            "RUST_STD_AARCH64_IOS_SHA256="
+            f"{spec.rust_std_aarch64_ios_sha256}"
+        ),
+        f"APPLE_TOOLCHAIN_TREE_SHA256={spec.toolchain_tree_sha256}",
+        f"APPLE_TOOLCHAIN_FILES={spec.toolchain_files}",
+        f"APPLE_TOOLCHAIN_DIRECTORIES={spec.toolchain_directories}",
+        f"APPLE_TOOLCHAIN_CONTENT_BYTES={spec.toolchain_content_bytes}",
+    ]
+    builder_environment = common_environment + [
+        "APPLE_BUILD_ROOT=/var/tmp/rustdesk-apple-toolchain-build",
+        f"APPLE_TOOLCHAIN={APPLE_TOOLCHAIN_ROOT}",
+        "HOME=/var/tmp/rustdesk-apple-toolchain-build/home",
+        "RUSTUP_HOME=/usr/local/rustup",
+        "CARGO_HOME=/usr/local/cargo",
+    ]
+    runtime_environment = common_environment[2:] + [
+        "RUSTUP_HOME=/usr/local/rustup",
+        "CARGO_HOME=/usr/local/cargo",
+        "RUST_VERSION=1.81.0",
+        "HOME=/tmp",
+        APPLE_CHECK_ENV[0],
+    ]
+    for position, command, environment, network in (
+        (4, source_runs[0][1], builder_environment, None),
+        (5, source_runs[1][1], builder_environment, 2),
+        (7, source_runs[2][1], runtime_environment, 2),
+    ):
+        expected_execution: dict[str, object] = {
+            "meta": {
+                "args": [
+                    "/bin/bash",
+                    "--noprofile",
+                    "--norc",
+                    "-euo",
+                    "pipefail",
+                    "-c",
+                    command,
+                ],
+                "cwd": "/",
+                "env": environment,
+                "removeMountStubsRecursive": True,
+                "user": "1000:1000",
+            },
+            "mounts": [{"dest": "/"}],
+        }
+        if network is not None:
+            expected_execution["network"] = network
+        if operations[position].get("exec") != expected_execution:
+            fail(
+                "Docker archive Apple check execution graph is not the "
+                "exact one-networked/two-networkless nonroot contract"
+            )
 
 
 def validate_dart_audit_attestation(
@@ -1776,7 +2661,7 @@ def validate_modern_archive(
     if not isinstance(root_descriptors, list) or len(root_descriptors) != 1:
         fail("Docker archive root OCI index must name exactly one captured image")
     root_descriptor = root_descriptors[0]
-    if isinstance(spec, (DartAuditSpec, RustAuditSpec)):
+    if isinstance(spec, (AppleCheckSpec, DartAuditSpec, RustAuditSpec)):
         expected_annotations = None
     elif isinstance(spec, VerifierSpec):
         expected_annotations = spec.root_annotations
@@ -1796,7 +2681,10 @@ def validate_modern_archive(
        or root_descriptor.get("digest") != expected_digest \
        or root_descriptor.get("annotations") != expected_annotations:
         fail("Docker archive root OCI descriptor does not bind the expected image identity")
-    if isinstance(spec, (DartAuditSpec, RustAuditSpec)) and set(root_descriptor) != {
+    if isinstance(
+        spec,
+        (AppleCheckSpec, DartAuditSpec, RustAuditSpec),
+    ) and set(root_descriptor) != {
         "digest",
         "mediaType",
         "size",
@@ -1823,7 +2711,10 @@ def validate_modern_archive(
     image_descriptor = image_descriptors[0]
     if image_descriptor.get("mediaType") != "application/vnd.oci.image.manifest.v1+json":
         fail("Docker archive image manifest media type is unsupported")
-    if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):
+    if isinstance(
+        spec,
+        (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
+    ):
         if spec.manifest_id is None:
             fail(f"Docker archive {spec.role} manifest pin is absent")
         if image_descriptor.get("digest") != spec.manifest_id:
@@ -1842,7 +2733,10 @@ def validate_modern_archive(
     if not isinstance(config_descriptor, dict) \
        or config_descriptor.get("mediaType") != "application/vnd.oci.image.config.v1+json":
         fail("Docker archive image config media type is unsupported")
-    if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):
+    if isinstance(
+        spec,
+        (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
+    ):
         if spec.config_id is None:
             fail(f"Docker archive {spec.role} config pin is absent")
         if config_descriptor.get("digest") != spec.config_id:
@@ -1855,6 +2749,25 @@ def validate_modern_archive(
     for position, descriptor in enumerate(layer_descriptors):
         if not isinstance(descriptor, dict) or descriptor.get("mediaType") != "application/vnd.oci.image.layer.v1.tar+gzip":
             fail("Docker archive image layer media type is unsupported")
+        if isinstance(spec, AppleCheckSpec):
+            expected_annotations = (
+                None
+                if position < 4
+                else {
+                    "buildkit/rewritten-timestamp": (
+                        str(spec.source_date_epoch)
+                    )
+                }
+            )
+            expected_keys = {"digest", "mediaType", "size"}
+            if expected_annotations is not None:
+                expected_keys.add("annotations")
+            if set(descriptor) != expected_keys \
+               or descriptor.get("annotations") != expected_annotations:
+                fail(
+                    "Docker archive Apple check layer timestamp-rewrite "
+                    "annotations differ"
+                )
         name, _ = descriptor_blob(
             descriptor,
             metadata,
@@ -1930,13 +2843,15 @@ def validate_modern_archive(
             fail("Docker archive provenance attestation does not name the image manifest")
         if isinstance(spec, VerifierSpec):
             validate_verifier_attestation(statement, actual_digest, spec)
+        elif isinstance(spec, AppleCheckSpec):
+            validate_apple_check_attestation(statement, actual_digest, spec)
         elif isinstance(spec, DartAuditSpec):
             validate_dart_audit_attestation(statement, actual_digest, spec)
         elif isinstance(spec, RustAuditSpec):
             validate_rust_audit_attestation(statement, actual_digest, spec)
     if isinstance(
         spec,
-        (VerifierSpec, DartAuditSpec, RustAuditSpec),
+        (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
     ) and len(attestations) != 1:
         fail(f"Docker archive {spec.role} image must contain exactly one provenance attestation")
     blob_files = {name for name in files if name.startswith("blobs/sha256/")}
@@ -1956,7 +2871,10 @@ def validate_legacy_archive(
     member_hashes: dict[str, str],
     spec: ImageSpec,
 ) -> None:
-    if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):
+    if isinstance(
+        spec,
+        (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
+    ):
         fail(f"{spec.role} recovery requires the content-addressed OCI archive layout")
     expected_config = spec.image_id.removeprefix("sha256:") + ".json"
     layers = item.get("Layers")
@@ -2037,7 +2955,10 @@ def validate_archive_stream(stream: BinaryIO, spec: ImageSpec) -> None:
     if not isinstance(manifest, list) or len(manifest) != 1 or not isinstance(manifest[0], dict):
         fail("Docker archive must contain exactly one compatibility image manifest")
     item = manifest[0]
-    if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):
+    if isinstance(
+        spec,
+        (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
+    ):
         expected_tags = spec.archive_tags
     else:
         expected_tags = [spec.capture_tag]
@@ -2079,7 +3000,10 @@ def verify_archive_fd(
     before = os.fstat(fd)
     if not stat.S_ISREG(before.st_mode) or before.st_nlink != 1:
         fail("image archive must be one non-hardlinked regular file")
-    if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):
+    if isinstance(
+        spec,
+        (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
+    ):
         if before.st_uid != os.getuid() or before.st_gid != os.getgid():
             fail(f"{spec.role} image archive must be owned by the invoking identity")
         if stat.S_IMODE(before.st_mode) != 0o400:
@@ -2246,7 +3170,10 @@ def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:
     verify_local(spec.image_id, spec)
     if output.exists() or output.is_symlink():
         fail(f"refusing to replace existing image archive: {output}")
-    if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):
+    if isinstance(
+        spec,
+        (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
+    ):
         validate_private_output_parent(output.parent)
         save_ref = spec.image_id
     else:
@@ -2287,7 +3214,10 @@ def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:
         stderr = process.stderr.read() if process.stderr is not None else b""
         if process.wait() != 0:
             fail(f"docker save failed: {stderr.decode(errors='replace').strip()}")
-        if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):
+        if isinstance(
+            spec,
+            (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
+        ):
             temporary.chmod(0o400)
             archive_sha = digest.hexdigest()
             verify_archive(temporary, archive_sha, spec, count)
@@ -2309,7 +3239,10 @@ def capture(output: Path, spec: ImageSpec) -> tuple[str, int]:
         archive_sha,
         spec,
         count
-        if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec))
+        if isinstance(
+            spec,
+            (VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),
+        )
         else None,
     )
     return archive_sha, count
@@ -2658,6 +3591,753 @@ def create_verifier_fixture_archive(
     members.update(zip(layer_names, layers))
     with path.open("wb") as raw:
         with gzip.GzipFile(filename="", mode="wb", fileobj=raw, mtime=0) as compressed:
+            with tarfile.open(fileobj=compressed, mode="w|") as archive:
+                for name, content in sorted(members.items()):
+                    info = tarfile.TarInfo(name)
+                    info.size = len(content)
+                    info.mtime = 0
+                    archive.addfile(info, io.BytesIO(content))
+    path.chmod(0o400)
+    return spec
+
+
+def create_apple_check_fixture_archive(
+    path: Path,
+    repo_tags: object = None,
+    *,
+    add_vcs: bool = False,
+    add_extra_source: bool = False,
+    embedded_dockerfile: bytes | None = None,
+    acquisition_network: int | None = None,
+    install_network: int | None = 2,
+    validation_network: int | None = 2,
+    execution_user: str = "1000:1000",
+    helper_copy_user: int = 1000,
+    helper_copy_mode: int = 0o555,
+    context_followpaths: str = (
+        '["apple-toolchain-provenance.py","apple-toolchain-release.py"]'
+    ),
+    annotate_root: bool = False,
+    layer_epoch: int = 1725550767,
+    runtime_user: str = "1000:1000",
+    wrong_subject: bool = False,
+    omit_attestation: bool = False,
+    history_epoch: str = "2024-09-05T15:39:27Z",
+) -> AppleCheckSpec:
+    def encoded(value: object) -> bytes:
+        return json.dumps(
+            value,
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode("ascii")
+
+    def blob_descriptor(
+        value: bytes,
+        media_type: str,
+        **extra: object,
+    ) -> dict[str, object]:
+        return {
+            "mediaType": media_type,
+            "digest": "sha256:" + hashlib.sha256(value).hexdigest(),
+            "size": len(value),
+            **extra,
+        }
+
+    dockerfile = (
+        b"FROM rd-devcheck AS builder\n"
+        b"RUN --network=default \\\n"
+        b"    acquire-components\n"
+        b"RUN --network=none \\\n"
+        b"    install-components\n"
+        b"FROM rd-devcheck AS runtime\n"
+        b"RUN --network=none \\\n"
+        b"    validate-toolchain\n"
+    )
+    source_dockerfile = (
+        dockerfile if embedded_dockerfile is None else embedded_dockerfile
+    )
+    base_digest = "a" * 64
+    preliminary = AppleCheckSpec(
+        role="apple-check",
+        image_id="sha256:" + "0" * 64,
+        base="rd-devcheck@sha256:" + base_digest,
+        base_manifest_id="sha256:" + "b" * 64,
+        dockerfile_sha256=hashlib.sha256(dockerfile).hexdigest(),
+        source_date_epoch=1725550767,
+        release_helper_sha256="c" * 64,
+        provenance_helper_sha256="d" * 64,
+        rust_version="1.81.0",
+        release_date="2024-09-05",
+        signing_fingerprint=(
+            "108F66205EAEB0AAA8DD5E1C85AB96E6FA1BE5FE"
+        ),
+        release_public_key_sha256="e" * 64,
+        release_manifest_sha256="f" * 64,
+        release_manifest_signature_sha256="1" * 64,
+        rustc_host_sha256="2" * 64,
+        cargo_host_sha256="3" * 64,
+        rust_std_host_sha256="4" * 64,
+        rust_std_aarch64_darwin_sha256="5" * 64,
+        rust_std_x86_64_darwin_sha256="6" * 64,
+        rust_std_aarch64_ios_sha256="7" * 64,
+        cargo_sha256="8" * 64,
+        rustc_sha256="9" * 64,
+        dpkg_sha256="a" * 64,
+        toolchain_tree_sha256="b" * 64,
+        toolchain_files=207,
+        toolchain_directories=26,
+        toolchain_content_bytes=844882141,
+        config_id="sha256:" + "0" * 64,
+        manifest_id="sha256:" + "0" * 64,
+    )
+    layers = [
+        gzip.compress(
+            f"Apple fixture layer {position}".encode("ascii"),
+            mtime=0,
+        )
+        for position in range(8)
+    ]
+    layer_descriptors = [
+        blob_descriptor(
+            layer,
+            "application/vnd.oci.image.layer.v1.tar+gzip",
+            **(
+                {}
+                if position < 4
+                else {
+                    "annotations": {
+                        "buildkit/rewritten-timestamp": str(layer_epoch)
+                    }
+                }
+            ),
+        )
+        for position, layer in enumerate(layers)
+    ]
+    runtime_config = dict(preliminary.runtime_config)
+    runtime_config["User"] = runtime_user
+    config = encoded(
+        {
+            "architecture": "amd64",
+            "config": runtime_config,
+            "created": "2024-09-05T15:39:27Z",
+            "history": [
+                {
+                    "created": (
+                        "2024-01-10T18:59:53Z"
+                        if position < 7
+                        else history_epoch
+                    ),
+                    "created_by": f"fixture {position}",
+                }
+                for position in range(38)
+            ],
+            "os": "linux",
+            "rootfs": {
+                "type": "layers",
+                "diff_ids": [
+                    "sha256:" + str(position) * 64
+                    for position in range(1, 9)
+                ],
+            },
+        }
+    )
+    config_descriptor = blob_descriptor(
+        config,
+        "application/vnd.oci.image.config.v1+json",
+    )
+    image_manifest = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": config_descriptor,
+            "layers": layer_descriptors,
+        }
+    )
+    image_descriptor = blob_descriptor(
+        image_manifest,
+        "application/vnd.oci.image.manifest.v1+json",
+        platform={"architecture": "amd64", "os": "linux"},
+    )
+    build_args = {
+        "build-arg:APPLE_CHECK_DOCKERFILE_SHA256": (
+            preliminary.dockerfile_sha256
+        ),
+        "build-arg:APPLE_TOOLCHAIN_CONTENT_BYTES": str(
+            preliminary.toolchain_content_bytes
+        ),
+        "build-arg:APPLE_TOOLCHAIN_DIRECTORIES": str(
+            preliminary.toolchain_directories
+        ),
+        "build-arg:APPLE_TOOLCHAIN_FILES": str(
+            preliminary.toolchain_files
+        ),
+        "build-arg:APPLE_TOOLCHAIN_PROVENANCE_HELPER_SHA256": (
+            preliminary.provenance_helper_sha256
+        ),
+        "build-arg:APPLE_TOOLCHAIN_RELEASE_HELPER_SHA256": (
+            preliminary.release_helper_sha256
+        ),
+        "build-arg:APPLE_TOOLCHAIN_TREE_SHA256": (
+            preliminary.toolchain_tree_sha256
+        ),
+        "build-arg:DEV_CHECK_IMAGE_ID": preliminary.base_image_id,
+        "build-arg:DEV_CHECK_IMAGE_MANIFEST_ID": (
+            preliminary.base_manifest_id
+        ),
+        "build-arg:DEV_CHECK_IMAGE_REF": preliminary.base,
+        "build-arg:SOURCE_DATE_EPOCH": str(
+            preliminary.source_date_epoch
+        ),
+        "no-cache": "",
+    }
+    if add_vcs:
+        build_args["vcs:source"] = "https://example.invalid/unreviewed.git"
+    request = {
+        "args": build_args,
+        "frontend": "dockerfile.v0",
+        "locals": [{"name": "context"}, {"name": "dockerfile"}],
+        "root": {
+            "configSource": {"path": "Dockerfile"},
+            "request": {"args": build_args},
+        },
+        "compatibilityVersion": 30,
+    }
+    copy_owner = {
+        "group": {"User": {"byId": helper_copy_user}},
+        "user": {"User": {"byId": helper_copy_user}},
+    }
+
+    def copy_operation(source: str, destination: str, mode: int) -> object:
+        return {
+            "actions": [
+                {
+                    "Action": {
+                        "copy": {
+                            "allowEmptyWildcard": True,
+                            "allowWildcard": True,
+                            "createDestPath": True,
+                            "dest": destination,
+                            "dirCopyContents": True,
+                            "followSymlink": True,
+                            "mode": mode,
+                            "owner": copy_owner,
+                            "src": source,
+                            "timestamp": -1,
+                        }
+                    },
+                    "input": 0,
+                    "output": 0,
+                    "secondaryInput": 1,
+                }
+            ]
+        }
+
+    common_environment = [
+        (
+            "PATH=/usr/local/cargo/bin:/usr/local/sbin:/usr/local/bin:"
+            "/usr/sbin:/usr/bin:/sbin:/bin"
+        ),
+        "RUST_VERSION=1.75.0",
+        "SODIUM_USE_PKG_CONFIG=1",
+        f"DEV_CHECK_IMAGE_REF={preliminary.base}",
+        f"DEV_CHECK_IMAGE_ID={preliminary.base_image_id}",
+        (
+            "DEV_CHECK_IMAGE_MANIFEST_ID="
+            f"{preliminary.base_manifest_id}"
+        ),
+        f"SOURCE_DATE_EPOCH={preliminary.source_date_epoch}",
+        (
+            "APPLE_CHECK_DOCKERFILE_SHA256="
+            f"{preliminary.dockerfile_sha256}"
+        ),
+        (
+            "APPLE_TOOLCHAIN_RELEASE_HELPER_SHA256="
+            f"{preliminary.release_helper_sha256}"
+        ),
+        (
+            "APPLE_TOOLCHAIN_PROVENANCE_HELPER_SHA256="
+            f"{preliminary.provenance_helper_sha256}"
+        ),
+        f"RUST_RELEASE_VERSION={preliminary.rust_version}",
+        f"RUST_RELEASE_DATE={preliminary.release_date}",
+        (
+            "RUST_RELEASE_SIGNING_FINGERPRINT="
+            f"{preliminary.signing_fingerprint}"
+        ),
+        (
+            "RUST_RELEASE_PUBLIC_KEY_SHA256="
+            f"{preliminary.release_public_key_sha256}"
+        ),
+        (
+            "RUST_RELEASE_MANIFEST_SHA256="
+            f"{preliminary.release_manifest_sha256}"
+        ),
+        (
+            "RUST_RELEASE_MANIFEST_SIGNATURE_SHA256="
+            f"{preliminary.release_manifest_signature_sha256}"
+        ),
+        f"RUSTC_HOST_SHA256={preliminary.rustc_host_sha256}",
+        f"CARGO_HOST_SHA256={preliminary.cargo_host_sha256}",
+        f"RUST_STD_HOST_SHA256={preliminary.rust_std_host_sha256}",
+        (
+            "RUST_STD_AARCH64_DARWIN_SHA256="
+            f"{preliminary.rust_std_aarch64_darwin_sha256}"
+        ),
+        (
+            "RUST_STD_X86_64_DARWIN_SHA256="
+            f"{preliminary.rust_std_x86_64_darwin_sha256}"
+        ),
+        (
+            "RUST_STD_AARCH64_IOS_SHA256="
+            f"{preliminary.rust_std_aarch64_ios_sha256}"
+        ),
+        (
+            "APPLE_TOOLCHAIN_TREE_SHA256="
+            f"{preliminary.toolchain_tree_sha256}"
+        ),
+        f"APPLE_TOOLCHAIN_FILES={preliminary.toolchain_files}",
+        (
+            "APPLE_TOOLCHAIN_DIRECTORIES="
+            f"{preliminary.toolchain_directories}"
+        ),
+        (
+            "APPLE_TOOLCHAIN_CONTENT_BYTES="
+            f"{preliminary.toolchain_content_bytes}"
+        ),
+    ]
+    builder_environment = common_environment + [
+        "APPLE_BUILD_ROOT=/var/tmp/rustdesk-apple-toolchain-build",
+        f"APPLE_TOOLCHAIN={APPLE_TOOLCHAIN_ROOT}",
+        "HOME=/var/tmp/rustdesk-apple-toolchain-build/home",
+        "RUSTUP_HOME=/usr/local/rustup",
+        "CARGO_HOME=/usr/local/cargo",
+    ]
+    runtime_environment = common_environment[2:] + [
+        "RUSTUP_HOME=/usr/local/rustup",
+        "CARGO_HOME=/usr/local/cargo",
+        "RUST_VERSION=1.81.0",
+        "HOME=/tmp",
+        APPLE_CHECK_ENV[0],
+    ]
+    source_runs = [
+        command.lstrip()
+        for _, command in dockerfile_run_contract(dockerfile)
+    ]
+
+    def execution(
+        command: str,
+        environment: list[str],
+        network: int | None,
+    ) -> dict[str, object]:
+        value: dict[str, object] = {
+            "meta": {
+                "args": [
+                    "/bin/bash",
+                    "--noprofile",
+                    "--norc",
+                    "-euo",
+                    "pipefail",
+                    "-c",
+                    command,
+                ],
+                "cwd": "/",
+                "env": environment,
+                "removeMountStubsRecursive": True,
+                "user": execution_user,
+            },
+            "mounts": [{"dest": "/"}],
+        }
+        if network is not None:
+            value["network"] = network
+        return value
+
+    llb: list[dict[str, object]] = [
+        {
+            "id": "step0",
+            "op": {
+                "Op": {
+                    "source": {
+                        "attrs": {"image.resolvemode": "local"},
+                        "identifier": (
+                            "docker-image://docker.io/library/"
+                            f"rd-devcheck@{preliminary.base_image_id}"
+                        ),
+                    }
+                },
+                "constraints": {},
+                "platform": {"Architecture": "amd64", "OS": "linux"},
+            },
+        },
+        {
+            "id": "step1",
+            "op": {
+                "Op": {
+                    "source": {
+                        "attrs": {
+                            "local.followpaths": context_followpaths,
+                            "local.sharedkeyhint": "context",
+                        },
+                        "identifier": "local://context",
+                    }
+                },
+                "constraints": {},
+            },
+        },
+        {
+            "id": "step2",
+            "inputs": ["step0:0", "step1:0"],
+            "op": {
+                "Op": {
+                    "file": copy_operation(
+                        "/apple-toolchain-release.py",
+                        "/usr/local/libexec/apple-toolchain-release.py",
+                        helper_copy_mode,
+                    )
+                },
+                "constraints": {},
+            },
+        },
+        {
+            "id": "step3",
+            "inputs": ["step2:0", "step1:0"],
+            "op": {
+                "Op": {
+                    "file": copy_operation(
+                        "/apple-toolchain-provenance.py",
+                        "/usr/local/libexec/apple-toolchain-provenance.py",
+                        helper_copy_mode,
+                    )
+                },
+                "constraints": {},
+            },
+        },
+        {
+            "id": "step4",
+            "inputs": ["step3:0"],
+            "op": {
+                "Op": {
+                    "exec": execution(
+                        source_runs[0],
+                        builder_environment,
+                        acquisition_network,
+                    )
+                },
+                "constraints": {},
+                "platform": {"Architecture": "amd64", "OS": "linux"},
+            },
+        },
+        {
+            "id": "step5",
+            "inputs": ["step4:0"],
+            "op": {
+                "Op": {
+                    "exec": execution(
+                        source_runs[1],
+                        builder_environment,
+                        install_network,
+                    )
+                },
+                "constraints": {},
+                "platform": {"Architecture": "amd64", "OS": "linux"},
+            },
+        },
+        {
+            "id": "step6",
+            "inputs": ["step3:0", "step5:0"],
+            "op": {
+                "Op": {
+                    "file": copy_operation(
+                        APPLE_TOOLCHAIN_ROOT,
+                        APPLE_TOOLCHAIN_ROOT,
+                        -1,
+                    )
+                },
+                "constraints": {},
+            },
+        },
+        {
+            "id": "step7",
+            "inputs": ["step6:0"],
+            "op": {
+                "Op": {
+                    "exec": execution(
+                        source_runs[2],
+                        runtime_environment,
+                        validation_network,
+                    )
+                },
+                "constraints": {},
+                "platform": {"Architecture": "amd64", "OS": "linux"},
+            },
+        },
+        {
+            "id": "step8",
+            "inputs": ["step7:0"],
+            "op": {"Op": {}},
+        },
+    ]
+    if add_extra_source:
+        llb.append(
+            {
+                "id": "step9",
+                "op": {
+                    "Op": {
+                        "source": {
+                            "attrs": {},
+                            "identifier": "local://unreviewed",
+                        }
+                    },
+                    "constraints": {},
+                },
+            }
+        )
+    source_llb = [
+        {
+            "id": "step0",
+            "op": {
+                "Op": {
+                    "source": {
+                        "identifier": "local://dockerfile",
+                        "attrs": {
+                            "local.differ": "none",
+                            "local.followpaths": (
+                                '["Dockerfile","Dockerfile.dockerignore",'
+                                '"dockerfile"]'
+                            ),
+                            "local.sharedkeyhint": "dockerfile",
+                        },
+                    }
+                },
+                "constraints": {},
+            },
+        },
+        {
+            "id": "step1",
+            "op": {"Op": {}},
+            "inputs": ["step0:0"],
+        },
+    ]
+    internal_mapping = {
+        "sha256:" + f"{position + 1:064x}": f"step{position}"
+        for position in range(len(llb))
+    }
+    statement = encoded(
+        {
+            "_type": "https://in-toto.io/Statement/v1",
+            "predicateType": "https://slsa.dev/provenance/v1",
+            "subject": [
+                {
+                    "name": (
+                        "pkg:docker/rd-apple-check@unreviewed"
+                        if wrong_subject
+                        else (
+                            "pkg:docker/rd-apple-check@authenticated-v1"
+                            "?platform=linux%2Famd64"
+                        )
+                    ),
+                    "digest": {
+                        "sha256": image_descriptor["digest"].removeprefix(
+                            "sha256:"
+                        )
+                    },
+                }
+            ],
+            "predicate": {
+                "buildDefinition": {
+                    "buildType": (
+                        "https://github.com/moby/buildkit/blob/master/"
+                        "docs/attestations/slsa-definitions.md"
+                    ),
+                    "resolvedDependencies": [
+                        {
+                            "uri": (
+                                "pkg:docker/rd-devcheck?"
+                                f"digest={preliminary.base_image_id}"
+                                "&platform=linux%2Famd64"
+                            ),
+                            "digest": {"sha256": base_digest},
+                        }
+                    ],
+                    "externalParameters": {
+                        "configSource": {"path": "Dockerfile"},
+                        "request": request,
+                    },
+                    "internalParameters": {
+                        "buildConfig": {
+                            "digestMapping": internal_mapping,
+                            "llbDefinition": llb,
+                        },
+                        "builderPlatform": "linux/amd64",
+                        "dockerfileVersion": "1.25.0",
+                    },
+                },
+                "runDetails": {
+                    "builder": {"id": ""},
+                    "metadata": {
+                        "buildkit_completeness": {
+                            "request": True,
+                            "resolvedDependencies": False,
+                        },
+                        "buildkit_metadata": {
+                            "layers": {
+                                name: []
+                                for name in (
+                                    "step0:0",
+                                    "step2:0",
+                                    "step3:0",
+                                    "step6:0",
+                                    "step7:0",
+                                )
+                            },
+                            "source": {
+                                "infos": [
+                                    {
+                                        "data": base64.b64encode(
+                                            source_dockerfile
+                                        ).decode("ascii"),
+                                        "digestMapping": {
+                                            "sha256:" + "e" * 64: "step0",
+                                            "sha256:" + "f" * 64: "step1",
+                                        },
+                                        "filename": "Dockerfile",
+                                        "language": "Dockerfile",
+                                        "llbDefinition": source_llb,
+                                    }
+                                ],
+                                "locations": {
+                                    f"step{position}": {}
+                                    for position in range(8)
+                                },
+                            },
+                        },
+                        "finishedOn": "2026-07-25T00:00:01Z",
+                        "invocationId": "apple-fixture-invocation",
+                        "startedOn": "2026-07-25T00:00:00Z",
+                    },
+                },
+            },
+        }
+    )
+    statement_descriptor = blob_descriptor(
+        statement,
+        "application/vnd.in-toto+json",
+        annotations={
+            "in-toto.io/predicate-type": "https://slsa.dev/provenance/v1"
+        },
+    )
+    attestation_config = encoded(
+        {
+            "architecture": "unknown",
+            "config": {},
+            "os": "unknown",
+            "rootfs": {
+                "type": "layers",
+                "diff_ids": [
+                    "sha256:" + hashlib.sha256(statement).hexdigest()
+                ],
+            },
+        }
+    )
+    attestation_config_descriptor = blob_descriptor(
+        attestation_config,
+        "application/vnd.oci.image.config.v1+json",
+    )
+    attestation_manifest = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.manifest.v1+json",
+            "config": attestation_config_descriptor,
+            "layers": [statement_descriptor],
+        }
+    )
+    attestation_descriptor = blob_descriptor(
+        attestation_manifest,
+        "application/vnd.oci.image.manifest.v1+json",
+        annotations={
+            "vnd.docker.reference.digest": image_descriptor["digest"],
+            "vnd.docker.reference.type": "attestation-manifest",
+        },
+        platform={"architecture": "unknown", "os": "unknown"},
+    )
+    image_index = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": (
+                [image_descriptor]
+                if omit_attestation
+                else [image_descriptor, attestation_descriptor]
+            ),
+        }
+    )
+    image_id = "sha256:" + hashlib.sha256(image_index).hexdigest()
+    spec = replace(
+        preliminary,
+        image_id=image_id,
+        config_id=str(config_descriptor["digest"]),
+        manifest_id=str(image_descriptor["digest"]),
+    )
+    root_descriptor: dict[str, object] = {
+        "mediaType": "application/vnd.oci.image.index.v1+json",
+        "digest": image_id,
+        "size": len(image_index),
+    }
+    if annotate_root:
+        root_descriptor["annotations"] = {
+            "org.opencontainers.image.ref.name": "unreviewed"
+        }
+    root_index = encoded(
+        {
+            "schemaVersion": 2,
+            "mediaType": "application/vnd.oci.image.index.v1+json",
+            "manifests": [root_descriptor],
+        }
+    )
+    config_name = (
+        "blobs/sha256/" + spec.config_id.removeprefix("sha256:")
+    )
+    layer_names = [
+        "blobs/sha256/"
+        + str(descriptor["digest"]).removeprefix("sha256:")
+        for descriptor in layer_descriptors
+    ]
+    compatibility_manifest = encoded(
+        [{"Config": config_name, "RepoTags": repo_tags, "Layers": layer_names}]
+    )
+    members = {
+        "index.json": root_index,
+        "manifest.json": compatibility_manifest,
+        "oci-layout": encoded({"imageLayoutVersion": "1.0.0"}),
+        "blobs/sha256/" + image_id.removeprefix("sha256:"): image_index,
+        "blobs/sha256/"
+        + spec.manifest_id.removeprefix("sha256:"): image_manifest,
+        config_name: config,
+    }
+    if not omit_attestation:
+        members.update(
+            {
+                "blobs/sha256/"
+                + str(attestation_descriptor["digest"]).removeprefix(
+                    "sha256:"
+                ): attestation_manifest,
+                "blobs/sha256/"
+                + str(attestation_config_descriptor["digest"]).removeprefix(
+                    "sha256:"
+                ): attestation_config,
+                "blobs/sha256/"
+                + str(statement_descriptor["digest"]).removeprefix(
+                    "sha256:"
+                ): statement,
+            }
+        )
+    members.update(zip(layer_names, layers))
+    with path.open("wb") as raw:
+        with gzip.GzipFile(
+            filename="",
+            mode="wb",
+            fileobj=raw,
+            mtime=0,
+        ) as compressed:
             with tarfile.open(fileobj=compressed, mode="w|") as archive:
                 for name, content in sorted(members.items()):
                     info = tarfile.TarInfo(name)
@@ -4000,6 +5680,279 @@ def self_test() -> None:
         if verifier_checks != 16:
             fail(f"devcheck image self-test count differs: {verifier_checks}")
 
+        apple_archive = Path(temporary) / "apple-check-image.tar.gz"
+        apple_spec = create_apple_check_fixture_archive(apple_archive)
+        apple_bytes = apple_archive.read_bytes()
+        apple_sha = hashlib.sha256(apple_bytes).hexdigest()
+        apple_size = len(apple_bytes)
+        verify_archive(
+            apple_archive,
+            apple_sha,
+            apple_spec,
+            apple_size,
+        )
+        apple_payload = {
+            "Id": apple_spec.image_id,
+            "Os": "linux",
+            "Architecture": "amd64",
+            "Config": apple_spec.runtime_config,
+        }
+        validate_inspect(
+            apple_payload,
+            apple_spec.image_id,
+            apple_spec,
+        )
+        apple_checks = 2
+
+        def apple_failure(
+            operation: Callable[[], object],
+            label: str,
+        ) -> None:
+            nonlocal apple_checks
+            expect_failure(operation, label)
+            apple_checks += 1
+
+        apple_failure(
+            lambda: verify_archive(
+                apple_archive,
+                "f" * 64,
+                apple_spec,
+                apple_size,
+            ),
+            "Apple check archive hash",
+        )
+        apple_failure(
+            lambda: verify_archive(
+                apple_archive,
+                apple_sha,
+                apple_spec,
+                apple_size + 1,
+            ),
+            "Apple check archive size",
+        )
+        for label, mutation in (
+            (
+                "image identity",
+                replace(
+                    apple_spec,
+                    image_id="sha256:" + "f" * 64,
+                ),
+            ),
+            (
+                "config identity",
+                replace(
+                    apple_spec,
+                    config_id="sha256:" + "f" * 64,
+                ),
+            ),
+            (
+                "manifest identity",
+                replace(
+                    apple_spec,
+                    manifest_id="sha256:" + "f" * 64,
+                ),
+            ),
+            (
+                "attested base",
+                replace(
+                    apple_spec,
+                    base="rd-devcheck@sha256:" + "f" * 64,
+                ),
+            ),
+            (
+                "base manifest",
+                replace(
+                    apple_spec,
+                    base_manifest_id="sha256:" + "f" * 64,
+                ),
+            ),
+            (
+                "Dockerfile",
+                replace(
+                    apple_spec,
+                    dockerfile_sha256="f" * 64,
+                ),
+            ),
+            (
+                "release helper",
+                replace(
+                    apple_spec,
+                    release_helper_sha256="f" * 64,
+                ),
+            ),
+            (
+                "toolchain tree",
+                replace(
+                    apple_spec,
+                    toolchain_tree_sha256="f" * 64,
+                ),
+            ),
+        ):
+            apple_failure(
+                lambda mutation=mutation: verify_archive(
+                    apple_archive,
+                    apple_sha,
+                    mutation,
+                    apple_size,
+                ),
+                f"Apple check {label}",
+            )
+        apple_failure(
+            lambda: validate_inspect(
+                {
+                    **apple_payload,
+                    "Config": {
+                        **apple_payload["Config"],
+                        "Env": APPLE_CHECK_ENV[:-1],
+                    },
+                },
+                apple_spec.image_id,
+                apple_spec,
+            ),
+            "Apple check runtime environment",
+        )
+        apple_archive.chmod(0o600)
+        apple_failure(
+            lambda: verify_archive(
+                apple_archive,
+                apple_sha,
+                apple_spec,
+                apple_size,
+            ),
+            "Apple check archive mode",
+        )
+        apple_archive.chmod(0o400)
+        apple_link = Path(temporary) / "apple-check-image-hardlink.tar.gz"
+        os.link(apple_archive, apple_link)
+        apple_failure(
+            lambda: verify_archive(
+                apple_archive,
+                apple_sha,
+                apple_spec,
+                apple_size,
+            ),
+            "Apple check archive hardlink",
+        )
+        apple_link.unlink()
+
+        def reject_apple_fixture(
+            name: str,
+            label: str,
+            **arguments: object,
+        ) -> None:
+            candidate = Path(temporary) / name
+            candidate_spec = create_apple_check_fixture_archive(
+                candidate,
+                **arguments,
+            )
+            candidate_bytes = candidate.read_bytes()
+            apple_failure(
+                lambda: verify_archive(
+                    candidate,
+                    hashlib.sha256(candidate_bytes).hexdigest(),
+                    candidate_spec,
+                    len(candidate_bytes),
+                ),
+                label,
+            )
+
+        reject_apple_fixture(
+            "tagged-apple-check-image.tar.gz",
+            "Apple check archive tag",
+            repo_tags=["rd-apple-check:authenticated-v1"],
+        )
+        reject_apple_fixture(
+            "vcs-apple-check-image.tar.gz",
+            "Apple check VCS attribution",
+            add_vcs=True,
+        )
+        reject_apple_fixture(
+            "source-drift-apple-check-image.tar.gz",
+            "Apple check embedded Dockerfile",
+            embedded_dockerfile=b"FROM unreviewed\n",
+        )
+        reject_apple_fixture(
+            "networkless-acquisition-apple-check-image.tar.gz",
+            "Apple check networkless acquisition mismatch",
+            acquisition_network=2,
+        )
+        reject_apple_fixture(
+            "networked-install-apple-check-image.tar.gz",
+            "Apple check networked install",
+            install_network=None,
+        )
+        reject_apple_fixture(
+            "networked-validation-apple-check-image.tar.gz",
+            "Apple check networked validation",
+            validation_network=None,
+        )
+        reject_apple_fixture(
+            "extra-source-apple-check-image.tar.gz",
+            "Apple check undeclared source",
+            add_extra_source=True,
+        )
+        reject_apple_fixture(
+            "root-apple-check-image.tar.gz",
+            "Apple check root execution",
+            execution_user="0:0",
+        )
+        reject_apple_fixture(
+            "root-helper-copy-apple-check-image.tar.gz",
+            "Apple check root-owned helper copy",
+            helper_copy_user=0,
+        )
+        reject_apple_fixture(
+            "writable-helper-copy-apple-check-image.tar.gz",
+            "Apple check helper mode",
+            helper_copy_mode=0o755,
+        )
+        reject_apple_fixture(
+            "broad-context-apple-check-image.tar.gz",
+            "Apple check broad context",
+            context_followpaths='["."]',
+        )
+        reject_apple_fixture(
+            "annotated-apple-check-image.tar.gz",
+            "Apple check root descriptor annotation",
+            annotate_root=True,
+        )
+        reject_apple_fixture(
+            "wrong-layer-epoch-apple-check-image.tar.gz",
+            "Apple check layer rewrite epoch",
+            layer_epoch=1725550768,
+        )
+        reject_apple_fixture(
+            "root-runtime-apple-check-image.tar.gz",
+            "Apple check root runtime",
+            runtime_user="0:0",
+        )
+        reject_apple_fixture(
+            "wrong-subject-apple-check-image.tar.gz",
+            "Apple check attestation subject",
+            wrong_subject=True,
+        )
+        reject_apple_fixture(
+            "unattested-apple-check-image.tar.gz",
+            "Apple check missing attestation",
+            omit_attestation=True,
+        )
+        reject_apple_fixture(
+            "wrong-history-epoch-apple-check-image.tar.gz",
+            "Apple check history rewrite epoch",
+            history_epoch="2024-09-05T15:39:28Z",
+        )
+        verify_archive(
+            apple_archive,
+            apple_sha,
+            apple_spec,
+            apple_size,
+        )
+        apple_checks += 1
+        if apple_checks != 33:
+            fail(
+                f"Apple check image self-test count differs: {apple_checks}"
+            )
+
         dart_archive = Path(temporary) / "dart-audit-image.tar.gz"
         dart_spec = create_dart_audit_fixture_archive(dart_archive)
         dart_bytes = dart_archive.read_bytes()
@@ -4458,6 +6411,25 @@ def add_spec_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--source-repository")
     parser.add_argument("--config-id")
     parser.add_argument("--manifest-id")
+    parser.add_argument("--base-manifest-id")
+    parser.add_argument("--source-date-epoch", type=int)
+    parser.add_argument("--release-helper-sha")
+    parser.add_argument("--provenance-helper-sha")
+    parser.add_argument("--release-date")
+    parser.add_argument("--signing-fingerprint")
+    parser.add_argument("--release-public-key-sha")
+    parser.add_argument("--release-manifest-sha")
+    parser.add_argument("--release-manifest-signature-sha")
+    parser.add_argument("--rustc-host-sha")
+    parser.add_argument("--cargo-host-sha")
+    parser.add_argument("--rust-std-host-sha")
+    parser.add_argument("--rust-std-aarch64-darwin-sha")
+    parser.add_argument("--rust-std-x86-64-darwin-sha")
+    parser.add_argument("--rust-std-aarch64-ios-sha")
+    parser.add_argument("--toolchain-tree-sha")
+    parser.add_argument("--toolchain-files", type=int)
+    parser.add_argument("--toolchain-directories", type=int)
+    parser.add_argument("--toolchain-content-bytes", type=int)
     parser.add_argument("--scanner-sha")
     parser.add_argument("--scanner-version")
     parser.add_argument("--scalibr-version")

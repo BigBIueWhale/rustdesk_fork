@@ -9077,10 +9077,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   established golden, boot or define a VM/domain, compile Windows/RustDesk, access a host service, or
   inspect/change host RustDesk, listeners, firewall/UFW/nftables/iptables, or host network state. Full golden
   behavior, Windows artifacts, double-build equality, and the complete cold release remain R-B2 obligations.
-- **R-S11ci/R-S11e-101 — Apple conformance verifier authority — SOURCE IMPLEMENTED
-  2026-07-24; FOCUSED/WORKSPACE MUTATION GATES AND COMPLETE THREE-TARGET APPLE SOURCE GATE PASS;
-  NATIVE APPLE, EXACT COLD RELEASE, AND
-  INDEPENDENT IMAGE-PROVENANCE EVIDENCE PENDING.** Platform: the
+- **R-S11ci/R-S11e-101 — Apple conformance verifier authority — SOURCE AND AUTHENTICATED
+  IMAGE-CLOSURE IMPLEMENTED 2026-07-25; FOCUSED/WORKSPACE MUTATION GATES, ARCHIVE/PROVENANCE
+  VERIFICATION, REPRODUCIBLE RUNTIME MANIFEST, AND COMPLETE THREE-TARGET APPLE SOURCE GATE PASS;
+  NATIVE APPLE AND EXACT COLD RELEASE EVIDENCE PENDING.** Platform: the
   unprivileged Linux verification host and the Rust 1.81 Apple source-conformance container. Endpoint/action:
   the R-R2 metadata parser and three-target `cargo check` verdict reached through
   `scripts/apple-conform-check.sh`. Boundary: caller environment, Docker daemon/image/cache state, live source
@@ -9103,11 +9103,39 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   client state with a fresh current-UID mode-0700 configuration containing exactly one mode-0600 single-link
   `{}` file. Its metadata and bytes are reproved around every daemon operation. The gate never builds, pulls,
   tags, or resolves a mutable name. It addresses only
-  `APPLE_CHECK_IMAGE_ID=sha256:612145fabd0c603417ab5e689e84d5b5a619f4edf31efceb3ecbe2813da2199c`,
+  `APPLE_CHECK_IMAGE_ID=sha256:1845e16ca1b255cc41dc57736b50263304937699d5e23e1353b843c00a2ea15f`,
   verifies the reviewed acquisition-recipe digest, and performs a mount-free preflight over exact Rust/Cargo
-  1.81 versions, Cargo/rustc binary SHA-256 values, package-manifest SHA-256, libsodium policy, and the exact
-  installed target inventory. Independently archived acquisition and distribution of that content identity
-  remain open; the local image ID and internal byte pins do not overclaim bootstrap provenance.
+  1.81 versions, Cargo/rustc binary SHA-256 values, package-manifest SHA-256, libsodium policy, the complete
+  installed toolchain-tree description, and the exact installed target inventory. Before the source snapshot
+  can affect a verdict, the shared offline provenance reader independently verifies the local image's exact
+  index, runtime platform manifest, configuration, BuildKit statement, embedded recipe and source graph,
+  build arguments, layer/history epochs, and mountless runtime fingerprint.
+
+  The image recipe uses the exact independently archived devcheck base and a private context containing only
+  `Dockerfile`, `apple-toolchain-release.py`, and `apple-toolchain-provenance.py`. Exactly one numeric-1000
+  build step has acquisition networking: it fetches the Rust release public key, signed versioned Rust 1.81.0
+  channel manifest, detached signature, and the six manifest-named host/Apple component archives. It verifies
+  the pinned key fingerprint, all three source-object hashes, the signature, the release date and versions,
+  and the six manifest-bound component URLs and SHA-256 values. Installation and final validation are separate
+  `--network=none` steps. The helpers are copied as UID/GID 1000 mode 0555, every project-owned build command
+  and the runtime use numeric UID/GID 1000, and the runtime addresses the installed toolchain binaries
+  directly rather than a rustup proxy. The closed toolchain contains 207 regular files, 26 directories, and
+  844,882,141 content bytes under tree digest
+  `74f49c84298a448e020a5c5251ce59bf7b0cbda9ce75055986f5ecb19523e757`.
+
+  `online/verifier-images/apple-check.docker.tar.gz` is the independently captured local offline input:
+  current-user-owned mode 0400, one link, exactly 1,122,604,778 compressed bytes, SHA-256
+  `9f675754d52962952a2bfc1d74e98d1a37b1b0d220e670780dca78f653d8a7cc`, and decompressed Docker-save
+  SHA-256 `703daaa5d68f73925d98beb0df5ee733d10e35b37f2e1fdc89a2ec15f00aa8f7`. The canonical index binds
+  runtime platform manifest
+  `sha256:eb08db4dd16ba120a2fbb2957ea38a319203931de699d3b47c43ae7e9e6274cc`, configuration
+  `sha256:f75a07a3808620ebbc2188b5a4e7fb3d1de64dbeb534a9ec11f48f070067320c`, and one max-mode BuildKit
+  provenance statement. A private three-file rebuild reproduced the exact runtime platform manifest and
+  configuration. Its top-level index and attestation envelope differed, as expected for BuildKit's
+  per-invocation provenance metadata; the verifier therefore pins and validates the canonical envelope while
+  treating exact runtime-manifest equality—not equality of dynamic attestation envelopes—as the
+  reproducibility claim. The explicit `--apple-check-image` recovery path loads and verifies that exact archive;
+  candidate building and canonical capture are maintenance-only actions outside the verdict.
 
   One mode-0700 transaction snapshots the tracked plus nonignored source into a read-only compiler tree,
   snapshots and re-verifies the complete pinned `online/cargo-vendor` closure, creates a mode-0400 offline Cargo
@@ -9160,7 +9188,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   fresh-target probe then exposed the parallel log-classification race, and source commit
   `5dad3a44071a3c5796d7438b346cf02e305ce059`, tree
   `2a70064cf8a35a6a97b3f14247a397d872122c15`, made the verdict serialized and order-sensitive.
-  Its focused normal/self-test passes and rejects 48 deliberate weakenings, including cleanup identity,
+  Its focused normal/self-test passes and rejects 56 deliberate weakenings, including cleanup identity,
   directory-mode restoration, the exact successful locked/offline workspace anchor, prior Rust diagnostics,
   exact Cargo-wrapper classification, and classifier self-test invocation. The independent workspace semantic
   verifier passes both normal validation and its complete in-memory source-mutation catalog, including separate
@@ -9186,9 +9214,19 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   restored only private-tree directory
   modes, removed the workspace, and preserved success. No Apple SDK was fabricated, downloaded, mounted, or
   accepted from the caller, and no header stub was added. This is still source-conformance evidence only:
-  native Apple compilation/signing/artifacts, exact clean-commit cold release evidence, the full
-  `scripts/verify.sh` verdict (its pinned image is not locally present), and independently archived Apple image
-  provenance remain open and are not advanced by this source slice.
+  native Apple compilation/signing/artifacts, exact clean-commit cold release evidence, and the full
+  `scripts/verify.sh` verdict remain open and are not inferred from this source-conformance and verifier-image
+  closure. The provenance self-test exercises 33 independent Apple-image decisions—30 adversarial rejections
+  and three positive controls—including source, network, user, helper-ownership, layer/history epoch, subject,
+  context, and missing-attestation substitutions. The
+  focused Apple authority verifier rejects 56 source mutations, the online-fetch container authority verifier
+  rejects 41, and the independent workspace source-mutation catalog passes. The canonical online closure now
+  contains 145,625 files, 42,831 directories, 41 symlinks, 28,289,644,229 content bytes, and root
+  `f3dab9c3b8af08c6693619b53865681dda9b6255cc41ec9fc02ef0f7913307e2`; its only delta from the prior
+  closure is the exact Apple archive. No project build command or validation container ran with UID/GID 0 or
+  an added capability; no operation published a port or passed a Docker socket into a container. The work did
+  not inspect or change host RustDesk, any host service, listeners, firewall/UFW/nftables/iptables, or host
+  network state.
 - **R-S11cj/R-S11e-102 — online acquisition container execution authority — SOURCE IMPLEMENTED
   2026-07-23; FOCUSED/WORKSPACE MUTATION GATES AND EXACT-IMAGE NON-ROOT PROBES PASS; OUTPUT-PUBLICATION AUTHORITY AND EXACT COLD
   RELEASE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux acquisition host and the one intentionally
@@ -11810,7 +11848,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-38ddb2bcb31fbf50776e7d8019994ead198003a28297a722c98e9be716174b76  requirements.html
+a06f5b80a64efab21b64c0783219876e264b4d4d27ede471c8a8e85ac2ff09f3  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11cz, R-SV4a,

@@ -13686,6 +13686,8 @@ def validate_windows_helper_authority_contract(sources):
 def validate_apple_verifier_authority_contract(sources):
     focused = sources["apple_verifier_authority_verifier"]
     apple = sources["apple"]
+    provenance = sources["offline_image_provenance"]
+    online_fetch = sources["online_fetch"]
     apple_dockerfile_digest = hashlib.sha256(
         sources["apple_check_dockerfile"].encode("utf-8")
     ).hexdigest()
@@ -13707,6 +13709,12 @@ def validate_apple_verifier_authority_contract(sources):
          "Apple focused mount-cardinality enforcement"),
         ("exact three-target matrix",
          "Apple focused target-cardinality enforcement"),
+        ("Apple archive provenance specification",
+         "Apple focused archive-role enforcement"),
+        ("Apple reproducible runtime export",
+         "Apple focused reproducible-export enforcement"),
+        ("Apple exact offline archive path",
+         "Apple focused archive-path enforcement"),
     ):
         require_text(focused, text, label)
     for text, label in (
@@ -13716,6 +13724,10 @@ def validate_apple_verifier_authority_contract(sources):
          "Apple fixed Docker endpoint"),
         ('readonly IMG="$APPLE_CHECK_IMAGE_ID"',
          "Apple immutable image selection"),
+        ("apple_image_provenance verify-local",
+         "Apple immutable image provenance verification"),
+        ('--image-ref "$IMAGE_ID" "${APPLE_IMAGE_SPEC[@]}"',
+         "Apple exact image provenance arguments"),
         ("apple_docker run --rm --pull=never --network=none --read-only",
          "Apple preflight confinement"),
         ("APPLE_READ_RUN=(apple_docker run --rm --interactive --pull=never --network=none --read-only",
@@ -13730,7 +13742,7 @@ def validate_apple_verifier_authority_contract(sources):
          "Apple private read-only source"),
         ('--mount "type=bind,source=$APPLE_VENDOR,target=/vendor,readonly"',
          "Apple private read-only vendor"),
-        ("cargo +1.81.0 check --locked --offline --config /tmp/cargo-config.toml --jobs 1",
+        ("cargo check --locked --offline --config /tmp/cargo-config.toml --jobs 1",
          "Apple locked offline cross-check"),
         ("check --locked --offline --config /tmp/cargo-config.toml --jobs 1 \\\n"
          '  --package hbb_common --target "$target"',
@@ -13773,6 +13785,63 @@ def validate_apple_verifier_authority_contract(sources):
         "Apple image content pin",
     )
     require_text(
+        sources["pins"],
+        'APPLE_CHECK_IMAGE_MANIFEST_ID="sha256:',
+        "Apple platform manifest content pin",
+    )
+    require_text(
+        sources["pins"],
+        'SHA256_APPLE_CHECK_IMAGE_ARCHIVE="',
+        "Apple offline image archive pin",
+    )
+    for text, label in (
+        ("class AppleCheckSpec:", "Apple archive provenance role"),
+        (
+            "def validate_apple_check_attestation(",
+            "Apple exact SLSA statement validator",
+        ),
+        (
+            "if apple_checks != 33:",
+            "Apple archive adversarial decision count",
+        ),
+        (
+            "networkless-acquisition-apple-check-image.tar.gz",
+            "Apple acquisition-network negative fixture",
+        ),
+        (
+            "root-helper-copy-apple-check-image.tar.gz",
+            "Apple helper-owner negative fixture",
+        ),
+        (
+            "unattested-apple-check-image.tar.gz",
+            "Apple missing-attestation negative fixture",
+        ),
+    ):
+        require_text(provenance, text, label)
+    for text, label in (
+        (
+            "maintenance_build_apple_check_image_candidate() {",
+            "Apple explicit maintenance acquisition",
+        ),
+        (
+            "--output=type=docker,rewrite-timestamp=true",
+            "Apple reproducible runtime manifest export",
+        ),
+        (
+            '        --archive "$ONLINE_DIR/verifier-images/apple-check.docker.tar.gz"',
+            "Apple exact offline archive recovery",
+        ),
+        (
+            "--maintenance-capture-apple-check-image",
+            "Apple explicit archive capture entry point",
+        ),
+        (
+            "--apple-check-image",
+            "Apple archive recovery entry point",
+        ),
+    ):
+        require_text(online_fetch, text, label)
+    require_text(
         sources["verify"],
         "/usr/bin/python3 -I -S scripts/verify-apple-verifier-authority.py --repo . --self-test",
         "Apple conformance focused authority verifier",
@@ -13788,9 +13857,20 @@ def validate_apple_verifier_authority_contract(sources):
         "Apple verifier authority Appendix C row",
     )
     require_text(
+        sources["requirements"],
+        "This closes the independently archived and provenance-verified "
+        "Apple checker-image input;",
+        "Apple image-provenance requirement disposition",
+    )
+    require_text(
         sources["hardening"],
         "R-S11ci/R-S11e-101 — Apple conformance verifier authority",
         "Apple verifier authority hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "`9f675754d52962952a2bfc1d74e98d1a37b1b0d220e670780dca78f653d8a7cc`",
+        "Apple canonical archive ledger evidence",
     )
 
 
@@ -21287,8 +21367,8 @@ def validate_dart_audit_authority_contract(sources):
             "Dart audit untagged root descriptor",
         ),
         (
-            "if isinstance(spec, (VerifierSpec, DartAuditSpec, RustAuditSpec)):",
-            "Dart audit image-ID capture selection",
+            "(VerifierSpec, AppleCheckSpec, DartAuditSpec, RustAuditSpec),",
+            "content-addressed verifier image-ID capture selection",
         ),
         ("save_ref = spec.image_id", "Dart audit untagged save reference"),
         (
@@ -36508,8 +36588,8 @@ def run_source_mutations(sources):
         ),
         (
             "apple_check_dockerfile",
-            "This is an acquisition recipe only",
-            "This is an unreviewed acquisition recipe",
+            "This is an acquisition recipe, never a verdict-time fallback.",
+            "This is an unreviewed acquisition recipe.",
             "Apple acquisition-recipe content pin",
         ),
         (
@@ -36604,10 +36684,23 @@ def run_source_mutations(sources):
             "Apple verifier authority Appendix C row",
         ),
         (
+            "requirements",
+            "This closes the independently archived and provenance-verified "
+            "Apple checker-image input;",
+            "The Apple checker-image input remains open;",
+            "Apple image-provenance requirement disposition",
+        ),
+        (
             "hardening",
             "R-S11ci/R-S11e-101 — Apple conformance verifier authority",
             "R-S11ci/R-S11e-101 — Apple ambient verifier authority",
             "Apple verifier authority hardening ledger",
+        ),
+        (
+            "hardening",
+            "`9f675754d52962952a2bfc1d74e98d1a37b1b0d220e670780dca78f653d8a7cc`",
+            "`8f675754d52962952a2bfc1d74e98d1a37b1b0d220e670780dca78f653d8a7cc`",
+            "Apple canonical archive ledger evidence",
         ),
         (
             "online_fetch_container_authority_verifier",

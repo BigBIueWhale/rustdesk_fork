@@ -2802,7 +2802,7 @@ def validate_r_b2_version_metadata(sources):
 
     verify_run = extract_between(
         sources["verify"],
-        'RUN=("$DOCKER_BIN" run --rm --pull=never --network=none --read-only\n',
+        "RUN=(local_docker run --rm --pull=never --network=none --read-only\n",
         "\n  /bin/bash --noprofile --norc /work/scripts/verify-container-command.sh)",
         "verifier Cargo container",
     )
@@ -11296,7 +11296,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#260",
+        "R-S11n through R-S11dh, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#261",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11377,7 +11377,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#260",
+        "R-S11n through R-S11dh, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#261",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11556,7 +11556,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#260",
+        "R-S11n through R-S11dh, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#261",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11690,7 +11690,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#260",
+        "R-S11n through R-S11dh, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#261",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11858,7 +11858,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#260",
+        "R-S11n through R-S11dh, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#261",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12051,7 +12051,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#260",
+        "R-S11n through R-S11dh, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#261",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12385,7 +12385,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#260",
+        "R-S11n through R-S11dh, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#261",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -22881,6 +22881,7 @@ def validate_rust_audit_distribution_contract(sources):
 
 def validate_main_verifier_authority_contract(sources):
     shell = sources["verify"]
+    lib = sources["lib"]
     wrapper = sources["verifier_command_wrapper"]
     helper = sources["root_ipc_artifact_helper"]
     authority = sources["main_verifier_authority_validator"]
@@ -22890,14 +22891,28 @@ def validate_main_verifier_authority_contract(sources):
     pins = sources["pins"]
     ipc_fs = sources["ipc_fs_source"]
 
+    docker_run_definitions = re.findall(
+        r"(?m)^(?:local_docker run |RUN=\(local_docker run |  local_docker run )",
+        shell,
+    )
+    if len(docker_run_definitions) != 3:
+        raise VerificationError(
+            "main verifier fixed Docker launcher: "
+            f"expected exactly 3 definitions, found {len(docker_run_definitions)}"
+        )
     for text, label in (
-        ('readonly DOCKER_BIN=/usr/bin/docker', "main verifier trusted Docker client"),
-        ('[ "$(id -u)" -ne 0 ] || { echo "verify: refuses host or container-root execution"', "main verifier UID-root refusal"),
-        ('[ "$(id -g)" -ne 0 ] || { echo "verify: refuses a root primary group"', "main verifier GID-root refusal"),
-        ('IMAGE_ID="$($DOCKER_BIN image inspect --format \'{{.Id}}\' "$DEV_CHECK_IMAGE_ID")"', "main verifier immutable image lookup"),
+        ('readonly VERIFY_UID="$(/usr/bin/id -u)"', "main verifier absolute UID source"),
+        ('readonly VERIFY_GID="$(/usr/bin/id -g)"', "main verifier absolute GID source"),
+        ('[ "$VERIFY_UID" -ne 0 ] || { echo "verify: refuses host or container-root execution"', "main verifier UID-root refusal"),
+        ('[ "$VERIFY_GID" -ne 0 ] || { echo "verify: refuses a root primary group"', "main verifier GID-root refusal"),
+        ('initialize_local_docker_authority "$VERIFY_TMP/docker-config" "main-verifier"', "main verifier fixed Docker authority initialization"),
+        ('if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]', "main verifier fixed Docker authority cleanup"),
+        ("&& ! remove_local_docker_authority; then", "main verifier exact Docker authority removal"),
+        ("verify: preserving changed private Docker authority", "main verifier changed-authority preservation"),
+        ('IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$DEV_CHECK_IMAGE_ID")"', "main verifier fixed initial image inspection"),
         ('archive_current_source >"$VERIFY_SOURCE_ARCHIVE"', "main verifier normalized source snapshot"),
         ('snapshot-subtree-create', "main verifier private vendor snapshot"),
-        ('RUN=("$DOCKER_BIN" run --rm --pull=never --network=none --read-only', "main verifier ordinary pull/network/root isolation"),
+        ("RUN=(local_docker run --rm --pull=never --network=none --read-only", "main verifier ordinary pull/network/root isolation"),
         ('--mount "type=bind,source=$VERIFY_SOURCE,target=/work,readonly"', "main verifier private source mount"),
         ('--mount "type=bind,source=$VERIFY_VENDOR,target=/vendor,readonly"', "main verifier private vendor mount"),
         ('--mount "type=bind,source=$VERIFY_TARGET,target=/build"', "main verifier private target mount"),
@@ -22906,10 +22921,14 @@ def validate_main_verifier_authority_contract(sources):
         ('--mount "type=bind,source=$ROOT_IPC_ARTIFACT,target=/root-ipc-test,readonly"', "main verifier root artifact-only mount"),
         ('--env RUSTDESK_ROOT_IPC_FS_HARNESS=1', "main verifier root behavior requirement"),
         ('SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum', "main verifier source postcondition"),
+        ('FINAL_IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$IMAGE_ID"', "main verifier fixed final image inspection"),
     ):
         require_text(shell, text, label)
-    require_exact_count(shell, '"$DOCKER_BIN" run ', 3, "main verifier Docker definition inventory")
-    require_exact_count(shell, 'RUN=("$DOCKER_BIN" run ', 1, "main verifier ordinary container inventory")
+    require_exact_count(shell, "RUN=(local_docker run ", 1, "main verifier ordinary container inventory")
+    require_exact_count(shell, "local_docker image inspect --format", 2, "main verifier fixed image-inspection inventory")
+    require_absent(shell, '"$DOCKER_BIN" run ', "main verifier direct ambient Docker launch")
+    if re.search(r"(?m)^readonly DOCKER_BIN=/usr/bin/docker$", shell):
+        raise VerificationError("main verifier obsolete direct Docker client remains present")
     require_exact_count(
         shell,
         'run_root_ipc_test \\\n  ipc::ipc_fs::tests::',
@@ -22924,6 +22943,75 @@ def validate_main_verifier_authority_contract(sources):
         ('\nIMG=rd-devcheck\n', "main verifier mutable image assignment"),
     ):
         require_absent(shell, text, label)
+    require_order(
+        shell,
+        (
+            '[ "$VERIFY_UID" -ne 0 ]',
+            '[ "$VERIFY_GID" -ne 0 ]',
+            "source scripts/lib.sh",
+            "load_pins",
+            "VERIFY_TMP=$(umask 077",
+            'initialize_local_docker_authority "$VERIFY_TMP/docker-config" "main-verifier"',
+            "verify_scan_self_test",
+            "local_docker image inspect",
+        ),
+        "main verifier fixed Docker authority initialization",
+    )
+    cleanup = extract_between(
+        shell,
+        "cleanup_verify_tmp() {",
+        "\n}\ntrap cleanup_verify_tmp EXIT",
+        "main verifier cleanup",
+    )
+    require_order(
+        cleanup,
+        ("remove_local_docker_authority", "verify-private-tree-closure.py"),
+        "main verifier Docker-before-workspace cleanup",
+    )
+    require_text(
+        cleanup,
+        'elif [ -z "$VERIFY_TMP_ID" ]',
+        "main verifier changed Docker authority blocks recursive cleanup",
+    )
+    for text, label in (
+        ("initialize_local_docker_authority() {", "shared fixed Docker authority initializer"),
+        (
+            "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
+            "shared fixed Docker ambient-input refusal",
+        ),
+        (
+            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
+            "shared fixed Docker canonical no-clobber configuration",
+        ),
+        ("local_docker() {", "shared fixed Docker launcher"),
+        ("/usr/bin/env -i", "shared fixed Docker empty environment"),
+        ("DOCKER_HOST=unix:///var/run/docker.sock", "shared fixed Docker local endpoint"),
+        ('--config "$LOCAL_DOCKER_AUTHORITY_CONFIG"', "shared fixed Docker private configuration"),
+        ("remove_local_docker_authority() {", "shared fixed Docker exact cleanup"),
+    ):
+        require_text(lib, text, label)
+    local_docker = extract_between(
+        lib,
+        "local_docker() {",
+        "\n}\n\nlocal_docker_image_provenance() {",
+        "shared fixed Docker launcher",
+    )
+    require_exact_count(
+        local_docker,
+        "assert_local_docker_authority",
+        2,
+        "shared fixed Docker pre/post authority proof",
+    )
+    for text, label in (
+        ("/usr/bin/env -i", "shared fixed Docker launcher empty environment"),
+        ("/usr/bin/docker", "shared fixed Docker launcher absolute client"),
+        ("--host unix:///var/run/docker.sock", "shared fixed Docker launcher endpoint"),
+        (
+            '--config "$LOCAL_DOCKER_AUTHORITY_CONFIG"',
+            "shared fixed Docker launcher configuration",
+        ),
+    ):
+        require_text(local_docker, text, label)
 
     for text, label in (
         ('exec cargo --config /tmp/cargo-config.toml --offline --locked "$@"', "main verifier locked/offline Cargo wrapper"),
@@ -23023,6 +23111,22 @@ def validate_main_verifier_authority_contract(sources):
     )
     for text, label in (
         ('Mutation("shell", "--network=none", "--network=bridge"', "main verifier network mutation"),
+        (
+            'Mutation(\n        "shell",\n        \'initialize_local_docker_authority "$VERIFY_TMP/docker-config" "main-verifier"\'',
+            "main verifier focused Docker initialization mutation",
+        ),
+        (
+            'Mutation("shell", \'FINAL_IMAGE_ID="$(local_docker image inspect\', \'FINAL_IMAGE_ID="$(/usr/bin/docker image inspect\'',
+            "main verifier focused Docker final inspection mutation",
+        ),
+        (
+            'Mutation("shell", "local_docker run --rm", "/usr/bin/docker run --rm"',
+            "main verifier focused Docker launcher mutation",
+        ),
+        (
+            'Mutation(\n        "lib",\n        "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS"',
+            "main verifier ambient Docker input mutation",
+        ),
         ('Mutation("shell", "--cap-drop=ALL --cap-add=CHOWN --cap-add=FOWNER"', "main verifier root capability mutation"),
         ('Mutation("wrapper", "exec cargo --config /tmp/cargo-config.toml --offline --locked"', "main verifier wrapper mutation"),
         ('Mutation("helper", \'metadata.st_nlink == 1\'', "main verifier artifact mutation"),
@@ -23034,6 +23138,11 @@ def validate_main_verifier_authority_contract(sources):
         ('Mutation("online_fetch", \'--archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE"\'', "main verifier archive-size mutation"),
         ('Mutation("pins", \'SHA256_DEV_CHECK_IMAGE_ARCHIVE="234f17f9355c7bfc\'', "main verifier archive-pin mutation"),
         ('Mutation("requirements", \'<span class="id">R-S11bg</span>\'', "main verifier requirement mutation"),
+        ('Mutation("requirements", \'<span class="id">R-S11dh</span>\'', "main verifier Docker requirement mutation"),
+        (
+            'Mutation(\n        "hardening",\n        "R-S11dh/R-S11e-126 — main verifier Docker client, daemon, and configuration authority"',
+            "main verifier Docker ledger mutation",
+        ),
     ):
         require_text(authority_mutations, text, label)
     require_text(
@@ -23064,6 +23173,29 @@ def validate_main_verifier_authority_contract(sources):
         sources["hardening"],
         "R-S11bg/R-S11e-73 — main verifier container, root-test, and recoverable image authority",
         "main verifier authority hardening ledger",
+    )
+    docker_requirement = extract_html_requirement(
+        sources["requirements"], "R-S11dh", "main verifier Docker authority requirement"
+    )
+    for text in (
+        "Both image inspections and all three launch definitions",
+        "fixed local Unix socket",
+        "canonical <code>{}</code> <code>config.json</code>",
+        "Appendix C #261",
+        "R-S11e-126",
+    ):
+        require_text(
+            docker_requirement, text, "main verifier Docker authority requirement"
+        )
+    require_text(
+        sources["requirements"],
+        "<tr><td>261</td>",
+        "main verifier Docker authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dh/R-S11e-126 — main verifier Docker client, daemon, and configuration authority",
+        "main verifier Docker authority hardening ledger",
     )
 
 
@@ -36126,6 +36258,78 @@ def run_source_mutations(sources):
             "Rust audit Docker authority hardening ledger",
         ),
         (
+            "verify",
+            'readonly VERIFY_UID="$(/usr/bin/id -u)"',
+            'readonly VERIFY_UID="$(id -u)"',
+            "main verifier absolute UID source",
+        ),
+        (
+            "verify",
+            'readonly VERIFY_GID="$(/usr/bin/id -g)"',
+            'readonly VERIFY_GID="$(id -g)"',
+            "main verifier absolute GID source",
+        ),
+        (
+            "verify",
+            'initialize_local_docker_authority "$VERIFY_TMP/docker-config" "main-verifier"',
+            "true # main verifier fixed Docker authority disabled",
+            "main verifier fixed Docker authority initialization",
+        ),
+        (
+            "verify",
+            'IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$DEV_CHECK_IMAGE_ID")"',
+            'IMAGE_ID="$(/usr/bin/docker image inspect --format \'{{.Id}}\' "$DEV_CHECK_IMAGE_ID")"',
+            "main verifier fixed initial image inspection",
+        ),
+        (
+            "verify",
+            'FINAL_IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$IMAGE_ID"',
+            'FINAL_IMAGE_ID="$(/usr/bin/docker image inspect --format \'{{.Id}}\' "$IMAGE_ID"',
+            "main verifier fixed final image inspection",
+        ),
+        (
+            "verify",
+            "\nlocal_docker run --rm --pull=never --network=none --read-only",
+            "\n/usr/bin/docker run --rm --pull=never --network=none --read-only",
+            "main verifier fixed Docker launcher",
+        ),
+        (
+            "verify",
+            "RUN=(local_docker run --rm --pull=never --network=none --read-only",
+            "RUN=(/usr/bin/docker run --rm --pull=never --network=none --read-only",
+            "verifier Cargo container",
+        ),
+        (
+            "verify",
+            "  local_docker run --rm --pull=never --network=none --read-only",
+            "  /usr/bin/docker run --rm --pull=never --network=none --read-only",
+            "main verifier fixed Docker launcher",
+        ),
+        (
+            "verify",
+            'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \\\n      && ! remove_local_docker_authority; then',
+            "if false; then",
+            "main verifier fixed Docker authority cleanup",
+        ),
+        (
+            "main_verifier_authority_validator",
+            'Mutation(\n        "shell",\n        \'initialize_local_docker_authority "$VERIFY_TMP/docker-config" "main-verifier"\',\n        "true # fixed Docker authority initialization disabled",\n        "fixed Docker authority initialization",\n    ),',
+            "# main verifier fixed Docker initialization mutation removed",
+            "main verifier focused Docker initialization mutation",
+        ),
+        (
+            "main_verifier_authority_validator",
+            'Mutation("shell", \'FINAL_IMAGE_ID="$(local_docker image inspect\', \'FINAL_IMAGE_ID="$(/usr/bin/docker image inspect\', "fixed final image inspection"),',
+            "# main verifier fixed final-image mutation removed",
+            "main verifier focused Docker final inspection mutation",
+        ),
+        (
+            "main_verifier_authority_validator",
+            'Mutation("shell", "local_docker run --rm", "/usr/bin/docker run --rm", "fixed Docker launcher"),',
+            "# main verifier fixed Docker launcher mutation removed",
+            "main verifier focused Docker launcher mutation",
+        ),
+        (
             "verifier_command_wrapper",
             'exec cargo --config /tmp/cargo-config.toml --offline --locked "$@"',
             'exec cargo "$@"',
@@ -36264,6 +36468,24 @@ def run_source_mutations(sources):
             "main verifier authority hardening ledger",
         ),
         (
+            "requirements",
+            '<span class="id">R-S11dh</span>',
+            '<span class="id">R-S11dh-disabled</span>',
+            "main verifier Docker authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>261</td>",
+            "<tr><td>261-disabled</td>",
+            "main verifier Docker authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11dh/R-S11e-126 — main verifier Docker client, daemon, and configuration authority",
+            "R-S11dh/R-S11e-XXX — main verifier Docker authority deferred",
+            "main verifier Docker authority hardening ledger",
+        ),
+        (
             "cli_source",
             "fn get_lch(&self) -> Arc<RwLock<LoginConfigHandler>>",
             "fn get_login_config_handler(&self) -> Arc<RwLock<LoginConfigHandler>>",
@@ -36397,7 +36619,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11dg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#260",
+            "R-S11n through R-S11dh, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#261",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),

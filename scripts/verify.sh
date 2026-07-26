@@ -53,6 +53,10 @@ done
 
 cd "$(dirname "$0")/.."
 
+readonly VERIFY_UID="$(/usr/bin/id -u)"
+readonly VERIFY_GID="$(/usr/bin/id -g)"
+[ "$VERIFY_UID" -ne 0 ] || { echo "verify: refuses host or container-root execution" >&2; exit 1; }
+[ "$VERIFY_GID" -ne 0 ] || { echo "verify: refuses a root primary group" >&2; exit 1; }
 # shellcheck source=scripts/lib.sh
 source scripts/lib.sh
 load_pins
@@ -69,7 +73,11 @@ cleanup_verify_tmp() {
   trap - EXIT
   trap '' HUP INT TERM
   if [ -n "$VERIFY_TMP" ]; then
-    if [ -z "$VERIFY_TMP_ID" ] || [ ! -d "$VERIFY_TMP" ] || [ -L "$VERIFY_TMP" ] \
+    if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
+      && ! remove_local_docker_authority; then
+      echo "verify: preserving changed private Docker authority: $VERIFY_TMP" >&2
+      cleanup_failed=1
+    elif [ -z "$VERIFY_TMP_ID" ] || [ ! -d "$VERIFY_TMP" ] || [ -L "$VERIFY_TMP" ] \
       || [ "$(stat -c '%d:%i' -- "$VERIFY_TMP" 2>/dev/null)" != "$VERIFY_TMP_ID" ]; then
       echo "verify: private workspace identity is unavailable or changed: $VERIFY_TMP" >&2
       cleanup_failed=1
@@ -121,6 +129,7 @@ if [ "$VERIFY_WORKSPACE_MISSING_SELF_TEST" -eq 1 ]; then
   echo "verify workspace missing self-test: REACHED" >&2
   exit 0
 fi
+initialize_local_docker_authority "$VERIFY_TMP/docker-config" "main-verifier"
 verify_scan_self_test "$VERIFY_TMP"
 readonly VERIFIER_FIXTURE_TMP="$VERIFY_TMP/verifier-fixtures"
 install -d -m 0700 "$VERIFIER_FIXTURE_TMP"
@@ -128,7 +137,6 @@ install -d -m 0700 "$VERIFIER_FIXTURE_TMP"
 # The fork-version reader/validator (defines fork_version; see docs/VERSIONING.md).
 # shellcheck source=scripts/fork-version.sh
 source scripts/fork-version.sh
-readonly DOCKER_BIN=/usr/bin/docker
 rc=0
 
 echo "== (0) verifier workspace authority + release source/workflow ordering (R-S11c-10w/R-B2) =="
@@ -176,7 +184,7 @@ else
   echo "  ok  R-V3 exact-commit external-audit handoff names current mandatory roots/symbols, rejects stale line citations and self-signoff, and remains explicitly outstanding"
 fi
 
-echo "== (0c) main verifier immutable-container authority (R-S11bg) =="
+echo "== (0c) main verifier immutable-container and fixed local Docker authority (R-S11bg/R-S11dh) =="
 r_s11bg=
 if ! /usr/bin/python3 -I -S scripts/prepare-root-ipc-test.py --self-test; then
   r_s11bg="$r_s11bg root-artifact-helper-self-test-failed"
@@ -188,10 +196,10 @@ if ! /usr/bin/python3 -I -S scripts/verify-main-verifier-authority.py --repo . -
   r_s11bg="$r_s11bg authority-mutation-gate-failed"
 fi
 if [ -n "$r_s11bg" ]; then
-  echo "  FAIL R-S11bg main verifier authority:$r_s11bg"
+  echo "  FAIL R-S11bg/R-S11dh main verifier authority:$r_s11bg"
   rc=1
 else
-  echo "  ok  R-S11bg exact local image + private source/vendor/output state + non-root ordinary execution + isolated minimal-capability root tests"
+  echo "  ok  R-S11bg/R-S11dh exact fixed local Docker authority + immutable local image + private source/vendor/output state + non-root ordinary execution + isolated minimal-capability root tests"
 fi
 
 echo "== (0d) Debian builder private-source/container authority (R-S11cf/R-S11e-98) =="
@@ -509,9 +517,6 @@ fi
 }
 
 echo "== preparing the confined compile/test transaction (R-S11bg) =="
-[ "$(id -u)" -ne 0 ] || { echo "verify: refuses host or container-root execution" >&2; exit 1; }
-[ "$(id -g)" -ne 0 ] || { echo "verify: refuses a root primary group" >&2; exit 1; }
-[ -x "$DOCKER_BIN" ] || { echo "verify: trusted Docker client is unavailable: $DOCKER_BIN" >&2; exit 1; }
 : "${DEV_CHECK_IMAGE_ID:?verify: DEV_CHECK_IMAGE_ID is unset}"
 : "${SHA256_DEV_CHECK_DOCKERFILE:?verify: SHA256_DEV_CHECK_DOCKERFILE is unset}"
 : "${SHA256_DEV_CHECK_CARGO:?verify: SHA256_DEV_CHECK_CARGO is unset}"
@@ -526,7 +531,7 @@ echo "== preparing the confined compile/test transaction (R-S11bg) =="
 [ "$(sha256sum online/cargo-vendor-config.toml | awk '{print $1}')" = "$SHA256_CARGO_VENDOR_CONFIG" ] \
   || { echo "verify: Cargo vendor source map differs from its pin" >&2; exit 1; }
 
-IMAGE_ID="$($DOCKER_BIN image inspect --format '{{.Id}}' "$DEV_CHECK_IMAGE_ID")" \
+IMAGE_ID="$(local_docker image inspect --format '{{.Id}}' "$DEV_CHECK_IMAGE_ID")" \
   || { echo "verify: immutable devcheck image is not present locally" >&2; exit 1; }
 [ "$IMAGE_ID" = "$DEV_CHECK_IMAGE_ID" ] \
   || { echo "verify: local devcheck image identity differs from its pin" >&2; exit 1; }
@@ -571,16 +576,16 @@ chmod -R a-w "$VERIFY_SOURCE"
 chmod 0400 "$VERIFY_CARGO_CONFIG"
 [ "$(grep -c '^directory = "/vendor"$' "$VERIFY_CARGO_CONFIG")" -eq 1 ] \
   || { echo "verify: private Cargo source map has an invalid vendor-directory cardinality" >&2; exit 1; }
-[ "$(stat -c '%u:%g:%a:%h' "$VERIFY_TARGET")" = "$(id -u):$(id -g):700:2" ] \
+[ "$(stat -c '%u:%g:%a:%h' "$VERIFY_TARGET")" = "$VERIFY_UID:$VERIFY_GID:700:2" ] \
   || { echo "verify: private Cargo target has invalid metadata" >&2; exit 1; }
-[ "$(stat -c '%u:%g:%a:%h' "$VERIFY_CARGO_CONFIG")" = "$(id -u):$(id -g):400:1" ] \
+[ "$(stat -c '%u:%g:%a:%h' "$VERIFY_CARGO_CONFIG")" = "$VERIFY_UID:$VERIFY_GID:400:1" ] \
   || { echo "verify: private Cargo config has invalid metadata" >&2; exit 1; }
 
 readonly IMAGE_PREFLIGHT_OUT="$VERIFY_TMP/image-preflight.out"
 readonly IMAGE_PREFLIGHT_ERR="$VERIFY_TMP/image-preflight.err"
 set +e
-"$DOCKER_BIN" run --rm --pull=never --network=none --read-only \
-  --user "$(id -u):$(id -g)" \
+local_docker run --rm --pull=never --network=none --read-only \
+  --user "$VERIFY_UID:$VERIFY_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
   --pids-limit=32 --memory=256m --memory-swap=256m --cpus=1 \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=16m \
@@ -614,8 +619,8 @@ chmod 0600 "$EXPECTED_IMAGE_PREFLIGHT"
 cmp "$EXPECTED_IMAGE_PREFLIGHT" "$IMAGE_PREFLIGHT_OUT" \
   || { echo "verify: immutable devcheck image contents differ from reviewed pins" >&2; exit 1; }
 
-RUN=("$DOCKER_BIN" run --rm --pull=never --network=none --read-only
-  --user "$(id -u):$(id -g)"
+RUN=(local_docker run --rm --pull=never --network=none --read-only
+  --user "$VERIFY_UID:$VERIFY_GID"
   --cap-drop=ALL --security-opt=no-new-privileges
   --pids-limit=512 --memory=12g --memory-swap=12g --cpus=4
   --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g
@@ -657,7 +662,7 @@ run_root_ipc_test() {
   output="$VERIFY_TMP/root-ipc-$label.out"
   error="$VERIFY_TMP/root-ipc-$label.err"
   set +e
-  "$DOCKER_BIN" run --rm --pull=never --network=none --read-only \
+  local_docker run --rm --pull=never --network=none --read-only \
     --user 0:0 \
     --cap-drop=ALL --cap-add=CHOWN --cap-add=FOWNER \
     --security-opt=no-new-privileges \
@@ -8806,7 +8811,7 @@ case "$version_ignore_status" in
   1) ;;
   *) version_output_bad="$version_output_bad ignore-matcher-failed" ;;
 esac
-verify_run_block="$(awk '/^RUN=\("\$DOCKER_BIN" run --rm/{inside=1} inside{print} inside && /\/work\/scripts\/verify-container-command.sh\)$/{exit}' scripts/verify.sh)"
+verify_run_block="$(awk '/^RUN=\(local_docker run --rm/{inside=1} inside{print} inside && /\/work\/scripts\/verify-container-command.sh\)$/{exit}' scripts/verify.sh)"
 if ! grep -qE '^  --mount "type=bind,source=\$VERIFY_SOURCE,target=/work,readonly"$' <<<"$verify_run_block"; then
   version_output_bad="$version_output_bad mutable-main-cargo-source"
 fi
@@ -13290,7 +13295,7 @@ r_s11bg_post=
 SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum | awk '{print $1}')"
 [ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ] \
   || r_s11bg_post="$r_s11bg_post real-source-state-changed"
-FINAL_IMAGE_ID="$($DOCKER_BIN image inspect --format '{{.Id}}' "$IMAGE_ID" 2>/dev/null)" \
+FINAL_IMAGE_ID="$(local_docker image inspect --format '{{.Id}}' "$IMAGE_ID" 2>/dev/null)" \
   || r_s11bg_post="$r_s11bg_post immutable-image-disappeared"
 [ "${FINAL_IMAGE_ID:-}" = "$IMAGE_ID" ] \
   || r_s11bg_post="$r_s11bg_post immutable-image-identity-changed"

@@ -12604,6 +12604,95 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   transaction. Exact cold committed R-B2/R-B10 artifacts, installed/native/
   device behavior, and R-V3 external review remain separately open. The
   broader Ralph-loop goal remains active.
+- **R-S11dn/R-S11e-132 — mandatory Android release-gate Docker, source,
+  resource, and cleanup authority — SOURCE IMPLEMENTED AND CONFINED SOURCE
+  VERIFIED 2026-07-26.** Platform: the unprivileged Linux
+  release-verification host. Endpoint/action:
+  `scripts/test-android-gradle-cache.sh` outer mode and
+  `scripts/android-rust-check.sh`, the two Android children required by
+  `scripts/verify-release.sh`. Boundary: invoking release user and live source/
+  canonical online inputs ↔ Docker client/daemon/configuration, Gradle
+  behavioral verdict, aarch64 Rust target-check verdict, writable generated
+  state, resource consumption, and terminal cleanup authority.
+
+  Both children already selected the immutable pinned Android-builder image
+  and launched numeric-nonroot, no-pull, networkless, read-only-root,
+  capability-free, no-new-privileges containers. They nevertheless sourced
+  repository helpers without refusing host UID/GID zero, selected `docker`
+  through `PATH`, let image provenance and direct calls inherit ambient Docker
+  routing/configuration, used short volume binds without descendant-mount
+  control, and supplied no PID/memory/no-swap/CPU/descriptor/file-size/bounded-
+  tmpfs limits. The Rust check additionally mounted the live repository
+  writable at `/src` even though pub resolution, bridge generation, and Cargo
+  output write there. The Gradle fixture lived at a separately recursive
+  public-`/tmp` path.
+
+  Docker's official CLI reference documents client host/context/configuration/
+  TLS/API/platform/trust/header inputs and their precedence. Docker's Engine
+  security guidance treats rootful-daemon control as powerful host authority
+  and cgroups as denial-of-service containment. Its bind-mount documentation
+  states that binds act on the selected daemon host, are writable by default,
+  and include descendant mounts unless `--mount` controls recursion. The run
+  reference documents explicit pull, read-only-root, resource, tmpfs, and
+  `ulimit` controls. The old path was real release-verdict,
+  daemon/configuration-selection, checkout-write, bind-mount, resource,
+  cleanup, and build-host authority debt. It is not evidence that another
+  daemon/configuration was used, source or online bytes changed, Docker
+  escaped, host root was acquired, a listener or port was exposed, host
+  RustDesk/service/configuration/firewall/network state changed, exploitation
+  occurred, or the host was compromised.
+
+  Both bootstraps now close `PATH`, capture numeric UID/GID with absolute
+  `/usr/bin/id`, and reject either zero before sourcing repository helpers.
+  Every direct or release-child invocation creates an unpredictable
+  current-principal mode-0700 identity-bound workspace, initializes its own
+  shared fixed local-Docker authority, and routes immutable Android-builder
+  provenance plus all three launches through the shared empty-environment
+  pre/post-proved wrapper. Every container has explicit no-pull/no-network/
+  read-only-root/numeric-nonroot/capability-free/no-new-privileges semantics,
+  bounded PID/memory/no-swap/CPU/core/descriptor/file-size/tmpfs resources,
+  no host namespace/device/port/Docker-socket authority, and an exact mount
+  inventory with recursive inclusion disabled.
+
+  The Gradle gate exposes only its named read-only projector/init/contract/test
+  files, private read-only mount-crossing fixture, and one read-only pinned
+  Gradle distribution. The Rust gate archives only current tracked or
+  nonignored regular files into an immutable reference plus disposable
+  writable candidate, proves equality with the existing Android source
+  comparator before execution, and mounts only the candidate writable; the
+  authoritative inner script and canonical online closure are read-only. It
+  checks tracked source inputs afterward while admitting generated extras,
+  then reverifies the canonical online closure and stable live-source archive.
+  Neither child exposes a writable live checkout.
+
+  Cleanup first reproves and exactly removes Docker configuration, then uses
+  the descriptor-safe private-tree closer against the recorded workspace
+  identity; changed objects are preserved and fail. R-S11dn and Appendix C
+  #267 make this source boundary normative. The extended
+  `scripts/verify-android-builder-authority.py`, shared gate, independent
+  workspace contract, and complete source-mutation catalog bind it. No Android
+  Rust or Gradle workload is required for those source assertions.
+
+  Confined source verification on 2026-07-26 is green. The focused Android
+  builder/release-gate verifier rejects all 145 deliberate mutations. The
+  adjacent release-parent, Debian systemd-lifecycle, and Debian builder gates
+  reject 27, 44, and 62 mutations respectively. The independent workspace
+  normal contract is green, and its complete catalog rejects all 2,334
+  deliberate source mutations from mutation one. Native-codec normal and
+  negative modes, shell/Python syntax, requirements HTML parsing/hash
+  synchronization, and diff hygiene are green. Every project gate ran only in
+  immutable verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric non-root with no pull or network, read-only root/repository, all
+  capabilities dropped, no-new-privileges, bounded resources, no host
+  namespace/device/port/Docker-socket mount, and a fresh private canonical-
+  empty host Docker-client configuration removed immediately afterward.
+
+  No Android Rust check, Gradle behavioral workload, APK/package/artifact
+  builder, root fixture, KVM guest, release transaction, installed/native/
+  device test, or external review is claimed here. Exact cold committed
+  R-B2/R-B10 artifacts, native/device behavior, and R-V3 external review remain
+  separately open; the broader Ralph-loop goal remains active.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -13321,9 +13410,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-72e46a9fd790e68cc3f548694e0017575130878231c69f16476805e3cdf4a4fa  requirements.html
+f3e8f238cdcd2acdd557038a682e1e16563d5cb6e0713f348e267d5ce6088d0a  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dm, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dn, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

@@ -1,21 +1,47 @@
 #!/usr/bin/env bash
 set -euo pipefail
+umask 077
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PATH=/usr/bin:/bin
+readonly HOST_UID="$(/usr/bin/id -u)"
+readonly HOST_GID="$(/usr/bin/id -g)"
+[ "$HOST_UID" -ne 0 ] \
+    || { echo "Android Gradle release gate refuses host or container-root execution" >&2; exit 1; }
+[ "$HOST_GID" -ne 0 ] \
+    || { echo "Android Gradle release gate refuses a root primary group" >&2; exit 1; }
+
+SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CONTAINER_TEST_ROOT=/android-gradle-test
+WORKSPACE=""
+WORKSPACE_ID=""
 HOST_FIXTURE=""
 
-cleanup_host_fixture() {
-    local status=$?
+cleanup_host_workspace() {
+    local status=$? cleanup_failed=0
     trap - EXIT HUP INT TERM
-    if [ -n "$HOST_FIXTURE" ] && [ -d "$HOST_FIXTURE" ]; then
-        chmod -R u+rwX "$HOST_FIXTURE" 2>/dev/null || status=1
-        rm -rf -- "$HOST_FIXTURE" || status=1
+    if [ -n "$WORKSPACE" ]; then
+        if [ "${LOCAL_DOCKER_AUTHORITY_INITIALIZED:-0}" -eq 1 ] \
+            && ! remove_local_docker_authority; then
+            echo "test-android-gradle-cache: preserving changed private Docker authority: $WORKSPACE" >&2
+            cleanup_failed=1
+        elif [ -z "$WORKSPACE_ID" ] || [ ! -d "$WORKSPACE" ] || [ -L "$WORKSPACE" ] \
+            || [ "$(/usr/bin/stat -c '%d:%i' -- "$WORKSPACE" 2>/dev/null)" != "$WORKSPACE_ID" ]; then
+            echo "test-android-gradle-cache: preserving changed private workspace: $WORKSPACE" >&2
+            cleanup_failed=1
+        elif ! /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-private-tree-closure.py" \
+            --remove-private-root "$WORKSPACE" --expected-identity "$WORKSPACE_ID"; then
+            echo "test-android-gradle-cache: failed to remove private workspace: $WORKSPACE" >&2
+            cleanup_failed=1
+        elif [ -e "$WORKSPACE" ] || [ -L "$WORKSPACE" ]; then
+            echo "test-android-gradle-cache: private workspace survived removal: $WORKSPACE" >&2
+            cleanup_failed=1
+        fi
     fi
+    [ "$cleanup_failed" -eq 0 ] || [ "$status" -ne 0 ] || status=1
     exit "$status"
 }
 
-trap cleanup_host_fixture EXIT
+trap cleanup_host_workspace EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
@@ -130,8 +156,19 @@ case "${1:-}" in
         # shellcheck source=scripts/lib.sh
         source "$SCRIPT_DIR/lib.sh"
         load_pins
-        require_cmd docker find readlink stat
+        require_cmd find readlink stat
         require_online_complete
+        [[ "$ANDROID_BUILDER_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+            || die "Android Gradle release gate has a malformed immutable builder image ID"
+
+        WORKSPACE="$(umask 077 && /usr/bin/mktemp -d /tmp/rustdesk-android-gradle-gate.XXXXXXXXXX)" \
+            || die "cannot create Android Gradle release-gate workspace"
+        [ -d "$WORKSPACE" ] && [ ! -L "$WORKSPACE" ] \
+            || die "Android Gradle release-gate workspace is not a real directory"
+        [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$WORKSPACE")" = "$HOST_UID:$HOST_GID:700" ] \
+            || die "Android Gradle release-gate workspace is not current-user/current-group mode 0700"
+        WORKSPACE_ID="$(/usr/bin/stat -c '%d:%i' -- "$WORKSPACE")"
+        initialize_local_docker_authority "$WORKSPACE/docker-config" "android-gradle-gate"
         require_pinned_builder_image android-builder "$ANDROID_BUILDER_IMAGE_ID"
 
         gradle_home="$(readlink -f -- "$ONLINE_DIR/gradle-home")" \
@@ -152,23 +189,25 @@ case "${1:-}" in
         [ -f "$gradle_root/bin/gradle" ] && [ -x "$gradle_root/bin/gradle" ] \
             || die "pinned Gradle distribution has no executable launcher"
 
-        HOST_FIXTURE="$(mktemp -d /tmp/android-gradle-mount-test.XXXXXXXXXX)" \
-            || die "cannot create Gradle mount-crossing fixture"
+        HOST_FIXTURE="$WORKSPACE/fixture"
+        install -d -m 0700 "$HOST_FIXTURE"
         install -d -m 0700 "$HOST_FIXTURE/seed" "$HOST_FIXTURE/overlay"
         install -d -m 0500 "$HOST_FIXTURE/seed/nested"
         printf 'same-filesystem nested bind\n' > "$HOST_FIXTURE/overlay/payload"
         chmod 0400 "$HOST_FIXTURE/overlay/payload"
         chmod 0500 "$HOST_FIXTURE/seed" "$HOST_FIXTURE/overlay"
         # ANDROID_GRADLE_MOUNT_REJECTION_DOCKER_BEGIN
-        if docker run --rm --pull=never --network=none --read-only \
-            --user "$(id -u):$(id -g)" \
-            --cap-drop=ALL \
-            --security-opt no-new-privileges \
-            --tmpfs /tmp:rw,nosuid,nodev,mode=1777 \
-            -v "$SCRIPT_DIR/android-gradle-cache.py:$CONTAINER_TEST_ROOT/android-gradle-cache.py:ro" \
-            -v "$SCRIPT_DIR/android-gradle-offline.init.gradle:$CONTAINER_TEST_ROOT/android-gradle-offline.init.gradle:ro" \
-            -v "$HOST_FIXTURE/seed:/seed:ro" \
-            -v "$HOST_FIXTURE/overlay:/seed/nested:ro" \
+        if local_docker run --rm --pull=never --network=none --read-only \
+            --user "$HOST_UID:$HOST_GID" \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            --pids-limit=64 --memory=512m --memory-swap=512m --cpus=1 \
+            --ulimit core=0:0 --ulimit nofile=1024:1024 \
+            --ulimit fsize=1048576:1048576 \
+            --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=256m \
+            --mount "type=bind,source=$SCRIPT_DIR/android-gradle-cache.py,target=$CONTAINER_TEST_ROOT/android-gradle-cache.py,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$SCRIPT_DIR/android-gradle-offline.init.gradle,target=$CONTAINER_TEST_ROOT/android-gradle-offline.init.gradle,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$HOST_FIXTURE/seed,target=/seed,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$HOST_FIXTURE/overlay,target=/seed/nested,readonly,bind-recursive=disabled" \
             "$ANDROID_BUILDER_IMAGE_ID" \
             python3 -I -S "$CONTAINER_TEST_ROOT/android-gradle-cache.py" materialize \
                 --source /seed \
@@ -182,19 +221,24 @@ case "${1:-}" in
         # ANDROID_GRADLE_MOUNT_REJECTION_DOCKER_END
 
         # ANDROID_GRADLE_SEMANTICS_DOCKER_BEGIN
-        docker run --rm --pull=never --network=none --read-only \
-            --user "$(id -u):$(id -g)" \
-            --cap-drop=ALL \
-            --security-opt no-new-privileges \
-            --tmpfs /tmp:rw,nosuid,nodev,mode=1777 \
-            -v "$SCRIPT_DIR/android-gradle-cache.py:$CONTAINER_TEST_ROOT/android-gradle-cache.py:ro" \
-            -v "$SCRIPT_DIR/android-gradle-offline.init.gradle:$CONTAINER_TEST_ROOT/android-gradle-offline.init.gradle:ro" \
-            -v "$SCRIPT_DIR/android-apk-build.sh:$CONTAINER_TEST_ROOT/android-apk-build.sh:ro" \
-            -v "$SCRIPT_DIR/test-android-gradle-cache.sh:$CONTAINER_TEST_ROOT/test-android-gradle-cache.sh:ro" \
-            -v "$gradle_root:/gradle-distribution:ro" \
+        local_docker run --rm --pull=never --network=none --read-only \
+            --user "$HOST_UID:$HOST_GID" \
+            --cap-drop=ALL --security-opt=no-new-privileges \
+            --pids-limit=256 --memory=4g --memory-swap=4g --cpus=2 \
+            --ulimit core=0:0 --ulimit nofile=4096:4096 \
+            --ulimit fsize=1073741824:1073741824 \
+            --tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=2g \
+            --mount "type=bind,source=$SCRIPT_DIR/android-gradle-cache.py,target=$CONTAINER_TEST_ROOT/android-gradle-cache.py,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$SCRIPT_DIR/android-gradle-offline.init.gradle,target=$CONTAINER_TEST_ROOT/android-gradle-offline.init.gradle,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$SCRIPT_DIR/android-apk-build.sh,target=$CONTAINER_TEST_ROOT/android-apk-build.sh,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$SCRIPT_DIR/test-android-gradle-cache.sh,target=$CONTAINER_TEST_ROOT/test-android-gradle-cache.sh,readonly,bind-recursive=disabled" \
+            --mount "type=bind,source=$gradle_root,target=/gradle-distribution,readonly,bind-recursive=disabled" \
             "$ANDROID_BUILDER_IMAGE_ID" \
             /bin/bash "$CONTAINER_TEST_ROOT/test-android-gradle-cache.sh" --inside
         # ANDROID_GRADLE_SEMANTICS_DOCKER_END
+        assert_local_docker_authority \
+            || die "Android Gradle release-gate Docker authority changed"
+        require_online_complete
         ;;
     *)
         echo "usage: scripts/test-android-gradle-cache.sh [--inside]" >&2

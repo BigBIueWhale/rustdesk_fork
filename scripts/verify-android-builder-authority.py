@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the Android APK builder's private-source and container authority."""
+"""Validate Android artifact-builder and mandatory release-gate authority."""
 
 import argparse
 import pathlib
@@ -54,6 +54,8 @@ def extract(source: str, start: str, end: str, label: str) -> str:
 
 def validate(sources: Dict[str, str]) -> None:
     build = sources["build"]
+    rust_gate = sources["rust_gate"]
+    gradle_gate = sources["gradle_gate"]
     checker = sources["checker"]
     inner = sources["inner"]
     lib = sources["lib"]
@@ -430,6 +432,420 @@ def validate(sources: Dict[str, str]) -> None:
         "shared exact Docker cleanup order",
     )
 
+    for gate, uid_name, gid_name, label in (
+        (rust_gate, "BUILD_UID", "BUILD_GID", "Android Rust release gate"),
+        (gradle_gate, "HOST_UID", "HOST_GID", "Android Gradle release gate"),
+    ):
+        for token, token_label in (
+            ("set -euo pipefail\numask 077", "private-state umask"),
+            ("export PATH=/usr/bin:/bin", "closed command path"),
+            (
+                'readonly {}="$(/usr/bin/id -u)"'.format(uid_name),
+                "absolute UID capture",
+            ),
+            (
+                'readonly {}="$(/usr/bin/id -g)"'.format(gid_name),
+                "absolute GID capture",
+            ),
+            ('[ "${}" -ne 0 ]'.format(uid_name), "UID-root refusal"),
+            ('[ "${}" -ne 0 ]'.format(gid_name), "GID-root refusal"),
+            ('source "$SCRIPT_DIR/lib.sh"', "shared Docker-authority source"),
+            ("load_pins", "pin loading"),
+            ("require_pinned_builder_image android-builder", "isolated image provenance"),
+            ("remove_local_docker_authority", "exact Docker-authority retirement"),
+            (
+                'verify-private-tree-closure.py" \\\n'
+                '            --remove-private-root "$WORKSPACE" '
+                '--expected-identity "$WORKSPACE_ID"',
+                "descriptor-safe private-workspace retirement",
+            ),
+            ("preserving changed private Docker authority", "changed-authority preservation"),
+            ("preserving changed private workspace", "changed-workspace preservation"),
+        ):
+            require(gate, token, "{} {}".format(label, token_label))
+        forbid(gate, "require_cmd docker", "{} PATH Docker requirement".format(label))
+        forbid(gate, "\ndocker run ", "{} direct PATH Docker launch".format(label))
+        forbid(gate, "\n/usr/bin/docker run ", "{} direct absolute Docker launch".format(label))
+        forbid(gate, "\n    /usr/bin/docker run ", "{} direct absolute Docker launch".format(label))
+        forbid(gate, " -v ", "{} short volume authority".format(label))
+        forbid(gate, "--volume", "{} volume authority".format(label))
+
+    for token, label in (
+        (
+            'WORKSPACE="$(umask 077 && /usr/bin/mktemp -d '
+            '/tmp/rustdesk-android-rust-check.XXXXXXXXXX)"',
+            "Android Rust private random workspace",
+        ),
+        (
+            '[ "$(/usr/bin/stat -c \'%u:%g:%a\' -- "$WORKSPACE")" = '
+            '"$BUILD_UID:$BUILD_GID:700" ]',
+            "Android Rust workspace identity/mode proof",
+        ),
+        (
+            'initialize_local_docker_authority "$WORKSPACE/docker-config" '
+            '"android-rust-check"',
+            "Android Rust fixed local Docker authority",
+        ),
+        (
+            "ls-files -z --cached --others --exclude-standard",
+            "Android Rust current-source inventory",
+        ),
+        (
+            "if not stat.S_ISREG(metadata.st_mode):",
+            "Android Rust regular-file-only source inventory",
+        ),
+        (
+            "--null --verbatim-files-from --no-recursion --files-from=-",
+            "Android Rust exact source archive",
+        ),
+        (
+            'SOURCE_AUTHORITY="$WORKSPACE/source-authority"',
+            "Android Rust immutable source authority",
+        ),
+        (
+            'BUILD_SOURCE="$WORKSPACE/source-build"',
+            "Android Rust private writable source",
+        ),
+        (
+            '/usr/bin/chmod -R a=rX "$SOURCE_AUTHORITY"',
+            "Android Rust canonical immutable source modes",
+        ),
+        (
+            '/usr/bin/chmod -R u=rwX,go=rX "$BUILD_SOURCE"',
+            "Android Rust canonical writable source modes",
+        ),
+        (
+            '--reference "$SOURCE_AUTHORITY" --candidate "$BUILD_SOURCE"',
+            "Android Rust initial source comparison",
+        ),
+        (
+            '--reference "$SOURCE_AUTHORITY" --candidate "$BUILD_SOURCE" --allow-extras',
+            "Android Rust post-check source comparison",
+        ),
+        (
+            'SOURCE_DIGEST_AFTER="$(archive_current_source | /usr/bin/sha256sum',
+            "Android Rust live-source post-check",
+        ),
+        (
+            'die "live source changed while the disposable Android Rust check was running"',
+            "Android Rust live-source change rejection",
+        ),
+    ):
+        require(rust_gate, token, label)
+    require_order(
+        rust_gate,
+        (
+            'readonly BUILD_UID="$(/usr/bin/id -u)"',
+            'readonly BUILD_GID="$(/usr/bin/id -g)"',
+            '[ "$BUILD_UID" -ne 0 ]',
+            '[ "$BUILD_GID" -ne 0 ]',
+            'source "$SCRIPT_DIR/lib.sh"',
+            "load_pins",
+            'WORKSPACE="$(umask 077 && /usr/bin/mktemp -d '
+            '/tmp/rustdesk-android-rust-check.XXXXXXXXXX)"',
+            'initialize_local_docker_authority "$WORKSPACE/docker-config" '
+            '"android-rust-check"',
+            'require_pinned_builder_image android-builder "$ANDROID_BUILDER_IMAGE_ID"',
+            "if ! local_docker run --rm --pull=never --network=none --read-only",
+        ),
+        "Android Rust root refusal, fixed Docker authority, provenance, and launch",
+    )
+    rust_cleanup = extract(
+        rust_gate,
+        "cleanup_workspace() {",
+        "\n}\ntrap cleanup_workspace EXIT",
+        "Android Rust private-workspace cleanup",
+    )
+    require_order(
+        rust_cleanup,
+        (
+            "remove_local_docker_authority",
+            'elif [ -z "$WORKSPACE_ID" ]',
+            'verify-private-tree-closure.py" \\\n'
+            '            --remove-private-root "$WORKSPACE"',
+        ),
+        "Android Rust Docker-before-workspace cleanup",
+    )
+    rust_run = extract(
+        rust_gate,
+        "if ! local_docker run ",
+        "; then",
+        "Android Rust release-check Docker launch",
+    )
+    for token, label in (
+        ("--rm --pull=never --network=none --read-only", "launch isolation"),
+        ('--user "$BUILD_UID:$BUILD_GID"', "numeric non-root identity"),
+        ("--cap-drop=ALL --security-opt=no-new-privileges", "privilege confinement"),
+        ("--pids-limit=512 --memory=12g --memory-swap=12g --cpus=4", "resource bounds"),
+        ("--ulimit core=0:0 --ulimit nofile=4096:4096", "core/descriptor bounds"),
+        ("--ulimit fsize=2147483648:2147483648", "file-size bound"),
+        ("--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=10g", "bounded scratch"),
+        ("--env RUSTDESK_CANARY_OFFLINE=1", "offline canary"),
+        ("--env APK_MODE=rust-check", "exact operation mode"),
+        (
+            "type=bind,source=$BUILD_SOURCE,target=/src,bind-recursive=disabled",
+            "private writable source mount",
+        ),
+        (
+            "type=bind,source=$SOURCE_AUTHORITY/scripts/android-apk-build.sh,"
+            "target=/authority/android-apk-build.sh,readonly,bind-recursive=disabled",
+            "immutable operation-script mount",
+        ),
+        (
+            "type=bind,source=$online,target=/online,readonly,bind-recursive=disabled",
+            "read-only online mount",
+        ),
+        ('"$ANDROID_BUILDER_IMAGE_ID"', "immutable image ID"),
+    ):
+        require(rust_run, token, "Android Rust {}".format(label))
+    require_count(rust_run, "--mount ", 3, "Android Rust exact mount inventory")
+    require_count(
+        rust_gate,
+        "local_docker run ",
+        1,
+        "Android Rust fixed-authority launch inventory",
+    )
+    require_count(
+        rust_run,
+        "bind-recursive=disabled",
+        3,
+        "Android Rust descendant-mount exclusion",
+    )
+    for token, label in (
+        ("source=$REPO_ROOT", "live repository mount"),
+        ("source=$SCRIPT_DIR/..", "script-parent mount"),
+        ("docker.sock", "Docker socket mount"),
+        ("--privileged", "privileged launch"),
+        ("--cap-add", "added capability"),
+        ("--pid=host", "host PID namespace"),
+        ("--ipc=host", "host IPC namespace"),
+        ("--uts=host", "host UTS namespace"),
+        ("--network=host", "host network namespace"),
+        ("--publish", "published port"),
+        ("--expose", "exposed port"),
+    ):
+        forbid(rust_run, token, "Android Rust {}".format(label))
+    require_count(
+        rust_gate,
+        "require_online_complete",
+        2,
+        "Android Rust online-closure pre/post proof",
+    )
+
+    for token, label in (
+        (
+            'WORKSPACE="$(umask 077 && /usr/bin/mktemp -d '
+            '/tmp/rustdesk-android-gradle-gate.XXXXXXXXXX)"',
+            "Android Gradle private random workspace",
+        ),
+        (
+            '[ "$(/usr/bin/stat -c \'%u:%g:%a\' -- "$WORKSPACE")" = '
+            '"$HOST_UID:$HOST_GID:700" ]',
+            "Android Gradle workspace identity/mode proof",
+        ),
+        (
+            'initialize_local_docker_authority "$WORKSPACE/docker-config" '
+            '"android-gradle-gate"',
+            "Android Gradle fixed local Docker authority",
+        ),
+        ('HOST_FIXTURE="$WORKSPACE/fixture"', "Android Gradle private fixture root"),
+        (
+            'assert_local_docker_authority \\\n'
+            '            || die "Android Gradle release-gate Docker authority changed"',
+            "Android Gradle final Docker-authority proof",
+        ),
+    ):
+        require(gradle_gate, token, label)
+    require_order(
+        gradle_gate,
+        (
+            'readonly HOST_UID="$(/usr/bin/id -u)"',
+            'readonly HOST_GID="$(/usr/bin/id -g)"',
+            '[ "$HOST_UID" -ne 0 ]',
+            '[ "$HOST_GID" -ne 0 ]',
+            'source "$SCRIPT_DIR/lib.sh"',
+            "load_pins",
+            'WORKSPACE="$(umask 077 && /usr/bin/mktemp -d '
+            '/tmp/rustdesk-android-gradle-gate.XXXXXXXXXX)"',
+            'initialize_local_docker_authority "$WORKSPACE/docker-config" '
+            '"android-gradle-gate"',
+            'require_pinned_builder_image android-builder "$ANDROID_BUILDER_IMAGE_ID"',
+            "if local_docker run --rm --pull=never --network=none --read-only",
+        ),
+        "Android Gradle root refusal, fixed Docker authority, provenance, and launch",
+    )
+    gradle_cleanup = extract(
+        gradle_gate,
+        "cleanup_host_workspace() {",
+        "\n}\n\ntrap cleanup_host_workspace EXIT",
+        "Android Gradle private-workspace cleanup",
+    )
+    require_order(
+        gradle_cleanup,
+        (
+            "remove_local_docker_authority",
+            'elif [ -z "$WORKSPACE_ID" ]',
+            'verify-private-tree-closure.py" \\\n'
+            '            --remove-private-root "$WORKSPACE"',
+        ),
+        "Android Gradle Docker-before-workspace cleanup",
+    )
+    gradle_mount_run = extract(
+        gradle_gate,
+        "# ANDROID_GRADLE_MOUNT_REJECTION_DOCKER_BEGIN",
+        "# ANDROID_GRADLE_MOUNT_REJECTION_DOCKER_END",
+        "Android Gradle descendant-mount rejection launch",
+    )
+    gradle_semantics_run = extract(
+        gradle_gate,
+        "# ANDROID_GRADLE_SEMANTICS_DOCKER_BEGIN",
+        "# ANDROID_GRADLE_SEMANTICS_DOCKER_END",
+        "Android Gradle semantics launch",
+    )
+    for block, label, identity, resource, limits, tmpfs, mount_count in (
+        (
+            gradle_mount_run,
+            "Android Gradle mount-rejection",
+            '--user "$HOST_UID:$HOST_GID"',
+            "--pids-limit=64 --memory=512m --memory-swap=512m --cpus=1",
+            "--ulimit core=0:0 --ulimit nofile=1024:1024",
+            "--tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=256m",
+            4,
+        ),
+        (
+            gradle_semantics_run,
+            "Android Gradle semantics",
+            '--user "$HOST_UID:$HOST_GID"',
+            "--pids-limit=256 --memory=4g --memory-swap=4g --cpus=2",
+            "--ulimit core=0:0 --ulimit nofile=4096:4096",
+            "--tmpfs /tmp:rw,nosuid,nodev,mode=1777,size=2g",
+            5,
+        ),
+    ):
+        for token, token_label in (
+            ("local_docker run --rm --pull=never --network=none --read-only", "fixed launch"),
+            (identity, "numeric non-root identity"),
+            ("--cap-drop=ALL --security-opt=no-new-privileges", "privilege confinement"),
+            (resource, "resource bounds"),
+            (limits, "core/descriptor/file-size bounds"),
+            (tmpfs, "bounded scratch"),
+            ('"$ANDROID_BUILDER_IMAGE_ID"', "immutable image ID"),
+        ):
+            require(block, token, "{} {}".format(label, token_label))
+        require_count(block, "--mount ", mount_count, "{} exact mount inventory".format(label))
+        require_count(
+            block,
+            "bind-recursive=disabled",
+            mount_count,
+            "{} descendant-mount exclusion".format(label),
+        )
+        for token, token_label in (
+            ("docker.sock", "Docker socket mount"),
+            ("--privileged", "privileged launch"),
+            ("--cap-add", "added capability"),
+            ("--pid=host", "host PID namespace"),
+            ("--ipc=host", "host IPC namespace"),
+            ("--uts=host", "host UTS namespace"),
+            ("--network=host", "host network namespace"),
+            ("--publish", "published port"),
+            ("--expose", "exposed port"),
+        ):
+            forbid(block, token, "{} {}".format(label, token_label))
+    require(
+        gradle_mount_run,
+        "--ulimit fsize=1048576:1048576",
+        "Android Gradle mount-rejection file-size bound",
+    )
+    require(
+        gradle_semantics_run,
+        "--ulimit fsize=1073741824:1073741824",
+        "Android Gradle semantics file-size bound",
+    )
+    for token, label in (
+        (
+            "type=bind,source=$SCRIPT_DIR/android-gradle-cache.py,"
+            "target=$CONTAINER_TEST_ROOT/android-gradle-cache.py,readonly,"
+            "bind-recursive=disabled",
+            "cache-projector mount",
+        ),
+        (
+            "type=bind,source=$SCRIPT_DIR/android-gradle-offline.init.gradle,"
+            "target=$CONTAINER_TEST_ROOT/android-gradle-offline.init.gradle,readonly,"
+            "bind-recursive=disabled",
+            "offline-init mount",
+        ),
+        (
+            "type=bind,source=$HOST_FIXTURE/seed,target=/seed,readonly,"
+            "bind-recursive=disabled",
+            "seed mount",
+        ),
+        (
+            "type=bind,source=$HOST_FIXTURE/overlay,target=/seed/nested,readonly,"
+            "bind-recursive=disabled",
+            "nested-overlay mount",
+        ),
+    ):
+        require(gradle_mount_run, token, "Android Gradle mount-rejection {}".format(label))
+    for token, label in (
+        (
+            "type=bind,source=$SCRIPT_DIR/android-gradle-cache.py,"
+            "target=$CONTAINER_TEST_ROOT/android-gradle-cache.py,readonly,"
+            "bind-recursive=disabled",
+            "cache-projector mount",
+        ),
+        (
+            "type=bind,source=$SCRIPT_DIR/android-gradle-offline.init.gradle,"
+            "target=$CONTAINER_TEST_ROOT/android-gradle-offline.init.gradle,readonly,"
+            "bind-recursive=disabled",
+            "offline-init mount",
+        ),
+        (
+            "type=bind,source=$SCRIPT_DIR/android-apk-build.sh,"
+            "target=$CONTAINER_TEST_ROOT/android-apk-build.sh,readonly,"
+            "bind-recursive=disabled",
+            "Android mode-contract mount",
+        ),
+        (
+            "type=bind,source=$SCRIPT_DIR/test-android-gradle-cache.sh,"
+            "target=$CONTAINER_TEST_ROOT/test-android-gradle-cache.sh,readonly,"
+            "bind-recursive=disabled",
+            "inner-test mount",
+        ),
+        (
+            "type=bind,source=$gradle_root,target=/gradle-distribution,readonly,"
+            "bind-recursive=disabled",
+            "pinned Gradle distribution mount",
+        ),
+    ):
+        require(gradle_semantics_run, token, "Android Gradle semantics {}".format(label))
+    require_count(
+        gradle_gate,
+        "require_online_complete",
+        2,
+        "Android Gradle online-closure pre/post proof",
+    )
+    require_count(
+        gradle_gate,
+        "local_docker run ",
+        2,
+        "Android Gradle fixed-authority launch inventory",
+    )
+    require(
+        sources["hardening"],
+        "R-S11dn/R-S11e-132",
+        "missing Android release-gate Docker-authority ledger",
+    )
+    require(
+        sources["requirements"],
+        '<span class="id">R-S11dn</span>',
+        "missing Android release-gate Docker-authority requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>267</td>",
+        "missing Android release-gate Docker-authority Appendix disposition",
+    )
+
     for token, label in (
         ('unset ANDROID_USER_HOME ANDROID_SDK_HOME', "single Android preference-location injection"),
         ('export ANDROID_PREFS_ROOT=/tmp/android-preferences-root', "AGP 7.3.1 shared preferences root"),
@@ -549,7 +965,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["verify"],
-        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128 Android APK builds use canonical-mode private exact-commit source, independent fixed local Docker authority",
+        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132 Android APK builds and mandatory Android release gates use canonical-mode private source, independent fixed local Docker authority",
         "shared Android builder Docker-authority disposition",
     )
     require(sources["requirements"], '<span class="id">R-S11bj</span>', "R-S11bj requirement")
@@ -650,6 +1066,181 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "local_docker run --rm --pull=never --network=none --read-only",
         "/usr/bin/docker run --rm --pull=never --network=none --read-only",
         "fixed local Docker launch funnel",
+    ),
+    Mutation(
+        "rust_gate",
+        'readonly BUILD_UID="$(/usr/bin/id -u)"',
+        'readonly BUILD_UID="$(id -u)"',
+        "Android Rust absolute UID capture",
+    ),
+    Mutation(
+        "rust_gate",
+        '[ "$BUILD_UID" -ne 0 ]',
+        '[ "$BUILD_UID" -eq 0 ]',
+        "Android Rust UID-root refusal",
+    ),
+    Mutation(
+        "rust_gate",
+        '[ "$BUILD_GID" -ne 0 ]',
+        '[ "$BUILD_GID" -eq 0 ]',
+        "Android Rust GID-root refusal",
+    ),
+    Mutation(
+        "rust_gate",
+        'initialize_local_docker_authority "$WORKSPACE/docker-config" "android-rust-check"',
+        "true # Android Rust fixed Docker authority omitted",
+        "Android Rust fixed Docker authority",
+    ),
+    Mutation(
+        "rust_gate",
+        'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \\\n'
+        '            && ! remove_local_docker_authority; then',
+        "if false; then",
+        "Android Rust exact Docker-authority retirement",
+    ),
+    Mutation(
+        "rust_gate",
+        "if ! local_docker run --rm --pull=never --network=none --read-only",
+        "if ! /usr/bin/docker run --rm --pull=never --network=none --read-only",
+        "Android Rust fixed Docker launch",
+    ),
+    Mutation(
+        "rust_gate",
+        "--pids-limit=512 --memory=12g --memory-swap=12g --cpus=4",
+        "--memory=12g --memory-swap=12g --cpus=4",
+        "Android Rust PID bound",
+    ),
+    Mutation(
+        "rust_gate",
+        "--pids-limit=512 --memory=12g --memory-swap=12g --cpus=4",
+        "--pids-limit=512 --memory=12g --memory-swap=12g",
+        "Android Rust CPU bound",
+    ),
+    Mutation(
+        "rust_gate",
+        "--ulimit core=0:0 --ulimit nofile=4096:4096",
+        "--ulimit core=0:0",
+        "Android Rust descriptor bound",
+    ),
+    Mutation(
+        "rust_gate",
+        "type=bind,source=$BUILD_SOURCE,target=/src,bind-recursive=disabled",
+        "type=bind,source=$REPO_ROOT,target=/src,bind-recursive=disabled",
+        "Android Rust private writable source",
+    ),
+    Mutation(
+        "rust_gate",
+        "type=bind,source=$online,target=/online,readonly,bind-recursive=disabled",
+        "type=bind,source=$online,target=/online,bind-recursive=disabled",
+        "Android Rust read-only online closure",
+    ),
+    Mutation(
+        "rust_gate",
+        "type=bind,source=$BUILD_SOURCE,target=/src,bind-recursive=disabled",
+        "type=bind,source=$BUILD_SOURCE,target=/src",
+        "Android Rust descendant-mount exclusion",
+    ),
+    Mutation(
+        "rust_gate",
+        '--reference "$SOURCE_AUTHORITY" --candidate "$BUILD_SOURCE" --allow-extras',
+        "true # Android Rust post-check source comparison removed",
+        "Android Rust post-check source comparison",
+    ),
+    Mutation(
+        "rust_gate",
+        'SOURCE_DIGEST_AFTER="$(archive_current_source | /usr/bin/sha256sum',
+        'SOURCE_DIGEST_AFTER="$(printf %s "$SOURCE_DIGEST" | /usr/bin/sha256sum',
+        "Android Rust live-source post-check",
+    ),
+    Mutation(
+        "gradle_gate",
+        'readonly HOST_UID="$(/usr/bin/id -u)"',
+        'readonly HOST_UID="$(id -u)"',
+        "Android Gradle absolute UID capture",
+    ),
+    Mutation(
+        "gradle_gate",
+        '[ "$HOST_UID" -ne 0 ]',
+        '[ "$HOST_UID" -eq 0 ]',
+        "Android Gradle UID-root refusal",
+    ),
+    Mutation(
+        "gradle_gate",
+        '[ "$HOST_GID" -ne 0 ]',
+        '[ "$HOST_GID" -eq 0 ]',
+        "Android Gradle GID-root refusal",
+    ),
+    Mutation(
+        "gradle_gate",
+        'initialize_local_docker_authority "$WORKSPACE/docker-config" "android-gradle-gate"',
+        "true # Android Gradle fixed Docker authority omitted",
+        "Android Gradle fixed Docker authority",
+    ),
+    Mutation(
+        "gradle_gate",
+        'if [ "${LOCAL_DOCKER_AUTHORITY_INITIALIZED:-0}" -eq 1 ] \\\n'
+        '            && ! remove_local_docker_authority; then',
+        "if false; then",
+        "Android Gradle exact Docker-authority retirement",
+    ),
+    Mutation(
+        "gradle_gate",
+        "if local_docker run --rm --pull=never --network=none --read-only",
+        "if /usr/bin/docker run --rm --pull=never --network=none --read-only",
+        "Android Gradle mount-rejection fixed Docker launch",
+    ),
+    Mutation(
+        "gradle_gate",
+        "# ANDROID_GRADLE_SEMANTICS_DOCKER_BEGIN\n"
+        "        local_docker run --rm --pull=never --network=none --read-only",
+        "# ANDROID_GRADLE_SEMANTICS_DOCKER_BEGIN\n"
+        "        /usr/bin/docker run --rm --pull=never --network=none --read-only",
+        "Android Gradle semantics fixed Docker launch",
+    ),
+    Mutation(
+        "gradle_gate",
+        "--pids-limit=64 --memory=512m --memory-swap=512m --cpus=1",
+        "--memory=512m --memory-swap=512m --cpus=1",
+        "Android Gradle mount-rejection PID bound",
+    ),
+    Mutation(
+        "gradle_gate",
+        "--pids-limit=256 --memory=4g --memory-swap=4g --cpus=2",
+        "--pids-limit=256 --memory=4g --memory-swap=4g",
+        "Android Gradle semantics CPU bound",
+    ),
+    Mutation(
+        "gradle_gate",
+        "--ulimit core=0:0 --ulimit nofile=1024:1024",
+        "--ulimit core=0:0",
+        "Android Gradle mount-rejection descriptor bound",
+    ),
+    Mutation(
+        "gradle_gate",
+        "--ulimit fsize=1073741824:1073741824",
+        "--ulimit fsize=unlimited",
+        "Android Gradle semantics file-size bound",
+    ),
+    Mutation(
+        "gradle_gate",
+        "type=bind,source=$HOST_FIXTURE/seed,target=/seed,readonly,"
+        "bind-recursive=disabled",
+        "type=bind,source=$HOST_FIXTURE/seed,target=/seed,readonly",
+        "Android Gradle descendant-mount exclusion",
+    ),
+    Mutation(
+        "gradle_gate",
+        "type=bind,source=$gradle_root,target=/gradle-distribution,readonly,"
+        "bind-recursive=disabled",
+        "type=bind,source=$gradle_root,target=/gradle-distribution,"
+        "bind-recursive=disabled",
+        "Android Gradle read-only distribution",
+    ),
+    Mutation(
+        "gradle_gate",
+        'HOST_FIXTURE="$WORKSPACE/fixture"',
+        'HOST_FIXTURE="$(mktemp -d /tmp/android-gradle-fixture.XXXXXXXXXX)"',
+        "Android Gradle private fixture root",
     ),
     Mutation(
         "release",
@@ -862,7 +1453,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("verify", "python3 scripts/verify-android-builder-authority.py --repo . --self-test", "true # Android builder authority verifier removed", "shared gate wiring"),
     Mutation(
         "verify",
-        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128 Android APK builds use canonical-mode private exact-commit source, independent fixed local Docker authority",
+        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132 Android APK builds and mandatory Android release gates use canonical-mode private source, independent fixed local Docker authority",
         "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79 Android APK builds use ambient Docker authority",
         "shared Android builder Docker-authority disposition",
     ),
@@ -888,6 +1479,24 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "R-S11dj/R-S11e-128 — Android artifact-builder Docker client, daemon, and configuration authority",
         "R-S11dj/R-S11e-XXX — Android artifact-builder Docker authority deferred",
         "Android artifact-builder Docker authority hardening ledger",
+    ),
+    Mutation(
+        "requirements",
+        '<span class="id">R-S11dn</span>',
+        '<span class="id">R-S11dn-disabled</span>',
+        "Android release-gate Docker authority requirement",
+    ),
+    Mutation(
+        "requirements",
+        "<tr><td>267</td>",
+        "<tr><td>267-disabled</td>",
+        "Android release-gate Docker authority Appendix disposition",
+    ),
+    Mutation(
+        "hardening",
+        "R-S11dn/R-S11e-132 — mandatory Android release-gate Docker, source,",
+        "R-S11dn/R-S11e-XXX — mandatory Android release-gate authority deferred,",
+        "Android release-gate Docker authority hardening ledger",
     ),
     Mutation("requirements", 'Clean pushed commit <code>36ed7a621496ed470cad5347f7598c18858de827</code> supplied the exact corrected-commit target-local A/B proof', 'Clean pushed commit <code>0000000000000000000000000000000000000000</code> supplied the exact corrected-commit target-local A/B proof', "R-S11bm exact corrected-commit evidence"),
     Mutation("requirements", 'Clean pushed commit <code>36ed7a621496ed470cad5347f7598c18858de827</code> supplied exact target-local A/B evidence', 'Clean pushed commit <code>0000000000000000000000000000000000000000</code> supplied exact target-local A/B evidence', "Appendix C #202 exact corrected-commit evidence"),
@@ -926,6 +1535,8 @@ def read_regular(repo: pathlib.Path, relative: str) -> str:
 def load_sources(repo: pathlib.Path) -> Dict[str, str]:
     return {
         "build": read_regular(repo, "scripts/build-android.sh"),
+        "rust_gate": read_regular(repo, "scripts/android-rust-check.sh"),
+        "gradle_gate": read_regular(repo, "scripts/test-android-gradle-cache.sh"),
         "release": read_regular(repo, "scripts/build-release.sh"),
         "debian": read_regular(repo, "scripts/build-debian.sh"),
         "systemd_smoke": read_regular(repo, "scripts/smoke-debian-systemd-lifecycle.sh"),
@@ -953,7 +1564,7 @@ def main() -> None:
     if args.self_test:
         run_mutations(sources)
     print(
-        "ANDROID-BUILDER-AUTHORITY: private exact-commit source, independent fixed local Docker authority, phased bounded scratch and Android preferences, private signing output, and four confined launches are GREEN ({} mutations)".format(
+        "ANDROID-BUILDER-AUTHORITY: private artifact/release-gate source, independent fixed local Docker authority, phased bounded scratch and Android preferences, private signing output, and confined artifact plus mandatory Android gate operations are GREEN ({} mutations)".format(
             len(MUTATIONS) if args.self_test else 0
         )
     )

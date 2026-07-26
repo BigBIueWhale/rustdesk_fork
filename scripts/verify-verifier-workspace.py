@@ -2992,7 +2992,7 @@ def validate_r_b2_version_metadata(sources):
 
     require_exact_count(
         sources["android_rust"],
-        '--user "$(id -u):$(id -g)"',
+        '--user "$BUILD_UID:$BUILD_GID"',
         1,
         "Android target non-root user",
     )
@@ -11714,7 +11714,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266",
+        "R-S11n through R-S11dn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11795,7 +11795,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266",
+        "R-S11n through R-S11dn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11974,7 +11974,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266",
+        "R-S11n through R-S11dn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12108,7 +12108,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266",
+        "R-S11n through R-S11dn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12276,7 +12276,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266",
+        "R-S11n through R-S11dn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12469,7 +12469,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266",
+        "R-S11n through R-S11dn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12803,7 +12803,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266",
+        "R-S11n through R-S11dn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13913,6 +13913,39 @@ def validate_android_builder_authority_contract(sources):
         ('Android preferences root is not private to the build identity', "Android legacy preferences owner/mode enforcement"),
         ('current Android preferences directory is not private to the build identity', "Android current preferences owner/mode enforcement"),
         ('forbid(inner, token, label)', "Android broad-home-override refusal enforcement"),
+        (
+            '(rust_gate, "BUILD_UID", "BUILD_GID", "Android Rust release gate")',
+            "Android Rust release-gate focused authority enforcement",
+        ),
+        (
+            '(gradle_gate, "HOST_UID", "HOST_GID", "Android Gradle release gate")',
+            "Android Gradle release-gate focused authority enforcement",
+        ),
+        (
+            '"Android Rust root refusal, fixed Docker authority, provenance, and launch"',
+            "Android Rust release-gate ordering enforcement",
+        ),
+        (
+            '"Android Rust exact mount inventory"',
+            "Android Rust release-gate mount inventory enforcement",
+        ),
+        (
+            '"Android Gradle root refusal, fixed Docker authority, provenance, and launch"',
+            "Android Gradle release-gate ordering enforcement",
+        ),
+        (
+            'require_count(\n'
+            '        gradle_gate,\n'
+            '        "local_docker run ",\n'
+            '        2,\n'
+            '        "Android Gradle fixed-authority launch inventory",\n'
+            '    )',
+            "Android Gradle release-gate focused launch inventory enforcement",
+        ),
+        (
+            '"R-S11dn/R-S11e-132"',
+            "Android release-gate focused normative binding",
+        ),
         ('MUTATIONS: Tuple[Mutation, ...]', "Android builder mutation inventory"),
         ('run_mutations(sources)', "Android builder mutation dispatch"),
     ):
@@ -14002,6 +14035,99 @@ def validate_android_builder_authority_contract(sources):
             'rm -rf -- "$OWNED_WORKSPACE"',
         ),
         "Android builder Docker-before-workspace cleanup",
+    )
+    android_rust_gate = sources["android_rust_release_gate"]
+    for text, label in (
+        ('readonly BUILD_UID="$(/usr/bin/id -u)"',
+         "Android Rust release-gate absolute UID capture"),
+        ('[ "$BUILD_UID" -ne 0 ]',
+         "Android Rust release-gate UID-root refusal"),
+        ('initialize_local_docker_authority "$WORKSPACE/docker-config" "android-rust-check"',
+         "Android Rust release-gate fixed Docker authority"),
+        ("if ! local_docker run --rm --pull=never --network=none --read-only",
+         "Android Rust release-gate fixed Docker launch"),
+        ("type=bind,source=$BUILD_SOURCE,target=/src,bind-recursive=disabled",
+         "Android Rust release-gate private writable source"),
+        ("type=bind,source=$online,target=/online,readonly,bind-recursive=disabled",
+         "Android Rust release-gate read-only online closure"),
+        ('--reference "$SOURCE_AUTHORITY" --candidate "$BUILD_SOURCE" --allow-extras',
+         "Android Rust release-gate post-source proof"),
+        ("remove_local_docker_authority",
+         "Android Rust release-gate exact Docker cleanup"),
+    ):
+        require_text(android_rust_gate, text, label)
+    require_order(
+        android_rust_gate,
+        (
+            'readonly BUILD_UID="$(/usr/bin/id -u)"',
+            '[ "$BUILD_UID" -ne 0 ]',
+            'source "$SCRIPT_DIR/lib.sh"',
+            'initialize_local_docker_authority "$WORKSPACE/docker-config" "android-rust-check"',
+            'require_pinned_builder_image android-builder "$ANDROID_BUILDER_IMAGE_ID"',
+            "if ! local_docker run --rm --pull=never --network=none --read-only",
+        ),
+        "Android Rust release-gate root-refusal and authority order",
+    )
+    require_exact_count(
+        android_rust_gate,
+        "local_docker run ",
+        1,
+        "Android Rust release-gate launch inventory",
+    )
+    require_absent(
+        android_rust_gate,
+        "require_cmd docker",
+        "Android Rust release-gate PATH Docker authority",
+    )
+
+    android_gradle_gate = sources["android_gradle_release_gate"]
+    for text, label in (
+        ('readonly HOST_UID="$(/usr/bin/id -u)"',
+         "Android Gradle release-gate absolute UID capture"),
+        ('[ "$HOST_UID" -ne 0 ]',
+         "Android Gradle release-gate UID-root refusal"),
+        ('initialize_local_docker_authority "$WORKSPACE/docker-config" "android-gradle-gate"',
+         "Android Gradle release-gate fixed Docker authority"),
+        ('HOST_FIXTURE="$WORKSPACE/fixture"',
+         "Android Gradle release-gate private fixture"),
+        ("if local_docker run --rm --pull=never --network=none --read-only",
+         "Android Gradle release-gate mount-rejection fixed Docker launch"),
+        ("local_docker run --rm --pull=never --network=none --read-only",
+         "Android Gradle release-gate semantics fixed Docker launch"),
+        ("bind-recursive=disabled",
+         "Android Gradle release-gate descendant-mount exclusion"),
+        ("remove_local_docker_authority",
+         "Android Gradle release-gate exact Docker cleanup"),
+    ):
+        require_text(android_gradle_gate, text, label)
+    require_order(
+        android_gradle_gate,
+        (
+            'readonly HOST_UID="$(/usr/bin/id -u)"',
+            '[ "$HOST_UID" -ne 0 ]',
+            'source "$SCRIPT_DIR/lib.sh"',
+            'initialize_local_docker_authority "$WORKSPACE/docker-config" "android-gradle-gate"',
+            'require_pinned_builder_image android-builder "$ANDROID_BUILDER_IMAGE_ID"',
+            "if local_docker run --rm --pull=never --network=none --read-only",
+        ),
+        "Android Gradle release-gate root-refusal and authority order",
+    )
+    require_exact_count(
+        android_gradle_gate,
+        "local_docker run ",
+        2,
+        "Android Gradle release-gate launch inventory",
+    )
+    require_exact_count(
+        android_gradle_gate,
+        "bind-recursive=disabled",
+        9,
+        "Android Gradle release-gate mount inventory",
+    )
+    require_absent(
+        android_gradle_gate,
+        "require_cmd docker",
+        "Android Gradle release-gate PATH Docker authority",
     )
     release_child = extract_between(
         sources["build"],
@@ -14093,7 +14219,7 @@ def validate_android_builder_authority_contract(sources):
     )
     require_text(
         sources["verify"],
-        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128 Android APK builds use canonical-mode private exact-commit source, independent fixed local Docker authority",
+        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132 Android APK builds and mandatory Android release gates use canonical-mode private source, independent fixed local Docker authority",
         "Android builder shared Docker-authority disposition",
     )
     require_text(
@@ -14170,6 +14296,21 @@ def validate_android_builder_authority_contract(sources):
         sources["hardening"],
         "R-S11dj/R-S11e-128 — Android artifact-builder Docker client, daemon, and configuration authority",
         "Android artifact-builder Docker authority hardening ledger",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11dn</span>',
+        "Android release-gate Docker authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>267</td>",
+        "Android release-gate Docker authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dn/R-S11e-132 — mandatory Android release-gate Docker, source,",
+        "Android release-gate Docker authority hardening ledger",
     )
     debian_focused = sources["debian_builder_authority_verifier"]
     for text, label in (
@@ -34943,7 +35084,7 @@ def run_source_mutations(sources):
         ),
         (
             "android_rust",
-            '--user "$(id -u):$(id -g)"',
+            '--user "$BUILD_UID:$BUILD_GID"',
             '--user "0:0"',
             "Android target non-root user",
         ),
@@ -37645,7 +37786,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11dm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266",
+            "R-S11n through R-S11dn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -39148,6 +39289,83 @@ def run_source_mutations(sources):
         ),
         (
             "android_builder_authority_verifier",
+            '(rust_gate, "BUILD_UID", "BUILD_GID", "Android Rust release gate")',
+            '(rust_gate, "BUILD_UID", "BUILD_GID", "Android Rust release gate disabled")',
+            "Android Rust release-gate focused authority enforcement",
+        ),
+        (
+            "android_builder_authority_verifier",
+            'require_count(\n'
+            '        gradle_gate,\n'
+            '        "local_docker run ",\n'
+            '        2,\n'
+            '        "Android Gradle fixed-authority launch inventory",\n'
+            '    )',
+            'require_count(\n'
+            '        gradle_gate,\n'
+            '        "local_docker run ",\n'
+            '        1,\n'
+            '        "Android Gradle fixed-authority launch inventory",\n'
+            '    )',
+            "Android Gradle release-gate focused launch inventory enforcement",
+        ),
+        (
+            "android_rust_release_gate",
+            'initialize_local_docker_authority "$WORKSPACE/docker-config" "android-rust-check"',
+            "true # Android Rust fixed Docker authority omitted",
+            "Android Rust release-gate fixed Docker authority",
+        ),
+        (
+            "android_rust_release_gate",
+            "if ! local_docker run --rm --pull=never --network=none --read-only",
+            "if ! /usr/bin/docker run --rm --pull=never --network=none --read-only",
+            "Android Rust release-gate fixed Docker launch",
+        ),
+        (
+            "android_rust_release_gate",
+            "type=bind,source=$BUILD_SOURCE,target=/src,bind-recursive=disabled",
+            "type=bind,source=$REPO_ROOT,target=/src,bind-recursive=disabled",
+            "Android Rust release-gate private writable source",
+        ),
+        (
+            "android_gradle_release_gate",
+            'initialize_local_docker_authority "$WORKSPACE/docker-config" "android-gradle-gate"',
+            "true # Android Gradle fixed Docker authority omitted",
+            "Android Gradle release-gate fixed Docker authority",
+        ),
+        (
+            "android_gradle_release_gate",
+            "if local_docker run --rm --pull=never --network=none --read-only",
+            "if /usr/bin/docker run --rm --pull=never --network=none --read-only",
+            "Android Gradle release-gate mount-rejection fixed Docker launch",
+        ),
+        (
+            "android_gradle_release_gate",
+            "type=bind,source=$gradle_root,target=/gradle-distribution,readonly,"
+            "bind-recursive=disabled",
+            "type=bind,source=$gradle_root,target=/gradle-distribution,readonly",
+            "Android Gradle release-gate mount inventory",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11dn</span>',
+            '<span class="id">R-S11dn-disabled</span>',
+            "Android release-gate Docker authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>267</td>",
+            "<tr><td>267-disabled</td>",
+            "Android release-gate Docker authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11dn/R-S11e-132 — mandatory Android release-gate Docker, source,",
+            "R-S11dn/R-S11e-XXX — mandatory Android release-gate authority deferred,",
+            "Android release-gate Docker authority hardening ledger",
+        ),
+        (
+            "android_builder_authority_verifier",
             'if positions != tuple(sorted(positions))',
             'if False',
             "Android builder scratch-order rejection semantics",
@@ -39208,7 +39426,7 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128 Android APK builds use canonical-mode private exact-commit source, independent fixed local Docker authority",
+            "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132 Android APK builds and mandatory Android release gates use canonical-mode private source, independent fixed local Docker authority",
             "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79 Android APK builds use ambient Docker authority",
             "Android builder shared Docker-authority disposition",
         ),
@@ -42954,6 +43172,12 @@ def main():
             ).read_text(encoding="utf-8"),
             "android_builder_authority_verifier": (
                 repo / "scripts/verify-android-builder-authority.py"
+            ).read_text(encoding="utf-8"),
+            "android_rust_release_gate": (
+                repo / "scripts/android-rust-check.sh"
+            ).read_text(encoding="utf-8"),
+            "android_gradle_release_gate": (
+                repo / "scripts/test-android-gradle-cache.sh"
             ).read_text(encoding="utf-8"),
             "android_builder_image_authority_verifier": (
                 repo / "scripts/verify-android-builder-image-authority.py"

@@ -1191,12 +1191,12 @@ else
   rc=1
 fi
 
-echo "== (3b-iii-a1a1) Android APK builder container/source/mode/scratch/Docker authority (R-S11bj/R-S11bk/R-S11bl/R-S11bm/R-S11dj/R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128) =="
+echo "== (3b-iii-a1a1) Android APK builder and mandatory release-gate container/source/mode/scratch/Docker authority (R-S11bj/R-S11bk/R-S11bl/R-S11bm/R-S11dj/R-S11dn/R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132) =="
 if python3 scripts/verify-android-build-source.py --self-test \
     && python3 scripts/verify-android-builder-authority.py --repo . --self-test; then
-  echo "  ok  R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128 Android APK builds use canonical-mode private exact-commit source, independent fixed local Docker authority, phased bounded dual-compatible preferences, narrow mounts, and confined existing-image launches"
+  echo "  ok  R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132 Android APK builds and mandatory Android release gates use canonical-mode private source, independent fixed local Docker authority, phased bounded dual-compatible preferences, narrow mounts, and confined existing-image launches"
 else
-  echo "  FAIL R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128 Android APK builder regained live-tree, archive-mode, output-tree, pull, network, host-root, ambient Docker daemon/configuration, release-parent inheritance, incompatible preferences, or simultaneous scratch-retention authority"
+  echo "  FAIL R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132 Android APK builder or mandatory Android release gate regained live-tree, archive-mode, output-tree, pull, network, host-root, ambient Docker daemon/configuration, release-parent inheritance, incompatible preferences, unbounded resources, or simultaneous scratch-retention authority"
   rc=1
 fi
 
@@ -13084,112 +13084,8 @@ if grep -qF '$REPO_ROOT:/src:ro' scripts/test-android-gradle-cache.sh; then
 fi
 grep -qF 'accepted a same-filesystem descendant bind mount' scripts/test-android-gradle-cache.sh \
   || android_gradle_bad="$android_gradle_bad no-same-device-mount-crossing-fixture"
-if ! python3 - scripts/test-android-gradle-cache.sh <<'PY'
-from collections import Counter
-from pathlib import Path
-import re
-import sys
-
-MOUNT_START = "# ANDROID_GRADLE_MOUNT_REJECTION_DOCKER_BEGIN"
-MOUNT_END = "# ANDROID_GRADLE_MOUNT_REJECTION_DOCKER_END"
-SEMANTICS_START = "# ANDROID_GRADLE_SEMANTICS_DOCKER_BEGIN"
-SEMANTICS_END = "# ANDROID_GRADLE_SEMANTICS_DOCKER_END"
-MOUNT_TOKEN = re.compile(r"(?<!\S)(?:-v|--volume|--mount)")
-
-mount_expected = Counter([
-    '-v "$SCRIPT_DIR/android-gradle-cache.py:$CONTAINER_TEST_ROOT/android-gradle-cache.py:ro"',
-    '-v "$SCRIPT_DIR/android-gradle-offline.init.gradle:$CONTAINER_TEST_ROOT/android-gradle-offline.init.gradle:ro"',
-    '-v "$HOST_FIXTURE/seed:/seed:ro"',
-    '-v "$HOST_FIXTURE/overlay:/seed/nested:ro"',
-])
-semantics_expected = Counter([
-    '-v "$SCRIPT_DIR/android-gradle-cache.py:$CONTAINER_TEST_ROOT/android-gradle-cache.py:ro"',
-    '-v "$SCRIPT_DIR/android-gradle-offline.init.gradle:$CONTAINER_TEST_ROOT/android-gradle-offline.init.gradle:ro"',
-    '-v "$SCRIPT_DIR/android-apk-build.sh:$CONTAINER_TEST_ROOT/android-apk-build.sh:ro"',
-    '-v "$SCRIPT_DIR/test-android-gradle-cache.sh:$CONTAINER_TEST_ROOT/test-android-gradle-cache.sh:ro"',
-    '-v "$gradle_root:/gradle-distribution:ro"',
-])
-
-
-def normalized_mounts(value):
-    return Counter(
-        line.strip().removesuffix("\\").rstrip()
-        for line in value.splitlines()
-        if MOUNT_TOKEN.search(line)
-    )
-
-
-def section(value, start, end):
-    if value.count(start) != 1 or value.count(end) != 1:
-        raise ValueError("missing or duplicate Docker authority marker")
-    before, remainder = value.split(start, 1)
-    body, after = remainder.split(end, 1)
-    if end in before or start in body or start in after:
-        raise ValueError("misordered Docker authority markers")
-    return body
-
-
-def validate(value):
-    mount_body = section(value, MOUNT_START, MOUNT_END)
-    semantics_body = section(value, SEMANTICS_START, SEMANTICS_END)
-    if normalized_mounts(mount_body) != mount_expected:
-        raise ValueError("mount-rejection container bind authority differs")
-    if normalized_mounts(semantics_body) != semantics_expected:
-        raise ValueError("Gradle-semantics container bind authority differs")
-    if normalized_mounts(value) != mount_expected + semantics_expected:
-        raise ValueError("an undeclared bind authority exists outside the two containers")
-
-
-source = Path(sys.argv[1]).read_text(encoding="utf-8")
-try:
-    validate(source)
-    mount_lines = [
-        line for line in source.splitlines(keepends=True)
-        if MOUNT_TOKEN.search(line)
-    ]
-    for line in mount_lines:
-        mutated = source.replace(line, "", 1)
-        try:
-            validate(mutated)
-        except ValueError:
-            pass
-        else:
-            raise ValueError("bind-removal mutation survived")
-    for addition in (
-        '            -v "$HOME:/undeclared:ro" \\\n',
-        '            --mount type=bind,src="$HOME",dst=/undeclared,readonly \\\n',
-    ):
-        mutated = source.replace(SEMANTICS_END, addition + SEMANTICS_END, 1)
-        try:
-            validate(mutated)
-        except ValueError:
-            pass
-        else:
-            raise ValueError("bind-addition mutation survived")
-    moved = source.replace(mount_lines[0], "", 1).replace(
-        SEMANTICS_END,
-        mount_lines[0] + SEMANTICS_END,
-        1,
-    )
-    try:
-        validate(moved)
-    except ValueError:
-        pass
-    else:
-        raise ValueError("cross-container bind relocation survived")
-    substituted = source.replace('/gradle-distribution:ro"', '/substituted:ro"', 1)
-    try:
-        validate(substituted)
-    except ValueError:
-        pass
-    else:
-        raise ValueError("bind-substitution mutation survived")
-except ValueError as error:
-    raise SystemExit(str(error)) from error
-PY
-then
-  android_gradle_bad="$android_gradle_bad non-exact-behavioral-container-bind-authority"
-fi
+grep -qF 'R-S11dn/R-S11e-132 — mandatory Android release-gate Docker, source,' HARDENING_STATUS.md \
+  || android_gradle_bad="$android_gradle_bad missing-release-gate-authority-ledger"
 if grep -RInF 'org.gradle.offline' scripts/android-apk-build.sh scripts/build-android.sh scripts/online-fetch.sh \
     >"$VERIFY_TMP/rd_verify_ignored_gradle_property"; then
   android_gradle_bad="$android_gradle_bad ignored-org.gradle.offline-property"
@@ -13203,7 +13099,7 @@ else
   echo "  ok  R-B9/R-B10 Android build: immutable Gradle seed -> fresh owner-only projection; generated Flutter/JNI outputs reset before each pass; tracked init authority sets the real offline start parameter; pinned-image behavioral and online-snapshot mutation suites are release gates"
 fi
 
-echo "== (6c-a3) Android Rust target check is a mandatory pinned offline release gate (R-B9/R-B10) =="
+echo "== (6c-a3) Android Rust target check is a mandatory pinned offline release gate (R-B9/R-B10/R-S11dn) =="
 android_rust_gate_bad=
 git ls-files --error-unmatch scripts/android-rust-check.sh >/dev/null 2>&1 \
   || android_rust_gate_bad="$android_rust_gate_bad untracked-gate"
@@ -13213,11 +13109,14 @@ grep -qF 'require_online_complete' scripts/android-rust-check.sh \
   || android_rust_gate_bad="$android_rust_gate_bad unauthenticated-online-closure"
 grep -qF 'require_pinned_builder_image android-builder "$ANDROID_BUILDER_IMAGE_ID"' scripts/android-rust-check.sh \
   || android_rust_gate_bad="$android_rust_gate_bad unpinned-builder"
-for contract in '--pull=never' '--network=none' '--read-only' '--cap-drop=ALL' \
-  '--security-opt no-new-privileges' '--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777' \
-  '--user "$(id -u):$(id -g)"' \
-  '-e RUSTDESK_CANARY_OFFLINE=1' '-e APK_MODE=rust-check' '-v "$repo:/src"' \
-  '-v "$online:/online:ro"'; do
+for contract in 'initialize_local_docker_authority "$WORKSPACE/docker-config" "android-rust-check"' \
+  'local_docker run --rm --pull=never --network=none --read-only' \
+  '--user "$BUILD_UID:$BUILD_GID"' '--cap-drop=ALL' '--security-opt=no-new-privileges' \
+  '--pids-limit=512 --memory=12g --memory-swap=12g --cpus=4' \
+  '--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=10g' \
+  '--env RUSTDESK_CANARY_OFFLINE=1' '--env APK_MODE=rust-check' \
+  'source=$BUILD_SOURCE,target=/src,bind-recursive=disabled' \
+  'source=$online,target=/online,readonly,bind-recursive=disabled'; do
   grep -qF -- "$contract" scripts/android-rust-check.sh \
     || android_rust_gate_bad="$android_rust_gate_bad missing:$contract"
 done
@@ -13228,7 +13127,7 @@ grep -qF 'check --locked --release --features flutter --lib' scripts/android-apk
 if [ -n "$android_rust_gate_bad" ]; then
   echo "  FAIL R-B9/R-B10: Android Rust release compile gate regressed:$android_rust_gate_bad"; rc=1
 else
-  echo "  ok  R-B9/R-B10 release verification generates the real bridge and target-checks the pinned aarch64 Android Rust library offline"
+  echo "  ok  R-B9/R-B10/R-S11dn release verification uses independent fixed Docker authority and disposable source, generates the real bridge, and target-checks the pinned aarch64 Android Rust library offline"
 fi
 
 # (6c-i) R-B10 the offline-build network CANARY (MUST — "proven, not trusted"): the spec mandates a

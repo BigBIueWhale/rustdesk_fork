@@ -862,7 +862,6 @@ run_child() {
         USER="$(id -un)" LOGNAME="$(id -un)" \
         GIT_CONFIG_NOSYSTEM=1 GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_SYSTEM=/dev/null GIT_TERMINAL_PROMPT=0 \
         GIT_NO_REPLACE_OBJECTS=1 \
-        DOCKER_HOST="$DOCKER_HOST_URI" DOCKER_CONFIG="$DOCKER_CONFIG_DIR" \
         "$@"
 }
 
@@ -1129,8 +1128,7 @@ write_fixture_target() {
     {
         printf '#!/usr/bin/env bash\nset -euo pipefail\n'
         printf '[ "${DOUBLE_BUILD:-}" = 0 ]\n'
-        printf '[ "${DOCKER_HOST:-}" = unix:///var/run/docker.sock ]\n'
-        printf '[ -n "${DOCKER_CONFIG:-}" ] && [ -f "$DOCKER_CONFIG/config.json" ]\n'
+        printf '[ -z "${DOCKER_HOST+x}" ] && [ -z "${DOCKER_CONFIG+x}" ]\n'
         printf '[ -z "${POISON_MARKER+x}" ] && [ -z "${BASH_ENV+x}" ] && [ -z "${GIT_CONFIG+x}" ] && [ -z "${DOCKER_CONTEXT+x}" ]\n'
         printf '[ -z "${ONLINE_DIR+x}" ]\n'
         printf '[ -n "${RUSTDESK_RELEASE_ONLINE_SNAPSHOT:-}" ]\n'
@@ -1172,6 +1170,7 @@ write_fixture_debian_artifact_lifecycle() {
     {
         printf '#!/usr/bin/env bash\nset -euo pipefail\n'
         printf '[ "$#" = 6 ]\n'
+        printf '[ -z "${DOCKER_HOST+x}" ] && [ -z "${DOCKER_CONFIG+x}" ]\n'
         printf '[ "$1" = --release-deb ] && [ "$3" = --sha256 ] && [ "$5" = --commit ]\n'
         printf 'artifact=$2; expected_hash=$4; expected_commit=$6\n'
         printf '[ "$expected_commit" = "${RELEASE_FIXTURE_COMMIT:?}" ]\n'

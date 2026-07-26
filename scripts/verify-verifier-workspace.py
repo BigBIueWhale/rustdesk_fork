@@ -2545,7 +2545,14 @@ def validate_target_scripts(debian, android, pins):
         require_text(source, mismatch, f"{label} A/B mismatch rejection")
         require_text(source, '--user "$BUILD_UID:$BUILD_GID"', f"{label} user-mapped container")
         require_text(source, "RELEASE_DOCKER_IMAGE_ID", f"{label} content-ID image binding")
-        require_text(source, "unix:///var/run/docker.sock", f"{label} local Docker binding")
+        if label == "Android":
+            require_text(
+                source,
+                'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "android-builder"',
+                "Android shared local Docker binding",
+            )
+        else:
+            require_text(source, "unix:///var/run/docker.sock", f"{label} local Docker binding")
         require_text(source, f'IMAGE_ID="${{{pin}:-}}"', f"{label} pinned image ID selection")
         require_text(
             source,
@@ -11296,7 +11303,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11di, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262",
+        "R-S11n through R-S11dj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11377,7 +11384,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11di, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262",
+        "R-S11n through R-S11dj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11556,7 +11563,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11di, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262",
+        "R-S11n through R-S11dj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11690,7 +11697,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11di, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262",
+        "R-S11n through R-S11dj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11858,7 +11865,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11di, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262",
+        "R-S11n through R-S11dj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12051,7 +12058,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11di, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262",
+        "R-S11n through R-S11dj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12385,7 +12392,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11di, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262",
+        "R-S11n through R-S11dj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13444,6 +13451,27 @@ def validate_android_builder_authority_contract(sources):
     for text, label in (
         ('require_count(build, "if ! android_docker_run", 3', "Android builder four-launch inventory"),
         ('forbid(build, token, label)', "Android builder forbidden-authority enforcement"),
+        ('require_order(source: str, tokens: Tuple[str, ...]', "Android builder order helper"),
+        ("root refusal, shared authority, launch funnel, and provenance definitions",
+         "Android builder Docker authority order enforcement"),
+        ("shared Docker API/platform/trust-input refusal",
+         "Android builder complete ambient Docker-input enforcement"),
+        ("shared Docker provenance pre/post authority proof",
+         "Android builder provenance authority enforcement"),
+        ("builder provenance shared-authority routing",
+         "Android builder provenance routing enforcement"),
+        ("shared exact Docker cleanup order",
+         "Android builder Docker cleanup enforcement"),
+        ("release-child Docker authority inheritance",
+         "Android builder release-parent isolation mutation"),
+        ("ordinary-target and Debian-lifecycle Docker-environment absence fixtures",
+         "Android builder release-child fixture-cardinality enforcement"),
+        ("final Debian-lifecycle Docker-environment absence fixture",
+         "Android builder final Debian-lifecycle fixture enforcement"),
+        ("Debian lifecycle child inherited Docker-configuration refusal",
+         "Android builder Debian-lifecycle parent-isolation enforcement"),
+        ("Debian lifecycle Docker-run pre/post configuration proof",
+         "Android builder Debian-lifecycle Docker-config proof"),
         ('source=$BUILD_SOURCE_ROOT,target=/src"', "Android builder private-source mount contract"),
         ('source=$pass_output,target=/out"', "Android builder private-output mount contract"),
         ('ordered_tokens = (', "Android builder scratch phase ordering"),
@@ -13493,8 +13521,165 @@ def validate_android_builder_authority_contract(sources):
         require_text(comparator, text, label)
     require_text(
         sources["android"],
-        '"$DOCKER_BIN" run --rm --pull=never --network=none --read-only',
+        "local_docker run --rm --pull=never --network=none --read-only",
         "Android builder common confinement wrapper",
+    )
+    for text, label in (
+        ('readonly BUILD_UID="$(/usr/bin/id -u)"',
+         "Android builder absolute UID source"),
+        ('readonly BUILD_GID="$(/usr/bin/id -g)"',
+         "Android builder absolute GID source"),
+        ('[ "$BUILD_UID" -ne 0 ]', "Android builder UID-root refusal"),
+        ('[ "$BUILD_GID" -ne 0 ]', "Android builder GID-root refusal"),
+        ('source "$SCRIPT_DIR/lib.sh"', "Android builder shared authority source"),
+        (
+            'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "android-builder"',
+            "Android builder fixed Docker authority initialization",
+        ),
+        ("&& ! remove_local_docker_authority; then",
+         "Android builder exact Docker authority cleanup"),
+        ("preserving changed private Android builder Docker authority",
+         "Android builder changed-authority preservation"),
+        ('assert_local_docker_authority \\\n'
+         '        || die "Android builder local Docker authority changed"',
+         "Android builder active-authority recheck"),
+    ):
+        require_text(sources["android"], text, label)
+    require_exact_count(
+        sources["android"],
+        "local_docker run --rm --pull=never --network=none --read-only",
+        1,
+        "Android builder fixed Docker launch funnel",
+    )
+    for text, label in (
+        ('"$DOCKER_BIN" run', "Android builder obsolete direct Docker launch"),
+        ("readonly DOCKER_BIN=", "Android builder obsolete direct Docker client"),
+        ("assert_private_docker_config", "Android builder obsolete Docker-config helper"),
+        ("export DOCKER_CONFIG=", "Android builder caller-visible Docker configuration"),
+    ):
+        require_absent(sources["android"], text, label)
+    require_order(
+        sources["android"],
+        (
+            'readonly BUILD_UID="$(/usr/bin/id -u)"',
+            'readonly BUILD_GID="$(/usr/bin/id -g)"',
+            '[ "$BUILD_UID" -ne 0 ]',
+            '[ "$BUILD_GID" -ne 0 ]',
+            'source "$SCRIPT_DIR/lib.sh"',
+            "load_pins",
+            'mktemp -d /tmp/rustdesk-android-build.XXXXXXXXXX',
+            'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "android-builder"',
+            "local_docker run --rm --pull=never --network=none --read-only",
+            'require_pinned_builder_image android-builder "$IMAGE_ID"',
+        ),
+        "Android builder root-refusal and Docker-authority definition order",
+    )
+    android_cleanup = extract_between(
+        sources["android"],
+        "cleanup_owned_workspace() {",
+        "\n}\n\ntrap cleanup_owned_workspace EXIT",
+        "Android builder workspace cleanup",
+    )
+    require_order(
+        android_cleanup,
+        (
+            "remove_local_docker_authority",
+            'elif [ -n "$OWNED_WORKSPACE" ] && [ -d "$OWNED_WORKSPACE" ]',
+            'chmod -R u+rwX "$OWNED_WORKSPACE"',
+            'rm -rf -- "$OWNED_WORKSPACE"',
+        ),
+        "Android builder Docker-before-workspace cleanup",
+    )
+    release_child = extract_between(
+        sources["build"],
+        "run_child() {",
+        "\n}\n\nrun_verification() {",
+        "release child environment",
+    )
+    require_absent(
+        release_child,
+        'DOCKER_HOST="$DOCKER_HOST_URI"',
+        "release child inherited Docker endpoint",
+    )
+    require_absent(
+        release_child,
+        'DOCKER_CONFIG="$DOCKER_CONFIG_DIR"',
+        "release child inherited Docker configuration",
+    )
+    require_exact_count(
+        sources["build"],
+        'printf \'[ -z "${DOCKER_HOST+x}" ] && [ -z "${DOCKER_CONFIG+x}" ]\\n\'',
+        2,
+        "ordinary-target and Debian-lifecycle Docker-environment absence fixtures",
+    )
+    require_text(
+        sources["build"],
+        'printf \'[ "${DOUBLE_BUILD:-}" = 0 ]\\n\'\n'
+        '        printf \'[ -z "${DOCKER_HOST+x}" ] && [ -z "${DOCKER_CONFIG+x}" ]\\n\'',
+        "ordinary release-target Docker-environment absence fixture",
+    )
+    require_text(
+        sources["build"],
+        'printf \'[ "$#" = 6 ]\\n\'\n'
+        '        printf \'[ -z "${DOCKER_HOST+x}" ] && [ -z "${DOCKER_CONFIG+x}" ]\\n\'',
+        "final Debian-lifecycle Docker-environment absence fixture",
+    )
+    systemd_smoke = sources["systemd_smoke_host"]
+    for text, label in (
+        (
+            'if [ -n "${DOCKER_CONFIG+x}" ]; then',
+            "Debian lifecycle child inherited Docker-config refusal",
+        ),
+        (
+            'readonly DOCKER_CONFIG="$WORK/docker-config"',
+            "Debian lifecycle child private Docker-config path",
+        ),
+        (
+            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$DOCKER_CONFIG/config.json\")",
+            "Debian lifecycle child canonical no-clobber Docker config",
+        ),
+        (
+            "export DOCKER_CONFIG",
+            "Debian lifecycle child Docker-config selection",
+        ),
+    ):
+        require_text(systemd_smoke, text, label)
+    require_order(
+        systemd_smoke,
+        (
+            'if [ -n "${DOCKER_CONFIG+x}" ]; then',
+            'WORK=$(mktemp -d "$STATE_DIR/run.XXXXXXXXXX")',
+            'readonly DOCKER_CONFIG="$WORK/docker-config"',
+            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$DOCKER_CONFIG/config.json\")",
+            "export DOCKER_CONFIG",
+            'docker image inspect "$DEV_IMAGE"',
+            "docker run --rm --network none --read-only --pids-limit 64",
+        ),
+        "Debian lifecycle child-owned Docker config before Docker operations",
+    )
+    lifecycle_inspect = extract_between(
+        systemd_smoke,
+        'assert_private_docker_config\ndocker_status=0\ndocker image inspect "$DEV_IMAGE"',
+        '\n\nif [ "$MODE" = release-deb ]; then',
+        "Debian lifecycle Docker image inspection",
+    )
+    require_exact_count(
+        lifecycle_inspect,
+        "assert_private_docker_config",
+        2,
+        "Debian lifecycle Docker-image pre/post config proof",
+    )
+    lifecycle_stage = extract_between(
+        systemd_smoke,
+        "assert_private_docker_config\ndocker_status=0\ndocker run --rm --network none",
+        "\nlibrary_count=",
+        "Debian lifecycle runtime-dependency Docker stage",
+    )
+    require_exact_count(
+        lifecycle_stage,
+        "assert_private_docker_config",
+        2,
+        "Debian lifecycle Docker-run pre/post config proof",
     )
     require_text(
         sources["verify"],
@@ -13505,6 +13690,11 @@ def validate_android_builder_authority_contract(sources):
         sources["verify"],
         "python3 scripts/verify-android-builder-authority.py --repo . --self-test",
         "Android builder shared focused-verifier wiring",
+    )
+    require_text(
+        sources["verify"],
+        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128 Android APK builds use canonical-mode private exact-commit source, independent fixed local Docker authority",
+        "Android builder shared Docker-authority disposition",
     )
     require_text(
         sources["requirements"],
@@ -13566,8 +13756,40 @@ def validate_android_builder_authority_contract(sources):
         "R-S11bm/R-S11e-79 — Android tool preferences scratch ownership",
         "Android preferences scratch hardening ledger",
     )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11dj</span>',
+        "Android artifact-builder Docker authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>263</td>",
+        "Android artifact-builder Docker authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dj/R-S11e-128 — Android artifact-builder Docker client, daemon, and configuration authority",
+        "Android artifact-builder Docker authority hardening ledger",
+    )
     debian_focused = sources["debian_builder_authority_verifier"]
     for text, label in (
+        (
+            '[ -z "${DOCKER_CONFIG+x}" ] \\\n'
+            '        || die "DOCKER_CONFIG must not influence a direct or release-child Debian build"',
+            "Debian builder inherited Docker-config refusal",
+        ),
+        (
+            "mktemp -d /tmp/rustdesk-debian-build.XXXXXXXXXX",
+            "Debian builder direct-or-release private workspace",
+        ),
+        (
+            'install -d -m 0700 "$OWNED_WORKSPACE/docker-config"',
+            "Debian builder direct-or-release private Docker config",
+        ),
+        (
+            'export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"',
+            "Debian builder-owned Docker config selection",
+        ),
         ('prepare_direct_build_source() {', "Debian builder private direct-source constructor"),
         ('clone --quiet --no-hardlinks --no-checkout --reject-shallow', "Debian builder private clone"),
         ('release child requires outer independent snapshots and DOUBLE_BUILD=0',
@@ -13585,6 +13807,14 @@ def validate_android_builder_authority_contract(sources):
     ):
         require_text(sources["debian"], text, label)
     for text, label in (
+        (
+            "inherited Docker-configuration refusal",
+            "Debian builder focused inherited Docker-config enforcement",
+        ),
+        (
+            "Debian release child does not own its private Docker configuration",
+            "Debian builder focused release-child Docker ownership ordering",
+        ),
         ('MUTATIONS: Tuple[Mutation, ...]', "Debian builder mutation inventory"),
         ('run_mutations(sources)', "Debian builder mutation dispatch"),
         ('forbid(build, token, label)', "Debian builder forbidden-authority enforcement"),
@@ -36907,7 +37137,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11di, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262",
+            "R-S11n through R-S11dj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -38314,6 +38544,102 @@ def run_source_mutations(sources):
         ),
         (
             "android_builder_authority_verifier",
+            'def require_order(source: str, tokens: Tuple[str, ...], label: str) -> None:',
+            'def require_order_disabled(source: str, tokens: Tuple[str, ...], label: str) -> None:',
+            "Android builder order helper",
+        ),
+        (
+            "android_builder_authority_verifier",
+            '"shared Docker API/platform/trust-input refusal"',
+            '"shared Docker platform/trust-input accepted"',
+            "Android builder complete ambient Docker-input enforcement",
+        ),
+        (
+            "android",
+            '[ "$BUILD_UID" -ne 0 ]',
+            '[ "$BUILD_UID" -eq 0 ]',
+            "Android builder UID-root refusal",
+        ),
+        (
+            "android",
+            'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "android-builder"',
+            "true # Android builder fixed local Docker authority disabled",
+            "Android shared local Docker binding",
+        ),
+        (
+            "android",
+            "local_docker run --rm --pull=never --network=none --read-only",
+            "/usr/bin/docker run --rm --pull=never --network=none --read-only",
+            "Android builder common confinement wrapper",
+        ),
+        (
+            "android",
+            '        && ! remove_local_docker_authority; then',
+            "        && false; then",
+            "Android builder exact Docker authority cleanup",
+        ),
+        (
+            "build",
+            '        GIT_NO_REPLACE_OBJECTS=1 \\\n        "$@"',
+            '        GIT_NO_REPLACE_OBJECTS=1 \\\n'
+            '        DOCKER_HOST="$DOCKER_HOST_URI" DOCKER_CONFIG="$DOCKER_CONFIG_DIR" \\\n'
+            '        "$@"',
+            "release child inherited Docker endpoint",
+        ),
+        (
+            "build",
+            'printf \'[ "${DOUBLE_BUILD:-}" = 0 ]\\n\'\n'
+            '        printf \'[ -z "${DOCKER_HOST+x}" ] && [ -z "${DOCKER_CONFIG+x}" ]\\n\'',
+            'printf \'[ "${DOUBLE_BUILD:-}" = 0 ]\\n\'\n'
+            '        printf \'[ -n "${DOCKER_HOST+x}" ] && [ -n "${DOCKER_CONFIG+x}" ]\\n\'',
+            "ordinary-target and Debian-lifecycle Docker-environment absence fixtures",
+        ),
+        (
+            "build",
+            'printf \'[ "$#" = 6 ]\\n\'\n'
+            '        printf \'[ -z "${DOCKER_HOST+x}" ] && [ -z "${DOCKER_CONFIG+x}" ]\\n\'',
+            'printf \'[ "$#" = 6 ]\\n\'\n'
+            '        printf \'[ -n "${DOCKER_HOST+x}" ] && [ -n "${DOCKER_CONFIG+x}" ]\\n\'',
+            "ordinary-target and Debian-lifecycle Docker-environment absence fixtures",
+        ),
+        (
+            "systemd_smoke_host",
+            'if [ -n "${DOCKER_CONFIG+x}" ]; then',
+            "if false; then",
+            "Debian lifecycle child inherited Docker-config refusal",
+        ),
+        (
+            "systemd_smoke_host",
+            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$DOCKER_CONFIG/config.json\")",
+            "(umask 077 && printf '{}\\n' >\"$DOCKER_CONFIG/config.json\")",
+            "Debian lifecycle child canonical no-clobber Docker config",
+        ),
+        (
+            "systemd_smoke_host",
+            "export DOCKER_CONFIG",
+            "true # Debian lifecycle Docker configuration retained ambient",
+            "Debian lifecycle child Docker-config selection",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11dj</span>',
+            '<span class="id">R-S11dj-disabled</span>',
+            "Android artifact-builder Docker authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>263</td>",
+            "<tr><td>263-disabled</td>",
+            "Android artifact-builder Docker authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11dj/R-S11e-128 — Android artifact-builder Docker client, daemon, and configuration authority",
+            "R-S11dj/R-S11e-XXX — Android artifact-builder Docker authority deferred",
+            "Android artifact-builder Docker authority hardening ledger",
+        ),
+        (
+            "android_builder_authority_verifier",
             'if positions != tuple(sorted(positions))',
             'if False',
             "Android builder scratch-order rejection semantics",
@@ -38371,6 +38697,12 @@ def run_source_mutations(sources):
             "python3 scripts/verify-android-builder-authority.py --repo . --self-test",
             "true # Android builder authority verifier removed",
             "Android builder shared focused-verifier wiring",
+        ),
+        (
+            "verify",
+            "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128 Android APK builds use canonical-mode private exact-commit source, independent fixed local Docker authority",
+            "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79 Android APK builds use ambient Docker authority",
+            "Android builder shared Docker-authority disposition",
         ),
         (
             "android_builder_image_authority_verifier",
@@ -38631,6 +38963,25 @@ def run_source_mutations(sources):
             "forbid(build, token, label)",
             "return # forbidden Debian builder authority accepted",
             "Debian builder forbidden-authority enforcement",
+        ),
+        (
+            "debian",
+            '[ -z "${DOCKER_CONFIG+x}" ] \\\n'
+            '        || die "DOCKER_CONFIG must not influence a direct or release-child Debian build"',
+            "true # inherited Docker configuration accepted",
+            "Debian builder inherited Docker-config refusal",
+        ),
+        (
+            "debian",
+            'install -d -m 0700 "$OWNED_WORKSPACE/docker-config"',
+            'mkdir -p "$OWNED_WORKSPACE/docker-config"',
+            "Debian builder direct-or-release private Docker config",
+        ),
+        (
+            "debian",
+            'export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"',
+            "true # ambient Docker configuration retained",
+            "Debian builder-owned Docker config selection",
         ),
         (
             "debian",

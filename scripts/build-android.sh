@@ -10,17 +10,25 @@
 #
 # NOT run as part of "fork creation" — a checked-in build artifact.
 set -euo pipefail
+umask 077
+
+export PATH=/usr/bin:/bin
+readonly BUILD_UID="$(/usr/bin/id -u)"
+readonly BUILD_GID="$(/usr/bin/id -g)"
+[ "$BUILD_UID" -ne 0 ] \
+    || { echo "Android artifact building refuses host or container-root execution" >&2; exit 1; }
+[ "$BUILD_GID" -ne 0 ] \
+    || { echo "Android artifact building refuses a root primary group" >&2; exit 1; }
 
 if [ -n "${ONLINE_DIR+x}" ]; then
     printf 'build-android: ONLINE_DIR is not an operator override; release snapshots use RUSTDESK_RELEASE_ONLINE_SNAPSHOT\n' >&2
     exit 1
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
-export PATH=/usr/bin:/bin
 
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
 # The pinned .apk build image: the digest-pinned ubuntu:24.04 baseline + the android
@@ -39,9 +47,6 @@ export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$SOURCE_DATE_EPOCH_PIN}"
 KEYSTORE="${ANDROID_KEYSTORE:-$DEFAULT_ANDROID_KEYSTORE}"                   # defaults to .harness-state/android-keystore/ (lib.sh); no env var needed
 KEYSTORE_PASS_FILE="${ANDROID_KEYSTORE_PASS_FILE:-$DEFAULT_ANDROID_KEYSTORE_PASS_FILE}"
 KEY_ALIAS="rustdesk-fork"
-BUILD_UID="$(id -u)"
-BUILD_GID="$(id -g)"
-readonly DOCKER_BIN=/usr/bin/docker
 readonly PYTHON_BIN=/usr/bin/python3
 VERIFY_APK=""
 RELEASE_CHILD=0
@@ -56,13 +61,6 @@ case "${ANDROID_KEY_ALIAS:-rustdesk-fork}" in
     rustdesk-fork) ;;
     *) die "ANDROID_KEY_ALIAS is fixed to rustdesk-fork" ;;
 esac
-case "${DOCKER_HOST:-unix:///var/run/docker.sock}" in
-    unix:///var/run/docker.sock) export DOCKER_HOST=unix:///var/run/docker.sock ;;
-    *) die "Docker must use the local unix:///var/run/docker.sock daemon" ;;
-esac
-for variable in DOCKER_CONTEXT DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS; do
-    [ -z "${!variable+x}" ] || die "$variable must not influence an Android build"
-done
 if [ "$#" -gt 0 ]; then
     [ "$#" -eq 2 ] && [ "$1" = --verify-apk ] \
         || die "usage: build-android.sh [--verify-apk APK]"
@@ -72,7 +70,11 @@ fi
 cleanup_owned_workspace() {
     local status=$?
     trap - EXIT HUP INT TERM
-    if [ -n "$OWNED_WORKSPACE" ] && [ -d "$OWNED_WORKSPACE" ]; then
+    if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
+        && ! remove_local_docker_authority; then
+        warn "preserving changed private Android builder Docker authority: $OWNED_WORKSPACE"
+        status=1
+    elif [ -n "$OWNED_WORKSPACE" ] && [ -d "$OWNED_WORKSPACE" ]; then
         if ! chmod -R u+rwX "$OWNED_WORKSPACE" 2>/dev/null \
             || ! rm -rf -- "$OWNED_WORKSPACE"; then
             status=1
@@ -99,20 +101,6 @@ assert_private_directory() {
     [ "$metadata" = "$BUILD_UID:700" ] || die "$label must be a current-UID mode-0700 directory"
 }
 
-assert_private_docker_config() {
-    local config_dir="${DOCKER_CONFIG:-}" metadata
-    [ -n "$config_dir" ] || die "release child is missing its private Docker configuration"
-    assert_private_directory "$config_dir" "release Docker configuration"
-    [ -f "$config_dir/config.json" ] && [ ! -L "$config_dir/config.json" ] \
-        || die "release Docker config.json must be a non-symlink regular file"
-    metadata="$(stat -c '%u:%a:%h' -- "$config_dir/config.json" 2>/dev/null)" \
-        || die "release Docker config.json is absent"
-    [ "$metadata" = "$BUILD_UID:600:1" ] \
-        || die "release Docker config.json must be a current-UID mode-0600 non-hardlinked file"
-    cmp -s "$config_dir/config.json" <(printf '{}\n') \
-        || die "Docker config.json must equal the empty canonical configuration"
-}
-
 assert_private_online_snapshot() {
     local parent="$1" online bad
     assert_private_directory "$parent" "online snapshot parent"
@@ -136,6 +124,7 @@ prepare_execution_contract() {
     OWNED_WORKSPACE="$(umask 077 && mktemp -d /tmp/rustdesk-android-build.XXXXXXXXXX)" \
         || die "cannot create private Android build workspace"
     chmod 0700 "$OWNED_WORKSPACE"
+    initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "android-builder"
     if [ -n "${RELEASE_SRC_COMMIT:-}" ]; then
         RELEASE_CHILD=1
         [[ "$RELEASE_SRC_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
@@ -145,19 +134,12 @@ prepare_execution_contract() {
             || die "release child requires RUSTDESK_RELEASE_ONLINE_SNAPSHOT"
         [ -n "${RELEASE_DOCKER_IMAGE_ID:-}" ] \
             || die "release child requires RELEASE_DOCKER_IMAGE_ID"
-        assert_private_docker_config
         ONLINE_SNAPSHOT_PARENT="$RUSTDESK_RELEASE_ONLINE_SNAPSHOT"
     else
         [ -z "${RUSTDESK_RELEASE_ONLINE_SNAPSHOT:-}" ] \
             || die "RUSTDESK_RELEASE_ONLINE_SNAPSHOT is release-internal"
         [ -z "${RELEASE_DOCKER_IMAGE_ID:-}" ] \
             || die "RELEASE_DOCKER_IMAGE_ID is release-internal"
-        [ -z "${DOCKER_CONFIG+x}" ] || die "DOCKER_CONFIG must not influence a direct Android build"
-        install -d -m 0700 "$OWNED_WORKSPACE/docker-config"
-        printf '{}\n' > "$OWNED_WORKSPACE/docker-config/config.json"
-        chmod 0600 "$OWNED_WORKSPACE/docker-config/config.json"
-        export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"
-        assert_private_docker_config
     fi
     SOURCE_COMMIT="$current"
 }
@@ -243,7 +225,7 @@ remove_build_source() {
 }
 
 android_docker_run() {
-    "$DOCKER_BIN" run --rm --pull=never --network=none --read-only \
+    local_docker run --rm --pull=never --network=none --read-only \
         --user "$BUILD_UID:$BUILD_GID" \
         --cap-drop=ALL --security-opt=no-new-privileges \
         "$@"
@@ -275,7 +257,8 @@ activate_online_snapshot() {
 }
 
 verify_active_online_snapshot() {
-    assert_private_docker_config
+    assert_local_docker_authority \
+        || die "Android builder local Docker authority changed"
     assert_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
 }
 
@@ -320,7 +303,6 @@ certificate_fingerprint_from_keytool() {
 
 preflight() {
     require_cmd cmp git find grep install readlink sha256sum stat tar
-    [ -x "$DOCKER_BIN" ] || die "trusted Docker client is unavailable at $DOCKER_BIN"
     [ -x "$PYTHON_BIN" ] || die "trusted Python interpreter is unavailable at $PYTHON_BIN"
     [ "${ALLOW_DIRTY_TREE:-0}" = 0 ] \
         || die "the Android artifact builder accepts only an exact clean commit; use a developer check for working-tree experiments"
@@ -356,7 +338,8 @@ preflight() {
 # store password is fed on keytool's stdin (never argv/env — both leak via /proc, per the R-B2 note).
 assert_keystore_properties() {
     local info fingerprint
-    assert_private_docker_config
+    assert_local_docker_authority \
+        || die "Android builder local Docker authority changed before keytool preflight"
     info="$(android_docker_run \
         --pids-limit=32 --memory=512m --memory-swap=512m --cpus=1 \
         --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=64m \
@@ -548,7 +531,6 @@ publish_apk() {
 main() {
     if [ -n "$VERIFY_APK" ]; then
         require_cmd cmp git find grep install readlink sha256sum stat tar
-        [ -x "$DOCKER_BIN" ] || die "trusted Docker client is unavailable at $DOCKER_BIN"
         [ -x "$PYTHON_BIN" ] || die "trusted Python interpreter is unavailable at $PYTHON_BIN"
         prepare_execution_contract
         prepare_source_snapshot

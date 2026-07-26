@@ -43,6 +43,23 @@ def validate(sources: Dict[str, str]) -> None:
          "    GIT_CONFIG_SYSTEM=/dev/null \\\n    GIT_TERMINAL_PROMPT=0 \\\n"
          "    GIT_NO_REPLACE_OBJECTS=1", "closed Git configuration and replacement authority"),
         ('SOURCE_COMMIT="$current"', "exact source commit capture"),
+        (
+            '[ -z "${DOCKER_CONFIG+x}" ] \\\n'
+            '        || die "DOCKER_CONFIG must not influence a direct or release-child Debian build"',
+            "inherited Docker-configuration refusal",
+        ),
+        (
+            "mktemp -d /tmp/rustdesk-debian-build.XXXXXXXXXX",
+            "private direct-or-release workspace",
+        ),
+        (
+            'install -d -m 0700 "$OWNED_WORKSPACE/docker-config"',
+            "private direct-or-release Docker configuration",
+        ),
+        (
+            'export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"',
+            "build-owned Docker configuration selection",
+        ),
         ("prepare_direct_build_source() {", "private direct-source constructor"),
         ('clone --quiet --no-hardlinks --no-checkout --reject-shallow "$REPO_ROOT" "$source"',
          "non-hardlinked private Git clone"),
@@ -106,6 +123,14 @@ def validate(sources: Dict[str, str]) -> None:
     direct_selection = build.index('prepare_direct_build_source "$label"', release_assignment)
     if release_branch < 0 or not release_branch < release_assignment < direct_selection:
         raise AuthorityError("release and direct source selection are not one closed branch")
+    release_contract = build.index('if [ -n "${RELEASE_SRC_COMMIT:-}" ]')
+    docker_contract = build.index(
+        'install -d -m 0700 "$OWNED_WORKSPACE/docker-config"'
+    )
+    if docker_contract >= release_contract:
+        raise AuthorityError(
+            "Debian release child does not own its private Docker configuration"
+        )
 
     launch_tokens = (
         '"$DOCKER_BIN" run --rm --pull=never',
@@ -159,6 +184,16 @@ def validate(sources: Dict[str, str]) -> None:
         "hardening-ledger disposition",
     )
     require(
+        sources["requirements"],
+        '<span class="id">R-S11dj</span>',
+        "R-S11dj release-child Docker isolation requirement",
+    )
+    require(
+        sources["hardening"],
+        "R-S11dj/R-S11e-128 — Android artifact-builder Docker client, daemon, and configuration authority",
+        "release-child Docker isolation hardening ledger",
+    )
+    require(
         sources["workspace"],
         '"debian_builder_authority_verifier"',
         "workspace-verifier source ownership",
@@ -177,6 +212,25 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("build", "GIT_CONFIG_NOSYSTEM=1 \\\n    GIT_CONFIG_GLOBAL=/dev/null",
              "GIT_CONFIG_NOSYSTEM=0 \\\n    GIT_CONFIG_GLOBAL=/hostile/gitconfig",
              "closed Git configuration authority"),
+    Mutation(
+        "build",
+        '[ -z "${DOCKER_CONFIG+x}" ] \\\n'
+        '        || die "DOCKER_CONFIG must not influence a direct or release-child Debian build"',
+        "true # inherited Docker configuration accepted",
+        "inherited Docker-configuration refusal",
+    ),
+    Mutation(
+        "build",
+        'install -d -m 0700 "$OWNED_WORKSPACE/docker-config"',
+        'mkdir -p "$OWNED_WORKSPACE/docker-config"',
+        "private direct-or-release Docker configuration",
+    ),
+    Mutation(
+        "build",
+        'export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"',
+        "true # ambient Docker configuration retained",
+        "build-owned Docker configuration selection",
+    ),
     Mutation("build", "--no-hardlinks", "--local", "non-hardlinked private clone"),
     Mutation("build", 'checkout --quiet --detach "$SOURCE_COMMIT"', 'checkout --quiet master',
              "detached exact-commit checkout"),
@@ -228,6 +282,15 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("hardening", "R-S11cf/R-S11e-98 — Debian builder private-source and container authority",
              "R-S11cf/R-S11e-98 — Debian builder ambient authority",
              "hardening-ledger disposition"),
+    Mutation("requirements", '<span class="id">R-S11dj</span>',
+             '<span class="id">R-S11dj-disabled</span>',
+             "R-S11dj release-child Docker isolation requirement"),
+    Mutation(
+        "hardening",
+        "R-S11dj/R-S11e-128 — Android artifact-builder Docker client, daemon, and configuration authority",
+        "R-S11dj/R-S11e-XXX — release-child Docker isolation deferred",
+        "release-child Docker isolation hardening ledger",
+    ),
 )
 
 

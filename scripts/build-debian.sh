@@ -85,14 +85,14 @@ assert_private_directory() {
 
 assert_private_docker_config() {
     local config_dir="${DOCKER_CONFIG:-}" metadata
-    [ -n "$config_dir" ] || die "release child is missing its private Docker configuration"
-    assert_private_directory "$config_dir" "release Docker configuration"
+    [ -n "$config_dir" ] || die "Debian build is missing its private Docker configuration"
+    assert_private_directory "$config_dir" "Debian build Docker configuration"
     [ -f "$config_dir/config.json" ] && [ ! -L "$config_dir/config.json" ] \
-        || die "release Docker config.json must be a non-symlink regular file"
+        || die "Debian build Docker config.json must be a non-symlink regular file"
     metadata="$(stat -c '%u:%a:%h' -- "$config_dir/config.json" 2>/dev/null)" \
-        || die "release Docker config.json is absent"
+        || die "Debian build Docker config.json is absent"
     [ "$metadata" = "$BUILD_UID:600:1" ] \
-        || die "release Docker config.json must be a current-UID mode-0600 non-hardlinked file"
+        || die "Debian build Docker config.json must be a current-UID mode-0600 non-hardlinked file"
     cmp -s "$config_dir/config.json" <(printf '{}\n') \
         || die "Docker config.json must equal the empty canonical configuration"
 }
@@ -217,6 +217,16 @@ prepare_execution_contract() {
     [[ "$current" =~ ^[0-9a-f]{40}$ ]] \
         || die "Debian source commit must be one full lowercase commit ID"
     SOURCE_COMMIT="$current"
+    [ -z "${DOCKER_CONFIG+x}" ] \
+        || die "DOCKER_CONFIG must not influence a direct or release-child Debian build"
+    OWNED_WORKSPACE="$(umask 077 && mktemp -d /tmp/rustdesk-debian-build.XXXXXXXXXX)" \
+        || die "cannot create private Debian build workspace"
+    chmod 0700 "$OWNED_WORKSPACE"
+    install -d -m 0700 "$OWNED_WORKSPACE/docker-config"
+    printf '{}\n' > "$OWNED_WORKSPACE/docker-config/config.json"
+    chmod 0600 "$OWNED_WORKSPACE/docker-config/config.json"
+    export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"
+    assert_private_docker_config
     if [ -n "${RELEASE_SRC_COMMIT:-}" ]; then
         RELEASE_CHILD=1
         [[ "$RELEASE_SRC_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
@@ -226,22 +236,12 @@ prepare_execution_contract() {
             || die "release child requires RUSTDESK_RELEASE_ONLINE_SNAPSHOT"
         [ -n "${RELEASE_DOCKER_IMAGE_ID:-}" ] \
             || die "release child requires RELEASE_DOCKER_IMAGE_ID"
-        assert_private_docker_config
         ONLINE_SNAPSHOT_PARENT="$RUSTDESK_RELEASE_ONLINE_SNAPSHOT"
     else
         [ -z "${RUSTDESK_RELEASE_ONLINE_SNAPSHOT:-}" ] \
             || die "RUSTDESK_RELEASE_ONLINE_SNAPSHOT is release-internal"
         [ -z "${RELEASE_DOCKER_IMAGE_ID:-}" ] \
             || die "RELEASE_DOCKER_IMAGE_ID is release-internal"
-        [ -z "${DOCKER_CONFIG+x}" ] || die "DOCKER_CONFIG must not influence a direct Debian build"
-        OWNED_WORKSPACE="$(umask 077 && mktemp -d /tmp/rustdesk-debian-build.XXXXXXXXXX)" \
-            || die "cannot create private Debian build workspace"
-        chmod 0700 "$OWNED_WORKSPACE"
-        install -d -m 0700 "$OWNED_WORKSPACE/docker-config"
-        printf '{}\n' > "$OWNED_WORKSPACE/docker-config/config.json"
-        chmod 0600 "$OWNED_WORKSPACE/docker-config/config.json"
-        export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"
-        assert_private_docker_config
     fi
 }
 

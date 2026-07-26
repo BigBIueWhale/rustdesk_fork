@@ -33,16 +33,59 @@ def forbid(source: str, token: str, label: str) -> None:
         raise AuthorityError("forbidden {}".format(label))
 
 
+def require_order(source: str, tokens: Tuple[str, ...], label: str) -> None:
+    try:
+        positions = tuple(source.index(token) for token in tokens)
+    except ValueError as exc:
+        raise AuthorityError("{} is incomplete or misordered".format(label)) from exc
+    ordered_positions = tuple(sorted(positions))
+    if positions != ordered_positions or len(set(positions)) != len(positions):
+        raise AuthorityError("{} is incomplete or misordered".format(label))
+
+
+def extract(source: str, start: str, end: str, label: str) -> str:
+    try:
+        begin = source.index(start)
+        finish = source.index(end, begin)
+    except ValueError as exc:
+        raise AuthorityError("missing {}".format(label)) from exc
+    return source[begin:finish]
+
+
 def validate(sources: Dict[str, str]) -> None:
     build = sources["build"]
     checker = sources["checker"]
     inner = sources["inner"]
+    lib = sources["lib"]
+    release = sources["release"]
+    debian = sources["debian"]
+    systemd_smoke = sources["systemd_smoke"]
 
     for token, label in (
+        ("set -euo pipefail\numask 077", "private host-created state umask"),
         ('export PATH=/usr/bin:/bin', "closed host command path"),
-        ('readonly DOCKER_BIN=/usr/bin/docker', "fixed Docker client"),
+        ('readonly BUILD_UID="$(/usr/bin/id -u)"', "absolute host UID source"),
+        ('readonly BUILD_GID="$(/usr/bin/id -g)"', "absolute host GID source"),
+        ('[ "$BUILD_UID" -ne 0 ]', "host UID-root refusal"),
+        ('[ "$BUILD_GID" -ne 0 ]', "host GID-root refusal"),
+        ("refuses host or container-root execution", "root execution refusal"),
+        ("refuses a root primary group", "root primary-group refusal"),
+        ('source "$SCRIPT_DIR/lib.sh"', "shared Docker authority source"),
         ('readonly PYTHON_BIN=/usr/bin/python3', "fixed Python interpreter"),
         ('mktemp -d /tmp/rustdesk-android-build.XXXXXXXXXX', "private random workspace"),
+        (
+            'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "android-builder"',
+            "fixed local Docker authority initialization",
+        ),
+        (
+            'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]',
+            "fixed local Docker authority cleanup admission",
+        ),
+        ("&& ! remove_local_docker_authority; then", "exact local Docker authority cleanup"),
+        (
+            "preserving changed private Android builder Docker authority",
+            "changed local Docker authority preservation",
+        ),
         ('SOURCE_COMMIT="$current"', "exact source commit capture"),
         ('mode not in (b"100644", b"100755")', "regular-file-only commit inventory"),
         ('archive --format=tar "$SOURCE_COMMIT"', "commit-object source archive"),
@@ -57,7 +100,11 @@ def validate(sources: Dict[str, str]) -> None:
         ('private Android writable source survived cleanup', "writable-source cleanup postcondition"),
         ('the Android artifact builder accepts only an exact clean commit', "dirty-build refusal"),
         ('android_docker_run() {', "single container-confinement wrapper"),
-        ('"$DOCKER_BIN" run --rm --pull=never --network=none --read-only', "no-pull/networkless/read-only root"),
+        ('local_docker run --rm --pull=never --network=none --read-only', "no-pull/networkless/read-only root"),
+        (
+            'assert_local_docker_authority \\\n        || die "Android builder local Docker authority changed"',
+            "active Docker authority recheck",
+        ),
         ('--user "$BUILD_UID:$BUILD_GID"', "numeric nonroot identity"),
         ('--cap-drop=ALL --security-opt=no-new-privileges', "capability and privilege confinement"),
         ('--pids-limit=32 --memory=512m --memory-swap=512m --cpus=1', "keytool resource bounds"),
@@ -82,6 +129,12 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         require(build, token, label)
 
+    require_count(
+        build,
+        "local_docker run --rm --pull=never --network=none --read-only",
+        1,
+        "single fixed local Docker launch funnel",
+    )
     require_count(build, "if ! android_docker_run", 3, "fallible build/sign/verify container launches")
     require_count(build, 'info="$(android_docker_run', 1, "fallible keytool container launch")
     require_count(build, "    prepare_build_source\n", 1, "fresh source per build-pass call")
@@ -95,6 +148,290 @@ def validate(sources: Dict[str, str]) -> None:
         raise AuthorityError("source identity is not checked before and after build consumption")
     if build.count("--pids-limit=128 --memory=4g --memory-swap=4g --cpus=2") != 2:
         raise AuthorityError("signing and verification do not each carry explicit resource bounds")
+
+    require_order(
+        build,
+        (
+            'readonly BUILD_UID="$(/usr/bin/id -u)"',
+            'readonly BUILD_GID="$(/usr/bin/id -g)"',
+            '[ "$BUILD_UID" -ne 0 ]',
+            '[ "$BUILD_GID" -ne 0 ]',
+            'source "$SCRIPT_DIR/lib.sh"',
+            "load_pins",
+            'mktemp -d /tmp/rustdesk-android-build.XXXXXXXXXX',
+            'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "android-builder"',
+            "local_docker run --rm --pull=never --network=none --read-only",
+            'require_pinned_builder_image android-builder "$IMAGE_ID"',
+        ),
+        "root refusal, shared authority, launch funnel, and provenance definitions",
+    )
+    cleanup = extract(
+        build,
+        "cleanup_owned_workspace() {",
+        "\n}\n\ntrap cleanup_owned_workspace EXIT",
+        "Android builder workspace cleanup",
+    )
+    require_order(
+        cleanup,
+        (
+            "remove_local_docker_authority",
+            'elif [ -n "$OWNED_WORKSPACE" ] && [ -d "$OWNED_WORKSPACE" ]',
+            'chmod -R u+rwX "$OWNED_WORKSPACE"',
+            'rm -rf -- "$OWNED_WORKSPACE"',
+        ),
+        "Docker-before-workspace cleanup order",
+    )
+    run_child = extract(
+        release,
+        "run_child() {",
+        "\n}\n\nrun_verification() {",
+        "release child environment",
+    )
+    require_count(
+        release,
+        'printf \'[ -z "${DOCKER_HOST+x}" ] && [ -z "${DOCKER_CONFIG+x}" ]\\n\'',
+        2,
+        "ordinary-target and Debian-lifecycle Docker-environment absence fixtures",
+    )
+    require(
+        release,
+        'printf \'[ "${DOUBLE_BUILD:-}" = 0 ]\\n\'\n'
+        '        printf \'[ -z "${DOCKER_HOST+x}" ] && [ -z "${DOCKER_CONFIG+x}" ]\\n\'',
+        "ordinary release-target Docker-environment absence fixture",
+    )
+    require(
+        release,
+        'printf \'[ "$#" = 6 ]\\n\'\n'
+        '        printf \'[ -z "${DOCKER_HOST+x}" ] && [ -z "${DOCKER_CONFIG+x}" ]\\n\'',
+        "final Debian-lifecycle Docker-environment absence fixture",
+    )
+    forbid(run_child, 'DOCKER_HOST="$DOCKER_HOST_URI"', "release Docker endpoint inheritance")
+    forbid(run_child, 'DOCKER_CONFIG="$DOCKER_CONFIG_DIR"', "release Docker configuration inheritance")
+    for token, label in (
+        (
+            '[ -z "${DOCKER_CONFIG+x}" ] \\\n'
+            '        || die "DOCKER_CONFIG must not influence a direct or release-child Debian build"',
+            "Debian child inherited Docker-configuration refusal",
+        ),
+        (
+            "mktemp -d /tmp/rustdesk-debian-build.XXXXXXXXXX",
+            "Debian child private workspace",
+        ),
+        (
+            'install -d -m 0700 "$OWNED_WORKSPACE/docker-config"',
+            "Debian child private Docker configuration",
+        ),
+        (
+            'export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"',
+            "Debian child-owned Docker configuration selection",
+        ),
+    ):
+        require(debian, token, label)
+    require_order(
+        debian,
+        (
+            'SOURCE_COMMIT="$current"',
+            '[ -z "${DOCKER_CONFIG+x}" ]',
+            "mktemp -d /tmp/rustdesk-debian-build.XXXXXXXXXX",
+            'install -d -m 0700 "$OWNED_WORKSPACE/docker-config"',
+            'export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"',
+            'if [ -n "${RELEASE_SRC_COMMIT:-}" ]',
+        ),
+        "Debian child-owned Docker configuration before release classification",
+    )
+    for token, label in (
+        (
+            'if [ -n "${DOCKER_CONFIG+x}" ]; then',
+            "Debian lifecycle child inherited Docker-configuration refusal",
+        ),
+        (
+            'readonly DOCKER_CONFIG="$WORK/docker-config"',
+            "Debian lifecycle child private Docker-configuration path",
+        ),
+        (
+            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$DOCKER_CONFIG/config.json\")",
+            "Debian lifecycle child canonical no-clobber Docker configuration",
+        ),
+        (
+            "export DOCKER_CONFIG",
+            "Debian lifecycle child Docker-configuration selection",
+        ),
+    ):
+        require(systemd_smoke, token, label)
+    require_order(
+        systemd_smoke,
+        (
+            'if [ -n "${DOCKER_CONFIG+x}" ]; then',
+            'WORK=$(mktemp -d "$STATE_DIR/run.XXXXXXXXXX")',
+            'readonly DOCKER_CONFIG="$WORK/docker-config"',
+            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$DOCKER_CONFIG/config.json\")",
+            "export DOCKER_CONFIG",
+            'docker image inspect "$DEV_IMAGE"',
+            "docker run --rm --network none --read-only --pids-limit 64",
+        ),
+        "Debian lifecycle child-owned Docker configuration before Docker operations",
+    )
+    image_inspect = extract(
+        systemd_smoke,
+        'assert_private_docker_config\ndocker_status=0\ndocker image inspect "$DEV_IMAGE"',
+        '\n\nif [ "$MODE" = release-deb ]; then',
+        "Debian lifecycle Docker image inspection",
+    )
+    require_count(
+        image_inspect,
+        "assert_private_docker_config",
+        2,
+        "Debian lifecycle Docker-image pre/post configuration proof",
+    )
+    runtime_stage = extract(
+        systemd_smoke,
+        "assert_private_docker_config\ndocker_status=0\ndocker run --rm --network none",
+        "\nlibrary_count=",
+        "Debian lifecycle runtime-dependency Docker stage",
+    )
+    require_count(
+        runtime_stage,
+        "assert_private_docker_config",
+        2,
+        "Debian lifecycle Docker-run pre/post configuration proof",
+    )
+
+    for token, label in (
+        ("initialize_local_docker_authority() {", "shared Docker authority initializer"),
+        (
+            "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
+            "shared Docker ambient-input refusal",
+        ),
+        (
+            "DOCKER_API_VERSION DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST",
+            "shared Docker API/platform/trust-input refusal",
+        ),
+        (
+            "DOCKER_CONTENT_TRUST_SERVER DOCKER_CUSTOM_HEADERS",
+            "shared Docker trust-server/header-input refusal",
+        ),
+        (
+            "[ -f /usr/bin/docker ] && [ ! -L /usr/bin/docker ] && [ -x /usr/bin/docker ]",
+            "shared absolute Docker-client shape proof",
+        ),
+        (
+            "case \"$(/usr/bin/stat -c '%u:%g:%a:%h' -- /usr/bin/docker 2>/dev/null)\" in\n"
+            "        0:0:755:1) ;;",
+            "shared root-owned Docker-client metadata proof",
+        ),
+        (
+            "[ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ]",
+            "shared local Docker-socket shape proof",
+        ),
+        (
+            "case \"$(/usr/bin/stat -c '%u:%h' -- /var/run/docker.sock 2>/dev/null)\" in\n"
+            "        0:1) ;;",
+            "shared root-owned Docker-socket metadata proof",
+        ),
+        (
+            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
+            "shared Docker canonical no-clobber configuration",
+        ),
+        (
+            'LOCAL_DOCKER_AUTHORITY_PARENT_ID="$(/usr/bin/stat',
+            "shared Docker-authority parent identity binding",
+        ),
+        (
+            'LOCAL_DOCKER_AUTHORITY_CONFIG_ID="$(/usr/bin/stat',
+            "shared Docker-config directory identity binding",
+        ),
+        (
+            'LOCAL_DOCKER_AUTHORITY_CONFIG_FILE_ID="$(/usr/bin/stat',
+            "shared Docker-config file identity binding",
+        ),
+        (
+            'LOCAL_DOCKER_AUTHORITY_CLIENT_ID="$(/usr/bin/stat',
+            "shared Docker-client identity binding",
+        ),
+        (
+            'LOCAL_DOCKER_AUTHORITY_SOCKET_ID="$(/usr/bin/stat',
+            "shared Docker-socket identity binding",
+        ),
+        ("local_docker() {", "shared fixed Docker launcher"),
+        ("local_docker_image_provenance() {", "shared fixed Docker provenance wrapper"),
+        ("remove_local_docker_authority() {", "shared exact Docker cleanup"),
+        (
+            'local_docker_image_provenance "${args[@]}"',
+            "builder provenance shared-authority routing",
+        ),
+    ):
+        require(lib, token, label)
+    asserted_authority = extract(
+        lib,
+        "assert_local_docker_authority() {",
+        "\n}\n\nlocal_docker() {",
+        "shared Docker authority assertion",
+    )
+    for token, label in (
+        ("LOCAL_DOCKER_AUTHORITY_PARENT_ID", "shared Docker parent identity recheck"),
+        ("LOCAL_DOCKER_AUTHORITY_CONFIG_ID", "shared Docker-config identity recheck"),
+        ("LOCAL_DOCKER_AUTHORITY_CONFIG_FILE_ID", "shared Docker-config file identity recheck"),
+        ("LOCAL_DOCKER_AUTHORITY_CLIENT_ID", "shared Docker-client identity recheck"),
+        ("LOCAL_DOCKER_AUTHORITY_SOCKET_ID", "shared Docker-socket identity recheck"),
+        (
+            '/usr/bin/cmp -s -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" <(printf \'{}\\n\')',
+            "shared Docker-config byte recheck",
+        ),
+    ):
+        require(asserted_authority, token, label)
+    local_docker = extract(
+        lib,
+        "local_docker() {",
+        "\n}\n\nlocal_docker_image_provenance() {",
+        "shared fixed Docker launcher",
+    )
+    require_count(
+        local_docker,
+        "assert_local_docker_authority",
+        2,
+        "shared Docker pre/post authority proof",
+    )
+    for token, label in (
+        ("/usr/bin/env -i", "shared Docker launcher empty environment"),
+        ("/usr/bin/docker", "shared Docker launcher absolute client"),
+        ("--host unix:///var/run/docker.sock", "shared Docker launcher endpoint"),
+        ('--config "$LOCAL_DOCKER_AUTHORITY_CONFIG"', "shared Docker launcher configuration"),
+    ):
+        require(local_docker, token, label)
+    docker_provenance = extract(
+        lib,
+        "local_docker_image_provenance() {",
+        "\n}\n\nremove_local_docker_authority() {",
+        "shared fixed Docker provenance wrapper",
+    )
+    require_count(
+        docker_provenance,
+        "assert_local_docker_authority",
+        2,
+        "shared Docker provenance pre/post authority proof",
+    )
+    for token, label in (
+        ("/usr/bin/env -i", "shared Docker provenance empty environment"),
+        ("/usr/bin/python3 -I -S", "shared absolute isolated provenance interpreter"),
+        ('"$LIB_DIR/offline-image-provenance.py"', "shared fixed provenance program"),
+    ):
+        require(docker_provenance, token, label)
+    docker_cleanup = extract(
+        lib,
+        "remove_local_docker_authority() {",
+        "\n}\n\nrequire_pinned_builder_image() {",
+        "shared exact Docker cleanup",
+    )
+    require_order(
+        docker_cleanup,
+        (
+            "assert_local_docker_authority",
+            '/usr/bin/rm -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json"',
+            '/usr/bin/rmdir -- "$LOCAL_DOCKER_AUTHORITY_CONFIG"',
+            "LOCAL_DOCKER_AUTHORITY_INITIALIZED=0",
+        ),
+        "shared exact Docker cleanup order",
+    )
 
     for token, label in (
         ('unset ANDROID_USER_HOME ANDROID_SDK_HOME', "single Android preference-location injection"),
@@ -154,6 +491,11 @@ def validate(sources: Dict[str, str]) -> None:
         forbid(inner, token, label)
 
     for token, label in (
+        ('"$DOCKER_BIN" run', "obsolete direct Docker launch"),
+        ("readonly DOCKER_BIN=", "obsolete direct Docker client"),
+        ("assert_private_docker_config", "obsolete bespoke Docker-config helper"),
+        ('case "${DOCKER_HOST:', "caller-selected Docker endpoint"),
+        ("export DOCKER_CONFIG=", "caller-visible Docker configuration"),
         ('$REPO_ROOT:/src', "real repository bind"),
         ('source=$REPO_ROOT,target=/src', "real repository mount"),
         ('$OUT_DIR:/out', "final output directory bind"),
@@ -208,6 +550,11 @@ def validate(sources: Dict[str, str]) -> None:
         'python3 scripts/verify-android-builder-authority.py --repo . --self-test',
         "shared verifier wiring",
     )
+    require(
+        sources["verify"],
+        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128 Android APK builds use canonical-mode private exact-commit source, independent fixed local Docker authority",
+        "shared Android builder Docker-authority disposition",
+    )
     require(sources["requirements"], '<span class="id">R-S11bj</span>', "R-S11bj requirement")
     require(sources["requirements"], '<span class="id">R-S11bk</span>', "R-S11bk requirement")
     require(sources["requirements"], '<span class="id">R-S11bl</span>', "R-S11bl requirement")
@@ -235,6 +582,15 @@ def validate(sources: Dict[str, str]) -> None:
         sources["hardening"],
         'R-S11bm/R-S11e-79 — Android tool preferences scratch ownership',
         "Android-preferences hardening ledger row",
+    )
+    require(sources["requirements"], '<span class="id">R-S11dj</span>',
+            "R-S11dj requirement")
+    require(sources["requirements"], '<tr><td>263</td>',
+            "Appendix C #263 disposition")
+    require(
+        sources["hardening"],
+        "R-S11dj/R-S11e-128 — Android artifact-builder Docker client, daemon, and configuration authority",
+        "Android artifact-builder Docker authority hardening ledger",
     )
     require(
         sources["requirements"],
@@ -269,6 +625,190 @@ def validate(sources: Dict[str, str]) -> None:
 
 
 MUTATIONS: Tuple[Mutation, ...] = (
+    Mutation("build", "set -euo pipefail\numask 077",
+             "set -euo pipefail\numask 022", "private state umask"),
+    Mutation("build", 'readonly BUILD_UID="$(/usr/bin/id -u)"',
+             'readonly BUILD_UID="$(id -u)"', "absolute host UID source"),
+    Mutation("build", 'readonly BUILD_GID="$(/usr/bin/id -g)"',
+             'readonly BUILD_GID="$(id -g)"', "absolute host GID source"),
+    Mutation("build", '[ "$BUILD_UID" -ne 0 ]', '[ "$BUILD_UID" -eq 0 ]',
+             "root execution refusal"),
+    Mutation("build", '[ "$BUILD_GID" -ne 0 ]', '[ "$BUILD_GID" -eq 0 ]',
+             "root primary-group refusal"),
+    Mutation(
+        "build",
+        'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "android-builder"',
+        "true # fixed local Docker authority disabled",
+        "fixed local Docker authority initialization",
+    ),
+    Mutation(
+        "build",
+        'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \\\n'
+        '        && ! remove_local_docker_authority; then',
+        "if false; then",
+        "fixed local Docker authority cleanup",
+    ),
+    Mutation(
+        "build",
+        "local_docker run --rm --pull=never --network=none --read-only",
+        "/usr/bin/docker run --rm --pull=never --network=none --read-only",
+        "fixed local Docker launch funnel",
+    ),
+    Mutation(
+        "release",
+        '        GIT_NO_REPLACE_OBJECTS=1 \\\n        "$@"',
+        '        GIT_NO_REPLACE_OBJECTS=1 \\\n'
+        '        DOCKER_HOST="$DOCKER_HOST_URI" DOCKER_CONFIG="$DOCKER_CONFIG_DIR" \\\n'
+        '        "$@"',
+        "release-child Docker authority inheritance",
+    ),
+    Mutation(
+        "release",
+        'printf \'[ "${DOUBLE_BUILD:-}" = 0 ]\\n\'\n'
+        '        printf \'[ -z "${DOCKER_HOST+x}" ] && [ -z "${DOCKER_CONFIG+x}" ]\\n\'',
+        'printf \'[ "${DOUBLE_BUILD:-}" = 0 ]\\n\'\n'
+        '        printf \'[ -n "${DOCKER_HOST+x}" ] && [ -n "${DOCKER_CONFIG+x}" ]\\n\'',
+        "ordinary release-target Docker environment absence fixture",
+    ),
+    Mutation(
+        "release",
+        'printf \'[ "$#" = 6 ]\\n\'\n'
+        '        printf \'[ -z "${DOCKER_HOST+x}" ] && [ -z "${DOCKER_CONFIG+x}" ]\\n\'',
+        'printf \'[ "$#" = 6 ]\\n\'\n'
+        '        printf \'[ -n "${DOCKER_HOST+x}" ] && [ -n "${DOCKER_CONFIG+x}" ]\\n\'',
+        "final Debian-lifecycle Docker environment absence fixture",
+    ),
+    Mutation(
+        "debian",
+        '[ -z "${DOCKER_CONFIG+x}" ] \\\n'
+        '        || die "DOCKER_CONFIG must not influence a direct or release-child Debian build"',
+        "true # inherited Docker configuration accepted",
+        "Debian child inherited Docker-configuration refusal",
+    ),
+    Mutation(
+        "debian",
+        'install -d -m 0700 "$OWNED_WORKSPACE/docker-config"',
+        'mkdir -p "$OWNED_WORKSPACE/docker-config"',
+        "Debian child private Docker configuration",
+    ),
+    Mutation(
+        "debian",
+        'export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"',
+        "true # ambient Docker configuration retained",
+        "Debian child-owned Docker configuration selection",
+    ),
+    Mutation(
+        "systemd_smoke",
+        'if [ -n "${DOCKER_CONFIG+x}" ]; then',
+        "if false; then",
+        "Debian lifecycle child inherited Docker-configuration refusal",
+    ),
+    Mutation(
+        "systemd_smoke",
+        "(umask 077 && set -o noclobber && printf '{}\\n' >\"$DOCKER_CONFIG/config.json\")",
+        "(umask 077 && printf '{}\\n' >\"$DOCKER_CONFIG/config.json\")",
+        "Debian lifecycle child canonical no-clobber Docker configuration",
+    ),
+    Mutation(
+        "systemd_smoke",
+        "export DOCKER_CONFIG",
+        "true # Debian lifecycle Docker configuration retained ambient",
+        "Debian lifecycle child Docker-configuration selection",
+    ),
+    Mutation(
+        "lib",
+        "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
+        "DOCKER_HOST DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
+        "ambient Docker-authority refusal",
+    ),
+    Mutation(
+        "lib",
+        "DOCKER_API_VERSION DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST",
+        "DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST",
+        "ambient Docker API-version refusal",
+    ),
+    Mutation(
+        "lib",
+        "case \"$(/usr/bin/stat -c '%u:%g:%a:%h' -- /usr/bin/docker 2>/dev/null)\" in\n"
+        "        0:0:755:1) ;;",
+        "case \"$(/usr/bin/stat -c '%u:%g:%a:%h' -- /usr/bin/docker 2>/dev/null)\" in\n"
+        "        *:0:755:1) ;;",
+        "root-owned Docker-client identity",
+    ),
+    Mutation(
+        "lib",
+        "case \"$(/usr/bin/stat -c '%u:%h' -- /var/run/docker.sock 2>/dev/null)\" in\n"
+        "        0:1) ;;",
+        "case \"$(/usr/bin/stat -c '%u:%h' -- /var/run/docker.sock 2>/dev/null)\" in\n"
+        "        *:1) ;;",
+        "root-owned Docker-socket identity",
+    ),
+    Mutation(
+        "lib",
+        "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
+        "(umask 077 && printf '{}\\n' >\"$config/config.json\")",
+        "private Docker config no-clobber creation",
+    ),
+    Mutation(
+        "lib",
+        'LOCAL_DOCKER_AUTHORITY_PARENT_ID="$(/usr/bin/stat -c \'%d:%i:%u:%g:%a\' -- "$parent")"',
+        "LOCAL_DOCKER_AUTHORITY_PARENT_ID=unchecked",
+        "Docker-authority parent identity binding",
+    ),
+    Mutation(
+        "lib",
+        'LOCAL_DOCKER_AUTHORITY_CONFIG_ID="$(/usr/bin/stat -c \'%d:%i:%u:%g:%a:%h\' -- "$config")"',
+        "LOCAL_DOCKER_AUTHORITY_CONFIG_ID=unchecked",
+        "Docker-config directory identity binding",
+    ),
+    Mutation(
+        "lib",
+        'LOCAL_DOCKER_AUTHORITY_CONFIG_FILE_ID="$(/usr/bin/stat -c \'%d:%i:%u:%g:%a:%h\' -- "$config/config.json")"',
+        "LOCAL_DOCKER_AUTHORITY_CONFIG_FILE_ID=unchecked",
+        "Docker-config file identity binding",
+    ),
+    Mutation(
+        "lib",
+        'LOCAL_DOCKER_AUTHORITY_CLIENT_ID="$(/usr/bin/stat -c \'%d:%i:%u:%g:%a:%h\' -- /usr/bin/docker)"',
+        "LOCAL_DOCKER_AUTHORITY_CLIENT_ID=unchecked",
+        "Docker-client identity binding",
+    ),
+    Mutation(
+        "lib",
+        'LOCAL_DOCKER_AUTHORITY_SOCKET_ID="$(/usr/bin/stat -c \'%d:%i:%u:%g:%a:%h\' -- /var/run/docker.sock)"',
+        "LOCAL_DOCKER_AUTHORITY_SOCKET_ID=unchecked",
+        "Docker-socket identity binding",
+    ),
+    Mutation(
+        "lib",
+        '/usr/bin/cmp -s -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" <(printf \'{}\\n\')',
+        "true # Docker config bytes unchecked",
+        "Docker-config byte recheck",
+    ),
+    Mutation(
+        "lib",
+        "local_docker() {\n    local status=0\n    assert_local_docker_authority || return 1\n    /usr/bin/env -i",
+        "local_docker() {\n    local status=0\n    assert_local_docker_authority || return 1\n    /usr/bin/env",
+        "empty Docker client environment",
+    ),
+    Mutation(
+        "lib",
+        "--host unix:///var/run/docker.sock",
+        "--host tcp://127.0.0.1:2375",
+        "fixed local Docker endpoint",
+    ),
+    Mutation(
+        "lib",
+        'local_docker_image_provenance "${args[@]}"',
+        'python3 "$LIB_DIR/offline-image-provenance.py" "${args[@]}"',
+        "builder provenance shared-authority routing",
+    ),
+    Mutation(
+        "lib",
+        '/usr/bin/rm -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" || return 125',
+        "true # Docker configuration retained",
+        "exact Docker-authority cleanup",
+    ),
     Mutation("build", "--rm --pull=never --network=none --read-only", "--rm --network=none --read-only", "pull fallback"),
     Mutation("build", "--rm --pull=never --network=none --read-only", "--rm --pull=never --read-only", "network isolation"),
     Mutation("build", "--rm --pull=never --network=none --read-only", "--rm --pull=never --network=none", "read-only root"),
@@ -330,6 +870,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("checker", 'expect_failure(reference, candidate, "changed executable mode")', 'validate(reference, candidate) # executable-mode negative test removed', "executable-mode negative test"),
     Mutation("verify", "python3 scripts/verify-android-build-source.py --self-test", "true # Android source comparator self-test removed", "source-comparator self-test wiring"),
     Mutation("verify", "python3 scripts/verify-android-builder-authority.py --repo . --self-test", "true # Android builder authority verifier removed", "shared gate wiring"),
+    Mutation(
+        "verify",
+        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128 Android APK builds use canonical-mode private exact-commit source, independent fixed local Docker authority",
+        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79 Android APK builds use ambient Docker authority",
+        "shared Android builder Docker-authority disposition",
+    ),
     Mutation("requirements", '<span class="id">R-S11bj</span>', '<span class="id">R-S11bj-disabled</span>', "requirement"),
     Mutation("requirements", '<span class="id">R-S11bk</span>', '<span class="id">R-S11bk-disabled</span>', "snapshot-mode requirement"),
     Mutation("requirements", '<span class="id">R-S11bl</span>', '<span class="id">R-S11bl-disabled</span>', "scratch-lifecycle requirement"),
@@ -342,6 +888,17 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("hardening", 'R-S11bk/R-S11e-77 — Android exact-commit snapshot mode authority', 'R-S11bk/R-S11e-77 — Android archive umask authority', "snapshot-mode ledger"),
     Mutation("hardening", 'R-S11bl/R-S11e-78 — Android bounded scratch lifecycle', 'R-S11bl/R-S11e-78 — Android unbounded scratch lifecycle', "scratch-lifecycle ledger"),
     Mutation("hardening", 'R-S11bm/R-S11e-79 — Android tool preferences scratch ownership', 'R-S11bm/R-S11e-79 — Android tool preferences ambient ownership', "Android-preferences ledger"),
+    Mutation("requirements", '<span class="id">R-S11dj</span>',
+             '<span class="id">R-S11dj-disabled</span>',
+             "Android artifact-builder Docker authority requirement"),
+    Mutation("requirements", "<tr><td>263</td>", "<tr><td>263-disabled</td>",
+             "Android artifact-builder Docker authority Appendix disposition"),
+    Mutation(
+        "hardening",
+        "R-S11dj/R-S11e-128 — Android artifact-builder Docker client, daemon, and configuration authority",
+        "R-S11dj/R-S11e-XXX — Android artifact-builder Docker authority deferred",
+        "Android artifact-builder Docker authority hardening ledger",
+    ),
     Mutation("requirements", 'Clean pushed commit <code>36ed7a621496ed470cad5347f7598c18858de827</code> supplied the exact corrected-commit target-local A/B proof', 'Clean pushed commit <code>0000000000000000000000000000000000000000</code> supplied the exact corrected-commit target-local A/B proof', "R-S11bm exact corrected-commit evidence"),
     Mutation("requirements", 'Clean pushed commit <code>36ed7a621496ed470cad5347f7598c18858de827</code> supplied exact target-local A/B evidence', 'Clean pushed commit <code>0000000000000000000000000000000000000000</code> supplied exact target-local A/B evidence', "Appendix C #202 exact corrected-commit evidence"),
     Mutation("hardening", "Exact target-local artifact evidence: clean pushed commit\n  `36ed7a621496ed470cad5347f7598c18858de827`", "Exact target-local artifact evidence: clean pushed commit\n  `0000000000000000000000000000000000000000`", "R-S11e-79 exact corrected-commit evidence"),
@@ -379,6 +936,10 @@ def read_regular(repo: pathlib.Path, relative: str) -> str:
 def load_sources(repo: pathlib.Path) -> Dict[str, str]:
     return {
         "build": read_regular(repo, "scripts/build-android.sh"),
+        "release": read_regular(repo, "scripts/build-release.sh"),
+        "debian": read_regular(repo, "scripts/build-debian.sh"),
+        "systemd_smoke": read_regular(repo, "scripts/smoke-debian-systemd-lifecycle.sh"),
+        "lib": read_regular(repo, "scripts/lib.sh"),
         "inner": read_regular(repo, "scripts/android-apk-build.sh")
         + read_regular(repo, "flutter/android/app/build.gradle"),
         "checker": read_regular(repo, "scripts/verify-android-build-source.py"),
@@ -399,7 +960,7 @@ def main() -> None:
     if args.self_test:
         run_mutations(sources)
     print(
-        "ANDROID-BUILDER-AUTHORITY: private exact-commit source, phased bounded scratch and Android preferences, private signing output, and four confined launches are GREEN ({} mutations)".format(
+        "ANDROID-BUILDER-AUTHORITY: private exact-commit source, independent fixed local Docker authority, phased bounded scratch and Android preferences, private signing output, and four confined launches are GREEN ({} mutations)".format(
             len(MUTATIONS) if args.self_test else 0
         )
     )

@@ -12123,6 +12123,129 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   device, published port, container Docker-socket mount, host process scan,
   listener/firewall/network query, or host RustDesk process/service/
   configuration inspection or mutation.
+- **R-S11dj/R-S11e-128 — Android artifact-builder Docker client, daemon, and configuration authority —
+  SOURCE AND CONFINED SEMANTIC/MUTATION GATES VERIFIED 2026-07-26;
+  APK/DEVICE, COLD RELEASE, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.**
+  Platform: the unprivileged Linux release-tooling host. Endpoint/action:
+  `scripts/build-android.sh` immutable Android-builder provenance plus keytool
+  preflight, APK compilation, signing, and final signed-artifact verification;
+  `scripts/build-release.sh::run_child` release-child environment construction;
+  and `scripts/build-debian.sh::prepare_execution_contract` ownership of the
+  separately open Debian artifact child's private Docker configuration, plus
+  `scripts/smoke-debian-systemd-lifecycle.sh` ownership of the final Debian
+  lifecycle child's private Docker configuration.
+  Boundary: the invoking user and private exact-commit Android build workspace
+  ↔ Docker-client selection, daemon selection, client configuration, read-only
+  permanent signing inputs, build/verdict containers, and APK output authority.
+
+  R-S11bj through R-S11bm already confined exact clean-commit source, the
+  certified immutable builder, private online and pass outputs, numeric non-root
+  no-pull/networkless/read-only-root/capability-free resource-bounded
+  containers, read-only signing inputs, signed-artifact checks, host-side
+  publication verification, and target-local A/B reproducibility. Exact source
+  review nevertheless found a weaker outer Docker boundary. The builder
+  accepted unset or fixed `DOCKER_HOST`, rejected only context/certificate/TLS
+  inputs, created or inherited a private configuration without identity-binding
+  it, invoked `/usr/bin/docker` directly without an empty environment or
+  explicit host/config arguments, and did not bind or reprove the client, local
+  socket, authority parent, configuration objects, or configuration bytes. It
+  also lacked a host UID/GID-zero refusal. The top-level release runner passed
+  its own Docker host/configuration into every child, while recently hardened
+  verifier and advisory children correctly require independent authority and
+  reject those inherited inputs.
+
+  Docker's official CLI reference documents host, context, configuration,
+  certificate/TLS, API-version, platform, content-trust/server, and
+  custom-header environment inputs; states that `DOCKER_CONTEXT` overrides
+  `DOCKER_HOST`; gives command-line `--config` precedence over the environment;
+  and documents client-configured proxy injection into containers. Docker's
+  official context documentation states that a context carries endpoint and TLS
+  information and can select a different daemon. A fixed client pathname and
+  otherwise-strong inner flags therefore did not completely prove which daemon
+  interpreted compilation/signing/verification or what client configuration
+  augmented those containers. This was real artifact/signing-verdict,
+  daemon/configuration-selection, release-child isolation, and build-host
+  authority debt. It is not evidence that another daemon or malicious
+  configuration was used, the established signing key/password or
+  source/artifact bytes changed, Docker escaped, host root was acquired, a
+  listener or port was exposed, host RustDesk/service/configuration/firewall/
+  network state changed, exploitation occurred, or the host was compromised.
+
+  The Android builder now fixes `PATH`, captures UID/GID through absolute
+  `/usr/bin/id`, and refuses UID or primary GID zero before resolving or sourcing
+  repository shell/pin state. Every direct or release-child invocation creates
+  an unpredictable current-user/current-group mode-0700 build workspace and
+  initializes the shared local-Docker authority beneath it before image
+  provenance or any launch. The authority binds the exact root-owned
+  non-symlink mode-0755 single-link `/usr/bin/docker`, fixed root-owned
+  non-symlink single-link `/var/run/docker.sock`, private
+  parent/configuration identities, and current-user/current-group mode-0600
+  single-link canonical `{}` `config.json`; it rejects the complete reviewed
+  ambient Docker input set and reproves all identities and bytes around every
+  operation.
+
+  Immutable builder provenance now uses the shared isolated provenance wrapper.
+  The sole four-operation launch funnel uses the shared empty-environment local
+  wrapper with fixed `PATH`, private `HOME`, fixed local `DOCKER_HOST`, private
+  `DOCKER_CONFIG`, absolute client, and redundant explicit `--host`/`--config`.
+  The active-online snapshot checks also reprove the Docker authority between
+  every high-level operation. Cleanup reproves and removes the exact
+  configuration leaf/directory before recursive workspace cleanup; changed
+  authority is preserved and fails. The top-level release child allowlist no
+  longer contains `DOCKER_HOST` or `DOCKER_CONFIG`, and its existing behavioral
+  fixture now requires both to be absent. The Android child owns the complete
+  fixed authority above. To avoid breaking the separately open Debian artifact
+  build or final systemd-lifecycle verifier, both children now refuse inherited
+  `DOCKER_CONFIG` and select only child-owned canonical empty mode-0600
+  configurations beneath unpredictable private scratch. The artifact child
+  does so before direct/release classification. The lifecycle child does so
+  before either of its two Docker operations and checks the configuration
+  before and after each. This closes parent-configuration reuse without
+  claiming either Debian child's still-open client/socket/complete-ambient-input
+  authority; both broader Docker boundaries remain separate follow-on slices.
+
+  R-S11dj and Appendix C #263 make the correction normative. The focused Android
+  builder gate now binds root refusal, complete shared authority/provenance/
+  cleanup, release-parent isolation, the unchanged R-S11bj–R-S11bm source,
+  operation, signing, confinement, and publication contracts, the requirement,
+  Appendix row, and this ledger entry. The independent workspace gate and
+  complete source-mutation catalog bind the same caller/parent integration and
+  normative artifacts. The focused Android gate's normal contract and all 115
+  deliberate mutations pass. The focused Debian gate's normal contract and all
+  37 mutations also pass after adding the narrow direct/release child-owned
+  configuration contract. The independent workspace normal contract and
+  complete in-memory repository source-mutation catalog pass.
+
+  The complete catalog found and drove correction of two verifier-only
+  weaknesses before its final clean pass. First, a new mutation expected a
+  later Docker-order diagnostic although the independent verifier correctly
+  rejected it under its earlier helper-presence contract; every new mutation
+  now names its actual first rejection. Second, the new generic order helper
+  initially reused the exact comparison token owned by the older Android
+  scratch-order mutation, giving that historical mutation two ambiguous
+  candidates; the helper now uses a lexically distinct equivalent comparison,
+  restoring exactly one effective scratch target. Neither correction changed
+  production authority or accepted a bypass.
+
+  Bash syntax, Python in-memory compilation, requirements HTML parsing,
+  synchronized requirements-hash equality, native-codec normal/self-test, and
+  the independent normal gate pass. Requirements SHA-256 is
+  `845c08e85bad7357c268854d51a1ac0f855b307a29e18b9bbc4aeec6aa3215ca`,
+  synchronized to the hardening and native-codec ledgers.
+
+  Every project gate ran in immutable verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric UID:GID 1000:1000 with no network, a read-only container root and
+  repository, all capabilities dropped, no-new-privileges, no Docker socket,
+  host namespace, device, or published port, and explicit PID, memory/no-swap,
+  CPU, file-descriptor, and scratch ceilings.
+
+  This source slice does not invoke the Android builder, keytool, established
+  signing files, `scripts/verify.sh`, either root fixture, release build, or any
+  networked/published container. No signing identity is listed, opened, hashed,
+  mounted, inspected, rotated, regenerated, or otherwise mutated. APK/device/
+  native behavior, a fresh clean exact-commit R-B2/R-B10 cold release, installed
+  platform behavior, and R-V3 external review remain separately open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -12840,9 +12963,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-e8e2a5e728485a1b702f5a82f48f365a7c1daffa172900d03a70bac4e5cb5ade  requirements.html
+845c08e85bad7357c268854d51a1ac0f855b307a29e18b9bbc4aeec6aa3215ca  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11di, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dj, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

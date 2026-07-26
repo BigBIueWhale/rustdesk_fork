@@ -1191,12 +1191,12 @@ else
   rc=1
 fi
 
-echo "== (3b-iii-a1a1) Android APK builder container/source/mode/scratch authority (R-S11bj/R-S11bk/R-S11bl/R-S11bm/R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79) =="
+echo "== (3b-iii-a1a1) Android APK builder container/source/mode/scratch/Docker authority (R-S11bj/R-S11bk/R-S11bl/R-S11bm/R-S11dj/R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128) =="
 if python3 scripts/verify-android-build-source.py --self-test \
     && python3 scripts/verify-android-builder-authority.py --repo . --self-test; then
-  echo "  ok  R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79 Android APK builds use canonical-mode private exact-commit source, phased bounded dual-compatible preferences, narrow mounts, and confined existing-image launches"
+  echo "  ok  R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128 Android APK builds use canonical-mode private exact-commit source, independent fixed local Docker authority, phased bounded dual-compatible preferences, narrow mounts, and confined existing-image launches"
 else
-  echo "  FAIL R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79 Android APK builder regained live-tree, archive-mode, output-tree, pull, network, root, ambient/incompatible preferences, or simultaneous scratch-retention authority"
+  echo "  FAIL R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128 Android APK builder regained live-tree, archive-mode, output-tree, pull, network, host-root, ambient Docker daemon/configuration, release-parent inheritance, incompatible preferences, or simultaneous scratch-retention authority"
   rc=1
 fi
 

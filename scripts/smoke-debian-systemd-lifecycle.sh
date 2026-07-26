@@ -3,6 +3,11 @@ set -euo pipefail
 umask 077
 cd "$(dirname "$0")/.."
 
+if [ -n "${DOCKER_CONFIG+x}" ]; then
+    printf 'Debian systemd VM smoke rejects inherited DOCKER_CONFIG\n' >&2
+    exit 1
+fi
+
 # Host-side orchestrator for one disposable, networkless Debian KVM guest. It
 # never invokes sudo, never enters the host PID/cgroup namespaces, and never
 # talks to the host service manager. The production source and the dependency
@@ -43,6 +48,21 @@ fail() {
     exit 1
 }
 
+assert_private_docker_config() {
+    [ -d "$DOCKER_CONFIG" ] && [ ! -L "$DOCKER_CONFIG" ] \
+        || fail 'private Docker configuration is not a real directory'
+    [ "$(stat -c '%u:%g:%a' -- "$DOCKER_CONFIG" 2>/dev/null)" = \
+        "$(id -u):$(id -g):700" ] \
+        || fail 'private Docker configuration is not current-user/current-group mode 0700'
+    [ -f "$DOCKER_CONFIG/config.json" ] && [ ! -L "$DOCKER_CONFIG/config.json" ] \
+        || fail 'private Docker config.json is not a non-symlink regular file'
+    [ "$(stat -c '%u:%g:%a:%h' -- "$DOCKER_CONFIG/config.json" 2>/dev/null)" = \
+        "$(id -u):$(id -g):600:1" ] \
+        || fail 'private Docker config.json is not current-user/current-group mode 0600 and single-link'
+    cmp -s -- "$DOCKER_CONFIG/config.json" <(printf '{}\n') \
+        || fail 'private Docker config.json is not canonical empty configuration'
+}
+
 cleanup() {
     local status=$?
     trap - EXIT HUP INT TERM
@@ -61,7 +81,7 @@ trap 'exit 143' TERM
 [ "$(id -u)" -ne 0 ] || fail 'host orchestrator must run unprivileged'
 [ "$(uname -s)" = Linux ] && [ "$(uname -m)" = x86_64 ] \
     || fail 'systemd VM smoke requires the pinned Linux x86_64 build host'
-for command in docker qemu-img qemu-system-x86_64 sha256sum sha512sum timeout xorriso; do
+for command in cmp docker install mktemp qemu-img qemu-system-x86_64 sha256sum sha512sum stat timeout xorriso; do
     command -v "$command" >/dev/null || fail "required host command is absent: $command"
 done
 [ "$MODE" != release-deb ] || for command in dpkg-deb git python3 readlink stat; do
@@ -73,6 +93,17 @@ done
     || fail "private systemd smoke state is absent; run scripts/online-fetch.sh --debian-systemd-smoke-image"
 [ "$(stat -c '%u:%a' "$STATE_DIR")" = "$(id -u):700" ] \
     || fail 'systemd smoke state directory is not current-user-owned mode 0700'
+WORK=$(mktemp -d "$STATE_DIR/run.XXXXXXXXXX")
+[ "$(stat -c '%u:%g:%a' "$WORK")" = "$(id -u):$(id -g):700" ] \
+    || fail 'VM scratch directory is not current-user/current-group mode 0700'
+readonly WORK
+readonly DOCKER_CONFIG="$WORK/docker-config"
+install -d -m 0700 -- "$DOCKER_CONFIG"
+(umask 077 && set -o noclobber && printf '{}\n' >"$DOCKER_CONFIG/config.json") \
+    || fail 'cannot create private Docker config.json'
+chmod 0600 -- "$DOCKER_CONFIG/config.json"
+export DOCKER_CONFIG
+assert_private_docker_config
 [ -f "$IMAGE" ] && [ ! -L "$IMAGE" ] \
     || fail "pinned Debian cloud image is absent; run scripts/online-fetch.sh --debian-systemd-smoke-image"
 IMAGE_METADATA="$(stat -c '%u:%g:%a:%h' "$IMAGE")"
@@ -100,8 +131,11 @@ PY
 }
 [ -f "$GUEST_SCRIPT" ] && [ ! -L "$GUEST_SCRIPT" ] && [ -x "$GUEST_SCRIPT" ] \
     || fail 'systemd guest lifecycle script is absent or non-executable'
-docker image inspect "$DEV_IMAGE" >/dev/null 2>&1 \
-    || fail "runtime dependency image is absent: $DEV_IMAGE"
+assert_private_docker_config
+docker_status=0
+docker image inspect "$DEV_IMAGE" >/dev/null 2>&1 || docker_status=$?
+assert_private_docker_config
+[ "$docker_status" -eq 0 ] || fail "runtime dependency image is absent: $DEV_IMAGE"
 
 if [ "$MODE" = release-deb ]; then
     case "$RELEASE_DEB" in
@@ -139,10 +173,6 @@ if [ "$MODE" = release-deb ]; then
         || fail 'cannot record release .deb identity'
 fi
 
-WORK=$(mktemp -d "$STATE_DIR/run.XXXXXXXXXX")
-[ "$(stat -c '%u:%a' "$WORK")" = "$(id -u):700" ] \
-    || fail 'VM scratch directory is not current-user-owned mode 0700'
-readonly WORK
 readonly LIBS=$WORK/runtime-libs
 readonly EXTRACTED=$WORK/extracted-deb
 readonly OVERLAY=$WORK/guest.qcow2
@@ -181,6 +211,8 @@ fi
 mkdir "$LIBS"
 host_uid=$(id -u)
 host_gid=$(id -g)
+assert_private_docker_config
+docker_status=0
 docker run --rm --network none --read-only --pids-limit 64 \
     --cap-drop ALL --security-opt no-new-privileges \
     --user "$host_uid:$host_gid" \
@@ -207,7 +239,9 @@ docker run --rm --network none --read-only --pids-limit 64 \
                 cp -L --no-preserve=ownership -- "$library" "/out/$(basename "$library")"
             done
         done
-    ' _ "$container_binary"
+    ' _ "$container_binary" || docker_status=$?
+assert_private_docker_config
+[ "$docker_status" -eq 0 ] || fail 'runtime dependency staging container failed'
 library_count=$(find "$LIBS" -mindepth 1 -maxdepth 1 -type f | wc -l)
 [ "$library_count" -ge 60 ] \
     || fail "runtime dependency bundle is unexpectedly small: $library_count files"

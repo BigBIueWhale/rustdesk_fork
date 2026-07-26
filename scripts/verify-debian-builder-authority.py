@@ -54,6 +54,7 @@ def extract(source: str, start: str, end: str, label: str) -> str:
 def validate(sources: Dict[str, str]) -> None:
     build = sources["build"]
     lib = sources["lib"]
+    publisher = sources["publisher"]
 
     for token, label in (
         ("set -euo pipefail\numask 077", "private host-created state umask"),
@@ -73,6 +74,13 @@ def validate(sources: Dict[str, str]) -> None:
             "mktemp -d /tmp/rustdesk-debian-build.XXXXXXXXXX",
             "private direct-or-release workspace",
         ),
+        ('OWNED_WORKSPACE_ID="$(/usr/bin/stat -c \'%d:%i\'',
+         "private workspace identity capture"),
+        ("prepare_output_contract", "absent canonical output preflight"),
+        ("record_output_parent_identity", "output-parent identity capture"),
+        ('OUT_PARENT_ID="$device:$inode"', "retained output-parent identity"),
+        ("Debian output directory must be absent for no-clobber publication",
+         "absent output requirement"),
         (
             'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "debian-builder"',
             "fixed local Docker authority initialization",
@@ -111,6 +119,16 @@ def validate(sources: Dict[str, str]) -> None:
          "release outer-snapshot reproducibility ownership"),
         ("activate_build_source pass-a", "first private direct build source"),
         ("activate_build_source pass-b", "second independent direct build source"),
+        ('local -a packages=("$BUILD_SOURCE_ROOT"/rustdesk-*.deb)',
+         "closed private package selection"),
+        ("Debian build must emit exactly one rustdesk-*.deb package",
+         "single private package requirement"),
+        ("Debian build output metadata is unsafe", "private package metadata gate"),
+        ('PASS_A_DEB_ID="$package_identity"', "pass-A package identity retention"),
+        ('PASS_A_SHA256="$before_sha256"', "pass-A private digest retention"),
+        ('PASS_B_SHA256="$before_sha256"', "pass-B private digest retention"),
+        ('[ "$PASS_A_SHA256" = "$PASS_B_SHA256" ]',
+         "private A/B reproducibility comparison"),
         ('local_docker run --rm --pull=never', "fixed local immutable no-pull launch"),
         (
             'assert_local_docker_authority \\\n'
@@ -138,9 +156,25 @@ def validate(sources: Dict[str, str]) -> None:
          "empty read-only nested Git-authority shield"),
         ('--mount "type=bind,source=$ONLINE_DIR,target=/online,readonly"',
          "read-only private online-input mount"),
-        ('deb="$(ls -1 "$BUILD_SOURCE_ROOT"/rustdesk-*.deb',
-         "artifact selection confined to private source"),
+        ('/usr/bin/stat -c \'%u:%g:%a:%h:%s:%d:%i\' -- "$deb"',
+         "private package identity and metadata proof"),
         ('--repo "$BUILD_SOURCE_ROOT" --deb', "artifact validation against exact source"),
+        ('[ "$after_metadata" = "$metadata" ] && [ "$after_sha256" = "$before_sha256" ]',
+         "package stability across validation"),
+        ("prepare_pending_result", "private pending-result preparation"),
+        ('remove_local_docker_authority \\\n'
+         '        || die "Debian builder Docker authority could not retire before publication"',
+         "Docker authority retirement before publication"),
+        ('remove_owned_workspace_exact \\\n'
+         '        || die "private Debian build workspace could not retire before final publication"',
+         "exact workspace retirement before final publication"),
+        ('/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-debian-result.py"',
+         "isolated Debian result publisher"),
+        ("--source-identity \"$PASS_A_DEB_ID\"", "publisher package identity transfer"),
+        ("--source-sha256 \"$PASS_A_SHA256\"", "publisher package digest transfer"),
+        ("--output-parent-identity \"$OUT_PARENT_ID\"",
+         "publisher output-parent identity transfer"),
+        ("--pending-identity \"$PENDING_RESULT_ID\"", "publisher pending identity transfer"),
     ):
         require(build, token, label)
 
@@ -158,6 +192,12 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(build, "/src/.git:ro,noexec,nosuid,nodev,mode=0555,size=1m", 1,
                   "sole nested Git shield")
     require_count(build, "target=/online,readonly", 1, "sole online-input mount")
+    require_count(
+        build,
+        '/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-debian-result.py"',
+        2,
+        "two-phase Debian publisher invocation",
+    )
 
     release_assignment = build.index('BUILD_SOURCE_ROOT="$REPO_ROOT"')
     release_branch = build.rfind('if [ "$RELEASE_CHILD" -eq 1 ]', 0, release_assignment)
@@ -187,15 +227,102 @@ def validate(sources: Dict[str, str]) -> None:
         "\n}\n\ntrap cleanup_owned_workspace EXIT",
         "Debian builder workspace cleanup",
     )
+    preflight = extract(
+        build,
+        "preflight() {",
+        "\n}\n\nverify_deb_control_scripts() {",
+        "Debian builder preflight",
+    )
+    require_order(
+        preflight,
+        (
+            "assert_clean_worktree",
+            "assert_source_date_epoch",
+            "prepare_output_contract",
+            "prepare_execution_contract",
+            "resolve_image",
+            "activate_online_snapshot",
+        ),
+        "output contract before private build authority",
+    )
     require_order(
         cleanup,
         (
             "remove_local_docker_authority",
-            'elif [ -n "$OWNED_WORKSPACE" ] && [ -d "$OWNED_WORKSPACE" ]',
-            'chmod -R u+rwX "$OWNED_WORKSPACE"',
-            'rm -rf -- "$OWNED_WORKSPACE"',
+            'elif [ -n "$OWNED_WORKSPACE" ]',
+            "remove_owned_workspace_exact",
         ),
         "Docker-before-workspace cleanup order",
+    )
+    exact_cleanup = extract(
+        build,
+        "remove_owned_workspace_exact() {",
+        "\n}\n\nrecord_output_parent_identity() {",
+        "exact Debian workspace cleanup",
+    )
+    for token, label in (
+        ('--remove-private-root "$OWNED_WORKSPACE"', "descriptor-relative workspace closer"),
+        ('--expected-identity "$OWNED_WORKSPACE_ID"', "workspace identity transfer"),
+        ('[ ! -e "$OWNED_WORKSPACE" ] && [ ! -L "$OWNED_WORKSPACE" ]',
+         "workspace edge absence proof"),
+        ('OWNED_WORKSPACE=""', "retired workspace pathname authority"),
+        ('OWNED_WORKSPACE_ID=""', "retired workspace object authority"),
+    ):
+        require(exact_cleanup, token, label)
+    for token, label in (
+        ("chmod -R", "recursive workspace permission fallback"),
+        ("rm -rf", "recursive workspace deletion fallback"),
+    ):
+        forbid(cleanup + exact_cleanup, token, label)
+    package_check = extract(
+        build,
+        "verify_deb_control_scripts() {",
+        "\n}\n\n# build_one PROFILE FEATURES PASS:",
+        "private Debian package-check workspace",
+    )
+    require(
+        package_check,
+        'mktemp -d "$OWNED_WORKSPACE/debian-package-check.XXXXXXXXXX"',
+        "package checks contained by the exact private workspace",
+    )
+    forbid(
+        package_check,
+        'rm -rf "$tmp_package"',
+        "recursive package-check workspace deletion",
+    )
+
+    publication = extract(
+        build,
+        "publish_result() {",
+        "\n}\n\nmain() {",
+        "Debian result publication",
+    )
+    require_order(
+        publication,
+        (
+            "verify_active_online_snapshot",
+            'verify_build_source_postcondition "final Debian build-source state"',
+            "assert_local_docker_authority",
+            "remove_local_docker_authority",
+            "prepare_pending_result",
+            "remove_owned_workspace_exact",
+            "--commit",
+        ),
+        "Docker retirement, pending preparation, workspace retirement, and final publication",
+    )
+    main = extract(build, "main() {", "\n}\n\nmain \"$@\"", "Debian builder main")
+    require_order(
+        main,
+        (
+            "preflight",
+            "activate_build_source pass-a",
+            'build_one x86_64 "$FEATURES" pass-a',
+            "activate_build_source pass-b",
+            'build_one x86_64 "$FEATURES" pass-b',
+            '[ "$PASS_A_SHA256" = "$PASS_B_SHA256" ]',
+            "publish_result",
+        ),
+        "private build, reproducibility, and publication order",
     )
 
     launch_tokens = (
@@ -241,8 +368,93 @@ def validate(sources: Dict[str, str]) -> None:
         ("assert_private_docker_config", "bespoke Docker-config assertion"),
         ("export DOCKER_CONFIG", "process-global Docker-config selection"),
         ("require_cmd cmp docker", "PATH-selected Docker prerequisite"),
+        ('mkdir -p "$OUT_DIR"', "caller-visible output creation before verification"),
+        ('cp "$deb" "$OUT_DIR', "caller-visible package copy before verification"),
+        ('tee "$OUT_DIR', "overwrite-capable public checksum creation"),
+        ('OUT_DIR="$OUT_DIR/_rebuild"', "caller-visible pass-B output"),
+        ('"$OUT_DIR/rustdesk-x86_64.deb.sha256"', "public digest as reproducibility authority"),
     ):
         forbid(build, token, label)
+
+    for token, label in (
+        ("RENAME_NOREPLACE = 1", "no-clobber rename flag"),
+        ('ARTIFACT = "rustdesk-x86_64.deb"', "canonical Debian artifact name"),
+        ('CHECKSUM = "rustdesk-x86_64.deb.sha256"', "canonical Debian checksum name"),
+        ("EXPECTED_INVENTORY = (ARTIFACT, CHECKSUM)", "closed Debian result inventory"),
+        ("os.O_NOFOLLOW", "no-follow object acquisition"),
+        ("stable_file(before) != stable_file(opened)", "stable object acquisition"),
+        ("os.listxattr(descriptor)", "POSIX ACL inspection"),
+        ("before.st_nlink != 1", "single-link source and result proof"),
+        ("or before.st_nlink != 1\n"
+         "        or before.st_size <= 0\n"
+         "        or before.st_size > MAX_ARTIFACT_BYTES",
+         "single-link bounded package-source proof"),
+        ("source does not match its validated SHA-256", "validated source digest binding"),
+        ('pending = f".debian-output-pending-{os.urandom(32).hex()}"',
+         "kernel-random pending name"),
+        ("os.mkdir(pending, 0o700, dir_fd=output_parent)",
+         "exclusive private pending directory"),
+        ("os.fchmod(output, 0o400)", "read-only result file mode"),
+        ("os.fsync(output)", "result-file synchronization"),
+        ("os.fsync(pending_descriptor)", "pending-directory synchronization"),
+        ("os.fsync(output_parent)", "output namespace synchronization"),
+        ("renameat2", "descriptor-relative no-clobber primitive"),
+        ("rename_noreplace(output_parent, pending, destination)",
+         "same-parent final no-clobber rename"),
+        ("published Debian output is not the authenticated pending object",
+         "exact final-object identity proof"),
+        ("verify_result(pending_descriptor, \"published Debian output\")",
+         "post-publication content proof"),
+        ("published Debian output changed during final verification",
+         "post-content final-edge identity proof"),
+        ("publish-debian-result self-test: ok", "bounded publication behavior fixture"),
+    ):
+        require(publisher, token, label)
+    require_count(publisher, "os.fchmod(output, 0o400)", 2,
+                  "both exact read-only result modes")
+    require_count(publisher, "os.fsync(output)", 2,
+                  "both exact result-file synchronizations")
+    require_count(
+        publisher,
+        'require_absent(output_parent, pending, "retired pending Debian output")',
+        2,
+        "pre-content and post-content pending-edge retirement proofs",
+    )
+    prepare = extract(publisher, "def prepare(", "\n\ndef commit(", "publisher prepare phase")
+    require_order(
+        prepare,
+        (
+            "open_source(",
+            "open_bound_output_parent(",
+            'require_absent(output_parent, destination, "Debian output destination")',
+            "os.urandom(32).hex()",
+            "os.mkdir(pending, 0o700, dir_fd=output_parent)",
+            "copy_source(",
+            "create_checksum(",
+            'verify_result(pending_descriptor, "pending Debian output")',
+            "os.fsync(pending_descriptor)",
+            "os.fsync(output_parent)",
+            "reprove_output_parent(",
+        ),
+        "publisher source-to-pending authority order",
+    )
+    commit = extract(publisher, "def commit(", "\n\ndef make_source(", "publisher commit phase")
+    require_order(
+        commit,
+        (
+            'require_absent(output_parent, destination, "Debian output destination")',
+            "open_pending(",
+            'verify_result(pending_descriptor, "pending Debian output")',
+            "os.fsync(pending_descriptor)",
+            "reprove_output_parent(",
+            "rename_noreplace(output_parent, pending, destination)\n"
+            "        os.fsync(output_parent)",
+            'require_absent(output_parent, pending, "retired pending Debian output")',
+            'verify_result(pending_descriptor, "published Debian output")',
+            "published Debian output changed during final verification",
+        ),
+        "publisher final no-clobber commit order",
+    )
 
     for token, label in (
         ("initialize_local_docker_authority() {", "shared Docker authority initializer"),
@@ -369,7 +581,12 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["verify"],
-        "R-S11cf/R-S11dk direct builds use independent private exact-commit sources, provenance and the sole compiler use one fixed local Docker authority",
+        "/usr/bin/python3 -I -S scripts/publish-debian-result.py --self-test",
+        "bounded Debian publisher fixture wiring",
+    )
+    require(
+        sources["verify"],
+        "R-S11cf/R-S11dk/R-S11dv direct builds use independent private exact-commit sources, provenance and the sole compiler use one fixed local Docker authority",
         "shared Debian-builder Docker-authority disposition",
     )
     require(sources["requirements"], '<span class="id">R-S11cf</span>', "R-S11cf requirement")
@@ -397,6 +614,15 @@ def validate(sources: Dict[str, str]) -> None:
         sources["hardening"],
         "R-S11dk/R-S11e-129 — Debian artifact-builder Docker client, daemon, and configuration authority",
         "Debian builder Docker authority hardening ledger",
+    )
+    require(sources["requirements"], '<span class="id">R-S11dv</span>',
+            "R-S11dv Debian result-publication requirement")
+    require(sources["requirements"], "<tr><td>275</td>",
+            "Appendix C #275 disposition")
+    require(
+        sources["hardening"],
+        "R-S11dv/R-S11e-140 — Debian result publication is private-until-verified",
+        "Debian result-publication hardening ledger",
     )
     require(
         sources["workspace"],
@@ -597,7 +823,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
              "true # Debian builder verifier removed", "shared focused-verifier wiring"),
     Mutation(
         "verify",
-        "R-S11cf/R-S11dk direct builds use independent private exact-commit sources, provenance and the sole compiler use one fixed local Docker authority",
+        "R-S11cf/R-S11dk/R-S11dv direct builds use independent private exact-commit sources, provenance and the sole compiler use one fixed local Docker authority",
         "R-S11cf direct builds use independent private exact-commit sources",
         "shared Debian-builder Docker-authority disposition",
     ),
@@ -628,6 +854,183 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "R-S11dk/R-S11e-XXX — Debian artifact-builder Docker authority deferred",
         "Debian builder Docker authority hardening ledger",
     ),
+    Mutation(
+        "build",
+        'OWNED_WORKSPACE_ID="$(/usr/bin/stat -c \'%d:%i\' -- "$OWNED_WORKSPACE" 2>/dev/null)"',
+        "OWNED_WORKSPACE_ID=unchecked",
+        "private workspace identity capture",
+    ),
+    Mutation(
+        "build",
+        "prepare_output_contract\n    prepare_execution_contract",
+        "prepare_execution_contract",
+        "output contract before build authority",
+    ),
+    Mutation(
+        "build",
+        'mktemp -d "$OWNED_WORKSPACE/debian-package-check.XXXXXXXXXX"',
+        "mktemp -d /tmp/debian-package-check.XXXXXXXXXX",
+        "package checks contained by the exact private workspace",
+    ),
+    Mutation(
+        "build",
+        'OUT_PARENT_ID="$device:$inode"',
+        "OUT_PARENT_ID=unchecked",
+        "output-parent identity retention",
+    ),
+    Mutation(
+        "build",
+        'local -a packages=("$BUILD_SOURCE_ROOT"/rustdesk-*.deb)',
+        'local -a packages=("$BUILD_SOURCE_ROOT"/rustdesk-*.deb "$BUILD_SOURCE_ROOT"/other.deb)',
+        "closed private package selection",
+    ),
+    Mutation(
+        "build",
+        "Debian build must emit exactly one rustdesk-*.deb package",
+        "Debian build may select the first package",
+        "single private package requirement",
+    ),
+    Mutation(
+        "build",
+        '[ "$after_metadata" = "$metadata" ] && [ "$after_sha256" = "$before_sha256" ]',
+        "true # package stability unchecked",
+        "package stability across validation",
+    ),
+    Mutation(
+        "build",
+        'PASS_A_DEB_ID="$package_identity"',
+        "PASS_A_DEB_ID=unchecked",
+        "pass-A package identity retention",
+    ),
+    Mutation(
+        "build",
+        '[ "$PASS_A_SHA256" = "$PASS_B_SHA256" ]',
+        "true # private A/B equality disabled",
+        "private A/B reproducibility comparison",
+    ),
+    Mutation(
+        "build",
+        "remove_local_docker_authority \\\n"
+        '        || die "Debian builder Docker authority could not retire before publication"',
+        "true # Docker authority retained through publication",
+        "pre-publication Docker retirement",
+    ),
+    Mutation(
+        "build",
+        "remove_owned_workspace_exact \\\n"
+        '        || die "private Debian build workspace could not retire before final publication"',
+        "true # workspace retained through final publication",
+        "pre-publication exact workspace retirement",
+    ),
+    Mutation(
+        "build",
+        '--source-identity "$PASS_A_DEB_ID"',
+        "--source-identity unchecked",
+        "publisher source identity transfer",
+    ),
+    Mutation(
+        "build",
+        '--pending-identity "$PENDING_RESULT_ID"',
+        "--pending-identity unchecked",
+        "publisher pending identity transfer",
+    ),
+    Mutation(
+        "publisher",
+        "RENAME_NOREPLACE = 1",
+        "RENAME_NOREPLACE = 0",
+        "publisher no-clobber flag",
+    ),
+    Mutation(
+        "publisher",
+        "EXPECTED_INVENTORY = (ARTIFACT, CHECKSUM)",
+        "EXPECTED_INVENTORY = (ARTIFACT, CHECKSUM, \"optional\")",
+        "publisher closed inventory",
+    ),
+    Mutation(
+        "publisher",
+        "or before.st_nlink != 1\n"
+        "        or before.st_size <= 0\n"
+        "        or before.st_size > MAX_ARTIFACT_BYTES",
+        "or before.st_nlink < 1\n"
+        "        or before.st_size <= 0\n"
+        "        or before.st_size > MAX_ARTIFACT_BYTES",
+        "publisher source hardlink refusal",
+    ),
+    Mutation(
+        "publisher",
+        'pending = f".debian-output-pending-{os.urandom(32).hex()}"',
+        'pending = ".debian-output-pending-fixed"',
+        "kernel-random pending name",
+    ),
+    Mutation(
+        "publisher",
+        "os.mkdir(pending, 0o700, dir_fd=output_parent)",
+        "os.mkdir(pending, 0o777, dir_fd=output_parent)",
+        "private pending mode",
+    ),
+    Mutation(
+        "publisher",
+        "if digest.hexdigest() != expected_sha256:\n"
+        '            fail("Debian package source does not match its validated SHA-256")\n'
+        "        os.fchmod(output, 0o400)",
+        "if digest.hexdigest() != expected_sha256:\n"
+        '            fail("Debian package source does not match its validated SHA-256")\n'
+        "        os.fchmod(output, 0o666)",
+        "read-only result files",
+    ),
+    Mutation(
+        "publisher",
+        "rename_noreplace(output_parent, pending, destination)",
+        "os.rename(pending, destination, src_dir_fd=output_parent, dst_dir_fd=output_parent)",
+        "final no-clobber rename",
+    ),
+    Mutation(
+        "publisher",
+        "rename_noreplace(output_parent, pending, destination)\n"
+        "        os.fsync(output_parent)\n"
+        '        require_absent(output_parent, pending, "retired pending Debian output")',
+        "rename_noreplace(output_parent, pending, destination)\n"
+        "        os.fsync(output_parent)\n"
+        "        pass # pre-content pending-edge retirement unchecked",
+        "pre-content pending-edge retirement proof",
+    ),
+    Mutation(
+        "publisher",
+        'verify_result(pending_descriptor, "published Debian output")\n'
+        '        require_absent(output_parent, pending, "retired pending Debian output")',
+        'verify_result(pending_descriptor, "published Debian output")\n'
+        "        pass # post-content pending-edge retirement unchecked",
+        "post-content pending-edge retirement proof",
+    ),
+    Mutation(
+        "publisher",
+        'verify_result(pending_descriptor, "published Debian output")',
+        "pass # published content unchecked",
+        "post-publication content proof",
+    ),
+    Mutation(
+        "publisher",
+        "published Debian output changed during final verification",
+        "published Debian output final edge unchecked",
+        "post-content final-edge identity proof",
+    ),
+    Mutation(
+        "verify",
+        "/usr/bin/python3 -I -S scripts/publish-debian-result.py --self-test",
+        "true # Debian publisher behavior fixture removed",
+        "publisher behavior fixture wiring",
+    ),
+    Mutation("requirements", '<span class="id">R-S11dv</span>',
+             '<span class="id">R-S11dv-disabled</span>',
+             "R-S11dv Debian result-publication requirement"),
+    Mutation("requirements", "<tr><td>275</td>", "<tr><td>275-disabled</td>",
+             "Appendix C #275 disposition"),
+    Mutation(
+        "hardening",
+        "R-S11dv/R-S11e-140 — Debian result publication is private-until-verified",
+        "R-S11dv/R-S11e-XXX — Debian result publication remains pathname-owned",
+        "Debian result-publication hardening ledger",
+    ),
 )
 
 
@@ -639,6 +1042,7 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "workspace": (repo / "scripts/verify-verifier-workspace.py").read_text(encoding="utf-8"),
+        "publisher": (repo / "scripts/publish-debian-result.py").read_text(encoding="utf-8"),
     }
 
 

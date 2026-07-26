@@ -33,6 +33,9 @@ source "$SCRIPT_DIR/lib.sh"
 load_pins
 
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
+OUT_PARENT=""
+OUT_DESTINATION=""
+OUT_PARENT_ID=""
 # The §3.2 x64-linux feature set minus hwcodec: CPU-only VP8/VP9.
 FEATURES="--flutter --unix-file-copy-paste"
 # Determinism (R-B2): SOURCE_DATE_EPOCH is a FIXED pinned epoch (SOURCE_DATE_EPOCH_PIN in pins.env),
@@ -46,9 +49,16 @@ IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"
 RELEASE_CHILD=0
 ONLINE_SNAPSHOT_PARENT=""
 OWNED_WORKSPACE=""
+OWNED_WORKSPACE_ID=""
 SOURCE_COMMIT=""
 BUILD_SOURCE_ROOT=""
 BUILD_SOURCE_ID=""
+PASS_A_DEB=""
+PASS_A_DEB_ID=""
+PASS_A_SHA256=""
+PASS_B_SHA256=""
+PENDING_RESULT=""
+PENDING_RESULT_ID=""
 
 cleanup_owned_workspace() {
     local status=$?
@@ -57,9 +67,9 @@ cleanup_owned_workspace() {
         && ! remove_local_docker_authority; then
         warn "preserving changed private Debian builder Docker authority: $OWNED_WORKSPACE"
         status=1
-    elif [ -n "$OWNED_WORKSPACE" ] && [ -d "$OWNED_WORKSPACE" ]; then
-        if ! chmod -R u+rwX "$OWNED_WORKSPACE" 2>/dev/null \
-            || ! rm -rf -- "$OWNED_WORKSPACE"; then
+    elif [ -n "$OWNED_WORKSPACE" ]; then
+        if ! remove_owned_workspace_exact; then
+            warn "preserving changed private Debian build workspace: $OWNED_WORKSPACE"
             status=1
         fi
     fi
@@ -70,6 +80,64 @@ trap cleanup_owned_workspace EXIT
 trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
+
+remove_owned_workspace_exact() {
+    [ -n "$OWNED_WORKSPACE" ] && [ -n "$OWNED_WORKSPACE_ID" ] || return 1
+    /usr/bin/env -i PATH=/usr/bin:/bin \
+        /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-private-tree-closure.py" \
+            --remove-private-root "$OWNED_WORKSPACE" \
+            --expected-identity "$OWNED_WORKSPACE_ID" \
+        || return 1
+    { [ ! -e "$OWNED_WORKSPACE" ] && [ ! -L "$OWNED_WORKSPACE" ]; } || return 1
+    OWNED_WORKSPACE=""
+    OWNED_WORKSPACE_ID=""
+}
+
+record_output_parent_identity() {
+    local metadata owner group mode device inode extra
+    [ -d "$OUT_PARENT" ] && [ ! -L "$OUT_PARENT" ] \
+        || die "Debian output parent must be a real directory"
+    metadata="$(/usr/bin/stat -c '%u:%g:%a:%d:%i' -- "$OUT_PARENT" 2>/dev/null)" \
+        || die "Debian output-parent identity is unavailable"
+    IFS=: read -r owner group mode device inode extra <<<"$metadata"
+    [ -z "$extra" ] \
+        && [ "$owner" = "$BUILD_UID" ] \
+        && [ "$group" = "$BUILD_GID" ] \
+        && [ $((8#$mode & 8#700)) -eq $((8#700)) ] \
+        && [ $((8#$mode & 8#7022)) -eq 0 ] \
+        || die "Debian output parent does not grant only current-principal write authority"
+    [[ "$device" =~ ^[0-9]+$ ]] && [[ "$inode" =~ ^[1-9][0-9]*$ ]] \
+        || die "Debian output-parent identity is malformed"
+    OUT_PARENT_ID="$device:$inode"
+}
+
+prepare_output_contract() {
+    local planned_parent planned_destination
+    case "$OUT_DIR" in
+        /*) ;;
+        *) die "Debian output directory must be absolute" ;;
+    esac
+    planned_parent="$(/usr/bin/dirname -- "$OUT_DIR")" \
+        || die "cannot derive Debian output parent"
+    planned_destination="$(/usr/bin/basename -- "$OUT_DIR")" \
+        || die "cannot derive Debian output destination"
+    [ "$planned_parent" != / ] \
+        || die "Debian output parent must not be the filesystem root"
+    [ -d "$planned_parent" ] && [ ! -L "$planned_parent" ] \
+        || die "Debian output parent must already be a real directory"
+    OUT_PARENT="$(/usr/bin/readlink -f -- "$planned_parent" 2>/dev/null)" \
+        || die "Debian output parent cannot be resolved"
+    [ "$OUT_PARENT" = "$planned_parent" ] \
+        || die "Debian output parent must be absolute, canonical, and non-symlinked"
+    OUT_DESTINATION="$planned_destination"
+    [ "$OUT_DIR" = "$OUT_PARENT/$OUT_DESTINATION" ] \
+        || die "Debian output directory must be one canonical parent edge"
+    [[ "$OUT_DESTINATION" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ ]] \
+        || die "Debian output destination name is malformed"
+    record_output_parent_identity
+    { [ ! -e "$OUT_DIR" ] && [ ! -L "$OUT_DIR" ]; } \
+        || die "Debian output directory must be absent for no-clobber publication"
+}
 
 assert_private_directory() {
     local path="$1" label="$2" resolved metadata
@@ -206,7 +274,16 @@ prepare_execution_contract() {
     SOURCE_COMMIT="$current"
     OWNED_WORKSPACE="$(umask 077 && mktemp -d /tmp/rustdesk-debian-build.XXXXXXXXXX)" \
         || die "cannot create private Debian build workspace"
-    chmod 0700 "$OWNED_WORKSPACE"
+    chmod 0700 "$OWNED_WORKSPACE" \
+        || die "cannot protect private Debian build workspace"
+    [ "$(/usr/bin/readlink -f -- "$OWNED_WORKSPACE" 2>/dev/null)" = "$OWNED_WORKSPACE" ] \
+        || die "private Debian build workspace is not canonical"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$OWNED_WORKSPACE" 2>/dev/null)" = "$BUILD_UID:$BUILD_GID:700" ] \
+        || die "private Debian build workspace is not current-principal mode 0700"
+    OWNED_WORKSPACE_ID="$(/usr/bin/stat -c '%d:%i' -- "$OWNED_WORKSPACE" 2>/dev/null)" \
+        || die "private Debian build-workspace identity is unavailable"
+    [[ "$OWNED_WORKSPACE_ID" =~ ^(0|[1-9][0-9]*):[1-9][0-9]*$ ]] \
+        || die "private Debian build-workspace identity is malformed"
     initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "debian-builder"
     if [ -n "${RELEASE_SRC_COMMIT:-}" ]; then
         RELEASE_CHILD=1
@@ -250,10 +327,11 @@ verify_active_online_snapshot() {
 }
 
 preflight() {
-    require_cmd cmp git python3 dpkg-deb find install readlink stat
+    require_cmd basename cmp dirname dpkg-deb find git python3 readlink sha256sum stat
     assert_repo_state
     assert_clean_worktree
     assert_source_date_epoch
+    prepare_output_contract
     prepare_execution_contract
     resolve_image
     activate_online_snapshot
@@ -277,7 +355,8 @@ preflight() {
 verify_deb_control_scripts() {
     local deb="$1"
     local tmp_package tmp_control tmp_data
-    tmp_package="$(mktemp -d)"
+    tmp_package="$(umask 077 && mktemp -d "$OWNED_WORKSPACE/debian-package-check.XXXXXXXXXX")" \
+        || die "cannot create private Debian package-check workspace"
     tmp_control="$tmp_package/control"
     tmp_data="$tmp_package/data"
     mkdir "$tmp_control" "$tmp_data"
@@ -287,43 +366,35 @@ verify_deb_control_scripts() {
         [ -f "$tmp_control/$script" ] \
           && [ ! -L "$tmp_control/$script" ] \
           && [ "$(stat -c '%a:%h' "$tmp_control/$script" 2>/dev/null)" = "755:1" ] || {
-            rm -rf "$tmp_package"
             die "built .deb control script $script is not a mode-0755 non-hardlinked regular file"
         }
         cmp -s "$BUILD_SOURCE_ROOT/res/DEBIAN/$script" "$tmp_control/$script" || {
-            rm -rf "$tmp_package"
             die "built .deb control script $script differs from res/DEBIAN/$script"
         }
     done
     [ -f "$tmp_data/etc/init.d/rustdesk" ] \
       && [ ! -L "$tmp_data/etc/init.d/rustdesk" ] \
       && [ "$(stat -c '%a:%h' "$tmp_data/etc/init.d/rustdesk" 2>/dev/null)" = "755:1" ] || {
-        rm -rf "$tmp_package"
         die "built .deb SysV init script is not a mode-0755 non-hardlinked regular file"
     }
     cmp -s "$BUILD_SOURCE_ROOT/res/rustdesk.init" "$tmp_data/etc/init.d/rustdesk" || {
-        rm -rf "$tmp_package"
         die "built .deb SysV init script differs from res/rustdesk.init"
     }
     [ -f "$tmp_data/usr/lib/systemd/system/rustdesk.service" ] \
       && [ ! -L "$tmp_data/usr/lib/systemd/system/rustdesk.service" ] \
       && [ "$(stat -c '%u:%g:%a:%h' "$tmp_data/usr/lib/systemd/system/rustdesk.service" 2>/dev/null)" = "$BUILD_UID:$BUILD_GID:644:1" ] || {
-        rm -rf "$tmp_package"
         die "built .deb systemd unit is not a mode-0644 non-hardlinked regular file"
     }
     cmp -s "$BUILD_SOURCE_ROOT/res/rustdesk.service" "$tmp_data/usr/lib/systemd/system/rustdesk.service" || {
-        rm -rf "$tmp_package"
         die "built .deb systemd unit differs from res/rustdesk.service"
     }
     [ ! -e "$tmp_data/usr/share/rustdesk/files/systemd/rustdesk.service" ] \
       && [ ! -L "$tmp_data/usr/share/rustdesk/files/systemd/rustdesk.service" ] || {
-        rm -rf "$tmp_package"
         die "built .deb retains the legacy maintainer-script systemd unit template"
     }
     [ -L "$tmp_data/usr/bin/rustdesk" ] \
       && [ "$(readlink "$tmp_data/usr/bin/rustdesk")" = "../share/rustdesk/rustdesk" ] \
       && [ "$(stat -c '%u:%g:%a:%h' "$tmp_data/usr/bin/rustdesk" 2>/dev/null)" = "$BUILD_UID:$BUILD_GID:777:1" ] || {
-        rm -rf "$tmp_package"
         die "built .deb command is not the exact mode-0777 non-hardlinked relative symlink"
     }
     local template
@@ -331,13 +402,11 @@ verify_deb_control_scripts() {
         [ -f "$tmp_data/usr/share/rustdesk/files/$template" ] \
           && [ ! -L "$tmp_data/usr/share/rustdesk/files/$template" ] \
           && [ "$(stat -c '%a:%h' "$tmp_data/usr/share/rustdesk/files/$template" 2>/dev/null)" = "755:1" ] || {
-            rm -rf "$tmp_package"
             die "built .deb service-manager template $template is not a mode-0755 non-hardlinked regular file"
         }
         cmp -s \
             "$BUILD_SOURCE_ROOT/res/service-managers/$template" \
             "$tmp_data/usr/share/rustdesk/files/$template" || {
-            rm -rf "$tmp_package"
             die "built .deb service-manager template $template differs from its source"
         }
     done
@@ -345,7 +414,6 @@ verify_deb_control_scripts() {
     masked="$(grep -RInE '\|\|[[:space:]]*true|deb-systemd-(invoke|helper).*\|\|' "$tmp_control" || true)"
     if [ -n "$masked" ]; then
         printf '%s\n' "$masked" >&2
-        rm -rf "$tmp_package"
         die "built .deb maintainer scripts mask lifecycle failure"
     fi
     python3 "$SCRIPT_DIR/verify-debian-maintainer-scripts.py" \
@@ -354,16 +422,15 @@ verify_deb_control_scripts() {
         --openrc-script "$tmp_data/usr/share/rustdesk/files/openrc/rustdesk" \
         --runit-run "$tmp_data/usr/share/rustdesk/files/runit/run" \
         --manual-run "$tmp_data/usr/share/rustdesk/files/manual/rustdesk-service" || {
-        rm -rf "$tmp_package"
         die "built .deb maintainer scripts fail lifecycle semantics"
     }
-    rm -rf "$tmp_package"
 }
 
-# build_one PROFILE FEATURES: run upstream's build.py in the pinned container,
-# network removed, ./online mounted read-only. Emits target/release + the .deb.
+# build_one PROFILE FEATURES PASS: run upstream's build.py in the pinned container,
+# network removed, ./online mounted read-only. Validate the exact private .deb and
+# retain only its object identity and digest for later no-clobber publication.
 build_one() {
-    local profile="$1" features="$2"
+    local profile="$1" features="$2" pass="$3"
     log "building profile '$profile' (features: $features)"
     # HONESTY GATE (the af8746f class): build.py renames the freshly built package to
     # $BUILD_SOURCE_ROOT/rustdesk-<version>.deb, and the post-build step copies whatever
@@ -525,39 +592,131 @@ CFG
     fi
     verify_active_online_snapshot
     verify_build_source_postcondition "completed Debian $profile build"
-    mkdir -p "$OUT_DIR"
     # build.py fails loud (system2 → sys.exit(-1)) on any step, so a non-zero docker run already
     # aborts under set -e. This is the second line of defence: with the stale .deb purged above,
     # a missing rustdesk-*.deb now unambiguously means build.py did NOT emit one (e.g. flutter
     # build linux failed) -- fail loud rather than ship nothing/something stale.
-    local deb
-    deb="$(ls -1 "$BUILD_SOURCE_ROOT"/rustdesk-*.deb 2>/dev/null | head -1 || true)"
-    [ -n "$deb" ] && [ -f "$deb" ] || die "no rustdesk-*.deb produced — build.py did not emit a package (flutter build linux likely failed); see the build output above"
-    cp "$deb" "$OUT_DIR/rustdesk-${profile}.deb"
-    python3 "$SCRIPT_DIR/verify-debian-package-authority.py" --repo "$BUILD_SOURCE_ROOT" --deb "$OUT_DIR/rustdesk-${profile}.deb"
-    python3 "$SCRIPT_DIR/verify-polkit-policy.py" --repo "$BUILD_SOURCE_ROOT" --deb "$OUT_DIR/rustdesk-${profile}.deb"
-    verify_deb_control_scripts "$OUT_DIR/rustdesk-${profile}.deb"
-    sha256sum "$OUT_DIR/rustdesk-${profile}.deb" | tee "$OUT_DIR/rustdesk-${profile}.deb.sha256"
+    local -a packages=("$BUILD_SOURCE_ROOT"/rustdesk-*.deb)
+    [ "${#packages[@]}" -eq 1 ] \
+        && [ "${packages[0]}" != "$BUILD_SOURCE_ROOT/rustdesk-*.deb" ] \
+        || die "Debian build must emit exactly one rustdesk-*.deb package"
+    local deb="${packages[0]}" basename metadata owner group mode links size device inode extra
+    basename="${deb##*/}"
+    [[ "$basename" =~ ^rustdesk-[A-Za-z0-9._+-]+\.deb$ ]] \
+        || die "Debian build emitted a package with a malformed basename"
+    [ -f "$deb" ] && [ ! -L "$deb" ] \
+        || die "Debian build output is not one regular package"
+    metadata="$(/usr/bin/stat -c '%u:%g:%a:%h:%s:%d:%i' -- "$deb" 2>/dev/null)" \
+        || die "Debian build-output identity is unavailable"
+    IFS=: read -r owner group mode links size device inode extra <<<"$metadata"
+    [ -z "$extra" ] \
+        && [ "$owner" = "$BUILD_UID" ] \
+        && [ "$group" = "$BUILD_GID" ] \
+        && [ "$links" = 1 ] \
+        && [[ "$size" =~ ^[1-9][0-9]*$ ]] \
+        && [ "$size" -le $((4 * 1024 * 1024 * 1024)) ] \
+        && [ $((8#$mode & 8#7133)) -eq 0 ] \
+        && [ $((8#$mode & 8#400)) -eq $((8#400)) ] \
+        || die "Debian build output metadata is unsafe"
+    [[ "$device" =~ ^[0-9]+$ ]] && [[ "$inode" =~ ^[1-9][0-9]*$ ]] \
+        || die "Debian build-output identity is malformed"
+    local package_identity="$device:$inode"
+    local before_sha256 after_sha256 after_metadata
+    before_sha256="$(sha256sum -- "$deb")" \
+        || die "cannot hash private Debian build output"
+    before_sha256="${before_sha256%% *}"
+    [[ "$before_sha256" =~ ^[0-9a-f]{64}$ ]] \
+        || die "private Debian build-output SHA-256 is malformed"
+    /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-debian-package-authority.py" \
+        --repo "$BUILD_SOURCE_ROOT" --deb "$deb"
+    /usr/bin/python3 -I -S "$SCRIPT_DIR/verify-polkit-policy.py" \
+        --repo "$BUILD_SOURCE_ROOT" --deb "$deb"
+    verify_deb_control_scripts "$deb"
+    verify_build_source_postcondition "verified Debian $profile build"
+    verify_active_online_snapshot
+    after_metadata="$(/usr/bin/stat -c '%u:%g:%a:%h:%s:%d:%i' -- "$deb" 2>/dev/null)" \
+        || die "verified Debian build-output identity is unavailable"
+    after_sha256="$(sha256sum -- "$deb")" \
+        || die "cannot rehash verified Debian build output"
+    after_sha256="${after_sha256%% *}"
+    [ "$after_metadata" = "$metadata" ] && [ "$after_sha256" = "$before_sha256" ] \
+        || die "Debian build output changed while it was verified"
+    case "$pass" in
+        pass-a)
+            PASS_A_DEB="$deb"
+            PASS_A_DEB_ID="$package_identity"
+            PASS_A_SHA256="$before_sha256"
+            ;;
+        pass-b)
+            PASS_B_SHA256="$before_sha256"
+            ;;
+        *) die "unknown private Debian build pass: $pass" ;;
+    esac
+}
+
+prepare_pending_result() {
+    local authority extra
+    [ -n "$PASS_A_DEB" ] && [ -n "$PASS_A_DEB_ID" ] && [ -n "$PASS_A_SHA256" ] \
+        || die "validated Debian pass-A authority is incomplete"
+    [ -n "$OUT_PARENT" ] && [ -n "$OUT_PARENT_ID" ] && [ -n "$OUT_DESTINATION" ] \
+        || die "Debian output-parent authority is incomplete"
+    authority="$(/usr/bin/env -i PATH=/usr/bin:/bin \
+        /usr/bin/python3 -I -S "$SCRIPT_DIR/publish-debian-result.py" \
+            --prepare \
+            --source "$PASS_A_DEB" \
+            --source-identity "$PASS_A_DEB_ID" \
+            --source-sha256 "$PASS_A_SHA256" \
+            --output-parent "$OUT_PARENT" \
+            --output-parent-identity "$OUT_PARENT_ID" \
+            --destination "$OUT_DESTINATION")" \
+        || die "Debian output candidate preparation failed"
+    read -r PENDING_RESULT PENDING_RESULT_ID extra <<<"$authority"
+    [[ "$PENDING_RESULT" =~ ^\.debian-output-pending-[0-9a-f]{64}$ ]] \
+        && [[ "$PENDING_RESULT_ID" =~ ^(0|[1-9][0-9]*):[1-9][0-9]*$ ]] \
+        && [ -z "$extra" ] \
+        || die "pending Debian output authority is malformed"
+}
+
+publish_result() {
+    PENDING_RESULT=""
+    PENDING_RESULT_ID=""
+    verify_active_online_snapshot
+    verify_build_source_postcondition "final Debian build-source state"
+    assert_local_docker_authority \
+        || die "Debian builder Docker authority changed before retirement"
+    remove_local_docker_authority \
+        || die "Debian builder Docker authority could not retire before publication"
+    prepare_pending_result
+    remove_owned_workspace_exact \
+        || die "private Debian build workspace could not retire before final publication"
+    /usr/bin/env -i PATH=/usr/bin:/bin \
+        /usr/bin/python3 -I -S "$SCRIPT_DIR/publish-debian-result.py" \
+            --commit \
+            --output-parent "$OUT_PARENT" \
+            --output-parent-identity "$OUT_PARENT_ID" \
+            --pending "$PENDING_RESULT" \
+            --pending-identity "$PENDING_RESULT_ID" \
+            --destination "$OUT_DESTINATION"
 }
 
 main() {
     preflight
     # The one .deb — viewer and --server in a single binary, role by argv (R-R2b/R-B1).
     activate_build_source pass-a
-    build_one x86_64 "$FEATURES"
+    build_one x86_64 "$FEATURES" pass-a
 
-    # Double-build determinism (R-B2): a second build of identical source MUST
-    # produce a byte-identical SHA-256, or the recorded-SHA bar is unfalsifiable.
+    # Double-build determinism (R-B2): a second independent private build of
+    # identical source MUST produce a byte-identical SHA-256. Neither pass is
+    # caller-visible until that equality and every package check have succeeded.
     if [ "${DOUBLE_BUILD:-1}" = "1" ]; then
-        local first; first="$(awk '{print $1}' "$OUT_DIR/rustdesk-x86_64.deb.sha256")"
         activate_build_source pass-b
-        OUT_DIR="$OUT_DIR/_rebuild" build_one x86_64 "$FEATURES"
-        local second; second="$(awk '{print $1}' "$OUT_DIR/_rebuild/rustdesk-x86_64.deb.sha256")"
-        [ "$first" = "$second" ] || die "double-build SHA mismatch ($first vs $second) — fix BUILD_DATE/SOURCE_DATE_EPOCH determinism (R-B2)"
-        log "double-build determinism OK: $first"
+        build_one x86_64 "$FEATURES" pass-b
+        [ "$PASS_A_SHA256" = "$PASS_B_SHA256" ] \
+            || die "double-build SHA mismatch ($PASS_A_SHA256 vs $PASS_B_SHA256) — fix BUILD_DATE/SOURCE_DATE_EPOCH determinism (R-B2)"
+        log "double-build determinism OK: $PASS_A_SHA256"
     fi
 
-    log "build-debian.sh complete: $OUT_DIR/rustdesk-x86_64.deb"
+    publish_result
 }
 
 main "$@"

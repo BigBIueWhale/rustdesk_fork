@@ -13442,6 +13442,180 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   source slice. No host RustDesk/service/configuration/firewall/network state
   was inspected or mutated. Those obligations and the broader Ralph-loop
   goal remain open.
+- **R-S11dv/R-S11e-140 — Debian result publication is private-until-verified,
+  exact-object, no-clobber, and authority-terminal — SOURCE AND CONFINED
+  SOURCE/MUTATION/FILESYSTEM VERIFICATION COMPLETE 2026-07-26; COLD RELEASE,
+  INSTALLED LIFECYCLE, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.**
+  Platform: the unprivileged Linux Debian-build host. Endpoint/action:
+  `scripts/build-debian.sh::build_one` selecting and validating each generated
+  package plus `publish_result` moving the validated pass-A package and its
+  canonical checksum into the caller-selected absent output leaf. Boundary:
+  private exact-commit build/package objects and child-owned Docker/workspace
+  authority plus the selected output-parent namespace ↔ the irreversible
+  public two-file Debian result and terminal child verdict.
+
+  Proven old path and history: after each compiler container,
+  `build_one` ran `mkdir -p "$OUT_DIR"`, selected the first globbed package,
+  copied it to `"$OUT_DIR/rustdesk-${profile}.deb"` with overwrite authority,
+  then ran the package-authority, polkit-policy, and maintainer-script
+  validators against that caller-visible copy. It wrote the checksum through
+  overwrite-capable `tee`. Direct reproducibility then read the public pass-A
+  checksum, published pass B beneath public `"$OUT_DIR/_rebuild"`, and only
+  afterward compared the two hashes. A verifier failure, failed second pass,
+  or A/B mismatch could therefore leave one or two apparently complete
+  caller-visible artifacts from a failed transaction; a rerun could replace
+  prior output. The EXIT path later removed child Docker configuration and
+  private build state, so a cleanup failure could also change the verdict
+  after public files existed. `git blame` and `git log -S` trace the output
+  creation/copy/checksum and `_rebuild` shape to the original
+  `cd09dcc5` Debian-builder commit, with later package checks added around the
+  same publication model.
+
+  The builder refuses numeric UID and primary GID zero and its sole compiler
+  remains the already-confined pinned no-pull/networkless/read-only-root,
+  numeric-nonroot, capability-free/no-new-privileges, resource-bounded
+  container. This finding was non-root package-output integrity,
+  intermediate-result exposure, overwrite, pathname-substitution, durability,
+  cleanup-order, and terminal-verdict debt. It is not evidence that the
+  builder was run, a package was modified or replaced, another Docker daemon
+  was selected, Docker escaped, host root was acquired, a listener or port was
+  exposed, or host RustDesk/service/configuration/firewall/network state
+  changed or was compromised.
+
+  Source correction: preflight now requires the requested output to be one
+  absent absolute canonical leaf beneath an already-existing canonical,
+  current-principal non-root parent with owner read/write/search and no
+  special, group-write, or world-write authority. It retains the parent's
+  device/inode before any build. Existing output, unsafe parent, symlinked or
+  noncanonical topology, and malformed destination names fail without
+  inspection, adoption, deletion, or overwrite.
+
+  Each compiler still writes only into its private exact-commit source. The
+  post-container gate now admits exactly one constrained `rustdesk-*.deb`
+  basename and requires a bounded current-principal, non-symlink,
+  non-executable, non-group/world-writable, single-link regular file. It
+  records the package device/inode, metadata, and SHA-256; runs the complete
+  package-authority, polkit-policy, control-script/lifecycle, source, and
+  online-snapshot checks against that private object; then requires metadata
+  and digest stability. Direct pass A and independent pass B retain only
+  private artifact identities/digests and compare those digests. The release
+  child still uses `DOUBLE_BUILD=0` only because the enclosing release
+  transaction owns two independent exact snapshots. There is no public pass
+  copy, `_rebuild`, or checksum before every required check and equality
+  decision succeeds. The control-script/package extraction scratch is now
+  created as a private subtree of the recorded build workspace and retained
+  for its one exact descriptor-relative closer; the former unrelated `/tmp`
+  allocation and recursive `rm -rf` deletion path are absent.
+
+  Publication first re-proves and terminally removes the fixed local-Docker
+  configuration authority. The isolated
+  `scripts/publish-debian-result.py` opens the exact validated package and
+  retained output parent no-follow; rechecks current-principal ownership,
+  safe mode, single-link, size, device/inode, and source digest authority; and
+  rejects POSIX access/default ACLs where applicable. While the requested name
+  is absent, it exclusively creates one kernel-random
+  `.debian-output-pending-<64hex>` mode-0700 directory under the authenticated
+  parent. Through retained descriptors it creates exactly a mode-0400
+  single-link nonempty `rustdesk-x86_64.deb` plus its mode-0400 canonical
+  lowercase SHA-256 line, hashes the copy against the already-validated
+  digest, synchronizes both files and the pending directory, revalidates the
+  closed inventory/content, synchronizes the parent namespace, and returns
+  only the strict pending name plus device/inode.
+
+  With the requested output still absent, the shell invokes the shared
+  descriptor-relative private-tree closer against the child workspace's
+  device/inode recorded immediately after `mktemp`. The old recursive
+  `chmod -R`/`rm -rf` cleanup is absent. Substituted, cross-mount, special,
+  externally linked, descriptor-budget, or otherwise ambiguous state is
+  preserved and fails before final publication. This removes the direct
+  private source(s), online snapshot where child-owned, and all remaining
+  child scratch only after the package has been independently copied into the
+  authenticated private pending object. Release-parent-owned source/online
+  snapshots remain under their outer transaction rather than being adopted by
+  this child.
+
+  A second isolated publisher invocation then reopens the exact parent and
+  pending identities, revalidates the exact modes, links, inventory, checksum,
+  and bytes, synchronizes and reproves the parent, and performs one
+  descriptor-relative same-parent `renameat2(RENAME_NOREPLACE)` to the
+  requested absent destination. It synchronizes the changed namespace, proves
+  pending absence and exact final-object identity/content, and reproves the
+  pending edge and final identity a second time after the potentially long
+  final content hash before reproving the parent. Collision,
+  source/parent/pending substitution, unsupported no-replace semantics, or
+  uncertainty has no copy, overwrite, deletion, cross-filesystem fallback, or
+  compatibility path at the requested name. Only namespace synchronization
+  and exact proof follow the final edge change; no build,
+  Docker/configuration cleanup, private-workspace deletion, or output write
+  remains afterward. R-S11dv and Appendix C #275 make this boundary normative.
+
+  Confined verification used immutable image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric UID/GID 1000:1000 with no pull or network, read-only root and
+  repository, recursive bind inclusion disabled, all capabilities dropped,
+  no-new-privileges, finite PID/memory/no-swap/CPU/descriptor/core/file-size/
+  tmpfs limits, and no Docker/libvirt/service-manager socket, host namespace,
+  device, port, or host-configuration mount. Each outer Docker call used a
+  fresh mode-0700 private client configuration whose mode-0600 file and
+  directory were exactly removed. The focused Debian authority verifier
+  passes all 90 mutations. The bounded publisher fixture proves successful
+  prepare/commit and mode-0400 exact inventory; occupied-destination
+  preservation with pending state retained; source/output-parent/pending
+  substitution refusal; source-hardlink refusal; and extra-inventory refusal.
+  The independent workspace semantic baseline and its complete catalog of
+  2,491 deliberate source mutations pass from mutation one. Adjacent exact
+  reruns pass the
+  release-parent 27-mutation, Debian systemd-lifecycle 44-mutation, and Android
+  builder 145-mutation authority catalogs; the Debian package-authority
+  synthetic fixture, source polkit verifier, private-tree closer behavior
+  fixture, and native-codec normal/negative gate are green. Bash syntax,
+  in-memory Python compilation, requirements HTML parsing, active-hash
+  synchronization, and diff hygiene pass. The active requirements SHA-256 is
+  `ce7e3a94dc28f59cd64b00b0184655c15c091c517b957c66a8884021fcf25a36`.
+
+  Preliminary failures are retained as verifier-hardening evidence. The
+  focused checker initially confused the pre-rename and post-rename parent
+  `fsync` while checking final order; an output-preflight-order mutation
+  survived; and a source-hardlink mutation survived a generic link-count
+  token. Those checks were made phase/object-specific and restarted. Three
+  later complete-catalog attempts rejected production mutations correctly
+  but expected older diagnostic labels for Docker-before-workspace cleanup,
+  the shared Debian disposition, and final no-clobber rename; each label was
+  corrected and the complete catalog restarted from mutation one. The final
+  destination-edge tightening then made an older focused pending-edge mutation
+  target occur twice; the checker now requires and separately mutates both
+  pre-content and post-content pending-retirement proofs. The first complete
+  rerun rejected each split mutation correctly but expected phase-specific
+  diagnostic labels rather than the validator's combined two-proof invariant;
+  those expected labels were corrected and the complete catalog restarted
+  from mutation one. A subsequent meta-mutation changed the focused
+  post-content final-edge enforcement label but survived because the
+  independent checker's generic text also occurred in the focused mutation
+  catalog; the independent binding now requires the exact enforcement tuple
+  and the complete catalog was again restarted from mutation one. No accepted
+  mutation or bookkeeping failure is represented as a pass.
+
+  This evidence intentionally does not invoke the Debian builder main path,
+  Docker/compiler workload inside the verifier, a release transaction, actual
+  package installation, root fixture, systemd/service manager, or any host
+  service/network action. The behavioral fixtures use only bounded disposable
+  ordinary filesystems inside the confined verifier container.
+
+  One process-boundary error during this slice is retained rather
+  than hidden: a host inspection command accidentally included
+  `python3 -c 'print()'` with its empty output redirected away. It read no
+  project file, wrote no file, used no privilege or socket, and performed no
+  service or network operation, but executing even that no-op interpreter on
+  the host violated the container-only rule. It is not used as verification;
+  every project syntax, behavior, or mutation check runs in the confined
+  verifier container.
+
+  Exact cold committed R-B2/R-B10 Debian/release artifacts, executable package
+  installation and service lifecycle, installed/native/device behavior,
+  independent reproduction where separately required, and R-V3 external
+  review remain open. No host RustDesk/service/configuration/firewall/network
+  state was inspected or mutated, and the broader Ralph-loop goal remains
+  active.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -14159,9 +14333,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-9bde87af77e4c815c8ba91714f248d64e559a0b1cb661562a690577485ca2637  requirements.html
+ce7e3a94dc28f59cd64b00b0184655c15c091c517b957c66a8884021fcf25a36  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11du, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#274. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dv, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#275. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

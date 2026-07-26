@@ -202,16 +202,19 @@ else
   echo "  ok  R-S11bg/R-S11dh exact fixed local Docker authority + immutable local image + private source/vendor/output state + non-root ordinary execution + isolated minimal-capability root tests"
 fi
 
-echo "== (0d) Debian builder source/container and fixed local Docker authority (R-S11cf/R-S11dk) =="
+echo "== (0d) Debian builder source/container, Docker, and result-publication authority (R-S11cf/R-S11dk/R-S11dv) =="
 r_s11cf=
 if ! python3 scripts/verify-debian-builder-authority.py --repo . --self-test; then
   r_s11cf="$r_s11cf authority-or-mutation-self-test-failed"
 fi
+if ! /usr/bin/python3 -I -S scripts/publish-debian-result.py --self-test; then
+  r_s11cf="$r_s11cf result-publication-self-test-failed"
+fi
 if [ -n "$r_s11cf" ]; then
-  echo "  FAIL R-S11cf/R-S11dk Debian builder authority:$r_s11cf"
+  echo "  FAIL R-S11cf/R-S11dk/R-S11dv Debian builder authority:$r_s11cf"
   rc=1
 else
-  echo "  ok  R-S11cf/R-S11dk direct builds use independent private exact-commit sources, provenance and the sole compiler use one fixed local Docker authority, and compilation is non-root/offline/no-pull/read-only-root/capability-free/resource-bounded"
+  echo "  ok  R-S11cf/R-S11dk/R-S11dv direct builds use independent private exact-commit sources, provenance and the sole compiler use one fixed local Docker authority, compilation is confined, and only one verified private result is published through exact no-clobber authority after cleanup"
 fi
 
 echo "== (0d1) authenticated Debian builder image distribution authority (R-S11db/R-S11e-120) =="

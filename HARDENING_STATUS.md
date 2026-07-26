@@ -12246,6 +12246,123 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   mounted, inspected, rotated, regenerated, or otherwise mutated. APK/device/
   native behavior, a fresh clean exact-commit R-B2/R-B10 cold release, installed
   platform behavior, and R-V3 external review remain separately open.
+- **R-S11dk/R-S11e-129 — Debian artifact-builder Docker client, daemon, and configuration authority —
+  SOURCE AND CONFINED SEMANTIC/MUTATION GATES VERIFIED 2026-07-26;
+  FINAL LIFECYCLE-CHILD, COLD RELEASE, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.**
+  Platform: the unprivileged Linux release-tooling host. Endpoint/action:
+  `scripts/build-debian.sh` immutable Debian-builder provenance and its sole
+  offline compiler/package operation. Boundary: the invoking user and private
+  exact-commit Debian build workspace ↔ Docker-client selection, daemon
+  selection, client configuration, build/verdict container, and package output
+  authority.
+
+  R-S11cf already confined direct builds to independent private exact-commit
+  sources, release builds to the outer exact snapshot, and the sole compiler to
+  a certified immutable no-pull/networkless/read-only-root numeric-nonroot
+  capability-free/no-new-privileges resource-bounded container with private
+  online input, source postconditions, package checks, and direct A/B
+  reproducibility. R-S11dj later removed release-parent Docker inheritance and
+  gave the Debian child a canonical empty private config. Exact current source
+  review nevertheless proved that the builder selected UID/GID with ambient
+  `id` only after sourcing repository shell, did not refuse host root, accepted
+  unset or fixed `DOCKER_HOST` and rejected only four other Docker inputs,
+  created a bespoke configuration without identity-binding it, let immutable
+  image provenance use the shared helper's ambient fallback, invoked the
+  compiler through direct `"$DOCKER_BIN" run`, and could recursively remove the
+  workspace without first reproving and retiring the Docker authority.
+
+  Docker's official CLI reference documents host, context, configuration,
+  certificate/TLS, API-version, platform, content-trust/server, and
+  custom-header inputs; says `DOCKER_CONTEXT` overrides `DOCKER_HOST`,
+  command-line `--config` overrides the environment, and client configuration
+  can inject proxy environment into containers. Docker's context documentation
+  states that a context carries endpoint and TLS information and may select a
+  remote daemon. Docker's Engine security guidance warns that control of a
+  rootful daemon is powerful host authority. The fixed client pathname,
+  canonical-looking config, and strong inner flags therefore did not completely
+  prove which daemon interpreted provenance/compilation or what client
+  configuration augmented the container. This was real artifact-verdict,
+  daemon/configuration-selection, cleanup, and build-host authority debt. It is
+  not evidence that another daemon or malicious configuration was used,
+  source/input/artifact bytes changed, Docker escaped, host root was acquired
+  through this path, a listener or port was exposed, host RustDesk/service/
+  configuration/firewall/network state changed, exploitation occurred, or the
+  host was compromised.
+
+  The builder now fixes `PATH`, captures UID/GID through absolute `/usr/bin/id`,
+  and refuses UID or primary GID zero before resolving or sourcing repository
+  shell/pin state. Every direct or release-child invocation creates an
+  unpredictable current-user/current-group mode-0700 workspace and initializes
+  the shared local-Docker authority beneath it before release classification,
+  immutable-image provenance, or launch. That authority binds the exact
+  root-owned non-symlink mode-0755 single-link `/usr/bin/docker`, the fixed
+  root-owned non-symlink single-link `/var/run/docker.sock`, private
+  parent/configuration identities, and the current-user/current-group mode-0600
+  single-link canonical `{}` `config.json`; rejects the complete reviewed
+  ambient Docker input set; and reproves every identity and the configuration
+  bytes around each operation.
+
+  Immutable builder provenance now uses the shared isolated provenance wrapper.
+  The sole compiler launch uses `local_docker`, hence an otherwise empty
+  environment, fixed `PATH`, private `HOME`, fixed local `DOCKER_HOST`, private
+  `DOCKER_CONFIG`, absolute client, redundant explicit `--host`/`--config`, and
+  pre/post authority proof. Because the wrapper removes caller environment, the
+  pinned nonsecret `SOURCE_DATE_EPOCH` is passed as explicit `key=value`, not
+  Docker's bare `-e NAME` host-inheritance form. This integration correction was
+  found during final full-diff review before publication; without it the empty
+  environment would silently unset the reproducibility epoch in the compiler.
+  Active online-snapshot checks also reprove the Docker authority. Cleanup first
+  reproves/removes only the exact configuration leaf and directory; changed
+  authority is preserved and fails before recursive workspace cleanup.
+  R-S11cf's source, image, online-input, container, artifact-validation, and
+  reproducibility semantics are unchanged.
+
+  R-S11dk and Appendix C #264 make the correction normative. The focused Debian
+  builder normal contract passes and all 62 deliberate mutations are rejected.
+  It binds pre-source root refusal, complete shared client/socket/configuration/
+  provenance/cleanup authority, active authority checks, the sole launch,
+  explicit epoch transfer through the empty environment, unchanged R-S11cf
+  source/container/package semantics, shared gate wording, requirement,
+  Appendix row, and this ledger. The independent workspace normal contract and
+  final complete in-memory repository source-mutation catalog pass.
+
+  The exhaustive catalog drove three verifier-only corrections before its clean
+  pass. First, an independent mutation of the focused API/platform/trust-input
+  label was not owned by the Debian contract and therefore had no effective
+  runtime target; the contract now binds it. The next run rejected that mutation
+  but the catalog's expected label omitted `focused`; the exact first diagnostic
+  is now recorded. A later run removed authority initialization and was rejected
+  earlier by the shared target-script contract than the new focused contract;
+  that mutation likewise names its actual first diagnostic. None of these
+  changes weakened production authority or accepted a bypass. After the
+  explicit epoch-transfer integration correction, the focused suite, normal
+  independent contract, and full source-mutation catalog were all rerun from
+  the beginning and passed.
+
+  Bash syntax, in-memory Python compilation, requirements HTML parsing,
+  synchronized requirements-hash equality, native-codec normal/self-test, and
+  `git diff --check` pass. Requirements SHA-256 is
+  `3d181c0b6e20ee7268f7545b836f3043bf99d1d1a566085b16263c8ea102bd3c`,
+  synchronized to the hardening and native-codec ledgers. Every project gate
+  ran in immutable verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric UID:GID 1000:1000 with no network, read-only root and repository,
+  all capabilities dropped, no-new-privileges, no Docker socket, host
+  namespace, device, or published port, and explicit PID, memory/no-swap, CPU,
+  file-descriptor, and scratch ceilings.
+
+  The independent verifier's broader `--self-test` systemd/user-bus behavioral
+  suite is not claimed: exploratory invocations first refused a missing owned
+  scratch and then the absent private user-bus socket. No host runtime directory
+  or bus was mounted or faked; this tooling slice uses the successful normal
+  contract plus its explicit complete `--source-mutations-only` catalog. No
+  package builder, release transaction, root fixture, root command/container,
+  networked or published container, Docker socket inside a container, host
+  process/listener/firewall/network inspection, or host RustDesk service/
+  process/configuration operation was run. The final Debian systemd-lifecycle
+  child's broader Docker client/socket/ambient-input boundary remains the next
+  separate tooling slice. Exact cold committed R-B2/R-B10 artifacts,
+  installed/native behavior, and R-V3 external review remain separately open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -12963,9 +13080,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-845c08e85bad7357c268854d51a1ac0f855b307a29e18b9bbc4aeec6aa3215ca  requirements.html
+3d181c0b6e20ee7268f7545b836f3043bf99d1d1a566085b16263c8ea102bd3c  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dj, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dk, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

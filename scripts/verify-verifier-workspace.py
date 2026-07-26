@@ -2552,7 +2552,11 @@ def validate_target_scripts(debian, android, pins):
                 "Android shared local Docker binding",
             )
         else:
-            require_text(source, "unix:///var/run/docker.sock", f"{label} local Docker binding")
+            require_text(
+                source,
+                'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "debian-builder"',
+                "Debian shared local Docker binding",
+            )
         require_text(source, f'IMAGE_ID="${{{pin}:-}}"', f"{label} pinned image ID selection")
         require_text(
             source,
@@ -11303,7 +11307,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263",
+        "R-S11n through R-S11dk, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11384,7 +11388,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263",
+        "R-S11n through R-S11dk, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11563,7 +11567,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263",
+        "R-S11n through R-S11dk, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11697,7 +11701,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263",
+        "R-S11n through R-S11dk, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11865,7 +11869,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263",
+        "R-S11n through R-S11dk, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12058,7 +12062,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263",
+        "R-S11n through R-S11dk, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12392,7 +12396,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263",
+        "R-S11n through R-S11dk, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13774,21 +13778,41 @@ def validate_android_builder_authority_contract(sources):
     debian_focused = sources["debian_builder_authority_verifier"]
     for text, label in (
         (
-            '[ -z "${DOCKER_CONFIG+x}" ] \\\n'
-            '        || die "DOCKER_CONFIG must not influence a direct or release-child Debian build"',
-            "Debian builder inherited Docker-config refusal",
+            'export PATH=/usr/bin:/bin',
+            "Debian builder closed host command path",
+        ),
+        (
+            'readonly BUILD_UID="$(/usr/bin/id -u)"',
+            "Debian builder absolute UID source",
+        ),
+        (
+            'readonly BUILD_GID="$(/usr/bin/id -g)"',
+            "Debian builder absolute GID source",
+        ),
+        (
+            '[ "$BUILD_UID" -ne 0 ]',
+            "Debian builder UID-root refusal",
+        ),
+        (
+            '[ "$BUILD_GID" -ne 0 ]',
+            "Debian builder GID-root refusal",
         ),
         (
             "mktemp -d /tmp/rustdesk-debian-build.XXXXXXXXXX",
             "Debian builder direct-or-release private workspace",
         ),
         (
-            'install -d -m 0700 "$OWNED_WORKSPACE/docker-config"',
-            "Debian builder direct-or-release private Docker config",
+            'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "debian-builder"',
+            "Debian builder fixed local Docker authority",
         ),
         (
-            'export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"',
-            "Debian builder-owned Docker config selection",
+            'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \\\n'
+            '        && ! remove_local_docker_authority; then',
+            "Debian builder exact Docker cleanup admission",
+        ),
+        (
+            "preserving changed private Debian builder Docker authority",
+            "Debian builder changed-authority preservation",
         ),
         ('prepare_direct_build_source() {', "Debian builder private direct-source constructor"),
         ('clone --quiet --no-hardlinks --no-checkout --reject-shallow', "Debian builder private clone"),
@@ -13798,7 +13822,16 @@ def validate_android_builder_authority_contract(sources):
          "Debian builder failed-build source postcondition"),
         ('verify_build_source_postcondition "completed Debian $profile build"',
          "Debian builder completed-build source postcondition"),
-        ('"$DOCKER_BIN" run --rm --pull=never', "Debian builder immutable no-pull launch"),
+        ('local_docker run --rm --pull=never', "Debian builder fixed-local no-pull launch"),
+        (
+            '-e "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"',
+            "Debian builder explicit reproducibility-epoch transfer",
+        ),
+        (
+            'assert_local_docker_authority \\\n'
+            '        || die "Debian builder local Docker authority changed"',
+            "Debian builder active Docker-authority recheck",
+        ),
         ('--cap-drop=ALL', "Debian builder capability drop"),
         ('--security-opt=no-new-privileges', "Debian builder no-new-privileges"),
         ('/src/.git:ro,noexec,nosuid,nodev,mode=0555,size=1m',
@@ -13806,17 +13839,74 @@ def validate_android_builder_authority_contract(sources):
         ('target=/online,readonly', "Debian builder read-only online input"),
     ):
         require_text(sources["debian"], text, label)
+    require_order(
+        sources["debian"],
+        (
+            'readonly BUILD_UID="$(/usr/bin/id -u)"',
+            'readonly BUILD_GID="$(/usr/bin/id -g)"',
+            '[ "$BUILD_UID" -ne 0 ]',
+            '[ "$BUILD_GID" -ne 0 ]',
+            'source "$SCRIPT_DIR/lib.sh"',
+            "load_pins",
+            "mktemp -d /tmp/rustdesk-debian-build.XXXXXXXXXX",
+            'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "debian-builder"',
+            'if [ -n "${RELEASE_SRC_COMMIT:-}" ]',
+            'require_pinned_builder_image deb-builder "$IMAGE_ID"',
+            "local_docker run --rm --pull=never",
+        ),
+        "Debian builder root-refusal and Docker-authority order",
+    )
+    debian_cleanup = extract_between(
+        sources["debian"],
+        "cleanup_owned_workspace() {",
+        "\n}\n\ntrap cleanup_owned_workspace EXIT",
+        "Debian builder workspace cleanup",
+    )
+    require_order(
+        debian_cleanup,
+        (
+            "remove_local_docker_authority",
+            'elif [ -n "$OWNED_WORKSPACE" ] && [ -d "$OWNED_WORKSPACE" ]',
+            'chmod -R u+rwX "$OWNED_WORKSPACE"',
+            'rm -rf -- "$OWNED_WORKSPACE"',
+        ),
+        "Debian builder Docker-before-workspace cleanup",
+    )
+    for text, label in (
+        ("readonly DOCKER_BIN", "Debian builder bespoke Docker client"),
+        ('"$DOCKER_BIN" run', "Debian builder bespoke Docker launch"),
+        ("/usr/bin/docker run", "Debian builder direct absolute Docker launch"),
+        ("assert_private_docker_config", "Debian builder bespoke Docker config"),
+        ("export DOCKER_CONFIG", "Debian builder global Docker config"),
+    ):
+        require_absent(sources["debian"], text, label)
     for text, label in (
         (
-            "inherited Docker-configuration refusal",
-            "Debian builder focused inherited Docker-config enforcement",
+            "root refusal, shared authority, release classification, provenance, and launch",
+            "Debian builder focused authority order",
         ),
         (
-            "Debian release child does not own its private Docker configuration",
-            "Debian builder focused release-child Docker ownership ordering",
+            "shared Docker ambient-input refusal",
+            "Debian builder focused ambient-input enforcement",
+        ),
+        (
+            "shared Docker API/platform/trust-input refusal",
+            "Debian builder focused complete ambient-input enforcement",
+        ),
+        (
+            "shared exact Docker cleanup order",
+            "Debian builder focused exact cleanup enforcement",
+        ),
+        (
+            "explicit reproducibility-epoch transfer through empty environment",
+            "Debian builder focused explicit epoch enforcement",
         ),
         ('MUTATIONS: Tuple[Mutation, ...]', "Debian builder mutation inventory"),
         ('run_mutations(sources)', "Debian builder mutation dispatch"),
+        (
+            'def require_order(source: str, tokens: Tuple[str, ...], label: str) -> None:',
+            "Debian builder focused order helper",
+        ),
         ('forbid(build, token, label)', "Debian builder forbidden-authority enforcement"),
         ('Debian compile-container authority is incomplete or misordered',
          "Debian builder container-order enforcement"),
@@ -13841,6 +13931,26 @@ def validate_android_builder_authority_contract(sources):
         sources["hardening"],
         "R-S11cf/R-S11e-98 — Debian builder private-source and container authority",
         "Debian builder authority hardening ledger",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11dk</span>',
+        "Debian builder Docker authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>264</td>",
+        "Debian builder Docker authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dk/R-S11e-129 — Debian artifact-builder Docker client, daemon, and configuration authority",
+        "Debian builder Docker authority hardening ledger",
+    )
+    require_text(
+        sources["verify"],
+        "R-S11cf/R-S11dk direct builds use independent private exact-commit sources, provenance and the sole compiler use one fixed local Docker authority",
+        "Debian builder shared Docker-authority disposition",
     )
     for text, label in (
         ("R-S11bm exact corrected-commit evidence", "Android R-S11bm evidence enforcement"),
@@ -37137,7 +37247,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11dj, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#263",
+            "R-S11n through R-S11dk, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -38965,29 +39075,65 @@ def run_source_mutations(sources):
             "Debian builder forbidden-authority enforcement",
         ),
         (
-            "debian",
-            '[ -z "${DOCKER_CONFIG+x}" ] \\\n'
-            '        || die "DOCKER_CONFIG must not influence a direct or release-child Debian build"',
-            "true # inherited Docker configuration accepted",
-            "Debian builder inherited Docker-config refusal",
+            "debian_builder_authority_verifier",
+            'def require_order(source: str, tokens: Tuple[str, ...], label: str) -> None:',
+            'def require_order_disabled(source: str, tokens: Tuple[str, ...], label: str) -> None:',
+            "Debian builder focused order helper",
+        ),
+        (
+            "debian_builder_authority_verifier",
+            '"shared Docker API/platform/trust-input refusal"',
+            '"shared Docker platform/trust-input accepted"',
+            "Debian builder focused complete ambient-input enforcement",
         ),
         (
             "debian",
-            'install -d -m 0700 "$OWNED_WORKSPACE/docker-config"',
-            'mkdir -p "$OWNED_WORKSPACE/docker-config"',
-            "Debian builder direct-or-release private Docker config",
+            'readonly BUILD_UID="$(/usr/bin/id -u)"',
+            'readonly BUILD_UID="$(id -u)"',
+            "Debian builder absolute UID source",
         ),
         (
             "debian",
-            'export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"',
-            "true # ambient Docker configuration retained",
-            "Debian builder-owned Docker config selection",
+            'readonly BUILD_GID="$(/usr/bin/id -g)"',
+            'readonly BUILD_GID="$(id -g)"',
+            "Debian builder absolute GID source",
         ),
         (
             "debian",
-            '"$DOCKER_BIN" run --rm --pull=never',
-            '"$DOCKER_BIN" run --rm',
-            "Debian builder immutable no-pull launch",
+            '[ "$BUILD_UID" -ne 0 ]',
+            '[ "$BUILD_UID" -eq 0 ]',
+            "Debian builder UID-root refusal",
+        ),
+        (
+            "debian",
+            '[ "$BUILD_GID" -ne 0 ]',
+            '[ "$BUILD_GID" -eq 0 ]',
+            "Debian builder GID-root refusal",
+        ),
+        (
+            "debian",
+            'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "debian-builder"',
+            "true # fixed local Docker authority disabled",
+            "Debian shared local Docker binding",
+        ),
+        (
+            "debian",
+            'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \\\n'
+            '        && ! remove_local_docker_authority; then',
+            "if false; then",
+            "Debian builder exact Docker cleanup admission",
+        ),
+        (
+            "debian",
+            "local_docker run --rm --pull=never",
+            "/usr/bin/docker run --rm --pull=never",
+            "Debian builder fixed-local no-pull launch",
+        ),
+        (
+            "debian",
+            '-e "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH"',
+            "-e SOURCE_DATE_EPOCH",
+            "Debian builder explicit reproducibility-epoch transfer",
         ),
         (
             "verify",
@@ -39012,6 +39158,30 @@ def run_source_mutations(sources):
             "R-S11cf/R-S11e-98 — Debian builder private-source and container authority",
             "R-S11cf/R-S11e-98 — Debian builder ambient authority",
             "Debian builder authority hardening ledger",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11dk</span>',
+            '<span class="id">R-S11dk-disabled</span>',
+            "Debian builder Docker authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>264</td>",
+            "<tr><td>264-disabled</td>",
+            "Debian builder Docker authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11dk/R-S11e-129 — Debian artifact-builder Docker client, daemon, and configuration authority",
+            "R-S11dk/R-S11e-XXX — Debian artifact-builder Docker authority deferred",
+            "Debian builder Docker authority hardening ledger",
+        ),
+        (
+            "verify",
+            "R-S11cf/R-S11dk direct builds use independent private exact-commit sources, provenance and the sole compiler use one fixed local Docker authority",
+            "R-S11cf direct builds use independent private exact-commit sources",
+            "Debian builder shared Docker-authority disposition",
         ),
         (
             "android_keystore_authority_verifier",

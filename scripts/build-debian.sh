@@ -14,17 +14,24 @@
 set -euo pipefail
 umask 077
 
+export PATH=/usr/bin:/bin
+readonly BUILD_UID="$(/usr/bin/id -u)"
+readonly BUILD_GID="$(/usr/bin/id -g)"
+[ "$BUILD_UID" -ne 0 ] \
+    || { echo "Debian artifact building refuses host or container-root execution" >&2; exit 1; }
+[ "$BUILD_GID" -ne 0 ] \
+    || { echo "Debian artifact building refuses a root primary group" >&2; exit 1; }
+
 if [ -n "${ONLINE_DIR+x}" ]; then
     printf 'build-debian: ONLINE_DIR is not an operator override; release snapshots use RUSTDESK_RELEASE_ONLINE_SNAPSHOT\n' >&2
     exit 1
 fi
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
 
-readonly DOCKER_BIN=/usr/bin/docker
 OUT_DIR="${OUT_DIR:-$REPO_ROOT/dist}"
 # The §3.2 x64-linux feature set minus hwcodec: CPU-only VP8/VP9.
 FEATURES="--flutter --unix-file-copy-paste"
@@ -36,8 +43,6 @@ export SOURCE_DATE_EPOCH="${SOURCE_DATE_EPOCH:-$SOURCE_DATE_EPOCH_PIN}"
 # build-deps, baked by online-fetch.sh (the ONE networked step) via Dockerfile.deb-builder.
 # The compile then runs inside it with --network=none.
 IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"
-BUILD_UID="$(id -u)"
-BUILD_GID="$(id -g)"
 RELEASE_CHILD=0
 ONLINE_SNAPSHOT_PARENT=""
 OWNED_WORKSPACE=""
@@ -45,18 +50,14 @@ SOURCE_COMMIT=""
 BUILD_SOURCE_ROOT=""
 BUILD_SOURCE_ID=""
 
-case "${DOCKER_HOST:-unix:///var/run/docker.sock}" in
-    unix:///var/run/docker.sock) export DOCKER_HOST=unix:///var/run/docker.sock ;;
-    *) die "Docker must use the local unix:///var/run/docker.sock daemon" ;;
-esac
-for variable in DOCKER_CONTEXT DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS; do
-    [ -z "${!variable+x}" ] || die "$variable must not influence a Debian build"
-done
-
 cleanup_owned_workspace() {
     local status=$?
     trap - EXIT HUP INT TERM
-    if [ -n "$OWNED_WORKSPACE" ] && [ -d "$OWNED_WORKSPACE" ]; then
+    if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
+        && ! remove_local_docker_authority; then
+        warn "preserving changed private Debian builder Docker authority: $OWNED_WORKSPACE"
+        status=1
+    elif [ -n "$OWNED_WORKSPACE" ] && [ -d "$OWNED_WORKSPACE" ]; then
         if ! chmod -R u+rwX "$OWNED_WORKSPACE" 2>/dev/null \
             || ! rm -rf -- "$OWNED_WORKSPACE"; then
             status=1
@@ -81,20 +82,6 @@ assert_private_directory() {
     [ "$resolved" = "$path" ] || die "$label must be a canonical non-symlinked path"
     metadata="$(stat -c '%u:%a' -- "$path" 2>/dev/null)" || die "$label is absent"
     [ "$metadata" = "$BUILD_UID:700" ] || die "$label must be a current-UID mode-0700 directory"
-}
-
-assert_private_docker_config() {
-    local config_dir="${DOCKER_CONFIG:-}" metadata
-    [ -n "$config_dir" ] || die "Debian build is missing its private Docker configuration"
-    assert_private_directory "$config_dir" "Debian build Docker configuration"
-    [ -f "$config_dir/config.json" ] && [ ! -L "$config_dir/config.json" ] \
-        || die "Debian build Docker config.json must be a non-symlink regular file"
-    metadata="$(stat -c '%u:%a:%h' -- "$config_dir/config.json" 2>/dev/null)" \
-        || die "Debian build Docker config.json is absent"
-    [ "$metadata" = "$BUILD_UID:600:1" ] \
-        || die "Debian build Docker config.json must be a current-UID mode-0600 non-hardlinked file"
-    cmp -s "$config_dir/config.json" <(printf '{}\n') \
-        || die "Docker config.json must equal the empty canonical configuration"
 }
 
 assert_private_online_snapshot() {
@@ -217,16 +204,10 @@ prepare_execution_contract() {
     [[ "$current" =~ ^[0-9a-f]{40}$ ]] \
         || die "Debian source commit must be one full lowercase commit ID"
     SOURCE_COMMIT="$current"
-    [ -z "${DOCKER_CONFIG+x}" ] \
-        || die "DOCKER_CONFIG must not influence a direct or release-child Debian build"
     OWNED_WORKSPACE="$(umask 077 && mktemp -d /tmp/rustdesk-debian-build.XXXXXXXXXX)" \
         || die "cannot create private Debian build workspace"
     chmod 0700 "$OWNED_WORKSPACE"
-    install -d -m 0700 "$OWNED_WORKSPACE/docker-config"
-    printf '{}\n' > "$OWNED_WORKSPACE/docker-config/config.json"
-    chmod 0600 "$OWNED_WORKSPACE/docker-config/config.json"
-    export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"
-    assert_private_docker_config
+    initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "debian-builder"
     if [ -n "${RELEASE_SRC_COMMIT:-}" ]; then
         RELEASE_CHILD=1
         [[ "$RELEASE_SRC_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
@@ -263,12 +244,13 @@ activate_online_snapshot() {
 }
 
 verify_active_online_snapshot() {
-    assert_private_docker_config
+    assert_local_docker_authority \
+        || die "Debian builder local Docker authority changed"
     assert_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
 }
 
 preflight() {
-    require_cmd cmp docker git python3 dpkg-deb find install readlink stat
+    require_cmd cmp git python3 dpkg-deb find install readlink stat
     assert_repo_state
     assert_clean_worktree
     assert_source_date_epoch
@@ -325,7 +307,7 @@ verify_deb_control_scripts() {
     }
     [ -f "$tmp_data/usr/lib/systemd/system/rustdesk.service" ] \
       && [ ! -L "$tmp_data/usr/lib/systemd/system/rustdesk.service" ] \
-      && [ "$(stat -c '%u:%g:%a:%h' "$tmp_data/usr/lib/systemd/system/rustdesk.service" 2>/dev/null)" = "$(id -u):$(id -g):644:1" ] || {
+      && [ "$(stat -c '%u:%g:%a:%h' "$tmp_data/usr/lib/systemd/system/rustdesk.service" 2>/dev/null)" = "$BUILD_UID:$BUILD_GID:644:1" ] || {
         rm -rf "$tmp_package"
         die "built .deb systemd unit is not a mode-0644 non-hardlinked regular file"
     }
@@ -340,7 +322,7 @@ verify_deb_control_scripts() {
     }
     [ -L "$tmp_data/usr/bin/rustdesk" ] \
       && [ "$(readlink "$tmp_data/usr/bin/rustdesk")" = "../share/rustdesk/rustdesk" ] \
-      && [ "$(stat -c '%u:%g:%a:%h' "$tmp_data/usr/bin/rustdesk" 2>/dev/null)" = "$(id -u):$(id -g):777:1" ] || {
+      && [ "$(stat -c '%u:%g:%a:%h' "$tmp_data/usr/bin/rustdesk" 2>/dev/null)" = "$BUILD_UID:$BUILD_GID:777:1" ] || {
         rm -rf "$tmp_package"
         die "built .deb command is not the exact mode-0777 non-hardlinked relative symlink"
     }
@@ -391,7 +373,7 @@ build_one() {
     # git-ignored artifacts) so the gate below can ONLY find a package THIS run produced.
     rm -f "$BUILD_SOURCE_ROOT"/rustdesk-*.deb
     verify_active_online_snapshot
-    if ! "$DOCKER_BIN" run --rm --pull=never \
+    if ! local_docker run --rm --pull=never \
         --network=none \
         --read-only \
         --user "$BUILD_UID:$BUILD_GID" \
@@ -402,7 +384,7 @@ build_one() {
         --memory-swap=16g \
         --cpus=4 \
         --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=12g \
-        -e SOURCE_DATE_EPOCH \
+        -e "SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH" \
         -e RUSTDESK_CANARY_OFFLINE=1 \
         --mount "type=bind,source=$BUILD_SOURCE_ROOT,target=/src" \
         --tmpfs /src/.git:ro,noexec,nosuid,nodev,mode=0555,size=1m \

@@ -6,10 +6,13 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/lib.sh"
 load_pins
 
+readonly BUILD_UID="$(/usr/bin/id -u)"
+readonly BUILD_GID="$(/usr/bin/id -g)"
 SOURCE_ROOT=""
 OUTPUT_ROOT=""
 FRB_ONLINE_ROOT=""
 WORK_ROOT=""
+WORK_ROOT_ID=""
 GENERATED_BRIDGES=(
     src/bridge_generated.rs
     src/bridge_generated.io.rs
@@ -67,9 +70,19 @@ assert_safe_path() {
 cleanup() {
     local status=$?
     trap - EXIT HUP INT TERM
-    if [ -n "$WORK_ROOT" ] && [ -d "$WORK_ROOT" ]; then
-        chmod -R u+rwX "$WORK_ROOT" 2>/dev/null || :
-        rm -rf -- "$WORK_ROOT"
+    if [ -n "$WORK_ROOT" ]; then
+        if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
+            && ! remove_local_docker_authority; then
+            echo "frb-codegen: preserving changed private Docker authority: $WORK_ROOT" >&2
+            status=125
+        elif [ -z "$WORK_ROOT_ID" ] || [ ! -d "$WORK_ROOT" ] || [ -L "$WORK_ROOT" ] \
+            || [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$WORK_ROOT" 2>/dev/null)" != "$WORK_ROOT_ID" ]; then
+            echo "frb-codegen: preserving changed private workspace: $WORK_ROOT" >&2
+            status=125
+        else
+            chmod -R u+rwX "$WORK_ROOT" 2>/dev/null || status=1
+            rm -rf -- "$WORK_ROOT" || status=1
+        fi
     fi
     exit "$status"
 }
@@ -83,9 +96,9 @@ trap 'signal_exit 129' HUP
 trap 'signal_exit 130' INT
 trap 'signal_exit 143' TERM
 
-require_cmd docker git python3 realpath
-[ "$(id -u)" -ne 0 ] || die "FRB code generation refuses host or container-root execution"
-[ "$(id -g)" -ne 0 ] || die "FRB code generation refuses a root primary group"
+require_cmd git python3 realpath
+[ "$BUILD_UID" -ne 0 ] || die "FRB code generation refuses host or container-root execution"
+[ "$BUILD_GID" -ne 0 ] || die "FRB code generation refuses a root primary group"
 SOURCE_ROOT="$(realpath -e -- "$SOURCE_ROOT")"
 ONLINE_DIR="$(realpath -e -- "$FRB_ONLINE_ROOT")"
 export ONLINE_DIR
@@ -196,9 +209,15 @@ IMAGE_ID="${FRB_IMAGE_ID:-}"
     || die "FRB image has a malformed immutable ID: $IMAGE_ID"
 [ "$IMAGE_ID" = "${DEB_BUILDER_IMAGE_ID:-}" ] \
     || die "FRB_IMAGE_ID does not equal the audited deb-builder image pin"
+
+WORK_ROOT="$(umask 077 && mktemp -d "$OUTPUT_PARENT/.frb-work.XXXXXXXX")"
+[ -d "$WORK_ROOT" ] && [ ! -L "$WORK_ROOT" ] \
+    && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$WORK_ROOT")" = "$BUILD_UID:$BUILD_GID:700" ] \
+    || die "FRB private workspace identity or mode is invalid"
+WORK_ROOT_ID="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$WORK_ROOT")"
+initialize_local_docker_authority "$WORK_ROOT/docker-config" "frb-codegen"
 require_pinned_builder_image deb-builder "$IMAGE_ID"
 
-WORK_ROOT="$(mktemp -d "$OUTPUT_PARENT/.frb-work.XXXXXXXX")"
 WORK_SOURCE="$WORK_ROOT/source"
 PUBLISH_ROOT="$WORK_ROOT/publish"
 mkdir -p "$WORK_SOURCE" "$PUBLISH_ROOT"
@@ -218,7 +237,7 @@ for relative in "${GENERATED_BRIDGES[@]}"; do
 done
 
 log "generating FRB outputs from private source snapshot with image $IMAGE_ID"
-docker run --rm --pull=never --network=none --read-only --user "$(id -u):$(id -g)" \
+local_docker run --rm --pull=never --network=none --read-only --user "$BUILD_UID:$BUILD_GID" \
     --cap-drop=ALL --security-opt=no-new-privileges \
     --pids-limit=512 --memory=12g --memory-swap=12g --cpus=4 \
     --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=10g \
@@ -275,9 +294,9 @@ for relative in "${GENERATED_BRIDGES[@]}"; do
     generated="$WORK_SOURCE/$relative"
     [ -f "$generated" ] && [ ! -L "$generated" ] && [ -s "$generated" ] \
         || die "FRB did not produce a nonempty regular file: $relative"
-    [ "$(stat -c %u "$generated")" = "$(id -u)" ] \
+    [ "$(/usr/bin/stat -c %u "$generated")" = "$BUILD_UID" ] \
         || die "FRB output is not owned by the invoking uid: $relative"
-    [ "$(stat -c %g "$generated")" = "$(id -g)" ] \
+    [ "$(/usr/bin/stat -c %g "$generated")" = "$BUILD_GID" ] \
         || die "FRB output is not owned by the invoking gid: $relative"
     mkdir -p "$PUBLISH_ROOT/$(dirname "$relative")"
     install -m 0644 "$generated" "$PUBLISH_ROOT/$relative"
@@ -291,6 +310,9 @@ mv -T --no-clobber -- "$PUBLISH_ROOT" "$OUTPUT_ROOT"
 [ ! -e "$PUBLISH_ROOT" ] && [ ! -L "$PUBLISH_ROOT" ] \
     || die "FRB output root appeared during atomic publication"
 rm -rf -- "$WORK_SOURCE"
+remove_local_docker_authority \
+    || die "FRB private Docker authority could not be removed safely"
 rmdir "$WORK_ROOT"
 WORK_ROOT=""
+WORK_ROOT_ID=""
 log "FRB outputs published atomically to $OUTPUT_ROOT"

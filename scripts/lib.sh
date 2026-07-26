@@ -32,6 +32,20 @@ PINS_FILE="$LIB_DIR/pins.env"
 DEFAULT_ANDROID_KEYSTORE="$REPO_ROOT/.harness-state/android-keystore/rustdesk-fork.jks"
 DEFAULT_ANDROID_KEYSTORE_PASS_FILE="$REPO_ROOT/.harness-state/android-keystore/pass"
 
+# A caller opts into this authority by calling initialize_local_docker_authority
+# with a new docker-config path below its own current-user-private workspace.
+# Keep the state process-local: nested verifier scripts create independent
+# authorities and never inherit a caller's Docker routing/configuration.
+LOCAL_DOCKER_AUTHORITY_INITIALIZED=0
+LOCAL_DOCKER_AUTHORITY_LABEL=
+LOCAL_DOCKER_AUTHORITY_PARENT=
+LOCAL_DOCKER_AUTHORITY_PARENT_ID=
+LOCAL_DOCKER_AUTHORITY_CONFIG=
+LOCAL_DOCKER_AUTHORITY_CONFIG_ID=
+LOCAL_DOCKER_AUTHORITY_CONFIG_FILE_ID=
+LOCAL_DOCKER_AUTHORITY_CLIENT_ID=
+LOCAL_DOCKER_AUTHORITY_SOCKET_ID=
+
 # ── Logging / failure ─────────────────────────────────────────────────────────
 log()  { printf '\033[0;36m[harness]\033[0m %s\n' "$*" >&2; }
 warn() { printf '\033[0;33m[harness:warn]\033[0m %s\n' "$*" >&2; }
@@ -127,7 +141,7 @@ verify_private_online_snapshot() {
     local expected="${SHA256_ONLINE_CLOSURE_V1:-}"
     [ -n "$expected" ] || die "pins.env is missing SHA256_ONLINE_CLOSURE_V1"
     require_cmd python3
-    [ "$(stat -c '%a' "$1" 2>/dev/null)" = "700" ] || die "private snapshot parent is not mode 0700: $1"
+    [ "$(/usr/bin/stat -c '%a' "$1" 2>/dev/null)" = "700" ] || die "private snapshot parent is not mode 0700: $1"
     python3 "$LIB_DIR/online-input-provenance.py" snapshot-verify --tree "$1/online" --expected "$expected" \
         || die "private ./online snapshot changed during build use"
 }
@@ -180,6 +194,139 @@ verify_online_pinned_archives() {
     verify_sha512 "$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz" "$SHA512_LIBYUV"
 }
 
+initialize_local_docker_authority() {
+    [ "$#" -eq 2 ] || die "initialize_local_docker_authority requires CONFIG_PATH LABEL"
+    [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 0 ] \
+        || die "local Docker authority is already initialized"
+    [ "$(/usr/bin/id -u)" -ne 0 ] || die "$2 refuses host or container-root Docker authority"
+    [ "$(/usr/bin/id -g)" -ne 0 ] || die "$2 refuses a root primary group for Docker authority"
+
+    local config="$1" label="$2" parent variable
+    case "$config" in
+        /*/docker-config) ;;
+        *) die "$label Docker configuration must be an absolute docker-config path" ;;
+    esac
+    parent="${config%/docker-config}"
+    [ -n "$parent" ] && [ -d "$parent" ] && [ ! -L "$parent" ] \
+        || die "$label Docker authority parent is not a real directory"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$parent" 2>/dev/null)" = \
+        "$(/usr/bin/id -u):$(/usr/bin/id -g):700" ] \
+        || die "$label Docker authority parent is not current-user/current-group mode 0700"
+    { [ ! -e "$config" ] && [ ! -L "$config" ]; } \
+        || die "$label Docker configuration path already exists"
+
+    [ -f /usr/bin/docker ] && [ ! -L /usr/bin/docker ] && [ -x /usr/bin/docker ] \
+        || die "$label trusted Docker client is unavailable at /usr/bin/docker"
+    case "$(/usr/bin/stat -c '%u:%g:%a:%h' -- /usr/bin/docker 2>/dev/null)" in
+        0:0:755:1) ;;
+        *) die "$label trusted Docker client must be a root-owned mode-0755 single-link file" ;;
+    esac
+    [ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ] \
+        || die "$label fixed local Docker Unix socket is unavailable"
+    case "$(/usr/bin/stat -c '%u:%h' -- /var/run/docker.sock 2>/dev/null)" in
+        0:1) ;;
+        *) die "$label fixed local Docker Unix socket must be root-owned and single-link" ;;
+    esac
+
+    for variable in \
+        DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS \
+        DOCKER_API_VERSION DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST \
+        DOCKER_CONTENT_TRUST_SERVER DOCKER_CUSTOM_HEADERS; do
+        [ -z "${!variable+x}" ] \
+            || die "$label rejects inherited Docker client input $variable"
+    done
+
+    /usr/bin/install -d -m 0700 -- "$config"
+    (umask 077 && set -o noclobber && printf '{}\n' >"$config/config.json") \
+        || die "$label Docker config.json creation failed"
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$config/config.json" 2>/dev/null)" = \
+        "$(/usr/bin/id -u):$(/usr/bin/id -g):600:1" ] \
+        || die "$label Docker config.json is not current-user/current-group mode 0600 single-link"
+
+    LOCAL_DOCKER_AUTHORITY_LABEL="$label"
+    LOCAL_DOCKER_AUTHORITY_PARENT="$parent"
+    LOCAL_DOCKER_AUTHORITY_PARENT_ID="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$parent")"
+    LOCAL_DOCKER_AUTHORITY_CONFIG="$config"
+    LOCAL_DOCKER_AUTHORITY_CONFIG_ID="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- "$config")"
+    LOCAL_DOCKER_AUTHORITY_CONFIG_FILE_ID="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- "$config/config.json")"
+    LOCAL_DOCKER_AUTHORITY_CLIENT_ID="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- /usr/bin/docker)"
+    LOCAL_DOCKER_AUTHORITY_SOCKET_ID="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- /var/run/docker.sock)"
+    LOCAL_DOCKER_AUTHORITY_INITIALIZED=1
+    assert_local_docker_authority
+}
+
+assert_local_docker_authority() {
+    [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
+        || { echo "local Docker authority is not initialized" >&2; return 1; }
+    local label="$LOCAL_DOCKER_AUTHORITY_LABEL"
+    [ -d "$LOCAL_DOCKER_AUTHORITY_PARENT" ] && [ ! -L "$LOCAL_DOCKER_AUTHORITY_PARENT" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$LOCAL_DOCKER_AUTHORITY_PARENT" 2>/dev/null)" = \
+            "$LOCAL_DOCKER_AUTHORITY_PARENT_ID" ] \
+        || { echo "$label Docker authority parent identity changed" >&2; return 1; }
+    [ -d "$LOCAL_DOCKER_AUTHORITY_CONFIG" ] && [ ! -L "$LOCAL_DOCKER_AUTHORITY_CONFIG" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- "$LOCAL_DOCKER_AUTHORITY_CONFIG" 2>/dev/null)" = \
+            "$LOCAL_DOCKER_AUTHORITY_CONFIG_ID" ] \
+        || { echo "$label Docker configuration identity changed" >&2; return 1; }
+    [ -f "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" ] \
+        && [ ! -L "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" 2>/dev/null)" = \
+            "$LOCAL_DOCKER_AUTHORITY_CONFIG_FILE_ID" ] \
+        || { echo "$label Docker config.json identity changed" >&2; return 1; }
+    /usr/bin/cmp -s -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" <(printf '{}\n') \
+        || { echo "$label Docker config.json bytes changed" >&2; return 1; }
+    [ -f /usr/bin/docker ] && [ ! -L /usr/bin/docker ] \
+        && [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- /usr/bin/docker 2>/dev/null)" = \
+            "$LOCAL_DOCKER_AUTHORITY_CLIENT_ID" ] \
+        || { echo "$label trusted Docker client identity changed" >&2; return 1; }
+    [ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ] \
+        && [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- /var/run/docker.sock 2>/dev/null)" = \
+            "$LOCAL_DOCKER_AUTHORITY_SOCKET_ID" ] \
+        || { echo "$label fixed local Docker Unix socket identity changed" >&2; return 1; }
+}
+
+local_docker() {
+    local status=0
+    assert_local_docker_authority || return 1
+    /usr/bin/env -i \
+        PATH=/usr/bin:/bin \
+        HOME="$LOCAL_DOCKER_AUTHORITY_PARENT" \
+        DOCKER_HOST=unix:///var/run/docker.sock \
+        DOCKER_CONFIG="$LOCAL_DOCKER_AUTHORITY_CONFIG" \
+        /usr/bin/docker \
+            --host unix:///var/run/docker.sock \
+            --config "$LOCAL_DOCKER_AUTHORITY_CONFIG" \
+            "$@" || status=$?
+    assert_local_docker_authority || return 1
+    return "$status"
+}
+
+local_docker_image_provenance() {
+    local status=0
+    assert_local_docker_authority || return 1
+    /usr/bin/env -i \
+        PATH=/usr/bin:/bin \
+        HOME="$LOCAL_DOCKER_AUTHORITY_PARENT" \
+        DOCKER_HOST=unix:///var/run/docker.sock \
+        DOCKER_CONFIG="$LOCAL_DOCKER_AUTHORITY_CONFIG" \
+        /usr/bin/python3 -I -S "$LIB_DIR/offline-image-provenance.py" "$@" \
+        || status=$?
+    assert_local_docker_authority || return 1
+    return "$status"
+}
+
+remove_local_docker_authority() {
+    assert_local_docker_authority || {
+        echo "$LOCAL_DOCKER_AUTHORITY_LABEL preserving changed private Docker authority" >&2
+        return 125
+    }
+    /usr/bin/rm -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" || return 125
+    /usr/bin/rmdir -- "$LOCAL_DOCKER_AUTHORITY_CONFIG" || return 125
+    [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$LOCAL_DOCKER_AUTHORITY_PARENT" 2>/dev/null)" = \
+        "$LOCAL_DOCKER_AUTHORITY_PARENT_ID" ] \
+        || { echo "$LOCAL_DOCKER_AUTHORITY_LABEL Docker authority parent changed during removal" >&2; return 125; }
+    LOCAL_DOCKER_AUTHORITY_INITIALIZED=0
+}
+
 require_pinned_builder_image() {
     [ "$#" -ge 1 ] && [ "$#" -le 2 ] || die "require_pinned_builder_image requires ROLE [IMAGE_REF]"
     local role="$1" image_ref="${2:-}" prefix base image_id dockerfile_sha dpkg_sha
@@ -195,7 +342,12 @@ require_pinned_builder_image() {
     dpkg_sha="${!dpkg_var:-}"
     [ -n "$image_id" ] && [ -n "$dockerfile_sha" ] && [ -n "$dpkg_sha" ] \
         || die "pins.env is missing $image_var, $dockerfile_var, or $dpkg_var"
-    require_cmd python3 docker
+    if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]; then
+        [ -x /usr/bin/python3 ] || die "trusted Python interpreter is unavailable at /usr/bin/python3"
+        assert_local_docker_authority || die "local Docker authority is unavailable"
+    else
+        require_cmd python3 docker
+    fi
     local args=()
     if [ "$role" = android-builder ] \
         || [ "$role" = deb-builder ] \
@@ -234,8 +386,13 @@ require_pinned_builder_image() {
         )
     fi
     [ -z "$image_ref" ] || args+=(--image-ref "$image_ref")
-    python3 "$LIB_DIR/offline-image-provenance.py" "${args[@]}" \
-        || die "pinned $role image provenance verification failed"
+    if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]; then
+        local_docker_image_provenance "${args[@]}" \
+            || die "pinned $role image provenance verification failed"
+    else
+        python3 "$LIB_DIR/offline-image-provenance.py" "${args[@]}" \
+            || die "pinned $role image provenance verification failed"
+    fi
 }
 
 # verify_online_shas NAME1 SHA1 NAME2 SHA2 ...: re-verify each ./online artifact against its pinned

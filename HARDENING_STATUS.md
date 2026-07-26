@@ -11698,6 +11698,93 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   while implementing or verifying this source slice. The full root-containing runtime smoke
   was intentionally not run; its current-source runtime behavior and exact artifact remain
   R-B2 evidence, and external expert review remains R-V3.
+- **R-S11de/R-S11e-123 — Dart/FRB Docker client, daemon, and configuration authority —
+  SOURCE, DELIBERATE-MUTATION GATES, AND CONFINED CURRENT-WORKTREE FULL TRANSACTION
+  VERIFIED 2026-07-26; COLD INPUT ACQUISITION, EXACT CLEAN R-B2 ARTIFACT,
+  DEVICE/NATIVE, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.** Platform: the
+  unprivileged Linux source-verification host. Endpoint/action:
+  `scripts/dart-verify.sh` Flutter/Pub/analyzer/Rust launch,
+  `scripts/frb-codegen.sh` binding-generation launch, and their common immutable-builder
+  provenance inspection. Boundary: the invoking user and private verifier workspaces ↔
+  Docker-client selection, daemon selection, client configuration, and the truth of the
+  confined-container verdict.
+
+  R-S11bc had correctly removed mutable images, root execution, networking, pulls, named
+  volumes, real-checkout writes, host namespaces, Docker-socket mounts, and publication from
+  both tool containers. Current source review nevertheless found both host launchers still
+  invoked `docker` through `PATH`. Their direct launches inherited Docker client state, and
+  `require_pinned_builder_image` reached the absolute `/usr/bin/docker` in
+  `offline-image-provenance.py` without closing that helper's environment. Docker documents
+  that `DOCKER_CONTEXT` overrides `DOCKER_HOST`, that either can select another daemon, and
+  that client configuration can inject behavior such as default container proxy variables
+  (https://docs.docker.com/reference/cli/docker/); Docker also documents contexts selecting a
+  remote daemon over SSH
+  (https://docs.docker.com/engine/security/protect-access/). Thus the container flags did not
+  establish which client or daemon interpreted them. This was real client/daemon/configuration
+  selection and build-verdict authority debt. It is not evidence that a malicious client or
+  remote daemon was used, source or image bytes changed, Docker escaped, host root was
+  acquired, a listener or public port was exposed, host RustDesk/service/configuration/
+  firewall/network state changed, exploitation occurred, or the host was compromised.
+
+  `scripts/lib.sh` now owns one opt-in local Docker authority used independently by each
+  verifier process. Numeric identity and authority metadata use absolute `/usr/bin/id` and
+  `/usr/bin/stat`. Initialization refuses UID/GID zero and caller Docker host, context,
+  configuration, certificate, TLS, API/platform, trust, and custom-header inputs. It admits
+  only the non-symlink root-owned mode-0755 single-link `/usr/bin/docker` and the non-symlink
+  root-owned single-link `/var/run/docker.sock`. Below the caller's exact
+  current-user/current-group mode-0700 private workspace it creates one mode-0700
+  `docker-config` with an exact current-user mode-0600 `{}` `config.json`; it captures the
+  parent, configuration directory/file, client, and socket object identities and proves
+  those identities and configuration bytes before and after every operation.
+
+  Direct launches now use one `/usr/bin/env -i` wrapper with fixed `PATH`, private `HOME`,
+  fixed `DOCKER_HOST=unix:///var/run/docker.sock`, private `DOCKER_CONFIG`, absolute client,
+  and redundant explicit `--host`/`--config`. Immutable image provenance uses the absolute
+  Python interpreter and existing absolute Docker client under the same empty environment.
+  `dart-verify.sh` and `frb-codegen.sh` each initialize that authority only after capturing
+  their exact private workspace and before provenance inspection; raw `docker run` and
+  `require_cmd docker` are absent. Cleanup first reproves and removes only the exact config
+  file and directory. A changed authority or workspace is preserved and fails rather than
+  becoming input to recursive cleanup. R-S11de and Appendix C #258 make this correction
+  normative; the focused gate binds the common helper, both caller orderings, both launches,
+  cleanup, requirement, disposition, and this ledger.
+
+  Bash syntax for the shared helper and both launchers, Python compilation, the focused
+  semantic gate with all 89 deliberate mutations, the independent workspace normal
+  contract and complete source-mutation catalog, the native-codec normal/self-test gates,
+  requirements HTML parsing, and exact requirements/ledger hash equality pass in immutable
+  verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`.
+  Each source/mutation check ran as numeric UID:GID 1000:1000 with no network, a read-only
+  container root and repository, all capabilities dropped, no-new-privileges, no Docker
+  socket, host namespace, device, or published port, and bounded process, memory/no-swap,
+  CPU, and scratch resources. The complete source-mutation catalog first exposed an exact
+  diagnostic-label mismatch for the new no-clobber fixture; the mutation itself was
+  rejected. Aligning the fixture label and rerunning the whole catalog produced a clean
+  verdict.
+
+  The exact current-worktree `scripts/dart-verify.sh` transaction also passed from an empty
+  caller environment. Its host process was only the numeric-nonroot orchestrator. It
+  authenticated existing canonical offline closure
+  `a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`
+  and exact Debian builder image
+  `sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`,
+  created and reverified a private 30 GiB online snapshot, independently repeated the
+  closure/image proof inside FRB generation, atomically published the generated bridges
+  only inside the private workspace, reported zero Flutter analyzer errors, passed the
+  direct-address, saved-peer, and retired-role-swap Flutter tests, completed the locked
+  offline shipped-feature Rust library check, passed the generated-source/source-absence
+  gates, reverified the offline closure, and proved the live worktree unchanged. Both tool
+  containers were numeric UID:GID 1000:1000, immutable-image/no-pull/network-none,
+  read-only-root, capability-free, no-new-privileges, resource-bounded, and received no
+  Docker socket, host namespace, device, published port, or writable live checkout.
+
+  This correction changes no Flutter, FRB, Rust application, service, IPC, or Android
+  lifecycle behavior. Verification performed no release build, root container, networked
+  or published container, host process scan, or host RustDesk process/service/configuration/
+  firewall/network inspection or mutation. Existing-input full verifier execution is not a
+  cold network acquisition and is not exact clean committed R-B2 release/artifact,
+  device/native behavior, or external expert review; those evidence classes remain open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -12415,9 +12502,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-04b5f0f7953a6352f4935eeb47fe1fc46a7a4b3f1016d661ae071ed0313faa42  requirements.html
+9df83506d38aa06930b554393cf20f49496328f4516f96923fc6b0ede382c6ed  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dd, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11de, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#258. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

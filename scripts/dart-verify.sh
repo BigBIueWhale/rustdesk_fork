@@ -19,18 +19,25 @@ source "$SCRIPT_DIR/lib.sh"
 load_pins
 cd "$REPO_ROOT"
 
+readonly BUILD_UID="$(/usr/bin/id -u)"
+readonly BUILD_GID="$(/usr/bin/id -g)"
 WORKSPACE=""
+WORKSPACE_ID=""
 cleanup() {
   local status=$?
   trap - EXIT HUP INT TERM
   if [ -n "$WORKSPACE" ]; then
-    if [ -L "$WORKSPACE" ]; then
-      rm -f -- "$WORKSPACE" || status=1
-    elif [ -d "$WORKSPACE" ]; then
+    if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
+      && ! remove_local_docker_authority; then
+      echo "dart-verify: preserving changed private Docker authority: $WORKSPACE" >&2
+      status=125
+    elif [ -z "$WORKSPACE_ID" ] || [ ! -d "$WORKSPACE" ] || [ -L "$WORKSPACE" ] \
+      || [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$WORKSPACE" 2>/dev/null)" != "$WORKSPACE_ID" ]; then
+      echo "dart-verify: preserving changed private workspace: $WORKSPACE" >&2
+      status=125
+    else
       chmod -R u+rwX "$WORKSPACE" 2>/dev/null || status=1
       rm -rf -- "$WORKSPACE" || status=1
-    elif [ -e "$WORKSPACE" ]; then
-      status=1
     fi
   fi
   exit "$status"
@@ -45,9 +52,9 @@ trap 'signal_exit 129' HUP
 trap 'signal_exit 130' INT
 trap 'signal_exit 143' TERM
 
-require_cmd docker git python3 realpath sha256sum tar
-[ "$(id -u)" -ne 0 ] || die "dart-verify refuses host or container-root execution"
-[ "$(id -g)" -ne 0 ] || die "dart-verify refuses a root primary group"
+require_cmd git python3 realpath sha256sum tar
+[ "$BUILD_UID" -ne 0 ] || die "dart-verify refuses host or container-root execution"
+[ "$BUILD_GID" -ne 0 ] || die "dart-verify refuses a root primary group"
 require_online_complete
 verify_online_shas \
   "rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75" \
@@ -58,7 +65,6 @@ verify_online_shas \
 IMAGE_ID="$DEB_BUILDER_IMAGE_ID"
 [[ "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
   || die "dart-verify has a malformed immutable image ID: $IMAGE_ID"
-require_pinned_builder_image deb-builder "$IMAGE_ID"
 
 archive_current_source() {
   git -C "$REPO_ROOT" ls-files -z --cached --others --exclude-standard \
@@ -79,8 +85,11 @@ for relative in sys.stdin.buffer.read().split(b"\0"):
 WORKSPACE="$(umask 077 && mktemp -d /tmp/rustdesk-dart-verify.XXXXXXXXXX)"
 [ -d "$WORKSPACE" ] && [ ! -L "$WORKSPACE" ] \
   || die "dart-verify private workspace creation failed"
-[ "$(stat -c '%u:%g:%a' "$WORKSPACE")" = "$(id -u):$(id -g):700" ] \
+[ "$(/usr/bin/stat -c '%u:%g:%a' "$WORKSPACE")" = "$BUILD_UID:$BUILD_GID:700" ] \
   || die "dart-verify private workspace identity or mode is invalid"
+WORKSPACE_ID="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$WORKSPACE")"
+initialize_local_docker_authority "$WORKSPACE/docker-config" "dart-verify"
+require_pinned_builder_image deb-builder "$IMAGE_ID"
 
 SOURCE_ARCHIVE="$WORKSPACE/source.tar"
 SOURCE_SNAPSHOT="$WORKSPACE/source"
@@ -98,7 +107,7 @@ chmod -R a-w "$SOURCE_SNAPSHOT"
 
 echo "== full pinned FRB generation in a disposable source snapshot =="
 ONLINE_DIR="$ONLINE_SNAPSHOT" FRB_IMAGE_ID="$IMAGE_ID" \
-  bash "$SCRIPT_DIR/frb-codegen.sh" \
+  /usr/bin/bash "$SCRIPT_DIR/frb-codegen.sh" \
     --source-root "$SOURCE_SNAPSHOT" \
     --online-root "$ONLINE_SNAPSHOT" \
     --output-root "$FRB_OUTPUT"
@@ -108,8 +117,8 @@ chmod -R u+rwX "$ANALYSIS_ROOT"
 cp -a "$FRB_OUTPUT/." "$ANALYSIS_ROOT/"
 
 echo "== flutter pub/analyze/test + shipped-feature Rust check in the disposable snapshot =="
-docker run --rm --pull=never --network=none --read-only \
-  --user "$(id -u):$(id -g)" \
+local_docker run --rm --pull=never --network=none --read-only \
+  --user "$BUILD_UID:$BUILD_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
   --pids-limit=512 --memory=12g --memory-swap=12g --cpus=4 \
   --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=10g \

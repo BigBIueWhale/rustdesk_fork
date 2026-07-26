@@ -11296,7 +11296,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257",
+        "R-S11n through R-S11de, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#258",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11377,7 +11377,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257",
+        "R-S11n through R-S11de, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#258",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11556,7 +11556,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257",
+        "R-S11n through R-S11de, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#258",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11690,7 +11690,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257",
+        "R-S11n through R-S11de, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#258",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11858,7 +11858,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257",
+        "R-S11n through R-S11de, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#258",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12051,7 +12051,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257",
+        "R-S11n through R-S11de, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#258",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12385,7 +12385,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257",
+        "R-S11n through R-S11de, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#258",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -21781,18 +21781,27 @@ def validate_ipc_lifecycle_checker_contract(sources):
 def validate_dart_verifier_authority_contract(sources):
     dart = sources["dart_verify"]
     frb = sources["frb_codegen"]
+    lib = sources["lib"]
     authority = sources["dart_authority_validator"]
 
     for text, label in (
         (
-            '[ "$(id -u)" -ne 0 ] || die "dart-verify refuses host or container-root execution"',
+            'readonly BUILD_UID="$(/usr/bin/id -u)"',
+            "Dart verifier absolute UID source",
+        ),
+        (
+            '[ "$BUILD_UID" -ne 0 ] || die "dart-verify refuses host or container-root execution"',
             "Dart verifier UID-root refusal",
         ),
         (
-            '[ "$(id -g)" -ne 0 ] || die "dart-verify refuses a root primary group"',
+            '[ "$BUILD_GID" -ne 0 ] || die "dart-verify refuses a root primary group"',
             "Dart verifier GID-root refusal",
         ),
         ('IMAGE_ID="$DEB_BUILDER_IMAGE_ID"', "Dart verifier immutable image selection"),
+        (
+            'initialize_local_docker_authority "$WORKSPACE/docker-config" "dart-verify"',
+            "Dart verifier fixed Docker authority",
+        ),
         ('require_pinned_builder_image deb-builder "$IMAGE_ID"', "Dart verifier image provenance"),
         (
             'WORKSPACE="$(umask 077 && mktemp -d /tmp/rustdesk-dart-verify.XXXXXXXXXX)"',
@@ -21805,7 +21814,7 @@ def validate_dart_verifier_authority_contract(sources):
         ('archive_current_source >"$SOURCE_ARCHIVE"', "Dart verifier source snapshot"),
         ('chmod -R a-w "$SOURCE_SNAPSHOT"', "Dart verifier read-only source snapshot"),
         ('--pull=never --network=none --read-only', "Dart verifier pull/network/root isolation"),
-        ('--user "$(id -u):$(id -g)"', "Dart verifier numeric non-root user"),
+        ('--user "$BUILD_UID:$BUILD_GID"', "Dart verifier numeric non-root user"),
         ('--cap-drop=ALL --security-opt=no-new-privileges', "Dart verifier privilege floor"),
         (
             '--pids-limit=512 --memory=12g --memory-swap=12g --cpus=4',
@@ -21850,7 +21859,8 @@ def validate_dart_verifier_authority_contract(sources):
         2,
         "Dart verifier private online pre/post proof",
     )
-    require_exact_count(dart, "docker run ", 1, "Dart verifier complete container inventory")
+    require_exact_count(dart, "local_docker run ", 1, "Dart verifier complete container inventory")
+    require_absent(dart, "\ndocker run ", "Dart verifier PATH-selected Docker launch")
     require_exact_count(dart, "--mount ", 2, "Dart verifier complete mount inventory")
     for text, label in (
         ("docker build", "Dart verifier image-build authority"),
@@ -21863,16 +21873,24 @@ def validate_dart_verifier_authority_contract(sources):
 
     for text, label in (
         (
-            '[ "$(id -u)" -ne 0 ] || die "FRB code generation refuses host or container-root execution"',
+            'readonly BUILD_UID="$(/usr/bin/id -u)"',
+            "FRB generator absolute UID source",
+        ),
+        (
+            '[ "$BUILD_UID" -ne 0 ] || die "FRB code generation refuses host or container-root execution"',
             "FRB generator UID-root refusal",
         ),
         (
-            '[ "$(id -g)" -ne 0 ] || die "FRB code generation refuses a root primary group"',
+            '[ "$BUILD_GID" -ne 0 ] || die "FRB code generation refuses a root primary group"',
             "FRB generator GID-root refusal",
         ),
         ('require_pinned_builder_image deb-builder "$IMAGE_ID"', "FRB generator image provenance"),
         (
-            'docker run --rm --pull=never --network=none --read-only --user "$(id -u):$(id -g)"',
+            'initialize_local_docker_authority "$WORK_ROOT/docker-config" "frb-codegen"',
+            "FRB generator fixed Docker authority",
+        ),
+        (
+            'local_docker run --rm --pull=never --network=none --read-only --user "$BUILD_UID:$BUILD_GID"',
             "FRB generator pull refusal and isolation",
         ),
         ('--cap-drop=ALL --security-opt=no-new-privileges', "FRB generator privilege floor"),
@@ -21890,8 +21908,64 @@ def validate_dart_verifier_authority_contract(sources):
         ),
     ):
         require_text(frb, text, label)
-    require_exact_count(frb, "docker run ", 1, "FRB generator complete container inventory")
+    require_exact_count(frb, "local_docker run ", 1, "FRB generator complete container inventory")
+    require_absent(frb, "\ndocker run ", "FRB generator PATH-selected Docker launch")
     require_exact_count(frb, "--mount ", 2, "FRB generator complete mount inventory")
+
+    for text, label in (
+        (
+            "LOCAL_DOCKER_AUTHORITY_INITIALIZED=0\nLOCAL_DOCKER_AUTHORITY_LABEL=",
+            "local Docker ambient-state reset",
+        ),
+        (
+            "[ -f /usr/bin/docker ] && [ ! -L /usr/bin/docker ] && [ -x /usr/bin/docker ]",
+            "local Docker absolute client",
+        ),
+        (
+            "[ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ]",
+            "local Docker socket type",
+        ),
+        (
+            "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
+            "local Docker ambient-input refusal",
+        ),
+        (
+            '[ "$(/usr/bin/stat -c \'%a\' "$1" 2>/dev/null)" = "700" ]',
+            "private online snapshot absolute metadata inspector",
+        ),
+        ('/usr/bin/install -d -m 0700 -- "$config"', "local Docker private configuration"),
+        (
+            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
+            "local Docker no-clobber private config creation",
+        ),
+        (
+            '"$(/usr/bin/id -u):$(/usr/bin/id -g):600:1" ]',
+            "local Docker private config ownership/mode/link count",
+        ),
+        ("local_docker() {", "local Docker direct wrapper"),
+        ("local_docker_image_provenance() {", "local Docker provenance wrapper"),
+        ("remove_local_docker_authority() {", "local Docker exact cleanup"),
+        (
+            "local_docker() {\n    local status=0\n    assert_local_docker_authority || return 1\n    /usr/bin/env -i",
+            "local Docker direct-wrapper empty environment",
+        ),
+        (
+            "local_docker_image_provenance() {\n    local status=0\n    assert_local_docker_authority || return 1\n    /usr/bin/env -i",
+            "local Docker provenance-wrapper empty environment",
+        ),
+        ("DOCKER_HOST=unix:///var/run/docker.sock", "local Docker fixed endpoint"),
+        ("--host unix:///var/run/docker.sock", "local Docker explicit endpoint"),
+        ('--config "$LOCAL_DOCKER_AUTHORITY_CONFIG"', "local Docker explicit configuration"),
+        (
+            '/usr/bin/python3 -I -S "$LIB_DIR/offline-image-provenance.py" "$@"',
+            "local Docker fixed provenance interpreter",
+        ),
+        (
+            'local_docker_image_provenance "${args[@]}"',
+            "builder provenance fixed Docker routing",
+        ),
+    ):
+        require_text(lib, text, label)
 
     for text in (
         "def validate_contract(sources: Dict[str, str]) -> None:",
@@ -21901,6 +21975,11 @@ def validate_dart_verifier_authority_contract(sources):
         'Mutation(\n        "verify",',
         'Mutation("requirements", \'<span class="id">R-S11bc</span>\'',
         'Mutation("hardening", "R-S11bc/R-S11e-69"',
+        '"ambient local Docker authority state"',
+        '"Dart fixed Docker launcher"',
+        '"FRB fixed Docker launcher"',
+        'Mutation("requirements", \'<span class="id">R-S11de</span>\'',
+        'Mutation("hardening", "R-S11de/R-S11e-123"',
     ):
         require_text(authority, text, "Dart authority validator mutation coverage")
     require_text(
@@ -21924,6 +22003,33 @@ def validate_dart_verifier_authority_contract(sources):
         sources["hardening"],
         "R-S11bc/R-S11e-69 — Dart/FRB verifier container authority",
         "Dart verifier authority hardening ledger",
+    )
+    docker_requirement = extract_html_requirement(
+        sources["requirements"], "R-S11de", "Dart/FRB Docker authority requirement"
+    )
+    for text in (
+        "fixed local Docker client, daemon, and private configuration authority",
+        "exact non-symlink, root-owned, group-root, mode-0755, single-link",
+        "DOCKER_CONTEXT",
+        "otherwise empty environment",
+        "preserve the private workspace and fail",
+        "R-S11e-123 ledger",
+    ):
+        require_text(docker_requirement, text, "Dart/FRB Docker authority requirement")
+    require_text(
+        sources["requirements"],
+        "<tr><td>258</td>",
+        "Dart/FRB Docker authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11de/R-S11e-123 — Dart/FRB Docker client, daemon, and configuration authority",
+        "Dart/FRB Docker authority hardening ledger",
+    )
+    require_text(
+        sources["verify"],
+        "Dart/FRB verifier and fixed local Docker authority (R-S11bc/R-S11de/R-S11e-69/R-S11e-123)",
+        "Dart/FRB Docker authority shared-gate wiring",
     )
 
 
@@ -35324,6 +35430,12 @@ def run_source_mutations(sources):
         ),
         (
             "dart_verify",
+            'readonly BUILD_UID="$(/usr/bin/id -u)"',
+            'readonly BUILD_UID="$(id -u)"',
+            "Dart verifier absolute UID source",
+        ),
+        (
+            "dart_verify",
             "--pull=never --network=none --read-only",
             "--pull=never --network=bridge --read-only",
             "Dart verifier pull/network/root isolation",
@@ -35336,9 +35448,75 @@ def run_source_mutations(sources):
         ),
         (
             "frb_codegen",
-            "docker run --rm --pull=never --network=none --read-only",
-            "docker run --rm --pull=always --network=none --read-only",
+            'readonly BUILD_UID="$(/usr/bin/id -u)"',
+            'readonly BUILD_UID="$(id -u)"',
+            "FRB generator absolute UID source",
+        ),
+        (
+            "frb_codegen",
+            "local_docker run --rm --pull=never --network=none --read-only",
+            "local_docker run --rm --pull=always --network=none --read-only",
             "FRB generator pull refusal and isolation",
+        ),
+        (
+            "lib",
+            "LOCAL_DOCKER_AUTHORITY_INITIALIZED=0\nLOCAL_DOCKER_AUTHORITY_LABEL=",
+            "LOCAL_DOCKER_AUTHORITY_INITIALIZED=1\nLOCAL_DOCKER_AUTHORITY_LABEL=",
+            "local Docker ambient-state reset",
+        ),
+        (
+            "lib",
+            '[ "$(/usr/bin/stat -c \'%a\' "$1" 2>/dev/null)" = "700" ]',
+            '[ "$(stat -c \'%a\' "$1" 2>/dev/null)" = "700" ]',
+            "private online snapshot absolute metadata inspector",
+        ),
+        (
+            "lib",
+            "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
+            "DOCKER_HOST DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
+            "local Docker ambient-input refusal",
+        ),
+        (
+            "lib",
+            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
+            "(umask 077 && printf '{}\\n' >\"$config/config.json\")",
+            "local Docker no-clobber private config creation",
+        ),
+        (
+            "lib",
+            '"$(/usr/bin/id -u):$(/usr/bin/id -g):600:1" ]',
+            '"$(/usr/bin/id -u):$(/usr/bin/id -g):666:2" ]',
+            "local Docker private config ownership/mode/link count",
+        ),
+        (
+            "lib",
+            "local_docker() {\n    local status=0\n    assert_local_docker_authority || return 1\n    /usr/bin/env -i",
+            "local_docker() {\n    local status=0\n    assert_local_docker_authority || return 1\n    env",
+            "local Docker direct-wrapper empty environment",
+        ),
+        (
+            "lib",
+            "--host unix:///var/run/docker.sock",
+            "--host tcp://127.0.0.1:2375",
+            "local Docker explicit endpoint",
+        ),
+        (
+            "lib",
+            '/usr/bin/python3 -I -S "$LIB_DIR/offline-image-provenance.py" "$@"',
+            'python3 "$LIB_DIR/offline-image-provenance.py" "$@"',
+            "local Docker fixed provenance interpreter",
+        ),
+        (
+            "dart_verify",
+            'initialize_local_docker_authority "$WORKSPACE/docker-config" "dart-verify"',
+            "true # Dart Docker authority disabled",
+            "Dart verifier fixed Docker authority",
+        ),
+        (
+            "frb_codegen",
+            'initialize_local_docker_authority "$WORK_ROOT/docker-config" "frb-codegen"',
+            "true # FRB Docker authority disabled",
+            "FRB generator fixed Docker authority",
         ),
         (
             "dart_authority_validator",
@@ -35369,6 +35547,30 @@ def run_source_mutations(sources):
             "R-S11bc/R-S11e-69 — Dart/FRB verifier container authority",
             "R-S11bc/R-S11e-69 — Dart verifier closure deferred",
             "Dart verifier authority hardening ledger",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11de</span>',
+            '<span class="id">R-S11de-disabled</span>',
+            "Dart/FRB Docker authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>258</td>",
+            "<tr><td>258-disabled</td>",
+            "Dart/FRB Docker authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11de/R-S11e-123 — Dart/FRB Docker client, daemon, and configuration authority",
+            "R-S11de/R-S11e-123 — Dart/FRB Docker authority deferred",
+            "Dart/FRB Docker authority hardening ledger",
+        ),
+        (
+            "verify",
+            "Dart/FRB verifier and fixed local Docker authority (R-S11bc/R-S11de/R-S11e-69/R-S11e-123)",
+            "Dart/FRB verifier authority (R-S11bc/R-S11e-69)",
+            "Dart/FRB Docker authority shared-gate wiring",
         ),
         (
             "dart_audit",
@@ -35928,7 +36130,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11dd, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#257",
+            "R-S11n through R-S11de, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#258",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),

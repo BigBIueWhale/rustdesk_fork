@@ -168,8 +168,9 @@ def validate(sources: Dict[str, str]) -> None:
         ('remove_owned_workspace_exact \\\n'
          '        || die "private Debian build workspace could not retire before final publication"',
          "exact workspace retirement before final publication"),
-        ('/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-debian-result.py"',
-         "isolated Debian result publisher"),
+        ('/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-artifact-result.py"',
+         "isolated closed-profile result publisher"),
+        ("--artifact-kind debian-x86_64", "closed Debian publication profile"),
         ("--source-identity \"$PASS_A_DEB_ID\"", "publisher package identity transfer"),
         ("--source-sha256 \"$PASS_A_SHA256\"", "publisher package digest transfer"),
         ("--output-parent-identity \"$OUT_PARENT_ID\"",
@@ -194,7 +195,7 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(build, "target=/online,readonly", 1, "sole online-input mount")
     require_count(
         build,
-        '/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-debian-result.py"',
+        '/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-artifact-result.py"',
         2,
         "two-phase Debian publisher invocation",
     )
@@ -378,9 +379,13 @@ def validate(sources: Dict[str, str]) -> None:
 
     for token, label in (
         ("RENAME_NOREPLACE = 1", "no-clobber rename flag"),
-        ('ARTIFACT = "rustdesk-x86_64.deb"', "canonical Debian artifact name"),
-        ('CHECKSUM = "rustdesk-x86_64.deb.sha256"', "canonical Debian checksum name"),
-        ("EXPECTED_INVENTORY = (ARTIFACT, CHECKSUM)", "closed Debian result inventory"),
+        ('kind="debian-x86_64"', "closed Debian artifact profile"),
+        ('artifact="rustdesk-x86_64.deb"', "canonical Debian artifact name"),
+        ('checksum="rustdesk-x86_64.deb.sha256"', "canonical Debian checksum name"),
+        ("def expected_inventory(self) -> tuple[str, str]:",
+         "closed profile-derived result inventory"),
+        ("return tuple(sorted((self.artifact, self.checksum)))",
+         "exact two-file profile inventory"),
         ("os.O_NOFOLLOW", "no-follow object acquisition"),
         ("stable_file(before) != stable_file(opened)", "stable object acquisition"),
         ("os.listxattr(descriptor)", "POSIX ACL inspection"),
@@ -390,7 +395,7 @@ def validate(sources: Dict[str, str]) -> None:
          "        or before.st_size > MAX_ARTIFACT_BYTES",
          "single-link bounded package-source proof"),
         ("source does not match its validated SHA-256", "validated source digest binding"),
-        ('pending = f".debian-output-pending-{os.urandom(32).hex()}"',
+        ('pending = f"{contract.pending_prefix}{os.urandom(32).hex()}"',
          "kernel-random pending name"),
         ("os.mkdir(pending, 0o700, dir_fd=output_parent)",
          "exclusive private pending directory"),
@@ -401,13 +406,13 @@ def validate(sources: Dict[str, str]) -> None:
         ("renameat2", "descriptor-relative no-clobber primitive"),
         ("rename_noreplace(output_parent, pending, destination)",
          "same-parent final no-clobber rename"),
-        ("published Debian output is not the authenticated pending object",
+        ("published build output is not the authenticated pending object",
          "exact final-object identity proof"),
-        ("verify_result(pending_descriptor, \"published Debian output\")",
+        ('verify_result(pending_descriptor, "published build output", contract)',
          "post-publication content proof"),
-        ("published Debian output changed during final verification",
+        ("published build output changed during final verification",
          "post-content final-edge identity proof"),
-        ("publish-debian-result self-test: ok", "bounded publication behavior fixture"),
+        ("publish-artifact-result self-test: ok", "bounded publication behavior fixture"),
     ):
         require(publisher, token, label)
     require_count(publisher, "os.fchmod(output, 0o400)", 2,
@@ -416,7 +421,7 @@ def validate(sources: Dict[str, str]) -> None:
                   "both exact result-file synchronizations")
     require_count(
         publisher,
-        'require_absent(output_parent, pending, "retired pending Debian output")',
+        'require_absent(output_parent, pending, "retired pending build output")',
         2,
         "pre-content and post-content pending-edge retirement proofs",
     )
@@ -426,12 +431,12 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "open_source(",
             "open_bound_output_parent(",
-            'require_absent(output_parent, destination, "Debian output destination")',
+            'require_absent(output_parent, destination, "build output destination")',
             "os.urandom(32).hex()",
             "os.mkdir(pending, 0o700, dir_fd=output_parent)",
             "copy_source(",
             "create_checksum(",
-            'verify_result(pending_descriptor, "pending Debian output")',
+            'verify_result(pending_descriptor, "pending build output", contract)',
             "os.fsync(pending_descriptor)",
             "os.fsync(output_parent)",
             "reprove_output_parent(",
@@ -442,16 +447,16 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         commit,
         (
-            'require_absent(output_parent, destination, "Debian output destination")',
+            'require_absent(output_parent, destination, "build output destination")',
             "open_pending(",
-            'verify_result(pending_descriptor, "pending Debian output")',
+            'verify_result(pending_descriptor, "pending build output", contract)',
             "os.fsync(pending_descriptor)",
             "reprove_output_parent(",
             "rename_noreplace(output_parent, pending, destination)\n"
             "        os.fsync(output_parent)",
-            'require_absent(output_parent, pending, "retired pending Debian output")',
-            'verify_result(pending_descriptor, "published Debian output")',
-            "published Debian output changed during final verification",
+            'require_absent(output_parent, pending, "retired pending build output")',
+            'verify_result(pending_descriptor, "published build output", contract)',
+            "published build output changed during final verification",
         ),
         "publisher final no-clobber commit order",
     )
@@ -581,7 +586,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["verify"],
-        "/usr/bin/python3 -I -S scripts/publish-debian-result.py --self-test",
+        "/usr/bin/python3 -I -S scripts/publish-artifact-result.py --self-test",
         "bounded Debian publisher fixture wiring",
     )
     require(
@@ -942,8 +947,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "publisher",
-        "EXPECTED_INVENTORY = (ARTIFACT, CHECKSUM)",
-        "EXPECTED_INVENTORY = (ARTIFACT, CHECKSUM, \"optional\")",
+        "return tuple(sorted((self.artifact, self.checksum)))",
+        'return tuple(sorted((self.artifact, self.checksum, "optional")))',
         "publisher closed inventory",
     ),
     Mutation(
@@ -958,8 +963,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "publisher",
-        'pending = f".debian-output-pending-{os.urandom(32).hex()}"',
-        'pending = ".debian-output-pending-fixed"',
+        'pending = f"{contract.pending_prefix}{os.urandom(32).hex()}"',
+        'pending = f"{contract.pending_prefix}fixed"',
         "kernel-random pending name",
     ),
     Mutation(
@@ -971,10 +976,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation(
         "publisher",
         "if digest.hexdigest() != expected_sha256:\n"
-        '            fail("Debian package source does not match its validated SHA-256")\n'
+        '            fail("build artifact source does not match its validated SHA-256")\n'
         "        os.fchmod(output, 0o400)",
         "if digest.hexdigest() != expected_sha256:\n"
-        '            fail("Debian package source does not match its validated SHA-256")\n'
+        '            fail("build artifact source does not match its validated SHA-256")\n'
         "        os.fchmod(output, 0o666)",
         "read-only result files",
     ),
@@ -988,7 +993,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "publisher",
         "rename_noreplace(output_parent, pending, destination)\n"
         "        os.fsync(output_parent)\n"
-        '        require_absent(output_parent, pending, "retired pending Debian output")',
+        '        require_absent(output_parent, pending, "retired pending build output")',
         "rename_noreplace(output_parent, pending, destination)\n"
         "        os.fsync(output_parent)\n"
         "        pass # pre-content pending-edge retirement unchecked",
@@ -996,27 +1001,27 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "publisher",
-        'verify_result(pending_descriptor, "published Debian output")\n'
-        '        require_absent(output_parent, pending, "retired pending Debian output")',
-        'verify_result(pending_descriptor, "published Debian output")\n'
+        'verify_result(pending_descriptor, "published build output", contract)\n'
+        '        require_absent(output_parent, pending, "retired pending build output")',
+        'verify_result(pending_descriptor, "published build output", contract)\n'
         "        pass # post-content pending-edge retirement unchecked",
         "post-content pending-edge retirement proof",
     ),
     Mutation(
         "publisher",
-        'verify_result(pending_descriptor, "published Debian output")',
+        'verify_result(pending_descriptor, "published build output", contract)',
         "pass # published content unchecked",
         "post-publication content proof",
     ),
     Mutation(
         "publisher",
-        "published Debian output changed during final verification",
-        "published Debian output final edge unchecked",
+        "published build output changed during final verification",
+        "published build output final edge unchecked",
         "post-content final-edge identity proof",
     ),
     Mutation(
         "verify",
-        "/usr/bin/python3 -I -S scripts/publish-debian-result.py --self-test",
+        "/usr/bin/python3 -I -S scripts/publish-artifact-result.py --self-test",
         "true # Debian publisher behavior fixture removed",
         "publisher behavior fixture wiring",
     ),
@@ -1042,7 +1047,7 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "workspace": (repo / "scripts/verify-verifier-workspace.py").read_text(encoding="utf-8"),
-        "publisher": (repo / "scripts/publish-debian-result.py").read_text(encoding="utf-8"),
+        "publisher": (repo / "scripts/publish-artifact-result.py").read_text(encoding="utf-8"),
     }
 
 

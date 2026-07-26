@@ -2665,8 +2665,9 @@ def validate_debian_result_publication_contract(sources):
          "Debian descriptor-relative workspace retirement"),
         ('--expected-identity "$OWNED_WORKSPACE_ID"',
          "Debian workspace retirement identity"),
-        ('/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-debian-result.py"',
-         "Debian isolated result publisher"),
+        ('/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-artifact-result.py"',
+         "Debian isolated closed-profile result publisher"),
+        ("--artifact-kind debian-x86_64", "closed Debian publication profile"),
         ('--source-identity "$PASS_A_DEB_ID"', "Debian publisher source identity"),
         ('--source-sha256 "$PASS_A_SHA256"', "Debian publisher source digest"),
         ('--output-parent-identity "$OUT_PARENT_ID"',
@@ -2677,7 +2678,7 @@ def validate_debian_result_publication_contract(sources):
         require_text(build, text, label)
     require_count(
         build,
-        '/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-debian-result.py"',
+        '/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-artifact-result.py"',
         2,
         "Debian two-phase result publisher",
     )
@@ -2794,15 +2795,18 @@ def validate_debian_result_publication_contract(sources):
 
     for text, label in (
         ("RENAME_NOREPLACE = 1", "Debian publication no-clobber flag"),
-        ('ARTIFACT = "rustdesk-x86_64.deb"', "Debian canonical artifact"),
-        ('CHECKSUM = "rustdesk-x86_64.deb.sha256"', "Debian canonical checksum"),
-        ("EXPECTED_INVENTORY = (ARTIFACT, CHECKSUM)",
-         "Debian closed publication inventory"),
+        ('kind="debian-x86_64"', "closed Debian artifact profile"),
+        ('artifact="rustdesk-x86_64.deb"', "Debian canonical artifact"),
+        ('checksum="rustdesk-x86_64.deb.sha256"', "Debian canonical checksum"),
+        ("def expected_inventory(self) -> tuple[str, str]:",
+         "closed profile-derived publication inventory"),
+        ("return tuple(sorted((self.artifact, self.checksum)))",
+         "Debian exact two-file profile inventory"),
         ("os.O_NOFOLLOW", "Debian publication no-follow acquisition"),
         ("stable_file(before) != stable_file(opened)",
          "Debian stable publication object acquisition"),
         ("os.listxattr(descriptor)", "Debian publication ACL inspection"),
-        ('pending = f".debian-output-pending-{os.urandom(32).hex()}"',
+        ('pending = f"{contract.pending_prefix}{os.urandom(32).hex()}"',
          "Debian kernel-random pending name"),
         ("os.mkdir(pending, 0o700, dir_fd=output_parent)",
          "Debian exclusive private pending directory"),
@@ -2813,11 +2817,11 @@ def validate_debian_result_publication_contract(sources):
         ("renameat2", "Debian descriptor-relative no-clobber primitive"),
         ("rename_noreplace(output_parent, pending, destination)",
          "Debian final same-parent no-clobber rename"),
-        ("published Debian output is not the authenticated pending object",
+        ("published build output is not the authenticated pending object",
          "Debian final identity proof"),
-        ('verify_result(pending_descriptor, "published Debian output")',
+        ('verify_result(pending_descriptor, "published build output", contract)',
          "Debian final content proof"),
-        ("published Debian output changed during final verification",
+        ("published build output changed during final verification",
          "Debian post-content final-edge proof"),
         ("an occupied destination", "Debian collision behavior fixture"),
         ("a substituted source", "Debian source-substitution fixture"),
@@ -2832,7 +2836,7 @@ def validate_debian_result_publication_contract(sources):
                   "Debian two result-file synchronizations")
     require_count(
         publication,
-        'require_absent(output_parent, pending, "retired pending Debian output")',
+        'require_absent(output_parent, pending, "retired pending build output")',
         2,
         "Debian pre-content and post-content pending retirement proofs",
     )
@@ -2847,12 +2851,12 @@ def validate_debian_result_publication_contract(sources):
         (
             "open_source(",
             "open_bound_output_parent(",
-            'require_absent(output_parent, destination, "Debian output destination")',
+            'require_absent(output_parent, destination, "build output destination")',
             "os.urandom(32).hex()",
             "os.mkdir(pending, 0o700, dir_fd=output_parent)",
             "copy_source(",
             "create_checksum(",
-            'verify_result(pending_descriptor, "pending Debian output")',
+            'verify_result(pending_descriptor, "pending build output", contract)',
             "os.fsync(pending_descriptor)",
             "reprove_output_parent(",
         ),
@@ -2867,20 +2871,20 @@ def validate_debian_result_publication_contract(sources):
     require_order(
         commit,
         (
-            'require_absent(output_parent, destination, "Debian output destination")',
+            'require_absent(output_parent, destination, "build output destination")',
             "open_pending(",
-            'verify_result(pending_descriptor, "pending Debian output")',
+            'verify_result(pending_descriptor, "pending build output", contract)',
             "reprove_output_parent(",
             "rename_noreplace(output_parent, pending, destination)\n"
             "        os.fsync(output_parent)",
-            'require_absent(output_parent, pending, "retired pending Debian output")',
-            'verify_result(pending_descriptor, "published Debian output")',
-            "published Debian output changed during final verification",
+            'require_absent(output_parent, pending, "retired pending build output")',
+            'verify_result(pending_descriptor, "published build output", contract)',
+            "published build output changed during final verification",
         ),
         "Debian final no-clobber commit order",
     )
     for text, label in (
-        ("/usr/bin/python3 -I -S scripts/publish-debian-result.py --self-test",
+        ("/usr/bin/python3 -I -S scripts/publish-artifact-result.py --self-test",
          "Debian publisher behavior wiring"),
         ("R-S11cf/R-S11dk/R-S11dv direct builds use independent private exact-commit sources",
          "Debian result-publication shared disposition"),
@@ -2906,10 +2910,10 @@ def validate_debian_result_publication_contract(sources):
          "focused Debian publisher prepare enforcement"),
         ("publisher final no-clobber commit order",
          "focused Debian publisher commit enforcement"),
-        ('("published Debian output changed during final verification",\n'
+        ('("published build output changed during final verification",\n'
          '         "post-content final-edge identity proof"),',
          "focused Debian post-content final-edge enforcement"),
-        ('"publisher": (repo / "scripts/publish-debian-result.py")',
+        ('"publisher": (repo / "scripts/publish-artifact-result.py")',
          "focused Debian publisher source ownership"),
     ):
         require_text(focused, text, label)
@@ -12008,7 +12012,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#275",
+        "R-S11n through R-S11dw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12089,7 +12093,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#275",
+        "R-S11n through R-S11dw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12268,7 +12272,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#275",
+        "R-S11n through R-S11dw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12402,7 +12406,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#275",
+        "R-S11n through R-S11dw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12570,7 +12574,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#275",
+        "R-S11n through R-S11dw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12763,7 +12767,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#275",
+        "R-S11n through R-S11dw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13097,7 +13101,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#275",
+        "R-S11n through R-S11dw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -14181,6 +14185,14 @@ def validate_android_builder_authority_contract(sources):
          "Android builder Debian-lifecycle focused-gate delegation"),
         ('source=$BUILD_SOURCE_ROOT,target=/src"', "Android builder private-source mount contract"),
         ('source=$pass_output,target=/out"', "Android builder private-output mount contract"),
+        ("Android authority-terminal publication order",
+         "Android builder terminal-publication enforcement"),
+        ("shared publisher final no-clobber commit order",
+         "Android builder shared publisher enforcement"),
+        ("exact private result inventory",
+         "Android builder exact-result enforcement"),
+        ("independent pass source",
+         "Android builder independent-pass enforcement"),
         ('ordered_tokens = (', "Android builder scratch phase ordering"),
         ('if positions != tuple(sorted(positions))', "Android builder scratch-order rejection semantics"),
         ('consumed Rust installer payload survived scratch retirement', "Android Rust-installer retirement postcondition"),
@@ -14314,6 +14326,25 @@ def validate_android_builder_authority_contract(sources):
         ),
         "Android builder root-refusal and Docker-authority definition order",
     )
+    android_preflight = extract_between(
+        sources["android"],
+        "preflight() {",
+        "\n}\n\n# assert_keystore_properties:",
+        "Android builder preflight",
+    )
+    require_order(
+        android_preflight,
+        (
+            "assert_clean_worktree",
+            "assert_source_date_epoch",
+            "prepare_output_contract",
+            "prepare_execution_contract",
+            "prepare_source_snapshot",
+            "resolve_image",
+            "activate_online_snapshot",
+        ),
+        "Android output preflight before build authority",
+    )
     android_cleanup = extract_between(
         sources["android"],
         "cleanup_owned_workspace() {",
@@ -14324,12 +14355,157 @@ def validate_android_builder_authority_contract(sources):
         android_cleanup,
         (
             "remove_local_docker_authority",
-            'elif [ -n "$OWNED_WORKSPACE" ] && [ -d "$OWNED_WORKSPACE" ]',
-            'chmod -R u+rwX "$OWNED_WORKSPACE"',
-            'rm -rf -- "$OWNED_WORKSPACE"',
+            'elif [ -n "$OWNED_WORKSPACE" ]',
+            "remove_owned_workspace_exact",
         ),
         "Android builder Docker-before-workspace cleanup",
     )
+    android_exact_cleanup = extract_between(
+        sources["android"],
+        "remove_owned_workspace_exact() {",
+        "\n}\n\nrecord_output_parent_identity() {",
+        "Android builder exact workspace cleanup",
+    )
+    require_order(
+        android_exact_cleanup,
+        (
+            '--remove-private-root "$OWNED_WORKSPACE"',
+            '--expected-identity "$OWNED_WORKSPACE_ID"',
+            '[ ! -e "$OWNED_WORKSPACE" ] && [ ! -L "$OWNED_WORKSPACE" ]',
+            'OWNED_WORKSPACE=""',
+            'OWNED_WORKSPACE_ID=""',
+        ),
+        "Android builder exact workspace retirement",
+    )
+    for text, label in (
+        ("prepare_output_contract() {", "Android absent-output contract"),
+        ('OUT_PARENT_ID="$device:$inode"', "Android output-parent identity retention"),
+        ('OWNED_WORKSPACE_ID="$(/usr/bin/stat -c \'%d:%i\' -- "$OWNED_WORKSPACE" 2>/dev/null)"',
+         "Android workspace identity retention"),
+        ("Android output directory must be absent for no-clobber publication",
+         "Android absent final output"),
+        ('BUILD_SOURCE_ROOT="$OWNED_WORKSPACE/source-$label"',
+         "Android independent pass source"),
+        ("verify_all_build_sources_unchanged() {",
+         "Android final independent-source proof"),
+        ('source=$unsigned_apk,target=/in/rustdesk-arm64-unsigned.apk,readonly',
+         "Android read-only unsigned APK input"),
+        ("validate_private_result() {", "Android private-result validator"),
+        ("assert_exact_private_result_inventory() {",
+         "Android exact-result inventory helper"),
+        ("Android result is not the exact APK/checksum pair",
+         "Android exact private result"),
+        ('[ "${#entries[@]}" -eq 2 ] \\\n'
+         '        && [ -e "$apk" ] && [ ! -L "$apk" ]',
+         "Android exact private inventory predicate"),
+        ('[[ "$checksum_line" =~ ^([0-9a-f]{64})\\ \\ rustdesk-arm64\\.apk$ ]]',
+         "Android canonical checksum grammar"),
+        ('[ "$after_metadata" = "$metadata" ] \\\n'
+         '        && [ "$after_checksum_metadata" = "$checksum_metadata" ]',
+         "Android private-result metadata stability"),
+        ('PASS_A_APK_ID="$device:$inode"', "Android pass-A identity retention"),
+        ('PASS_A_SHA256="$before_sha256"', "Android pass-A digest retention"),
+        ('PASS_B_SHA256="$before_sha256"', "Android pass-B digest retention"),
+        ('[ "$PASS_A_SHA256" = "$PASS_B_SHA256" ]',
+         "Android private A/B comparison"),
+        ('/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-artifact-result.py"',
+         "Android shared result publisher"),
+        ("--artifact-kind android-arm64", "Android closed publication profile"),
+        ('--source-identity "$PASS_A_APK_ID"',
+         "Android publisher source identity"),
+        ('--output-parent-identity "$OUT_PARENT_ID"',
+         "Android publisher parent identity"),
+        ('--pending-identity "$PENDING_RESULT_ID"',
+         "Android publisher pending identity"),
+    ):
+        require_text(sources["android"], text, label)
+    require_exact_count(
+        sources["android"],
+        '/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-artifact-result.py"',
+        2,
+        "Android two-phase shared publisher",
+    )
+    require_exact_count(
+        sources["android"],
+        "--artifact-kind android-arm64",
+        2,
+        "Android two-phase closed publication profile",
+    )
+    require_exact_count(
+        sources["android"],
+        'assert_exact_private_result_inventory "$pass_output" "$pass"',
+        2,
+        "Android pre/post-verification private result inventory proof",
+    )
+    android_publication = extract_between(
+        sources["android"],
+        "publish_result() {",
+        "\n}\n\nmain() {",
+        "Android result publication",
+    )
+    require_order(
+        android_publication,
+        (
+            "verify_active_online_snapshot",
+            "verify_all_build_sources_unchanged",
+            "assert_local_docker_authority",
+            "remove_local_docker_authority",
+            "prepare_pending_result",
+            "remove_owned_workspace_exact",
+            "--commit",
+        ),
+        "Android authority-terminal publication",
+    )
+    android_main = extract_between(
+        sources["android"],
+        "main() {",
+        "\n}\n\nmain",
+        "Android builder main",
+    )
+    require_order(
+        android_main,
+        (
+            'build_apk "$pass_a" pass-a',
+            'sign_apk "$pass_a" "$BUILD_UNSIGNED_APK"',
+            'validate_private_result "$pass_a" pass-a',
+            'build_apk "$pass_b" pass-b',
+            'sign_apk "$pass_b" "$BUILD_UNSIGNED_APK"',
+            'validate_private_result "$pass_b" pass-b',
+            '[ "$PASS_A_SHA256" = "$PASS_B_SHA256" ]',
+            "publish_result",
+        ),
+        "Android private A/B before publication",
+    )
+    for text, label in (
+        ('remove_build_source() {', "Android between-pass recursive source deletion"),
+        ('chmod -R u+rwX "$OWNED_WORKSPACE"',
+         "Android recursive workspace permission fallback"),
+        ('rm -rf -- "$OWNED_WORKSPACE"',
+         "Android recursive workspace deletion fallback"),
+        ('mkdir -p "$OUT_DIR"', "Android public pre-verification output"),
+        ('install -m 0400 "$pass_output/rustdesk-arm64.apk" "$OUT_DIR',
+         "Android overwrite-capable public copy"),
+        ('verify_apk_artifact "$OUT_DIR/rustdesk-arm64.apk"',
+         "Android post-publication fallible validation"),
+    ):
+        require_absent(sources["android"], text, label)
+    shared_publication = sources["debian_publication"]
+    for text, label in (
+        ('kind="android-arm64"', "shared Android artifact profile"),
+        ('artifact="rustdesk-arm64.apk"', "shared canonical APK"),
+        ('checksum="rustdesk-arm64.apk.sha256"', "shared canonical APK checksum"),
+        ('pending_prefix=".android-output-pending-"',
+         "shared private Android pending namespace"),
+        ("return tuple(sorted((self.artifact, self.checksum)))",
+         "shared exact two-file inventory"),
+        ("rename_noreplace(output_parent, pending, destination)",
+         "shared final no-clobber rename"),
+        ('verify_result(pending_descriptor, "published build output", contract)',
+         "shared post-publication content proof"),
+        ("published build output changed during final verification",
+         "shared final-edge proof"),
+    ):
+        require_text(shared_publication, text, label)
     android_rust_gate = sources["android_rust_release_gate"]
     for text, label in (
         ('readonly BUILD_UID="$(/usr/bin/id -u)"',
@@ -14513,8 +14689,8 @@ def validate_android_builder_authority_contract(sources):
     )
     require_text(
         sources["verify"],
-        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132 Android APK builds and mandatory Android release gates use canonical-mode private source, independent fixed local Docker authority",
-        "Android builder shared Docker-authority disposition",
+        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141 Android APK builds use independent pass sources, private stable result validation, exact cleanup, and terminal no-clobber publication",
+        "Android builder shared result-publication disposition",
     )
     require_text(
         sources["requirements"],
@@ -14590,6 +14766,21 @@ def validate_android_builder_authority_contract(sources):
         sources["hardening"],
         "R-S11dj/R-S11e-128 — Android artifact-builder Docker client, daemon, and configuration authority",
         "Android artifact-builder Docker authority hardening ledger",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11dw</span>',
+        "Android result-publication requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>276</td>",
+        "Android result-publication Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dw/R-S11e-141 — Android pass isolation, private result validation,",
+        "Android result-publication hardening ledger",
     )
     require_text(
         sources["requirements"],
@@ -16157,9 +16348,9 @@ def validate_cleanup_docker_authority_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dv, R-SV4a,\n"
+        "R-S11n through R-S11dw, R-SV4a,\n"
         "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#275",
+        "R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -16345,9 +16536,9 @@ def validate_cleanup_process_domain_path_authority_contract(sources):
 
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dv, R-SV4a,\n"
+        "R-S11n through R-S11dw, R-SV4a,\n"
         "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#275",
+        "R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -39686,7 +39877,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11dv, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#275",
+            "R-S11n through R-S11dw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -41128,6 +41319,112 @@ def run_source_mutations(sources):
             "Android builder exact Docker authority cleanup",
         ),
         (
+            "android",
+            'OWNED_WORKSPACE_ID="$(/usr/bin/stat -c \'%d:%i\' -- "$OWNED_WORKSPACE" 2>/dev/null)"',
+            'OWNED_WORKSPACE_ID="0:1"',
+            "Android workspace identity retention",
+        ),
+        (
+            "android",
+            '    prepare_output_contract\n',
+            "    true # absent output contract disabled\n",
+            "Android output preflight before build authority",
+        ),
+        (
+            "android",
+            'BUILD_SOURCE_ROOT="$OWNED_WORKSPACE/source-$label"',
+            'BUILD_SOURCE_ROOT="$OWNED_WORKSPACE/source-build"',
+            "Android independent pass source",
+        ),
+        (
+            "android",
+            'source=$unsigned_apk,target=/in/rustdesk-arm64-unsigned.apk,readonly',
+            'source=$unsigned_apk,target=/in/rustdesk-arm64-unsigned.apk',
+            "Android read-only unsigned APK input",
+        ),
+        (
+            "android",
+            '[ "${#entries[@]}" -eq 2 ] \\\n'
+            '        && [ -e "$apk" ] && [ ! -L "$apk" ]',
+            'true # extra result entries accepted \\\n'
+            '        && [ -e "$apk" ] && [ ! -L "$apk" ]',
+            "Android exact private inventory predicate",
+        ),
+        (
+            "android",
+            '[[ "$checksum_line" =~ ^([0-9a-f]{64})\\ \\ rustdesk-arm64\\.apk$ ]]',
+            "true # malformed checksum accepted",
+            "Android canonical checksum grammar",
+        ),
+        (
+            "android",
+            '[ "$after_metadata" = "$metadata" ] \\\n'
+            '        && [ "$after_checksum_metadata" = "$checksum_metadata" ]',
+            'true # APK metadata stability unchecked \\\n'
+            '        && [ "$after_checksum_metadata" = "$checksum_metadata" ]',
+            "Android private-result metadata stability",
+        ),
+        (
+            "android",
+            '    verify_apk_artifact "$apk"\n\n'
+            '    assert_exact_private_result_inventory "$pass_output" "$pass"',
+            '    verify_apk_artifact "$apk"\n\n'
+            "    true # post-verification inventory proof removed",
+            "Android pre/post-verification private result inventory proof",
+        ),
+        (
+            "android",
+            'PASS_A_APK_ID="$device:$inode"',
+            'PASS_A_APK_ID="0:1"',
+            "Android pass-A identity retention",
+        ),
+        (
+            "android",
+            '[ "$PASS_A_SHA256" = "$PASS_B_SHA256" ]',
+            "true # Android A/B mismatch accepted",
+            "Android private A/B comparison",
+        ),
+        (
+            "android",
+            "remove_local_docker_authority \\\n"
+            '        || die "Android builder Docker authority could not retire before publication"',
+            "true # Docker authority retained through Android publication",
+            "Android authority-terminal publication",
+        ),
+        (
+            "android",
+            "remove_owned_workspace_exact \\\n"
+            '        || die "private Android build workspace could not retire before final publication"',
+            "true # Android workspace retained through final publication",
+            "Android authority-terminal publication",
+        ),
+        (
+            "android",
+            "            --prepare \\\n"
+            "            --artifact-kind android-arm64",
+            "            --prepare \\\n"
+            "            --artifact-kind debian-x86_64",
+            "Android two-phase closed publication profile",
+        ),
+        (
+            "debian_publication",
+            'artifact="rustdesk-arm64.apk"',
+            'artifact="rustdesk-arm64-unsigned.apk"',
+            "shared canonical APK",
+        ),
+        (
+            "debian_publication",
+            "rename_noreplace(output_parent, pending, destination)",
+            "os.rename(pending, destination, src_dir_fd=output_parent, dst_dir_fd=output_parent)",
+            "Debian final same-parent no-clobber rename",
+        ),
+        (
+            "android_builder_authority_verifier",
+            '"Android authority-terminal publication order"',
+            '"Android pathname publication order"',
+            "Android builder terminal-publication enforcement",
+        ),
+        (
             "build",
             '        GIT_NO_REPLACE_OBJECTS=1 \\\n        "$@"',
             '        GIT_NO_REPLACE_OBJECTS=1 \\\n'
@@ -41186,6 +41483,24 @@ def run_source_mutations(sources):
             "R-S11dj/R-S11e-128 — Android artifact-builder Docker client, daemon, and configuration authority",
             "R-S11dj/R-S11e-XXX — Android artifact-builder Docker authority deferred",
             "Android artifact-builder Docker authority hardening ledger",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11dw</span>',
+            '<span class="id">R-S11dw-disabled</span>',
+            "Android result-publication requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>276</td>",
+            "<tr><td>276-disabled</td>",
+            "Android result-publication Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11dw/R-S11e-141 — Android pass isolation, private result validation,",
+            "R-S11dw/R-S11e-XXX — Android result publication remains pathname-owned,",
+            "Android result-publication hardening ledger",
         ),
         (
             "android_builder_authority_verifier",
@@ -41326,9 +41641,9 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132 Android APK builds and mandatory Android release gates use canonical-mode private source, independent fixed local Docker authority",
+            "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141 Android APK builds use independent pass sources, private stable result validation, exact cleanup, and terminal no-clobber publication",
             "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79 Android APK builds use ambient Docker authority",
-            "Android builder shared Docker-authority disposition",
+            "Android builder shared result-publication disposition",
         ),
         (
             "android_builder_image_authority_verifier",
@@ -41769,14 +42084,14 @@ def run_source_mutations(sources):
         ),
         (
             "debian_publication",
-            "EXPECTED_INVENTORY = (ARTIFACT, CHECKSUM)",
-            'EXPECTED_INVENTORY = (ARTIFACT, CHECKSUM, "extra")',
-            "Debian closed publication inventory",
+            "return tuple(sorted((self.artifact, self.checksum)))",
+            'return tuple(sorted((self.artifact, self.checksum, "extra")))',
+            "Debian exact two-file profile inventory",
         ),
         (
             "debian_publication",
-            'pending = f".debian-output-pending-{os.urandom(32).hex()}"',
-            'pending = ".debian-output-pending-fixed"',
+            'pending = f"{contract.pending_prefix}{os.urandom(32).hex()}"',
+            'pending = f"{contract.pending_prefix}fixed"',
             "Debian kernel-random pending name",
         ),
         (
@@ -41789,7 +42104,7 @@ def run_source_mutations(sources):
             "debian_publication",
             "rename_noreplace(output_parent, pending, destination)\n"
             "        os.fsync(output_parent)\n"
-            '        require_absent(output_parent, pending, "retired pending Debian output")',
+            '        require_absent(output_parent, pending, "retired pending build output")',
             "rename_noreplace(output_parent, pending, destination)\n"
             "        os.fsync(output_parent)\n"
             "        pass # pre-content pending edge unchecked",
@@ -41797,27 +42112,27 @@ def run_source_mutations(sources):
         ),
         (
             "debian_publication",
-            'verify_result(pending_descriptor, "published Debian output")',
+            'verify_result(pending_descriptor, "published build output", contract)',
             "pass # final content unchecked",
             "Debian final content proof",
         ),
         (
             "debian_publication",
-            'verify_result(pending_descriptor, "published Debian output")\n'
-            '        require_absent(output_parent, pending, "retired pending Debian output")',
-            'verify_result(pending_descriptor, "published Debian output")\n'
+            'verify_result(pending_descriptor, "published build output", contract)\n'
+            '        require_absent(output_parent, pending, "retired pending build output")',
+            'verify_result(pending_descriptor, "published build output", contract)\n'
             "        pass # post-content pending edge unchecked",
             "Debian pre-content and post-content pending retirement proofs",
         ),
         (
             "debian_publication",
-            "published Debian output changed during final verification",
-            "published Debian output final edge unchecked",
+            "published build output changed during final verification",
+            "published build output final edge unchecked",
             "Debian post-content final-edge proof",
         ),
         (
             "verify",
-            "/usr/bin/python3 -I -S scripts/publish-debian-result.py --self-test",
+            "/usr/bin/python3 -I -S scripts/publish-artifact-result.py --self-test",
             "true # Debian publisher fixture removed",
             "Debian publisher behavior wiring",
         ),
@@ -41829,9 +42144,9 @@ def run_source_mutations(sources):
         ),
         (
             "debian_builder_authority_verifier",
-            '("published Debian output changed during final verification",\n'
+            '("published build output changed during final verification",\n'
             '         "post-content final-edge identity proof"),',
-            '("published Debian output changed during final verification",\n'
+            '("published build output changed during final verification",\n'
             '         "post-content final-edge identity accepted"),',
             "focused Debian post-content final-edge enforcement",
         ),
@@ -46268,7 +46583,7 @@ def main():
                 repo / "scripts/verify-debian-builder-authority.py"
             ).read_text(encoding="utf-8"),
             "debian_publication": (
-                repo / "scripts/publish-debian-result.py"
+                repo / "scripts/publish-artifact-result.py"
             ).read_text(encoding="utf-8"),
             "github_automation_authority_verifier": (
                 repo / "scripts/verify-github-automation-authority.py"

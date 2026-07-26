@@ -63,6 +63,7 @@ def validate(sources: Dict[str, str]) -> None:
     debian = sources["debian"]
     systemd_smoke = sources["systemd_smoke"]
     systemd_authority = sources["systemd_authority"]
+    publisher = sources["publisher"]
 
     for token, label in (
         ("set -euo pipefail\numask 077", "private host-created state umask"),
@@ -89,18 +90,32 @@ def validate(sources: Dict[str, str]) -> None:
             "preserving changed private Android builder Docker authority",
             "changed local Docker authority preservation",
         ),
+        ('OWNED_WORKSPACE_ID="$(/usr/bin/stat -c \'%d:%i\'',
+         "private workspace identity retention"),
+        ("remove_owned_workspace_exact() {",
+         "descriptor-relative whole-workspace retirement"),
+        ('--remove-private-root "$OWNED_WORKSPACE"',
+         "exact private-workspace closer"),
+        ('--expected-identity "$OWNED_WORKSPACE_ID"',
+         "private-workspace identity transfer"),
+        ("prepare_output_contract() {", "absent Android output contract"),
+        ('OUT_PARENT_ID="$device:$inode"', "output-parent identity retention"),
+        ("Android output directory must be absent for no-clobber publication",
+         "absent final output"),
         ('SOURCE_COMMIT="$current"', "exact source commit capture"),
         ('mode not in (b"100644", b"100755")', "regular-file-only commit inventory"),
         ('archive --format=tar "$SOURCE_COMMIT"', "commit-object source archive"),
         ('SOURCE_AUTHORITY_ROOT="$OWNED_WORKSPACE/source-authority"', "immutable source authority"),
-        ('BUILD_SOURCE_ROOT="$OWNED_WORKSPACE/source-build"', "private writable source"),
+        ('BUILD_SOURCE_ROOT="$OWNED_WORKSPACE/source-$label"',
+         "independent private writable source per pass"),
         ('chmod -R a=rX "$SOURCE_AUTHORITY_ROOT"', "canonical read-only source authority modes"),
         ('prepare_build_source() {', "fresh writable-source constructor"),
         ('Android writable source path was not freshly absent', "fresh writable-source precondition"),
         ('chmod -R u=rwX,go=rX "$BUILD_SOURCE_ROOT"', "canonical writable source modes"),
-        ('--reference "$SOURCE_AUTHORITY_ROOT" --candidate "$BUILD_SOURCE_ROOT" --allow-extras', "post-build source comparator wiring"),
-        ('remove_build_source() {', "writable-source cleanup"),
-        ('private Android writable source survived cleanup', "writable-source cleanup postcondition"),
+        ('--reference "$SOURCE_AUTHORITY_ROOT" --candidate "$candidate" --allow-extras',
+         "post-build source comparator wiring"),
+        ("verify_all_build_sources_unchanged() {",
+         "final independent-source postcondition"),
         ('the Android artifact builder accepts only an exact clean commit', "dirty-build refusal"),
         ('android_docker_run() {', "single container-confinement wrapper"),
         ('local_docker run --rm --pull=never --network=none --read-only', "no-pull/networkless/read-only root"),
@@ -118,17 +133,49 @@ def validate(sources: Dict[str, str]) -> None:
         ('source=$BUILD_SOURCE_ROOT,target=/src"', "private writable build mount"),
         ('source=$SOURCE_AUTHORITY_ROOT/scripts/android-apk-build.sh,target=/authority/android-apk-build.sh,readonly', "immutable inner build script"),
         ('source=$pass_output,target=/out"', "private signing output mount"),
+        ('source=$unsigned_apk,target=/in/rustdesk-arm64-unsigned.apk,readonly',
+         "read-only private unsigned-APK mount"),
         ('source=$KEYSTORE,target=/ks/keystore.jks,readonly', "read-only keystore mount"),
         ('source=$KEYSTORE_PASS_FILE,target=/ks/pass,readonly', "read-only keystore-password mount"),
         ('target=/checks/verify-android-apk-manifest.py,readonly', "immutable manifest verifier"),
         ('target=/checks/verify-android-mobile-key-artifact.py,readonly', "immutable mobile-key verifier"),
-        ('install -m 0400 "$pass_output/rustdesk-arm64.apk" "$OUT_DIR/rustdesk-arm64.apk"', "host-side final APK publication"),
-        ('cmp -s "$pass_output/rustdesk-arm64.apk" "$OUT_DIR/rustdesk-arm64.apk"', "final publication byte comparison"),
-        ('published Android APK differs from the verified private artifact', "final publication byte proof"),
-        ('sha256sum -c rustdesk-arm64.apk.sha256', "published checksum proof"),
+        ("validate_private_result() {", "private Android result validator"),
+        ("assert_exact_private_result_inventory() {",
+         "exact Android result inventory helper"),
+        ("Android result is not the exact APK/checksum pair",
+         "exact private result inventory"),
+        ('[ "${#entries[@]}" -eq 2 ] \\\n'
+         '        && [ -e "$apk" ] && [ ! -L "$apk" ]',
+         "exact private inventory predicate"),
+        ("Android checksum is not canonical", "canonical private checksum"),
+        ('[[ "$checksum_line" =~ ^([0-9a-f]{64})\\ \\ rustdesk-arm64\\.apk$ ]]',
+         "canonical private checksum grammar"),
+        ("Android result changed while it was verified",
+         "private result stability across signed-artifact validation"),
+        ('[ "$after_metadata" = "$metadata" ] \\\n'
+         '        && [ "$after_checksum_metadata" = "$checksum_metadata" ]',
+         "APK/checksum metadata stability proof"),
+        ('PASS_A_APK="$apk"', "pass-A APK path retention"),
+        ('PASS_A_APK_ID="$device:$inode"', "pass-A APK identity retention"),
+        ('PASS_A_SHA256="$before_sha256"', "pass-A private digest retention"),
+        ('PASS_B_SHA256="$before_sha256"', "pass-B private digest retention"),
+        ('[ "$PASS_A_SHA256" = "$PASS_B_SHA256" ]',
+         "private A/B digest comparison"),
+        ("prepare_pending_result", "private pending-result preparation"),
+        ('/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-artifact-result.py"',
+         "isolated closed-profile result publisher"),
+        ("--artifact-kind android-arm64", "closed Android publication profile"),
+        ('--source-identity "$PASS_A_APK_ID"',
+         "publisher APK identity transfer"),
+        ('--source-sha256 "$PASS_A_SHA256"',
+         "publisher APK digest transfer"),
+        ('--output-parent-identity "$OUT_PARENT_ID"',
+         "publisher output-parent identity transfer"),
+        ('--pending-identity "$PENDING_RESULT_ID"',
+         "publisher pending identity transfer"),
         ('prepare_pass_output "$pass_a"', "private first pass"),
         ('prepare_pass_output "$pass_b"', "private second pass"),
-        ('publish_apk "$pass_a"', "verified pass-A publication"),
+        ("publish_result", "authority-terminal verified pass-A publication"),
     ):
         require(build, token, label)
 
@@ -140,15 +187,35 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require_count(build, "if ! android_docker_run", 3, "fallible build/sign/verify container launches")
     require_count(build, 'info="$(android_docker_run', 1, "fallible keytool container launch")
-    require_count(build, "    prepare_build_source\n", 1, "fresh source per build-pass call")
-    require_count(build, "    remove_build_source\n", 1, "build-source cleanup call")
+    require_count(build, 'prepare_build_source "$pass"', 1,
+                  "fresh independent source per build-pass call")
     require_count(build, 'verify-android-build-source.py"', 2, "initial and post-build source comparisons")
+    require_count(
+        build,
+        '/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-artifact-result.py"',
+        2,
+        "two-phase Android result publisher",
+    )
+    require_count(
+        build,
+        "--artifact-kind android-arm64",
+        2,
+        "two-phase closed Android publication profile",
+    )
+    require_count(
+        build,
+        'assert_exact_private_result_inventory "$pass_output" "$pass"',
+        2,
+        "pre/post-verification private result inventory proof",
+    )
     require_count(build, "source=$KEYSTORE,target=/ks/keystore.jks,readonly", 2, "read-only keystore mounts")
     require_count(build, "source=$KEYSTORE_PASS_FILE,target=/ks/pass,readonly", 2, "read-only password mounts")
     require_count(build, "target=/checks/verify-android-apk-manifest.py,readonly", 2, "immutable manifest-checker mounts")
     require_count(build, "target=/checks/verify-android-mobile-key-artifact.py,readonly", 2, "immutable mobile-key-checker mounts")
-    if build.count("verify_build_source_unchanged") != 3:
-        raise AuthorityError("source identity is not checked before and after build consumption")
+    if build.count("verify_build_source_unchanged") != 5:
+        raise AuthorityError(
+            "independent source identity is not checked before, after, and before publication"
+        )
     if build.count("--pids-limit=128 --memory=4g --memory-swap=4g --cpus=2") != 2:
         raise AuthorityError("signing and verification do not each carry explicit resource bounds")
 
@@ -168,6 +235,25 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "root refusal, shared authority, launch funnel, and provenance definitions",
     )
+    preflight = extract(
+        build,
+        "preflight() {",
+        "\n}\n\n# assert_keystore_properties:",
+        "Android builder preflight",
+    )
+    require_order(
+        preflight,
+        (
+            "assert_clean_worktree",
+            "assert_source_date_epoch",
+            "prepare_output_contract",
+            "prepare_execution_contract",
+            "prepare_source_snapshot",
+            "resolve_image",
+            "activate_online_snapshot",
+        ),
+        "Android output preflight before build authority",
+    )
     cleanup = extract(
         build,
         "cleanup_owned_workspace() {",
@@ -178,11 +264,61 @@ def validate(sources: Dict[str, str]) -> None:
         cleanup,
         (
             "remove_local_docker_authority",
-            'elif [ -n "$OWNED_WORKSPACE" ] && [ -d "$OWNED_WORKSPACE" ]',
-            'chmod -R u+rwX "$OWNED_WORKSPACE"',
-            'rm -rf -- "$OWNED_WORKSPACE"',
+            'elif [ -n "$OWNED_WORKSPACE" ]',
+            "remove_owned_workspace_exact",
         ),
         "Docker-before-workspace cleanup order",
+    )
+    exact_cleanup = extract(
+        build,
+        "remove_owned_workspace_exact() {",
+        "\n}\n\nrecord_output_parent_identity() {",
+        "Android exact workspace cleanup",
+    )
+    require_order(
+        exact_cleanup,
+        (
+            '--remove-private-root "$OWNED_WORKSPACE"',
+            '--expected-identity "$OWNED_WORKSPACE_ID"',
+            '[ ! -e "$OWNED_WORKSPACE" ] && [ ! -L "$OWNED_WORKSPACE" ]',
+            'OWNED_WORKSPACE=""',
+            'OWNED_WORKSPACE_ID=""',
+        ),
+        "Android exact whole-workspace retirement",
+    )
+    publication = extract(
+        build,
+        "publish_result() {",
+        "\n}\n\nmain() {",
+        "Android result publication",
+    )
+    require_order(
+        publication,
+        (
+            "verify_active_online_snapshot",
+            "verify_all_build_sources_unchanged",
+            "assert_local_docker_authority",
+            "remove_local_docker_authority",
+            "prepare_pending_result",
+            "remove_owned_workspace_exact",
+            "--commit",
+        ),
+        "Android authority-terminal publication order",
+    )
+    main = extract(build, "main() {", "\n}\n\nmain", "Android main")
+    require_order(
+        main,
+        (
+            'build_apk "$pass_a" pass-a',
+            'sign_apk "$pass_a" "$BUILD_UNSIGNED_APK"',
+            'validate_private_result "$pass_a" pass-a',
+            'build_apk "$pass_b" pass-b',
+            'sign_apk "$pass_b" "$BUILD_UNSIGNED_APK"',
+            'validate_private_result "$pass_b" pass-b',
+            '[ "$PASS_A_SHA256" = "$PASS_B_SHA256" ]',
+            "publish_result",
+        ),
+        "Android private A/B validation before publication",
     )
     run_child = extract(
         release,
@@ -922,8 +1058,116 @@ def validate(sources: Dict[str, str]) -> None:
         ('/var/run/docker.sock:/var/run/docker.sock', "Docker socket volume"),
         ('docker build', "image build fallback"),
         ('docker pull', "image pull fallback"),
+        ('remove_build_source() {', "between-pass recursive source deletion"),
+        ('chmod -R u+rwX "$OWNED_WORKSPACE"', "recursive workspace permission fallback"),
+        ('rm -rf -- "$OWNED_WORKSPACE"', "recursive workspace deletion fallback"),
+        ('mkdir -p "$OUT_DIR"', "caller-visible output creation before verification"),
+        ('install -m 0400 "$pass_output/rustdesk-arm64.apk" "$OUT_DIR',
+         "overwrite-capable public APK copy"),
+        ('cmp -s "$pass_output/rustdesk-arm64.apk" "$OUT_DIR',
+         "post-copy public validation"),
+        ('verify_apk_artifact "$OUT_DIR/rustdesk-arm64.apk"',
+         "post-publication fallible APK verification"),
     ):
         forbid(build, token, label)
+
+    for token, label in (
+        ("RENAME_NOREPLACE = 1", "no-clobber rename flag"),
+        ('kind="android-arm64"', "closed Android artifact profile"),
+        ('artifact="rustdesk-arm64.apk"', "canonical Android artifact name"),
+        ('checksum="rustdesk-arm64.apk.sha256"', "canonical Android checksum name"),
+        ('pending_prefix=".android-output-pending-"',
+         "private Android pending namespace"),
+        ("return tuple(sorted((self.artifact, self.checksum)))",
+         "exact profile-derived two-file result inventory"),
+        ("os.O_NOFOLLOW", "no-follow object acquisition"),
+        ("stable_file(before) != stable_file(opened)", "stable object acquisition"),
+        ("os.listxattr(descriptor)", "POSIX ACL inspection"),
+        ("before.st_nlink != 1", "single-link source and result proof"),
+        ('pending = f"{contract.pending_prefix}{os.urandom(32).hex()}"',
+         "kernel-random profile-bound pending name"),
+        ("os.mkdir(pending, 0o700, dir_fd=output_parent)",
+         "exclusive private pending directory"),
+        ("os.fchmod(output, 0o400)", "read-only result file mode"),
+        ("os.fsync(output)", "result-file synchronization"),
+        ("os.fsync(pending_descriptor)", "pending-directory synchronization"),
+        ("os.fsync(output_parent)", "output namespace synchronization"),
+        ("renameat2", "descriptor-relative no-clobber primitive"),
+        ("rename_noreplace(output_parent, pending, destination)",
+         "same-parent final no-clobber rename"),
+        ("published build output is not the authenticated pending object",
+         "exact final-object identity proof"),
+        ('verify_result(pending_descriptor, "published build output", contract)',
+         "post-publication content proof"),
+        ("published build output changed during final verification",
+         "post-content final-edge identity proof"),
+        ("publish-artifact-result self-test: ok",
+         "bounded shared publication behavior fixture"),
+    ):
+        require(publisher, token, label)
+    require_count(
+        publisher,
+        "os.fchmod(output, 0o400)",
+        2,
+        "both exact read-only result modes",
+    )
+    require_count(
+        publisher,
+        "os.fsync(output)",
+        2,
+        "both exact result-file synchronizations",
+    )
+    require_count(
+        publisher,
+        'require_absent(output_parent, pending, "retired pending build output")',
+        2,
+        "pre-content and post-content pending-edge retirement proofs",
+    )
+    publisher_prepare = extract(
+        publisher,
+        "def prepare(",
+        "\n\ndef commit(",
+        "shared publisher prepare phase",
+    )
+    require_order(
+        publisher_prepare,
+        (
+            "open_source(",
+            "open_bound_output_parent(",
+            'require_absent(output_parent, destination, "build output destination")',
+            "os.urandom(32).hex()",
+            "os.mkdir(pending, 0o700, dir_fd=output_parent)",
+            "copy_source(",
+            "create_checksum(",
+            'verify_result(pending_descriptor, "pending build output", contract)',
+            "os.fsync(pending_descriptor)",
+            "os.fsync(output_parent)",
+            "reprove_output_parent(",
+        ),
+        "shared publisher source-to-pending authority order",
+    )
+    publisher_commit = extract(
+        publisher,
+        "def commit(",
+        "\n\ndef make_source(",
+        "shared publisher commit phase",
+    )
+    require_order(
+        publisher_commit,
+        (
+            'require_absent(output_parent, destination, "build output destination")',
+            "open_pending(",
+            'verify_result(pending_descriptor, "pending build output", contract)',
+            "os.fsync(pending_descriptor)",
+            "reprove_output_parent(",
+            "rename_noreplace(output_parent, pending, destination)\n"
+            "        os.fsync(output_parent)",
+            'require_absent(output_parent, pending, "retired pending build output")',
+            'verify_result(pending_descriptor, "published build output", contract)',
+            "published build output changed during final verification",
+        ),
+        "shared publisher final no-clobber commit order",
+    )
 
     for token, label in (
         ('getattr(os, "O_NOFOLLOW", 0)', "descriptor no-follow open"),
@@ -965,8 +1209,13 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["verify"],
-        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132 Android APK builds and mandatory Android release gates use canonical-mode private source, independent fixed local Docker authority",
-        "shared Android builder Docker-authority disposition",
+        "/usr/bin/python3 -I -S scripts/publish-artifact-result.py --self-test",
+        "bounded shared publisher fixture wiring",
+    )
+    require(
+        sources["verify"],
+        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141 Android APK builds use independent pass sources, private stable result validation, exact cleanup, and terminal no-clobber publication",
+        "shared Android builder and result-publication disposition",
     )
     require(sources["requirements"], '<span class="id">R-S11bj</span>', "R-S11bj requirement")
     require(sources["requirements"], '<span class="id">R-S11bk</span>', "R-S11bk requirement")
@@ -1004,6 +1253,15 @@ def validate(sources: Dict[str, str]) -> None:
         sources["hardening"],
         "R-S11dj/R-S11e-128 — Android artifact-builder Docker client, daemon, and configuration authority",
         "Android artifact-builder Docker authority hardening ledger",
+    )
+    require(sources["requirements"], '<span class="id">R-S11dw</span>',
+            "R-S11dw Android result-publication requirement")
+    require(sources["requirements"], "<tr><td>276</td>",
+            "Appendix C #276 disposition")
+    require(
+        sources["hardening"],
+        "R-S11dw/R-S11e-141 — Android pass isolation, private result validation,",
+        "Android result-publication hardening ledger",
     )
     require(
         sources["requirements"],
@@ -1423,14 +1681,171 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("build", 'mode not in (b"100644", b"100755")', 'mode not in (b"100644", b"100755", b"120000")', "regular-only source tree"),
     Mutation("build", 'chmod -R a=rX "$SOURCE_AUTHORITY_ROOT"', 'chmod -R a=rwX "$SOURCE_AUTHORITY_ROOT"', "canonical immutable source modes"),
     Mutation("build", 'chmod -R u=rwX,go=rX "$BUILD_SOURCE_ROOT"', 'chmod -R u=rwX,g=rwX,o=rX "$BUILD_SOURCE_ROOT"', "canonical writable source modes"),
-    Mutation("build", "    prepare_build_source\n", "    true # fresh source construction removed\n", "fresh build source"),
-    Mutation("build", "    verify_build_source_unchanged\n    # The docker run built", "    true # post-build source comparison removed\n    # The docker run built", "post-build source comparison"),
-    Mutation("build", "    remove_build_source\n", "    true # build-source cleanup removed\n", "build-source cleanup"),
-    Mutation("build", 'source=$pass_output,target=/out" \\\n        --mount "type=bind,source=$KEYSTORE,target=/ks/keystore.jks,readonly', 'source=$pass_output,target=/out" \\\n        --mount "type=bind,source=$KEYSTORE,target=/ks/keystore.jks', "keystore read-only mount"),
+    Mutation(
+        "build",
+        '    prepare_build_source "$pass"\n',
+        "    true # fresh independent source construction removed\n",
+        "fresh build source",
+    ),
+    Mutation(
+        "build",
+        '    verify_build_source_unchanged "$BUILD_SOURCE_ROOT" "$pass"\n'
+        "    # The docker run built",
+        "    true # post-build source comparison removed\n"
+        "    # The docker run built",
+        "post-build source comparison",
+    ),
+    Mutation(
+        "build",
+        'BUILD_SOURCE_ROOT="$OWNED_WORKSPACE/source-$label"',
+        'BUILD_SOURCE_ROOT="$OWNED_WORKSPACE/source-build"',
+        "independent pass source",
+    ),
+    Mutation(
+        "build",
+        'source=$unsigned_apk,target=/in/rustdesk-arm64-unsigned.apk,readonly" \\\n'
+        '        --mount "type=bind,source=$KEYSTORE,target=/ks/keystore.jks,readonly',
+        'source=$unsigned_apk,target=/in/rustdesk-arm64-unsigned.apk,readonly" \\\n'
+        '        --mount "type=bind,source=$KEYSTORE,target=/ks/keystore.jks',
+        "keystore read-only mount",
+    ),
     Mutation("build", 'source=$resolved,target=/verify/app.apk,readonly" \\\n        --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/verify-android-apk-manifest.py,target=/checks/verify-android-apk-manifest.py,readonly', 'source=$resolved,target=/verify/app.apk,readonly" \\\n        --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/verify-android-apk-manifest.py,target=/checks/verify-android-apk-manifest.py', "manifest checker read-only mount"),
-    Mutation("build", 'publish_apk "$pass_a"', 'publish_apk "$pass_b"', "pass-A publication"),
-    Mutation("build", 'cmp -s "$pass_output/rustdesk-arm64.apk" "$OUT_DIR/rustdesk-arm64.apk"', 'true # publication comparison removed', "publication byte comparison"),
-    Mutation("build", "sha256sum -c rustdesk-arm64.apk.sha256", "true # published checksum not checked", "published checksum proof"),
+    Mutation(
+        "build",
+        'PASS_A_APK="$apk"',
+        'PASS_A_APK="$checksum"',
+        "pass-A publication source",
+    ),
+    Mutation(
+        "build",
+        '[[ "$checksum_line" =~ ^([0-9a-f]{64})\\ \\ rustdesk-arm64\\.apk$ ]]',
+        "true # canonical checksum accepted",
+        "canonical private checksum",
+    ),
+    Mutation(
+        "build",
+        '[ "$after_metadata" = "$metadata" ] \\\n'
+        '        && [ "$after_checksum_metadata" = "$checksum_metadata" ]',
+        'true # private result stability unchecked \\\n'
+        '        && [ "$after_checksum_metadata" = "$checksum_metadata" ]',
+        "private result stability",
+    ),
+    Mutation(
+        "build",
+        '    verify_apk_artifact "$apk"\n\n'
+        '    assert_exact_private_result_inventory "$pass_output" "$pass"',
+        '    verify_apk_artifact "$apk"\n\n'
+        "    true # post-verification inventory proof removed",
+        "post-verification private result inventory",
+    ),
+    Mutation(
+        "build",
+        'OWNED_WORKSPACE_ID="$(/usr/bin/stat -c \'%d:%i\' -- "$OWNED_WORKSPACE" 2>/dev/null)"',
+        'OWNED_WORKSPACE_ID="0:1"',
+        "workspace identity retention",
+    ),
+    Mutation(
+        "build",
+        '    prepare_output_contract\n',
+        "    true # absent output contract disabled\n",
+        "absent-output preflight",
+    ),
+    Mutation(
+        "build",
+        '[ "${#entries[@]}" -eq 2 ] \\\n'
+        '        && [ -e "$apk" ] && [ ! -L "$apk" ]',
+        'true # extra result entries accepted \\\n'
+        '        && [ -e "$apk" ] && [ ! -L "$apk" ]',
+        "exact private result inventory",
+    ),
+    Mutation(
+        "build",
+        'PASS_A_APK_ID="$device:$inode"',
+        'PASS_A_APK_ID="0:1"',
+        "pass-A APK identity",
+    ),
+    Mutation(
+        "build",
+        '[ "$PASS_A_SHA256" = "$PASS_B_SHA256" ]',
+        "true # Android A/B mismatch accepted",
+        "private A/B comparison",
+    ),
+    Mutation(
+        "build",
+        "remove_local_docker_authority \\\n"
+        '        || die "Android builder Docker authority could not retire before publication"',
+        "true # Docker authority retained through Android publication",
+        "authority-terminal Docker retirement",
+    ),
+    Mutation(
+        "build",
+        "remove_owned_workspace_exact \\\n"
+        '        || die "private Android build workspace could not retire before final publication"',
+        "true # private workspace retained through Android publication",
+        "authority-terminal workspace retirement",
+    ),
+    Mutation(
+        "build",
+        "            --prepare \\\n"
+        "            --artifact-kind android-arm64",
+        "            --prepare \\\n"
+        "            --artifact-kind debian-x86_64",
+        "closed Android publication profile",
+    ),
+    Mutation(
+        "build",
+        '--source-identity "$PASS_A_APK_ID"',
+        "--source-identity unchecked",
+        "publisher APK identity transfer",
+    ),
+    Mutation(
+        "build",
+        '--pending-identity "$PENDING_RESULT_ID"',
+        "--pending-identity unchecked",
+        "publisher pending identity transfer",
+    ),
+    Mutation(
+        "publisher",
+        'artifact="rustdesk-arm64.apk"',
+        'artifact="rustdesk-arm64-unsigned.apk"',
+        "canonical shared Android artifact",
+    ),
+    Mutation(
+        "publisher",
+        'checksum="rustdesk-arm64.apk.sha256"',
+        'checksum="rustdesk-arm64-unsigned.apk.sha256"',
+        "canonical shared Android checksum",
+    ),
+    Mutation(
+        "publisher",
+        "return tuple(sorted((self.artifact, self.checksum)))",
+        'return tuple(sorted((self.artifact, self.checksum, "extra")))',
+        "closed shared result inventory",
+    ),
+    Mutation(
+        "publisher",
+        'pending = f"{contract.pending_prefix}{os.urandom(32).hex()}"',
+        'pending = f"{contract.pending_prefix}fixed"',
+        "kernel-random shared pending name",
+    ),
+    Mutation(
+        "publisher",
+        "rename_noreplace(output_parent, pending, destination)",
+        "os.rename(pending, destination, src_dir_fd=output_parent, dst_dir_fd=output_parent)",
+        "shared final no-clobber rename",
+    ),
+    Mutation(
+        "publisher",
+        'verify_result(pending_descriptor, "published build output", contract)',
+        "pass # published content unchecked",
+        "shared post-publication content proof",
+    ),
+    Mutation(
+        "verify",
+        "/usr/bin/python3 -I -S scripts/publish-artifact-result.py --self-test",
+        "true # shared publisher fixture removed",
+        "shared publisher fixture wiring",
+    ),
     Mutation("checker", 'flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)', 'flags = os.O_RDONLY', "source no-follow open"),
     Mutation("checker", "if reference_digest != candidate_digest:", "if False:", "source digest comparison"),
     Mutation("checker", "if before.st_nlink != 1:", "if False:", "source hardlink refusal"),
@@ -1453,9 +1868,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("verify", "python3 scripts/verify-android-builder-authority.py --repo . --self-test", "true # Android builder authority verifier removed", "shared gate wiring"),
     Mutation(
         "verify",
-        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132 Android APK builds and mandatory Android release gates use canonical-mode private source, independent fixed local Docker authority",
+        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141 Android APK builds use independent pass sources, private stable result validation, exact cleanup, and terminal no-clobber publication",
         "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79 Android APK builds use ambient Docker authority",
-        "shared Android builder Docker-authority disposition",
+        "shared Android builder and result-publication disposition",
     ),
     Mutation("requirements", '<span class="id">R-S11bj</span>', '<span class="id">R-S11bj-disabled</span>', "requirement"),
     Mutation("requirements", '<span class="id">R-S11bk</span>', '<span class="id">R-S11bk-disabled</span>', "snapshot-mode requirement"),
@@ -1479,6 +1894,24 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "R-S11dj/R-S11e-128 — Android artifact-builder Docker client, daemon, and configuration authority",
         "R-S11dj/R-S11e-XXX — Android artifact-builder Docker authority deferred",
         "Android artifact-builder Docker authority hardening ledger",
+    ),
+    Mutation(
+        "requirements",
+        '<span class="id">R-S11dw</span>',
+        '<span class="id">R-S11dw-disabled</span>',
+        "Android result-publication requirement",
+    ),
+    Mutation(
+        "requirements",
+        "<tr><td>276</td>",
+        "<tr><td>276-disabled</td>",
+        "Android result-publication Appendix disposition",
+    ),
+    Mutation(
+        "hardening",
+        "R-S11dw/R-S11e-141 — Android pass isolation, private result validation,",
+        "R-S11dw/R-S11e-XXX — Android result publication remains pathname-owned,",
+        "Android result-publication hardening ledger",
     ),
     Mutation(
         "requirements",
@@ -1550,6 +1983,7 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         "verify": read_regular(repo, "scripts/verify.sh"),
         "requirements": read_regular(repo, "requirements.html"),
         "hardening": read_regular(repo, "HARDENING_STATUS.md"),
+        "publisher": read_regular(repo, "scripts/publish-artifact-result.py"),
     }
 
 

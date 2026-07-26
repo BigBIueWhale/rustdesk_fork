@@ -661,8 +661,9 @@ prepare_pending_result() {
     [ -n "$OUT_PARENT" ] && [ -n "$OUT_PARENT_ID" ] && [ -n "$OUT_DESTINATION" ] \
         || die "Debian output-parent authority is incomplete"
     authority="$(/usr/bin/env -i PATH=/usr/bin:/bin \
-        /usr/bin/python3 -I -S "$SCRIPT_DIR/publish-debian-result.py" \
+        /usr/bin/python3 -I -S "$SCRIPT_DIR/publish-artifact-result.py" \
             --prepare \
+            --artifact-kind debian-x86_64 \
             --source "$PASS_A_DEB" \
             --source-identity "$PASS_A_DEB_ID" \
             --source-sha256 "$PASS_A_SHA256" \
@@ -690,8 +691,9 @@ publish_result() {
     remove_owned_workspace_exact \
         || die "private Debian build workspace could not retire before final publication"
     /usr/bin/env -i PATH=/usr/bin:/bin \
-        /usr/bin/python3 -I -S "$SCRIPT_DIR/publish-debian-result.py" \
+        /usr/bin/python3 -I -S "$SCRIPT_DIR/publish-artifact-result.py" \
             --commit \
+            --artifact-kind debian-x86_64 \
             --output-parent "$OUT_PARENT" \
             --output-parent-identity "$OUT_PARENT_ID" \
             --pending "$PENDING_RESULT" \

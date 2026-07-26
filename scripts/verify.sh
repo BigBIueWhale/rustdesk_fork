@@ -207,7 +207,7 @@ r_s11cf=
 if ! python3 scripts/verify-debian-builder-authority.py --repo . --self-test; then
   r_s11cf="$r_s11cf authority-or-mutation-self-test-failed"
 fi
-if ! /usr/bin/python3 -I -S scripts/publish-debian-result.py --self-test; then
+if ! /usr/bin/python3 -I -S scripts/publish-artifact-result.py --self-test; then
   r_s11cf="$r_s11cf result-publication-self-test-failed"
 fi
 if [ -n "$r_s11cf" ]; then
@@ -1230,12 +1230,12 @@ else
   rc=1
 fi
 
-echo "== (3b-iii-a1a1) Android APK builder and mandatory release-gate container/source/mode/scratch/Docker authority (R-S11bj/R-S11bk/R-S11bl/R-S11bm/R-S11dj/R-S11dn/R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132) =="
+echo "== (3b-iii-a1a1) Android APK builder, result-publication, and mandatory release-gate authority (R-S11bj/R-S11bk/R-S11bl/R-S11bm/R-S11dj/R-S11dn/R-S11dw/R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141) =="
 if python3 scripts/verify-android-build-source.py --self-test \
     && python3 scripts/verify-android-builder-authority.py --repo . --self-test; then
-  echo "  ok  R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132 Android APK builds and mandatory Android release gates use canonical-mode private source, independent fixed local Docker authority, phased bounded dual-compatible preferences, narrow mounts, and confined existing-image launches"
+  echo "  ok  R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141 Android APK builds use independent pass sources, private stable result validation, exact cleanup, and terminal no-clobber publication; mandatory Android release gates retain fixed local Docker authority and confined existing-image launches"
 else
-  echo "  FAIL R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132 Android APK builder or mandatory Android release gate regained live-tree, archive-mode, output-tree, pull, network, host-root, ambient Docker daemon/configuration, release-parent inheritance, incompatible preferences, unbounded resources, or simultaneous scratch-retention authority"
+  echo "  FAIL R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141 Android APK builder or mandatory Android release gate regained live-tree, shared-pass, public-preverification, overwrite, recursive-cleanup, nonterminal-publication, pull, network, host-root, ambient Docker daemon/configuration, release-parent inheritance, incompatible preferences, unbounded resources, or simultaneous scratch-retention authority"
   rc=1
 fi
 

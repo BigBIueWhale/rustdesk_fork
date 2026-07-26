@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Publish one validated Debian result without pathname or overwrite authority."""
+"""Publish one validated build result without pathname or overwrite authority."""
 
 from __future__ import annotations
 
@@ -12,19 +12,15 @@ import re
 import stat
 import sys
 import tempfile
+from typing import NamedTuple
 
 
 RENAME_NOREPLACE = 1
-ARTIFACT = "rustdesk-x86_64.deb"
-CHECKSUM = "rustdesk-x86_64.deb.sha256"
-EXPECTED_INVENTORY = (ARTIFACT, CHECKSUM)
 MAX_ARTIFACT_BYTES = 4 * 1024 * 1024 * 1024
 MAX_CHECKSUM_BYTES = 256
 IDENTITY_RE = re.compile(r"^(0|[1-9][0-9]*):([1-9][0-9]*)$")
 DESTINATION_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$")
-PENDING_RE = re.compile(r"^\.debian-output-pending-[0-9a-f]{64}$")
 SHA256_RE = re.compile(r"^[0-9a-f]{64}$")
-SHA256_LINE_RE = re.compile(rb"^([0-9a-f]{64})  rustdesk-x86_64\.deb\n$")
 STABLE_FILE_FIELDS = (
     "st_dev",
     "st_ino",
@@ -36,6 +32,42 @@ STABLE_FILE_FIELDS = (
     "st_mtime_ns",
     "st_ctime_ns",
 )
+
+
+class ArtifactContract(NamedTuple):
+    kind: str
+    artifact: str
+    checksum: str
+    pending_prefix: str
+    pending_pattern: re.Pattern[str]
+    checksum_line_pattern: re.Pattern[bytes]
+
+    @property
+    def expected_inventory(self) -> tuple[str, str]:
+        return tuple(sorted((self.artifact, self.checksum)))
+
+
+DEBIAN_X86_64 = ArtifactContract(
+    kind="debian-x86_64",
+    artifact="rustdesk-x86_64.deb",
+    checksum="rustdesk-x86_64.deb.sha256",
+    pending_prefix=".debian-output-pending-",
+    pending_pattern=re.compile(r"^\.debian-output-pending-[0-9a-f]{64}$"),
+    checksum_line_pattern=re.compile(
+        rb"^([0-9a-f]{64})  rustdesk-x86_64\.deb\n$"
+    ),
+)
+ANDROID_ARM64 = ArtifactContract(
+    kind="android-arm64",
+    artifact="rustdesk-arm64.apk",
+    checksum="rustdesk-arm64.apk.sha256",
+    pending_prefix=".android-output-pending-",
+    pending_pattern=re.compile(r"^\.android-output-pending-[0-9a-f]{64}$"),
+    checksum_line_pattern=re.compile(rb"^([0-9a-f]{64})  rustdesk-arm64\.apk\n$"),
+)
+CONTRACTS = {
+    contract.kind: contract for contract in (DEBIAN_X86_64, ANDROID_ARM64)
+}
 
 
 class PublicationError(RuntimeError):
@@ -115,11 +147,11 @@ def open_source(
     expected_identity: tuple[int, int],
 ) -> tuple[int, os.stat_result]:
     if not os.path.isabs(path) or os.path.realpath(path) != path:
-        fail("Debian package source path is not absolute and canonical")
+        fail("build artifact source path is not absolute and canonical")
     try:
         before = os.lstat(path)
     except OSError as exc:
-        fail(f"cannot inspect Debian package source: {exc}")
+        fail(f"cannot inspect build artifact source: {exc}")
     mode = stat.S_IMODE(before.st_mode)
     if (
         not stat.S_ISREG(before.st_mode)
@@ -131,19 +163,19 @@ def open_source(
         or mode & 0o7133
         or mode & 0o400 != 0o400
     ):
-        fail("Debian package source metadata is invalid")
+        fail("build artifact source metadata is invalid")
     flags = os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW
     try:
         descriptor = os.open(path, flags)
     except OSError as exc:
-        fail(f"cannot open Debian package source: {exc}")
+        fail(f"cannot open build artifact source: {exc}")
     try:
         opened = os.fstat(descriptor)
         if stable_file(before) != stable_file(opened):
-            fail("Debian package source changed while it was opened")
+            fail("build artifact source changed while it was opened")
         if identity(opened) != expected_identity:
-            fail("Debian package source device/inode identity changed")
-        reject_access_acl(descriptor, "Debian package source", include_default=False)
+            fail("build artifact source device/inode identity changed")
+        reject_access_acl(descriptor, "build artifact source", include_default=False)
         return descriptor, opened
     except BaseException:
         os.close(descriptor)
@@ -154,35 +186,36 @@ def open_pending(
     parent: int,
     name: str,
     expected_identity: tuple[int, int] | None,
+    contract: ArtifactContract,
 ) -> int:
-    if PENDING_RE.fullmatch(name) is None:
-        fail("pending Debian output name is malformed")
+    if contract.pending_pattern.fullmatch(name) is None:
+        fail("pending build output name is malformed")
     try:
         before = os.stat(name, dir_fd=parent, follow_symlinks=False)
     except OSError as exc:
-        fail(f"cannot inspect pending Debian output: {exc}")
+        fail(f"cannot inspect pending build output: {exc}")
     if not stat.S_ISDIR(before.st_mode):
-        fail("pending Debian output is not a real directory")
+        fail("pending build output is not a real directory")
     flags = os.O_RDONLY | os.O_CLOEXEC | os.O_DIRECTORY | os.O_NOFOLLOW
     try:
         descriptor = os.open(name, flags, dir_fd=parent)
     except OSError as exc:
-        fail(f"cannot open pending Debian output: {exc}")
+        fail(f"cannot open pending build output: {exc}")
     try:
         opened = os.fstat(descriptor)
         parent_info = os.fstat(parent)
         if stable_file(before) != stable_file(opened):
-            fail("pending Debian output changed while it was opened")
+            fail("pending build output changed while it was opened")
         if expected_identity is not None and identity(opened) != expected_identity:
-            fail("pending Debian output device/inode identity changed")
+            fail("pending build output device/inode identity changed")
         if (
             opened.st_dev != parent_info.st_dev
             or opened.st_uid != os.getuid()
             or opened.st_gid != os.getgid()
             or stat.S_IMODE(opened.st_mode) != 0o700
         ):
-            fail("pending Debian output metadata is invalid")
-        reject_access_acl(descriptor, "pending Debian output", include_default=True)
+            fail("pending build output metadata is invalid")
+        reject_access_acl(descriptor, "pending build output", include_default=True)
         return descriptor
     except BaseException:
         os.close(descriptor)
@@ -199,13 +232,17 @@ def require_absent(parent: int, name: str, label: str) -> None:
     fail(f"{label} is occupied")
 
 
-def list_entries(descriptor: int, label: str) -> tuple[str, ...]:
+def list_entries(
+    descriptor: int,
+    label: str,
+    contract: ArtifactContract,
+) -> tuple[str, ...]:
     try:
         entries = tuple(sorted(os.listdir(descriptor)))
     except OSError as exc:
         fail(f"cannot enumerate {label}: {exc}")
-    if entries != EXPECTED_INVENTORY:
-        fail(f"{label} inventory is not the exact Debian output set")
+    if entries != contract.expected_inventory:
+        fail(f"{label} inventory is not the exact build output set")
     return entries
 
 
@@ -272,10 +309,14 @@ def read_exact_file(
         os.close(descriptor)
 
 
-def hash_result_artifact(parent: int, label: str) -> str:
+def hash_result_artifact(
+    parent: int,
+    label: str,
+    contract: ArtifactContract,
+) -> str:
     descriptor, before = open_result_file(
         parent,
-        ARTIFACT,
+        contract.artifact,
         maximum=MAX_ARTIFACT_BYTES,
         label=f"{label} artifact",
     )
@@ -297,19 +338,23 @@ def hash_result_artifact(parent: int, label: str) -> str:
         os.close(descriptor)
 
 
-def verify_result(descriptor: int, label: str) -> str:
-    list_entries(descriptor, label)
+def verify_result(
+    descriptor: int,
+    label: str,
+    contract: ArtifactContract,
+) -> str:
+    list_entries(descriptor, label, contract)
     checksum = read_exact_file(
         descriptor,
-        CHECKSUM,
+        contract.checksum,
         maximum=MAX_CHECKSUM_BYTES,
         label=f"{label} checksum",
     )
-    match = SHA256_LINE_RE.fullmatch(checksum)
+    match = contract.checksum_line_pattern.fullmatch(checksum)
     if match is None:
         fail(f"{label} checksum is not canonical")
     expected = match.group(1).decode("ascii")
-    actual = hash_result_artifact(descriptor, label)
+    actual = hash_result_artifact(descriptor, label, contract)
     if actual != expected:
         fail(f"{label} artifact does not match its checksum")
     return actual
@@ -320,7 +365,7 @@ def create_output_file(parent: int, name: str) -> int:
     try:
         return os.open(name, flags, 0o600, dir_fd=parent)
     except OSError as exc:
-        fail(f"cannot create pending Debian output {name}: {exc}")
+        fail(f"cannot create pending build output {name}: {exc}")
 
 
 def write_all(descriptor: int, data: bytes, label: str) -> None:
@@ -337,24 +382,25 @@ def copy_source(
     source_info: os.stat_result,
     destination: int,
     expected_sha256: str,
+    contract: ArtifactContract,
 ) -> None:
-    output = create_output_file(destination, ARTIFACT)
+    output = create_output_file(destination, contract.artifact)
     digest = hashlib.sha256()
     try:
         remaining = source_info.st_size
         while remaining:
             chunk = os.read(source, min(1024 * 1024, remaining))
             if not chunk:
-                fail("Debian package source ended before its recorded size")
-            write_all(output, chunk, f"pending {ARTIFACT}")
+                fail("build artifact source ended before its recorded size")
+            write_all(output, chunk, f"pending {contract.artifact}")
             digest.update(chunk)
             remaining -= len(chunk)
         if os.read(source, 1):
-            fail("Debian package source grew beyond its recorded size")
+            fail("build artifact source grew beyond its recorded size")
         if stable_file(source_info) != stable_file(os.fstat(source)):
-            fail("Debian package source changed while it was copied")
+            fail("build artifact source changed while it was copied")
         if digest.hexdigest() != expected_sha256:
-            fail("Debian package source does not match its validated SHA-256")
+            fail("build artifact source does not match its validated SHA-256")
         os.fchmod(output, 0o400)
         os.fsync(output)
         copied = os.fstat(output)
@@ -366,17 +412,21 @@ def copy_source(
             or copied.st_nlink != 1
             or copied.st_size != source_info.st_size
         ):
-            fail("pending Debian artifact metadata is invalid")
-        reject_access_acl(output, "pending Debian artifact", include_default=False)
+            fail("pending build artifact metadata is invalid")
+        reject_access_acl(output, "pending build artifact", include_default=False)
     finally:
         os.close(output)
 
 
-def create_checksum(destination: int, digest: str) -> None:
-    data = f"{digest}  {ARTIFACT}\n".encode("ascii")
-    output = create_output_file(destination, CHECKSUM)
+def create_checksum(
+    destination: int,
+    digest: str,
+    contract: ArtifactContract,
+) -> None:
+    data = f"{digest}  {contract.artifact}\n".encode("ascii")
+    output = create_output_file(destination, contract.checksum)
     try:
-        write_all(output, data, f"pending {CHECKSUM}")
+        write_all(output, data, f"pending {contract.checksum}")
         os.fchmod(output, 0o400)
         os.fsync(output)
         created = os.fstat(output)
@@ -388,8 +438,8 @@ def create_checksum(destination: int, digest: str) -> None:
             or created.st_nlink != 1
             or created.st_size != len(data)
         ):
-            fail("pending Debian checksum metadata is invalid")
-        reject_access_acl(output, "pending Debian checksum", include_default=False)
+            fail("pending build checksum metadata is invalid")
+        reject_access_acl(output, "pending build checksum", include_default=False)
     finally:
         os.close(output)
 
@@ -419,22 +469,23 @@ def rename_noreplace(parent: int, source: str, destination: str) -> None:
     ):
         error = ctypes.get_errno()
         if error == errno.EEXIST:
-            fail("Debian output destination appeared before no-clobber publication")
+            fail("build output destination appeared before no-clobber publication")
         if error == errno.EXDEV:
-            fail("Debian output publication crossed a filesystem")
+            fail("build output publication crossed a filesystem")
         fail(f"renameat2(RENAME_NOREPLACE) failed: {os.strerror(error)}")
 
 
-def validate_destination(destination: str) -> None:
+def validate_destination(destination: str, contract: ArtifactContract) -> None:
     if (
         DESTINATION_RE.fullmatch(destination) is None
         or destination in (".", "..")
-        or PENDING_RE.fullmatch(destination) is not None
+        or contract.pending_pattern.fullmatch(destination) is not None
     ):
-        fail("Debian output destination name is malformed")
+        fail("build output destination name is malformed")
 
 
 def prepare(
+    contract: ArtifactContract,
     source_path: str,
     source_identity: str,
     source_sha256: str,
@@ -442,38 +493,47 @@ def prepare(
     output_parent_identity: str,
     destination: str,
 ) -> tuple[str, tuple[int, int]]:
-    validate_destination(destination)
+    validate_destination(destination, contract)
     if SHA256_RE.fullmatch(source_sha256) is None:
-        fail("validated Debian package SHA-256 is malformed")
-    expected_source = parse_identity(source_identity, "Debian package source")
+        fail("validated build artifact SHA-256 is malformed")
+    expected_source = parse_identity(source_identity, "build artifact source")
     expected_parent = parse_identity(output_parent_identity, "output parent")
     source, source_info = open_source(source_path, expected_source)
     output_parent = open_bound_output_parent(output_parent_path, expected_parent)
     pending_descriptor = None
     try:
-        require_absent(output_parent, destination, "Debian output destination")
-        pending = f".debian-output-pending-{os.urandom(32).hex()}"
-        require_absent(output_parent, pending, "pending Debian output")
+        require_absent(output_parent, destination, "build output destination")
+        pending = f"{contract.pending_prefix}{os.urandom(32).hex()}"
+        require_absent(output_parent, pending, "pending build output")
         try:
             os.mkdir(pending, 0o700, dir_fd=output_parent)
         except OSError as exc:
-            fail(f"cannot create pending Debian output: {exc}")
-        pending_descriptor = open_pending(output_parent, pending, None)
+            fail(f"cannot create pending build output: {exc}")
+        pending_descriptor = open_pending(output_parent, pending, None, contract)
         pending_info = os.fstat(pending_descriptor)
-        copy_source(source, source_info, pending_descriptor, source_sha256)
-        create_checksum(pending_descriptor, source_sha256)
-        if verify_result(pending_descriptor, "pending Debian output") != source_sha256:
-            fail("pending Debian output digest changed")
+        copy_source(
+            source,
+            source_info,
+            pending_descriptor,
+            source_sha256,
+            contract,
+        )
+        create_checksum(pending_descriptor, source_sha256, contract)
+        if (
+            verify_result(pending_descriptor, "pending build output", contract)
+            != source_sha256
+        ):
+            fail("pending build output digest changed")
         os.fsync(pending_descriptor)
         os.fsync(output_parent)
-        require_absent(output_parent, destination, "Debian output destination")
+        require_absent(output_parent, destination, "build output destination")
         edge = os.stat(pending, dir_fd=output_parent, follow_symlinks=False)
         if (
             not stat.S_ISDIR(edge.st_mode)
             or identity(edge) != identity(pending_info)
             or stable_file(source_info) != stable_file(os.fstat(source))
         ):
-            fail("pending Debian output or its validated source changed")
+            fail("pending build output or its validated source changed")
         reprove_output_parent(output_parent_path, expected_parent)
         return pending, identity(pending_info)
     finally:
@@ -484,38 +544,44 @@ def prepare(
 
 
 def commit(
+    contract: ArtifactContract,
     output_parent_path: str,
     output_parent_identity: str,
     pending: str,
     pending_identity: str,
     destination: str,
 ) -> None:
-    validate_destination(destination)
-    if PENDING_RE.fullmatch(pending) is None:
-        fail("pending Debian output name is malformed")
+    validate_destination(destination, contract)
+    if contract.pending_pattern.fullmatch(pending) is None:
+        fail("pending build output name is malformed")
     expected_parent = parse_identity(output_parent_identity, "output parent")
-    expected_pending = parse_identity(pending_identity, "pending Debian output")
+    expected_pending = parse_identity(pending_identity, "pending build output")
     output_parent = open_bound_output_parent(output_parent_path, expected_parent)
     pending_descriptor = None
     try:
-        require_absent(output_parent, destination, "Debian output destination")
-        pending_descriptor = open_pending(output_parent, pending, expected_pending)
+        require_absent(output_parent, destination, "build output destination")
+        pending_descriptor = open_pending(
+            output_parent,
+            pending,
+            expected_pending,
+            contract,
+        )
         pending_info = os.fstat(pending_descriptor)
-        verify_result(pending_descriptor, "pending Debian output")
+        verify_result(pending_descriptor, "pending build output", contract)
         os.fsync(pending_descriptor)
         os.fsync(output_parent)
         reprove_output_parent(output_parent_path, expected_parent)
         rename_noreplace(output_parent, pending, destination)
         os.fsync(output_parent)
-        require_absent(output_parent, pending, "retired pending Debian output")
+        require_absent(output_parent, pending, "retired pending build output")
         published = os.stat(destination, dir_fd=output_parent, follow_symlinks=False)
         if not stat.S_ISDIR(published.st_mode) or identity(published) != identity(pending_info):
-            fail("published Debian output is not the authenticated pending object")
-        verify_result(pending_descriptor, "published Debian output")
-        require_absent(output_parent, pending, "retired pending Debian output")
+            fail("published build output is not the authenticated pending object")
+        verify_result(pending_descriptor, "published build output", contract)
+        require_absent(output_parent, pending, "retired pending build output")
         published = os.stat(destination, dir_fd=output_parent, follow_symlinks=False)
         if not stat.S_ISDIR(published.st_mode) or identity(published) != identity(pending_info):
-            fail("published Debian output changed during final verification")
+            fail("published build output changed during final verification")
         reprove_output_parent(output_parent_path, expected_parent)
     finally:
         if pending_descriptor is not None:
@@ -548,8 +614,10 @@ def assert_rejected(operation, label: str) -> None:
     fail(f"self-test accepted {label}")
 
 
-def self_test() -> None:
-    with tempfile.TemporaryDirectory(prefix="debian-publication-test.") as temporary:
+def self_test_contract(contract: ArtifactContract) -> None:
+    with tempfile.TemporaryDirectory(
+        prefix=f"{contract.kind}-publication-test."
+    ) as temporary:
         os.chmod(temporary, 0o700)
         output_parent = os.path.join(temporary, "out")
         os.mkdir(output_parent, 0o700)
@@ -558,10 +626,11 @@ def self_test() -> None:
 
         source, source_identity, source_sha256 = make_source(
             temporary,
-            "source.deb",
-            b"synthetic Debian artifact\n",
+            f"source-{contract.kind}",
+            b"synthetic build artifact\n",
         )
         pending, pending_info = prepare(
+            contract,
             source,
             source_identity,
             source_sha256,
@@ -570,6 +639,7 @@ def self_test() -> None:
             "published",
         )
         commit(
+            contract,
             output_parent,
             parent_identity,
             pending,
@@ -577,18 +647,19 @@ def self_test() -> None:
             "published",
         )
         published = os.path.join(output_parent, "published")
-        if sorted(os.listdir(published)) != list(EXPECTED_INVENTORY):
+        if sorted(os.listdir(published)) != list(contract.expected_inventory):
             fail("self-test publication inventory is wrong")
-        for name in EXPECTED_INVENTORY:
+        for name in contract.expected_inventory:
             if stat.S_IMODE(os.stat(os.path.join(published, name)).st_mode) != 0o400:
                 fail("self-test publication mode is wrong")
 
         collision_source, collision_id, collision_sha = make_source(
             temporary,
-            "collision.deb",
+            f"collision-{contract.kind}",
             b"collision source\n",
         )
         collision_pending, collision_pending_info = prepare(
+            contract,
             collision_source,
             collision_id,
             collision_sha,
@@ -603,6 +674,7 @@ def self_test() -> None:
             handle.write(b"preserve\n")
         assert_rejected(
             lambda: commit(
+                contract,
                 output_parent,
                 parent_identity,
                 collision_pending,
@@ -619,12 +691,16 @@ def self_test() -> None:
 
         hardlink_source, hardlink_id, hardlink_sha = make_source(
             temporary,
-            "hardlink.deb",
+            f"hardlink-{contract.kind}",
             b"hardlinked source\n",
         )
-        os.link(hardlink_source, os.path.join(temporary, "hardlink-alias.deb"))
+        os.link(
+            hardlink_source,
+            os.path.join(temporary, f"hardlink-alias-{contract.kind}"),
+        )
         assert_rejected(
             lambda: prepare(
+                contract,
                 hardlink_source,
                 hardlink_id,
                 hardlink_sha,
@@ -637,7 +713,7 @@ def self_test() -> None:
 
         replaced_source, replaced_id, replaced_sha = make_source(
             temporary,
-            "replaced-source.deb",
+            f"replaced-source-{contract.kind}",
             b"original source\n",
         )
         os.rename(replaced_source, f"{replaced_source}.retained")
@@ -646,6 +722,7 @@ def self_test() -> None:
         os.chmod(replaced_source, 0o600)
         assert_rejected(
             lambda: prepare(
+                contract,
                 replaced_source,
                 replaced_id,
                 replaced_sha,
@@ -658,10 +735,11 @@ def self_test() -> None:
 
         pending_source, pending_source_id, pending_source_sha = make_source(
             temporary,
-            "pending-substitution.deb",
+            f"pending-substitution-{contract.kind}",
             b"pending substitution\n",
         )
         replaced_pending, replaced_pending_info = prepare(
+            contract,
             pending_source,
             pending_source_id,
             pending_source_sha,
@@ -677,6 +755,7 @@ def self_test() -> None:
         os.mkdir(os.path.join(output_parent, replaced_pending), 0o700)
         assert_rejected(
             lambda: commit(
+                contract,
                 output_parent,
                 parent_identity,
                 replaced_pending,
@@ -690,10 +769,11 @@ def self_test() -> None:
 
         extra_source, extra_id, extra_sha = make_source(
             temporary,
-            "extra.deb",
+            f"extra-{contract.kind}",
             b"extra inventory\n",
         )
         extra_pending, extra_pending_info = prepare(
+            contract,
             extra_source,
             extra_id,
             extra_sha,
@@ -706,6 +786,7 @@ def self_test() -> None:
         os.chmod(os.path.join(output_parent, extra_pending, "unexpected"), 0o400)
         assert_rejected(
             lambda: commit(
+                contract,
                 output_parent,
                 parent_identity,
                 extra_pending,
@@ -722,11 +803,12 @@ def self_test() -> None:
         os.mkdir(output_parent, 0o700)
         parent_source, parent_source_id, parent_source_sha = make_source(
             temporary,
-            "parent-substitution.deb",
+            f"parent-substitution-{contract.kind}",
             b"parent substitution\n",
         )
         assert_rejected(
             lambda: prepare(
+                contract,
                 parent_source,
                 parent_source_id,
                 parent_source_sha,
@@ -737,7 +819,11 @@ def self_test() -> None:
             "a substituted output parent",
         )
 
-    print("publish-debian-result self-test: ok")
+
+def self_test() -> None:
+    for contract in CONTRACTS.values():
+        self_test_contract(contract)
+    print("publish-artifact-result self-test: ok")
 
 
 def parse_args(argv: list[str]) -> argparse.Namespace:
@@ -746,6 +832,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     modes.add_argument("--self-test", action="store_true")
     modes.add_argument("--prepare", action="store_true")
     modes.add_argument("--commit", action="store_true")
+    parser.add_argument("--artifact-kind", choices=tuple(CONTRACTS))
     parser.add_argument("--source")
     parser.add_argument("--source-identity")
     parser.add_argument("--source-sha256")
@@ -760,6 +847,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             value is not None
             for value in (
                 args.source,
+                args.artifact_kind,
                 args.source_identity,
                 args.source_sha256,
                 args.output_parent,
@@ -772,7 +860,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             parser.error("--self-test takes no publication arguments")
     elif args.prepare:
         if (
-            any(
+            args.artifact_kind is None
+            or any(
                 value is None
                 for value in (
                     args.source,
@@ -786,9 +875,10 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
             or args.pending is not None
             or args.pending_identity is not None
         ):
-            parser.error("prepare requires exactly its six authority arguments")
+            parser.error("prepare requires one artifact profile and six authority arguments")
     elif (
-        any(
+        args.artifact_kind is None
+        or any(
             value is None
             for value in (
                 args.output_parent,
@@ -802,7 +892,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         or args.source_identity is not None
         or args.source_sha256 is not None
     ):
-        parser.error("commit requires exactly its five authority arguments")
+        parser.error("commit requires one artifact profile and five authority arguments")
     return args
 
 
@@ -811,7 +901,9 @@ def main(argv: list[str]) -> int:
     if args.self_test:
         self_test()
     elif args.prepare:
+        contract = CONTRACTS[args.artifact_kind]
         pending, pending_identity = prepare(
+            contract,
             args.source,
             args.source_identity,
             args.source_sha256,
@@ -821,7 +913,9 @@ def main(argv: list[str]) -> int:
         )
         print(f"{pending} {pending_identity[0]}:{pending_identity[1]}")
     else:
+        contract = CONTRACTS[args.artifact_kind]
         commit(
+            contract,
             args.output_parent,
             args.output_parent_identity,
             args.pending,
@@ -835,5 +929,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main(sys.argv[1:]))
     except (PublicationError, OSError) as exc:
-        print(f"publish-debian-result: FAIL: {exc}", file=sys.stderr)
+        print(f"publish-artifact-result: FAIL: {exc}", file=sys.stderr)
         raise SystemExit(1)

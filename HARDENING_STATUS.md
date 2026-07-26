@@ -13509,7 +13509,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   Publication first re-proves and terminally removes the fixed local-Docker
   configuration authority. The isolated
-  `scripts/publish-debian-result.py` opens the exact validated package and
+  `scripts/publish-artifact-result.py` opens the exact validated package and
   retained output parent no-follow; rechecks current-principal ownership,
   safe mode, single-link, size, device/inode, and source digest authority; and
   rejects POSIX access/default ACLs where applicable. While the requested name
@@ -13616,6 +13616,165 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   review remain open. No host RustDesk/service/configuration/firewall/network
   state was inspected or mutated, and the broader Ralph-loop goal remains
   active.
+- **R-S11dw/R-S11e-141 — Android pass isolation, private result validation,
+  exact cleanup, and publication are one no-clobber authority-terminal
+  transaction — SOURCE AND CONFINED FOCUSED SOURCE/MUTATION/FILESYSTEM
+  VERIFICATION COMPLETE 2026-07-26; COLD RELEASE, INSTALLED/DEVICE, AND
+  EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.**
+  Platform: the unprivileged Linux Android-build host. Endpoint/action:
+  `scripts/build-android.sh::build_apk` and `sign_apk` creating each private
+  pass, `validate_private_result` proving its signed result, and
+  `publish_result` exposing only authenticated pass A after private A/B
+  equality. Boundary: independent exact-commit writable pass trees, signed
+  APK/checksum objects, and child-owned Docker/workspace authority plus the
+  selected output-parent namespace ↔ the irreversible caller-visible
+  two-file Android result and terminal child verdict.
+
+  Proven old path and history: the Android builder gave both passes the fixed
+  `"$OWNED_WORKSPACE/source-build"` pathname. After extracting and compiling
+  pass A it recursively changed that tree's permissions and removed it with
+  `rm -rf`, then constructed pass B at the same name. Publication ran
+  `mkdir -p "$OUT_DIR"` and overwrite-capable `install` for the APK and
+  checksum, compared private and public pathnames only after those writes,
+  checked the public checksum, and then launched another fallible
+  certificate/manifest/mobile-key verifier container against the public APK.
+  Docker/configuration and the private workspace remained live until EXIT,
+  whose fallback recursively changed and removed the workspace by pathname.
+  A verifier, collision, substitution, interruption, or cleanup failure could
+  therefore leave apparently complete caller-visible state from a failed
+  transaction or replace a prior result, while pass independence relied on
+  recursive deletion rather than coexisting object ownership. `git blame`
+  and `git log -S` trace this publication/source-reuse shape to
+  `d8d9ddaf` (`Confine Android artifact builds`) by Ronen Zyroff.
+
+  The builder has always refused numeric UID and primary GID zero, and its
+  build/sign/verification containers remain pinned, no-pull, networkless,
+  read-only-root, numeric-nonroot, capability-free/no-new-privileges, and
+  resource-bounded. This finding was non-root APK-output integrity,
+  pass-isolation, intermediate-result exposure, overwrite,
+  pathname-substitution, durability, cleanup-order, and terminal-verdict debt.
+  It is not evidence that the builder ran, an APK was modified or replaced,
+  another Docker daemon was selected, Docker escaped, host root was acquired,
+  a listener or port was exposed, or host
+  RustDesk/service/configuration/firewall/network state changed or was
+  compromised.
+
+  Source correction: preflight now requires one absent absolute canonical
+  output leaf under an already-existing canonical, current-principal non-root
+  parent with owner read/write/search and no special, group-write, or
+  world-write authority, and retains that parent's exact device/inode before
+  creating build authority. Existing output, unsafe/noncanonical/symlinked
+  parent topology, or malformed destination fails without adoption,
+  inspection, deletion, or overwrite. The private workspace is itself proved
+  canonical current-principal mode 0700 and retained by exact device/inode.
+
+  Pass A and pass B now receive distinct freshly absent
+  `source-pass-a`/`source-pass-b` exact-commit writable trees. They coexist
+  until the one whole-workspace close, so no between-pass recursive
+  permission rewrite or deletion establishes independence. Each unsigned APK
+  stays inside its pass source and is mounted read-only into signing; only the
+  signed APK is created in that pass's private result directory. After
+  signing, the result is sealed to exactly mode-0400
+  `rustdesk-arm64.apk` and its mode-0400 canonical lowercase SHA-256 record.
+  `validate_private_result` rejects extra entries, symlinks, hardlinks,
+  wrong ownership/group/mode, empty/oversized APKs, wrong checksum size/text,
+  and digest mismatch; runs the existing pinned-certificate,
+  v2/v3-signature, manifest, mobile-key, online-snapshot, and source checks
+  against that private APK; then requires APK/checksum metadata, checksum
+  bytes, and APK digest stability. It retains only validated pass-A
+  path/device/inode/digest and pass-B digest authority. Direct A/B equality is
+  private. `DOUBLE_BUILD=0` remains release-internal/diagnostic behavior; the
+  release transaction independently owns the two exact snapshots.
+
+  Publication re-proves and terminally removes the fixed local-Docker
+  configuration authority before any output candidate is prepared. The
+  former Debian-only descriptor publisher is now the deliberately closed
+  two-profile `scripts/publish-artifact-result.py`; it accepts only
+  `debian-x86_64` or `android-arm64`, never caller-selected artifact names.
+  The Android profile opens the exact validated pass-A APK and retained output
+  parent no-follow, rechecks current-principal ownership, safe mode,
+  single-link/size/device/inode and digest authority, rejects widening POSIX
+  ACLs, and exclusively creates one kernel-random
+  `.android-output-pending-<64hex>` mode-0700 directory beneath the
+  authenticated parent while the requested name is absent. Through retained
+  descriptors it creates exactly mode-0400 `rustdesk-arm64.apk` and
+  `rustdesk-arm64.apk.sha256`, hashes and synchronizes both, revalidates the
+  closed inventory/checksum/content, synchronizes the pending and parent, and
+  returns only the strict pending name plus device/inode.
+
+  The builder next invokes the shared descriptor-relative private-tree closer
+  against the exact recorded workspace while the requested destination
+  remains absent. Both pass sources/results, the child-owned online snapshot,
+  and all scratch retire together. The old builder-level recursive
+  `chmod -R`/`rm -rf` path and between-pass deletion are absent. Root-edge
+  substitution, mount/device crossing, special nodes, external links,
+  descriptor-budget exhaustion, or any ambiguity preserves state and fails
+  before final publication.
+
+  A second isolated publisher invocation reopens the exact parent/pending
+  identities, revalidates the exact profile inventory, modes, links,
+  checksum, bytes and parent authority, and performs one descriptor-relative
+  same-parent `renameat2(RENAME_NOREPLACE)` to the requested absent leaf. It
+  synchronizes the parent, proves the pending edge absent and final edge equal
+  to the still-open object, revalidates content, and reproves the parent.
+  Collision, source/parent/pending substitution, unsupported semantics, or
+  uncertainty has no public copy, overwrite, deletion, cross-filesystem
+  fallback, or compatibility path. No build, Docker operation, workspace
+  cleanup, public verification container, output mutation, or fallible
+  completion log follows the terminal publisher call. Verify-only mode does
+  not prepare or publish output and uses the same exact workspace closer.
+  R-S11dw and Appendix C #276 make this boundary normative.
+
+  Confined verification used immutable image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric UID/GID 1000:1000 with no pull or network, read-only root and
+  repository, recursive bind inclusion disabled, all capabilities dropped,
+  no-new-privileges, finite PID/memory/no-swap/CPU/descriptor/file-size/tmpfs
+  limits, and no Docker/libvirt/service-manager socket, host namespace,
+  device, port, or host-configuration mount. The focused Android authority
+  verifier passes all 166 deliberate mutations. The shared bounded publisher
+  fixture passes independently for both closed profiles, including successful
+  prepare/commit, exact mode-0400 inventory, occupied-destination
+  preservation, source/output-parent/pending substitution refusal, source
+  hardlink refusal, and extra-inventory refusal. Bash syntax, in-memory Python
+  compilation, the focused Debian 90-mutation regression, Android exact-source
+  comparator fixture, and the independent workspace semantic baseline are
+  green. One uninterrupted complete independent catalog rejects all 2,510
+  deliberate source mutations from mutation one. Adjacent exact reruns pass
+  the release-parent 27-mutation and Debian systemd-lifecycle 44-mutation
+  authority catalogs. The native-codec normal and negative fixtures,
+  requirements HTML parse, active-hash synchronization, and final Bash/Python
+  syntax gates are green. The active requirements SHA-256 is
+  `90e6c414eb90986568b603030ce8cd70c0d5b4e802fd89bb6beeca46f5b152dd`.
+
+  Preliminary failures are retained as verifier-hardening evidence. The first
+  complete-catalog attempt showed that replacing the recorded Android
+  workspace device/inode with a constant survived the independent checker;
+  the checker now requires that exact stat-derived assignment. The second
+  attempt showed that deleting the output-contract call while leaving its
+  function defined survived; the independent checker now binds its order
+  before execution/build authority. A third attempt rejected that deletion
+  correctly but expected the older diagnostic label. A fourth rejected the
+  shared no-clobber mutation correctly but expected an Android-specific label
+  even though the Debian profile checker encountered the shared helper first.
+  A fifth rejected the migrated Debian exact-inventory mutation correctly but
+  expected its pre-profile label. Those expected diagnostics were corrected
+  and every complete run restarted from mutation one. Final review then added
+  a second exact two-file inventory enumeration after signed-artifact
+  verification, with shell-option state preservation and new focused and
+  independent mutations; the final 2,510-mutation run passed uninterrupted.
+  No accepted mutation or diagnostic bookkeeping failure is represented as a
+  pass.
+
+  This source slice intentionally does not invoke the Android builder main
+  path, an Android build/signing/verifier workload, keystore, release
+  transaction, APK installation, emulator/device, root fixture, systemd or
+  any host service/network action. Exact cold committed R-B2/R-B10
+  Android/release artifacts, installed/native/device behavior (including the
+  separately tracked Android lifecycle/session correction), independent
+  reproduction where separately required, and R-V3 external review remain
+  open. No host RustDesk/service/configuration/firewall/network state was
+  inspected or mutated, and the broader Ralph-loop goal remains active.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -14333,9 +14492,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-ce7e3a94dc28f59cd64b00b0184655c15c091c517b957c66a8884021fcf25a36  requirements.html
+90e6c414eb90986568b603030ce8cd70c0d5b4e802fd89bb6beeca46f5b152dd  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dv, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#275. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dw, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

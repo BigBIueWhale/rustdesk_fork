@@ -250,16 +250,16 @@ else
   echo "  ok  R-S11da the exact bootstrap is binary material only; one networkless numeric-nonroot mode-max certification graph and private exact untagged archive authorize the release builder"
 fi
 
-echo "== (0e) Android signing-identity generation authority (R-S11cg/R-S11e-99) =="
+echo "== (0e) Android signing-identity generation and Docker authority (R-S11cg/R-S11di) =="
 r_s11cg=
 if ! python3 scripts/verify-android-keystore-authority.py --repo . --self-test; then
   r_s11cg="$r_s11cg authority-or-mutation-self-test-failed"
 fi
 if [ -n "$r_s11cg" ]; then
-  echo "  FAIL R-S11cg Android signing-identity generation authority:$r_s11cg"
+  echo "  FAIL R-S11cg/R-S11di Android signing-identity authority:$r_s11cg"
   rc=1
 else
-  echo "  ok  R-S11cg one-time Android identity generation is fixed-alias/non-root/offline/no-pull/read-only-root/capability-free/resource-bounded with file-only secrets and durable no-clobber publication"
+  echo "  ok  R-S11cg/R-S11di one-time Android identity generation has fixed local Docker authority, fixed-alias/non-root/offline/no-pull/read-only-root/capability-free/resource-bounded execution, file-only secrets, and durable no-clobber publication"
 fi
 
 echo "== (0f) Windows helper container/KVM authority (R-S11ch/R-S11e-100) =="

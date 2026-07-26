@@ -14,16 +14,20 @@
 set -euo pipefail
 umask 077
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PATH=/usr/bin:/bin
+readonly BUILD_UID="$(/usr/bin/id -u)"
+readonly BUILD_GID="$(/usr/bin/id -g)"
+[ "$BUILD_UID" -ne 0 ] \
+    || { echo "Android signing identity generation refuses host or container-root execution" >&2; exit 1; }
+[ "$BUILD_GID" -ne 0 ] \
+    || { echo "Android signing identity generation refuses a root primary group" >&2; exit 1; }
+
+SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
-export PATH=/usr/bin:/bin
 
-readonly DOCKER_BIN=/usr/bin/docker
 readonly INNER_SOURCE="$SCRIPT_DIR/android-keystore-generate.sh"
-readonly BUILD_UID="$(id -u)"
-readonly BUILD_GID="$(id -g)"
 readonly IMAGE_ID="$ANDROID_BUILDER_IMAGE_ID"
 readonly KEY_ALIAS=rustdesk-fork
 
@@ -41,22 +45,12 @@ case "$#" in
         ;;
 esac
 
-[ "$BUILD_UID" -ne 0 ] || die "Android signing identity generation refuses host or container-root execution"
-[ "$BUILD_GID" -ne 0 ] || die "Android signing identity generation refuses a root primary group"
-[ -x "$DOCKER_BIN" ] || die "trusted Docker client is unavailable at $DOCKER_BIN"
 [ -f "$INNER_SOURCE" ] && [ ! -L "$INNER_SOURCE" ] \
     || die "Android keystore inner program must be a non-symlink regular file"
 case "${ANDROID_KEY_ALIAS:-$KEY_ALIAS}" in
     "$KEY_ALIAS") ;;
     *) die "ANDROID_KEY_ALIAS is fixed to $KEY_ALIAS" ;;
 esac
-case "${DOCKER_HOST:-unix:///var/run/docker.sock}" in
-    unix:///var/run/docker.sock) export DOCKER_HOST=unix:///var/run/docker.sock ;;
-    *) die "Docker must use the local unix:///var/run/docker.sock daemon" ;;
-esac
-for variable in DOCKER_CONTEXT DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS DOCKER_CONFIG; do
-    [ -z "${!variable+x}" ] || die "$variable must not influence Android signing identity generation"
-done
 
 for value in "$OUT_JKS" "$PASS_FILE"; do
     case "$value" in
@@ -95,19 +89,6 @@ assert_private_directory() {
         || die "$label must be a current-UID mode-0700 directory: $path"
 }
 
-assert_private_docker_config() {
-    local config="$STAGE_ROOT/docker-config/config.json" metadata
-    assert_private_directory "$STAGE_ROOT/docker-config" "Android keystore Docker configuration"
-    [ -f "$config" ] && [ ! -L "$config" ] \
-        || die "Android keystore Docker config.json must be a non-symlink regular file"
-    metadata="$(stat -c '%u:%a:%h' -- "$config" 2>/dev/null)" \
-        || die "Android keystore Docker config.json is unavailable"
-    [ "$metadata" = "$BUILD_UID:600:1" ] \
-        || die "Android keystore Docker config.json must be a current-UID mode-0600 single-link file"
-    cmp -s -- "$config" <(printf '{}\n') \
-        || die "Android keystore Docker config.json must remain the empty canonical configuration"
-}
-
 create_private_directory() {
     local path="$1" label="$2"
     if [ ! -e "$path" ] && [ ! -L "$path" ]; then
@@ -143,7 +124,11 @@ chmod 0700 "$STAGE_ROOT"
 cleanup_stage() {
     local status=$?
     trap - EXIT HUP INT TERM
-    if [ -d "$STAGE_ROOT" ]; then
+    if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
+        && ! remove_local_docker_authority; then
+        warn "preserving changed private Android keystore Docker authority: $STAGE_ROOT"
+        status=1
+    elif [ -d "$STAGE_ROOT" ]; then
         if ! chmod -R u+rwX "$STAGE_ROOT" 2>/dev/null \
             || ! rm -rf -- "$STAGE_ROOT"; then
             status=1
@@ -158,29 +143,20 @@ trap 'exit 143' TERM
 
 install -d -m 0700 \
     "$STAGE_ROOT/authority" \
-    "$STAGE_ROOT/docker-config" \
     "$STAGE_ROOT/output" \
     "$STAGE_ROOT/secret"
 install -m 0400 -- "$INNER_SOURCE" "$STAGE_ROOT/authority/android-keystore-generate.sh"
 cmp -s -- "$INNER_SOURCE" "$STAGE_ROOT/authority/android-keystore-generate.sh" \
     || die "private Android keystore inner-program snapshot differs from its source"
-printf '{}\n' > "$STAGE_ROOT/docker-config/config.json"
-chmod 0600 "$STAGE_ROOT/docker-config/config.json"
-export DOCKER_CONFIG="$STAGE_ROOT/docker-config"
-assert_private_docker_config
+initialize_local_docker_authority "$STAGE_ROOT/docker-config" "android-keystore"
 
 require_pinned_builder_image android-builder "$IMAGE_ID"
-assert_private_docker_config
 
 android_keystore_docker_run() {
-    local status=0
-    assert_private_docker_config
-    "$DOCKER_BIN" run --rm --pull=never --network=none --read-only \
+    local_docker run --rm --pull=never --network=none --read-only \
         --user "$BUILD_UID:$BUILD_GID" \
         --cap-drop=ALL --security-opt=no-new-privileges \
-        "$@" || status=$?
-    assert_private_docker_config
-    return "$status"
+        "$@"
 }
 
 generated_password=0

@@ -12034,6 +12034,95 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   fresh independent image rebuild, cold exact-commit R-B2/R-B10 artifacts,
   installed/native/device behavior, and R-V3 external review remain separately
   open.
+- **R-S11di/R-S11e-127 — Android signing-identity Docker client, daemon, and configuration authority —
+  SOURCE AND CONFINED SEMANTIC/MUTATION GATES VERIFIED 2026-07-26;
+  ONE-TIME GENERATOR/IDENTITY, APK/DEVICE, COLD RELEASE, AND EXTERNAL-REVIEW
+  EVIDENCE REMAIN OPEN.**
+  Platform: the unprivileged Linux release-tooling host. Endpoint/action:
+  `scripts/gen-android-keystore.sh` immutable Android-builder provenance plus
+  its password-generation, fixed-key-generation, and independent-certificate-
+  inspection operations. Boundary: the invoking user and private signing stage
+  ↔ Docker-client selection, daemon selection, client configuration, the
+  established permanent Android signing identity, and its no-clobber
+  publication.
+
+  R-S11cg already fixed the alias and immutable builder, refused root, confined
+  three explicit non-root/no-pull/networkless/read-only-root/capability-free
+  operations with exact mounts and bounds, kept passwords out of argv and
+  environment, proved input/output byte stability, and published the matching
+  password and verified keystore durably without clobber. Exact source review
+  nevertheless found a bespoke outer Docker boundary. It invoked
+  `/usr/bin/docker` directly, accepted unset or exact-local `DOCKER_HOST`,
+  rejected only part of Docker's routing/configuration environment, and
+  manually created a private configuration without identity-binding the
+  absolute client, local socket, authority parent/configuration objects, or
+  builder-provenance subprocess through the shared authority. Docker documents
+  that its CLI consumes context, host, configuration, TLS, API-version,
+  platform, trust, and header inputs, and that contexts may select remote
+  daemons. This was real permanent-identity and daemon/configuration-selection
+  authority debt. It is not evidence that another daemon or malicious
+  configuration was used, the established key/password changed or was
+  inspected, a new identity was published, Docker escaped, host root was
+  acquired, a listener or port was exposed, host RustDesk/service/configuration/
+  firewall/network state changed, exploitation occurred, or the host was
+  compromised.
+
+  The generator now captures UID/GID through absolute `/usr/bin/id` and refuses
+  UID or primary GID zero before sourcing repository shell or pin state. It
+  initializes the shared fixed local Docker authority beneath its unpredictable
+  current-owner mode-0700 same-signing-filesystem stage before provenance or
+  launch. The authority binds the exact root-owned non-symlink mode-0755
+  single-link `/usr/bin/docker`, fixed root-owned non-symlink single-link
+  `/var/run/docker.sock`, private parent/configuration identities, and
+  current-user/current-group mode-0600 single-link canonical `{}`
+  `config.json`; it rejects the complete reviewed ambient Docker input set and
+  reproves all identities and bytes around every operation.
+
+  Immutable builder provenance now uses the isolated shared provenance wrapper.
+  The sole three-operation launch funnel uses the shared empty-environment local
+  wrapper with fixed `PATH`, private `HOME`, fixed local `DOCKER_HOST`, private
+  `DOCKER_CONFIG`, absolute client, and redundant explicit `--host`/`--config`.
+  Cleanup reproves and removes the exact config leaf/directory before recursive
+  stage cleanup; changed authority is preserved and fails. The established
+  identity is not invoked, listed, opened, hashed, mounted, inspected, rotated,
+  regenerated, or otherwise mutated by this source slice.
+
+  R-S11di and Appendix C #262 make the correction normative. The focused gate
+  binds the caller, complete shared authority/provenance/cleanup, unchanged
+  R-S11cg operation/publication semantics, requirement, Appendix row, and this
+  ledger entry. Its normal contract and all 51 deliberate mutations pass. The
+  first mutation run found one test-of-the-test weakness: a generic `0:1`
+  socket-owner token also matched the private config file's `600:1` metadata
+  suffix, so the deliberately weakened socket owner was accepted. The gate now
+  binds the exact socket-stat case block; the complete focused suite passes from
+  the beginning.
+
+  The independent workspace normal contract and complete in-memory
+  source-mutation catalog pass after adding exact mutations for UID/GID capture
+  and refusal, authority initialization and cleanup, the launch funnel, shared
+  ambient/client/socket/provenance authority, focused mutation coverage, shared
+  gate wording, R-S11di, Appendix C #262, and this row. Bash syntax, Python
+  in-memory compilation, HTML parsing, requirements-hash equality, native-codec
+  normal/self-test, and `git diff --check` also pass. Requirements SHA-256 is
+  `e8e2a5e728485a1b702f5a82f48f365a7c1daffa172900d03a70bac4e5cb5ade`,
+  synchronized to the hardening and native-codec ledgers.
+
+  Every project gate ran in immutable verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric UID:GID 1000:1000 with no network, a read-only container root and
+  repository, all capabilities dropped, no-new-privileges, no Docker socket,
+  host namespace, device, or published port, and explicit PID, memory/no-swap,
+  CPU, file-descriptor, and scratch ceilings.
+
+  The one-time generator itself, established signing files, `scripts/verify.sh`,
+  root fixtures, release builds, networked or published containers, APK/device/
+  native behavior, cold exact-commit R-B2/R-B10 evidence, and R-V3 external
+  review were not exercised. No signing file was invoked, listed, opened,
+  hashed, mounted, inspected, rotated, regenerated, or otherwise mutated. This
+  slice used no sudo, root command/container, added capability, host namespace/
+  device, published port, container Docker-socket mount, host process scan,
+  listener/firewall/network query, or host RustDesk process/service/
+  configuration inspection or mutation.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -12751,9 +12840,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-e05aa1cd886b26a2e5186b0fe5e2c2b45b85bb8ec2877dbc9ea23c44558c6416  requirements.html
+e8e2a5e728485a1b702f5a82f48f365a7c1daffa172900d03a70bac4e5cb5ade  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dh, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#261. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11di, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

@@ -11296,7 +11296,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dh, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#261",
+        "R-S11n through R-S11di, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11377,7 +11377,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dh, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#261",
+        "R-S11n through R-S11di, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11556,7 +11556,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dh, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#261",
+        "R-S11n through R-S11di, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11690,7 +11690,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dh, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#261",
+        "R-S11n through R-S11di, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11858,7 +11858,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dh, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#261",
+        "R-S11n through R-S11di, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12051,7 +12051,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dh, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#261",
+        "R-S11n through R-S11di, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12385,7 +12385,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dh, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#261",
+        "R-S11n through R-S11di, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -14289,11 +14289,25 @@ def validate_win_helper_image_authority_contract(sources):
 
 def validate_android_keystore_authority_contract(sources):
     focused = sources["android_keystore_authority_verifier"]
+    generator = sources["android_keystore_generator"]
+    lib = sources["lib"]
     for text, label in (
         ("forbid(generate, token, label)", "Android keystore forbidden-authority enforcement"),
         ("require_order(source: str, tokens: Tuple[str, ...]", "Android keystore order helper"),
         ("password/key generation, verification, and publication authority",
          "Android keystore publication-order enforcement"),
+        ("shared Docker API/platform/trust-input refusal",
+         "Android keystore complete ambient-input enforcement"),
+        ("shared Docker provenance pre/post authority proof",
+         "Android keystore provenance authority enforcement"),
+        ("builder provenance shared-authority routing",
+         "Android keystore provenance routing enforcement"),
+        ("exact Docker-authority cleanup",
+         "Android keystore cleanup mutation enforcement"),
+        ("shared Docker-config byte recheck",
+         "Android keystore Docker-config byte enforcement"),
+        ("Docker-config file identity binding",
+         "Android keystore Docker-config identity mutation enforcement"),
         ("MUTATIONS: Tuple[Mutation, ...]", "Android keystore mutation inventory"),
         ("run_mutations(sources)", "Android keystore mutation dispatch"),
         ('source=$PASS_INPUT,target=/authority/pass,readonly',
@@ -14303,12 +14317,29 @@ def validate_android_keystore_authority_contract(sources):
     ):
         require_text(focused, text, label)
     for text, label in (
+        ('readonly BUILD_UID="$(/usr/bin/id -u)"',
+         "Android keystore absolute UID source"),
+        ('readonly BUILD_GID="$(/usr/bin/id -g)"',
+         "Android keystore absolute GID source"),
+        ('[ "$BUILD_UID" -ne 0 ]', "Android keystore UID-root refusal"),
+        ('[ "$BUILD_GID" -ne 0 ]', "Android keystore GID-root refusal"),
+        ('source "$SCRIPT_DIR/lib.sh"', "Android keystore shared authority source"),
         ('readonly IMAGE_ID="$ANDROID_BUILDER_IMAGE_ID"',
          "Android keystore immutable image selection"),
+        (
+            'initialize_local_docker_authority "$STAGE_ROOT/docker-config" "android-keystore"',
+            "Android keystore fixed Docker authority initialization",
+        ),
         ('require_pinned_builder_image android-builder "$IMAGE_ID"',
          "Android keystore image provenance"),
-        ('"$DOCKER_BIN" run --rm --pull=never --network=none --read-only',
+        ('local_docker run --rm --pull=never --network=none --read-only',
          "Android keystore common confinement wrapper"),
+        ('if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]',
+         "Android keystore Docker cleanup admission"),
+        ("&& ! remove_local_docker_authority; then",
+         "Android keystore exact Docker cleanup"),
+        ("preserving changed private Android keystore Docker authority",
+         "Android keystore changed-authority preservation"),
         ('--user "$BUILD_UID:$BUILD_GID"', "Android keystore numeric nonroot identity"),
         ('--cap-drop=ALL --security-opt=no-new-privileges',
          "Android keystore privilege confinement"),
@@ -14318,7 +14349,186 @@ def validate_android_keystore_authority_contract(sources):
         ('ln -- "$STAGED_KEYSTORE" "$OUT_JKS"', "Android key no-clobber publication"),
         ('sync -f -- "$OUT_JKS" "$PASS_FILE"', "Android signing-identity durability"),
     ):
-        require_text(sources["android_keystore_generator"], text, label)
+        require_text(generator, text, label)
+    require_exact_count(
+        generator,
+        "local_docker run --rm --pull=never --network=none --read-only",
+        1,
+        "Android keystore fixed Docker launch funnel",
+    )
+    for text, label in (
+        ('"$DOCKER_BIN" run', "Android keystore obsolete direct Docker launch"),
+        ("readonly DOCKER_BIN=", "Android keystore obsolete direct Docker client"),
+        ("DOCKER_HOST", "Android keystore generator-owned Docker endpoint"),
+        ("DOCKER_CONFIG", "Android keystore generator-owned Docker configuration"),
+        ("assert_private_docker_config", "Android keystore obsolete Docker-config helper"),
+    ):
+        require_absent(generator, text, label)
+    require_order(
+        generator,
+        (
+            'readonly BUILD_UID="$(/usr/bin/id -u)"',
+            'readonly BUILD_GID="$(/usr/bin/id -g)"',
+            '[ "$BUILD_UID" -ne 0 ]',
+            '[ "$BUILD_GID" -ne 0 ]',
+            'source "$SCRIPT_DIR/lib.sh"',
+            "load_pins",
+            'mktemp -d "$SIGNING_DIR/.rustdesk-keystore.XXXXXXXXXX"',
+            'initialize_local_docker_authority "$STAGE_ROOT/docker-config" "android-keystore"',
+            'require_pinned_builder_image android-builder "$IMAGE_ID"',
+            "local_docker run --rm --pull=never --network=none --read-only",
+        ),
+        "Android keystore root-refusal and Docker-authority order",
+    )
+    cleanup = extract_between(
+        generator,
+        "cleanup_stage() {",
+        "\n}\ntrap cleanup_stage EXIT",
+        "Android keystore stage cleanup",
+    )
+    require_order(
+        cleanup,
+        (
+            "remove_local_docker_authority",
+            'elif [ -d "$STAGE_ROOT" ]',
+            'chmod -R u+rwX "$STAGE_ROOT"',
+            'rm -rf -- "$STAGE_ROOT"',
+        ),
+        "Android keystore Docker-before-stage cleanup",
+    )
+    for text, label in (
+        ("initialize_local_docker_authority() {",
+         "shared fixed Docker authority initializer"),
+        (
+            "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
+            "local Docker ambient-input refusal",
+        ),
+        (
+            "DOCKER_API_VERSION DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST",
+            "local Docker API/platform/trust-input refusal",
+        ),
+        (
+            "DOCKER_CONTENT_TRUST_SERVER DOCKER_CUSTOM_HEADERS",
+            "local Docker trust-server/header-input refusal",
+        ),
+        (
+            "[ -f /usr/bin/docker ] && [ ! -L /usr/bin/docker ] && [ -x /usr/bin/docker ]",
+            "local Docker client shape proof",
+        ),
+        (
+            "case \"$(/usr/bin/stat -c '%u:%g:%a:%h' -- /usr/bin/docker 2>/dev/null)\" in\n"
+            "        0:0:755:1) ;;",
+            "local Docker root-owned client metadata proof",
+        ),
+        (
+            "[ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ]",
+            "local Docker socket shape proof",
+        ),
+        (
+            "case \"$(/usr/bin/stat -c '%u:%h' -- /var/run/docker.sock 2>/dev/null)\" in\n"
+            "        0:1) ;;",
+            "local Docker root-owned socket metadata proof",
+        ),
+        (
+            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
+            "local Docker no-clobber private config creation",
+        ),
+        ('LOCAL_DOCKER_AUTHORITY_PARENT_ID="$(/usr/bin/stat',
+         "local Docker authority parent identity binding"),
+        ('LOCAL_DOCKER_AUTHORITY_CONFIG_ID="$(/usr/bin/stat',
+         "local Docker config-directory identity binding"),
+        ('LOCAL_DOCKER_AUTHORITY_CONFIG_FILE_ID="$(/usr/bin/stat',
+         "local Docker config-file identity binding"),
+        ('LOCAL_DOCKER_AUTHORITY_CLIENT_ID="$(/usr/bin/stat',
+         "local Docker client identity binding"),
+        ('LOCAL_DOCKER_AUTHORITY_SOCKET_ID="$(/usr/bin/stat',
+         "local Docker socket identity binding"),
+        ("local_docker() {", "shared fixed Docker launcher"),
+        ("local_docker_image_provenance() {",
+         "shared fixed Docker provenance wrapper"),
+        ("remove_local_docker_authority() {",
+         "shared exact Docker cleanup"),
+        ('local_docker_image_provenance "${args[@]}"',
+         "Android builder provenance shared-authority routing"),
+    ):
+        require_text(lib, text, label)
+    asserted_authority = extract_between(
+        lib,
+        "assert_local_docker_authority() {",
+        "\n}\n\nlocal_docker() {",
+        "shared fixed Docker authority assertion",
+    )
+    for text, label in (
+        ("LOCAL_DOCKER_AUTHORITY_PARENT_ID",
+         "local Docker authority parent identity recheck"),
+        ("LOCAL_DOCKER_AUTHORITY_CONFIG_ID",
+         "local Docker config-directory identity recheck"),
+        ("LOCAL_DOCKER_AUTHORITY_CONFIG_FILE_ID",
+         "local Docker config-file identity recheck"),
+        ("LOCAL_DOCKER_AUTHORITY_CLIENT_ID",
+         "local Docker client identity recheck"),
+        ("LOCAL_DOCKER_AUTHORITY_SOCKET_ID",
+         "local Docker socket identity recheck"),
+        (
+            '/usr/bin/cmp -s -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" <(printf \'{}\\n\')',
+            "local Docker configuration byte proof",
+        ),
+    ):
+        require_text(asserted_authority, text, label)
+    local_docker = extract_between(
+        lib,
+        "local_docker() {",
+        "\n}\n\nlocal_docker_image_provenance() {",
+        "shared fixed Docker launcher",
+    )
+    require_exact_count(
+        local_docker,
+        "assert_local_docker_authority",
+        2,
+        "shared fixed Docker launcher authority proof",
+    )
+    for text, label in (
+        ("/usr/bin/env -i", "local Docker direct-wrapper empty environment"),
+        ("/usr/bin/docker", "local Docker absolute client"),
+        ("--host unix:///var/run/docker.sock", "local Docker explicit endpoint"),
+        ('--config "$LOCAL_DOCKER_AUTHORITY_CONFIG"',
+         "local Docker explicit configuration"),
+    ):
+        require_text(local_docker, text, label)
+    docker_provenance = extract_between(
+        lib,
+        "local_docker_image_provenance() {",
+        "\n}\n\nremove_local_docker_authority() {",
+        "shared fixed Docker provenance wrapper",
+    )
+    require_exact_count(
+        docker_provenance,
+        "assert_local_docker_authority",
+        2,
+        "shared fixed Docker provenance authority proof",
+    )
+    for text, label in (
+        ("/usr/bin/env -i", "local Docker provenance empty environment"),
+        ('/usr/bin/python3 -I -S "$LIB_DIR/offline-image-provenance.py" "$@"',
+         "local Docker fixed provenance interpreter"),
+    ):
+        require_text(docker_provenance, text, label)
+    docker_cleanup = extract_between(
+        lib,
+        "remove_local_docker_authority() {",
+        "\n}\n\nrequire_pinned_builder_image() {",
+        "shared exact Docker cleanup",
+    )
+    require_order(
+        docker_cleanup,
+        (
+            "assert_local_docker_authority",
+            '/usr/bin/rm -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json"',
+            '/usr/bin/rmdir -- "$LOCAL_DOCKER_AUTHORITY_CONFIG"',
+            "LOCAL_DOCKER_AUTHORITY_INITIALIZED=0",
+        ),
+        "local Docker exact cleanup order",
+    )
     for text, label in (
         ("dd if=/dev/urandom", "Android keystore kernel CSPRNG"),
         ("-alias rustdesk-fork", "Android keystore fixed alias"),
@@ -14335,6 +14545,11 @@ def validate_android_keystore_authority_contract(sources):
         "Android keystore focused authority verifier",
     )
     require_text(
+        sources["verify"],
+        "R-S11cg/R-S11di one-time Android identity generation has fixed local Docker authority",
+        "Android keystore shared Docker gate disposition",
+    )
+    require_text(
         sources["requirements"],
         '<span class="id">R-S11cg</span>',
         "Android keystore authority requirement",
@@ -14349,6 +14564,79 @@ def validate_android_keystore_authority_contract(sources):
         "R-S11cg/R-S11e-99 — Android signing-identity generation authority",
         "Android keystore authority hardening ledger",
     )
+    docker_requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11di",
+        "Android signing-identity Docker authority requirement",
+    )
+    for text in (
+        "Before sourcing repository shell or pin state",
+        "fixed local Unix socket",
+        "canonical <code>{}</code> <code>config.json</code>",
+        "Immutable Android-builder provenance",
+        "Appendix C #262",
+        "R-S11e-127",
+    ):
+        require_text(
+            docker_requirement,
+            text,
+            "Android signing-identity Docker authority requirement",
+        )
+    require_text(
+        sources["requirements"],
+        "<tr><td>262</td>",
+        "Android signing-identity Docker authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11di/R-S11e-127 — Android signing-identity Docker client, daemon, and configuration authority",
+        "Android signing-identity Docker authority hardening ledger",
+    )
+    focused_mutations = extract_between(
+        focused,
+        "\nMUTATIONS: Tuple[Mutation, ...] = (",
+        "\n)\n\n\ndef load_sources",
+        "Android keystore focused mutation matrix",
+    )
+    for text, label in (
+        (
+            'Mutation("generate", \'[ "$BUILD_UID" -ne 0 ]\', \'[ "$BUILD_UID" -eq 0 ]\'',
+            "Android keystore focused root-refusal mutation",
+        ),
+        (
+            "'initialize_local_docker_authority \"$STAGE_ROOT/docker-config\" \"android-keystore\"'",
+            "Android keystore focused Docker-initialization mutation",
+        ),
+        (
+            'Mutation("generate", "local_docker run --rm --pull=never --network=none --read-only"',
+            "Android keystore focused Docker-launch mutation",
+        ),
+        (
+            '"DOCKER_API_VERSION DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST"',
+            "Android keystore focused ambient API mutation",
+        ),
+        (
+            '\'local_docker_image_provenance "${args[@]}"\'',
+            "Android keystore focused provenance-routing mutation",
+        ),
+        (
+            '/usr/bin/rm -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" || return 125',
+            "Android keystore focused Docker-cleanup mutation",
+        ),
+        (
+            'LOCAL_DOCKER_AUTHORITY_CONFIG_FILE_ID="$(/usr/bin/stat -c \\\'%d:%i:%u:%g:%a:%h\\\' -- "$config/config.json")"',
+            "Android keystore focused Docker-config identity mutation",
+        ),
+        (
+            'Mutation("requirements", \'<span class="id">R-S11di</span>\'',
+            "Android keystore focused Docker-requirement mutation",
+        ),
+        (
+            '"R-S11di/R-S11e-127 — Android signing-identity Docker client, daemon, and configuration authority"',
+            "Android keystore focused Docker-ledger mutation",
+        ),
+    ):
+        require_text(focused_mutations, text, label)
 
 
 def validate_windows_helper_authority_contract(sources):
@@ -36619,7 +36907,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11dh, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#261",
+            "R-S11n through R-S11di, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#262",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -38382,9 +38670,148 @@ def run_source_mutations(sources):
         ),
         (
             "android_keystore_generator",
-            '"$DOCKER_BIN" run --rm --pull=never --network=none --read-only',
-            '"$DOCKER_BIN" run --rm',
+            'readonly BUILD_UID="$(/usr/bin/id -u)"',
+            'readonly BUILD_UID="$(id -u)"',
+            "Android keystore absolute UID source",
+        ),
+        (
+            "android_keystore_generator",
+            'readonly BUILD_GID="$(/usr/bin/id -g)"',
+            'readonly BUILD_GID="$(id -g)"',
+            "Android keystore absolute GID source",
+        ),
+        (
+            "android_keystore_generator",
+            '[ "$BUILD_UID" -ne 0 ]',
+            '[ "$BUILD_UID" -eq 0 ]',
+            "Android keystore UID-root refusal",
+        ),
+        (
+            "android_keystore_generator",
+            '[ "$BUILD_GID" -ne 0 ]',
+            '[ "$BUILD_GID" -eq 0 ]',
+            "Android keystore GID-root refusal",
+        ),
+        (
+            "android_keystore_generator",
+            'initialize_local_docker_authority "$STAGE_ROOT/docker-config" "android-keystore"',
+            "true # fixed local Docker authority disabled",
+            "Android keystore fixed Docker authority initialization",
+        ),
+        (
+            "android_keystore_generator",
+            'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \\\n'
+            '        && ! remove_local_docker_authority; then',
+            "if false; then",
+            "Android keystore Docker cleanup admission",
+        ),
+        (
+            "android_keystore_generator",
+            "local_docker run --rm --pull=never --network=none --read-only",
+            "/usr/bin/docker run --rm --pull=never --network=none --read-only",
             "Android keystore common confinement wrapper",
+        ),
+        (
+            "lib",
+            "DOCKER_API_VERSION DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST",
+            "DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST",
+            "local Docker API/platform/trust-input refusal",
+        ),
+        (
+            "lib",
+            "case \"$(/usr/bin/stat -c '%u:%g:%a:%h' -- /usr/bin/docker 2>/dev/null)\" in\n"
+            "        0:0:755:1) ;;",
+            "case \"$(/usr/bin/stat -c '%u:%g:%a:%h' -- /usr/bin/docker 2>/dev/null)\" in\n"
+            "        *:0:755:1) ;;",
+            "local Docker root-owned client metadata proof",
+        ),
+        (
+            "lib",
+            "case \"$(/usr/bin/stat -c '%u:%h' -- /var/run/docker.sock 2>/dev/null)\" in\n"
+            "        0:1) ;;",
+            "case \"$(/usr/bin/stat -c '%u:%h' -- /var/run/docker.sock 2>/dev/null)\" in\n"
+            "        *:1) ;;",
+            "local Docker root-owned socket metadata proof",
+        ),
+        (
+            "lib",
+            "LOCAL_DOCKER_AUTHORITY_PARENT_ID=\"$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- \"$parent\")\"",
+            "LOCAL_DOCKER_AUTHORITY_PARENT_ID=unchecked",
+            "local Docker authority parent identity binding",
+        ),
+        (
+            "lib",
+            "LOCAL_DOCKER_AUTHORITY_CONFIG_ID=\"$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- \"$config\")\"",
+            "LOCAL_DOCKER_AUTHORITY_CONFIG_ID=unchecked",
+            "local Docker config-directory identity binding",
+        ),
+        (
+            "lib",
+            "LOCAL_DOCKER_AUTHORITY_CONFIG_FILE_ID=\"$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- \"$config/config.json\")\"",
+            "LOCAL_DOCKER_AUTHORITY_CONFIG_FILE_ID=unchecked",
+            "local Docker config-file identity binding",
+        ),
+        (
+            "lib",
+            "LOCAL_DOCKER_AUTHORITY_CLIENT_ID=\"$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- /usr/bin/docker)\"",
+            "LOCAL_DOCKER_AUTHORITY_CLIENT_ID=unchecked",
+            "local Docker client identity binding",
+        ),
+        (
+            "lib",
+            "LOCAL_DOCKER_AUTHORITY_SOCKET_ID=\"$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- /var/run/docker.sock)\"",
+            "LOCAL_DOCKER_AUTHORITY_SOCKET_ID=unchecked",
+            "local Docker socket identity binding",
+        ),
+        (
+            "lib",
+            "/usr/bin/cmp -s -- \"$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json\" <(printf '{}\\n')",
+            "true # Docker config bytes unchecked",
+            "local Docker configuration byte proof",
+        ),
+        (
+            "lib",
+            'local_docker_image_provenance "${args[@]}"',
+            'python3 "$LIB_DIR/offline-image-provenance.py" "${args[@]}"',
+            "Android builder provenance shared-authority routing",
+        ),
+        (
+            "lib",
+            '/usr/bin/rm -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" || return 125',
+            "true # Docker configuration retained",
+            "local Docker exact cleanup order",
+        ),
+        (
+            "android_keystore_authority_verifier",
+            'Mutation(\n'
+            '        "lib",\n'
+            '        "DOCKER_API_VERSION DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST",',
+            'Mutation(\n'
+            '        "lib",\n'
+            '        "DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST",',
+            "Android keystore focused ambient API mutation",
+        ),
+        (
+            "android_keystore_authority_verifier",
+            'Mutation(\n'
+            '        "generate",\n'
+            '        \'initialize_local_docker_authority "$STAGE_ROOT/docker-config" "android-keystore"\',',
+            'Mutation(\n'
+            '        "generate",\n'
+            '        "true # fixed local Docker authority disabled",',
+            "Android keystore focused Docker-initialization mutation",
+        ),
+        (
+            "android_keystore_authority_verifier",
+            'Mutation("generate", "local_docker run --rm --pull=never --network=none --read-only",',
+            'Mutation("generate", "/usr/bin/docker run --rm --pull=never --network=none --read-only",',
+            "Android keystore focused Docker-launch mutation",
+        ),
+        (
+            "android_keystore_authority_verifier",
+            '/usr/bin/rm -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" || return 125',
+            "true # Docker configuration retained",
+            "Android keystore focused Docker-cleanup mutation",
         ),
         (
             "android_keystore_inner",
@@ -38415,6 +38842,30 @@ def run_source_mutations(sources):
             "R-S11cg/R-S11e-99 — Android signing-identity generation authority",
             "R-S11cg/R-S11e-99 — Android ambient identity generation authority",
             "Android keystore authority hardening ledger",
+        ),
+        (
+            "verify",
+            "R-S11cg/R-S11di one-time Android identity generation has fixed local Docker authority",
+            "R-S11cg one-time Android identity generation retains ambient Docker authority",
+            "Android keystore shared Docker gate disposition",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11di</span>',
+            '<span class="id">R-S11di-disabled</span>',
+            "Android signing-identity Docker authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>262</td>",
+            "<tr><td>262-disabled</td>",
+            "Android signing-identity Docker authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11di/R-S11e-127 — Android signing-identity Docker client, daemon, and configuration authority",
+            "R-S11di/R-S11e-XXX — Android signing-identity Docker authority deferred",
+            "Android signing-identity Docker authority hardening ledger",
         ),
         (
             "windows_helper_authority_verifier",

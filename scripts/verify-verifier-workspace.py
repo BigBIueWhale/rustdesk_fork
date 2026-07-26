@@ -11714,7 +11714,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#270",
+        "R-S11n through R-S11dr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11795,7 +11795,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#270",
+        "R-S11n through R-S11dr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11974,7 +11974,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#270",
+        "R-S11n through R-S11dr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12108,7 +12108,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#270",
+        "R-S11n through R-S11dr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12276,7 +12276,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#270",
+        "R-S11n through R-S11dr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12469,7 +12469,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#270",
+        "R-S11n through R-S11dr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12803,7 +12803,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#270",
+        "R-S11n through R-S11dr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -15864,9 +15864,9 @@ def validate_cleanup_docker_authority_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dq, R-SV4a,\n"
+        "R-S11n through R-S11dr, R-SV4a,\n"
         "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#270",
+        "R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -16000,7 +16000,7 @@ def validate_cleanup_process_domain_path_authority_contract(sources):
             "cleanup guessed-process/domain prohibition",
         ),
         (
-            "current golden-image provisioner's independently name-owned pre-creation collision handling remains a separate source-audit surface",
+            "golden-image provisioner's formerly name-owned collision path is independently closed by R-S11dr",
             "cleanup independent golden-provision boundary",
         ),
         (
@@ -16052,9 +16052,9 @@ def validate_cleanup_process_domain_path_authority_contract(sources):
 
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dq, R-SV4a,\n"
+        "R-S11n through R-S11dr, R-SV4a,\n"
         "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#270",
+        "R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -16096,6 +16096,337 @@ def validate_cleanup_process_domain_path_authority_contract(sources):
         (
             "cleanup authority hardening ledger",
             "cleanup hardening-ledger mutation",
+        ),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
+def validate_windows_golden_domain_authority_contract(sources):
+    provision = sources["windows_provision"]
+    for text, label in (
+        ("export LC_ALL=C", "Windows golden fixed control locale"),
+        (
+            "require_cmd virt-install virsh qemu-img xorriso setsid timeout awk",
+            "Windows golden exact lifecycle command preflight",
+        ),
+        (
+            '[[ "$DOMAIN" =~ ^[A-Za-z0-9._-]+$ ]]',
+            "Windows golden domain-name grammar",
+        ),
+        (
+            'PROVISION_DOMAIN_UUID="$(</proc/sys/kernel/random/uuid)"',
+            "Windows golden kernel-random UUID",
+        ),
+        (
+            '[[ "$1" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-'
+            '[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]',
+            "Windows golden UUID grammar",
+        ),
+        (
+            'names="$(virsh_bounded list --all --name)" || return 2',
+            "Windows golden fail-closed name enumeration",
+        ),
+        (
+            'uuids="$(virsh_bounded list --all --uuid)" || return 2',
+            "Windows golden fail-closed UUID enumeration",
+        ),
+        (
+            "golden domain name already exists; refusing to mutate it",
+            "Windows golden pre-existing-name refusal",
+        ),
+        (
+            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
+            "        virsh --connect qemu:///session --no-pkttyagent \"$@\"",
+            "Windows golden bounded fixed libvirt control",
+        ),
+        (
+            "PROVISION_DOMAIN_CREATION_STARTED=1",
+            "Windows golden creation-intent commit",
+        ),
+        (
+            "setsid --wait virt-install",
+            "Windows golden retained process-group launch",
+        ),
+        (
+            '--uuid "$PROVISION_DOMAIN_UUID"',
+            "Windows golden explicit UUID creation",
+        ),
+        (
+            'PROVISION_VIRT_START="$(process_start_time "$PROVISION_VIRT_PID")"',
+            "Windows golden process-start binding",
+        ),
+        (
+            "owned_virt_process_group_is_live() {",
+            "Windows golden complete process-group scanner",
+        ),
+        (
+            "while owned_virt_process_group_is_live; do",
+            "Windows golden complete provision-client group drain",
+        ),
+        (
+            'kill -TERM -- "-$PROVISION_VIRT_PID"',
+            "Windows golden exact graceful process-group stop",
+        ),
+        (
+            'kill -KILL -- "-$PROVISION_VIRT_PID"',
+            "Windows golden exact terminal process-group stop",
+        ),
+        (
+            'actual_name="$(virsh_bounded domname "$PROVISION_DOMAIN_UUID"',
+            "Windows golden UUID-addressed name proof",
+        ),
+        (
+            'virsh_bounded send-key "$PROVISION_DOMAIN_UUID"',
+            "Windows golden UUID-addressed boot key",
+        ),
+        (
+            'state="$(virsh_bounded domstate "$PROVISION_DOMAIN_UUID")"',
+            "Windows golden UUID-addressed state",
+        ),
+        (
+            'virsh_bounded destroy "$PROVISION_DOMAIN_UUID"',
+            "Windows golden UUID-addressed destroy",
+        ),
+        (
+            'virsh_bounded undefine "$PROVISION_DOMAIN_UUID" --nvram',
+            "Windows golden UUID-addressed undefine",
+        ),
+        (
+            'warn "provision UUID exists under an unexpected name; preserving it"',
+            "Windows golden ambiguous-domain preservation",
+        ),
+        (
+            "completed golden domain could not be undefined safely",
+            "Windows golden success teardown",
+        ),
+        (
+            "trap cleanup_provision EXIT",
+            "Windows golden terminal cleanup trap",
+        ),
+        (
+            "trap '' HUP INT TERM",
+            "Windows golden cleanup signal exclusion",
+        ),
+        (
+            "trap 'signal_exit 143' TERM",
+            "Windows golden signal cleanup routing",
+        ),
+    ):
+        require_text(provision, text, label)
+
+    require_exact_count(
+        provision,
+        "require_domain_identity_absent",
+        3,
+        "Windows golden two absence proofs plus definition",
+    )
+    require_exact_count(
+        provision,
+        "PROVISION_VM_DEADLINE=$(( $(monotonic_seconds) + VM_TIMEOUT_SECONDS ))",
+        2,
+        "Windows golden independent phase deadlines",
+    )
+    require_exact_count(
+        provision,
+        'stat="${stat##*) }"',
+        2,
+        "Windows golden robust proc-stat boundaries",
+    )
+    require_exact_count(
+        provision,
+        'virsh_bounded destroy "$PROVISION_DOMAIN_UUID"',
+        1,
+        "Windows golden single UUID destroy",
+    )
+    require_exact_count(
+        provision,
+        'virsh_bounded undefine "$PROVISION_DOMAIN_UUID" --nvram',
+        1,
+        "Windows golden single UUID undefine",
+    )
+    for forbidden, label in (
+        ('destroy "$DOMAIN"', "Windows golden name-addressed destroy absence"),
+        ('undefine "$DOMAIN"', "Windows golden name-addressed undefine absence"),
+        ('send-key "$DOMAIN"', "Windows golden name-addressed boot-key absence"),
+        ('domstate "$DOMAIN"', "Windows golden name-addressed state absence"),
+        ("virsh -c qemu:///session", "Windows golden legacy virsh absence"),
+        ("|| true", "Windows golden suppressed lifecycle error absence"),
+    ):
+        require_absent(provision, forbidden, label)
+
+    require_order(
+        provision,
+        (
+            'PROVISION_DOMAIN_UUID="$(</proc/sys/kernel/random/uuid)"',
+            'assert_uuid "$PROVISION_DOMAIN_UUID"',
+            "require_domain_identity_absent",
+            'qemu-img create -f qcow2 "$GOLDEN" 80G',
+            "require_domain_identity_absent",
+            "PROVISION_DOMAIN_CREATION_STARTED=1",
+            "setsid --wait virt-install",
+            '--uuid "$PROVISION_DOMAIN_UUID"',
+            "wait_for_owned_domain_creation",
+        ),
+        "Windows golden identity/launch/ownership order",
+    )
+    require_order(
+        provision,
+        (
+            "if ! stop_owned_virt_process; then",
+            "elif ! stop_and_undefine_owned_domain; then",
+            "windows_helper_authority_close",
+        ),
+        "Windows golden process/domain/helper cleanup order",
+    )
+    require_order(
+        provision,
+        (
+            '[ "$vi_status" = 0 ] || die "virt-install failed with exit $vi_status"',
+            "PROVISION_VM_DEADLINE=$(( $(monotonic_seconds) + VM_TIMEOUT_SECONDS ))",
+            'log "waiting for win-guest-setup to COMPLETE',
+        ),
+        "Windows golden independent post-shutdown deadline",
+    )
+    completion = provision[provision.index("if golden_has_done_marker; then") :]
+    require_order(
+        completion,
+        (
+            "if golden_has_done_marker; then",
+            'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
+            "stop_and_undefine_owned_domain",
+            "golden Win11 template built:",
+        ),
+        "Windows golden marker/hash/teardown/success order",
+    )
+
+    requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11dr",
+        "Windows golden exact-domain authority requirement",
+    )
+    for text, label in (
+        (
+            "Windows golden provisioning owns one exact libvirt UUID and retires it terminally",
+            "Windows golden requirement title",
+        ),
+        (
+            "Any pre-existing name is an explicit operator-reconciliation failure",
+            "Windows golden normative name refusal",
+        ),
+        (
+            "Creation intent <span class=\"kw\">MUST</span> be recorded only immediately before launch",
+            "Windows golden normative creation intent",
+        ),
+        (
+            "Domain cleanup <span class=\"kw\">MUST NOT</span> request storage deletion",
+            "Windows golden normative storage preservation",
+        ),
+        (
+            "without invoking the provisioner, <code>virsh</code>, libvirt, KVM, a Windows VM",
+            "Windows golden source-only verification boundary",
+        ),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>271</td>",
+        "Windows golden Appendix C #271 disposition",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dr/R-S11e-136 — Windows golden provisioner owns one exact libvirt UUID",
+        "Windows golden hardening-ledger disposition",
+    )
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-windows-golden-domain-authority.py --repo . --self-test",
+        "Windows golden focused gate wiring",
+    )
+
+    focused = sources["windows_golden_domain_authority_verifier"]
+    for text, label in (
+        (
+            "UUID absence, creation intent, launch, and ownership order",
+            "Windows golden focused lifecycle-order binding",
+        ),
+        (
+            "process-before-domain-before-helper terminal cleanup",
+            "Windows golden focused cleanup-order binding",
+        ),
+        (
+            "UUID-addressed destroy",
+            "Windows golden focused destroy mutation",
+        ),
+        (
+            "Appendix C #271 disposition",
+            "Windows golden focused Appendix mutation",
+        ),
+    ):
+        require_text(focused, text, label)
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "Windows golden exact-domain deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("Windows golden fixed control locale", "Windows golden locale mutation"),
+        (
+            "Windows golden exact lifecycle command preflight",
+            "Windows golden command-preflight mutation",
+        ),
+        (
+            "Windows golden fail-closed name enumeration",
+            "Windows golden name-enumeration mutation",
+        ),
+        (
+            "Windows golden pre-existing-name refusal",
+            "Windows golden collision-refusal mutation",
+        ),
+        (
+            "Windows golden explicit UUID creation",
+            "Windows golden explicit-UUID mutation",
+        ),
+        (
+            "Windows golden UUID-addressed boot key",
+            "Windows golden boot-key mutation",
+        ),
+        (
+            "Windows golden UUID-addressed destroy",
+            "Windows golden destroy mutation",
+        ),
+        (
+            "Windows golden UUID-addressed undefine",
+            "Windows golden undefine mutation",
+        ),
+        (
+            "Windows golden process/domain/helper cleanup order",
+            "Windows golden cleanup-order mutation",
+        ),
+        (
+            "Windows golden independent phase deadlines",
+            "Windows golden phase-deadline mutation",
+        ),
+        (
+            "Windows golden cleanup signal exclusion",
+            "Windows golden cleanup-signal mutation",
+        ),
+        (
+            "Windows golden exact-domain authority requirement",
+            "Windows golden requirement mutation",
+        ),
+        (
+            "Windows golden Appendix C #271 disposition",
+            "Windows golden Appendix mutation",
+        ),
+        (
+            "Windows golden focused gate wiring",
+            "Windows golden focused-gate mutation",
+        ),
+        (
+            "Windows golden hardening-ledger disposition",
+            "Windows golden ledger mutation",
         ),
     ):
         require_text(mutation_matrix, text, label)
@@ -24906,6 +25237,7 @@ def validate_sources(sources):
     validate_windows_helper_authority_contract(sources)
     validate_cleanup_docker_authority_contract(sources)
     validate_cleanup_process_domain_path_authority_contract(sources)
+    validate_windows_golden_domain_authority_contract(sources)
     validate_apple_verifier_authority_contract(sources)
     validate_online_fetch_container_authority_contract(sources)
     validate_online_fetch_gradle_source_authority_contract(sources)
@@ -38240,7 +38572,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11dq, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#270",
+            "R-S11n through R-S11dr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -40847,10 +41179,10 @@ def run_source_mutations(sources):
         ),
         (
             "windows_provision",
-            '                if golden_has_done_marker; then\n'
-            '                    verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
-            '                if golden_has_done_marker; then\n'
-            "                    true # final golden hash removed",
+            '                    if golden_has_done_marker; then\n'
+            '                        verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
+            '                    if golden_has_done_marker; then\n'
+            "                        true # final golden hash removed",
             "Windows provision marker/final-hash/acceptance order",
         ),
         (
@@ -40906,6 +41238,191 @@ def run_source_mutations(sources):
             "R-S11do/R-S11e-133 — Windows-helper fixed local-Docker, mount, resource, KVM, and cleanup authority",
             "R-S11do/R-S11e-133 — Windows-helper ambient authority",
             "current Windows helper authority hardening ledger",
+        ),
+        (
+            "windows_provision",
+            "export LC_ALL=C",
+            "export LC_ALL=en_US.UTF-8",
+            "Windows golden fixed control locale",
+        ),
+        (
+            "windows_provision",
+            "require_cmd virt-install virsh qemu-img xorriso setsid timeout awk",
+            "require_cmd virt-install virsh qemu-img xorriso setsid timeout",
+            "Windows golden exact lifecycle command preflight",
+        ),
+        (
+            "windows_provision",
+            'names="$(virsh_bounded list --all --name)" || return 2',
+            'names="$(virsh_bounded domuuid "$DOMAIN")" || return 1',
+            "Windows golden fail-closed name enumeration",
+        ),
+        (
+            "windows_provision",
+            'uuids="$(virsh_bounded list --all --uuid)" || return 2',
+            'uuids="$(virsh_bounded list --uuid)" || return 1',
+            "Windows golden fail-closed UUID enumeration",
+        ),
+        (
+            "windows_provision",
+            "golden domain name already exists; refusing to mutate it",
+            "golden domain name already exists; destroying it",
+            "Windows golden pre-existing-name refusal",
+        ),
+        (
+            "windows_provision",
+            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
+            "        virsh --connect qemu:///session --no-pkttyagent \"$@\"",
+            'virsh --connect qemu:///session "$@"',
+            "Windows golden bounded fixed libvirt control",
+        ),
+        (
+            "windows_provision",
+            'PROVISION_DOMAIN_UUID="$(</proc/sys/kernel/random/uuid)"',
+            'PROVISION_DOMAIN_UUID="00000000-0000-4000-8000-000000000000"',
+            "Windows golden kernel-random UUID",
+        ),
+        (
+            "windows_provision",
+            "    require_domain_identity_absent\n"
+            "    # NB no --tpm:",
+            "    # first identity-absence proof removed\n"
+            "    # NB no --tpm:",
+            "Windows golden two absence proofs plus definition",
+        ),
+        (
+            "windows_provision",
+            "PROVISION_DOMAIN_CREATION_STARTED=1",
+            "PROVISION_DOMAIN_CREATION_STARTED=0",
+            "Windows golden creation-intent commit",
+        ),
+        (
+            "windows_provision",
+            "setsid --wait virt-install",
+            "virt-install",
+            "Windows golden retained process-group launch",
+        ),
+        (
+            "windows_provision",
+            '--uuid "$PROVISION_DOMAIN_UUID"',
+            "# explicit UUID removed",
+            "Windows golden explicit UUID creation",
+        ),
+        (
+            "windows_provision",
+            'PROVISION_VIRT_START="$(process_start_time "$PROVISION_VIRT_PID")"',
+            'PROVISION_VIRT_START=""',
+            "Windows golden process-start binding",
+        ),
+        (
+            "windows_provision",
+            'stat="$(<"/proc/$pid/stat")" || return 1\n'
+            '    stat="${stat##*) }"',
+            'stat="$(<"/proc/$pid/stat")" || return 1\n'
+            '    stat="${stat#*) }"',
+            "Windows golden robust proc-stat boundaries",
+        ),
+        (
+            "windows_provision",
+            'stat="$(<"$path")" || continue\n'
+            '        stat="${stat##*) }"',
+            'stat="$(<"$path")" || continue\n'
+            '        stat="${stat#*) }"',
+            "Windows golden robust proc-stat boundaries",
+        ),
+        (
+            "windows_provision",
+            'kill -TERM -- "-$PROVISION_VIRT_PID"',
+            'kill -TERM -- "$PROVISION_VIRT_PID"',
+            "Windows golden exact graceful process-group stop",
+        ),
+        (
+            "windows_provision",
+            "while owned_virt_process_group_is_live; do",
+            "while owned_virt_process_is_live; do",
+            "Windows golden complete provision-client group drain",
+        ),
+        (
+            "windows_provision",
+            'virsh_bounded send-key "$PROVISION_DOMAIN_UUID"',
+            'virsh_bounded send-key "$DOMAIN"',
+            "Windows golden UUID-addressed boot key",
+        ),
+        (
+            "windows_provision",
+            'virsh_bounded destroy "$PROVISION_DOMAIN_UUID"',
+            'virsh_bounded destroy "$DOMAIN"',
+            "Windows golden UUID-addressed destroy",
+        ),
+        (
+            "windows_provision",
+            'virsh_bounded undefine "$PROVISION_DOMAIN_UUID" --nvram',
+            'virsh_bounded undefine "$DOMAIN" --nvram',
+            "Windows golden UUID-addressed undefine",
+        ),
+        (
+            "windows_provision",
+            "elif ! stop_and_undefine_owned_domain; then",
+            "if ! stop_and_undefine_owned_domain; then",
+            "Windows golden process/domain/helper cleanup order",
+        ),
+        (
+            "windows_provision",
+            "stop_and_undefine_owned_domain \\\n"
+            '                            || die "completed golden domain could not be undefined safely"',
+            "true # completed domain remains defined",
+            "Windows golden success teardown",
+        ),
+        (
+            "windows_provision",
+            '[ "$vi_status" = 0 ] || die "virt-install failed with exit $vi_status"\n'
+            "    # Preserve the old 130-minute allowance after the first guest shutdown,\n"
+            "    # independently of the newly bounded install-to-first-shutdown phase.\n"
+            "    PROVISION_VM_DEADLINE=$(( $(monotonic_seconds) + VM_TIMEOUT_SECONDS ))",
+            '[ "$vi_status" = 0 ] || die "virt-install failed with exit $vi_status"',
+            "Windows golden independent phase deadlines",
+        ),
+        (
+            "windows_provision",
+            "trap 'signal_exit 143' TERM",
+            "trap - TERM",
+            "Windows golden signal cleanup routing",
+        ),
+        (
+            "windows_provision",
+            "trap '' HUP INT TERM",
+            "trap - HUP INT TERM",
+            "Windows golden cleanup signal exclusion",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11dr</span>',
+            '<span class="id">R-S11dr-disabled</span>',
+            "Windows golden exact-domain authority requirement",
+        ),
+        (
+            "requirements",
+            "Any pre-existing name is an explicit operator-reconciliation failure",
+            "Any pre-existing name may be destroyed automatically",
+            "Windows golden normative name refusal",
+        ),
+        (
+            "requirements",
+            "<tr><td>271</td>",
+            "<tr><td>271-disabled</td>",
+            "Windows golden Appendix C #271 disposition",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-windows-golden-domain-authority.py --repo . --self-test",
+            "true # Windows golden domain gate removed",
+            "Windows golden focused gate wiring",
+        ),
+        (
+            "hardening",
+            "R-S11dr/R-S11e-136 — Windows golden provisioner owns one exact libvirt UUID",
+            "R-S11dr/R-S11e-136 — Windows golden provisioner owns a mutable name",
+            "Windows golden hardening-ledger disposition",
         ),
         (
             "cleanup",
@@ -44045,6 +44562,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "windows_helper_authority_verifier": (
                 repo / "scripts/verify-windows-helper-authority.py"
+            ).read_text(encoding="utf-8"),
+            "windows_golden_domain_authority_verifier": (
+                repo / "scripts/verify-windows-golden-domain-authority.py"
             ).read_text(encoding="utf-8"),
             "apple_verifier_authority_verifier": (
                 repo / "scripts/verify-apple-verifier-authority.py"

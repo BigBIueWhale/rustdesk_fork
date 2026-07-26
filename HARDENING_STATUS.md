@@ -12928,9 +12928,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   without that identity requires explicit operator reconciliation rather than
   a destructive guess. The separately selected manifest-backed old
   system-network and package-reversal modes remain unchanged. The golden-image
-  provisioner's independently name-owned pre-creation collision handling is
-  explicitly retained as the next separate source-audit surface; this slice
-  does not declare it safe.
+  provisioner's formerly name-owned pre-creation collision handling is
+  independently closed by R-S11dr below; that transaction-owned lifecycle does
+  not broaden generic cleanup authority.
 
   R-S11dq and Appendix C #270 make this source boundary normative.
   `scripts/verify-cleanup-authority.py` independently binds the source,
@@ -12984,6 +12984,106 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Exact cold R-B2/R-B10 artifacts, remaining native/installed/device evidence,
   fresh independent reproduction where separately named, and R-V3 external
   review remain open. The broader Ralph-loop goal remains active.
+- **R-S11dr/R-S11e-136 — Windows golden provisioner owns one exact libvirt UUID and terminal lifecycle —
+  SOURCE IMPLEMENTED AND CONFINED SOURCE/MUTATION VERIFIED 2026-07-26;
+  EXECUTABLE LIBVIRT/VM EVIDENCE PENDING.**
+  Platform: the unprivileged Linux Windows-golden acquisition host using
+  `qemu:///session`. Endpoint/action: `scripts/provision-windows-vm.sh`
+  pre-creation collision handling, background `virt-install`, boot-key/state
+  control, error/signal cleanup, and successful domain retirement. Boundary:
+  a predictable mutable libvirt name and uncertain client/control state ↔
+  destructive authority over session domains and the provisioner's terminal
+  result.
+
+  Proven old path and history: immediately before every launch the provisioner
+  ran `virsh destroy "$DOMAIN"` and `virsh undefine --nvram "$DOMAIN"` against
+  `${HARNESS_PREFIX}-win-golden`, suppressed both results, and then launched
+  `virt-install` without `--uuid`. Boot-key injection and `domstate` addressed
+  the same name; every boot-key error and the background client's final result
+  were ignored. A failed state query entered the old non-running branch and
+  could be mistaken for an unlocked/off guest. Successful marker/hash
+  acceptance left the persistent domain definition for later generic cleanup,
+  whose name-prefix authority was deleted by R-S11dq. `git blame` and
+  `git log -S` trace the destructive collision workaround to `599fd4d0`
+  (`Undefine any stale golden domain before virt-install`); the launch/name
+  control path descends from the original June 2026 provisioner.
+
+  Official libvirt documentation defines a domain name as host-unique metadata
+  and the RFC 4122 UUID as the global domain identifier; `virsh` accepts a UUID
+  as its domain argument, `destroy` immediately terminates that exact domain
+  without deleting storage, and inactive `undefine --nvram` removes its
+  configuration/NVRAM. Sources:
+  https://www.libvirt.org/formatdomain.html and
+  https://www.libvirt.org/manpages/virsh.html.
+
+  Authority model and source closure: the provisioner validates its fixed name
+  grammar and one kernel-random version-4 UUID. Successful complete name/UUID
+  enumeration must prove both absent before the golden disk is created and
+  again immediately before launch. A pre-existing name is now a fail-loud
+  operator-reconciliation condition; no code destroys, undefines, renames, or
+  adopts it. Creation intent is recorded only immediately before
+  `setsid --wait virt-install --uuid "$PROVISION_DOMAIN_UUID"`. The exact
+  process PID, `/proc` start time, process group, and session are retained; its
+  creation and both the first-shutdown and post-shutdown provisioning phases
+  use monotonic deadlines. A `/proc` scan requires every live member of that
+  exact process group/session to drain before the leader is reaped; the
+  leader's exit result is checked.
+
+  Every guest-specific post-create operation addresses the retained UUID:
+  secondary name proof, repeated UEFI boot keys, state polling, `destroy`, and
+  `undefine --nvram`. All control runs under the C locale through one
+  fixed-session, no-pkttyagent, finite-timeout wrapper. Enumeration/control
+  errors are distinct from absence and cannot become off/success. The marker
+  path accepts only an authoritatively `shut off` UUID, verifies the final
+  golden hash, then undefines the UUID and proves it absent before logging
+  success. Error/signal cleanup first terminates and reaps only the still-
+  matching retained process group, then retires only the proved UUID. If the
+  process identity or UUID/name relationship is uncertain, the domain is
+  preserved and cleanup fails. Once terminal cleanup starts, further managed
+  signals are ignored rather than being allowed to interrupt it. Undefine
+  requests no storage deletion; the pinned golden qcow2 remains the intended
+  output.
+
+  R-S11dr and Appendix C #271 make this boundary normative.
+  `scripts/verify-windows-golden-domain-authority.py` is the focused source-only
+  semantic/mutation checker, and the independent workspace validator carries a
+  separate contract and mutation set. Neither gate invokes the provisioner,
+  libvirt/`virsh`, KVM, a Windows VM, a Docker/helper workload, cleanup, or any
+  host RustDesk/service/firewall/network operation.
+
+  Confined evidence: the focused checker passes and rejects all 32 deliberate
+  mutations. The independent workspace baseline passes, and its complete
+  2,419-entry in-memory semantic source-mutation catalog passes from mutation
+  one. Adjacent cleanup, Windows-helper, release-parent, and Debian
+  systemd-lifecycle gates reject 16, 78, 27, and 44 mutations respectively.
+  Bash syntax, the native-codec normal/negative checks, and exact requirements
+  hash synchronization pass in the same immutable, networkless, read-only,
+  numeric-nonroot verifier image.
+
+  The workspace verifier's broader executable `--self-test` is not evidence
+  for this slice. Its managed-lifecycle fixtures require an exact current-UID
+  user-systemd bus. The isolated verifier container intentionally has no such
+  host socket; after its scratch fixtures refused the missing runtime path and
+  then the missing bus, no host bus was mounted and no host user unit was
+  created. Those attempts ran only against disposable container tmpfs and are
+  not counted above.
+
+  Preliminary checker/command failures were retained rather than hidden: a
+  stale Windows-helper indentation fixture, an invalid `--scratch` invocation,
+  stale derived hashes, and incomplete process-group parser mutation
+  cardinality were corrected before restarting their applicable checks. One
+  outer command had a shell-quoting error before any inner test. A first
+  targeted run hit its finite 256-KiB file-size ceiling and was rerun under a
+  finite 64-MiB ceiling. Two attempted executable-workspace invocations then
+  refused an unallocated scratch root and the deliberately absent user-systemd
+  socket. These were checker, invocation, or confinement findings; none
+  executed the provisioner or performed libvirt, VM, host-service, firewall,
+  network, root, or cleanup work.
+
+  No golden reprovision, cold Windows/R-B2/R-B10 artifact build,
+  installed/native/device behavior, independent reproduction, or R-V3 external
+  review is claimed by this source slice. Those evidence obligations and the
+  broader Ralph-loop goal remain open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -13701,9 +13801,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-fcfbc395e0e61eb5eb8fb1f09afbbc8e8dc219556435b5d2eeb36ca61afbcf2a  requirements.html
+9c0d4cc79e6912d99458c0fe09c72965c2f1504aed1d6a97ad76de6e609d6ba6  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dq, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#270. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dr, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

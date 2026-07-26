@@ -885,10 +885,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
              'source=$STATE_DIR,target=/state,readonly', "provision exact golden mount"),
     Mutation(
         "provision",
-        '                if golden_has_done_marker; then\n'
-        '                    verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
-        '                if golden_has_done_marker; then\n'
-        "                    true # final golden hash removed",
+        '                    if golden_has_done_marker; then\n'
+        '                        verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
+        '                    if golden_has_done_marker; then\n'
+        "                        true # final golden hash removed",
         "provision final hash before acceptance",
     ),
     Mutation(

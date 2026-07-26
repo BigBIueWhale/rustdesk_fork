@@ -7,7 +7,7 @@
 # Windows on any hardware, unlike macOS). This builds the persistent, immutable
 # TEMPLATE — a golden Win11 image provisioned to the pinned toolchain and nothing
 # more (R-B8). Each build then spins a fresh, throwaway copy-on-write overlay of it
-# (build-windows.ps1 runs inside), and is destroyed afterwards by cleanup.sh
+# (build-windows.ps1 runs inside), and its creating transaction destroys it
 # ("cattle, not pets") — so every Windows build starts from the byte-identical
 # baseline and the recorded SHA-256 (R-B2) is reproducible.
 #
@@ -20,6 +20,7 @@
 set -euo pipefail
 umask 077
 export PATH=/usr/bin:/bin
+export LC_ALL=C
 readonly WINDOWS_HELPER_BUILD_UID="$(/usr/bin/id -u)"
 readonly WINDOWS_HELPER_BUILD_GID="$(/usr/bin/id -g)"
 [ "$WINDOWS_HELPER_BUILD_UID" -ne 0 ] \
@@ -36,13 +37,26 @@ source "$SCRIPT_DIR/windows-helper-runtime.sh"
 STATE_DIR="$REPO_ROOT/.harness-state"
 GOLDEN="$STATE_DIR/win11-golden.qcow2"
 DOMAIN="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-golden"
+CONTROL_TIMEOUT_SECONDS=30
+PROCESS_STOP_SECONDS=10
+CREATE_TIMEOUT_SECONDS=300
+VM_TIMEOUT_SECONDS=7800
+PROVISION_DOMAIN_UUID=""
+PROVISION_DOMAIN_CREATION_STARTED=0
+PROVISION_VIRT_PID=""
+PROVISION_VIRT_START=""
+PROVISION_VM_DEADLINE=""
+CLEANUP_ACTIVE=0
 AUTOUNATTEND_ISO="$STATE_DIR/autounattend.iso"   # the PROVISION CD: autounattend.xml + the setup .ps1
 TOOLCHAINS_ISO="$STATE_DIR/toolchains.iso"        # the TOOLCHAINS CD: the staged ./online windows artifacts
 SRC_ISO="$STATE_DIR/src.iso"                      # the SRC CD: the committed repo (res/vcpkg etc.) for warming
 
 preflight() {
-    require_cmd virt-install virsh qemu-img xorriso
+    require_cmd virt-install virsh qemu-img xorriso setsid timeout awk
     assert_no_build_host_network_residual
+    [[ "$DOMAIN" =~ ^[A-Za-z0-9._-]+$ ]] \
+        || die "HARNESS_PREFIX contains an invalid domain-name character"
+    [ "${#DOMAIN}" -le 63 ] || die "golden domain name is too long"
     [ -d /usr/share/OVMF ] || die "OVMF (UEFI firmware) not found — run host-provision.sh first (R-B11)"
     [ -e /dev/kvm ] || die "/dev/kvm absent — Windows helper libguestfs inspection needs it"
     require_online_complete
@@ -114,6 +128,246 @@ golden_has_done_marker() {
         >/dev/null 2>&1
 }
 
+assert_uuid() {
+    [[ "$1" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]] \
+        || die "kernel random UUID is malformed: $1"
+}
+
+monotonic_seconds() {
+    local uptime
+    IFS=' ' read -r uptime _ </proc/uptime
+    printf '%s\n' "${uptime%%.*}"
+}
+
+process_identity() {
+    local pid="$1" stat
+    [ -r "/proc/$pid/stat" ] || return 1
+    stat="$(<"/proc/$pid/stat")" || return 1
+    stat="${stat##*) }"
+    set -- $stat
+    [ "$#" -ge 20 ] || return 1
+    printf '%s %s %s %s\n' "$1" "${20}" "$3" "$4"
+}
+
+process_start_time() {
+    local identity
+    identity="$(process_identity "$1")" || return 1
+    set -- $identity
+    printf '%s\n' "$2"
+}
+
+owned_virt_process_matches() {
+    local identity state start group session
+    [ -n "$PROVISION_VIRT_PID" ] && [ -n "$PROVISION_VIRT_START" ] || return 1
+    identity="$(process_identity "$PROVISION_VIRT_PID" 2>/dev/null)" || return 1
+    read -r state start group session <<<"$identity"
+    [ "$start" = "$PROVISION_VIRT_START" ] \
+        && [ "$group" = "$PROVISION_VIRT_PID" ] \
+        && [ "$session" = "$PROVISION_VIRT_PID" ]
+}
+
+owned_virt_process_is_live() {
+    local identity state start group session
+    [ -n "$PROVISION_VIRT_PID" ] && [ -n "$PROVISION_VIRT_START" ] || return 1
+    identity="$(process_identity "$PROVISION_VIRT_PID" 2>/dev/null)" || return 1
+    read -r state start group session <<<"$identity"
+    [ "$start" = "$PROVISION_VIRT_START" ] \
+        && [ "$group" = "$PROVISION_VIRT_PID" ] \
+        && [ "$session" = "$PROVISION_VIRT_PID" ] \
+        && [ "$state" != Z ] && [ "$state" != X ]
+}
+
+owned_virt_process_group_is_live() {
+    local path stat state group session
+    [ -n "$PROVISION_VIRT_PID" ] || return 1
+    for path in /proc/[0-9]*/stat; do
+        [ -r "$path" ] || continue
+        stat="$(<"$path")" || continue
+        stat="${stat##*) }"
+        set -- $stat
+        [ "$#" -ge 4 ] || continue
+        state="$1"
+        group="$3"
+        session="$4"
+        if [ "$group" = "$PROVISION_VIRT_PID" ] \
+            && [ "$session" = "$PROVISION_VIRT_PID" ] \
+            && [ "$state" != Z ] && [ "$state" != X ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+stop_owned_virt_process() {
+    [ -n "$PROVISION_VIRT_PID" ] || return 0
+    [ -n "$PROVISION_VIRT_START" ] || return 1
+    if ! owned_virt_process_matches; then
+        [ ! -e "/proc/$PROVISION_VIRT_PID" ] || return 1
+        owned_virt_process_group_is_live && return 1
+        wait "$PROVISION_VIRT_PID" 2>/dev/null || :
+        PROVISION_VIRT_PID=""
+        PROVISION_VIRT_START=""
+        return 0
+    fi
+    if owned_virt_process_is_live; then
+        kill -TERM -- "-$PROVISION_VIRT_PID" || return 1
+        local deadline
+        deadline=$(( $(monotonic_seconds) + PROCESS_STOP_SECONDS ))
+        while owned_virt_process_group_is_live \
+            && [ "$(monotonic_seconds)" -lt "$deadline" ]; do
+            sleep 1
+        done
+        if owned_virt_process_group_is_live; then
+            owned_virt_process_matches || return 1
+            kill -KILL -- "-$PROVISION_VIRT_PID" || return 1
+            deadline=$(( $(monotonic_seconds) + PROCESS_STOP_SECONDS ))
+            while owned_virt_process_group_is_live \
+                && [ "$(monotonic_seconds)" -lt "$deadline" ]; do
+                sleep 1
+            done
+            owned_virt_process_group_is_live && return 1
+        fi
+    fi
+    owned_virt_process_group_is_live && return 1
+    if owned_virt_process_matches; then
+        local identity state
+        identity="$(process_identity "$PROVISION_VIRT_PID")" || return 1
+        state="${identity%% *}"
+        [ "$state" = Z ] || [ "$state" = X ] || return 1
+    fi
+    wait "$PROVISION_VIRT_PID" 2>/dev/null || :
+    PROVISION_VIRT_PID=""
+    PROVISION_VIRT_START=""
+}
+
+virsh_bounded() {
+    timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \
+        virsh --connect qemu:///session --no-pkttyagent "$@"
+}
+
+domain_name_is_listed() {
+    local names
+    names="$(virsh_bounded list --all --name)" || return 2
+    printf '%s\n' "$names" |
+        awk -v wanted="$DOMAIN" '$0 == wanted { found=1 } END { exit !found }'
+}
+
+domain_uuid_is_listed() {
+    local uuids
+    [ -n "$PROVISION_DOMAIN_UUID" ] || return 1
+    uuids="$(virsh_bounded list --all --uuid)" || return 2
+    printf '%s\n' "$uuids" |
+        awk -v wanted="$PROVISION_DOMAIN_UUID" '$0 == wanted { found=1 } END { exit !found }'
+}
+
+require_domain_identity_absent() {
+    if domain_name_is_listed; then
+        die "golden domain name already exists; refusing to mutate it: $DOMAIN"
+    else
+        local listed_status=$?
+        [ "$listed_status" = 1 ] \
+            || die "cannot prove that the golden domain name is unused"
+    fi
+    if domain_uuid_is_listed; then
+        die "kernel-random golden domain UUID already exists; refusing to mutate it"
+    else
+        local listed_status=$?
+        [ "$listed_status" = 1 ] \
+            || die "cannot prove that the golden domain UUID is unused"
+    fi
+}
+
+prove_owned_domain() {
+    local actual_name
+    [ -n "$PROVISION_DOMAIN_UUID" ] || return 1
+    actual_name="$(virsh_bounded domname "$PROVISION_DOMAIN_UUID" 2>/dev/null)" || return 1
+    [ "$actual_name" = "$DOMAIN" ]
+}
+
+wait_for_owned_domain_creation() {
+    local deadline listed_status
+    deadline=$(( $(monotonic_seconds) + CREATE_TIMEOUT_SECONDS ))
+    while [ "$(monotonic_seconds)" -lt "$deadline" ]; do
+        if domain_uuid_is_listed; then
+            prove_owned_domain \
+                || die "provision UUID appeared under an unexpected domain name"
+            return 0
+        else
+            listed_status=$?
+            [ "$listed_status" = 1 ] \
+                || die "cannot inspect session domains while waiting for creation"
+        fi
+        owned_virt_process_is_live \
+            || die "virt-install exited before creating the UUID-bound golden domain"
+        sleep 1
+    done
+    die "virt-install did not create the UUID-bound golden domain within ${CREATE_TIMEOUT_SECONDS}s"
+}
+
+stop_and_undefine_owned_domain() {
+    [ -n "$PROVISION_DOMAIN_UUID" ] || return 0
+    if [ "$PROVISION_DOMAIN_CREATION_STARTED" = 0 ]; then
+        PROVISION_DOMAIN_UUID=""
+        PROVISION_VM_DEADLINE=""
+        return 0
+    fi
+    if ! prove_owned_domain; then
+        if domain_uuid_is_listed; then
+            warn "provision UUID exists under an unexpected name; preserving it"
+            return 1
+        else
+            local listed_status=$?
+            if [ "$listed_status" = 1 ]; then
+                PROVISION_DOMAIN_UUID=""
+                PROVISION_DOMAIN_CREATION_STARTED=0
+                PROVISION_VM_DEADLINE=""
+                return 0
+            fi
+            return 1
+        fi
+    fi
+
+    local state deadline listed_status
+    state="$(virsh_bounded domstate "$PROVISION_DOMAIN_UUID")" || return 1
+    case "$state" in
+        "shut off") ;;
+        *)
+            virsh_bounded destroy "$PROVISION_DOMAIN_UUID" >/dev/null || return 1
+            deadline=$(( $(monotonic_seconds) + 60 ))
+            while [ "$(monotonic_seconds)" -lt "$deadline" ]; do
+                if domain_uuid_is_listed; then
+                    prove_owned_domain || return 1
+                    state="$(virsh_bounded domstate "$PROVISION_DOMAIN_UUID")" || return 1
+                    [ "$state" = "shut off" ] && break
+                else
+                    listed_status=$?
+                    if [ "$listed_status" = 1 ]; then
+                        PROVISION_DOMAIN_UUID=""
+                        PROVISION_DOMAIN_CREATION_STARTED=0
+                        PROVISION_VM_DEADLINE=""
+                        return 0
+                    fi
+                    return 1
+                fi
+                sleep 1
+            done
+            prove_owned_domain || return 1
+            [ "$(virsh_bounded domstate "$PROVISION_DOMAIN_UUID")" = "shut off" ] || return 1
+            ;;
+    esac
+    virsh_bounded undefine "$PROVISION_DOMAIN_UUID" --nvram >/dev/null || return 1
+    if domain_uuid_is_listed; then
+        return 1
+    else
+        listed_status=$?
+        [ "$listed_status" = 1 ] || return 1
+        PROVISION_DOMAIN_UUID=""
+        PROVISION_DOMAIN_CREATION_STARTED=0
+        PROVISION_VM_DEADLINE=""
+        return 0
+    fi
+}
+
 build_golden() {
     mkdir -p "$STATE_DIR"
     # Reuse an existing golden ONLY if it actually finished (has the done-marker). A qcow2 left behind by
@@ -128,6 +382,9 @@ build_golden() {
         die "golden exists but lacks guest-setup-done.txt (stale/failed provision): $GOLDEN — delete it deliberately before rebuilding"
     fi
     build_media
+    PROVISION_DOMAIN_UUID="$(</proc/sys/kernel/random/uuid)"
+    assert_uuid "$PROVISION_DOMAIN_UUID"
+    require_domain_identity_absent
     # NB no --tpm: this host's session libvirt offers only TPM 'passthrough' (a physical TPM),
     # not the swtpm 'emulator' backend, and qemu:///system is permission-denied. autounattend.xml
     # bypasses Win11 Setup's TPM/SecureBoot gates instead — fine for a throwaway BUILD VM (TPM is
@@ -141,19 +398,21 @@ build_golden() {
     # Network is ON for THIS one golden-build step (vcpkg bootstrap + the §3.2 native build +
     # the WiX/NuGet warm) — the NAT'd guest never LISTENS; the per-build overlay is --network=none.
     # VNC binds 127.0.0.1 only (never 0.0.0.0), to diagnose a stuck unattended install.
-    # Clear any stale domain definition holding this qcow2 FIRST: a prior failed/killed run leaves the
-    # domain defined-but-off, and virt-install then errors "Disk ... already in use by other guests"
-    # and never boots the VM -> the done-marker poll waits forever on a 196K (empty) qcow2. This was the
-    # real cause of repeated 196K stalls. Destroy (may already be off) + undefine; ignore errors.
-    virsh -c qemu:///session destroy "$DOMAIN" >/dev/null 2>&1 || true
-    virsh -c qemu:///session undefine --nvram "$DOMAIN" >/dev/null 2>&1 || true
+    # A prior unowned domain with this name is an operator-reconciliation error, not
+    # cleanup authority. Re-prove absence immediately before creation and never
+    # destroy a domain merely because its mutable name collides with this one.
+    require_domain_identity_absent
     # NIC model=e1000e (NOT virt-install's default): Win11 ships an inbox e1000e driver but NOT one for the
     # default qemu NIC, so the default guest has NO working network -> the provision-time `flutter pub get`
     # residual download fails its TLS handshake ("Handshake error in client"), which ALSO explains the
     # historical "98-call stall" (= 98 dead-NIC timeouts). The working rdwinvm SSH VM uses e1000e over the
     # same slirp `-netdev user`, proving the model is the fix. (slirp NAT; the guest never LISTENS.)
-    virt-install \
+    PROVISION_VM_DEADLINE=$(( $(monotonic_seconds) + VM_TIMEOUT_SECONDS ))
+    PROVISION_DOMAIN_CREATION_STARTED=1
+    setsid --wait virt-install \
+        --connect qemu:///session \
         --name "$DOMAIN" \
+        --uuid "$PROVISION_DOMAIN_UUID" \
         --osinfo win11 \
         --memory 16384 --vcpus 8 \
         --disk "path=$GOLDEN,format=qcow2,bus=sata" \
@@ -164,16 +423,24 @@ build_golden() {
         --network user,model=e1000e \
         --graphics vnc,listen=127.0.0.1 \
         --noautoconsole --wait -1 &
-    local vi_pid=$!
+    PROVISION_VIRT_PID=$!
+    PROVISION_VIRT_START="$(process_start_time "$PROVISION_VIRT_PID")" \
+        || die "could not bind the virt-install process identity"
+    wait_for_owned_domain_creation
     # Clear the UEFI "Press any key to boot from CD or DVD" prompt: headless, it otherwise falls
     # through to "BdsDxe: No bootable option or device was found" and the install never starts.
     # send-key ENTER (linux keycode 28) through its ~5s window. (This backgrounded script's own
     # sleeps are fine — only FOREGROUND sleep is harness-blocked.)
     log "clearing the UEFI boot-from-CD prompt (send-key ENTER)"
+    local send_key_ok=0
     for _ in $(seq 1 20); do
-        virsh -c qemu:///session send-key "$DOMAIN" --codeset linux 28 >/dev/null 2>&1 || true
+        if virsh_bounded send-key "$PROVISION_DOMAIN_UUID" --codeset linux 28 >/dev/null; then
+            send_key_ok=1
+        fi
         sleep 1
     done
+    [ "$send_key_ok" = 1 ] \
+        || die "could not send the UEFI boot key to the owned golden domain"
     log "unattended install + toolchain setup underway (~1-2h; the guest powers off when done)"
     # virt-install --wait returns at the FIRST guest shutdown — the OS-install REBOOT — not the final
     # power-off. The guest then keeps running (OOBE -> first-logon -> win-guest-setup: toolchain +
@@ -183,27 +450,62 @@ build_golden() {
     # domain idle at the desktop ('running') forever. So gate completion on the DEFINITIVE marker
     # C:\guest-setup-done.txt: whenever the domain is stably off (qcow2 unlocked), read the marker via
     # libguestfs — present => built, absent => a transient reboot (keep waiting) or a real failure (timeout).
-    wait "$vi_pid" 2>/dev/null || true
+    while owned_virt_process_group_is_live; do
+        [ "$(monotonic_seconds)" -lt "$PROVISION_VM_DEADLINE" ] \
+            || die "golden provisioning exceeded 130m before the first guest shutdown"
+        sleep 10
+    done
+    if ! owned_virt_process_matches && [ -e "/proc/$PROVISION_VIRT_PID" ]; then
+        die "virt-install process identity changed before it could be reaped"
+    fi
+    local vi_status
+    if wait "$PROVISION_VIRT_PID"; then
+        vi_status=0
+    else
+        vi_status=$?
+    fi
+    PROVISION_VIRT_PID=""
+    PROVISION_VIRT_START=""
+    [ "$vi_status" = 0 ] || die "virt-install failed with exit $vi_status"
+    # Preserve the old 130-minute allowance after the first guest shutdown,
+    # independently of the newly bounded install-to-first-shutdown phase.
+    PROVISION_VM_DEADLINE=$(( $(monotonic_seconds) + VM_TIMEOUT_SECONDS ))
     log "waiting for win-guest-setup to COMPLETE (gated on guest-setup-done.txt, not a bare power-off)"
-    local mins=0 offstreak=0 checked=0
+    local mins=0 offstreak=0 checked=0 state
     while true; do
-        sleep 60; mins=$((mins + 1))
-        if [ "$(virsh -c qemu:///session domstate "$DOMAIN" 2>/dev/null)" = "running" ]; then
-            offstreak=0; checked=0
-        else
-            offstreak=$((offstreak + 1))
-            # stably off for 2 min => the qcow2 is unlocked; check the marker ONCE per off-streak.
-            if [ "$offstreak" -ge 2 ] && [ "$checked" -eq 0 ]; then
-                checked=1
-                if golden_has_done_marker; then
-                    verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"
-                    log "golden Win11 template built: $GOLDEN (guest-setup-done.txt present) — clone an overlay, never boot this"
-                    break
+        [ "$(monotonic_seconds)" -lt "$PROVISION_VM_DEADLINE" ] \
+            || die "golden provisioning exceeded 130m without guest-setup-done.txt — setup failed or stuck at the desktop"
+        sleep 60
+        [ "$(monotonic_seconds)" -lt "$PROVISION_VM_DEADLINE" ] \
+            || die "golden provisioning exceeded 130m without guest-setup-done.txt — setup failed or stuck at the desktop"
+        mins=$((mins + 1))
+        prove_owned_domain || die "owned golden domain disappeared or changed identity"
+        state="$(virsh_bounded domstate "$PROVISION_DOMAIN_UUID")" \
+            || die "cannot read the owned golden domain state"
+        case "$state" in
+            "shut off")
+                offstreak=$((offstreak + 1))
+                # Stably off for 2 min => the qcow2 is unlocked; check the marker
+                # once per off-streak.
+                if [ "$offstreak" -ge 2 ] && [ "$checked" -eq 0 ]; then
+                    checked=1
+                    if golden_has_done_marker; then
+                        verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"
+                        stop_and_undefine_owned_domain \
+                            || die "completed golden domain could not be undefined safely"
+                        log "golden Win11 template built: $GOLDEN (guest-setup-done.txt present) — clone an overlay, never boot this"
+                        break
+                    fi
+                    log "domain off but no done-marker yet (mins=$mins) — transient reboot, still waiting"
                 fi
-                log "domain off but no done-marker yet (mins=$mins) — transient reboot, still waiting"
-            fi
-        fi
-        [ "$mins" -gt 130 ] && die "golden provisioning exceeded 130m without guest-setup-done.txt — setup failed or stuck at the desktop; force the domain off + virt-cat C:\\setup-transcript.txt to find where win-guest-setup stopped"
+                ;;
+            crashed) die "golden provisioning domain crashed" ;;
+            running|blocked|paused|"in shutdown"|pmsuspended)
+                offstreak=0
+                checked=0
+                ;;
+            *) die "golden provisioning domain entered an unknown state: $state" ;;
+        esac
     done
 }
 
@@ -213,15 +515,40 @@ main() {
     build_golden
     log "Per-build usage (build-windows.ps1): create a CoW overlay and a transient"
     log "domain over \$GOLDEN, share C:\\src + C:\\online read-only, run the build,"
-    log "copy out the .exe/.msi + SHA-256, then destroy the overlay (cleanup.sh)."
+    log "copy out the .exe/.msi + SHA-256, then let the creating transaction retire it."
 }
 
-cleanup_windows_helper_authority() {
+cleanup_provision() {
     local status=$?
+    local cleanup_failed=0
+    [ "$CLEANUP_ACTIVE" = 0 ] || exit "$status"
+    CLEANUP_ACTIVE=1
     trap - EXIT
-    windows_helper_authority_close || status=1
+    trap '' HUP INT TERM
+
+    if ! stop_owned_virt_process; then
+        cleanup_failed=1
+        warn "preserving the domain because the owned virt-install process group did not terminate conclusively"
+    elif ! stop_and_undefine_owned_domain; then
+        cleanup_failed=1
+        warn "could not prove exact terminal cleanup of the provision-owned domain"
+    fi
+    windows_helper_authority_close || cleanup_failed=1
+    if [ "$cleanup_failed" != 0 ] && [ "$status" = 0 ]; then
+        status=1
+    fi
     exit "$status"
 }
-trap cleanup_windows_helper_authority EXIT
+
+signal_exit() {
+    local status="$1"
+    trap - HUP INT TERM
+    exit "$status"
+}
+
+trap cleanup_provision EXIT
+trap 'signal_exit 129' HUP
+trap 'signal_exit 130' INT
+trap 'signal_exit 143' TERM
 
 main "$@"

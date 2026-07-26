@@ -118,7 +118,7 @@ def validate(sources):
             "cleanup guessed-process/domain prohibition",
         ),
         (
-            "current golden-image provisioner's independently name-owned pre-creation collision handling remains a separate source-audit surface",
+            "golden-image provisioner's formerly name-owned collision path is independently closed by R-S11dr",
             "cleanup independent golden-provision boundary",
         ),
         (

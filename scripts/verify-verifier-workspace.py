@@ -11714,7 +11714,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11do, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268",
+        "R-S11n through R-S11dp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#269",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11795,7 +11795,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11do, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268",
+        "R-S11n through R-S11dp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#269",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11974,7 +11974,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11do, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268",
+        "R-S11n through R-S11dp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#269",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12108,7 +12108,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11do, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268",
+        "R-S11n through R-S11dp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#269",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12276,7 +12276,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11do, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268",
+        "R-S11n through R-S11dp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#269",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12469,7 +12469,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11do, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268",
+        "R-S11n through R-S11dp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#269",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12803,7 +12803,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11do, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268",
+        "R-S11n through R-S11dp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#269",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -15793,6 +15793,137 @@ def validate_windows_helper_authority_contract(sources):
         "R-S11do/R-S11e-133 — Windows-helper fixed local-Docker, mount, resource, KVM, and cleanup authority",
         "current Windows helper authority hardening ledger",
     )
+
+
+def validate_cleanup_docker_authority_contract(sources):
+    cleanup = sources["cleanup"]
+    if re.search(r"(?i)\bdocker\b", cleanup):
+        raise VerificationError(
+            "cleanup Docker daemon authority absence: forbidden Docker token remains"
+        )
+    for text in (
+        "clean_ephemeral() {",
+        'for pidfile in "$STATE_DIR"/winvm/*.pid "$STATE_DIR"/winvm/qemu.pid; do',
+        "virsh --connect qemu:///session",
+        'if [ -d "$STATE_DIR/overlays" ]; then',
+        '        "")             clean_ephemeral ;;',
+    ):
+        require_text(
+            cleanup,
+            text,
+            "cleanup separate VM/host cleanup preservation",
+        )
+
+    readme = sources["scripts_readme"]
+    require_text(
+        readme,
+        "Container processes and images are owned by the exact transaction that creates\n"
+        "them.",
+        "cleanup exact-transaction ownership documentation",
+    )
+    require_text(
+        readme,
+        "`cleanup.sh` does not enumerate or remove daemon-global containers or\n"
+        "images by a shared name prefix",
+        "cleanup no-daemon-global documentation",
+    )
+
+    requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11dp",
+        "generic cleanup Docker authority requirement",
+    )
+    for text, label in (
+        (
+            "Generic cleanup has no daemon-global Docker enumeration or prefix-deletion authority",
+            "generic cleanup Docker authority title",
+        ),
+        (
+            "MUST NOT</span> invoke, wrap, discover, configure, enumerate, stop, remove",
+            "generic cleanup no-Docker operation requirement",
+        ),
+        (
+            "MUST NOT</span> treat a name, label, repository/tag, or shared prefix as resource ownership",
+            "generic cleanup name ownership rejection requirement",
+        ),
+        (
+            "direct-QEMU, session-libvirt, overlay, manifest-gated old system-network, "
+            "and recorded-package reversal surfaces remain independently auditable",
+            "generic cleanup independent VM-surface audit boundary",
+        ),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>269</td>",
+        "generic cleanup Docker authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dp/R-S11e-134 — generic cleanup has no daemon-global Docker",
+        "generic cleanup Docker authority hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11n through R-S11dp, R-SV4a,\n"
+        "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
+        "R-R2c, R-R2d, R-T4, and Appendix C #192–#269",
+        "current GitHub-automation requirements-hash scope",
+    )
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "generic cleanup Docker authority deliberate-mutation matrix",
+    )
+    for text, label in (
+        (
+            "cleanup Docker daemon authority absence",
+            "cleanup Docker-absence mutation",
+        ),
+        (
+            "cleanup separate VM/host cleanup preservation",
+            "separate-cleanup preservation mutation",
+        ),
+        (
+            "cleanup exact-transaction ownership documentation",
+            "transaction-ownership documentation mutation",
+        ),
+        (
+            "cleanup no-daemon-global documentation",
+            "daemon-global documentation mutation",
+        ),
+        (
+            "generic cleanup Docker authority requirement",
+            "cleanup requirement mutation",
+        ),
+        (
+            "generic cleanup no-Docker operation requirement",
+            "cleanup operation-prohibition mutation",
+        ),
+        (
+            "generic cleanup name ownership rejection requirement",
+            "cleanup name-ownership mutation",
+        ),
+        (
+            "generic cleanup independent VM-surface audit boundary",
+            "cleanup audit-boundary mutation",
+        ),
+        (
+            "generic cleanup Docker authority Appendix C row",
+            "cleanup Appendix mutation",
+        ),
+        (
+            "generic cleanup Docker authority hardening ledger",
+            "cleanup hardening-ledger mutation",
+        ),
+        (
+            "current GitHub-automation requirements-hash scope",
+            "cleanup hash-scope mutation",
+        ),
+    ):
+        require_text(mutation_matrix, text, label)
 
 
 def validate_apple_verifier_authority_contract(sources):
@@ -24598,6 +24729,7 @@ def validate_sources(sources):
     validate_win_helper_image_authority_contract(sources)
     validate_android_keystore_authority_contract(sources)
     validate_windows_helper_authority_contract(sources)
+    validate_cleanup_docker_authority_contract(sources)
     validate_apple_verifier_authority_contract(sources)
     validate_online_fetch_container_authority_contract(sources)
     validate_online_fetch_gradle_source_authority_contract(sources)
@@ -37932,7 +38064,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11do, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268",
+            "R-S11n through R-S11dp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#269",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -40598,6 +40730,77 @@ def run_source_mutations(sources):
             "R-S11do/R-S11e-133 — Windows-helper fixed local-Docker, mount, resource, KVM, and cleanup authority",
             "R-S11do/R-S11e-133 — Windows-helper ambient authority",
             "current Windows helper authority hardening ledger",
+        ),
+        (
+            "cleanup",
+            "    # Direct QEMU harness leftovers:",
+            "    docker ps -aq --filter name=rustdesk-fork-harness\n"
+            "    # Direct QEMU harness leftovers:",
+            "cleanup Docker daemon authority absence",
+        ),
+        (
+            "cleanup",
+            "    # Direct QEMU harness leftovers:",
+            "    docker rm -f guessed-container-id\n"
+            "    # Direct QEMU harness leftovers:",
+            "cleanup Docker daemon authority absence",
+        ),
+        (
+            "cleanup",
+            '        "")             clean_ephemeral ;;',
+            '        "")             true ;;',
+            "cleanup separate VM/host cleanup preservation",
+        ),
+        (
+            "scripts_readme",
+            "Container processes and images are owned by the exact transaction that creates\n"
+            "them.",
+            "Container processes and images are owned by any transaction sharing their prefix.",
+            "cleanup exact-transaction ownership documentation",
+        ),
+        (
+            "scripts_readme",
+            "`cleanup.sh` does not enumerate or remove daemon-global containers or\n"
+            "images by a shared name prefix",
+            "`cleanup.sh` may enumerate and remove daemon-global containers or\n"
+            "images by a shared name prefix",
+            "cleanup no-daemon-global documentation",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11dp</span>',
+            '<span class="id">R-S11dp-disabled</span>',
+            "generic cleanup Docker authority requirement",
+        ),
+        (
+            "requirements",
+            "MUST NOT</span> invoke, wrap, discover, configure, enumerate, stop, remove",
+            "MAY</span> invoke, wrap, discover, configure, enumerate, stop, remove",
+            "generic cleanup no-Docker operation requirement",
+        ),
+        (
+            "requirements",
+            "MUST NOT</span> treat a name, label, repository/tag, or shared prefix as resource ownership",
+            "MAY</span> treat a name, label, repository/tag, or shared prefix as resource ownership",
+            "generic cleanup name ownership rejection requirement",
+        ),
+        (
+            "requirements",
+            "direct-QEMU, session-libvirt, overlay, manifest-gated old system-network, and recorded-package reversal surfaces remain independently auditable",
+            "direct-QEMU, session-libvirt, overlay, old system-network, and package reversal surfaces are all safe",
+            "generic cleanup independent VM-surface audit boundary",
+        ),
+        (
+            "requirements",
+            "<tr><td>269</td>",
+            "<tr><td>269-disabled</td>",
+            "generic cleanup Docker authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11dp/R-S11e-134 — generic cleanup has no daemon-global Docker",
+            "R-S11dp/R-S11e-134 — generic cleanup retains daemon-global Docker",
+            "generic cleanup Docker authority hardening ledger",
         ),
         (
             "apple_verifier_authority_verifier",
@@ -43885,6 +44088,8 @@ def main():
             "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
             "changelog": (repo / "CHANGELOG.md").read_text(encoding="utf-8"),
             "native_watch": (repo / "docs/NATIVE-CODEC-WATCH.md").read_text(encoding="utf-8"),
+            "cleanup": (repo / "scripts/cleanup.sh").read_text(encoding="utf-8"),
+            "scripts_readme": (repo / "scripts/README.md").read_text(encoding="utf-8"),
             "workspace_verifier": verifier_program_source,
         }
         validate_sources(sources)

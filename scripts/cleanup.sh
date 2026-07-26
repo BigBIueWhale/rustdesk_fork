@@ -26,8 +26,9 @@ source "$SCRIPT_DIR/lib.sh"
 STATE_DIR="$REPO_ROOT/.harness-state"
 PROVISIONED_FILE="$STATE_DIR/provisioned"
 
-# Everything the harness creates is named with this stable prefix so teardown can
-# target exactly it and nothing else (the build-* scripts MUST use it).
+# Legacy VM artifacts use this stable prefix. A name is not sufficient ownership
+# proof for daemon-global resources, so this script does not enumerate or remove
+# container-engine objects.
 HARNESS_PREFIX="rustdesk-fork-harness"
 
 # ── Host-network audit / old system-libvirt default-network cleanup ──────────
@@ -100,12 +101,12 @@ cleanup_build_host_network() {
     # The harness's forwarding lever — libvirt's default network — is now removed (virbr0 and its
     # dnsmasq listeners are asserted gone above). R-B11a forbids an ip_forward change ATTRIBUTABLE TO
     # THE HARNESS; with the libvirt net gone, a residual ip_forward=1 is held by a non-harness
-    # consumer — the container engine the build runs on (Docker enables forwarding for its bridge, and
-    # online-fetch.sh needs it). That is explicitly permitted, so do NOT fail closed on it. (libvirt
+    # consumer — for example, the container engine used by the build may enable forwarding for its
+    # bridge. That is explicitly permitted, so do NOT fail closed on it. (libvirt
     # does not reset ip_forward on net-destroy, so an unconditional check here could never pass on the
-    # Docker build host the spec itself provisions.)
+    # build host the spec itself provisions.)
     if [ "$(cat /proc/sys/net/ipv4/ip_forward 2>/dev/null || echo 0)" = "1" ]; then
-        log "note: ip_forward=1 remains but is not harness-attributable (libvirt default network removed); a non-harness consumer such as Docker holds it (R-B11a)."
+        log "note: ip_forward=1 remains but is not harness-attributable (libvirt default network removed); a non-harness consumer holds it (R-B11a)."
     fi
     log "build-host network cleanup complete."
 }
@@ -113,15 +114,6 @@ cleanup_build_host_network() {
 # ── Default: remove only harness-created ephemeral artifacts ──────────────────
 clean_ephemeral() {
     log "removing harness-created ephemeral artifacts (prefix: $HARNESS_PREFIX)"
-
-    # Docker: containers then images bearing our prefix (we tagged them).
-    if command -v docker >/dev/null 2>&1; then
-        local ids
-        ids="$(docker ps -aq --filter "name=${HARNESS_PREFIX}" 2>/dev/null || true)"
-        [ -z "$ids" ] || { log "docker rm: $ids"; docker rm -f $ids >/dev/null; }
-        ids="$(docker images --format '{{.Repository}}:{{.Tag}}' 2>/dev/null | grep "^${HARNESS_PREFIX}" || true)"
-        [ -z "$ids" ] || { log "docker rmi: $ids"; echo "$ids" | xargs -r docker rmi -f >/dev/null; }
-    fi
 
     # Direct QEMU harness leftovers: old provisioner/debug VMs used pidfiles under
     # .harness-state/winvm and loopback-only VNC/SSH forwards. They are still

@@ -12812,6 +12812,83 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   installed/native/device test is claimed here. Exact cold committed
   R-B2/R-B10 Windows artifacts and R-V3 external review remain separately
   open; the broader Ralph-loop goal remains active.
+- **R-S11dp/R-S11e-134 — generic cleanup has no daemon-global Docker
+  enumeration or prefix-deletion authority — SOURCE IMPLEMENTED AND
+  CONFINED SOURCE/MUTATION VERIFIED 2026-07-26.**
+  Platform: the unprivileged Linux build/maintenance host. Endpoint/action:
+  default `scripts/cleanup.sh::clean_ephemeral` container and image discovery
+  plus force removal. Boundary: a generic reversible VM/host cleanup request ↔
+  every container and image name visible through whichever Docker daemon and
+  client configuration the caller selected.
+
+  Proven old path and history: the default cleanup PATH-selected `docker`,
+  inherited its complete routing/configuration environment, called
+  `docker ps -aq --filter name=${HARNESS_PREFIX}`, suppressed enumeration
+  failure, and passed every whitespace-split result to `docker rm -f`. It then
+  listed every top-level image repository/tag, selected textual prefix matches,
+  and piped those mutable names to `xargs docker rmi -f`. Docker's official
+  container-list documentation states that the `name` filter matches all or
+  part of a name; its image-list documentation states that one image may have
+  multiple repository names/tags. The container and image removal commands are
+  destructive daemon operations. A shared prefix therefore did not prove the
+  creating transaction, exact immutable object, or absence of another owner.
+  `git blame` attributes this branch to the original R-B11 cleanup import
+  `34b4921f`, not the recent fixed local-Docker hardening.
+
+  This was daemon-global availability, mutable-name, daemon/configuration-
+  selection, and destructive-cleanup authority debt. It is not evidence that
+  this cleanup was run against another daemon, that an unrelated container or
+  image was actually removed, Docker escaped, host root was acquired, a
+  listener or port was exposed, host RustDesk/service/configuration/firewall/
+  network state changed, exploitation occurred, or the host was compromised.
+
+  Authority model and source closure: generic cleanup owns only resources whose
+  exact identity was retained by the transaction that created them. It has no
+  such Docker object identity, and a name, label, repository/tag, or prefix is
+  not a substitute. The complete Docker availability check, global container
+  and image enumerations, suppressed-error branches, force removals, word
+  splitting, and `xargs` pipeline are deleted. `scripts/cleanup.sh` contains no
+  Docker token or client/daemon operation. Existing container-producing
+  transactions retain their own exact terminal cleanup; deliberately retained
+  acquisition/certification candidates remain explicit maintenance state
+  rather than implicit default-cleanup targets. The README states that split
+  directly. The separate R-B11/R-B11a direct-QEMU, session-libvirt, overlay,
+  manifest-gated old system-network, and recorded-package reversal surfaces
+  remain independently auditable; this slice does not declare them safe.
+
+  Primary contracts:
+  https://docs.docker.com/reference/cli/docker/container/ls/,
+  https://docs.docker.com/reference/cli/docker/image/ls/,
+  https://docs.docker.com/reference/cli/docker/container/rm/, and
+  https://docs.docker.com/reference/cli/docker/image/rm/.
+  R-S11dp and Appendix C #269 make the deletion normative. The independent
+  workspace validator and its complete deliberate-mutation catalog bind
+  cleanup-source Docker absence, preserved default VM/host-cleanup entry,
+  operator documentation, requirement, Appendix disposition, this row, and
+  the synchronized requirements-hash scope without invoking cleanup or
+  inspecting the live daemon.
+
+  Confined verification on 2026-07-26 used immutable verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as the caller's numeric non-root UID/GID with no network, a read-only root
+  and recursively-disabled read-only repository bind, dropped capabilities,
+  no-new-privileges, finite PID/memory/no-swap/CPU/descriptor/core/file-size
+  limits, a bounded noexec tmpfs, and no Docker socket, device, port, or host
+  namespace mount. Python compilation, Bash syntax, HTML parsing, exact
+  requirements-hash equality, cleanup-source Docker-token absence, and
+  `git diff --check` passed. The independent workspace validator passed
+  normally and rejected all 2,379 deliberate source mutations from mutation
+  one. Adjacent source contracts rejected all 27 release-parent, 44 Debian
+  systemd-lifecycle, and 78 Windows-helper mutations; native-codec-watch passed
+  its normal and negative self-test gates. The validator had no Docker
+  client/socket and invoked no cleanup, daemon inventory/deletion, build,
+  Android/Gradle, KVM, Windows, root fixture, release workload, or host
+  RustDesk/service/firewall/network operation. The outer verifier transaction
+  created and terminally removed only its own exact disposable container.
+
+  Exact cold R-B2/R-B10 artifacts, remaining native/installed/device evidence,
+  fresh independent image reproduction where separately named, and R-V3
+  external review remain open. The broader Ralph-loop goal remains active.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -13529,9 +13606,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-5d1dd29b50b742ec793dd2db123a9e3ad18b66e6c19864a9e5197486a343b62a  requirements.html
+89f3f8e26b495a684cf4cf2a9647c530a23cbca07a74620ffe022debbc339b6f  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11do, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dp, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#269. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

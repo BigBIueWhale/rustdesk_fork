@@ -11714,7 +11714,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
+        "R-S11n through R-S11du, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#274",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11795,7 +11795,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
+        "R-S11n through R-S11du, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#274",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11974,7 +11974,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
+        "R-S11n through R-S11du, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#274",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12108,7 +12108,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
+        "R-S11n through R-S11du, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#274",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12276,7 +12276,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
+        "R-S11n through R-S11du, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#274",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12469,7 +12469,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
+        "R-S11n through R-S11du, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#274",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12803,7 +12803,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
+        "R-S11n through R-S11du, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#274",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -15864,9 +15864,9 @@ def validate_cleanup_docker_authority_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dt, R-SV4a,\n"
+        "R-S11n through R-S11du, R-SV4a,\n"
         "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
+        "R-R2c, R-R2d, R-T4, and Appendix C #192–#274",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -16052,9 +16052,9 @@ def validate_cleanup_process_domain_path_authority_contract(sources):
 
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dt, R-SV4a,\n"
+        "R-S11n through R-S11du, R-SV4a,\n"
         "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
+        "R-R2c, R-R2d, R-T4, and Appendix C #192–#274",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -16435,6 +16435,13 @@ def validate_windows_golden_domain_authority_contract(sources):
 def validate_windows_build_domain_authority_contract(sources):
     build = sources["windows_build"]
     closure = sources["closure"]
+    publication = sources["windows_publication"]
+    publish_result = extract_between(
+        build,
+        "publish_result() {\n",
+        "\n}\n\nrun_root_cleanup_self_test()",
+        "Windows build result-publication shell boundary",
+    )
     for text, label in (
         ("export LC_ALL=C", "Windows build fixed control locale"),
         (
@@ -16540,6 +16547,39 @@ def validate_windows_build_domain_authority_contract(sources):
         ),
     ):
         require_text(build, text, label)
+    require_exact_count(
+        publish_result,
+        '/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-windows-result.py"',
+        2,
+        "Windows build exact prepare/commit publisher invocations",
+    )
+    require_exact_count(
+        publish_result,
+        '--output-parent-identity "$OUT_PARENT_ID"',
+        2,
+        "Windows build exact prepare/commit parent-identity handoffs",
+    )
+    require_order(
+        publish_result,
+        (
+            "--prepare",
+            'read -r pending pending_identity extra <<<"$authority"',
+            "remove_completed_run_root",
+            "--commit",
+        ),
+        "Windows build prepare/run-state-retirement/commit order",
+    )
+    for text, label in (
+        (
+            r'[[ "$pending" =~ ^\.windows-output-pending-[0-9a-f]{64}$ ]]',
+            "Windows build pending-name authority parsing",
+        ),
+        (
+            r'[[ "$pending_identity" =~ ^(0|[1-9][0-9]*):[1-9][0-9]*$ ]]',
+            "Windows build pending-identity authority parsing",
+        ),
+    ):
+        require_text(publish_result, text, label)
 
     process_identity = extract_between(
         build,
@@ -16811,6 +16851,181 @@ def validate_windows_build_domain_authority_contract(sources):
         "Windows build run-state hardening-ledger disposition",
     )
 
+    for text, label in (
+        (
+            'OUT_PARENT_ID="$device:$inode"',
+            "Windows build retained output-parent device/inode",
+        ),
+        (
+            'OUT_DIR="$OUT_PARENT/$(basename "$OUT_DIR")"\n'
+            "    record_output_parent_identity",
+            "Windows build output-parent identity binding",
+        ),
+        (
+            '/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-windows-result.py"',
+            "Windows build isolated result publisher",
+        ),
+        (
+            '--run-root-identity "$RUN_ROOT_ID"',
+            "Windows build run-root publication identity handoff",
+        ),
+        (
+            '--output-parent-identity "$OUT_PARENT_ID"',
+            "Windows build output-parent publication identity handoff",
+        ),
+        (
+            "windows_helper_authority_close \\\n"
+            '        || die "Windows helper authority could not retire before artifact publication"\n'
+            '    publish_result "$RUN_ROOT/pass-A/result"',
+            "Windows build helper-before-publication order",
+        ),
+    ):
+        require_text(build, text, label)
+    for text, label in (
+        (".windows-publish.XXXXXXXX", "Windows build external publication staging absence"),
+        (
+            'mv -T --no-clobber -- "$staging" "$OUT_DIR"',
+            "Windows build GNU mv publication absence",
+        ),
+    ):
+        require_absent(build, text, label)
+
+    for text, label in (
+        ("RENAME_NOREPLACE = 1", "Windows publication no-clobber flag"),
+        (
+            'CANDIDATE_NAME = ".windows-output-candidate"',
+            "Windows publication private candidate",
+        ),
+        (
+            'SOURCE_COMPONENTS = ("pass-A", "result")',
+            "Windows publication exact source",
+        ),
+        (
+            'ARTIFACTS = ("rustdesk-setup.exe", "rustdesk.msi")',
+            "Windows publication closed artifacts",
+        ),
+        (
+            "if identity(opened) != expected:",
+            "Windows publication expected identity proof",
+        ),
+        (
+            "if opened.st_uid != os.getuid() or opened.st_gid != os.getgid():",
+            "Windows publication principal ownership proof",
+        ),
+        (
+            "or before.st_nlink != 1",
+            "Windows publication single-link source proof",
+        ),
+        (
+            "if run_info.st_dev != parent_info.st_dev:",
+            "Windows publication same-filesystem proof",
+        ),
+        (
+            "os.mkdir(CANDIDATE_NAME, 0o700, dir_fd=run_root)",
+            "Windows publication run-root candidate creation",
+        ),
+        (
+            "if actual != parsed[artifact][0]:",
+            "Windows publication source checksum proof",
+        ),
+        (
+            'PENDING_RE = re.compile(r"^\\.windows-output-pending-[0-9a-f]{64}$")',
+            "Windows publication pending-name grammar",
+        ),
+        (
+            "rename_noreplace(run_root, CANDIDATE_NAME, output_parent, pending)",
+            "Windows publication descriptor-relative pending park",
+        ),
+        (
+            "identity(pending_info) != identity(candidate_info)",
+            "Windows publication exact pending-edge identity",
+        ),
+        (
+            "if identity(candidate_info) != expected_pending:",
+            "Windows publication pending identity proof",
+        ),
+        (
+            "rename_noreplace(output_parent, pending, output_parent, destination)",
+            "Windows publication same-parent final rename",
+        ),
+        (
+            "identity(published) != identity(candidate_info)",
+            "Windows publication exact destination identity",
+        ),
+        ("os.fsync(candidate)", "Windows publication candidate sync"),
+        ("os.fsync(run_root)", "Windows publication source namespace sync"),
+        ("os.fsync(output_parent)", "Windows publication destination namespace sync"),
+        (
+            "self-test accepted a substituted output parent",
+            "Windows publication parent-substitution fixture",
+        ),
+        (
+            "self-test accepted a substituted pending output",
+            "Windows publication pending-substitution fixture",
+        ),
+        (
+            "self-test accepted an occupied destination",
+            "Windows publication destination-collision fixture",
+        ),
+        (
+            "self-test accepted a {suffix} source",
+            "Windows publication hardlink/inventory fixtures",
+        ),
+    ):
+        require_text(publication, text, label)
+    for text, label in (
+        ("shutil.", "Windows publication shutil authority absence"),
+        ("subprocess.", "Windows publication subprocess authority absence"),
+        ("os.replace(", "Windows publication overwrite replacement absence"),
+    ):
+        require_absent(publication, text, label)
+    require_exact_count(
+        publication,
+        "os.rename(output_parent, retained_parent)",
+        1,
+        "Windows publication one test-only parent substitution",
+    )
+
+    publication_requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11du",
+        "Windows exact result-publication requirement",
+    )
+    for text, label in (
+        (
+            "Windows result publication is exact-object, same-filesystem, no-clobber, durable, and authority-terminal",
+            "Windows publication requirement title",
+        ),
+        (
+            "complete candidate <span class=\"kw\">MUST</span> first be created inside the authenticated private run root",
+            "Windows publication normative candidate authority",
+        ),
+        (
+            "remove the exact remaining run-root identity through R-S11dt's "
+            "descriptor-relative private-tree closure while the requested destination is still absent",
+            "Windows publication normative run-state finality",
+        ),
+        (
+            "same-parent <code>renameat2(RENAME_NOREPLACE)</code>",
+            "Windows publication normative final no-clobber primitive",
+        ),
+        (
+            "without invoking the Windows builder main path",
+            "Windows publication source-only verification boundary",
+        ),
+    ):
+        require_text(publication_requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>274</td>",
+        "Windows publication Appendix C #274 disposition",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11du/R-S11e-139 — Windows result publication is exact-object and authority-terminal",
+        "Windows publication hardening-ledger disposition",
+    )
+
     focused = sources["windows_harness_verifier"]
     for text, label in (
         (
@@ -16840,6 +17055,14 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             "Appendix C #273 disposition",
             "Windows build focused run-state Appendix mutation",
+        ),
+        (
+            "prepare/retire-run-root/final-commit publication order",
+            "Windows build focused publication finality binding",
+        ),
+        (
+            "Appendix C #274 disposition",
+            "Windows build focused publication Appendix mutation",
         ),
     ):
         require_text(focused, text, label)
@@ -16959,6 +17182,70 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             "Windows build run-state hardening-ledger disposition",
             "Windows build run-state ledger mutation",
+        ),
+        (
+            "Windows build retained output-parent device/inode",
+            "Windows build output-parent identity mutation",
+        ),
+        (
+            "Windows publication no-clobber flag",
+            "Windows build publication no-clobber mutation",
+        ),
+        (
+            "Windows publication same-filesystem proof",
+            "Windows build publication filesystem mutation",
+        ),
+        (
+            "Windows publication source checksum proof",
+            "Windows build publication checksum mutation",
+        ),
+        (
+            "Windows build prepare/run-state-retirement/commit order",
+            "Windows build publication transaction-finality mutation",
+        ),
+        (
+            "Windows build pending-name authority parsing",
+            "Windows build publication pending-authority mutation",
+        ),
+        (
+            "Windows publication pending-name grammar",
+            "Windows build publication pending-name mutation",
+        ),
+        (
+            "Windows publication descriptor-relative pending park",
+            "Windows build publication pending-park mutation",
+        ),
+        (
+            "Windows publication exact pending-edge identity",
+            "Windows build publication pending-edge mutation",
+        ),
+        (
+            "Windows publication pending identity proof",
+            "Windows build publication retained-pending mutation",
+        ),
+        (
+            "Windows publication same-parent final rename",
+            "Windows build publication final-rename mutation",
+        ),
+        (
+            "Windows publication exact destination identity",
+            "Windows build publication destination-edge mutation",
+        ),
+        (
+            "Windows exact result-publication requirement",
+            "Windows build publication requirement mutation",
+        ),
+        (
+            "Windows publication normative run-state finality",
+            "Windows build publication finality-requirement mutation",
+        ),
+        (
+            "Windows publication Appendix C #274 disposition",
+            "Windows build publication Appendix mutation",
+        ),
+        (
+            "Windows publication hardening-ledger disposition",
+            "Windows build publication ledger mutation",
         ),
     ):
         require_text(mutation_matrix, text, label)
@@ -39105,7 +39392,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11dt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
+            "R-S11n through R-S11du, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#274",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -42134,6 +42421,128 @@ def run_source_mutations(sources):
             "R-S11dt/R-S11e-138 — Windows build run-state cleanup is identity-bound and authority-last",
             "R-S11dt/R-S11e-138 — Windows build run-state cleanup is pathname-owned",
             "Windows build run-state hardening-ledger disposition",
+        ),
+        (
+            "windows_build",
+            'OUT_PARENT_ID="$device:$inode"',
+            'OUT_PARENT_ID="$OUT_PARENT"',
+            "Windows build retained output-parent device/inode",
+        ),
+        (
+            "windows_build",
+            'OUT_DIR="$OUT_PARENT/$(basename "$OUT_DIR")"\n'
+            "    record_output_parent_identity",
+            'OUT_DIR="$OUT_PARENT/$(basename "$OUT_DIR")"\n'
+            "    true # output-parent identity not retained",
+            "Windows build output-parent identity binding",
+        ),
+        (
+            "windows_build",
+            "windows_helper_authority_close \\\n"
+            '        || die "Windows helper authority could not retire before artifact publication"\n'
+            '    publish_result "$RUN_ROOT/pass-A/result"',
+            "retire_windows_helper_authority \\\n"
+            '        || die "Windows helper authority could not retire before artifact publication"\n'
+            '    publish_result "$RUN_ROOT/pass-A/result"',
+            "Windows build helper-before-publication order",
+        ),
+        (
+            "windows_build",
+            "remove_completed_run_root \\\n"
+            '        || die "Windows private run state could not retire before final publication"',
+            "true # private run state not retired before final publication",
+            "Windows build prepare/run-state-retirement/commit order",
+        ),
+        (
+            "windows_build",
+            '[[ "$pending" =~ ^\\.windows-output-pending-[0-9a-f]{64}$ ]]',
+            '[[ "$pending" =~ ^\\.windows-output-pending-.*$ ]]',
+            "Windows build pending-name authority parsing",
+        ),
+        (
+            "windows_publication",
+            "RENAME_NOREPLACE = 1",
+            "RENAME_NOREPLACE = 0",
+            "Windows publication no-clobber flag",
+        ),
+        (
+            "windows_publication",
+            "if identity(opened) != expected:",
+            "if identity(opened) == expected:",
+            "Windows publication expected identity proof",
+        ),
+        (
+            "windows_publication",
+            "if run_info.st_dev != parent_info.st_dev:",
+            "if run_info.st_dev == parent_info.st_dev:",
+            "Windows publication same-filesystem proof",
+        ),
+        (
+            "windows_publication",
+            "if actual != parsed[artifact][0]:",
+            "if actual != actual:",
+            "Windows publication source checksum proof",
+        ),
+        (
+            "windows_publication",
+            'PENDING_RE = re.compile(r"^\\.windows-output-pending-[0-9a-f]{64}$")',
+            'PENDING_RE = re.compile(r"^\\.windows-output-pending-.*$")',
+            "Windows publication pending-name grammar",
+        ),
+        (
+            "windows_publication",
+            "rename_noreplace(run_root, CANDIDATE_NAME, output_parent, pending)",
+            "rename_noreplace(output_parent, CANDIDATE_NAME, output_parent, pending)",
+            "Windows publication descriptor-relative pending park",
+        ),
+        (
+            "windows_publication",
+            "identity(pending_info) != identity(candidate_info)",
+            "identity(pending_info) != identity(pending_info)",
+            "Windows publication exact pending-edge identity",
+        ),
+        (
+            "windows_publication",
+            "if identity(candidate_info) != expected_pending:",
+            "if identity(candidate_info) == expected_pending:",
+            "Windows publication pending identity proof",
+        ),
+        (
+            "windows_publication",
+            "rename_noreplace(output_parent, pending, output_parent, destination)",
+            "rename_noreplace(output_parent, destination, output_parent, pending)",
+            "Windows publication same-parent final rename",
+        ),
+        (
+            "windows_publication",
+            "identity(published) != identity(candidate_info)",
+            "identity(published) != identity(published)",
+            "Windows publication exact destination identity",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11du</span>',
+            '<span class="id">R-S11du-disabled</span>',
+            "Windows exact result-publication requirement",
+        ),
+        (
+            "requirements",
+            "remove the exact remaining run-root identity through R-S11dt's "
+            "descriptor-relative private-tree closure while the requested destination is still absent",
+            "leave the run root for cleanup after final publication",
+            "Windows publication normative run-state finality",
+        ),
+        (
+            "requirements",
+            "<tr><td>274</td>",
+            "<tr><td>274-disabled</td>",
+            "Windows publication Appendix C #274 disposition",
+        ),
+        (
+            "hardening",
+            "R-S11du/R-S11e-139 — Windows result publication is exact-object and authority-terminal",
+            "R-S11du/R-S11e-139 — Windows result publication is pathname-owned",
+            "Windows publication hardening-ledger disposition",
         ),
         (
             "cleanup",
@@ -45391,6 +45800,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "windows_build": (
                 repo / "scripts/build-windows-vm.sh"
+            ).read_text(encoding="utf-8"),
+            "windows_publication": (
+                repo / "scripts/publish-windows-result.py"
             ).read_text(encoding="utf-8"),
             "windows_provision": (
                 repo / "scripts/provision-windows-vm.sh"

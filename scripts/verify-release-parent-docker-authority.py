@@ -480,8 +480,8 @@ def validate(sources: Dict[str, str]) -> None:
             "validate_release_parent_docker_authority_contract(sources)",
             "independent release-parent authority validation",
         ),
-        ("R-S11n through R-S11dt", "independent requirement range"),
-        ("Appendix C #192–#273", "independent Appendix range"),
+        ("R-S11n through R-S11du", "independent requirement range"),
+        ("Appendix C #192–#274", "independent Appendix range"),
     ):
         require(workspace, token, label)
 

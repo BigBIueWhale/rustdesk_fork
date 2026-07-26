@@ -40,6 +40,8 @@ FRB_OUTPUTS=(
 
 RUN_ROOT=""
 RUN_ROOT_ID=""
+OUT_PARENT=""
+OUT_PARENT_ID=""
 RUN_ID=""
 SOURCE_SNAPSHOT=""
 SOURCE_COMMIT=""
@@ -110,6 +112,29 @@ record_run_root_identity() {
     [[ "$device" =~ ^[0-9]+$ ]] && [[ "$inode" =~ ^[1-9][0-9]*$ ]] \
         || die "private Windows run-root identity is malformed"
     RUN_ROOT_ID="$device:$inode"
+}
+
+record_output_parent_identity() {
+    local resolved metadata owner group mode device inode extra
+    [ -n "$OUT_PARENT" ] || die "Windows output parent is empty"
+    [ -d "$OUT_PARENT" ] && [ ! -L "$OUT_PARENT" ] \
+        || die "Windows output parent is not a real directory"
+    resolved="$(/usr/bin/readlink -f -- "$OUT_PARENT" 2>/dev/null)" \
+        || die "Windows output parent cannot be resolved"
+    [ "$resolved" = "$OUT_PARENT" ] \
+        || die "Windows output parent is not canonical"
+    metadata="$(/usr/bin/stat -c '%u:%g:%a:%d:%i' -- "$OUT_PARENT" 2>/dev/null)" \
+        || die "Windows output-parent identity is unavailable"
+    IFS=: read -r owner group mode device inode extra <<<"$metadata"
+    [ -z "$extra" ] \
+        && [ "$owner" = "$WINDOWS_HELPER_BUILD_UID" ] \
+        && [ "$group" = "$WINDOWS_HELPER_BUILD_GID" ] \
+        && [ $((8#$mode & 8#700)) -eq $((8#700)) ] \
+        && [ $((8#$mode & 8#7022)) -eq 0 ] \
+        || die "Windows output parent does not grant only current-principal write authority"
+    [[ "$device" =~ ^[0-9]+$ ]] && [[ "$inode" =~ ^[1-9][0-9]*$ ]] \
+        || die "Windows output-parent identity is malformed"
+    OUT_PARENT_ID="$device:$inode"
 }
 
 remove_private_root_exact() {
@@ -549,6 +574,7 @@ preflight() {
     mkdir -p "$OUT_PARENT"
     OUT_PARENT="$(realpath -e "$OUT_PARENT")"
     OUT_DIR="$OUT_PARENT/$(basename "$OUT_DIR")"
+    record_output_parent_identity
     for pair in "$STATE_DIR|state directory" "$GOLDEN|golden image" "$ONLINE_DIR|online cache" "$OUT_DIR|output directory"; do
         assert_safe_path "${pair%%|*}" "${pair#*|}"
     done
@@ -1320,33 +1346,38 @@ run_pass() {
 
 publish_result() {
     local result="$1"
-    local staging
-    { [ ! -e "$OUT_DIR" ] && [ ! -L "$OUT_DIR" ]; } \
-        || die "Windows output directory appeared before atomic publication"
-    staging="$(mktemp -d "$OUT_PARENT/.windows-publish.XXXXXXXX")"
-    for name in rustdesk-setup.exe rustdesk-setup.exe.sha256 rustdesk.msi rustdesk.msi.sha256; do
-        [ -f "$result/$name" ] && [ ! -L "$result/$name" ] && [ -s "$result/$name" ] \
-            || die "validated result is missing $name"
-        install -m 0644 "$result/$name" "$staging/$name"
-    done
-    for name in build-log.txt run-build-progress.txt; do
-        if [ -f "$result/$name" ] && [ ! -L "$result/$name" ]; then
-            install -m 0644 "$result/$name" "$staging/$name"
-        fi
-    done
-    (
-        cd "$staging"
-        sha256sum -c rustdesk-setup.exe.sha256
-        sha256sum -c rustdesk.msi.sha256
-    )
-    mv -T --no-clobber -- "$staging" "$OUT_DIR"
-    [ ! -e "$staging" ] && [ ! -L "$staging" ] \
-        || die "Windows output directory appeared during atomic publication"
-    (
-        cd "$OUT_DIR"
-        sha256sum -c rustdesk-setup.exe.sha256
-        sha256sum -c rustdesk.msi.sha256
-    )
+    local destination="${OUT_DIR##*/}"
+    local authority pending pending_identity extra
+    [ "$result" = "$RUN_ROOT/pass-A/result" ] \
+        || die "Windows publication source is not the pass-A result"
+    [ -n "$RUN_ROOT_ID" ] && [ -n "$OUT_PARENT_ID" ] \
+        || die "Windows publication authority is incomplete"
+    [ "$OUT_DIR" = "$OUT_PARENT/$destination" ] \
+        || die "Windows output destination is not one retained parent edge"
+    authority="$(/usr/bin/env -i PATH=/usr/bin:/bin \
+        /usr/bin/python3 -I -S "$SCRIPT_DIR/publish-windows-result.py" \
+            --prepare \
+            --run-root "$RUN_ROOT" \
+            --run-root-identity "$RUN_ROOT_ID" \
+            --output-parent "$OUT_PARENT" \
+            --output-parent-identity "$OUT_PARENT_ID" \
+            --destination "$destination")" \
+        || die "Windows output candidate preparation failed"
+    read -r pending pending_identity extra <<<"$authority"
+    [[ "$pending" =~ ^\.windows-output-pending-[0-9a-f]{64}$ ]] \
+        && [[ "$pending_identity" =~ ^(0|[1-9][0-9]*):[1-9][0-9]*$ ]] \
+        && [ -z "$extra" ] \
+        || die "Windows output candidate authority is malformed"
+    remove_completed_run_root \
+        || die "Windows private run state could not retire before final publication"
+    /usr/bin/env -i PATH=/usr/bin:/bin \
+        /usr/bin/python3 -I -S "$SCRIPT_DIR/publish-windows-result.py" \
+            --commit \
+            --output-parent "$OUT_PARENT" \
+            --output-parent-identity "$OUT_PARENT_ID" \
+            --pending "$pending" \
+            --pending-identity "$pending_identity" \
+            --destination "$destination"
 }
 
 run_root_cleanup_self_test() {
@@ -1501,8 +1532,9 @@ main() {
     fi
     verify_active_online_snapshot
     verify_private_golden
+    windows_helper_authority_close \
+        || die "Windows helper authority could not retire before artifact publication"
     publish_result "$RUN_ROOT/pass-A/result"
-    rm -f -- "$RUN_ROOT/offline.iso"
     RUN_COMPLETE=1
     log "Windows artifacts complete: $OUT_DIR"
 }

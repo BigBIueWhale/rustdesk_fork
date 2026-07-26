@@ -27,6 +27,7 @@ FILES = {
     "host": "scripts/build-windows-vm.sh",
     "runtime": "scripts/windows-helper-runtime.sh",
     "closure": "scripts/verify-private-tree-closure.py",
+    "publication": "scripts/publish-windows-result.py",
     "offline": "scripts/windows-offline-manifest.py",
     "frb": "scripts/frb-codegen.sh",
     "guest": "scripts/run-build.ps1",
@@ -309,6 +310,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     host = sources["host"]
     runtime = sources["runtime"]
     closure = sources["closure"]
+    publication = sources["publication"]
     offline = sources["offline"]
     frb = sources["frb"]
     guest = sources["guest"]
@@ -323,6 +325,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     windows = sources["windows"]
 
     orchestrator_tree = parse_python(orchestrator, "build.py")
+    publication_tree = parse_python(publication, "scripts/publish-windows-result.py")
     offline_tree = parse_python(offline, "scripts/windows-offline-manifest.py")
     pe_tree = parse_python(pe, "scripts/canonicalize-pe.py")
     msi_tree = parse_python(msi, "scripts/canonicalize-msi.py")
@@ -508,8 +511,10 @@ def validate_sources(sources: dict[str, str]) -> None:
     extract_and_validate = shell_function(host, "extract_and_validate")
     host_main = shell_function(host, "main")
     run_root_identity = shell_function(host, "record_run_root_identity")
+    output_parent_identity = shell_function(host, "record_output_parent_identity")
     exact_private_root_removal = shell_function(host, "remove_private_root_exact")
     completed_run_root_removal = shell_function(host, "remove_completed_run_root")
+    publish_result = shell_function(host, "publish_result")
     cleanup = shell_function(host, "cleanup")
     harness_self_test = shell_function(host, "harness_self_test")
     run_root_cleanup_self_test = shell_function(host, "run_root_cleanup_self_test")
@@ -557,11 +562,26 @@ def validate_sources(sources: dict[str, str]) -> None:
             'mkdir -p "$STATE_DIR"',
             'STATE_DIR="$(realpath -e "$STATE_DIR")"',
             'OUT_DIR="$OUT_PARENT/$(basename "$OUT_DIR")"',
+            "record_output_parent_identity",
             'assert_disjoint_paths "$STATE_DIR"',
             '{ [ ! -e "$OUT_DIR" ] && [ ! -L "$OUT_DIR" ]; }',
         ),
         "pre-creation and post-canonicalization Windows path disjointness",
     )
+    for literal, description in (
+        (
+            'metadata="$(/usr/bin/stat -c \'%u:%g:%a:%d:%i\' -- "$OUT_PARENT" 2>/dev/null)"',
+            "output-parent ownership and identity sample",
+        ),
+        ('[ "$owner" = "$WINDOWS_HELPER_BUILD_UID" ]', "output-parent owner proof"),
+        ('[ "$group" = "$WINDOWS_HELPER_BUILD_GID" ]', "output-parent group proof"),
+        (
+            '[ $((8#$mode & 8#7022)) -eq 0 ]',
+            "output-parent special/group/world-write rejection",
+        ),
+        ('OUT_PARENT_ID="$device:$inode"', "retained output-parent device/inode"),
+    ):
+        require(output_parent_identity, literal, description)
     for description in (
         "Windows path-disjointness self-test accepted equal paths",
         "Windows path-disjointness self-test accepted output beneath state",
@@ -963,6 +983,37 @@ def validate_sources(sources: dict[str, str]) -> None:
         "R-S11dt/R-S11e-138 — Windows build run-state cleanup is identity-bound and authority-last",
         "R-S11dt hardening-ledger disposition",
     )
+    publication_requirement = html_requirement(requirements, "R-S11du")
+    for literal, description in (
+        (
+            "Windows result publication is exact-object, same-filesystem, no-clobber, durable, and authority-terminal",
+            "R-S11du requirement title",
+        ),
+        (
+            "complete candidate <span class=\"kw\">MUST</span> first be created inside the authenticated private run root",
+            "normative private candidate authority",
+        ),
+        (
+            "remove the exact remaining run-root identity through R-S11dt's "
+            "descriptor-relative private-tree closure while the requested destination is still absent",
+            "normative run-state finality before publication",
+        ),
+        (
+            "same-parent <code>renameat2(RENAME_NOREPLACE)</code>",
+            "normative final no-clobber publication",
+        ),
+        (
+            "without invoking the Windows builder main path",
+            "source-only publication verification boundary",
+        ),
+    ):
+        require(publication_requirement, literal, description)
+    require(requirements, "<tr><td>274</td>", "Appendix C #274 disposition")
+    require(
+        hardening,
+        "R-S11du/R-S11e-139 — Windows result publication is exact-object and authority-terminal",
+        "R-S11du hardening-ledger disposition",
+    )
 
     require(preflight, '[ -f "$GOLDEN" ] && [ ! -L "$GOLDEN" ]', "regular golden source")
     require(preflight, 'verify_sha256 "$GOLDEN" "$SHA256_WIN11_GOLDEN_QCOW2"', "golden pre-snapshot hash")
@@ -1016,9 +1067,10 @@ def validate_sources(sources: dict[str, str]) -> None:
             "verify_private_golden",
             "verify_active_online_snapshot",
             "verify_private_golden",
+            "windows_helper_authority_close",
             'publish_result "$RUN_ROOT/pass-A/result"',
         ),
-        "golden snapshot and pre/post hash validation",
+        "golden validation and helper retirement before publication",
     )
     require(
         host,
@@ -1252,7 +1304,195 @@ def validate_sources(sources: dict[str, str]) -> None:
     require(host, "source tree contains an unmanifested empty directory", "exact source directories")
     require(host, 'chmod -R a-w "$media_root"', "immutable source media tree")
     require(host, "source identity changed while source media was created", "source identity media postcondition")
-    require(host, 'mv -T --no-clobber -- "$staging" "$OUT_DIR"', "atomic no-clobber result publication")
+    for literal, description in (
+        (
+            '[ "$result" = "$RUN_ROOT/pass-A/result" ]',
+            "exact pass-A publication source",
+        ),
+        (
+            '[ -n "$RUN_ROOT_ID" ] && [ -n "$OUT_PARENT_ID" ]',
+            "complete publication identities",
+        ),
+        (
+            '/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-windows-result.py"',
+            "isolated Windows publication helper",
+        ),
+        ('--run-root-identity "$RUN_ROOT_ID"', "run-root identity handoff"),
+        ('--output-parent-identity "$OUT_PARENT_ID"', "output-parent identity handoff"),
+        ('--pending "$pending"', "pending candidate name handoff"),
+        ('--pending-identity "$pending_identity"', "pending candidate identity handoff"),
+        ('--destination "$destination"', "single-edge destination handoff"),
+    ):
+        require(publish_result, literal, description)
+    require_order(
+        publish_result,
+        (
+            "--prepare",
+            'read -r pending pending_identity extra <<<"$authority"',
+            "remove_completed_run_root",
+            "--commit",
+        ),
+        "prepare/retire-run-root/final-commit publication order",
+    )
+    require(
+        publish_result,
+        r'[[ "$pending" =~ ^\.windows-output-pending-[0-9a-f]{64}$ ]]',
+        "pending candidate name authority validation",
+    )
+    require(
+        publish_result,
+        r'[[ "$pending_identity" =~ ^(0|[1-9][0-9]*):[1-9][0-9]*$ ]]',
+        "pending candidate identity authority validation",
+    )
+    for forbidden, description in (
+        ('.windows-publish.XXXXXXXX', "external pathname staging"),
+        ('mv -T --no-clobber -- "$staging" "$OUT_DIR"', "GNU mv publication fallback"),
+        ('install -m 0644 "$result/$name" "$staging/$name"', "shell pathname artifact copy"),
+    ):
+        if forbidden in publish_result:
+            raise VerificationError(f"forbidden {description}: {forbidden}")
+    require_exact_count(
+        publish_result,
+        '/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-windows-result.py"',
+        2,
+        "exact prepare/commit isolated publisher invocations",
+    )
+    require_exact_count(
+        publish_result,
+        '--output-parent-identity "$OUT_PARENT_ID"',
+        2,
+        "exact prepare/commit output-parent identity handoffs",
+    )
+
+    publication_prepare = python_function(publication_tree, "prepare")
+    publication_commit = python_function(publication_tree, "commit")
+    publication_open = python_function(publication_tree, "open_bound_directory")
+    publication_regular = python_function(publication_tree, "open_regular")
+    publication_copy = python_function(publication_tree, "copy_regular")
+    publication_verify = python_function(publication_tree, "verify_result")
+    publication_rename = python_function(publication_tree, "rename_noreplace")
+    for literal, description in (
+        ("RENAME_NOREPLACE = 1", "renameat2 no-clobber flag"),
+        ('CANDIDATE_NAME = ".windows-output-candidate"', "private candidate name"),
+        (
+            'PENDING_RE = re.compile(r"^\\.windows-output-pending-[0-9a-f]{64}$")',
+            "kernel-random pending-name grammar",
+        ),
+        ('SOURCE_COMPONENTS = ("pass-A", "result")', "exact source components"),
+        ('ARTIFACTS = ("rustdesk-setup.exe", "rustdesk.msi")', "closed artifact inventory"),
+        ('DIAGNOSTICS = ("build-log.txt", "run-build-progress.txt")', "bounded diagnostic inventory"),
+        ("system.posix_acl_access", "output authority ACL rejection"),
+        ("source artifact {artifact} does not match its checksum", "source checksum binding"),
+        ("published Windows output edge is not the authenticated candidate", "published-edge identity proof"),
+        ("self-test accepted a substituted output parent", "parent substitution fixture"),
+        ("self-test accepted a substituted pending output", "pending substitution fixture"),
+        ("self-test accepted an occupied destination", "destination collision fixture"),
+        ("self-test accepted a {suffix} source", "linked/extra source fixtures"),
+    ):
+        require(publication, literal, description)
+    for literal, description in (
+        ("os.O_DIRECTORY | os.O_NOFOLLOW", "no-follow directory acquisition"),
+        ("identity(opened) != expected", "expected directory identity proof"),
+        ("opened.st_uid != os.getuid() or opened.st_gid != os.getgid()", "invoking-principal ownership proof"),
+        ("mode & 0o7000 or mode & 0o022", "unsafe output-parent mode rejection"),
+    ):
+        require(ast.get_source_segment(publication, publication_open) or "", literal, description)
+    for literal, description in (
+        ("stable_file(before) != stable_file(os.fstat(source))", "source-copy stability proof"),
+        ("os.fchmod(destination, 0o644)", "canonical artifact mode"),
+        ("os.fsync(destination)", "artifact synchronization"),
+    ):
+        require(ast.get_source_segment(publication, publication_copy) or "", literal, description)
+    for literal, description in (
+        ("before.st_nlink != 1", "single-link source-file proof"),
+        ("stable_file(before) != stable_file(opened)", "source-file open stability proof"),
+        ("os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW", "no-follow source-file opening"),
+    ):
+        require(
+            ast.get_source_segment(publication, publication_regular) or "",
+            literal,
+            description,
+        )
+    require(
+        ast.get_source_segment(publication, publication_verify) or "",
+        "digest.hexdigest() != parsed[artifact][0]",
+        "post-copy artifact checksum proof",
+    )
+    for literal, description in (
+        ('getattr(library, "renameat2", None)', "libc renameat2 resolution"),
+        ("RENAME_NOREPLACE", "no-clobber rename dispatch"),
+        ("error == errno.EXDEV", "cross-filesystem refusal"),
+    ):
+        require(ast.get_source_segment(publication, publication_rename) or "", literal, description)
+    publication_prepare_source = ast.get_source_segment(publication, publication_prepare) or ""
+    for literal, description in (
+        ("run_info.st_dev != parent_info.st_dev", "same-filesystem precondition"),
+        ("os.mkdir(CANDIDATE_NAME, 0o700, dir_fd=run_root)", "run-root candidate creation"),
+        ("if actual != parsed[artifact][0]:", "source artifact checksum binding"),
+        ('verify_result(candidate, source_entries, "private Windows output candidate")', "candidate verification"),
+        ("os.fsync(candidate)", "candidate directory synchronization"),
+        ("os.fsync(run_root)", "source namespace synchronization"),
+        ("os.fsync(output_parent)", "destination namespace synchronization"),
+        (
+            'pending = f".windows-output-pending-{os.urandom(32).hex()}"',
+            "kernel-random pending candidate name",
+        ),
+        (
+            "rename_noreplace(run_root, CANDIDATE_NAME, output_parent, pending)",
+            "descriptor-relative no-clobber pending park",
+        ),
+        (
+            "identity(pending_info) != identity(candidate_info)",
+            "authenticated pending-edge identity",
+        ),
+        ('verify_result(candidate, source_entries, "pending Windows output")', "pending output revalidation"),
+    ):
+        require(publication_prepare_source, literal, description)
+    require_count(
+        publication_prepare_source,
+        "reprove_path(",
+        4,
+        "run-root/output-parent path-edge reproving",
+    )
+    publication_commit_source = ast.get_source_segment(publication, publication_commit) or ""
+    for literal, description in (
+        ("PENDING_RE.fullmatch(pending) is None", "pending-name validation"),
+        ("identity(candidate_info) != expected_pending", "pending identity validation"),
+        ('verify_result(candidate, entries, "pending Windows output")', "pending precommit revalidation"),
+        ("os.fsync(candidate)", "pending candidate synchronization"),
+        (
+            "rename_noreplace(output_parent, pending, output_parent, destination)",
+            "same-parent no-clobber final publication",
+        ),
+        ("os.fsync(output_parent)", "final namespace synchronization"),
+        ("identity(published) != identity(candidate_info)", "authenticated final identity"),
+        ('verify_result(candidate, entries, "published Windows output")', "published output revalidation"),
+    ):
+        require(publication_commit_source, literal, description)
+    require_count(
+        publication_commit_source,
+        "reprove_path(",
+        2,
+        "final output-parent path-edge reproving",
+    )
+    for forbidden, description in (
+        ("shutil.", "shutil pathname publication"),
+        ("subprocess.", "publication subprocess"),
+    ):
+        if forbidden in publication:
+            raise VerificationError(f"forbidden {description}: {forbidden}")
+    for forbidden, description in (
+        ("os.rename(", "overwrite-capable Python rename"),
+        ("os.replace(", "overwrite-capable Python replacement"),
+    ):
+        if forbidden in publication_prepare_source or forbidden in publication_commit_source:
+            raise VerificationError(f"forbidden production {description}: {forbidden}")
+    require_exact_count(
+        publication,
+        "os.rename(output_parent, retained_parent)",
+        1,
+        "one test-only output-parent substitution",
+    )
     require_order(
         host_main,
         (
@@ -1261,6 +1501,7 @@ def validate_sources(sources: dict[str, str]) -> None:
             "run_pass B",
             'elif [ "${DOUBLE_BUILD:-1}" != "0" ]; then',
             'die "DOUBLE_BUILD must be 0 or 1"',
+            "windows_helper_authority_close",
             'publish_result "$RUN_ROOT/pass-A/result"',
         ),
         "direct Windows double-build contract",
@@ -1898,6 +2139,12 @@ def run_behavioral_self_tests(repo: pathlib.Path) -> None:
             20,
         ),
         (
+            [sys.executable, "scripts/publish-windows-result.py", "--self-test"],
+            "publish-windows-result self-test: ok",
+            "Windows result-publication behavioral self-test",
+            20,
+        ),
+        (
             [sys.executable, "scripts/canonicalize-pe.py", "--self-test"],
             "canonicalize-pe self-test: ok",
             "PE canonicalizer behavioral self-test",
@@ -2205,6 +2452,192 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "if ! retire_windows_helper_authority; then",
         ),
         (
+            "output-parent retained device/inode identity",
+            "host",
+            'OUT_PARENT_ID="$device:$inode"',
+            'OUT_PARENT_ID="$OUT_PARENT"',
+        ),
+        (
+            "output-parent identity binding",
+            "host",
+            'OUT_DIR="$OUT_PARENT/$(basename "$OUT_DIR")"\n'
+            "    record_output_parent_identity",
+            'OUT_DIR="$OUT_PARENT/$(basename "$OUT_DIR")"\n'
+            "    true # output-parent identity not recorded",
+        ),
+        (
+            "helper retirement before publication",
+            "host",
+            "windows_helper_authority_close \\\n"
+            '        || die "Windows helper authority could not retire before artifact publication"\n'
+            '    publish_result "$RUN_ROOT/pass-A/result"',
+            "retire_windows_helper_authority \\\n"
+            '        || die "Windows helper authority could not retire before artifact publication"\n'
+            '    publish_result "$RUN_ROOT/pass-A/result"',
+        ),
+        (
+            "isolated Windows publication prepare helper",
+            "host",
+            '/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-windows-result.py" \\\n'
+            "            --prepare",
+            '/usr/bin/python3 "$SCRIPT_DIR/publish-windows-result.py" \\\n'
+            "            --prepare",
+        ),
+        (
+            "isolated Windows publication commit helper",
+            "host",
+            '/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-windows-result.py" \\\n'
+            "            --commit",
+            '/usr/bin/python3 "$SCRIPT_DIR/publish-windows-result.py" \\\n'
+            "            --commit",
+        ),
+        (
+            "publication output-parent identity handoff",
+            "host",
+            '--output-parent-identity "$OUT_PARENT_ID"',
+            '--output-parent-identity "$OUT_PARENT"',
+        ),
+        (
+            "run-root retirement before final publication",
+            "host",
+            "remove_completed_run_root \\\n"
+            '        || die "Windows private run state could not retire before final publication"',
+            "true # private run state not retired before final publication",
+        ),
+        (
+            "pending candidate authority parsing",
+            "host",
+            'read -r pending pending_identity extra <<<"$authority"',
+            'read -r pending pending_identity <<<"$authority"',
+        ),
+        (
+            "publication no-clobber primitive",
+            "publication",
+            "RENAME_NOREPLACE = 1",
+            "RENAME_NOREPLACE = 0",
+        ),
+        (
+            "publication expected directory identity",
+            "publication",
+            "if identity(opened) != expected:",
+            "if identity(opened) == expected:",
+        ),
+        (
+            "publication principal ownership",
+            "publication",
+            "if opened.st_uid != os.getuid() or opened.st_gid != os.getgid():",
+            "if opened.st_uid != os.getuid():",
+        ),
+        (
+            "publication unsafe parent-mode rejection",
+            "publication",
+            "elif mode & 0o7000 or mode & 0o022 or mode & 0o700 != 0o700:",
+            "elif mode & 0o7000 or mode & 0o700 != 0o700:",
+        ),
+        (
+            "publication source-file single-link proof",
+            "publication",
+            "or before.st_nlink != 1",
+            "or before.st_nlink < 1",
+        ),
+        (
+            "publication closed artifact inventory",
+            "publication",
+            'ARTIFACTS = ("rustdesk-setup.exe", "rustdesk.msi")',
+            'ARTIFACTS = ("rustdesk-setup.exe", "rustdesk.msi", "unexpected")',
+        ),
+        (
+            "publication same-filesystem precondition",
+            "publication",
+            "if run_info.st_dev != parent_info.st_dev:",
+            "if run_info.st_dev == parent_info.st_dev:",
+        ),
+        (
+            "publication private candidate authority",
+            "publication",
+            "os.mkdir(CANDIDATE_NAME, 0o700, dir_fd=run_root)",
+            "os.mkdir(CANDIDATE_NAME, 0o700, dir_fd=output_parent)",
+        ),
+        (
+            "publication source checksum binding",
+            "publication",
+            "if actual != parsed[artifact][0]:",
+            "if actual != actual:",
+        ),
+        (
+            "publication candidate synchronization",
+            "publication",
+            "os.fsync(candidate)",
+            "os.fstat(candidate)",
+        ),
+        (
+            "publication destination synchronization",
+            "publication",
+            "os.fsync(output_parent)",
+            "os.fstat(output_parent)",
+        ),
+        (
+            "publication pending-name grammar",
+            "publication",
+            'PENDING_RE = re.compile(r"^\\.windows-output-pending-[0-9a-f]{64}$")',
+            'PENDING_RE = re.compile(r"^\\.windows-output-pending-.*$")',
+        ),
+        (
+            "publication descriptor-relative pending park",
+            "publication",
+            "rename_noreplace(run_root, CANDIDATE_NAME, output_parent, pending)",
+            "rename_noreplace(output_parent, CANDIDATE_NAME, output_parent, pending)",
+        ),
+        (
+            "publication pending identity",
+            "publication",
+            "if identity(candidate_info) != expected_pending:",
+            "if identity(candidate_info) == expected_pending:",
+        ),
+        (
+            "publication authenticated pending edge",
+            "publication",
+            "identity(pending_info) != identity(candidate_info)",
+            "identity(pending_info) != identity(pending_info)",
+        ),
+        (
+            "publication same-parent final edge",
+            "publication",
+            "rename_noreplace(output_parent, pending, output_parent, destination)",
+            "rename_noreplace(output_parent, destination, output_parent, pending)",
+        ),
+        (
+            "publication authenticated destination edge",
+            "publication",
+            "identity(published) != identity(candidate_info)",
+            "identity(published) != identity(published)",
+        ),
+        (
+            "R-S11du requirement",
+            "requirements",
+            '<span class="id">R-S11du</span>',
+            '<span class="id">R-S11du-disabled</span>',
+        ),
+        (
+            "normative exact run-root retirement before final publication",
+            "requirements",
+            "remove the exact remaining run-root identity through R-S11dt's "
+            "descriptor-relative private-tree closure while the requested destination is still absent",
+            "leave the run root for cleanup after final publication",
+        ),
+        (
+            "Appendix C #274 disposition",
+            "requirements",
+            "<tr><td>274</td>",
+            "<tr><td>274-disabled</td>",
+        ),
+        (
+            "R-S11du hardening-ledger disposition",
+            "hardening",
+            "R-S11du/R-S11e-139 — Windows result publication is exact-object and authority-terminal",
+            "R-S11du/R-S11e-139 — Windows result publication is pathname-owned",
+        ),
+        (
             "identity-bound run-root removal",
             "host",
             '--remove-private-root "$1" --expected-identity "$2"',
@@ -2334,8 +2767,11 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
         (
             "golden pre-publication rehash",
             "host",
-            "verify_active_online_snapshot\n    verify_private_golden\n    publish_result",
-            "verify_active_online_snapshot\n    publish_result",
+            "verify_active_online_snapshot\n"
+            "    verify_private_golden\n"
+            "    windows_helper_authority_close",
+            "verify_active_online_snapshot\n"
+            "    windows_helper_authority_close",
         ),
         (
             "worktree capture",
@@ -2478,7 +2914,6 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "previous = case_paths.get(folded)",
             "previous = None",
         ),
-        ("atomic result", "host", 'mv -T --no-clobber -- "$staging" "$OUT_DIR"', 'mv -- "$staging" "$OUT_DIR"'),
         (
             "FRB online root",
             "host",
@@ -2871,7 +3306,7 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
     run_behavioral_self_tests(repo)
     print(
         "verify-windows-harness self-test: ok "
-        f"({len(mutations)} mutations, 4 bounded behavioral suites)"
+        f"({len(mutations)} mutations, 5 bounded behavioral suites)"
     )
 
 

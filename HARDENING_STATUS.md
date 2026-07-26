@@ -13295,6 +13295,153 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   firewall/network state was inspected or mutated. Those obligations and the
   broader Ralph-loop goal remain open. Exact publication evidence will be
   added only after the verified tree is committed and pushed.
+- **R-S11du/R-S11e-139 — Windows result publication is exact-object and authority-terminal —
+  SOURCE AND CONFINED SOURCE/MUTATION/FILESYSTEM VERIFICATION COMPLETE 2026-07-26;
+  EXACT COLD WINDOWS ARTIFACT EVIDENCE PENDING.**
+  Platform: the unprivileged Linux Windows-build host. Endpoint/action:
+  `scripts/build-windows-vm.sh::publish_result` moving the validated pass-A
+  `.exe`/`.msi`, checksum records, and optional diagnostics from private build
+  state into the caller-selected absent output leaf. Boundary: private
+  run/result identity plus the selected output-parent namespace ↔ the
+  irreversible public multi-artifact result and the terminal build verdict.
+
+  Proven old path and history: preflight canonicalized the output-parent
+  pathname but retained no object identity or write-authority proof.
+  `publish_result` then created `.windows-publish.XXXXXXXX` directly under
+  that pathname, copied each file through shell paths, checked hashes by
+  pathname, and invoked `mv -T --no-clobber "$staging" "$OUT_DIR"`. `git
+  blame` and `git log -S` trace the block to `57bcb529` (`Harden privileged
+  IPC and release authority`). The GNU Coreutils `mv` specification states
+  that a failed rename caused by different filesystems falls back to
+  copy-then-remove; `--no-clobber` also skips an occupied destination rather
+  than making the rename primitive itself authoritative. The path therefore
+  did not prove one same-filesystem atomic edge change, retained neither
+  parent nor candidate identity, synchronized neither directory namespace,
+  and could publish before `windows_helper_authority_close` decided whether
+  the build still owned unreconciled Docker/configuration state. The builder
+  refuses UID and primary GID zero. This was non-root artifact-publication
+  integrity, pathname-substitution, cross-filesystem atomicity, durability,
+  and transaction-finality debt—not evidence that publication ran, artifacts
+  changed, Docker escaped, root was acquired, a VM/domain/listener/network
+  started, or host RustDesk/service/firewall/network state changed.
+
+  Authority model and source closure: preflight now proves the canonical
+  output parent is owned by the invoking UID/GID, has owner read/write/search,
+  and grants no special, group-write, or world-write authority, then retains
+  its device/inode. The isolated `scripts/publish-windows-result.py` opens
+  that exact identity and R-S11dt's exact mode-0700 run-root identity with
+  `O_DIRECTORY|O_NOFOLLOW`, rejects POSIX access ACLs, and requires one
+  filesystem. It descends only through current-principal mode-0700
+  `pass-A/result` directories from the retained run-root descriptor.
+
+  The admitted source inventory is exactly two nonempty artifacts, their two
+  canonical lowercase SHA-256 records, and at most the bounded build log and
+  progress transcript. Every file must be current-UID/current-GID, mode 0644,
+  single-link, regular, size-bounded, opened no-follow, and stable through
+  read/copy. The helper creates the fixed exclusive candidate inside the
+  authenticated private run root, copies through descriptors into new files,
+  independently hashes artifacts against the records, synchronizes every
+  file, rechecks the closed inventory and content, and synchronizes the
+  candidate directory plus run-root namespace. Pre-publication failure or
+  interruption therefore leaves evidence only inside the exact retained
+  private transaction rather than beside the public output.
+
+  The main path closes the Windows-helper Docker/configuration authority
+  before entering publication. The preparation helper re-proves both path
+  edges, then invokes libc `renameat2(RENAME_NOREPLACE)` descriptor-relative
+  from the retained run root to one kernel-random hidden pending name in the
+  retained output parent. It synchronizes both namespaces, proves the
+  run-root candidate edge absent, proves the pending edge is the exact
+  still-open mode-0700 candidate, revalidates it, and returns only its strict
+  name plus device/inode authority. The pending directory is never populated
+  through the output parent and is not the requested result.
+
+  While the requested output remains absent, the shell parses that exact
+  authority and retires the remaining run-root identity with R-S11dt's
+  descriptor-relative private-tree closer. Cleanup failure therefore
+  preserves a private pending candidate and fails before apparent
+  publication. Only after exact run-state retirement does a separate
+  isolated commit invocation re-open the retained output-parent and pending
+  identities, revalidate their inventory and checksums, re-prove the parent,
+  and use same-parent `renameat2(RENAME_NOREPLACE)` to install the requested
+  final name. It synchronizes that namespace and proves pending-edge absence
+  plus exact final identity/content. Destination presence, pending or parent
+  substitution, `EXDEV`, missing no-replace support, or uncertainty fails
+  without copy, overwrite, deletion, or fallback. No fallible material
+  action remains after final publication. The former pathname-populated
+  output-parent staging, shell copy/hash loop, GNU `mv`, and
+  post-publication offline-media deletion are absent. R-S11du and Appendix C
+  #274 make this exact boundary normative.
+
+  Verification is intentionally confined to source/mutation checks and the
+  new helper's bounded ordinary-filesystem fixture. That fixture proves a
+  successful exact prepare/commit, occupied-destination preservation with
+  the pending candidate retained, output-parent and pending-object
+  substitution refusal, externally hard-linked source refusal, and
+  unexpected-inventory refusal. It uses disposable files only and does not
+  run the Windows builder main path, Docker/helper workloads, `virt-install`,
+  `virsh`, libvirt, KVM, a Windows VM, root fixtures, cleanup against host
+  state, or any host service/network operation.
+
+  Confined verification: the focused Windows harness baseline and complete
+  self-test pass from mutation one, rejecting all 209 deliberate source
+  weakenings and passing five bounded behavioral suites. The separate
+  workspace semantic baseline passes and its complete 2,466-entry in-memory
+  source-mutation catalog passes from mutation one. The shared private-tree
+  closer's complete behavioral self-test passes. Adjacent golden-domain,
+  generic-cleanup, Windows-helper, release-parent, and Debian
+  systemd-lifecycle gates reject 32, 16, 78, 27, and 44 mutations
+  respectively. Bash syntax, in-memory Python AST parsing, the publisher
+  prepare/commit self-test, exact requirements digest, native-codec normal
+  gate, and native-codec negative self-test pass. The exact synchronized
+  requirements SHA-256 is
+  `9bde87af77e4c815c8ba91714f248d64e559a0b1cb661562a690577485ca2637`.
+  The MSI behavioral suite imports only the existing local SHA-256-pinned
+  `olefile` wheel; nothing is installed and network remains disabled.
+
+  The final source audit rejected the first one-phase implementation before
+  commit: the requested result could already exist when a later EXIT-trap
+  run-root cleanup failed and changed the transaction verdict. That finding
+  caused the two-phase pending-object/final-commit correction above and a
+  complete restart of focused and independent mutation verification.
+  Preliminary verifier failures are retained as evidence: source-checksum,
+  final-edge, normative-requirement, and pre-publication-order mutations
+  initially exposed incomplete or stale focused bindings; independent
+  no-clobber and expected-identity mutations were correctly rejected under
+  mismatched expected diagnostic labels; and every applicable complete suite
+  restarted after correction. Container setup also exposed a UID-wide
+  `RLIMIT_NPROC` that was too low, a root-owned private tmpfs, an insufficient
+  descriptor ceiling for exact tree closure, an undersized file-size ceiling,
+  and the verifier image's absent per-user systemd bus. The executable
+  workspace `--self-test` was not misrepresented or granted that host socket;
+  the isolated semantic baseline and complete source catalog were run
+  instead, while the relevant bounded executable gates ran separately. An
+  attempted `py_compile` correctly failed against the read-only repository
+  before being replaced by in-memory AST parsing.
+
+  One process-boundary error is also recorded: a read-only Python occurrence
+  counter was accidentally run on the host once. It read four repository
+  files and performed no write, privilege use, socket access, service action,
+  or network operation, but it violated the container-only execution rule and
+  its result was not used as verification. The count was independently
+  reproduced inside the confined image. Every counted executable gate ran in
+  immutable image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric UID/GID 1000:1000 with no pull or network, read-only root and
+  repository, recursive bind inclusion disabled, all capabilities dropped,
+  no-new-privileges, finite PID/memory/no-swap/CPU/descriptor/core/file-size/
+  tmpfs limits, and no Docker/libvirt/service-manager socket, host namespace,
+  device, port, or host-configuration mount. Each outer Docker call used a
+  fresh mode-0700 private client configuration whose mode-0600 file and
+  directory were exactly removed.
+
+  No Windows builder main path, Docker/helper workload inside the verifier,
+  `virt-install`, `virsh`, libvirt query/control, KVM/VM operation, cold
+  R-B2/R-B10 transaction, root fixture, installed/native/device behavior,
+  independent reproduction, or R-V3 external review is claimed by this
+  source slice. No host RustDesk/service/configuration/firewall/network state
+  was inspected or mutated. Those obligations and the broader Ralph-loop
+  goal remain open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -14012,9 +14159,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-e23120e1b73da42ab6580af6f908a233aa78ba21def4de30d22af1012d12b4a2  requirements.html
+9bde87af77e4c815c8ba91714f248d64e559a0b1cb661562a690577485ca2637  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dt, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11du, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#274. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

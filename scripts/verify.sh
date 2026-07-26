@@ -298,6 +298,18 @@ else
   echo "  ok  R-S11dr golden provisioning refuses pre-existing names, owns one explicit UUID plus exact client identity, uses bounded UUID-only control, and proves terminal domain retirement"
 fi
 
+echo "== (0f3) Windows per-build exact libvirt-domain ownership (R-S11ds/R-S11e-137) =="
+r_s11ds=
+if ! python3 scripts/verify-windows-harness.py --repo . --self-test; then
+  r_s11ds="$r_s11ds source-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11ds" ]; then
+  echo "  FAIL R-S11ds Windows per-build domain authority:$r_s11ds"
+  rc=1
+else
+  echo "  ok  R-S11ds each Windows build pass commits one exact UUID only after client/name/XML proof, preserves ambiguous creation, uses UUID-only post-create control, and proves terminal retirement"
+fi
+
 echo "== (0g) Apple conformance verifier authority (R-S11ci/R-S11e-101) =="
 r_s11ci=
 if ! /usr/bin/python3 -I -S scripts/verify-apple-verifier-authority.py --repo . --self-test; then

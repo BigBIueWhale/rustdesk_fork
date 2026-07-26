@@ -2,6 +2,7 @@
 set -euo pipefail
 umask 077
 export PATH=/usr/bin:/bin
+export LC_ALL=C
 readonly WINDOWS_HELPER_BUILD_UID="$(/usr/bin/id -u)"
 readonly WINDOWS_HELPER_BUILD_GID="$(/usr/bin/id -g)"
 [ "$WINDOWS_HELPER_BUILD_UID" -ne 0 ] \
@@ -51,6 +52,8 @@ PRIVATE_GOLDEN=""
 ONLINE_SNAPSHOT_PARENT=""
 CURRENT_DOMAIN=""
 CURRENT_DOMAIN_UUID=""
+CURRENT_DOMAIN_CREATION_STARTED=0
+CURRENT_DOMAIN_OWNERSHIP_COMMITTED=0
 CURRENT_VIRT_PID=""
 CURRENT_VIRT_START=""
 CURRENT_VM_DEADLINE=""
@@ -143,8 +146,8 @@ monotonic_seconds() {
 process_identity() {
     local pid="$1" stat
     [ -r "/proc/$pid/stat" ] || return 1
-    stat="$(<"/proc/$pid/stat")"
-    stat="${stat#*) }"
+    stat="$(<"/proc/$pid/stat")" || return 1
+    stat="${stat##*) }"
     set -- $stat
     [ "$#" -ge 20 ] || return 1
     printf '%s %s %s %s\n' "$1" "${20}" "$3" "$4"
@@ -178,8 +181,34 @@ owned_process_is_live() {
         && [ "$state" != Z ] && [ "$state" != X ]
 }
 
+owned_process_group_is_live() {
+    local path stat state group session
+    [ -n "$CURRENT_VIRT_PID" ] || return 1
+    for path in /proc/[0-9]*/stat; do
+        [ -r "$path" ] || continue
+        stat="$(<"$path")" || continue
+        stat="${stat##*) }"
+        set -- $stat
+        [ "$#" -ge 4 ] || continue
+        state="$1"
+        group="$3"
+        session="$4"
+        if [ "$group" = "$CURRENT_VIRT_PID" ] \
+            && [ "$session" = "$CURRENT_VIRT_PID" ] \
+            && [ "$state" != Z ] && [ "$state" != X ]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 stop_owned_process() {
+    [ -n "$CURRENT_VIRT_PID" ] || return 0
+    [ -n "$CURRENT_VIRT_START" ] || return 1
     if ! owned_process_matches; then
+        [ ! -e "/proc/$CURRENT_VIRT_PID" ] || return 1
+        owned_process_group_is_live && return 1
+        wait "$CURRENT_VIRT_PID" 2>/dev/null || :
         CURRENT_VIRT_PID=""
         CURRENT_VIRT_START=""
         return 0
@@ -188,18 +217,23 @@ stop_owned_process() {
         kill -TERM -- "-$CURRENT_VIRT_PID" || return 1
         local deadline
         deadline=$(( $(monotonic_seconds) + PROCESS_STOP_SECONDS ))
-        while owned_process_is_live && [ "$(monotonic_seconds)" -lt "$deadline" ]; do
+        while owned_process_group_is_live \
+            && [ "$(monotonic_seconds)" -lt "$deadline" ]; do
             sleep 1
         done
-        if owned_process_is_live; then
+        if owned_process_group_is_live; then
+            owned_process_matches || return 1
             kill -KILL -- "-$CURRENT_VIRT_PID" || return 1
+            wait "$CURRENT_VIRT_PID" 2>/dev/null || :
             deadline=$(( $(monotonic_seconds) + PROCESS_STOP_SECONDS ))
-            while owned_process_is_live && [ "$(monotonic_seconds)" -lt "$deadline" ]; do
+            while owned_process_group_is_live \
+                && [ "$(monotonic_seconds)" -lt "$deadline" ]; do
                 sleep 1
             done
-            owned_process_is_live && return 1
+            owned_process_group_is_live && return 1
         fi
     fi
+    owned_process_group_is_live && return 1
     if owned_process_matches; then
         local identity state
         identity="$(process_identity "$CURRENT_VIRT_PID")" || return 1
@@ -213,39 +247,84 @@ stop_owned_process() {
 
 virsh_bounded() {
     timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \
-        virsh -c qemu:///session "$@"
+        virsh --connect qemu:///session --no-pkttyagent "$@"
 }
 
-domain_uuid_now() {
-    [ -n "$CURRENT_DOMAIN" ] || return 1
-    virsh_bounded domuuid "$CURRENT_DOMAIN" 2>/dev/null
+domain_name_is_listed() {
+    local names
+    names="$(virsh_bounded list --all --name)" || return 2
+    printf '%s\n' "$names" \
+        | awk -v wanted="$CURRENT_DOMAIN" '$0 == wanted { found=1 } END { exit !found }'
+}
+
+domain_uuid_is_listed() {
+    local uuids
+    uuids="$(virsh_bounded list --all --uuid)" || return 2
+    printf '%s\n' "$uuids" \
+        | awk -v wanted="$CURRENT_DOMAIN_UUID" '$0 == wanted { found=1 } END { exit !found }'
+}
+
+require_domain_identity_absent() {
+    local status
+    if domain_name_is_listed; then
+        die "generated domain name already exists; refusing to mutate it"
+    else
+        status=$?
+        [ "$status" = 1 ] \
+            || die "cannot prove generated domain-name absence"
+    fi
+    if domain_uuid_is_listed; then
+        die "generated domain UUID already exists; refusing to mutate it"
+    else
+        status=$?
+        [ "$status" = 1 ] \
+            || die "cannot prove generated domain-UUID absence"
+    fi
 }
 
 prove_owned_domain() {
-    local actual
+    local actual_name
     [ -n "$CURRENT_DOMAIN" ] && [ -n "$CURRENT_DOMAIN_UUID" ] || return 1
-    actual="$(domain_uuid_now)" || return 1
-    [ "$actual" = "$CURRENT_DOMAIN_UUID" ]
+    actual_name="$(virsh_bounded domname "$CURRENT_DOMAIN_UUID" 2>/dev/null)" \
+        || return 1
+    [ "$actual_name" = "$CURRENT_DOMAIN" ]
 }
 
-domain_is_listed() {
-    local uuids
-    uuids="$(virsh_bounded list --all --uuid)" || return 2
-    printf '%s\n' "$uuids" | awk -v wanted="$CURRENT_DOMAIN_UUID" '$0 == wanted { found=1 } END { exit !found }'
+clear_domain_authority() {
+    CURRENT_DOMAIN=""
+    CURRENT_DOMAIN_UUID=""
+    CURRENT_DOMAIN_CREATION_STARTED=0
+    CURRENT_DOMAIN_OWNERSHIP_COMMITTED=0
+    CURRENT_VM_DEADLINE=""
 }
 
 stop_and_undefine_owned_domain() {
     [ -n "$CURRENT_DOMAIN_UUID" ] || return 0
+    if [ "$CURRENT_DOMAIN_CREATION_STARTED" = 0 ]; then
+        clear_domain_authority
+        return 0
+    fi
+    if [ "$CURRENT_DOMAIN_OWNERSHIP_COMMITTED" = 0 ]; then
+        if domain_uuid_is_listed; then
+            warn "uncommitted provision UUID exists after an ambiguous launch; preserving it"
+            return 1
+        else
+            local listed_status=$?
+            if [ "$listed_status" = 1 ]; then
+                clear_domain_authority
+                return 0
+            fi
+            return 1
+        fi
+    fi
     if ! prove_owned_domain; then
-        if domain_is_listed; then
+        if domain_uuid_is_listed; then
             warn "owned UUID exists under an unexpected name; preserving run state"
             return 1
         else
             local listed_status=$?
             if [ "$listed_status" = 1 ]; then
-                CURRENT_DOMAIN=""
-                CURRENT_DOMAIN_UUID=""
-                CURRENT_VM_DEADLINE=""
+                clear_domain_authority
                 return 0
             fi
             return 1
@@ -253,31 +332,38 @@ stop_and_undefine_owned_domain() {
     fi
 
     local state deadline
-    state="$(virsh_bounded domstate "$CURRENT_DOMAIN")" || return 1
+    state="$(virsh_bounded domstate "$CURRENT_DOMAIN_UUID")" || return 1
     case "$state" in
         "shut off") ;;
         *)
-            virsh_bounded destroy "$CURRENT_DOMAIN" >/dev/null || return 1
+            virsh_bounded destroy "$CURRENT_DOMAIN_UUID" >/dev/null || return 1
             deadline=$(( $(monotonic_seconds) + 60 ))
             while [ "$(monotonic_seconds)" -lt "$deadline" ]; do
-                prove_owned_domain || break
-                state="$(virsh_bounded domstate "$CURRENT_DOMAIN")" || return 1
+                if ! domain_uuid_is_listed; then
+                    local listed_status=$?
+                    if [ "$listed_status" = 1 ]; then
+                        clear_domain_authority
+                        return 0
+                    fi
+                    return 1
+                fi
+                prove_owned_domain || return 1
+                state="$(virsh_bounded domstate "$CURRENT_DOMAIN_UUID")" || return 1
                 [ "$state" = "shut off" ] && break
                 sleep 1
             done
             prove_owned_domain || return 1
-            [ "$(virsh_bounded domstate "$CURRENT_DOMAIN")" = "shut off" ] || return 1
+            [ "$(virsh_bounded domstate "$CURRENT_DOMAIN_UUID")" = "shut off" ] \
+                || return 1
             ;;
     esac
-    virsh_bounded undefine "$CURRENT_DOMAIN" --nvram >/dev/null || return 1
-    if domain_is_listed; then
+    virsh_bounded undefine "$CURRENT_DOMAIN_UUID" --nvram >/dev/null || return 1
+    if domain_uuid_is_listed; then
         return 1
     else
         local listed_status=$?
         [ "$listed_status" = 1 ] || return 1
-        CURRENT_DOMAIN=""
-        CURRENT_DOMAIN_UUID=""
-        CURRENT_VM_DEADLINE=""
+        clear_domain_authority
         return 0
     fi
 }
@@ -384,7 +470,7 @@ verify_active_online_snapshot() {
 
 preflight() {
     local planned_state planned_output
-    require_cmd qemu-img virt-install virsh xorriso git python3 realpath sha256sum sha512sum timeout setsid
+    require_cmd qemu-img virt-install virsh xorriso git python3 realpath sha256sum sha512sum timeout setsid awk
     assert_no_build_host_network_residual
     [ "$SOURCE_DATE_EPOCH" = "$SOURCE_DATE_EPOCH_PIN" ] \
         || die "SOURCE_DATE_EPOCH must equal the pinned canonical value $SOURCE_DATE_EPOCH_PIN"
@@ -933,7 +1019,8 @@ prepare_overlay() {
 
 verify_domain_xml() {
     local xml="$CURRENT_PASS_ROOT/domain.xml"
-    virsh_bounded dumpxml "$CURRENT_DOMAIN" >"$xml" || die "cannot read the created domain XML"
+    virsh_bounded dumpxml "$CURRENT_DOMAIN_UUID" >"$xml" \
+        || die "cannot read the created domain XML"
     python3 - "$xml" "$CURRENT_DOMAIN" "$CURRENT_DOMAIN_UUID" \
         "$CURRENT_PASS_ROOT/overlay.qcow2" "$CURRENT_PASS_ROOT/source.iso" \
         "$RUN_ROOT/offline.iso" "$CURRENT_PASS_ROOT/output.img" <<'PY'
@@ -961,12 +1048,13 @@ launch_domain() {
     CURRENT_DOMAIN_UUID="$(</proc/sys/kernel/random/uuid)"
     assert_uuid "$CURRENT_DOMAIN_UUID"
     CURRENT_DOMAIN="$DOMAIN_PREFIX-win-${RUN_ID:0:8}-${CURRENT_PASS_ROOT##*-}"
+    [[ "$CURRENT_DOMAIN" =~ ^[A-Za-z0-9._-]+$ ]] \
+        || die "generated domain name contains an invalid character"
     [ "${#CURRENT_DOMAIN}" -le 63 ] || die "generated domain name is too long"
-    if virsh_bounded domuuid "$CURRENT_DOMAIN" >/dev/null 2>&1; then
-        die "generated domain name already exists"
-    fi
     CURRENT_VM_DEADLINE=$(( $(monotonic_seconds) + VM_TIMEOUT_SECONDS ))
+    require_domain_identity_absent
 
+    CURRENT_DOMAIN_CREATION_STARTED=1
     setsid --wait virt-install --connect qemu:///session --name "$CURRENT_DOMAIN" --uuid "$CURRENT_DOMAIN_UUID" \
         --osinfo win11 --memory 16384 --vcpus 8 --import \
         --disk "path=$CURRENT_PASS_ROOT/overlay.qcow2,format=qcow2,bus=sata" \
@@ -981,21 +1069,28 @@ launch_domain() {
 
     local deadline rc
     deadline=$(( $(monotonic_seconds) + CREATE_TIMEOUT_SECONDS ))
-    while owned_process_is_live && [ "$(monotonic_seconds)" -lt "$deadline" ]; do
+    while owned_process_group_is_live \
+        && [ "$(monotonic_seconds)" -lt "$deadline" ]; do
         sleep 1
     done
-    if owned_process_is_live; then
+    if owned_process_group_is_live; then
         stop_owned_process || die "virt-install did not stop after its creation deadline"
         die "virt-install exceeded its creation deadline"
+    fi
+    if ! owned_process_matches && [ -e "/proc/$CURRENT_VIRT_PID" ]; then
+        die "virt-install process identity changed before it could be reaped"
     fi
     if wait "$CURRENT_VIRT_PID"; then rc=0; else rc=$?; fi
     CURRENT_VIRT_PID=""
     CURRENT_VIRT_START=""
     [ "$rc" = 0 ] || die "virt-install failed with exit $rc"
+    domain_uuid_is_listed \
+        || die "virt-install completed without the exact requested domain UUID"
     prove_owned_domain || die "virt-install did not create the exact UUID-bound domain"
-    [ "$(virsh_bounded domstate "$CURRENT_DOMAIN")" = "running" ] \
-        || die "created Windows domain is not running"
     verify_domain_xml
+    CURRENT_DOMAIN_OWNERSHIP_COMMITTED=1
+    [ "$(virsh_bounded domstate "$CURRENT_DOMAIN_UUID")" = "running" ] \
+        || die "created Windows domain is not running"
 }
 
 wait_for_domain() {
@@ -1003,7 +1098,7 @@ wait_for_domain() {
     [ -n "$CURRENT_VM_DEADLINE" ] || die "Windows VM deadline was not initialized"
     while :; do
         prove_owned_domain || die "owned Windows domain disappeared before authoritative shutdown"
-        state="$(virsh_bounded domstate "$CURRENT_DOMAIN")" \
+        state="$(virsh_bounded domstate "$CURRENT_DOMAIN_UUID")" \
             || die "cannot read owned Windows domain state"
         case "$state" in
             "shut off") break ;;

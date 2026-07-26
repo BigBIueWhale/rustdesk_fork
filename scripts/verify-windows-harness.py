@@ -36,6 +36,8 @@ FILES = {
     "watch": "scripts/native-codec-watch.sh",
     "port": "res/vcpkg/libvpx/portfile.cmake",
     "metadata": "res/vcpkg/libvpx/vcpkg.json",
+    "requirements": "requirements.html",
+    "hardening": "HARDENING_STATUS.md",
     "verify": "scripts/verify.sh",
     "windows": "src/platform/windows.rs",
 }
@@ -51,6 +53,14 @@ def require_count(source: str, literal: str, minimum: int, description: str) -> 
     if count < minimum:
         raise VerificationError(
             f"insufficient {description}: found {count}, expected at least {minimum}: {literal}"
+        )
+
+
+def require_exact_count(source: str, literal: str, expected: int, description: str) -> None:
+    count = source.count(literal)
+    if count != expected:
+        raise VerificationError(
+            f"invalid {description}: found {count}, expected exactly {expected}: {literal}"
         )
 
 
@@ -75,6 +85,17 @@ def shell_function(source: str, name: str) -> str:
     following = re.search(r"(?m)^[A-Za-z_][A-Za-z0-9_]*\(\) \{\s*$", source[match.end() :])
     end = len(source) if following is None else match.end() + following.start()
     return source[match.start() : end]
+
+
+def html_requirement(source: str, requirement_id: str) -> str:
+    marker = f'<div class="req"><span class="id">{requirement_id}</span>'
+    start = source.find(marker)
+    if start < 0:
+        raise VerificationError(f"missing HTML requirement: {requirement_id}")
+    end = source.find("</div></div>", start)
+    if end < 0:
+        raise VerificationError(f"unterminated HTML requirement: {requirement_id}")
+    return source[start : end + len("</div></div>")]
 
 
 def powershell_function(source: str, name: str) -> str:
@@ -294,6 +315,8 @@ def validate_sources(sources: dict[str, str]) -> None:
     pe = sources["pe"]
     msi = sources["msi"]
     watch = sources["watch"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
     verify = sources["verify"]
     windows = sources["windows"]
 
@@ -457,8 +480,18 @@ def validate_sources(sources: dict[str, str]) -> None:
     process_identity = shell_function(host, "process_identity")
     owned_process_matches = shell_function(host, "owned_process_matches")
     owned_process_is_live = shell_function(host, "owned_process_is_live")
+    owned_process_group_is_live = shell_function(host, "owned_process_group_is_live")
     stop_owned_process = shell_function(host, "stop_owned_process")
     virsh_bounded = shell_function(host, "virsh_bounded")
+    domain_name_is_listed = shell_function(host, "domain_name_is_listed")
+    domain_uuid_is_listed = shell_function(host, "domain_uuid_is_listed")
+    require_domain_identity_absent = shell_function(host, "require_domain_identity_absent")
+    prove_owned_domain = shell_function(host, "prove_owned_domain")
+    clear_domain_authority = shell_function(host, "clear_domain_authority")
+    stop_and_undefine_owned_domain = shell_function(
+        host, "stop_and_undefine_owned_domain"
+    )
+    verify_domain_xml = shell_function(host, "verify_domain_xml")
     wait_for_domain = shell_function(host, "wait_for_domain")
     path_disjointness = shell_function(host, "assert_disjoint_paths")
     preflight = shell_function(host, "preflight")
@@ -476,6 +509,13 @@ def validate_sources(sources: dict[str, str]) -> None:
     require(host, "CREATE_TIMEOUT_SECONDS=300", "five-minute VM creation bound")
     require(host, "CONTROL_TIMEOUT_SECONDS=30", "bounded libvirt control timeout")
     require(host, "PROCESS_STOP_SECONDS=10", "bounded process-group stop timeout")
+    require(host, "export LC_ALL=C", "fixed libvirt control locale")
+    require(
+        preflight,
+        "require_cmd qemu-img virt-install virsh xorriso git python3 realpath "
+        "sha256sum sha512sum timeout setsid awk",
+        "exact Windows domain lifecycle command preflight",
+    )
     require(host, 'RUN_ROOT="$(mktemp -d "$STATE_DIR/windows-build-$RUN_ID.XXXXXXXX")"', "unique private run state")
     require(host, 'CURRENT_DOMAIN_UUID="$(</proc/sys/kernel/random/uuid)"', "kernel domain UUID")
     require(
@@ -526,6 +566,27 @@ def validate_sources(sources: dict[str, str]) -> None:
         '''printf '%s %s %s %s\\n' "$1" "${20}" "$3" "$4"''',
         "state/start/process-group/session identity sample",
     )
+    require(
+        process_identity,
+        'stat="${stat##*) }"',
+        "robust retained-leader proc-stat boundary",
+    )
+    require(
+        owned_process_group_is_live,
+        'stat="${stat##*) }"',
+        "robust process-group proc-stat boundary",
+    )
+    require(
+        owned_process_group_is_live,
+        '[ "$group" = "$CURRENT_VIRT_PID" ] \\\n'
+        '            && [ "$session" = "$CURRENT_VIRT_PID" ]',
+        "complete retained process-group/session scan",
+    )
+    require(
+        owned_process_group_is_live,
+        '[ "$state" != Z ] && [ "$state" != X ]',
+        "complete retained live-descendant scan",
+    )
     for body, description in (
         (owned_process_matches, "owned process identity gate"),
         (owned_process_is_live, "owned live-process identity gate"),
@@ -536,6 +597,26 @@ def validate_sources(sources: dict[str, str]) -> None:
     require(owned_process_is_live, '[ "$state" != Z ] && [ "$state" != X ]', "exited child detection")
     require(stop_owned_process, 'kill -TERM -- "-$CURRENT_VIRT_PID"', "owned group TERM")
     require(stop_owned_process, 'kill -KILL -- "-$CURRENT_VIRT_PID"', "owned group KILL fallback")
+    require_order(
+        stop_owned_process,
+        (
+            'kill -KILL -- "-$CURRENT_VIRT_PID"',
+            'wait "$CURRENT_VIRT_PID" 2>/dev/null || :',
+            'deadline=$(( $(monotonic_seconds) + PROCESS_STOP_SECONDS ))',
+        ),
+        "KILL leader reap before final process-group drain",
+    )
+    require(
+        stop_owned_process,
+        '[ ! -e "/proc/$CURRENT_VIRT_PID" ] || return 1',
+        "reused leader identity refusal",
+    )
+    require_count(
+        stop_owned_process,
+        "owned_process_group_is_live",
+        6,
+        "complete process-group drain",
+    )
     require_count(
         stop_owned_process,
         'deadline=$(( $(monotonic_seconds) + PROCESS_STOP_SECONDS ))',
@@ -544,8 +625,9 @@ def validate_sources(sources: dict[str, str]) -> None:
     )
     require(
         virsh_bounded,
-        'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n        virsh -c qemu:///session "$@"',
-        "bounded libvirt control wrapper",
+        'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
+        '        virsh --connect qemu:///session --no-pkttyagent "$@"',
+        "bounded fixed-session noninteractive libvirt control wrapper",
     )
     direct_virsh = re.findall(r"(?m)^[ \t]*virsh(?:[ \t]|$)", host)
     if len(direct_virsh) != 1:
@@ -555,14 +637,25 @@ def validate_sources(sources: dict[str, str]) -> None:
     require_order(
         launch_domain,
         (
+            'CURRENT_DOMAIN_UUID="$(</proc/sys/kernel/random/uuid)"',
+            'assert_uuid "$CURRENT_DOMAIN_UUID"',
+            '[[ "$CURRENT_DOMAIN" =~ ^[A-Za-z0-9._-]+$ ]]',
             'CURRENT_VM_DEADLINE=$(( $(monotonic_seconds) + VM_TIMEOUT_SECONDS ))',
+            "require_domain_identity_absent",
+            "CURRENT_DOMAIN_CREATION_STARTED=1",
             "setsid --wait virt-install",
+            '--uuid "$CURRENT_DOMAIN_UUID"',
             "CURRENT_VIRT_PID=$!",
             'CURRENT_VIRT_START="$(process_start_time "$CURRENT_VIRT_PID")"',
             'deadline=$(( $(monotonic_seconds) + CREATE_TIMEOUT_SECONDS ))',
             "stop_owned_process",
+            "domain_uuid_is_listed",
+            "prove_owned_domain",
+            "verify_domain_xml",
+            "CURRENT_DOMAIN_OWNERSHIP_COMMITTED=1",
+            'virsh_bounded domstate "$CURRENT_DOMAIN_UUID"',
         ),
-        "owned virt-install creation deadline",
+        "UUID absence, creation intent, launch, ownership, and state order",
     )
     require(wait_for_domain, 'if [ "$(monotonic_seconds)" -ge "$CURRENT_VM_DEADLINE" ]; then', "VM deadline test")
     require(
@@ -570,9 +663,157 @@ def validate_sources(sources: dict[str, str]) -> None:
         "stop_and_undefine_owned_domain || die \"timed-out domain could not be destroyed and undefined safely\"",
         "deadline domain termination",
     )
-    require(host, "domain_is_listed", "UUID domain absence proof")
-    require(host, "verify_domain_xml", "domain disk/network identity proof")
+    require(
+        domain_name_is_listed,
+        'names="$(virsh_bounded list --all --name)" || return 2',
+        "fail-closed domain-name enumeration",
+    )
+    require(
+        domain_uuid_is_listed,
+        'uuids="$(virsh_bounded list --all --uuid)" || return 2',
+        "fail-closed domain-UUID enumeration",
+    )
+    require(
+        require_domain_identity_absent,
+        "generated domain name already exists; refusing to mutate it",
+        "pre-existing domain-name refusal",
+    )
+    require(
+        require_domain_identity_absent,
+        "generated domain UUID already exists; refusing to mutate it",
+        "pre-existing domain-UUID refusal",
+    )
+    require(
+        prove_owned_domain,
+        'actual_name="$(virsh_bounded domname "$CURRENT_DOMAIN_UUID" 2>/dev/null)"',
+        "UUID-addressed secondary name proof",
+    )
+    for state_assignment, description in (
+        ('CURRENT_DOMAIN=""', "terminal clearing of domain name"),
+        ('CURRENT_DOMAIN_UUID=""', "terminal clearing of domain UUID"),
+        ("CURRENT_DOMAIN_CREATION_STARTED=0", "terminal clearing of creation intent"),
+        (
+            "CURRENT_DOMAIN_OWNERSHIP_COMMITTED=0",
+            "terminal clearing of ownership commit",
+        ),
+        ('CURRENT_VM_DEADLINE=""', "terminal clearing of VM deadline"),
+    ):
+        require(
+            clear_domain_authority,
+            state_assignment,
+            description,
+        )
+    require(
+        stop_and_undefine_owned_domain,
+        'if [ "$CURRENT_DOMAIN_CREATION_STARTED" = 0 ]; then',
+        "no-launch no-domain-authority branch",
+    )
+    require(
+        stop_and_undefine_owned_domain,
+        'if [ "$CURRENT_DOMAIN_OWNERSHIP_COMMITTED" = 0 ]; then',
+        "pre-commit no-destructive-authority branch",
+    )
+    require(
+        stop_and_undefine_owned_domain,
+        "uncommitted provision UUID exists after an ambiguous launch; preserving it",
+        "ambiguous launch preservation",
+    )
+    require(
+        stop_and_undefine_owned_domain,
+        "owned UUID exists under an unexpected name; preserving run state",
+        "unexpected-name UUID preservation",
+    )
+    require_exact_count(
+        stop_and_undefine_owned_domain,
+        'virsh_bounded destroy "$CURRENT_DOMAIN_UUID"',
+        1,
+        "UUID-addressed destroy",
+    )
+    require_exact_count(
+        stop_and_undefine_owned_domain,
+        'virsh_bounded undefine "$CURRENT_DOMAIN_UUID" --nvram',
+        1,
+        "UUID-addressed undefine",
+    )
+    require(
+        verify_domain_xml,
+        'virsh_bounded dumpxml "$CURRENT_DOMAIN_UUID"',
+        "UUID-addressed domain XML proof",
+    )
+    require_count(
+        host,
+        'virsh_bounded domstate "$CURRENT_DOMAIN_UUID"',
+        5,
+        "UUID-addressed domain state controls",
+    )
+    for forbidden, description in (
+        ('virsh_bounded domuuid "$CURRENT_DOMAIN"', "name-addressed UUID lookup"),
+        ('virsh_bounded dumpxml "$CURRENT_DOMAIN"', "name-addressed XML lookup"),
+        ('virsh_bounded domstate "$CURRENT_DOMAIN"', "name-addressed state control"),
+        ('virsh_bounded destroy "$CURRENT_DOMAIN"', "name-addressed destroy"),
+        ('virsh_bounded undefine "$CURRENT_DOMAIN"', "name-addressed undefine"),
+        ("domain_uuid_now", "legacy split name-to-UUID lookup"),
+        ("virsh -c qemu:///session", "legacy interactive virsh wrapper"),
+    ):
+        if forbidden in host:
+            raise VerificationError(f"forbidden {description}: {forbidden}")
+    require_order(
+        shell_function(host, "cleanup"),
+        (
+            "stop_owned_process",
+            "stop_and_undefine_owned_domain",
+            "windows_helper_authority_close",
+        ),
+        "process-before-domain-before-helper terminal cleanup",
+    )
+    require(
+        shell_function(host, "cleanup"),
+        "elif ! stop_and_undefine_owned_domain; then",
+        "domain cleanup blocked by inconclusive process cleanup",
+    )
     require(host, "--network none", "networkless VM")
+    require(host, "--graphics vnc,listen=127.0.0.1", "loopback-only Windows VM console")
+
+    exact_domain_requirement = html_requirement(requirements, "R-S11ds")
+    for literal, description in (
+        (
+            "Windows per-build VM owns one exact libvirt UUID from creation through terminal teardown",
+            "R-S11ds requirement title",
+        ),
+        (
+            "A selected UUID or creation intent alone",
+            "normative ownership-commit boundary",
+        ),
+        (
+            "every guest-specific post-create read or control",
+            "normative UUID-only post-create control",
+        ),
+        (
+            "complete retained matching client process group and session",
+            "normative complete client-process authority",
+        ),
+        (
+            "MUST NOT</span> request storage deletion",
+            "normative storage-deletion prohibition",
+        ),
+        (
+            "without invoking the Windows builder, <code>virt-install</code>, "
+            "<code>virsh</code>, libvirt, KVM, a Windows VM",
+            "source-only verification boundary",
+        ),
+    ):
+        require(exact_domain_requirement, literal, description)
+    require(requirements, "<tr><td>272</td>", "Appendix C #272 disposition")
+    require(
+        hardening,
+        "R-S11ds/R-S11e-137 — Windows per-build VM owns one exact libvirt UUID",
+        "R-S11ds hardening-ledger disposition",
+    )
+    require(
+        verify,
+        "python3 scripts/verify-windows-harness.py --repo . --self-test",
+        "R-S11ds focused gate wiring",
+    )
 
     require(preflight, '[ -f "$GOLDEN" ] && [ ! -L "$GOLDEN" ]', "regular golden source")
     require(preflight, 'verify_sha256 "$GOLDEN" "$SHA256_WIN11_GOLDEN_QCOW2"', "golden pre-snapshot hash")
@@ -880,15 +1121,19 @@ def validate_sources(sources: dict[str, str]) -> None:
     require(frb, "--online-root", "explicit FRB online interface")
     require(frb, "--output-root", "explicit FRB output interface")
     require(frb, "FRB output root must not exist", "absent FRB output root")
-    require(frb, '--user "$(id -u):$(id -g)"', "invoking FRB uid/gid")
+    require(frb, '--user "$BUILD_UID:$BUILD_GID"', "invoking FRB uid/gid")
     require(frb, '[[ "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]', "immutable FRB image ID")
-    require(frb, 'WORK_ROOT="$(mktemp -d', "private FRB generation")
+    require(
+        frb,
+        'WORK_ROOT="$(umask 077 && mktemp -d "$OUTPUT_PARENT/.frb-work.XXXXXXXX")"',
+        "private FRB generation",
+    )
     require(frb, 'require_pinned_builder_image deb-builder "$IMAGE_ID"', "FRB image provenance")
     require(frb, "verify_online_shas", "FRB archive pins")
     require(frb, "FRB installation metadata does not match the pinned build contract", "FRB tool metadata")
     require(frb, "FRB source snapshot has a writable entry", "read-only FRB source")
     require(frb, "FRB input is not one nonempty regular file", "regular FRB inputs")
-    require(frb, '--read-only --user "$(id -u):$(id -g)"', "read-only FRB container")
+    require(frb, '--read-only --user "$BUILD_UID:$BUILD_GID"', "read-only FRB container")
     require(frb, 'mv -T --no-clobber -- "$PUBLISH_ROOT" "$OUTPUT_ROOT"', "atomic FRB directory publication")
     reject(frb, r'rm\s+-f\s+--\s+"\$REPO_ROOT/', "live-tree FRB deletion")
     for output in (
@@ -1683,12 +1928,112 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
         ("VM creation deadline", "host", "CREATE_TIMEOUT_SECONDS=300", "CREATE_TIMEOUT_SECONDS=0"),
         ("control timeout", "host", "CONTROL_TIMEOUT_SECONDS=30", "CONTROL_TIMEOUT_SECONDS=0"),
         ("process stop deadline", "host", "PROCESS_STOP_SECONDS=10", "PROCESS_STOP_SECONDS=0"),
+        ("fixed libvirt control locale", "host", "export LC_ALL=C", "export LC_ALL=en_US.UTF-8"),
+        (
+            "exact Windows domain lifecycle command preflight",
+            "host",
+            "require_cmd qemu-img virt-install virsh xorriso git python3 realpath "
+            "sha256sum sha512sum timeout setsid awk",
+            "require_cmd qemu-img virt-install virsh xorriso git python3 realpath "
+            "sha256sum sha512sum timeout setsid",
+        ),
         ("setsid wait", "host", "setsid --wait virt-install", "setsid virt-install"),
         (
             "bounded virsh",
             "host",
-            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n        virsh -c qemu:///session "$@"',
-            'virsh -c qemu:///session "$@"',
+            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
+            '        virsh --connect qemu:///session --no-pkttyagent "$@"',
+            'virsh --connect qemu:///session "$@"',
+        ),
+        (
+            "fail-closed domain-name enumeration",
+            "host",
+            'names="$(virsh_bounded list --all --name)" || return 2',
+            'names="$(virsh_bounded domuuid "$CURRENT_DOMAIN")" || return 1',
+        ),
+        (
+            "fail-closed domain-UUID enumeration",
+            "host",
+            'uuids="$(virsh_bounded list --all --uuid)" || return 2',
+            'uuids="$(virsh_bounded list --uuid)" || return 1',
+        ),
+        (
+            "pre-existing domain-name refusal",
+            "host",
+            "generated domain name already exists; refusing to mutate it",
+            "generated domain name already exists; destroying it",
+        ),
+        (
+            "pre-existing domain-UUID refusal",
+            "host",
+            "generated domain UUID already exists; refusing to mutate it",
+            "generated domain UUID already exists; adopting it",
+        ),
+        (
+            "creation-intent authority boundary",
+            "host",
+            "CURRENT_DOMAIN_CREATION_STARTED=1",
+            "CURRENT_DOMAIN_CREATION_STARTED=0",
+        ),
+        (
+            "ownership-commit authority boundary",
+            "host",
+            "CURRENT_DOMAIN_OWNERSHIP_COMMITTED=1",
+            "CURRENT_DOMAIN_OWNERSHIP_COMMITTED=0",
+        ),
+        (
+            "no-launch no-domain-authority branch",
+            "host",
+            'if [ "$CURRENT_DOMAIN_CREATION_STARTED" = 0 ]; then',
+            'if [ "$CURRENT_DOMAIN_CREATION_STARTED" = 1 ]; then',
+        ),
+        (
+            "pre-commit no-destructive-authority branch",
+            "host",
+            'if [ "$CURRENT_DOMAIN_OWNERSHIP_COMMITTED" = 0 ]; then',
+            'if [ "$CURRENT_DOMAIN_OWNERSHIP_COMMITTED" = 1 ]; then',
+        ),
+        (
+            "UUID-addressed secondary name proof",
+            "host",
+            'virsh_bounded domname "$CURRENT_DOMAIN_UUID"',
+            'virsh_bounded domname "$CURRENT_DOMAIN"',
+        ),
+        (
+            "ambiguous launch preservation",
+            "host",
+            "uncommitted provision UUID exists after an ambiguous launch; preserving it",
+            "uncommitted provision UUID exists after an ambiguous launch; destroying it",
+        ),
+        (
+            "UUID-addressed domain XML proof",
+            "host",
+            'virsh_bounded dumpxml "$CURRENT_DOMAIN_UUID"',
+            'virsh_bounded dumpxml "$CURRENT_DOMAIN"',
+        ),
+        (
+            "UUID-addressed domain state controls",
+            "host",
+            'virsh_bounded domstate "$CURRENT_DOMAIN_UUID"',
+            'virsh_bounded domstate "$CURRENT_DOMAIN"',
+        ),
+        (
+            "UUID-addressed destroy",
+            "host",
+            'virsh_bounded destroy "$CURRENT_DOMAIN_UUID"',
+            'virsh_bounded destroy "$CURRENT_DOMAIN"',
+        ),
+        (
+            "UUID-addressed undefine",
+            "host",
+            'virsh_bounded undefine "$CURRENT_DOMAIN_UUID" --nvram',
+            'virsh_bounded undefine "$CURRENT_DOMAIN" --nvram',
+        ),
+        (
+            "process-before-domain-before-helper terminal cleanup",
+            "host",
+            "elif ! stop_and_undefine_owned_domain; then",
+            "if ! stop_and_undefine_owned_domain; then",
         ),
         (
             "owned session",
@@ -1697,10 +2042,47 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             '&& [ -n "$session" ]',
         ),
         (
+            "robust retained-leader proc-stat boundary",
+            "host",
+            'stat="$(<"/proc/$pid/stat")" || return 1\n'
+            '    stat="${stat##*) }"',
+            'stat="$(<"/proc/$pid/stat")" || return 1\n'
+            '    stat="${stat#*) }"',
+        ),
+        (
+            "robust process-group proc-stat boundary",
+            "host",
+            'stat="$(<"$path")" || continue\n'
+            '        stat="${stat##*) }"',
+            'stat="$(<"$path")" || continue\n'
+            '        stat="${stat#*) }"',
+        ),
+        (
+            "complete process-group drain",
+            "host",
+            "while owned_process_group_is_live \\\n"
+            '            && [ "$(monotonic_seconds)" -lt "$deadline" ]; do',
+            "while owned_process_is_live \\\n"
+            '            && [ "$(monotonic_seconds)" -lt "$deadline" ]; do',
+        ),
+        (
+            "reused leader identity refusal",
+            "host",
+            '[ ! -e "/proc/$CURRENT_VIRT_PID" ] || return 1',
+            '[ -e "/proc/$CURRENT_VIRT_PID" ] || return 1',
+        ),
+        (
             "owned process group KILL",
             "host",
             'kill -KILL -- "-$CURRENT_VIRT_PID"',
             'kill -KILL -- "$CURRENT_VIRT_PID"',
+        ),
+        (
+            "KILL leader reap before final process-group drain",
+            "host",
+            'kill -KILL -- "-$CURRENT_VIRT_PID" || return 1\n'
+            '            wait "$CURRENT_VIRT_PID" 2>/dev/null || :',
+            'kill -KILL -- "-$CURRENT_VIRT_PID" || return 1',
         ),
         (
             "deadline domain termination",
@@ -1755,6 +2137,48 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
         ),
         ("networkless VM", "host", "--network none", "--network default"),
         (
+            "loopback-only Windows VM console",
+            "host",
+            "--graphics vnc,listen=127.0.0.1",
+            "--graphics vnc,listen=0.0.0.0",
+        ),
+        (
+            "R-S11ds requirement",
+            "requirements",
+            '<span class="id">R-S11ds</span>',
+            '<span class="id">R-S11ds-disabled</span>',
+        ),
+        (
+            "normative ownership-commit boundary",
+            "requirements",
+            "A selected UUID or creation intent alone",
+            "A selected UUID or creation intent always",
+        ),
+        (
+            "normative complete client-process authority",
+            "requirements",
+            "complete retained matching client process group and session",
+            "retained matching client leader",
+        ),
+        (
+            "Appendix C #272 disposition",
+            "requirements",
+            "<tr><td>272</td>",
+            "<tr><td>272-disabled</td>",
+        ),
+        (
+            "R-S11ds hardening-ledger disposition",
+            "hardening",
+            "R-S11ds/R-S11e-137 — Windows per-build VM owns one exact libvirt UUID",
+            "R-S11ds/R-S11e-137 — Windows per-build VM owns a mutable name",
+        ),
+        (
+            "R-S11ds focused gate wiring",
+            "verify",
+            "python3 scripts/verify-windows-harness.py --repo . --self-test",
+            "true # Windows per-build domain gate removed",
+        ),
+        (
             "host reserved device namespace",
             "host",
             "con|prn|aux|nul|com[1-9]|lpt[1-9]",
@@ -1766,7 +2190,7 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "if relative.casefold() in generated_folded:",
             "if False:",
         ),
-        ("FRB user", "frb", '--user "$(id -u):$(id -g)"', ""),
+        ("FRB user", "frb", '--user "$BUILD_UID:$BUILD_GID"', ""),
         (
             "image provenance",
             "runtime",

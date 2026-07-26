@@ -11714,7 +11714,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
+        "R-S11n through R-S11ds, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11795,7 +11795,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
+        "R-S11n through R-S11ds, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11974,7 +11974,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
+        "R-S11n through R-S11ds, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12108,7 +12108,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
+        "R-S11n through R-S11ds, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12276,7 +12276,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
+        "R-S11n through R-S11ds, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12469,7 +12469,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
+        "R-S11n through R-S11ds, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12803,7 +12803,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
+        "R-S11n through R-S11ds, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -15864,9 +15864,9 @@ def validate_cleanup_docker_authority_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dr, R-SV4a,\n"
+        "R-S11n through R-S11ds, R-SV4a,\n"
         "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
+        "R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -16052,9 +16052,9 @@ def validate_cleanup_process_domain_path_authority_contract(sources):
 
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dr, R-SV4a,\n"
+        "R-S11n through R-S11ds, R-SV4a,\n"
         "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
+        "R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -16427,6 +16427,381 @@ def validate_windows_golden_domain_authority_contract(sources):
         (
             "Windows golden hardening-ledger disposition",
             "Windows golden ledger mutation",
+        ),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
+def validate_windows_build_domain_authority_contract(sources):
+    build = sources["windows_build"]
+    for text, label in (
+        ("export LC_ALL=C", "Windows build fixed control locale"),
+        (
+            "require_cmd qemu-img virt-install virsh xorriso git python3 realpath "
+            "sha256sum sha512sum timeout setsid awk",
+            "Windows build exact lifecycle command preflight",
+        ),
+        (
+            '[[ "$CURRENT_DOMAIN" =~ ^[A-Za-z0-9._-]+$ ]]',
+            "Windows build generated domain-name grammar",
+        ),
+        (
+            'CURRENT_DOMAIN_UUID="$(</proc/sys/kernel/random/uuid)"',
+            "Windows build kernel-random UUID",
+        ),
+        (
+            '[[ "$1" =~ ^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-'
+            '[89ab][0-9a-f]{3}-[0-9a-f]{12}$ ]]',
+            "Windows build UUID grammar",
+        ),
+        (
+            'names="$(virsh_bounded list --all --name)" || return 2',
+            "Windows build fail-closed name enumeration",
+        ),
+        (
+            'uuids="$(virsh_bounded list --all --uuid)" || return 2',
+            "Windows build fail-closed UUID enumeration",
+        ),
+        (
+            "generated domain name already exists; refusing to mutate it",
+            "Windows build pre-existing-name refusal",
+        ),
+        (
+            "generated domain UUID already exists; refusing to mutate it",
+            "Windows build pre-existing-UUID refusal",
+        ),
+        (
+            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
+            '        virsh --connect qemu:///session --no-pkttyagent "$@"',
+            "Windows build bounded fixed libvirt control",
+        ),
+        (
+            "CURRENT_DOMAIN_CREATION_STARTED=1",
+            "Windows build creation-intent commit",
+        ),
+        (
+            "CURRENT_DOMAIN_OWNERSHIP_COMMITTED=1",
+            "Windows build ownership commit",
+        ),
+        (
+            "setsid --wait virt-install",
+            "Windows build retained process-group launch",
+        ),
+        (
+            "owned_process_group_is_live() {",
+            "Windows build complete process-group scanner",
+        ),
+        (
+            '[ ! -e "/proc/$CURRENT_VIRT_PID" ] || return 1',
+            "Windows build reused leader identity refusal",
+        ),
+        (
+            'kill -KILL -- "-$CURRENT_VIRT_PID" || return 1\n'
+            '            wait "$CURRENT_VIRT_PID" 2>/dev/null || :',
+            "Windows build KILL leader reap",
+        ),
+        (
+            '--uuid "$CURRENT_DOMAIN_UUID"',
+            "Windows build explicit UUID creation",
+        ),
+        (
+            'actual_name="$(virsh_bounded domname "$CURRENT_DOMAIN_UUID" 2>/dev/null)"',
+            "Windows build UUID-addressed name proof",
+        ),
+        (
+            'virsh_bounded dumpxml "$CURRENT_DOMAIN_UUID"',
+            "Windows build UUID-addressed XML proof",
+        ),
+        (
+            'virsh_bounded destroy "$CURRENT_DOMAIN_UUID"',
+            "Windows build UUID-addressed destroy",
+        ),
+        (
+            'virsh_bounded undefine "$CURRENT_DOMAIN_UUID" --nvram',
+            "Windows build UUID-addressed undefine",
+        ),
+        (
+            "uncommitted provision UUID exists after an ambiguous launch; preserving it",
+            "Windows build ambiguous-launch preservation",
+        ),
+        (
+            "owned UUID exists under an unexpected name; preserving run state",
+            "Windows build unexpected-name preservation",
+        ),
+        (
+            "elif ! stop_and_undefine_owned_domain; then",
+            "Windows build process/domain/helper cleanup order",
+        ),
+        ("--network none", "Windows build networkless guest"),
+        (
+            "--graphics vnc,listen=127.0.0.1",
+            "Windows build loopback-only console",
+        ),
+    ):
+        require_text(build, text, label)
+
+    process_identity = extract_between(
+        build,
+        "process_identity() {",
+        "\n}\n\nprocess_start_time() {",
+        "Windows build retained-leader identity parser",
+    )
+    process_group_scan = extract_between(
+        build,
+        "owned_process_group_is_live() {",
+        "\n}\n\nstop_owned_process() {",
+        "Windows build process-group identity parser",
+    )
+    require_text(
+        process_identity,
+        'stat="${stat##*) }"',
+        "Windows build robust retained-leader proc-stat boundary",
+    )
+    require_text(
+        process_group_scan,
+        'stat="${stat##*) }"',
+        "Windows build robust process-group proc-stat boundary",
+    )
+    require_exact_count(
+        build,
+        "require_domain_identity_absent",
+        2,
+        "Windows build one absence proof plus definition",
+    )
+    require_exact_count(
+        build,
+        'stat="${stat##*) }"',
+        2,
+        "Windows build robust proc-stat boundaries",
+    )
+    require_exact_count(
+        build,
+        "owned_process_group_is_live",
+        9,
+        "Windows build complete process-group drain",
+    )
+    require_exact_count(
+        build,
+        'virsh_bounded domstate "$CURRENT_DOMAIN_UUID"',
+        5,
+        "Windows build UUID-addressed state controls",
+    )
+    require_exact_count(
+        build,
+        'virsh_bounded destroy "$CURRENT_DOMAIN_UUID"',
+        1,
+        "Windows build single UUID destroy",
+    )
+    require_exact_count(
+        build,
+        'virsh_bounded undefine "$CURRENT_DOMAIN_UUID" --nvram',
+        1,
+        "Windows build single UUID undefine",
+    )
+    for forbidden, label in (
+        ('virsh_bounded domuuid "$CURRENT_DOMAIN"', "Windows build name-addressed UUID lookup absence"),
+        ('virsh_bounded dumpxml "$CURRENT_DOMAIN"', "Windows build name-addressed XML absence"),
+        ('virsh_bounded domstate "$CURRENT_DOMAIN"', "Windows build name-addressed state absence"),
+        ('virsh_bounded destroy "$CURRENT_DOMAIN"', "Windows build name-addressed destroy absence"),
+        ('virsh_bounded undefine "$CURRENT_DOMAIN"', "Windows build name-addressed undefine absence"),
+        ("domain_uuid_now", "Windows build legacy name-to-UUID helper absence"),
+        ("virsh -c qemu:///session", "Windows build legacy virsh wrapper absence"),
+    ):
+        require_absent(build, forbidden, label)
+
+    require_order(
+        build,
+        (
+            'CURRENT_DOMAIN_UUID="$(</proc/sys/kernel/random/uuid)"',
+            'assert_uuid "$CURRENT_DOMAIN_UUID"',
+            '[[ "$CURRENT_DOMAIN" =~ ^[A-Za-z0-9._-]+$ ]]',
+            "require_domain_identity_absent",
+            "CURRENT_DOMAIN_CREATION_STARTED=1",
+            "setsid --wait virt-install",
+            '--uuid "$CURRENT_DOMAIN_UUID"',
+            "domain_uuid_is_listed",
+            "prove_owned_domain",
+            "verify_domain_xml",
+            "CURRENT_DOMAIN_OWNERSHIP_COMMITTED=1",
+            'virsh_bounded domstate "$CURRENT_DOMAIN_UUID"',
+        ),
+        "Windows build identity/launch/ownership order",
+    )
+    require_order(
+        build,
+        (
+            "if ! stop_owned_process; then",
+            "elif ! stop_and_undefine_owned_domain; then",
+            "windows_helper_authority_close",
+        ),
+        "Windows build process/domain/helper cleanup order",
+    )
+
+    requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11ds",
+        "Windows build exact-domain authority requirement",
+    )
+    for text, label in (
+        (
+            "Windows per-build VM owns one exact libvirt UUID from creation through terminal teardown",
+            "Windows build requirement title",
+        ),
+        (
+            "A selected UUID or creation intent alone",
+            "Windows build normative ownership boundary",
+        ),
+        (
+            "every guest-specific post-create read or control",
+            "Windows build normative UUID-only control",
+        ),
+        (
+            "complete retained matching client process group and session",
+            "Windows build normative complete client-process authority",
+        ),
+        (
+            "MUST NOT</span> request storage deletion",
+            "Windows build normative storage preservation",
+        ),
+        (
+            "without invoking the Windows builder, <code>virt-install</code>, "
+            "<code>virsh</code>, libvirt, KVM, a Windows VM",
+            "Windows build source-only verification boundary",
+        ),
+    ):
+        require_text(requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>272</td>",
+        "Windows build Appendix C #272 disposition",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ds/R-S11e-137 — Windows per-build VM owns one exact libvirt UUID",
+        "Windows build hardening-ledger disposition",
+    )
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-windows-harness.py --repo . --self-test",
+        "Windows build focused gate wiring",
+    )
+
+    focused = sources["windows_harness_verifier"]
+    for text, label in (
+        (
+            "UUID absence, creation intent, launch, ownership, and state order",
+            "Windows build focused lifecycle-order binding",
+        ),
+        (
+            "process-before-domain-before-helper terminal cleanup",
+            "Windows build focused cleanup-order binding",
+        ),
+        (
+            "ambiguous launch preservation",
+            "Windows build focused ambiguous-launch mutation",
+        ),
+        (
+            "UUID-addressed destroy",
+            "Windows build focused destroy mutation",
+        ),
+        (
+            "Appendix C #272 disposition",
+            "Windows build focused Appendix mutation",
+        ),
+    ):
+        require_text(focused, text, label)
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "Windows build exact-domain deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("Windows build fixed control locale", "Windows build locale mutation"),
+        (
+            "Windows build exact lifecycle command preflight",
+            "Windows build command-preflight mutation",
+        ),
+        (
+            "Windows build fail-closed name enumeration",
+            "Windows build name-enumeration mutation",
+        ),
+        (
+            "Windows build fail-closed UUID enumeration",
+            "Windows build UUID-enumeration mutation",
+        ),
+        (
+            "Windows build creation-intent commit",
+            "Windows build creation-intent mutation",
+        ),
+        (
+            "Windows build ownership commit",
+            "Windows build ownership-commit mutation",
+        ),
+        (
+            "Windows build robust retained-leader proc-stat boundary",
+            "Windows build leader-parser mutation",
+        ),
+        (
+            "Windows build robust process-group proc-stat boundary",
+            "Windows build group-parser mutation",
+        ),
+        (
+            "Windows build complete process-group drain",
+            "Windows build group-drain mutation",
+        ),
+        (
+            "Windows build reused leader identity refusal",
+            "Windows build reused-leader mutation",
+        ),
+        (
+            "Windows build KILL leader reap",
+            "Windows build KILL-reap mutation",
+        ),
+        (
+            "Windows build UUID-addressed name proof",
+            "Windows build name-proof mutation",
+        ),
+        (
+            "Windows build UUID-addressed XML proof",
+            "Windows build XML-proof mutation",
+        ),
+        (
+            "Windows build UUID-addressed destroy",
+            "Windows build destroy mutation",
+        ),
+        (
+            "Windows build UUID-addressed undefine",
+            "Windows build undefine mutation",
+        ),
+        (
+            "Windows build ambiguous-launch preservation",
+            "Windows build ambiguous-launch mutation",
+        ),
+        (
+            "Windows build process/domain/helper cleanup order",
+            "Windows build cleanup-order mutation",
+        ),
+        (
+            "Windows build exact-domain authority requirement",
+            "Windows build requirement mutation",
+        ),
+        (
+            "Windows build normative complete client-process authority",
+            "Windows build normative process-authority mutation",
+        ),
+        (
+            "Windows build Appendix C #272 disposition",
+            "Windows build Appendix mutation",
+        ),
+        (
+            "Windows build focused gate wiring",
+            "Windows build focused-gate mutation",
+        ),
+        (
+            "Windows build hardening-ledger disposition",
+            "Windows build ledger mutation",
         ),
     ):
         require_text(mutation_matrix, text, label)
@@ -25238,6 +25613,7 @@ def validate_sources(sources):
     validate_cleanup_docker_authority_contract(sources)
     validate_cleanup_process_domain_path_authority_contract(sources)
     validate_windows_golden_domain_authority_contract(sources)
+    validate_windows_build_domain_authority_contract(sources)
     validate_apple_verifier_authority_contract(sources)
     validate_online_fetch_container_authority_contract(sources)
     validate_online_fetch_gradle_source_authority_contract(sources)
@@ -38572,7 +38948,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11dr, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271",
+            "R-S11n through R-S11ds, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -41423,6 +41799,147 @@ def run_source_mutations(sources):
             "R-S11dr/R-S11e-136 — Windows golden provisioner owns one exact libvirt UUID",
             "R-S11dr/R-S11e-136 — Windows golden provisioner owns a mutable name",
             "Windows golden hardening-ledger disposition",
+        ),
+        (
+            "windows_build",
+            "export LC_ALL=C",
+            "export LC_ALL=en_US.UTF-8",
+            "Windows build fixed control locale",
+        ),
+        (
+            "windows_build",
+            "require_cmd qemu-img virt-install virsh xorriso git python3 realpath "
+            "sha256sum sha512sum timeout setsid awk",
+            "require_cmd qemu-img virt-install virsh xorriso git python3 realpath "
+            "sha256sum sha512sum timeout setsid",
+            "Windows build exact lifecycle command preflight",
+        ),
+        (
+            "windows_build",
+            'names="$(virsh_bounded list --all --name)" || return 2',
+            'names="$(virsh_bounded domuuid "$CURRENT_DOMAIN")" || return 1',
+            "Windows build fail-closed name enumeration",
+        ),
+        (
+            "windows_build",
+            'uuids="$(virsh_bounded list --all --uuid)" || return 2',
+            'uuids="$(virsh_bounded list --uuid)" || return 1',
+            "Windows build fail-closed UUID enumeration",
+        ),
+        (
+            "windows_build",
+            "CURRENT_DOMAIN_CREATION_STARTED=1",
+            "CURRENT_DOMAIN_CREATION_STARTED=0",
+            "Windows build creation-intent commit",
+        ),
+        (
+            "windows_build",
+            "CURRENT_DOMAIN_OWNERSHIP_COMMITTED=1",
+            "CURRENT_DOMAIN_OWNERSHIP_COMMITTED=0",
+            "Windows build ownership commit",
+        ),
+        (
+            "windows_build",
+            'stat="$(<"/proc/$pid/stat")" || return 1\n'
+            '    stat="${stat##*) }"',
+            'stat="$(<"/proc/$pid/stat")" || return 1\n'
+            '    stat="${stat#*) }"',
+            "Windows build robust retained-leader proc-stat boundary",
+        ),
+        (
+            "windows_build",
+            'stat="$(<"$path")" || continue\n'
+            '        stat="${stat##*) }"',
+            'stat="$(<"$path")" || continue\n'
+            '        stat="${stat#*) }"',
+            "Windows build robust process-group proc-stat boundary",
+        ),
+        (
+            "windows_build",
+            "while owned_process_group_is_live \\\n"
+            '            && [ "$(monotonic_seconds)" -lt "$deadline" ]; do',
+            "while owned_process_is_live \\\n"
+            '            && [ "$(monotonic_seconds)" -lt "$deadline" ]; do',
+            "Windows build complete process-group drain",
+        ),
+        (
+            "windows_build",
+            '[ ! -e "/proc/$CURRENT_VIRT_PID" ] || return 1',
+            '[ -e "/proc/$CURRENT_VIRT_PID" ] || return 1',
+            "Windows build reused leader identity refusal",
+        ),
+        (
+            "windows_build",
+            'kill -KILL -- "-$CURRENT_VIRT_PID" || return 1\n'
+            '            wait "$CURRENT_VIRT_PID" 2>/dev/null || :',
+            'kill -KILL -- "-$CURRENT_VIRT_PID" || return 1',
+            "Windows build KILL leader reap",
+        ),
+        (
+            "windows_build",
+            'virsh_bounded domname "$CURRENT_DOMAIN_UUID"',
+            'virsh_bounded domname "$CURRENT_DOMAIN"',
+            "Windows build UUID-addressed name proof",
+        ),
+        (
+            "windows_build",
+            'virsh_bounded dumpxml "$CURRENT_DOMAIN_UUID"',
+            'virsh_bounded dumpxml "$CURRENT_DOMAIN"',
+            "Windows build UUID-addressed XML proof",
+        ),
+        (
+            "windows_build",
+            'virsh_bounded destroy "$CURRENT_DOMAIN_UUID"',
+            'virsh_bounded destroy "$CURRENT_DOMAIN"',
+            "Windows build UUID-addressed destroy",
+        ),
+        (
+            "windows_build",
+            'virsh_bounded undefine "$CURRENT_DOMAIN_UUID" --nvram',
+            'virsh_bounded undefine "$CURRENT_DOMAIN" --nvram',
+            "Windows build UUID-addressed undefine",
+        ),
+        (
+            "windows_build",
+            "uncommitted provision UUID exists after an ambiguous launch; preserving it",
+            "uncommitted provision UUID exists after an ambiguous launch; destroying it",
+            "Windows build ambiguous-launch preservation",
+        ),
+        (
+            "windows_build",
+            "elif ! stop_and_undefine_owned_domain; then",
+            "if ! stop_and_undefine_owned_domain; then",
+            "Windows build process/domain/helper cleanup order",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ds</span>',
+            '<span class="id">R-S11ds-disabled</span>',
+            "Windows build exact-domain authority requirement",
+        ),
+        (
+            "requirements",
+            "complete retained matching client process group and session",
+            "retained matching client leader",
+            "Windows build normative complete client-process authority",
+        ),
+        (
+            "requirements",
+            "<tr><td>272</td>",
+            "<tr><td>272-disabled</td>",
+            "Windows build Appendix C #272 disposition",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-windows-harness.py --repo . --self-test",
+            "true # Windows build domain gate removed",
+            "Windows build focused gate wiring",
+        ),
+        (
+            "hardening",
+            "R-S11ds/R-S11e-137 — Windows per-build VM owns one exact libvirt UUID",
+            "R-S11ds/R-S11e-137 — Windows per-build VM owns a mutable name",
+            "Windows build hardening-ledger disposition",
         ),
         (
             "cleanup",
@@ -44565,6 +45082,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "windows_golden_domain_authority_verifier": (
                 repo / "scripts/verify-windows-golden-domain-authority.py"
+            ).read_text(encoding="utf-8"),
+            "windows_harness_verifier": (
+                repo / "scripts/verify-windows-harness.py"
             ).read_text(encoding="utf-8"),
             "apple_verifier_authority_verifier": (
                 repo / "scripts/verify-apple-verifier-authority.py"

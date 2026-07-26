@@ -13084,6 +13084,117 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   installed/native/device behavior, independent reproduction, or R-V3 external
   review is claimed by this source slice. Those evidence obligations and the
   broader Ralph-loop goal remain open.
+- **R-S11ds/R-S11e-137 — Windows per-build VM owns one exact libvirt UUID from
+  creation through terminal teardown — SOURCE IMPLEMENTED AND CONFINED
+  SOURCE/MUTATION VERIFIED 2026-07-26; EXECUTABLE LIBVIRT/VM EVIDENCE
+  PENDING.**
+  Platform: the unprivileged Linux Windows-build host using
+  `qemu:///session`. Endpoint/action: each `scripts/build-windows-vm.sh`
+  per-pass domain's collision proof, `virt-install` transaction, XML/state
+  reads, error/signal/timeout cleanup, and successful terminal retirement.
+  Boundary: a retained kernel-random UUID plus mutable generated name and
+  uncertain client result ↔ destructive authority over a session domain and
+  the Windows-build verdict.
+
+  Proven old path and history: the builder generated and retained
+  `CURRENT_DOMAIN_UUID`, passed it to `virt-install --uuid`, and compared the
+  result of `domuuid "$CURRENT_DOMAIN"` with that value. It nevertheless used
+  `CURRENT_DOMAIN` for `dumpxml`, every `domstate`, `destroy`, and
+  `undefine --nvram`. The proof and action were separate name lookups, so the
+  mutable selector could change between them. The launch collision branch
+  interpreted every nonzero `domuuid "$CURRENT_DOMAIN"` result as absence,
+  including timeout or control failure. Cleanup authority existed as soon as
+  the UUID was selected; there was no separate ownership commit after the
+  exact client and expected domain XML were proved. Thus an ambiguous failed
+  launch could make cleanup act on a matching UUID it had not conclusively
+  proved this transaction created. `git blame` and `git log -S` trace this
+  lifecycle block to `57bcb529` (`Harden privileged IPC and release
+  authority`), not to the later golden-provisioner correction.
+
+  Official libvirt documentation defines a domain name as host-unique metadata
+  and its RFC 4122 UUID as the globally unique domain identifier; the `virsh`
+  domain argument accepts an ID, name, or full UUID. Sources:
+  https://www.libvirt.org/formatdomain.html and
+  https://www.libvirt.org/manpages/virsh.html.
+
+  Authority model and source closure: each pass validates its generated name
+  grammar/length and one kernel-random version-4 UUID. Complete bounded name
+  and UUID enumerations must prove both absent; enumeration failure is
+  distinguished from absence and fails closed. Creation intent is recorded
+  immediately before the exact retained
+  `setsid --wait virt-install --uuid "$CURRENT_DOMAIN_UUID"` launch, but that
+  intent alone grants no destructive authority. Ownership commits only after
+  the retained client succeeds and UUID-addressed enumeration, expected-name
+  proof, and XML validation prove the requested UUID, exact four-disk set, and
+  absence of a network interface.
+
+  Every guest-specific post-commit read/control now addresses the retained
+  UUID: secondary name proof, XML inspection, state polling, destroy, and
+  `undefine --nvram`. Control has one finite-timeout, fixed-session,
+  no-pkttyagent wrapper under the C locale. `/proc` parsing now uses the final
+  parenthesis delimiter so a legal process name cannot shift the state/start/
+  group/session fields. Error/signal cleanup scans and drains the complete
+  retained process group/session, not only its leader; a reused or otherwise
+  inconclusive leader identity preserves the domain. A matching UUID found
+  before ownership commit is preserved and fails as an ambiguous launch; an
+  unexpected post-commit name likewise preserves the UUID. Only committed
+  exact UUID authority may be destroyed and undefined, and terminal teardown
+  proves UUID absence before clearing the state. No storage deletion is
+  requested. The guest remains
+  `--network none`, and its VNC console remains bound only to `127.0.0.1`.
+
+  R-S11ds and Appendix C #272 make this boundary normative. The existing
+  Windows harness semantic/mutation verifier is extended as the focused gate,
+  and the independent workspace verifier carries a separate contract and
+  mutation set. Both are source-only: they do not invoke the Windows builder,
+  `virt-install`, `virsh`, libvirt, KVM, a Windows VM, Docker/helper workloads,
+  cleanup, or any host RustDesk/service/firewall/network operation.
+
+  Confined evidence: the focused Windows harness checker passes and rejects
+  all 168 deliberate source mutations; all four of its bounded behavioral
+  suites pass. The independent workspace baseline passes, and its complete
+  2,441-entry in-memory semantic source-mutation catalog passes from mutation
+  one. Adjacent golden-domain, cleanup, Windows-helper, release-parent, and
+  Debian systemd-lifecycle gates reject 32, 16, 78, 27, and 44 mutations
+  respectively. Bash syntax, diff hygiene, the native-codec normal/negative
+  checks, exact requirements hash synchronization, and active scope through
+  R-S11ds/Appendix C #272 pass in the same confinement.
+
+  Every counted gate ran only in immutable verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric UID/GID 1000:1000, no-pull/networkless/read-only-root/
+  read-only-repository, recursive bind inclusion disabled, all capabilities
+  dropped, no-new-privileges, finite PID/memory/no-swap/CPU/descriptor/core/
+  file-size/tmpfs bounds, and no Docker/libvirt/service-manager socket, host
+  namespace, device, port, or host-configuration mount. The focused MSI
+  behavioral fixture imported only the existing local
+  `olefile-0.47-py2.py3-none-any.whl` after its pinned SHA-256 was verified;
+  nothing was installed and network remained disabled. Each outer Docker
+  client call used a fresh mode-0700 canonical-empty private configuration
+  whose mode-0600 file and directory were exactly removed.
+
+  Preliminary failures are retained rather than hidden. The execution policy
+  rejected an outer temporary-config cleanup containing `rm -f` before Docker
+  ran; exact non-force cleanup replaced it. The first process-group behavioral
+  run killed its synthetic TERM-ignoring group but returned inconclusive; the
+  production path now reaps the KILLed retained leader before its final
+  descendant scan, and the complete focused suite restarted. One wheel-check
+  command expanded an unset shell positional parameter before testing; the
+  corrected invocation then exposed the verifier image's absent `olefile`
+  module, so the pinned local wheel was hash-checked and the complete suite
+  restarted. Two complete independent-catalog attempts correctly rejected the
+  new parser and cleanup-order mutations but stopped because broader checks
+  emitted different labels than their mutation fixtures expected. The
+  independent contracts were ordered/labelled specifically, and the final
+  2,441-entry catalog restarted from mutation one and passed.
+
+  No Windows build, `virt-install`, `virsh`, libvirt query/control, KVM/VM
+  operation, Docker/helper workload inside the verifier, cleanup transaction,
+  cold R-B2/R-B10 artifact transaction, installed/native/device behavior,
+  independent reproduction, or R-V3 external review is claimed by this source
+  slice. No host RustDesk/service/configuration/firewall/network state was
+  inspected or mutated. Those evidence obligations and the broader
+  Ralph-loop goal remain open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -13801,9 +13912,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-9c0d4cc79e6912d99458c0fe09c72965c2f1504aed1d6a97ad76de6e609d6ba6  requirements.html
+9242be5a9a72e3485022604e6f40d8f3cac8001a4bc6a2e444c591fafb3f5325  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dr, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#271. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ds, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

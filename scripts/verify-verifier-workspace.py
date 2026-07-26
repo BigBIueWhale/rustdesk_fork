@@ -11296,7 +11296,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11df, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#259",
+        "R-S11n through R-S11dg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#260",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11377,7 +11377,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11df, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#259",
+        "R-S11n through R-S11dg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#260",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11556,7 +11556,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11df, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#259",
+        "R-S11n through R-S11dg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#260",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11690,7 +11690,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11df, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#259",
+        "R-S11n through R-S11dg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#260",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11858,7 +11858,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11df, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#259",
+        "R-S11n through R-S11dg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#260",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12051,7 +12051,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11df, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#259",
+        "R-S11n through R-S11dg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#260",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12385,7 +12385,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11df, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#259",
+        "R-S11n through R-S11dg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#260",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -22497,11 +22497,73 @@ def validate_dart_audit_authority_contract(sources):
 
 
 def validate_rust_audit_distribution_contract(sources):
+    shell = sources["rust_audit"]
     dockerfile = sources["rust_audit_dockerfile"]
     authority = sources["rust_audit_authority_validator"]
     pins = sources["pins"]
     provenance = sources["offline_image_provenance"]
     online_fetch = sources["online_fetch"]
+
+    for text, label in (
+        ('readonly AUDIT_UID="$(/usr/bin/id -u)"', "Rust audit absolute UID source"),
+        ('readonly AUDIT_GID="$(/usr/bin/id -g)"', "Rust audit absolute GID source"),
+        (
+            '[ "$AUDIT_UID" -ne 0 ] || audit_die "refuses host or container-root execution"',
+            "Rust audit UID-root refusal",
+        ),
+        (
+            '[ "$AUDIT_GID" -ne 0 ] || audit_die "refuses a root primary group"',
+            "Rust audit GID-root refusal",
+        ),
+        (
+            'initialize_local_docker_authority "$AUDIT_TMP/docker-config" "rust-audit"',
+            "Rust audit fixed Docker authority initialization",
+        ),
+        (
+            'IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$RUST_AUDIT_IMAGE_ID")"',
+            "Rust audit fixed image identity inspection",
+        ),
+        (
+            'IMAGE_METADATA="$(local_docker image inspect --format',
+            "Rust audit fixed image metadata inspection",
+        ),
+        ('local_docker "$@"', "Rust audit bounded fixed Docker launcher"),
+        (
+            'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]',
+            "Rust audit Docker authority cleanup admission",
+        ),
+        (
+            "&& ! remove_local_docker_authority; then",
+            "Rust audit exact Docker authority cleanup",
+        ),
+        ('--user "$AUDIT_UID:$AUDIT_GID"', "Rust audit non-root container identity"),
+    ):
+        require_text(shell, text, label)
+    require_exact_count(
+        shell,
+        "local_docker image inspect --format",
+        2,
+        "Rust audit fixed-authority image inspection inventory",
+    )
+    require_exact_count(
+        shell,
+        "run_bounded_docker run ",
+        3,
+        "Rust audit bounded container inventory",
+    )
+    require_absent(shell, "DOCKER_BIN", "Rust audit ambient direct Docker client")
+    require_absent(shell, "\ndocker run ", "Rust audit PATH-selected Docker launch")
+    require_order(
+        shell,
+        (
+            'initialize_local_docker_authority "$AUDIT_TMP/docker-config" "rust-audit"',
+            "scripts/rust-audit-policy.py prepare",
+            'IMAGE_ID="$(local_docker image inspect',
+            'IMAGE_METADATA="$(local_docker image inspect',
+            "run_bounded_docker run ",
+        ),
+        "Rust audit fixed Docker authority transaction",
+    )
 
     for text, label in (
         (
@@ -22727,6 +22789,28 @@ def validate_rust_audit_distribution_contract(sources):
             "Rust audit private-archive mutation",
         ),
         (
+            "Mutation(\n"
+            '        "shell",\n'
+            '        \'initialize_local_docker_authority "$AUDIT_TMP/docker-config" "rust-audit"\',\n'
+            '        "true # fixed Docker authority initialization disabled",\n'
+            '        "fixed Docker authority initialization",\n'
+            "    )",
+            "Rust audit authority-initialization mutation",
+        ),
+        (
+            '"fixed Docker image identity inspection"',
+            "Rust audit fixed-identity-inspection mutation",
+        ),
+        (
+            '"fixed Docker image metadata inspection"',
+            "Rust audit fixed-metadata-inspection mutation",
+        ),
+        ('"fixed Docker launcher"', "Rust audit fixed-launcher mutation"),
+        (
+            '"exact Docker authority cleanup"',
+            "Rust audit authority-cleanup mutation",
+        ),
+        (
             'Mutation("pins", \'SHA256_RUST_AUDIT_IMAGE_ARCHIVE="d7ad706d\'',
             "Rust audit archive-pin mutation",
         ),
@@ -22760,6 +22844,24 @@ def validate_rust_audit_distribution_contract(sources):
         "<tr><td>183</td>",
         "Rust audit Appendix C row",
     )
+    docker_requirement = extract_html_requirement(
+        sources["requirements"], "R-S11dg", "Rust audit Docker authority requirement"
+    )
+    for text in (
+        "both image inspections and all three output-bounded launches",
+        "fixed local Unix socket",
+        "canonical <code>{}</code> <code>config.json</code>",
+        "Appendix C #260",
+        "R-S11e-125",
+    ):
+        require_text(
+            docker_requirement, text, "Rust audit Docker authority requirement"
+        )
+    require_text(
+        sources["requirements"],
+        "<tr><td>260</td>",
+        "Rust audit Docker authority Appendix C row",
+    )
     require_text(
         sources["hardening"],
         "R-S11bf/R-S11e-72 — Rust advisory freshness, result finality, and scanner authority",
@@ -22769,6 +22871,11 @@ def validate_rust_audit_distribution_contract(sources):
         sources["hardening"],
         "Independently archived distribution:",
         "Rust audit archive/provenance evidence",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dg/R-S11e-125 — Rust advisory Docker client, daemon, and configuration authority",
+        "Rust audit Docker authority hardening ledger",
     )
 
 
@@ -35906,6 +36013,52 @@ def run_source_mutations(sources):
             "Rust audit exact archive recovery path",
         ),
         (
+            "rust_audit",
+            'initialize_local_docker_authority "$AUDIT_TMP/docker-config" "rust-audit"',
+            "true # fixed Docker authority initialization disabled",
+            "Rust audit fixed Docker authority initialization",
+        ),
+        (
+            "rust_audit",
+            'IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$RUST_AUDIT_IMAGE_ID")"',
+            'IMAGE_ID="$(/usr/bin/docker image inspect --format \'{{.Id}}\' "$RUST_AUDIT_IMAGE_ID")"',
+            "Rust audit fixed image identity inspection",
+        ),
+        (
+            "rust_audit",
+            'IMAGE_METADATA="$(local_docker image inspect --format',
+            'IMAGE_METADATA="$(/usr/bin/docker image inspect --format',
+            "Rust audit fixed image metadata inspection",
+        ),
+        (
+            "rust_audit",
+            "run_bounded_docker run --rm",
+            "local_docker run --rm",
+            "Rust audit bounded container inventory",
+        ),
+        (
+            "rust_audit",
+            'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \\\n      && ! remove_local_docker_authority; then',
+            "if false; then",
+            "Rust audit Docker authority cleanup admission",
+        ),
+        (
+            "rust_audit_authority_validator",
+            "Mutation(\n"
+            '        "shell",\n'
+            '        \'initialize_local_docker_authority "$AUDIT_TMP/docker-config" "rust-audit"\',\n'
+            '        "true # fixed Docker authority initialization disabled",\n'
+            '        "fixed Docker authority initialization",\n'
+            "    )",
+            "Mutation(\n"
+            '        "shell",\n'
+            '        \'initialize_local_docker_authority "$AUDIT_TMP/docker-config" "rust-audit"\',\n'
+            '        "true # fixed Docker authority initialization disabled",\n'
+            '        "fixed Docker authority initialization disabled",\n'
+            "    )",
+            "Rust audit authority-initialization mutation",
+        ),
+        (
             "rust_audit_authority_validator",
             '"        --network=default --pull=true --no-cache"',
             '"        --network=default --pull=true --no-cache-disabled"',
@@ -35949,10 +36102,28 @@ def run_source_mutations(sources):
             "Rust audit authority requirement",
         ),
         (
+            "requirements",
+            '<span class="id">R-S11dg</span>',
+            '<span class="id">R-S11dg-disabled</span>',
+            "Rust audit Docker authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>260</td>",
+            "<tr><td>260-disabled</td>",
+            "Rust audit Docker authority Appendix C row",
+        ),
+        (
             "hardening",
             "R-S11bf/R-S11e-72 — Rust advisory freshness, result finality, and scanner authority",
             "R-S11bf/R-S11e-72 — Rust advisory closure deferred",
             "Rust audit hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11dg/R-S11e-125 — Rust advisory Docker client, daemon, and configuration authority",
+            "R-S11dg/R-S11e-XXX — Rust advisory Docker authority deferred",
+            "Rust audit Docker authority hardening ledger",
         ),
         (
             "verifier_command_wrapper",
@@ -36226,7 +36397,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11df, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#259",
+            "R-S11n through R-S11dg, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#260",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -40999,6 +41170,7 @@ def main():
             "rust_audit_dockerfile": (
                 repo / "scripts/Dockerfile.audit"
             ).read_text(encoding="utf-8"),
+            "rust_audit": (repo / "scripts/audit.sh").read_text(encoding="utf-8"),
             "rust_audit_authority_validator": (
                 repo / "scripts/verify-rust-audit-authority.py"
             ).read_text(encoding="utf-8"),

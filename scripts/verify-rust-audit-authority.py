@@ -51,7 +51,7 @@ def validate_run(block, label):
             "--pull=never",
             "--network=none",
             "--read-only",
-            '--user "$(id -u):$(id -g)"',
+            '--user "$AUDIT_UID:$AUDIT_GID"',
             "--cap-drop=ALL",
             "--security-opt=no-new-privileges",
             "--pids-limit=",
@@ -216,6 +216,7 @@ def validate_dockerfile(dockerfile):
 
 def validate_contract(sources):
     shell = sources["shell"]
+    lib = sources["lib"]
     dockerfile = sources["dockerfile"]
     policy = sources["policy"]
     pins = sources["pins"]
@@ -229,7 +230,49 @@ def validate_contract(sources):
 
     validate_dockerfile(dockerfile)
 
+    require_all(
+        lib,
+        (
+            "LOCAL_DOCKER_AUTHORITY_INITIALIZED=0\nLOCAL_DOCKER_AUTHORITY_LABEL=",
+            "initialize_local_docker_authority() {",
+            '[ "$(/usr/bin/id -u)" -ne 0 ] || die "$2 refuses host or container-root Docker authority"',
+            '[ "$(/usr/bin/id -g)" -ne 0 ] || die "$2 refuses a root primary group for Docker authority"',
+            "[ -f /usr/bin/docker ] && [ ! -L /usr/bin/docker ] && [ -x /usr/bin/docker ]",
+            "[ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ]",
+            "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
+            "DOCKER_API_VERSION DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST",
+            "DOCKER_CONTENT_TRUST_SERVER DOCKER_CUSTOM_HEADERS",
+            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
+            "assert_local_docker_authority() {",
+            "local_docker() {",
+            "/usr/bin/env -i",
+            "DOCKER_HOST=unix:///var/run/docker.sock",
+            'DOCKER_CONFIG="$LOCAL_DOCKER_AUTHORITY_CONFIG"',
+            "--host unix:///var/run/docker.sock",
+            '--config "$LOCAL_DOCKER_AUTHORITY_CONFIG"',
+            "remove_local_docker_authority() {",
+            '/usr/bin/rm -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json"',
+            '/usr/bin/rmdir -- "$LOCAL_DOCKER_AUTHORITY_CONFIG"',
+        ),
+        "shared fixed local Docker authority",
+    )
+    local_docker_start = lib.index("local_docker() {")
+    provenance_start = lib.index("local_docker_image_provenance() {")
+    local_docker = lib[local_docker_start:provenance_start]
+    require(
+        local_docker.count("assert_local_docker_authority") == 2,
+        "local Docker authority must be proved before and after every client operation",
+    )
+    require(
+        "/usr/bin/env -i" in local_docker and "/usr/bin/docker" in local_docker,
+        "local Docker client does not execute from an empty environment through the fixed binary",
+    )
+
     require(shell.count("run_bounded_docker run ") == 3, "Rust audit must have exactly three Docker launches")
+    require(
+        shell.count("local_docker image inspect --format") == 2,
+        "Rust audit must have exactly two fixed-authority image inspections",
+    )
     require(
         shell.count('ulimit -Sf "$MAX_SCANNER_OUTPUT_BLOCKS"') == 2,
         "Rust audit must cap both unlimited and overly broad scanner output limits",
@@ -243,8 +286,9 @@ def validate_contract(sources):
         (
             "source \"$SCRIPT_DIR/lib.sh\"",
             "load_pins",
-            "readonly DOCKER_BIN=/usr/bin/docker",
             "readonly PYTHON_BIN=/usr/bin/python3",
+            'readonly AUDIT_UID="$(/usr/bin/id -u)"',
+            'readonly AUDIT_GID="$(/usr/bin/id -g)"',
             "readonly MAX_SCANNER_OUTPUT_BLOCKS=65536",
             "readonly AUDIT_IMAGE_ROOT=/var/tmp/rustdesk-rust-audit",
             'readonly AUDIT_IMAGE_DB="$AUDIT_IMAGE_ROOT/advisory-db"',
@@ -253,23 +297,26 @@ def validate_contract(sources):
             'current_limit="$(ulimit -Sf)"',
             'if (( current_limit > MAX_SCANNER_OUTPUT_BLOCKS )); then',
             'ulimit -Sf "$MAX_SCANNER_OUTPUT_BLOCKS"',
-            'exec "$DOCKER_BIN" "$@"',
-            '[ "$(id -u)" -ne 0 ] || audit_die "refuses host or container-root execution"',
-            '[ "$(id -g)" -ne 0 ] || audit_die "refuses a root primary group"',
+            'local_docker "$@"',
+            '[ "$AUDIT_UID" -ne 0 ] || audit_die "refuses host or container-root execution"',
+            '[ "$AUDIT_GID" -ne 0 ] || audit_die "refuses a root primary group"',
             '[ -f "$LOCKFILE" ] && [ ! -L "$LOCKFILE" ]',
             '[ -f "$POLICY" ] && [ ! -L "$POLICY" ]',
             '[ -d "$VENDOR_DIR" ] && [ ! -L "$VENDOR_DIR" ]',
             'AUDIT_TMP="$(umask 077 && mktemp -d /tmp/rustdesk-rust-audit.XXXXXXXXXX)"',
             'AUDIT_TMP_ID="$(/usr/bin/stat -c \'%d:%i\' -- "$AUDIT_TMP")"',
+            'initialize_local_docker_authority "$AUDIT_TMP/docker-config" "rust-audit"',
+            'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]',
+            "&& ! remove_local_docker_authority; then",
             '--remove-private-root "$AUDIT_TMP" --expected-identity "$AUDIT_TMP_ID"',
             "scripts/rust-audit-policy.py prepare",
             "scripts/rust-audit-policy.py check-freshness",
             '--max-age-days "$ADVISORY_DB_MAX_AGE_DAYS"',
             "scripts/online-input-provenance.py verify-subtree",
             '--expected "$SHA256_CARGO_VENDOR_CLOSURE_V1"',
-            "IMAGE_ID=\"$($DOCKER_BIN image inspect --format '{{.Id}}' \"$RUST_AUDIT_IMAGE_ID\")\"",
+            "IMAGE_ID=\"$(local_docker image inspect --format '{{.Id}}' \"$RUST_AUDIT_IMAGE_ID\")\"",
             '[ "$IMAGE_ID" = "$RUST_AUDIT_IMAGE_ID" ]',
-            "IMAGE_METADATA=\"$($DOCKER_BIN image inspect --format",
+            "IMAGE_METADATA=\"$(local_docker image inspect --format",
             'EXPECTED_IMAGE_METADATA="$IMAGE_ID|linux|amd64|1000:1000|rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${RUST_AUDIT_BASE_IMAGE_DIGEST}',
             '[ "$IMAGE_METADATA" = "$EXPECTED_IMAGE_METADATA" ]',
             "RUST_AUDIT_TOOLCHAIN",
@@ -286,18 +333,27 @@ def validate_contract(sources):
         "Rust audit shell authority",
     )
     require(
-        shell.index("scripts/rust-audit-policy.py prepare")
+        shell.index(
+            'initialize_local_docker_authority "$AUDIT_TMP/docker-config" "rust-audit"'
+        )
+        < shell.index("scripts/rust-audit-policy.py prepare")
         < shell.index("scripts/rust-audit-policy.py check-freshness")
-        < shell.index("$DOCKER_BIN image inspect"),
-        "policy/freshness must precede Docker authority",
+        < shell.index("local_docker image inspect"),
+        "fixed Docker authority must precede policy/freshness and image inspection",
     )
     require(
         shell.rindex("scripts/online-input-provenance.py verify-subtree")
         < shell.index('AUDIT_SUCCESS_MESSAGE="VERIFY-AUDIT: green'),
         "vendor postcondition must precede green",
     )
+    require("DOCKER_BIN" not in shell, "Rust audit retains an ambient direct Docker client")
+    require("\ndocker run " not in shell, "Rust audit retains a PATH-selected Docker launch")
+    require(
+        shell.count("local_docker run ") == 0,
+        "Rust audit must retain the output-bounded Docker launcher",
+    )
     for forbidden in (
-        "$DOCKER_BIN build",
+        "local_docker build",
         "docker build",
         "Dockerfile.audit",
         "rd-cargo-cache",
@@ -712,6 +768,18 @@ def validate_contract(sources):
     )
     require('<span class="id">R-S11bf</span>' in requirements, "requirements are missing R-S11bf")
     require("<tr><td>183</td>" in requirements, "requirements are missing Appendix C #183")
+    require('<span class="id">R-S11dg</span>' in requirements, "requirements are missing R-S11dg")
+    require("<tr><td>260</td>" in requirements, "requirements are missing Appendix C #260")
+    require_all(
+        requirements,
+        (
+            "both image inspections and all three output-bounded launches",
+            "fixed local Unix socket",
+            "canonical <code>{}</code> <code>config.json</code>",
+            "R-S11e-125",
+        ),
+        "Rust advisory Docker authority requirement",
+    )
     require(
         "exact 2026-07-17 RustSec snapshot was reviewed on 2026-07-22" in requirements,
         "current RustSec review status is missing",
@@ -719,6 +787,11 @@ def validate_contract(sources):
     require(
         "R-S11bf/R-S11e-72 — Rust advisory freshness, result finality, and scanner authority" in hardening,
         "hardening ledger is missing the Rust audit closure",
+    )
+    require(
+        "R-S11dg/R-S11e-125 — Rust advisory Docker client, daemon, and configuration authority"
+        in hardening,
+        "hardening ledger is missing the Rust audit Docker authority correction",
     )
     require("neither this item nor the overall release is claimed complete" in hardening, "ledger overclaims completion")
 
@@ -733,6 +806,11 @@ def validate_contract(sources):
             'Mutation("dockerfile", "COPY --from=builder --chown=1000:1000"',
             'Mutation("shell", \'ulimit -Sf "$MAX_SCANNER_OUTPUT_BLOCKS"\'',
             'Mutation("shell", "scripts/rust-audit-policy.py check-freshness"',
+            '"fixed Docker authority initialization"',
+            '"fixed Docker image identity inspection"',
+            '"fixed Docker image metadata inspection"',
+            '"fixed Docker launcher"',
+            '"exact Docker authority cleanup"',
             'Mutation("shell", "--deny warnings --json", "--json"',
             'Mutation("policy", "maximum_days == 90", "maximum_days >= 90"',
             'Mutation("policy", "metadata.st_mtime_ns", "opened.st_mtime_ns"',
@@ -755,7 +833,10 @@ def validate_contract(sources):
             '"Rust image candidate network authority"',
             'Mutation("verify", "python3 scripts/verify-rust-audit-authority.py --repo . --self-test"',
             'Mutation("requirements", \'<span class="id">R-S11bf</span>\'',
+            'Mutation("requirements", \'<span class="id">R-S11dg</span>\'',
+            'Mutation("requirements", "<tr><td>260</td>"',
             'Mutation("hardening", "R-S11bf/R-S11e-72 — Rust advisory freshness, result finality, and scanner authority"',
+            'Mutation("hardening", "R-S11dg/R-S11e-125"',
         ),
         "Rust audit validator mutation coverage",
     )
@@ -784,21 +865,74 @@ MUTATIONS = (
     Mutation("dockerfile", "--depth=1", "--depth=100", "bounded exact DB acquisition"),
     Mutation("dockerfile", "COPY --from=builder --chown=1000:1000", "COPY .", "empty-context runtime copy"),
     Mutation("dockerfile", "-bookworm@${BASE_DIGEST}", "-bookworm", "digest-pinned acquisition base"),
-    Mutation("shell", '[ "$(id -u)" -ne 0 ]', '[ "$(id -u)" -ge 0 ]', "UID-root refusal"),
-    Mutation("shell", '[ "$(id -g)" -ne 0 ]', '[ "$(id -g)" -ge 0 ]', "GID-root refusal"),
+    Mutation("shell", '[ "$AUDIT_UID" -ne 0 ]', '[ "$AUDIT_UID" -ge 0 ]', "UID-root refusal"),
+    Mutation("shell", '[ "$AUDIT_GID" -ne 0 ]', '[ "$AUDIT_GID" -ge 0 ]', "GID-root refusal"),
     Mutation("shell", '[ ! -L "$LOCKFILE" ]', '[ -e "$LOCKFILE" ]', "lockfile link refusal"),
     Mutation("shell", '[ ! -L "$POLICY" ]', '[ -e "$POLICY" ]', "policy link refusal"),
     Mutation("shell", "scripts/rust-audit-policy.py prepare", "printf 34 # prepare", "private policy staging"),
     Mutation("shell", "scripts/rust-audit-policy.py check-freshness", "printf fresh # check-freshness", "DB freshness"),
     Mutation("shell", '--max-age-days "$ADVISORY_DB_MAX_AGE_DAYS"', '--max-age-days 9999', "freshness pin use"),
-    Mutation("shell", '$DOCKER_BIN image inspect --format', 'printf sha256: # $DOCKER_BIN image inspect --format', "image identity"),
+    Mutation(
+        "shell",
+        'initialize_local_docker_authority "$AUDIT_TMP/docker-config" "rust-audit"',
+        "true # fixed Docker authority initialization disabled",
+        "fixed Docker authority initialization",
+    ),
+    Mutation(
+        "shell",
+        'IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$RUST_AUDIT_IMAGE_ID")"',
+        'IMAGE_ID="$(/usr/bin/docker image inspect --format \'{{.Id}}\' "$RUST_AUDIT_IMAGE_ID")"',
+        "fixed Docker image identity inspection",
+    ),
+    Mutation(
+        "shell",
+        'IMAGE_METADATA="$(local_docker image inspect --format',
+        'IMAGE_METADATA="$(/usr/bin/docker image inspect --format',
+        "fixed Docker image metadata inspection",
+    ),
+    Mutation(
+        "shell",
+        "run_bounded_docker run --rm",
+        "local_docker run --rm",
+        "fixed Docker launcher",
+    ),
+    Mutation(
+        "shell",
+        'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \\\n      && ! remove_local_docker_authority; then',
+        "if false; then",
+        "exact Docker authority cleanup",
+    ),
+    Mutation(
+        "lib",
+        "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
+        "DOCKER_HOST DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
+        "ambient Docker context refusal",
+    ),
+    Mutation(
+        "lib",
+        "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
+        "(umask 077 && printf '{}\\n' >\"$config/config.json\")",
+        "Docker configuration no-clobber creation",
+    ),
+    Mutation(
+        "lib",
+        "local_docker() {\n    local status=0\n    assert_local_docker_authority || return 1\n    /usr/bin/env -i",
+        "local_docker() {\n    local status=0\n    assert_local_docker_authority || return 1\n    /usr/bin/env",
+        "empty Docker client environment",
+    ),
+    Mutation(
+        "lib",
+        "local_docker() {\n    local status=0\n    assert_local_docker_authority || return 1",
+        "local_docker() {\n    local status=0\n    true # Docker authority precondition disabled",
+        "Docker authority operation proof",
+    ),
     Mutation("shell", '[ "$IMAGE_ID" = "$RUST_AUDIT_IMAGE_ID" ]', '[ -n "$IMAGE_ID" ]', "content-ID equality"),
     Mutation("shell", '[ "$IMAGE_METADATA" = "$EXPECTED_IMAGE_METADATA" ]', '[ -n "$IMAGE_METADATA" ]', "image metadata equality"),
     Mutation("shell", 'ulimit -Sf "$MAX_SCANNER_OUTPUT_BLOCKS"', ': # output limit', "host output bound"),
     Mutation("shell", "--pull=never", "--pull=always", "pull refusal"),
     Mutation("shell", "--network=none", "--network=bridge", "network isolation"),
     Mutation("shell", "--read-only", "--hostname=rust-audit", "read-only root"),
-    Mutation("shell", '--user "$(id -u):$(id -g)"', '--user 0:0', "nonroot container"),
+    Mutation("shell", '--user "$AUDIT_UID:$AUDIT_GID"', '--user 0:0', "nonroot container"),
     Mutation("shell", "--cap-drop=ALL", "--cap-add=SYS_ADMIN", "capability drop"),
     Mutation("shell", "--security-opt=no-new-privileges", "--security-opt=label=disable", "no-new-privileges"),
     Mutation("shell", "--pids-limit=32", "--pids-limit=-1", "PID bound"),
@@ -896,6 +1030,9 @@ MUTATIONS = (
     Mutation("requirements", '<span class="id">R-S11bf</span>', '<span class="id">R-S11bf-disabled</span>', "normative requirement"),
     Mutation("requirements", "<tr><td>183</td>", "<tr><td>183-disabled</td>", "Appendix disposition"),
     Mutation("hardening", "R-S11bf/R-S11e-72 — Rust advisory freshness, result finality, and scanner authority", "R-S11bf/R-S11e-72 — Rust audit deferred", "hardening ledger"),
+    Mutation("requirements", '<span class="id">R-S11dg</span>', '<span class="id">R-S11dg-disabled</span>', "Docker authority requirement"),
+    Mutation("requirements", "<tr><td>260</td>", "<tr><td>260-disabled</td>", "Docker authority Appendix disposition"),
+    Mutation("hardening", "R-S11dg/R-S11e-125", "R-S11dg/R-S11e-XXX", "Docker authority hardening ledger"),
 )
 
 
@@ -910,6 +1047,7 @@ def mutate_once(sources, mutation):
 def load_sources(repo):
     return {
         "shell": (repo / "scripts/audit.sh").read_text(encoding="utf-8"),
+        "lib": (repo / "scripts/lib.sh").read_text(encoding="utf-8"),
         "dockerfile": (repo / "scripts/Dockerfile.audit").read_text(encoding="utf-8"),
         "policy": (repo / "scripts/rust-audit-policy.py").read_text(encoding="utf-8"),
         "pins": (repo / "scripts/pins.env").read_text(encoding="utf-8"),

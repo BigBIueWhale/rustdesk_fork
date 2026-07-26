@@ -25,8 +25,9 @@ readonly LOCKFILE=Cargo.lock
 readonly POLICY=deny.toml
 readonly VENDOR_DIR=online/cargo-vendor
 readonly VENDOR_CONFIG=online/cargo-vendor-config.toml
-readonly DOCKER_BIN=/usr/bin/docker
 readonly PYTHON_BIN=/usr/bin/python3
+readonly AUDIT_UID="$(/usr/bin/id -u)"
+readonly AUDIT_GID="$(/usr/bin/id -g)"
 readonly MAX_SCANNER_OUTPUT_BLOCKS=65536 # Bash ulimit -f units: 64 MiB on Linux.
 readonly AUDIT_IMAGE_ROOT=/var/tmp/rustdesk-rust-audit
 readonly AUDIT_IMAGE_DB="$AUDIT_IMAGE_ROOT/advisory-db"
@@ -55,12 +56,11 @@ run_bounded_docker() (
   else
     audit_die "scanner output-file limit is malformed"
   fi
-  exec "$DOCKER_BIN" "$@"
+  local_docker "$@"
 )
 
-[ "$(id -u)" -ne 0 ] || audit_die "refuses host or container-root execution"
-[ "$(id -g)" -ne 0 ] || audit_die "refuses a root primary group"
-[ -x "$DOCKER_BIN" ] || audit_die "trusted Docker client is unavailable at $DOCKER_BIN"
+[ "$AUDIT_UID" -ne 0 ] || audit_die "refuses host or container-root execution"
+[ "$AUDIT_GID" -ne 0 ] || audit_die "refuses a root primary group"
 [ -x "$PYTHON_BIN" ] || audit_die "trusted Python interpreter is unavailable at $PYTHON_BIN"
 
 [ -f "$LOCKFILE" ] && [ ! -L "$LOCKFILE" ] \
@@ -114,7 +114,11 @@ cleanup_audit_tmp() {
   local status=$? cleanup_failed=0
   trap - EXIT HUP INT TERM
   if [ -n "$AUDIT_TMP" ]; then
-    if [ -z "$AUDIT_TMP_ID" ] || [ ! -d "$AUDIT_TMP" ] || [ -L "$AUDIT_TMP" ] \
+    if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
+      && ! remove_local_docker_authority; then
+      echo "audit.sh: preserving changed private Docker authority: $AUDIT_TMP" >&2
+      cleanup_failed=1
+    elif [ -z "$AUDIT_TMP_ID" ] || [ ! -d "$AUDIT_TMP" ] || [ -L "$AUDIT_TMP" ] \
       || [ "$(/usr/bin/stat -c '%d:%i' -- "$AUDIT_TMP" 2>/dev/null)" != "$AUDIT_TMP_ID" ]; then
       echo "audit.sh: private workspace identity is unavailable or changed: $AUDIT_TMP" >&2
       cleanup_failed=1
@@ -140,8 +144,9 @@ trap 'exit 143' TERM
 AUDIT_TMP="$(umask 077 && mktemp -d /tmp/rustdesk-rust-audit.XXXXXXXXXX)"
 AUDIT_TMP_ID="$(/usr/bin/stat -c '%d:%i' -- "$AUDIT_TMP")"
 readonly AUDIT_TMP AUDIT_TMP_ID
-[ "$(/usr/bin/stat -c '%u:%g:%a' -- "$AUDIT_TMP")" = "$(id -u):$(id -g):700" ] \
+[ "$(/usr/bin/stat -c '%u:%g:%a' -- "$AUDIT_TMP")" = "$AUDIT_UID:$AUDIT_GID:700" ] \
   || audit_die "private workspace is not current-user/current-group mode 0700"
+initialize_local_docker_authority "$AUDIT_TMP/docker-config" "rust-audit"
 
 # Validate policy and stage stable private copies before touching the Docker
 # daemon. The freshness check intentionally has no caller override; even a
@@ -176,13 +181,13 @@ readonly SOURCE_LOCK_SHA SOURCE_POLICY_SHA SOURCE_VENDOR_CONFIG_SHA
   --tree "$VENDOR_DIR" --expected "$SHA256_CARGO_VENDOR_CLOSURE_V1" \
   || audit_die "the Cargo vendor closure does not match its canonical pin"
 
-IMAGE_ID="$($DOCKER_BIN image inspect --format '{{.Id}}' "$RUST_AUDIT_IMAGE_ID")" \
+IMAGE_ID="$(local_docker image inspect --format '{{.Id}}' "$RUST_AUDIT_IMAGE_ID")" \
   || audit_die "the pinned Rust advisory image is not present locally (no pull/build fallback)"
 [ "$IMAGE_ID" = "$RUST_AUDIT_IMAGE_ID" ] \
   || audit_die "Docker did not resolve the exact pinned Rust advisory content ID"
 readonly IMAGE_ID
 
-IMAGE_METADATA="$($DOCKER_BIN image inspect --format '{{.Id}}|{{.Os}}|{{.Architecture}}|{{.Config.User}}|{{index .Config.Labels "org.rustdesk.audit.base"}}|{{index .Config.Labels "org.rustdesk.audit.rust"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit-source"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit-source-tree"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny-source"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny-source-tree"}}|{{index .Config.Labels "org.rustdesk.audit.advisory-db"}}|{{index .Config.Labels "org.rustdesk.audit.advisory-db-epoch"}}|{{index .Config.Labels "org.rustdesk.audit.run-user"}}' "$IMAGE_ID")" \
+IMAGE_METADATA="$(local_docker image inspect --format '{{.Id}}|{{.Os}}|{{.Architecture}}|{{.Config.User}}|{{index .Config.Labels "org.rustdesk.audit.base"}}|{{index .Config.Labels "org.rustdesk.audit.rust"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit-source"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-audit-source-tree"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny-source"}}|{{index .Config.Labels "org.rustdesk.audit.cargo-deny-source-tree"}}|{{index .Config.Labels "org.rustdesk.audit.advisory-db"}}|{{index .Config.Labels "org.rustdesk.audit.advisory-db-epoch"}}|{{index .Config.Labels "org.rustdesk.audit.run-user"}}' "$IMAGE_ID")" \
   || audit_die "could not inspect the pinned Rust advisory image metadata"
 EXPECTED_IMAGE_METADATA="$IMAGE_ID|linux|amd64|1000:1000|rust:${RUST_AUDIT_RUST_VERSION}-bookworm@${RUST_AUDIT_BASE_IMAGE_DIGEST}|${RUST_AUDIT_RUST_VERSION}|${CARGO_AUDIT_VERSION}|${CARGO_AUDIT_SOURCE_COMMIT}|${CARGO_AUDIT_SOURCE_TREE}|${CARGO_DENY_VERSION}|${CARGO_DENY_SOURCE_COMMIT}|${CARGO_DENY_SOURCE_TREE}|${ADVISORY_DB_COMMIT}|${ADVISORY_DB_COMMIT_EPOCH}|1000:1000"
 [ "$IMAGE_METADATA" = "$EXPECTED_IMAGE_METADATA" ] \
@@ -193,7 +198,7 @@ IMAGE_PREFLIGHT_OUT="$AUDIT_TMP/image-preflight.out"
 IMAGE_PREFLIGHT_ERR="$AUDIT_TMP/image-preflight.err"
 set +e
 run_bounded_docker run --rm --pull=never --network=none --read-only \
-  --user "$(id -u):$(id -g)" \
+  --user "$AUDIT_UID:$AUDIT_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
   --pids-limit=32 --memory=256m --memory-swap=256m --cpus=1 \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=16m \
@@ -238,7 +243,7 @@ AUDIT_ERROR="$AUDIT_TMP/cargo-audit.stderr"
 echo "== cargo-audit: exact lockfile against the pinned, fresh RustSec snapshot =="
 set +e
 run_bounded_docker run --rm --pull=never --network=none --read-only \
-  --user "$(id -u):$(id -g)" \
+  --user "$AUDIT_UID:$AUDIT_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
   --pids-limit=64 --memory=512m --memory-swap=512m --cpus=2 \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=32m \
@@ -264,7 +269,7 @@ DENY_ERROR="$AUDIT_TMP/cargo-deny.stderr"
 echo "== cargo-deny: offline metadata advisory scan against the same snapshot =="
 set +e
 run_bounded_docker run --rm --pull=never --network=none --read-only \
-  --user "$(id -u):$(id -g)" \
+  --user "$AUDIT_UID:$AUDIT_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
   --pids-limit=256 --memory=3g --memory-swap=3g --cpus=2 \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=512m \

@@ -11855,6 +11855,97 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   cold input acquisition or exact clean-commit R-B2/R-B10 artifact transaction.
   Rust advisory and other Docker/build consumers, installed/native/device behavior,
   and R-V3 external review remain separately open.
+- **R-S11dg/R-S11e-125 — Rust advisory Docker client, daemon, and configuration authority —
+  SOURCE, CONFINED SEMANTIC/MUTATION GATES, AMBIENT-CONTEXT REJECTION, AND CURRENT
+  EXACT SCAN VERIFIED 2026-07-26; OTHER DOCKER CONSUMERS AND BROADER RELEASE
+  EVIDENCE REMAIN OPEN.**
+  Platform: the unprivileged Linux source-verification host. Endpoint/action:
+  `scripts/audit.sh` immutable-image identity/metadata inspection plus its
+  mount-free scanner preflight, private-lockfile `cargo-audit` scan, and
+  read-only-source/vendor `cargo-deny` scan. Boundary: the invoking user and
+  private advisory workspace ↔ Docker-client selection, daemon selection, client
+  configuration, and the truth of the release advisory verdict.
+
+  R-S11bf correctly made acquisition separate and all three verdict containers
+  immutable, no-pull, networkless, read-only-root, numeric non-root,
+  capability-free, no-new-privileges, resource-bounded, socket/port/
+  host-namespace-free, and limited their mounts to the intended private inputs,
+  read-only source, and canonical vendor closure. Current source review
+  nevertheless found that absolute `/usr/bin/docker` performed both image
+  inspections and all three output-bounded launches while inheriting Docker host,
+  context, configuration, TLS, platform, trust, and header inputs. The fixed
+  client pathname, exact metadata, and container flags therefore did not prove
+  which daemon interpreted the release verdict or what client configuration
+  augmented it. Docker's current CLI documentation states that `DOCKER_CONTEXT`
+  overrides `DOCKER_HOST`, that client behavior may come from the selected
+  configuration, and that contexts can select remote daemons. This was real
+  scanner-verdict and daemon/configuration-selection authority debt. It is not
+  evidence that another daemon or malicious configuration was used,
+  source/scanner/image/vendor bytes changed, Docker escaped, host root was
+  acquired, a listener or port was exposed, host RustDesk/service/configuration/
+  firewall/network state changed, exploitation occurred, or the host was
+  compromised.
+
+  The verdict now captures numeric identity through absolute `/usr/bin/id`,
+  refuses UID or primary GID zero, and initializes the shared fixed local Docker
+  authority beneath its exact private mode-0700 workspace before stable-input
+  preparation. That authority admits only the exact root-owned non-symlink
+  mode-0755 single-link `/usr/bin/docker` and root-owned non-symlink single-link
+  `/var/run/docker.sock`; rejects inherited client routing/configuration inputs;
+  and creates one current-user mode-0600 single-link canonical `{}`
+  `config.json` with no-clobber semantics. It captures and rechecks the private
+  parent/configuration, client, socket, and configuration bytes around every
+  operation.
+
+  Both image inspections and all three output-bounded launches now use the common
+  empty-environment wrapper with fixed `PATH`, private `HOME`, fixed local
+  `DOCKER_HOST`, private `DOCKER_CONFIG`, absolute client, and explicit
+  `--host`/`--config`. Cleanup first reproves and removes only the exact
+  configuration file and directory. Changed authority is preserved and fails
+  before the descriptor-safe private-workspace remover can recurse. R-S11dg and
+  Appendix C #260 make this correction normative. The focused verifier binds
+  caller integration and the shared authority through deliberate mutations; the
+  independent workspace gate binds the caller, focused gate, normative
+  requirement, Appendix row, and this ledger entry.
+
+  Bash syntax, Python compilation, HTML parsing, requirements-hash equality, the
+  focused semantic gate with all 106 deliberate mutations, the independent
+  workspace normal contract, its complete in-memory source-mutation catalog, and
+  the native-codec normal/self-test gates pass in immutable verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`.
+  Each project gate ran as numeric UID:GID 1000:1000 with no network, a read-only
+  container root and repository, all capabilities dropped, no-new-privileges, no
+  Docker socket, host namespace, device, or published port, and explicit PID,
+  memory/no-swap, CPU, and scratch ceilings.
+
+  The complete source-mutation catalog found two successive test-of-the-test
+  weaknesses before its final clean run. The first mutation changed the focused
+  mutation's source target while the independent gate intentionally proved its
+  label; the second changed the real label while a duplicate label in the
+  focused gate's own coverage assertion still satisfied the independent search.
+  The independent contract now requires the exact complete initialization
+  mutation tuple—source, old value, replacement, and label—and the catalog
+  mutates that tuple. The full catalog then passed from the beginning. Neither
+  correction weakened production authority or accepted a bypass.
+
+  From an empty caller environment, the exact current `scripts/audit.sh`
+  transaction authenticated immutable image
+  `sha256:ef686dadbe8b0846ddd5565c7dff251d84467337bf2a2efe6caab54eb92dc689`,
+  reported the pinned RustSec snapshot fresh, verified the canonical vendor
+  subtree before and after scanner use, and returned strict green
+  `cargo-audit`/`cargo-deny` result verdicts over 905 packages with the exact 41
+  documented accepts. Both scanners retained the existing non-root,
+  no-pull/network, read-only-root, capability, resource, mount, socket,
+  namespace, and publication restrictions. A separate empty-environment
+  invocation with `DOCKER_CONTEXT=untrusted-remote` failed during authority
+  initialization with status 1 before any Docker operation.
+
+  This slice ran no release build, root container, networked or published
+  container, host process scan, or host RustDesk process/service/configuration/
+  firewall/network inspection or mutation. The successful current scan is not
+  cold input acquisition or an exact clean-commit R-B2/R-B10 artifact
+  transaction. Other Docker/build consumers, installed/native/device behavior,
+  and R-V3 external review remain separately open.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -12572,9 +12663,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-3b788bac0021a2b1d9da4d28b821732f3964e02e5408f20be7095db2c0f2afdd  requirements.html
+81ba47c7a523f2187fcaede6ead43031c873581f24247dba377477d5e0c5de4c  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11df, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#259. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dg, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#260. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

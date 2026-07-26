@@ -18,13 +18,20 @@ forbidden_inherited_name() {
 }
 
 bootstrap_closed_environment() {
-    local name uid passwd_entry safe_home
+    local name uid gid passwd_entry safe_home
+    uid="$(/usr/bin/id -u)" \
+        || { printf 'build-release: cannot resolve current numeric UID\n' >&2; exit 1; }
+    gid="$(/usr/bin/id -g)" \
+        || { printf 'build-release: cannot resolve current numeric primary GID\n' >&2; exit 1; }
+    [ "$uid" -ne 0 ] \
+        || { printf 'build-release: refuses host or container-root release authority\n' >&2; exit 1; }
+    [ "$gid" -ne 0 ] \
+        || { printf 'build-release: refuses a root primary group for release authority\n' >&2; exit 1; }
     if [ "${RUSTDESK_RELEASE_ENV_MARKER:-}" != "$RELEASE_ENV_MARKER_VALUE" ]; then
         while IFS= read -r name; do
             forbidden_inherited_name "$name" \
                 && { printf 'build-release: forbidden inherited environment variable: %s\n' "$name" >&2; exit 1; }
         done < <(compgen -e)
-        uid="$(/usr/bin/id -u)"
         passwd_entry="$(/usr/bin/getent passwd "$uid")" \
             || { printf 'build-release: cannot resolve current user home\n' >&2; exit 1; }
         safe_home="$(printf '%s\n' "$passwd_entry" | /usr/bin/awk -F: 'NF == 7 { print $6 }')"
@@ -89,7 +96,6 @@ elif [ -n "$EXPECTED_SOURCE_COMMIT" ]; then
 fi
 
 readonly FINAL_OUT_DIR="$REPO_ROOT/dist"
-readonly DOCKER_HOST_URI=unix:///var/run/docker.sock
 readonly PRIVATE_TREE_CLOSURE_SOURCE="$SCRIPT_DIR/verify-private-tree-closure.py"
 readonly PRIVATE_TREE_CLOSURE_EXECUTOR='import hashlib, sys; source = sys.stdin.buffer.read(1048577); len(source) <= 1048576 or sys.exit(126); expected = sys.argv.pop(1); hashlib.sha256(source).hexdigest() == expected or sys.exit(126); exec(compile(source, "/probe.py", "exec"))'
 readonly FINALIZE_RELEASE_SET_SOURCE="$SCRIPT_DIR/finalize-release-set.py"
@@ -105,7 +111,8 @@ PINNED_HEAD_SHORT=""
 FORK_VER=""
 WORKSPACE=""
 WORKSPACE_ID=""
-DOCKER_CONFIG_DIR=""
+DOCKER_AUTHORITY_ROOT=""
+DOCKER_AUTHORITY_ROOT_ID=""
 PRIVATE_TREE_CLOSURE_PROBE=""
 PRIVATE_TREE_CLOSURE_HASH=""
 PRIVATE_TREE_CLOSURE_FD=""
@@ -273,40 +280,10 @@ for directory in (paths[0].parent, paths[0].parent.parent):
 PY
 }
 
-assert_release_docker_config() {
-    local metadata resolved
-    [ -d "$DOCKER_CONFIG_DIR" ] && [ ! -L "$DOCKER_CONFIG_DIR" ] \
-        || die "release Docker configuration is not a real directory"
-    resolved="$(readlink -f -- "$DOCKER_CONFIG_DIR" 2>/dev/null)" \
-        || die "cannot resolve release Docker configuration"
-    [ "$resolved" = "$DOCKER_CONFIG_DIR" ] \
-        || die "release Docker configuration path is not canonical"
-    [ "$(stat -c '%u:%a' -- "$DOCKER_CONFIG_DIR" 2>/dev/null)" = "$(id -u):700" ] \
-        || die "release Docker configuration is not current-UID mode 0700"
-    [ -f "$DOCKER_CONFIG_DIR/config.json" ] && [ ! -L "$DOCKER_CONFIG_DIR/config.json" ] \
-        || die "release Docker config.json is not a regular file"
-    metadata="$(stat -c '%u:%a:%h' -- "$DOCKER_CONFIG_DIR/config.json" 2>/dev/null)" \
-        || die "cannot inspect release Docker config.json"
-    [ "$metadata" = "$(id -u):600:1" ] \
-        || die "release Docker config.json is not current-UID mode 0600 and non-hardlinked"
-    cmp -s "$DOCKER_CONFIG_DIR/config.json" <(printf '{}\n') \
-        || die "release Docker config.json does not equal the empty canonical configuration"
-}
-
-docker_local() {
-    assert_release_docker_config
-    DOCKER_HOST="$DOCKER_HOST_URI" DOCKER_CONFIG="$DOCKER_CONFIG_DIR" \
-        command docker --host "$DOCKER_HOST_URI" --config "$DOCKER_CONFIG_DIR" "$@"
-}
-
 verify_release_builder_image() {
     local role="$1" image_id="$2"
-    assert_release_docker_config
-    (
-        export DOCKER_HOST="$DOCKER_HOST_URI"
-        export DOCKER_CONFIG="$DOCKER_CONFIG_DIR"
-        require_pinned_builder_image "$role" "$image_id"
-    ) || die "release preflight rejected the pinned $role image"
+    require_pinned_builder_image "$role" "$image_id" \
+        || die "release preflight rejected the pinned $role image"
 }
 
 verify_all_release_builder_images() {
@@ -384,11 +361,18 @@ create_workspace() {
         [ "$publisher_private_hash" = "$commit_hash" ] \
             || die "final release publisher differs from the pinned commit"
     fi
-    DOCKER_CONFIG_DIR="$WORKSPACE/docker-config"
-    install -d -m 0700 "$DOCKER_CONFIG_DIR"
-    printf '{}\n' > "$DOCKER_CONFIG_DIR/config.json"
-    chmod 0600 "$DOCKER_CONFIG_DIR/config.json"
-    assert_release_docker_config
+    if [ "$SELF_TEST" -eq 0 ] && [ "$SELF_TEST_CLEANUP_MISSING" -eq 0 ]; then
+        DOCKER_AUTHORITY_ROOT="$(umask 077 && mktemp -d /tmp/rustdesk-release-docker.XXXXXXXXXX)" \
+            || die "cannot create private release Docker authority root"
+        chmod 0700 "$DOCKER_AUTHORITY_ROOT"
+        [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$DOCKER_AUTHORITY_ROOT")" = \
+          "$(/usr/bin/id -u):$(/usr/bin/id -g):700" ] \
+            || die "release Docker authority root is not current-user/current-group mode 0700"
+        DOCKER_AUTHORITY_ROOT_ID="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$DOCKER_AUTHORITY_ROOT")" \
+            || die "cannot record release Docker authority root identity"
+        initialize_local_docker_authority \
+            "$DOCKER_AUTHORITY_ROOT/docker-config" "release parent"
+    fi
     SYSTEMD_SMOKE_STATE_DIR="$WORKSPACE/systemd-smoke"
     install -d -m 0700 "$SYSTEMD_SMOKE_STATE_DIR"
     [ "$(stat -c '%u:%a' "$SYSTEMD_SMOKE_STATE_DIR")" = "$(id -u):700" ] \
@@ -487,7 +471,7 @@ offline_normalize_exact_tree() {
         return 1
     fi
     if ! (
-        docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \
+        local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \
             --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \
             --security-opt no-new-privileges \
             --ulimit nofile=524544:524544 \
@@ -513,7 +497,7 @@ offline_normalize_exact_tree() {
 verify_private_tree_authority_capacity() {
     run_private_tree_closure_from_descriptor --check-descriptor-budget \
         || { warn "release preflight cannot establish the host retained-authority budget"; return 1; }
-    docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \
+    local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \
         --cap-drop=ALL --security-opt no-new-privileges \
         --ulimit nofile=524544:524544 \
         "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \
@@ -576,7 +560,7 @@ offline_remove_exact_tree_contents() {
         warn "$role removal image failed provenance verification"
         return 1
     fi
-    if ! docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \
+    if ! local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \
         --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER \
         --security-opt no-new-privileges \
         --ulimit nofile=524544:524544 \
@@ -602,7 +586,7 @@ verify_private_tree_removal_capability() {
     install -d -m 1700 "$fixture/sticky" || return 1
     printf 'sticky-owner\n' > "$fixture/sticky/user-entry" || return 1
     fixture_id="$(stat -c '%d:%i' -- "$fixture")" || return 1
-    if ! docker_local run --rm --pull=never --network=none --read-only --user 0:0 \
+    if ! local_docker run --rm --pull=never --network=none --read-only --user 0:0 \
         --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER \
         --security-opt no-new-privileges \
         --ulimit nofile=524544:524544 \
@@ -659,6 +643,7 @@ cleanup_release_workspace() {
     trap '' HUP INT TERM
     if [ "$WINDOWS_UNSAFE" -eq 1 ] || [ "$KEEP_WORKSPACE" -eq 1 ]; then
         printf 'build-release: preserving private workspace for Windows reconciliation: %s\n' "$WORKSPACE" >&2
+        retire_release_docker_authority || status=1
         exit "$status"
     fi
     if [ "$FINAL_PUBLICATION_RECONCILIATION" -eq 1 ]; then
@@ -678,11 +663,12 @@ cleanup_release_workspace() {
         [ -n "$PRIVATE_TREE_CLOSURE_FD" ] || cleanup_failed=1
         if [ "$FIXTURE_MODE" -eq 0 ] && [ "$workspace_state" = valid ] \
             && [ "$cleanup_failed" -eq 0 ]; then
-            if [ -n "$DEBIAN_IMAGE_ID" ]; then
+            if [ -n "$DEBIAN_IMAGE_ID" ] \
+                && [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]; then
                 offline_remove_exact_tree_contents "$WORKSPACE" "$WORKSPACE_ID" \
                     "release workspace" || cleanup_failed=1
             else
-                printf 'build-release: production cleanup lacks the pinned terminal-removal image; retained path: %s\n' \
+                printf 'build-release: production cleanup lacks exact terminal-removal image/Docker authority; retained path: %s\n' \
                     "$WORKSPACE" >&2
                 cleanup_failed=1
             fi
@@ -712,6 +698,7 @@ cleanup_release_workspace() {
                 "$workspace_state" "$WORKSPACE" >&2
         fi
     fi
+    retire_release_docker_authority || cleanup_failed=1
     if [ "$cleanup_failed" -ne 0 ]; then
         [ "$status" -ne 0 ] || status=1
     elif [ "$status" -eq 0 ] && [ -n "$RELEASE_SUCCESS_MESSAGE" ]; then
@@ -720,9 +707,24 @@ cleanup_release_workspace() {
     exit "$status"
 }
 
+retire_release_docker_authority() {
+    local observed
+    [ -n "$DOCKER_AUTHORITY_ROOT" ] || return 0
+    [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
+        || { warn "release parent Docker authority state was lost; retained path: $DOCKER_AUTHORITY_ROOT"; return 125; }
+    remove_local_docker_authority || return 125
+    observed="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$DOCKER_AUTHORITY_ROOT" 2>/dev/null)" \
+        || { warn "release Docker authority root disappeared before exact removal"; return 125; }
+    [ "$observed" = "$DOCKER_AUTHORITY_ROOT_ID" ] \
+        || { warn "release Docker authority root identity changed; retained path: $DOCKER_AUTHORITY_ROOT"; return 125; }
+    /usr/bin/rmdir -- "$DOCKER_AUTHORITY_ROOT" || return 125
+    DOCKER_AUTHORITY_ROOT=""
+    DOCKER_AUTHORITY_ROOT_ID=""
+}
+
 release_preflight() {
     local working_pins_hash commit_pins_hash
-    require_cmd cmp git docker python3 sha256sum stat readlink install find date flock /usr/bin/grep
+    require_cmd cmp git python3 sha256sum stat readlink install find date flock /usr/bin/grep
     acquire_publication_lock
     FINAL_PUBLICATION_RECONCILIATION=1
     recover_pending_publications "$REPO_ROOT" "$FINAL_OUT_DIR" \
@@ -751,7 +753,7 @@ release_preflight() {
     HOST_GOLDEN="$(canonical_file "$REPO_ROOT/.harness-state/win11-golden.qcow2")"
     HOST_SYSTEMD_SMOKE_IMAGE="$(canonical_file \
         "$REPO_ROOT/.harness-state/debian-systemd-smoke/debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2")"
-    docker_local version >/dev/null || die "local Docker daemon is unavailable"
+    local_docker version >/dev/null || die "local Docker daemon is unavailable"
     DEBIAN_IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"
     ANDROID_IMAGE_ID="${ANDROID_BUILDER_IMAGE_ID:-}"
     WINDOWS_IMAGE_ID="${WIN_HELPER_IMAGE_ID:-}"
@@ -856,7 +858,6 @@ reset_snapshot_build_state() {
 }
 
 run_child() {
-    assert_release_docker_config
     /usr/bin/env -i \
         HOME="$HOME" PATH="$CHILD_PATH" LC_ALL=C LANG=C TZ=UTC \
         USER="$(id -un)" LOGNAME="$(id -un)" \
@@ -1187,7 +1188,7 @@ write_fixture_debian_artifact_lifecycle() {
 
 run_reset_self_test() {
     local fixture_repo sentinel sentinel_proof hostile_dir source_identity
-    require_cmd git docker python3 sha256sum stat readlink find chmod
+    require_cmd git python3 sha256sum stat readlink find chmod
     PINNED_HEAD="$(git_closed -C "$REPO_ROOT" rev-parse --verify 'HEAD^{commit}' 2>/dev/null)" \
         || die "reset self-test cannot resolve repository HEAD"
     PINNED_HEAD_SHORT="${PINNED_HEAD:0:12}"
@@ -1202,7 +1203,7 @@ run_reset_self_test() {
     assert_git_object_authority
     DEBIAN_IMAGE_ID="${DEB_BUILDER_IMAGE_ID:-}"
     [ -n "$DEBIAN_IMAGE_ID" ] || die "reset self-test has no pinned Debian image ID"
-    docker_local version >/dev/null || die "reset self-test cannot reach the local Docker daemon"
+    local_docker version >/dev/null || die "reset self-test cannot reach the local Docker daemon"
     verify_release_builder_image deb-builder "$DEBIAN_IMAGE_ID"
     verify_private_tree_cleanup_preflight \
         || die "reset self-test cannot establish the complete terminal cleanup authority"
@@ -1227,7 +1228,7 @@ run_reset_self_test() {
     rm -rf -- "$SOURCE_A/target"
     assert_snapshot_exact "$SOURCE_A" "external-hardlink rejection fixture"
     if ! (
-        docker_local run --rm --pull=never --network=none --read-only --user 0:0 \
+        local_docker run --rm --pull=never --network=none --read-only --user 0:0 \
             --cap-drop=ALL --cap-add=CHOWN \
             --security-opt no-new-privileges \
             --mount "type=bind,src=$SOURCE_A,dst=/fixture,bind-recursive=disabled" \
@@ -1854,7 +1855,6 @@ run_self_test() {
         printf '[ "$1" = fixture-probe ]\n'
     } > "$fixture_bin/docker"
     chmod 0700 "$fixture_bin/docker"
-    printf '{}\n' > "$DOCKER_CONFIG_DIR/config.json"
     CHILD_PATH="$fixture_bin:$SAFE_PATH"
     ONLINE_SNAPSHOT_PARENT="$WORKSPACE/online-input"
     HOST_KEYSTORE="$WORKSPACE/key.jks"

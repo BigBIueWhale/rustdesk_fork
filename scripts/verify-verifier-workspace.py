@@ -893,8 +893,14 @@ def validate_build_release(source):
     cleanup = extract_between(
         source,
         "cleanup_release_workspace() {",
-        "\n}\n\nrelease_preflight() {",
+        "\n}\n\nretire_release_docker_authority() {",
         "release cleanup",
+    )
+    docker_retirement = extract_between(
+        source,
+        "retire_release_docker_authority() {",
+        "\n}\n\nrelease_preflight() {",
+        "release Docker-authority retirement",
     )
     create_snapshot = extract_between(
         source,
@@ -1001,13 +1007,13 @@ def validate_build_release(source):
     main = extract_between(source, "main() {", "\n}\n\nmain\n", "release main transaction")
     normalization_command = extract_between(
         normalizer,
-        "docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\",
+        "local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\",
         "\n    ); then",
         "descriptor-bound private-tree normalizer",
     )
     removal_command = extract_between(
         tree_remover,
-        "docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\",
+        "local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\",
         "; then",
         "descriptor-bound private-tree terminal remover",
     )
@@ -1015,6 +1021,20 @@ def validate_build_release(source):
         source,
         "#!/usr/bin/env -S -i /usr/bin/bash --noprofile --norc",
         "release empty-environment entrypoint",
+    )
+    require_order(
+        source,
+        (
+            "bootstrap_closed_environment() {",
+            'uid="$(/usr/bin/id -u)"',
+            'gid="$(/usr/bin/id -g)"',
+            '[ "$uid" -ne 0 ]',
+            '[ "$gid" -ne 0 ]',
+            'SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"',
+            'source "$SCRIPT_DIR/lib.sh"',
+            "load_pins",
+        ),
+        "release pre-source root refusal",
     )
     require_text(source, 'readonly FINAL_OUT_DIR="$REPO_ROOT/dist"', "non-overridable final dist")
     if "readonly RELEASE_SRC_COMMIT ANDROID_KEY_ALIAS OUT_DIR" in source:
@@ -1034,11 +1054,21 @@ def validate_build_release(source):
         require_text(source, variable, f"closed inherited environment {variable}")
     require_text(
         source,
-        "run_child() {\n    assert_release_docker_config\n    /usr/bin/env -i",
+        "run_child() {\n    /usr/bin/env -i",
         "child environment allowlist",
     )
-    require_text(source, 'DOCKER_HOST_URI=unix:///var/run/docker.sock', "local Docker socket binding")
-    require_text(source, 'DOCKER_CONFIG_DIR="$WORKSPACE/docker-config"', "private Docker config")
+    require_text(
+        source,
+        'initialize_local_docker_authority \\\n'
+        '            "$DOCKER_AUTHORITY_ROOT/docker-config" "release parent"',
+        "release-parent fixed local Docker authority",
+    )
+    require_text(
+        source,
+        'DOCKER_AUTHORITY_ROOT="$(umask 077 && mktemp -d '
+        '/tmp/rustdesk-release-docker.XXXXXXXXXX)"',
+        "independent private Docker-authority root",
+    )
     require_text(source, 'SYSTEMD_SMOKE_STATE_DIR="$WORKSPACE/systemd-smoke"', "private systemd smoke scratch")
     require_text(
         source,
@@ -1048,7 +1078,7 @@ def validate_build_release(source):
     require_text(source, 'ONLINE_SNAPSHOT_PARENT="$WORKSPACE/online-input"', "single online snapshot location")
     require_text(
         source,
-        "require_cmd cmp git docker python3 sha256sum stat readlink install find date flock /usr/bin/grep",
+        "require_cmd cmp git python3 sha256sum stat readlink install find date flock /usr/bin/grep",
         "release host-tool preflight",
     )
     require_text(
@@ -1064,7 +1094,7 @@ def validate_build_release(source):
     require_order(
         source,
         (
-            'require_cmd cmp git docker python3 sha256sum stat readlink install find date flock /usr/bin/grep',
+            'require_cmd cmp git python3 sha256sum stat readlink install find date flock /usr/bin/grep',
             "acquire_publication_lock\n",
             "FINAL_PUBLICATION_RECONCILIATION=1",
             'recover_pending_publications "$REPO_ROOT" "$FINAL_OUT_DIR"',
@@ -1177,7 +1207,7 @@ def validate_build_release(source):
         "generated-state reset ordering",
     )
     expected_normalization_command = (
-        "docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
+        "local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
         "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \\\n"
         "            --security-opt no-new-privileges \\\n"
         "            --ulimit nofile=524544:524544 \\\n"
@@ -1187,7 +1217,7 @@ def validate_build_release(source):
         '            --normalize-root /cleanup --expected-identity "$expected_identity" \\\n'
         '            --owner "$uid" --group "$gid" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"'
     )
-    require_exact_count(normalizer, "docker_local run ", 1, "single descriptor-bound normalizer container")
+    require_exact_count(normalizer, "local_docker run ", 1, "single descriptor-bound normalizer container")
     if normalization_command != expected_normalization_command:
         raise VerificationError("private-tree normalizer command is not the exact authority allowlist")
     for text, label in (
@@ -1320,7 +1350,7 @@ def validate_build_release(source):
     ):
         require_text(source, text, label)
     expected_removal_command = (
-        "docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
+        "local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
         "        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER \\\n"
         "        --security-opt no-new-privileges \\\n"
         "        --ulimit nofile=524544:524544 \\\n"
@@ -1377,6 +1407,7 @@ def validate_build_release(source):
             "run_private_tree_closure_from_descriptor",
             '--remove-empty-private-root "$WORKSPACE"',
             "close_private_tree_closure_execution",
+            "retire_release_docker_authority || cleanup_failed=1",
         ),
         "descriptor-bound terminal workspace cleanup ordering",
     )
@@ -1406,8 +1437,25 @@ def validate_build_release(source):
     )
     require_text(
         cleanup,
-        "production cleanup lacks the pinned terminal-removal image; retained path",
-        "missing production cleanup image rejection",
+        "production cleanup lacks exact terminal-removal image/Docker authority; retained path",
+        "missing production cleanup image/authority rejection",
+    )
+    require_text(
+        cleanup,
+        '[ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]',
+        "no ambient terminal-cleanup fallback",
+    )
+    require_order(
+        docker_retirement,
+        (
+            '[ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]',
+            "remove_local_docker_authority",
+            'observed="$(/usr/bin/stat -c',
+            '[ "$observed" = "$DOCKER_AUTHORITY_ROOT_ID" ]',
+            '/usr/bin/rmdir -- "$DOCKER_AUTHORITY_ROOT"',
+            'DOCKER_AUTHORITY_ROOT=""',
+        ),
+        "exact release Docker-authority retirement",
     )
     require_text(
         cleanup,
@@ -1463,7 +1511,10 @@ def validate_build_release(source):
             'install -m 0500 "$FINALIZE_RELEASE_SET_SOURCE" "$FINALIZE_RELEASE_SET_PROBE"',
             '"$PINNED_HEAD:scripts/finalize-release-set.py"',
             '[ "$publisher_private_hash" = "$commit_hash" ]',
-            'DOCKER_CONFIG_DIR="$WORKSPACE/docker-config"',
+            'DOCKER_AUTHORITY_ROOT="$(umask 077 && mktemp -d '
+            '/tmp/rustdesk-release-docker.XXXXXXXXXX)"',
+            "DOCKER_AUTHORITY_ROOT_ID=",
+            "initialize_local_docker_authority",
             "acquire_private_tree_closure_execution",
         ),
         "private release-helper installation",
@@ -1485,6 +1536,7 @@ def validate_build_release(source):
             "trap '' HUP INT TERM",
             "reconcile_final_publication",
             '--remove-empty-private-root "$WORKSPACE"',
+            "retire_release_docker_authority || cleanup_failed=1",
             '[ "$status" -eq 0 ] && [ -n "$RELEASE_SUCCESS_MESSAGE" ]',
             'log "$RELEASE_SUCCESS_MESSAGE"',
             'exit "$status"',
@@ -1765,7 +1817,7 @@ def validate_build_release(source):
         (
             'offline_normalize_exact_tree "$SOURCE_A" "$source_identity" "external-hardlink rejection fixture"',
             'rm -rf -- "$SOURCE_A/target"',
-            'docker_local run --rm --pull=never',
+            'local_docker run --rm --pull=never',
             "for path in sys.argv[1:]",
             'check-ignore -q target/reset-proof/locked',
             'if git_closed -C "$SOURCE_A" clean -ffdx',
@@ -3473,6 +3525,186 @@ def validate_debian_systemd_lifecycle_authority_contract(sources):
         "R-S11dl/R-S11e-130 — Debian systemd-lifecycle Docker client, daemon,\n"
         "  configuration, image, and mount authority",
         "lifecycle Docker authority hardening ledger",
+    )
+
+
+def validate_release_parent_docker_authority_contract(sources):
+    focused = sources["release_parent_authority"]
+    build = sources["build"]
+    child = extract_between(
+        build,
+        "run_child() {",
+        "\n}\n\nrun_verification() {",
+        "release-parent child isolation",
+    )
+    cleanup = extract_between(
+        build,
+        "cleanup_release_workspace() {",
+        "\n}\n\nretire_release_docker_authority() {",
+        "release-parent cleanup",
+    )
+    retirement = extract_between(
+        build,
+        "retire_release_docker_authority() {",
+        "\n}\n\nrelease_preflight() {",
+        "release-parent Docker-authority retirement",
+    )
+
+    for text, label in (
+        (
+            '"""Validate the release parent\'s fixed local-Docker authority."""',
+            "release-parent focused verifier purpose",
+        ),
+        (
+            "def validate_shared_authority(lib: str) -> None:",
+            "release-parent focused shared-authority validator",
+        ),
+        (
+            "complete release-parent launch inventory",
+            "release-parent focused launch inventory",
+        ),
+        (
+            "terminal workspace cleanup before exact Docker-authority retirement",
+            "release-parent focused cleanup order",
+        ),
+        (
+            "MUTATIONS = (",
+            "release-parent focused mutation inventory",
+        ),
+        (
+            "run_mutations(sources)",
+            "release-parent focused mutation dispatch",
+        ),
+        (
+            '"release": read_regular(repo, "scripts/build-release.sh")',
+            "release-parent focused production-source loading",
+        ),
+        (
+            '"lib": read_regular(repo, "scripts/lib.sh")',
+            "release-parent focused shared-library loading",
+        ),
+        (
+            '"workspace": read_regular(repo, "scripts/verify-verifier-workspace.py")',
+            "release-parent focused independent-gate loading",
+        ),
+        (
+            "pre-source root refusal, isolated "
+            '"\n        "fixed client/daemon/configuration, root-fixture funnel',
+            "release-parent focused green disposition",
+        ),
+    ):
+        require_text(focused, text, label)
+
+    require_order(
+        build,
+        (
+            "bootstrap_closed_environment() {",
+            'uid="$(/usr/bin/id -u)"',
+            'gid="$(/usr/bin/id -g)"',
+            '[ "$uid" -ne 0 ]',
+            '[ "$gid" -ne 0 ]',
+            'source "$SCRIPT_DIR/lib.sh"',
+            "load_pins",
+        ),
+        "release-parent pre-source root refusal",
+    )
+    for text, label in (
+        (
+            'DOCKER_AUTHORITY_ROOT="$(umask 077 && mktemp -d '
+            '/tmp/rustdesk-release-docker.XXXXXXXXXX)"',
+            "release-parent independent authority root",
+        ),
+        (
+            "DOCKER_AUTHORITY_ROOT_ID=",
+            "release-parent authority-root identity",
+        ),
+        (
+            'initialize_local_docker_authority \\\n'
+            '            "$DOCKER_AUTHORITY_ROOT/docker-config" "release parent"',
+            "release-parent shared authority initialization",
+        ),
+        (
+            'require_pinned_builder_image "$role" "$image_id"',
+            "release-parent shared image provenance",
+        ),
+        (
+            "local_docker version",
+            "release-parent fixed daemon check",
+        ),
+    ):
+        require_text(build, text, label)
+    require_exact_count(
+        build,
+        "local_docker run ",
+        5,
+        "release-parent fixed Docker launch inventory",
+    )
+    for forbidden, label in (
+        ("docker_local() {", "bespoke release-parent Docker wrapper"),
+        ("assert_release_docker_config() {", "bespoke release-parent config assertion"),
+        ("DOCKER_HOST_URI=", "bespoke release-parent endpoint"),
+        ("DOCKER_CONFIG_DIR=", "bespoke release-parent config"),
+        ("command docker --host", "PATH-selected release-parent Docker client"),
+    ):
+        require_absent(build, forbidden, label)
+
+    require_text(child, "/usr/bin/env -i", "release-child closed environment")
+    for forbidden, label in (
+        ("DOCKER_HOST=", "parent Docker host in child"),
+        ("DOCKER_CONFIG=", "parent Docker config in child"),
+        ("LOCAL_DOCKER_", "parent shared authority in child"),
+    ):
+        require_absent(child, forbidden, label)
+
+    require_order(
+        cleanup,
+        (
+            '[ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]',
+            'offline_remove_exact_tree_contents "$WORKSPACE" "$WORKSPACE_ID"',
+            '--remove-empty-private-root "$WORKSPACE"',
+            "close_private_tree_closure_execution",
+            "retire_release_docker_authority || cleanup_failed=1",
+        ),
+        "release-parent no-fallback terminal cleanup",
+    )
+    require_order(
+        retirement,
+        (
+            '[ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]',
+            "remove_local_docker_authority",
+            '[ "$observed" = "$DOCKER_AUTHORITY_ROOT_ID" ]',
+            '/usr/bin/rmdir -- "$DOCKER_AUTHORITY_ROOT"',
+        ),
+        "release-parent exact authority retirement",
+    )
+
+    for text, label in (
+        (
+            "python3 scripts/verify-release-parent-docker-authority.py --repo . --self-test",
+            "release-parent focused verifier shared wiring",
+        ),
+        (
+            "R-S11e-131 release parent owns one exact fixed local Docker "
+            "authority without sharing it with children",
+            "release-parent shared disposition",
+        ),
+    ):
+        require_text(sources["verify"], text, label)
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11dm</span>',
+        "release-parent Docker authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>266</td>",
+        "release-parent Docker authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dm/R-S11e-131 — release-parent Docker client, daemon,\n"
+        "  configuration, root-fixture, and cleanup authority",
+        "release-parent Docker authority hardening ledger",
     )
 
 
@@ -11482,7 +11714,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265",
+        "R-S11n through R-S11dm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11563,7 +11795,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265",
+        "R-S11n through R-S11dm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11742,7 +11974,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265",
+        "R-S11n through R-S11dm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11876,7 +12108,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265",
+        "R-S11n through R-S11dm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12044,7 +12276,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265",
+        "R-S11n through R-S11dm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12237,7 +12469,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265",
+        "R-S11n through R-S11dm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12571,7 +12803,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265",
+        "R-S11n through R-S11dm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -24042,6 +24274,7 @@ def validate_sources(sources):
         sources["hardening"],
     )
     validate_debian_systemd_lifecycle_authority_contract(sources)
+    validate_release_parent_docker_authority_contract(sources)
     validate_service_manager_template_contract(
         sources["verify"],
         sources["service_openrc"],
@@ -27951,8 +28184,8 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            "run_child() {\n    assert_release_docker_config\n    /usr/bin/env -i",
-            "run_child() {\n    assert_release_docker_config\n    /usr/bin/env",
+            "run_child() {\n    /usr/bin/env -i",
+            "run_child() {\n    /usr/bin/env",
             "child environment allowlist",
         ),
         ("build", 'create_snapshot B "$SOURCE_B"', 'true # snapshot B removed', "snapshot B creation"),
@@ -28024,8 +28257,8 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            "require_cmd cmp git docker python3 sha256sum stat readlink install find date flock /usr/bin/grep",
-            "require_cmd cmp git docker python3 sha256sum stat readlink install find date /usr/bin/grep",
+            "require_cmd cmp git python3 sha256sum stat readlink install find date flock /usr/bin/grep",
+            "require_cmd cmp git python3 sha256sum stat readlink install find date /usr/bin/grep",
             "release host-tool preflight",
         ),
         (
@@ -28048,8 +28281,8 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            "docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n            --cap-drop=ALL --cap-add=DAC_READ_SEARCH",
-            "docker_local run --interactive --rm --pull=never --network=bridge --read-only --user 0:0 \\\n            --cap-drop=ALL --cap-add=DAC_READ_SEARCH",
+            "local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n            --cap-drop=ALL --cap-add=DAC_READ_SEARCH",
+            "local_docker run --interactive --rm --pull=never --network=bridge --read-only --user 0:0 \\\n            --cap-drop=ALL --cap-add=DAC_READ_SEARCH",
             "descriptor-bound private-tree normalizer",
         ),
         (
@@ -28102,14 +28335,14 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            "docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
+            "local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
             "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \\",
-            "docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
+            "local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
             "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH \\\n"
             "            --security-opt no-new-privileges \\\n"
             '            --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled,readonly" \\\n'
             '            "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" "$PRIVATE_TREE_CLOSURE_HASH" --inode-root /cleanup\n'
-            "        docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
+            "        local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
             "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \\",
             "single descriptor-bound normalizer container",
         ),
@@ -28169,8 +28402,8 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            'docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER \\',
-            'docker_local run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER --cap-add=CHOWN \\',
+            'local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER \\',
+            'local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER --cap-add=CHOWN \\',
             "private-tree terminal remover command is not the exact authority allowlist",
         ),
         (
@@ -28241,9 +28474,9 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            "production cleanup lacks the pinned terminal-removal image; retained path",
+            "production cleanup lacks exact terminal-removal image/Docker authority; retained path",
             "production cleanup will use recursive host fallback",
-            "missing production cleanup image rejection",
+            "missing production cleanup image/authority rejection",
         ),
         (
             "build",
@@ -28259,8 +28492,8 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            'docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\\n        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER \\',
-            'docker_local run --rm --pull=never --network=none --read-only --user 0:0 \\\n        --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=DAC_OVERRIDE --cap-add=FOWNER \\',
+            'local_docker run --rm --pull=never --network=none --read-only --user 0:0 \\\n        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER \\',
+            'local_docker run --rm --pull=never --network=none --read-only --user 0:0 \\\n        --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=DAC_OVERRIDE --cap-add=FOWNER \\',
             "capability fixture exact capability set",
         ),
         (
@@ -37412,7 +37645,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11dl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265",
+            "R-S11n through R-S11dm, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -38859,7 +39092,7 @@ def run_source_mutations(sources):
             '        GIT_NO_REPLACE_OBJECTS=1 \\\n'
             '        DOCKER_HOST="$DOCKER_HOST_URI" DOCKER_CONFIG="$DOCKER_CONFIG_DIR" \\\n'
             '        "$@"',
-            "release child inherited Docker endpoint",
+            "parent Docker host in child",
         ),
         (
             "build",
@@ -39384,6 +39617,94 @@ def run_source_mutations(sources):
             "two exact staging mounts",
             "staging mount count accepted",
             "lifecycle focused mount cardinality",
+        ),
+        (
+            "build",
+            'uid="$(/usr/bin/id -u)"',
+            'uid="$(id -u)"',
+            "release pre-source root refusal",
+        ),
+        (
+            "build",
+            'gid="$(/usr/bin/id -g)"',
+            'gid="$(id -g)"',
+            "release pre-source root refusal",
+        ),
+        (
+            "build",
+            'DOCKER_AUTHORITY_ROOT="$(umask 077 && mktemp -d '
+            '/tmp/rustdesk-release-docker.XXXXXXXXXX)"',
+            'DOCKER_AUTHORITY_ROOT="$WORKSPACE"',
+            "independent private Docker-authority root",
+        ),
+        (
+            "build",
+            'initialize_local_docker_authority \\\n'
+            '            "$DOCKER_AUTHORITY_ROOT/docker-config" "release parent"',
+            "true # release-parent fixed local Docker authority disabled",
+            "release-parent fixed local Docker authority",
+        ),
+        (
+            "build",
+            '/usr/bin/rmdir -- "$DOCKER_AUTHORITY_ROOT"',
+            "true # release-parent Docker-authority root retained",
+            "exact release Docker-authority retirement",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-release-parent-docker-authority.py --repo . --self-test",
+            "true # release-parent Docker-authority verifier removed",
+            "release-parent focused verifier shared wiring",
+        ),
+        (
+            "verify",
+            "R-S11e-131 release parent owns one exact fixed local Docker "
+            "authority without sharing it with children",
+            "R-S11e-131 release parent accepts ambient Docker authority",
+            "release-parent shared disposition",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11dm</span>',
+            '<span class="id">R-S11dm-disabled</span>',
+            "release-parent Docker authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>266</td>",
+            "<tr><td>266-disabled</td>",
+            "release-parent Docker authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11dm/R-S11e-131 — release-parent Docker client, daemon,\n"
+            "  configuration, root-fixture, and cleanup authority",
+            "R-S11dm/R-S11e-XXX — release-parent Docker authority deferred",
+            "release-parent Docker authority hardening ledger",
+        ),
+        (
+            "release_parent_authority",
+            "def validate_shared_authority(lib: str) -> None:",
+            "def validate_shared_authority_disabled(lib: str) -> None:",
+            "release-parent focused shared-authority validator",
+        ),
+        (
+            "release_parent_authority",
+            "MUTATIONS = (",
+            "MUTATIONS_DISABLED = (",
+            "release-parent focused mutation inventory",
+        ),
+        (
+            "release_parent_authority",
+            "complete release-parent launch inventory",
+            "release-parent launch inventory accepted",
+            "release-parent focused launch inventory",
+        ),
+        (
+            "release_parent_authority",
+            "terminal workspace cleanup before exact Docker-authority retirement",
+            "workspace cleanup may outlive Docker-authority retirement",
+            "release-parent focused cleanup order",
         ),
         (
             "android_keystore_authority_verifier",
@@ -42406,6 +42727,9 @@ def main():
             "systemd_smoke_host_mode": os.lstat(repo / "scripts/smoke-debian-systemd-lifecycle.sh").st_mode,
             "systemd_lifecycle_authority": (
                 repo / "scripts/verify-debian-systemd-lifecycle-authority.py"
+            ).read_text(encoding="utf-8"),
+            "release_parent_authority": (
+                repo / "scripts/verify-release-parent-docker-authority.py"
             ).read_text(encoding="utf-8"),
             "systemd_smoke_guest": (repo / "scripts/smoke-debian-systemd-lifecycle-guest.sh").read_text(encoding="utf-8"),
             "systemd_smoke_guest_mode": os.lstat(repo / "scripts/smoke-debian-systemd-lifecycle-guest.sh").st_mode,

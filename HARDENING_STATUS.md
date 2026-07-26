@@ -12502,6 +12502,108 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   cold committed R-B2/R-B10 artifact lifecycle execution, installed/native/
   device behavior, and R-V3 external review remain separately open. The
   broader Ralph-loop goal remains active.
+- **R-S11dm/R-S11e-131 — release-parent Docker client, daemon,
+  configuration, root-fixture, and cleanup authority — SOURCE VERIFIED
+  2026-07-26; EXACT COLD RELEASE/NATIVE/DEVICE/EXTERNAL EVIDENCE PENDING.**
+  Platform: the unprivileged Linux release-tooling host. Endpoint/action:
+  `scripts/build-release.sh` builder-image provenance, its four terminal
+  ownership/removal helper shapes, the reset fixture, and cleanup of the
+  release transaction's root-owned generated state. Boundary: invoking release
+  user and private exact-commit workspace ↔ Docker client/daemon/configuration,
+  artifact-only container root/capabilities, build-child isolation, and
+  terminal cleanup authority.
+
+  The inherited release parent already closed its process environment, rejected
+  all inherited `DOCKER_*`/`BUILDKIT_*`/`COMPOSE_*` names, created two
+  independent exact-commit source snapshots, kept Docker routing/configuration
+  out of child environments, proved pinned builder images, and launched its
+  explicit root fixtures with no pull, no network, read-only container root,
+  all default capabilities dropped, no-new-privileges, and exact
+  recursive-bind-disabled inputs. It nevertheless sourced repository shell
+  before any UID/GID refusal, could run as host root, selected `docker` through
+  a path containing `/usr/local/bin`, exported bespoke Docker host/config state
+  for provenance, checked only a mutable configuration shape before direct
+  calls, and stored that configuration inside the recursively removed
+  workspace. The inner flags therefore did not completely prove which
+  client/daemon/configuration interpreted root-fixture or artifact-authority
+  operations.
+
+  Docker's official CLI reference documents host, context, configuration,
+  certificate/TLS, API-version, platform, content-trust/server, and
+  custom-header inputs and their precedence. Docker's Engine security guidance
+  treats control of a rootful daemon as powerful host authority. Its bind-mount
+  documentation states that mounts are interpreted on the selected daemon host
+  and directly expose host filesystem objects. The old path was real
+  release-verdict, daemon/configuration-selection, root-fixture, and cleanup
+  authority debt. It is not evidence that another client/daemon/configuration
+  was used, a root fixture escaped, source/input/artifact bytes changed, host
+  root was acquired, a listener or port was exposed, host RustDesk/service/
+  configuration/firewall/network state changed, exploitation occurred, or the
+  host was compromised.
+
+  The bootstrap now captures numeric UID and primary GID through
+  `/usr/bin/id`, rejects either zero, and does so before resolving or sourcing
+  repository shell/pins. The release parent creates one unpredictable
+  current-user/current-group mode-0700 Docker-authority root separate from the
+  release workspace, records its exact identity, and initializes the shared
+  `release parent` local-Docker authority there. That shared boundary admits
+  only exact root-owned non-symlink mode-0755 single-link `/usr/bin/docker` and
+  the exact root-owned non-symlink single-link fixed local
+  `/var/run/docker.sock`; creates a canonical-empty no-clobber mode-0600
+  configuration; runs the client and image-provenance helper in otherwise empty
+  environments with redundant explicit local host/config arguments; and
+  reproves parent/configuration/client/socket identities plus configuration
+  bytes before and after every operation.
+
+  The bespoke `DOCKER_HOST_URI`, `DOCKER_CONFIG_DIR`,
+  `assert_release_docker_config`, `docker_local`, PATH-selected client, and
+  exported provenance state are deleted. All five release-parent launch sites
+  use `local_docker`; both daemon checks use it; and
+  `require_pinned_builder_image` necessarily selects the shared isolated
+  provenance path. `run_child` remains an empty-environment launcher carrying
+  no parent Docker or shared-authority state, so each verifier/advisory/
+  Android/Debian/lifecycle child retains its own separately proved authority.
+  The ordinary non-Docker and cleanup-missing self-tests do not manufacture a
+  Docker dependency.
+
+  Terminal production cleanup has no ambient fallback: it uses Docker only
+  while the shared authority is initialized and the exact pinned removal image
+  is present. That authority removes only the identity-bound release-workspace
+  contents; the descriptor-bound helper then removes the empty exact workspace
+  root. Only afterward does cleanup reprove and nonrecursively remove the exact
+  Docker configuration and separately identity-bound empty authority root.
+  Preserving a Windows-reconciliation workspace still retires Docker
+  configuration. Missing, substituted, or changed authority is preserved and
+  fails with a retained path.
+
+  R-S11dm and Appendix C #266 make this source correction normative.
+  `scripts/verify-release-parent-docker-authority.py` binds the complete
+  pre-source root refusal, closed environment, separate authority construction,
+  shared client/socket/configuration/provenance implementation, five-launch
+  inventory, root-fixture confinement, child separation, no-fallback cleanup,
+  exact retirement, old-surface absence, requirements/Appendix/ledger state,
+  and deliberate mutations. The independent workspace verifier and complete
+  source-mutation catalog bind the same boundary.
+
+  Confined source evidence on 2026-07-26 is green: the focused R-S11dm gate
+  rejects all 27 deliberate mutations; the adjacent Debian lifecycle, Debian
+  builder, and Android builder authority gates reject 44, 62, and 114
+  mutations respectively; the independent workspace contract is green; and
+  its complete catalog rejects all 2,323 deliberate source mutations from
+  mutation one. Both native-codec ledger modes, shell/Python syntax, the
+  requirements HTML parse/hash synchronization, and diff hygiene are green.
+  Project gates ran only in the immutable verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric non-root with no network, read-only source and container root, all
+  capabilities dropped, no-new-privileges, no host namespace/device/port/
+  Docker-socket mount, bounded resources, and private empty host-client
+  configuration.
+
+  This row does not claim execution of `scripts/build-release.sh`, any root
+  fixture, package/artifact builder, KVM guest, or exact cold release
+  transaction. Exact cold committed R-B2/R-B10 artifacts, installed/native/
+  device behavior, and R-V3 external review remain separately open. The
+  broader Ralph-loop goal remains active.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -13219,9 +13321,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-01c38bace40d8c56f74b90fb72d660dbe8334aa4cedfcd481c5c856c0a901cb1  requirements.html
+72e46a9fd790e68cc3f548694e0017575130878231c69f16476805e3cdf4a4fa  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dl, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dm, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#266. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

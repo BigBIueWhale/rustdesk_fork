@@ -7222,6 +7222,18 @@ else
   echo "  ok  R-S11e-130 Debian systemd-lifecycle dependency staging uses exact devcheck provenance and one independent fixed local Docker authority, narrow mounts, bounded non-root execution, and exact authority cleanup"
 fi
 
+echo "== (3b-iii-h2m2) release-parent fixed Docker authority (R-S11dm/R-S11e-131) =="
+r_s11dm=
+if ! python3 scripts/verify-release-parent-docker-authority.py --repo . --self-test; then
+  r_s11dm="$r_s11dm authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11dm" ]; then
+  echo "  FAIL R-S11dm release-parent Docker authority:$r_s11dm"
+  rc=1
+else
+  echo "  ok  R-S11e-131 release parent owns one exact fixed local Docker authority without sharing it with children, routes root fixtures through pre/post proof, and retires authority without an ambient fallback"
+fi
+
 echo "== (3b-iii-h2n) installed Debian systemd lifecycle is isolated, exact, and noninterfering (R-S11c-27m) =="
 r_s11c27m=
 systemd_host=scripts/smoke-debian-systemd-lifecycle.sh

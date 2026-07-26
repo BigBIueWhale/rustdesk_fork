@@ -535,10 +535,10 @@ def validate(sources: Dict[str, str]) -> None:
             "independent lifecycle authority validation",
         ),
         (
-            "R-S11n through R-S11dn",
+            "R-S11n through R-S11do",
             "independent requirement range",
         ),
-        ("Appendix C #192–#267", "independent Appendix range"),
+        ("Appendix C #192–#268", "independent Appendix range"),
     ):
         require(workspace_gate, token, label)
 

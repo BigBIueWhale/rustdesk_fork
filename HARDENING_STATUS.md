@@ -12693,6 +12693,125 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   device test, or external review is claimed here. Exact cold committed
   R-B2/R-B10 artifacts, native/device behavior, and R-V3 external review remain
   separately open; the broader Ralph-loop goal remains active.
+- **R-S11do/R-S11e-133 — Windows-helper fixed local-Docker, mount, resource, KVM, and cleanup authority —
+  SOURCE IMPLEMENTED AND CONFINED SOURCE/STRUCTURE/MUTATION VERIFIED
+  2026-07-26.**
+  Platform: the unprivileged Linux Windows-release and diagnostic host.
+  Endpoint/action: `scripts/windows-helper-runtime.sh` as invoked by
+  `scripts/build-windows-vm.sh`, `scripts/provision-windows-vm.sh`, and
+  `scripts/verify-windows-golden.sh`. Boundary: invoking user and live
+  repository/runtime inputs ↔ Docker client/daemon/configuration, immutable
+  helper-image provenance, kernel/program authority, caller and fixed binds,
+  process resources, `/dev/kvm`, and terminal cleanup.
+
+  R-S11ch already made the shared Windows helper an immutable-image,
+  no-pull, networkless, read-only-root, numeric-nonroot, capability-free,
+  no-new-privileges, profile-resource-bounded runtime with exact helper
+  archive/kernel/program identities, a narrow operation inventory, explicit
+  mount validation, and KVM only for the two golden-image inspection callers.
+  The three callers nevertheless sourced repository shell before the
+  runtime's UID/GID-zero refusal. The runtime exported a bespoke Docker
+  host/configuration, called the absolute client through a private wrapper,
+  and let `require_pinned_builder_image` use the shared library's ambient
+  provenance fallback. Cleanup recursively changed and removed a pathname
+  without a recorded root identity. Caller and fixed internal binds inherited
+  recursive descendant inclusion, core/descriptor/file-size limits were
+  inherited, and the sole KVM grant was `rwm` rather than the needed `rw`.
+
+  Docker's official CLI reference documents host/context/configuration/TLS/
+  API/platform/trust/header inputs and precedence. Docker's Engine security
+  guidance treats rootful-daemon control as powerful host authority and
+  cgroups as denial-of-service containment. Its bind-mount documentation says
+  binds act on the selected daemon host and include descendant mounts by
+  default, while `bind-recursive=disabled` omits them. Its run reference
+  documents explicit `ulimit` and per-device `r`/`w`/`m` permissions. The
+  Linux KVM API is a file-descriptor/ioctl API reached by opening the existing
+  `/dev/kvm`; the helper has no device-node creation need. The old path was
+  release/diagnostic-verdict, daemon/configuration-selection, recursive-bind,
+  resource, KVM-device, cleanup, and build-host authority debt. It is not
+  evidence that another daemon/configuration was used, KVM escaped, input or
+  artifact bytes changed, host root was acquired, a listener or port was
+  exposed, host RustDesk/service/configuration/firewall/network state changed,
+  exploitation occurred, or the host was compromised.
+
+  All three callers now close `PATH`, capture UID/GID through absolute
+  `/usr/bin/id`, and refuse either zero before resolving or sourcing repository
+  code. The runtime revalidates those captured identities, creates one
+  unpredictable current-principal mode-0700 root, records its exact filesystem
+  identity before population, and initializes the repository's shared fixed
+  local-Docker authority beneath it. Immutable Windows-helper image provenance
+  and every container launch use only the shared empty-environment
+  pre/post-proved wrappers and their exact root-owned client, root-owned local
+  socket, canonical-empty private configuration, and redundant explicit
+  routing. The bespoke exported/direct Docker path and stale
+  `require_cmd docker` preflights are absent.
+
+  R-S11ch's exact workload semantics remain. The shared mount normalizer adds
+  `bind-recursive=disabled` to every caller bind; both fixed kernel/inspector
+  binds carry the same exclusion. Every profile retains its PID,
+  memory/no-swap, CPU, and bounded-tmpfs limits and now also has core zero,
+  exact finite descriptor, and 128-GiB file-size ceilings. KVM retains the
+  exact device, proved non-root group, and one `/dev/kvm:rw` grant; device-node
+  creation permission remains absent. Cleanup first reproves and removes the
+  exact Docker configuration, then invokes the descriptor-safe private-tree
+  closer against the recorded runtime-root identity. Changed authority is
+  preserved and fails without a recursive pathname fallback. Runtime-owned
+  open state distinguishes a pre-initialization failure from premature loss
+  of an authority that had committed successfully; the latter is preserved
+  and fails rather than being mistaken for cleanup of a partial open.
+
+  R-S11do and Appendix C #268 make this source boundary normative. The focused
+  Windows-helper verifier, shared gate, independent workspace contract, and
+  complete source-mutation catalog bind it.
+
+  Confined source evidence on 2026-07-26 is green. The focused Windows-helper
+  verifier rejects all 78 deliberate mutations. The adjacent release-parent,
+  Debian systemd-lifecycle, Debian builder, and Android builder gates reject
+  27, 44, 62, and 145 mutations respectively. The independent workspace normal
+  contract passes, and its complete catalog rejects all 2,368 deliberate
+  source mutations from mutation one. Native-codec normal and negative
+  self-test modes, shell/Python syntax, requirements HTML parsing/hash
+  synchronization, and diff hygiene pass. Every project gate ran in immutable
+  verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric non-root with no pull or network, read-only root/repository, all
+  capabilities dropped, no-new-privileges, bounded
+  PID/memory/no-swap/CPU/descriptor/file-size/tmpfs resources, and no Docker
+  socket, host namespace, device, port, service, or host-configuration mount.
+  Each unprivileged host Docker-client launch used a fresh private exact
+  canonical-empty configuration removed immediately afterward.
+
+  Two preliminary complete mutation runs correctly refused ineffective
+  verifier fixtures: the first new mutation expected a shorter label than the
+  shared fixed local-Docker initialization contract emitted; the second
+  expected the generic KVM label after its `rw`→`rwm` mutation was rejected by
+  the more specific forbidden-mknod contract. Only the mutation fixtures'
+  expected diagnostics changed, and the complete catalog was restarted from
+  mutation one after each correction. Two later focused baseline attempts
+  correctly stopped because new cleanup-order assertions matched the global
+  empty-state declarations rather than the terminal branch; the assertions
+  were narrowed to the unique branch/reset sequences before the focused
+  catalog restarted from mutation one. A later complete independent run
+  correctly refused an ineffective early-initializer fixture because its
+  sequential order matcher could select the unchanged later initializer. The
+  fixture now swaps the one identity/population/initializer block, leaving no
+  later stage that could satisfy the order contract, and the complete catalog
+  was restarted from mutation one. The next complete run rejected the
+  analogous duplicated-early-environment cleanup fixture; it now reorders the
+  single exact cleanup block so no unchanged later environment stage can
+  satisfy the contract. The catalog was again restarted from mutation one.
+  Final diff review then added exact-one initializer, Docker-retirement, and
+  private-root-closer cardinality contracts so a duplicated later stage cannot
+  evade an order-only matcher; all three have focused and independent
+  mutations, and the complete catalog was restarted once more.
+  These were verifier-development defects, not helper, Docker-workload, KVM,
+  Windows, host, or service execution.
+
+  No helper workload, KVM operation, Windows builder/provisioner,
+  artifact/package builder, root fixture, release transaction, or
+  installed/native/device test is claimed here. Exact cold committed
+  R-B2/R-B10 Windows artifacts and R-V3 external review remain separately
+  open; the broader Ralph-loop goal remains active.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -13410,9 +13529,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-f3e8f238cdcd2acdd557038a682e1e16563d5cb6e0713f348e267d5ce6088d0a  requirements.html
+5d1dd29b50b742ec793dd2db123a9e3ad18b66e6c19864a9e5197486a343b62a  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dn, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11do, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

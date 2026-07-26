@@ -1,8 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 umask 077
+export PATH=/usr/bin:/bin
+readonly WINDOWS_HELPER_BUILD_UID="$(/usr/bin/id -u)"
+readonly WINDOWS_HELPER_BUILD_GID="$(/usr/bin/id -g)"
+[ "$WINDOWS_HELPER_BUILD_UID" -ne 0 ] \
+    || { printf 'build-windows-vm refuses host or container-root execution\n' >&2; exit 1; }
+[ "$WINDOWS_HELPER_BUILD_GID" -ne 0 ] \
+    || { printf 'build-windows-vm refuses a root primary group\n' >&2; exit 1; }
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
@@ -377,7 +384,7 @@ verify_active_online_snapshot() {
 
 preflight() {
     local planned_state planned_output
-    require_cmd qemu-img virt-install virsh xorriso docker git python3 realpath sha256sum sha512sum timeout setsid
+    require_cmd qemu-img virt-install virsh xorriso git python3 realpath sha256sum sha512sum timeout setsid
     assert_no_build_host_network_residual
     [ "$SOURCE_DATE_EPOCH" = "$SOURCE_DATE_EPOCH_PIN" ] \
         || die "SOURCE_DATE_EPOCH must equal the pinned canonical value $SOURCE_DATE_EPOCH_PIN"

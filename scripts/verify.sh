@@ -262,16 +262,16 @@ else
   echo "  ok  R-S11cg/R-S11di one-time Android identity generation has fixed local Docker authority, fixed-alias/non-root/offline/no-pull/read-only-root/capability-free/resource-bounded execution, file-only secrets, and durable no-clobber publication"
 fi
 
-echo "== (0f) Windows helper container/KVM authority (R-S11ch/R-S11e-100) =="
+echo "== (0f) Windows helper container/KVM/local-Docker authority (R-S11ch/R-S11do/R-S11e-100/R-S11e-133) =="
 r_s11ch=
 if ! python3 scripts/verify-windows-helper-authority.py --repo . --self-test; then
   r_s11ch="$r_s11ch authority-or-mutation-self-test-failed"
 fi
 if [ -n "$r_s11ch" ]; then
-  echo "  FAIL R-S11ch Windows helper container/KVM authority:$r_s11ch"
+  echo "  FAIL R-S11ch/R-S11do Windows helper container/KVM/local-Docker authority:$r_s11ch"
   rc=1
 else
-  echo "  ok  R-S11ch all Windows helpers use one immutable non-root/no-pull/network/read-only-root/capability-free/resource-bounded runtime, narrow binds, a pinned derived libguestfs kernel, and exact KVM-only golden inspection"
+  echo "  ok  R-S11ch/R-S11do all Windows helpers refuse root before repository code and use one exact fixed local-Docker authority, immutable non-root/no-pull/networkless/read-only-root/capability-free/resource-bounded execution, recursively-disabled narrow binds, descriptor-safe cleanup, a pinned derived libguestfs kernel, and exact read/write-only KVM golden inspection"
 fi
 
 echo "== (0g) Apple conformance verifier authority (R-S11ci/R-S11e-101) =="
@@ -12927,7 +12927,7 @@ for f in scripts/build-windows-vm.sh scripts/provision-windows-vm.sh scripts/ver
   grep -qF 'source "$SCRIPT_DIR/windows-helper-runtime.sh"' "$f" \
     || rb_struct="$rb_struct ${f##*/}:no-shared-helper-runtime"
 done
-grep -qF -- 'run --rm --pull=never --network=none --read-only' scripts/windows-helper-runtime.sh \
+grep -qF -- 'local_docker run --rm --pull=never --network=none --read-only' scripts/windows-helper-runtime.sh \
   || rb_struct="$rb_struct windows:shared-helper-not-immutable-offline"
 if grep -Eq 'provision_pkg[[:space:]]+libvirt-daemon-system' scripts/host-provision.sh; then
   rb_struct="$rb_struct host-provision:installs-system-libvirt"

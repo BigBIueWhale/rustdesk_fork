@@ -11714,7 +11714,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267",
+        "R-S11n through R-S11do, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11795,7 +11795,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267",
+        "R-S11n through R-S11do, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11974,7 +11974,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267",
+        "R-S11n through R-S11do, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12108,7 +12108,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267",
+        "R-S11n through R-S11do, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12276,7 +12276,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267",
+        "R-S11n through R-S11do, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12469,7 +12469,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267",
+        "R-S11n through R-S11do, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12803,7 +12803,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267",
+        "R-S11n through R-S11do, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -15519,6 +15519,7 @@ def validate_android_keystore_authority_contract(sources):
 def validate_windows_helper_authority_contract(sources):
     focused = sources["windows_helper_authority_verifier"]
     runtime = sources["windows_helper_runtime"]
+    library = sources["lib"]
     for text, label in (
         ("forbid(runtime, token, label)",
          "Windows helper focused forbidden-authority enforcement"),
@@ -15532,27 +15533,138 @@ def validate_windows_helper_authority_contract(sources):
          "Windows helper focused archive stability binding"),
         ("single exact device grant",
          "Windows helper focused KVM cardinality binding"),
+        ("shared fixed local-Docker authority initialization",
+         "Windows helper focused shared Docker binding"),
+        ("descriptor-safe exact runtime-root removal",
+         "Windows helper focused exact cleanup binding"),
+        ("central recursive-bind exclusion",
+         "Windows helper focused recursive-bind binding"),
+        ("finite Windows-helper file-size ceiling",
+         "Windows helper focused resource binding"),
     ):
         require_text(focused, text, label)
     for text, label in (
-        ("WINDOWS_HELPER_DOCKER_BIN=/usr/bin/docker",
-         "Windows helper fixed Docker client"),
+        ('initialize_local_docker_authority \\\n'
+         '        "$WINDOWS_HELPER_RUNTIME_ROOT/docker-config" \\\n'
+         '        "Windows helper runtime"',
+         "Windows helper shared fixed local-Docker initialization"),
+        ("WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN=1",
+         "Windows helper authority-open commit"),
+        ('[ "$WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN" -eq 0 ] \\\n'
+         '        || die "Windows helper Docker authority state is already open"',
+         "Windows helper authority-open state precondition"),
+        ('[ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 0 ] \\\n'
+         '        || die "Windows helper refuses an existing process-local Docker authority"',
+         "Windows helper foreign process-local authority refusal"),
+        ('[ "$WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN" -eq 0 ] \\\n'
+         '            && [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 0 ] \\\n'
+         '            || { echo "Windows helper empty runtime has live Docker authority state"',
+         "Windows helper empty-runtime authority-state refusal"),
+        ('if [ "$WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN" -eq 1 ]; then',
+         "Windows helper runtime-owned cleanup selection"),
+        ('[ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \\\n'
+         '            || { echo "Windows helper preserving runtime after premature Docker authority loss"',
+         "Windows helper premature Docker-authority loss refusal"),
+        ('[ "$WINDOWS_HELPER_BUILD_UID" -ne 0 ]',
+         "Windows helper runtime host-UID root refusal"),
+        ('[ "$WINDOWS_HELPER_BUILD_GID" -ne 0 ]',
+         "Windows helper runtime primary-GID root refusal"),
+        ("remove_local_docker_authority || return 1",
+         "Windows helper Docker-first cleanup"),
+        ('--remove-private-root "$WINDOWS_HELPER_RUNTIME_ROOT"',
+         "Windows helper descriptor-safe runtime cleanup"),
+        ('--expected-identity "$WINDOWS_HELPER_RUNTIME_ROOT_ID"',
+         "Windows helper exact runtime-root cleanup identity"),
         ('require_pinned_builder_image win-helper "$WIN_HELPER_IMAGE_ID"',
          "Windows helper immutable image provenance"),
-        ("run --rm --pull=never --network=none --read-only",
+        ("local_docker run --rm --pull=never --network=none --read-only",
          "Windows helper common confinement"),
         ('--user "$WINDOWS_HELPER_BUILD_UID:$WINDOWS_HELPER_BUILD_GID"',
          "Windows helper numeric nonroot identity"),
         ("--cap-drop=ALL --security-opt=no-new-privileges",
          "Windows helper privilege confinement"),
+        ("--ulimit core=0:0 --ulimit nofile=4096:4096",
+         "Windows helper core and descriptor ceilings"),
+        ("--ulimit fsize=137438953472:137438953472",
+         "Windows helper file-size ceiling"),
+        ('WINDOWS_HELPER_VALIDATED_MOUNT_VALUE="$value,bind-recursive=disabled"',
+         "Windows helper recursive caller-bind exclusion"),
         ("SUPERMIN_KERNEL=/authority/kernel/vmlinuz",
          "Windows helper nonroot kernel authority"),
-        ("--device /dev/kvm:/dev/kvm:rwm",
+        ("--device /dev/kvm:/dev/kvm:rw",
          "Windows helper exact KVM authorization"),
         ("Windows helper bind source must be a regular file or directory",
          "Windows helper special-file mount refusal"),
     ):
         require_text(runtime, text, label)
+    for text, label in (
+        ("WINDOWS_HELPER_DOCKER_BIN=", "Windows helper bespoke Docker client"),
+        ("WINDOWS_HELPER_DOCKER_HOST=", "Windows helper bespoke Docker host"),
+        ("/usr/bin/docker", "Windows helper direct Docker client"),
+        ("windows_helper_docker_command", "Windows helper bespoke Docker wrapper"),
+        ("export DOCKER_HOST", "Windows helper exported Docker host"),
+        ("export DOCKER_CONFIG", "Windows helper exported Docker configuration"),
+        ("--device /dev/kvm:/dev/kvm:rwm", "Windows helper KVM mknod permission"),
+        ('rm -rf -- "$WINDOWS_HELPER_RUNTIME_ROOT"',
+         "Windows helper recursive pathname cleanup"),
+    ):
+        require_absent(runtime, text, label)
+    for text, label in (
+        ("initialize_local_docker_authority() {",
+         "Windows helper shared Docker initializer"),
+        ("local_docker() {", "Windows helper shared exact Docker wrapper"),
+        ("local_docker_image_provenance() {",
+         "Windows helper shared exact provenance wrapper"),
+        ("remove_local_docker_authority() {",
+         "Windows helper shared Docker retirement"),
+    ):
+        require_text(library, text, label)
+    require_exact_count(
+        runtime,
+        "initialize_local_docker_authority \\\n"
+        '        "$WINDOWS_HELPER_RUNTIME_ROOT/docker-config" \\\n'
+        '        "Windows helper runtime"',
+        1,
+        "Windows helper single shared Docker-authority initialization",
+    )
+    require_exact_count(
+        runtime,
+        "remove_local_docker_authority || return 1",
+        1,
+        "Windows helper single exact Docker-authority retirement",
+    )
+    require_exact_count(
+        runtime,
+        '--remove-private-root "$WINDOWS_HELPER_RUNTIME_ROOT"',
+        1,
+        "Windows helper single exact runtime-root closer",
+    )
+    require_order(
+        runtime,
+        (
+            'WINDOWS_HELPER_RUNTIME_ROOT_ID="$(\n'
+            "        /usr/bin/stat -c '%d:%i' -- \"$WINDOWS_HELPER_RUNTIME_ROOT\"",
+            "/usr/bin/install -d -m 0700",
+            "initialize_local_docker_authority \\\n"
+            '        "$WINDOWS_HELPER_RUNTIME_ROOT/docker-config" \\\n'
+            '        "Windows helper runtime"',
+            "WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN=1",
+        ),
+        "Windows helper runtime-root identity before population and Docker-authority commit",
+    )
+    require_order(
+        runtime,
+        (
+            "remove_local_docker_authority || return 1",
+            "        WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN=0\n"
+            "    elif",
+            "/usr/bin/env -i PATH=/usr/bin:/bin",
+            '--remove-private-root "$WINDOWS_HELPER_RUNTIME_ROOT"',
+            '    WINDOWS_HELPER_RUNTIME_ROOT=""\n'
+            '    WINDOWS_HELPER_RUNTIME_ROOT_ID=""',
+        ),
+        "Windows helper Docker-first cleanup before runtime-root retirement",
+    )
     for text, label in (
         ("digest.hexdigest() != expected_sha256",
          "Windows helper derived-kernel hash verification"),
@@ -15567,6 +15679,25 @@ def validate_windows_helper_authority_contract(sources):
         ("windows_provision", "Windows provision"),
         ("windows_golden_verify", "Windows golden verification"),
     ):
+        require_order(
+            sources[source_name],
+            (
+                "set -euo pipefail",
+                "umask 077",
+                "export PATH=/usr/bin:/bin",
+                'readonly WINDOWS_HELPER_BUILD_UID="$(/usr/bin/id -u)"',
+                'readonly WINDOWS_HELPER_BUILD_GID="$(/usr/bin/id -g)"',
+                '[ "$WINDOWS_HELPER_BUILD_UID" -ne 0 ]',
+                "refuses host or container-root execution",
+                '[ "$WINDOWS_HELPER_BUILD_GID" -ne 0 ]',
+                "refuses a root primary group",
+                'SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"',
+                'source "$SCRIPT_DIR/lib.sh"',
+                "load_pins",
+                'source "$SCRIPT_DIR/windows-helper-runtime.sh"',
+            ),
+            label + " pre-source nonroot authority",
+        )
         require_text(
             sources[source_name],
             'source "$SCRIPT_DIR/windows-helper-runtime.sh"',
@@ -15634,6 +15765,11 @@ def validate_windows_helper_authority_contract(sources):
     )
     require_text(
         sources["requirements"],
+        '<span class="id">R-S11do</span>',
+        "current Windows helper authority requirement",
+    )
+    require_text(
+        sources["requirements"],
         "provision-owned in-progress leaf solely to test its terminal completion marker",
         "Windows provision-time golden hash-order requirement",
     )
@@ -15643,9 +15779,19 @@ def validate_windows_helper_authority_contract(sources):
         "Windows helper authority Appendix C row",
     )
     require_text(
+        sources["requirements"],
+        "<tr><td>268</td>",
+        "current Windows helper authority Appendix C row",
+    )
+    require_text(
         sources["hardening"],
         "R-S11ch/R-S11e-100 — Windows helper container and KVM authority",
         "Windows helper authority hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11do/R-S11e-133 — Windows-helper fixed local-Docker, mount, resource, KVM, and cleanup authority",
+        "current Windows helper authority hardening ledger",
     )
 
 
@@ -37786,7 +37932,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11dn, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#267",
+            "R-S11n through R-S11do, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#268",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -40137,9 +40283,241 @@ def run_source_mutations(sources):
         ),
         (
             "windows_helper_runtime",
-            "run --rm --pull=never --network=none --read-only",
+            "local_docker run --rm --pull=never --network=none --read-only",
             "run --rm",
             "Windows helper common confinement",
+        ),
+        (
+            "windows_helper_runtime",
+            'initialize_local_docker_authority \\\n'
+            '        "$WINDOWS_HELPER_RUNTIME_ROOT/docker-config" \\\n'
+            '        "Windows helper runtime"',
+            "true # shared local-Docker authority removed",
+            "Windows helper shared fixed local-Docker initialization",
+        ),
+        (
+            "windows_helper_runtime",
+            'initialize_local_docker_authority \\\n'
+            '        "$WINDOWS_HELPER_RUNTIME_ROOT/docker-config" \\\n'
+            '        "Windows helper runtime"',
+            'initialize_local_docker_authority \\\n'
+            '        "$WINDOWS_HELPER_RUNTIME_ROOT/docker-config" \\\n'
+            '        "Windows helper runtime"\n'
+            '    initialize_local_docker_authority \\\n'
+            '        "$WINDOWS_HELPER_RUNTIME_ROOT/docker-config" \\\n'
+            '        "Windows helper runtime"',
+            "Windows helper single shared Docker-authority initialization",
+        ),
+        (
+            "windows_helper_runtime",
+            '[ "$WINDOWS_HELPER_BUILD_UID" -ne 0 ]',
+            "true # runtime host UID zero accepted",
+            "Windows helper runtime host-UID root refusal",
+        ),
+        (
+            "windows_helper_runtime",
+            '[ "$WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN" -eq 0 ] \\\n'
+            '        || die "Windows helper Docker authority state is already open"',
+            "true # stale runtime-owned authority state accepted",
+            "Windows helper authority-open state precondition",
+        ),
+        (
+            "windows_helper_runtime",
+            '[ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 0 ] \\\n'
+            '        || die "Windows helper refuses an existing process-local Docker authority"',
+            "true # foreign process-local authority accepted",
+            "Windows helper foreign process-local authority refusal",
+        ),
+        (
+            "windows_helper_runtime",
+            '[ "$WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN" -eq 0 ] \\\n'
+            '            && [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 0 ] \\\n'
+            '            || { echo "Windows helper empty runtime has live Docker authority state"',
+            "true # empty-runtime live Docker state accepted",
+            "Windows helper empty-runtime authority-state refusal",
+        ),
+        (
+            "windows_helper_runtime",
+            '[ "$WINDOWS_HELPER_BUILD_GID" -ne 0 ]',
+            "true # runtime primary-GID zero accepted",
+            "Windows helper runtime primary-GID root refusal",
+        ),
+        (
+            "windows_helper_runtime",
+            "WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN=1",
+            "true # successful Docker authority is not recorded",
+            "Windows helper authority-open commit",
+        ),
+        (
+            "windows_helper_runtime",
+            'if [ "$WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN" -eq 1 ]; then',
+            'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]; then',
+            "Windows helper runtime-owned cleanup selection",
+        ),
+        (
+            "windows_helper_runtime",
+            '[ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \\\n'
+            '            || { echo "Windows helper preserving runtime after premature Docker authority loss"',
+            "true # premature Docker authority loss accepted",
+            "Windows helper premature Docker-authority loss refusal",
+        ),
+        (
+            "windows_helper_runtime",
+            "local_docker run --rm --pull=never --network=none --read-only",
+            "local_docker run --rm --pull=never --network=none --read-only\n"
+            "    /usr/bin/docker version",
+            "Windows helper direct Docker client",
+        ),
+        (
+            "windows_helper_runtime",
+            "remove_local_docker_authority || return 1",
+            "true # Docker authority retirement removed",
+            "Windows helper Docker-first cleanup",
+        ),
+        (
+            "windows_helper_runtime",
+            "remove_local_docker_authority || return 1",
+            "remove_local_docker_authority || return 1\n"
+            "        remove_local_docker_authority || return 1",
+            "Windows helper single exact Docker-authority retirement",
+        ),
+        (
+            "windows_helper_runtime",
+            'WINDOWS_HELPER_RUNTIME_ROOT_ID="$(\n'
+            '        /usr/bin/stat -c \'%d:%i\' -- "$WINDOWS_HELPER_RUNTIME_ROOT"\n'
+            '    )" || die "cannot record Windows helper runtime-root identity"\n'
+            '    /usr/bin/install -d -m 0700 \\\n'
+            '        "$WINDOWS_HELPER_RUNTIME_ROOT/authority" \\\n'
+            '        "$WINDOWS_HELPER_RUNTIME_ROOT/kernel"\n'
+            '    initialize_local_docker_authority \\\n'
+            '        "$WINDOWS_HELPER_RUNTIME_ROOT/docker-config" \\\n'
+            '        "Windows helper runtime"',
+            '/usr/bin/install -d -m 0700 \\\n'
+            '        "$WINDOWS_HELPER_RUNTIME_ROOT/authority" \\\n'
+            '        "$WINDOWS_HELPER_RUNTIME_ROOT/kernel"\n'
+            '    initialize_local_docker_authority \\\n'
+            '        "$WINDOWS_HELPER_RUNTIME_ROOT/docker-config" \\\n'
+            '        "Windows helper runtime"\n'
+            '    WINDOWS_HELPER_RUNTIME_ROOT_ID="$(\n'
+            '        /usr/bin/stat -c \'%d:%i\' -- "$WINDOWS_HELPER_RUNTIME_ROOT"\n'
+            '    )" || die "cannot record Windows helper runtime-root identity"',
+            "Windows helper runtime-root identity before population and Docker-authority commit",
+        ),
+        (
+            "windows_helper_runtime",
+            "remove_local_docker_authority || return 1\n"
+            "        WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN=0\n"
+            '    elif [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]; then\n'
+            '        echo "Windows helper preserving runtime with unowned Docker authority" >&2\n'
+            "        return 1\n"
+            "    fi\n"
+            "    /usr/bin/env -i PATH=/usr/bin:/bin \\\n",
+            "/usr/bin/env -i PATH=/usr/bin:/bin \\\n"
+            "            /usr/bin/true\n"
+            "        WINDOWS_HELPER_DOCKER_AUTHORITY_OPEN=0\n"
+            '    elif [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]; then\n'
+            '        echo "Windows helper preserving runtime with unowned Docker authority" >&2\n'
+            "        return 1\n"
+            "    fi\n"
+            "    remove_local_docker_authority || return 1\n",
+            "Windows helper Docker-first cleanup before runtime-root retirement",
+        ),
+        (
+            "windows_helper_runtime",
+            '--remove-private-root "$WINDOWS_HELPER_RUNTIME_ROOT"',
+            '--remove-empty-private-root "$WINDOWS_HELPER_RUNTIME_ROOT"',
+            "Windows helper descriptor-safe runtime cleanup",
+        ),
+        (
+            "windows_helper_runtime",
+            '--remove-private-root "$WINDOWS_HELPER_RUNTIME_ROOT"',
+            '--remove-private-root "$WINDOWS_HELPER_RUNTIME_ROOT" \\\n'
+            '            --remove-private-root "$WINDOWS_HELPER_RUNTIME_ROOT"',
+            "Windows helper single exact runtime-root closer",
+        ),
+        (
+            "windows_helper_runtime",
+            '--expected-identity "$WINDOWS_HELPER_RUNTIME_ROOT_ID"',
+            "--expected-identity 1:1",
+            "Windows helper exact runtime-root cleanup identity",
+        ),
+        (
+            "windows_helper_runtime",
+            'WINDOWS_HELPER_VALIDATED_MOUNT_VALUE="$value,bind-recursive=disabled"',
+            'WINDOWS_HELPER_VALIDATED_MOUNT_VALUE="$value"',
+            "Windows helper recursive caller-bind exclusion",
+        ),
+        (
+            "windows_helper_runtime",
+            "--ulimit core=0:0 --ulimit nofile=4096:4096",
+            "--ulimit core=-1:-1 --ulimit nofile=1048576:1048576",
+            "Windows helper core and descriptor ceilings",
+        ),
+        (
+            "windows_helper_runtime",
+            "--ulimit fsize=137438953472:137438953472",
+            "--ulimit fsize=-1:-1",
+            "Windows helper file-size ceiling",
+        ),
+        (
+            "windows_helper_runtime",
+            "--device /dev/kvm:/dev/kvm:rw",
+            "--device /dev/kvm:/dev/kvm:rwm",
+            "Windows helper KVM mknod permission",
+        ),
+        (
+            "windows_build",
+            "build-windows-vm refuses host or container-root execution",
+            "build-windows-vm permits host root execution",
+            "Windows build pre-source nonroot authority",
+        ),
+        (
+            "windows_build",
+            '[ "$WINDOWS_HELPER_BUILD_UID" -ne 0 ]',
+            "true # build host UID zero accepted",
+            "Windows build pre-source nonroot authority",
+        ),
+        (
+            "windows_build",
+            '[ "$WINDOWS_HELPER_BUILD_GID" -ne 0 ]',
+            "true # build primary-GID zero accepted",
+            "Windows build pre-source nonroot authority",
+        ),
+        (
+            "windows_provision",
+            "provision-windows-vm refuses host or container-root execution",
+            "provision-windows-vm permits host root execution",
+            "Windows provision pre-source nonroot authority",
+        ),
+        (
+            "windows_provision",
+            '[ "$WINDOWS_HELPER_BUILD_UID" -ne 0 ]',
+            "true # provision host UID zero accepted",
+            "Windows provision pre-source nonroot authority",
+        ),
+        (
+            "windows_provision",
+            '[ "$WINDOWS_HELPER_BUILD_GID" -ne 0 ]',
+            "true # provision primary-GID zero accepted",
+            "Windows provision pre-source nonroot authority",
+        ),
+        (
+            "windows_golden_verify",
+            "verify-windows-golden refuses host or container-root execution",
+            "verify-windows-golden permits host root execution",
+            "Windows golden verification pre-source nonroot authority",
+        ),
+        (
+            "windows_golden_verify",
+            '[ "$WINDOWS_HELPER_BUILD_UID" -ne 0 ]',
+            "true # golden verifier host UID zero accepted",
+            "Windows golden verification pre-source nonroot authority",
+        ),
+        (
+            "windows_golden_verify",
+            '[ "$WINDOWS_HELPER_BUILD_GID" -ne 0 ]',
+            "true # golden verifier primary-GID zero accepted",
+            "Windows golden verification pre-source nonroot authority",
         ),
         (
             "windows_helper_kernel_extractor",
@@ -40187,6 +40565,12 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
+            '<span class="id">R-S11do</span>',
+            '<span class="id">R-S11do-disabled</span>',
+            "current Windows helper authority requirement",
+        ),
+        (
+            "requirements",
             "provision-owned in-progress leaf solely to test its terminal completion marker",
             "arbitrary in-progress tree before accepting any state",
             "Windows provision-time golden hash-order requirement",
@@ -40198,10 +40582,22 @@ def run_source_mutations(sources):
             "Windows helper authority Appendix C row",
         ),
         (
+            "requirements",
+            "<tr><td>268</td>",
+            "<tr><td>268-disabled</td>",
+            "current Windows helper authority Appendix C row",
+        ),
+        (
             "hardening",
             "R-S11ch/R-S11e-100 — Windows helper container and KVM authority",
             "R-S11ch/R-S11e-100 — Windows ambient helper authority",
             "Windows helper authority hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11do/R-S11e-133 — Windows-helper fixed local-Docker, mount, resource, KVM, and cleanup authority",
+            "R-S11do/R-S11e-133 — Windows-helper ambient authority",
+            "current Windows helper authority hardening ledger",
         ),
         (
             "apple_verifier_authority_verifier",

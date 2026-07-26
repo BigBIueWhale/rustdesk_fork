@@ -11,7 +11,14 @@
 # NOT part of "fork creation" — a build-harness diagnostic, run after provision-windows-vm.sh.
 set -euo pipefail
 umask 077
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PATH=/usr/bin:/bin
+readonly WINDOWS_HELPER_BUILD_UID="$(/usr/bin/id -u)"
+readonly WINDOWS_HELPER_BUILD_GID="$(/usr/bin/id -g)"
+[ "$WINDOWS_HELPER_BUILD_UID" -ne 0 ] \
+    || { printf 'verify-windows-golden refuses host or container-root execution\n' >&2; exit 1; }
+[ "$WINDOWS_HELPER_BUILD_GID" -ne 0 ] \
+    || { printf 'verify-windows-golden refuses a root primary group\n' >&2; exit 1; }
+SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
@@ -21,7 +28,6 @@ source "$SCRIPT_DIR/windows-helper-runtime.sh"
 STATE_DIR="$REPO_ROOT/.harness-state"
 GOLDEN="$STATE_DIR/win11-golden.qcow2"
 
-require_cmd docker
 assert_no_build_host_network_residual
 [ -f "$GOLDEN" ] || die "golden not found: $GOLDEN (run provision-windows-vm.sh first)"
 [ -e /dev/kvm ] || die "/dev/kvm absent — the libguestfs-in-docker appliance needs it"

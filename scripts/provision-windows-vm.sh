@@ -19,7 +19,14 @@
 # NOT run as part of "fork creation" — a checked-in build artifact.
 set -euo pipefail
 umask 077
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+export PATH=/usr/bin:/bin
+readonly WINDOWS_HELPER_BUILD_UID="$(/usr/bin/id -u)"
+readonly WINDOWS_HELPER_BUILD_GID="$(/usr/bin/id -g)"
+[ "$WINDOWS_HELPER_BUILD_UID" -ne 0 ] \
+    || { printf 'provision-windows-vm refuses host or container-root execution\n' >&2; exit 1; }
+[ "$WINDOWS_HELPER_BUILD_GID" -ne 0 ] \
+    || { printf 'provision-windows-vm refuses a root primary group\n' >&2; exit 1; }
+SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"
 # shellcheck source=scripts/lib.sh
 source "$SCRIPT_DIR/lib.sh"
 load_pins
@@ -34,7 +41,7 @@ TOOLCHAINS_ISO="$STATE_DIR/toolchains.iso"        # the TOOLCHAINS CD: the stage
 SRC_ISO="$STATE_DIR/src.iso"                      # the SRC CD: the committed repo (res/vcpkg etc.) for warming
 
 preflight() {
-    require_cmd virt-install virsh qemu-img xorriso docker
+    require_cmd virt-install virsh qemu-img xorriso
     assert_no_build_host_network_residual
     [ -d /usr/share/OVMF ] || die "OVMF (UEFI firmware) not found — run host-provision.sh first (R-B11)"
     [ -e /dev/kvm ] || die "/dev/kvm absent — Windows helper libguestfs inspection needs it"

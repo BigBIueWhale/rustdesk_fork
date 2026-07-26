@@ -23,8 +23,9 @@ cd "$REPO_ROOT"
 
 readonly LOCKFILE=flutter/pubspec.lock
 readonly IGNORES_FILE=scripts/dart-audit-ignores.txt
-readonly DOCKER_BIN=/usr/bin/docker
 readonly PYTHON_BIN=/usr/bin/python3
+readonly AUDIT_UID="$(/usr/bin/id -u)"
+readonly AUDIT_GID="$(/usr/bin/id -g)"
 readonly MAX_SCANNER_OUTPUT_BLOCKS=65536 # Bash ulimit -f units: 64 MiB on Linux.
 
 dart_audit_die() {
@@ -48,12 +49,11 @@ run_bounded_docker() (
   else
     dart_audit_die "scanner output-file limit is malformed"
   fi
-  exec "$DOCKER_BIN" "$@"
+  local_docker "$@"
 )
 
-[ "$(id -u)" -ne 0 ] || dart_audit_die "refuses host or container-root execution"
-[ "$(id -g)" -ne 0 ] || dart_audit_die "refuses a root primary group"
-[ -x "$DOCKER_BIN" ] || dart_audit_die "trusted Docker client is unavailable at $DOCKER_BIN"
+[ "$AUDIT_UID" -ne 0 ] || dart_audit_die "refuses host or container-root execution"
+[ "$AUDIT_GID" -ne 0 ] || dart_audit_die "refuses a root primary group"
 [ -x "$PYTHON_BIN" ] || dart_audit_die "trusted Python interpreter is unavailable at $PYTHON_BIN"
 
 [ -f "$LOCKFILE" ] && [ ! -L "$LOCKFILE" ] \
@@ -81,7 +81,11 @@ cleanup_audit_tmp() {
   local status=$? cleanup_failed=0
   trap - EXIT HUP INT TERM
   if [ -n "$AUDIT_TMP" ]; then
-    if [ -z "$AUDIT_TMP_ID" ] || [ ! -d "$AUDIT_TMP" ] || [ -L "$AUDIT_TMP" ] \
+    if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
+      && ! remove_local_docker_authority; then
+      echo "dart-audit.sh: preserving changed private Docker authority: $AUDIT_TMP" >&2
+      cleanup_failed=1
+    elif [ -z "$AUDIT_TMP_ID" ] || [ ! -d "$AUDIT_TMP" ] || [ -L "$AUDIT_TMP" ] \
       || [ "$(/usr/bin/stat -c '%d:%i' -- "$AUDIT_TMP" 2>/dev/null)" != "$AUDIT_TMP_ID" ]; then
       echo "dart-audit.sh: private workspace identity is unavailable or changed: $AUDIT_TMP" >&2
       cleanup_failed=1
@@ -107,8 +111,9 @@ trap 'exit 143' TERM
 AUDIT_TMP="$(umask 077 && mktemp -d /tmp/rustdesk-dart-audit.XXXXXXXXXX)"
 AUDIT_TMP_ID="$(/usr/bin/stat -c '%d:%i' -- "$AUDIT_TMP")"
 readonly AUDIT_TMP AUDIT_TMP_ID
-[ "$(/usr/bin/stat -c '%u:%g:%a' -- "$AUDIT_TMP")" = "$(id -u):$(id -g):700" ] \
+[ "$(/usr/bin/stat -c '%u:%g:%a' -- "$AUDIT_TMP")" = "$AUDIT_UID:$AUDIT_GID:700" ] \
   || dart_audit_die "private workspace is not current-user/current-group mode 0700"
+initialize_local_docker_authority "$AUDIT_TMP/docker-config" "dart-audit"
 
 # Validate and privately stage exact stable inputs before touching Docker. The
 # freshness policy has no caller override; acquisition must deliberately replace
@@ -134,7 +139,7 @@ SOURCE_POLICY_SHA="$(/usr/bin/sha256sum -- "$IGNORES_FILE" | /usr/bin/awk '{prin
   || dart_audit_die "$IGNORES_FILE changed during private staging"
 readonly SOURCE_LOCK_SHA SOURCE_POLICY_SHA
 
-IMAGE_ID="$($DOCKER_BIN image inspect --format '{{.Id}}' "$DART_AUDIT_IMAGE_ID")" \
+IMAGE_ID="$(local_docker image inspect --format '{{.Id}}' "$DART_AUDIT_IMAGE_ID")" \
   || dart_audit_die "the pinned Dart advisory image is not present locally (no pull/build fallback)"
 [ "$IMAGE_ID" = "$DART_AUDIT_IMAGE_ID" ] \
   || dart_audit_die "Docker did not resolve the exact pinned Dart advisory content ID"
@@ -144,7 +149,7 @@ IMAGE_PREFLIGHT_OUT="$AUDIT_TMP/image-preflight.out"
 IMAGE_PREFLIGHT_ERR="$AUDIT_TMP/image-preflight.err"
 set +e
 run_bounded_docker run --rm --pull=never --network=none --read-only \
-  --user "$(id -u):$(id -g)" \
+  --user "$AUDIT_UID:$AUDIT_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
   --pids-limit=32 --memory=256m --memory-swap=256m --cpus=1 \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=16m \
@@ -191,7 +196,7 @@ readonly RESULT_FILE ERROR_FILE STAGED_LOCKFILE_PATH
 # failure. The evaluator then binds status, JSON, and exact stderr telemetry.
 set +e
 run_bounded_docker run --rm --pull=never --network=none --read-only \
-  --user "$(id -u):$(id -g)" \
+  --user "$AUDIT_UID:$AUDIT_GID" \
   --cap-drop=ALL --security-opt=no-new-privileges \
   --pids-limit=64 --memory=512m --memory-swap=512m --cpus=2 \
   --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=64m \

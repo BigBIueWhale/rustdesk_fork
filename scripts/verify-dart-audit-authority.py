@@ -64,7 +64,7 @@ def require_container_floor(block, label):
             "--pull=never",
             "--network=none",
             "--read-only",
-            '--user "$(id -u):$(id -g)"',
+            '--user "$AUDIT_UID:$AUDIT_GID"',
             "--cap-drop=ALL",
             "--security-opt=no-new-privileges",
             "--memory-swap=",
@@ -103,6 +103,7 @@ def require_container_floor(block, label):
 
 def validate_contract(sources):
     shell = sources["shell"]
+    lib = sources["lib"]
     result = sources["result"]
     pins = sources["pins"]
     dockerfile = sources["dockerfile"]
@@ -116,24 +117,66 @@ def validate_contract(sources):
     fixed_helper = sources["fixed_helper"]
 
     require_all(
+        lib,
+        (
+            "LOCAL_DOCKER_AUTHORITY_INITIALIZED=0\nLOCAL_DOCKER_AUTHORITY_LABEL=",
+            "initialize_local_docker_authority() {",
+            '[ "$(/usr/bin/id -u)" -ne 0 ] || die "$2 refuses host or container-root Docker authority"',
+            '[ "$(/usr/bin/id -g)" -ne 0 ] || die "$2 refuses a root primary group for Docker authority"',
+            "[ -f /usr/bin/docker ] && [ ! -L /usr/bin/docker ] && [ -x /usr/bin/docker ]",
+            "[ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ]",
+            "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
+            "DOCKER_API_VERSION DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST",
+            "DOCKER_CONTENT_TRUST_SERVER DOCKER_CUSTOM_HEADERS",
+            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
+            "assert_local_docker_authority() {",
+            "local_docker() {",
+            "/usr/bin/env -i",
+            "DOCKER_HOST=unix:///var/run/docker.sock",
+            'DOCKER_CONFIG="$LOCAL_DOCKER_AUTHORITY_CONFIG"',
+            "--host unix:///var/run/docker.sock",
+            '--config "$LOCAL_DOCKER_AUTHORITY_CONFIG"',
+            "remove_local_docker_authority() {",
+            '/usr/bin/rm -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json"',
+            '/usr/bin/rmdir -- "$LOCAL_DOCKER_AUTHORITY_CONFIG"',
+        ),
+        "shared fixed local Docker authority",
+    )
+    local_docker_start = lib.index("local_docker() {")
+    provenance_start = lib.index("local_docker_image_provenance() {")
+    local_docker = lib[local_docker_start:provenance_start]
+    require(
+        local_docker.count("assert_local_docker_authority") == 2,
+        "local Docker authority must be proved before and after every client operation",
+    )
+    require(
+        "/usr/bin/env -i" in local_docker and "/usr/bin/docker" in local_docker,
+        "local Docker client does not execute from an empty environment through the fixed binary",
+    )
+
+    require_all(
         shell,
         (
             'source "$SCRIPT_DIR/lib.sh"',
             "load_pins",
-            "readonly DOCKER_BIN=/usr/bin/docker",
             "readonly PYTHON_BIN=/usr/bin/python3",
+            'readonly AUDIT_UID="$(/usr/bin/id -u)"',
+            'readonly AUDIT_GID="$(/usr/bin/id -g)"',
             "readonly MAX_SCANNER_OUTPUT_BLOCKS=65536",
             "run_bounded_docker() (",
             'current_limit="$(ulimit -Sf)"',
-            'exec "$DOCKER_BIN" "$@"',
-            '[ "$(id -u)" -ne 0 ] || dart_audit_die "refuses host or container-root execution"',
-            '[ "$(id -g)" -ne 0 ] || dart_audit_die "refuses a root primary group"',
+            'local_docker "$@"',
+            '[ "$AUDIT_UID" -ne 0 ] || dart_audit_die "refuses host or container-root execution"',
+            '[ "$AUDIT_GID" -ne 0 ] || dart_audit_die "refuses a root primary group"',
             '[ -f "$LOCKFILE" ] && [ ! -L "$LOCKFILE" ]',
             '[ -f "$IGNORES_FILE" ] && [ ! -L "$IGNORES_FILE" ]',
             ': "${DART_AUDIT_IMAGE_ID:?dart-audit.sh: DART_AUDIT_IMAGE_ID unset in pins.env}"',
             '[[ "$DART_AUDIT_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]',
             'AUDIT_TMP="$(umask 077 && mktemp -d /tmp/rustdesk-dart-audit.XXXXXXXXXX)"',
             'AUDIT_TMP_ID="$(/usr/bin/stat -c \'%d:%i\' -- "$AUDIT_TMP")"',
+            'initialize_local_docker_authority "$AUDIT_TMP/docker-config" "dart-audit"',
+            'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]',
+            "&& ! remove_local_docker_authority; then",
             '--remove-private-root "$AUDIT_TMP" --expected-identity "$AUDIT_TMP_ID"',
             "scripts/dart-audit-result.py prepare",
             '--policy "$IGNORES_FILE" --lockfile "$LOCKFILE" --output "$AUDIT_TMP"',
@@ -142,7 +185,7 @@ def validate_contract(sources):
             '--max-age-days "$OSV_DB_PUB_MAX_AGE_DAYS"',
             'SOURCE_LOCK_SHA="$(/usr/bin/sha256sum -- "$LOCKFILE"',
             'SOURCE_POLICY_SHA="$(/usr/bin/sha256sum -- "$IGNORES_FILE"',
-            'IMAGE_ID="$($DOCKER_BIN image inspect --format \'{{.Id}}\' "$DART_AUDIT_IMAGE_ID")"',
+            'IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$DART_AUDIT_IMAGE_ID")"',
             '[ "$IMAGE_ID" = "$DART_AUDIT_IMAGE_ID" ]',
             'printf "%s  %s\\n" "$5" /usr/local/bin/osv-scanner',
             'printf "%s  %s\\n" "$6" /opt/osv-db/osv-scanner/Pub/all.zip',
@@ -167,9 +210,11 @@ def validate_contract(sources):
     require(shell.count('--capture-epoch "$OSV_DB_PUB_CAPTURE_EPOCH"') == 2, "both freshness checks must use the pinned capture epoch")
     require(shell.count('--max-age-days "$OSV_DB_PUB_MAX_AGE_DAYS"') == 2, "both freshness checks must use the pinned age ceiling")
     require(shell.count("run_bounded_docker run --rm") == 2, "Dart audit must have exactly preflight and scanner containers")
-    require("$DOCKER_BIN run" not in shell, "Dart audit bypasses the bounded Docker wrapper")
+    require(shell.count("local_docker run ") == 0, "Dart audit must retain the output-bounded Docker wrapper")
+    require("DOCKER_BIN" not in shell, "Dart audit retains an ambient direct Docker client")
+    require("\ndocker run " not in shell, "Dart audit retains a PATH-selected Docker launch")
     for forbidden in (
-        "$DOCKER_BIN build",
+        "local_docker build",
         "docker build",
         "TAG_IMAGE_ID",
         "readonly IMG=",
@@ -188,13 +233,16 @@ def validate_contract(sources):
 
     prepare_index = shell.index("scripts/dart-audit-result.py prepare")
     freshness_index = shell.index("scripts/dart-audit-result.py check-freshness")
-    inspect_index = shell.index("IMAGE_ID=\"$($DOCKER_BIN image inspect")
+    initialize_index = shell.index(
+        'initialize_local_docker_authority "$AUDIT_TMP/docker-config" "dart-audit"'
+    )
+    inspect_index = shell.index("IMAGE_ID=\"$(local_docker image inspect")
     preflight_index = shell.index("run_bounded_docker run --rm")
     scan_index = shell.index("run_bounded_docker run --rm", preflight_index + 1)
     evaluate_index = shell.index("scripts/dart-audit-result.py evaluate")
     postcondition_index = shell.rindex('sha256sum -- "$AUDIT_TMP/pubspec.lock"')
     require(
-        prepare_index < freshness_index < inspect_index < preflight_index < scan_index < evaluate_index < postcondition_index,
+        initialize_index < prepare_index < freshness_index < inspect_index < preflight_index < scan_index < evaluate_index < postcondition_index,
         "Dart audit transaction order is not prepare/freshness/bind/preflight/scan/evaluate/postcondition",
     )
 
@@ -539,6 +587,8 @@ def validate_contract(sources):
     )
     require('<span class="id">R-S11be</span>' in requirements, "requirements are missing R-S11be")
     require("<tr><td>182</td>" in requirements, "requirements are missing Appendix C #182")
+    require('<span class="id">R-S11df</span>' in requirements, "requirements are missing R-S11df")
+    require("<tr><td>259</td>" in requirements, "requirements are missing Appendix C #259")
     require_all(
         requirements,
         (
@@ -552,12 +602,19 @@ def validate_contract(sources):
             "VCS-free BuildKit provenance statement",
             "single-link, mode-0400, untagged OCI archive",
             "Recovery remains outside the verdict path",
+            "fixed local Unix socket",
+            "canonical <code>{}</code> <code>config.json</code>",
         ),
         "Dart advisory normative closure",
     )
     require(
         "R-S11be/R-S11e-71 — Dart advisory result and scanner authority" in hardening,
         "hardening ledger is missing the Dart audit closure",
+    )
+    require(
+        "R-S11df/R-S11e-124 — Dart advisory Docker client, daemon, and configuration authority"
+        in hardening,
+        "hardening ledger is missing the Dart audit Docker authority correction",
     )
     require_all(
         hardening,
@@ -589,16 +646,23 @@ def validate_contract(sources):
             '"VCS-attribution rejection"',
             '"standalone input immutability"',
             '"Dart private archive classification"',
+            '"fixed Docker authority initialization"',
+            '"fixed Docker image inspection"',
+            '"fixed Docker launcher"',
+            '"exact Docker authority cleanup"',
             'Mutation("requirements", \'<span class="id">R-S11be</span>\'',
+            'Mutation("requirements", \'<span class="id">R-S11df</span>\'',
+            'Mutation("requirements", "<tr><td>259</td>"',
             'Mutation("hardening", "Networkless construction and distribution:"',
+            'Mutation("hardening", "R-S11df/R-S11e-124"',
         ),
         "Dart audit authority validator mutation coverage",
     )
 
 
 MUTATIONS = (
-    Mutation("shell", '[ "$(id -u)" -ne 0 ]', '[ "$(id -u)" -ge 0 ]', "UID-root refusal"),
-    Mutation("shell", '[ "$(id -g)" -ne 0 ]', '[ "$(id -g)" -ge 0 ]', "GID-root refusal"),
+    Mutation("shell", '[ "$AUDIT_UID" -ne 0 ]', '[ "$AUDIT_UID" -ge 0 ]', "UID-root refusal"),
+    Mutation("shell", '[ "$AUDIT_GID" -ne 0 ]', '[ "$AUDIT_GID" -ge 0 ]', "GID-root refusal"),
     Mutation("shell", '[ ! -L "$LOCKFILE" ]', '[ -e "$LOCKFILE" ]', "lockfile symlink refusal"),
     Mutation("shell", '[ ! -L "$IGNORES_FILE" ]', '[ -e "$IGNORES_FILE" ]', "policy symlink refusal"),
     Mutation(
@@ -612,6 +676,54 @@ MUTATIONS = (
         '--remove-private-root "$AUDIT_TMP" --expected-identity "$AUDIT_TMP_ID"',
         'rm -rf -- "$AUDIT_TMP"',
         "descriptor-safe cleanup",
+    ),
+    Mutation(
+        "shell",
+        'initialize_local_docker_authority "$AUDIT_TMP/docker-config" "dart-audit"',
+        "true # fixed Docker authority initialization disabled",
+        "fixed Docker authority initialization",
+    ),
+    Mutation(
+        "shell",
+        'IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$DART_AUDIT_IMAGE_ID")"',
+        'IMAGE_ID="$(/usr/bin/docker image inspect --format \'{{.Id}}\' "$DART_AUDIT_IMAGE_ID")"',
+        "fixed Docker image inspection",
+    ),
+    Mutation(
+        "shell",
+        "run_bounded_docker run --rm",
+        "local_docker run --rm",
+        "fixed Docker launcher",
+    ),
+    Mutation(
+        "shell",
+        'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \\\n      && ! remove_local_docker_authority; then',
+        "if false; then",
+        "exact Docker authority cleanup",
+    ),
+    Mutation(
+        "lib",
+        "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
+        "DOCKER_HOST DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS",
+        "ambient Docker context refusal",
+    ),
+    Mutation(
+        "lib",
+        "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
+        "(umask 077 && printf '{}\\n' >\"$config/config.json\")",
+        "Docker configuration no-clobber creation",
+    ),
+    Mutation(
+        "lib",
+        "local_docker() {\n    local status=0\n    assert_local_docker_authority || return 1\n    /usr/bin/env -i",
+        "local_docker() {\n    local status=0\n    assert_local_docker_authority || return 1\n    /usr/bin/env",
+        "empty Docker client environment",
+    ),
+    Mutation(
+        "lib",
+        "local_docker() {\n    local status=0\n    assert_local_docker_authority || return 1",
+        "local_docker() {\n    local status=0\n    true # Docker authority precondition disabled",
+        "Docker authority operation proof",
     ),
     Mutation("shell", "readonly MAX_SCANNER_OUTPUT_BLOCKS=65536", "readonly MAX_SCANNER_OUTPUT_BLOCKS=999999", "output file limit"),
     Mutation("shell", "scripts/dart-audit-result.py prepare", "scripts/dart-audit-result.py validate-policy", "stable preparation"),
@@ -843,6 +955,9 @@ MUTATIONS = (
     Mutation("requirements", '<span class="id">R-S11be</span>', '<span class="id">R-S11be-disabled</span>', "normative requirement"),
     Mutation("requirements", "<tr><td>182</td>", "<tr><td>182-disabled</td>", "Appendix disposition"),
     Mutation("hardening", "Networkless construction and distribution:", "Networked construction and mutable distribution:", "hardening acquisition record"),
+    Mutation("requirements", '<span class="id">R-S11df</span>', '<span class="id">R-S11df-disabled</span>', "Docker authority requirement"),
+    Mutation("requirements", "<tr><td>259</td>", "<tr><td>259-disabled</td>", "Docker authority disposition"),
+    Mutation("hardening", "R-S11df/R-S11e-124", "R-S11df/R-S11e-XXX", "Docker authority ledger"),
 )
 
 
@@ -858,6 +973,7 @@ def mutate_once(sources, mutation):
 def load_sources(repo):
     return {
         "shell": (repo / "scripts/dart-audit.sh").read_text(encoding="utf-8"),
+        "lib": (repo / "scripts/lib.sh").read_text(encoding="utf-8"),
         "result": (repo / "scripts/dart-audit-result.py").read_text(encoding="utf-8"),
         "pins": (repo / "scripts/pins.env").read_text(encoding="utf-8"),
         "dockerfile": (repo / "scripts/Dockerfile.dart-audit").read_text(encoding="utf-8"),

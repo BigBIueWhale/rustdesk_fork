@@ -11296,7 +11296,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11de, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#258",
+        "R-S11n through R-S11df, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#259",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11377,7 +11377,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11de, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#258",
+        "R-S11n through R-S11df, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#259",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11556,7 +11556,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11de, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#258",
+        "R-S11n through R-S11df, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#259",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11690,7 +11690,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11de, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#258",
+        "R-S11n through R-S11df, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#259",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11858,7 +11858,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11de, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#258",
+        "R-S11n through R-S11df, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#259",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12051,7 +12051,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11de, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#258",
+        "R-S11n through R-S11df, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#259",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12385,7 +12385,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11de, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#258",
+        "R-S11n through R-S11df, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#259",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -22045,14 +22045,20 @@ def validate_dart_audit_authority_contract(sources):
     fixed_helper = sources["online_fixed_archive_output_helper"]
 
     for text, label in (
-        ('[ "$(id -u)" -ne 0 ] || dart_audit_die "refuses host or container-root execution"', "Dart audit UID-root refusal"),
-        ('[ "$(id -g)" -ne 0 ] || dart_audit_die "refuses a root primary group"', "Dart audit GID-root refusal"),
-        ('IMAGE_ID="$($DOCKER_BIN image inspect --format \'{{.Id}}\' "$DART_AUDIT_IMAGE_ID")"', "Dart audit immutable content identity"),
+        ('readonly AUDIT_UID="$(/usr/bin/id -u)"', "Dart audit absolute UID source"),
+        ('readonly AUDIT_GID="$(/usr/bin/id -g)"', "Dart audit absolute GID source"),
+        ('[ "$AUDIT_UID" -ne 0 ] || dart_audit_die "refuses host or container-root execution"', "Dart audit UID-root refusal"),
+        ('[ "$AUDIT_GID" -ne 0 ] || dart_audit_die "refuses a root primary group"', "Dart audit GID-root refusal"),
+        ('initialize_local_docker_authority "$AUDIT_TMP/docker-config" "dart-audit"', "Dart audit fixed Docker authority initialization"),
+        ('IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$DART_AUDIT_IMAGE_ID")"', "Dart audit immutable content identity"),
         ('[ "$IMAGE_ID" = "$DART_AUDIT_IMAGE_ID" ]', "Dart audit exact image identity"),
+        ('local_docker "$@"', "Dart audit bounded fixed Docker launcher"),
+        ('if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]', "Dart audit Docker authority cleanup admission"),
+        ("&& ! remove_local_docker_authority; then", "Dart audit exact Docker authority cleanup"),
         ("scripts/dart-audit-result.py prepare", "Dart audit stable input preparation"),
         ("scripts/dart-audit-result.py check-freshness", "Dart audit snapshot freshness"),
         ("run_bounded_docker run --rm --pull=never --network=none --read-only", "Dart audit pull/network/root confinement"),
-        ('--user "$(id -u):$(id -g)"', "Dart audit non-root user"),
+        ('--user "$AUDIT_UID:$AUDIT_GID"', "Dart audit non-root user"),
         ("--cap-drop=ALL --security-opt=no-new-privileges", "Dart audit privilege floor"),
         ("--pids-limit=64 --memory=512m --memory-swap=512m --cpus=2", "Dart audit resource bounds"),
         ('--mount "type=bind,source=$STAGED_LOCKFILE_PATH,target=/work/$LOCKFILE,readonly"', "Dart audit exact private input"),
@@ -22063,6 +22069,18 @@ def validate_dart_audit_authority_contract(sources):
         require_text(shell, text, label)
     require_exact_count(shell, "run_bounded_docker run ", 2, "Dart audit preflight/scanner inventory")
     require_exact_count(shell, "--mount ", 1, "Dart audit mount inventory")
+    require_absent(shell, "DOCKER_BIN", "Dart audit ambient direct Docker client")
+    require_absent(shell, "\ndocker run ", "Dart audit PATH-selected Docker launch")
+    require_order(
+        shell,
+        (
+            'initialize_local_docker_authority "$AUDIT_TMP/docker-config" "dart-audit"',
+            "scripts/dart-audit-result.py prepare",
+            'IMAGE_ID="$(local_docker image inspect',
+            "run_bounded_docker run ",
+        ),
+        "Dart audit fixed Docker authority transaction",
+    )
     preflight_start = shell.index("run_bounded_docker run ")
     scanner_start = shell.index("run_bounded_docker run ", preflight_start + 1)
     preflight = shell[preflight_start:scanner_start]
@@ -22390,6 +22408,19 @@ def validate_dart_audit_authority_contract(sources):
             '"Dart private archive classification"',
             "Dart audit private-archive mutation",
         ),
+        (
+            '"fixed Docker authority initialization"',
+            "Dart audit authority-initialization mutation",
+        ),
+        (
+            '"fixed Docker image inspection"',
+            "Dart audit fixed-inspection mutation",
+        ),
+        ('"fixed Docker launcher"', "Dart audit fixed-launcher mutation"),
+        (
+            '"exact Docker authority cleanup"',
+            "Dart audit authority-cleanup mutation",
+        ),
     ):
         require_text(authority_mutations, text, label)
     require_text(
@@ -22430,6 +22461,24 @@ def validate_dart_audit_authority_contract(sources):
     ):
         require_text(requirement, text, "Dart audit authority requirement")
     require_text(sources["requirements"], "<tr><td>182</td>", "Dart audit Appendix C row")
+    docker_requirement = extract_html_requirement(
+        sources["requirements"], "R-S11df", "Dart audit Docker authority requirement"
+    )
+    for text in (
+        "fixed local Unix socket",
+        "canonical <code>{}</code> <code>config.json</code>",
+        "otherwise empty client environment",
+        "Appendix C #259",
+        "R-S11e-124",
+    ):
+        require_text(
+            docker_requirement, text, "Dart audit Docker authority requirement"
+        )
+    require_text(
+        sources["requirements"],
+        "<tr><td>259</td>",
+        "Dart audit Docker authority Appendix C row",
+    )
     require_text(
         sources["hardening"],
         "R-S11be/R-S11e-71 — Dart advisory result and scanner authority",
@@ -22439,6 +22488,11 @@ def validate_dart_audit_authority_contract(sources):
         sources["hardening"],
         "Networkless construction and distribution:",
         "Dart audit acquisition/distribution evidence",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11df/R-S11e-124 — Dart advisory Docker client, daemon, and configuration authority",
+        "Dart audit Docker authority hardening ledger",
     )
 
 
@@ -35720,6 +35774,30 @@ def run_source_mutations(sources):
             "fixed-archive Dart input self-test wiring",
         ),
         (
+            "dart_audit",
+            'initialize_local_docker_authority "$AUDIT_TMP/docker-config" "dart-audit"',
+            "true # fixed Docker authority initialization disabled",
+            "Dart audit fixed Docker authority initialization",
+        ),
+        (
+            "dart_audit",
+            'IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$DART_AUDIT_IMAGE_ID")"',
+            'IMAGE_ID="$(/usr/bin/docker image inspect --format \'{{.Id}}\' "$DART_AUDIT_IMAGE_ID")"',
+            "Dart audit immutable content identity",
+        ),
+        (
+            "dart_audit",
+            "run_bounded_docker run --rm",
+            "local_docker run --rm",
+            "Dart audit preflight/scanner inventory",
+        ),
+        (
+            "dart_audit",
+            'if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \\\n      && ! remove_local_docker_authority; then',
+            "if false; then",
+            "Dart audit Docker authority cleanup admission",
+        ),
+        (
             "dart_audit_authority_validator",
             'Mutation("shell", "--network=none", "--network=bridge", "network isolation"),',
             '# Dart audit network mutation removed',
@@ -35744,10 +35822,28 @@ def run_source_mutations(sources):
             "Dart audit Appendix C row",
         ),
         (
+            "requirements",
+            '<span class="id">R-S11df</span>',
+            '<span class="id">R-S11df-disabled</span>',
+            "Dart audit Docker authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>259</td>",
+            "<tr><td>259-disabled</td>",
+            "Dart audit Docker authority Appendix C row",
+        ),
+        (
             "hardening",
             "R-S11be/R-S11e-71 — Dart advisory result and scanner authority",
             "R-S11be/R-S11e-71 — Dart advisory closure deferred",
             "Dart audit authority hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11df/R-S11e-124 — Dart advisory Docker client, daemon, and configuration authority",
+            "R-S11df/R-S11e-XXX — Dart advisory Docker authority deferred",
+            "Dart audit Docker authority hardening ledger",
         ),
         (
             "rust_audit_dockerfile",
@@ -36130,7 +36226,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11de, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#258",
+            "R-S11n through R-S11df, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#259",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),

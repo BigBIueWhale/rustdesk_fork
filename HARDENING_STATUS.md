@@ -12203,6 +12203,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   before and after each. This closes parent-configuration reuse without
   claiming either Debian child's still-open client/socket/complete-ambient-input
   authority; both broader Docker boundaries remain separate follow-on slices.
+  That sentence records R-S11dj's then-current evidence boundary:
+  R-S11dk/R-S11e-129 subsequently closes the artifact child and
+  R-S11dl/R-S11e-130 subsequently closes the lifecycle child.
 
   R-S11dj and Appendix C #263 make the correction normative. The focused Android
   builder gate now binds root refusal, complete shared authority/provenance/
@@ -12248,7 +12251,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   platform behavior, and R-V3 external review remain separately open.
 - **R-S11dk/R-S11e-129 — Debian artifact-builder Docker client, daemon, and configuration authority —
   SOURCE AND CONFINED SEMANTIC/MUTATION GATES VERIFIED 2026-07-26;
-  FINAL LIFECYCLE-CHILD, COLD RELEASE, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.**
+  COLD RELEASE AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.**
   Platform: the unprivileged Linux release-tooling host. Endpoint/action:
   `scripts/build-debian.sh` immutable Debian-builder provenance and its sole
   offline compiler/package operation. Boundary: the invoking user and private
@@ -12359,10 +12362,146 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   package builder, release transaction, root fixture, root command/container,
   networked or published container, Docker socket inside a container, host
   process/listener/firewall/network inspection, or host RustDesk service/
-  process/configuration operation was run. The final Debian systemd-lifecycle
-  child's broader Docker client/socket/ambient-input boundary remains the next
-  separate tooling slice. Exact cold committed R-B2/R-B10 artifacts,
-  installed/native behavior, and R-V3 external review remain separately open.
+  process/configuration operation was run. R-S11dl/R-S11e-130 subsequently
+  closes the final Debian systemd-lifecycle child's broader Docker client,
+  socket, configuration, image, and mount boundary. Exact cold committed
+  R-B2/R-B10 artifacts, installed/native behavior, and R-V3 external review
+  remain separately open.
+- **R-S11dl/R-S11e-130 — Debian systemd-lifecycle Docker client, daemon,
+  configuration, image, and mount authority — SOURCE AND CONFINED
+  SEMANTIC/MUTATION GATES VERIFIED 2026-07-26; EXACT COLD ARTIFACT,
+  INSTALLED/NATIVE, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.**
+  Platform: the unprivileged Linux release-tooling host. Endpoint/action:
+  `scripts/smoke-debian-systemd-lifecycle.sh` immutable devcheck provenance
+  plus its sole runtime-library staging operation before the networkless Debian
+  KVM lifecycle. Boundary: the invoking user and private VM scratch ↔ Docker
+  client/daemon/configuration, dependency-image identity, selected RustDesk
+  executable, staged library output, and cleanup authority.
+
+  R-S11c-27m and R-S11c-27s already gave the orchestrator a publisher-hashed
+  standalone Debian cloud image, unprivileged `/dev/kvm`, CoW overlay,
+  read-only ISO payload, `-nic none`, source/artifact identity checks, and the
+  installed source/final-artifact guest lifecycle. Its dependency container
+  already used the host numeric identity, no network, a read-only image root,
+  all capabilities dropped, no-new-privileges, and a 64-process limit. R-S11dj
+  later removed release-parent Docker configuration inheritance.
+
+  Exact source review nevertheless proved a weaker outer boundary. The script
+  changed into and sourced the repository before refusing only UID zero, never
+  refused primary GID zero, rejected only inherited `DOCKER_CONFIG`, accepted
+  mutable `SYSTEMD_SMOKE_DEV_IMAGE`, PATH-selected Docker, created/exported
+  bespoke process-global configuration, directly inspected/launched a mutable
+  image reference, and did not exactly retire authority before recursive
+  cleanup. The launch lacked no-pull, memory/no-swap/CPU,
+  descriptor/file-size, and bounded-tmpfs controls. Docker's short `-v` syntax
+  exposed the complete repository and, in release mode, the complete extracted
+  package tree although the stage consumes only one executable and produces
+  one library directory.
+
+  Docker's official CLI reference documents host, context, configuration,
+  certificate/TLS, API-version, platform, content-trust/server, and
+  custom-header inputs, context and explicit-config precedence, and
+  configuration-driven proxy injection. Its bind-mount documentation states
+  that binds are direct host-filesystem authority, writable by default, that
+  `-v` creates absent sources while `--mount` rejects them, and that recursive
+  bind inclusion is separately controlled. Its run reference documents
+  `--pull=never`, read-only root, resource bounds, capability removal,
+  no-new-privileges, and tmpfs controls. The old path therefore left real
+  lifecycle-verdict, daemon/config/image-selection, bind-mount, cleanup, and
+  build-host authority debt. It is not evidence that another daemon/image or
+  malicious configuration was used, source/artifact bytes changed, Docker
+  escaped, host root was acquired, a port/listener was exposed, host RustDesk/
+  service/configuration/firewall/network state changed, exploitation occurred,
+  or the host was compromised.
+
+  The orchestrator now fixes `PATH`, captures UID/GID through absolute
+  `/usr/bin/id`, and refuses UID or primary GID zero before resolving or
+  sourcing repository shell/pins. It requires canonical current-user-owned
+  private smoke state, creates unpredictable current-user/current-group
+  mode-0700 VM scratch, and initializes the shared
+  `debian-systemd-lifecycle` local-Docker authority there. The shared authority
+  binds the exact root-owned non-symlink mode-0755 single-link
+  `/usr/bin/docker`, fixed root-owned non-symlink single-link
+  `/var/run/docker.sock`, authority-parent/configuration identities, and
+  current-user/current-group mode-0600 single-link canonical-empty
+  `config.json`; rejects the complete reviewed ambient Docker input set; and
+  reproves each identity plus the configuration bytes around every operation.
+
+  The mutable dev-image input and tag are deleted. The current
+  `Dockerfile.devcheck` and its provenance-commit blob must equal the reviewed
+  recipe hash, and the provenance commit must be an ancestor of lifecycle
+  source. The shared isolated provenance wrapper verifies the exact immutable
+  devcheck base/image/config/manifest identities, dpkg/Cargo/rustc
+  fingerprints, source commit, and source repository through the same fixed
+  authority.
+
+  The sole staging launch now uses `local_docker`, hence an otherwise empty
+  client environment, fixed local endpoint/private configuration, absolute
+  client, redundant explicit host/config arguments, and pre/post proof. It
+  uses the immutable content ID with `--pull=never`, no network, read-only root,
+  numeric host UID/GID, all capabilities dropped, no-new-privileges, and
+  explicit PID, 1-GiB/no-swap, one-CPU, descriptor, 256-MiB-per-file, and
+  32-MiB non-executable-tmpfs ceilings. Docker sees exactly the selected source
+  or extracted-package RustDesk executable at one read-only fixed file and the
+  private runtime-library directory writable, both with recursive bind
+  inclusion disabled. Whole-repository and whole-extracted-artifact mounts are
+  deleted. The result must remain a private current-owner directory containing
+  60..256 nonempty top-level regular current-owner/current-group single-link
+  files totaling at most 1 GiB before it is sealed into the immutable payload.
+
+  Cleanup now reproves/removes only the exact Docker configuration
+  leaf/directory before recursive workspace removal; a changed authority is
+  preserved and fails. The previous final success path no longer disables that
+  trap or bypasses exact removal.
+
+  R-S11dl and Appendix C #265 make the boundary normative.
+  `scripts/verify-debian-systemd-lifecycle-authority.py` binds production
+  order, complete shared client/socket/configuration/provenance/cleanup
+  authority, immutable devcheck pins/recipe, sole launch and mount cardinality,
+  forbidden old paths, output bounds, shared wiring, requirements, Appendix,
+  ledger, and deliberate mutations. The Android-focused integration gate has
+  been reconciled from its stale pre-R-S11dk artifact/lifecycle config-export
+  assumptions to both children's current independent shared authorities.
+  The independent workspace validator and complete source-mutation catalog bind
+  the lifecycle source, focused verifier, shared gate, R-S11dl, Appendix C
+  #265, and this row.
+
+  A baseline confined run before this slice's edits exposed that stale Android
+  integration contract as
+  `missing Debian child inherited Docker-configuration refusal`; it was not
+  suppressed. The corrected lifecycle-focused normal contract passes and all
+  44 deliberate mutations are rejected. The reconciled Android integration
+  normal contract passes and all 114 mutations are rejected; the unchanged
+  Debian-builder normal contract and all 62 mutations pass as regression
+  evidence. The independent workspace normal contract and complete 2,309-case
+  in-memory repository source-mutation catalog pass.
+
+  Verification itself found and closed two focused-gate weaknesses before the
+  final clean pass. The physical-library-source mutation initially retained
+  the required fixed-path token in a comment, so it was replaced with a real
+  relative-source mutation. The focused validator initially bound the output
+  diagnostics but not the exact 60..256 count, current-owner/current-group/
+  single-link, and 1-GiB predicates; those source predicates are now explicit
+  requirements. The independent catalog also required the ten new lifecycle
+  fixtures to name their deterministic first rejection in the pre-existing
+  systemd or new focused contract. The catalog was restarted from mutation one
+  after each observed correction and completed cleanly. None of these
+  verifier corrections weakened production authority or accepted a bypass.
+
+  Requirements SHA-256 is
+  `01c38bace40d8c56f74b90fb72d660dbe8334aa4cedfcd481c5c856c0a901cb1`,
+  synchronized to the active hardening and native-codec ledgers.
+
+  This slice does not invoke the lifecycle orchestrator, Docker staging, KVM,
+  a package builder, release transaction, `scripts/verify.sh`, or a root
+  fixture. One preliminary read-only host Docker version query reported
+  client/server 29.6.0 and API 1.55; it did not inspect an image, start/modify a
+  container, or change Docker/RustDesk/service/network state and was not used as
+  project evidence. All project code/gate execution is confined to a
+  socketless, networkless, non-root, read-only-source verifier container. Exact
+  cold committed R-B2/R-B10 artifact lifecycle execution, installed/native/
+  device behavior, and R-V3 external review remain separately open. The
+  broader Ralph-loop goal remains active.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -13080,9 +13219,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-3d181c0b6e20ee7268f7545b836f3043bf99d1d1a566085b16263c8ea102bd3c  requirements.html
+01c38bace40d8c56f74b90fb72d660dbe8334aa4cedfcd481c5c856c0a901cb1  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dk, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dl, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

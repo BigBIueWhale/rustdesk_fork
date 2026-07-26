@@ -60,6 +60,7 @@ def validate(sources: Dict[str, str]) -> None:
     release = sources["release"]
     debian = sources["debian"]
     systemd_smoke = sources["systemd_smoke"]
+    systemd_authority = sources["systemd_authority"]
 
     for token, label in (
         ("set -euo pipefail\numask 077", "private host-created state umask"),
@@ -208,93 +209,89 @@ def validate(sources: Dict[str, str]) -> None:
     forbid(run_child, 'DOCKER_HOST="$DOCKER_HOST_URI"', "release Docker endpoint inheritance")
     forbid(run_child, 'DOCKER_CONFIG="$DOCKER_CONFIG_DIR"', "release Docker configuration inheritance")
     for token, label in (
+        ('readonly BUILD_UID="$(/usr/bin/id -u)"', "Debian child absolute UID capture"),
+        ('readonly BUILD_GID="$(/usr/bin/id -g)"', "Debian child absolute GID capture"),
+        ('[ "$BUILD_UID" -ne 0 ]', "Debian child UID-root refusal"),
+        ('[ "$BUILD_GID" -ne 0 ]', "Debian child GID-root refusal"),
+        ("mktemp -d /tmp/rustdesk-debian-build.XXXXXXXXXX", "Debian child private workspace"),
         (
-            '[ -z "${DOCKER_CONFIG+x}" ] \\\n'
-            '        || die "DOCKER_CONFIG must not influence a direct or release-child Debian build"',
-            "Debian child inherited Docker-configuration refusal",
+            'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "debian-builder"',
+            "Debian child fixed local Docker authority",
         ),
         (
-            "mktemp -d /tmp/rustdesk-debian-build.XXXXXXXXXX",
-            "Debian child private workspace",
-        ),
-        (
-            'install -d -m 0700 "$OWNED_WORKSPACE/docker-config"',
-            "Debian child private Docker configuration",
-        ),
-        (
-            'export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"',
-            "Debian child-owned Docker configuration selection",
+            "local_docker run --rm --pull=never",
+            "Debian child fixed local Docker launch",
         ),
     ):
         require(debian, token, label)
     require_order(
         debian,
         (
-            'SOURCE_COMMIT="$current"',
-            '[ -z "${DOCKER_CONFIG+x}" ]',
+            'readonly BUILD_UID="$(/usr/bin/id -u)"',
+            'readonly BUILD_GID="$(/usr/bin/id -g)"',
+            '[ "$BUILD_UID" -ne 0 ]',
+            '[ "$BUILD_GID" -ne 0 ]',
+            'source "$SCRIPT_DIR/lib.sh"',
             "mktemp -d /tmp/rustdesk-debian-build.XXXXXXXXXX",
-            'install -d -m 0700 "$OWNED_WORKSPACE/docker-config"',
-            'export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"',
+            'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "debian-builder"',
             'if [ -n "${RELEASE_SRC_COMMIT:-}" ]',
+            "local_docker run --rm --pull=never",
         ),
-        "Debian child-owned Docker configuration before release classification",
+        "Debian child root refusal and independent authority before classification and launch",
     )
     for token, label in (
         (
-            'if [ -n "${DOCKER_CONFIG+x}" ]; then',
-            "Debian lifecycle child inherited Docker-configuration refusal",
+            'readonly HOST_UID="$(/usr/bin/id -u)"',
+            "Debian lifecycle child absolute UID capture",
         ),
         (
-            'readonly DOCKER_CONFIG="$WORK/docker-config"',
-            "Debian lifecycle child private Docker-configuration path",
+            'readonly HOST_GID="$(/usr/bin/id -g)"',
+            "Debian lifecycle child absolute GID capture",
         ),
         (
-            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$DOCKER_CONFIG/config.json\")",
-            "Debian lifecycle child canonical no-clobber Docker configuration",
+            'initialize_local_docker_authority "$WORK/docker-config" "debian-systemd-lifecycle"',
+            "Debian lifecycle child fixed local Docker authority",
         ),
         (
-            "export DOCKER_CONFIG",
-            "Debian lifecycle child Docker-configuration selection",
+            "local_docker_image_provenance verify-local",
+            "Debian lifecycle child isolated image provenance",
+        ),
+        (
+            "local_docker run --rm --pull=never --network=none --read-only",
+            "Debian lifecycle child fixed local Docker launch",
         ),
     ):
         require(systemd_smoke, token, label)
     require_order(
         systemd_smoke,
         (
-            'if [ -n "${DOCKER_CONFIG+x}" ]; then',
+            'readonly HOST_UID="$(/usr/bin/id -u)"',
+            'readonly HOST_GID="$(/usr/bin/id -g)"',
+            '[ "$HOST_UID" -ne 0 ]',
+            '[ "$HOST_GID" -ne 0 ]',
+            'source "$SCRIPT_DIR/lib.sh"',
             'WORK=$(mktemp -d "$STATE_DIR/run.XXXXXXXXXX")',
-            'readonly DOCKER_CONFIG="$WORK/docker-config"',
-            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$DOCKER_CONFIG/config.json\")",
-            "export DOCKER_CONFIG",
-            'docker image inspect "$DEV_IMAGE"',
-            "docker run --rm --network none --read-only --pids-limit 64",
+            'initialize_local_docker_authority "$WORK/docker-config" "debian-systemd-lifecycle"',
+            "local_docker_image_provenance verify-local",
+            "local_docker run --rm --pull=never --network=none --read-only",
         ),
-        "Debian lifecycle child-owned Docker configuration before Docker operations",
+        "Debian lifecycle root refusal and independent authority before Docker operations",
     )
-    image_inspect = extract(
-        systemd_smoke,
-        'assert_private_docker_config\ndocker_status=0\ndocker image inspect "$DEV_IMAGE"',
-        '\n\nif [ "$MODE" = release-deb ]; then',
-        "Debian lifecycle Docker image inspection",
-    )
-    require_count(
-        image_inspect,
-        "assert_private_docker_config",
-        2,
-        "Debian lifecycle Docker-image pre/post configuration proof",
-    )
-    runtime_stage = extract(
-        systemd_smoke,
-        "assert_private_docker_config\ndocker_status=0\ndocker run --rm --network none",
-        "\nlibrary_count=",
-        "Debian lifecycle runtime-dependency Docker stage",
-    )
-    require_count(
-        runtime_stage,
-        "assert_private_docker_config",
-        2,
-        "Debian lifecycle Docker-run pre/post configuration proof",
-    )
+    for token, label in (
+        (
+            "def validate(sources: Dict[str, str]) -> None:",
+            "Debian lifecycle focused authority validator",
+        ),
+        (
+            "MUTATIONS = (",
+            "Debian lifecycle focused mutation catalog",
+        ),
+        (
+            "R-S11dl/R-S11e-130 — Debian systemd-lifecycle Docker client, daemon",
+            "Debian lifecycle focused normative binding",
+        ),
+    ):
+        require(systemd_authority, token, label)
 
     for token, label in (
         ("initialize_local_docker_authority() {", "shared Docker authority initializer"),
@@ -680,40 +677,33 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "debian",
-        '[ -z "${DOCKER_CONFIG+x}" ] \\\n'
-        '        || die "DOCKER_CONFIG must not influence a direct or release-child Debian build"',
-        "true # inherited Docker configuration accepted",
-        "Debian child inherited Docker-configuration refusal",
+        'initialize_local_docker_authority "$OWNED_WORKSPACE/docker-config" "debian-builder"',
+        "true # Debian child fixed Docker authority omitted",
+        "Debian child fixed Docker authority",
     ),
     Mutation(
         "debian",
-        'install -d -m 0700 "$OWNED_WORKSPACE/docker-config"',
-        'mkdir -p "$OWNED_WORKSPACE/docker-config"',
-        "Debian child private Docker configuration",
-    ),
-    Mutation(
-        "debian",
-        'export DOCKER_CONFIG="$OWNED_WORKSPACE/docker-config"',
-        "true # ambient Docker configuration retained",
-        "Debian child-owned Docker configuration selection",
+        "if ! local_docker run --rm --pull=never",
+        "if ! /usr/bin/docker run --rm --pull=never",
+        "Debian child fixed Docker launcher",
     ),
     Mutation(
         "systemd_smoke",
-        'if [ -n "${DOCKER_CONFIG+x}" ]; then',
-        "if false; then",
-        "Debian lifecycle child inherited Docker-configuration refusal",
+        'initialize_local_docker_authority "$WORK/docker-config" "debian-systemd-lifecycle"',
+        "true # lifecycle child fixed Docker authority omitted",
+        "Debian lifecycle child fixed Docker authority",
     ),
     Mutation(
         "systemd_smoke",
-        "(umask 077 && set -o noclobber && printf '{}\\n' >\"$DOCKER_CONFIG/config.json\")",
-        "(umask 077 && printf '{}\\n' >\"$DOCKER_CONFIG/config.json\")",
-        "Debian lifecycle child canonical no-clobber Docker configuration",
+        "local_docker_image_provenance verify-local",
+        "/usr/bin/python3 scripts/offline-image-provenance.py verify-local",
+        "Debian lifecycle child isolated provenance",
     ),
     Mutation(
-        "systemd_smoke",
-        "export DOCKER_CONFIG",
-        "true # Debian lifecycle Docker configuration retained ambient",
-        "Debian lifecycle child Docker-configuration selection",
+        "systemd_authority",
+        "MUTATIONS = (",
+        "MUTATIONS_DISABLED = (",
+        "Debian lifecycle focused mutation catalog",
     ),
     Mutation(
         "lib",
@@ -939,6 +929,9 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         "release": read_regular(repo, "scripts/build-release.sh"),
         "debian": read_regular(repo, "scripts/build-debian.sh"),
         "systemd_smoke": read_regular(repo, "scripts/smoke-debian-systemd-lifecycle.sh"),
+        "systemd_authority": read_regular(
+            repo, "scripts/verify-debian-systemd-lifecycle-authority.py"
+        ),
         "lib": read_regular(repo, "scripts/lib.sh"),
         "inner": read_regular(repo, "scripts/android-apk-build.sh")
         + read_regular(repo, "flutter/android/app/build.gradle"),

@@ -3144,28 +3144,47 @@ def validate_systemd_smoke_contract(
             raise VerificationError(f"{label}: executable mode is absent")
 
     for text, label in (
-        ('[ "$(id -u)" -ne 0 ]', "systemd VM unprivileged host boundary"),
+        ('readonly HOST_UID="$(/usr/bin/id -u)"', "systemd VM absolute host UID"),
+        ('readonly HOST_GID="$(/usr/bin/id -g)"', "systemd VM absolute host GID"),
+        ('[ "$HOST_UID" -ne 0 ]', "systemd VM host UID-root refusal"),
+        ('[ "$HOST_GID" -ne 0 ]', "systemd VM host GID-root refusal"),
+        (
+            'initialize_local_docker_authority "$WORK/docker-config" "debian-systemd-lifecycle"',
+            "systemd VM fixed local Docker authority",
+        ),
         ('IMAGE_METADATA="$(stat -c \'%u:%g:%a:%h\' "$IMAGE")"', "systemd VM image metadata read"),
         (
-            '"$(id -u):$(id -g):400:1" | "$(id -u):$(id -g):444:1") ;;',
+            '"$HOST_UID:$HOST_GID:400:1" | "$HOST_UID:$HOST_GID:444:1") ;;',
             "systemd VM closed current/historical image metadata profiles",
         ),
         ('verify_sha512 "$IMAGE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"', "systemd VM base hash proof"),
         ('qemu-img check -q "$IMAGE"', "systemd VM base structural proof"),
-        ('docker run --rm --network none --read-only --pids-limit 64', "systemd VM dependency staging confinement"),
-        ('--cap-drop ALL --security-opt no-new-privileges', "systemd VM dependency staging confinement"),
-        ('--user "$host_uid:$host_gid"', "systemd VM dependency staging unprivileged user"),
-        ('-v "$PWD:/work:ro"', "systemd VM dependency staging source boundary"),
+        ('local_docker_image_provenance verify-local', "systemd VM exact devcheck provenance"),
+        ('local_docker run --rm --pull=never --network=none --read-only', "systemd VM dependency staging confinement"),
+        ('--pids-limit=64 --memory=1g --memory-swap=1g --cpus=1', "systemd VM dependency staging resources"),
+        ('--cap-drop=ALL --security-opt=no-new-privileges', "systemd VM dependency staging privilege confinement"),
+        ('--user "$HOST_UID:$HOST_GID"', "systemd VM dependency staging unprivileged user"),
+        (
+            "source=$BINARY,target=/work/rustdesk-lifecycle-input,readonly,bind-recursive=disabled",
+            "systemd VM exact dependency-staging input",
+        ),
+        (
+            "source=$LIBS,target=/out,bind-recursive=disabled",
+            "systemd VM sole writable dependency output",
+        ),
+        ("runtime dependency output contains a non-regular or nested entry", "systemd VM dependency output shape"),
+        ("runtime dependency bundle count is outside 60..256", "systemd VM dependency count bound"),
+        ("runtime dependency bundle exceeds 1 GiB", "systemd VM dependency byte bound"),
         ('-nic none', "systemd VM host network isolation"),
         ('media=cdrom,readonly=on', "systemd VM immutable payload"),
         ('SOURCE_HASH_AFTER=$(sha256sum', "systemd VM source postcondition"),
         ('DEBIAN_SYSTEMD_VM_ISOLATION=pass network=none accel=kvm source=ro base=sha512', "systemd VM isolation result"),
-        ('[ "$(stat -c \'%u:%g:%a:%h\' -- "$RELEASE_DEB")" = "$(id -u):$(id -g):400:1" ]', "release .deb metadata authority"),
+        ('[ "$(stat -c \'%u:%g:%a:%h\' -- "$RELEASE_DEB")" = "$HOST_UID:$HOST_GID:400:1" ]', "release .deb metadata authority"),
         ('[ "$(sha256sum "$RELEASE_DEB" | awk \'{print $1}\')" = "$EXPECTED_DEB_SHA256" ]', "release .deb host hash binding"),
         ("release-artifact lifecycle source must be a detached release snapshot", "release .deb detached source authority"),
         ('python3 scripts/verify-debian-package-authority.py --repo "$PWD" --deb "$RELEASE_DEB"', "release .deb independent authority verification"),
         ('dpkg-deb -x "$RELEASE_DEB" "$EXTRACTED"', "release .deb private extraction"),
-        ('docker_mounts+=(-v "$EXTRACTED:/artifact-root:ro")', "release .deb read-only dependency staging"),
+        ('BINARY=$EXTRACTED/usr/share/rustdesk/rustdesk', "release .deb exact selected executable"),
         ('payload_grafts+=("artifact/rustdesk-x86_64.deb=$RELEASE_DEB")', "release .deb immutable VM payload"),
         ('DEBIAN_RELEASE_ARTIFACT_LIFECYCLE=pass sha256=$EXPECTED_DEB_SHA256 commit=$EXPECTED_COMMIT', "release .deb exact result marker"),
         ('release .deb identity changed across the VM lifecycle', "release .deb post-run identity proof"),
@@ -3179,6 +3198,17 @@ def validate_systemd_smoke_contract(
     )
     if forbidden_host.search(host):
         raise VerificationError("systemd VM host authority boundary: forbidden authority or connectivity is present")
+    for text, label in (
+        ("SYSTEMD_SMOKE_DEV_IMAGE", "mutable lifecycle dev-image input"),
+        ("assert_private_docker_config", "bespoke lifecycle Docker config"),
+        ("export DOCKER_CONFIG", "process-global lifecycle Docker config"),
+        ("docker image inspect", "direct lifecycle image inspection"),
+        ("\ndocker run", "direct lifecycle Docker launch"),
+        ("docker_mounts", "broad lifecycle mount array"),
+        ('-v "$PWD:/work:ro"', "whole repository lifecycle mount"),
+        ('-v "$EXTRACTED:/artifact-root:ro"', "whole artifact lifecycle mount"),
+    ):
+        require_absent(host, text, label)
 
     for text, label in (
         ('[ "$(id -u)" = 0 ]', "installed systemd guest root boundary"),
@@ -3298,6 +3328,151 @@ def validate_systemd_smoke_contract(
         hardening,
         "R-S11c-27s — final Debian artifact lifecycle gate",
         "final Debian artifact lifecycle hardening ledger",
+    )
+
+
+def validate_debian_systemd_lifecycle_authority_contract(sources):
+    focused = sources["systemd_lifecycle_authority"]
+    for text, label in (
+        (
+            '"""Validate the Debian systemd-lifecycle child\'s fixed Docker authority."""',
+            "lifecycle focused verifier purpose",
+        ),
+        (
+            "def validate_shared_authority(lib: str) -> None:",
+            "lifecycle focused shared-authority validator",
+        ),
+        (
+            "validate_shared_authority(lib)",
+            "lifecycle focused shared-authority invocation",
+        ),
+        (
+            "root refusal, repository load, private authority, provenance, and launch order",
+            "lifecycle focused authority order",
+        ),
+        (
+            "exact Docker-before-workspace cleanup",
+            "lifecycle focused cleanup order",
+        ),
+        (
+            "sole lifecycle Docker launch",
+            "lifecycle focused launch cardinality",
+        ),
+        (
+            "two exact staging mounts",
+            "lifecycle focused mount cardinality",
+        ),
+        (
+            "mutable lifecycle dev-image input",
+            "lifecycle focused mutable-image refusal",
+        ),
+        (
+            "whole repository short bind",
+            "lifecycle focused broad-source-mount refusal",
+        ),
+        (
+            "whole artifact-tree short bind",
+            "lifecycle focused broad-artifact-mount refusal",
+        ),
+        (
+            "current devcheck Dockerfile bytes differ from pins.env",
+            "lifecycle focused recipe-byte pin",
+        ),
+        (
+            "MUTATIONS = (",
+            "lifecycle focused mutation inventory",
+        ),
+        (
+            "run_mutations(sources)",
+            "lifecycle focused mutation dispatch",
+        ),
+        (
+            '"host": read_regular(repo, "scripts/smoke-debian-systemd-lifecycle.sh")',
+            "lifecycle focused host-source loading",
+        ),
+        (
+            '"lib": read_regular(repo, "scripts/lib.sh")',
+            "lifecycle focused shared-library loading",
+        ),
+        (
+            '"pins": read_regular(repo, "scripts/pins.env")',
+            "lifecycle focused pin loading",
+        ),
+        (
+            '"dockerfile": read_regular(repo, "scripts/Dockerfile.devcheck")',
+            "lifecycle focused devcheck-recipe loading",
+        ),
+        (
+            '"android_gate": read_regular(repo, "scripts/verify-android-builder-authority.py")',
+            "lifecycle focused Android-integration loading",
+        ),
+        (
+            '"workspace_gate": read_regular(repo, "scripts/verify-verifier-workspace.py")',
+            "lifecycle focused independent-gate loading",
+        ),
+        (
+            "pre-source root refusal, exact "
+            '"\n        "devcheck provenance, fixed local Docker authority',
+            "lifecycle focused green disposition",
+        ),
+    ):
+        require_text(focused, text, label)
+
+    for text, label in (
+        (
+            'initialize_local_docker_authority "$WORK/docker-config" "debian-systemd-lifecycle"',
+            "lifecycle production fixed authority",
+        ),
+        (
+            "local_docker_image_provenance verify-local",
+            "lifecycle production isolated provenance",
+        ),
+        (
+            "local_docker run --rm --pull=never --network=none --read-only",
+            "lifecycle production fixed launch",
+        ),
+        (
+            "source=$BINARY,target=/work/rustdesk-lifecycle-input,readonly,bind-recursive=disabled",
+            "lifecycle production exact input",
+        ),
+        (
+            "source=$LIBS,target=/out,bind-recursive=disabled",
+            "lifecycle production exact output",
+        ),
+        (
+            "preserving changed private Debian systemd-lifecycle Docker authority",
+            "lifecycle production changed-authority preservation",
+        ),
+    ):
+        require_text(sources["systemd_smoke_host"], text, label)
+
+    for text, label in (
+        (
+            "python3 scripts/verify-debian-systemd-lifecycle-authority.py --repo . --self-test",
+            "lifecycle focused verifier shared wiring",
+        ),
+        (
+            "R-S11e-130 Debian systemd-lifecycle dependency staging uses exact "
+            "devcheck provenance and one independent fixed local Docker authority",
+            "lifecycle shared disposition",
+        ),
+    ):
+        require_text(sources["verify"], text, label)
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11dl</span>',
+        "lifecycle Docker authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>265</td>",
+        "lifecycle Docker authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dl/R-S11e-130 — Debian systemd-lifecycle Docker client, daemon,\n"
+        "  configuration, image, and mount authority",
+        "lifecycle Docker authority hardening ledger",
     )
 
 
@@ -11307,7 +11482,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dk, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264",
+        "R-S11n through R-S11dl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11388,7 +11563,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dk, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264",
+        "R-S11n through R-S11dl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11567,7 +11742,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dk, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264",
+        "R-S11n through R-S11dl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11701,7 +11876,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dk, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264",
+        "R-S11n through R-S11dl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11869,7 +12044,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dk, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264",
+        "R-S11n through R-S11dl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12062,7 +12237,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dk, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264",
+        "R-S11n through R-S11dl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12396,7 +12571,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dk, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264",
+        "R-S11n through R-S11dl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13472,10 +13647,12 @@ def validate_android_builder_authority_contract(sources):
          "Android builder release-child fixture-cardinality enforcement"),
         ("final Debian-lifecycle Docker-environment absence fixture",
          "Android builder final Debian-lifecycle fixture enforcement"),
-        ("Debian lifecycle child inherited Docker-configuration refusal",
-         "Android builder Debian-lifecycle parent-isolation enforcement"),
-        ("Debian lifecycle Docker-run pre/post configuration proof",
-         "Android builder Debian-lifecycle Docker-config proof"),
+        ("Debian lifecycle child fixed Docker authority",
+         "Android builder Debian-lifecycle independent-authority enforcement"),
+        ("Debian lifecycle child isolated image provenance",
+         "Android builder Debian-lifecycle provenance enforcement"),
+        ("Debian lifecycle focused mutation catalog",
+         "Android builder Debian-lifecycle focused-gate delegation"),
         ('source=$BUILD_SOURCE_ROOT,target=/src"', "Android builder private-source mount contract"),
         ('source=$pass_output,target=/out"', "Android builder private-output mount contract"),
         ('ordered_tokens = (', "Android builder scratch phase ordering"),
@@ -13631,59 +13808,46 @@ def validate_android_builder_authority_contract(sources):
     systemd_smoke = sources["systemd_smoke_host"]
     for text, label in (
         (
-            'if [ -n "${DOCKER_CONFIG+x}" ]; then',
-            "Debian lifecycle child inherited Docker-config refusal",
+            'readonly HOST_UID="$(/usr/bin/id -u)"',
+            "Debian lifecycle child absolute UID capture",
         ),
         (
-            'readonly DOCKER_CONFIG="$WORK/docker-config"',
-            "Debian lifecycle child private Docker-config path",
+            'readonly HOST_GID="$(/usr/bin/id -g)"',
+            "Debian lifecycle child absolute GID capture",
         ),
         (
-            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$DOCKER_CONFIG/config.json\")",
-            "Debian lifecycle child canonical no-clobber Docker config",
+            'initialize_local_docker_authority "$WORK/docker-config" "debian-systemd-lifecycle"',
+            "Debian lifecycle child fixed local Docker authority",
         ),
         (
-            "export DOCKER_CONFIG",
-            "Debian lifecycle child Docker-config selection",
+            "local_docker_image_provenance verify-local",
+            "Debian lifecycle child isolated image provenance",
+        ),
+        (
+            "local_docker run --rm --pull=never --network=none --read-only",
+            "Debian lifecycle child fixed local Docker launch",
         ),
     ):
         require_text(systemd_smoke, text, label)
     require_order(
         systemd_smoke,
         (
-            'if [ -n "${DOCKER_CONFIG+x}" ]; then',
+            'readonly HOST_UID="$(/usr/bin/id -u)"',
+            'readonly HOST_GID="$(/usr/bin/id -g)"',
+            '[ "$HOST_UID" -ne 0 ]',
+            '[ "$HOST_GID" -ne 0 ]',
+            'source "$SCRIPT_DIR/lib.sh"',
             'WORK=$(mktemp -d "$STATE_DIR/run.XXXXXXXXXX")',
-            'readonly DOCKER_CONFIG="$WORK/docker-config"',
-            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$DOCKER_CONFIG/config.json\")",
-            "export DOCKER_CONFIG",
-            'docker image inspect "$DEV_IMAGE"',
-            "docker run --rm --network none --read-only --pids-limit 64",
+            'initialize_local_docker_authority "$WORK/docker-config" "debian-systemd-lifecycle"',
+            "local_docker_image_provenance verify-local",
+            "local_docker run --rm --pull=never --network=none --read-only",
         ),
-        "Debian lifecycle child-owned Docker config before Docker operations",
+        "Debian lifecycle child independent authority before Docker operations",
     )
-    lifecycle_inspect = extract_between(
-        systemd_smoke,
-        'assert_private_docker_config\ndocker_status=0\ndocker image inspect "$DEV_IMAGE"',
-        '\n\nif [ "$MODE" = release-deb ]; then',
-        "Debian lifecycle Docker image inspection",
-    )
-    require_exact_count(
-        lifecycle_inspect,
-        "assert_private_docker_config",
-        2,
-        "Debian lifecycle Docker-image pre/post config proof",
-    )
-    lifecycle_stage = extract_between(
-        systemd_smoke,
-        "assert_private_docker_config\ndocker_status=0\ndocker run --rm --network none",
-        "\nlibrary_count=",
-        "Debian lifecycle runtime-dependency Docker stage",
-    )
-    require_exact_count(
-        lifecycle_stage,
-        "assert_private_docker_config",
-        2,
-        "Debian lifecycle Docker-run pre/post config proof",
+    require_text(
+        sources["systemd_lifecycle_authority"],
+        "MUTATIONS = (",
+        "Debian lifecycle focused mutation catalog",
     )
     require_text(
         sources["verify"],
@@ -23877,6 +24041,7 @@ def validate_sources(sources):
         sources["release"],
         sources["hardening"],
     )
+    validate_debian_systemd_lifecycle_authority_contract(sources)
     validate_service_manager_template_contract(
         sources["verify"],
         sources["service_openrc"],
@@ -33679,13 +33844,13 @@ def run_source_mutations(sources):
         ),
         (
             "systemd_smoke_host",
-            "--cap-drop ALL --security-opt no-new-privileges",
-            "--security-opt no-new-privileges",
-            "systemd VM dependency staging confinement",
+            "--cap-drop=ALL --security-opt=no-new-privileges",
+            "--security-opt=no-new-privileges",
+            "systemd VM dependency staging privilege confinement",
         ),
         (
             "systemd_smoke_host",
-            '[ "$(stat -c \'%u:%g:%a:%h\' -- "$RELEASE_DEB")" = "$(id -u):$(id -g):400:1" ]',
+            '[ "$(stat -c \'%u:%g:%a:%h\' -- "$RELEASE_DEB")" = "$HOST_UID:$HOST_GID:400:1" ]',
             '[ -f "$RELEASE_DEB" ]',
             "release .deb metadata authority",
         ),
@@ -33799,8 +33964,8 @@ def run_source_mutations(sources):
         ),
         (
             "systemd_smoke_host",
-            '"$(id -u):$(id -g):400:1" | "$(id -u):$(id -g):444:1") ;;',
-            '"$(id -u):$(id -g):600:1" | "$(id -u):$(id -g):444:1") ;;',
+            '"$HOST_UID:$HOST_GID:400:1" | "$HOST_UID:$HOST_GID:444:1") ;;',
+            '"$HOST_UID:$HOST_GID:600:1" | "$HOST_UID:$HOST_GID:444:1") ;;',
             "systemd VM closed current/historical image metadata profiles",
         ),
         (
@@ -37247,7 +37412,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11dk, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#264",
+            "R-S11n through R-S11dl, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#265",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -38714,21 +38879,21 @@ def run_source_mutations(sources):
         ),
         (
             "systemd_smoke_host",
-            'if [ -n "${DOCKER_CONFIG+x}" ]; then',
-            "if false; then",
-            "Debian lifecycle child inherited Docker-config refusal",
+            'initialize_local_docker_authority "$WORK/docker-config" "debian-systemd-lifecycle"',
+            "true # lifecycle child fixed Docker authority omitted",
+            "systemd VM fixed local Docker authority",
         ),
         (
             "systemd_smoke_host",
-            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$DOCKER_CONFIG/config.json\")",
-            "(umask 077 && printf '{}\\n' >\"$DOCKER_CONFIG/config.json\")",
-            "Debian lifecycle child canonical no-clobber Docker config",
+            "local_docker_image_provenance verify-local",
+            "/usr/bin/python3 scripts/offline-image-provenance.py verify-local",
+            "systemd VM exact devcheck provenance",
         ),
         (
-            "systemd_smoke_host",
-            "export DOCKER_CONFIG",
-            "true # Debian lifecycle Docker configuration retained ambient",
-            "Debian lifecycle child Docker-config selection",
+            "systemd_lifecycle_authority",
+            "MUTATIONS = (",
+            "MUTATIONS_DISABLED = (",
+            "lifecycle focused mutation inventory",
         ),
         (
             "requirements",
@@ -39182,6 +39347,43 @@ def run_source_mutations(sources):
             "R-S11cf/R-S11dk direct builds use independent private exact-commit sources, provenance and the sole compiler use one fixed local Docker authority",
             "R-S11cf direct builds use independent private exact-commit sources",
             "Debian builder shared Docker-authority disposition",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-debian-systemd-lifecycle-authority.py --repo . --self-test",
+            "true # Debian lifecycle authority verifier removed",
+            "lifecycle focused verifier shared wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11dl</span>',
+            '<span class="id">R-S11dl-disabled</span>',
+            "lifecycle Docker authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>265</td>",
+            "<tr><td>265-disabled</td>",
+            "lifecycle Docker authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11dl/R-S11e-130 — Debian systemd-lifecycle Docker client, daemon,\n"
+            "  configuration, image, and mount authority",
+            "R-S11dl/R-S11e-XXX — Debian lifecycle Docker authority deferred",
+            "lifecycle Docker authority hardening ledger",
+        ),
+        (
+            "systemd_lifecycle_authority",
+            "def validate_shared_authority(lib: str) -> None:",
+            "def validate_shared_authority_disabled(lib: str) -> None:",
+            "lifecycle focused shared-authority validator",
+        ),
+        (
+            "systemd_lifecycle_authority",
+            "two exact staging mounts",
+            "staging mount count accepted",
+            "lifecycle focused mount cardinality",
         ),
         (
             "android_keystore_authority_verifier",
@@ -42202,6 +42404,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "systemd_smoke_host": (repo / "scripts/smoke-debian-systemd-lifecycle.sh").read_text(encoding="utf-8"),
             "systemd_smoke_host_mode": os.lstat(repo / "scripts/smoke-debian-systemd-lifecycle.sh").st_mode,
+            "systemd_lifecycle_authority": (
+                repo / "scripts/verify-debian-systemd-lifecycle-authority.py"
+            ).read_text(encoding="utf-8"),
             "systemd_smoke_guest": (repo / "scripts/smoke-debian-systemd-lifecycle-guest.sh").read_text(encoding="utf-8"),
             "systemd_smoke_guest_mode": os.lstat(repo / "scripts/smoke-debian-systemd-lifecycle-guest.sh").st_mode,
             "systemd_smoke_loginctl": (repo / "scripts/smoke-debian-systemd-loginctl.sh").read_text(encoding="utf-8"),

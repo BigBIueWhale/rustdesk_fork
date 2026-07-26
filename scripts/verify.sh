@@ -7210,6 +7210,18 @@ grep -qF 'R-S11c-27l — installed Debian SysV lifecycle' HARDENING_STATUS.md ||
 if [ -n "$r_s11c27l" ]; then echo "  FAIL R-S11c-27l installed Debian SysV lifecycle:$r_s11c27l"; rc=1; else
   echo "  ok  R-S11c-27l Debian SysV package lifecycle selects one init backend, stops one PID/executable/name/UID-bound supervisor, and behavior-tests portable noninterference"; fi
 
+echo "== (3b-iii-h2m1) Debian systemd-lifecycle fixed Docker authority (R-S11dl/R-S11e-130) =="
+r_s11dl=
+if ! python3 scripts/verify-debian-systemd-lifecycle-authority.py --repo . --self-test; then
+  r_s11dl="$r_s11dl authority-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11dl" ]; then
+  echo "  FAIL R-S11dl Debian systemd-lifecycle Docker authority:$r_s11dl"
+  rc=1
+else
+  echo "  ok  R-S11e-130 Debian systemd-lifecycle dependency staging uses exact devcheck provenance and one independent fixed local Docker authority, narrow mounts, bounded non-root execution, and exact authority cleanup"
+fi
+
 echo "== (3b-iii-h2n) installed Debian systemd lifecycle is isolated, exact, and noninterfering (R-S11c-27m) =="
 r_s11c27m=
 systemd_host=scripts/smoke-debian-systemd-lifecycle.sh
@@ -7250,17 +7262,22 @@ if grep -qF -- 'dest.part' scripts/online-fetch.sh \
   r_s11c27m="$r_s11c27m host-systemd-image-downloader-regressed"
 fi
 for token in \
-  '[ "$(id -u)" -ne 0 ]' \
+  '[ "$HOST_UID" -ne 0 ]' \
+  '[ "$HOST_GID" -ne 0 ]' \
   '[ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ]' \
   'IMAGE_METADATA="$(stat -c '\''%u:%g:%a:%h'\'' "$IMAGE")"' \
-  '"$(id -u):$(id -g):400:1"' \
-  '"$(id -u):$(id -g):444:1"' \
+  '"$HOST_UID:$HOST_GID:400:1"' \
+  '"$HOST_UID:$HOST_GID:444:1"' \
   'verify_sha512 "$IMAGE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"' \
   'qemu-img check -q "$IMAGE"' \
-  'docker run --rm --network none --read-only --pids-limit 64' \
-  '--cap-drop ALL --security-opt no-new-privileges' \
-  '--user "$host_uid:$host_gid"' \
-  '-v "$PWD:/work:ro"' \
+  'initialize_local_docker_authority "$WORK/docker-config" "debian-systemd-lifecycle"' \
+  'local_docker_image_provenance verify-local' \
+  'local_docker run --rm --pull=never --network=none --read-only' \
+  '--pids-limit=64 --memory=1g --memory-swap=1g --cpus=1' \
+  '--cap-drop=ALL --security-opt=no-new-privileges' \
+  '--user "$HOST_UID:$HOST_GID"' \
+  'source=$BINARY,target=/work/rustdesk-lifecycle-input,readonly,bind-recursive=disabled' \
+  'source=$LIBS,target=/out,bind-recursive=disabled' \
   '-nic none' \
   'media=cdrom,readonly=on' \
   'SOURCE_HASH_AFTER=$(sha256sum' \
@@ -7333,7 +7350,8 @@ for token in \
   'release-artifact lifecycle source must be a detached release snapshot' \
   'python3 scripts/verify-debian-package-authority.py --repo "$PWD" --deb "$RELEASE_DEB"' \
   'dpkg-deb -x "$RELEASE_DEB" "$EXTRACTED"' \
-  'docker_mounts+=(-v "$EXTRACTED:/artifact-root:ro")' \
+  'BINARY=$EXTRACTED/usr/share/rustdesk/rustdesk' \
+  'source=$BINARY,target=/work/rustdesk-lifecycle-input,readonly,bind-recursive=disabled' \
   'payload_grafts+=("artifact/rustdesk-x86_64.deb=$RELEASE_DEB")' \
   'DEBIAN_RELEASE_ARTIFACT_LIFECYCLE=pass sha256=$EXPECTED_DEB_SHA256 commit=$EXPECTED_COMMIT' \
   'release .deb identity changed across the VM lifecycle'; do

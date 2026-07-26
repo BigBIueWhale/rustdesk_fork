@@ -1,24 +1,29 @@
 #!/usr/bin/env bash
 set -euo pipefail
 umask 077
-cd "$(dirname "$0")/.."
 
-if [ -n "${DOCKER_CONFIG+x}" ]; then
-    printf 'Debian systemd VM smoke rejects inherited DOCKER_CONFIG\n' >&2
-    exit 1
-fi
+export PATH=/usr/bin:/bin
+readonly HOST_UID="$(/usr/bin/id -u)"
+readonly HOST_GID="$(/usr/bin/id -g)"
+[ "$HOST_UID" -ne 0 ] \
+    || { echo "Debian systemd VM smoke refuses host or container-root execution" >&2; exit 1; }
+[ "$HOST_GID" -ne 0 ] \
+    || { echo "Debian systemd VM smoke refuses a root primary group" >&2; exit 1; }
+
+readonly SCRIPT_DIR="$(cd "$(/usr/bin/dirname -- "${BASH_SOURCE[0]}")" && /usr/bin/pwd -P)"
+cd "$SCRIPT_DIR/.."
 
 # Host-side orchestrator for one disposable, networkless Debian KVM guest. It
 # never invokes sudo, never enters the host PID/cgroup namespaces, and never
 # talks to the host service manager. The production source and the dependency
 # bundle are mounted read-only; all package/systemd writes land only in a CoW
 # overlay deleted on exit.
-source scripts/lib.sh
+# shellcheck source=scripts/lib.sh
+source "$SCRIPT_DIR/lib.sh"
 load_pins
 
 readonly IMAGE=${SYSTEMD_SMOKE_IMAGE:-$PWD/.harness-state/debian-systemd-smoke/debian-12-genericcloud-amd64-${DEBIAN_SYSTEMD_SMOKE_IMAGE_BUILD}.qcow2}
 readonly SOURCE_BINARY=$PWD/target/debug/rustdesk
-readonly DEV_IMAGE=${SYSTEMD_SMOKE_DEV_IMAGE:-rd-devcheck}
 readonly GUEST_SCRIPT=$PWD/scripts/smoke-debian-systemd-lifecycle-guest.sh
 readonly STATE_DIR=${SYSTEMD_SMOKE_STATE_DIR:-$PWD/.harness-state/debian-systemd-smoke}
 
@@ -48,27 +53,20 @@ fail() {
     exit 1
 }
 
-assert_private_docker_config() {
-    [ -d "$DOCKER_CONFIG" ] && [ ! -L "$DOCKER_CONFIG" ] \
-        || fail 'private Docker configuration is not a real directory'
-    [ "$(stat -c '%u:%g:%a' -- "$DOCKER_CONFIG" 2>/dev/null)" = \
-        "$(id -u):$(id -g):700" ] \
-        || fail 'private Docker configuration is not current-user/current-group mode 0700'
-    [ -f "$DOCKER_CONFIG/config.json" ] && [ ! -L "$DOCKER_CONFIG/config.json" ] \
-        || fail 'private Docker config.json is not a non-symlink regular file'
-    [ "$(stat -c '%u:%g:%a:%h' -- "$DOCKER_CONFIG/config.json" 2>/dev/null)" = \
-        "$(id -u):$(id -g):600:1" ] \
-        || fail 'private Docker config.json is not current-user/current-group mode 0600 and single-link'
-    cmp -s -- "$DOCKER_CONFIG/config.json" <(printf '{}\n') \
-        || fail 'private Docker config.json is not canonical empty configuration'
-}
+WORK=
 
 cleanup() {
     local status=$?
     trap - EXIT HUP INT TERM
-    if [ -n "${WORK:-}" ] && [ -d "$WORK" ]; then
-        chmod u+w "$WORK" "$WORK/runtime-libs" 2>/dev/null || true
-        rm -rf -- "$WORK" || status=1
+    if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
+        && ! remove_local_docker_authority; then
+        warn "preserving changed private Debian systemd-lifecycle Docker authority: $WORK"
+        status=1
+    elif [ -n "$WORK" ] && [ -d "$WORK" ]; then
+        if ! chmod -R u+rwX "$WORK" 2>/dev/null \
+            || ! rm -rf -- "$WORK"; then
+            status=1
+        fi
     fi
     exit "$status"
 }
@@ -78,37 +76,32 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-[ "$(id -u)" -ne 0 ] || fail 'host orchestrator must run unprivileged'
 [ "$(uname -s)" = Linux ] && [ "$(uname -m)" = x86_64 ] \
     || fail 'systemd VM smoke requires the pinned Linux x86_64 build host'
-for command in cmp docker install mktemp qemu-img qemu-system-x86_64 sha256sum sha512sum stat timeout xorriso; do
+for command in cmp git install mktemp python3 qemu-img qemu-system-x86_64 readlink sha256sum sha512sum stat timeout xorriso; do
     command -v "$command" >/dev/null || fail "required host command is absent: $command"
 done
-[ "$MODE" != release-deb ] || for command in dpkg-deb git python3 readlink stat; do
+[ "$MODE" != release-deb ] || for command in dpkg-deb; do
     command -v "$command" >/dev/null || fail "required release-artifact command is absent: $command"
 done
 [ -c /dev/kvm ] && [ -r /dev/kvm ] && [ -w /dev/kvm ] \
     || fail '/dev/kvm is not available to the unprivileged build user'
 [ -d "$STATE_DIR" ] && [ ! -L "$STATE_DIR" ] \
     || fail "private systemd smoke state is absent; run scripts/online-fetch.sh --debian-systemd-smoke-image"
-[ "$(stat -c '%u:%a' "$STATE_DIR")" = "$(id -u):700" ] \
+[ "$(readlink -f -- "$STATE_DIR" 2>/dev/null)" = "$STATE_DIR" ] \
+    || fail 'systemd smoke state directory must be an absolute canonical path'
+[ "$(stat -c '%u:%a' "$STATE_DIR")" = "$HOST_UID:700" ] \
     || fail 'systemd smoke state directory is not current-user-owned mode 0700'
 WORK=$(mktemp -d "$STATE_DIR/run.XXXXXXXXXX")
-[ "$(stat -c '%u:%g:%a' "$WORK")" = "$(id -u):$(id -g):700" ] \
+[ "$(stat -c '%u:%g:%a' "$WORK")" = "$HOST_UID:$HOST_GID:700" ] \
     || fail 'VM scratch directory is not current-user/current-group mode 0700'
 readonly WORK
-readonly DOCKER_CONFIG="$WORK/docker-config"
-install -d -m 0700 -- "$DOCKER_CONFIG"
-(umask 077 && set -o noclobber && printf '{}\n' >"$DOCKER_CONFIG/config.json") \
-    || fail 'cannot create private Docker config.json'
-chmod 0600 -- "$DOCKER_CONFIG/config.json"
-export DOCKER_CONFIG
-assert_private_docker_config
+initialize_local_docker_authority "$WORK/docker-config" "debian-systemd-lifecycle"
 [ -f "$IMAGE" ] && [ ! -L "$IMAGE" ] \
     || fail "pinned Debian cloud image is absent; run scripts/online-fetch.sh --debian-systemd-smoke-image"
 IMAGE_METADATA="$(stat -c '%u:%g:%a:%h' "$IMAGE")"
 case "$IMAGE_METADATA" in
-    "$(id -u):$(id -g):400:1" | "$(id -u):$(id -g):444:1") ;;
+    "$HOST_UID:$HOST_GID:400:1" | "$HOST_UID:$HOST_GID:444:1") ;;
     *) fail 'Debian cloud image is outside its current-user read-only metadata profiles' ;;
 esac
 verify_sha512 "$IMAGE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"
@@ -131,11 +124,43 @@ PY
 }
 [ -f "$GUEST_SCRIPT" ] && [ ! -L "$GUEST_SCRIPT" ] && [ -x "$GUEST_SCRIPT" ] \
     || fail 'systemd guest lifecycle script is absent or non-executable'
-assert_private_docker_config
-docker_status=0
-docker image inspect "$DEV_IMAGE" >/dev/null 2>&1 || docker_status=$?
-assert_private_docker_config
-[ "$docker_status" -eq 0 ] || fail "runtime dependency image is absent: $DEV_IMAGE"
+for variable in \
+    DEV_CHECK_IMAGE_ID DEV_CHECK_BASE_IMAGE_ID \
+    DEV_CHECK_IMAGE_CONFIG_ID DEV_CHECK_IMAGE_MANIFEST_ID \
+    DEV_CHECK_SOURCE_COMMIT DEV_CHECK_SOURCE_REPOSITORY \
+    SHA256_DEV_CHECK_DOCKERFILE SHA256_DEV_CHECK_DPKG_MANIFEST \
+    SHA256_DEV_CHECK_CARGO SHA256_DEV_CHECK_RUSTC; do
+    [ -n "${!variable:-}" ] || fail "pins.env is missing $variable"
+done
+[[ "$DEV_CHECK_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || fail 'immutable devcheck image ID is malformed'
+[[ "$DEV_CHECK_BASE_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || fail 'immutable devcheck base image ID is malformed'
+[[ "$DEV_CHECK_IMAGE_CONFIG_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || fail 'immutable devcheck config ID is malformed'
+[[ "$DEV_CHECK_IMAGE_MANIFEST_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+    || fail 'immutable devcheck manifest ID is malformed'
+[[ "$DEV_CHECK_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
+    || fail 'immutable devcheck source commit is malformed'
+[ "$(sha256sum "$SCRIPT_DIR/Dockerfile.devcheck" | awk '{print $1}')" = \
+    "$SHA256_DEV_CHECK_DOCKERFILE" ] \
+    || fail 'current devcheck Dockerfile differs from its reviewed pin'
+GIT_CONFIG_NOSYSTEM=1 \
+GIT_CONFIG_GLOBAL=/dev/null \
+GIT_CONFIG_SYSTEM=/dev/null \
+    git --no-replace-objects merge-base --is-ancestor "$DEV_CHECK_SOURCE_COMMIT" HEAD \
+    || fail 'devcheck provenance source commit is not an ancestor of lifecycle source'
+historical_devcheck_sha="$(
+    GIT_CONFIG_NOSYSTEM=1 \
+    GIT_CONFIG_GLOBAL=/dev/null \
+    GIT_CONFIG_SYSTEM=/dev/null \
+        git --no-replace-objects cat-file blob \
+            "$DEV_CHECK_SOURCE_COMMIT:scripts/Dockerfile.devcheck" \
+        | sha256sum \
+        | awk '{print $1}'
+)" || fail 'cannot read the devcheck Dockerfile from its provenance source commit'
+[ "$historical_devcheck_sha" = "$SHA256_DEV_CHECK_DOCKERFILE" ] \
+    || fail 'devcheck provenance source commit has different Dockerfile bytes'
 
 if [ "$MODE" = release-deb ]; then
     case "$RELEASE_DEB" in
@@ -150,7 +175,7 @@ if [ "$MODE" = release-deb ]; then
         || fail 'release .deb SHA-256 must be one lowercase 64-hex digest'
     [[ "$EXPECTED_COMMIT" =~ ^[0-9a-f]{40}$ ]] \
         || fail 'release source commit must be one lowercase 40-hex identity'
-    [ "$(stat -c '%u:%g:%a:%h' -- "$RELEASE_DEB")" = "$(id -u):$(id -g):400:1" ] \
+    [ "$(stat -c '%u:%g:%a:%h' -- "$RELEASE_DEB")" = "$HOST_UID:$HOST_GID:400:1" ] \
         || fail 'release .deb must be current-user/current-group mode 0400 with one link'
     [ "$(sha256sum "$RELEASE_DEB" | awk '{print $1}')" = "$EXPECTED_DEB_SHA256" ] \
         || fail 'release .deb SHA-256 differs from the release transaction'
@@ -196,35 +221,57 @@ fi
 readonly SOURCE_HASH_BEFORE=$(sha256sum "${SOURCE_FILES[@]}")
 
 BINARY=$SOURCE_BINARY
-container_binary=/work/target/debug/rustdesk
-docker_mounts=(-v "$PWD:/work:ro")
 if [ "$MODE" = release-deb ]; then
     dpkg-deb -x "$RELEASE_DEB" "$EXTRACTED" \
         || fail 'cannot extract the release .deb into private lifecycle scratch'
     BINARY=$EXTRACTED/usr/share/rustdesk/rustdesk
-    container_binary=/artifact-root/usr/share/rustdesk/rustdesk
-    docker_mounts+=(-v "$EXTRACTED:/artifact-root:ro")
 fi
 [ -f "$BINARY" ] && [ ! -L "$BINARY" ] && [ -x "$BINARY" ] \
     || fail 'selected RustDesk lifecycle executable is absent or non-executable'
+case "$BINARY" in
+    *,*) fail 'selected RustDesk lifecycle executable path contains a Docker --mount delimiter' ;;
+esac
 
-mkdir "$LIBS"
-host_uid=$(id -u)
-host_gid=$(id -g)
-assert_private_docker_config
-docker_status=0
-docker run --rm --network none --read-only --pids-limit 64 \
-    --cap-drop ALL --security-opt no-new-privileges \
-    --user "$host_uid:$host_gid" \
-    "${docker_mounts[@]}" \
-    -v "$LIBS:/out:rw" \
-    "$DEV_IMAGE" bash --noprofile --norc -euo pipefail -c '
+local_docker_image_provenance verify-local \
+    --role devcheck \
+    --expected-id "$DEV_CHECK_IMAGE_ID" \
+    --image-ref "$DEV_CHECK_IMAGE_ID" \
+    --base "rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}" \
+    --dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE" \
+    --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
+    --cargo-sha "$SHA256_DEV_CHECK_CARGO" \
+    --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
+    --source-commit "$DEV_CHECK_SOURCE_COMMIT" \
+    --source-repository "$DEV_CHECK_SOURCE_REPOSITORY" \
+    --config-id "$DEV_CHECK_IMAGE_CONFIG_ID" \
+    --manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID" \
+    || fail 'immutable devcheck image provenance verification failed'
+
+install -d -m 0700 -- "$LIBS"
+[ "$(stat -c '%u:%g:%a:%h' -- "$LIBS")" = "$HOST_UID:$HOST_GID:700:2" ] \
+    || fail 'runtime dependency output is not a private current-user directory'
+case "$LIBS" in
+    *,*) fail 'runtime dependency output path contains a Docker --mount delimiter' ;;
+esac
+local_docker run --rm --pull=never --network=none --read-only \
+    --pids-limit=64 --memory=1g --memory-swap=1g --cpus=1 \
+    --ulimit nofile=4096:4096 --ulimit fsize=268435456:268435456 \
+    --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=32m \
+    --cap-drop=ALL --security-opt=no-new-privileges \
+    --user "$HOST_UID:$HOST_GID" \
+    --mount "type=bind,source=$BINARY,target=/work/rustdesk-lifecycle-input,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$LIBS,target=/out,bind-recursive=disabled" \
+    "$DEV_CHECK_IMAGE_ID" /bin/bash --noprofile --norc -euo pipefail -c '
         binary=$1
+        ldd_output="$(ldd "$binary")"
+        case "$ldd_output" in
+            *"not found"*) printf "%s\n" "$ldd_output" >&2; exit 1 ;;
+        esac
         while IFS= read -r library; do
             [ -f "$library" ] || { printf "missing ldd library: %s\n" "$library" >&2; exit 1; }
             cp -L --no-preserve=ownership -- "$library" "/out/$(basename "$library")"
         done < <(
-            ldd "$binary" \
+            printf "%s\n" "$ldd_output" \
                 | awk '\''/=> \/[^ ]+/{print $3} /^[[:space:]]*\//{print $1}'\'' \
                 | sort -u
         )
@@ -239,12 +286,29 @@ docker run --rm --network none --read-only --pids-limit 64 \
                 cp -L --no-preserve=ownership -- "$library" "/out/$(basename "$library")"
             done
         done
-    ' _ "$container_binary" || docker_status=$?
-assert_private_docker_config
-[ "$docker_status" -eq 0 ] || fail 'runtime dependency staging container failed'
+    ' _ /work/rustdesk-lifecycle-input \
+    || fail 'runtime dependency staging container failed'
+[ "$(stat -c '%u:%g:%a:%h' -- "$LIBS")" = "$HOST_UID:$HOST_GID:700:2" ] \
+    || fail 'runtime dependency output directory metadata changed during staging'
+bad_library_entry="$(find "$LIBS" -mindepth 1 ! -type f -print -quit)" \
+    || fail 'cannot inspect runtime dependency output shape'
+[ -z "$bad_library_entry" ] \
+    || fail "runtime dependency output contains a non-regular or nested entry: $bad_library_entry"
 library_count=$(find "$LIBS" -mindepth 1 -maxdepth 1 -type f | wc -l)
-[ "$library_count" -ge 60 ] \
-    || fail "runtime dependency bundle is unexpectedly small: $library_count files"
+[ "$library_count" -ge 60 ] && [ "$library_count" -le 256 ] \
+    || fail "runtime dependency bundle count is outside 60..256: $library_count files"
+library_bytes=0
+while IFS= read -r -d '' library; do
+    [ "$(stat -c '%u:%g:%h' -- "$library")" = "$HOST_UID:$HOST_GID:1" ] \
+        || fail "runtime dependency output has wrong owner or link count: $library"
+    library_size="$(stat -c '%s' -- "$library")" \
+        || fail "cannot read runtime dependency size: $library"
+    [ "$library_size" -gt 0 ] \
+        || fail "runtime dependency output is empty: $library"
+    library_bytes=$((library_bytes + library_size))
+done < <(find "$LIBS" -mindepth 1 -maxdepth 1 -type f -print0)
+[ "$library_bytes" -le 1073741824 ] \
+    || fail "runtime dependency bundle exceeds 1 GiB: $library_bytes bytes"
 find "$LIBS" -mindepth 1 -maxdepth 1 -type f -exec chmod 0444 {} +
 chmod 0755 "$LIBS"
 
@@ -393,6 +457,3 @@ fi
 cat "$MARKERS"
 printf 'DEBIAN_SYSTEMD_VM_ISOLATION=pass network=none accel=kvm source=ro base=sha512 libraries=%s mode=%s\n' \
     "$library_count" "$MODE"
-
-trap - EXIT HUP INT TERM
-rm -rf -- "$WORK"

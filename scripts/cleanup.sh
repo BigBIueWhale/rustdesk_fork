@@ -2,8 +2,8 @@
 # scripts/cleanup.sh — reversible-only teardown that never touches what pre-existed
 # (R-B11). The cleanup surface is exactly the inverse of what the harness created.
 #
-#   scripts/cleanup.sh                 # default: remove ONLY harness-created
-#                                      #   ephemeral artifacts (always safe — we made them)
+#   scripts/cleanup.sh                 # default: report that ephemeral resources
+#                                      #   belong to their creating transactions
 #   scripts/cleanup.sh --build-host-network
 #                                      # explicit: remove old harness-created
 #                                      #   system-libvirt default networking
@@ -25,11 +25,6 @@ source "$SCRIPT_DIR/lib.sh"
 
 STATE_DIR="$REPO_ROOT/.harness-state"
 PROVISIONED_FILE="$STATE_DIR/provisioned"
-
-# Legacy VM artifacts use this stable prefix. A name is not sufficient ownership
-# proof for daemon-global resources, so this script does not enumerate or remove
-# container-engine objects.
-HARNESS_PREFIX="rustdesk-fork-harness"
 
 # ── Host-network audit / old system-libvirt default-network cleanup ──────────
 harness_installed_pkg() {
@@ -111,44 +106,9 @@ cleanup_build_host_network() {
     log "build-host network cleanup complete."
 }
 
-# ── Default: remove only harness-created ephemeral artifacts ──────────────────
-clean_ephemeral() {
-    log "removing harness-created ephemeral artifacts (prefix: $HARNESS_PREFIX)"
-
-    # Direct QEMU harness leftovers: old provisioner/debug VMs used pidfiles under
-    # .harness-state/winvm and loopback-only VNC/SSH forwards. They are still
-    # harness-created ephemeral artifacts, so cleanup owns them.
-    local pidfile pid
-    for pidfile in "$STATE_DIR"/winvm/*.pid "$STATE_DIR"/winvm/qemu.pid; do
-        [ -f "$pidfile" ] || continue
-        pid="$(cat "$pidfile" 2>/dev/null || true)"
-        if [ -n "${pid:-}" ] && kill -0 "$pid" >/dev/null 2>&1; then
-            log "stopping harness qemu process from $pidfile: pid=$pid"
-            kill "$pid" >/dev/null 2>&1 || true
-            sleep 2
-            kill -9 "$pid" >/dev/null 2>&1 || true
-        fi
-        rm -f "$pidfile"
-    done
-    rm -f "$STATE_DIR"/winvm/*.sock "$STATE_DIR"/winvm/monitor.sock "$STATE_DIR"/winvm/tpm.sock 2>/dev/null || true
-
-    # libvirt session: transient build domains + their copy-on-write qcow2 overlays.
-    if command -v virsh >/dev/null 2>&1; then
-        local doms d
-        doms="$(virsh --connect qemu:///session list --all --name 2>/dev/null | grep "^${HARNESS_PREFIX}" || true)"
-        for d in $doms; do
-            log "virsh qemu:///session destroy/undefine: $d"
-            virsh --connect qemu:///session destroy "$d" >/dev/null 2>&1 || true
-            virsh --connect qemu:///session undefine --nvram "$d" >/dev/null 2>&1 || true
-        done
-    fi
-    # qcow2 overlays the harness wrote under its own overlay dir only.
-    if [ -d "$STATE_DIR/overlays" ]; then
-        log "removing qcow2 overlays under $STATE_DIR/overlays"
-        rm -f "$STATE_DIR/overlays/"*.qcow2 2>/dev/null || true
-    fi
-
-    log "ephemeral cleanup done. Host packages are left intact (use --reverse-host to undo those)."
+# ── Default: resource-owning transactions perform their own cleanup ───────────
+report_transaction_owned_cleanup() {
+    log "no generic ephemeral cleanup performed; each creating transaction owns exact terminal cleanup (use explicit manifest-backed flags for recorded host state)"
 }
 
 # ── Explicit: reverse ONLY the host packages we installed ─────────────────────
@@ -170,7 +130,7 @@ reverse_host() {
 
 main() {
     case "${1:-}" in
-        "")             clean_ephemeral ;;
+        "")             report_transaction_owned_cleanup ;;
         --build-host-network) cleanup_build_host_network ;;
         --reverse-host) reverse_host ;;
         *)              die "unknown argument: $1 (use no args, --build-host-network, or --reverse-host)" ;;

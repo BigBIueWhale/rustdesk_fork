@@ -12889,6 +12889,101 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Exact cold R-B2/R-B10 artifacts, remaining native/installed/device evidence,
   fresh independent image reproduction where separately named, and R-V3
   external review remain open. The broader Ralph-loop goal remains active.
+- **R-S11dq/R-S11e-135 — generic cleanup has no PID-file, session-domain-name, or pathname-derived destructive ownership —
+  SOURCE IMPLEMENTED AND CONFINED SOURCE/MUTATION VERIFIED 2026-07-26.**
+  Platform: the unprivileged Linux build/maintenance host. Endpoint/action:
+  no-argument `scripts/cleanup.sh` legacy direct-QEMU, session-libvirt, and
+  overlay cleanup. Boundary: caller-writable repository state and mutable
+  process/domain/path names ↔ host process signals, the complete libvirt
+  session daemon, and filesystem deletion.
+
+  Proven old path and history: the default branch read every
+  `.harness-state/winvm/*.pid` file, treated its decimal contents as a live QEMU
+  identity, sent TERM, waited two seconds, sent KILL, and then deleted guessed
+  PID/socket names. A user-writable PID file contains neither process start time
+  nor executable/role identity, and a stale PID can be reused. The same branch
+  listed every session-libvirt domain and destroyed/undefined each mutable name
+  beginning with the shared harness prefix while suppressing discovery/control
+  errors. Its overlay branch used `-d` on a caller-writable directory edge,
+  which follows a symlink, and then pathname-globbed `rm -f` beneath that edge.
+  Current source contains no producer for the legacy `winvm` PID/socket layout
+  or generic `overlays` directory. The current per-build Windows transaction
+  already retains a direct-child start identity, kernel-random domain UUID,
+  pass-private root, and exact terminal cleanup. `git blame` attributes the
+  PID branch to `d329a696` and the prefix-domain/overlay branches to the original
+  R-B11 cleanup import `34b4921f`.
+
+  This was arbitrary-process availability, daemon-global session-domain
+  availability, pathname-substitution deletion, suppressed-error, and
+  destructive-cleanup authority debt. It is not evidence that cleanup ran,
+  an unrelated process/domain/file was removed, root was acquired, a listener
+  or port was exposed, host RustDesk/service/configuration/firewall/network
+  state changed, exploitation occurred, or the host was compromised.
+
+  Authority model and source closure: the no-argument mode performs exactly one
+  report and no mutation. `clean_ephemeral`, its prefix, PID/socket namespace,
+  process signals, session-libvirt enumeration/control, and overlay/path
+  deletion are absent. Ephemeral lifecycle belongs to the exact transaction
+  that retained the creating process/domain/state identity. A legacy leftover
+  without that identity requires explicit operator reconciliation rather than
+  a destructive guess. The separately selected manifest-backed old
+  system-network and package-reversal modes remain unchanged. The golden-image
+  provisioner's independently name-owned pre-creation collision handling is
+  explicitly retained as the next separate source-audit surface; this slice
+  does not declare it safe.
+
+  R-S11dq and Appendix C #270 make this source boundary normative.
+  `scripts/verify-cleanup-authority.py` independently binds the source,
+  documentation, requirement, Appendix row, ledger, shared-gate wiring, and
+  workspace-verifier wiring with deliberate mutations. The repository-wide
+  workspace validator independently binds the same runtime absence and focused
+  checker shape through its complete source-mutation catalog. Neither gate
+  invokes cleanup, signals a process, queries libvirt, deletes a file, or
+  inspects/mutates live host state.
+
+  Confined source evidence on 2026-07-26 is green. The focused cleanup
+  authority verifier rejects all 16 deliberate mutations. The independent
+  workspace baseline passes, and its complete catalog rejects all 2,390
+  deliberate source mutations from mutation one. The adjacent release-parent,
+  Debian systemd-lifecycle, and Windows-helper gates reject 27, 44, and 78
+  mutations respectively. Native-codec normal and negative self-test modes,
+  Bash/Python syntax, requirements HTML parsing, exact synchronized
+  requirements SHA-256
+  `fcfbc395e0e61eb5eb8fb1f09afbbc8e8dc219556435b5d2eeb36ca61afbcf2a`,
+  and diff hygiene pass.
+
+  Every project gate ran in immutable verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as the caller's numeric non-root UID/GID with no pull or network, read-only
+  root/repository with recursive bind inclusion disabled, all capabilities
+  dropped, no-new-privileges, finite PID/memory/no-swap/CPU/descriptor/core/
+  file-size limits, bounded noexec tmpfs, and no Docker socket, device, port, or
+  host namespace mount. Each outer Docker call used a fresh mode-0700 private
+  client directory containing only canonical-empty mode-0600 configuration;
+  that file and directory were exactly unlinked/removed after the call. The
+  outer verifier removed only its own disposable container.
+
+  Three preliminary checker attempts are retained rather than hidden. The first
+  focused self-test exposed an ineffective workspace-name mutation because an
+  unchanged call site still satisfied a substring assertion; the assertion now
+  binds the exact function definition, and the complete 16-case focused set
+  restarted. The first workspace baseline used a finite 256-KiB file-size
+  ceiling that was too small for this verifier and stopped with `EFBIG` before
+  validation; it was rerun under the repository's established finite 128-GiB
+  ceiling. The next baseline exposed one new checker call to a nonexistent
+  generic `require` helper; the checker now uses the verifier's native explicit
+  failure form, after which baseline and the complete catalog restarted from
+  mutation one. These were verifier-development/confinement defects, not
+  cleanup, process, libvirt, filesystem, Windows, host, or service execution.
+
+  No cleanup mode, process signal, libvirt query/control, pathname deletion,
+  helper workload, KVM/Windows operation, package/artifact builder, root
+  fixture, release transaction, installed/native/device test, or external
+  review is claimed here.
+
+  Exact cold R-B2/R-B10 artifacts, remaining native/installed/device evidence,
+  fresh independent reproduction where separately named, and R-V3 external
+  review remain open. The broader Ralph-loop goal remains active.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -13606,9 +13701,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-89f3f8e26b495a684cf4cf2a9647c530a23cbca07a74620ffe022debbc339b6f  requirements.html
+fcfbc395e0e61eb5eb8fb1f09afbbc8e8dc219556435b5d2eeb36ca61afbcf2a  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dp, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#269. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dq, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#270. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

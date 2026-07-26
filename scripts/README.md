@@ -30,7 +30,7 @@ online-fetch.sh     # once, or on a pins.env change — the ONLY networked step 
 build-debian.sh     # per build, offline (--network=none) — the one x86_64 .deb
 build-android.sh    # per build, offline — app + androidTest .apk pair (self-signed local key, R-B2)
 provision-windows-vm.sh + build-windows.ps1   # KVM Win11 guest (§12.2) — .exe/.msi
-cleanup.sh          # reversible-only teardown (R-B11)
+cleanup.sh          # explicit manifest-backed host reversal (R-B11)
 ```
 
 Build environments are **ephemeral instances of an immutable, pinned template**
@@ -43,6 +43,12 @@ Container processes and images are owned by the exact transaction that creates
 them. `cleanup.sh` does not enumerate or remove daemon-global containers or
 images by a shared name prefix; intentionally retained maintenance candidates
 remain explicit acquisition state rather than guessed cleanup targets.
+The same rule applies to processes, session-libvirt domains, and filesystem
+paths: the default cleanup mode does not infer ownership from a PID file, a
+domain-name prefix, or a directory pathname. Current build transactions close
+their exact retained process/domain/state identities themselves. Legacy
+unowned leftovers require explicit operator reconciliation rather than a
+best-effort destructive sweep.
 
 ## Files
 
@@ -52,7 +58,7 @@ remain explicit acquisition state rather than guessed cleanup targets.
 | `lib.sh` | Shared helpers: source `pins.env`, fail-loud asserts (`die`/`require_cmd`/`assert_version`), SHA-256 verify (rejects the R-B12 sentinel), offline guards, repo-state asserts. | **Done** |
 | `online-fetch.sh` | The one networked script → git-ignored `./online`, every artifact SHA-256-checked (R-B10): `cargo vendor --locked`, the toolchains/SDKs/vcpkg/FRB, digest-pinned base images. Idempotent; aborts on the R-B12 sentinel. | **Done** |
 | `host-provision.sh` | Additive, idempotent host runtimes (docker pre-existing; qemu-system-x86 plus session-libvirt client/driver pieces, swtpm, and OVMF for the Win VM). It refuses system libvirt default networking, audits for virbr0/dnsmasq/IP-forwarding, installs only what's absent, and records to `.harness-state/provisioned` (outside `./online`, per R-B11's parenthetical). | **Done** |
-| `cleanup.sh` | Reversible-only VM/host teardown — default retains the legacy direct-QEMU/session-libvirt/overlay cleanup and performs no daemon-global container or image inventory/deletion; `--build-host-network` manifest-gates old harness-created system-libvirt default-network teardown; `--reverse-host` removes only recorded packages, fail-closed if the manifest is absent (R-B11/R-B11a/R-S11dp). | **Done** |
+| `cleanup.sh` | Explicit manifest-backed host teardown — default performs no mutation because ephemeral process/domain/path state belongs to its creating transaction; `--build-host-network` manifest-gates old harness-created system-libvirt default-network teardown; `--reverse-host` removes only recorded packages, fail-closed if the manifest is absent (R-B11/R-B11a/R-S11dp/R-S11dq). | **Done** |
 | `smoke-debian-systemd-lifecycle.sh` | Installed Debian systemd lifecycle behavior in a disposable, networkless KVM guest: exact package scripts/unit + actual debug RustDesk binary, non-root service child, stop/restart/crash recovery, and separate portable-cgroup survival. The dated Debian base is SHA512-pinned and staged only by `online-fetch.sh --debian-systemd-smoke-image`; no host service/cgroup/root authority is used. | **Done** |
 | `build-debian.sh` | Debian x86_64 `.deb` in a digest-pinned `ubuntu:18.04` image, with no pull/network, numeric non-root execution, a read-only root and online input, an empty read-only tmpfs hiding Git authority, dropped capabilities, no-new-privileges, bounded resources, and a private exact-commit source generation, wrapping `build.py --flutter --unix-file-copy-paste` (software codec, R-R2b). Env-validates, vendored-offline, SHA-256 + independent-source double-build determinism (R-B2). One binary — viewer + `--server` by argv. | **Done** |
 | `build-android.sh` | Android aarch64 app `.apk` plus matching isolated-service `androidTest` smoke `.apk` in digest-pinned `ubuntu:24.04`, offline: cargo-ndk (ndk_arm64.sh, features flutter — software codec) + `flutter build apk` + `:app:assembleReleaseAndroidTest`, then apksigner v2 with the stable RSA-4096 local key (password via file, R-B2). | **Done** |

@@ -274,6 +274,18 @@ else
   echo "  ok  R-S11ch/R-S11do all Windows helpers refuse root before repository code and use one exact fixed local-Docker authority, immutable non-root/no-pull/networkless/read-only-root/capability-free/resource-bounded execution, recursively-disabled narrow binds, descriptor-safe cleanup, a pinned derived libguestfs kernel, and exact read/write-only KVM golden inspection"
 fi
 
+echo "== (0f1) generic cleanup has no guessed process/domain/path ownership (R-S11dq/R-S11e-135) =="
+r_s11dq=
+if ! python3 scripts/verify-cleanup-authority.py --repo . --self-test; then
+  r_s11dq="$r_s11dq source-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11dq" ]; then
+  echo "  FAIL R-S11dq generic cleanup authority:$r_s11dq"
+  rc=1
+else
+  echo "  ok  R-S11dq no-argument cleanup performs no mutation; exact creator transactions own process/domain/path teardown and ambiguous legacy state requires explicit reconciliation"
+fi
+
 echo "== (0g) Apple conformance verifier authority (R-S11ci/R-S11e-101) =="
 r_s11ci=
 if ! /usr/bin/python3 -I -S scripts/verify-apple-verifier-authority.py --repo . --self-test; then

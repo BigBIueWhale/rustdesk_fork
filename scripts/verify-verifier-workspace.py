@@ -11714,7 +11714,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ds, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
+        "R-S11n through R-S11dt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11795,7 +11795,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ds, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
+        "R-S11n through R-S11dt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -11974,7 +11974,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ds, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
+        "R-S11n through R-S11dt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12108,7 +12108,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ds, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
+        "R-S11n through R-S11dt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12276,7 +12276,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ds, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
+        "R-S11n through R-S11dt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12469,7 +12469,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ds, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
+        "R-S11n through R-S11dt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12803,7 +12803,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ds, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
+        "R-S11n through R-S11dt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -15864,9 +15864,9 @@ def validate_cleanup_docker_authority_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ds, R-SV4a,\n"
+        "R-S11n through R-S11dt, R-SV4a,\n"
         "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
+        "R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -16052,9 +16052,9 @@ def validate_cleanup_process_domain_path_authority_contract(sources):
 
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11ds, R-SV4a,\n"
+        "R-S11n through R-S11dt, R-SV4a,\n"
         "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
+        "R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -16434,6 +16434,7 @@ def validate_windows_golden_domain_authority_contract(sources):
 
 def validate_windows_build_domain_authority_contract(sources):
     build = sources["windows_build"]
+    closure = sources["closure"]
     for text, label in (
         ("export LC_ALL=C", "Windows build fixed control locale"),
         (
@@ -16530,7 +16531,7 @@ def validate_windows_build_domain_authority_contract(sources):
         ),
         (
             "elif ! stop_and_undefine_owned_domain; then",
-            "Windows build process/domain/helper cleanup order",
+            "Windows build process/domain/helper/state cleanup order",
         ),
         ("--network none", "Windows build networkless guest"),
         (
@@ -16633,9 +16634,94 @@ def validate_windows_build_domain_authority_contract(sources):
             "if ! stop_owned_process; then",
             "elif ! stop_and_undefine_owned_domain; then",
             "windows_helper_authority_close",
+            "remove_completed_run_root",
         ),
-        "Windows build process/domain/helper cleanup order",
+        "Windows build process/domain/helper/state cleanup order",
     )
+    for text, label in (
+        (
+            'metadata="$(/usr/bin/stat -c \'%u:%g:%a:%d:%i\' -- "$RUN_ROOT" 2>/dev/null)"',
+            "Windows build run-root ownership/identity sample",
+        ),
+        (
+            'RUN_ROOT_ID="$device:$inode"',
+            "Windows build retained run-root device/inode",
+        ),
+        (
+            '/usr/bin/python3 -I -S "$LIB_DIR/verify-private-tree-closure.py"',
+            "Windows build isolated private-tree closer",
+        ),
+        (
+            '--remove-private-root "$1" --expected-identity "$2"',
+            "Windows build identity-bound private-tree removal",
+        ),
+        (
+            '[ "$RUN_COMPLETE" = 1 ] && [ "$CLEANUP_FAILED" = 0 ]',
+            "Windows build clean completion before run-state removal",
+        ),
+        (
+            "preserving Windows harness state because exact private-tree cleanup failed",
+            "Windows build ambiguous run-state preservation",
+        ),
+        (
+            "run-root substitution self-test deleted a replacement edge",
+            "Windows build replacement-edge rejection fixture",
+        ),
+        (
+            '[ -f "$retained/created.txt" ] && [ -f "$edge/replacement.txt" ]',
+            "Windows build dual-identity preservation fixture",
+        ),
+    ):
+        require_text(build, text, label)
+    for text, label in (
+        (
+            'chmod -R u+rwX "$RUN_ROOT"',
+            "Windows build recursive run-state permission fallback absence",
+        ),
+        (
+            'rm -rf -- "$RUN_ROOT"',
+            "Windows build recursive run-state deletion fallback absence",
+        ),
+    ):
+        require_absent(build, text, label)
+    require_order(
+        build,
+        (
+            'RUN_ROOT="$(mktemp -d "$STATE_DIR/windows-build-$RUN_ID.XXXXXXXX")"',
+            "record_run_root_identity",
+            'assert_safe_path "$RUN_ROOT" "private Windows run state"',
+        ),
+        "Windows build run-root creation identity order",
+    )
+    require_order(
+        build,
+        (
+            'remove_private_root_exact "$RUN_ROOT" "$RUN_ROOT_ID"',
+            '[ ! -e "$RUN_ROOT" ] && [ ! -L "$RUN_ROOT" ]',
+            'RUN_ROOT=""',
+            'RUN_ROOT_ID=""',
+        ),
+        "Windows build exact run-root retirement order",
+    )
+    for text, label in (
+        (
+            "private-tree root edge changed",
+            "Windows build closer root-edge substitution refusal",
+        ),
+        (
+            "private-tree cleanup crosses a mount boundary",
+            "Windows build closer mount-boundary refusal",
+        ),
+        (
+            "private tree contains a non-directory inode linked outside its boundary",
+            "Windows build closer external-link refusal",
+        ),
+        (
+            "private-tree root removal did not consume its authenticated edge",
+            "Windows build closer terminal-edge proof",
+        ),
+    ):
+        require_text(closure, text, label)
 
     requirement = extract_html_requirement(
         sources["requirements"],
@@ -16686,6 +16772,45 @@ def validate_windows_build_domain_authority_contract(sources):
         "Windows build focused gate wiring",
     )
 
+    run_state_requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11dt",
+        "Windows build exact run-state cleanup requirement",
+    )
+    for text, label in (
+        (
+            "Windows build run state is device/inode-owned and removed only after every external authority retires",
+            "Windows build run-state requirement title",
+        ),
+        (
+            "exact device/inode identity immediately after private creation",
+            "Windows build normative run-root identity",
+        ),
+        (
+            "helper Docker/configuration authority",
+            "Windows build normative helper-first cleanup",
+        ),
+        (
+            "MUST NOT</span> fall back to recursive pathname cleanup",
+            "Windows build normative recursive-fallback prohibition",
+        ),
+        (
+            "without invoking the Windows builder main path",
+            "Windows build run-state source-only boundary",
+        ),
+    ):
+        require_text(run_state_requirement, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>273</td>",
+        "Windows build Appendix C #273 disposition",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dt/R-S11e-138 — Windows build run-state cleanup is identity-bound and authority-last",
+        "Windows build run-state hardening-ledger disposition",
+    )
+
     focused = sources["windows_harness_verifier"]
     for text, label in (
         (
@@ -16693,7 +16818,7 @@ def validate_windows_build_domain_authority_contract(sources):
             "Windows build focused lifecycle-order binding",
         ),
         (
-            "process-before-domain-before-helper terminal cleanup",
+            "process-before-domain-before-helper-before-state terminal cleanup",
             "Windows build focused cleanup-order binding",
         ),
         (
@@ -16707,6 +16832,14 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             "Appendix C #272 disposition",
             "Windows build focused Appendix mutation",
+        ),
+        (
+            "exact run-root retirement before authority clearing",
+            "Windows build focused run-root retirement binding",
+        ),
+        (
+            "Appendix C #273 disposition",
+            "Windows build focused run-state Appendix mutation",
         ),
     ):
         require_text(focused, text, label)
@@ -16780,7 +16913,7 @@ def validate_windows_build_domain_authority_contract(sources):
             "Windows build ambiguous-launch mutation",
         ),
         (
-            "Windows build process/domain/helper cleanup order",
+            "Windows build process/domain/helper/state cleanup order",
             "Windows build cleanup-order mutation",
         ),
         (
@@ -16802,6 +16935,30 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             "Windows build hardening-ledger disposition",
             "Windows build ledger mutation",
+        ),
+        (
+            "Windows build retained run-root device/inode",
+            "Windows build run-root identity mutation",
+        ),
+        (
+            "Windows build identity-bound private-tree removal",
+            "Windows build exact run-root removal mutation",
+        ),
+        (
+            "Windows build recursive run-state deletion fallback absence",
+            "Windows build recursive cleanup fallback mutation",
+        ),
+        (
+            "Windows build exact run-state cleanup requirement",
+            "Windows build run-state requirement mutation",
+        ),
+        (
+            "Windows build Appendix C #273 disposition",
+            "Windows build run-state Appendix mutation",
+        ),
+        (
+            "Windows build run-state hardening-ledger disposition",
+            "Windows build run-state ledger mutation",
         ),
     ):
         require_text(mutation_matrix, text, label)
@@ -38948,7 +39105,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11ds, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272",
+            "R-S11n through R-S11dt, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -41909,7 +42066,26 @@ def run_source_mutations(sources):
             "windows_build",
             "elif ! stop_and_undefine_owned_domain; then",
             "if ! stop_and_undefine_owned_domain; then",
-            "Windows build process/domain/helper cleanup order",
+            "Windows build process/domain/helper/state cleanup order",
+        ),
+        (
+            "windows_build",
+            'RUN_ROOT_ID="$device:$inode"',
+            'RUN_ROOT_ID="$RUN_ROOT"',
+            "Windows build retained run-root device/inode",
+        ),
+        (
+            "windows_build",
+            '--remove-private-root "$1" --expected-identity "$2"',
+            'rm -rf -- "$1"',
+            "Windows build identity-bound private-tree removal",
+        ),
+        (
+            "windows_build",
+            'remove_private_root_exact "$RUN_ROOT" "$RUN_ROOT_ID" || return 1',
+            'remove_private_root_exact "$RUN_ROOT" "$RUN_ROOT_ID" || return 1\n'
+            '    rm -rf -- "$RUN_ROOT"',
+            "Windows build recursive run-state deletion fallback absence",
         ),
         (
             "requirements",
@@ -41940,6 +42116,24 @@ def run_source_mutations(sources):
             "R-S11ds/R-S11e-137 — Windows per-build VM owns one exact libvirt UUID",
             "R-S11ds/R-S11e-137 — Windows per-build VM owns a mutable name",
             "Windows build hardening-ledger disposition",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11dt</span>',
+            '<span class="id">R-S11dt-disabled</span>',
+            "Windows build exact run-state cleanup requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>273</td>",
+            "<tr><td>273-disabled</td>",
+            "Windows build Appendix C #273 disposition",
+        ),
+        (
+            "hardening",
+            "R-S11dt/R-S11e-138 — Windows build run-state cleanup is identity-bound and authority-last",
+            "R-S11dt/R-S11e-138 — Windows build run-state cleanup is pathname-owned",
+            "Windows build run-state hardening-ledger disposition",
         ),
         (
             "cleanup",

@@ -39,6 +39,7 @@ FRB_OUTPUTS=(
 )
 
 RUN_ROOT=""
+RUN_ROOT_ID=""
 RUN_ID=""
 SOURCE_SNAPSHOT=""
 SOURCE_COMMIT=""
@@ -87,6 +88,43 @@ assert_disjoint_paths() {
     case "$second/" in
         "$first/"*) die "$second_label must not be beneath $first_label" ;;
     esac
+}
+
+record_run_root_identity() {
+    local resolved metadata owner group mode device inode extra
+    [ -n "$RUN_ROOT" ] || die "private Windows run root is empty"
+    [ -d "$RUN_ROOT" ] && [ ! -L "$RUN_ROOT" ] \
+        || die "private Windows run root is not a real directory"
+    resolved="$(/usr/bin/readlink -f -- "$RUN_ROOT" 2>/dev/null)" \
+        || die "private Windows run root cannot be resolved"
+    [ "$resolved" = "$RUN_ROOT" ] \
+        || die "private Windows run root is not canonical"
+    metadata="$(/usr/bin/stat -c '%u:%g:%a:%d:%i' -- "$RUN_ROOT" 2>/dev/null)" \
+        || die "private Windows run-root identity is unavailable"
+    IFS=: read -r owner group mode device inode extra <<<"$metadata"
+    [ -z "$extra" ] \
+        && [ "$owner" = "$WINDOWS_HELPER_BUILD_UID" ] \
+        && [ "$group" = "$WINDOWS_HELPER_BUILD_GID" ] \
+        && [ "$mode" = 700 ] \
+        || die "private Windows run root is not current-principal mode 0700"
+    [[ "$device" =~ ^[0-9]+$ ]] && [[ "$inode" =~ ^[1-9][0-9]*$ ]] \
+        || die "private Windows run-root identity is malformed"
+    RUN_ROOT_ID="$device:$inode"
+}
+
+remove_private_root_exact() {
+    [ "$#" -eq 2 ] && [ -n "$1" ] && [ -n "$2" ] || return 1
+    /usr/bin/env -i PATH=/usr/bin:/bin \
+        /usr/bin/python3 -I -S "$LIB_DIR/verify-private-tree-closure.py" \
+            --remove-private-root "$1" --expected-identity "$2"
+}
+
+remove_completed_run_root() {
+    [ -n "$RUN_ROOT" ] && [ -n "$RUN_ROOT_ID" ] || return 1
+    remove_private_root_exact "$RUN_ROOT" "$RUN_ROOT_ID" || return 1
+    { [ ! -e "$RUN_ROOT" ] && [ ! -L "$RUN_ROOT" ]; } || return 1
+    RUN_ROOT=""
+    RUN_ROOT_ID=""
 }
 
 verify_wix_nuget_packages() {
@@ -381,14 +419,16 @@ cleanup() {
         CLEANUP_FAILED=1
     fi
 
-    if [ "$RUN_COMPLETE" = 1 ] && [ "$CLEANUP_FAILED" = 0 ] && [ -n "$RUN_ROOT" ]; then
-        chmod -R u+rwX "$RUN_ROOT" 2>/dev/null || :
-        rm -rf -- "$RUN_ROOT" || CLEANUP_FAILED=1
-    elif [ -n "$RUN_ROOT" ] && [ -d "$RUN_ROOT" ]; then
-        warn "retaining failed Windows harness state at $RUN_ROOT"
-    fi
     if ! windows_helper_authority_close; then
         CLEANUP_FAILED=1
+    fi
+    if [ "$RUN_COMPLETE" = 1 ] && [ "$CLEANUP_FAILED" = 0 ] && [ -n "$RUN_ROOT" ]; then
+        if ! remove_completed_run_root; then
+            CLEANUP_FAILED=1
+            warn "preserving Windows harness state because exact private-tree cleanup failed"
+        fi
+    elif [ -n "$RUN_ROOT" ]; then
+        warn "retaining failed or unreconciled Windows harness state at $RUN_ROOT"
     fi
     if [ "$CLEANUP_FAILED" != 0 ] && [ "$status" = 0 ]; then
         status=1
@@ -1309,10 +1349,35 @@ publish_result() {
     )
 }
 
+run_root_cleanup_self_test() {
+    local fixture="$RUN_ROOT/run-root-cleanup-authority"
+    local edge="$fixture/created"
+    local retained="$fixture/created.retained"
+    local original_id replacement_id
+    mkdir -m 0700 "$fixture" "$edge"
+    printf 'created\n' >"$edge/created.txt"
+    original_id="$(/usr/bin/stat -c '%d:%i' -- "$edge")"
+    mv -- "$edge" "$retained"
+    mkdir -m 0700 "$edge"
+    printf 'replacement\n' >"$edge/replacement.txt"
+    if remove_private_root_exact "$edge" "$original_id" >/dev/null 2>&1; then
+        die "run-root substitution self-test deleted a replacement edge"
+    fi
+    [ -f "$retained/created.txt" ] && [ -f "$edge/replacement.txt" ] \
+        || die "run-root substitution self-test did not preserve both identities"
+    replacement_id="$(/usr/bin/stat -c '%d:%i' -- "$edge")"
+    remove_private_root_exact "$edge" "$replacement_id" \
+        || die "run-root substitution self-test could not retire the replacement independently"
+    remove_private_root_exact "$retained" "$original_id" \
+        || die "run-root substitution self-test could not retire the created tree independently"
+    rmdir -- "$fixture"
+}
+
 harness_self_test() {
     require_cmd python3 sha256sum setsid timeout
     RUN_ROOT="$(mktemp -d /tmp/rustdesk-windows-harness-test.XXXXXXXX)"
     chmod 0700 "$RUN_ROOT"
+    record_run_root_identity
 
     assert_disjoint_paths "$RUN_ROOT/state" "state" "$RUN_ROOT/output" "output"
     if (assert_disjoint_paths "$RUN_ROOT/state" "state" "$RUN_ROOT/state" "output") >/dev/null 2>&1; then
@@ -1396,6 +1461,7 @@ harness_self_test() {
     [ -z "$CURRENT_VIRT_PID" ] && [ -z "$CURRENT_VIRT_START" ] \
         || die "owned process-group deadline self-test retained stale identity"
 
+    run_root_cleanup_self_test
     RUN_COMPLETE=1
     printf 'build-windows-vm self-test: ok\n'
 }
@@ -1406,6 +1472,7 @@ main() {
     RUN_ID="$(</proc/sys/kernel/random/uuid)"
     assert_uuid "$RUN_ID"
     RUN_ROOT="$(mktemp -d "$STATE_DIR/windows-build-$RUN_ID.XXXXXXXX")"
+    record_run_root_identity
     assert_safe_path "$RUN_ROOT" "private Windows run state"
     snapshot_golden
     if [ -z "$ONLINE_SNAPSHOT_PARENT" ]; then

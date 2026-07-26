@@ -13195,6 +13195,106 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   slice. No host RustDesk/service/configuration/firewall/network state was
   inspected or mutated. Those evidence obligations and the broader
   Ralph-loop goal remain open.
+- **R-S11dt/R-S11e-138 — Windows build run-state cleanup is identity-bound and authority-last —
+  SOURCE IMPLEMENTED AND CONFINED SOURCE/MUTATION VERIFIED 2026-07-26;
+  EXECUTABLE WINDOWS-BUILD/LIBVIRT/VM EVIDENCE PENDING.**
+  Platform: the unprivileged Linux Windows-build host. Endpoint/action:
+  `scripts/build-windows-vm.sh` private run-root creation and successful EXIT
+  cleanup after its per-pass processes/domains/helper workloads have finished.
+  Boundary: a created private directory identity plus still-live external
+  process/libvirt/Docker authority ↔ recursive deletion of source/input/disk/
+  artifact/diagnostic state and the final build verdict.
+
+  Proven old path and history: `RUN_ROOT` was a private `mktemp` directory but
+  only its pathname was retained. On completed builds, EXIT suppressed every
+  `chmod -R u+rwX` error and issued `rm -rf -- "$RUN_ROOT"` before calling
+  `windows_helper_authority_close`. It neither authenticated the terminal
+  directory edge nor proved a same-filesystem, no-special-node,
+  no-external-hardlink tree before recursive deletion. A renamed/replaced edge
+  could therefore redirect cleanup, and a nested mount or externally linked
+  inode could widen its authority. If helper Docker/configuration retirement
+  then failed, the transaction became a failure only after its retained
+  source, VM-media, result, reproducibility, and diagnostic evidence had
+  already been destroyed. `git blame` traces that block to `57bcb529`
+  (`Harden privileged IPC and release authority`). The builder refuses UID and
+  primary GID zero, so this was same-principal/build-resource destructive
+  ownership, cleanup-order, and failure-evidence debt—not evidence of host-root
+  compromise or that the path ran.
+
+  Authority model and source closure: immediately after each production or
+  behavioral-test `mktemp`, the harness proves a canonical non-symlink
+  current-principal mode-0700 directory and records its exact device/inode.
+  EXIT first terminates and reaps only the retained `virt-install` process
+  group, terminally retires only the committed UUID-owned domain, and closes
+  the Windows-helper Docker/configuration authority. An error in any of those
+  stages preserves the run state.
+
+  Only a completed otherwise-clean transaction may then call the existing
+  isolated-Python `verify-private-tree-closure.py --remove-private-root` path
+  with the recorded identity. That closer walks from retained parent/root
+  descriptors without following symlinks; rechecks the protected parent,
+  terminal root edge, mount IDs, device IDs, directory identities, and bounded
+  depth/entry inventory; rejects special nodes and every non-directory inode
+  linked outside the tree; retains inode descriptors through unlink; removes
+  the authenticated root edge last; and fsyncs the parent. The shell proves
+  the pathname absent before clearing `RUN_ROOT`/`RUN_ROOT_ID`. A mismatch or
+  cleanup error fails and preserves ambiguous state. There is no recursive
+  pathname or suppressed-permission fallback.
+
+  The bounded harness self-test now renames the created fixture root, installs
+  a separate valid mode-0700 replacement at the old path, proves cleanup under
+  the original identity rejects and preserves both trees, and then retires
+  each tree independently under its own identity. R-S11dt and Appendix C #273
+  make the contract normative. The focused Windows harness verifier and
+  independent workspace verifier bind independent source/mutation contracts.
+  Neither invokes the Windows builder main path, Docker/helper workloads,
+  `virt-install`, `virsh`, libvirt, KVM, a Windows VM, cleanup against host
+  state, root fixtures, or any host RustDesk/service/firewall/network
+  operation.
+
+  Confined evidence: the focused Windows harness checker passes and rejects
+  all 181 deliberate source mutations; all four bounded behavioral suites
+  pass, including actual successful run-root retirement and the new
+  replacement-edge preservation fixture. Its existing MSI suite imports only
+  the local pinned `olefile` wheel after exact SHA-256 proof. The independent
+  workspace baseline passes, and its complete 2,447-entry in-memory semantic
+  source-mutation catalog passes from mutation one. The shared private-tree
+  closer's complete behavioral self-test passes independently. Adjacent
+  golden-domain, generic-cleanup, Windows-helper, release-parent, and Debian
+  systemd-lifecycle gates reject 32, 16, 78, 27, and 44 mutations
+  respectively. Bash/Python syntax, diff hygiene, native-codec normal/negative
+  checks, requirements SHA-256
+  `e23120e1b73da42ab6580af6f908a233aa78ba21def4de30d22af1012d12b4a2`,
+  and active scope through R-S11dt/Appendix C #273 pass.
+
+  Every counted executable check ran only in immutable verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric UID/GID 1000:1000, no-pull/networkless/read-only-root/
+  read-only-repository, recursive bind inclusion disabled, all capabilities
+  dropped, no-new-privileges, finite PID/memory/no-swap/CPU/descriptor/core/
+  file-size/tmpfs bounds, and no Docker/libvirt/service-manager socket, host
+  namespace, device, port, or host-configuration mount. Each outer Docker
+  client call used a fresh mode-0700 canonical-empty private configuration
+  whose mode-0600 file and directory were exactly removed.
+
+  Preliminary verifier failures are retained rather than hidden. The first
+  helper-before-state mutation rewrote the cleanup block but left the ordering
+  token visible, so the focused verifier correctly reported that the mutation
+  was accepted. Its first correction renamed the token by adding a suffix,
+  which remained a substring match and was likewise correctly rejected as a
+  weak mutation. Replacing it with a disjoint token made the mutation
+  load-bearing; the complete focused suite then restarted from mutation one
+  and passed. These were test-fixture defects, not production cleanup
+  executions.
+
+  No Windows builder main path, Docker/helper workload inside the verifier,
+  `virt-install`, `virsh`, libvirt query/control, KVM/VM operation, cleanup
+  against host state, cold R-B2/R-B10 transaction, root fixture, installed/
+  native/device behavior, independent reproduction, or R-V3 external review
+  is claimed by this source slice. No host RustDesk/service/configuration/
+  firewall/network state was inspected or mutated. Those obligations and the
+  broader Ralph-loop goal remain open. Exact publication evidence will be
+  added only after the verified tree is committed and pushed.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -13912,9 +14012,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-9242be5a9a72e3485022604e6f40d8f3cac8001a4bc6a2e444c591fafb3f5325  requirements.html
+e23120e1b73da42ab6580af6f908a233aa78ba21def4de30d22af1012d12b4a2  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11ds, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#272. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dt, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#273. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

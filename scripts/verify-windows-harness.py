@@ -26,6 +26,7 @@ FILES = {
     "resource": "res/windows_resource.rs",
     "host": "scripts/build-windows-vm.sh",
     "runtime": "scripts/windows-helper-runtime.sh",
+    "closure": "scripts/verify-private-tree-closure.py",
     "offline": "scripts/windows-offline-manifest.py",
     "frb": "scripts/frb-codegen.sh",
     "guest": "scripts/run-build.ps1",
@@ -307,6 +308,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     resource = sources["resource"]
     host = sources["host"]
     runtime = sources["runtime"]
+    closure = sources["closure"]
     offline = sources["offline"]
     frb = sources["frb"]
     guest = sources["guest"]
@@ -505,6 +507,12 @@ def validate_sources(sources: dict[str, str]) -> None:
     prepare_overlay = shell_function(host, "prepare_overlay")
     extract_and_validate = shell_function(host, "extract_and_validate")
     host_main = shell_function(host, "main")
+    run_root_identity = shell_function(host, "record_run_root_identity")
+    exact_private_root_removal = shell_function(host, "remove_private_root_exact")
+    completed_run_root_removal = shell_function(host, "remove_completed_run_root")
+    cleanup = shell_function(host, "cleanup")
+    harness_self_test = shell_function(host, "harness_self_test")
+    run_root_cleanup_self_test = shell_function(host, "run_root_cleanup_self_test")
 
     require(host, "CREATE_TIMEOUT_SECONDS=300", "five-minute VM creation bound")
     require(host, "CONTROL_TIMEOUT_SECONDS=30", "bounded libvirt control timeout")
@@ -758,19 +766,129 @@ def validate_sources(sources: dict[str, str]) -> None:
         if forbidden in host:
             raise VerificationError(f"forbidden {description}: {forbidden}")
     require_order(
-        shell_function(host, "cleanup"),
+        cleanup,
         (
             "stop_owned_process",
             "stop_and_undefine_owned_domain",
             "windows_helper_authority_close",
+            "remove_completed_run_root",
         ),
-        "process-before-domain-before-helper terminal cleanup",
+        "process-before-domain-before-helper-before-state terminal cleanup",
     )
     require(
-        shell_function(host, "cleanup"),
+        cleanup,
         "elif ! stop_and_undefine_owned_domain; then",
         "domain cleanup blocked by inconclusive process cleanup",
     )
+    require(
+        cleanup,
+        '[ "$RUN_COMPLETE" = 1 ] && [ "$CLEANUP_FAILED" = 0 ]',
+        "completed clean transaction before run-state cleanup",
+    )
+    require(
+        cleanup,
+        "preserving Windows harness state because exact private-tree cleanup failed",
+        "run-state cleanup failure preservation",
+    )
+    for forbidden, description in (
+        ('chmod -R u+rwX "$RUN_ROOT"', "recursive run-state permission mutation"),
+        ('rm -rf -- "$RUN_ROOT"', "recursive pathname run-state deletion"),
+    ):
+        if forbidden in cleanup:
+            raise VerificationError(f"forbidden {description}: {forbidden}")
+    for literal, description in (
+        ('resolved="$(/usr/bin/readlink -f -- "$RUN_ROOT" 2>/dev/null)"',
+         "canonical run-root proof"),
+        ('metadata="$(/usr/bin/stat -c \'%u:%g:%a:%d:%i\' -- "$RUN_ROOT" 2>/dev/null)"',
+         "run-root ownership and identity sample"),
+        ('[ "$owner" = "$WINDOWS_HELPER_BUILD_UID" ]',
+         "run-root owner proof"),
+        ('[ "$group" = "$WINDOWS_HELPER_BUILD_GID" ]',
+         "run-root group proof"),
+        ('[ "$mode" = 700 ]',
+         "run-root private mode proof"),
+        ('RUN_ROOT_ID="$device:$inode"', "retained run-root device/inode"),
+    ):
+        require(run_root_identity, literal, description)
+    require(
+        exact_private_root_removal,
+        "/usr/bin/env -i PATH=/usr/bin:/bin",
+        "closed run-root cleanup environment",
+    )
+    require(
+        exact_private_root_removal,
+        '/usr/bin/python3 -I -S "$LIB_DIR/verify-private-tree-closure.py"',
+        "isolated descriptor-safe run-root closer",
+    )
+    require(
+        exact_private_root_removal,
+        '--remove-private-root "$1" --expected-identity "$2"',
+        "identity-bound run-root removal dispatch",
+    )
+    require_order(
+        completed_run_root_removal,
+        (
+            '[ -n "$RUN_ROOT" ] && [ -n "$RUN_ROOT_ID" ]',
+            'remove_private_root_exact "$RUN_ROOT" "$RUN_ROOT_ID"',
+            '[ ! -e "$RUN_ROOT" ] && [ ! -L "$RUN_ROOT" ]',
+            'RUN_ROOT=""',
+            'RUN_ROOT_ID=""',
+        ),
+        "exact run-root retirement before authority clearing",
+    )
+    require_order(
+        host_main,
+        (
+            'RUN_ROOT="$(mktemp -d "$STATE_DIR/windows-build-$RUN_ID.XXXXXXXX")"',
+            "record_run_root_identity",
+            'assert_safe_path "$RUN_ROOT" "private Windows run state"',
+        ),
+        "production run-root creation and identity binding",
+    )
+    require_order(
+        harness_self_test,
+        (
+            'RUN_ROOT="$(mktemp -d /tmp/rustdesk-windows-harness-test.XXXXXXXX)"',
+            'chmod 0700 "$RUN_ROOT"',
+            "record_run_root_identity",
+            "run_root_cleanup_self_test",
+            "RUN_COMPLETE=1",
+        ),
+        "self-test run-root binding and substitution fixture",
+    )
+    for literal, description in (
+        ('mv -- "$edge" "$retained"', "run-root replacement fixture"),
+        ('remove_private_root_exact "$edge" "$original_id"',
+         "wrong-identity cleanup rejection fixture"),
+        ("run-root substitution self-test deleted a replacement edge",
+         "replacement-deletion failure marker"),
+        ('[ -f "$retained/created.txt" ] && [ -f "$edge/replacement.txt" ]',
+         "created and replacement identity preservation proof"),
+        ('remove_private_root_exact "$edge" "$replacement_id"',
+         "independent replacement retirement"),
+        ('remove_private_root_exact "$retained" "$original_id"',
+         "independent created-tree retirement"),
+    ):
+        require(run_root_cleanup_self_test, literal, description)
+    require_exact_count(
+        host,
+        "record_run_root_identity",
+        3,
+        "one run-root identity function and two creation bindings",
+    )
+    for literal, description in (
+        ('modes.add_argument("--remove-private-root")',
+         "private-tree exact-root removal mode"),
+        ("private-tree root edge changed",
+         "private-tree root edge-substitution refusal"),
+        ("private-tree cleanup crosses a mount boundary",
+         "private-tree mount-boundary refusal"),
+        ("private tree contains a non-directory inode linked outside its boundary",
+         "private-tree external-link refusal"),
+        ("private-tree root removal did not consume its authenticated edge",
+         "private-tree terminal edge-consumption proof"),
+    ):
+        require(closure, literal, description)
     require(host, "--network none", "networkless VM")
     require(host, "--graphics vnc,listen=127.0.0.1", "loopback-only Windows VM console")
 
@@ -813,6 +931,37 @@ def validate_sources(sources: dict[str, str]) -> None:
         verify,
         "python3 scripts/verify-windows-harness.py --repo . --self-test",
         "R-S11ds focused gate wiring",
+    )
+
+    run_state_requirement = html_requirement(requirements, "R-S11dt")
+    for literal, description in (
+        (
+            "Windows build run state is device/inode-owned and removed only after every external authority retires",
+            "R-S11dt requirement title",
+        ),
+        (
+            "exact device/inode identity immediately after private creation",
+            "normative run-root creation identity",
+        ),
+        (
+            "helper Docker/configuration authority",
+            "normative helper-first retirement",
+        ),
+        (
+            "MUST NOT</span> fall back to recursive pathname cleanup",
+            "normative no-pathname-fallback boundary",
+        ),
+        (
+            "without invoking the Windows builder main path",
+            "source-only run-state verification boundary",
+        ),
+    ):
+        require(run_state_requirement, literal, description)
+    require(requirements, "<tr><td>273</td>", "Appendix C #273 disposition")
+    require(
+        hardening,
+        "R-S11dt/R-S11e-138 — Windows build run-state cleanup is identity-bound and authority-last",
+        "R-S11dt hardening-ledger disposition",
     )
 
     require(preflight, '[ -f "$GOLDEN" ] && [ ! -L "$GOLDEN" ]', "regular golden source")
@@ -2030,10 +2179,69 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             'virsh_bounded undefine "$CURRENT_DOMAIN" --nvram',
         ),
         (
-            "process-before-domain-before-helper terminal cleanup",
+            "process-before-domain-before-helper-before-state terminal cleanup",
             "host",
             "elif ! stop_and_undefine_owned_domain; then",
             "if ! stop_and_undefine_owned_domain; then",
+        ),
+        (
+            "run-root retained device/inode identity",
+            "host",
+            'RUN_ROOT_ID="$device:$inode"',
+            'RUN_ROOT_ID="$RUN_ROOT"',
+        ),
+        (
+            "production run-root creation identity binding",
+            "host",
+            'RUN_ROOT="$(mktemp -d "$STATE_DIR/windows-build-$RUN_ID.XXXXXXXX")"\n'
+            "    record_run_root_identity",
+            'RUN_ROOT="$(mktemp -d "$STATE_DIR/windows-build-$RUN_ID.XXXXXXXX")"\n'
+            "    true # run-root identity not recorded",
+        ),
+        (
+            "helper-before-run-state cleanup",
+            "host",
+            "if ! windows_helper_authority_close; then",
+            "if ! retire_windows_helper_authority; then",
+        ),
+        (
+            "identity-bound run-root removal",
+            "host",
+            '--remove-private-root "$1" --expected-identity "$2"',
+            'rm -rf -- "$1"',
+        ),
+        (
+            "run-root removal isolated Python",
+            "host",
+            '/usr/bin/python3 -I -S "$LIB_DIR/verify-private-tree-closure.py"',
+            '/usr/bin/python3 "$LIB_DIR/verify-private-tree-closure.py"',
+        ),
+        (
+            "run-root removal closed environment",
+            "host",
+            "/usr/bin/env -i PATH=/usr/bin:/bin",
+            "/usr/bin/env PATH=/usr/bin:/bin",
+        ),
+        (
+            "run-root authority clearing after absence",
+            "host",
+            '{ [ ! -e "$RUN_ROOT" ] && [ ! -L "$RUN_ROOT" ]; } || return 1\n'
+            '    RUN_ROOT=""\n'
+            '    RUN_ROOT_ID=""',
+            'RUN_ROOT=""\n'
+            '    RUN_ROOT_ID=""',
+        ),
+        (
+            "run-root substitution preservation fixture",
+            "host",
+            "run-root substitution self-test deleted a replacement edge",
+            "run-root substitution self-test accepted replacement deletion",
+        ),
+        (
+            "private-tree mount-boundary semantics",
+            "closure",
+            "private-tree cleanup crosses a mount boundary",
+            "private-tree cleanup accepts a mount boundary",
         ),
         (
             "owned session",
@@ -2177,6 +2385,30 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "verify",
             "python3 scripts/verify-windows-harness.py --repo . --self-test",
             "true # Windows per-build domain gate removed",
+        ),
+        (
+            "R-S11dt requirement",
+            "requirements",
+            '<span class="id">R-S11dt</span>',
+            '<span class="id">R-S11dt-disabled</span>',
+        ),
+        (
+            "normative no-pathname-fallback boundary",
+            "requirements",
+            "MUST NOT</span> fall back to recursive pathname cleanup",
+            "MAY</span> fall back to recursive pathname cleanup",
+        ),
+        (
+            "Appendix C #273 disposition",
+            "requirements",
+            "<tr><td>273</td>",
+            "<tr><td>273-disabled</td>",
+        ),
+        (
+            "R-S11dt hardening-ledger disposition",
+            "hardening",
+            "R-S11dt/R-S11e-138 — Windows build run-state cleanup is identity-bound and authority-last",
+            "R-S11dt/R-S11e-138 — Windows build run-state cleanup is pathname-owned",
         ),
         (
             "host reserved device namespace",

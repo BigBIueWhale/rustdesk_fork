@@ -541,22 +541,55 @@ lease/ABA behavior plus focused/shared/independent source and mutation gates bin
 Installed/native behavior, current APK/device reproduction, and exact cold R-B2/R-B10 release evidence remain
 open under their existing rows.
 
+Follow-up correction (2026-07-27), **R-S11ed/R-S11e-148 delayed OS-password input exact-round ownership**:
+the native viewer's manual OS-password automation still cloned `Session` into an unretained
+`std::thread`. It sent activation mouse events around three 50-ms sleeps, waited another 1.2 seconds, and then
+sent the password and Return. Every event called `Interface::send` on that cloned session, whose `sender` slot is
+replaced for each outgoing connection round. Although explicit reconnect closes and joins the prior I/O worker
+before launching its successor, that worker did not own this detached helper. An old helper could therefore wake
+after reconnect, resolve the replacement sender, and inject the old activation/password sequence into the next
+round. This source mechanism is shared by native Android, iOS, and desktop Flutter viewers; Android's persistent
+process amplifies the stale lifetime, while the web bridge bypasses this Rust path. It is not claimed as the exact
+cause of the reported screen-control hang, a controlled-side `MainService` defect, exploitation, public
+exposure, root acquisition, container escape, or any host RustDesk/service/firewall/network change.
+
+The UI now submits one typed `Data::InputOsPassword` request through the sender installed for its current round.
+Only the connected `Remote` that receives that request starts the sequence. Before spawning, that current
+`Remote` synchronously constructs the immutable mouse/key messages. It retains the sole
+`OwnedInputOsPasswordTask`; the async future captures only that prepared bundle and the exact
+`Remote::sender`, with no `Session`, `Interface`, handler, or other mutable connection-state capability. None of
+its delayed events calls `Session::send` or looks up mutable session state. The original activation order,
+modifier mapping, three
+50-ms delays, 1.2-second delay, optional password behavior, and Return event remain. A closed exact channel logs a
+noncredential diagnostic and terminates the sequence. A second request first aborts and awaits the prior task;
+all normal round exits call the same abort-and-await path before `connection_round_owner.finish(round)`, so
+reconnect cannot install its replacement I/O worker while stale input work remains owned by the old round.
+Exceptional `Remote` drop aborts the retained task, and the exact captured channel is independently incapable of
+delivering to a replacement. The implementation uses Tokio's existing runtime and async sleeps, with no nested
+runtime, `spawn_blocking`, native helper thread, or Android service-lifetime change. The focused behavior
+regression proves that replacement does not start until cancellation has dropped the old sender, and that the
+replacement receives only its own task's event. Focused/shared/independent source and deliberate-mutation gates
+bind R-S11ed and Appendix C #283. Installed native behavior, current APK/device reproduction, and exact cold
+R-B2/R-B10 release evidence remain open under their existing rows.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust
 library, and then links and runs the generated-bridge mobile-session lifecycle test set with those same features.
-All seven generated-bridge mobile-session regressions pass, and the exact clipboard-lease regression runs
-separately under the same shipped feature set. The counted 2026-07-27 transaction used immutable Debian builder
+All seven generated-bridge mobile-session regressions pass, and the exact clipboard-lease and delayed
+OS-password-input regressions run separately under the same shipped feature set. The counted 2026-07-27
+transaction used immutable Debian builder
 `sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2` as UID/GID
 1000:1000 with no network or pull, a read-only root, dropped capabilities, no-new-privileges, finite resources,
 private source/offline-input snapshots, and exact closure digest
 `a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`. It completed with zero analyzer
 errors, all four Flutter test files passing, the shipped-feature Rust library check passing, all seven
 generated-bridge mobile lifecycle tests passing, and
-`client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop` passing. The focused ownership
-verifier additionally rejected all 185 deliberate mutations after the compiled peer-handler lease handoff was
-made explicit. No APK, device, installed-service, listener, or release-artifact result is inferred from those
-source/integration checks. That executable
+`client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop` plus
+`client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement`
+passing. The focused ownership verifier additionally rejected all 207 deliberate mutations, and the independent
+workspace verifier's complete in-memory source-mutation catalog passed. No APK, device, installed-service,
+listener, or release-artifact result is inferred from those source/integration checks. That executable
 test also exposed an older Linux release-link defect: the pinned Debian builder's libc did not export the
 `renameat2` wrapper used by durable service-record publication. The call now uses the Linux `SYS_renameat2`
 syscall directly, preserving `RENAME_NOREPLACE`, errno handling, and the existing `ENOSYS`/`EINVAL` fallback; the
@@ -14958,7 +14991,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-07c51667a61ae5ea9ea94b7018985fb5183868fa8d8f982f1dcabc82603f9e8f  requirements.html
+9c423a65b9cfb8bef310bd973b68c76f0113d0592c0749e6e63b0cbf4b23de28  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -14967,3 +15000,4 @@ by the R-B2 manifest.
 The same identity additionally binds R-S11ea and Appendix C #280.
 The same identity additionally binds R-S11eb and Appendix C #281.
 The same identity additionally binds R-S11ec and Appendix C #282.
+The same identity additionally binds R-S11ed and Appendix C #283.

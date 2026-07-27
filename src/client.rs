@@ -2975,7 +2975,21 @@ pub fn send_mouse(
     command: bool,
     interface: &impl Interface,
 ) {
-    let mut msg_out = Message::new();
+    interface.send(Data::Message(new_mouse_message(
+        mask, x, y, alt, ctrl, shift, command, interface,
+    )));
+}
+
+fn new_mouse_message(
+    mask: i32,
+    x: i32,
+    y: i32,
+    alt: bool,
+    ctrl: bool,
+    shift: bool,
+    command: bool,
+    interface: &impl Interface,
+) -> Message {
     let mut mouse_event = MouseEvent {
         mask,
         x,
@@ -3002,8 +3016,9 @@ pub fn send_mouse(
         mouse_event.y *= factor;
     }
     interface.swap_modifier_mouse(&mut mouse_event);
+    let mut msg_out = Message::new();
     msg_out.set_mouse_event(mouse_event);
-    interface.send(Data::Message(msg_out));
+    msg_out
 }
 
 #[inline]
@@ -3032,81 +3047,120 @@ pub fn send_pointer_device_event(
     interface.send(Data::Message(msg_out));
 }
 
-/// Activate OS by sending mouse movement.
-///
-/// # Arguments
-///
-/// * `interface` - The interface for sending data.
-/// * `send_left_click` - Whether to send a click event.
-fn activate_os(interface: &impl Interface, send_left_click: bool) {
-    let left_down = MOUSE_BUTTON_LEFT << 3 | MOUSE_TYPE_DOWN;
-    let left_up = MOUSE_BUTTON_LEFT << 3 | MOUSE_TYPE_UP;
-    let right_down = MOUSE_BUTTON_RIGHT << 3 | MOUSE_TYPE_DOWN;
-    let right_up = MOUSE_BUTTON_RIGHT << 3 | MOUSE_TYPE_UP;
-    send_mouse(left_up, 0, 0, false, false, false, false, interface);
-    std::thread::sleep(Duration::from_millis(50));
-    send_mouse(0, 0, 0, false, false, false, false, interface);
-    std::thread::sleep(Duration::from_millis(50));
-    send_mouse(0, 3, 3, false, false, false, false, interface);
-    let (click_down, click_up) = if send_left_click {
-        (left_down, left_up)
+fn send_os_password_input(
+    sender: &hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,
+    message: Message,
+) -> bool {
+    if sender.send(Data::Message(message)).is_ok() {
+        true
     } else {
-        (right_down, right_up)
-    };
-    std::thread::sleep(Duration::from_millis(50));
-    send_mouse(click_down, 0, 0, false, false, false, false, interface);
-    send_mouse(click_up, 0, 0, false, false, false, false, interface);
-    /*
-    let mut key_event = KeyEvent::new();
-    // do not use Esc, which has problem with Linux
-    key_event.set_control_key(ControlKey::RightArrow);
-    key_event.press = true;
-    let mut msg_out = Message::new();
-    msg_out.set_key_event(key_event.clone());
-    interface.send(Data::Message(msg_out.clone()));
-    */
-}
-
-/// Input the OS's password.
-///
-/// # Arguments
-///
-/// * `p` - The password.
-/// * `activate` - Whether to activate OS.
-/// * `interface` - The interface for sending data.
-pub fn input_os_password(p: String, activate: bool, interface: impl Interface) {
-    std::thread::spawn(move || {
-        _input_os_password(p, activate, interface);
-    });
-}
-
-/// Input the OS's password.
-///
-/// # Arguments
-///
-/// * `p` - The password.
-/// * `activate` - Whether to activate OS.
-/// * `interface` - The interface for sending data.
-fn _input_os_password(p: String, activate: bool, interface: impl Interface) {
-    let input_password = !p.is_empty();
-    if activate {
-        // Click event is used to bring up the password input box.
-        activate_os(&interface, input_password);
-        std::thread::sleep(Duration::from_millis(1200));
+        log::debug!("stopped OS-password input because its connection round retired");
+        false
     }
-    if !input_password {
+}
+
+struct OsPasswordActivationSequence {
+    release_left: Message,
+    origin: Message,
+    diagonal: Message,
+    click_down: Message,
+    click_up: Message,
+}
+
+pub(crate) struct InputOsPasswordSequence {
+    activation: Option<OsPasswordActivationSequence>,
+    password: Option<(Message, Message)>,
+}
+
+/// Prepare every message synchronously while the admitting Remote is current. The delayed task
+/// receives no Session clone or other capability that can resolve a replacement round's sender.
+pub(crate) fn prepare_input_os_password_sequence(
+    p: String,
+    activate: bool,
+    interface: &impl Interface,
+) -> InputOsPasswordSequence {
+    let input_password = !p.is_empty();
+    let activation = activate.then(|| {
+        let left_down = MOUSE_BUTTON_LEFT << 3 | MOUSE_TYPE_DOWN;
+        let left_up = MOUSE_BUTTON_LEFT << 3 | MOUSE_TYPE_UP;
+        let right_down = MOUSE_BUTTON_RIGHT << 3 | MOUSE_TYPE_DOWN;
+        let right_up = MOUSE_BUTTON_RIGHT << 3 | MOUSE_TYPE_UP;
+        let (click_down, click_up) = if input_password {
+            (left_down, left_up)
+        } else {
+            (right_down, right_up)
+        };
+        OsPasswordActivationSequence {
+            release_left: new_mouse_message(left_up, 0, 0, false, false, false, false, interface),
+            origin: new_mouse_message(0, 0, 0, false, false, false, false, interface),
+            diagonal: new_mouse_message(0, 3, 3, false, false, false, false, interface),
+            click_down: new_mouse_message(click_down, 0, 0, false, false, false, false, interface),
+            click_up: new_mouse_message(click_up, 0, 0, false, false, false, false, interface),
+        }
+    });
+    let password = input_password.then(|| {
+        let mut key_event = KeyEvent::new();
+        key_event.mode = KeyboardMode::Legacy.into();
+        key_event.press = true;
+        key_event.set_seq(p);
+        let mut password = Message::new();
+        password.set_key_event(key_event.clone());
+        key_event.set_control_key(ControlKey::Return);
+        let mut enter = Message::new();
+        enter.set_key_event(key_event);
+        (password, enter)
+    });
+    InputOsPasswordSequence {
+        activation,
+        password,
+    }
+}
+
+/// Activate the remote OS through one exact outgoing connection round.
+async fn activate_os(
+    sequence: OsPasswordActivationSequence,
+    sender: &hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,
+) -> bool {
+    if !send_os_password_input(sender, sequence.release_left) {
+        return false;
+    }
+    hbb_common::tokio::time::sleep(Duration::from_millis(50)).await;
+    if !send_os_password_input(sender, sequence.origin) {
+        return false;
+    }
+    hbb_common::tokio::time::sleep(Duration::from_millis(50)).await;
+    if !send_os_password_input(sender, sequence.diagonal) {
+        return false;
+    }
+    hbb_common::tokio::time::sleep(Duration::from_millis(50)).await;
+    if !send_os_password_input(sender, sequence.click_down) {
+        return false;
+    }
+    send_os_password_input(sender, sequence.click_up)
+}
+
+/// Run one OS-password input sequence against the sender captured from the exact
+/// outgoing connection round that admitted it.
+pub(crate) async fn run_input_os_password_sequence(
+    sequence: InputOsPasswordSequence,
+    sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,
+) {
+    if let Some(activation) = sequence.activation {
+        // Click event is used to bring up the password input box.
+        if !activate_os(activation, &sender).await {
+            return;
+        }
+        hbb_common::tokio::time::sleep(Duration::from_millis(1200)).await;
+    }
+    let Some((password, enter)) = sequence.password else {
+        return;
+    };
+    if !send_os_password_input(&sender, password) {
         return;
     }
-    let mut key_event = KeyEvent::new();
-    key_event.mode = KeyboardMode::Legacy.into();
-    key_event.press = true;
-    let mut msg_out = Message::new();
-    key_event.set_seq(p);
-    msg_out.set_key_event(key_event.clone());
-    interface.send(Data::Message(msg_out.clone()));
-    key_event.set_control_key(ControlKey::Return);
-    msg_out.set_key_event(key_event);
-    interface.send(Data::Message(msg_out));
+    if !send_os_password_input(&sender, enter) {
+        return;
+    }
 }
 
 #[derive(Copy, Clone)]
@@ -3342,6 +3396,10 @@ pub trait Interface: Send + Clone + 'static + Sized {
 pub enum Data {
     Close,
     Login((String, bool)),
+    InputOsPassword {
+        password: String,
+        activate: bool,
+    },
     Message(Message),
     SendFiles((i32, JobType, String, String, i32, bool, bool)),
     RemoveDirAll((i32, String, bool, bool)),

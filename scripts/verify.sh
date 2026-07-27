@@ -9969,6 +9969,8 @@ flutter_event_loop=flutter/lib/utils/event_loop.dart
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
   client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop -- --test-threads=1
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
+  client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement -- --test-threads=1
+"${RUN[@]}" cargo test --lib --features linux-pkg-config \
   ui_session_interface::connection_round_ownership_tests:: -- --test-threads=1
 grep -qF 'external fun beginClientSessionOwner(): Long' "$ffi_kt" \
   || android_client_owner_bad="$android_client_owner_bad no-generation-begin-jni"
@@ -10119,6 +10121,21 @@ grep -qF 'clipboard_leases_track_exact_network_rounds_without_stale_stop' src/cl
 if grep -qF 'has_sessions_running' src/client.rs src/client/io_loop.rs src/flutter.rs; then
   android_client_owner_bad="$android_client_owner_bad clipboard-ui-registry-liveness-present"
 fi
+grep -qF 'self.send(Data::InputOsPassword {' src/ui_session_interface.rs \
+  || android_client_owner_bad="$android_client_owner_bad os-password-typed-round-admission-missing"
+grep -qF 'input_os_password_task: OwnedInputOsPasswordTask' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad os-password-task-owner-missing"
+grep -qF 'self.input_os_password_task.stop_and_join().await;' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad os-password-final-join-missing"
+grep -qF 'let sender = self.sender.clone();' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad os-password-exact-sender-capture-missing"
+grep -qF 'run_input_os_password_sequence(' src/client.rs src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad os-password-exact-sequence-missing"
+grep -qF 'r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad os-password-replacement-regression-missing"
+if grep -qF 'fn _input_os_password(' src/client.rs; then
+  android_client_owner_bad="$android_client_owner_bad os-password-detached-helper-present"
+fi
 grep -qF '<span class="id">R-S11eb</span>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad mobile-owner-connection-requirement-missing"
 grep -qF '<tr><td>281</td>' requirements.html \
@@ -10131,6 +10148,12 @@ grep -qF '<tr><td>282</td>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad clipboard-network-round-disposition-missing"
 grep -qF 'R-S11ec/R-S11e-147' HARDENING_STATUS.md \
   || android_client_owner_bad="$android_client_owner_bad clipboard-network-round-ledger-missing"
+grep -qF '<span class="id">R-S11ed</span>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad os-password-exact-round-requirement-missing"
+grep -qF '<tr><td>283</td>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad os-password-exact-round-disposition-missing"
+grep -qF 'R-S11ed/R-S11e-148' HARDENING_STATUS.md \
+  || android_client_owner_bad="$android_client_owner_bad os-password-exact-round-ledger-missing"
 grep -qF 'cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-lifecycle-test-command-missing"
 grep -qF 'flutter::mobile_session_lifecycle_tests:: -- --test-threads=1' scripts/dart-verify.sh \

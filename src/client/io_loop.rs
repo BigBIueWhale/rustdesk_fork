@@ -146,11 +146,52 @@ fn recv_voice_call_audio(
     }
 }
 
+// R-S11ed: this is the sole owner of the delayed OS-password sequence admitted by one
+// Remote/network round. Normal replacement and final teardown abort and await the exact task;
+// hard-drop still aborts it, and the task carries only that Remote's exact sender.
+#[derive(Default)]
+struct OwnedInputOsPasswordTask {
+    task: Option<tokio::task::JoinHandle<()>>,
+}
+
+impl OwnedInputOsPasswordTask {
+    async fn replace<F>(&mut self, future: F)
+    where
+        F: std::future::Future<Output = ()> + Send + 'static,
+    {
+        self.stop_and_join().await;
+        self.task = Some(tokio::spawn(future));
+    }
+
+    async fn stop_and_join(&mut self) {
+        let Some(task) = self.task.take() else {
+            return;
+        };
+        task.abort();
+        match task.await {
+            Ok(()) => {}
+            Err(err) if err.is_cancelled() => {}
+            Err(err) => {
+                log::error!("OS-password input task failed: {err}");
+            }
+        }
+    }
+}
+
+impl Drop for OwnedInputOsPasswordTask {
+    fn drop(&mut self) {
+        if let Some(task) = self.task.take() {
+            task.abort();
+        }
+    }
+}
+
 pub struct Remote<T: InvokeUiSession> {
     handler: Session<T>,
     audio_thread: OwnedMediaThread,
     receiver: mpsc::UnboundedReceiver<Data>,
     sender: mpsc::UnboundedSender<Data>,
+    input_os_password_task: OwnedInputOsPasswordTask,
     // Stop sending local audio to remote client.
     voice_call_thread: Option<VoiceCallThread>,
     voice_call_request_timestamp: Option<NonZeroI64>,
@@ -495,6 +536,7 @@ impl<T: InvokeUiSession> Remote<T> {
             audio_thread: crate::client::start_audio_thread(),
             receiver,
             sender,
+            input_os_password_task: Default::default(),
             read_jobs: Vec::new(),
             write_jobs: Vec::new(),
             remove_jobs: Default::default(),
@@ -832,6 +874,7 @@ impl<T: InvokeUiSession> Remote<T> {
     }
 
     async fn shutdown_workers(&mut self) {
+        self.input_os_password_task.stop_and_join().await;
         let mut workers = Vec::with_capacity(self.video_threads.len() + 2);
         if let Some(mut voice_call_thread) = self.voice_call_thread.take() {
             if let Some(worker) = voice_call_thread.stop() {
@@ -956,6 +999,14 @@ impl<T: InvokeUiSession> Remote<T> {
             Data::Login((password, remember)) => {
                 self.handler
                     .handle_login_from_ui(password, remember, peer)
+                    .await;
+            }
+            Data::InputOsPassword { password, activate } => {
+                let sequence =
+                    client::prepare_input_os_password_sequence(password, activate, &self.handler);
+                let sender = self.sender.clone();
+                self.input_os_password_task
+                    .replace(client::run_input_os_password_sequence(sequence, sender))
                     .await;
             }
             #[cfg(all(target_os = "windows", not(feature = "flutter")))]
@@ -2945,6 +2996,96 @@ impl<T: InvokeUiSession> Remote<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use async_trait::async_trait;
+
+    #[derive(Clone, Default)]
+    struct InputSequenceTestInterface {
+        lch: Arc<RwLock<crate::client::LoginConfigHandler>>,
+    }
+
+    #[async_trait]
+    impl Interface for InputSequenceTestInterface {
+        fn send(&self, _data: Data) {
+            panic!("the exact-round input sequence must not use the mutable interface sender");
+        }
+
+        fn msgbox(&self, _msgtype: &str, _title: &str, _text: &str, _link: &str) {}
+
+        fn handle_login_error(&self, _err: &str) -> bool {
+            false
+        }
+
+        fn handle_peer_info(&self, _pi: PeerInfo) {}
+
+        fn set_multiple_windows_session(&self, _sessions: Vec<WindowsSession>) {}
+
+        async fn handle_login_from_ui(
+            &self,
+            _password: String,
+            _remember: bool,
+            _peer: &mut Stream,
+        ) {
+        }
+
+        async fn handle_test_delay(&self, _delay: TestDelay, _peer: &mut Stream) {}
+
+        fn get_lch(&self) -> Arc<RwLock<crate::client::LoginConfigHandler>> {
+            self.lch.clone()
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement() {
+        let mut owner = OwnedInputOsPasswordTask::default();
+        let (old_sender, mut old_receiver) = mpsc::unbounded_channel();
+        let (replacement_sender, mut replacement_receiver) = mpsc::unbounded_channel();
+
+        owner
+            .replace(client::run_input_os_password_sequence(
+                client::prepare_input_os_password_sequence(
+                    "test-password".to_owned(),
+                    true,
+                    &InputSequenceTestInterface::default(),
+                ),
+                old_sender,
+            ))
+            .await;
+
+        let first = time::timeout(Duration::from_secs(1), old_receiver.recv())
+            .await
+            .expect("the admitted round must receive the sequence's first event")
+            .expect("the exact old-round sender must be live");
+        assert!(
+            matches!(first, Data::Message(_)),
+            "the first activation event must stay on the admitted round"
+        );
+
+        owner
+            .replace(async move {
+                replacement_sender
+                    .send(Data::Close)
+                    .expect("the replacement test receiver must remain live");
+            })
+            .await;
+
+        assert!(
+            matches!(
+                old_receiver.try_recv(),
+                Err(mpsc::error::TryRecvError::Disconnected)
+            ),
+            "replacement must abort, await, and drop the old exact-round sender before it starts"
+        );
+        assert!(
+            matches!(replacement_receiver.recv().await, Some(Data::Close)),
+            "the replacement task must retain only its replacement-round sender"
+        );
+        assert!(
+            replacement_receiver.recv().await.is_none(),
+            "the completed replacement task must release its exact sender"
+        );
+
+        owner.stop_and_join().await;
+    }
 
     #[cfg(not(target_os = "ios"))]
     #[test]

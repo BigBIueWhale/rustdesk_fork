@@ -43,9 +43,8 @@ use uuid::Uuid;
 
 use crate::client::io_loop::Remote;
 use crate::client::{
-    check_if_retry, handle_login_error, handle_login_from_ui, handle_test_delay, input_os_password,
-    send_mouse, send_pointer_device_event, FileManager, Key, LoginConfigHandler, QualityStatus,
-    KEY_MAP,
+    check_if_retry, handle_login_error, handle_login_from_ui, handle_test_delay, send_mouse,
+    send_pointer_device_event, FileManager, Key, LoginConfigHandler, QualityStatus, KEY_MAP,
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::client::PortForwardTarget;
@@ -59,9 +58,9 @@ use crate::port_forward::{
     PortForwardControlReceiver, PortForwardMappingPermit, RdpLaunchRequest,
     MAX_OWNED_PORT_FORWARD_MAPPINGS,
 };
+use crate::{client::Data, client::Interface};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use std::collections::HashMap;
-use crate::{client::Data, client::Interface};
 
 const CHANGE_RESOLUTION_VALID_TIMEOUT_SECS: u64 = 15;
 
@@ -738,7 +737,10 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn input_os_password(&self, pass: String, activate: bool) {
-        input_os_password(pass, activate, self.clone());
+        self.send(Data::InputOsPassword {
+            password: pass,
+            activate,
+        });
     }
 
     // R-B6: the Sciter `inline` chatbox (crate::ui::inline) is deleted with `mod ui`; the only

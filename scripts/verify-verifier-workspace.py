@@ -15994,6 +15994,230 @@ def validate_android_voice_call_ownership_contract(sources):
         "client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop",
         "outgoing clipboard generated-bridge lifecycle gate source",
     )
+    ui_session = sources["ui_session_source"]
+    os_password_request = extract_between(
+        ui_session,
+        "    pub fn input_os_password(&self",
+        "\n    // R-B6:",
+        "typed current-round OS-password request source",
+    )
+    require_order(
+        os_password_request,
+        (
+            "self.send(Data::InputOsPassword {",
+            "password: pass,",
+            "activate,",
+        ),
+        "OS-password typed current-round admission source",
+    )
+    require_absent(
+        os_password_request,
+        "std::thread",
+        "OS-password detached UI-admission thread source",
+    )
+    require_text(
+        client,
+        "InputOsPassword {\n        password: String,\n        activate: bool,\n    },",
+        "OS-password typed in-process command source",
+    )
+    os_password_preparation = extract_between(
+        client,
+        "pub(crate) fn prepare_input_os_password_sequence(",
+        "\n}\n\n/// Activate the remote OS",
+        "OS-password synchronous exact-round message preparation source",
+    )
+    require_order(
+        os_password_preparation,
+        (
+            "interface: &impl Interface",
+            "let activation = activate.then(",
+            "new_mouse_message(",
+            "let password = input_password.then(",
+            "key_event.set_seq(p);",
+            "key_event.set_control_key(ControlKey::Return);",
+            "InputOsPasswordSequence {",
+        ),
+        "OS-password messages are prepared synchronously at exact-round admission source",
+    )
+    require_absent(
+        os_password_preparation,
+        "async fn",
+        "OS-password delayed message preparation source",
+    )
+    os_password_activation = extract_between(
+        client,
+        "async fn activate_os(",
+        "\n}\n\n/// Run one OS-password input sequence",
+        "OS-password exact-round activation source",
+    )
+    require_text(
+        os_password_activation,
+        "sender: &hbb_common::tokio::sync::mpsc::UnboundedSender<Data>",
+        "OS-password activation exact sender source",
+    )
+    require_absent(
+        os_password_activation,
+        "Interface",
+        "OS-password mutable Session activation capability source",
+    )
+    require_exact_count(
+        os_password_activation,
+        "hbb_common::tokio::time::sleep(Duration::from_millis(50)).await;",
+        3,
+        "OS-password asynchronous activation delays source",
+    )
+    require_exact_count(
+        os_password_activation,
+        "send_os_password_input(",
+        5,
+        "OS-password exact activation event admission source",
+    )
+    os_password_sequence = extract_between(
+        client,
+        "pub(crate) async fn run_input_os_password_sequence(",
+        "\n}\n\n#[derive(Copy, Clone)]",
+        "OS-password exact-round sequence source",
+    )
+    require_order(
+        os_password_sequence,
+        (
+            "sequence: InputOsPasswordSequence",
+            "sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>",
+            "if let Some(activation) = sequence.activation",
+            "activate_os(activation, &sender).await",
+            "hbb_common::tokio::time::sleep(Duration::from_millis(1200)).await;",
+            "let Some((password, enter)) = sequence.password",
+            "send_os_password_input(&sender, password)",
+            "send_os_password_input(&sender, enter)",
+        ),
+        "OS-password delayed events remain on the captured exact sender source",
+    )
+    require_absent(
+        os_password_sequence,
+        "interface.send(",
+        "OS-password mutable Session sender lookup source",
+    )
+    require_absent(
+        os_password_sequence,
+        "Interface",
+        "OS-password mutable Session capability retention source",
+    )
+    require_absent(
+        os_password_sequence,
+        "handler",
+        "OS-password mutable handler capability retention source",
+    )
+    require_absent(
+        client,
+        "fn _input_os_password(",
+        "OS-password legacy detached helper source",
+    )
+    os_password_owner = extract_between(
+        client_io_loop,
+        "struct OwnedInputOsPasswordTask {",
+        "\npub struct Remote<T: InvokeUiSession>",
+        "OS-password exact task owner source",
+    )
+    require_text(
+        os_password_owner,
+        "task: Option<tokio::task::JoinHandle<()>>,",
+        "OS-password sole JoinHandle source",
+    )
+    require_order(
+        os_password_owner,
+        (
+            "self.stop_and_join().await;",
+            "self.task = Some(tokio::spawn(future));",
+            "let Some(task) = self.task.take()",
+            "task.abort();",
+            "match task.await",
+            "Err(err) if err.is_cancelled()",
+            'log::error!("OS-password input task failed: {err}")',
+            "impl Drop for OwnedInputOsPasswordTask",
+            "self.task.take()",
+            "task.abort();",
+        ),
+        "OS-password replace/final/hard-drop task ownership source",
+    )
+    require_absent(
+        os_password_owner,
+        "std::process::abort",
+        "OS-password joined helper process-abort source",
+    )
+    require_text(
+        client_io_loop,
+        "input_os_password_task: OwnedInputOsPasswordTask,",
+        "Remote-retained OS-password task owner source",
+    )
+    os_password_shutdown = extract_between(
+        client_io_loop,
+        "    async fn shutdown_workers(&mut self)",
+        "\n    // Start a voice call recorder",
+        "OS-password Remote shutdown source",
+    )
+    require_order(
+        os_password_shutdown,
+        (
+            "self.input_os_password_task.stop_and_join().await;",
+            "self.voice_call_thread.take()",
+            "self.video_threads.drain()",
+            "self.audio_thread.close()",
+            "Self::join_workers(workers).await;",
+        ),
+        "OS-password cancellation precedes Remote round teardown source",
+    )
+    os_password_dispatch = extract_between(
+        client_io_loop,
+        "    async fn handle_msg_from_ui(&mut self",
+        "\n    fn update_job_status(",
+        "OS-password connected-Remote dispatch source",
+    )
+    require_order(
+        os_password_dispatch,
+        (
+            "Data::InputOsPassword { password, activate }",
+            "let sequence =",
+            "client::prepare_input_os_password_sequence(",
+            "password,",
+            "activate,",
+            "&self.handler)",
+            "let sender = self.sender.clone();",
+            "self.input_os_password_task",
+            ".replace(client::run_input_os_password_sequence(sequence, sender))",
+            ".await;",
+        ),
+        "OS-password synchronous preparation, exact sender capture, and task replacement source",
+    )
+    require_text(
+        client_io_loop,
+        "r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement",
+        "OS-password replacement behavior proof source",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11ed</span>',
+        "OS-password exact-round normative requirement source",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>283</td>",
+        "OS-password exact-round Appendix C row source",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ed/R-S11e-148",
+        "OS-password exact-round hardening ledger source",
+    )
+    require_text(
+        sources["verify"],
+        "client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement",
+        "OS-password shared behavior gate source",
+    )
+    require_text(
+        sources["dart_verify"],
+        "client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement",
+        "OS-password generated-bridge behavior gate source",
+    )
     require_text(
         sources["verify"],
         "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs",
@@ -16169,6 +16393,56 @@ def validate_android_voice_call_ownership_contract(sources):
         focused,
         '("hardening", "R-S11ec/R-S11e-147", "R-S11ec-disabled/R-S11e-147", "clipboard network-round hardening ledger"),',
         "outgoing clipboard ledger mutation",
+    )
+    require_text(
+        focused,
+        'std::thread::spawn(move || {\\n            session.send(Data::InputOsPassword {',
+        "OS-password typed-admission focused mutation",
+    )
+    require_text(
+        focused,
+        '("client", "sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,", "sender: (),", "OS-password captured exact-round sender"),',
+        "OS-password exact-sender focused mutation",
+    )
+    require_text(
+        focused,
+        '("client", "sequence: InputOsPasswordSequence,\\n    sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,", "sequence: InputOsPasswordSequence,\\n    interface: impl Interface,\\n    sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,", "OS-password delayed task excludes mutable Session capability"),',
+        "OS-password Session-capability-exclusion focused mutation",
+    )
+    require_text(
+        focused,
+        '("io_loop", "self.stop_and_join().await;\\n        self.task = Some(tokio::spawn(future));", "self.task = Some(tokio::spawn(future));", "OS-password replacement cancellation-before-spawn"),',
+        "OS-password cancel-before-replace focused mutation",
+    )
+    require_text(
+        focused,
+        '("io_loop", "        task.abort();\\n        match task.await {", "        match task.await {", "OS-password exact task abort"),',
+        "OS-password exact-abort focused mutation",
+    )
+    require_text(
+        focused,
+        '("io_loop", "match task.await {", "match task {", "OS-password task cancellation join"),',
+        "OS-password cancellation-join focused mutation",
+    )
+    require_text(
+        focused,
+        '("io_loop", \'log::error!("OS-password input task failed: {err}");\', "std::process::abort();", "OS-password joined helper failure does not abort process"),',
+        "OS-password no-process-abort focused mutation",
+    )
+    require_text(
+        focused,
+        '("io_loop", "self.input_os_password_task.stop_and_join().await;", "// stale OS-password task retained", "OS-password final round teardown"),',
+        "OS-password final-teardown focused mutation",
+    )
+    require_text(
+        focused,
+        '("requirements", \'<span class="id">R-S11ed</span>\', \'<span class="id">R-S11ed-disabled</span>\', "OS-password exact-round requirement"),',
+        "OS-password requirement focused mutation",
+    )
+    require_text(
+        focused,
+        '("hardening", "R-S11ed/R-S11e-148", "R-S11ed-disabled/R-S11e-148", "OS-password exact-round hardening ledger"),',
+        "OS-password ledger focused mutation",
     )
     require_text(
         focused,
@@ -44608,6 +44882,138 @@ def run_source_mutations(sources):
             "client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop",
             "client::tests::clipboard_lifecycle_gate_disabled",
             "outgoing clipboard generated-bridge lifecycle gate source",
+        ),
+        (
+            "ui_session_source",
+            "self.send(Data::InputOsPassword {\n            password: pass,\n            activate,\n        });",
+            "let session = self.clone();\n        std::thread::spawn(move || {\n            session.send(Data::InputOsPassword {\n                password: pass,\n                activate,\n            });\n        });",
+            "OS-password typed current-round admission source",
+        ),
+        (
+            "client_source",
+            "InputOsPassword {\n        password: String,\n        activate: bool,\n    },",
+            "InputOsPasswordDisabled {\n        password: String,\n        activate: bool,\n    },",
+            "OS-password typed in-process command source",
+        ),
+        (
+            "client_source",
+            "hbb_common::tokio::time::sleep(Duration::from_millis(50)).await;",
+            "std::thread::sleep(Duration::from_millis(50));",
+            "OS-password asynchronous activation delays source",
+        ),
+        (
+            "client_source",
+            "sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,",
+            "sender: (),",
+            "OS-password delayed events remain on the captured exact sender source",
+        ),
+        (
+            "client_source",
+            "sequence: InputOsPasswordSequence,\n    sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,",
+            "sequence: InputOsPasswordSequence,\n    interface: impl Interface,\n    sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,",
+            "OS-password mutable Session capability retention source",
+        ),
+        (
+            "client_source",
+            "if !send_os_password_input(&sender, password)",
+            "if !send_os_password_input(&replacement_sender, password)",
+            "OS-password delayed events remain on the captured exact sender source",
+        ),
+        (
+            "client_source",
+            "pub(crate) async fn run_input_os_password_sequence(",
+            "fn _input_os_password(",
+            "OS-password exact-round sequence source",
+        ),
+        (
+            "client_io_loop",
+            "task: Option<tokio::task::JoinHandle<()>>,",
+            "task: Option<()>,",
+            "OS-password sole JoinHandle source",
+        ),
+        (
+            "client_io_loop",
+            "self.stop_and_join().await;\n        self.task = Some(tokio::spawn(future));",
+            "self.task = Some(tokio::spawn(future));",
+            "OS-password replace/final/hard-drop task ownership source",
+        ),
+        (
+            "client_io_loop",
+            "        task.abort();\n        match task.await {",
+            "        match task.await {",
+            "OS-password replace/final/hard-drop task ownership source",
+        ),
+        (
+            "client_io_loop",
+            "match task.await {",
+            "match task {",
+            "OS-password replace/final/hard-drop task ownership source",
+        ),
+        (
+            "client_io_loop",
+            'log::error!("OS-password input task failed: {err}");',
+            "std::process::abort();",
+            "OS-password replace/final/hard-drop task ownership source",
+        ),
+        (
+            "client_io_loop",
+            "if let Some(task) = self.task.take() {\n            task.abort();",
+            "if let Some(_task) = self.task.take() {",
+            "OS-password replace/final/hard-drop task ownership source",
+        ),
+        (
+            "client_io_loop",
+            "input_os_password_task: OwnedInputOsPasswordTask,",
+            "input_os_password_task: (),",
+            "Remote-retained OS-password task owner source",
+        ),
+        (
+            "client_io_loop",
+            "self.input_os_password_task.stop_and_join().await;",
+            "// stale OS-password task retained",
+            "OS-password cancellation precedes Remote round teardown source",
+        ),
+        (
+            "client_io_loop",
+            "let sender = self.sender.clone();\n                self.input_os_password_task",
+            "let sender = self.handler.clone();\n                self.input_os_password_task",
+            "OS-password synchronous preparation, exact sender capture, and task replacement source",
+        ),
+        (
+            "client_io_loop",
+            "r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement",
+            "os_password_input_replacement_gate_disabled",
+            "OS-password replacement behavior proof source",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ed</span>',
+            '<span class="id">R-S11ed-disabled</span>',
+            "OS-password exact-round normative requirement source",
+        ),
+        (
+            "requirements",
+            "<tr><td>283</td>",
+            "<tr><td>283-disabled</td>",
+            "OS-password exact-round Appendix C row source",
+        ),
+        (
+            "hardening",
+            "R-S11ed/R-S11e-148",
+            "R-S11ed-disabled/R-S11e-148",
+            "OS-password exact-round hardening ledger source",
+        ),
+        (
+            "verify",
+            "client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement",
+            "client::io_loop::tests::os_password_gate_disabled",
+            "OS-password shared behavior gate source",
+        ),
+        (
+            "dart_verify",
+            "client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement",
+            "client::io_loop::tests::os_password_gate_disabled",
+            "OS-password generated-bridge behavior gate source",
         ),
         (
             "main_dart",

@@ -118,6 +118,9 @@ def load_sources(repo: Path) -> Dict[str, str]:
         ).read_text(encoding="utf-8"),
         "client": (repo / "src/client.rs").read_text(encoding="utf-8"),
         "io_loop": (repo / "src/client/io_loop.rs").read_text(encoding="utf-8"),
+        "ui_session": (repo / "src/ui_session_interface.rs").read_text(
+            encoding="utf-8"
+        ),
         "test": (repo / "scripts/android-voice-call-owner-state-test.kt").read_text(
             encoding="utf-8"
         ),
@@ -2216,6 +2219,234 @@ def validate(sources: Dict[str, str]) -> None:
         "generated-bridge outgoing clipboard lifecycle test wiring",
     )
 
+    ui_session = sources["ui_session"]
+    input_request = extract_item(
+        ui_session,
+        "pub fn input_os_password(&self",
+        "typed current-round OS-password input request",
+    )
+    require_order(
+        input_request,
+        (
+            "self.send(Data::InputOsPassword {",
+            "password: pass,",
+            "activate,",
+        ),
+        "OS-password request enters the currently installed round channel",
+    )
+    forbid(
+        input_request,
+        "std::thread",
+        "detached OS-password input thread at UI admission",
+    )
+    require(
+        client,
+        "InputOsPassword {\n        password: String,\n        activate: bool,\n    },",
+        "typed OS-password in-process command",
+    )
+    prepared_sequence = extract_item(
+        client,
+        "pub(crate) fn prepare_input_os_password_sequence(",
+        "synchronous exact-round OS-password message preparation",
+    )
+    require_order(
+        prepared_sequence,
+        (
+            "interface: &impl Interface",
+            "let activation = activate.then(",
+            "new_mouse_message(",
+            "let password = input_password.then(",
+            "key_event.set_seq(p);",
+            "key_event.set_control_key(ControlKey::Return);",
+            "InputOsPasswordSequence {",
+        ),
+        "OS-password messages are prepared synchronously at exact-round admission",
+    )
+    forbid(
+        prepared_sequence,
+        "async fn",
+        "delayed OS-password message preparation",
+    )
+    activate_os = extract_item(
+        client,
+        "async fn activate_os(",
+        "exact-round OS-password activation sequence",
+    )
+    require(
+        activate_os,
+        "sender: &hbb_common::tokio::sync::mpsc::UnboundedSender<Data>",
+        "activation exact-round sender",
+    )
+    forbid(
+        activate_os,
+        "Interface",
+        "mutable Session capability in delayed activation sequence",
+    )
+    require_count(
+        activate_os,
+        "hbb_common::tokio::time::sleep(Duration::from_millis(50)).await;",
+        3,
+        "three asynchronous activation delays",
+    )
+    require_count(
+        activate_os,
+        "send_os_password_input(",
+        5,
+        "all activation messages use exact-round admission",
+    )
+    input_sequence = extract_item(
+        client,
+        "pub(crate) async fn run_input_os_password_sequence(",
+        "exact-round OS-password sequence",
+    )
+    require_order(
+        input_sequence,
+        (
+            "sequence: InputOsPasswordSequence",
+            "sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>",
+            "if let Some(activation) = sequence.activation",
+            "activate_os(activation, &sender).await",
+            "hbb_common::tokio::time::sleep(Duration::from_millis(1200)).await;",
+            "let Some((password, enter)) = sequence.password",
+            "send_os_password_input(&sender, password)",
+            "send_os_password_input(&sender, enter)",
+        ),
+        "OS-password sequence remains on its captured exact sender",
+    )
+    forbid(
+        input_sequence,
+        "interface.send(",
+        "mutable Session sender lookup inside delayed OS-password sequence",
+    )
+    forbid(
+        input_sequence,
+        "Interface",
+        "mutable Session capability retained by delayed OS-password sequence",
+    )
+    forbid(
+        input_sequence,
+        "handler",
+        "mutable handler capability retained by delayed OS-password sequence",
+    )
+    forbid(
+        input_sequence,
+        "std::thread",
+        "native OS-password sequence thread",
+    )
+    forbid(client, "fn _input_os_password(", "legacy detached OS-password helper")
+    require(
+        io_loop,
+        "struct OwnedInputOsPasswordTask {\n"
+        "    task: Option<tokio::task::JoinHandle<()>>,\n"
+        "}",
+        "sole retained OS-password JoinHandle",
+    )
+    owned_input_task = extract_item(
+        io_loop,
+        "impl OwnedInputOsPasswordTask",
+        "sole OS-password task owner",
+    )
+    require_order(
+        owned_input_task,
+        (
+            "self.stop_and_join().await;",
+            "self.task = Some(tokio::spawn(future));",
+            "let Some(task) = self.task.take()",
+            "task.abort();",
+            "match task.await",
+            "Err(err) if err.is_cancelled()",
+            'log::error!("OS-password input task failed: {err}")',
+        ),
+        "OS-password task replacement and final cancellation ownership",
+    )
+    forbid(
+        owned_input_task,
+        "std::process::abort",
+        "process-wide abort for a joined OS-password helper failure",
+    )
+    owned_input_drop = extract_item(
+        io_loop,
+        "impl Drop for OwnedInputOsPasswordTask",
+        "OS-password task hard-drop owner",
+    )
+    require_order(
+        owned_input_drop,
+        ("self.task.take()", "task.abort();"),
+        "OS-password hard-drop cancellation",
+    )
+    require(
+        io_loop,
+        "input_os_password_task: OwnedInputOsPasswordTask,",
+        "Remote-retained sole OS-password task owner",
+    )
+    shutdown_workers = extract_item(
+        io_loop,
+        "async fn shutdown_workers(&mut self)",
+        "outgoing Remote worker shutdown",
+    )
+    require_order(
+        shutdown_workers,
+        (
+            "self.input_os_password_task.stop_and_join().await;",
+            "self.voice_call_thread.take()",
+            "self.video_threads.drain()",
+            "self.audio_thread.close()",
+            "Self::join_workers(workers).await;",
+        ),
+        "OS-password task is cancelled before Remote round teardown completes",
+    )
+    ui_dispatch = extract_item(
+        io_loop,
+        "async fn handle_msg_from_ui(&mut self",
+        "outgoing Remote UI dispatch",
+    )
+    require_order(
+        ui_dispatch,
+        (
+            "Data::InputOsPassword { password, activate }",
+            "let sequence =",
+            "client::prepare_input_os_password_sequence(",
+            "password,",
+            "activate,",
+            "&self.handler)",
+            "let sender = self.sender.clone();",
+            "self.input_os_password_task",
+            ".replace(client::run_input_os_password_sequence(sequence, sender))",
+            ".await;",
+        ),
+        "connected Remote synchronously prepares and admits one exact-sender OS-password task",
+    )
+    require(
+        io_loop,
+        "r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement",
+        "OS-password replacement cancellation behavior regression",
+    )
+    require(
+        sources["requirements"],
+        '<span class="id">R-S11ed</span>',
+        "OS-password exact-round normative requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>283</td>",
+        "OS-password exact-round Appendix C disposition",
+    )
+    require(
+        sources["hardening"],
+        "R-S11ed/R-S11e-148",
+        "OS-password exact-round hardening ledger",
+    )
+    require(
+        sources["verify"],
+        "client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement",
+        "shared OS-password exact-round behavior gate wiring",
+    )
+    require(
+        sources["dart_verify"],
+        "client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement",
+        "generated-bridge OS-password exact-round behavior gate wiring",
+    )
+
 
 Mutation = Tuple[str, str, str, str]
 
@@ -2372,6 +2603,28 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("hardening", "R-S11ec/R-S11e-147", "R-S11ec-disabled/R-S11e-147", "clipboard network-round hardening ledger"),
     ("verify", "client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop", "client::tests::clipboard_lifecycle_gate_disabled", "shared clipboard lifecycle behavior gate"),
     ("dart_verify", "client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop", "client::tests::clipboard_lifecycle_gate_disabled", "generated-bridge clipboard lifecycle behavior gate"),
+    ("ui_session", "self.send(Data::InputOsPassword {\n            password: pass,\n            activate,\n        });", "let session = self.clone();\n        std::thread::spawn(move || {\n            session.send(Data::InputOsPassword {\n                password: pass,\n                activate,\n            });\n        });", "OS-password current-round typed admission"),
+    ("client", "InputOsPassword {\n        password: String,\n        activate: bool,\n    },", "InputOsPasswordDisabled {\n        password: String,\n        activate: bool,\n    },", "OS-password typed in-process command"),
+    ("client", "hbb_common::tokio::time::sleep(Duration::from_millis(50)).await;", "std::thread::sleep(Duration::from_millis(50));", "OS-password asynchronous activation delay"),
+    ("client", "sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,", "sender: (),", "OS-password captured exact-round sender"),
+    ("client", "sequence: InputOsPasswordSequence,\n    sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,", "sequence: InputOsPasswordSequence,\n    interface: impl Interface,\n    sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,", "OS-password delayed task excludes mutable Session capability"),
+    ("client", "if !send_os_password_input(&sender, password)", "if !send_os_password_input(&replacement_sender, password)", "OS-password exact event sender"),
+    ("client", "pub(crate) async fn run_input_os_password_sequence(", "fn _input_os_password(", "detached-helper absence"),
+    ("io_loop", "task: Option<tokio::task::JoinHandle<()>>,", "task: Option<()>,", "OS-password sole JoinHandle owner"),
+    ("io_loop", "self.stop_and_join().await;\n        self.task = Some(tokio::spawn(future));", "self.task = Some(tokio::spawn(future));", "OS-password replacement cancellation-before-spawn"),
+    ("io_loop", "        task.abort();\n        match task.await {", "        match task.await {", "OS-password exact task abort"),
+    ("io_loop", "match task.await {", "match task {", "OS-password task cancellation join"),
+    ("io_loop", 'log::error!("OS-password input task failed: {err}");', "std::process::abort();", "OS-password joined helper failure does not abort process"),
+    ("io_loop", "if let Some(task) = self.task.take() {\n            task.abort();", "if let Some(_task) = self.task.take() {", "OS-password hard-drop abort"),
+    ("io_loop", "input_os_password_task: OwnedInputOsPasswordTask,", "input_os_password_task: (),", "Remote-retained OS-password task owner"),
+    ("io_loop", "self.input_os_password_task.stop_and_join().await;", "// stale OS-password task retained", "OS-password final round teardown"),
+    ("io_loop", "let sender = self.sender.clone();\n                self.input_os_password_task", "let sender = self.handler.clone();\n                self.input_os_password_task", "OS-password exact Remote sender capture"),
+    ("io_loop", "r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement", "os_password_input_replacement_gate_disabled", "OS-password replacement behavior proof"),
+    ("requirements", '<span class="id">R-S11ed</span>', '<span class="id">R-S11ed-disabled</span>', "OS-password exact-round requirement"),
+    ("requirements", "<tr><td>283</td>", "<tr><td>283-disabled</td>", "OS-password exact-round disposition"),
+    ("hardening", "R-S11ed/R-S11e-148", "R-S11ed-disabled/R-S11e-148", "OS-password exact-round hardening ledger"),
+    ("verify", "client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement", "client::io_loop::tests::os_password_gate_disabled", "shared OS-password exact-round behavior gate"),
+    ("dart_verify", "client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement", "client::io_loop::tests::os_password_gate_disabled", "generated-bridge OS-password exact-round behavior gate"),
     ("verify", "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs", "true # replacement-drain shared gate disabled", "shared mobile replacement-drain gate"),
     ("verify", "if [ \"$(grep -cF 'check_remove_unused_displays(None, None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then", "if false; then # post-drain display gate disabled", "shared post-drain display-reconciliation gate"),
     ("dart_verify", "cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1", "true # generated-bridge mobile lifecycle tests disabled", "generated-bridge mobile lifecycle behavior gate"),

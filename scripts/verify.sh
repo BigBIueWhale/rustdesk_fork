@@ -6585,6 +6585,70 @@ echo "$whiteboard_register_context" | grep -q 'if self.is_authed_remote_conn()' 
 if [ -n "$r_s11c8" ]; then echo "  FAIL R-S11c-8 whiteboard helper authority:$r_s11c8"; rc=1; else
   echo "  ok  R-S11c-8/R-S11dz whiteboard uses directional closed protocols and a 64-KiB codec only after launch/parent proof, bounds its queue and active token map, owns one stream with deadline wakes, and exits the overlay on every terminal transport outcome"; fi
 
+# (3b-iii-f4) R-S11ea: the separately authenticated desktop `_url` listener
+# carries exactly one bounded request. URL open, main-window activation, and
+# close-all are typed operations; no cross-purpose Data variant or string
+# sentinel may regain process-control authority.
+echo "== (3b-iii-f4) Desktop URL/instance IPC has one closed bounded operation protocol (R-S11ea) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config desktop_url_ipc_uses_closed_bounded_protocol --color never
+r_s11ea=
+grep -q 'pub(crate) enum DesktopUrlIpcRequest {' src/ipc.rs || r_s11ea="$r_s11ea request-protocol-missing"
+desktop_url_envelope=$(grep -B2 -A4 'pub(crate) enum DesktopUrlIpcRequest {' src/ipc.rs || true)
+[ "$(echo "$desktop_url_envelope" | grep -c 'deny_unknown_fields')" -eq 1 ] || r_s11ea="$r_s11ea request-protocol-does-not-deny-unknown-fields"
+for operation in 'OpenUrl { url: String },' 'Activate {},' 'CloseAll {},'; do
+  echo "$desktop_url_envelope" | grep -Fq "$operation" || r_s11ea="$r_s11ea missing-$operation"
+done
+desktop_url_variants=$(echo "$desktop_url_envelope" | sed -n '/pub(crate) enum DesktopUrlIpcRequest {/,/^}/p' | grep -c '^    [A-Za-z]')
+[ "$desktop_url_variants" -eq 3 ] || r_s11ea="$r_s11ea operation-vocabulary-not-exact"
+grep -q 'pub(crate) const DESKTOP_URL_IPC_MAX_FRAME_BYTES: usize = 8 \* 1024;' src/ipc.rs || r_s11ea="$r_s11ea frame-cap-missing"
+grep -q 'const DESKTOP_URL_IPC_MAX_LINK_BYTES: usize = 1024;' src/ipc.rs || r_s11ea="$r_s11ea link-limit-missing"
+grep -q 'const DESKTOP_URL_IPC_MAX_ADDRESS_BYTES: usize = 512;' src/ipc.rs || r_s11ea="$r_s11ea address-limit-missing"
+grep -q 'pub(crate) const DESKTOP_URL_IPC_IO_TIMEOUT_MS: u64 = 1_000;' src/ipc.rs || r_s11ea="$r_s11ea io-deadline-missing"
+grep -q 'Self::new_with_max_packet_length(conn, DESKTOP_URL_IPC_MAX_FRAME_BYTES)' src/ipc.rs || r_s11ea="$r_s11ea capped-constructor-missing"
+[ "$(grep -c 'ConnectionTmpl::new_desktop_url(client)' src/ipc.rs)" -eq 2 ] || r_s11ea="$r_s11ea connecting-stream-cap-coverage-drift"
+grep -q 'pub(crate) async fn send_desktop_url_request_timeout' src/ipc.rs || r_s11ea="$r_s11ea typed-writer-missing"
+grep -q 'pub(crate) async fn next_desktop_url_request_timeout' src/ipc.rs || r_s11ea="$r_s11ea typed-reader-missing"
+grep -q 'Ok(timeout(ms_timeout, self.next_json_strict()).await??)' src/ipc.rs || r_s11ea="$r_s11ea strict-deadline-reader-missing"
+grep -q 'send_desktop_url_ipc_request(DesktopUrlIpcRequest::from_url(url)?).await' src/ipc.rs || r_s11ea="$r_s11ea sender-validation-missing"
+grep -q 'DesktopUrlIpcRequest::CloseAll {}' src/ipc.rs || r_s11ea="$r_s11ea typed-close-sender-missing"
+grep -q 'DesktopUrlIpcRequest::Activate {}' src/ipc.rs || r_s11ea="$r_s11ea typed-activate-sender-missing"
+desktop_url_validator=$(sed -n '/fn validate_desktop_url_ipc_open_url/,/^}/p' src/ipc.rs)
+for token in \
+  'DESKTOP_URL_IPC_MAX_LINK_BYTES' 'url.strip_prefix(&prefix)' "remainder.split_once('/')" \
+  'DESKTOP_URL_IPC_MAX_ADDRESS_BYTES' 'hbb_common::is_ip_str(address)' \
+  'hbb_common::is_domain_port_str(address)'; do
+  echo "$desktop_url_validator" | grep -Fq "$token" || r_s11ea="$r_s11ea validator-$token-missing"
+done
+desktop_url_receiver=$(sed -n '/pub async fn start_ipc_url_server()/,/^#\[cfg(test)\]/p' src/server.rs)
+desktop_url_accept_line=$(echo "$desktop_url_receiver" | grep -n 'Connection::new_desktop_url(conn)' | head -1 | cut -d: -f1 || true)
+desktop_url_auth_line=$(echo "$desktop_url_receiver" | grep -n 'authorize_url_ipc_sender(&conn)' | head -1 | cut -d: -f1 || true)
+desktop_url_read_line=$(echo "$desktop_url_receiver" | grep -n 'next_desktop_url_request_timeout' | head -1 | cut -d: -f1 || true)
+desktop_url_validate_line=$(echo "$desktop_url_receiver" | grep -n 'DesktopUrlIpcRequest::validate' | head -1 | cut -d: -f1 || true)
+if [ -z "$desktop_url_accept_line" ] || [ -z "$desktop_url_auth_line" ] || [ -z "$desktop_url_read_line" ] || [ -z "$desktop_url_validate_line" ] \
+    || [ "$desktop_url_accept_line" -ge "$desktop_url_auth_line" ] || [ "$desktop_url_auth_line" -ge "$desktop_url_read_line" ] \
+    || [ "$desktop_url_read_line" -ge "$desktop_url_validate_line" ]; then
+  r_s11ea="$r_s11ea receiver-cap-auth-read-validation-order"
+fi
+for event in on_url_scheme_received on_desktop_instance_activate_requested on_desktop_instances_close_requested; do
+  echo "$desktop_url_receiver" | grep -Fq "\"name\": \"$event\"" || r_s11ea="$r_s11ea rust-event-$event-missing"
+  grep -Fq "name == '$event'" flutter/lib/models/model.dart || r_s11ea="$r_s11ea dart-event-$event-missing"
+done
+grep -q 'crate::ipc::activate_main_instance()' src/platform/macos.rs || r_s11ea="$r_s11ea macos-typed-activation-missing"
+grep -q 'debugPrint("Rejected malformed desktop URL IPC event.");' flutter/lib/models/model.dart || r_s11ea="$r_s11ea dart-invalid-url-rejection-missing"
+data_protocol=$(awk '/^pub enum Data \{/{capture=1} capture{print} capture && /^}/{exit}' src/ipc.rs)
+if echo "$data_protocol" | grep -q 'UrlLink'; then r_s11ea="$r_s11ea cross-purpose-data-url-variant"; fi
+if grep -RInE 'IPC_ACTION_CLOSE|kUrlActionClose|handle_url_scheme\(""' src/ipc.rs src/platform/macos.rs flutter/lib/consts.dart flutter/lib/models/model.dart >/dev/null; then
+  r_s11ea="$r_s11ea string-control-sentinel"
+fi
+if echo "$desktop_url_receiver" | grep -Eq 'Connection::new\(conn\)|next_timeout\(1000\)|Data::UrlLink'; then
+  r_s11ea="$r_s11ea legacy-unbounded-receiver"
+fi
+grep -Fq '<span class="id">R-S11ea</span>' requirements.html || r_s11ea="$r_s11ea requirement-missing"
+grep -Fq '<tr><td>280</td>' requirements.html || r_s11ea="$r_s11ea appendix-row-missing"
+grep -Fq 'R-S11ea/R-S11e-145 — desktop URL/instance handoff closed protocol and resource budget' HARDENING_STATUS.md || r_s11ea="$r_s11ea ledger-missing"
+if [ -n "$r_s11ea" ]; then echo "  FAIL R-S11ea desktop URL/instance IPC:$r_s11ea"; rc=1; else
+  echo "  ok  R-S11ea desktop URL/instance IPC authenticates before one strict typed request, caps both stream ends and I/O time, revalidates direct-address URLs, and dispatches distinct open/activate/close events without sentinels"; fi
+
 # (3b-iii-g) R-S11c-5: macOS source-conformance for the privileged LaunchDaemon packaging.
 # The daemon may not shell-launch root code, write logs through /tmp, execute from an app bundle,
 # or adopt active-user app/config state as root-owned service state. apple-conform-check.sh mirrors

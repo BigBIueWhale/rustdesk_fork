@@ -139,6 +139,9 @@ pub(crate) const PULSE_AUDIO_IPC_MAX_FRAME_BYTES: usize = 8 * 1024;
 pub(crate) const PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES: usize = 960 * 4;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) const WHITEBOARD_IPC_MAX_FRAME_BYTES: usize = 64 * 1024;
+pub(crate) const DESKTOP_URL_IPC_MAX_FRAME_BYTES: usize = 8 * 1024;
+const DESKTOP_URL_IPC_MAX_LINK_BYTES: usize = 1024;
+const DESKTOP_URL_IPC_MAX_ADDRESS_BYTES: usize = 512;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) const WHITEBOARD_IPC_COMMAND_CAPACITY: usize = 64;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -150,6 +153,7 @@ pub(crate) const SERVICE_IPC_REQUEST_TIMEOUT_MS: u64 = 1_000;
 pub(crate) const PULSE_AUDIO_IPC_IO_TIMEOUT_MS: u64 = 1_000;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) const WHITEBOARD_IPC_IO_TIMEOUT_MS: u64 = 1_000;
+pub(crate) const DESKTOP_URL_IPC_IO_TIMEOUT_MS: u64 = 1_000;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 const MAIN_IPC_TRANSACTION_TIMEOUT_MS: u64 = 2_000;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -314,9 +318,6 @@ use windows::{
         },
     },
 };
-
-// IPC actions here.
-pub const IPC_ACTION_CLOSE: &str = "close";
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 thread_local! {
@@ -1682,6 +1683,66 @@ pub(crate) enum LinuxPulseAudioIpcRequest {
     },
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(tag = "t", deny_unknown_fields)]
+pub(crate) enum DesktopUrlIpcRequest {
+    OpenUrl { url: String },
+    Activate {},
+    CloseAll {},
+}
+
+impl DesktopUrlIpcRequest {
+    fn from_url(url: String) -> ResultType<Self> {
+        if url.len() > DESKTOP_URL_IPC_MAX_LINK_BYTES {
+            bail!("desktop URL IPC link exceeds its semantic limit");
+        }
+        if crate::common::is_empty_uni_link(&url) {
+            return Ok(Self::Activate {});
+        }
+        validate_desktop_url_ipc_open_url(&url)?;
+        Ok(Self::OpenUrl { url })
+    }
+
+    pub(crate) fn validate(self) -> ResultType<Self> {
+        if let Self::OpenUrl { url } = &self {
+            validate_desktop_url_ipc_open_url(url)?;
+        }
+        Ok(self)
+    }
+}
+
+fn validate_desktop_url_ipc_open_url(url: &str) -> ResultType<()> {
+    if url.is_empty() || url.len() > DESKTOP_URL_IPC_MAX_LINK_BYTES {
+        bail!("desktop URL IPC link is empty or oversized");
+    }
+    let prefix = crate::get_uri_prefix();
+    let Some(remainder) = url.strip_prefix(&prefix) else {
+        bail!("desktop URL IPC link has the wrong scheme");
+    };
+    let Some((authority, address)) = remainder.split_once('/') else {
+        bail!("desktop URL IPC link is not a canonical operation/address pair");
+    };
+    if !matches!(
+        authority,
+        "connect"
+            | "play"
+            | "file-transfer"
+            | "view-camera"
+            | "port-forward"
+            | "rdp"
+            | "terminal"
+    ) {
+        bail!("desktop URL IPC link has an unsupported operation");
+    }
+    if address.is_empty() || address.len() > DESKTOP_URL_IPC_MAX_ADDRESS_BYTES {
+        bail!("desktop URL IPC address is empty or oversized");
+    }
+    if !hbb_common::is_ip_str(address) && !hbb_common::is_domain_port_str(address) {
+        bail!("desktop URL IPC address is not a direct address");
+    }
+    Ok(())
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 #[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
 #[serde(tag = "t", deny_unknown_fields)]
@@ -1818,7 +1879,6 @@ pub enum Data {
     Control(DataControl),
     Empty,
     Disconnected,
-    UrlLink(String),
     VoiceCallIncoming,
     StartVoiceCall,
     VoiceCallResponse(bool),
@@ -5594,6 +5654,8 @@ async fn connect_with_path(
             ConnectionTmpl::new_protected_service(client)
         } else if postfix.is_empty() {
             ConnectionTmpl::new_main(client)
+        } else if postfix == "_url" {
+            ConnectionTmpl::new_desktop_url(client)
         } else if whiteboard_ipc_postfix_is_valid(postfix) {
             ConnectionTmpl::new_whiteboard(client)
         } else {
@@ -5625,7 +5687,9 @@ async fn connect_with_path(
         } else {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
-                if whiteboard_ipc_postfix_is_valid(postfix) {
+                if postfix == "_url" {
+                    ConnectionTmpl::new_desktop_url(client)
+                } else if whiteboard_ipc_postfix_is_valid(postfix) {
                     ConnectionTmpl::new_whiteboard(client)
                 } else {
                     #[cfg(target_os = "linux")]
@@ -6173,6 +6237,10 @@ where
         Self::new_with_max_packet_length(conn, WHITEBOARD_IPC_MAX_FRAME_BYTES)
     }
 
+    pub(crate) fn new_desktop_url(conn: T) -> Self {
+        Self::new_with_max_packet_length(conn, DESKTOP_URL_IPC_MAX_FRAME_BYTES)
+    }
+
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub(crate) fn new_main(conn: T) -> Self {
         Self::new_with_max_packet_length(conn, MAIN_IPC_MAX_FRAME_BYTES)
@@ -6381,6 +6449,19 @@ where
             Ok(result) => result.map(Some),
             Err(_) => Ok(None),
         }
+    }
+    pub(crate) async fn send_desktop_url_request_timeout(
+        &mut self,
+        request: &DesktopUrlIpcRequest,
+        ms_timeout: u64,
+    ) -> ResultType<()> {
+        self.send_json_timeout(request, ms_timeout).await
+    }
+    pub(crate) async fn next_desktop_url_request_timeout(
+        &mut self,
+        ms_timeout: u64,
+    ) -> ResultType<DesktopUrlIpcRequest> {
+        Ok(timeout(ms_timeout, self.next_json_strict()).await??)
     }
     #[cfg(target_os = "windows")]
     pub(crate) async fn send_windows_service_sas_request_timeout(
@@ -7447,16 +7528,28 @@ pub async fn set_option(key: &str, value: &str) -> ResultType<String> {
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn send_url_scheme(url: String) -> ResultType<()> {
-    connect(1_000, "_url")
+    send_desktop_url_ipc_request(DesktopUrlIpcRequest::from_url(url)?).await
+}
+
+async fn send_desktop_url_ipc_request(request: DesktopUrlIpcRequest) -> ResultType<()> {
+    connect(DESKTOP_URL_IPC_IO_TIMEOUT_MS, "_url")
         .await?
-        .send_json_timeout(&Data::UrlLink(url), 1_000)
+        .send_desktop_url_request_timeout(&request, DESKTOP_URL_IPC_IO_TIMEOUT_MS)
         .await?;
     Ok(())
 }
 
-// Emit `close` events to ipc.
-pub fn close_all_instances() -> ResultType<bool> {
-    match crate::ipc::send_url_scheme(IPC_ACTION_CLOSE.to_owned()) {
+#[tokio::main(flavor = "current_thread")]
+pub async fn close_all_instances() -> ResultType<bool> {
+    match send_desktop_url_ipc_request(DesktopUrlIpcRequest::CloseAll {}).await {
+        Ok(_) => Ok(true),
+        Err(err) => Err(err),
+    }
+}
+
+#[tokio::main(flavor = "current_thread")]
+pub async fn activate_main_instance() -> ResultType<bool> {
+    match send_desktop_url_ipc_request(DesktopUrlIpcRequest::Activate {}).await {
         Ok(_) => Ok(true),
         Err(err) => Err(err),
     }
@@ -8430,6 +8523,156 @@ mod test {
     fn main_protocol_rejects_global_data_frames() {
         let frame = serde_json::to_vec(&Data::Close).unwrap();
         assert!(serde_json::from_slice::<MainIpcRequest>(&frame).is_err());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn desktop_url_ipc_uses_closed_bounded_protocol() {
+        let prefix = crate::get_uri_prefix();
+        let url = format!("{prefix}connect/127.0.0.1:21118");
+        let open = DesktopUrlIpcRequest::from_url(url.clone()).unwrap();
+        assert_eq!(
+            open,
+            DesktopUrlIpcRequest::OpenUrl { url: url.clone() }
+        );
+        assert_eq!(
+            DesktopUrlIpcRequest::from_url(prefix.clone()).unwrap(),
+            DesktopUrlIpcRequest::Activate {}
+        );
+        assert_eq!(
+            DesktopUrlIpcRequest::from_url(format!("{prefix}///")).unwrap(),
+            DesktopUrlIpcRequest::Activate {}
+        );
+        let domain_url = format!("{prefix}file-transfer/example.com:21118");
+        assert_eq!(
+            DesktopUrlIpcRequest::from_url(domain_url.clone()).unwrap(),
+            DesktopUrlIpcRequest::OpenUrl { url: domain_url }
+        );
+        assert!(DesktopUrlIpcRequest::from_url(String::new()).is_err());
+        assert!(DesktopUrlIpcRequest::from_url("close".to_owned()).is_err());
+        assert!(
+            DesktopUrlIpcRequest::from_url("https://connect/127.0.0.1:21118".to_owned())
+                .is_err()
+        );
+        assert!(
+            DesktopUrlIpcRequest::from_url(format!("{prefix}connect/123456789")).is_err()
+        );
+        assert!(
+            DesktopUrlIpcRequest::from_url(format!(
+                "{prefix}connect/123456789@relay.example:21117"
+            ))
+            .is_err()
+        );
+        assert!(
+            DesktopUrlIpcRequest::from_url(format!("{prefix}connect/example.com")).is_err()
+        );
+        assert!(
+            DesktopUrlIpcRequest::from_url(format!(
+                "{prefix}connect/127.0.0.1:21118?password=secret"
+            ))
+            .is_err()
+        );
+        assert!(
+            DesktopUrlIpcRequest::from_url(format!(
+                "{prefix}config/example.org:21118"
+            ))
+            .is_err()
+        );
+        assert!(
+            DesktopUrlIpcRequest::from_url(format!(
+                "{prefix}connect/{}",
+                "a".repeat(DESKTOP_URL_IPC_MAX_ADDRESS_BYTES + 1)
+            ))
+            .is_err()
+        );
+        assert!(
+            DesktopUrlIpcRequest::OpenUrl {
+                url: prefix.clone()
+            }
+            .validate()
+            .is_err()
+        );
+
+        let encoded = serde_json::to_vec(&open).unwrap();
+        assert_eq!(
+            encoded,
+            format!(r#"{{"t":"OpenUrl","url":"{url}"}}"#).as_bytes()
+        );
+        assert_eq!(
+            serde_json::from_slice::<DesktopUrlIpcRequest>(&encoded).unwrap(),
+            open
+        );
+        assert!(
+            serde_json::from_slice::<DesktopUrlIpcRequest>(
+                br#"{"t":"OpenUrl","url":"rustdesk://connect/127.0.0.1","extra":true}"#
+            )
+            .is_err()
+        );
+        assert!(
+            serde_json::from_slice::<DesktopUrlIpcRequest>(
+                &serde_json::to_vec(&Data::Close).unwrap()
+            )
+            .is_err()
+        );
+
+        let (client_end, server_end) =
+            tokio::io::duplex(DESKTOP_URL_IPC_MAX_FRAME_BYTES * 2);
+        let mut client = ConnectionTmpl::new_desktop_url(client_end);
+        let mut server = ConnectionTmpl::new_desktop_url(server_end);
+        assert_eq!(
+            client.inner.codec().max_packet_length(),
+            DESKTOP_URL_IPC_MAX_FRAME_BYTES
+        );
+        client
+            .send_desktop_url_request_timeout(&open, DESKTOP_URL_IPC_IO_TIMEOUT_MS)
+            .await
+            .unwrap();
+        assert_eq!(
+            server
+                .next_desktop_url_request_timeout(DESKTOP_URL_IPC_IO_TIMEOUT_MS)
+                .await
+                .unwrap()
+                .validate()
+                .unwrap(),
+            open
+        );
+
+        let (bad_sender_end, bad_receiver_end) =
+            tokio::io::duplex(DESKTOP_URL_IPC_MAX_FRAME_BYTES * 2);
+        let mut bad_sender = ConnectionTmpl::new(bad_sender_end);
+        let mut bad_receiver = ConnectionTmpl::new_desktop_url(bad_receiver_end);
+        bad_sender.send(&Data::Close).await.unwrap();
+        assert!(
+            bad_receiver
+                .next_desktop_url_request_timeout(DESKTOP_URL_IPC_IO_TIMEOUT_MS)
+                .await
+                .is_err()
+        );
+
+        let (oversize_sender_end, oversize_receiver_end) =
+            tokio::io::duplex(DESKTOP_URL_IPC_MAX_FRAME_BYTES * 2);
+        let mut oversize_sender = ConnectionTmpl::new(oversize_sender_end);
+        let mut oversize_receiver =
+            ConnectionTmpl::new_desktop_url(oversize_receiver_end);
+        oversize_sender
+            .send_raw(Bytes::from(vec![0; DESKTOP_URL_IPC_MAX_FRAME_BYTES + 1]))
+            .await
+            .unwrap();
+        assert!(
+            oversize_receiver
+                .next_desktop_url_request_timeout(DESKTOP_URL_IPC_IO_TIMEOUT_MS)
+                .await
+                .is_err()
+        );
+
+        let (idle_end, idle_peer) = tokio::io::duplex(DESKTOP_URL_IPC_MAX_FRAME_BYTES);
+        let mut idle = ConnectionTmpl::new_desktop_url(idle_end);
+        assert!(idle.next_desktop_url_request_timeout(1).await.is_err());
+        drop(idle_peer);
+        assert!(
+            idle.next_desktop_url_request_timeout(DESKTOP_URL_IPC_IO_TIMEOUT_MS)
+                .await
+                .is_err()
+        );
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

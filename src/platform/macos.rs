@@ -1226,7 +1226,11 @@ pub fn handle_application_should_open_untitled_file() {
     hbb_common::log::debug!("icon clicked on finder");
     let x = std::env::args().nth(1).unwrap_or_default();
     if x == "--server" || x == "--cm" || x == "--tray" {
-        std::thread::spawn(move || crate::handle_url_scheme("".to_lowercase()));
+        std::thread::spawn(move || {
+            if let Err(err) = crate::ipc::activate_main_instance() {
+                hbb_common::log::debug!("Failed to activate the main instance: {err}");
+            }
+        });
     }
 }
 

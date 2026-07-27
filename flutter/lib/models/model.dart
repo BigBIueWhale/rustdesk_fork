@@ -398,6 +398,10 @@ class FfiModel with ChangeNotifier {
       } else if (name == 'on_url_scheme_received') {
         // currently comes from desktop URL IPC
         onUrlSchemeReceived(evt);
+      } else if (name == 'on_desktop_instance_activate_requested') {
+        onDesktopInstanceActivateRequested();
+      } else if (name == 'on_desktop_instances_close_requested') {
+        onDesktopInstancesCloseRequested();
       } else if (name == 'on_voice_call_waiting') {
         // Waiting for the response from the peer.
         parent.target?.chatModel.onVoiceCallWaiting();
@@ -539,22 +543,22 @@ class FfiModel with ChangeNotifier {
 
   onUrlSchemeReceived(Map<String, dynamic> evt) {
     final url = evt['url'].toString().trim();
-    if (url.startsWith(bind.mainUriPrefixSync()) &&
-        handleUriLink(uriString: url)) {
-      return;
+    if (!url.startsWith(bind.mainUriPrefixSync()) ||
+        !handleUriLink(uriString: url)) {
+      debugPrint("Rejected malformed desktop URL IPC event.");
     }
-    switch (url) {
-      case kUrlActionClose:
-        debugPrint("closing all instances");
-        Future.microtask(() async {
-          await rustDeskWinManager.closeAllSubWindows();
-          windowManager.close();
-        });
-        break;
-      default:
-        windowOnTop(null);
-        break;
-    }
+  }
+
+  onDesktopInstanceActivateRequested() {
+    windowOnTop(null);
+  }
+
+  onDesktopInstancesCloseRequested() {
+    debugPrint("closing all instances");
+    Future.microtask(() async {
+      await rustDeskWinManager.closeAllSubWindows();
+      windowManager.close();
+    });
   }
 
   /// Bind the event listener to receive events from the Rust core.

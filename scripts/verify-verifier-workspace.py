@@ -10759,6 +10759,11 @@ def validate_windows_ipc_dacl_coverage_contract(sources):
     auth_source = sources["ipc_auth_source"]
     cm_source = sources["ui_cm_source"]
     whiteboard_source = sources["whiteboard_server"]
+    server_source = sources["server_source"]
+    macos_source = sources["macos_source"]
+    model_dart = sources["model_dart"]
+    consts_dart = sources["consts_dart"]
+    apple = sources["apple"]
 
     heading = (
         'echo "== (3b-iii-d9cm) Windows production-listener DACL coverage '
@@ -10850,6 +10855,146 @@ def validate_windows_ipc_dacl_coverage_contract(sources):
     if "SecurityAttributes::empty()" in listener_attributes:
         raise VerificationError("default/null Windows listener security attributes remain")
 
+    desktop_url_protocol = extract_between(
+        ipc_source,
+        "pub(crate) enum DesktopUrlIpcRequest {",
+        "\n}\n\nimpl DesktopUrlIpcRequest",
+        "closed desktop URL IPC operation protocol",
+    )
+    for text, label in (
+        ("OpenUrl { url: String },", "typed desktop URL open operation"),
+        ("Activate {},", "typed desktop activation operation"),
+        ("CloseAll {},", "typed desktop close-all operation"),
+    ):
+        require_text(desktop_url_protocol, text, label)
+    if desktop_url_protocol.count("\n    ") != 3:
+        raise VerificationError("desktop URL IPC operation vocabulary is not exact")
+    desktop_url_header = ipc_source[
+        max(0, ipc_source.find("pub(crate) enum DesktopUrlIpcRequest {") - 100) :
+        ipc_source.find("pub(crate) enum DesktopUrlIpcRequest {")
+    ]
+    require_text(
+        desktop_url_header,
+        '#[serde(tag = "t", deny_unknown_fields)]',
+        "desktop URL IPC unknown-field denial",
+    )
+
+    for text, label in (
+        (
+            "pub(crate) const DESKTOP_URL_IPC_MAX_FRAME_BYTES: usize = 8 * 1024;",
+            "desktop URL IPC frame cap",
+        ),
+        (
+            "const DESKTOP_URL_IPC_MAX_LINK_BYTES: usize = 1024;",
+            "desktop URL IPC link limit",
+        ),
+        (
+            "const DESKTOP_URL_IPC_MAX_ADDRESS_BYTES: usize = 512;",
+            "desktop URL IPC address limit",
+        ),
+        (
+            "pub(crate) const DESKTOP_URL_IPC_IO_TIMEOUT_MS: u64 = 1_000;",
+            "desktop URL IPC I/O deadline",
+        ),
+        (
+            "Self::new_with_max_packet_length(conn, DESKTOP_URL_IPC_MAX_FRAME_BYTES)",
+            "desktop URL IPC frame-capped constructor",
+        ),
+        (
+            "send_desktop_url_ipc_request(DesktopUrlIpcRequest::from_url(url)?).await",
+            "desktop URL IPC sender-side semantic validation",
+        ),
+        (
+            "Ok(timeout(ms_timeout, self.next_json_strict()).await??)",
+            "desktop URL IPC strict deadline reader",
+        ),
+        (
+            "!hbb_common::is_ip_str(address) && !hbb_common::is_domain_port_str(address)",
+            "desktop URL IPC direct-address validator",
+        ),
+    ):
+        require_text(ipc_source, text, label)
+    if ipc_source.count("ConnectionTmpl::new_desktop_url(client)") != 2:
+        raise VerificationError(
+            "desktop URL IPC connecting streams are not both frame-capped"
+        )
+    data_protocol = extract_between(
+        ipc_source,
+        "pub enum Data {",
+        "\n}\n\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]",
+        "cross-purpose IPC Data protocol",
+    )
+    if "UrlLink" in data_protocol:
+        raise VerificationError("desktop URL IPC remains in cross-purpose Data")
+    for text, label in (
+        ("IPC_ACTION_CLOSE", "desktop URL IPC Rust close sentinel"),
+        ("kUrlActionClose", "desktop URL IPC Dart close sentinel"),
+    ):
+        if text in ipc_source or text in consts_dart or text in model_dart:
+            raise VerificationError(f"{label} remains")
+
+    desktop_url_receiver = extract_between(
+        server_source,
+        "pub async fn start_ipc_url_server() {",
+        "\n#[cfg(test)]\nmod credential_generation_tests",
+        "desktop URL IPC receiver",
+    )
+    require_order(
+        desktop_url_receiver,
+        (
+            "crate::ipc::Connection::new_desktop_url(conn)",
+            "crate::ipc::authorize_url_ipc_sender(&conn)",
+            ".next_desktop_url_request_timeout(",
+            ".and_then(crate::ipc::DesktopUrlIpcRequest::validate)",
+            '"name": "on_url_scheme_received"',
+            '"name": "on_desktop_instance_activate_requested"',
+            '"name": "on_desktop_instances_close_requested"',
+        ),
+        "desktop URL IPC receiver authority and dispatch",
+    )
+    for text, label in (
+        ("Connection::new(conn)", "unbounded desktop URL accepted stream"),
+        ("next_timeout(1000)", "legacy desktop URL IPC reader"),
+        ("Data::UrlLink", "cross-purpose desktop URL IPC receiver"),
+    ):
+        if text in desktop_url_receiver:
+            raise VerificationError(f"{label} remains")
+
+    require_text(
+        macos_source,
+        "crate::ipc::activate_main_instance()",
+        "typed macOS desktop activation sender",
+    )
+    if 'handle_url_scheme("".to_owned())' in macos_source:
+        raise VerificationError("empty-string macOS activation sentinel remains")
+    require_order(
+        model_dart,
+        (
+            "name == 'on_url_scheme_received'",
+            "onUrlSchemeReceived(evt);",
+            "name == 'on_desktop_instance_activate_requested'",
+            "onDesktopInstanceActivateRequested();",
+            "name == 'on_desktop_instances_close_requested'",
+            "onDesktopInstancesCloseRequested();",
+        ),
+        "distinct Dart desktop URL IPC event dispatch",
+    )
+    require_text(
+        model_dart,
+        'debugPrint("Rejected malformed desktop URL IPC event.");',
+        "malformed Dart desktop URL IPC event rejection",
+    )
+    require_text(
+        validator,
+        "desktop URL IPC Apple source gate",
+        "focused desktop URL IPC Apple-gate binding",
+    )
+    require_text(
+        apple,
+        'echo "== (2b-iii-c1) R-S11ea macOS desktop URL/instance closed bounded protocol =="',
+        "desktop URL IPC Apple source gate",
+    )
+
     for text, label in (
         ('<span class="id">R-S11aw</span>', "Windows listener-DACL requirement"),
         (
@@ -10861,12 +11006,28 @@ def validate_windows_ipc_dacl_coverage_contract(sources):
             "Windows helper pipes inherited the default Everyone/Anonymous read grant",
             "Windows listener-DACL Appendix C disposition",
         ),
+        ('<span class="id">R-S11ea</span>', "desktop URL IPC requirement"),
+        (
+            "Desktop URL and instance handoff IPC has one closed bounded operation protocol",
+            "desktop URL IPC requirement title",
+        ),
+        ("<tr><td>280</td>", "desktop URL IPC Appendix C row"),
     ):
         require_text(requirements, text, label)
     require_text(
         hardening,
         "R-S11e-63 — complete Windows production-listener DACL coverage",
         "Windows listener-DACL hardening ledger",
+    )
+    require_text(
+        hardening,
+        "R-S11ea/R-S11e-145 — desktop URL/instance handoff closed protocol and resource budget",
+        "desktop URL IPC hardening ledger",
+    )
+    require_text(
+        verify,
+        'echo "== (3b-iii-f4) Desktop URL/instance IPC has one closed bounded operation protocol (R-S11ea) =="',
+        "desktop URL IPC shared source gate",
     )
 
 
@@ -36010,6 +36171,108 @@ def run_source_mutations(sources):
             "R-S11e-63 — complete Windows production-listener DACL coverage",
             "R-S11e-63 — default Windows helper DACLs retained",
             "Windows listener-DACL hardening ledger",
+        ),
+        (
+            "ipc_source",
+            "pub(crate) const DESKTOP_URL_IPC_MAX_FRAME_BYTES: usize = 8 * 1024;",
+            "pub(crate) const DESKTOP_URL_IPC_MAX_FRAME_BYTES: usize = 80 * 1024;",
+            "desktop URL IPC frame cap",
+        ),
+        (
+            "ipc_source",
+            '#[serde(tag = "t", deny_unknown_fields)]\npub(crate) enum DesktopUrlIpcRequest {',
+            '#[serde(tag = "t")]\npub(crate) enum DesktopUrlIpcRequest {',
+            "desktop URL IPC unknown-field denial",
+        ),
+        (
+            "ipc_source",
+            "CloseAll {},\n}",
+            "CloseAll {},\n    Reconfigure {},\n}",
+            "desktop URL IPC operation vocabulary",
+        ),
+        (
+            "ipc_source",
+            "!hbb_common::is_ip_str(address) && !hbb_common::is_domain_port_str(address)",
+            "!hbb_common::is_ip_str(address)",
+            "desktop URL IPC direct-address validator",
+        ),
+        (
+            "ipc_source",
+            "Self::new_with_max_packet_length(conn, DESKTOP_URL_IPC_MAX_FRAME_BYTES)",
+            "Self::new(conn)",
+            "desktop URL IPC frame-capped constructor",
+        ),
+        (
+            "ipc_source",
+            'if postfix == "_url" {\n                    ConnectionTmpl::new_desktop_url(client)',
+            'if postfix == "_url" {\n                    ConnectionTmpl::new(client)',
+            "desktop URL IPC connecting streams",
+        ),
+        (
+            "ipc_source",
+            "send_desktop_url_ipc_request(DesktopUrlIpcRequest::from_url(url)?).await",
+            "send_desktop_url_ipc_request(DesktopUrlIpcRequest::OpenUrl { url }).await",
+            "desktop URL IPC sender-side semantic validation",
+        ),
+        (
+            "server_source",
+            "let mut conn = crate::ipc::Connection::new_desktop_url(conn);",
+            "let mut conn = crate::ipc::Connection::new(conn);",
+            "desktop URL IPC receiver authority and dispatch",
+        ),
+        (
+            "server_source",
+            ".and_then(crate::ipc::DesktopUrlIpcRequest::validate)",
+            ".map(|request| request)",
+            "desktop URL IPC receiver authority and dispatch",
+        ),
+        (
+            "server_source",
+            '"name": "on_desktop_instance_activate_requested"',
+            '"name": "on_url_scheme_received"',
+            "desktop URL IPC receiver authority and dispatch",
+        ),
+        (
+            "macos_source",
+            "crate::ipc::activate_main_instance()",
+            'crate::platform::handle_url_scheme("".to_owned())',
+            "typed macOS desktop activation sender",
+        ),
+        (
+            "model_dart",
+            "name == 'on_desktop_instances_close_requested'",
+            "name == 'on_url_scheme_received'",
+            "distinct Dart desktop URL IPC event dispatch",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ea</span>',
+            '<span class="id">R-S11ez</span>',
+            "desktop URL IPC requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>280</td>",
+            "<tr><td>9280</td>",
+            "desktop URL IPC Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11ea/R-S11e-145 — desktop URL/instance handoff closed protocol and resource budget",
+            "R-S11ea/R-S11e-145 — desktop URL sentinel compatibility",
+            "desktop URL IPC hardening ledger",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-f4) Desktop URL/instance IPC has one closed bounded operation protocol (R-S11ea) =="',
+            'echo "== (3b-iii-f4) Desktop URL/instance IPC retains string control compatibility (R-S11ea) =="',
+            "desktop URL IPC shared source gate",
+        ),
+        (
+            "apple",
+            'echo "== (2b-iii-c1) R-S11ea macOS desktop URL/instance closed bounded protocol =="',
+            'echo "== (2b-iii-c1) R-S11ea macOS desktop URL/instance string compatibility =="',
+            "desktop URL IPC Apple source gate",
         ),
         (
             "verify",

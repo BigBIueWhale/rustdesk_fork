@@ -5589,8 +5589,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `DispatchToUniLinksDesktop(hwnd)`. Raw Windows URL launches are handed to the same path through the
   `rustdesk_send_url_scheme` C ABI bridge. The main Windows Flutter process starts the `_url` IPC
   listener; `_url` uses a restricted named-pipe DACL and receiver-side same-session/current-executable
-  peer authorization before delivering `Data::UrlLink`. If IPC is unavailable, the process launched by
-  the OS/CLI handles its own arguments instead of sending them by public window message.
+  peer authorization before R-S11ea's bounded typed URL/instance request is
+  delivered. If IPC is unavailable, the process launched by the OS/CLI handles
+  its own arguments instead of sending them by public window message.
   Credential/config authorities remain ignored and embedded password/key/relay material remains
   stripped/rejected.
 - **R-S11c-10 — Linux root-context shell interpolation.** Platform: Linux service/helper discovery.
@@ -14064,6 +14065,101 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   installed/native behavior, device/reproduction evidence where separately
   required, and R-V3 external review remain open. The broader Ralph-loop goal
   remains active.
+- **R-S11ea/R-S11e-145 — desktop URL/instance handoff closed protocol and resource budget
+  — SOURCE CLOSED/GATED 2026-07-27; CONFINED LINUX
+  RUST/SOURCE/MUTATION VERIFIED; COLD
+  INSTALLED/NATIVE/DEVICE/EXTERNAL EVIDENCE PENDING.** The Windows/macOS
+  `_url` path was traced from OS/CLI and Flutter
+  canonicalization through the Rust sender, platform listener/DACL, receiver
+  peer authorization, global Flutter event, and Dart window/session dispatch.
+  Existing authority was already conjunctive: Windows used the restricted
+  named-pipe DACL plus same-session/current-executable proof, and macOS used the
+  service-scoped installed-app proof. The reviewed source did not show an
+  ambient unauthorized URL-injection path.
+
+  The post-authentication wire was nevertheless the wrong abstraction.
+  `Data::UrlLink(String)` made `_url` compile and parse the complete
+  cross-purpose local union over the default unlimited `BytesCodec`. The
+  sequential receiver had a one-second read timeout but no pre-read frame
+  ceiling. The same string carried three operations: a canonical URL opened a
+  session, an empty string activated the main window, and the magic value
+  `"close"` closed every window. This was bounded-local parser/resource,
+  operation-typing, and future-reactivation debt—not evidence of exploitation,
+  root acquisition, public listener exposure, host mutation, or compromise.
+
+  `src/ipc.rs` now defines an unknown-field-denying
+  `DesktopUrlIpcRequest` outside `Data`, with exactly `OpenUrl { url }`,
+  `Activate`, and `CloseAll`. The old union variant, empty-string activation
+  caller, close constant, and Dart close sentinel are deleted. Both connecting
+  and accepted `_url` streams install an 8-KiB codec before the first frame;
+  connect, write, and strict read use one-second deadlines. The existing
+  sequential listener owns one request at a time and does not detach work.
+  After existing platform sender proof and typed deserialization, the receiver
+  independently validates `OpenUrl`: at most 1,024 bytes overall, at most 512
+  bytes for the address, the current application scheme, one exact
+  connect/play/file-transfer/view-camera/port-forward/RDP/terminal operation,
+  and the same direct IPv4/IPv6 or domain-with-port accept set used by the
+  connection choke point. Wrong-scheme, noncanonical, query/credential/config,
+  relay-shaped, indirect-ID, malformed, unknown-field, cross-purpose,
+  oversized, reset, and deadline-expired requests fail before Flutter.
+  `src/server.rs` emits distinct open, activate, and close event names;
+  `flutter/lib/models/model.dart` handles them in separate branches, so an
+  invalid URL event neither activates nor closes a window. macOS Finder
+  activation now requests typed `Activate` directly.
+
+  R-S11ea and Appendix C #280 make this protocol, semantic limit, resource
+  budget, receiver ordering, and sentinel deletion normative. The final exact
+  focused regression was compiled from the
+  repository's authenticated vendored Cargo closure in immutable image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric UID/GID 1000:1000, with no pull/network, a read-only root and
+  repository, recursive bind inclusion disabled, all capabilities dropped,
+  no-new-privileges, finite resources, and only an isolated user-owned target
+  writable. It passed exact wire, unknown-field/cross-purpose rejection,
+  valid direct IP and domain/port admission, wrong-scheme/indirect-ID/
+  relay-shaped/missing-port/query/config/oversize rejection, receiver
+  revalidation, codec/oversize/deadline/reset behavior, and typed transport
+  (`1 passed`, `0 failed`, `354 filtered`). The extended Windows
+  production-listener/desktop-URL semantic checker passes and rejects all 35
+  deliberate source, protocol, constructor, receiver-order, event,
+  sentinel, documentation, and gate mutations. The shared and extracted
+  Apple R-S11ea source blocks pass. The independent workspace baseline passes,
+  and one uninterrupted final exact-tree run rejects all 2,605 in-memory
+  source mutations from mutation one. Native-codec normal/negative gates and
+  exact requirements hash synchronization pass; the range-coupled Debian
+  lifecycle and release-parent checkers reject all 44 and 27 mutations.
+
+  Preliminary non-passes remain explicit. Two initial compile setups stopped
+  before repository compilation because the immutable Rustup shim attempted a
+  forbidden toolchain sync and then an older split Cargo cache lacked the
+  current pinned `crossbeam-epoch`; the vendored closure was used without
+  relaxing confinement. A later final focused rerun reached repository
+  compilation but a newly specified 4-MiB per-file container limit killed
+  `rustc` with `SIGXFSZ`; no test result was inferred, the limit was corrected
+  to a still-finite 2 GiB, and the exact test passed. The first extracted Apple
+  source block printed an unmatched-parenthesis grep error caused by a
+  double-escaped new expression; that extraction is not counted, the
+  expression was corrected, and both Apple and shared blocks passed. The first
+  two complete workspace catalog attempts correctly rejected the extra
+  operation and uncapped connecting-constructor mutations but refused to
+  count them because their new catalog labels did not match the validator's
+  broader diagnostics. The labels—not the product checks—were aligned, the
+  catalog restarted from mutation one, and a complete pass followed. After
+  additional adversarial Rust assertions were added, the complete 2,605-entry
+  catalog was restarted once more; only that final uninterrupted exact-source
+  pass is counted. The pinned image lacks `rustfmt`, so no formatting pass is
+  claimed; manual Rust review and `git diff --check` are used. The full
+  verifier is not run as a monolith because it would require nested Docker
+  authority that is not granted; the affected Rust, source, semantic,
+  mutation, hash, and range-coupled components run separately without a
+  Docker socket.
+
+  This slice starts no listener, connects no host endpoint, opens no window,
+  invokes no service or root fixture, and inspects/mutates no host
+  RustDesk/service/configuration/firewall/network state. Exact cold committed
+  release artifacts, installed/native behavior, device/reproduction evidence
+  where separately required, and R-V3 external review remain open. The broader
+  Ralph-loop goal remains active.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -14781,9 +14877,10 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-d8c49669e1600f740f6d64404996e8a96e6eae3da2e149fe21f0959fb48c302d  requirements.html
+cc3a9688d4f69dedbfd0edc440a15bac92922fa0a071c66b9152bb4163b73cc1  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
 R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.
+The same identity additionally binds R-S11ea and Appendix C #280.

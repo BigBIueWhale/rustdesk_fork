@@ -1112,37 +1112,59 @@ pub async fn start_ipc_url_server() {
     match crate::ipc::new_listener("_url").await {
         Ok(mut incoming) => {
             while let Some(Ok(conn)) = incoming.next().await {
-                let mut conn = crate::ipc::Connection::new(conn);
+                let mut conn = crate::ipc::Connection::new_desktop_url(conn);
                 // R-X6/R-S11c-9: this URL listener bypasses the main IPC handler, so sender auth
                 // happens before any rustdesk:// URL is delivered to Flutter.
                 if !crate::ipc::authorize_url_ipc_sender(&conn) {
                     log::warn!("Rejected an unauthorized sender on the _url IPC channel (R-X6)");
                     continue;
                 }
-                match conn.next_timeout(1000).await {
-                    Ok(Some(data)) => match data {
-                        #[cfg(feature = "flutter")]
-                        Data::UrlLink(url) => {
-                            let mut m = HashMap::new();
-                            m.insert("name", "on_url_scheme_received");
-                            m.insert("url", url.as_str());
-                            let event = serde_json::to_string(&m).unwrap_or("".to_owned());
-                            match crate::flutter::push_global_event(
-                                crate::flutter::APP_TYPE_MAIN,
-                                event,
-                            ) {
-                                None => log::warn!("No main window app found!"),
-                                Some(..) => {}
-                            }
-                        }
-                        _ => {
-                            log::warn!("An unexpected data was sent to the ipc url server.")
-                        }
-                    },
+                let request = match conn
+                    .next_desktop_url_request_timeout(
+                        crate::ipc::DESKTOP_URL_IPC_IO_TIMEOUT_MS,
+                    )
+                    .await
+                    .and_then(crate::ipc::DesktopUrlIpcRequest::validate)
+                {
+                    Ok(request) => request,
                     Err(err) => {
-                        log::error!("{}", err);
+                        log::warn!("Rejected malformed desktop URL IPC request: {err}");
+                        continue;
                     }
-                    _ => {}
+                };
+                #[cfg(feature = "flutter")]
+                {
+                    let event = match request {
+                        crate::ipc::DesktopUrlIpcRequest::OpenUrl { url } => {
+                            serde_json::json!({
+                                "name": "on_url_scheme_received",
+                                "url": url,
+                            })
+                            .to_string()
+                        }
+                        crate::ipc::DesktopUrlIpcRequest::Activate {} => {
+                            serde_json::json!({
+                                "name": "on_desktop_instance_activate_requested",
+                            })
+                            .to_string()
+                        }
+                        crate::ipc::DesktopUrlIpcRequest::CloseAll {} => {
+                            serde_json::json!({
+                                "name": "on_desktop_instances_close_requested",
+                            })
+                            .to_string()
+                        }
+                    };
+                    if crate::flutter::push_global_event(crate::flutter::APP_TYPE_MAIN, event)
+                        .is_none()
+                    {
+                        log::warn!("No main window app found!");
+                    }
+                }
+                #[cfg(not(feature = "flutter"))]
+                {
+                    let _ = request;
+                    log::warn!("Desktop URL IPC request arrived without Flutter support");
                 }
             }
         }

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""R-S11aw/R-S11e-63 Windows production-listener DACL verifier."""
+"""Windows production-listener DACL and desktop URL-IPC verifier."""
 
 from __future__ import annotations
 
@@ -39,6 +39,15 @@ def require_all(source: str, needles: Iterable[Tuple[str, str]]) -> None:
         require(source, needle, label)
 
 
+def require_order(source: str, needles: Iterable[str], label: str) -> None:
+    offset = 0
+    for needle in needles:
+        index = source.find(needle, offset)
+        if index < 0:
+            raise VerificationError(f"missing or reordered {label}: {needle}")
+        offset = index + len(needle)
+
+
 def load_sources(repo: Path) -> Dict[str, str]:
     paths = {
         "ipc": "src/ipc.rs",
@@ -47,9 +56,13 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "whiteboard": "src/whiteboard/server.rs",
         "server": "src/server.rs",
         "windows": "src/platform/windows.rs",
+        "macos": "src/platform/macos.rs",
+        "model": "flutter/lib/models/model.dart",
+        "consts": "flutter/lib/consts.dart",
         "requirements": "requirements.html",
         "hardening": "HARDENING_STATUS.md",
         "verify": "scripts/verify.sh",
+        "apple": "scripts/apple-conform-check.sh",
     }
     sources = {
         key: (repo / relative).read_text(encoding="utf-8")
@@ -390,6 +403,240 @@ def validate(sources: Dict[str, str]) -> None:
         ),
     )
 
+    desktop_url_protocol = region(
+        sources["ipc"],
+        "pub(crate) enum DesktopUrlIpcRequest {",
+        "\n}\n\nimpl DesktopUrlIpcRequest",
+        "closed desktop URL IPC request protocol",
+    )
+    require(
+        sources["ipc"][
+            max(0, sources["ipc"].find("pub(crate) enum DesktopUrlIpcRequest {") - 100) :
+            sources["ipc"].find("pub(crate) enum DesktopUrlIpcRequest {")
+        ],
+        '#[serde(tag = "t", deny_unknown_fields)]',
+        "desktop URL IPC unknown-field denial",
+    )
+    require_all(
+        desktop_url_protocol,
+        (
+            ("OpenUrl { url: String },", "typed desktop URL open operation"),
+            ("Activate {},", "typed desktop activation operation"),
+            ("CloseAll {},", "typed desktop close-all operation"),
+        ),
+    )
+    if desktop_url_protocol.count("\n    ") != 3:
+        raise VerificationError("desktop URL IPC protocol gained an extra operation")
+
+    require_all(
+        sources["ipc"],
+        (
+            (
+                "pub(crate) const DESKTOP_URL_IPC_MAX_FRAME_BYTES: usize = 8 * 1024;",
+                "desktop URL IPC frame cap",
+            ),
+            (
+                "const DESKTOP_URL_IPC_MAX_LINK_BYTES: usize = 1024;",
+                "desktop URL IPC link limit",
+            ),
+            (
+                "const DESKTOP_URL_IPC_MAX_ADDRESS_BYTES: usize = 512;",
+                "desktop URL IPC address limit",
+            ),
+            (
+                "pub(crate) const DESKTOP_URL_IPC_IO_TIMEOUT_MS: u64 = 1_000;",
+                "desktop URL IPC deadline",
+            ),
+        ),
+    )
+
+    desktop_url_validator = region(
+        sources["ipc"],
+        "fn validate_desktop_url_ipc_open_url(url: &str) -> ResultType<()> {",
+        "\n}\n\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]",
+        "desktop URL IPC semantic validator",
+    )
+    require_all(
+        desktop_url_validator,
+        (
+            (
+                "url.len() > DESKTOP_URL_IPC_MAX_LINK_BYTES",
+                "desktop URL IPC link-length enforcement",
+            ),
+            (
+                "url.strip_prefix(&prefix)",
+                "desktop URL IPC exact application scheme",
+            ),
+            (
+                "remainder.split_once('/')",
+                "desktop URL IPC canonical operation/address split",
+            ),
+            ('"file-transfer"', "desktop URL IPC operation allow-list"),
+            (
+                "address.len() > DESKTOP_URL_IPC_MAX_ADDRESS_BYTES",
+                "desktop URL IPC address-length enforcement",
+            ),
+            (
+                "!hbb_common::is_ip_str(address) && !hbb_common::is_domain_port_str(address)",
+                "desktop URL IPC direct-address enforcement",
+            ),
+        ),
+    )
+
+    data_protocol = region(
+        sources["ipc"],
+        "pub enum Data {",
+        "\n}\n\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]",
+        "cross-purpose IPC data protocol",
+    )
+    absent(data_protocol, "UrlLink", "desktop URL variant in cross-purpose Data")
+    absent(sources["ipc"], "IPC_ACTION_CLOSE", "desktop URL close sentinel")
+    absent(sources["consts"], "kUrlActionClose", "Dart desktop URL close sentinel")
+
+    desktop_url_constructor = region(
+        sources["ipc"],
+        "pub(crate) fn new_desktop_url(conn: T) -> Self {",
+        "\n    }\n\n    #[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]",
+        "desktop URL IPC framed constructor",
+    )
+    require(
+        desktop_url_constructor,
+        "Self::new_with_max_packet_length(conn, DESKTOP_URL_IPC_MAX_FRAME_BYTES)",
+        "desktop URL IPC constructor frame cap",
+    )
+    if sources["ipc"].count('postfix == "_url"') != 2:
+        raise VerificationError(
+            "desktop URL IPC connecting-constructor platform coverage drift"
+        )
+    if sources["ipc"].count("ConnectionTmpl::new_desktop_url(client)") != 2:
+        raise VerificationError(
+            "desktop URL IPC connecting streams are not both frame-capped"
+        )
+
+    typed_transport = region(
+        sources["ipc"],
+        "pub(crate) async fn send_desktop_url_request_timeout(",
+        "\n    #[cfg(target_os = \"windows\")]",
+        "desktop URL IPC typed transport",
+    )
+    require_all(
+        typed_transport,
+        (
+            (
+                "request: &DesktopUrlIpcRequest",
+                "typed desktop URL IPC writer parameter",
+            ),
+            ("self.send_json_timeout(request, ms_timeout)", "bounded typed writer"),
+            (
+                "ResultType<DesktopUrlIpcRequest>",
+                "typed desktop URL IPC reader result",
+            ),
+            (
+                "timeout(ms_timeout, self.next_json_strict()).await??",
+                "strict deadline-bound desktop URL IPC reader",
+            ),
+        ),
+    )
+
+    desktop_url_sender = region(
+        sources["ipc"],
+        "pub async fn send_url_scheme(url: String) -> ResultType<()> {",
+        "\n#[cfg(target_os = \"windows\")]\nasync fn windows_service_main_request(",
+        "desktop URL IPC typed senders",
+    )
+    require_all(
+        desktop_url_sender,
+        (
+            (
+                "DesktopUrlIpcRequest::from_url(url)?",
+                "desktop URL IPC open sender validation",
+            ),
+            (
+                'connect(DESKTOP_URL_IPC_IO_TIMEOUT_MS, "_url")',
+                "desktop URL IPC connect deadline",
+            ),
+            (
+                "DesktopUrlIpcRequest::CloseAll {}",
+                "typed desktop close-all sender",
+            ),
+            (
+                "DesktopUrlIpcRequest::Activate {}",
+                "typed desktop activation sender",
+            ),
+        ),
+    )
+
+    desktop_url_receiver = region(
+        sources["server"],
+        "pub async fn start_ipc_url_server() {",
+        "\n#[cfg(test)]\nmod credential_generation_tests",
+        "desktop URL IPC receiver",
+    )
+    require_order(
+        desktop_url_receiver,
+        (
+            "crate::ipc::Connection::new_desktop_url(conn)",
+            "crate::ipc::authorize_url_ipc_sender(&conn)",
+            ".next_desktop_url_request_timeout(",
+            ".and_then(crate::ipc::DesktopUrlIpcRequest::validate)",
+            '"name": "on_url_scheme_received"',
+            '"name": "on_desktop_instance_activate_requested"',
+            '"name": "on_desktop_instances_close_requested"',
+        ),
+        "desktop URL IPC receiver authority and dispatch",
+    )
+    for needle, label in (
+        ("Connection::new(conn)", "unbounded desktop URL IPC accepted constructor"),
+        ("next_timeout(1000)", "legacy desktop URL IPC reader"),
+        ("Data::UrlLink", "cross-purpose desktop URL IPC receiver"),
+    ):
+        absent(desktop_url_receiver, needle, label)
+
+    require_all(
+        sources["macos"],
+        (
+            (
+                "crate::ipc::activate_main_instance()",
+                "typed macOS desktop activation sender",
+            ),
+        ),
+    )
+    absent(
+        sources["macos"],
+        'handle_url_scheme("".to_owned())',
+        "empty-string macOS activation sentinel",
+    )
+
+    require_order(
+        sources["model"],
+        (
+            "name == 'on_url_scheme_received'",
+            "onUrlSchemeReceived(evt);",
+            "name == 'on_desktop_instance_activate_requested'",
+            "onDesktopInstanceActivateRequested();",
+            "name == 'on_desktop_instances_close_requested'",
+            "onDesktopInstancesCloseRequested();",
+        ),
+        "distinct Dart desktop URL IPC event dispatch",
+    )
+    require_all(
+        sources["model"],
+        (
+            (
+                'debugPrint("Rejected malformed desktop URL IPC event.");',
+                "malformed Dart desktop URL event rejection",
+            ),
+            (
+                "onDesktopInstanceActivateRequested()",
+                "Dart desktop activation handler",
+            ),
+            (
+                "onDesktopInstancesCloseRequested()",
+                "Dart desktop close-all handler",
+            ),
+        ),
+    )
+
     for source, needle, label in (
         (
             sources["requirements"],
@@ -411,6 +658,31 @@ def validate(sources: Dict[str, str]) -> None:
             sources["verify"],
             'echo "== (3b-iii-d9cm) Windows production-listener DACL coverage (R-S11aw/R-S11e-63) =="',
             "shared source gate",
+        ),
+        (
+            sources["requirements"],
+            '<span class="id">R-S11ea</span>',
+            "R-S11ea desktop URL IPC requirement",
+        ),
+        (
+            sources["requirements"],
+            "<tr><td>280</td>",
+            "Appendix C #280",
+        ),
+        (
+            sources["hardening"],
+            "R-S11ea/R-S11e-145 — desktop URL/instance handoff closed protocol and resource budget",
+            "R-S11e-145 ledger",
+        ),
+        (
+            sources["verify"],
+            'echo "== (3b-iii-f4) Desktop URL/instance IPC has one closed bounded operation protocol (R-S11ea) =="',
+            "desktop URL IPC shared source gate",
+        ),
+        (
+            sources["apple"],
+            'echo "== (2b-iii-c1) R-S11ea macOS desktop URL/instance closed bounded protocol =="',
+            "desktop URL IPC Apple source gate",
         ),
     ):
         require(source, needle, label)
@@ -507,6 +779,114 @@ MUTATIONS: Tuple[Mutation, ...] = (
         'echo "== (3b-iii-d9cm) Windows partial-listener DACL coverage (R-S11aw/R-S11e-63) =="',
         "shared source gate",
     ),
+    (
+        "ipc",
+        "pub(crate) const DESKTOP_URL_IPC_MAX_FRAME_BYTES: usize = 8 * 1024;",
+        "pub(crate) const DESKTOP_URL_IPC_MAX_FRAME_BYTES: usize = 80 * 1024;",
+        "desktop URL IPC frame cap",
+    ),
+    (
+        "ipc",
+        '#[serde(tag = "t", deny_unknown_fields)]\npub(crate) enum DesktopUrlIpcRequest {',
+        '#[serde(tag = "t")]\npub(crate) enum DesktopUrlIpcRequest {',
+        "desktop URL IPC unknown-field denial",
+    ),
+    (
+        "ipc",
+        "CloseAll {},\n}",
+        "CloseAll {},\n    Reconfigure {},\n}",
+        "closed desktop URL IPC operation vocabulary",
+    ),
+    (
+        "ipc",
+        "!hbb_common::is_ip_str(address) && !hbb_common::is_domain_port_str(address)",
+        "!hbb_common::is_ip_str(address)",
+        "desktop URL IPC direct-address semantics",
+    ),
+    (
+        "ipc",
+        "Self::new_with_max_packet_length(conn, DESKTOP_URL_IPC_MAX_FRAME_BYTES)",
+        "Self::new(conn)",
+        "desktop URL IPC accepted constructor cap",
+    ),
+    (
+        "ipc",
+        'if postfix == "_url" {\n                    ConnectionTmpl::new_desktop_url(client)',
+        'if postfix == "_url" {\n                    ConnectionTmpl::new(client)',
+        "desktop URL IPC Unix connecting constructor cap",
+    ),
+    (
+        "ipc",
+        "ResultType<DesktopUrlIpcRequest> {\n        Ok(timeout(ms_timeout, self.next_json_strict()).await??)",
+        "ResultType<DesktopUrlIpcRequest> {\n        Ok(self.next_json_strict().await?)",
+        "desktop URL IPC read deadline",
+    ),
+    (
+        "ipc",
+        "send_desktop_url_ipc_request(DesktopUrlIpcRequest::from_url(url)?).await",
+        "send_desktop_url_ipc_request(DesktopUrlIpcRequest::OpenUrl { url }).await",
+        "desktop URL IPC sender validation",
+    ),
+    (
+        "server",
+        "let mut conn = crate::ipc::Connection::new_desktop_url(conn);",
+        "let mut conn = crate::ipc::Connection::new(conn);",
+        "desktop URL IPC accepted constructor",
+    ),
+    (
+        "server",
+        ".and_then(crate::ipc::DesktopUrlIpcRequest::validate)",
+        ".map(|request| request)",
+        "desktop URL IPC receiver semantic revalidation",
+    ),
+    (
+        "server",
+        '"name": "on_desktop_instance_activate_requested"',
+        '"name": "on_url_scheme_received"',
+        "distinct desktop activation event",
+    ),
+    (
+        "macos",
+        "crate::ipc::activate_main_instance()",
+        'crate::platform::handle_url_scheme("".to_owned())',
+        "typed macOS desktop activation",
+    ),
+    (
+        "model",
+        "name == 'on_desktop_instances_close_requested'",
+        "name == 'on_url_scheme_received'",
+        "distinct Dart desktop close dispatch",
+    ),
+    (
+        "requirements",
+        '<span class="id">R-S11ea</span>',
+        '<span class="id">R-S11ez</span>',
+        "R-S11ea requirement",
+    ),
+    (
+        "requirements",
+        "<tr><td>280</td>",
+        "<tr><td>9280</td>",
+        "Appendix C #280",
+    ),
+    (
+        "hardening",
+        "R-S11ea/R-S11e-145 — desktop URL/instance handoff closed protocol and resource budget",
+        "R-S11ea/R-S11e-145 — desktop URL sentinel compatibility",
+        "R-S11e-145 ledger",
+    ),
+    (
+        "verify",
+        'echo "== (3b-iii-f4) Desktop URL/instance IPC has one closed bounded operation protocol (R-S11ea) =="',
+        'echo "== (3b-iii-f4) Desktop URL/instance IPC retains string control compatibility (R-S11ea) =="',
+        "desktop URL IPC shared source gate",
+    ),
+    (
+        "apple",
+        'echo "== (2b-iii-c1) R-S11ea macOS desktop URL/instance closed bounded protocol =="',
+        'echo "== (2b-iii-c1) R-S11ea macOS desktop URL/instance string compatibility =="',
+        "desktop URL IPC Apple source gate",
+    ),
 )
 
 
@@ -517,6 +897,7 @@ RUST_SOURCE_KEYS = {
     "whiteboard": "src/whiteboard/server.rs",
     "server": "src/server.rs",
     "windows": "src/platform/windows.rs",
+    "macos": "src/platform/macos.rs",
 }
 
 

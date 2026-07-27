@@ -180,8 +180,6 @@ const String kOptionKeepAwakeDuringOutgoingSessions = "keep-awake-during-outgoin
 
 const String kOptionShowMobileAction = "showMobileActions";
 
-const String kUrlActionClose = "close";
-
 const String kTabLabelHomePage = "Home";
 const String kTabLabelSettingPage = "Settings";
 

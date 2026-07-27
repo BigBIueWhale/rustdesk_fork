@@ -1901,6 +1901,57 @@ else
   note "ok  R-S11c-8/R-S11dz macOS whiteboard uses closed directional protocols, a capped codec/queue/token map, exact launch and parent proof, one owned stream, deadline wakes, and terminal overlay exit"
 fi
 
+echo "== (2b-iii-c1) R-S11ea macOS desktop URL/instance closed bounded protocol =="
+r_s11ea=
+grep -q 'pub(crate) enum DesktopUrlIpcRequest {' "$REPO/src/ipc.rs" || r_s11ea="$r_s11ea request-protocol-missing"
+desktop_url_envelope=$(grep -B2 -A4 'pub(crate) enum DesktopUrlIpcRequest {' "$REPO/src/ipc.rs" || true)
+[ "$(echo "$desktop_url_envelope" | grep -c 'deny_unknown_fields')" -eq 1 ] || r_s11ea="$r_s11ea request-protocol-does-not-deny-unknown-fields"
+for operation in 'OpenUrl { url: String },' 'Activate {},' 'CloseAll {},'; do
+  echo "$desktop_url_envelope" | grep -Fq "$operation" || r_s11ea="$r_s11ea missing-$operation"
+done
+desktop_url_variants=$(echo "$desktop_url_envelope" | sed -n '/pub(crate) enum DesktopUrlIpcRequest {/,/^}/p' | grep -c '^    [A-Za-z]')
+[ "$desktop_url_variants" -eq 3 ] || r_s11ea="$r_s11ea operation-vocabulary-not-exact"
+grep -q 'pub(crate) const DESKTOP_URL_IPC_MAX_FRAME_BYTES: usize = 8 \* 1024;' "$REPO/src/ipc.rs" || r_s11ea="$r_s11ea frame-cap-missing"
+grep -q 'pub(crate) const DESKTOP_URL_IPC_IO_TIMEOUT_MS: u64 = 1_000;' "$REPO/src/ipc.rs" || r_s11ea="$r_s11ea io-deadline-missing"
+grep -q 'Self::new_with_max_packet_length(conn, DESKTOP_URL_IPC_MAX_FRAME_BYTES)' "$REPO/src/ipc.rs" || r_s11ea="$r_s11ea capped-constructor-missing"
+[ "$(grep -c 'ConnectionTmpl::new_desktop_url(client)' "$REPO/src/ipc.rs")" -eq 2 ] || r_s11ea="$r_s11ea connecting-stream-cap-coverage-drift"
+grep -q 'send_desktop_url_ipc_request(DesktopUrlIpcRequest::from_url(url)?).await' "$REPO/src/ipc.rs" || r_s11ea="$r_s11ea sender-validation-missing"
+grep -q 'DesktopUrlIpcRequest::CloseAll {}' "$REPO/src/ipc.rs" || r_s11ea="$r_s11ea typed-close-sender-missing"
+grep -q 'DesktopUrlIpcRequest::Activate {}' "$REPO/src/ipc.rs" || r_s11ea="$r_s11ea typed-activate-sender-missing"
+desktop_url_receiver=$(sed -n '/pub async fn start_ipc_url_server()/,/^#\[cfg(test)\]/p' "$REPO/src/server.rs")
+desktop_url_accept_line=$(echo "$desktop_url_receiver" | grep -n 'Connection::new_desktop_url(conn)' | head -1 | cut -d: -f1 || true)
+desktop_url_auth_line=$(echo "$desktop_url_receiver" | grep -n 'authorize_url_ipc_sender(&conn)' | head -1 | cut -d: -f1 || true)
+desktop_url_read_line=$(echo "$desktop_url_receiver" | grep -n 'next_desktop_url_request_timeout' | head -1 | cut -d: -f1 || true)
+desktop_url_validate_line=$(echo "$desktop_url_receiver" | grep -n 'DesktopUrlIpcRequest::validate' | head -1 | cut -d: -f1 || true)
+if [ -z "$desktop_url_accept_line" ] || [ -z "$desktop_url_auth_line" ] || [ -z "$desktop_url_read_line" ] || [ -z "$desktop_url_validate_line" ] \
+    || [ "$desktop_url_accept_line" -ge "$desktop_url_auth_line" ] || [ "$desktop_url_auth_line" -ge "$desktop_url_read_line" ] \
+    || [ "$desktop_url_read_line" -ge "$desktop_url_validate_line" ]; then
+  r_s11ea="$r_s11ea receiver-cap-auth-read-validation-order"
+fi
+for event in on_url_scheme_received on_desktop_instance_activate_requested on_desktop_instances_close_requested; do
+  echo "$desktop_url_receiver" | grep -Fq "\"name\": \"$event\"" || r_s11ea="$r_s11ea rust-event-$event-missing"
+  grep -Fq "name == '$event'" "$REPO/flutter/lib/models/model.dart" || r_s11ea="$r_s11ea dart-event-$event-missing"
+done
+grep -q 'crate::ipc::activate_main_instance()' "$REPO/src/platform/macos.rs" || r_s11ea="$r_s11ea macos-typed-activation-missing"
+data_protocol=$(awk '/^pub enum Data \{/{capture=1} capture{print} capture && /^}/{exit}' "$REPO/src/ipc.rs")
+if echo "$data_protocol" | grep -q 'UrlLink'; then r_s11ea="$r_s11ea cross-purpose-data-url-variant"; fi
+if grep -RInE 'IPC_ACTION_CLOSE|kUrlActionClose|handle_url_scheme\(""' \
+    "$REPO/src/ipc.rs" "$REPO/src/platform/macos.rs" "$REPO/flutter/lib/consts.dart" "$REPO/flutter/lib/models/model.dart" >/dev/null; then
+  r_s11ea="$r_s11ea string-control-sentinel"
+fi
+if echo "$desktop_url_receiver" | grep -Eq 'Connection::new\(conn\)|next_timeout\(1000\)|Data::UrlLink'; then
+  r_s11ea="$r_s11ea legacy-unbounded-receiver"
+fi
+grep -Fq '<span class="id">R-S11ea</span>' "$REPO/requirements.html" || r_s11ea="$r_s11ea requirement-missing"
+grep -Fq '<tr><td>280</td>' "$REPO/requirements.html" || r_s11ea="$r_s11ea appendix-row-missing"
+grep -Fq 'R-S11ea/R-S11e-145 — desktop URL/instance handoff closed protocol and resource budget' "$REPO/HARDENING_STATUS.md" || r_s11ea="$r_s11ea ledger-missing"
+if [ -n "$r_s11ea" ]; then
+  echo "  FAIL R-S11ea macOS desktop URL/instance IPC:$r_s11ea"
+  rc=1
+else
+  note "ok  R-S11ea macOS desktop URL/instance IPC authenticates before one strict typed request, caps both stream ends and I/O time, revalidates direct-address URLs, and dispatches distinct open/activate/close events without sentinels"
+fi
+
 echo "== (2b-iv) R-S11c-5 macOS privileged-service packaging =="
 r_s11c5=
 daemon_plist="$REPO/src/platform/privileges_scripts/daemon.plist"

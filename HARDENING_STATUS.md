@@ -572,22 +572,48 @@ replacement receives only its own task's event. Focused/shared/independent sourc
 bind R-S11ed and Appendix C #283. Installed native behavior, current APK/device reproduction, and exact cold
 R-B2/R-B10 release evidence remain open under their existing rows.
 
+Follow-up correction (2026-07-27), **R-S11ee/R-S11e-149 exact-session screenshot ownership**:
+the Flutter viewer still cached the most recent peer screenshot in one process-global Rust
+`Mutex<Screenshot>`. The consuming FFI accepted a `session_id` but ignored it, so another simultaneous desktop
+session or a later mobile route could consume whichever peer's PNG most recently replaced the singleton.
+Session/route removal did not destroy the bytes. The wire protocol also reused the UI-session UUID as every
+screenshot request ID; its pending `HashSet` could not distinguish replacements for the same UI session, and a
+late response or an old file-picker callback could select newer bytes. Android's persistent process amplified
+the cache lifetime, but this source defect was shared by Android, iOS, and desktop Flutter. It is cross-session
+peer-data/resource ownership and stale-callback debt, not proof of the reported screen-control hang, a
+controlled-side `MainService` defect, privilege escalation, exploitation, root acquisition, public exposure,
+container escape, or a host RustDesk/service/firewall/network change.
+
+The global cache and setter are deleted. Each exact live Flutter `SessionHandler` now owns at most one
+`OwnedScreenshot { request_id, data }`; beginning a request clears that handler's prior value, and removing the
+handler destroys it. The current outgoing `Remote` maps a fresh monotonic wire request ID to the exact UI-session
+UUID, retains at most one current request per UI session and eight total, and drops all mappings with the round.
+Replacing a request retires its prior ID first. Only removal of the exact current mapping admits a response, so
+late, duplicate, replaced, and unrequested responses cannot publish. The targeted event includes the exact
+request ID. Save, copy, and discard carry both session and request IDs; only a double match atomically consumes
+the bytes once, while a stale mismatch preserves the current screenshot. Exact-request and exact-handler
+behavior regressions plus generated-bridge/Dart analysis and focused/shared/independent source and mutation gates
+bind R-S11ee and Appendix C #284. Installed native behavior, current APK/device reproduction, and exact cold
+R-B2/R-B10 release evidence remain open under their existing rows.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust
 library, and then links and runs the generated-bridge mobile-session lifecycle test set with those same features.
-All seven generated-bridge mobile-session regressions pass, and the exact clipboard-lease and delayed
-OS-password-input regressions run separately under the same shipped feature set. The counted 2026-07-27
+All eight generated-bridge mobile-session regressions pass, and the exact clipboard-lease, delayed
+OS-password-input, and exact screenshot-request regressions run separately under the same shipped feature set.
+The counted 2026-07-27
 transaction used immutable Debian builder
 `sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2` as UID/GID
 1000:1000 with no network or pull, a read-only root, dropped capabilities, no-new-privileges, finite resources,
 private source/offline-input snapshots, and exact closure digest
 `a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`. It completed with zero analyzer
-errors, all four Flutter test files passing, the shipped-feature Rust library check passing, all seven
+errors, all four Flutter test files passing, the shipped-feature Rust library check passing, all eight
 generated-bridge mobile lifecycle tests passing, and
 `client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop` plus
-`client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement`
-passing. The focused ownership verifier additionally rejected all 207 deliberate mutations, and the independent
+`client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement` plus
+`client::io_loop::tests::r_s11e149_screenshot_responses_require_the_current_exact_request` passing. The focused
+ownership verifier additionally rejected all 238 deliberate mutations, and the independent
 workspace verifier's complete in-memory source-mutation catalog passed. No APK, device, installed-service,
 listener, or release-artifact result is inferred from those source/integration checks. That executable
 test also exposed an older Linux release-link defect: the pinned Debian builder's libc did not export the
@@ -14991,7 +15017,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-9c423a65b9cfb8bef310bd973b68c76f0113d0592c0749e6e63b0cbf4b23de28  requirements.html
+1153266b64530a16a48629324afb9d66d77d0214f5d31812b5ca5b456a30b873  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

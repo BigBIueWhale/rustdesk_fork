@@ -482,6 +482,7 @@ class FfiModel with ChangeNotifier {
     timerScreenshot?.cancel();
     timerScreenshot = null;
     final msg = evt['msg'] ?? '';
+    final screenshotId = evt['screenshot_id'] ?? '';
     final msgBoxType = 'custom-nook-nocancel-hasclose';
     final msgBoxTitle = 'Take screenshot';
     final dialogManager = parent.target!.dialogManager;
@@ -509,10 +510,13 @@ class FfiModel with ChangeNotifier {
           );
           if (!_isCurrentSession(sessionId)) return;
           if (outputFile == null) {
-            bind.sessionHandleScreenshot(sessionId: sessionId, action: '2');
+            bind.sessionHandleScreenshot(
+                sessionId: sessionId, screenshotId: screenshotId, action: '2');
           } else {
             final res = await bind.sessionHandleScreenshot(
-                sessionId: sessionId, action: '0:$outputFile');
+                sessionId: sessionId,
+                screenshotId: screenshotId,
+                action: '0:$outputFile');
             if (!_isCurrentSession(sessionId)) return;
             if (res.isNotEmpty) {
               msgBox(sessionId, 'custom-nook-nocancel-hasclose-error',
@@ -524,13 +528,15 @@ class FfiModel with ChangeNotifier {
 
       copyToClipboard() {
         if (!_isCurrentSession(sessionId)) return;
-        bind.sessionHandleScreenshot(sessionId: sessionId, action: '1');
+        bind.sessionHandleScreenshot(
+            sessionId: sessionId, screenshotId: screenshotId, action: '1');
         close();
       }
 
       cancel() {
         if (!_isCurrentSession(sessionId)) return;
-        bind.sessionHandleScreenshot(sessionId: sessionId, action: '2');
+        bind.sessionHandleScreenshot(
+            sessionId: sessionId, screenshotId: screenshotId, action: '2');
         close();
       }
 

@@ -285,15 +285,27 @@ pub fn session_refresh(session_id: SessionID, display: usize) {
 
 pub fn session_take_screenshot(session_id: SessionID, display: usize) {
     if let Some(s) = sessions::get_session_by_session_id(&session_id) {
-        s.take_screenshot(display as _, session_id.to_string());
+        if s.ui_handler.begin_screenshot_request(&session_id) {
+            s.take_screenshot(display as _, session_id.to_string());
+        }
     }
 }
 
 pub fn session_handle_screenshot(
-    #[allow(unused_variables)] session_id: SessionID,
+    session_id: SessionID,
+    screenshot_id: String,
     action: String,
 ) -> String {
-    crate::client::screenshot::handle_screenshot(action)
+    let Some(session) = sessions::get_session_by_session_id(&session_id) else {
+        return "No cached screenshot".to_owned();
+    };
+    let Some(data) = session
+        .ui_handler
+        .take_screenshot(&session_id, &screenshot_id)
+    else {
+        return "No cached screenshot".to_owned();
+    };
+    crate::client::screenshot::handle_screenshot(data, action)
 }
 
 pub fn session_is_multi_ui_session(session_id: SessionID) -> SyncReturn<bool> {

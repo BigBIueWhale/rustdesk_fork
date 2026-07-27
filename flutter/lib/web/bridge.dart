@@ -1467,7 +1467,10 @@ class RustdeskImpl {
   }
 
   Future<String> sessionHandleScreenshot(
-      {required UuidValue sessionId, required String action, dynamic hint}) {
+      {required UuidValue sessionId,
+      required String screenshotId,
+      required String action,
+      dynamic hint}) {
     throw UnimplementedError("sessionHandleScreenshot");
   }
 

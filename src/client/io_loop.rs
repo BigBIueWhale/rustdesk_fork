@@ -45,7 +45,7 @@ use scrap::CodecFormat;
 #[cfg(not(target_os = "ios"))]
 use std::sync::atomic::AtomicBool;
 use std::{
-    collections::{HashMap, HashSet},
+    collections::HashMap,
     ffi::c_void,
     num::NonZeroI64,
     path::PathBuf,
@@ -212,7 +212,7 @@ pub struct Remote<T: InvokeUiSession> {
     last_record_state: bool,
     sent_close_reason: bool,
     peer_text_gate: crate::peer_text::PeerTextGate,
-    pending_screenshot_sids: HashSet<String>,
+    pending_screenshot_requests: PendingScreenshotRequests,
     pending_privacy_mode_request: Option<PendingPrivacyModeRequest>,
 }
 
@@ -228,6 +228,44 @@ struct PendingPrivacyModeRequest {
     on: bool,
     impl_key: String,
     sent_at: Instant,
+}
+
+#[derive(Default)]
+struct PendingScreenshotRequests {
+    owners: HashMap<String, String>,
+    next_sequence: u64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ScreenshotRequestAdmissionError {
+    Capacity,
+    SequenceExhausted,
+}
+
+impl PendingScreenshotRequests {
+    fn replace(&mut self, owner_sid: String) -> Result<String, ScreenshotRequestAdmissionError> {
+        self.owners
+            .retain(|_, existing_owner_sid| existing_owner_sid != &owner_sid);
+        if self.owners.len() >= MAX_PENDING_SCREENSHOT_RESPONSES {
+            return Err(ScreenshotRequestAdmissionError::Capacity);
+        }
+        let sequence = self
+            .next_sequence
+            .checked_add(1)
+            .ok_or(ScreenshotRequestAdmissionError::SequenceExhausted)?;
+        self.next_sequence = sequence;
+        let request_id = format!("{owner_sid}:{sequence}");
+        self.owners.insert(request_id.clone(), owner_sid);
+        Ok(request_id)
+    }
+
+    fn complete(&mut self, request_id: &str) -> Option<String> {
+        self.owners.remove(request_id)
+    }
+
+    fn len(&self) -> usize {
+        self.owners.len()
+    }
 }
 
 impl PendingPrivacyModeRequest {
@@ -556,7 +594,7 @@ impl<T: InvokeUiSession> Remote<T> {
             last_record_state: false,
             sent_close_reason: false,
             peer_text_gate: Default::default(),
-            pending_screenshot_sids: Default::default(),
+            pending_screenshot_requests: Default::default(),
             pending_privacy_mode_request: None,
         }
     }
@@ -1422,29 +1460,49 @@ impl<T: InvokeUiSession> Remote<T> {
                 }
             },
             Data::TakeScreenshot((display, sid)) => {
-                if self.pending_screenshot_sids.len() >= MAX_PENDING_SCREENSHOT_RESPONSES
-                    && !self.pending_screenshot_sids.contains(&sid)
-                {
-                    log::warn!(
-                        "dropping screenshot request; {} responses already pending",
-                        self.pending_screenshot_sids.len()
-                    );
-                    self.handler.handle_screenshot_resp(
-                        sid,
-                        "Too many pending screenshot requests".to_owned(),
-                    );
-                    return true;
-                }
-                self.pending_screenshot_sids.insert(sid.clone());
+                // A UI session owns at most one current request. Retiring its prior wire ID makes a
+                // late peer response stale before a new response can replace the exact-session
+                // cache or wake an old dialog.
+                let request_id = match self.pending_screenshot_requests.replace(sid.clone()) {
+                    Ok(request_id) => request_id,
+                    Err(ScreenshotRequestAdmissionError::Capacity) => {
+                        log::warn!(
+                            "dropping screenshot request; {} responses already pending",
+                            self.pending_screenshot_requests.len()
+                        );
+                        self.handler.handle_screenshot_resp(
+                            sid,
+                            String::new(),
+                            None,
+                            "Too many pending screenshot requests".to_owned(),
+                        );
+                        return true;
+                    }
+                    Err(ScreenshotRequestAdmissionError::SequenceExhausted) => {
+                        self.handler.handle_screenshot_resp(
+                            sid,
+                            String::new(),
+                            None,
+                            "Screenshot request sequence exhausted".to_owned(),
+                        );
+                        return true;
+                    }
+                };
                 let mut msg = Message::new();
                 msg.set_screenshot_request(ScreenshotRequest {
                     display,
-                    sid: sid.clone(),
+                    sid: request_id.clone(),
                     ..Default::default()
                 });
                 if let Err(err) = peer.send(&msg).await {
                     log::warn!("failed to send screenshot request: {err}");
-                    self.pending_screenshot_sids.remove(&sid);
+                    self.pending_screenshot_requests.complete(&request_id);
+                    self.handler.handle_screenshot_resp(
+                        sid,
+                        request_id,
+                        None,
+                        "Failed to send screenshot request".to_owned(),
+                    );
                 }
             }
             _ => {}
@@ -2505,21 +2563,24 @@ impl<T: InvokeUiSession> Remote<T> {
                 Some(message::Union::ScreenshotResponse(response)) => {
                     match crate::peer_text::admit_peer_screenshot_response(response) {
                         Ok(response) => {
-                            let sid = response.sid;
-                            if !self.pending_screenshot_sids.remove(&sid) {
+                            let request_id = response.sid;
+                            let Some(sid) = self.pending_screenshot_requests.complete(&request_id)
+                            else {
                                 log::warn!("dropping unrequested or stale screenshot response");
                                 return true;
-                            }
+                            };
                             let data = response.data;
                             let msg = response.msg;
-                            if !data.is_empty() {
-                                crate::client::screenshot::set_screenshot(data);
-                            }
-                            self.handler.handle_screenshot_resp(sid, msg);
+                            let data = (!data.is_empty()).then_some(data);
+                            self.handler
+                                .handle_screenshot_resp(sid, request_id, data, msg);
                         }
-                        Err((sid, msg)) => {
-                            if self.pending_screenshot_sids.remove(&sid) {
-                                self.handler.handle_screenshot_resp(sid, msg);
+                        Err((request_id, msg)) => {
+                            if let Some(sid) =
+                                self.pending_screenshot_requests.complete(&request_id)
+                            {
+                                self.handler
+                                    .handle_screenshot_resp(sid, request_id, None, msg);
                             } else {
                                 log::warn!(
                                     "dropping oversized screenshot response for unrequested or stale sid"
@@ -3085,6 +3146,32 @@ mod tests {
         );
 
         owner.stop_and_join().await;
+    }
+
+    #[test]
+    fn r_s11e149_screenshot_responses_require_the_current_exact_request() {
+        let mut pending = PendingScreenshotRequests::default();
+        let first = pending
+            .replace("ui-session".to_owned())
+            .expect("first screenshot request");
+        let replacement = pending
+            .replace("ui-session".to_owned())
+            .expect("replacement screenshot request");
+
+        assert_ne!(first, replacement);
+        assert!(
+            pending.complete(&first).is_none(),
+            "a response for the replaced request must be stale"
+        );
+        assert_eq!(
+            pending.complete(&replacement).as_deref(),
+            Some("ui-session"),
+            "only the current exact request may recover its owning UI session"
+        );
+        assert!(
+            pending.complete(&replacement).is_none(),
+            "a response ID may complete only once"
+        );
     }
 
     #[cfg(not(target_os = "ios"))]

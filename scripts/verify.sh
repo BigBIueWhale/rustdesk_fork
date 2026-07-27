@@ -10154,10 +10154,32 @@ grep -qF '<tr><td>283</td>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad os-password-exact-round-disposition-missing"
 grep -qF 'R-S11ed/R-S11e-148' HARDENING_STATUS.md \
   || android_client_owner_bad="$android_client_owner_bad os-password-exact-round-ledger-missing"
+grep -qF 'pending_screenshot_requests: PendingScreenshotRequests' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad screenshot-exact-request-owner-missing"
+grep -qF 'screenshot: Option<OwnedScreenshot>' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad screenshot-exact-session-owner-missing"
+grep -qF '.take_screenshot(&session_id, &screenshot_id)' src/flutter_ffi.rs \
+  || android_client_owner_bad="$android_client_owner_bad screenshot-double-match-action-missing"
+grep -qF 'r_s11e149_screenshot_responses_require_the_current_exact_request' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad screenshot-exact-request-regression-missing"
+grep -qF 'r_s11e149_screenshot_data_is_owned_by_the_exact_ui_session' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad screenshot-exact-session-regression-missing"
+if grep -qF 'static ref SCREENSHOT' src/client/screenshot.rs \
+  || grep -qF 'set_screenshot' src/client/screenshot.rs src/client/io_loop.rs; then
+  android_client_owner_bad="$android_client_owner_bad screenshot-process-global-cache-present"
+fi
+grep -qF '<span class="id">R-S11ee</span>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad screenshot-exact-session-requirement-missing"
+grep -qF '<tr><td>284</td>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad screenshot-exact-session-disposition-missing"
+grep -qF 'R-S11ee/R-S11e-149' HARDENING_STATUS.md \
+  || android_client_owner_bad="$android_client_owner_bad screenshot-exact-session-ledger-missing"
 grep -qF 'cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-lifecycle-test-command-missing"
 grep -qF 'flutter::mobile_session_lifecycle_tests:: -- --test-threads=1' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-lifecycle-test-filter-missing"
+grep -qF 'client::io_loop::tests::r_s11e149_screenshot_responses_require_the_current_exact_request' scripts/dart-verify.sh \
+  || android_client_owner_bad="$android_client_owner_bad generated-bridge-screenshot-test-filter-missing"
 if ! python3 - "$ma" "$ms" "$flutter_main" src/flutter.rs <<'PY'
 import sys
 from pathlib import Path

@@ -1778,7 +1778,13 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn is_multi_ui_session(&self) -> bool;
     fn update_record_status(&self, start: bool);
     fn update_empty_dirs(&self, _res: ReadEmptyDirsResponse) {}
-    fn handle_screenshot_resp(&self, sid: String, msg: String);
+    fn handle_screenshot_resp(
+        &self,
+        sid: String,
+        request_id: String,
+        data: Option<bytes::Bytes>,
+        msg: String,
+    );
     fn handle_terminal_response(&self, response: TerminalResponse);
 }
 

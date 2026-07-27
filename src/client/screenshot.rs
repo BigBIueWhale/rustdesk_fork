@@ -1,11 +1,6 @@
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::clipboard::{update_clipboard, ClipboardSide};
 use hbb_common::{message_proto::*, ResultType};
-use std::sync::Mutex;
-
-lazy_static::lazy_static! {
-    static ref SCREENSHOT: Mutex<Screenshot> = Default::default();
-}
 
 pub enum ScreenshotAction {
     SaveAs(String),
@@ -47,53 +42,31 @@ impl Into<String> for ScreenshotAction {
     }
 }
 
-#[derive(Default)]
-pub struct Screenshot {
-    data: Option<bytes::Bytes>,
-}
-
-impl Screenshot {
-    fn set_screenshot(&mut self, data: bytes::Bytes) {
-        self.data.replace(data);
-    }
-
-    fn handle_screenshot(&mut self, action: String) -> String {
-        let Some(data) = self.data.take() else {
-            return "No cached screenshot".to_owned();
-        };
-        match Self::handle_screenshot_(data, action) {
-            Ok(()) => "".to_owned(),
-            Err(e) => e.to_string(),
+fn handle_screenshot_(data: bytes::Bytes, action: String) -> ResultType<()> {
+    match ScreenshotAction::from(&action as &str) {
+        ScreenshotAction::SaveAs(p) => {
+            std::fs::write(p, data)?;
         }
-    }
-
-    fn handle_screenshot_(data: bytes::Bytes, action: String) -> ResultType<()> {
-        match ScreenshotAction::from(&action as &str) {
-            ScreenshotAction::SaveAs(p) => {
-                std::fs::write(p, data)?;
+        ScreenshotAction::CopyToClipboard => {
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            {
+                let clips = vec![Clipboard {
+                    compress: false,
+                    content: data,
+                    format: ClipboardFormat::ImagePng.into(),
+                    ..Default::default()
+                }];
+                update_clipboard(clips, ClipboardSide::Client);
             }
-            ScreenshotAction::CopyToClipboard => {
-                #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                {
-                    let clips = vec![Clipboard {
-                        compress: false,
-                        content: data,
-                        format: ClipboardFormat::ImagePng.into(),
-                        ..Default::default()
-                    }];
-                    update_clipboard(clips, ClipboardSide::Client);
-                }
-            }
-            ScreenshotAction::Discard => {}
         }
-        Ok(())
+        ScreenshotAction::Discard => {}
     }
+    Ok(())
 }
 
-pub fn set_screenshot(data: bytes::Bytes) {
-    SCREENSHOT.lock().unwrap().set_screenshot(data);
-}
-
-pub fn handle_screenshot(action: String) -> String {
-    SCREENSHOT.lock().unwrap().handle_screenshot(action)
+pub fn handle_screenshot(data: bytes::Bytes, action: String) -> String {
+    match handle_screenshot_(data, action) {
+        Ok(()) => "".to_owned(),
+        Err(e) => e.to_string(),
+    }
 }

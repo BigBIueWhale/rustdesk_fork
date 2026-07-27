@@ -117,6 +117,9 @@ def load_sources(repo: Path) -> Dict[str, str]:
             repo / "flutter/test/mobile_file_session_lifecycle_test.dart"
         ).read_text(encoding="utf-8"),
         "client": (repo / "src/client.rs").read_text(encoding="utf-8"),
+        "screenshot": (repo / "src/client/screenshot.rs").read_text(
+            encoding="utf-8"
+        ),
         "io_loop": (repo / "src/client/io_loop.rs").read_text(encoding="utf-8"),
         "ui_session": (repo / "src/ui_session_interface.rs").read_text(
             encoding="utf-8"
@@ -2447,6 +2450,212 @@ def validate(sources: Dict[str, str]) -> None:
         "generated-bridge OS-password exact-round behavior gate wiring",
     )
 
+    screenshot = sources["screenshot"]
+    forbid(screenshot, "lazy_static", "process-global screenshot cache")
+    forbid(screenshot, "Mutex", "process-global screenshot cache lock")
+    forbid(screenshot, "struct Screenshot", "process-global screenshot cache type")
+    forbid(screenshot, "set_screenshot", "process-global screenshot setter")
+    require(
+        screenshot,
+        "pub fn handle_screenshot(data: bytes::Bytes, action: String) -> String",
+        "value-owned screenshot action",
+    )
+    pending_screenshots = extract_item(
+        io_loop,
+        "impl PendingScreenshotRequests",
+        "exact screenshot request owner",
+    )
+    require_order(
+        pending_screenshots,
+        (
+            "fn replace(&mut self, owner_sid: String)",
+            ".retain(|_, existing_owner_sid| existing_owner_sid != &owner_sid);",
+            "if self.owners.len() >= MAX_PENDING_SCREENSHOT_RESPONSES",
+            ".next_sequence",
+            ".checked_add(1)",
+            "let request_id = format!(\"{owner_sid}:{sequence}\");",
+            "self.owners.insert(request_id.clone(), owner_sid);",
+            "fn complete(&mut self, request_id: &str) -> Option<String>",
+            "self.owners.remove(request_id)",
+        ),
+        "bounded replacement-safe screenshot request identity",
+    )
+    require(
+        io_loop,
+        "pending_screenshot_requests: PendingScreenshotRequests,",
+        "Remote-owned screenshot request map",
+    )
+    require(
+        io_loop,
+        "self.pending_screenshot_requests.replace(sid.clone())",
+        "fresh screenshot request admission",
+    )
+    require(
+        io_loop,
+        "sid: request_id.clone(),",
+        "exact screenshot wire request ID",
+    )
+    require_count(
+        io_loop,
+        "self.pending_screenshot_requests.complete(&request_id)",
+        3,
+        "exact screenshot response/send-failure retirement",
+    )
+    forbid(
+        io_loop,
+        "pending_screenshot_sids",
+        "session-UUID-only screenshot pending set",
+    )
+    require(
+        io_loop,
+        "r_s11e149_screenshot_responses_require_the_current_exact_request",
+        "exact screenshot request replacement behavior regression",
+    )
+
+    flutter = sources["flutter"]
+    require(
+        flutter,
+        "screenshot: Option<OwnedScreenshot>,",
+        "exact-handler screenshot owner",
+    )
+    require(
+        flutter,
+        "struct OwnedScreenshot {\n    request_id: String,\n    data: bytes::Bytes,\n}",
+        "request-bound screenshot value",
+    )
+    begin_screenshot = extract_item(
+        flutter,
+        "pub(crate) fn begin_screenshot_request",
+        "exact-handler screenshot request start",
+    )
+    require_order(
+        begin_screenshot,
+        (
+            "handlers.get_mut(session_id)",
+            "handler.screenshot = None;",
+        ),
+        "new screenshot request retires only its exact handler value",
+    )
+    take_screenshot = extract_item(
+        flutter,
+        "pub(crate) fn take_screenshot(",
+        "exact screenshot action",
+    )
+    require_order(
+        take_screenshot,
+        (
+            "let handler = handlers.get_mut(session_id)?;",
+            ".map(|screenshot| screenshot.request_id.as_str())",
+            "!= Some(request_id)",
+            "return None;",
+            "handler.screenshot.take().map(|screenshot| screenshot.data)",
+        ),
+        "session-and-request double-match before one-time screenshot consumption",
+    )
+    screenshot_response = extract_item(
+        flutter,
+        "fn handle_screenshot_resp(",
+        "exact screenshot response publication",
+    )
+    require_order(
+        screenshot_response,
+        (
+            "let Some(handler) = handlers.get_mut(&sid)",
+            "handler.screenshot = data.map(|data| OwnedScreenshot",
+            "request_id: request_id.clone()",
+            '("screenshot_id", json!(request_id))',
+            "&[&sid]",
+        ),
+        "live exact-handler screenshot storage and targeted request event",
+    )
+    require(
+        flutter,
+        "r_s11e149_screenshot_data_is_owned_by_the_exact_ui_session",
+        "exact screenshot handler behavior regression",
+    )
+
+    flutter_ffi = sources["flutter_ffi"]
+    take_screenshot_ffi = extract_item(
+        flutter_ffi,
+        "pub fn session_take_screenshot(",
+        "screenshot request FFI",
+    )
+    require_order(
+        take_screenshot_ffi,
+        (
+            "begin_screenshot_request(&session_id)",
+            "s.take_screenshot(display as _, session_id.to_string());",
+        ),
+        "clear exact handler before screenshot request",
+    )
+    handle_screenshot_ffi = extract_item(
+        flutter_ffi,
+        "pub fn session_handle_screenshot(",
+        "screenshot action FFI",
+    )
+    require_order(
+        handle_screenshot_ffi,
+        (
+            "session_id: SessionID,",
+            "screenshot_id: String,",
+            "sessions::get_session_by_session_id(&session_id)",
+            ".take_screenshot(&session_id, &screenshot_id)",
+            "crate::client::screenshot::handle_screenshot(data, action)",
+        ),
+        "session-and-request-bound screenshot action FFI",
+    )
+    forbid(
+        handle_screenshot_ffi,
+        "#[allow(unused_variables)]",
+        "ignored screenshot session ID",
+    )
+    dart_screenshot = extract_item(
+        sources["dart_model"],
+        "_handleScreenshot(\n      Map<String, dynamic> evt",
+        "Dart screenshot response handler",
+    )
+    require(
+        dart_screenshot,
+        "final screenshotId = evt['screenshot_id'] ?? '';",
+        "Dart exact screenshot request ID capture",
+    )
+    require_count(
+        dart_screenshot,
+        "screenshotId: screenshotId,",
+        4,
+        "all Dart screenshot actions carry the exact request ID",
+    )
+    require(
+        sources["web_bridge"],
+        "required String screenshotId,",
+        "web bridge screenshot action signature parity",
+    )
+    require(
+        sources["requirements"],
+        '<span class="id">R-S11ee</span>',
+        "exact-session screenshot normative requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>284</td>",
+        "exact-session screenshot Appendix C disposition",
+    )
+    require(
+        sources["hardening"],
+        "R-S11ee/R-S11e-149",
+        "exact-session screenshot hardening ledger",
+    )
+    require(
+        sources["verify"],
+        "client::io_loop::tests::r_s11e149_screenshot_responses_require_the_current_exact_request",
+        "shared exact screenshot request behavior gate wiring",
+    )
+    require(
+        sources["dart_verify"],
+        "client::io_loop::tests::r_s11e149_screenshot_responses_require_the_current_exact_request",
+        "generated-bridge exact screenshot request behavior gate wiring",
+    )
+
 
 Mutation = Tuple[str, str, str, str]
 
@@ -2625,6 +2834,37 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("hardening", "R-S11ed/R-S11e-148", "R-S11ed-disabled/R-S11e-148", "OS-password exact-round hardening ledger"),
     ("verify", "client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement", "client::io_loop::tests::os_password_gate_disabled", "shared OS-password exact-round behavior gate"),
     ("dart_verify", "client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement", "client::io_loop::tests::os_password_gate_disabled", "generated-bridge OS-password exact-round behavior gate"),
+    ("screenshot", "pub fn handle_screenshot(data: bytes::Bytes, action: String) -> String", "pub fn handle_screenshot(action: String) -> String", "value-owned screenshot action"),
+    ("io_loop", ".retain(|_, existing_owner_sid| existing_owner_sid != &owner_sid);", ".retain(|_, _| true);", "prior exact-session screenshot request retirement"),
+    ("io_loop", "if self.owners.len() >= MAX_PENDING_SCREENSHOT_RESPONSES", "if false", "screenshot request capacity"),
+    ("io_loop", ".next_sequence\n            .checked_add(1)", ".next_sequence\n            .wrapping_add(1)", "monotonic screenshot request identity"),
+    ("io_loop", "self.owners.insert(request_id.clone(), owner_sid);", "self.owners.insert(request_id.clone(), String::new());", "screenshot request owner association"),
+    ("io_loop", "self.owners.remove(request_id)", "self.owners.get(request_id).cloned()", "one-time screenshot request completion"),
+    ("io_loop", "pending_screenshot_requests: PendingScreenshotRequests,", "pending_screenshot_requests: HashMap<String, String>,", "Remote-owned screenshot request map"),
+    ("io_loop", "self.pending_screenshot_requests.replace(sid.clone())", "Ok(sid.clone())", "fresh screenshot request admission"),
+    ("io_loop", "sid: request_id.clone(),", "sid: sid.clone(),", "exact screenshot wire request ID"),
+    ("io_loop", "self.pending_screenshot_requests.complete(&request_id)", "None", "exact screenshot response retirement"),
+    ("io_loop", "r_s11e149_screenshot_responses_require_the_current_exact_request", "screenshot_request_replacement_gate_disabled", "exact screenshot request behavior proof"),
+    ("flutter", "screenshot: Option<OwnedScreenshot>,", "screenshot: Option<bytes::Bytes>,", "exact-handler screenshot owner"),
+    ("flutter", "request_id: String,\n    data: bytes::Bytes,", "data: bytes::Bytes,", "request-bound screenshot value"),
+    ("flutter", "handler.screenshot = None;", "// prior screenshot retained", "new screenshot request clears exact handler"),
+    ("flutter", "!= Some(request_id)", "== Some(request_id)", "screenshot request-ID match"),
+    ("flutter", "handler.screenshot.take().map(|screenshot| screenshot.data)", "handler.screenshot.as_ref().map(|screenshot| screenshot.data.clone())", "one-time screenshot consumption"),
+    ("flutter", "let Some(handler) = handlers.get_mut(&sid)", "let Some(handler) = handlers.values_mut().next()", "screenshot response exact-session selection"),
+    ("flutter", "request_id: request_id.clone(),", "request_id: String::new(),", "screenshot response exact-request storage"),
+    ("flutter", '("screenshot_id", json!(request_id))', '("screenshot_id", json!(""))', "screenshot response request-ID event"),
+    ("flutter", "r_s11e149_screenshot_data_is_owned_by_the_exact_ui_session", "screenshot_session_owner_gate_disabled", "exact screenshot handler behavior proof"),
+    ("flutter_ffi", "if s.ui_handler.begin_screenshot_request(&session_id) {", "if true {", "exact handler clear before screenshot request"),
+    ("flutter_ffi", "screenshot_id: String,", "screenshot_id: (),", "screenshot action request-ID input"),
+    ("flutter_ffi", ".take_screenshot(&session_id, &screenshot_id)", ".take_screenshot(&session_id, \"\")", "screenshot action session-and-request match"),
+    ("dart_model", "final screenshotId = evt['screenshot_id'] ?? '';", "final screenshotId = '';", "Dart screenshot request-ID capture"),
+    ("dart_model", "screenshotId: screenshotId,", "screenshotId: '',", "Dart screenshot action request binding"),
+    ("web_bridge", "required String screenshotId,", "String screenshotId = '',", "web screenshot action signature parity"),
+    ("requirements", '<span class="id">R-S11ee</span>', '<span class="id">R-S11ee-disabled</span>', "exact-session screenshot requirement"),
+    ("requirements", "<tr><td>284</td>", "<tr><td>284-disabled</td>", "exact-session screenshot disposition"),
+    ("hardening", "R-S11ee/R-S11e-149", "R-S11ee-disabled/R-S11e-149", "exact-session screenshot hardening ledger"),
+    ("verify", "client::io_loop::tests::r_s11e149_screenshot_responses_require_the_current_exact_request", "client::io_loop::tests::screenshot_gate_disabled", "shared exact screenshot request behavior gate"),
+    ("dart_verify", "client::io_loop::tests::r_s11e149_screenshot_responses_require_the_current_exact_request", "client::io_loop::tests::screenshot_gate_disabled", "generated-bridge exact screenshot request behavior gate"),
     ("verify", "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs", "true # replacement-drain shared gate disabled", "shared mobile replacement-drain gate"),
     ("verify", "if [ \"$(grep -cF 'check_remove_unused_displays(None, None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then", "if false; then # post-drain display gate disabled", "shared post-drain display-reconciliation gate"),
     ("dart_verify", "cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1", "true # generated-bridge mobile lifecycle tests disabled", "generated-bridge mobile lifecycle behavior gate"),

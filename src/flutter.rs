@@ -328,6 +328,14 @@ struct SessionHandler {
     // We need this variable to check if the display is in use before pushing rgba to flutter.
     displays: Vec<usize>,
     renderer: VideoRenderer,
+    // One admitted peer screenshot belongs to this exact UI session. It is cleared when a new
+    // request starts, consumed only through this session's UUID, and dropped with the handler.
+    screenshot: Option<OwnedScreenshot>,
+}
+
+struct OwnedScreenshot {
+    request_id: String,
+    data: bytes::Bytes,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -718,6 +726,33 @@ impl FlutterHandler {
         if let Some(session) = self.session_handlers.write().unwrap().get_mut(&session_id) {
             try_send_close_event(&session.event_stream);
         }
+    }
+
+    pub(crate) fn begin_screenshot_request(&self, session_id: &SessionID) -> bool {
+        let mut handlers = self.session_handlers.write().unwrap();
+        let Some(handler) = handlers.get_mut(session_id) else {
+            return false;
+        };
+        handler.screenshot = None;
+        true
+    }
+
+    pub(crate) fn take_screenshot(
+        &self,
+        session_id: &SessionID,
+        request_id: &str,
+    ) -> Option<bytes::Bytes> {
+        let mut handlers = self.session_handlers.write().unwrap();
+        let handler = handlers.get_mut(session_id)?;
+        if handler
+            .screenshot
+            .as_ref()
+            .map(|screenshot| screenshot.request_id.as_str())
+            != Some(request_id)
+        {
+            return None;
+        }
+        handler.screenshot.take().map(|screenshot| screenshot.data)
     }
 
     fn make_displays_msg(displays: &Vec<DisplayInfo>) -> String {
@@ -1190,9 +1225,32 @@ impl InvokeUiSession for FlutterHandler {
         self.push_event("record_status", &[("start", &start.to_string())], &[]);
     }
 
-    fn handle_screenshot_resp(&self, sid: String, msg: String) {
+    fn handle_screenshot_resp(
+        &self,
+        sid: String,
+        request_id: String,
+        data: Option<bytes::Bytes>,
+        msg: String,
+    ) {
         match SessionID::from_str(&sid) {
-            Ok(sid) => self.push_event_to("screenshot", &[("msg", json!(msg))], &[&sid]),
+            Ok(sid) => {
+                {
+                    let mut handlers = self.session_handlers.write().unwrap();
+                    let Some(handler) = handlers.get_mut(&sid) else {
+                        log::debug!("dropping screenshot response for retired UI session {sid}");
+                        return;
+                    };
+                    handler.screenshot = data.map(|data| OwnedScreenshot {
+                        request_id: request_id.clone(),
+                        data,
+                    });
+                }
+                self.push_event_to(
+                    "screenshot",
+                    &[("msg", json!(msg)), ("screenshot_id", json!(request_id))],
+                    &[&sid],
+                );
+            }
             Err(e) => {
                 // Unreachable!
                 log::error!("Failed to parse sid \"{}\", {}", sid, e);
@@ -2689,6 +2747,66 @@ mod mobile_session_lifecycle_tests {
     };
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn r_s11e149_screenshot_data_is_owned_by_the_exact_ui_session() {
+        let handler = FlutterHandler::default();
+        let first = SessionID::new_v4();
+        let second = SessionID::new_v4();
+        {
+            let mut handlers = handler.session_handlers.write().unwrap();
+            handlers.insert(first, SessionHandler::default());
+            handlers.insert(second, SessionHandler::default());
+        }
+
+        let first_data = bytes::Bytes::from_static(b"first-session-screenshot");
+        handler.handle_screenshot_resp(
+            first.to_string(),
+            "first-request".to_owned(),
+            Some(first_data.clone()),
+            String::new(),
+        );
+        assert!(
+            handler.take_screenshot(&second, "first-request").is_none(),
+            "another live UI session must not consume the first session's screenshot"
+        );
+        assert!(
+            handler.take_screenshot(&first, "wrong-request").is_none(),
+            "a stale callback must not consume the exact session's replacement screenshot"
+        );
+        assert_eq!(
+            handler.take_screenshot(&first, "first-request"),
+            Some(first_data)
+        );
+        assert!(
+            handler.take_screenshot(&first, "first-request").is_none(),
+            "the exact session may consume an admitted screenshot only once"
+        );
+
+        handler.handle_screenshot_resp(
+            first.to_string(),
+            "stale-request".to_owned(),
+            Some(bytes::Bytes::from_static(b"stale-screenshot")),
+            String::new(),
+        );
+        assert!(handler.begin_screenshot_request(&first));
+        assert!(
+            handler.take_screenshot(&first, "stale-request").is_none(),
+            "a new exact-session request must retire its previous screenshot"
+        );
+
+        handler.handle_screenshot_resp(
+            first.to_string(),
+            "retired-request".to_owned(),
+            Some(bytes::Bytes::from_static(b"retired-screenshot")),
+            String::new(),
+        );
+        handler.session_handlers.write().unwrap().remove(&first);
+        assert!(
+            handler.take_screenshot(&first, "retired-request").is_none(),
+            "removing the exact UI session must destroy its screenshot authority"
+        );
+    }
 
     #[test]
     fn new_mobile_owner_closes_stale_peer_before_reusing_it() {

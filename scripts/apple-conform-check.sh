@@ -847,6 +847,7 @@ paths = {
     "core": "src/core_main.rs",
     "macos_rs": "src/platform/macos.rs",
     "macos_mm": "src/platform/macos.mm",
+    "windows": "src/platform/windows.rs",
 }
 original = {name: (repo / path).read_text() for name, path in paths.items()}
 
@@ -918,7 +919,12 @@ def item(source, needle, start=0):
     if begin < 0:
         raise ValueError(f"missing item marker: {needle}")
     masked = mask_noncode(source)
-    brace = masked.find("{", begin + len(needle))
+    marker_brace = needle.find("{")
+    brace = (
+        begin + marker_brace
+        if marker_brace >= 0
+        else masked.find("{", begin + len(needle))
+    )
     if brace < 0:
         raise ValueError(f"missing item body: {needle}")
     depth = 0
@@ -955,22 +961,135 @@ def analyze(sources):
     core = sources["core"]
     macos_rs = sources["macos_rs"]
     macos_mm = sources["macos_mm"]
+    windows = sources["windows"]
 
     try:
-        gate = item(ipc, "pub(crate) fn service_channel_admits_message")
-        admitted = set(re.findall(r"Data::([A-Za-z0-9_]+)", gate))
-        need("b1", "service-admission-not-exact", admitted == {
-            "Test",
-            "MacosServiceOwnedPasswordRightReadyRequest",
-            "MacosServiceOwnedPermanentPasswordSnapshotRequest",
-        } and "Data::Test => true" in gate)
-        need("b1", "service-admission-not-fail-closed", "_ => false" in gate)
+        service_request = item(ipc, "pub(crate) enum ServiceIpcRequest")
+        service_response = item(ipc, "pub(crate) enum ServiceIpcResponse")
+        sas_request = item(ipc, "pub(crate) enum WindowsServiceSasIpcRequest")
+        sas_response = item(ipc, "pub(crate) enum WindowsServiceSasIpcResponse")
+        data = item(ipc, "pub enum Data {")
+        request_variants = set(re.findall(r"^    ([A-Z][A-Za-z0-9_]*)", service_request, re.MULTILINE))
+        response_variants = set(re.findall(r"^    ([A-Z][A-Za-z0-9_]*)", service_response, re.MULTILINE))
+        sas_request_variants = set(re.findall(r"^    ([A-Z][A-Za-z0-9_]*)", sas_request, re.MULTILINE))
+        sas_response_variants = set(re.findall(r"^    ([A-Z][A-Za-z0-9_]*)", sas_response, re.MULTILINE))
+        data_variants = set(re.findall(r"^    ([A-Z][A-Za-z0-9_]*)", data, re.MULTILINE))
+        need("b1", "service-request-not-exact", request_variants == {
+            "LivenessProbe",
+            "EnsurePasswordRightReady",
+            "PermanentPasswordSnapshot",
+            "SetShareRdp",
+        } and "    LivenessProbe {}," in service_request
+            and "    SetShareRdp {" in service_request
+            and "enabled: bool" in service_request)
+        need("b1", "service-response-not-exact", response_variants == {
+            "Liveness",
+            "PasswordRightReady",
+            "PermanentPasswordSnapshotResult",
+            "ShareRdpSet",
+        } and "    Liveness {}," in service_response
+            and "    PasswordRightReady {" in service_response
+            and "ready: bool" in service_response
+            and "    PermanentPasswordSnapshotResult {" in service_response
+            and "storage: String" in service_response
+            and "salt: String" in service_response
+            and "    ShareRdpSet {" in service_response
+            and "accepted: bool" in service_response)
+        need("b1", "service-sas-request-not-exact", sas_request_variants == {
+            "Dispatch",
+        } and "    Dispatch {}," in sas_request)
+        need("b1", "service-sas-response-not-exact", sas_response_variants == {
+            "DispatchAccepted",
+        } and "    DispatchAccepted {" in sas_response and "accepted: bool" in sas_response)
+        need("b1", "service-envelope-allows-unknown-fields", all(token in ipc for token in [
+            '#[serde(tag = "t", deny_unknown_fields)]\npub(crate) enum ServiceIpcRequest',
+            '#[serde(tag = "t", deny_unknown_fields)]\npub(crate) enum ServiceIpcResponse',
+            '#[serde(tag = "t", deny_unknown_fields)]\npub(crate) enum WindowsServiceSasIpcRequest',
+            '#[serde(tag = "t", deny_unknown_fields)]\npub(crate) enum WindowsServiceSasIpcResponse',
+        ]))
+        protocol_variant_sets = (
+            request_variants,
+            response_variants,
+            sas_request_variants,
+            sas_response_variants,
+        )
+        need("b1", "service-protocol-variant-name-collision",
+             sum(len(variants) for variants in protocol_variant_sets)
+             == len(set().union(*protocol_variant_sets))
+             and not set().union(*protocol_variant_sets).intersection(data_variants))
         dispatch = item(ipc, "async fn handle_service_ipc_transaction")
-        need("b1", "service-dispatch-not-single-bounded-frame", dispatch.count("next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)") == 1 and "loop {" not in dispatch)
-        need("b1", "service-admission-not-before-dispatch", ordered(dispatch, ["next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)", "service_channel_admits_message(&data)", "handle_service_request(data, &mut stream).await"]))
-        data = item(ipc, "pub enum Data")
+        need("b1", "service-dispatch-not-single-bounded-frame", dispatch.count("next_service_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)") == 1 and "loop {" not in dispatch)
+        need("b1", "service-dispatch-not-typed", ordered(dispatch, ["next_service_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)", "handle_service_request(request, &mut stream).await"]) and "Data::" not in dispatch and "next_timeout(" not in dispatch)
+        handler = item(ipc, "async fn handle_service_request")
+        need("b1", "service-handler-not-typed", all(token in handler for token in [
+            "ServiceIpcRequest::LivenessProbe {}",
+            "ServiceIpcResponse::Liveness {}",
+            "ServiceIpcRequest::EnsurePasswordRightReady {}",
+            "ServiceIpcResponse::PasswordRightReady { ready }",
+            "ServiceIpcRequest::PermanentPasswordSnapshot {}",
+        ]) and "Data::" not in handler)
+        windows_service = item(windows, "async fn handle_windows_service_ipc_request")
+        need("b1", "windows-service-handler-not-typed",
+             ".next_service_request_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)" in windows_service
+             and ".next_timeout(" not in windows_service and "ipc::Data::" not in windows_service)
+        windows_sas = item(windows, "async fn handle_windows_service_sas_ipc_request")
+        need("b1", "windows-service-sas-handler-not-typed",
+             ".next_windows_service_sas_request_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)" in windows_sas
+             and "WindowsServiceSasIpcRequest::Dispatch {}" in windows_sas
+             and ".next_timeout(" not in windows_sas and "ipc::Data::" not in windows_sas)
+        snapshot_client = item(ipc, "pub async fn refresh_macos_service_owned_permanent_password_snapshot")
+        need("b1", "macos-service-snapshot-client-not-typed", all(token in snapshot_client for token in [
+            "send_service_request_timeout(",
+            "ServiceIpcRequest::PermanentPasswordSnapshot {}",
+            "next_service_response_timeout(",
+            "ServiceIpcResponse::PermanentPasswordSnapshotResult { storage, salt }",
+        ]) and "send_json_timeout(" not in snapshot_client and "next_timeout(" not in snapshot_client)
+        readiness_client = item(ipc, "async fn macos_service_owned_password_authorization_right_ready")
+        need("b1", "macos-service-readiness-client-not-typed", all(token in readiness_client for token in [
+            "send_service_request_timeout(",
+            "ServiceIpcRequest::EnsurePasswordRightReady {}",
+            "next_service_response_timeout(",
+            "ServiceIpcResponse::PasswordRightReady { ready }",
+        ]) and "send_json_timeout(" not in readiness_client and "next_timeout(" not in readiness_client)
+        share_rdp_client = item(ipc, "async fn set_service_owned_share_rdp_with_ack")
+        need("b1", "windows-service-share-rdp-client-not-typed", all(token in share_rdp_client for token in [
+            "send_service_request_timeout(",
+            "ServiceIpcRequest::SetShareRdp { enabled: enable }",
+            "next_service_response_timeout(ms_timeout)",
+            "ServiceIpcResponse::ShareRdpSet { accepted }",
+        ]) and "send_json_timeout(" not in share_rdp_client and "next_timeout(" not in share_rdp_client)
+        sas_client = item(ipc, "pub(crate) async fn request_windows_service_owned_sas")
+        need("b1", "windows-service-sas-client-not-typed", all(token in sas_client for token in [
+            "send_windows_service_sas_request_timeout(",
+            "WindowsServiceSasIpcRequest::Dispatch {}",
+            "next_windows_service_sas_response_timeout(",
+            "WindowsServiceSasIpcResponse::DispatchAccepted { accepted: true }",
+        ]) and "send_json_timeout(" not in sas_client and "next_timeout(" not in sas_client)
         main_request = item(ipc, "pub enum MainIpcRequest")
-        need("b1", "password-secret-present-on-serde-protocol", not any(token in data + main_request for token in ["SensitivePassword", "PasswordWithAuthorization", "RequestMacosServiceOwnedUnattendedPasswordChange"]))
+        need("b1", "service-variant-remains-in-data-union", not any(token in data for token in [
+            "MacosServiceOwned",
+            "RequestServiceOwned",
+            "ServiceOwnedShareRdp",
+            "ServiceOwnedSasDispatch",
+        ]) and not re.search(r"^    Test,$", data, re.MULTILINE))
+        need("b1", "password-secret-present-on-serde-protocol", not any(token in data + main_request + service_request for token in ["SensitivePassword", "PasswordWithAuthorization", "RequestMacosServiceOwnedUnattendedPasswordChange"]))
+        need("b1", "service-directional-regression-missing", all(token in ipc for token in [
+            "fn service_channel_uses_closed_directional_protocol()",
+            "serde_json::from_slice::<ServiceIpcResponse>(&request).is_err()",
+            "serde_json::from_slice::<ServiceIpcRequest>(&response).is_err()",
+            "serde_json::from_slice::<ServiceIpcRequest>(&cross_purpose).is_err()",
+            "fn windows_service_sas_channel_uses_closed_directional_protocol()",
+            "serde_json::from_slice::<WindowsServiceSasIpcResponse>(&request).is_err()",
+            "serde_json::from_slice::<WindowsServiceSasIpcRequest>(&response).is_err()",
+            'assert_eq!(request, br#"{"t":"LivenessProbe"}"#)',
+            'assert_eq!(response, br#"{"t":"Liveness"}"#)',
+            'assert_eq!(request, br#"{"t":"Dispatch"}"#)',
+            'br#"{"t":"DispatchAccepted","accepted":true}"#',
+            'br#"{"t":"LivenessProbe","c":null}"#',
+            'br#"{"t":"Liveness","c":null}"#',
+            'br#"{"t":"Dispatch","c":null}"#',
+            'br#"{"t":"DispatchAccepted","accepted":true,"c":null}"#',
+        ]))
         need("b1", "service-resource-boundary-missing", all(token in ipc for token in [
             "pub(crate) const SERVICE_IPC_MAX_FRAME_BYTES: usize = 32 * 1024;",
             "pub(crate) const SERVICE_IPC_REQUEST_TIMEOUT_MS: u64 = 1_000;",
@@ -1205,7 +1324,8 @@ def analyze(sources):
             "reported_path != Some(expected_plist.as_str())",
         ]) and 'const MACOS_LAUNCHCTL: &str = "/bin/launchctl";' in ipc and ordered(snapshot_handler, [
             "let deadline = tokio::time::Instant::now()", "macos_peer_is_service_owned_server(stream, deadline).await",
-            "Config::get_local_permanent_password_storage_and_salt()", "password::remaining_millis(deadline)", "send_json_timeout(",
+            "Config::get_local_permanent_password_storage_and_salt()", "password::remaining_millis(deadline)",
+            "send_service_response_timeout(", "ServiceIpcResponse::PermanentPasswordSnapshotResult",
         ]))
         need("b2", "service-password-ordinary-fallback-present", not any(token in service_setter + service_client_wrapper for token in [
             "set_user_owned_permanent_password", "Config::set_permanent_password", "main_ipc_request(",
@@ -1295,7 +1415,21 @@ def mutation(name, file_name, old, new, group, expected):
         findings[group].append(f"mutation-self-test-{name}-not-detected")
 
 
-mutation("service-admission", "ipc", "Data::Test => true", "Data::Test => false", "b1", "service-admission-not-exact")
+mutation("service-request-shape", "ipc", "    LivenessProbe {},", "    LivenessProbe { nonce: String },", "b1", "service-request-not-exact")
+mutation("service-response-shape", "ipc", "    Liveness {},", "    Liveness { nonce: String },", "b1", "service-response-not-exact")
+mutation("service-unknown-fields", "ipc", '#[serde(tag = "t", deny_unknown_fields)]\npub(crate) enum ServiceIpcRequest', '#[serde(tag = "t")]\npub(crate) enum ServiceIpcRequest', "b1", "service-envelope-allows-unknown-fields")
+mutation("service-direction-tag-collision", "ipc", "    PermanentPasswordSnapshotResult {", "    PermanentPasswordSnapshot {", "b1", "service-response-not-exact")
+mutation("service-sas-request-shape", "ipc", "    Dispatch {},", "    Dispatch { nonce: String },", "b1", "service-sas-request-not-exact")
+mutation("service-sas-response-shape", "ipc", "    DispatchAccepted { accepted: bool },", "    DispatchAccepted { accepted: String },", "b1", "service-sas-response-not-exact")
+mutation("service-generic-dispatch", "ipc", ".next_service_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)", ".next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b1", "service-dispatch-not-single-bounded-frame")
+mutation("windows-service-generic-dispatch", "windows", ".next_service_request_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)", ".next_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b1", "windows-service-handler-not-typed")
+mutation("windows-service-sas-generic-dispatch", "windows", ".next_windows_service_sas_request_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)", ".next_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b1", "windows-service-sas-handler-not-typed")
+mutation("macos-service-snapshot-generic-client", "ipc", "c.send_service_request_timeout(\n        &ServiceIpcRequest::PermanentPasswordSnapshot {},", "c.send_json_timeout(\n        &ServiceIpcRequest::PermanentPasswordSnapshot {},", "b1", "macos-service-snapshot-client-not-typed")
+mutation("macos-service-readiness-generic-client", "ipc", "c.send_service_request_timeout(\n        &ServiceIpcRequest::EnsurePasswordRightReady {},", "c.send_json_timeout(\n        &ServiceIpcRequest::EnsurePasswordRightReady {},", "b1", "macos-service-readiness-client-not-typed")
+mutation("windows-service-share-rdp-generic-client", "ipc", "c.send_service_request_timeout(\n        &ServiceIpcRequest::SetShareRdp { enabled: enable },", "c.send_json_timeout(\n        &ServiceIpcRequest::SetShareRdp { enabled: enable },", "b1", "windows-service-share-rdp-client-not-typed")
+mutation("windows-service-sas-generic-client", "ipc", ".send_windows_service_sas_request_timeout(", ".send_json_timeout(", "b1", "windows-service-sas-client-not-typed")
+mutation("service-directional-wire-regression", "ipc", 'assert_eq!(request, br#"{"t":"LivenessProbe"}"#);', 'assert_eq!(request, br#"{"t":"LivenessProbe","c":null}"#);', "b1", "service-directional-regression-missing")
+mutation("service-data-residue", "ipc", "    ClickTime(i64),\n    Close,", "    ClickTime(i64),\n    Test,\n    Close,", "b1", "service-variant-remains-in-data-union")
 mutation("generic-transport", "ipc", 'bail!("sensitive password endpoints require the raw transport");', 'return connect_with_path(ms_timeout, "", postfix).await;', "b1", "generic-connect-allows-password-endpoint")
 mutation("endpoint-kind", "ipc", "password::SensitivePayloadKind::PasswordWithAuthorization,\n        deadline,", "password::SensitivePayloadKind::Password,\n        deadline,", "b2", "macos-peer-auth-not-before-secret-read")
 mutation("absolute-proof-deadline", "ipc", "tokio::time::timeout_at(deadline, result_rx)", "tokio::time::timeout(std::time::Duration::from_secs(1), result_rx)", "b2", "macos-proof-worker-ownership-not-exact")
@@ -1327,10 +1461,10 @@ grep -Fq 'Protected service IPC resource boundary' "$REPO/requirements.html" || 
 grep -Fq 'R-S11c-26 — protected service IPC resource boundary' "$REPO/HARDENING_STATUS.md" || r_s11b="$r_s11b service-resource-ledger-missing"
 grep -q 'SyncConfig' "$REPO/src/ipc.rs" && r_s11b="$r_s11b whole-config-ipc-variant-present"
 grep -q 'SyncConfig' "$REPO/src/server.rs" && r_s11b="$r_s11b server-whole-config-import-present"
-if awk '/probe_existing_listener/,/^}/' "$REPO/src/ipc/fs.rs" | grep -q 'Data::SyncConfig'; then
-  r_s11b="$r_s11b service-probe-reads-config"
-fi
-grep -q 'stream.send(&Data::Test)' "$REPO/src/ipc/fs.rs" || r_s11b="$r_s11b service-probe-not-test-ping"
+grep -q 'send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000)' "$REPO/src/ipc/fs.rs" || r_s11b="$r_s11b service-probe-not-typed-liveness"
+grep -q 'Ok(Some(ServiceIpcResponse::Liveness {}))' "$REPO/src/ipc/fs.rs" || r_s11b="$r_s11b service-probe-not-validating-typed-response"
+grep -Fq 'R-S11dx' "$REPO/requirements.html" || r_s11b="$r_s11b typed-service-protocol-requirement-missing"
+grep -Fq 'R-S11dx/R-S11e-142' "$REPO/HARDENING_STATUS.md" || r_s11b="$r_s11b typed-service-protocol-ledger-missing"
 if grep -q 'connect_service' "$REPO/src/server.rs"; then
   r_s11b="$r_s11b server-still-connects-service-channel"
 fi
@@ -1341,7 +1475,7 @@ if [ -n "$r_s11b" ]; then
   echo "  FAIL R-S11b-1 macOS service IPC closure:$r_s11b"
   rc=1
 else
-  note "ok  R-S11b-1/R-S11c-1f _service is a one-frame bounded liveness/readiness/root-snapshot control channel; _password and _service_password are raw-only endpoints; generic serde/framing and whole-config traffic are excluded"
+  note "ok  R-S11b-1/R-S11c-1f/R-S11dx _service is a closed directional liveness/readiness/root-snapshot protocol outside Data; _password and _service_password remain raw-only"
 fi
 
 echo "== (2b-ii) R-S11b-2a/R-S11b-3a macOS raw password authority and finality =="

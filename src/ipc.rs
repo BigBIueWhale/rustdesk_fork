@@ -1628,6 +1628,49 @@ impl CmAuthConnType {
     }
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(tag = "t", deny_unknown_fields)]
+pub(crate) enum ServiceIpcRequest {
+    LivenessProbe {},
+    #[cfg(target_os = "macos")]
+    EnsurePasswordRightReady {},
+    #[cfg(target_os = "macos")]
+    PermanentPasswordSnapshot {},
+    #[cfg(target_os = "windows")]
+    SetShareRdp { enabled: bool },
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(tag = "t", deny_unknown_fields)]
+pub(crate) enum ServiceIpcResponse {
+    Liveness {},
+    #[cfg(target_os = "macos")]
+    PasswordRightReady { ready: bool },
+    #[cfg(target_os = "macos")]
+    PermanentPasswordSnapshotResult {
+        storage: String,
+        salt: String,
+    },
+    #[cfg(target_os = "windows")]
+    ShareRdpSet { accepted: bool },
+}
+
+#[cfg(any(target_os = "windows", test))]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+#[serde(tag = "t", deny_unknown_fields)]
+pub(crate) enum WindowsServiceSasIpcRequest {
+    Dispatch {},
+}
+
+#[cfg(any(target_os = "windows", test))]
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
+#[serde(tag = "t", deny_unknown_fields)]
+pub(crate) enum WindowsServiceSasIpcResponse {
+    DispatchAccepted { accepted: bool },
+}
+
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq, Default)]
 pub struct CmConnectionAuthority {
     pub valid: bool,
@@ -1702,25 +1745,6 @@ pub enum Data {
     },
     ClickTime(i64),
     Close,
-    #[cfg(target_os = "macos")]
-    MacosServiceOwnedPasswordRightReadyRequest,
-    #[cfg(target_os = "macos")]
-    MacosServiceOwnedPasswordRightReadyResult(bool),
-    #[cfg(target_os = "macos")]
-    MacosServiceOwnedPermanentPasswordSnapshotRequest,
-    #[cfg(target_os = "macos")]
-    MacosServiceOwnedPermanentPasswordSnapshot {
-        storage: String,
-        salt: String,
-    },
-    #[cfg(target_os = "windows")]
-    RequestServiceOwnedShareRdp(bool),
-    #[cfg(target_os = "windows")]
-    ServiceOwnedShareRdpResult(bool),
-    #[cfg(target_os = "windows")]
-    RequestServiceOwnedSasDispatch,
-    #[cfg(target_os = "windows")]
-    ServiceOwnedSasDispatchAccepted(bool),
     CmFileResponse(CmFileResponse),
     #[cfg(target_os = "linux")]
     PulseAudioStart {
@@ -1734,7 +1758,6 @@ pub enum Data {
         cm_auth_token: String,
         fs: FS,
     },
-    Test,
     #[cfg(target_os = "windows")]
     ClipboardFile(ClipboardFile),
     ClipboardFileEnabled(bool),
@@ -3582,10 +3605,12 @@ async fn handle_main_ipc_request(request: MainIpcRequest, stream: &Connection) -
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 async fn handle_service_ipc_transaction(mut stream: Connection, postfix: &str) {
-    match stream.next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS).await {
+    match stream
+        .next_service_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)
+        .await
+    {
         Err(err) => log::trace!("protected _service IPC request closed before a bounded request frame: {err}"),
-        Ok(Some(data)) if service_channel_admits_message(&data) => handle_service_request(data, &mut stream).await,
-        Ok(Some(data)) => log::warn!("Rejected unauthorized data on protected _service IPC channel: postfix={}, data_kind={:?}, peer_uid={:?}", postfix, std::mem::discriminant(&data), stream.peer_uid()),
+        Ok(Some(request)) => handle_service_request(request, &mut stream).await,
         Ok(None) => log::warn!("Rejected malformed data on protected _service IPC channel: postfix={}, peer_uid={:?}", postfix, stream.peer_uid()),
     }
 }
@@ -4032,17 +4057,6 @@ fn current_process_allows_main_channel_options_write() -> bool {
 fn current_process_allows_service_owned_unattended_password_commit(stream: &Connection) -> bool {
     MainIpcAuthority::for_current_process() == MainIpcAuthority::ServiceOwned
         && stream.peer_uid() == Some(0)
-}
-
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-pub(crate) fn service_channel_admits_message(data: &Data) -> bool {
-    match data {
-        Data::Test => true,
-        #[cfg(target_os = "macos")]
-        Data::MacosServiceOwnedPasswordRightReadyRequest
-        | Data::MacosServiceOwnedPermanentPasswordSnapshotRequest => true,
-        _ => false,
-    }
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
@@ -5318,8 +5332,8 @@ async fn handle_macos_service_owned_permanent_password_snapshot_request(stream: 
         }
     };
     if let Err(err) = stream
-        .send_json_timeout(
-            &Data::MacosServiceOwnedPermanentPasswordSnapshot { storage, salt },
+        .send_service_response_timeout(
+            &ServiceIpcResponse::PermanentPasswordSnapshotResult { storage, salt },
             response_timeout,
         )
         .await
@@ -5435,8 +5449,8 @@ pub(crate) async fn handle_windows_service_owned_share_rdp_request(
         log::warn!("Rejected Windows service-owned RDP session-sharing change");
     }
     if let Err(err) = stream
-        .send_json_timeout(
-            &Data::ServiceOwnedShareRdpResult(accepted),
+        .send_service_response_timeout(
+            &ServiceIpcResponse::ShareRdpSet { accepted },
             SERVICE_IPC_REQUEST_TIMEOUT_MS,
         )
         .await
@@ -5446,18 +5460,21 @@ pub(crate) async fn handle_windows_service_owned_share_rdp_request(
 }
 
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-async fn handle_service_request(data: Data, stream: &mut Connection) {
-    match data {
-        Data::Test => {
+async fn handle_service_request(request: ServiceIpcRequest, stream: &mut Connection) {
+    match request {
+        ServiceIpcRequest::LivenessProbe {} => {
             if let Err(err) = stream
-                .send_json_timeout(&Data::Test, SERVICE_IPC_REQUEST_TIMEOUT_MS)
+                .send_service_response_timeout(
+                    &ServiceIpcResponse::Liveness {},
+                    SERVICE_IPC_REQUEST_TIMEOUT_MS,
+                )
                 .await
             {
                 log::debug!("Failed to send service IPC liveness response: {err}");
             }
         }
         #[cfg(target_os = "macos")]
-        Data::MacosServiceOwnedPasswordRightReadyRequest => {
+        ServiceIpcRequest::EnsurePasswordRightReady {} => {
             let deadline = tokio::time::Instant::now()
                 + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
             let ready = macos_service_owned_password_authorization_right_is_ready(deadline).await;
@@ -5469,8 +5486,8 @@ async fn handle_service_request(data: Data, stream: &mut Connection) {
                 }
             };
             if let Err(err) = stream
-                .send_json_timeout(
-                    &Data::MacosServiceOwnedPasswordRightReadyResult(ready),
+                .send_service_response_timeout(
+                    &ServiceIpcResponse::PasswordRightReady { ready },
                     response_timeout,
                 )
                 .await
@@ -5479,10 +5496,9 @@ async fn handle_service_request(data: Data, stream: &mut Connection) {
             }
         }
         #[cfg(target_os = "macos")]
-        Data::MacosServiceOwnedPermanentPasswordSnapshotRequest => {
+        ServiceIpcRequest::PermanentPasswordSnapshot {} => {
             handle_macos_service_owned_permanent_password_snapshot_request(stream).await;
         }
-        _ => log::error!("service request reached dispatch without admission"),
     }
 }
 
@@ -6123,6 +6139,66 @@ where
     ) -> ResultType<Option<MainIpcResponse>> {
         Ok(timeout(ms_timeout, self.next_json()).await??)
     }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub(crate) async fn send_service_request_timeout(
+        &mut self,
+        request: &ServiceIpcRequest,
+        ms_timeout: u64,
+    ) -> ResultType<()> {
+        self.send_json_timeout(request, ms_timeout).await
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub(crate) async fn next_service_request_timeout(
+        &mut self,
+        ms_timeout: u64,
+    ) -> ResultType<Option<ServiceIpcRequest>> {
+        Ok(timeout(ms_timeout, self.next_json()).await??)
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub(crate) async fn send_service_response_timeout(
+        &mut self,
+        response: &ServiceIpcResponse,
+        ms_timeout: u64,
+    ) -> ResultType<()> {
+        self.send_json_timeout(response, ms_timeout).await
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub(crate) async fn next_service_response_timeout(
+        &mut self,
+        ms_timeout: u64,
+    ) -> ResultType<Option<ServiceIpcResponse>> {
+        Ok(timeout(ms_timeout, self.next_json()).await??)
+    }
+    #[cfg(target_os = "windows")]
+    pub(crate) async fn send_windows_service_sas_request_timeout(
+        &mut self,
+        request: &WindowsServiceSasIpcRequest,
+        ms_timeout: u64,
+    ) -> ResultType<()> {
+        self.send_json_timeout(request, ms_timeout).await
+    }
+    #[cfg(target_os = "windows")]
+    pub(crate) async fn next_windows_service_sas_request_timeout(
+        &mut self,
+        ms_timeout: u64,
+    ) -> ResultType<Option<WindowsServiceSasIpcRequest>> {
+        Ok(timeout(ms_timeout, self.next_json()).await??)
+    }
+    #[cfg(target_os = "windows")]
+    pub(crate) async fn send_windows_service_sas_response_timeout(
+        &mut self,
+        response: &WindowsServiceSasIpcResponse,
+        ms_timeout: u64,
+    ) -> ResultType<()> {
+        self.send_json_timeout(response, ms_timeout).await
+    }
+    #[cfg(target_os = "windows")]
+    pub(crate) async fn next_windows_service_sas_response_timeout(
+        &mut self,
+        ms_timeout: u64,
+    ) -> ResultType<Option<WindowsServiceSasIpcResponse>> {
+        Ok(timeout(ms_timeout, self.next_json()).await??)
+    }
     #[cfg(target_os = "windows")]
     async fn send_windows_service_main_request_timeout(
         &mut self,
@@ -6546,13 +6622,13 @@ pub async fn refresh_macos_service_owned_permanent_password_snapshot(
     ms_timeout: u64,
 ) -> ResultType<bool> {
     let mut c = connect_service(ms_timeout).await?;
-    c.send_json_timeout(
-        &Data::MacosServiceOwnedPermanentPasswordSnapshotRequest,
+    c.send_service_request_timeout(
+        &ServiceIpcRequest::PermanentPasswordSnapshot {},
         ms_timeout,
     )
     .await?;
-    match c.next_timeout(ms_timeout).await? {
-        Some(Data::MacosServiceOwnedPermanentPasswordSnapshot { storage, salt }) => {
+    match c.next_service_response_timeout(ms_timeout).await? {
+        Some(ServiceIpcResponse::PermanentPasswordSnapshotResult { storage, salt }) => {
             Config::set_permanent_password_storage_for_runtime(&storage, &salt)?;
             Ok(Config::has_permanent_password())
         }
@@ -6756,16 +6832,16 @@ async fn macos_service_owned_password_authorization_right_ready(
     deadline: tokio::time::Instant,
 ) -> ResultType<bool> {
     let mut c = connect_service(password::remaining_millis(deadline)?).await?;
-    c.send_json_timeout(
-        &Data::MacosServiceOwnedPasswordRightReadyRequest,
+    c.send_service_request_timeout(
+        &ServiceIpcRequest::EnsurePasswordRightReady {},
         password::remaining_millis(deadline)?,
     )
     .await?;
     match c
-        .next_timeout(password::remaining_millis(deadline)?)
+        .next_service_response_timeout(password::remaining_millis(deadline)?)
         .await?
     {
-        Some(Data::MacosServiceOwnedPasswordRightReadyResult(ready)) => Ok(ready),
+        Some(ServiceIpcResponse::PasswordRightReady { ready }) => Ok(ready),
         _ => Ok(false),
     }
 }
@@ -6964,10 +7040,13 @@ pub fn set_service_owned_share_rdp(enable: bool) -> ResultType<()> {
 async fn set_service_owned_share_rdp_with_ack(enable: bool) -> ResultType<bool> {
     let ms_timeout = 1_000;
     let mut c = connect_service(ms_timeout).await?;
-    c.send_json_timeout(&Data::RequestServiceOwnedShareRdp(enable), ms_timeout)
-        .await?;
-    match c.next_timeout(ms_timeout).await? {
-        Some(Data::ServiceOwnedShareRdpResult(ok)) => Ok(ok),
+    c.send_service_request_timeout(
+        &ServiceIpcRequest::SetShareRdp { enabled: enable },
+        ms_timeout,
+    )
+    .await?;
+    match c.next_service_response_timeout(ms_timeout).await? {
+        Some(ServiceIpcResponse::ShareRdpSet { accepted }) => Ok(accepted),
         Some(other) => bail!("Unexpected RDP session-sharing response: {:?}", other),
         None => Ok(false),
     }
@@ -6984,20 +7063,19 @@ pub(crate) async fn request_windows_service_owned_sas() -> ResultType<()> {
     )
     .await?;
     stream
-        .send_json_timeout(
-            &Data::RequestServiceOwnedSasDispatch,
+        .send_windows_service_sas_request_timeout(
+            &WindowsServiceSasIpcRequest::Dispatch {},
             WINDOWS_SERVICE_SAS_CLIENT_TIMEOUT_MS,
         )
         .await?;
     match stream
-        .next_timeout(WINDOWS_SERVICE_SAS_CLIENT_TIMEOUT_MS)
+        .next_windows_service_sas_response_timeout(WINDOWS_SERVICE_SAS_CLIENT_TIMEOUT_MS)
         .await?
     {
-        Some(Data::ServiceOwnedSasDispatchAccepted(true)) => Ok(()),
-        Some(Data::ServiceOwnedSasDispatchAccepted(false)) => {
+        Some(WindowsServiceSasIpcResponse::DispatchAccepted { accepted: true }) => Ok(()),
+        Some(WindowsServiceSasIpcResponse::DispatchAccepted { accepted: false }) => {
             bail!("Windows service rejected the service-owned SAS dispatch request")
         }
-        Some(_) => bail!("Windows service returned an invalid service-owned SAS response"),
         None => bail!("Windows service returned a malformed service-owned SAS response"),
     }
 }
@@ -8169,32 +8247,71 @@ mod test {
 
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     #[test]
-    fn service_channel_rejects_config_bus() {
-        assert!(
-            service_channel_admits_message(&Data::Test),
-            "R-S11b-1: _service keeps a narrow liveness ping"
+    fn service_channel_uses_closed_directional_protocol() {
+        let request = serde_json::to_vec(&ServiceIpcRequest::LivenessProbe {}).unwrap();
+        assert_eq!(request, br#"{"t":"LivenessProbe"}"#);
+        assert_eq!(
+            serde_json::from_slice::<ServiceIpcRequest>(&request).unwrap(),
+            ServiceIpcRequest::LivenessProbe {}
         );
-        #[cfg(target_os = "macos")]
+        assert!(serde_json::from_slice::<ServiceIpcResponse>(&request).is_err());
         assert!(
-            service_channel_admits_message(
-                &Data::MacosServiceOwnedPermanentPasswordSnapshotRequest
-            ),
-            "R-S11c-1: macOS _service accepts the typed service-owned password snapshot request in addition to liveness"
+            serde_json::from_slice::<ServiceIpcRequest>(
+                br#"{"t":"LivenessProbe","c":null}"#
+            )
+            .is_err()
         );
-        #[cfg(target_os = "macos")]
+
+        let response = serde_json::to_vec(&ServiceIpcResponse::Liveness {}).unwrap();
+        assert_eq!(response, br#"{"t":"Liveness"}"#);
+        assert_eq!(
+            serde_json::from_slice::<ServiceIpcResponse>(&response).unwrap(),
+            ServiceIpcResponse::Liveness {}
+        );
+        assert!(serde_json::from_slice::<ServiceIpcRequest>(&response).is_err());
         assert!(
-            service_channel_admits_message(&Data::MacosServiceOwnedPasswordRightReadyRequest),
-            "R-S11c-1: macOS _service accepts the no-secret authorization-right readiness request in addition to liveness"
+            serde_json::from_slice::<ServiceIpcResponse>(br#"{"t":"Liveness","c":null}"#)
+                .is_err()
         );
+
+        let cross_purpose = serde_json::to_vec(&Data::Close).unwrap();
+        assert!(serde_json::from_slice::<ServiceIpcRequest>(&cross_purpose).is_err());
+        assert!(serde_json::from_slice::<ServiceIpcResponse>(&cross_purpose).is_err());
+    }
+
+    #[test]
+    fn windows_service_sas_channel_uses_closed_directional_protocol() {
+        let request = serde_json::to_vec(&WindowsServiceSasIpcRequest::Dispatch {}).unwrap();
+        assert_eq!(request, br#"{"t":"Dispatch"}"#);
+        assert_eq!(
+            serde_json::from_slice::<WindowsServiceSasIpcRequest>(&request).unwrap(),
+            WindowsServiceSasIpcRequest::Dispatch {}
+        );
+        assert!(serde_json::from_slice::<WindowsServiceSasIpcResponse>(&request).is_err());
         assert!(
-            !service_channel_admits_message(&Data::Close),
-            "R-S11b-1: _service is not a process-control channel"
+            serde_json::from_slice::<WindowsServiceSasIpcRequest>(
+                br#"{"t":"Dispatch","c":null}"#
+            )
+            .is_err()
         );
-        #[cfg(target_os = "macos")]
-        assert!(
-            !service_channel_admits_message(&Data::MacosServiceOwnedPasswordRightReadyResult(true)),
-            "R-S11c-1: _service clients cannot send readiness result frames"
+
+        let response =
+            serde_json::to_vec(&WindowsServiceSasIpcResponse::DispatchAccepted { accepted: true })
+                .unwrap();
+        assert_eq!(response, br#"{"t":"DispatchAccepted","accepted":true}"#);
+        assert_eq!(
+            serde_json::from_slice::<WindowsServiceSasIpcResponse>(&response).unwrap(),
+            WindowsServiceSasIpcResponse::DispatchAccepted { accepted: true }
         );
+        assert!(serde_json::from_slice::<WindowsServiceSasIpcRequest>(&response).is_err());
+        assert!(serde_json::from_slice::<WindowsServiceSasIpcResponse>(
+            br#"{"t":"DispatchAccepted","accepted":true,"c":null}"#
+        )
+        .is_err());
+
+        let cross_purpose = serde_json::to_vec(&Data::Close).unwrap();
+        assert!(serde_json::from_slice::<WindowsServiceSasIpcRequest>(&cross_purpose).is_err());
+        assert!(serde_json::from_slice::<WindowsServiceSasIpcResponse>(&cross_purpose).is_err());
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

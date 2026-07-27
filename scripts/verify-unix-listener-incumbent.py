@@ -113,8 +113,9 @@ def validate(sources: Dict[str, str]) -> None:
             "return Ok(false);",
             "if postfix != crate::POSTFIX_SERVICE",
             "return Ok(true);",
-            "stream.send(&Data::Test).await.map_err(",
-            "Ok(Some(Data::Test)) => Ok(true)",
+            ".send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000)",
+            "match stream.next_service_response_timeout(1000).await",
+            "Ok(Some(ServiceIpcResponse::Liveness {})) => Ok(true)",
             "Ok(response) => Err(",
             "Err(err) => Err(",
         ),
@@ -122,8 +123,10 @@ def validate(sources: Dict[str, str]) -> None:
     )
     for forbidden in (
         "if postfix != crate::POSTFIX_SERVICE {\n        return true;",
-        "if stream.send(&Data::Test).await.is_err() {\n        return Ok(false);",
-        "matches!(stream.next_timeout(1000).await, Ok(Some(Data::Test)))",
+        "send(&Data::Test)",
+        "next_timeout(1000)",
+        "send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000).await.is_err()",
+        "matches!(stream.next_service_response_timeout(1000).await, Ok(Some(ServiceIpcResponse::Liveness {})))",
     ):
         if forbidden in probe:
             raise VerificationError(
@@ -254,8 +257,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "fs",
-        "stream.send(&Data::Test).await.map_err(|err| {",
-        "if stream.send(&Data::Test).await.is_err() { return Ok(false); } let _ = (|err| {",
+        "stream\n        .send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000)\n        .await\n        .map_err(|err| {",
+        "if stream.send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000).await.is_err() { return Ok(false); } let _ = (|err| {",
         "protected liveness write ambiguity",
     ),
     (

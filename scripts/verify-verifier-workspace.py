@@ -561,6 +561,51 @@ def extract_through(source, start_token, end_token, label):
     return source[start : end + len(end_token)]
 
 
+def extract_rust_enum_variants(source, declaration, label):
+    start = source.find(declaration)
+    if start < 0:
+        raise VerificationError(f"{label}: enum declaration is absent")
+    declaration_brace = declaration.find("{")
+    opening = (
+        start + declaration_brace
+        if declaration_brace >= 0
+        else source.find("{", start + len(declaration))
+    )
+    if opening < 0:
+        raise VerificationError(f"{label}: enum body is absent")
+    depth = 0
+    item_start = opening + 1
+    items = []
+    closing = None
+    for index in range(opening + 1, len(source)):
+        char = source[index]
+        if char in "({[":
+            depth += 1
+        elif char in ")}]":
+            if char == "}" and depth == 0:
+                closing = index
+                break
+            depth -= 1
+            if depth < 0:
+                raise VerificationError(f"{label}: malformed enum nesting")
+        elif char == "," and depth == 0:
+            items.append(source[item_start:index])
+            item_start = index + 1
+    if closing is None:
+        raise VerificationError(f"{label}: enum closing brace is absent")
+    trailing = source[item_start:closing]
+    if trailing.strip():
+        items.append(trailing)
+    variants = []
+    for item in items:
+        without_attributes = re.sub(r"#\[[^\]]+\]", " ", item)
+        match = re.search(r"\b([A-Za-z_][A-Za-z0-9_]*)\b", without_attributes)
+        if not match:
+            raise VerificationError(f"{label}: unparseable enum item {item!r}")
+        variants.append(match.group(1))
+    return tuple(variants)
+
+
 def extract_html_requirement(source, requirement_id, label):
     start_tokens = (
         f'<div class="req"><span class="id">{requirement_id}</span>',
@@ -12012,7 +12057,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
+        "R-S11n through R-S11dx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12093,7 +12138,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
+        "R-S11n through R-S11dx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12272,7 +12317,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
+        "R-S11n through R-S11dx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12406,7 +12451,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
+        "R-S11n through R-S11dx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12574,7 +12619,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
+        "R-S11n through R-S11dx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12767,7 +12812,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
+        "R-S11n through R-S11dx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13101,7 +13146,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
+        "R-S11n through R-S11dx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13524,6 +13569,493 @@ def validate_unix_helper_process_role_contract(sources):
     )
 
 
+def validate_service_ipc_protocol_authority_contract(sources):
+    ipc = sources["ipc_source"]
+    expected_enums = (
+        (
+            "pub(crate) enum ServiceIpcRequest",
+            (
+                "LivenessProbe",
+                "EnsurePasswordRightReady",
+                "PermanentPasswordSnapshot",
+                "SetShareRdp",
+            ),
+            "service IPC request protocol",
+        ),
+        (
+            "pub(crate) enum ServiceIpcResponse",
+            (
+                "Liveness",
+                "PasswordRightReady",
+                "PermanentPasswordSnapshotResult",
+                "ShareRdpSet",
+            ),
+            "service IPC response protocol",
+        ),
+        (
+            "pub(crate) enum WindowsServiceSasIpcRequest",
+            ("Dispatch",),
+            "Windows service SAS request protocol",
+        ),
+        (
+            "pub(crate) enum WindowsServiceSasIpcResponse",
+            ("DispatchAccepted",),
+            "Windows service SAS response protocol",
+        ),
+    )
+    protocol_variant_sets = []
+    for declaration, expected, label in expected_enums:
+        actual = extract_rust_enum_variants(ipc, declaration, label)
+        if actual != expected:
+            raise VerificationError(
+                f"{label}: expected exact variants {expected!r}, found {actual!r}"
+            )
+        protocol_variant_sets.append(set(actual))
+    for text, label in (
+        (
+            "LivenessProbe {},",
+            "service liveness request empty field schema",
+        ),
+        (
+            "EnsurePasswordRightReady {},",
+            "service password-right request empty field schema",
+        ),
+        (
+            "PermanentPasswordSnapshot {},",
+            "service password-snapshot request empty field schema",
+        ),
+        (
+            "Liveness {},",
+            "service liveness response empty field schema",
+        ),
+        (
+            "WindowsServiceSasIpcRequest {\n    Dispatch {},",
+            "Windows SAS request empty field schema",
+        ),
+        (
+            "SetShareRdp { enabled: bool },",
+            "service share-RDP request field schema",
+        ),
+        (
+            "PasswordRightReady { ready: bool },",
+            "service password-right response field schema",
+        ),
+        (
+            "PermanentPasswordSnapshotResult {\n        storage: String,\n        salt: String,\n    },",
+            "service password-snapshot response field schema",
+        ),
+        (
+            "ShareRdpSet { accepted: bool },",
+            "service share-RDP response field schema",
+        ),
+        (
+            "WindowsServiceSasIpcResponse {\n    DispatchAccepted { accepted: bool },",
+            "Windows SAS response field schema",
+        ),
+        (
+            '#[serde(tag = "t", deny_unknown_fields)]\n'
+            "pub(crate) enum ServiceIpcRequest",
+            "exact service request JSON envelope",
+        ),
+        (
+            '#[serde(tag = "t", deny_unknown_fields)]\n'
+            "pub(crate) enum ServiceIpcResponse",
+            "exact service response JSON envelope",
+        ),
+        (
+            '#[serde(tag = "t", deny_unknown_fields)]\n'
+            "pub(crate) enum WindowsServiceSasIpcRequest",
+            "exact Windows SAS request JSON envelope",
+        ),
+        (
+            '#[serde(tag = "t", deny_unknown_fields)]\n'
+            "pub(crate) enum WindowsServiceSasIpcResponse",
+            "exact Windows SAS response JSON envelope",
+        ),
+    ):
+        require_text(ipc, text, label)
+
+    data_variants = set(
+        extract_rust_enum_variants(ipc, "pub enum Data {", "cross-purpose Data protocol")
+    )
+    all_protocol_variants = set().union(*protocol_variant_sets)
+    if sum(len(variants) for variants in protocol_variant_sets) != len(
+        all_protocol_variants
+    ):
+        raise VerificationError(
+            "privileged service request/response protocols reuse a direction tag"
+        )
+    collisions = sorted(all_protocol_variants & data_variants)
+    if collisions:
+        raise VerificationError(
+            f"cross-purpose Data protocol reuses privileged service tags: {collisions!r}"
+        )
+    retired = {
+        "Test",
+        "MacosServiceOwnedPasswordRightReadyRequest",
+        "MacosServiceOwnedPasswordRightReadyResult",
+        "MacosServiceOwnedPermanentPasswordSnapshotRequest",
+        "MacosServiceOwnedPermanentPasswordSnapshot",
+        "RequestServiceOwnedShareRdp",
+        "ServiceOwnedShareRdpResult",
+        "RequestServiceOwnedSasDispatch",
+        "ServiceOwnedSasDispatchAccepted",
+    }
+    residue = sorted(data_variants & retired)
+    if residue:
+        raise VerificationError(
+            f"cross-purpose Data protocol retains privileged service variants: {residue!r}"
+        )
+
+    for text, label in (
+        (
+            "pub(crate) async fn send_service_request_timeout(",
+            "typed service request writer",
+        ),
+        (
+            "pub(crate) async fn next_service_request_timeout(",
+            "typed service request reader",
+        ),
+        (
+            "pub(crate) async fn send_service_response_timeout(",
+            "typed service response writer",
+        ),
+        (
+            "pub(crate) async fn next_service_response_timeout(",
+            "typed service response reader",
+        ),
+        (
+            "pub(crate) async fn send_windows_service_sas_request_timeout(",
+            "typed Windows SAS request writer",
+        ),
+        (
+            "pub(crate) async fn next_windows_service_sas_request_timeout(",
+            "typed Windows SAS request reader",
+        ),
+        (
+            "pub(crate) async fn send_windows_service_sas_response_timeout(",
+            "typed Windows SAS response writer",
+        ),
+        (
+            "pub(crate) async fn next_windows_service_sas_response_timeout(",
+            "typed Windows SAS response reader",
+        ),
+        (
+            "async fn handle_service_request(request: ServiceIpcRequest",
+            "typed Unix service dispatch",
+        ),
+        (
+            "fn service_channel_uses_closed_directional_protocol()",
+            "service direction/cross-purpose regression",
+        ),
+        (
+            "fn windows_service_sas_channel_uses_closed_directional_protocol()",
+            "Windows SAS direction/cross-purpose regression",
+        ),
+    ):
+        require_text(ipc, text, label)
+
+    unix_transaction = extract_between(
+        ipc,
+        "async fn handle_service_ipc_transaction(",
+        "\n\n#[cfg(target_os = \"windows\")]\nstruct PreparedWindowsServiceMainIpc",
+        "Unix protected service transaction",
+    )
+    require_text(
+        unix_transaction,
+        ".next_service_request_timeout(",
+        "Unix typed protected service reader",
+    )
+    require_absent(
+        unix_transaction,
+        ".next_timeout(",
+        "Unix generic protected service reader",
+    )
+
+    windows = sources["windows_source"]
+    windows_service = extract_between(
+        windows,
+        "async fn handle_windows_service_ipc_request(",
+        "\n\nasync fn handle_windows_service_sas_ipc_request(",
+        "Windows protected service transaction",
+    )
+    require_text(
+        windows_service,
+        ".next_service_request_timeout(",
+        "Windows typed protected service reader",
+    )
+    require_absent(
+        windows_service,
+        ".next_timeout(",
+        "Windows generic protected service reader",
+    )
+    windows_sas = extract_between(
+        windows,
+        "async fn handle_windows_service_sas_ipc_request(",
+        "\n\nasync fn send_windows_service_ipc_response(",
+        "Windows protected SAS transaction",
+    )
+    require_text(
+        windows_sas,
+        ".next_windows_service_sas_request_timeout(",
+        "Windows typed protected SAS reader",
+    )
+    require_absent(
+        windows_sas,
+        ".next_timeout(",
+        "Windows generic protected SAS reader",
+    )
+
+    require_text(
+        sources["ipc_fs_source"],
+        ".send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000)",
+        "typed incumbent service liveness request",
+    )
+    require_text(
+        sources["ipc_fs_source"],
+        "Ok(Some(ServiceIpcResponse::Liveness {})) => Ok(true)",
+        "typed incumbent service liveness response",
+    )
+    snapshot_client = extract_between(
+        ipc,
+        "pub async fn refresh_macos_service_owned_permanent_password_snapshot(",
+        "\n\n#[cfg(target_os = \"linux\")]\npub async fn refresh_linux_service_owned_permanent_password_snapshot(",
+        "macOS service-owned password snapshot client",
+    )
+    for text, label in (
+        (
+            "send_service_request_timeout(",
+            "typed macOS password snapshot request writer",
+        ),
+        (
+            "ServiceIpcRequest::PermanentPasswordSnapshot {}",
+            "typed macOS password snapshot request",
+        ),
+        (
+            "next_service_response_timeout(",
+            "typed macOS password snapshot response reader",
+        ),
+        (
+            "ServiceIpcResponse::PermanentPasswordSnapshotResult { storage, salt }",
+            "typed macOS password snapshot response",
+        ),
+    ):
+        require_text(snapshot_client, text, label)
+    require_absent(
+        snapshot_client,
+        "send_json_timeout(",
+        "generic macOS password snapshot writer",
+    )
+    require_absent(
+        snapshot_client,
+        "next_timeout(",
+        "generic macOS password snapshot reader",
+    )
+
+    readiness_client = extract_between(
+        ipc,
+        "async fn macos_service_owned_password_authorization_right_ready(",
+        "\n\n#[cfg(any(target_os = \"linux\", target_os = \"macos\"))]\n"
+        "#[tokio::main(flavor = \"current_thread\")]\n"
+        "async fn set_service_owned_unattended_password_with_ack(",
+        "macOS password-right readiness client",
+    )
+    for text, label in (
+        (
+            "send_service_request_timeout(",
+            "typed macOS password-right request writer",
+        ),
+        (
+            "ServiceIpcRequest::EnsurePasswordRightReady {}",
+            "typed macOS password-right request",
+        ),
+        (
+            "next_service_response_timeout(",
+            "typed macOS password-right response reader",
+        ),
+        (
+            "ServiceIpcResponse::PasswordRightReady { ready }",
+            "typed macOS password-right response",
+        ),
+    ):
+        require_text(readiness_client, text, label)
+    require_absent(
+        readiness_client,
+        "send_json_timeout(",
+        "generic macOS password-right writer",
+    )
+    require_absent(
+        readiness_client,
+        "next_timeout(",
+        "generic macOS password-right reader",
+    )
+
+    share_rdp_client = extract_between(
+        ipc,
+        "async fn set_service_owned_share_rdp_with_ack(",
+        "\n\n#[cfg(target_os = \"windows\")]\n"
+        "pub(crate) async fn request_windows_service_owned_sas(",
+        "Windows service-owned share-RDP client",
+    )
+    for text, label in (
+        (
+            "send_service_request_timeout(",
+            "typed Windows share-RDP request writer",
+        ),
+        (
+            "ServiceIpcRequest::SetShareRdp { enabled: enable }",
+            "typed Windows share-RDP request",
+        ),
+        (
+            "next_service_response_timeout(ms_timeout)",
+            "typed Windows share-RDP response reader",
+        ),
+        (
+            "ServiceIpcResponse::ShareRdpSet { accepted }",
+            "typed Windows share-RDP response",
+        ),
+    ):
+        require_text(share_rdp_client, text, label)
+    require_absent(
+        share_rdp_client,
+        "send_json_timeout(",
+        "generic Windows share-RDP writer",
+    )
+    require_absent(
+        share_rdp_client,
+        "next_timeout(",
+        "generic Windows share-RDP reader",
+    )
+
+    sas_client = extract_between(
+        ipc,
+        "pub(crate) async fn request_windows_service_owned_sas(",
+        "\n\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n"
+        "pub fn get_id(",
+        "Windows service-owned SAS client",
+    )
+    for text, label in (
+        (
+            "send_windows_service_sas_request_timeout(",
+            "typed Windows SAS request writer",
+        ),
+        (
+            "WindowsServiceSasIpcRequest::Dispatch {}",
+            "typed Windows SAS request",
+        ),
+        (
+            "next_windows_service_sas_response_timeout(",
+            "typed Windows SAS response reader",
+        ),
+        (
+            "WindowsServiceSasIpcResponse::DispatchAccepted { accepted: true }",
+            "typed Windows SAS response",
+        ),
+    ):
+        require_text(sas_client, text, label)
+    require_absent(
+        sas_client,
+        "send_json_timeout(",
+        "generic Windows SAS writer",
+    )
+    require_absent(
+        sas_client,
+        "next_timeout(",
+        "generic Windows SAS reader",
+    )
+
+    service_protocol_test = extract_between(
+        ipc,
+        "fn service_channel_uses_closed_directional_protocol()",
+        "\n\n    #[test]\n    fn windows_service_sas_channel_uses_closed_directional_protocol()",
+        "service directional protocol regression",
+    )
+    sas_protocol_test = extract_between(
+        ipc,
+        "fn windows_service_sas_channel_uses_closed_directional_protocol()",
+        "\n\n    #[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n"
+        "    #[test]\n"
+        "    fn privileged_and_main_connections_use_bounded_frame_codecs()",
+        "Windows SAS directional protocol regression",
+    )
+    for source, tokens, label in (
+        (
+            service_protocol_test,
+            (
+                'assert_eq!(request, br#"{"t":"LivenessProbe"}"#)',
+                'assert_eq!(response, br#"{"t":"Liveness"}"#)',
+                'br#"{"t":"LivenessProbe","c":null}"#',
+                'br#"{"t":"Liveness","c":null}"#',
+                "serde_json::from_slice::<ServiceIpcResponse>(&request).is_err()",
+                "serde_json::from_slice::<ServiceIpcRequest>(&response).is_err()",
+                "serde_json::from_slice::<ServiceIpcRequest>(&cross_purpose).is_err()",
+                "serde_json::from_slice::<ServiceIpcResponse>(&cross_purpose).is_err()",
+            ),
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
+            sas_protocol_test,
+            (
+                'assert_eq!(request, br#"{"t":"Dispatch"}"#)',
+                'br#"{"t":"DispatchAccepted","accepted":true}"#',
+                'br#"{"t":"Dispatch","c":null}"#',
+                'br#"{"t":"DispatchAccepted","accepted":true,"c":null}"#',
+                "serde_json::from_slice::<WindowsServiceSasIpcResponse>(&request).is_err()",
+                "serde_json::from_slice::<WindowsServiceSasIpcRequest>(&response).is_err()",
+                "serde_json::from_slice::<WindowsServiceSasIpcRequest>(&cross_purpose).is_err()",
+                "serde_json::from_slice::<WindowsServiceSasIpcResponse>(&cross_purpose).is_err()",
+            ),
+            "Windows SAS exact wire/direction/cross-purpose regression",
+        ),
+    ):
+        for token in tokens:
+            require_text(source, token, f"{label}: {token}")
+    for gate, label in (
+        (sources["verify"], "shared service protocol gate"),
+        (sources["apple"], "Apple service protocol gate"),
+    ):
+        for text in (
+            "ServiceIpcRequest",
+            "ServiceIpcResponse",
+            "WindowsServiceSasIpcRequest",
+            "WindowsServiceSasIpcResponse",
+            "R-S11dx",
+            "R-S11e-142",
+        ):
+            require_text(gate, text, f"{label}: {text}")
+    bounded_codec_regression = (
+        '"${RUN[@]}" cargo test --lib --features linux-pkg-config '
+        "ipc::test::privileged_and_main_connections_use_bounded_frame_codecs "
+        "--color never"
+    )
+    require_exact_count(
+        sources["verify"],
+        bounded_codec_regression,
+        2,
+        "shared bounded service codec regression invocation",
+    )
+    require_absent(
+        sources["verify"],
+        "ipc::test::protected_service_connection_uses_bounded_frame_codec",
+        "nonexistent bounded service codec regression filter",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11dx</span>',
+        "service protocol authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>277</td>",
+        "service protocol authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dx/R-S11e-142 — privileged service-control and SAS protocol type",
+        "service protocol authority hardening ledger",
+    )
+
+
 def validate_unix_listener_incumbent_contract(sources):
     focused = sources["unix_listener_incumbent_verifier"]
     validation = extract_between(
@@ -13552,8 +14084,12 @@ def validate_unix_listener_incumbent_contract(sources):
             "Unix incumbent fallible executable proof contract",
         ),
         (
-            '"stream.send(&Data::Test).await.map_err("',
-            "Unix protected-listener liveness ambiguity contract",
+            '".send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000)"',
+            "Unix protected-listener typed liveness request contract",
+        ),
+        (
+            '"Ok(Some(ServiceIpcResponse::Liveness {})) => Ok(true)"',
+            "Unix protected-listener typed liveness response contract",
         ),
         (
             '"let existing_listener_alive = check_pid(postfix).await?;"',
@@ -16348,9 +16884,9 @@ def validate_cleanup_docker_authority_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dw, R-SV4a,\n"
+        "R-S11n through R-S11dx, R-SV4a,\n"
         "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
+        "R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -16536,9 +17072,9 @@ def validate_cleanup_process_domain_path_authority_contract(sources):
 
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dw, R-SV4a,\n"
+        "R-S11n through R-S11dx, R-SV4a,\n"
         "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
+        "R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -26530,6 +27066,7 @@ def validate_sources(sources):
     validate_installed_service_classifier_contract(sources)
     validate_linux_nondumpable_cm_contract(sources)
     validate_unix_helper_process_role_contract(sources)
+    validate_service_ipc_protocol_authority_contract(sources)
     validate_unix_listener_incumbent_contract(sources)
     validate_viewer_voice_call_worker_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
@@ -39877,7 +40414,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11dw, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276",
+            "R-S11n through R-S11dx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -40875,6 +41412,144 @@ def run_source_mutations(sources):
             "R-S11bs/R-S11e-85 — Unix incumbent-listener identity is explicit",
             "R-S11bs/R-S11e-85 — Unix incumbent-listener identity is ambient",
             "Unix incumbent-listener hardening ledger",
+        ),
+        (
+            "ipc_source",
+            "    LivenessProbe {},\n",
+            "    LivenessRequest {},\n",
+            "service IPC request protocol",
+        ),
+        (
+            "ipc_source",
+            "SetShareRdp { enabled: bool },",
+            "SetShareRdp { enabled: String },",
+            "service share-RDP request field schema",
+        ),
+        (
+            "ipc_source",
+            '#[serde(tag = "t", deny_unknown_fields)]\n'
+            "pub(crate) enum ServiceIpcRequest",
+            '#[serde(tag = "t")]\n'
+            "pub(crate) enum ServiceIpcRequest",
+            "exact service request JSON envelope",
+        ),
+        (
+            "ipc_source",
+            "    Liveness {},\n",
+            "    LivenessResult {},\n",
+            "service IPC response protocol",
+        ),
+        (
+            "ipc_source",
+            "    PermanentPasswordSnapshotResult {\n",
+            "    PermanentPasswordSnapshot {\n",
+            "service IPC response protocol",
+        ),
+        (
+            "ipc_source",
+            "    Dispatch {},\n",
+            "    DispatchRequest {},\n",
+            "Windows service SAS request protocol",
+        ),
+        (
+            "ipc_source",
+            "    DispatchAccepted { accepted: bool },\n",
+            "    DispatchAccepted { accepted: String },\n",
+            "Windows SAS response field schema",
+        ),
+        (
+            "ipc_source",
+            "pub enum Data {\n",
+            "pub enum Data {\n    Test,\n",
+            "cross-purpose Data protocol retains privileged service variants",
+        ),
+        (
+            "ipc_source",
+            ".next_service_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)",
+            ".next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)",
+            "Unix typed protected service reader",
+        ),
+        (
+            "windows_source",
+            ".next_service_request_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)",
+            ".next_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)",
+            "Windows typed protected service reader",
+        ),
+        (
+            "windows_source",
+            ".next_windows_service_sas_request_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)",
+            ".next_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)",
+            "Windows typed protected SAS reader",
+        ),
+        (
+            "ipc_source",
+            "c.send_service_request_timeout(\n"
+            "        &ServiceIpcRequest::PermanentPasswordSnapshot {},",
+            "c.send_json_timeout(\n"
+            "        &ServiceIpcRequest::PermanentPasswordSnapshot {},",
+            "typed macOS password snapshot request writer",
+        ),
+        (
+            "ipc_source",
+            "c.send_service_request_timeout(\n"
+            "        &ServiceIpcRequest::EnsurePasswordRightReady {},",
+            "c.send_json_timeout(\n"
+            "        &ServiceIpcRequest::EnsurePasswordRightReady {},",
+            "typed macOS password-right request writer",
+        ),
+        (
+            "ipc_source",
+            "c.send_service_request_timeout(\n"
+            "        &ServiceIpcRequest::SetShareRdp { enabled: enable },",
+            "c.send_json_timeout(\n"
+            "        &ServiceIpcRequest::SetShareRdp { enabled: enable },",
+            "typed Windows share-RDP request writer",
+        ),
+        (
+            "ipc_source",
+            ".send_windows_service_sas_request_timeout(",
+            ".send_json_timeout(",
+            "typed Windows SAS request writer",
+        ),
+        (
+            "ipc_source",
+            'assert_eq!(request, br#"{"t":"LivenessProbe"}"#);',
+            'assert_eq!(request, br#"{"t":"LivenessProbe","c":null}"#);',
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
+            "ipc_fs_source",
+            ".send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000)",
+            ".send(&Data::Test)",
+            "typed incumbent service liveness request",
+        ),
+        (
+            "verify",
+            '"${RUN[@]}" cargo test --lib --features linux-pkg-config '
+            "ipc::test::privileged_and_main_connections_use_bounded_frame_codecs "
+            "--color never",
+            '"${RUN[@]}" cargo test --lib --features linux-pkg-config '
+            "ipc::test::protected_service_connection_uses_bounded_frame_codec "
+            "--color never",
+            "shared bounded service codec regression invocation",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11dx</span>',
+            '<span class="id">R-S11dx-disabled</span>',
+            "service protocol authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>277</td>",
+            "<tr><td>277-disabled</td>",
+            "service protocol authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11dx/R-S11e-142 — privileged service-control and SAS protocol type",
+            "R-S11dx/R-S11e-142 — privileged service protocols remain cross-purpose",
+            "service protocol authority hardening ledger",
         ),
         (
             "viewer_voice_call_worker_verifier",

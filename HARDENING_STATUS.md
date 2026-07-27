@@ -706,14 +706,15 @@ unreachable and a source/test/AST gate prevents reintroduction.
   writer in `src/platform/windows.rs`. Boundary: active user-session UI ↔ LocalSystem service policy that
   selects which Windows session the service-owned host serves. Attack surface closed: the UI/FFI path no
   longer commits HKLM state directly or shells out to `cmd.exe`/`reg.exe`; it sends the typed
-  `Data::RequestServiceOwnedShareRdp(bool)` request to the protected Windows `_service` pipe. The service
+  `ServiceIpcRequest::SetShareRdp { enabled }` request to the protected Windows `_service` pipe. The service
   validates the connected pipe client's elevated token at the receiver, writes the current MSI product's exact
-  64-bit install-registry value directly as LocalSystem, and returns `Data::ServiceOwnedShareRdpResult(bool)`.
+  64-bit install-registry value directly as LocalSystem, and returns
+  `ServiceIpcResponse::ShareRdpSet { accepted }`.
   R-S11e-23 deletes the retired Inno/WOW64 selector that could previously redirect that policy to stale package
-  metadata. The main IPC channel rejects
-  the same request with a negative typed ACK, and the settings toggle is writable only from an elevated
+  metadata. The cross-purpose main IPC protocol cannot deserialize that service request, and the settings toggle is
+  writable only from an elevated
   RustDesk process. Verification closure: `scripts/verify.sh` asserts the typed request/result, main-channel
-  denial, `_service` dispatch, receiver-side elevated-token gate, direct registry commit, absence of the
+  protocol separation, `_service` dispatch, receiver-side elevated-token gate, direct registry commit, absence of the
   direct shell writer, UI service request, and UI elevation gate.
 - **R-S11b-3e — service identity/salt reads are side-effect-free — CLOSED 2026-07-09.** Platforms: all
   desktop installed-service paths. Endpoint/action: `Config::get_id()`, `Data::ConfigRequest("id")`,
@@ -1018,12 +1019,12 @@ unreachable and a source/test/AST gate prevents reintroduction.
 - **R-S11c-2a/R-S11c-3a — Windows session selection removed; SAS is a dedicated service capability — CLOSED 2026-07-08; tightened 2026-07-12.**
   Platform: Windows installed service. Raw `Data::UserSid`, `Data::SAS`, and caller-selected session launch remain
   deleted. Remote Ctrl+Alt+Del is consumed as per-connection edge state before ordinary key injection and uses only
-  `RequestServiceOwnedSasDispatch` on the dedicated one-slot SYSTEM-only `_service_sas` endpoint. General
+  `WindowsServiceSasIpcRequest::Dispatch` on the dedicated one-slot SYSTEM-only `_service_sas` endpoint. General
   `_service` cannot dispatch SAS. The requester must be the exact live LocalSystem
   `--server --service-owned-server` generation retained by the SCM supervisor; the final dedicated worker retains
   a duplicate pipe handle and process handle, rechecks PID, creation time, liveness, token session, and LocalSystem
   under impersonation, reads `SoftwareSASGeneration` without mutation, and accepts only documented service values.
-  `ServiceOwnedSasDispatchAccepted(true)` means the void `SendSAS` call was dispatched, not that secure-desktop
+  `WindowsServiceSasIpcResponse::DispatchAccepted { accepted: true }` means the void `SendSAS` call was dispatched, not that secure-desktop
   activation was observed. Verification covers endpoint separation/budgets, SYSTEM-only DACLs, exact generation,
   final liveness, dedicated worker ownership, read-only policy, deadline ordering, and native Windows tests.
 - **R-S11c-4a/R-S11c-4b — `_cm` file authority bound to a server-validated connection — CLOSED 2026-07-08.**
@@ -1279,7 +1280,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Platform: macOS LaunchDaemon/LaunchAgent installed service. Surfaces: `src/ipc.rs`, `scripts/verify.sh`, and
   `scripts/apple-conform-check.sh`. Boundary: root LaunchDaemon credential snapshot delivery ↔ service-owned
   LaunchAgent process identity. Attack surface closed: the live peer-process proof for
-  `Data::MacosServiceOwnedPermanentPasswordSnapshotRequest` no longer accepts a prefix-shaped command vector.
+  `ServiceIpcRequest::PermanentPasswordSnapshot` no longer accepts a prefix-shaped command vector.
   The LaunchDaemon still requires the `_service` peer to be the installed app talking to the trusted privileged
   helper, requires launchd to report the peer pid under the expected `gui/<uid>/<label>` job and root-owned plist,
   and parses that plist for the exact `ProgramArguments`/`RunAtLoad`/`KeepAlive` shape; this slice makes the live
@@ -1940,8 +1941,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   policy database ↔ root LaunchDaemon credential authority. Attack surface closed: the UI no longer calls
   `AuthorizationCopyRights` against a merely existing or stale `com.carriez.RustDesk.set-unattended-password` right.
   After authenticating the connected `_service` peer as the trusted privileged helper, the client sends a no-secret
-  `MacosServiceOwnedPasswordRightReadyRequest`; the helper runs the existing exact right setup and returns
-  `MacosServiceOwnedPasswordRightReadyResult(bool)`. Only then does the UI create the external authorization form.
+  `ServiceIpcRequest::EnsurePasswordRightReady`; the helper runs the existing exact right setup and returns
+  `ServiceIpcResponse::PasswordRightReady { ready }`. Only then does the UI create the external authorization form.
   The native creator no longer accepts existence-only state: `MacCreateServiceOwnedUnattendedPasswordAuthorizationExternalForm`
   requires `RustDeskSetUnattendedPasswordRightMatchesExpected`, which reads the right definition and checks
   `class=user`, `group=admin`, `shared=false`, `allow-root=false`, `authenticate-user=true`,
@@ -1949,7 +1950,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   therefore seeded by the trusted helper before the prompt, and stale/weaker definitions fail closed instead of being used for
   the authorization grant. The prompt is intentionally outside the bounded proof worker; a fresh one-second raw
   transport deadline starts after it returns. Verification closure: `scripts/verify.sh` and
-  `scripts/apple-conform-check.sh` gate the readiness request/result, generic service allowlist, ordering from
+  `scripts/apple-conform-check.sh` gate the readiness request/result, closed service protocol, ordering from
   authenticated readiness through `AuthorizationCopyRights` to fresh raw transport, exact native dictionary
   validation, absence of the old existence-only helper, and this requirements/ledger disposition.
 - **R-S11e-9 — macOS service audit-token peer code identity — SOURCE IMPLEMENTED.**
@@ -3627,8 +3628,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   service-owned policy despite not matching any owning launch or receiver proof. Git history traces the broad helper
   to the original R-S11b service-password separation commit `32ad1353`; later exact peer proofs did not tighten the
   current-process half. The protected Windows `_service` listener itself was re-audited in this slice and remains a
-  closed receiver: its ordinary channel admits only `Test` and typed `RequestServiceOwnedShareRdp`, while SAS has a
-  separate one-message listener and authorization path. No broad Windows service message was found.
+  closed receiver: its ordinary channel deserializes only
+  `ServiceIpcRequest::{LivenessProbe, SetShareRdp}`, while SAS has a distinct one-message typed protocol and
+  authorization path. No broad Windows service message was found.
 
   Authority model and closure: one platform-independent `ServiceOwnedServerRole` parser consumes only arguments
   after `argv[0]`. It returns `Exact` only for the two tokens `--server`, `--service-owned-server` and no third token;
@@ -7982,7 +7984,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   between the peer and current executable. A positive UID or executable mismatch is a foreign stale candidate;
   missing peer credentials or an unavailable executable proof propagates an error through `check_pid` and
   `new_listener`, preserving the ambiguous live namespace entry instead of unlinking it and creating split-brain
-  listener state. The protected `_service` path additionally retains its bounded typed `Data::Test` round trip;
+  listener state. The protected `_service` path additionally retains its bounded typed
+  `ServiceIpcRequest::LivenessProbe` / `ServiceIpcResponse::Liveness` round trip;
   once current identity is proven, a failed or malformed liveness response is now an error rather than cleanup
   authority. Incumbent probing remains separate from and weaker than normal message admission; no new request is
   admitted by this change.
@@ -13775,6 +13778,87 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   reproduction where separately required, and R-V3 external review remain
   open. No host RustDesk/service/configuration/firewall/network state was
   inspected or mutated, and the broader Ralph-loop goal remains active.
+- **R-S11dx/R-S11e-142 — privileged service-control and SAS protocol type
+  authority — SOURCE CLOSED/GATED 2026-07-27; CONFINED LINUX
+  RUST/SOURCE/MUTATION VERIFIED;
+  COLD INSTALLED/NATIVE/DEVICE/EXTERNAL EVIDENCE PENDING.** A fresh
+  endpoint-to-action trace covered the Unix and Windows `_service` listener,
+  its incumbent-liveness probe, macOS authorization-right readiness and
+  read-only permanent-password runtime snapshot, Windows service-owned
+  share-RDP mutation, and the separate Windows `_service_sas` listener and
+  `SendSAS` dispatch. Existing kernel peer-credential/role checks, Windows
+  SYSTEM-only DACLs, deadlines, frame and capacity bounds, transaction
+  ownership, receiver-side policy, macOS raw credential protocol, and final
+  native-action checks were present and remain unchanged.
+
+  The trace found no present credential or action bypass: each old receiver
+  rejected unrelated `Data` variants after deserialization. It did find a
+  conceptual protocol-authority and future-reactivation gap: both privileged
+  endpoints still compiled and parsed the full cross-purpose CM/file/
+  clipboard/URL/whiteboard/audio/process-control `Data` union before their
+  allowlists ran. The source correction gives `_service` closed directional
+  `ServiceIpcRequest` and `ServiceIpcResponse` enums, gives `_service_sas`
+  separate one-operation `WindowsServiceSasIpcRequest` and
+  `WindowsServiceSasIpcResponse` enums, and routes all callers, receivers,
+  and incumbent-liveness probes through the corresponding typed
+  serialization methods. Distinct request/result variant names make
+  opposite-direction frames fail deserialization. The old service
+  liveness, macOS credential-control, Windows RDP-policy, and SAS variants
+  are removed from `Data`.
+
+  R-S11dx and Appendix C #277 make the independent protocol boundaries
+  normative. Linux-runnable directional serialization regressions cover
+  the exact tag-only wire shapes, accepted request/response frames,
+  unknown-field refusal, opposite-direction refusal, and cross-purpose
+  `Data::Close` refusal. The shared verifier and Apple source checker bind
+  the exact enum inventories, typed Unix/Windows dispatch, every macOS
+  snapshot/readiness and Windows RDP/SAS caller, old-union absence, and
+  deliberate shape/dispatch/caller/residue mutations. The independent
+  workspace catalog binds the same source and documentary contract.
+
+  Confined Linux compilation and focused execution used immutable image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric UID/GID 1000:1000 with no pull/network, read-only root and
+  repository, recursive bind inclusion disabled, capabilities dropped,
+  no-new-privileges, finite process/memory/CPU/descriptor/core/file-size
+  limits, and no Docker/libvirt/service-manager socket, host namespace,
+  device, port, or host-configuration mount. The two directional Rust tests
+  pass; the protected/main bounded-codec regression passes; the shared
+  service-password value-limit regression passes; and all eight
+  Linux-runnable macOS LaunchAgent plist regressions pass. The focused Unix
+  incumbent checker rejects all 19 mutations. The embedded Apple checker
+  rejects all 30 mutations with empty `r_s11b`, `r_s11b2`, and `r_s11e16`
+  findings. The independent semantic baseline passes and one uninterrupted
+  complete run rejects all 2,531 in-memory source mutations from mutation
+  one. The range-coupled Debian lifecycle and release-parent checkers reject
+  44 and 27 mutations. The shared R-S11b/R-S11dx source-only gate, Bash
+  syntax, in-memory Python compilation, requirements HTML parsing, exact
+  active-hash synchronization, and native-codec normal/negative gates pass.
+  Requirements SHA-256 is
+  `925919dbedaac48308ab4c1e271a2dcf90e6a48bc110c40eaee3216a02da093a`.
+
+  Preliminary verification is retained rather than promoted: a
+  content-bearing internally tagged representation admitted `c: null`, and
+  tag-only unit variants still ignored an unknown outer field. Empty struct
+  variants were therefore selected and the focused regression now proves
+  exact tag-only bytes plus rejection. The first complete workspace-catalog
+  attempt correctly rejected the renamed liveness variant but stopped because
+  its new fixture expected a descriptive label rather than the validator's
+  actual diagnostic. All new diagnostics and caller bindings were audited,
+  and the complete 2,531-entry run restarted from mutation one. The pinned
+  image lacks the `rustfmt` component, so `cargo fmt --all -- --check` could
+  not execute; no formatting pass is claimed, and manual Rust review plus
+  `git diff --check` is used instead. The full verifier is not run as a
+  monolith because it would require nested container authority that is not
+  granted; its exact focused Rust tests and source-only R-S11dx block are run
+  separately without a Docker socket.
+
+  This slice invokes no service, listener, endpoint, native privileged
+  action, root fixture, Docker socket inside a verifier, or host
+  service/network operation. Exact cold installed Unix/Windows/macOS
+  behavior, native SAS/RDP/Authorization Services action evidence,
+  device/reproduction evidence where separately required, and R-V3 external
+  review remain open. The broader Ralph-loop goal remains active.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -14492,9 +14576,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-90e6c414eb90986568b603030ce8cd70c0d5b4e802fd89bb6beeca46f5b152dd  requirements.html
+925919dbedaac48308ab4c1e271a2dcf90e6a48bc110c40eaee3216a02da093a  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dw, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#276. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dx, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

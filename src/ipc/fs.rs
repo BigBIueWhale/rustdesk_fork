@@ -3,7 +3,7 @@ use super::ipc_auth::{
     active_uid, authenticate_cm_endpoint, current_linux_process_identity,
     ensure_linux_process_identity_matches, peer_executable_is_current_by_pid,
 };
-use crate::ipc::{connect, Data};
+use crate::ipc::{connect, ServiceIpcRequest, ServiceIpcResponse};
 use hbb_common::{config, log, ResultType};
 use std::{
     ffi::CString,
@@ -815,14 +815,17 @@ async fn probe_existing_listener(postfix: &str) -> ResultType<bool> {
     if postfix != crate::POSTFIX_SERVICE {
         return Ok(true);
     }
-    stream.send(&Data::Test).await.map_err(|err| {
-        Error::new(
-            ErrorKind::TimedOut,
-            format!("incumbent protected ipc listener liveness write failed: {err}"),
-        )
-    })?;
-    match stream.next_timeout(1000).await {
-        Ok(Some(Data::Test)) => Ok(true),
+    stream
+        .send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000)
+        .await
+        .map_err(|err| {
+            Error::new(
+                ErrorKind::TimedOut,
+                format!("incumbent protected ipc listener liveness write failed: {err}"),
+            )
+        })?;
+    match stream.next_service_response_timeout(1000).await {
+        Ok(Some(ServiceIpcResponse::Liveness {})) => Ok(true),
         Ok(response) => Err(Error::new(
             ErrorKind::InvalidData,
             format!(

@@ -1554,7 +1554,7 @@ async fn handle_windows_service_ipc_request(
     _transaction_slot: OwnedSemaphorePermit,
 ) {
     match stream
-        .next_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)
+        .next_service_request_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)
         .await
     {
         Err(err) => {
@@ -1564,20 +1564,18 @@ async fn handle_windows_service_ipc_request(
             );
         }
         Ok(None) => {
-            log::warn!("Rejected malformed data on protected Windows _service IPC channel");
+            log::warn!("Rejected malformed request on protected Windows _service IPC channel");
         }
-        Ok(Some(data)) => match data {
-            ipc::Data::Test => {
-                send_windows_service_ipc_response(&mut stream, &ipc::Data::Test).await;
+        Ok(Some(request)) => match request {
+            ipc::ServiceIpcRequest::LivenessProbe {} => {
+                send_windows_service_ipc_response(
+                    &mut stream,
+                    &ipc::ServiceIpcResponse::Liveness {},
+                )
+                .await;
             }
-            ipc::Data::RequestServiceOwnedShareRdp(enable) => {
-                ipc::handle_windows_service_owned_share_rdp_request(enable, &mut stream).await;
-            }
-            _ => {
-                log::warn!(
-                    "Rejected unauthorized data on protected Windows _service IPC channel: data_kind={:?}",
-                    std::mem::discriminant(&data)
-                );
+            ipc::ServiceIpcRequest::SetShareRdp { enabled } => {
+                ipc::handle_windows_service_owned_share_rdp_request(enabled, &mut stream).await;
             }
         },
     }
@@ -1589,29 +1587,40 @@ async fn handle_windows_service_sas_ipc_request(
     sas_requests: mpsc::Sender<WindowsServiceSasRequest>,
 ) {
     match stream
-        .next_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)
+        .next_windows_service_sas_request_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)
         .await
     {
-        Ok(Some(ipc::Data::RequestServiceOwnedSasDispatch)) => {
+        Ok(Some(ipc::WindowsServiceSasIpcRequest::Dispatch {})) => {
             handle_windows_service_owned_sas_request(&mut stream, sas_requests).await;
         }
-        Ok(Some(data)) => log::warn!(
-            "Rejected non-SAS data on protected Windows SAS IPC channel: data_kind={:?}",
-            std::mem::discriminant(&data)
-        ),
-        Ok(None) => log::warn!("Rejected malformed data on protected Windows SAS IPC channel"),
+        Ok(None) => log::warn!("Rejected malformed request on protected Windows SAS IPC channel"),
         Err(err) => log::trace!(
             "protected Windows SAS IPC request closed before a bounded request frame: {err}"
         ),
     }
 }
 
-async fn send_windows_service_ipc_response(stream: &mut ipc::Connection, response: &ipc::Data) {
+async fn send_windows_service_ipc_response(
+    stream: &mut ipc::Connection,
+    response: &ipc::ServiceIpcResponse,
+) {
     if let Err(err) = stream
-        .send_json_timeout(response, ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)
+        .send_service_response_timeout(response, ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)
         .await
     {
         log::warn!("Could not send protected Windows service response: {err}");
+    }
+}
+
+async fn send_windows_service_sas_ipc_response(
+    stream: &mut ipc::Connection,
+    response: &ipc::WindowsServiceSasIpcResponse,
+) {
+    if let Err(err) = stream
+        .send_windows_service_sas_response_timeout(response, ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)
+        .await
+    {
+        log::warn!("Could not send protected Windows service SAS response: {err}");
     }
 }
 
@@ -1627,9 +1636,9 @@ async fn handle_windows_service_owned_sas_request(
     sas_requests: mpsc::Sender<WindowsServiceSasRequest>,
 ) {
     let Some(requester) = ipc::authorize_windows_service_owned_sas_requester(stream) else {
-        send_windows_service_ipc_response(
+        send_windows_service_sas_ipc_response(
             stream,
-            &ipc::Data::ServiceOwnedSasDispatchAccepted(false),
+            &ipc::WindowsServiceSasIpcResponse::DispatchAccepted { accepted: false },
         )
         .await;
         return;
@@ -1638,9 +1647,9 @@ async fn handle_windows_service_owned_sas_request(
         Ok(dispatch) => dispatch,
         Err(err) => {
             log::warn!("Rejected service-owned SAS request before supervisor admission: {err}");
-            send_windows_service_ipc_response(
+            send_windows_service_sas_ipc_response(
                 stream,
-                &ipc::Data::ServiceOwnedSasDispatchAccepted(false),
+                &ipc::WindowsServiceSasIpcResponse::DispatchAccepted { accepted: false },
             )
             .await;
             return;
@@ -1655,9 +1664,9 @@ async fn handle_windows_service_owned_sas_request(
         .is_err()
     {
         log::warn!("Rejected service-owned SAS request because the supervisor is busy");
-        send_windows_service_ipc_response(
+        send_windows_service_sas_ipc_response(
             stream,
-            &ipc::Data::ServiceOwnedSasDispatchAccepted(false),
+            &ipc::WindowsServiceSasIpcResponse::DispatchAccepted { accepted: false },
         )
         .await;
         return;
@@ -1678,9 +1687,9 @@ async fn handle_windows_service_owned_sas_request(
                     Ok(worker) => worker,
                     Err(err) => {
                         log::error!("Could not start Windows SAS dispatch worker: {err}");
-                        send_windows_service_ipc_response(
+                        send_windows_service_sas_ipc_response(
                             stream,
-                            &ipc::Data::ServiceOwnedSasDispatchAccepted(false),
+                            &ipc::WindowsServiceSasIpcResponse::DispatchAccepted { accepted: false },
                         )
                         .await;
                         return;
@@ -1713,9 +1722,11 @@ async fn handle_windows_service_owned_sas_request(
                 false
             }
         };
-    send_windows_service_ipc_response(
+    send_windows_service_sas_ipc_response(
         stream,
-        &ipc::Data::ServiceOwnedSasDispatchAccepted(dispatch_accepted),
+        &ipc::WindowsServiceSasIpcResponse::DispatchAccepted {
+            accepted: dispatch_accepted,
+        },
     )
     .await;
 }

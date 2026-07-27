@@ -2551,31 +2551,44 @@ grep -Fq 'R-S11d-29 — Windows service-adjacent path known-folder authority' HA
 if [ -n "$r_s11d29" ]; then echo "  FAIL R-S11d-29 Windows service-adjacent path known-folder authority:$r_s11d29"; rc=1; else
   echo "  ok  R-S11d-29 Windows service-adjacent profile and recording paths use known folders, not SystemDrive"; fi
 
-# (3b-iii-b) R-S11b-1/R-S11b-2c/R-S11c-1f: Linux/macOS `_service` is a bounded
-# no-secret control channel. Password mutation exists only on raw `_service_password`.
-echo "== (3b-iii-b) IPC _service has no whole-config bus (R-S11b-1) =="
+# (3b-iii-b) R-S11b-1/R-S11b-2c/R-S11c-1f/R-S11dx: `_service` and
+# `_service_sas` use closed directional protocols. Password mutation exists only on raw
+# `_service_password`.
+echo "== (3b-iii-b) privileged service IPC is closed and directionally typed (R-S11b-1/R-S11dx) =="
 "${RUN[@]}" cargo test -p hbb_common --lib bytes_codec::tests::decode_rejects_frame_over_max_packet_length_before_reserve --color never
-"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::service_channel_rejects_config_bus --color never
-"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::protected_service_connection_uses_bounded_frame_codec --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::service_channel_uses_closed_directional_protocol --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::windows_service_sas_channel_uses_closed_directional_protocol --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::privileged_and_main_connections_use_bounded_frame_codecs --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::service_owned_password_value_limit_is_common --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::macos_service_owned_launch_agent_plist_validation --color never
 r_s11b=
-grep -q 'pub(crate) fn service_channel_admits_message' src/ipc.rs || r_s11b="$r_s11b no-service-message-gate"
-grep -q 'Data::Test => true' src/ipc.rs || r_s11b="$r_s11b service-gate-misses-test"
-service_message_gate=$(awk '/pub\(crate\) fn service_channel_admits_message/,/^}/' src/ipc.rs)
-echo "$service_message_gate" | grep -q 'Data::MacosServiceOwnedPasswordRightReadyRequest' || r_s11b="$r_s11b macos-service-password-right-readiness-control-missing"
-echo "$service_message_gate" | grep -q 'Data::MacosServiceOwnedPermanentPasswordSnapshotRequest' || r_s11b="$r_s11b macos-runtime-snapshot-control-missing"
-if echo "$service_message_gate" | grep -Eq 'Password.*Change|password:[[:space:]]*String|authorization:[[:space:]]*Vec'; then
+service_request_enum=$(awk '/pub\(crate\) enum ServiceIpcRequest {/,/^}/' src/ipc.rs)
+service_response_enum=$(awk '/pub\(crate\) enum ServiceIpcResponse {/,/^}/' src/ipc.rs)
+grep -Fq '#[serde(tag = "t", deny_unknown_fields)]' src/ipc.rs || r_s11b="$r_s11b service-protocol-unknown-fields-not-denied"
+echo "$service_request_enum" | grep -q 'LivenessProbe' || r_s11b="$r_s11b service-liveness-request-missing"
+echo "$service_request_enum" | grep -q 'EnsurePasswordRightReady' || r_s11b="$r_s11b macos-service-password-right-readiness-control-missing"
+echo "$service_request_enum" | grep -q 'PermanentPasswordSnapshot' || r_s11b="$r_s11b macos-runtime-snapshot-control-missing"
+echo "$service_request_enum" | grep -q 'SetShareRdp {' || r_s11b="$r_s11b windows-share-rdp-control-missing"
+echo "$service_request_enum" | grep -q 'enabled: bool' || r_s11b="$r_s11b windows-share-rdp-control-field-missing"
+echo "$service_response_enum" | grep -q 'Liveness' || r_s11b="$r_s11b service-liveness-response-missing"
+echo "$service_response_enum" | grep -q 'PasswordRightReady {' || r_s11b="$r_s11b macos-password-right-response-missing"
+echo "$service_response_enum" | grep -q 'ready: bool' || r_s11b="$r_s11b macos-password-right-response-field-missing"
+echo "$service_response_enum" | grep -q 'PermanentPasswordSnapshotResult' || r_s11b="$r_s11b macos-snapshot-response-missing"
+echo "$service_response_enum" | grep -q 'storage: String' || r_s11b="$r_s11b macos-snapshot-storage-missing"
+echo "$service_response_enum" | grep -q 'salt: String' || r_s11b="$r_s11b macos-snapshot-salt-missing"
+echo "$service_response_enum" | grep -q 'ShareRdpSet {' || r_s11b="$r_s11b windows-share-rdp-response-missing"
+echo "$service_response_enum" | grep -q 'accepted: bool' || r_s11b="$r_s11b windows-share-rdp-response-field-missing"
+if echo "$service_request_enum" | grep -Eq 'Password.*Change|password:[[:space:]]*String|authorization:[[:space:]]*Vec'; then
   r_s11b="$r_s11b generic-service-password-body-present"
 fi
 service_dispatch_block=$(awk '/async fn handle_service_ipc_transaction/,/^}/' src/ipc.rs)
-echo "$service_dispatch_block" | grep -q 'service_channel_admits_message(&data)' || r_s11b="$r_s11b service-loop-not-wired"
-echo "$service_dispatch_block" | grep -q 'stream.next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)' || r_s11b="$r_s11b service-read-not-deadline-bound"
+echo "$service_dispatch_block" | grep -q 'next_service_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)' || r_s11b="$r_s11b service-typed-read-not-deadline-bound"
+echo "$service_dispatch_block" | grep -q 'handle_service_request(request, &mut stream).await' || r_s11b="$r_s11b service-typed-dispatch-not-wired"
+if echo "$service_dispatch_block" | grep -Eq 'next_timeout|Data::|service_channel_admits_message'; then
+  r_s11b="$r_s11b generic-data-service-dispatch-present"
+fi
 if grep -q 'loop {' <<<"$service_dispatch_block"; then
   r_s11b="$r_s11b protected-service-still-persistent-loop"
-fi
-if echo "$service_dispatch_block" | grep -q 'Data::SyncConfig'; then
-  r_s11b="$r_s11b service-loop-still-admits-syncconfig"
 fi
 grep -q 'pub(crate) const SERVICE_IPC_MAX_FRAME_BYTES: usize = 32 \* 1024;' src/ipc.rs || r_s11b="$r_s11b service-frame-cap-constant-missing"
 grep -q 'pub(crate) const SERVICE_IPC_REQUEST_TIMEOUT_MS: u64 = 1_000;' src/ipc.rs || r_s11b="$r_s11b service-read-timeout-constant-missing"
@@ -2587,7 +2600,10 @@ grep -q 'codec.set_max_packet_length(max_packet_length)' src/ipc.rs || r_s11b="$
 grep -q 'ipc::Connection::new_protected_service(stream)' src/platform/windows.rs || r_s11b="$r_s11b windows-service-accept-not-capped"
 grep -q 'fn try_acquire_windows_service_ipc_transaction_slot' src/platform/windows.rs || r_s11b="$r_s11b windows-service-transaction-budget-missing"
 grep -q 'handle_windows_service_ipc_request' src/platform/windows.rs || r_s11b="$r_s11b windows-service-one-shot-handler-missing"
-grep -q 'next_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)' src/platform/windows.rs || r_s11b="$r_s11b windows-service-read-not-deadline-bound"
+grep -q 'next_service_request_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)' src/platform/windows.rs || r_s11b="$r_s11b windows-service-typed-read-not-deadline-bound"
+grep -q 'next_windows_service_sas_request_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)' src/platform/windows.rs || r_s11b="$r_s11b windows-sas-typed-read-not-deadline-bound"
+grep -q 'pub(crate) enum WindowsServiceSasIpcRequest' src/ipc.rs || r_s11b="$r_s11b windows-sas-request-type-missing"
+grep -q 'pub(crate) enum WindowsServiceSasIpcResponse' src/ipc.rs || r_s11b="$r_s11b windows-sas-response-type-missing"
 grep -q 'transaction_tasks.spawn(handle_windows_service_ipc_request' src/platform/windows.rs || r_s11b="$r_s11b windows-service-transactions-not-tracked"
 grep -q 'while !transaction_tasks.is_empty()' src/platform/windows.rs || r_s11b="$r_s11b windows-service-transactions-not-drained-on-stop"
 grep -Fq 'Protected service IPC resource boundary' requirements.html || r_s11b="$r_s11b service-resource-requirements-missing"
@@ -2601,10 +2617,8 @@ fi
 if grep -q 'SyncConfig' src/server.rs; then
   r_s11b="$r_s11b server-whole-config-import-present"
 fi
-if awk '/probe_existing_listener/,/^}/' src/ipc/fs.rs | grep -q 'Data::SyncConfig'; then
-  r_s11b="$r_s11b service-probe-reads-config"
-fi
-grep -q 'stream.send(&Data::Test)' src/ipc/fs.rs                                   || r_s11b="$r_s11b service-probe-not-test-ping"
+grep -q 'send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000)' src/ipc/fs.rs || r_s11b="$r_s11b service-probe-not-typed-liveness"
+grep -q 'Ok(Some(ServiceIpcResponse::Liveness {}))' src/ipc/fs.rs || r_s11b="$r_s11b service-probe-not-validating-typed-response"
 if grep -q 'connect_service' src/server.rs; then
   r_s11b="$r_s11b server-still-connects-service-channel"
 fi
@@ -2612,13 +2626,17 @@ if grep -qE 'wait_initial_config_sync|sync_and_watch_config_dir|CONFIG_SYNC_(INT
   r_s11b="$r_s11b service-config-sync-loop-present"
 fi
 ipc_data_enum=$(awk '/pub enum Data {/,/^}/' src/ipc.rs)
-if echo "$ipc_data_enum" | grep -Eq 'Request(ServiceOwned|MacosServiceOwned)UnattendedPasswordChange|Begin(ServiceOwned|MacosServiceOwned)UnattendedPasswordChange|ServiceOwnedUnattendedPasswordChangeResult'; then
-  r_s11b="$r_s11b obsolete-password-mutation-data-variant-present"
+if echo "$ipc_data_enum" | grep -Eq '(^|[[:space:]])Test,|MacosServiceOwned|RequestServiceOwned|ServiceOwnedShareRdp|ServiceOwnedSasDispatch'; then
+  r_s11b="$r_s11b privileged-service-variant-remains-in-data-union"
 fi
+grep -q 'service_channel_uses_closed_directional_protocol' src/ipc.rs || r_s11b="$r_s11b service-directional-regression-missing"
+grep -q 'windows_service_sas_channel_uses_closed_directional_protocol' src/ipc.rs || r_s11b="$r_s11b windows-sas-directional-regression-missing"
+grep -Fq 'R-S11dx' requirements.html || r_s11b="$r_s11b typed-service-protocol-requirement-missing"
+grep -Fq 'R-S11dx/R-S11e-142' HARDENING_STATUS.md || r_s11b="$r_s11b typed-service-protocol-ledger-missing"
 grep -q 'new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX)' src/ipc.rs || r_s11b="$r_s11b raw-service-password-listener-missing"
 grep -q 'password::SensitivePayloadKind::Password' src/ipc.rs || r_s11b="$r_s11b raw-service-password-kind-missing"
 if [ -n "$r_s11b" ]; then echo "  FAIL R-S11b-1 _service whole-config bus removal:$r_s11b"; rc=1; else
-  echo "  ok  R-S11b-1/R-S11b-2c/R-S11c-1f _service is bounded no-secret control IPC; password mutation uses the separate raw _service_password listener, and whole-config/password-bearing service variants are absent"; fi
+  echo "  ok  R-S11b-1/R-S11b-2c/R-S11c-1f/R-S11dx _service and _service_sas are bounded closed directional protocols outside Data; password mutation remains on raw _service_password"; fi
 
 echo "== (3b-iii-b1) Linux nondumpable CM/PA/whiteboard parent authority (R-S11cc/R-S11cd/R-S11e-95/R-S11e-96) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e95_ --color never
@@ -3294,7 +3312,7 @@ grep -q 'Self::read_permanent_password_prs().is_available()' libs/hbb_common/src
 grep -q 'test_hard_settings_password_does_not_create_credential' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 hard-settings-not-a-credential-regression-missing"
 grep -qF 'R-S11b-3q — preset-password credential/status compatibility excised' HARDENING_STATUS.md || r_s11b4="$r_s11b4 preset-password-excision-ledger-missing"
 grep -qF '<tr><td>241</td>' requirements.html || r_s11b4="$r_s11b4 preset-password-excision-appendix-missing"
-grep -q 'MacosServiceOwnedPermanentPasswordSnapshotRequest' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-snapshot-request-missing"
+grep -q 'ServiceIpcRequest::PermanentPasswordSnapshot' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-snapshot-request-missing"
 grep -q 'macos_launch_agent_owns_service_owned_server_pid' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-snapshot-launchd-proof-missing"
 grep -q 'RUNTIME_PERMANENT_PASSWORD_PRS' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 runtime-prs-overlay-missing"
 grep -q 'runtime_password_snapshot_does_not_persist' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 runtime-snapshot-nonpersist-test-missing"
@@ -3361,15 +3379,15 @@ grep -q 'result: IpcMutationResult::Rejected' src/ipc.rs                        
 grep -q 'result: IpcMutationResult::Applied' src/ipc.rs                                || r_s11b3="$r_s11b3 option-accepted-ack-missing"
 grep -q 'effective: Some(effective)' src/ipc.rs                                       || r_s11b3="$r_s11b3 receiver-effective-option-missing"
 grep -q 'Option write requires daemon ACK' src/ipc.rs                                 || r_s11b3="$r_s11b3 local-fallback-not-blocked"
-grep -q 'RequestServiceOwnedShareRdp(bool)' src/ipc.rs                                || r_s11b3="$r_s11b3 windows-share-rdp-request-missing"
-grep -q 'ServiceOwnedShareRdpResult(bool)' src/ipc.rs                                 || r_s11b3="$r_s11b3 windows-share-rdp-result-missing"
+grep -q 'SetShareRdp {' src/ipc.rs                                                   || r_s11b3="$r_s11b3 windows-share-rdp-request-missing"
+grep -q 'ShareRdpSet {' src/ipc.rs                                                   || r_s11b3="$r_s11b3 windows-share-rdp-result-missing"
 main_request_enum=$(awk '/pub enum MainIpcRequest {/,/^}/' src/ipc.rs)
-if echo "$main_request_enum" | grep -q 'RequestServiceOwnedShareRdp'; then
+if echo "$main_request_enum" | grep -q 'SetShareRdp'; then
   r_s11b3="$r_s11b3 windows-share-rdp-present-on-main-protocol"
 fi
 grep -q 'windows_peer_is_authorized_for_service_owned_share_rdp_change' src/ipc.rs     || r_s11b3="$r_s11b3 windows-share-rdp-elevated-peer-gate-missing"
-grep -q 'Some(Data::ServiceOwnedShareRdpResult(ok))' src/ipc.rs                       || r_s11b3="$r_s11b3 windows-share-rdp-caller-ack-missing"
-grep -q 'RequestServiceOwnedShareRdp(enable)' src/platform/windows.rs                  || r_s11b3="$r_s11b3 windows-service-share-rdp-dispatch-missing"
+grep -q 'Some(ServiceIpcResponse::ShareRdpSet { accepted })' src/ipc.rs                || r_s11b3="$r_s11b3 windows-share-rdp-caller-ack-missing"
+grep -q 'ServiceIpcRequest::SetShareRdp { enabled }' src/platform/windows.rs           || r_s11b3="$r_s11b3 windows-service-share-rdp-dispatch-missing"
 grep -q 'handle_windows_service_owned_share_rdp_request' src/platform/windows.rs       || r_s11b3="$r_s11b3 windows-service-share-rdp-handler-missing"
 grep -qF 'KEY_SET_VALUE | KEY_WOW64_64KEY' src/platform/windows.rs                     || r_s11b3="$r_s11b3 windows-share-rdp-direct-registry-write-missing"
 grep -q 'crate::ipc::set_service_owned_share_rdp(_enable)' src/ui_interface.rs         || r_s11b3="$r_s11b3 ui-share-rdp-not-service-typed"
@@ -6114,7 +6132,7 @@ windows_service_loop=$(awk '/async fn run_service/,/^fn windows_path_identity_fr
 echo "$windows_service_loop" | grep -q 'ipc::new_listener(crate::POSTFIX_SERVICE)' || r_s11c23="$r_s11c23 service-loop-range-missed-listener"
 echo "$windows_service_loop" | grep -q 'authorize_service_scoped_ipc_connection' || r_s11c23="$r_s11c23 service-loop-range-missed-auth"
 general_service_handler=$(awk '/async fn handle_windows_service_ipc_request/,/^}/' src/platform/windows.rs)
-if echo "$general_service_handler" | grep -Eq 'RequestServiceOwnedSasDispatch|send_sas|SoftwareSASGeneration'; then
+if echo "$general_service_handler" | grep -Eq 'WindowsServiceSasIpc|send_sas|SoftwareSASGeneration'; then
   r_s11c23="$r_s11c23 general-service-endpoint-still-dispatches-sas"
 fi
 grep -q 'service-owned session switching requires a receiver-authorized capability' src/server/connection.rs || r_s11c23="$r_s11c23 selected-sid-not-fail-closed"
@@ -6163,8 +6181,10 @@ grep -q 'pub(crate) const WINDOWS_SERVICE_SAS_IPC_POSTFIX: &str = "_service_sas"
 grep -q 'const WINDOWS_SERVICE_SAS_IPC_TRANSACTION_BUDGET: usize = 1;' src/platform/windows.rs || r_s11c23="$r_s11c23 dedicated-sas-budget-missing"
 grep -q 'handle_windows_service_sas_ipc_request' src/platform/windows.rs              || r_s11c23="$r_s11c23 dedicated-sas-handler-missing"
 grep -q 'name("windows-service-sas".to_owned())' src/platform/windows.rs              || r_s11c23="$r_s11c23 sas-dedicated-worker-missing"
-grep -q 'RequestServiceOwnedSasDispatch' src/ipc.rs                                  || r_s11c23="$r_s11c23 typed-sas-request-missing"
-grep -q 'ServiceOwnedSasDispatchAccepted(bool)' src/ipc.rs                           || r_s11c23="$r_s11c23 truthful-sas-result-missing"
+grep -q 'pub(crate) enum WindowsServiceSasIpcRequest' src/ipc.rs                      || r_s11c23="$r_s11c23 typed-sas-request-missing"
+grep -q 'pub(crate) enum WindowsServiceSasIpcResponse' src/ipc.rs                     || r_s11c23="$r_s11c23 typed-sas-response-missing"
+grep -q 'DispatchAccepted {' src/ipc.rs                                               || r_s11c23="$r_s11c23 truthful-sas-result-missing"
+grep -q 'windows_service_sas_channel_uses_closed_directional_protocol' src/ipc.rs     || r_s11c23="$r_s11c23 sas-directional-protocol-test-missing"
 grep -q 'authorize_windows_service_owned_sas_requester' src/ipc/auth.rs               || r_s11c23="$r_s11c23 sas-requester-proof-missing"
 grep -q 'WindowsProcessIdentityKey' src/platform/windows.rs                          || r_s11c23="$r_s11c23 sas-generation-identity-missing"
 grep -q 'prepare_sas_as_windows_pipe_client(requester)' src/platform/windows.rs       || r_s11c23="$r_s11c23 sas-retained-pipe-dispatch-not-wired"

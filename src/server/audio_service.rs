@@ -327,15 +327,16 @@ mod pa_impl {
         }
         let mut encoder = Encoder::new(crate::platform::PA_SAMPLE_RATE, Stereo, LowDelay)?;
         #[cfg(target_os = "linux")]
-        allow_err!(
-            stream
-                .send(&crate::ipc::Data::PulseAudioStart {
+        stream
+            .send_pulse_audio_request_timeout(
+                &crate::ipc::LinuxPulseAudioIpcRequest::StartCapture {
                     owner,
                     token: pa_authority.token().to_owned(),
                     source: super::get_audio_input(),
-                })
-                .await
-        );
+                },
+                crate::ipc::PULSE_AUDIO_IPC_IO_TIMEOUT_MS,
+            )
+            .await?;
         #[cfg(target_os = "linux")]
         let zero_audio_frame: Vec<f32> = vec![0.; AUDIO_DATA_SIZE_U8 / 4];
         #[cfg(target_os = "android")]
@@ -347,13 +348,12 @@ mod pa_impl {
             })?;
 
             #[cfg(target_os = "linux")]
-            if let Ok(data) = stream.next_raw().await {
-                if data.len() == 0 {
+            if let Some(data) = stream
+                .next_pulse_audio_frame_timeout(crate::ipc::PULSE_AUDIO_IPC_IO_TIMEOUT_MS)
+                .await?
+            {
+                if data.is_empty() {
                     send_f32(&zero_audio_frame, &mut encoder, &sp);
-                    continue;
-                }
-
-                if data.len() != AUDIO_DATA_SIZE_U8 {
                     continue;
                 }
 

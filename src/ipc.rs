@@ -133,9 +133,15 @@ const MACOS_LAUNCHCTL: &str = "/bin/launchctl";
 pub(crate) const SERVICE_IPC_MAX_FRAME_BYTES: usize = 32 * 1024;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) const MAIN_IPC_MAX_FRAME_BYTES: usize = 256 * 1024;
+#[cfg(target_os = "linux")]
+pub(crate) const PULSE_AUDIO_IPC_MAX_FRAME_BYTES: usize = 8 * 1024;
+#[cfg(target_os = "linux")]
+pub(crate) const PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES: usize = 960 * 4;
 pub(crate) const CM_IPC_MAX_FRAME_BYTES: usize = 128 * 1024 * 1024;
 pub(crate) const CM_FILE_BLOCK_MAX_FRAME_BYTES: usize = 256 * 1024;
 pub(crate) const SERVICE_IPC_REQUEST_TIMEOUT_MS: u64 = 1_000;
+#[cfg(target_os = "linux")]
+pub(crate) const PULSE_AUDIO_IPC_IO_TIMEOUT_MS: u64 = 1_000;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 const MAIN_IPC_TRANSACTION_TIMEOUT_MS: u64 = 2_000;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1657,6 +1663,17 @@ pub(crate) enum ServiceIpcResponse {
     ShareRdpSet { accepted: bool },
 }
 
+#[cfg(target_os = "linux")]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(tag = "t", deny_unknown_fields)]
+pub(crate) enum LinuxPulseAudioIpcRequest {
+    StartCapture {
+        owner: LinuxProcessIdentity,
+        token: String,
+        source: String,
+    },
+}
+
 #[cfg(any(target_os = "windows", test))]
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
 #[serde(tag = "t", deny_unknown_fields)]
@@ -1746,12 +1763,6 @@ pub enum Data {
     ClickTime(i64),
     Close,
     CmFileResponse(CmFileResponse),
-    #[cfg(target_os = "linux")]
-    PulseAudioStart {
-        owner: LinuxProcessIdentity,
-        token: String,
-        source: String,
-    },
     FS(FS),
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     AuthorizedFS {
@@ -5583,7 +5594,18 @@ async fn connect_with_path(
                 bail!("desktop main IPC is unavailable on mobile");
             }
         } else {
-            ConnectionTmpl::new(client)
+            #[cfg(target_os = "linux")]
+            {
+                if postfix == "_pa" {
+                    ConnectionTmpl::new_pulse_audio(client)
+                } else {
+                    ConnectionTmpl::new(client)
+                }
+            }
+            #[cfg(not(target_os = "linux"))]
+            {
+                ConnectionTmpl::new(client)
+            }
         };
         if postfix == "_cm" {
             connection.set_max_packet_length(CM_IPC_MAX_FRAME_BYTES);
@@ -5971,16 +5993,33 @@ pub async fn start_pa() {
                 if let Some(result) = incoming.next().await {
                     match result {
                         Ok(stream) => {
-                            let mut stream = Connection::new(stream);
-                            let Some(Ok(Some(Data::PulseAudioStart {
+                            let mut stream = Connection::new_pulse_audio(stream);
+                            let request = match stream
+                                .next_pulse_audio_request_timeout(
+                                    PULSE_AUDIO_IPC_IO_TIMEOUT_MS,
+                                )
+                                .await
+                            {
+                                Ok(Some(request)) => request,
+                                Ok(None) => {
+                                    log::warn!(
+                                        "Rejected _pa client with malformed capture request"
+                                    );
+                                    continue;
+                                }
+                                Err(err) => {
+                                    log::warn!(
+                                        "Rejected _pa client without timely capture authority: {}",
+                                        err
+                                    );
+                                    continue;
+                                }
+                            };
+                            let LinuxPulseAudioIpcRequest::StartCapture {
                                 owner,
                                 token,
                                 source,
-                            }))) = stream.next_timeout2(1000).await
-                            else {
-                                log::warn!("Rejected _pa client without audio capture authority");
-                                continue;
-                            };
+                            } = request;
                             if let Err(err) =
                                 validate_pulse_audio_start_authority(&owner, &token).await
                             {
@@ -6019,17 +6058,24 @@ pub async fn start_pa() {
                                 None, // Use default buffering attributes
                             ) {
                                 Ok(s) => loop {
-                                    if let Ok(_) = s.read(&mut buf) {
-                                        let out =
-                                            if buf.iter().filter(|x| **x != 0).next().is_none() {
-                                                vec![]
-                                            } else {
-                                                buf.clone()
-                                            };
-                                        if let Err(err) = stream.send_raw(out.into()).await {
-                                            log::error!("Failed to send audio data:{}", err);
-                                            break;
-                                        }
+                                    if let Err(err) = s.read(&mut buf) {
+                                        log::error!("Failed to read PulseAudio capture data: {err}");
+                                        break;
+                                    }
+                                    let out = if buf.iter().all(|byte| *byte == 0) {
+                                        vec![]
+                                    } else {
+                                        buf.clone()
+                                    };
+                                    if let Err(err) = stream
+                                        .send_pulse_audio_frame_timeout(
+                                            out.into(),
+                                            PULSE_AUDIO_IPC_IO_TIMEOUT_MS,
+                                        )
+                                        .await
+                                    {
+                                        log::error!("Failed to send audio data: {err}");
+                                        break;
                                     }
                                 },
                                 Err(err) => {
@@ -6075,6 +6121,11 @@ where
 
     pub(crate) fn new_protected_service(conn: T) -> Self {
         Self::new_with_max_packet_length(conn, SERVICE_IPC_MAX_FRAME_BYTES)
+    }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn new_pulse_audio(conn: T) -> Self {
+        Self::new_with_max_packet_length(conn, PULSE_AUDIO_IPC_MAX_FRAME_BYTES)
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -6168,6 +6219,62 @@ where
         ms_timeout: u64,
     ) -> ResultType<Option<ServiceIpcResponse>> {
         Ok(timeout(ms_timeout, self.next_json()).await??)
+    }
+    #[cfg(target_os = "linux")]
+    pub(crate) async fn send_pulse_audio_request_timeout(
+        &mut self,
+        request: &LinuxPulseAudioIpcRequest,
+        ms_timeout: u64,
+    ) -> ResultType<()> {
+        self.send_json_timeout(request, ms_timeout).await
+    }
+    #[cfg(target_os = "linux")]
+    pub(crate) async fn next_pulse_audio_request_timeout(
+        &mut self,
+        ms_timeout: u64,
+    ) -> ResultType<Option<LinuxPulseAudioIpcRequest>> {
+        Ok(timeout(ms_timeout, self.next_json()).await??)
+    }
+    #[cfg(target_os = "linux")]
+    pub(crate) async fn send_pulse_audio_frame_timeout(
+        &mut self,
+        data: Bytes,
+        ms_timeout: u64,
+    ) -> ResultType<()> {
+        if !data.is_empty() && data.len() != PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES {
+            bail!(
+                "invalid outbound PulseAudio IPC frame length: frame={}, expected={}",
+                data.len(),
+                PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES
+            );
+        }
+        timeout(ms_timeout, self.send_raw(data)).await??;
+        Ok(())
+    }
+    #[cfg(target_os = "linux")]
+    pub(crate) async fn next_pulse_audio_frame_timeout(
+        &mut self,
+        ms_timeout: u64,
+    ) -> ResultType<Option<bytes::BytesMut>> {
+        let frame = match tokio::time::timeout(
+            std::time::Duration::from_millis(ms_timeout),
+            self.inner.next(),
+        )
+        .await
+        {
+            Err(_) => return Ok(None),
+            Ok(Some(Ok(frame))) => frame,
+            Ok(Some(Err(err))) => return Err(err.into()),
+            Ok(None) => bail!("reset by the peer"),
+        };
+        if !frame.is_empty() && frame.len() != PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES {
+            bail!(
+                "invalid inbound PulseAudio IPC frame length: frame={}, expected={}",
+                frame.len(),
+                PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES
+            );
+        }
+        Ok(Some(frame))
     }
     #[cfg(target_os = "windows")]
     pub(crate) async fn send_windows_service_sas_request_timeout(
@@ -8312,6 +8419,132 @@ mod test {
         let cross_purpose = serde_json::to_vec(&Data::Close).unwrap();
         assert!(serde_json::from_slice::<WindowsServiceSasIpcRequest>(&cross_purpose).is_err());
         assert!(serde_json::from_slice::<WindowsServiceSasIpcResponse>(&cross_purpose).is_err());
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test(flavor = "current_thread")]
+    async fn linux_pulse_audio_channel_uses_closed_bounded_protocol() {
+        let request = LinuxPulseAudioIpcRequest::StartCapture {
+            owner: LinuxProcessIdentity::for_test(7, 1_000, "42".to_owned()),
+            token: "token".to_owned(),
+            source: "monitor".to_owned(),
+        };
+        let encoded = serde_json::to_vec(&request).unwrap();
+        assert_eq!(
+            encoded,
+            br#"{"t":"StartCapture","owner":{"pid":7,"uid":1000,"start_time":"42"},"token":"token","source":"monitor"}"#
+        );
+        assert_eq!(
+            serde_json::from_slice::<LinuxPulseAudioIpcRequest>(&encoded).unwrap(),
+            request
+        );
+        assert!(
+            serde_json::from_slice::<LinuxPulseAudioIpcRequest>(
+                br#"{"t":"StartCapture","owner":{"pid":7,"uid":1000,"start_time":"42"},"token":"token","source":"monitor","extra":true}"#
+            )
+            .is_err()
+        );
+        let cross_purpose = serde_json::to_vec(&Data::Close).unwrap();
+        assert!(
+            serde_json::from_slice::<LinuxPulseAudioIpcRequest>(&cross_purpose).is_err()
+        );
+        assert_eq!(
+            PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES,
+            crate::audio_service::AUDIO_DATA_SIZE_U8
+        );
+
+        let (client_end, server_end) =
+            tokio::io::duplex(PULSE_AUDIO_IPC_MAX_FRAME_BYTES * 2);
+        let mut client = ConnectionTmpl::new_pulse_audio(client_end);
+        let mut server = ConnectionTmpl::new_pulse_audio(server_end);
+        assert_eq!(
+            client.inner.codec().max_packet_length(),
+            PULSE_AUDIO_IPC_MAX_FRAME_BYTES
+        );
+        client
+            .send_pulse_audio_request_timeout(&request, PULSE_AUDIO_IPC_IO_TIMEOUT_MS)
+            .await
+            .unwrap();
+        assert_eq!(
+            server
+                .next_pulse_audio_request_timeout(PULSE_AUDIO_IPC_IO_TIMEOUT_MS)
+                .await
+                .unwrap(),
+            Some(request)
+        );
+
+        let audio = Bytes::from(vec![1; PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES]);
+        server
+            .send_pulse_audio_frame_timeout(audio.clone(), PULSE_AUDIO_IPC_IO_TIMEOUT_MS)
+            .await
+            .unwrap();
+        let received = client
+            .next_pulse_audio_frame_timeout(PULSE_AUDIO_IPC_IO_TIMEOUT_MS)
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(received.as_ref(), audio.as_ref());
+        server
+            .send_pulse_audio_frame_timeout(Bytes::new(), PULSE_AUDIO_IPC_IO_TIMEOUT_MS)
+            .await
+            .unwrap();
+        assert!(
+            client
+                .next_pulse_audio_frame_timeout(PULSE_AUDIO_IPC_IO_TIMEOUT_MS)
+                .await
+                .unwrap()
+                .unwrap()
+                .is_empty()
+        );
+        assert!(
+            server
+                .send_pulse_audio_frame_timeout(
+                    Bytes::from(vec![1; PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES - 1]),
+                    PULSE_AUDIO_IPC_IO_TIMEOUT_MS,
+                )
+                .await
+                .is_err()
+        );
+        assert!(
+            server
+                .send_pulse_audio_frame_timeout(
+                    Bytes::from(vec![1; PULSE_AUDIO_IPC_MAX_FRAME_BYTES + 1]),
+                    PULSE_AUDIO_IPC_IO_TIMEOUT_MS,
+                )
+                .await
+                .is_err()
+        );
+
+        let (bad_sender_end, bad_receiver_end) =
+            tokio::io::duplex(PULSE_AUDIO_IPC_MAX_FRAME_BYTES);
+        let mut bad_sender = ConnectionTmpl::new(bad_sender_end);
+        let mut bad_receiver = ConnectionTmpl::new_pulse_audio(bad_receiver_end);
+        bad_sender
+            .send_raw(Bytes::from(vec![
+                1;
+                PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES - 1
+            ]))
+            .await
+            .unwrap();
+        assert!(
+            bad_receiver
+                .next_pulse_audio_frame_timeout(PULSE_AUDIO_IPC_IO_TIMEOUT_MS)
+                .await
+                .is_err()
+        );
+
+        let (idle_end, idle_peer) = tokio::io::duplex(PULSE_AUDIO_IPC_MAX_FRAME_BYTES);
+        let mut idle = ConnectionTmpl::new_pulse_audio(idle_end);
+        assert_eq!(
+            idle.next_pulse_audio_frame_timeout(1).await.unwrap(),
+            None
+        );
+        drop(idle_peer);
+        assert!(
+            idle.next_pulse_audio_frame_timeout(PULSE_AUDIO_IPC_IO_TIMEOUT_MS)
+                .await
+                .is_err()
+        );
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

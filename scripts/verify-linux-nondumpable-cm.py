@@ -70,6 +70,7 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "fs": "src/ipc/fs.rs",
         "connection": "src/server/connection.rs",
         "audio": "src/server/audio_service.rs",
+        "service": "src/server/service.rs",
         "whiteboard_client": "src/whiteboard/client.rs",
         "whiteboard_server": "src/whiteboard/server.rs",
         "requirements": "requirements.html",
@@ -322,9 +323,100 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         ipc,
-        "PulseAudioStart {\n        owner: LinuxProcessIdentity,",
-        "minimal PA owner payload",
+        '#[serde(tag = "t", deny_unknown_fields)]\n'
+        "pub(crate) enum LinuxPulseAudioIpcRequest",
+        "closed PA request envelope",
     )
+    pa_protocol = block(
+        ipc,
+        "pub(crate) enum LinuxPulseAudioIpcRequest",
+        "closed PA request protocol",
+    )
+    expected_pa_protocol = (
+        "pub(crate)enumLinuxPulseAudioIpcRequest{"
+        "StartCapture{owner:LinuxProcessIdentity,token:String,source:String,},}"
+    )
+    if compact_whitespace(pa_protocol) != expected_pa_protocol:
+        raise VerificationError("PA request protocol is not the exact closed schema")
+    data_protocol = block(ipc, "pub enum Data {", "cross-purpose Data protocol")
+    absent(data_protocol, "PulseAudioStart", "cross-purpose PA request")
+    for marker, label in (
+        (
+            "pub(crate) const PULSE_AUDIO_IPC_MAX_FRAME_BYTES: usize = 8 * 1024;",
+            "PA frame cap",
+        ),
+        (
+            "pub(crate) const PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES: usize = 960 * 4;",
+            "PA raw frame shape",
+        ),
+        (
+            "pub(crate) const PULSE_AUDIO_IPC_IO_TIMEOUT_MS: u64 = 1_000;",
+            "PA I/O deadline",
+        ),
+        ("pub(crate) fn new_pulse_audio", "PA purpose-specific codec constructor"),
+        (
+            "Self::new_with_max_packet_length(conn, PULSE_AUDIO_IPC_MAX_FRAME_BYTES)",
+            "PA purpose-specific codec cap",
+        ),
+        (
+            "pub(crate) async fn send_pulse_audio_request_timeout",
+            "PA typed request writer",
+        ),
+        (
+            "pub(crate) async fn next_pulse_audio_request_timeout",
+            "PA typed request reader",
+        ),
+        (
+            "pub(crate) async fn send_pulse_audio_frame_timeout",
+            "PA bounded frame writer",
+        ),
+        (
+            "pub(crate) async fn next_pulse_audio_frame_timeout",
+            "PA cancellable frame reader",
+        ),
+    ):
+        require(ipc, marker, label)
+    pa_frame_writer = block(
+        ipc,
+        "pub(crate) async fn send_pulse_audio_frame_timeout",
+        "bounded PA frame writer",
+    )
+    ordered(
+        pa_frame_writer,
+        (
+            "if !data.is_empty() && data.len() != PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES",
+            "timeout(ms_timeout, self.send_raw(data)).await??",
+            "Ok(())",
+        ),
+        "PA outbound frame shape and deadline",
+    )
+    raw_writer = block(ipc, "pub async fn send_raw", "raw IPC frame writer")
+    ordered(
+        raw_writer,
+        (
+            "let max_packet_length = self.inner.codec().max_packet_length()",
+            "if data.len() > max_packet_length",
+            'bail!(\n                "outbound raw IPC frame exceeds codec limit:',
+            "self.inner.send(data).await?",
+        ),
+        "PA inherited outbound codec ceiling",
+    )
+    pa_receiver = block(ipc, "pub async fn start_pa()", "PulseAudio IPC receiver")
+    ordered(
+        pa_receiver,
+        (
+            "Connection::new_pulse_audio(stream)",
+            "next_pulse_audio_request_timeout(",
+            "LinuxPulseAudioIpcRequest::StartCapture",
+            "validate_pulse_audio_start_authority(&owner, &token).await",
+            "get_pa_source_name(&device)",
+            "if let Err(err) = s.read(&mut buf)",
+            "send_pulse_audio_frame_timeout(",
+        ),
+        "PA typed admission, authority, capture, and bounded write order",
+    )
+    absent(pa_receiver, "next_timeout2", "generic PA request reader")
+    absent(pa_receiver, "send_raw(", "generic PA frame writer")
     require(
         ipc,
         "ipc_auth::linux_kernel_peer_process_identity(stream, \"\")",
@@ -487,6 +579,51 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         require(audio, marker, f"PA minimal authority {marker}")
     absent(audio, "crate::ipc::PeerProcessIdentity", "PA ptrace-gated full identity")
+    pa_client = block(audio, "pub async fn run(sp:", "PA audio-service client")
+    ordered(
+        pa_client,
+        (
+            "ensure_pa_endpoint_matches_authority(&stream, &pa_authority)?",
+            "send_pulse_audio_request_timeout(",
+            "LinuxPulseAudioIpcRequest::StartCapture",
+            ".await?;",
+            "while sp.ok() && !RESTARTING.load(Ordering::SeqCst)",
+            "next_pulse_audio_frame_timeout(",
+            ".await?",
+        ),
+        "PA endpoint proof, typed request, and cancellable read",
+    )
+    absent(pa_client, "Data::PulseAudioStart", "cross-purpose PA request writer")
+    absent(pa_client, "stream.next_raw().await", "uncancellable PA raw reader")
+    service = sources["service"]
+    service_retry = block(service, "pub fn run<F, Svc>", "generic service retry")
+    ordered(
+        service_retry,
+        (
+            "if let Err(err) = callback(sp.clone())",
+            "error_timeout *= 2",
+            "if error_timeout > MAX_ERROR_TIMEOUT",
+            "error_timeout = MAX_ERROR_TIMEOUT",
+            "thread::sleep(time::Duration::from_millis(error_timeout))",
+        ),
+        "bounded generic service error retry",
+    )
+    for marker, label in (
+        (
+            "linux_pulse_audio_channel_uses_closed_bounded_protocol",
+            "PA closed-protocol regression",
+        ),
+        (
+            'br#"{"t":"StartCapture","owner":{"pid":7,"uid":1000,'
+            '"start_time":"42"},"token":"token","source":"monitor"}"#',
+            "PA exact wire regression",
+        ),
+        (
+            "idle.next_pulse_audio_frame_timeout(1).await.unwrap()",
+            "PA periodic wake regression",
+        ),
+    ):
+        require(ipc, marker, label)
 
     whiteboard_client = sources["whiteboard_client"]
     whiteboard_launch = block(
@@ -537,6 +674,18 @@ def validate(sources: Dict[str, str]) -> None:
             "verify",
             "Linux nondumpable CM/PA/whiteboard parent authority (R-S11cc/R-S11cd/R-S11e-95/R-S11e-96)",
             "shared focused-verifier wiring",
+        ),
+        ("requirements", '<span class="id">R-S11dy</span>', "R-S11dy requirement"),
+        ("requirements", "<tr><td>278</td>", "Appendix C #278"),
+        (
+            "hardening",
+            "R-S11dy/R-S11e-143 — Linux PulseAudio helper protocol and resource finality",
+            "R-S11e-143 hardening ledger",
+        ),
+        (
+            "verify",
+            "R-S11c-7/R-S11dy Linux _pa capture uses one bounded typed start request",
+            "shared PA protocol/resource gate",
         ),
     ):
         require(sources[key], needle, label)
@@ -630,6 +779,102 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "PA live CM direct-parent proof",
     ),
     (
+        "ipc",
+        "    StartCapture {\n        owner: LinuxProcessIdentity,",
+        "    StartAudio {\n        owner: LinuxProcessIdentity,",
+        "PA closed request variant",
+    ),
+    (
+        "ipc",
+        '#[serde(tag = "t", deny_unknown_fields)]\n'
+        "pub(crate) enum LinuxPulseAudioIpcRequest",
+        '#[serde(tag = "t")]\n'
+        "pub(crate) enum LinuxPulseAudioIpcRequest",
+        "PA unknown-field rejection",
+    ),
+    (
+        "ipc",
+        "pub enum Data {\n",
+        "pub enum Data {\n    PulseAudioStart,\n",
+        "PA cross-purpose Data absence",
+    ),
+    (
+        "ipc",
+        "Self::new_with_max_packet_length(conn, PULSE_AUDIO_IPC_MAX_FRAME_BYTES)",
+        "Self::new(conn)",
+        "PA frame cap",
+    ),
+    (
+        "ipc",
+        "let mut stream = Connection::new_pulse_audio(stream);",
+        "let mut stream = Connection::new(stream);",
+        "PA accepted-stream frame cap",
+    ),
+    (
+        "ipc",
+        ".next_pulse_audio_request_timeout(\n"
+        "                                    PULSE_AUDIO_IPC_IO_TIMEOUT_MS,",
+        ".next_timeout(\n"
+        "                                    PULSE_AUDIO_IPC_IO_TIMEOUT_MS,",
+        "PA typed request admission",
+    ),
+    (
+        "ipc",
+        "if let Err(err) = s.read(&mut buf) {",
+        "if let Ok(_) = s.read(&mut buf) {",
+        "PA capture-read failure finality",
+    ),
+    (
+        "ipc",
+        ".send_pulse_audio_frame_timeout(\n"
+        "                                            out.into(),",
+        ".send_raw(\n"
+        "                                            out.into(),",
+        "PA bounded write finality",
+    ),
+    (
+        "ipc",
+        "if !data.is_empty() && data.len() != PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES {",
+        "if false {",
+        "PA outbound frame-shape check",
+    ),
+    (
+        "ipc",
+        "timeout(ms_timeout, self.send_raw(data)).await??;",
+        "self.send_raw(data).await?;",
+        "PA outbound write deadline",
+    ),
+    (
+        "ipc",
+        "if data.len() > max_packet_length {",
+        "if false {",
+        "PA inherited outbound codec ceiling",
+    ),
+    (
+        "audio",
+        ".send_pulse_audio_request_timeout(",
+        ".send(",
+        "PA typed request writer",
+    ),
+    (
+        "audio",
+        ".next_pulse_audio_frame_timeout(crate::ipc::PULSE_AUDIO_IPC_IO_TIMEOUT_MS)",
+        ".next_raw()",
+        "PA cancellable transport reader",
+    ),
+    (
+        "service",
+        "if error_timeout > MAX_ERROR_TIMEOUT {",
+        "if false {",
+        "PA bounded service retry ceiling",
+    ),
+    (
+        "service",
+        "thread::sleep(time::Duration::from_millis(error_timeout));",
+        "thread::yield_now();",
+        "PA service retry delay",
+    ),
+    (
         "auth",
         "if actual_parent != expected_parent {\n        bail!(\n            \"whiteboard owner changed",
         "if false {\n        bail!(\n            \"whiteboard owner changed",
@@ -700,6 +945,30 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "Linux nondumpable CM/PA/whiteboard parent authority (R-S11cc/R-S11cd/R-S11e-95/R-S11e-96)",
         "Linux nondumpable CM/PA parent authority (R-S11cc/R-S11e-95)",
         "shared gate wiring",
+    ),
+    (
+        "requirements",
+        '<span class="id">R-S11dy</span>',
+        '<span class="id">R-S11dy-disabled</span>',
+        "R-S11dy requirement",
+    ),
+    (
+        "requirements",
+        "<tr><td>278</td>",
+        "<tr><td>278-disabled</td>",
+        "Appendix C #278",
+    ),
+    (
+        "hardening",
+        "R-S11dy/R-S11e-143 — Linux PulseAudio helper protocol and resource finality",
+        "R-S11dy/R-S11e-143 — Linux PulseAudio uses generic unbounded IPC",
+        "PA protocol hardening ledger",
+    ),
+    (
+        "verify",
+        "R-S11c-7/R-S11dy Linux _pa capture uses one bounded typed start request",
+        "R-S11c-7 Linux _pa capture uses a generic request",
+        "shared PA protocol/resource gate",
     ),
 )
 

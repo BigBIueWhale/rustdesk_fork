@@ -1336,18 +1336,31 @@ if [ -n "$index_s11b4d" ]; then echo "  FAIL R-S11b-4d local credential-bearing 
 
 echo "== (3b-iii-a2) Linux _pa audio helper requires capture authority (R-S11c-7) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config pa_capture_authority --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::linux_pulse_audio_channel_uses_closed_bounded_protocol --color never
 r_s11c7=
-grep -q 'PulseAudioStart {' src/ipc.rs || r_s11c7="$r_s11c7 tokened-pa-start-missing"
+grep -q 'pub(crate) enum LinuxPulseAudioIpcRequest {' src/ipc.rs || r_s11c7="$r_s11c7 typed-pa-request-missing"
+grep -q 'StartCapture {' src/ipc.rs || r_s11c7="$r_s11c7 tokened-pa-start-missing"
 grep -q 'owner: LinuxProcessIdentity' src/ipc.rs || r_s11c7="$r_s11c7 pa-start-owner-identity-missing"
 grep -q 'ValidatePulseAudioStart' src/ipc.rs || r_s11c7="$r_s11c7 pa-start-validation-message-missing"
+grep -q 'pub(crate) const PULSE_AUDIO_IPC_MAX_FRAME_BYTES: usize = 8 \* 1024;' src/ipc.rs || r_s11c7="$r_s11c7 pa-frame-cap-missing"
+grep -q 'pub(crate) const PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES: usize = 960 \* 4;' src/ipc.rs || r_s11c7="$r_s11c7 pa-audio-frame-shape-missing"
+grep -q 'pub(crate) const PULSE_AUDIO_IPC_IO_TIMEOUT_MS: u64 = 1_000;' src/ipc.rs || r_s11c7="$r_s11c7 pa-io-deadline-missing"
 if grep -q 'PulseAudioSource' src/ipc.rs src/server/audio_service.rs; then
   r_s11c7="$r_s11c7 legacy-pa-source-message-present"
 fi
+pa_data_enum=$(awk '/pub enum Data {/,/^}/' src/ipc.rs)
+if echo "$pa_data_enum" | grep -q 'PulseAudioStart'; then
+  r_s11c7="$r_s11c7 cross-purpose-pa-start-remains-in-data"
+fi
 start_pa_body=$(awk '/^pub async fn start_pa\(\) \{/{flag=1} flag{print} flag && /^}/{exit}' src/ipc.rs)
-echo "$start_pa_body" | grep -q 'Data::PulseAudioStart {' || r_s11c7="$r_s11c7 pa-helper-does-not-require-tokened-start"
+echo "$start_pa_body" | grep -q 'Connection::new_pulse_audio(stream)' || r_s11c7="$r_s11c7 pa-helper-accept-not-frame-capped"
+echo "$start_pa_body" | grep -q 'next_pulse_audio_request_timeout' || r_s11c7="$r_s11c7 pa-helper-does-not-use-typed-request"
+echo "$start_pa_body" | grep -q 'LinuxPulseAudioIpcRequest::StartCapture {' || r_s11c7="$r_s11c7 pa-helper-does-not-require-tokened-start"
 echo "$start_pa_body" | grep -q 'owner' || r_s11c7="$r_s11c7 pa-helper-does-not-read-owner-identity"
 echo "$start_pa_body" | grep -q 'validate_pulse_audio_start_authority(&owner, &token)' || r_s11c7="$r_s11c7 pa-helper-does-not-validate-token-through-owner"
-echo "$start_pa_body" | grep -q 'Rejected _pa client without audio capture authority' || r_s11c7="$r_s11c7 missing-token-not-rejected"
+echo "$start_pa_body" | grep -q 'Rejected _pa client without timely capture authority' || r_s11c7="$r_s11c7 missing-token-not-rejected"
+echo "$start_pa_body" | grep -q 'if let Err(err) = s.read(&mut buf)' || r_s11c7="$r_s11c7 pa-capture-read-error-not-terminal"
+echo "$start_pa_body" | grep -q 'send_pulse_audio_frame_timeout' || r_s11c7="$r_s11c7 pa-helper-write-not-shape-and-deadline-bound"
 pa_validate_body=$(awk '/^async fn validate_pulse_audio_start_authority/,/^}/' src/ipc.rs)
 echo "$pa_validate_body" | grep -q 'connect_for_uid(1_000, owner.uid(), "")' || r_s11c7="$r_s11c7 pa-helper-validation-not-owner-uid-routed"
 echo "$pa_validate_body" | grep -q 'ensure_linux_process_identity_matches(&stream, owner, "")' || r_s11c7="$r_s11c7 pa-helper-validation-not-owner-identity-authenticated"
@@ -1364,8 +1377,27 @@ grep -q 'linux_process_identity_is_live(peer)' src/server/audio_service.rs || r_
 grep -q 'linux_cm_child_identity_is_live(peer, std::process::id())' src/server/audio_service.rs || r_s11c7="$r_s11c7 pa-authority-live-cm-child-not-checked"
 grep -q 'expected_cm_peer_identity_for_conn_ids(conn_ids)' src/server/audio_service.rs || r_s11c7="$r_s11c7 pa-authority-not-bound-to-cm-peer"
 grep -q 'install_pa_capture_authority(sp.subscriber_ids())' src/server/audio_service.rs || r_s11c7="$r_s11c7 pa-authority-not-bound-to-subscribers"
-grep -q 'Data::PulseAudioStart' src/server/audio_service.rs || r_s11c7="$r_s11c7 audio-service-not-sending-tokened-start"
+grep -q 'send_pulse_audio_request_timeout' src/server/audio_service.rs || r_s11c7="$r_s11c7 audio-service-not-sending-typed-tokened-start"
+grep -q 'LinuxPulseAudioIpcRequest::StartCapture' src/server/audio_service.rs || r_s11c7="$r_s11c7 audio-service-not-sending-tokened-start"
+grep -q 'next_pulse_audio_frame_timeout' src/server/audio_service.rs || r_s11c7="$r_s11c7 audio-service-read-not-cancellable"
+if grep -q 'Data::PulseAudioStart\|stream.next_raw().await' src/server/audio_service.rs; then
+  r_s11c7="$r_s11c7 generic-pa-protocol-remains"
+fi
 grep -q 'let owner = crate::ipc::current_linux_process_identity()' src/server/audio_service.rs || r_s11c7="$r_s11c7 audio-service-not-sending-owner-identity"
+grep -q 'pub(crate) fn new_pulse_audio' src/ipc.rs || r_s11c7="$r_s11c7 pa-purpose-specific-constructor-missing"
+grep -q 'Self::new_with_max_packet_length(conn, PULSE_AUDIO_IPC_MAX_FRAME_BYTES)' src/ipc.rs || r_s11c7="$r_s11c7 pa-constructor-not-frame-capped"
+grep -q 'ConnectionTmpl::new_pulse_audio(client)' src/ipc.rs || r_s11c7="$r_s11c7 pa-client-connect-not-frame-capped"
+grep -q 'if !data.is_empty() && data.len() != PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES' src/ipc.rs || r_s11c7="$r_s11c7 pa-outbound-frame-shape-not-checked"
+grep -q 'timeout(ms_timeout, self.send_raw(data)).await??;' src/ipc.rs || r_s11c7="$r_s11c7 pa-frame-write-not-deadline-bound"
+grep -q 'if data.len() > max_packet_length' src/ipc.rs || r_s11c7="$r_s11c7 pa-outbound-codec-ceiling-not-checked"
+grep -q 'pub(crate) async fn next_pulse_audio_frame_timeout' src/ipc.rs || r_s11c7="$r_s11c7 pa-periodic-read-missing"
+grep -q 'Ok(None) => bail!("reset by the peer")' src/ipc.rs || r_s11c7="$r_s11c7 pa-reset-not-terminal"
+grep -q 'linux_pulse_audio_channel_uses_closed_bounded_protocol' src/ipc.rs || r_s11c7="$r_s11c7 pa-closed-protocol-regression-missing"
+grep -q 'if let Err(err) = callback(sp.clone())' src/server/service.rs || r_s11c7="$r_s11c7 pa-transport-error-not-propagated-to-service-retry"
+grep -q 'if error_timeout > MAX_ERROR_TIMEOUT' src/server/service.rs || r_s11c7="$r_s11c7 pa-service-retry-not-bounded"
+grep -q 'thread::sleep(time::Duration::from_millis(error_timeout))' src/server/service.rs || r_s11c7="$r_s11c7 pa-service-retry-delay-missing"
+grep -Fq 'R-S11dy' requirements.html || r_s11c7="$r_s11c7 pa-protocol-requirement-missing"
+grep -Fq 'R-S11dy/R-S11e-143' HARDENING_STATUS.md || r_s11c7="$r_s11c7 pa-protocol-ledger-missing"
 grep -q 'struct LinuxProcessIdentity' src/ipc/auth.rs || r_s11c7="$r_s11c7 minimal-linux-process-identity-missing"
 grep -q 'linux_proc_start_time(pid)' src/ipc/auth.rs || r_s11c7="$r_s11c7 peer-identity-start-time-missing"
 grep -q 'CM_LAUNCH_TOKEN_ENV' src/common.rs src/ipc/auth.rs src/ipc/fs.rs src/server/connection.rs || r_s11c7="$r_s11c7 cm-launch-token-env-missing"
@@ -1423,7 +1455,7 @@ if echo "$start_ipc_before_ready" | grep -q 'crate::ipc::connect_for_uid(1000, u
   r_s11c7="$r_s11c7 unauthenticated-uid-cm-connect-before-ready"
 fi
 if [ -n "$r_s11c7" ]; then echo "  FAIL R-S11c-7 Linux _pa audio helper authority:$r_s11c7"; rc=1; else
-  echo "  ok  R-S11c-7 Linux _pa capture starts only after authenticated live owner/CM/_pa process-identity binding plus a token minted from the active audio subscriber set; missing/wrong/stale/wrong-peer tokens, ambient main-IPC validators, and launch-tokenless fixed-path _cm listeners are rejected"; fi
+  echo "  ok  R-S11c-7/R-S11dy Linux _pa capture uses one bounded typed start request after exact endpoint identity, validates live owner/CM/token authority before source resolution, emits only empty-or-exact audio frames with write deadlines, wakes reads for cancellation, and terminates transport/capture failures"; fi
 
 echo "== (3b-iii-a3) Windows named-pipe endpoints are DACL-bound (R-S11c-6) =="
 r_s11c6=

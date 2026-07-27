@@ -1465,7 +1465,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `_pa` helper is running for local audio capture. Endpoint/action: `_pa` IPC stream formerly accepted a
   bare PulseAudio source request and then streamed raw monitor/input frames. Boundary: same-UID local process
   ↔ active audio capture helper. Attack surface closed: `_pa` now requires the first frame to be
-  `Data::PulseAudioStart { owner, token, source }`; the audio service mints a 32-byte in-memory capture
+  the dedicated `LinuxPulseAudioIpcRequest::StartCapture { owner, token, source }`; the audio service mints a 32-byte in-memory capture
   lease from its active subscriber-id set immediately before connecting to `_pa`; controlled-side `--server`
   leases are bound to the authenticated live process identity of the server's connected `_cm` stream for those
   subscriber ids (`pid`, `uid`, and Linux `/proc` start time), while viewer-side `CLIENT_SERVER` voice-call capture is bound to
@@ -1484,8 +1484,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   audio authority unless it is the authenticated live token-launched CM process identity selected for that server.
   Linux stale-socket probing for `_cm` and `_pa` is identity-bound, so arbitrary same-UID listeners are not kept
   as valid incumbents. Verification closure:
-  `scripts/verify.sh` runs the Linux `pa_capture_authority_*` unit tests and asserts the owner-identity start
-  message, owner-UID-routed and owner-identity-authenticated helper validation, endpoint identity check before
+  `scripts/verify.sh` runs the Linux `pa_capture_authority_*` unit tests plus the closed bounded `_pa`
+  protocol regression and asserts the typed owner-identity start request, purpose-specific frame cap,
+  deadline-bound request/frame I/O, terminal capture/transport failure, periodic cancellation wake,
+  owner-UID-routed and owner-identity-authenticated helper validation, endpoint identity check before
   token send, subscriber-bound authority installation, authenticated live CM identity registration/cleanup,
   CM role-bound launch-token and exact direct-parent checks, stale `_cm`/`_pa` socket probe checks, old message absence, and the service-layer
   subscriber-id snapshot. The fixed-path CM endpoint-selection class is closed separately below for macOS and
@@ -13859,6 +13861,104 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   behavior, native SAS/RDP/Authorization Services action evidence,
   device/reproduction evidence where separately required, and R-V3 external
   review remain open. The broader Ralph-loop goal remains active.
+- **R-S11dy/R-S11e-143 — Linux PulseAudio helper protocol and resource finality
+  — SOURCE CLOSED/GATED 2026-07-27; CONFINED LINUX
+  RUST/SOURCE/MUTATION VERIFIED; COLD INSTALLED/NATIVE/DEVICE/EXTERNAL
+  EVIDENCE PENDING.** A fresh endpoint-to-action trace covered `_pa` listener
+  admission, the audio service's client, subscriber-bound token creation,
+  owner-main-IPC validation, source selection, PulseAudio capture, raw-frame
+  transport, cancellation, and the surrounding `GenericService` retry path.
+  The existing authority chain was strong and remains unchanged: the audio
+  service proves the connected `_pa` process before disclosing its token; the
+  helper accepts only the current process or exact live direct-child CM owner
+  identity; the owner main endpoint is UID-routed and identity-authenticated;
+  and the token is minted from and retained only for the active subscriber
+  set. Source resolution and PulseAudio open still occur only after those
+  checks. The trace found no source evidence that an unauthenticated local
+  process could start capture.
+
+  It did find a narrower independent protocol/resource/finality gap. The
+  first unauthenticated `_pa` frame was `Data::PulseAudioStart` on the default
+  `BytesCodec` ceiling of `usize::MAX`, so a same-UID client could accumulate
+  an unbounded JSON frame before token validation and the endpoint compiled
+  every unrelated `Data` parser. After admission, the helper ignored a
+  PulseAudio read error and could spin, its raw write had no deadline, the
+  audio service ignored failure to send the token-bearing request, and its
+  `if let Ok(next_raw())` loop both hid transport reset and waited forever on
+  a stalled helper instead of rechecking subscriber/restart cancellation.
+  These were local denial-of-service, lifecycle, and future-reactivation
+  defects—not an authorization bypass, root acquisition, public listener, or
+  evidence of host/service/firewall/network mutation.
+
+  The source correction moves the exact
+  `StartCapture { owner, token, source }` request into the one-variant,
+  unknown-field-denying `LinuxPulseAudioIpcRequest` protocol and removes
+  `PulseAudioStart` from `Data`. Accepted and connecting `_pa` streams install
+  a purpose-specific 8-KiB codec cap before request processing; the typed
+  request read and write use a one-second deadline; and request-send failure
+  terminates the audio-service run. After authority validation, the helper
+  emits only an empty zero-audio sentinel or one exact 3,840-byte frame, checks
+  outbound shape and codec size, and gives each write a one-second deadline.
+  A PulseAudio read error or transport/write failure terminates that capture
+  transaction. The audio-service reader wakes once per second to re-evaluate
+  `sp.ok()` and `RESTARTING`; timeout alone is a wake, while peer reset, codec
+  failure, or invalid nonempty frame shape propagates to the existing bounded
+  `GenericService` retry/backoff instead of being ignored or hot-looped.
+
+  R-S11dy and Appendix C #278 make the closed protocol and terminal resource
+  behavior normative. The focused regression covers the exact wire bytes,
+  unknown-field and `Data::Close` rejection, typed duplex exchange, codec
+  ceiling, exact frame shape, oversize rejection, periodic timeout wake, and
+  terminal peer reset. The focused Linux nondumpable CM/PA/whiteboard checker,
+  shared R-S11c-7 source gate, and independent workspace mutation catalog bind
+  the enum inventory, old-union absence, accepted/client cap, authority-before-
+  source order, typed request flow, capture-read termination, bounded write,
+  cancellable read, transport error propagation, requirement, Appendix row,
+  and this ledger.
+
+  Confined Linux compilation and focused execution used immutable image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric UID/GID 1000:1000 with no pull/network, read-only root and
+  repository, recursive bind inclusion disabled, capabilities dropped,
+  no-new-privileges, finite PID/memory/CPU/descriptor/core/file-size limits,
+  and no Docker/libvirt/service-manager socket, host namespace, device, port,
+  or host-configuration mount. Rust 1.75 compiled against the exact committed
+  read-only Cargo vendor closure. The closed `_pa` protocol test passes, and
+  both pre-existing subscriber/token authority tests pass. The focused Linux
+  nondumpable CM/PA/whiteboard checker rejects all 44 deliberate mutations.
+  The shared R-S11c-7/R-S11dy source-only block, Bash syntax, in-memory Python
+  parsing, requirements HTML/hash synchronization, and native-codec normal/
+  negative gate pass. The independent workspace semantic baseline passes,
+  and one uninterrupted complete run rejects all 2,556 in-memory source
+  mutations from mutation one. The range-coupled Debian lifecycle and
+  release-parent checkers reject all 44 and 27 mutations. Requirements
+  SHA-256 is
+  `51ea30a8cc8fa9a10599d82ffa881e6aafcb0fd5c6f092de549bc1aab415f7fe`.
+
+  Preliminary non-passes remain explicit. The first focused-checker run found
+  that its `pub enum Data` prefix selected `DataKeyboard`; the exact
+  `pub enum Data {` anchor replaced it, and the then-complete 39-mutation
+  suite restarted from mutation one; the final 44-mutation suite also
+  restarted from mutation one after the bounded-retry and exact writer-body
+  gates were added. Two Rust invocations stopped before
+  compilation because a read-only Rustup update path and then a stale split
+  registry cache could not satisfy the current lock; a third stopped because
+  an old target volume was root-owned. No ownership was changed and no root
+  was used. The counted compile instead fixed the installed toolchain,
+  consumed the committed read-only vendor source map, and wrote only to a
+  fresh UID-owned private `/tmp` target. The pinned image lacks the `rustfmt`
+  component, so no formatting pass is claimed; manual Rust review and
+  `git diff --check` are used. The full verifier is not run as a monolith
+  because it would require nested container authority that is not granted;
+  its exact affected Rust and source/mutation components were run separately
+  without a Docker socket.
+
+  This source slice does not start `_pa`, open PulseAudio, connect any live IPC
+  endpoint, invoke a service, run a root fixture, or inspect/mutate host
+  RustDesk/service/configuration/firewall/network state. Exact cold committed
+  release-artifact, installed/native behavior, device/reproduction evidence
+  where separately required, and R-V3 external review remain open. The broader
+  Ralph-loop goal remains active.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -14576,9 +14676,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-925919dbedaac48308ab4c1e271a2dcf90e6a48bc110c40eaee3216a02da093a  requirements.html
+51ea30a8cc8fa9a10599d82ffa881e6aafcb0fd5c6f092de549bc1aab415f7fe  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dx, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dy, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

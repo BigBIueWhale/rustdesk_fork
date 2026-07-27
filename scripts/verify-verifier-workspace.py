@@ -12057,7 +12057,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
+        "R-S11n through R-S11dy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12138,7 +12138,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
+        "R-S11n through R-S11dy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12317,7 +12317,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
+        "R-S11n through R-S11dy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12451,7 +12451,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
+        "R-S11n through R-S11dy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12619,7 +12619,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
+        "R-S11n through R-S11dy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12812,7 +12812,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
+        "R-S11n through R-S11dy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13146,7 +13146,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
+        "R-S11n through R-S11dy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13439,6 +13439,22 @@ def validate_linux_nondumpable_cm_contract(sources):
         (
             '"crate::common::run_me_with_env_and_parent_death("',
             "whiteboard parent-death launch contract",
+        ),
+        (
+            '"pub(crate) enum LinuxPulseAudioIpcRequest"',
+            "closed PA request protocol contract",
+        ),
+        (
+            '"Connection::new_pulse_audio(stream)"',
+            "PA accepted-stream frame-cap contract",
+        ),
+        (
+            '"send_pulse_audio_request_timeout("',
+            "PA typed request writer contract",
+        ),
+        (
+            '"next_pulse_audio_frame_timeout("',
+            "PA cancellable frame reader contract",
         ),
         ("MUTATIONS: Tuple[Mutation, ...]", "CM authority mutation inventory"),
         ("run_mutations(sources)", "CM authority mutation dispatch"),
@@ -14054,6 +14070,278 @@ def validate_service_ipc_protocol_authority_contract(sources):
         "R-S11dx/R-S11e-142 — privileged service-control and SAS protocol type",
         "service protocol authority hardening ledger",
     )
+
+
+def validate_pulse_audio_ipc_protocol_contract(sources):
+    ipc = sources["ipc_source"]
+    audio = sources["audio_service_source"]
+    service = sources["server_service_source"]
+    variants = extract_rust_enum_variants(
+        ipc,
+        "pub(crate) enum LinuxPulseAudioIpcRequest",
+        "PulseAudio IPC request protocol",
+    )
+    if variants != ("StartCapture",):
+        raise VerificationError(
+            "PulseAudio IPC request protocol: expected exactly StartCapture"
+        )
+    for text, label in (
+        (
+            '#[serde(tag = "t", deny_unknown_fields)]\n'
+            "pub(crate) enum LinuxPulseAudioIpcRequest",
+            "PulseAudio exact request envelope",
+        ),
+        (
+            "StartCapture {\n        owner: LinuxProcessIdentity,\n"
+            "        token: String,\n        source: String,\n    },",
+            "PulseAudio exact request field schema",
+        ),
+        (
+            "pub(crate) const PULSE_AUDIO_IPC_MAX_FRAME_BYTES: usize = 8 * 1024;",
+            "PulseAudio request/frame codec ceiling",
+        ),
+        (
+            "pub(crate) const PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES: usize = 960 * 4;",
+            "PulseAudio exact audio-frame shape",
+        ),
+        (
+            "pub(crate) const PULSE_AUDIO_IPC_IO_TIMEOUT_MS: u64 = 1_000;",
+            "PulseAudio request/frame deadline",
+        ),
+        ("pub(crate) fn new_pulse_audio", "PulseAudio purpose-specific constructor"),
+        (
+            "Self::new_with_max_packet_length(conn, PULSE_AUDIO_IPC_MAX_FRAME_BYTES)",
+            "PulseAudio constructor codec ceiling",
+        ),
+        (
+            "pub(crate) async fn send_pulse_audio_request_timeout(",
+            "PulseAudio typed request writer",
+        ),
+        (
+            "pub(crate) async fn next_pulse_audio_request_timeout(",
+            "PulseAudio typed request reader",
+        ),
+        (
+            "pub(crate) async fn send_pulse_audio_frame_timeout(",
+            "PulseAudio bounded frame writer",
+        ),
+        (
+            "pub(crate) async fn next_pulse_audio_frame_timeout(",
+            "PulseAudio cancellable frame reader",
+        ),
+    ):
+        require_text(ipc, text, label)
+
+    data_variants = set(
+        extract_rust_enum_variants(ipc, "pub enum Data {", "cross-purpose Data protocol")
+    )
+    if "PulseAudioStart" in data_variants:
+        raise VerificationError(
+            "cross-purpose Data protocol retains PulseAudio admission"
+        )
+
+    connect = extract_between(
+        ipc,
+        "async fn connect_with_path(",
+        "\n\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n"
+        "pub(crate) async fn validate_cm_connection_authority(",
+        "IPC endpoint connector",
+    )
+    require_order(
+        connect,
+        (
+            'if postfix == "_pa"',
+            "ConnectionTmpl::new_pulse_audio(client)",
+        ),
+        "PulseAudio connecting-stream cap",
+    )
+
+    receiver = extract_between(
+        ipc,
+        "pub async fn start_pa()",
+        "\npub struct ConnectionTmpl<T>",
+        "PulseAudio IPC receiver",
+    )
+    require_order(
+        receiver,
+        (
+            "Connection::new_pulse_audio(stream)",
+            "next_pulse_audio_request_timeout(",
+            "LinuxPulseAudioIpcRequest::StartCapture",
+            "validate_pulse_audio_start_authority(&owner, &token).await",
+            "get_pa_source_name(&device)",
+            "if let Err(err) = s.read(&mut buf)",
+            "send_pulse_audio_frame_timeout(",
+        ),
+        "PulseAudio typed admission and terminal capture/write order",
+    )
+    for forbidden, label in (
+        ("next_timeout2", "PulseAudio generic request reader absence"),
+        ("send_raw(", "PulseAudio generic frame writer absence"),
+        ("Data::PulseAudioStart", "PulseAudio cross-purpose request absence"),
+    ):
+        require_absent(receiver, forbidden, label)
+
+    frame_reader = extract_between(
+        ipc,
+        "pub(crate) async fn next_pulse_audio_frame_timeout(",
+        "\n    #[cfg(target_os = \"windows\")]\n"
+        "    pub(crate) async fn send_windows_service_sas_request_timeout(",
+        "PulseAudio frame reader",
+    )
+    require_order(
+        frame_reader,
+        (
+            "tokio::time::timeout(",
+            "Err(_) => return Ok(None)",
+            'Ok(None) => bail!("reset by the peer")',
+            "frame.len() != PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES",
+            "Ok(Some(frame))",
+        ),
+        "PulseAudio timeout-wake, reset, and frame-shape semantics",
+    )
+
+    frame_writer = extract_between(
+        ipc,
+        "pub(crate) async fn send_pulse_audio_frame_timeout(",
+        "\n    #[cfg(target_os = \"linux\")]\n"
+        "    pub(crate) async fn next_pulse_audio_frame_timeout(",
+        "PulseAudio frame writer",
+    )
+    require_order(
+        frame_writer,
+        (
+            "if !data.is_empty() && data.len() != PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES",
+            "timeout(ms_timeout, self.send_raw(data)).await??",
+            "Ok(())",
+        ),
+        "PulseAudio outbound frame shape and deadline",
+    )
+    raw_writer = extract_between(
+        ipc,
+        "pub async fn send_raw(&mut self, data: Bytes)",
+        "\n\n    pub async fn next_raw",
+        "raw IPC frame writer",
+    )
+    require_order(
+        raw_writer,
+        (
+            "let max_packet_length = self.inner.codec().max_packet_length()",
+            "if data.len() > max_packet_length",
+            '"outbound raw IPC frame exceeds codec limit:',
+            "self.inner.send(data).await?",
+        ),
+        "PulseAudio inherited outbound codec ceiling",
+    )
+
+    client = extract_between(
+        audio,
+        "pub async fn run(sp: EmptyExtraFieldService)",
+        "\n}\n\n#[inline]\n#[cfg(feature = \"screencapturekit\")]",
+        "PulseAudio audio-service client",
+    )
+    require_order(
+        client,
+        (
+            "ensure_pa_endpoint_matches_authority(&stream, &pa_authority)?",
+            "send_pulse_audio_request_timeout(",
+            "LinuxPulseAudioIpcRequest::StartCapture",
+            ".await?;",
+            "while sp.ok() && !RESTARTING.load(Ordering::SeqCst)",
+            "next_pulse_audio_frame_timeout(",
+            ".await?",
+        ),
+        "PulseAudio proved endpoint, typed send, and cancellable read order",
+    )
+    for forbidden, label in (
+        ("allow_err!(\n            stream", "PulseAudio ignored request-send absence"),
+        ("Data::PulseAudioStart", "PulseAudio generic client request absence"),
+        ("stream.next_raw().await", "PulseAudio uncancellable reader absence"),
+    ):
+        require_absent(client, forbidden, label)
+
+    retry = extract_between(
+        service,
+        "pub fn run<F, Svc>",
+        "\n\n    #[inline]\n    pub fn active",
+        "generic service retry",
+    )
+    require_order(
+        retry,
+        (
+            "if let Err(err) = callback(sp.clone())",
+            "error_timeout *= 2",
+            "if error_timeout > MAX_ERROR_TIMEOUT",
+            "error_timeout = MAX_ERROR_TIMEOUT",
+            "thread::sleep(time::Duration::from_millis(error_timeout))",
+        ),
+        "PulseAudio bounded service retry",
+    )
+
+    regression = extract_between(
+        ipc,
+        "async fn linux_pulse_audio_channel_uses_closed_bounded_protocol()",
+        "\n\n    #[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n"
+        "    #[test]\n"
+        "    fn privileged_and_main_connections_use_bounded_frame_codecs()",
+        "PulseAudio protocol regression",
+    )
+    for text, label in (
+        (
+            'br#"{"t":"StartCapture","owner":{"pid":7,"uid":1000,'
+            '"start_time":"42"},"token":"token","source":"monitor"}"#',
+            "PulseAudio exact-wire regression",
+        ),
+        ("extra\":true", "PulseAudio unknown-field regression"),
+        (
+            "serde_json::to_vec(&Data::Close)",
+            "PulseAudio cross-purpose regression",
+        ),
+        (
+            "client.inner.codec().max_packet_length()",
+            "PulseAudio codec-ceiling regression",
+        ),
+        (
+            "PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES - 1",
+            "PulseAudio frame-shape rejection regression",
+        ),
+        (
+            "PULSE_AUDIO_IPC_MAX_FRAME_BYTES + 1",
+            "PulseAudio oversize rejection regression",
+        ),
+        (
+            "idle.next_pulse_audio_frame_timeout(1).await.unwrap()",
+            "PulseAudio periodic-wake regression",
+        ),
+        (
+            "drop(idle_peer)",
+            "PulseAudio peer-reset regression",
+        ),
+    ):
+        require_text(regression, text, label)
+    for source_key, text, label in (
+        (
+            "verify",
+            "R-S11c-7/R-S11dy Linux _pa capture uses one bounded typed start request",
+            "shared PulseAudio protocol/resource gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11dy</span>',
+            "PulseAudio protocol/resource requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>278</td>",
+            "PulseAudio protocol/resource Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11dy/R-S11e-143 — Linux PulseAudio helper protocol and resource finality",
+            "PulseAudio protocol/resource hardening ledger",
+        ),
+    ):
+        require_text(sources[source_key], text, label)
 
 
 def validate_unix_listener_incumbent_contract(sources):
@@ -16884,9 +17172,9 @@ def validate_cleanup_docker_authority_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dx, R-SV4a,\n"
+        "R-S11n through R-S11dy, R-SV4a,\n"
         "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
+        "R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -17072,9 +17360,9 @@ def validate_cleanup_process_domain_path_authority_contract(sources):
 
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dx, R-SV4a,\n"
+        "R-S11n through R-S11dy, R-SV4a,\n"
         "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
+        "R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -27067,6 +27355,7 @@ def validate_sources(sources):
     validate_linux_nondumpable_cm_contract(sources)
     validate_unix_helper_process_role_contract(sources)
     validate_service_ipc_protocol_authority_contract(sources)
+    validate_pulse_audio_ipc_protocol_contract(sources)
     validate_unix_listener_incumbent_contract(sources)
     validate_viewer_voice_call_worker_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
@@ -40414,7 +40703,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11dx, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#277",
+            "R-S11n through R-S11dy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -41550,6 +41839,168 @@ def run_source_mutations(sources):
             "R-S11dx/R-S11e-142 — privileged service-control and SAS protocol type",
             "R-S11dx/R-S11e-142 — privileged service protocols remain cross-purpose",
             "service protocol authority hardening ledger",
+        ),
+        (
+            "ipc_source",
+            "    StartCapture {\n        owner: LinuxProcessIdentity,",
+            "    StartAudio {\n        owner: LinuxProcessIdentity,",
+            "PulseAudio IPC request protocol",
+        ),
+        (
+            "ipc_source",
+            '#[serde(tag = "t", deny_unknown_fields)]\n'
+            "pub(crate) enum LinuxPulseAudioIpcRequest",
+            '#[serde(tag = "t")]\n'
+            "pub(crate) enum LinuxPulseAudioIpcRequest",
+            "PulseAudio exact request envelope",
+        ),
+        (
+            "ipc_source",
+            "pub enum Data {\n",
+            "pub enum Data {\n    PulseAudioStart,\n",
+            "cross-purpose Data protocol retains PulseAudio admission",
+        ),
+        (
+            "ipc_source",
+            "pub(crate) const PULSE_AUDIO_IPC_MAX_FRAME_BYTES: usize = 8 * 1024;",
+            "pub(crate) const PULSE_AUDIO_IPC_MAX_FRAME_BYTES: usize = usize::MAX;",
+            "PulseAudio request/frame codec ceiling",
+        ),
+        (
+            "ipc_source",
+            "Self::new_with_max_packet_length(conn, PULSE_AUDIO_IPC_MAX_FRAME_BYTES)",
+            "Self::new(conn)",
+            "PulseAudio constructor codec ceiling",
+        ),
+        (
+            "ipc_source",
+            'if postfix == "_pa" {\n'
+            "                    ConnectionTmpl::new_pulse_audio(client)",
+            'if postfix == "_pa" {\n'
+            "                    ConnectionTmpl::new(client)",
+            "PulseAudio connecting-stream cap",
+        ),
+        (
+            "ipc_source",
+            "let mut stream = Connection::new_pulse_audio(stream);",
+            "let mut stream = Connection::new(stream);",
+            "PulseAudio typed admission and terminal capture/write order",
+        ),
+        (
+            "ipc_source",
+            ".next_pulse_audio_request_timeout(\n"
+            "                                    PULSE_AUDIO_IPC_IO_TIMEOUT_MS,",
+            ".next_timeout(\n"
+            "                                    PULSE_AUDIO_IPC_IO_TIMEOUT_MS,",
+            "PulseAudio typed admission and terminal capture/write order",
+        ),
+        (
+            "ipc_source",
+            "if let Err(err) = s.read(&mut buf) {",
+            "if let Ok(_) = s.read(&mut buf) {",
+            "PulseAudio typed admission and terminal capture/write order",
+        ),
+        (
+            "ipc_source",
+            ".send_pulse_audio_frame_timeout(\n"
+            "                                            out.into(),",
+            ".send_raw(\n"
+            "                                            out.into(),",
+            "PulseAudio typed admission and terminal capture/write order",
+        ),
+        (
+            "ipc_source",
+            "if !data.is_empty() && data.len() != PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES {",
+            "if false {",
+            "PulseAudio outbound frame shape and deadline",
+        ),
+        (
+            "ipc_source",
+            "timeout(ms_timeout, self.send_raw(data)).await??;",
+            "self.send_raw(data).await?;",
+            "PulseAudio outbound frame shape and deadline",
+        ),
+        (
+            "ipc_source",
+            "if data.len() > max_packet_length {",
+            "if false {",
+            "PulseAudio inherited outbound codec ceiling",
+        ),
+        (
+            "audio_service_source",
+            ".send_pulse_audio_request_timeout(\n"
+            "                &crate::ipc::LinuxPulseAudioIpcRequest::StartCapture",
+            ".send(\n"
+            "                &crate::ipc::LinuxPulseAudioIpcRequest::StartCapture",
+            "PulseAudio proved endpoint, typed send, and cancellable read order",
+        ),
+        (
+            "audio_service_source",
+            ".next_pulse_audio_frame_timeout(crate::ipc::PULSE_AUDIO_IPC_IO_TIMEOUT_MS)",
+            ".next_raw()",
+            "PulseAudio proved endpoint, typed send, and cancellable read order",
+        ),
+        (
+            "server_service_source",
+            "if error_timeout > MAX_ERROR_TIMEOUT {",
+            "if false {",
+            "PulseAudio bounded service retry",
+        ),
+        (
+            "server_service_source",
+            "thread::sleep(time::Duration::from_millis(error_timeout));",
+            "thread::yield_now();",
+            "PulseAudio bounded service retry",
+        ),
+        (
+            "ipc_source",
+            "Err(_) => return Ok(None),",
+            "Err(err) => return Err(err.into()),",
+            "PulseAudio timeout-wake, reset, and frame-shape semantics",
+        ),
+        (
+            "ipc_source",
+            'Ok(None) => bail!("reset by the peer"),',
+            "Ok(None) => return Ok(None),",
+            "PulseAudio timeout-wake, reset, and frame-shape semantics",
+        ),
+        (
+            "ipc_source",
+            'br#"{"t":"StartCapture","owner":{"pid":7,"uid":1000,'
+            '"start_time":"42"},"token":"token","source":"monitor"}"#',
+            'br#"{"t":"StartCapture","owner":{"pid":7,"uid":1000,'
+            '"start_time":"42"},"token":"token","source":"wrong"}"#',
+            "PulseAudio exact-wire regression",
+        ),
+        (
+            "linux_nondumpable_cm_verifier",
+            '"Connection::new_pulse_audio(stream)",',
+            '"Connection::new(stream)",',
+            "PA accepted-stream frame-cap contract",
+        ),
+        (
+            "verify",
+            "R-S11c-7/R-S11dy Linux _pa capture uses one bounded typed start request",
+            "R-S11c-7 Linux _pa capture uses a generic request",
+            "shared PulseAudio protocol/resource gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11dy</span>',
+            '<span class="id">R-S11dy-disabled</span>',
+            "PulseAudio protocol/resource requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>278</td>",
+            "<tr><td>278-disabled</td>",
+            "PulseAudio protocol/resource Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11dy/R-S11e-143 — Linux PulseAudio helper protocol and resource finality",
+            "R-S11dy/R-S11e-143 — Linux PulseAudio IPC remains generic and unbounded",
+            "PulseAudio protocol/resource hardening ledger",
         ),
         (
             "viewer_voice_call_worker_verifier",
@@ -46891,6 +47342,12 @@ def main():
             "smoke_typed_probe": (repo / "examples/smoke_readiness.rs").read_text(encoding="utf-8"),
             "session_probe": (repo / "examples/probe_client.rs").read_text(encoding="utf-8"),
             "ipc_source": (repo / "src/ipc.rs").read_text(encoding="utf-8"),
+            "audio_service_source": (
+                repo / "src/server/audio_service.rs"
+            ).read_text(encoding="utf-8"),
+            "server_service_source": (
+                repo / "src/server/service.rs"
+            ).read_text(encoding="utf-8"),
             "desktop_ipc_validator": (
                 repo / "scripts/verify-desktop-ipc-lifecycle.py"
             ).read_text(encoding="utf-8"),

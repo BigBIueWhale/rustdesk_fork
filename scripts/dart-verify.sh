@@ -189,6 +189,9 @@ local_docker run --rm --pull=never --network=none --read-only \
     echo "  == R-S11eb generated-bridge mobile session lifecycle regressions =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       flutter::mobile_session_lifecycle_tests:: -- --test-threads=1
+    echo "  == R-S11ec outgoing clipboard exact-round lifecycle regression =="
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop -- --test-threads=1
     cargo_lock_after="$(sha256sum Cargo.lock | awk "{print \$1}")"
     if [ "$cargo_lock_before" != "$cargo_lock_after" ]; then
       echo "DART-VERIFY: FAILED — cargo check rewrote Cargo.lock" >&2

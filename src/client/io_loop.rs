@@ -1,5 +1,7 @@
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::clipboard::{update_clipboard, ClipboardSide};
+#[cfg(not(target_os = "ios"))]
+use crate::client::ClientClipboardSession;
 #[cfg(not(any(target_os = "ios")))]
 use crate::{audio_service, clipboard::CLIPBOARD_INTERVAL, ConnInner, CLIENT_SERVER};
 use crate::{
@@ -518,27 +520,11 @@ impl<T: InvokeUiSession> Remote<T> {
     }
 
     pub async fn io_loop(&mut self, key: &str, token: &str, round: u64) {
-        #[cfg(target_os = "windows")]
-        let _file_clip_context_holder = {
-            // `is_port_forward()` will not reach here, but we still check it for clarity.
-            if self.handler.is_default() {
-                // It is ok to call this function multiple times.
-                ContextSend::enable(true);
-                Some(crate::SimpleCallOnReturn {
-                    b: true,
-                    f: Box::new(|| {
-                        // No need to call `enable(false)` for sciter version, because each client of sciter version is a new process.
-                        // It's better to check if the peers are windows(support file copy&paste), but it's not necessary.
-                        #[cfg(feature = "flutter")]
-                        if !crate::flutter::sessions::has_sessions_running(ConnType::DEFAULT_CONN) {
-                            ContextSend::enable(false);
-                        };
-                    }),
-                })
-            } else {
-                None
-            }
-        };
+        #[cfg(not(target_os = "ios"))]
+        let mut clipboard_session = self
+            .handler
+            .is_default()
+            .then(Client::acquire_clipboard_session);
 
         let mut last_recv_time = Instant::now();
         let mut received = false;
@@ -636,7 +622,18 @@ impl<T: InvokeUiSession> Remote<T> {
                                             self.handler.update_received(true);
                                         }
                                         self.data_count.fetch_add(bytes.len(), Ordering::Relaxed);
-                                        if !self.handle_msg_from_peer(bytes, &mut peer).await {
+                                        #[cfg(not(target_os = "ios"))]
+                                        let keep_running = self
+                                            .handle_msg_from_peer(
+                                                bytes,
+                                                &mut peer,
+                                                clipboard_session.as_ref(),
+                                            )
+                                            .await;
+                                        #[cfg(target_os = "ios")]
+                                        let keep_running =
+                                            self.handle_msg_from_peer(bytes, &mut peer).await;
+                                        if !keep_running {
                                             break
                                         }
                                     }
@@ -731,9 +728,7 @@ impl<T: InvokeUiSession> Remote<T> {
         let _set_disconnected_ok = self.handler.connection_round_owner.finish(round);
 
         #[cfg(not(target_os = "ios"))]
-        if self.handler.is_default() && _set_disconnected_ok {
-            Client::try_stop_clipboard();
-        }
+        drop(clipboard_session.take());
 
         #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
         if self.handler.is_default() && _set_disconnected_ok {
@@ -1755,7 +1750,12 @@ impl<T: InvokeUiSession> Remote<T> {
             )
     }
 
-    async fn handle_msg_from_peer(&mut self, data: &[u8], peer: &mut Stream) -> bool {
+    async fn handle_msg_from_peer(
+        &mut self,
+        data: &[u8],
+        peer: &mut Stream,
+        #[cfg(not(target_os = "ios"))] clipboard_session: Option<&ClientClipboardSession>,
+    ) -> bool {
         let msg_in = match Message::parse_from_bytes(data) {
             Ok(msg) => msg,
             Err(err) => {
@@ -1847,19 +1847,24 @@ impl<T: InvokeUiSession> Remote<T> {
                         if self.handler.is_default() {
                             #[cfg(feature = "flutter")]
                             #[cfg(not(target_os = "ios"))]
-                            let rx = Client::try_start_clipboard(None);
+                            let rx = clipboard_session.and_then(|session| {
+                                Client::try_start_clipboard(session, Default::default())
+                            });
                             #[cfg(not(feature = "flutter"))]
                             #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                            let rx = Client::try_start_clipboard(Some(
-                                crate::client::ClientClipboardContext {
-                                    cfg: self.handler.get_permission_config(),
-                                    tx: self.sender.clone(),
-                                    #[cfg(feature = "unix-file-copy-paste")]
-                                    is_file_supported: crate::is_support_file_copy_paste(
-                                        &peer_version,
-                                    ),
-                                },
-                            ));
+                            let rx = clipboard_session.and_then(|session| {
+                                Client::try_start_clipboard(
+                                    session,
+                                    Some(crate::client::ClientClipboardContext {
+                                        cfg: self.handler.get_permission_config(),
+                                        tx: self.sender.clone(),
+                                        #[cfg(feature = "unix-file-copy-paste")]
+                                        is_file_supported: crate::is_support_file_copy_paste(
+                                            &peer_version,
+                                        ),
+                                    }),
+                                )
+                            });
                             // To make sure current text clipboard data is updated.
                             #[cfg(not(target_os = "ios"))]
                             if let Some(mut rx) = rx {

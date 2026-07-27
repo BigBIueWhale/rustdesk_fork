@@ -1,6 +1,8 @@
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::clipboard::clipboard_listener;
 use async_trait::async_trait;
+#[cfg(target_os = "windows")]
+use clipboard::ContextSend;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use clipboard_master::CallbackResult;
 #[cfg(not(target_os = "linux"))]
@@ -14,10 +16,11 @@ use magnum_opus::{Channels::*, Decoder as AudioDecoder};
 use ringbuf::{ring_buffer::RbBase, Rb};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     ffi::c_void,
     ops::Deref,
     sync::{
+        atomic::{AtomicBool, Ordering},
         mpsc::{self, RecvTimeoutError},
         Arc, Mutex, RwLock,
     },
@@ -144,7 +147,88 @@ struct ClipboardState {
     is_text_required: bool,
     #[cfg(all(feature = "flutter", feature = "unix-file-copy-paste"))]
     is_file_required: bool,
-    running: bool,
+    leases: ClipboardLeaseSet,
+    worker: Option<ClientClipboardWorker>,
+    worker_transition: bool,
+    pending_start: Option<ClientClipboardStartContext>,
+}
+
+#[cfg(not(target_os = "ios"))]
+#[derive(Debug, Default)]
+struct ClipboardLeaseSet {
+    next: u64,
+    active: HashSet<u64>,
+}
+
+#[cfg(not(target_os = "ios"))]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ClipboardLeaseRelease {
+    Missing,
+    Remaining,
+    Last,
+}
+
+#[cfg(not(target_os = "ios"))]
+impl ClipboardLeaseSet {
+    fn acquire(&mut self) -> Option<u64> {
+        let next = self.next.checked_add(1)?;
+        self.next = next;
+        if !self.active.insert(next) {
+            return None;
+        }
+        Some(next)
+    }
+
+    fn contains(&self, lease: u64) -> bool {
+        self.active.contains(&lease)
+    }
+
+    fn release(&mut self, lease: u64) -> ClipboardLeaseRelease {
+        if !self.active.remove(&lease) {
+            ClipboardLeaseRelease::Missing
+        } else if self.active.is_empty() {
+            ClipboardLeaseRelease::Last
+        } else {
+            ClipboardLeaseRelease::Remaining
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.active.is_empty()
+    }
+}
+
+#[cfg(not(target_os = "ios"))]
+struct ClientClipboardWorker {
+    stop_requested: Arc<AtomicBool>,
+    thread: std::thread::JoinHandle<()>,
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+type ClientClipboardStartContext = Option<ClientClipboardContext>;
+
+#[cfg(target_os = "android")]
+type ClientClipboardStartContext = ();
+
+#[cfg(not(target_os = "ios"))]
+pub(crate) struct ClientClipboardSession {
+    lease: Option<u64>,
+}
+
+#[cfg(not(target_os = "ios"))]
+impl ClientClipboardSession {
+    fn id(&self) -> Option<u64> {
+        self.lease
+    }
+}
+
+#[cfg(not(target_os = "ios"))]
+impl Drop for ClientClipboardSession {
+    fn drop(&mut self) {
+        if let Some(lease) = self.lease.take() {
+            Client::release_clipboard_session(lease);
+        }
+    }
 }
 
 #[cfg(not(target_os = "linux"))]
@@ -387,119 +471,256 @@ impl Client {
     }
 
     #[cfg(not(target_os = "ios"))]
-    fn try_stop_clipboard() {
-        // There's a bug here.
-        // If session is closed by the peer, `has_sessions_running()` will always return true.
-        // It's better to check if the active session number.
-        // But it's not a problem, because the clipboard thread does not consume CPU.
-        //
-        // If we want to fix it, we can add a flag to indicate if session is active.
-        // But I think it's not necessary to introduce complexity at this point.
-        #[cfg(feature = "flutter")]
-        if crate::flutter::sessions::has_sessions_running(ConnType::DEFAULT_CONN) {
-            return;
+    pub(crate) fn acquire_clipboard_session() -> ClientClipboardSession {
+        let mut state = CLIPBOARD_STATE.lock().unwrap();
+        #[cfg(target_os = "windows")]
+        let was_empty = state.leases.is_empty();
+        let Some(lease) = state.leases.acquire() else {
+            log::error!("client clipboard lease identity exhausted");
+            std::process::abort();
+        };
+        #[cfg(target_os = "windows")]
+        if was_empty {
+            ContextSend::enable(true);
         }
-        #[cfg(not(target_os = "android"))]
-        clipboard_listener::unsubscribe(Self::CLIENT_CLIPBOARD_NAME);
-        CLIPBOARD_STATE.lock().unwrap().running = false;
-        #[cfg(all(feature = "unix-file-copy-paste", target_os = "linux"))]
-        clipboard::platform::unix::fuse::uninit_fuse_context(true);
+        ClientClipboardSession { lease: Some(lease) }
     }
 
-    // `try_start_clipboard` is called by all session when connection is established. (When handling peer info).
-    // This function only create one thread with a loop, the loop is shared by all sessions.
-    // After all sessions are end, the loop exists.
-    //
-    // If clipboard update is detected, the text will be sent to all sessions by `send_clipboard_msg`.
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[cfg(not(target_os = "ios"))]
     fn try_start_clipboard(
-        _client_clip_ctx: Option<ClientClipboardContext>,
+        session: &ClientClipboardSession,
+        context: ClientClipboardStartContext,
     ) -> Option<UnboundedReceiver<()>> {
-        let mut clipboard_lock = CLIPBOARD_STATE.lock().unwrap();
-        if clipboard_lock.running {
+        let Some(lease) = session.id() else {
+            log::warn!("refusing to start clipboard work for a retired viewer round");
             return None;
-        }
+        };
 
+        let (started, retired_worker) = {
+            let mut state = CLIPBOARD_STATE.lock().unwrap();
+            if !state.leases.contains(lease) {
+                log::warn!("refusing to start clipboard work for an inactive viewer round");
+                return None;
+            }
+            state.pending_start = Some(context);
+            if state.worker_transition {
+                return None;
+            }
+            if state
+                .worker
+                .as_ref()
+                .map(|worker| worker.thread.is_finished())
+                .unwrap_or(false)
+            {
+                let worker = Self::retire_client_clipboard_worker_locked(&mut state);
+                (None, worker)
+            } else if state.worker.is_none() {
+                (
+                    Self::start_client_clipboard_worker_locked(&mut state, true),
+                    None,
+                )
+            } else {
+                (None, None)
+            }
+        };
+
+        if let Some(worker) = retired_worker {
+            handoff_client_clipboard_worker(worker);
+        }
+        started
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    fn start_client_clipboard_worker_locked(
+        state: &mut ClipboardState,
+        report_started: bool,
+    ) -> Option<UnboundedReceiver<()>> {
+        let context = state.pending_start.take()?;
+        #[cfg(feature = "flutter")]
+        let _ = context;
         let (tx_cb_result, rx_cb_result) = mpsc::channel();
         if let Err(e) =
             clipboard_listener::subscribe(Self::CLIENT_CLIPBOARD_NAME.to_owned(), tx_cb_result)
         {
             log::error!("Failed to subscribe clipboard listener: {}", e);
+            state.pending_start = Some(context);
             return None;
         }
 
-        clipboard_lock.running = true;
-        let (tx_started, rx_started) = unbounded_channel();
-
+        let (tx_started, rx_started) = if report_started {
+            let (sender, receiver) = unbounded_channel();
+            (Some(sender), Some(receiver))
+        } else {
+            (None, None)
+        };
+        let stop_requested = Arc::new(AtomicBool::new(false));
+        let worker_stop_requested = Arc::clone(&stop_requested);
         log::info!("Start client clipboard loop");
-        std::thread::spawn(move || {
-            let mut handler = ClientClipboardHandler {
-                ctx: None,
-                #[cfg(not(feature = "flutter"))]
-                client_clip_ctx: _client_clip_ctx,
-            };
+        let thread = match std::thread::Builder::new()
+            .name("rustdesk-viewer-clipboard".to_owned())
+            .spawn(move || {
+                let mut handler = ClientClipboardHandler {
+                    ctx: None,
+                    #[cfg(not(feature = "flutter"))]
+                    client_clip_ctx: context,
+                };
 
-            tx_started.send(()).ok();
-            loop {
-                if !CLIPBOARD_STATE.lock().unwrap().running {
-                    break;
-                }
-                match rx_cb_result.recv_timeout(Duration::from_millis(CLIPBOARD_INTERVAL)) {
-                    Ok(CallbackResult::Next) => {
-                        handler.check_clipboard();
-                    }
-                    Ok(CallbackResult::Stop) => {
-                        log::debug!("Clipboard listener stopped");
-                        break;
-                    }
-                    Ok(CallbackResult::StopWithError(err)) => {
-                        log::error!("Clipboard listener stopped with error: {}", err);
-                        break;
-                    }
-                    Err(RecvTimeoutError::Timeout) => {}
-                    Err(RecvTimeoutError::Disconnected) => {
-                        log::error!("Clipboard listener disconnected");
-                        break;
+                if let Some(tx_started) = tx_started {
+                    if tx_started.send(()).is_err() {
+                        log::debug!("client clipboard start observer retired before notification");
                     }
                 }
+                loop {
+                    if worker_stop_requested.load(Ordering::Acquire) {
+                        break;
+                    }
+                    match rx_cb_result.recv_timeout(Duration::from_millis(CLIPBOARD_INTERVAL)) {
+                        Ok(CallbackResult::Next) => {
+                            if worker_stop_requested.load(Ordering::Acquire) {
+                                break;
+                            }
+                            handler.check_clipboard();
+                        }
+                        Ok(CallbackResult::Stop) => {
+                            log::debug!("Clipboard listener stopped");
+                            break;
+                        }
+                        Ok(CallbackResult::StopWithError(err)) => {
+                            log::error!("Clipboard listener stopped with error: {}", err);
+                            break;
+                        }
+                        Err(RecvTimeoutError::Timeout) => {}
+                        Err(RecvTimeoutError::Disconnected) => {
+                            log::error!("Clipboard listener disconnected");
+                            break;
+                        }
+                    }
+                }
+                log::info!("Stop client clipboard loop");
+            }) {
+            Ok(thread) => thread,
+            Err(err) => {
+                clipboard_listener::unsubscribe(Self::CLIENT_CLIPBOARD_NAME);
+                log::error!("Failed to start client clipboard worker: {err}");
+                return None;
             }
-            log::info!("Stop client clipboard loop");
-            CLIPBOARD_STATE.lock().unwrap().running = false;
+        };
+        state.worker = Some(ClientClipboardWorker {
+            stop_requested,
+            thread,
         });
-
-        Some(rx_started)
+        rx_started
     }
 
     #[cfg(target_os = "android")]
-    fn try_start_clipboard(_p: Option<()>) -> Option<UnboundedReceiver<()>> {
-        let mut clipboard_lock = CLIPBOARD_STATE.lock().unwrap();
-        if clipboard_lock.running {
-            return None;
-        }
-        clipboard_lock.running = true;
-
+    fn start_client_clipboard_worker_locked(
+        state: &mut ClipboardState,
+        _report_started: bool,
+    ) -> Option<UnboundedReceiver<()>> {
+        state.pending_start.take()?;
+        let stop_requested = Arc::new(AtomicBool::new(false));
+        let worker_stop_requested = Arc::clone(&stop_requested);
         log::info!("Start client clipboard loop");
-        std::thread::spawn(move || {
-            loop {
-                if !CLIPBOARD_STATE.lock().unwrap().running {
-                    break;
-                }
-                if !CLIPBOARD_STATE.lock().unwrap().is_text_required {
+        let thread = match std::thread::Builder::new()
+            .name("rustdesk-viewer-clipboard".to_owned())
+            .spawn(move || {
+                loop {
+                    if worker_stop_requested.load(Ordering::Acquire) {
+                        break;
+                    }
+                    if !CLIPBOARD_STATE.lock().unwrap().is_text_required {
+                        std::thread::sleep(Duration::from_millis(CLIPBOARD_INTERVAL));
+                        continue;
+                    }
+
+                    if worker_stop_requested.load(Ordering::Acquire) {
+                        break;
+                    }
+                    if let Some(msg) = crate::clipboard::get_clipboards_msg(true) {
+                        crate::flutter::send_clipboard_msg(msg, false);
+                    }
+
                     std::thread::sleep(Duration::from_millis(CLIPBOARD_INTERVAL));
-                    continue;
                 }
-
-                if let Some(msg) = crate::clipboard::get_clipboards_msg(true) {
-                    crate::flutter::send_clipboard_msg(msg, false);
-                }
-
-                std::thread::sleep(Duration::from_millis(CLIPBOARD_INTERVAL));
+                log::info!("Stop client clipboard loop");
+            }) {
+            Ok(thread) => thread,
+            Err(err) => {
+                log::error!("Failed to start client clipboard worker: {err}");
+                return None;
             }
-            log::info!("Stop client clipboard loop");
-            CLIPBOARD_STATE.lock().unwrap().running = false;
+        };
+        state.worker = Some(ClientClipboardWorker {
+            stop_requested,
+            thread,
         });
-
         None
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    fn retire_client_clipboard_worker_locked(
+        state: &mut ClipboardState,
+    ) -> Option<ClientClipboardWorker> {
+        let worker = state.worker.take()?;
+        worker.stop_requested.store(true, Ordering::Release);
+        state.worker_transition = true;
+        #[cfg(not(target_os = "android"))]
+        clipboard_listener::unsubscribe(Self::CLIENT_CLIPBOARD_NAME);
+        Some(worker)
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    fn release_clipboard_session(lease: u64) {
+        let retired_worker = {
+            let mut state = CLIPBOARD_STATE.lock().unwrap();
+            match state.leases.release(lease) {
+                ClipboardLeaseRelease::Missing => {
+                    log::warn!("ignored stale client clipboard lease release");
+                    return;
+                }
+                ClipboardLeaseRelease::Remaining => return,
+                ClipboardLeaseRelease::Last => {}
+            }
+            state.pending_start = None;
+            if state.worker_transition {
+                return;
+            }
+            match Self::retire_client_clipboard_worker_locked(&mut state) {
+                Some(worker) => Some(worker),
+                None => {
+                    Self::finish_client_clipboard_runtime_locked(&mut state);
+                    None
+                }
+            }
+        };
+
+        if let Some(worker) = retired_worker {
+            handoff_client_clipboard_worker(worker);
+        }
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    fn finish_client_clipboard_worker_transition() {
+        let mut state = CLIPBOARD_STATE.lock().unwrap();
+        if !state.worker_transition {
+            log::error!("client clipboard worker completed outside an owned transition");
+            std::process::abort();
+        }
+        state.worker_transition = false;
+        if state.leases.is_empty() {
+            state.pending_start = None;
+            Self::finish_client_clipboard_runtime_locked(&mut state);
+        } else if state.pending_start.is_some() {
+            let _ = Self::start_client_clipboard_worker_locked(&mut state, false);
+        }
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    fn finish_client_clipboard_runtime_locked(_state: &mut ClipboardState) {
+        #[cfg(target_os = "windows")]
+        ContextSend::enable(false);
+        #[cfg(all(feature = "unix-file-copy-paste", target_os = "linux"))]
+        clipboard::platform::unix::fuse::uninit_fuse_context(true);
     }
 }
 
@@ -511,7 +732,10 @@ impl ClipboardState {
             is_text_required: true,
             #[cfg(all(feature = "flutter", feature = "unix-file-copy-paste"))]
             is_file_required: true,
-            running: false,
+            leases: ClipboardLeaseSet::default(),
+            worker: None,
+            worker_transition: false,
+            pending_start: None,
         }
     }
 }
@@ -555,35 +779,33 @@ impl ClientClipboardHandler {
     }
 
     fn check_clipboard(&mut self) {
-        if CLIPBOARD_STATE.lock().unwrap().running {
-            #[cfg(feature = "unix-file-copy-paste")]
-            if let Some(urls) = check_clipboard_files(&mut self.ctx, ClipboardSide::Client, false) {
-                if !urls.is_empty() {
-                    #[cfg(target_os = "macos")]
-                    if crate::clipboard::is_file_url_set_by_rustdesk(&urls) {
-                        return;
-                    }
-                    if self.is_file_required() {
-                        match clipboard::platform::unix::serv_files::sync_files(&urls) {
-                            Ok(()) => {
-                                let msg = crate::clipboard_file::clip_2_msg(
-                                    unix_file_clip::get_format_list(),
-                                );
-                                self.send_msg(msg, true);
-                            }
-                            Err(e) => {
-                                log::error!("Failed to sync clipboard files: {}", e);
-                            }
+        #[cfg(feature = "unix-file-copy-paste")]
+        if let Some(urls) = check_clipboard_files(&mut self.ctx, ClipboardSide::Client, false) {
+            if !urls.is_empty() {
+                #[cfg(target_os = "macos")]
+                if crate::clipboard::is_file_url_set_by_rustdesk(&urls) {
+                    return;
+                }
+                if self.is_file_required() {
+                    match clipboard::platform::unix::serv_files::sync_files(&urls) {
+                        Ok(()) => {
+                            let msg = crate::clipboard_file::clip_2_msg(
+                                unix_file_clip::get_format_list(),
+                            );
+                            self.send_msg(msg, true);
                         }
-                        return;
+                        Err(e) => {
+                            log::error!("Failed to sync clipboard files: {}", e);
+                        }
                     }
+                    return;
                 }
             }
+        }
 
-            if let Some(msg) = check_clipboard(&mut self.ctx, ClipboardSide::Client, false) {
-                if self.is_text_required() {
-                    self.send_msg(msg, false);
-                }
+        if let Some(msg) = check_clipboard(&mut self.ctx, ClipboardSide::Client, false) {
+            if self.is_text_required() {
+                self.send_msg(msg, false);
             }
         }
     }
@@ -2283,6 +2505,11 @@ const MEDIA_WORKER_REAPER_CAPACITY: usize = 256;
 struct MediaWorkerJoinRequest {
     workers: Vec<(&'static str, std::thread::JoinHandle<()>)>,
     completed: Option<hbb_common::tokio::sync::oneshot::Sender<()>>,
+    on_complete: Option<MediaWorkerCompletion>,
+}
+
+enum MediaWorkerCompletion {
+    ClientClipboard,
 }
 
 lazy_static::lazy_static! {
@@ -2323,6 +2550,18 @@ fn run_media_worker_reaper(receiver: Arc<Mutex<mpsc::Receiver<MediaWorkerJoinReq
                 log::error!("{role} worker terminated by panic");
             }
         }
+        match request.on_complete {
+            Some(MediaWorkerCompletion::ClientClipboard) => {
+                #[cfg(not(target_os = "ios"))]
+                Client::finish_client_clipboard_worker_transition();
+                #[cfg(target_os = "ios")]
+                {
+                    log::error!("client clipboard completion is unavailable on iOS");
+                    std::process::abort();
+                }
+            }
+            None => {}
+        }
         if let Some(completed) = request.completed {
             let _ = completed.send(());
         }
@@ -2346,6 +2585,7 @@ pub(crate) async fn join_media_workers_off_runtime(
     handoff_media_workers(MediaWorkerJoinRequest {
         workers,
         completed: Some(completed),
+        on_complete: None,
     });
     if result.await.is_err() {
         log::error!("media worker reaper dropped completion authority");
@@ -2357,6 +2597,16 @@ pub(crate) fn reap_media_worker(role: &'static str, worker: std::thread::JoinHan
     handoff_media_workers(MediaWorkerJoinRequest {
         workers: vec![(role, worker)],
         completed: None,
+        on_complete: None,
+    });
+}
+
+#[cfg(not(target_os = "ios"))]
+fn handoff_client_clipboard_worker(worker: ClientClipboardWorker) {
+    handoff_media_workers(MediaWorkerJoinRequest {
+        workers: vec![("client clipboard", worker.thread)],
+        completed: None,
+        on_complete: Some(MediaWorkerCompletion::ClientClipboard),
     });
 }
 
@@ -3527,6 +3777,41 @@ mod tests {
             sender.try_send(MediaData::VideoQueue),
             Err(mpsc::TrySendError::Full(_))
         ));
+    }
+
+    #[cfg(not(target_os = "ios"))]
+    #[test]
+    fn clipboard_leases_track_exact_network_rounds_without_stale_stop() {
+        let mut leases = ClipboardLeaseSet::default();
+        let first = leases.acquire().expect("first clipboard lease");
+        let second = leases.acquire().expect("second clipboard lease");
+
+        assert_eq!(
+            leases.release(first),
+            ClipboardLeaseRelease::Remaining,
+            "one finished round must not stop another round's shared clipboard worker"
+        );
+        assert_eq!(
+            leases.release(first),
+            ClipboardLeaseRelease::Missing,
+            "a stale duplicate release must not select a remaining round"
+        );
+        assert!(leases.contains(second));
+        assert_eq!(
+            leases.release(second),
+            ClipboardLeaseRelease::Last,
+            "the exact last active network round owns worker retirement"
+        );
+
+        let replacement = leases.acquire().expect("replacement clipboard lease");
+        assert_ne!(replacement, second);
+        assert_eq!(
+            leases.release(second),
+            ClipboardLeaseRelease::Missing,
+            "an old round cannot retire a replacement after identity rotation"
+        );
+        assert!(leases.contains(replacement));
+        assert_eq!(leases.release(replacement), ClipboardLeaseRelease::Last);
     }
 
     #[tokio::test(flavor = "current_thread")]

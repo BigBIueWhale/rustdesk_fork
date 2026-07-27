@@ -2584,14 +2584,6 @@ pub mod sessions {
             session.close_and_join();
         }
     }
-
-    #[inline]
-    #[cfg(not(target_os = "ios"))]
-    pub fn has_sessions_running(conn_type: ConnType) -> bool {
-        SESSIONS.read().unwrap().iter().any(|((_, r#type), s)| {
-            *r#type == conn_type && s.session_handlers.read().unwrap().len() != 0
-        })
-    }
 }
 
 fn close_client_owner_drain(

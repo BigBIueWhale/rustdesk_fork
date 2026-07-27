@@ -9967,6 +9967,8 @@ flutter_event_loop=flutter/lib/utils/event_loop.dart
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
   client::tests::owned_media_thread_ -- --test-threads=1
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
+  client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop -- --test-threads=1
+"${RUN[@]}" cargo test --lib --features linux-pkg-config \
   ui_session_interface::connection_round_ownership_tests:: -- --test-threads=1
 grep -qF 'external fun beginClientSessionOwner(): Long' "$ffi_kt" \
   || android_client_owner_bad="$android_client_owner_bad no-generation-begin-jni"
@@ -10102,12 +10104,33 @@ grep -qF '_performCleanupCore(expectedSessionId: expectedSessionId);' "$flutter_
   || android_client_owner_bad="$android_client_owner_bad exact-relative-mouse-retirement-missing"
 grep -qF 'generation == _generation' "$flutter_event_loop" \
   || android_client_owner_bad="$android_client_owner_bad event-loop-generation-retirement-missing"
+grep -qF 'struct ClipboardLeaseSet {' src/client.rs \
+  || android_client_owner_bad="$android_client_owner_bad clipboard-exact-lease-set-missing"
+grep -qF 'worker: Option<ClientClipboardWorker>' src/client.rs \
+  || android_client_owner_bad="$android_client_owner_bad clipboard-worker-handle-owner-missing"
+grep -qF 'MediaWorkerCompletion::ClientClipboard' src/client.rs \
+  || android_client_owner_bad="$android_client_owner_bad clipboard-bounded-completion-handoff-missing"
+grep -qF '.then(Client::acquire_clipboard_session);' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad clipboard-network-round-acquire-missing"
+grep -qF 'drop(clipboard_session.take());' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad clipboard-network-round-release-missing"
+grep -qF 'clipboard_leases_track_exact_network_rounds_without_stale_stop' src/client.rs \
+  || android_client_owner_bad="$android_client_owner_bad clipboard-exact-lease-regression-missing"
+if grep -qF 'has_sessions_running' src/client.rs src/client/io_loop.rs src/flutter.rs; then
+  android_client_owner_bad="$android_client_owner_bad clipboard-ui-registry-liveness-present"
+fi
 grep -qF '<span class="id">R-S11eb</span>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad mobile-owner-connection-requirement-missing"
 grep -qF '<tr><td>281</td>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad mobile-owner-connection-disposition-missing"
 grep -qF 'R-S11eb/R-S11e-146' HARDENING_STATUS.md \
   || android_client_owner_bad="$android_client_owner_bad mobile-owner-connection-ledger-missing"
+grep -qF '<span class="id">R-S11ec</span>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad clipboard-network-round-requirement-missing"
+grep -qF '<tr><td>282</td>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad clipboard-network-round-disposition-missing"
+grep -qF 'R-S11ec/R-S11e-147' HARDENING_STATUS.md \
+  || android_client_owner_bad="$android_client_owner_bad clipboard-network-round-ledger-missing"
 grep -qF 'cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-lifecycle-test-command-missing"
 grep -qF 'flutter::mobile_session_lifecycle_tests:: -- --test-threads=1' scripts/dart-verify.sh \

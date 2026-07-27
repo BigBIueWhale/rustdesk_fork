@@ -116,6 +116,7 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "mobile_file_lifecycle_test": (
             repo / "flutter/test/mobile_file_session_lifecycle_test.dart"
         ).read_text(encoding="utf-8"),
+        "client": (repo / "src/client.rs").read_text(encoding="utf-8"),
         "io_loop": (repo / "src/client/io_loop.rs").read_text(encoding="utf-8"),
         "test": (repo / "scripts/android-voice-call-owner-state-test.kt").read_text(
             encoding="utf-8"
@@ -2012,6 +2013,209 @@ def validate(sources: Dict[str, str]) -> None:
         "mobile file-view subscription/timer/controller retirement",
     )
 
+    client = sources["client"]
+    io_loop = sources["io_loop"]
+    lease_set = extract_item(
+        client, "impl ClipboardLeaseSet", "outgoing clipboard exact lease set"
+    )
+    require_order(
+        lease_set,
+        (
+            "let next = self.next.checked_add(1)?;",
+            "self.next = next;",
+            "self.active.insert(next)",
+        ),
+        "monotonic outgoing clipboard lease acquisition",
+    )
+    require_order(
+        lease_set,
+        (
+            "if !self.active.remove(&lease)",
+            "ClipboardLeaseRelease::Missing",
+            "self.active.is_empty()",
+            "ClipboardLeaseRelease::Last",
+            "ClipboardLeaseRelease::Remaining",
+        ),
+        "exact outgoing clipboard lease retirement",
+    )
+    require(
+        client,
+        "worker: Option<ClientClipboardWorker>,",
+        "retained outgoing clipboard worker owner",
+    )
+    require(
+        client,
+        "struct ClientClipboardWorker {\n"
+        "    stop_requested: Arc<AtomicBool>,\n"
+        "    thread: std::thread::JoinHandle<()>,\n"
+        "}",
+        "clipboard stop-and-join authority pair",
+    )
+    acquire_clipboard = extract_item(
+        client,
+        "pub(crate) fn acquire_clipboard_session()",
+        "outgoing clipboard round acquisition",
+    )
+    require_order(
+        acquire_clipboard,
+        (
+            "state.leases.acquire()",
+            "ContextSend::enable(true)",
+            "ClientClipboardSession { lease: Some(lease) }",
+        ),
+        "lease-owned Windows clipboard context acquisition",
+    )
+    start_clipboard = extract_item(
+        client,
+        "fn try_start_clipboard(",
+        "outgoing clipboard worker start admission",
+    )
+    require_order(
+        start_clipboard,
+        (
+            "state.leases.contains(lease)",
+            "state.pending_start = Some(context);",
+            "if state.worker_transition",
+            "worker.thread.is_finished()",
+            "Self::start_client_clipboard_worker_locked(&mut state, true)",
+            "handoff_client_clipboard_worker(worker);",
+        ),
+        "exact-lease clipboard start and prior-worker transition",
+    )
+    retire_clipboard = extract_item(
+        client,
+        "fn retire_client_clipboard_worker_locked(",
+        "outgoing clipboard worker retirement",
+    )
+    require_order(
+        retire_clipboard,
+        (
+            "let worker = state.worker.take()?;",
+            "worker.stop_requested.store(true, Ordering::Release);",
+            "state.worker_transition = true;",
+            "clipboard_listener::unsubscribe(Self::CLIENT_CLIPBOARD_NAME);",
+            "Some(worker)",
+        ),
+        "clipboard admission close before exact-handle transfer",
+    )
+    release_clipboard = extract_item(
+        client,
+        "fn release_clipboard_session(lease: u64)",
+        "outgoing clipboard exact lease release",
+    )
+    require_order(
+        release_clipboard,
+        (
+            "state.leases.release(lease)",
+            "ClipboardLeaseRelease::Missing",
+            "ClipboardLeaseRelease::Remaining",
+            "ClipboardLeaseRelease::Last",
+            "state.pending_start = None;",
+            "if state.worker_transition",
+            "Self::retire_client_clipboard_worker_locked(&mut state)",
+            "handoff_client_clipboard_worker(worker);",
+        ),
+        "last-exact-lease clipboard worker retirement",
+    )
+    finish_clipboard = extract_item(
+        client,
+        "fn finish_client_clipboard_worker_transition()",
+        "outgoing clipboard completion transition",
+    )
+    require_order(
+        finish_clipboard,
+        (
+            "if !state.worker_transition",
+            "state.worker_transition = false;",
+            "if state.leases.is_empty()",
+            "Self::finish_client_clipboard_runtime_locked(&mut state);",
+            "state.pending_start.is_some()",
+            "Self::start_client_clipboard_worker_locked(&mut state, false)",
+        ),
+        "join-complete zero-owner cleanup or replacement restart",
+    )
+    handoff_clipboard = extract_item(
+        client,
+        "fn handoff_client_clipboard_worker(worker: ClientClipboardWorker)",
+        "bounded outgoing clipboard join handoff",
+    )
+    require_order(
+        handoff_clipboard,
+        (
+            'workers: vec![("client clipboard", worker.thread)]',
+            "completed: None",
+            "on_complete: Some(MediaWorkerCompletion::ClientClipboard)",
+        ),
+        "exact clipboard worker fixed-pool completion handoff",
+    )
+    require_order(
+        io_loop,
+        (
+            ".then(Client::acquire_clipboard_session);",
+            ".run_start(",
+            "self.shutdown_workers().await;",
+            "self.handler.connection_round_owner.finish(round)",
+            "drop(clipboard_session.take());",
+        ),
+        "clipboard lease spans the exact outgoing network round",
+    )
+    require_order(
+        io_loop,
+        (
+            ".handle_msg_from_peer(",
+            "clipboard_session.as_ref(),",
+            "#[cfg(not(target_os = \"ios\"))] clipboard_session: Option<&ClientClipboardSession>",
+            "let rx = clipboard_session.and_then(|session|",
+        ),
+        "clipboard peer handler receives the exact network-round lease",
+    )
+    require_order(
+        io_loop,
+        (
+            "let rx = clipboard_session.and_then(|session|",
+            "Client::try_start_clipboard(",
+            "session, Default::default()",
+        ),
+        "peer-info clipboard start consumes the exact round lease",
+    )
+    require(
+        client,
+        "clipboard_leases_track_exact_network_rounds_without_stale_stop",
+        "outgoing clipboard stale-release/ABA regression",
+    )
+    for source_name in ("client", "io_loop", "flutter"):
+        forbid(
+            sources[source_name],
+            "has_sessions_running",
+            f"{source_name} UI-registry clipboard liveness",
+        )
+    forbid(client, "running: bool", "global Boolean clipboard worker ownership")
+    require(
+        sources["requirements"],
+        '<span class="id">R-S11ec</span>',
+        "outgoing clipboard network-round requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>282</td>",
+        "outgoing clipboard Appendix C disposition",
+    )
+    require(
+        sources["hardening"],
+        "R-S11ec/R-S11e-147",
+        "outgoing clipboard hardening ledger",
+    )
+    require(
+        sources["verify"],
+        "client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop",
+        "shared outgoing clipboard lifecycle test wiring",
+    )
+    require(
+        sources["dart_verify"],
+        "client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop",
+        "generated-bridge outgoing clipboard lifecycle test wiring",
+    )
+
 
 Mutation = Tuple[str, str, str, str]
 
@@ -2146,9 +2350,28 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("mobile_remote", "if (!mounted || !gFFI.isCurrentSession(widget.sessionId)) return;", "if (!mounted) return;", "remote-page delayed key-help session refusal"),
     ("mobile_camera", "void didChangeMetrics() {\n    if (!mounted || !gFFI.isCurrentSession(sessionId)) return;", "void didChangeMetrics() {", "camera-page delayed metrics session refusal"),
     ("mobile_files", "unawaited(_directorySubscription.cancel());", "// directory subscription retained", "mobile file-view subscription retirement"),
+    ("client", "let next = self.next.checked_add(1)?;", "let next = self.next.wrapping_add(1);", "clipboard monotonic lease identity"),
+    ("client", "if !self.active.remove(&lease)", "if !self.active.contains(&lease)", "clipboard exact lease retirement"),
+    ("client", "worker: Option<ClientClipboardWorker>,", "worker: Option<()>,", "clipboard retained worker owner"),
+    ("client", "worker.stop_requested.store(true, Ordering::Release);", "worker.stop_requested.store(true, Ordering::Relaxed);", "clipboard stop publication"),
+    ("client", "state.worker_transition = true;", "state.worker_transition = false;", "clipboard join transition ownership"),
+    ("client", "state.pending_start = None;\n            if state.worker_transition", "if state.worker_transition", "clipboard retired-start cancellation"),
+    ("client", "on_complete: Some(MediaWorkerCompletion::ClientClipboard)", "on_complete: None", "clipboard completion callback authority"),
+    ("client", "if state.leases.is_empty() {\n            state.pending_start = None;", "if true {\n            state.pending_start = None;", "clipboard replacement-preserving finality"),
+    ("client", "clipboard_leases_track_exact_network_rounds_without_stale_stop", "clipboard_leases_ignore_stale_network_round_stop", "clipboard exact-lease behavior proof"),
+    ("io_loop", ".then(Client::acquire_clipboard_session);", ".then(|| ClientClipboardSession { lease: None });", "clipboard network-round acquisition"),
+    ("io_loop", "clipboard_session.as_ref(),", "None,", "clipboard peer-handler exact-lease handoff"),
+    ("io_loop", "#[cfg(not(target_os = \"ios\"))] clipboard_session: Option<&ClientClipboardSession>", "#[cfg(not(target_os = \"ios\"))] _clipboard_session: Option<&ClientClipboardSession>", "clipboard peer-handler lease parameter"),
+    ("io_loop", "drop(clipboard_session.take());", "let _ = clipboard_session.take();", "clipboard network-round release"),
+    ("flutter", "\n}\n\nfn close_client_owner_drain(", "\n    pub fn has_sessions_running() -> bool { true }\n}\n\nfn close_client_owner_drain(", "clipboard UI-registry liveness facade absence"),
     ("requirements", '<span class="id">R-S11eb</span>', '<span class="id">R-S11eb-disabled</span>', "mobile owner/connection requirement"),
     ("requirements", "<tr><td>281</td>", "<tr><td>281-disabled</td>", "mobile owner/connection disposition"),
     ("hardening", "R-S11eb/R-S11e-146", "R-S11eb-disabled/R-S11e-146", "mobile owner/connection hardening ledger"),
+    ("requirements", '<span class="id">R-S11ec</span>', '<span class="id">R-S11ec-disabled</span>', "clipboard network-round requirement"),
+    ("requirements", "<tr><td>282</td>", "<tr><td>282-disabled</td>", "clipboard network-round disposition"),
+    ("hardening", "R-S11ec/R-S11e-147", "R-S11ec-disabled/R-S11e-147", "clipboard network-round hardening ledger"),
+    ("verify", "client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop", "client::tests::clipboard_lifecycle_gate_disabled", "shared clipboard lifecycle behavior gate"),
+    ("dart_verify", "client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop", "client::tests::clipboard_lifecycle_gate_disabled", "generated-bridge clipboard lifecycle behavior gate"),
     ("verify", "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs", "true # replacement-drain shared gate disabled", "shared mobile replacement-drain gate"),
     ("verify", "if [ \"$(grep -cF 'check_remove_unused_displays(None, None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then", "if false; then # post-drain display gate disabled", "shared post-drain display-reconciliation gate"),
     ("dart_verify", "cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1", "true # generated-bridge mobile lifecycle tests disabled", "generated-bridge mobile lifecycle behavior gate"),

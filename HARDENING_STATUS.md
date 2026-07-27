@@ -515,11 +515,48 @@ delayed keyboard, metrics, menu, post-frame, and key-help work also refuses a re
 unchanged. iOS shares the exact per-connection and reusable-model corrections without Android's retained service
 or Activity-owner admission layer.
 
+Follow-up correction (2026-07-27), **R-S11ec/R-S11e-147 outgoing clipboard network-round ownership**:
+the shared viewer clipboard loop still used a process-global `running` Boolean and discarded both desktop and
+Android thread handles. Its production stop comment documented the broken edge: when the peer closed first,
+Flutter's handler remained in `SESSIONS` until later UI disposal, so `has_sessions_running(DEFAULT_CONN)` returned
+true and the finished I/O round skipped clipboard stop. No later native close retried it. The Windows
+file-clipboard `ContextSend` lifetime used the same stale UI-map predicate. On Android the intentionally
+persistent controlled-side service kept that detached outgoing poller alive across task swipe/relaunch; the same
+liveness error and lost join authority existed in desktop Flutter builds. This is source-proven shared viewer
+resource-lifecycle debt, not proof that the clipboard poller caused the reported screen-control hang, not a reason
+to stop `MainService`, and not evidence of host modification, public exposure, privilege escalation, container
+escape, exploitation, or compromise.
+
+Every default outgoing I/O round now owns a fresh monotonic clipboard lease from function entry through every
+return/error/cancellation path. The runtime retains the exact lease set, worker stop token, and sole
+`JoinHandle`. Peer-info admission starts at most one shared worker. Releasing a stale or non-last lease cannot
+stop another round; the exact last release closes listener admission, removes the retained handle, and transfers
+it to the existing fixed bounded off-runtime completion pool. A replacement round admitted during that drain is
+retained, its start request is recorded, and it cannot start a worker until the old exact handle has joined.
+Completion finalizes Linux clipboard-FUSE and Windows file-clipboard context state only if the exact lease set is
+still empty; otherwise it restarts the shared worker for the retained replacement. The UI-handler map no longer
+participates in network-resource liveness, the `has_sessions_running` facade and admitted-bug comment are deleted,
+and both platform worker spawns are named and handle-owned. iOS does not compile this clipboard worker. Exact
+lease/ABA behavior plus focused/shared/independent source and mutation gates bind R-S11ec and Appendix C #282.
+Installed/native behavior, current APK/device reproduction, and exact cold R-B2/R-B10 release evidence remain
+open under their existing rows.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust
 library, and then links and runs the generated-bridge mobile-session lifecycle test set with those same features.
-All seven native lifecycle regressions pass. That executable
+All seven generated-bridge mobile-session regressions pass, and the exact clipboard-lease regression runs
+separately under the same shipped feature set. The counted 2026-07-27 transaction used immutable Debian builder
+`sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2` as UID/GID
+1000:1000 with no network or pull, a read-only root, dropped capabilities, no-new-privileges, finite resources,
+private source/offline-input snapshots, and exact closure digest
+`a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`. It completed with zero analyzer
+errors, all four Flutter test files passing, the shipped-feature Rust library check passing, all seven
+generated-bridge mobile lifecycle tests passing, and
+`client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop` passing. The focused ownership
+verifier additionally rejected all 185 deliberate mutations after the compiled peer-handler lease handoff was
+made explicit. No APK, device, installed-service, listener, or release-artifact result is inferred from those
+source/integration checks. That executable
 test also exposed an older Linux release-link defect: the pinned Debian builder's libc did not export the
 `renameat2` wrapper used by durable service-record publication. The call now uses the Linux `SYS_renameat2`
 syscall directly, preserving `RENAME_NOREPLACE`, errno handling, and the existing `ENOSYS`/`EINVAL` fallback; the
@@ -14921,7 +14958,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-2f2cf27cfd7f8aca3a0898f67014cd5ca395c421f5b2fdee259fe4c9d63622aa  requirements.html
+07c51667a61ae5ea9ea94b7018985fb5183868fa8d8f982f1dcabc82603f9e8f  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -14929,3 +14966,4 @@ R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c,
 by the R-B2 manifest.
 The same identity additionally binds R-S11ea and Appendix C #280.
 The same identity additionally binds R-S11eb and Appendix C #281.
+The same identity additionally binds R-S11ec and Appendix C #282.

@@ -15270,6 +15270,22 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android owner/connection ledger contract",
         ),
         (
+            '"outgoing clipboard exact lease set"',
+            "outgoing clipboard exact lease-set contract",
+        ),
+        (
+            '"clipboard lease spans the exact outgoing network round"',
+            "outgoing clipboard network-round lifetime contract",
+        ),
+        (
+            '"join-complete zero-owner cleanup or replacement restart"',
+            "outgoing clipboard completion-finality contract",
+        ),
+        (
+            '"outgoing clipboard hardening ledger"',
+            "outgoing clipboard requirements/ledger contract",
+        ),
+        (
             '"same-isolate Rust-and-recorder Activity resume with exact failure cleanup"',
             "Android resume-failure exact cleanup contract",
         ),
@@ -15822,6 +15838,162 @@ def validate_android_voice_call_ownership_contract(sources):
         "R-S11eb/R-S11e-146",
         "Android owner/connection hardening ledger source",
     )
+    client = sources["client_source"]
+    client_io_loop = sources["client_io_loop"]
+    clipboard_leases = extract_between(
+        client,
+        "impl ClipboardLeaseSet {",
+        "\n}\n\n#[cfg(not(target_os = \"ios\"))]\nstruct ClientClipboardWorker",
+        "outgoing clipboard exact lease-set source",
+    )
+    require_order(
+        clipboard_leases,
+        (
+            "let next = self.next.checked_add(1)?;",
+            "self.next = next;",
+            "self.active.insert(next)",
+        ),
+        "outgoing clipboard monotonic lease source",
+    )
+    require_order(
+        clipboard_leases,
+        (
+            "if !self.active.remove(&lease)",
+            "ClipboardLeaseRelease::Missing",
+            "self.active.is_empty()",
+            "ClipboardLeaseRelease::Last",
+            "ClipboardLeaseRelease::Remaining",
+        ),
+        "outgoing clipboard exact lease release source",
+    )
+    require_text(
+        client,
+        "worker: Option<ClientClipboardWorker>,",
+        "outgoing clipboard retained worker owner source",
+    )
+    require_text(
+        client,
+        "stop_requested: Arc<AtomicBool>,\n"
+        "    thread: std::thread::JoinHandle<()>,",
+        "outgoing clipboard stop-and-join authority source",
+    )
+    require_text(
+        client_io_loop,
+        ".then(Client::acquire_clipboard_session);",
+        "outgoing clipboard network-round acquisition source",
+    )
+    require_text(
+        client_io_loop,
+        "drop(clipboard_session.take());",
+        "outgoing clipboard network-round release source",
+    )
+    require_order(
+        client_io_loop,
+        (
+            ".then(Client::acquire_clipboard_session);",
+            ".run_start(",
+            "self.shutdown_workers().await;",
+            "self.handler.connection_round_owner.finish(round)",
+            "drop(clipboard_session.take());",
+        ),
+        "outgoing clipboard exact network-round source",
+    )
+    require_order(
+        client_io_loop,
+        (
+            ".handle_msg_from_peer(",
+            "clipboard_session.as_ref(),",
+            "#[cfg(not(target_os = \"ios\"))] clipboard_session: Option<&ClientClipboardSession>",
+            "let rx = clipboard_session.and_then(|session|",
+        ),
+        "outgoing clipboard peer-handler exact lease source",
+    )
+    require_order(
+        client_io_loop,
+        (
+            "let rx = clipboard_session.and_then(|session|",
+            "Client::try_start_clipboard(",
+            "session, Default::default()",
+        ),
+        "outgoing clipboard peer-info exact lease source",
+    )
+    require_text(
+        client,
+        "worker.stop_requested.store(true, Ordering::Release);",
+        "outgoing clipboard stop publication source",
+    )
+    require_text(
+        client,
+        "state.worker_transition = true;",
+        "outgoing clipboard transition owner source",
+    )
+    require_text(
+        client,
+        "on_complete: Some(MediaWorkerCompletion::ClientClipboard)",
+        "outgoing clipboard completion callback source",
+    )
+    require_order(
+        client,
+        (
+            "let worker = state.worker.take()?;",
+            "worker.stop_requested.store(true, Ordering::Release);",
+            "state.worker_transition = true;",
+            "clipboard_listener::unsubscribe(Self::CLIENT_CLIPBOARD_NAME);",
+            "handoff_client_clipboard_worker(worker);",
+            "Client::finish_client_clipboard_worker_transition();",
+        ),
+        "outgoing clipboard stop, bounded join, and completion source",
+    )
+    require_order(
+        client,
+        (
+            "if state.leases.is_empty() {",
+            "Self::finish_client_clipboard_runtime_locked(&mut state);",
+            "state.pending_start.is_some()",
+            "Self::start_client_clipboard_worker_locked(&mut state, false)",
+        ),
+        "outgoing clipboard zero-owner cleanup or replacement source",
+    )
+    require_absent(
+        client + client_io_loop + sources["flutter_source"],
+        "has_sessions_running",
+        "outgoing clipboard UI-registry liveness absence source",
+    )
+    require_absent(
+        client,
+        "running: bool",
+        "outgoing clipboard global Boolean owner source",
+    )
+    require_text(
+        client,
+        "clipboard_leases_track_exact_network_rounds_without_stale_stop",
+        "outgoing clipboard exact lease behavior source",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11ec</span>',
+        "outgoing clipboard normative requirement source",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>282</td>",
+        "outgoing clipboard Appendix C row source",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ec/R-S11e-147",
+        "outgoing clipboard hardening ledger source",
+    )
+    require_text(
+        sources["verify"],
+        "client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop",
+        "outgoing clipboard shared lifecycle gate source",
+    )
+    require_text(
+        sources["dart_verify"],
+        "client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop",
+        "outgoing clipboard generated-bridge lifecycle gate source",
+    )
     require_text(
         sources["verify"],
         "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs",
@@ -15957,6 +16129,46 @@ def validate_android_voice_call_ownership_contract(sources):
         focused,
         '("requirements", \'<span class="id">R-S11eb</span>\', \'<span class="id">R-S11eb-disabled</span>\', "mobile owner/connection requirement"),',
         "Android owner/connection requirement mutation",
+    )
+    require_text(
+        focused,
+        '("client", "let next = self.next.checked_add(1)?;", "let next = self.next.wrapping_add(1);", "clipboard monotonic lease identity"),',
+        "outgoing clipboard monotonic lease mutation",
+    )
+    require_text(
+        focused,
+        '("client", "worker.stop_requested.store(true, Ordering::Release);", "worker.stop_requested.store(true, Ordering::Relaxed);", "clipboard stop publication"),',
+        "outgoing clipboard stop publication mutation",
+    )
+    require_text(
+        focused,
+        '("client", "on_complete: Some(MediaWorkerCompletion::ClientClipboard)", "on_complete: None", "clipboard completion callback authority"),',
+        "outgoing clipboard completion mutation",
+    )
+    require_text(
+        focused,
+        '("io_loop", "drop(clipboard_session.take());", "let _ = clipboard_session.take();", "clipboard network-round release"),',
+        "outgoing clipboard network-round release mutation",
+    )
+    require_text(
+        focused,
+        '("io_loop", "clipboard_session.as_ref(),", "None,", "clipboard peer-handler exact-lease handoff"),',
+        "outgoing clipboard peer-handler lease-handoff mutation",
+    )
+    require_text(
+        focused,
+        '("io_loop", "#[cfg(not(target_os = \\"ios\\"))] clipboard_session: Option<&ClientClipboardSession>", "#[cfg(not(target_os = \\"ios\\"))] _clipboard_session: Option<&ClientClipboardSession>", "clipboard peer-handler lease parameter"),',
+        "outgoing clipboard peer-handler lease-parameter mutation",
+    )
+    require_text(
+        focused,
+        '("requirements", \'<span class="id">R-S11ec</span>\', \'<span class="id">R-S11ec-disabled</span>\', "clipboard network-round requirement"),',
+        "outgoing clipboard requirement mutation",
+    )
+    require_text(
+        focused,
+        '("hardening", "R-S11ec/R-S11e-147", "R-S11ec-disabled/R-S11e-147", "clipboard network-round hardening ledger"),',
+        "outgoing clipboard ledger mutation",
     )
     require_text(
         focused,
@@ -44294,6 +44506,108 @@ def run_source_mutations(sources):
             "flutter test --no-pub test/mobile_file_session_lifecycle_test.dart",
             "true # mobile file-session lifecycle test disabled",
             "Android mobile file-session lifecycle behavior gate source",
+        ),
+        (
+            "client_source",
+            "let next = self.next.checked_add(1)?;",
+            "let next = self.next.wrapping_add(1);",
+            "outgoing clipboard monotonic lease source",
+        ),
+        (
+            "client_source",
+            "if !self.active.remove(&lease)",
+            "if !self.active.contains(&lease)",
+            "outgoing clipboard exact lease release source",
+        ),
+        (
+            "client_source",
+            "worker: Option<ClientClipboardWorker>,",
+            "worker: Option<()>,",
+            "outgoing clipboard retained worker owner source",
+        ),
+        (
+            "client_source",
+            "worker.stop_requested.store(true, Ordering::Release);",
+            "worker.stop_requested.store(true, Ordering::Relaxed);",
+            "outgoing clipboard stop publication source",
+        ),
+        (
+            "client_source",
+            "state.worker_transition = true;",
+            "state.worker_transition = false;",
+            "outgoing clipboard transition owner source",
+        ),
+        (
+            "client_source",
+            "on_complete: Some(MediaWorkerCompletion::ClientClipboard)",
+            "on_complete: None",
+            "outgoing clipboard completion callback source",
+        ),
+        (
+            "client_source",
+            "clipboard_leases_track_exact_network_rounds_without_stale_stop",
+            "clipboard_leases_ignore_stale_network_round_stop",
+            "outgoing clipboard exact lease behavior source",
+        ),
+        (
+            "client_io_loop",
+            ".then(Client::acquire_clipboard_session);",
+            ".then(|| ClientClipboardSession { lease: None });",
+            "outgoing clipboard network-round acquisition source",
+        ),
+        (
+            "client_io_loop",
+            "clipboard_session.as_ref(),",
+            "None,",
+            "outgoing clipboard peer-handler exact lease source",
+        ),
+        (
+            "client_io_loop",
+            "#[cfg(not(target_os = \"ios\"))] clipboard_session: Option<&ClientClipboardSession>",
+            "#[cfg(not(target_os = \"ios\"))] _clipboard_session: Option<&ClientClipboardSession>",
+            "outgoing clipboard peer-handler exact lease source",
+        ),
+        (
+            "client_io_loop",
+            "drop(clipboard_session.take());",
+            "let _ = clipboard_session.take();",
+            "outgoing clipboard network-round release source",
+        ),
+        (
+            "flutter_source",
+            "\n}\n\nfn close_client_owner_drain(",
+            "\n    pub fn has_sessions_running() -> bool { true }\n}\n\nfn close_client_owner_drain(",
+            "outgoing clipboard UI-registry liveness absence source",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ec</span>',
+            '<span class="id">R-S11ec-disabled</span>',
+            "outgoing clipboard normative requirement source",
+        ),
+        (
+            "requirements",
+            "<tr><td>282</td>",
+            "<tr><td>282-disabled</td>",
+            "outgoing clipboard Appendix C row source",
+        ),
+        (
+            "hardening",
+            "R-S11ec/R-S11e-147",
+            "R-S11ec-disabled/R-S11e-147",
+            "outgoing clipboard hardening ledger source",
+        ),
+        (
+            "verify",
+            "client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop",
+            "client::tests::clipboard_lifecycle_gate_disabled",
+            "outgoing clipboard shared lifecycle gate source",
+        ),
+        (
+            "dart_verify",
+            "client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop",
+            "client::tests::clipboard_lifecycle_gate_disabled",
+            "outgoing clipboard generated-bridge lifecycle gate source",
         ),
         (
             "main_dart",

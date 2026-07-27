@@ -15,7 +15,7 @@ import '../consts.dart';
 import 'platform_model.dart';
 
 class RelativeMouseModel {
-  final SessionID sessionId;
+  final SessionID Function() getSessionId;
   final RxBool enabled;
 
   final bool Function() keyboardPerm;
@@ -29,7 +29,7 @@ class RelativeMouseModel {
   final void Function(bool inside) setPointerInsideImage;
 
   RelativeMouseModel({
-    required this.sessionId,
+    required this.getSessionId,
     required this.enabled,
     required this.keyboardPerm,
     required this.isViewCamera,
@@ -695,13 +695,14 @@ class RelativeMouseModel {
     Map<String, dynamic> msg, {
     bool disableRelativeOnError = true,
     bool bypassKeyboardPerm = false,
+    SessionID? expectedSessionId,
   }) async {
     if (!bypassKeyboardPerm && !keyboardPerm()) return false;
     if (isViewCamera()) return false;
 
     try {
       await bind.sessionSendMouse(
-        sessionId: sessionId,
+        sessionId: expectedSessionId ?? getSessionId(),
         msg: json.encode(modify(msg)),
       );
       return true;
@@ -982,7 +983,7 @@ class RelativeMouseModel {
     );
   }
 
-  void _resetState() {
+  void _resetState({SessionID? expectedSessionId}) {
     // Flush any pending delta before clearing state.
     // This ensures the last buffered movement is sent before values are zeroed.
     // Fire-and-forget: we don't wait for the async send to complete.
@@ -999,7 +1000,7 @@ class RelativeMouseModel {
           'type': 'move_relative',
           'x': '$x',
           'y': '$y',
-        }, disableRelativeOnError: false);
+        }, disableRelativeOnError: false, expectedSessionId: expectedSessionId);
       }
     }
     _accumulator.reset();
@@ -1015,7 +1016,7 @@ class RelativeMouseModel {
 
   /// Core cleanup logic shared by [_disableWithCleanup] and [dispose].
   /// Sends disable message to Rust, releases platform resources, and resets state.
-  void _performCleanupCore() {
+  void _performCleanupCore({SessionID? expectedSessionId}) {
     // Best-effort marker for Rust rdev grab loop (ESC behavior).
     // Bypass keyboardPerm check to ensure Rust state is always synced.
     _sendMouseMessageToSession(
@@ -1024,6 +1025,7 @@ class RelativeMouseModel {
       },
       disableRelativeOnError: false,
       bypassKeyboardPerm: true,
+      expectedSessionId: expectedSessionId,
     );
 
     // macOS: Disable native relative mouse mode
@@ -1034,7 +1036,7 @@ class RelativeMouseModel {
       _releaseCursorClip();
     }
 
-    _resetState();
+    _resetState(expectedSessionId: expectedSessionId);
   }
 
   void _disableWithCleanup() {
@@ -1045,11 +1047,19 @@ class RelativeMouseModel {
 
   bool _disposed = false;
 
-  void dispose() {
+  void resetForSession(SessionID expectedSessionId) {
+    _performCleanupCore(expectedSessionId: expectedSessionId);
+    _imageWidgetSize = null;
+    _lastToggle = null;
+    enabled.value = false;
+    onDisabled?.call();
+  }
+
+  void dispose({SessionID? expectedSessionId}) {
     if (_disposed) return;
     _disposed = true;
 
-    _performCleanupCore();
+    _performCleanupCore(expectedSessionId: expectedSessionId);
     _imageWidgetSize = null;
     _lastToggle = null;
     // Set enabled to false BEFORE calling onDisabled, consistent with _disableWithCleanup().

@@ -206,6 +206,7 @@ def validate_contract(sources: Dict[str, str]) -> None:
             'analyze_status=$?',
             'if [ "$analyze_status" -ne 0 ] || [ "$errs" != "0" ]; then',
             'flutter test --no-pub test/address_validator_test.dart',
+            'flutter test --no-pub test/mobile_file_session_lifecycle_test.dart',
             '--env "RUSTDESK_RUST_VERSION=$RUST_VERSION"',
             'tar -C "$toolchain" -xf "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz"',
             '--components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview',
@@ -216,6 +217,8 @@ def validate_contract(sources: Dict[str, str]) -> None:
             'export CARGO_TARGET_DIR=/src/.dart-verify-cargo-target CARGO_INCREMENTAL=0',
             '(cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline --enforce-lockfile >/dev/null)',
             'cargo check --offline --locked --features flutter,unix-file-copy-paste --lib --color never',
+            'cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n'
+            '      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1',
             'if [ "$cargo_lock_before" != "$cargo_lock_after" ]; then',
             'SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum | awk \'{print $1}\')"',
             '[ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ]',
@@ -269,8 +272,17 @@ def validate_contract(sources: Dict[str, str]) -> None:
     )
     require(
         dart.index('cargo check --offline --locked --features flutter,unix-file-copy-paste')
+        < dart.index(
+            'cargo test --offline --locked --lib --features flutter,unix-file-copy-paste'
+        ),
+        "generated-bridge mobile lifecycle tests do not follow the shipped-feature check",
+    )
+    require(
+        dart.index(
+            'cargo test --offline --locked --lib --features flutter,unix-file-copy-paste'
+        )
         < dart.index('cargo_lock_after="$(sha256sum Cargo.lock'),
-        "Rust lock identity is not checked after the shipped-feature check",
+        "Rust lock identity is not checked after the generated-bridge lifecycle tests",
     )
     for forbidden in (
         "docker build",
@@ -633,6 +645,19 @@ MUTATIONS = (
         'cargo check --offline --locked --features flutter,unix-file-copy-paste --lib --color never',
         'cargo check --features flutter --lib --color never',
         "exact locked shipped-feature Rust check",
+    ),
+    Mutation(
+        "dart",
+        'cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n'
+        '      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1',
+        'true # generated-bridge mobile lifecycle tests disabled',
+        "generated-bridge mobile lifecycle regressions",
+    ),
+    Mutation(
+        "dart",
+        "flutter test --no-pub test/mobile_file_session_lifecycle_test.dart",
+        "true # mobile file-session lifecycle test disabled",
+        "mobile file-session lifecycle regression",
     ),
     Mutation(
         "dart",

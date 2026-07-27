@@ -8,13 +8,11 @@ import 'package:toggle_switch/toggle_switch.dart';
 
 import '../../common.dart';
 import '../../common/widgets/dialog.dart';
+import '../../models/platform_model.dart';
 
 class FileManagerPage extends StatefulWidget {
   FileManagerPage(
-      {Key? key,
-      required this.id,
-      this.password,
-      this.isSharedPassword})
+      {Key? key, required this.id, this.password, this.isSharedPassword})
       : super(key: key);
   final String id;
   final String? password;
@@ -62,6 +60,7 @@ extension SelectModeExt on Rx<SelectMode> {
 class _FileManagerPageState extends State<FileManagerPage> {
   final model = gFFI.fileModel;
   final selectMode = SelectMode.none.obs;
+  late final SessionID sessionId;
 
   var showLocal = true;
 
@@ -74,26 +73,43 @@ class _FileManagerPageState extends State<FileManagerPage> {
   @override
   void initState() {
     super.initState();
-    gFFI.start(widget.id,
+    sessionId = gFFI.start(widget.id,
         isFileTransfer: true,
         password: widget.password,
         isSharedPassword: widget.isSharedPassword);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
       gFFI.dialogManager
           .showLoading(translate('Connecting...'), onCancel: closeConnection);
     });
-    gFFI.ffiModel.updateEventListener(gFFI.sessionId, widget.id);
+    gFFI.ffiModel.updateEventListener(sessionId, widget.id);
     WakelockManager.enable(_uniqueKey);
   }
 
   @override
   void dispose() {
-    model.close().whenComplete(() {
-      gFFI.close();
-      gFFI.dialogManager.dismissAll();
-      WakelockManager.disable(_uniqueKey);
-    });
-    model.jobController.clear();
+    unawaited(() async {
+      try {
+        try {
+          await model.close(sessionId);
+        } catch (error, stackTrace) {
+          debugPrint('Failed to close file model session $sessionId: $error');
+          debugPrintStack(stackTrace: stackTrace);
+        }
+        await gFFI.close(expectedSessionId: sessionId);
+        if (gFFI.sessionId == sessionId) {
+          gFFI.dialogManager.dismissAll();
+        }
+      } catch (error, stackTrace) {
+        debugPrint('Failed to finish file session $sessionId cleanup: $error');
+        debugPrintStack(stackTrace: stackTrace);
+      } finally {
+        WakelockManager.disable(_uniqueKey);
+      }
+    }());
+    if (gFFI.sessionId == sessionId) {
+      model.jobController.clear();
+    }
     super.dispose();
   }
 
@@ -114,7 +130,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
           leading: Row(children: [
             IconButton(
                 icon: Icon(Icons.close),
-                onPressed: () => clientClose(gFFI.sessionId, gFFI)),
+                onPressed: () => clientClose(sessionId, gFFI)),
           ]),
           centerTitle: true,
           title: ToggleSwitch(
@@ -432,6 +448,8 @@ class _FileManagerViewState extends State<FileManagerView> {
   final _listScrollController = ScrollController();
   final _breadCrumbScroller = ScrollController();
   late final ascending = Rx<bool>(controller.sortAscending);
+  late final StreamSubscription<FileDirectory> _directorySubscription;
+  Timer? _breadCrumbTimer;
 
   bool get isLocal => widget.controller.isLocal;
   FileController get controller => widget.controller;
@@ -440,7 +458,17 @@ class _FileManagerViewState extends State<FileManagerView> {
   @override
   void initState() {
     super.initState();
-    controller.directory.listen((e) => breadCrumbScrollToEnd());
+    _directorySubscription =
+        controller.directory.listen((e) => breadCrumbScrollToEnd());
+  }
+
+  @override
+  void dispose() {
+    unawaited(_directorySubscription.cancel());
+    _breadCrumbTimer?.cancel();
+    _listScrollController.dispose();
+    _breadCrumbScroller.dispose();
+    super.dispose();
   }
 
   @override
@@ -585,7 +613,9 @@ class _FileManagerViewState extends State<FileManagerView> {
   }
 
   void breadCrumbScrollToEnd() {
-    Future.delayed(Duration(milliseconds: 200), () {
+    _breadCrumbTimer?.cancel();
+    _breadCrumbTimer = Timer(Duration(milliseconds: 200), () {
+      if (!mounted) return;
       if (_breadCrumbScroller.hasClients) {
         _breadCrumbScroller.animateTo(
             _breadCrumbScroller.position.maxScrollExtent,

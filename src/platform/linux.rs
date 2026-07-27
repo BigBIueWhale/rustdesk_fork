@@ -922,7 +922,8 @@ impl ServiceRuntime {
         drop(temporary);
 
         let rename_rc = unsafe {
-            hbb_common::libc::renameat2(
+            hbb_common::libc::syscall(
+                hbb_common::libc::SYS_renameat2,
                 self.directory.as_raw_fd(),
                 SERVICE_CHILD_RECORD_TMP.as_ptr() as *const c_char,
                 self.directory.as_raw_fd(),

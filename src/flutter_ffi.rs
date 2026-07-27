@@ -149,10 +149,17 @@ pub fn peer_get_sessions_count(id: String, conn_type: i32) -> SyncReturn<usize> 
 pub fn session_add_existed_sync(
     id: String,
     session_id: SessionID,
+    client_owner_id: SessionID,
     displays: Vec<i32>,
     is_view_camera: bool,
 ) -> SyncReturn<String> {
-    if let Err(e) = session_add_existed(id.clone(), session_id, displays, is_view_camera) {
+    if let Err(e) = session_add_existed(
+        id.clone(),
+        session_id,
+        client_owner_id,
+        displays,
+        is_view_camera,
+    ) {
         SyncReturn(format!("Failed to add session with id {}, {}", &id, e))
     } else {
         SyncReturn("".to_owned())
@@ -161,6 +168,7 @@ pub fn session_add_existed_sync(
 
 pub fn session_add_sync(
     session_id: SessionID,
+    client_owner_id: SessionID,
     id: String,
     is_file_transfer: bool,
     is_view_camera: bool,
@@ -173,6 +181,7 @@ pub fn session_add_sync(
 ) -> SyncReturn<String> {
     let add_res = session_add(
         &session_id,
+        &client_owner_id,
         &id,
         is_file_transfer,
         is_view_camera,
@@ -194,18 +203,20 @@ pub fn session_add_sync(
 pub fn session_start(
     events2ui: StreamSink<EventToUI>,
     session_id: SessionID,
+    client_owner_id: SessionID,
     id: String,
 ) -> ResultType<()> {
-    session_start_(&session_id, &id, events2ui)
+    session_start_(&session_id, &client_owner_id, &id, events2ui)
 }
 
 pub fn session_start_with_displays(
     events2ui: StreamSink<EventToUI>,
     session_id: SessionID,
+    client_owner_id: SessionID,
     id: String,
     displays: Vec<i32>,
 ) -> ResultType<()> {
-    session_start_(&session_id, &id, events2ui)?;
+    session_start_(&session_id, &client_owner_id, &id, events2ui)?;
 
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         session.capture_displays(displays.clone(), vec![], vec![]);

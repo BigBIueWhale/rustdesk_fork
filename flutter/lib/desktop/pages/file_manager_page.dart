@@ -119,7 +119,7 @@ class _FileManagerPageState extends State<FileManagerPage>
 
   @override
   void dispose() {
-    model.close().whenComplete(() {
+    model.close(_ffi.sessionId).whenComplete(() {
       _ffi.close();
       _ffi.dialogManager.dismissAll();
       WakelockManager.disable(_uniqueKey);

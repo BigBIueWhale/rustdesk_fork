@@ -68,6 +68,7 @@ class RustdeskImpl {
   String sessionAddExistedSync(
       {required String id,
       required UuidValue sessionId,
+      required UuidValue clientOwnerId,
       required Int32List displays,
       required bool isViewCamera,
       dynamic hint}) {
@@ -76,6 +77,7 @@ class RustdeskImpl {
 
   String sessionAddSync(
       {required UuidValue sessionId,
+      required UuidValue clientOwnerId,
       required String id,
       required bool isFileTransfer,
       required bool isViewCamera,
@@ -100,7 +102,10 @@ class RustdeskImpl {
   }
 
   Stream<EventToUI> sessionStart(
-      {required UuidValue sessionId, required String id, dynamic hint}) {
+      {required UuidValue sessionId,
+      required UuidValue clientOwnerId,
+      required String id,
+      dynamic hint}) {
     js.context.callMethod('setByName', [
       'session_start',
       jsonEncode({'id': id})
@@ -110,6 +115,7 @@ class RustdeskImpl {
 
   Stream<EventToUI> sessionStartWithDisplays(
       {required UuidValue sessionId,
+      required UuidValue clientOwnerId,
       required String id,
       required Int32List displays,
       dynamic hint}) {

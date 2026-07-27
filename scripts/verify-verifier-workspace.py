@@ -15174,6 +15174,102 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android Rust cross-isolate resume-refusal contract",
         ),
         (
+            '"stored mobile client-owner association"',
+            "Android stored owner/connection association contract",
+        ),
+        (
+            '"relative-mouse exact retired-session cleanup count"',
+            "Android relative-mouse exact cleanup-count contract",
+        ),
+        (
+            '"owner-admitted replacement drain and insertion"',
+            "Android replacement drain-before-insertion contract",
+        ),
+        (
+            '"owner-associated outgoing worker start"',
+            "Android owner-associated worker-start contract",
+        ),
+        (
+            '"fresh mobile connection and captured event-stream identity"',
+            "Android fresh connection/event-epoch contract",
+        ),
+        (
+            '"exact state-persist then native-close and stale shared-model refusal"',
+            "Android exact close/shared-model contract",
+        ),
+        (
+            '"both stale-entry and persisted-current exact native closes"',
+            "Android dual exact-close count contract",
+        ),
+        (
+            '"complete pre-rotation reusable-model reset"',
+            "Android complete reusable-model reset contract",
+        ),
+        (
+            '"complete reused FFI-state reset"',
+            "Android complete FFI-state reset contract",
+        ),
+        (
+            '"complete reused canvas-state reset"',
+            "Android complete canvas-state reset contract",
+        ),
+        (
+            '"complete reused cursor-state reset"',
+            "Android complete cursor-state reset contract",
+        ),
+        (
+            '"file-controller prior-peer state retirement"',
+            "Android prior-peer file-controller reset contract",
+        ),
+        (
+            "file_dialog_clear = extract_item(",
+            "Android exact file-dialog clear-method extraction contract",
+        ),
+        (
+            '"file-dialog synchronous reset"',
+            "Android file-dialog clear-method scope contract",
+        ),
+        (
+            '"delayed reconnect exact-session refusal"',
+            "Android delayed reconnect session contract",
+        ),
+        (
+            '"delayed Android overlay exact-session refusal"',
+            "Android delayed overlay session contract",
+        ),
+        (
+            '"delayed mobile canvas-focus exact-session refusal"',
+            "Android delayed canvas-focus session contract",
+        ),
+        (
+            '"delayed mobile canvas-restore exact-session refusal"',
+            "Android delayed canvas-restore session contract",
+        ),
+        (
+            'f"{label} delayed orientation exact-session refusal"',
+            "Android delayed page-orientation session contract",
+        ),
+        (
+            '"borrowed relative-mouse connection identity"',
+            "Android borrowed submodel identity contract",
+        ),
+        (
+            '"paired mobile mouse input exact-session ownership"',
+            "Android paired mobile mouse session contract",
+        ),
+        (
+            '"paired mobile HID input exact-session ownership"',
+            "Android paired mobile HID session contract",
+        ),
+        (
+            '"file-transfer pending-resource retirement at connection start"',
+            "Android file-transfer pending-resource contract",
+        ),
+        (
+            '"mobile owner/connection hardening ledger"',
+            "Android owner/connection ledger contract",
+        ),
+        (
             '"same-isolate Rust-and-recorder Activity resume with exact failure cleanup"',
             "Android resume-failure exact cleanup contract",
         ),
@@ -15346,6 +15442,267 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android Rust stale-Activity resume regression source",
         ),
         (
+            "flutter_source",
+            "client_owner_id: Option<SessionID>",
+            "Android stored mobile client-owner association source",
+        ),
+        (
+            "flutter_source",
+            "close_previous_mobile_client_sessions(client_owner_id, session_id)",
+            "Android replacement pre-insertion drain source",
+        ),
+        (
+            "flutter_source",
+            "sessions::session_has_client_owner(session_id, client_owner_id)",
+            "Android owner-associated outgoing start source",
+        ),
+        (
+            "flutter_source",
+            "excluded_session_id: Option<&SessionID>",
+            "Android optional display-reconciliation exclusion source",
+        ),
+        (
+            "flutter_source",
+            "fn stale_mobile_session_close_cannot_select_replacement_from_same_owner()",
+            "Android stale-close replacement regression source",
+        ),
+        (
+            "model_dart",
+            "final _mobileClientOwnerId = Uuid().v4obj();",
+            "Android canonical mobile owner UUID source",
+        ),
+        (
+            "model_dart",
+            "late SessionID sessionId;\n  late final SessionID clientOwnerId;",
+            "Android rotating connection versus immutable owner source",
+        ),
+        (
+            "model_dart",
+            "if (closed || sessionId != activeSessionId) return;",
+            "Android stale event-stream refusal source",
+        ),
+        (
+            "model_dart",
+            "mobileReset(previousSessionId);",
+            "Android pre-rotation exact-session model reset source",
+        ),
+        (
+            "model_dart",
+            "qualityMonitorModel.reset();",
+            "Android quality-monitor state retirement source",
+        ),
+        (
+            "model_dart",
+            "recordingModel.reset();",
+            "Android recording state retirement source",
+        ),
+        (
+            "model_dart",
+            "_x = -10000;\n    _y = -10000;\n    _id = \"-1\";",
+            "Android cursor y-state retirement source",
+        ),
+        (
+            "model_dart",
+            "_edgeScrollFallbackState = null;",
+            "Android canvas fallback retirement source",
+        ),
+        (
+            "model_dart",
+            "void reconnect(OverlayDialogManager dialogManager, SessionID sessionId) {\n"
+            "    if (!_isCurrentSession(sessionId)) return;",
+            "Android delayed reconnect refusal source",
+        ),
+        (
+            "model_dart",
+            "tryShowAndroidActionsOverlay(SessionID expectedSessionId,",
+            "Android delayed overlay identity source",
+        ),
+        (
+            "model_dart",
+            "void mobileFocusCanvasCursor() {\n"
+            "    final expectedSessionId = parent.target?.sessionId;",
+            "Android delayed canvas-focus identity source",
+        ),
+        (
+            "model_dart",
+            "void restoreMobileOffsetAfterSoftKeyboard() {\n"
+            "    final expectedSessionId = parent.target?.sessionId;",
+            "Android delayed canvas-restore identity source",
+        ),
+        (
+            "model_dart",
+            "final remoteWindowCoords = <RemoteWindowCoords>[];\n"
+            "      final windowRect =\n"
+            "          await InputModel.fillRemoteCoordsAndGetCurFrame(remoteWindowCoords);",
+            "Android staged cursor-coordinate publication source",
+        ),
+        (
+            "file_model_dart",
+            "fileFetcher.cancelPending();",
+            "Android stale file-task retirement source",
+        ),
+        (
+            "file_model_dart",
+            "localController.resetForSession();",
+            "Android prior-peer file-controller retirement source",
+        ),
+        (
+            "file_model_dart",
+            "void clear() {\n    super.clear();\n    _overrideConfirm = null;\n    _skip = false;",
+            "Android file-dialog remembered-policy retirement source",
+        ),
+        (
+            "file_model_dart",
+            "Future<bool> _openDirectoryPath(String path,\n"
+            "      {bool isBack = false, SessionID? expectedSessionId}) async {\n"
+            "    final selectedSessionId = expectedSessionId ?? sessionId;",
+            "Android captured file-controller directory session source",
+        ),
+        (
+            "file_model_dart",
+            "Future<FileDirectory> fetchDirectory(\n"
+            "      String path, bool isLocal, bool showHidden,\n"
+            "      {SessionID? expectedSessionId}) async {\n"
+            "    final selectedSessionId = expectedSessionId ?? sessionId;",
+            "Android captured file-fetcher native session source",
+        ),
+        (
+            "file_model_dart",
+            "final home = await bind.mainGetHomeDir();\n"
+            "      if (!_isCurrentSession(expectedSessionId)) return;\n"
+            "      options.value.home = home;",
+            "Android post-await file-controller publication source",
+        ),
+        (
+            "input_model_dart",
+            "SessionID get sessionId => parent.target!.sessionId;",
+            "Android borrowed input identity source",
+        ),
+        (
+            "input_model_dart",
+            "_relativeMouse.resetForSession(expectedSessionId);",
+            "Android reusable input-model reset source",
+        ),
+        (
+            "input_model_dart",
+            "_lastScale = 1.0;\n"
+            "    _pointerMovedAfterEnter = false;\n"
+            "    _pointerInsideImage = false;\n"
+            "    _lastButtons = 0;\n"
+            "    lastMousePos = Offset.zero;",
+            "Android reusable input coordinate reset source",
+        ),
+        (
+            "input_model_dart",
+            "Future<void> _sendMousePair(MouseButtons button, Duration hold) async {\n"
+            "    if (!keyboardPerm || isViewCamera) return;\n"
+            "    final expectedSessionId = sessionId;",
+            "Android paired mobile mouse identity source",
+        ),
+        (
+            "input_model_dart",
+            "Future<void> tapHidKey(int usbHidUsage) async {\n"
+            "    final expectedSessionId = sessionId;",
+            "Android paired mobile HID identity source",
+        ),
+        (
+            "input_model_dart",
+            "final expectedSessionId = sessionId;\n"
+            "      Future.delayed(Duration.zero, () async {\n"
+            "        final remoteWindowCoords = <RemoteWindowCoords>[];",
+            "Android staged input-coordinate publication source",
+        ),
+        (
+            "chat_model_dart",
+            "SessionID get sessionId => parent.target!.sessionId;",
+            "Android borrowed chat identity source",
+        ),
+        (
+            "relative_mouse_model_dart",
+            "sessionId: expectedSessionId ?? getSessionId(),",
+            "Android borrowed relative-mouse identity source",
+        ),
+        (
+            "relative_mouse_model_dart",
+            "_performCleanupCore(expectedSessionId: expectedSessionId);",
+            "Android exact retired-session relative-mouse cleanup source",
+        ),
+        (
+            "event_loop_dart",
+            "generation == _generation",
+            "Android exact event-loop generation source",
+        ),
+        (
+            "event_loop_dart",
+            "if (!_isCurrent(generation)) return;",
+            "Android stale event-loop callback retirement source",
+        ),
+        (
+            "mobile_remote_page_dart",
+            "gFFI.close(expectedSessionId: sessionId)",
+            "Android remote-page exact cleanup source",
+        ),
+        (
+            "mobile_remote_page_dart",
+            ".tryShowAndroidActionsOverlay(sessionId);",
+            "Android remote-page delayed overlay identity source",
+        ),
+        (
+            "mobile_remote_page_dart",
+            "Timer(const Duration(milliseconds: 200), () {\n"
+            "                                  if (!mounted ||\n"
+            "                                      !gFFI.isCurrentSession(sessionId)) {",
+            "Android remote-page delayed orientation refusal source",
+        ),
+        (
+            "mobile_remote_page_dart",
+            "void onSoftKeyboardChanged(bool visible) {\n"
+            "    if (!mounted || !gFFI.isCurrentSession(sessionId)) return;",
+            "Android remote-page delayed keyboard refusal source",
+        ),
+        (
+            "mobile_remote_page_dart",
+            "if (!mounted || !gFFI.isCurrentSession(widget.sessionId)) return;",
+            "Android remote-page delayed key-help refusal source",
+        ),
+        (
+            "mobile_camera_page_dart",
+            "gFFI.close(expectedSessionId: sessionId)",
+            "Android camera-page exact cleanup source",
+        ),
+        (
+            "mobile_camera_page_dart",
+            ".tryShowAndroidActionsOverlay(sessionId);",
+            "Android camera-page delayed overlay identity source",
+        ),
+        (
+            "mobile_camera_page_dart",
+            "Timer(const Duration(milliseconds: 200), () {\n"
+            "                            if (!mounted || !gFFI.isCurrentSession(sessionId)) {",
+            "Android camera-page delayed orientation refusal source",
+        ),
+        (
+            "mobile_camera_page_dart",
+            "void didChangeMetrics() {\n"
+            "    if (!mounted || !gFFI.isCurrentSession(sessionId)) return;",
+            "Android camera-page delayed metrics refusal source",
+        ),
+        (
+            "mobile_file_page_dart",
+            "gFFI.close(expectedSessionId: sessionId)",
+            "Android file-page exact cleanup source",
+        ),
+        (
+            "mobile_file_page_dart",
+            "unawaited(_directorySubscription.cancel());",
+            "Android file-view subscription retirement source",
+        ),
+        (
+            "mobile_file_lifecycle_test",
+            "expect(directory.path, path);",
+            "Android retired file timeout replacement behavior source",
+        ),
+        (
             "android_main_activity",
             "val retiredRejectedOwner =",
             "Android Rust-rejected resume cleanup source",
@@ -15382,6 +15739,110 @@ def validate_android_voice_call_ownership_contract(sources):
         ),
     ):
         require_text(sources[key], text, label)
+    replacement_drain = extract_between(
+        sources["flutter_source"],
+        "pub(super) fn take_mobile_sessions_except(",
+        "\n    #[inline]\n    pub(super) fn take_sessions_owned_by(",
+        "Android replacement-drain source",
+    )
+    require_text(
+        replacement_drain,
+        "check_remove_unused_displays(None, None, session, &handlers);",
+        "Android replacement drain all-remaining-display reconciliation source",
+    )
+    owner_drain = extract_between(
+        sources["flutter_source"],
+        "pub(super) fn take_sessions_owned_by(",
+        "\n    #[cfg(test)]\n    pub(super) fn contains_peer(",
+        "Android Activity-owner drain source",
+    )
+    require_text(
+        owner_drain,
+        "check_remove_unused_displays(None, None, session, &handlers);",
+        "Android Activity-owner drain all-remaining-display reconciliation source",
+    )
+    require_exact_count(
+        sources["flutter_ffi_source"],
+        "client_owner_id: SessionID,",
+        4,
+        "Android authored add/attach/start dual-identity bridge source",
+    )
+    require_exact_count(
+        sources["model_dart"],
+        "SessionID get sessionId => parent.target!.sessionId;",
+        3,
+        "Android borrowed Ffi/Image/Canvas identity source",
+    )
+    require_exact_count(
+        sources["relative_mouse_model_dart"],
+        "_performCleanupCore(expectedSessionId: expectedSessionId);",
+        2,
+        "Android exact retired-session relative-mouse cleanup source",
+    )
+    require_exact_count(
+        sources["file_model_dart"],
+        "if (identical(tasks[",
+        3,
+        "Android file-fetch timeout exact-completer retirement source",
+    )
+    require_exact_count(
+        sources["flutter_source"],
+        "excluded_session_id: Option<&SessionID>",
+        1,
+        "Android explicit optional display-reconciliation exclusion source",
+    )
+    require_exact_count(
+        sources["mobile_remote_page_dart"],
+        "if (!mounted || !gFFI.isCurrentSession(widget.sessionId)) return;",
+        2,
+        "Android remote-page delayed key-help refusal source",
+    )
+    require_absent(
+        sources["model_dart"],
+        "late final SessionID sessionId;",
+        "Android cached long-lived model session identity",
+    )
+    require_text(
+        sources["main_dart"],
+        "'register_client_session_owner', gFFI.clientOwnerId.toString())",
+        "Android Activity owner registration source",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11eb</span>',
+        "Android owner/connection normative requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>281</td>",
+        "Android owner/connection Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11eb/R-S11e-146",
+        "Android owner/connection hardening ledger source",
+    )
+    require_text(
+        sources["verify"],
+        "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs",
+        "Android shared mobile replacement-drain gate source",
+    )
+    require_text(
+        sources["verify"],
+        "if [ \"$(grep -cF 'check_remove_unused_displays(None, None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then",
+        "Android shared post-drain all-remaining-display reconciliation gate source",
+    )
+    require_text(
+        sources["dart_verify"],
+        "cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n"
+        "      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1",
+        "Android generated-bridge lifecycle behavior gate source",
+    )
+    require_text(
+        sources["dart_verify"],
+        "flutter test --no-pub test/mobile_file_session_lifecycle_test.dart",
+        "Android mobile file-session lifecycle behavior gate source",
+    )
     require_text(
         focused,
         '("audio", "captureProjection === mediaProjection", "captureProjection != null", "exact projection reuse"),',
@@ -15431,6 +15892,71 @@ def validate_android_voice_call_ownership_contract(sources):
         focused,
         '("flutter", "|| self.session_id.as_ref() != Some(&session_id)", "|| false", "Rust cross-isolate Activity resume refusal"),',
         "Android Rust cross-isolate resume mutation",
+    )
+    require_text(
+        focused,
+        '("flutter", "client_owner_id: Option<SessionID>", "client_owner_id: Option<()>", "stored mobile client-owner association"),',
+        "Android stored owner-association mutation",
+    )
+    require_text(
+        focused,
+        '("flutter", "close_previous_mobile_client_sessions(client_owner_id, session_id)", "(0, 0)", "replacement pre-insertion drain"),',
+        "Android replacement-drain mutation",
+    )
+    require_text(
+        focused,
+        '"replacement display reconciliation includes preserved exact session"',
+        "Android replacement-display reconciliation mutation",
+    )
+    require_text(
+        focused,
+        '"Activity-owner display reconciliation includes all remaining sessions"',
+        "Android Activity-owner display reconciliation mutation",
+    )
+    require_text(
+        focused,
+        '"optional display-reconciliation exclusion"',
+        "Android optional display-reconciliation exclusion mutation",
+    )
+    require_text(
+        focused,
+        '"shared post-drain display-reconciliation gate"',
+        "Android shared post-drain display-reconciliation mutation",
+    )
+    require_text(
+        focused,
+        '("dart_model", "if (closed || sessionId != activeSessionId) return;", "if (closed) return;", "stale event-stream refusal"),',
+        "Android stale event-stream mutation",
+    )
+    require_text(
+        focused,
+        '("dart_file_model", "fileFetcher.cancelPending();", "// stale file tasks retained", "file-transfer pending-resource retirement"),',
+        "Android stale file-resource mutation",
+    )
+    require_text(
+        focused,
+        '("dart_model", "mobileReset(previousSessionId);", "mobileReset(clientOwnerId);", "pre-rotation exact-session model reset"),',
+        "Android exact-session model-reset mutation",
+    )
+    require_text(
+        focused,
+        '("dart_input_model", "_relativeMouse.resetForSession(expectedSessionId);", "_relativeMouse.dispose();", "reusable input-model session reset"),',
+        "Android reusable input-model reset mutation",
+    )
+    require_text(
+        focused,
+        '("dart_event_loop", "generation == _generation", "generation <= _generation", "event-loop exact generation"),',
+        "Android exact event-loop generation mutation",
+    )
+    require_text(
+        focused,
+        r'("dart_verify", "cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1", "true # generated-bridge mobile lifecycle tests disabled", "generated-bridge mobile lifecycle behavior gate"),',
+        "Android generated-bridge lifecycle behavior-gate mutation",
+    )
+    require_text(
+        focused,
+        '("requirements", \'<span class="id">R-S11eb</span>\', \'<span class="id">R-S11eb-disabled</span>\', "mobile owner/connection requirement"),',
+        "Android owner/connection requirement mutation",
     )
     require_text(
         focused,
@@ -26526,6 +27052,11 @@ def validate_dart_verifier_authority_contract(sources):
         (
             'flutter test --no-pub test/address_validator_test.dart',
             "Dart verifier focused regression",
+        ),
+        (
+            'cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n'
+            '      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1',
+            "Dart verifier generated-bridge mobile lifecycle regressions",
         ),
         (
             'SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum',
@@ -40550,6 +41081,13 @@ def run_source_mutations(sources):
             "Dart verifier analyzer exit finality",
         ),
         (
+            "dart_verify",
+            'cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n'
+            '      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1',
+            "true # generated-bridge mobile lifecycle tests disabled",
+            "Android generated-bridge lifecycle behavior gate source",
+        ),
+        (
             "frb_codegen",
             'readonly BUILD_UID="$(/usr/bin/id -u)"',
             'readonly BUILD_UID="$(id -u)"',
@@ -43046,6 +43584,142 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
+            '"client_owner_id: Option<SessionID>",\n'
+            '        "stored mobile client-owner association",',
+            '"client_owner_id: Option<SessionID>",\n'
+            '        "ambient mobile session association",',
+            "Android stored owner/connection association contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '("flutter", "client_owner_id: Option<SessionID>", "client_owner_id: Option<()>", "stored mobile client-owner association"),',
+            '("flutter", "client_owner_id: Option<SessionID>", "client_owner_id: Option<()>", "ambient mobile session association"),',
+            "Android stored owner-association mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"relative-mouse exact retired-session cleanup count"',
+            '"relative-mouse ambient cleanup count"',
+            "Android relative-mouse exact cleanup-count contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"owner-admitted replacement drain and insertion"',
+            '"replacement insertion without drain"',
+            "Android replacement drain-before-insertion contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"fresh mobile connection and captured event-stream identity"',
+            '"reused mobile connection identity"',
+            "Android fresh connection/event-epoch contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"exact state-persist then native-close and stale shared-model refusal"',
+            '"late ambient close"',
+            "Android exact close/shared-model contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"both stale-entry and persisted-current exact native closes"',
+            '"one ambient native close"',
+            "Android dual exact-close count contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"complete pre-rotation reusable-model reset"',
+            '"partial reusable-model reset"',
+            "Android complete reusable-model reset contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"complete reused FFI-state reset"',
+            '"partial FFI-state reset"',
+            "Android complete FFI-state reset contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"complete reused canvas-state reset"',
+            '"partial canvas-state reset"',
+            "Android complete canvas-state reset contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"complete reused cursor-state reset"',
+            '"partial cursor-state reset"',
+            "Android complete cursor-state reset contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '        "file-controller prior-peer state retirement",\n'
+            "    )",
+            '        "file-controller state retention",\n'
+            "    )",
+            "Android prior-peer file-controller reset contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            "file_dialog_clear = extract_item(",
+            "file_dialog_clear = file_dialog_loop.partition(",
+            "Android exact file-dialog clear-method extraction contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"file-dialog synchronous reset"',
+            '"whole file-dialog class"',
+            "Android file-dialog clear-method scope contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"delayed reconnect exact-session refusal"',
+            '"ambient delayed reconnect"',
+            "Android delayed reconnect session contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"delayed Android overlay exact-session refusal"',
+            '"ambient delayed Android overlay"',
+            "Android delayed overlay session contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"delayed mobile canvas-focus exact-session refusal"',
+            '"ambient delayed mobile canvas focus"',
+            "Android delayed canvas-focus session contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"delayed mobile canvas-restore exact-session refusal"',
+            '"ambient delayed mobile canvas restore"',
+            "Android delayed canvas-restore session contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            'f"{label} delayed orientation exact-session refusal"',
+            'f"{label} ambient delayed orientation"',
+            "Android delayed page-orientation session contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"file-transfer pending-resource retirement at connection start"',
+            '"file-transfer pending resources retained"',
+            "Android file-transfer pending-resource contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"paired mobile mouse input exact-session ownership"',
+            '"ambient paired mobile mouse input"',
+            "Android paired mobile mouse session contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"paired mobile HID input exact-session ownership"',
+            '"ambient paired mobile HID input"',
+            "Android paired mobile HID session contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
             '"same-isolate Rust-and-recorder Activity resume with exact failure cleanup"',
             '"unchecked Rust-and-recorder Activity resume"',
             "Android resume-failure exact cleanup contract",
@@ -43246,6 +43920,388 @@ def run_source_mutations(sources):
             "Android Rust stale-Activity resume regression source",
         ),
         (
+            "flutter_source",
+            "client_owner_id: Option<SessionID>",
+            "client_owner_id: Option<()>",
+            "Android stored mobile client-owner association source",
+        ),
+        (
+            "flutter_source",
+            "close_previous_mobile_client_sessions(client_owner_id, session_id)",
+            "(0, 0)",
+            "Android replacement pre-insertion drain source",
+        ),
+        (
+            "flutter_source",
+            "sessions::session_has_client_owner(session_id, client_owner_id)",
+            "true",
+            "Android owner-associated outgoing start source",
+        ),
+        (
+            "flutter_source",
+            "for stale_handler_id in stale_handler_ids {\n"
+            "                if let Some(handler) = handlers.remove(&stale_handler_id) {\n"
+            "                    removed_handlers.push(handler);\n"
+            "                }\n"
+            "            }\n"
+            "            if handlers.is_empty() {\n"
+            "                removed_keys.push(key.clone());\n"
+            "            } else {\n"
+            "                check_remove_unused_displays(None, None, session, &handlers);",
+            "for stale_handler_id in stale_handler_ids {\n"
+            "                if let Some(handler) = handlers.remove(&stale_handler_id) {\n"
+            "                    removed_handlers.push(handler);\n"
+            "                }\n"
+            "            }\n"
+            "            if handlers.is_empty() {\n"
+            "                removed_keys.push(key.clone());\n"
+            "            } else {\n"
+            "                check_remove_unused_displays(None, Some(session_id), session, &handlers);",
+            "Android replacement drain all-remaining-display reconciliation source",
+        ),
+        (
+            "flutter_source",
+            "if owned_handler_ids.is_empty() {\n"
+            "                continue;\n"
+            "            }\n"
+            "            if handlers.is_empty() {\n"
+            "                removed_keys.push(key.clone());\n"
+            "            } else {\n"
+            "                check_remove_unused_displays(None, None, session, &handlers);",
+            "if owned_handler_ids.is_empty() {\n"
+            "                continue;\n"
+            "            }\n"
+            "            if handlers.is_empty() {\n"
+            "                removed_keys.push(key.clone());\n"
+            "            } else {\n"
+            "                check_remove_unused_displays(None, Some(client_owner_id), session, &handlers);",
+            "Android Activity-owner drain all-remaining-display reconciliation source",
+        ),
+        (
+            "flutter_source",
+            "excluded_session_id: Option<&SessionID>",
+            "excluded_session_id: &SessionID",
+            "Android optional display-reconciliation exclusion source",
+        ),
+        (
+            "flutter_source",
+            "fn stale_mobile_session_close_cannot_select_replacement_from_same_owner()",
+            "fn stale_mobile_session_close_can_select_replacement_from_same_owner()",
+            "Android stale-close replacement regression source",
+        ),
+        (
+            "flutter_ffi_source",
+            "client_owner_id: SessionID,",
+            "client_owner_id: String,",
+            "Android authored add/attach/start dual-identity bridge source",
+        ),
+        (
+            "model_dart",
+            "final _mobileClientOwnerId = Uuid().v4obj();",
+            "final _mobileClientOwnerId = SessionID.nil();",
+            "Android canonical mobile owner UUID source",
+        ),
+        (
+            "model_dart",
+            "late SessionID sessionId;\n  late final SessionID clientOwnerId;",
+            "late final SessionID sessionId;\n  late final SessionID clientOwnerId;",
+            "Android rotating connection versus immutable owner source",
+        ),
+        (
+            "model_dart",
+            "if (closed || sessionId != activeSessionId) return;",
+            "if (closed) return;",
+            "Android stale event-stream refusal source",
+        ),
+        (
+            "model_dart",
+            "mobileReset(previousSessionId);",
+            "mobileReset(clientOwnerId);",
+            "Android pre-rotation exact-session model reset source",
+        ),
+        (
+            "model_dart",
+            "qualityMonitorModel.reset();",
+            "// quality monitor retained",
+            "Android quality-monitor state retirement source",
+        ),
+        (
+            "model_dart",
+            "recordingModel.reset();",
+            "// recording state retained",
+            "Android recording state retirement source",
+        ),
+        (
+            "model_dart",
+            "_x = -10000;\n    _y = -10000;\n    _id = \"-1\";",
+            "_x = -10000;\n    _x = -10000;\n    _id = \"-1\";",
+            "Android cursor y-state retirement source",
+        ),
+        (
+            "model_dart",
+            "_edgeScrollFallbackState = null;",
+            "// edge-scroll fallback retained",
+            "Android canvas fallback retirement source",
+        ),
+        (
+            "model_dart",
+            "void reconnect(OverlayDialogManager dialogManager, SessionID sessionId) {\n"
+            "    if (!_isCurrentSession(sessionId)) return;",
+            "void reconnect(OverlayDialogManager dialogManager, SessionID sessionId) {",
+            "Android delayed reconnect refusal source",
+        ),
+        (
+            "model_dart",
+            "tryShowAndroidActionsOverlay(SessionID expectedSessionId,",
+            "tryShowAndroidActionsOverlay(SessionID ignoredSessionId,",
+            "Android delayed overlay identity source",
+        ),
+        (
+            "model_dart",
+            "void mobileFocusCanvasCursor() {\n"
+            "    final expectedSessionId = parent.target?.sessionId;",
+            "void mobileFocusCanvasCursor() {\n"
+            "    final expectedSessionId = SessionID.nil();",
+            "Android delayed canvas-focus identity source",
+        ),
+        (
+            "model_dart",
+            "void restoreMobileOffsetAfterSoftKeyboard() {\n"
+            "    final expectedSessionId = parent.target?.sessionId;",
+            "void restoreMobileOffsetAfterSoftKeyboard() {\n"
+            "    final expectedSessionId = SessionID.nil();",
+            "Android delayed canvas-restore identity source",
+        ),
+        (
+            "model_dart",
+            "final remoteWindowCoords = <RemoteWindowCoords>[];\n"
+            "      final windowRect =\n"
+            "          await InputModel.fillRemoteCoordsAndGetCurFrame(remoteWindowCoords);",
+            "final windowRect =\n"
+            "          await InputModel.fillRemoteCoordsAndGetCurFrame(_remoteWindowCoords);",
+            "Android staged cursor-coordinate publication source",
+        ),
+        (
+            "file_model_dart",
+            "fileFetcher.cancelPending();",
+            "// stale file tasks retained",
+            "Android stale file-task retirement source",
+        ),
+        (
+            "file_model_dart",
+            "localController.resetForSession();",
+            "// local controller retained",
+            "Android prior-peer file-controller retirement source",
+        ),
+        (
+            "file_model_dart",
+            "void clear() {\n    super.clear();\n    _overrideConfirm = null;\n    _skip = false;",
+            "void clear() {\n    super.clear();",
+            "Android file-dialog remembered-policy retirement source",
+        ),
+        (
+            "file_model_dart",
+            "if (identical(tasks[",
+            "if (false && identical(tasks[",
+            "Android file-fetch timeout exact-completer retirement source",
+        ),
+        (
+            "file_model_dart",
+            "Future<bool> _openDirectoryPath(String path,\n"
+            "      {bool isBack = false, SessionID? expectedSessionId}) async {\n"
+            "    final selectedSessionId = expectedSessionId ?? sessionId;",
+            "Future<bool> _openDirectoryPath(String path,\n"
+            "      {bool isBack = false, SessionID? expectedSessionId}) async {\n"
+            "    final selectedSessionId = sessionId;",
+            "Android captured file-controller directory session source",
+        ),
+        (
+            "file_model_dart",
+            "Future<FileDirectory> fetchDirectory(\n"
+            "      String path, bool isLocal, bool showHidden,\n"
+            "      {SessionID? expectedSessionId}) async {\n"
+            "    final selectedSessionId = expectedSessionId ?? sessionId;",
+            "Future<FileDirectory> fetchDirectory(\n"
+            "      String path, bool isLocal, bool showHidden,\n"
+            "      {SessionID? expectedSessionId}) async {\n"
+            "    final selectedSessionId = sessionId;",
+            "Android captured file-fetcher native session source",
+        ),
+        (
+            "file_model_dart",
+            "final home = await bind.mainGetHomeDir();\n"
+            "      if (!_isCurrentSession(expectedSessionId)) return;\n"
+            "      options.value.home = home;",
+            "options.value.home = await bind.mainGetHomeDir();",
+            "Android post-await file-controller publication source",
+        ),
+        (
+            "input_model_dart",
+            "SessionID get sessionId => parent.target!.sessionId;",
+            "late final SessionID sessionId;",
+            "Android borrowed input identity source",
+        ),
+        (
+            "input_model_dart",
+            "_relativeMouse.resetForSession(expectedSessionId);",
+            "_relativeMouse.dispose();",
+            "Android reusable input-model reset source",
+        ),
+        (
+            "input_model_dart",
+            "_lastScale = 1.0;\n"
+            "    _pointerMovedAfterEnter = false;\n"
+            "    _pointerInsideImage = false;\n"
+            "    _lastButtons = 0;\n"
+            "    lastMousePos = Offset.zero;",
+            "_pointerMovedAfterEnter = false;\n"
+            "    _pointerInsideImage = false;\n"
+            "    _lastButtons = 0;",
+            "Android reusable input coordinate reset source",
+        ),
+        (
+            "input_model_dart",
+            "Future<void> _sendMousePair(MouseButtons button, Duration hold) async {\n"
+            "    if (!keyboardPerm || isViewCamera) return;\n"
+            "    final expectedSessionId = sessionId;",
+            "Future<void> _sendMousePair(MouseButtons button, Duration hold) async {\n"
+            "    if (!keyboardPerm || isViewCamera) return;\n"
+            "    final expectedSessionId = SessionID.nil();",
+            "Android paired mobile mouse identity source",
+        ),
+        (
+            "input_model_dart",
+            "Future<void> tapHidKey(int usbHidUsage) async {\n"
+            "    final expectedSessionId = sessionId;",
+            "Future<void> tapHidKey(int usbHidUsage) async {\n"
+            "    final expectedSessionId = SessionID.nil();",
+            "Android paired mobile HID identity source",
+        ),
+        (
+            "input_model_dart",
+            "final expectedSessionId = sessionId;\n"
+            "      Future.delayed(Duration.zero, () async {\n"
+            "        final remoteWindowCoords = <RemoteWindowCoords>[];",
+            "Future.delayed(Duration.zero, () async {\n"
+            "        final remoteWindowCoords = <RemoteWindowCoords>[];",
+            "Android staged input-coordinate publication source",
+        ),
+        (
+            "chat_model_dart",
+            "SessionID get sessionId => parent.target!.sessionId;",
+            "late final SessionID sessionId;",
+            "Android borrowed chat identity source",
+        ),
+        (
+            "relative_mouse_model_dart",
+            "sessionId: expectedSessionId ?? getSessionId(),",
+            "sessionId: SessionID.nil(),",
+            "Android borrowed relative-mouse identity source",
+        ),
+        (
+            "relative_mouse_model_dart",
+            "_performCleanupCore(expectedSessionId: expectedSessionId);",
+            "_performCleanupCore();",
+            "Android exact retired-session relative-mouse cleanup source",
+        ),
+        (
+            "event_loop_dart",
+            "generation == _generation",
+            "generation <= _generation",
+            "Android exact event-loop generation source",
+        ),
+        (
+            "mobile_remote_page_dart",
+            "gFFI.close(expectedSessionId: sessionId)",
+            "gFFI.close(expectedSessionId: gFFI.sessionId)",
+            "Android remote-page exact cleanup source",
+        ),
+        (
+            "mobile_remote_page_dart",
+            ".tryShowAndroidActionsOverlay(sessionId);",
+            ".tryShowAndroidActionsOverlay(gFFI.sessionId);",
+            "Android remote-page delayed overlay identity source",
+        ),
+        (
+            "mobile_remote_page_dart",
+            "Timer(const Duration(milliseconds: 200), () {\n"
+            "                                  if (!mounted ||\n"
+            "                                      !gFFI.isCurrentSession(sessionId)) {",
+            "Timer(const Duration(milliseconds: 200), () {\n"
+            "                                  if (!mounted) {",
+            "Android remote-page delayed orientation refusal source",
+        ),
+        (
+            "mobile_remote_page_dart",
+            "void onSoftKeyboardChanged(bool visible) {\n"
+            "    if (!mounted || !gFFI.isCurrentSession(sessionId)) return;",
+            "void onSoftKeyboardChanged(bool visible) {",
+            "Android remote-page delayed keyboard refusal source",
+        ),
+        (
+            "mobile_remote_page_dart",
+            "if (!mounted || !gFFI.isCurrentSession(widget.sessionId)) return;",
+            "if (!mounted) return;",
+            "Android remote-page delayed key-help refusal source",
+        ),
+        (
+            "mobile_camera_page_dart",
+            "gFFI.close(expectedSessionId: sessionId)",
+            "gFFI.close(expectedSessionId: gFFI.sessionId)",
+            "Android camera-page exact cleanup source",
+        ),
+        (
+            "mobile_camera_page_dart",
+            ".tryShowAndroidActionsOverlay(sessionId);",
+            ".tryShowAndroidActionsOverlay(gFFI.sessionId);",
+            "Android camera-page delayed overlay identity source",
+        ),
+        (
+            "mobile_camera_page_dart",
+            "Timer(const Duration(milliseconds: 200), () {\n"
+            "                            if (!mounted || !gFFI.isCurrentSession(sessionId)) {",
+            "Timer(const Duration(milliseconds: 200), () {\n"
+            "                            if (!mounted) {",
+            "Android camera-page delayed orientation refusal source",
+        ),
+        (
+            "mobile_camera_page_dart",
+            "void didChangeMetrics() {\n"
+            "    if (!mounted || !gFFI.isCurrentSession(sessionId)) return;",
+            "void didChangeMetrics() {",
+            "Android camera-page delayed metrics refusal source",
+        ),
+        (
+            "mobile_file_page_dart",
+            "gFFI.close(expectedSessionId: sessionId)",
+            "gFFI.close(expectedSessionId: gFFI.sessionId)",
+            "Android file-page exact cleanup source",
+        ),
+        (
+            "mobile_file_page_dart",
+            "unawaited(_directorySubscription.cancel());",
+            "// directory subscription retained",
+            "Android file-view subscription retirement source",
+        ),
+        (
+            "mobile_file_lifecycle_test",
+            "expect(directory.path, path);",
+            "expect(directory.path, isEmpty);",
+            "Android retired file timeout replacement behavior source",
+        ),
+        (
+            "dart_verify",
+            "flutter test --no-pub test/mobile_file_session_lifecycle_test.dart",
+            "true # mobile file-session lifecycle test disabled",
+            "Android mobile file-session lifecycle behavior gate source",
+        ),
+        (
+            "main_dart",
+            "'register_client_session_owner', gFFI.clientOwnerId.toString())",
+            "'register_client_session_owner', gFFI.sessionId.toString())",
+            "Android Activity owner registration source",
+        ),
+        (
             "android_voice_call_owner_test",
             "one controlled teardown cleared another owner",
             "controlled aggregation test disabled",
@@ -43268,6 +44324,18 @@ def run_source_mutations(sources):
             "grep -qF 'stale_android_activity_cannot_reclaim_the_replacement_owner' src/flutter.rs",
             "grep -qF 'resumed_android_activity_reclaims_owner_without_reusing_a_stale_generation' src/flutter.rs",
             "Android shared stale-Activity refusal gate source",
+        ),
+        (
+            "verify",
+            "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs",
+            "true # replacement-drain shared gate disabled",
+            "Android shared mobile replacement-drain gate source",
+        ),
+        (
+            "verify",
+            "if [ \"$(grep -cF 'check_remove_unused_displays(None, None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then",
+            "if false; then # post-drain display gate disabled",
+            "Android shared post-drain all-remaining-display reconciliation gate source",
         ),
         (
             "verify",
@@ -43309,6 +44377,18 @@ def run_source_mutations(sources):
             "Android exact recorder ownership Appendix C row",
         ),
         (
+            "requirements",
+            '<span class="id">R-S11eb</span>',
+            '<span class="id">R-S11eb-disabled</span>',
+            "Android owner/connection normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>281</td>",
+            "<tr><td>281-disabled</td>",
+            "Android owner/connection Appendix C row",
+        ),
+        (
             "hardening",
             "R-S11br/R-S11e-84 — Android native voice-call capture has exact process-wide owners",
             "R-S11br/R-S11e-84 — Android native voice-call capture is binding-dependent",
@@ -43331,6 +44411,12 @@ def run_source_mutations(sources):
             "publishes `on_voice_call_started` only after that worker exists",
             "publishes `on_voice_call_started` before that worker exists",
             "Android worker-before-native start ledger source",
+        ),
+        (
+            "hardening",
+            "R-S11eb/R-S11e-146",
+            "R-S11eb-disabled/R-S11e-146",
+            "Android owner/connection hardening ledger source",
         ),
         (
             "android_builder_authority_verifier",
@@ -48363,6 +49449,33 @@ def main():
                 )
             ),
             "model_dart": (repo / "flutter/lib/models/model.dart").read_text(encoding="utf-8"),
+            "file_model_dart": (
+                repo / "flutter/lib/models/file_model.dart"
+            ).read_text(encoding="utf-8"),
+            "input_model_dart": (
+                repo / "flutter/lib/models/input_model.dart"
+            ).read_text(encoding="utf-8"),
+            "chat_model_dart": (
+                repo / "flutter/lib/models/chat_model.dart"
+            ).read_text(encoding="utf-8"),
+            "relative_mouse_model_dart": (
+                repo / "flutter/lib/models/relative_mouse_model.dart"
+            ).read_text(encoding="utf-8"),
+            "event_loop_dart": (
+                repo / "flutter/lib/utils/event_loop.dart"
+            ).read_text(encoding="utf-8"),
+            "mobile_remote_page_dart": (
+                repo / "flutter/lib/mobile/pages/remote_page.dart"
+            ).read_text(encoding="utf-8"),
+            "mobile_camera_page_dart": (
+                repo / "flutter/lib/mobile/pages/view_camera_page.dart"
+            ).read_text(encoding="utf-8"),
+            "mobile_file_page_dart": (
+                repo / "flutter/lib/mobile/pages/file_manager_page.dart"
+            ).read_text(encoding="utf-8"),
+            "mobile_file_lifecycle_test": (
+                repo / "flutter/test/mobile_file_session_lifecycle_test.dart"
+            ).read_text(encoding="utf-8"),
             "peer_model_dart": (repo / "flutter/lib/models/peer_model.dart").read_text(
                 encoding="utf-8"
             ),

@@ -320,6 +320,10 @@ pub unsafe extern "C" fn get_rustdesk_app_name(buffer: *mut u16, length: i32) ->
 #[derive(Default)]
 struct SessionHandler {
     event_stream: Option<StreamSink<EventToUI>>,
+    // Mobile keeps one Activity/isolate owner while successive outgoing connections come and go.
+    // Keep those identities separate so a delayed close for an old UI route cannot select its
+    // replacement merely because both routes were created by the same isolate.
+    client_owner_id: Option<SessionID>,
     // displays of current session.
     // We need this variable to check if the display is in use before pushing rgba to flutter.
     displays: Vec<usize>,
@@ -1345,18 +1349,19 @@ impl FlutterHandler {
 pub fn session_add_existed(
     peer_id: String,
     session_id: SessionID,
+    client_owner_id: SessionID,
     displays: Vec<i32>,
     is_view_camera: bool,
 ) -> ResultType<()> {
     #[cfg(target_os = "android")]
-    let owner_admission = acquire_android_client_owner(&session_id)?;
+    let owner_admission = acquire_android_client_owner(&client_owner_id)?;
 
     let conn_type = if is_view_camera {
         ConnType::VIEW_CAMERA
     } else {
         ConnType::DEFAULT_CONN
     };
-    sessions::insert_peer_session_id(peer_id, conn_type, session_id, displays);
+    sessions::insert_peer_session_id(peer_id, conn_type, session_id, client_owner_id, displays);
     #[cfg(target_os = "android")]
     drop(owner_admission);
     Ok(())
@@ -1372,6 +1377,7 @@ pub fn session_add_existed(
 /// * `is_port_forward` - If the session is used for port forward.
 pub fn session_add(
     session_id: &SessionID,
+    client_owner_id: &SessionID,
     id: &str,
     is_file_transfer: bool,
     is_view_camera: bool,
@@ -1388,7 +1394,7 @@ pub fn session_add(
     }
 
     #[cfg(target_os = "android")]
-    let owner_admission = acquire_android_client_owner(session_id)?;
+    let owner_admission = acquire_android_client_owner(client_owner_id)?;
 
     let conn_type = if is_file_transfer {
         ConnType::FILE_TRANSFER
@@ -1406,17 +1412,18 @@ pub fn session_add(
         ConnType::DEFAULT_CONN
     };
 
-    // Mobile has one isolate-wide session UUID. Android's foreground service deliberately keeps
-    // the Rust process alive when the Flutter Activity/task goes away, so an incomplete Dart
-    // dispose can leave sessions from the previous isolate in this static map. A different UUID
-    // proves those sessions have no live mobile UI owner. Remove them before the new isolate can
-    // attach to a stale per-peer entry and make session_start_() incorrectly skip its I/O loop.
+    // Mobile has one isolate-wide owner UUID but every outgoing connection has its own UUID.
+    // Android's foreground service deliberately keeps the Rust process alive when the Flutter
+    // Activity/task goes away, and Flutter does not await State.dispose(). Retire every prior
+    // mobile connection before insertion. A late close still carries the retired connection UUID
+    // and therefore cannot select the replacement connection.
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        let (peer_count, ui_count) = close_sessions_from_previous_mobile_isolate(session_id);
+        let (peer_count, ui_count) =
+            close_previous_mobile_client_sessions(client_owner_id, session_id);
         if peer_count != 0 {
             log::warn!(
-                "Closed {peer_count} stale mobile client peer session(s) ({ui_count} UI handler(s)) before starting a new Flutter isolate session"
+                "Closed {peer_count} prior mobile client peer session(s) ({ui_count} UI handler(s)) before starting a replacement connection"
             );
         }
     }
@@ -1459,7 +1466,12 @@ pub fn session_add(
     );
 
     let session = Arc::new(session.clone());
-    sessions::insert_session(session_id.to_owned(), conn_type, session.clone());
+    sessions::insert_session(
+        session_id.to_owned(),
+        *client_owner_id,
+        conn_type,
+        session.clone(),
+    );
 
     #[cfg(target_os = "android")]
     drop(owner_admission);
@@ -1474,11 +1486,16 @@ pub fn session_add(
 /// * `events2ui` - The events channel to ui.
 pub fn session_start_(
     session_id: &SessionID,
+    client_owner_id: &SessionID,
     id: &str,
     event_stream: StreamSink<EventToUI>,
 ) -> ResultType<()> {
     #[cfg(target_os = "android")]
-    let owner_admission = acquire_android_client_owner(session_id)?;
+    let owner_admission = acquire_android_client_owner(client_owner_id)?;
+
+    if !sessions::session_has_client_owner(session_id, client_owner_id) {
+        bail!("Outgoing session is not owned by the active mobile/desktop client owner");
+    }
 
     // is_connected is used to indicate whether to start a peer connection. For two cases:
     // 1. "Move tab to new window"
@@ -2232,7 +2249,7 @@ pub mod sessions {
                     if write_lock.is_empty() {
                         remove_peer_key = Some(peer_key.clone());
                     } else {
-                        check_remove_unused_displays(None, id, s, &write_lock);
+                        check_remove_unused_displays(None, None, s, &write_lock);
                     }
                     break;
                 }
@@ -2265,7 +2282,7 @@ pub mod sessions {
 
     fn check_remove_unused_displays(
         current: Option<usize>,
-        session_id: &SessionID,
+        excluded_session_id: Option<&SessionID>,
         session: &FlutterSession,
         handlers: &HashMap<SessionID, SessionHandler>,
     ) {
@@ -2275,7 +2292,7 @@ pub mod sessions {
             remains_displays.insert(current);
         }
         for (k, h) in handlers.iter() {
-            if k == session_id {
+            if excluded_session_id == Some(k) {
                 continue;
             }
             remains_displays.extend(
@@ -2318,7 +2335,7 @@ pub mod sessions {
                         if value.len() == 1 {
                             check_remove_unused_displays(
                                 Some(value[0] as _),
-                                &session_id,
+                                Some(&session_id),
                                 &s,
                                 &write_lock,
                             );
@@ -2351,7 +2368,16 @@ pub mod sessions {
     }
 
     #[inline]
-    pub fn insert_session(session_id: SessionID, conn_type: ConnType, session: FlutterSession) {
+    pub fn insert_session(
+        session_id: SessionID,
+        client_owner_id: SessionID,
+        conn_type: ConnType,
+        session: FlutterSession,
+    ) {
+        let handler = SessionHandler {
+            client_owner_id: Some(client_owner_id),
+            ..Default::default()
+        };
         SESSIONS
             .write()
             .unwrap()
@@ -2361,7 +2387,7 @@ pub mod sessions {
             .session_handlers
             .write()
             .unwrap()
-            .insert(session_id, Default::default());
+            .insert(session_id, handler);
     }
 
     #[inline]
@@ -2369,10 +2395,14 @@ pub mod sessions {
         peer_id: String,
         conn_type: ConnType,
         session_id: SessionID,
+        client_owner_id: SessionID,
         displays: Vec<i32>,
     ) -> bool {
         if let Some(s) = SESSIONS.read().unwrap().get(&(peer_id, conn_type)) {
-            let mut h = SessionHandler::default();
+            let mut h = SessionHandler {
+                client_owner_id: Some(client_owner_id),
+                ..Default::default()
+            };
             h.displays = displays.iter().map(|x| *x as usize).collect::<_>();
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             let is_support_multi_ui_session = crate::common::is_support_multi_ui_session(
@@ -2404,41 +2434,86 @@ pub mod sessions {
     }
 
     #[inline]
-    pub(super) fn take_sessions_not_owned_by(session_id: &SessionID) -> Vec<FlutterSession> {
-        let mut sessions = SESSIONS.write().unwrap();
-        let stale_keys = sessions
-            .iter()
-            .filter_map(|(key, session)| {
-                (!session
-                    .session_handlers
-                    .read()
-                    .unwrap()
-                    .contains_key(session_id))
-                .then(|| key.clone())
-            })
-            .collect::<Vec<_>>();
-        stale_keys
-            .into_iter()
-            .filter_map(|key| sessions.remove(&key))
-            .collect()
+    pub fn session_has_client_owner(session_id: &SessionID, client_owner_id: &SessionID) -> bool {
+        SESSIONS.read().unwrap().values().any(|session| {
+            session
+                .session_handlers
+                .read()
+                .unwrap()
+                .get(session_id)
+                .and_then(|handler| handler.client_owner_id.as_ref())
+                == Some(client_owner_id)
+        })
     }
 
     #[inline]
-    pub(super) fn take_sessions_owned_by(session_id: &SessionID) -> ClientOwnerDrain {
+    pub(super) fn take_mobile_sessions_except(
+        client_owner_id: &SessionID,
+        session_id: &SessionID,
+    ) -> ClientOwnerDrain {
         let mut sessions = SESSIONS.write().unwrap();
         let mut removed_keys = Vec::new();
         let mut removed_handlers = Vec::new();
 
         for (key, session) in sessions.iter() {
             let mut handlers = session.session_handlers.write().unwrap();
-            let Some(handler) = handlers.remove(session_id) else {
-                continue;
-            };
-            removed_handlers.push(handler);
+            let stale_handler_ids = handlers
+                .iter()
+                .filter_map(|(handler_session_id, handler)| {
+                    (handler_session_id != session_id
+                        || handler.client_owner_id.as_ref() != Some(client_owner_id))
+                    .then_some(*handler_session_id)
+                })
+                .collect::<Vec<_>>();
+            for stale_handler_id in stale_handler_ids {
+                if let Some(handler) = handlers.remove(&stale_handler_id) {
+                    removed_handlers.push(handler);
+                }
+            }
             if handlers.is_empty() {
                 removed_keys.push(key.clone());
             } else {
-                check_remove_unused_displays(None, session_id, session, &handlers);
+                check_remove_unused_displays(None, None, session, &handlers);
+            }
+        }
+
+        let removed_sessions = removed_keys
+            .into_iter()
+            .filter_map(|key| sessions.remove(&key))
+            .collect();
+        ClientOwnerDrain {
+            sessions: removed_sessions,
+            handlers: removed_handlers,
+        }
+    }
+
+    #[inline]
+    pub(super) fn take_sessions_owned_by(client_owner_id: &SessionID) -> ClientOwnerDrain {
+        let mut sessions = SESSIONS.write().unwrap();
+        let mut removed_keys = Vec::new();
+        let mut removed_handlers = Vec::new();
+
+        for (key, session) in sessions.iter() {
+            let mut handlers = session.session_handlers.write().unwrap();
+            let owned_handler_ids = handlers
+                .iter()
+                .filter_map(|(session_id, handler)| {
+                    (handler.client_owner_id.as_ref() == Some(client_owner_id))
+                        .then_some(*session_id)
+                })
+                .collect::<Vec<_>>();
+            for owned_handler_id in &owned_handler_ids {
+                if let Some(handler) = handlers.remove(owned_handler_id) {
+                    removed_handlers.push(handler);
+                }
+            }
+            if owned_handler_ids.is_empty() {
+                continue;
+            }
+            if handlers.is_empty() {
+                removed_keys.push(key.clone());
+            } else {
+                check_remove_unused_displays(None, None, session, &handlers);
             }
         }
 
@@ -2467,11 +2542,35 @@ pub mod sessions {
         conn_type: ConnType,
     ) -> FlutterSession {
         let session: FlutterSession = Arc::new(Session::default());
-        session
-            .session_handlers
+        session.session_handlers.write().unwrap().insert(
+            session_id,
+            SessionHandler {
+                client_owner_id: Some(session_id),
+                ..Default::default()
+            },
+        );
+        SESSIONS
             .write()
             .unwrap()
-            .insert(session_id, SessionHandler::default());
+            .insert((peer_id.to_owned(), conn_type), session.clone());
+        session
+    }
+
+    #[cfg(test)]
+    pub(super) fn insert_test_session_for_owner(
+        session_id: SessionID,
+        client_owner_id: SessionID,
+        peer_id: &str,
+        conn_type: ConnType,
+    ) -> FlutterSession {
+        let session: FlutterSession = Arc::new(Session::default());
+        session.session_handlers.write().unwrap().insert(
+            session_id,
+            SessionHandler {
+                client_owner_id: Some(client_owner_id),
+                ..Default::default()
+            },
+        );
         SESSIONS
             .write()
             .unwrap()
@@ -2495,42 +2594,9 @@ pub mod sessions {
     }
 }
 
-fn close_session_set(drained: Vec<FlutterSession>) -> (usize, usize) {
-    let peer_count = drained.len();
-    let mut ui_count = 0;
-
-    for session in drained {
-        let session_ids = session
-            .session_handlers
-            .read()
-            .unwrap()
-            .keys()
-            .copied()
-            .collect::<Vec<_>>();
-        ui_count += session_ids.len();
-
-        for session_id in session_ids {
-            session.close_event_stream(session_id);
-        }
-        session.session_handlers.write().unwrap().clear();
-        session.close_and_join();
-    }
-
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    if ui_count != 0 {
-        crate::keyboard::release_remote_keys("map");
-    }
-
-    (peer_count, ui_count)
-}
-
-fn close_sessions_from_previous_mobile_isolate(session_id: &SessionID) -> (usize, usize) {
-    close_session_set(sessions::take_sessions_not_owned_by(session_id))
-}
-
-fn close_sessions_owned_by(session_id: &SessionID) -> (usize, usize) {
-    let sessions::ClientOwnerDrain { sessions, handlers } =
-        sessions::take_sessions_owned_by(session_id);
+fn close_client_owner_drain(
+    sessions::ClientOwnerDrain { sessions, handlers }: sessions::ClientOwnerDrain,
+) -> (usize, usize) {
     let peer_count = sessions.len();
     let ui_count = handlers.len();
 
@@ -2547,6 +2613,20 @@ fn close_sessions_owned_by(session_id: &SessionID) -> (usize, usize) {
     }
 
     (peer_count, ui_count)
+}
+
+fn close_previous_mobile_client_sessions(
+    client_owner_id: &SessionID,
+    session_id: &SessionID,
+) -> (usize, usize) {
+    close_client_owner_drain(sessions::take_mobile_sessions_except(
+        client_owner_id,
+        session_id,
+    ))
+}
+
+fn close_sessions_owned_by(client_owner_id: &SessionID) -> (usize, usize) {
+    close_client_owner_drain(sessions::take_sessions_owned_by(client_owner_id))
 }
 
 #[cfg(any(target_os = "android", test))]
@@ -2619,14 +2699,22 @@ mod mobile_session_lifecycle_tests {
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
-    fn new_mobile_isolate_closes_stale_peer_before_reusing_it() {
+    fn new_mobile_owner_closes_stale_peer_before_reusing_it() {
         let _guard = TEST_LOCK.lock().unwrap();
         sessions::clear_for_test();
 
-        let stale =
-            sessions::insert_test_session(SessionID::new_v4(), "host-a", ConnType::DEFAULT_CONN);
+        let stale_session_id = SessionID::new_v4();
+        let stale_owner_id = SessionID::new_v4();
+        let stale = sessions::insert_test_session_for_owner(
+            stale_session_id,
+            stale_owner_id,
+            "host-a",
+            ConnType::DEFAULT_CONN,
+        );
+        let replacement_owner_id = SessionID::new_v4();
+        let replacement_session_id = SessionID::new_v4();
         assert_eq!(
-            close_sessions_from_previous_mobile_isolate(&SessionID::new_v4()),
+            close_previous_mobile_client_sessions(&replacement_owner_id, &replacement_session_id),
             (1, 1)
         );
         assert!(!sessions::contains_peer("host-a", ConnType::DEFAULT_CONN));
@@ -2635,20 +2723,33 @@ mod mobile_session_lifecycle_tests {
     }
 
     #[test]
-    fn mobile_cleanup_preserves_current_owner_and_closes_every_previous_owner() {
+    fn mobile_cleanup_preserves_only_the_exact_current_connection() {
         let _guard = TEST_LOCK.lock().unwrap();
         sessions::clear_for_test();
 
+        let current_owner = SessionID::new_v4();
         let current_session = SessionID::new_v4();
-        let current =
-            sessions::insert_test_session(current_session, "host-a", ConnType::DEFAULT_CONN);
-        let stale_files =
-            sessions::insert_test_session(SessionID::new_v4(), "host-b", ConnType::FILE_TRANSFER);
-        let stale_control =
-            sessions::insert_test_session(SessionID::new_v4(), "host-c", ConnType::DEFAULT_CONN);
+        let current = sessions::insert_test_session_for_owner(
+            current_session,
+            current_owner,
+            "host-a",
+            ConnType::DEFAULT_CONN,
+        );
+        let stale_files = sessions::insert_test_session_for_owner(
+            SessionID::new_v4(),
+            current_owner,
+            "host-b",
+            ConnType::FILE_TRANSFER,
+        );
+        let stale_control = sessions::insert_test_session_for_owner(
+            SessionID::new_v4(),
+            SessionID::new_v4(),
+            "host-c",
+            ConnType::DEFAULT_CONN,
+        );
 
         assert_eq!(
-            close_sessions_from_previous_mobile_isolate(&current_session),
+            close_previous_mobile_client_sessions(&current_owner, &current_session),
             (2, 2)
         );
         assert!(sessions::contains_peer("host-a", ConnType::DEFAULT_CONN));
@@ -2657,7 +2758,45 @@ mod mobile_session_lifecycle_tests {
         assert!(!current.close_requested.load(Ordering::Acquire));
         assert!(stale_files.close_requested.load(Ordering::Acquire));
         assert!(stale_control.close_requested.load(Ordering::Acquire));
-        assert_eq!(close_sessions_owned_by(&current_session), (1, 1));
+        assert_eq!(close_sessions_owned_by(&current_owner), (1, 1));
+        sessions::clear_for_test();
+    }
+
+    #[test]
+    fn stale_mobile_session_close_cannot_select_replacement_from_same_owner() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        sessions::clear_for_test();
+
+        let client_owner_id = SessionID::new_v4();
+        let stale_session_id = SessionID::new_v4();
+        let replacement_session_id = SessionID::new_v4();
+        let stale = sessions::insert_test_session_for_owner(
+            stale_session_id,
+            client_owner_id,
+            "same-host",
+            ConnType::DEFAULT_CONN,
+        );
+
+        assert_eq!(
+            close_previous_mobile_client_sessions(&client_owner_id, &replacement_session_id),
+            (1, 1)
+        );
+        assert!(stale.close_requested.load(Ordering::Acquire));
+
+        let replacement = sessions::insert_test_session_for_owner(
+            replacement_session_id,
+            client_owner_id,
+            "same-host",
+            ConnType::DEFAULT_CONN,
+        );
+        assert!(sessions::remove_session_by_session_id(&stale_session_id).is_none());
+        assert!(sessions::contains_peer("same-host", ConnType::DEFAULT_CONN));
+        assert!(!replacement.close_requested.load(Ordering::Acquire));
+        assert!(sessions::session_has_client_owner(
+            &replacement_session_id,
+            &client_owner_id
+        ));
+
         sessions::clear_for_test();
     }
 

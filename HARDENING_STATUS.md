@@ -483,6 +483,49 @@ is current; a stale successful start drops its peer and drains its worker owner 
 Final owner close remains terminal and cannot be reversed by a queued reconnect. This is the common outgoing
 viewer core used by Android, desktop, iOS, and future macOS builds; only the generation/UUID layer and persistent
 foreground-service amplification are Android-specific.
+Follow-up correction (2026-07-27), **mobile Activity owner versus exact connection identity**: the prior
+Activity/isolate generation closure still inherited a subtler identity collapse. The isolate-wide UUID registered
+with `MainActivity` was also the `SessionID` reused by every successive outgoing route. Flutter does not await an
+asynchronous `State.dispose()`, and the global mobile `FFI` model is reused. An old route could dispatch its early
+`sessionClose`, suspend during later UI cleanup, and resume after a replacement same-peer/type route had started
+under the same UUID. That stale close could therefore select the replacement; a delayed old stream could likewise
+observe the global model after `start()` cleared its `closed` flag. The existing exact worker join made selected
+teardown complete, but did not make selection itself unambiguous.
+
+R-S11eb/R-S11e-146 now separates one canonical mobile client-owner UUID from a fresh connection UUID minted by
+every outgoing `FFI.start()`. The authored add/attach/start bridge carries both. Android holds the exact
+client-owner read guard through handler insertion or I/O-worker spawn, stores the owner association in each
+session handler, and rejects start unless that association matches. Before a new mobile connection is inserted,
+native code removes and joins every previous mobile connection except an already-identical owner/session pair.
+Activity replacement and task removal drain by the stored client-owner association rather than treating that
+owner as a session-table key. Each mobile page retains the exact UUID returned by its own start; early and late
+close calls keep that UUID, shared Dart cleanup proceeds only while it is still current, and the event stream
+captures and rechecks it before delivery. A late close for A therefore cannot select replacement B even when both
+belong to one isolate and target the same peer/type.
+
+The reused mobile submodels are reset before UUID rotation. File-transfer pending completers are cancelled,
+dialogs are retired, their event-loop generation prevents an old async callback or timer from rearming, and an
+old same-key timeout removes a task only if the map still contains its exact completer. Input teardown releases
+pressed side buttons and relative-mouse state against the exact retired connection without permanently disposing
+the observers needed by its replacement. Frame, decoded-image, cursor, and file events all recheck the captured
+exact connection before publication; decoded images and asynchronously collected window-coordinate results are
+kept outside shared state until that recheck. Route-owned subscriptions/controllers/timers are retired, and
+delayed keyboard, metrics, menu, post-frame, and key-help work also refuses a replacement. The incoming
+`MainService`, foreground persistence, controlled listener, MediaProjection, and capture owner are deliberately
+unchanged. iOS shares the exact per-connection and reusable-model corrections without Android's retained service
+or Activity-owner admission layer.
+
+The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
+snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
+passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust
+library, and then links and runs the generated-bridge mobile-session lifecycle test set with those same features.
+All seven native lifecycle regressions pass. That executable
+test also exposed an older Linux release-link defect: the pinned Debian builder's libc did not export the
+`renameat2` wrapper used by durable service-record publication. The call now uses the Linux `SYS_renameat2`
+syscall directly, preserving `RENAME_NOREPLACE`, errno handling, and the existing `ENOSYS`/`EINVAL` fallback; the
+same full gate proves the corrected link. Focused source/mutation and shared/independent gates bind source
+closure. A current APK build/install and the physical-device connect → task swipe → relaunch → same-host
+screen-control sequence remain R-B2/R-B10 evidence and are not claimed here.
 Verification closure in source: Rust regression tests cover stale-isolate cleanup, owner-scoped control/file-session
 drain, delayed-callback ABA rejection, admission/transition lock exclusion, current-isolate lost-response
 reconciliation, and stale-Activity replacement-owner refusal. They now also hold a synthetic outgoing worker open, prove an owner transition
@@ -497,12 +540,13 @@ fixed completion pool, nonblocking hard-drop handoff, the sole
 owning audio constructor, and controlled voice-audio close/join sinks. A disposable tracked-file candidate snapshot completed one
 offline arm64 release APK compile through `scripts/android-apk-build.sh` in the pinned Android builder as UID/GID
 1000 with networking disabled, including the Rust/JNI, Dart/Flutter, Kotlin, and Gradle stages; the expected APK
-was checked for nonzero size and then discarded with the scratch tree. This is target-integration evidence, not the
-R-B2 final signed/reproducible artifact proof. The real-device connect → swipe-away → relaunch → reconnect sequence
-remains pending and is not claimed here. This lifecycle split is Android-specific: iOS has no retained Android
-foreground service and keeps the shared next-isolate stale-UUID cleanup. The generation/UUID layer is
-Android-specific, while exact outgoing I/O/media-worker completion is shared by Android, desktop, iOS, and future
-macOS builds through the common viewer core.
+was checked for nonzero size and then discarded with the scratch tree. That candidate predates R-S11eb and is not
+artifact evidence for this exact identity/model correction or the R-B2 final signed/reproducible artifact proof.
+The real-device connect → swipe-away → relaunch → reconnect sequence remains pending and is not claimed here.
+The owner/connection split and next-connection stale-state cleanup are shared by Android and iOS. Android's
+generation/Activity-owner layer and persistent foreground-service amplification are Android-specific, while exact
+outgoing I/O/media-worker completion is shared by Android, desktop, iOS, and future macOS builds through the
+common viewer core.
 
 **R-X6/R-S14 Android final APK manifest authority — CLOSED / GATED (2026-07-11).**
 Platform: Android release APK. Endpoint/action: the single merged `AndroidManifest.xml` packaged into the
@@ -14877,10 +14921,11 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-cc3a9688d4f69dedbfd0edc440a15bac92922fa0a071c66b9152bb4163b73cc1  requirements.html
+2f2cf27cfd7f8aca3a0898f67014cd5ca395c421f5b2fdee259fe4c9d63622aa  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
 R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.
 The same identity additionally binds R-S11ea and Appendix C #280.
+The same identity additionally binds R-S11eb and Appendix C #281.

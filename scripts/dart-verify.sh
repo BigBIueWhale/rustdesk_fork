@@ -3,9 +3,10 @@
 # dart-verify.sh — verify the Flutter/Dart UI and shipped Linux Rust feature set offline.
 #
 # This one transaction runs `dart pub get --offline`, full FRB codegen, `flutter analyze lib/`,
-# the focused Dart test, and a locked/offline Rust library check with the exact shipped Debian
-# features (`flutter,unix-file-copy-paste`). Analyzer errors are forbidden; the accepted upstream
-# info/warning baseline remains nonfatal. All generated state lives in a disposable
+# the focused Dart tests, and a locked/offline Rust library check plus mobile-session lifecycle
+# regressions with the exact shipped Debian features (`flutter,unix-file-copy-paste`). Analyzer
+# errors are forbidden; the accepted upstream info/warning baseline remains nonfatal. All generated
+# state lives in a disposable
 # invoking-user-owned source snapshot. The real repository and canonical offline-input tree are
 # never writable container mounts.
 #
@@ -180,9 +181,14 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/peer_model_test.dart
     echo "  == R-G4a flutter test: retired role-swap state is ignored =="
     flutter test --no-pub test/server_model_test.dart
+    echo "  == R-S11eb flutter test: retired file timeout cannot remove replacement =="
+    flutter test --no-pub test/mobile_file_session_lifecycle_test.dart
     cd /src
     echo "  == shipped Debian Rust library check: flutter,unix-file-copy-paste =="
     cargo check --offline --locked --features flutter,unix-file-copy-paste --lib --color never
+    echo "  == R-S11eb generated-bridge mobile session lifecycle regressions =="
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1
     cargo_lock_after="$(sha256sum Cargo.lock | awk "{print \$1}")"
     if [ "$cargo_lock_before" != "$cargo_lock_after" ]; then
       echo "DART-VERIFY: FAILED — cargo check rewrote Cargo.lock" >&2

@@ -82,6 +82,40 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "flutter_ffi": (repo / "src/flutter_ffi.rs").read_text(encoding="utf-8"),
         "ui_cm": (repo / "src/ui_cm_interface.rs").read_text(encoding="utf-8"),
         "flutter": (repo / "src/flutter.rs").read_text(encoding="utf-8"),
+        "dart_main": (repo / "flutter/lib/main.dart").read_text(encoding="utf-8"),
+        "dart_model": (repo / "flutter/lib/models/model.dart").read_text(
+            encoding="utf-8"
+        ),
+        "dart_file_model": (
+            repo / "flutter/lib/models/file_model.dart"
+        ).read_text(encoding="utf-8"),
+        "dart_input_model": (
+            repo / "flutter/lib/models/input_model.dart"
+        ).read_text(encoding="utf-8"),
+        "dart_chat_model": (
+            repo / "flutter/lib/models/chat_model.dart"
+        ).read_text(encoding="utf-8"),
+        "dart_relative_mouse": (
+            repo / "flutter/lib/models/relative_mouse_model.dart"
+        ).read_text(encoding="utf-8"),
+        "dart_event_loop": (
+            repo / "flutter/lib/utils/event_loop.dart"
+        ).read_text(encoding="utf-8"),
+        "mobile_remote": (
+            repo / "flutter/lib/mobile/pages/remote_page.dart"
+        ).read_text(encoding="utf-8"),
+        "mobile_camera": (
+            repo / "flutter/lib/mobile/pages/view_camera_page.dart"
+        ).read_text(encoding="utf-8"),
+        "mobile_files": (
+            repo / "flutter/lib/mobile/pages/file_manager_page.dart"
+        ).read_text(encoding="utf-8"),
+        "web_bridge": (repo / "flutter/lib/web/bridge.dart").read_text(
+            encoding="utf-8"
+        ),
+        "mobile_file_lifecycle_test": (
+            repo / "flutter/test/mobile_file_session_lifecycle_test.dart"
+        ).read_text(encoding="utf-8"),
         "io_loop": (repo / "src/client/io_loop.rs").read_text(encoding="utf-8"),
         "test": (repo / "scripts/android-voice-call-owner-state-test.kt").read_text(
             encoding="utf-8"
@@ -92,6 +126,7 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
+        "dart_verify": (repo / "scripts/dart-verify.sh").read_text(encoding="utf-8"),
     }
 
 
@@ -773,6 +808,708 @@ def validate(sources: Dict[str, str]) -> None:
         "resume_android_client_owner(first_generation, first_session_id),\n            None",
         "Rust cross-isolate resume refusal regression",
     )
+
+    session_handler = extract_item(
+        flutter, "struct SessionHandler", "Rust outgoing session handler"
+    )
+    require(
+        session_handler,
+        "client_owner_id: Option<SessionID>",
+        "stored mobile client-owner association",
+    )
+    session_add_existed = extract_item(
+        flutter, "pub fn session_add_existed(", "Rust existing-session attachment"
+    )
+    require_order(
+        session_add_existed,
+        (
+            "client_owner_id: SessionID",
+            "acquire_android_client_owner(&client_owner_id)?",
+            "sessions::insert_peer_session_id(",
+            "client_owner_id,",
+            "drop(owner_admission)",
+        ),
+        "owner-bound existing-session attachment",
+    )
+    session_add = extract_item(
+        flutter, "pub fn session_add(", "Rust outgoing-session insertion"
+    )
+    require_order(
+        session_add,
+        (
+            "client_owner_id: &SessionID",
+            "acquire_android_client_owner(client_owner_id)?",
+            "close_previous_mobile_client_sessions(client_owner_id, session_id)",
+            "sessions::insert_session(",
+            "*client_owner_id,",
+            "drop(owner_admission)",
+        ),
+        "owner-admitted replacement drain and insertion",
+    )
+    session_start = extract_item(
+        flutter, "pub fn session_start_(", "Rust outgoing-session start"
+    )
+    require_order(
+        session_start,
+        (
+            "client_owner_id: &SessionID",
+            "acquire_android_client_owner(client_owner_id)?",
+            "sessions::session_has_client_owner(session_id, client_owner_id)",
+            "session.start_io_thread()?",
+            "drop(owner_admission)",
+        ),
+        "owner-associated outgoing worker start",
+    )
+    take_previous = extract_item(
+        flutter,
+        "pub(super) fn take_mobile_sessions_except(",
+        "Rust exact replacement-session drain",
+    )
+    require(
+        take_previous,
+        "handler_session_id != session_id\n"
+        "                        || handler.client_owner_id.as_ref() != Some(client_owner_id)",
+        "exact owner-and-session preservation predicate",
+    )
+    require(
+        take_previous,
+        "check_remove_unused_displays(None, None, session, &handlers);",
+        "replacement drain display reconciliation includes the preserved exact session",
+    )
+    take_owner = extract_item(
+        flutter,
+        "pub(super) fn take_sessions_owned_by(",
+        "Rust associated Activity-owner drain",
+    )
+    require(
+        take_owner,
+        "handler.client_owner_id.as_ref() == Some(client_owner_id)",
+        "stored-association Activity-owner selection",
+    )
+    require(
+        take_owner,
+        "check_remove_unused_displays(None, None, session, &handlers);",
+        "Activity-owner drain display reconciliation includes every remaining session",
+    )
+    display_reconciliation = extract_item(
+        flutter,
+        "fn check_remove_unused_displays(",
+        "Rust remaining-display reconciliation",
+    )
+    require(
+        display_reconciliation,
+        "excluded_session_id: Option<&SessionID>",
+        "explicit optional live-handler exclusion",
+    )
+    require(
+        display_reconciliation,
+        "if excluded_session_id == Some(k)",
+        "optional live-handler exclusion predicate",
+    )
+    require(
+        flutter,
+        "fn stale_mobile_session_close_cannot_select_replacement_from_same_owner()",
+        "stale-close versus same-owner replacement regression",
+    )
+    require(
+        sources["flutter_ffi"],
+        "session_id: SessionID,\n    client_owner_id: SessionID,",
+        "authored Rust bridge dual-identity parameters",
+    )
+    require_count(
+        sources["flutter_ffi"],
+        "client_owner_id: SessionID,",
+        4,
+        "all authored Rust add/attach/start dual-identity entries",
+    )
+
+    dart_model = sources["dart_model"]
+    require(
+        dart_model,
+        "final _mobileClientOwnerId = Uuid().v4obj();",
+        "canonical per-isolate mobile client-owner UUID",
+    )
+    require(
+        dart_model,
+        "late SessionID sessionId;\n  late final SessionID clientOwnerId;",
+        "mutable connection identity and immutable client-owner identity",
+    )
+    require(
+        dart_model,
+        "clientOwnerId = isMobile ? _mobileClientOwnerId : sessionId;",
+        "mobile owner versus desktop connection identity selection",
+    )
+    require_count(
+        dart_model,
+        "SessionID get sessionId => parent.target!.sessionId;",
+        3,
+        "borrowed Ffi/Image/Canvas connection identity",
+    )
+    forbid(
+        dart_model,
+        "late final SessionID sessionId;",
+        "cached long-lived model connection identity",
+    )
+    dart_start_begin = dart_model.find("  SessionID start(")
+    dart_start_end = dart_model.find("\n  void onEvent2UIRgba(", dart_start_begin)
+    if dart_start_begin < 0 or dart_start_end < 0:
+        raise VerificationError("missing Dart outgoing start")
+    dart_start = dart_model[dart_start_begin:dart_start_end]
+    require_order(
+        dart_start,
+        (
+            "if (isMobile)",
+            "final previousSessionId = sessionId;",
+            "mobileReset(previousSessionId);",
+            "sessionId = Uuid().v4obj();",
+            "final activeSessionId = sessionId;",
+            "fileModel.beginSession(activeSessionId);",
+            "sessionId: activeSessionId,\n        clientOwnerId: clientOwnerId,",
+            "stream.listen((message)",
+            "if (closed || sessionId != activeSessionId) return;",
+            "return activeSessionId;",
+        ),
+        "fresh mobile connection and captured event-stream identity",
+    )
+    dart_close_begin = dart_model.find("  Future<void> close(")
+    dart_close_end = dart_model.find("\n  void setMethodCallHandler(", dart_close_begin)
+    if dart_close_begin < 0 or dart_close_end < 0:
+        raise VerificationError("missing Dart exact outgoing close")
+    dart_close = dart_model[dart_close_begin:dart_close_end]
+    require_order(
+        dart_close,
+        (
+            "final closingSessionId = expectedSessionId ?? sessionId;",
+            "await setCanvasConfig(",
+            "await bind.sessionClose(sessionId: closingSessionId);",
+            "if (sessionId != closingSessionId)",
+            "await imageModel.update(null,",
+            "expectedSessionId: closingSessionId",
+        ),
+        "exact state-persist then native-close and stale shared-model refusal",
+    )
+    require_count(
+        dart_close,
+        "await bind.sessionClose(sessionId: closingSessionId);",
+        2,
+        "both stale-entry and persisted-current exact native closes",
+    )
+    mobile_reset = extract_item(
+        dart_model, "  void mobileReset(", "mobile reusable-model reset"
+    )
+    require_order(
+        mobile_reset,
+        (
+            "chatModel.close();",
+            "imageModel.disposeImage();",
+            "cursorModel.clear();",
+            "ffiModel.clear();",
+            "canvasModel.clear();",
+            "qualityMonitorModel.reset();",
+            "recordingModel.reset();",
+            "inputModel.resetForSession(previousSessionId);",
+        ),
+        "complete pre-rotation reusable-model reset",
+    )
+    ffi_model = extract_item(dart_model, "class FfiModel", "reused FFI model")
+    ffi_clear = extract_item(ffi_model, "  clear() {", "reused FFI-state reset")
+    require_order(
+        ffi_clear,
+        (
+            "cachedPeerData = CachedPeerData();",
+            "_pi = PeerInfo();",
+            "_rect = null;",
+            "_touchMode = false;",
+            "_offlineReconnectStartTime = null;",
+            "_viewOnly = false;",
+            "_showMyCursor = false;",
+            "cachedPeerData.permissions = _permissions;",
+            "waitForImageTimer = null;",
+            "waitForFirstImage.value = true;",
+            "timerScreenshot = null;",
+        ),
+        "complete reused FFI-state reset",
+    )
+    canvas_model = extract_item(
+        dart_model, "class CanvasModel", "reused canvas model"
+    )
+    canvas_clear = extract_item(
+        canvas_model, "  clear() {", "reused canvas-state reset"
+    )
+    require_order(
+        canvas_clear,
+        (
+            "_x = 0;",
+            "_y = 0;",
+            "_scrollX = 0;",
+            "_scrollY = 0;",
+            "_scrollStyle = ScrollStyle.scrollauto;",
+            "_edgeScrollFallbackState?.stop();",
+            "_edgeScrollFallbackState = null;",
+            "_imageOverflow.value = false;",
+            "isMobileCanvasChanged = false;",
+        ),
+        "complete reused canvas-state reset",
+    )
+    mobile_canvas_focus = extract_item(
+        canvas_model,
+        "  void mobileFocusCanvasCursor()",
+        "delayed mobile canvas focus",
+    )
+    require_order(
+        mobile_canvas_focus,
+        (
+            "final expectedSessionId = parent.target?.sessionId;",
+            "Timer(Duration(milliseconds: 100), () async {",
+            "if (parent.target?.isCurrentSession(expectedSessionId) != true) return;",
+            "_resetCanvasOffset(",
+            "notifyListeners();",
+        ),
+        "delayed mobile canvas-focus exact-session refusal",
+    )
+    mobile_canvas_restore = extract_item(
+        canvas_model,
+        "  void restoreMobileOffsetAfterSoftKeyboard()",
+        "delayed mobile canvas restore",
+    )
+    require_order(
+        mobile_canvas_restore,
+        (
+            "final expectedSessionId = parent.target?.sessionId;",
+            "_timerMobileRestoreCanvasOffset = Timer(",
+            "if (parent.target?.isCurrentSession(expectedSessionId) != true) return;",
+            "_x = targetOffset.dx;",
+            "notifyListeners();",
+        ),
+        "delayed mobile canvas-restore exact-session refusal",
+    )
+    cursor_model = extract_item(
+        dart_model, "class CursorModel", "reused cursor model"
+    )
+    cursor_clear = extract_item(
+        cursor_model, "  clear() {", "reused cursor-state reset"
+    )
+    require_order(
+        cursor_clear,
+        (
+            "_x = -10000;",
+            "_y = -10000;",
+            '_id = "-1";',
+            "_windowRect = null;",
+            "_remoteWindowCoords.clear();",
+            "_blockedRects.clear();",
+            "_cacheKeys.clear();",
+        ),
+        "complete reused cursor-state reset",
+    )
+    cursor_coords = extract_item(
+        cursor_model,
+        "  trySetRemoteWindowCoords()",
+        "delayed cursor window-coordinate refresh",
+    )
+    require_order(
+        cursor_coords,
+        (
+            "final expectedSessionId = parent.target?.sessionId;",
+            "final remoteWindowCoords = <RemoteWindowCoords>[];",
+            "await InputModel.fillRemoteCoordsAndGetCurFrame(remoteWindowCoords);",
+            "if (parent.target?.isCurrentSession(expectedSessionId) != true) return;",
+            "_remoteWindowCoords",
+            "..addAll(remoteWindowCoords);",
+            "_windowRect = windowRect;",
+        ),
+        "cursor-coordinate staging before exact-session publication",
+    )
+    quality_monitor = extract_item(
+        dart_model, "class QualityMonitorModel", "reused quality-monitor model"
+    )
+    require(
+        quality_monitor,
+        "if (parent.target?.isCurrentSession(sessionId) != true) return;",
+        "quality-monitor post-await exact-session refusal",
+    )
+    require(
+        dart_model,
+        "if (!_isCurrentSession(sessionId)) return;\n"
+        "      showMsgBox(sessionId, type, title, text, link, hasRetry, dialogManager);",
+        "delayed privacy-dialog exact-session refusal",
+    )
+    require(
+        dart_model,
+        "void reconnect(OverlayDialogManager dialogManager, SessionID sessionId) {\n"
+        "    if (!_isCurrentSession(sessionId)) return;",
+        "delayed reconnect exact-session refusal",
+    )
+    require_order(
+        dart_model,
+        (
+            "tryShowAndroidActionsOverlay(SessionID expectedSessionId,",
+            "Timer(Duration(milliseconds: delayMSecs), () {",
+            "if (!_isCurrentSession(expectedSessionId)) return;",
+            ".showMobileActionsOverlay(ffi: parent.target!);",
+        ),
+        "delayed Android overlay exact-session refusal",
+    )
+    require(
+        dart_model,
+        "bool isCurrentSession(SessionID expectedSessionId) =>\n"
+        "      !closed && sessionId == expectedSessionId;",
+        "Dart current-connection predicate",
+    )
+    require(
+        dart_model,
+        "if (parent.target?.isCurrentSession(expectedSessionId) != true)",
+        "post-await frame/cursor stale-session refusal",
+    )
+    require(
+        sources["dart_input_model"],
+        "SessionID get sessionId => parent.target!.sessionId;",
+        "borrowed input-model connection identity",
+    )
+    require_order(
+        sources["dart_input_model"],
+        (
+            "void resetForSession(SessionID expectedSessionId)",
+            "disposeSideButtonTracking(expectedSessionId: expectedSessionId);",
+            "_relativeMouse.resetForSession(expectedSessionId);",
+            "_flingTimer?.cancel();",
+            "_lastScale = 1.0;",
+            "lastMousePos = Offset.zero;",
+            "_remoteWindowCoords.clear();",
+            "toReleaseKeys.reset();",
+            "resetModifiers();",
+        ),
+        "reusable input-model exact-session retirement",
+    )
+    input_pointer_move = extract_item(
+        sources["dart_input_model"],
+        "  void onPointMoveImage(",
+        "delayed input window-coordinate refresh",
+    )
+    require_order(
+        input_pointer_move,
+        (
+            "final expectedSessionId = sessionId;",
+            "final remoteWindowCoords = <RemoteWindowCoords>[];",
+            "await fillRemoteCoordsAndGetCurFrame(remoteWindowCoords);",
+            "if (parent.target?.isCurrentSession(expectedSessionId) != true) return;",
+            "_remoteWindowCoords = remoteWindowCoords;",
+            "_windowRect = windowRect;",
+        ),
+        "input-coordinate staging before exact-session publication",
+    )
+    input_mouse_pair = extract_item(
+        sources["dart_input_model"],
+        "  Future<void> _sendMousePair(",
+        "mobile paired-mouse input",
+    )
+    require_order(
+        input_mouse_pair,
+        (
+            "final expectedSessionId = sessionId;",
+            "_sendMouseUnchecked('down', button,",
+            "expectedSessionId: expectedSessionId",
+            "await Future.delayed(hold);",
+            "_sendMouseUnchecked('up', button,",
+            "expectedSessionId: expectedSessionId",
+        ),
+        "paired mobile mouse input exact-session ownership",
+    )
+    input_hid_tap = extract_item(
+        sources["dart_input_model"],
+        "  Future<void> tapHidKey(",
+        "mobile paired-HID input",
+    )
+    require_order(
+        input_hid_tap,
+        (
+            "final expectedSessionId = sessionId;",
+            "newKeyboardMode(kKeyFlutterKey, usbHidUsage, true, false,",
+            "expectedSessionId: expectedSessionId",
+            "await Future.delayed(Duration(milliseconds: 100));",
+            "newKeyboardMode(kKeyFlutterKey, usbHidUsage, false, false,",
+            "expectedSessionId: expectedSessionId",
+        ),
+        "paired mobile HID input exact-session ownership",
+    )
+    require(
+        sources["dart_chat_model"],
+        "SessionID get sessionId => parent.target!.sessionId;",
+        "borrowed chat-model connection identity",
+    )
+    require_order(
+        sources["dart_relative_mouse"],
+        (
+            "final SessionID Function() getSessionId;",
+            "required this.getSessionId,",
+            "sessionId: expectedSessionId ?? getSessionId(),",
+        ),
+        "borrowed relative-mouse connection identity",
+    )
+    require_count(
+        sources["dart_relative_mouse"],
+        "_performCleanupCore(expectedSessionId: expectedSessionId);",
+        2,
+        "relative-mouse exact retired-session cleanup count",
+    )
+    relative_mouse_reset = extract_item(
+        sources["dart_relative_mouse"],
+        "void resetForSession",
+        "relative-mouse session reset",
+    )
+    require_order(
+        relative_mouse_reset,
+        (
+            "void resetForSession(SessionID expectedSessionId)",
+            "_performCleanupCore(expectedSessionId: expectedSessionId);",
+            "enabled.value = false;",
+            "onDisabled?.call();",
+        ),
+        "reusable relative-mouse exact-session retirement",
+    )
+    relative_mouse_dispose = extract_item(
+        sources["dart_relative_mouse"],
+        "void dispose({SessionID? expectedSessionId})",
+        "relative-mouse final disposal",
+    )
+    require_order(
+        relative_mouse_dispose,
+        (
+            "void dispose({SessionID? expectedSessionId})",
+            "_disposed = true;",
+            "_performCleanupCore(expectedSessionId: expectedSessionId);",
+            "enabled.value = false;",
+            "onDisabled?.call();",
+        ),
+        "relative-mouse final exact-session retirement",
+    )
+    dart_file_model = sources["dart_file_model"]
+    require_order(
+        dart_file_model,
+        (
+            "void beginSession(SessionID expectedSessionId)",
+            "evtLoop.clear();",
+            "parent.target?.dialogManager.dismissAll();",
+            "fileFetcher.cancelPending();",
+            "jobController.clear();",
+            "localController.resetForSession();",
+            "remoteController.resetForSession();",
+            "fileConfirmCheckboxRemember = false;",
+        ),
+        "file-transfer pending-resource retirement at connection start",
+    )
+    file_controller = extract_item(
+        dart_file_model, "class FileController", "reused file controller"
+    )
+    file_controller_reset = extract_item(
+        file_controller, "  void resetForSession()", "file-controller session reset"
+    )
+    require_order(
+        file_controller_reset,
+        (
+            "directory.value.clear();",
+            "options.value.clear();",
+            "history.clear();",
+            "selectedItems.clear();",
+        ),
+        "file-controller prior-peer state retirement",
+    )
+    file_controller_ready = extract_item(
+        file_controller,
+        "  Future<void> onReady(SessionID expectedSessionId)",
+        "file-controller session initialization",
+    )
+    require_order(
+        file_controller_ready,
+        (
+            "final home = await bind.mainGetHomeDir();",
+            "if (!_isCurrentSession(expectedSessionId)) return;",
+            "options.value.home = home;",
+            "final showHidden = (await bind.sessionGetPeerOption(",
+            "if (!_isCurrentSession(expectedSessionId)) return;",
+            "options.value.showHidden = showHidden;",
+        ),
+        "file-controller post-await exact-session state publication",
+    )
+    require_order(
+        file_controller,
+        (
+            "Future<bool> _openDirectoryPath(String path,",
+            "final selectedSessionId = expectedSessionId ?? sessionId;",
+            "if (!_isCurrentSession(selectedSessionId)) return false;",
+            "expectedSessionId: selectedSessionId",
+            "if (!_isCurrentSession(selectedSessionId)) return false;",
+            "directory.value = fd;",
+        ),
+        "file-controller captured-session directory publication",
+    )
+    require_count(
+        dart_file_model,
+        "if (identical(tasks[",
+        3,
+        "file-fetch timeout exact-completer retirement",
+    )
+    file_fetcher = extract_item(
+        dart_file_model,
+        "class FileFetcher",
+        "connection-aware file fetcher",
+    )
+    require_order(
+        file_fetcher,
+        (
+            "Future<FileDirectory> fetchDirectory(",
+            "{SessionID? expectedSessionId}) async {",
+            "final selectedSessionId = expectedSessionId ?? sessionId;",
+            "sessionId: selectedSessionId, path: path, showHidden: showHidden",
+            "sessionId: selectedSessionId,",
+        ),
+        "file-fetcher captured-session native operations",
+    )
+    file_dialog_loop = extract_item(
+        dart_file_model,
+        "class FileDialogEventLoop",
+        "file-dialog event loop",
+    )
+    file_dialog_clear = extract_item(
+        file_dialog_loop,
+        "  void clear()",
+        "file-dialog synchronous reset",
+    )
+    require_order(
+        file_dialog_clear,
+        (
+            "void clear()",
+            "super.clear();",
+            "_overrideConfirm = null;",
+            "_skip = false;",
+        ),
+        "file-dialog remembered-policy retirement",
+    )
+    require(
+        dart_file_model,
+        "Future<void> close(SessionID expectedSessionId)",
+        "connection-scoped file-model cleanup",
+    )
+    require(
+        dart_file_model,
+        "evtLoop.pushEvent(_FileDialogEvent(\n"
+        "        WeakReference(this), expectedSessionId, FileDialogType.overwrite, evt));",
+        "file-dialog exact-session event identity",
+    )
+    require(
+        dart_file_model,
+        "if (model == null || !model._isCurrentSession(expectedSessionId))",
+        "file-dialog stale-session callback refusal",
+    )
+    require_order(
+        sources["dart_event_loop"],
+        (
+            "var _generation = 0;",
+            "_generation += 1;",
+            "final generation = _generation;",
+            "(timer) => _handleTimer(timer, generation)",
+            "bool _isCurrent(int generation)",
+            "if (!_isCurrent(generation)) return;",
+        ),
+        "event-loop exact-generation restart and callback retirement",
+    )
+    require(
+        sources["dart_event_loop"],
+        "!_closed && generation == _generation;",
+        "event-loop exact generation comparison",
+    )
+    require_order(
+        sources["dart_event_loop"],
+        (
+            "Future<void> close() async",
+            "_closed = true;",
+            "_generation += 1;",
+            "_timer?.cancel();",
+            "_timer = null;",
+        ),
+        "event-loop synchronous generation retirement",
+    )
+    require(
+        sources["dart_main"],
+        "'register_client_session_owner', gFFI.clientOwnerId.toString())",
+        "Activity registration with owner rather than connection UUID",
+    )
+
+    for source_name, label in (
+        ("mobile_remote", "mobile remote-control page"),
+        ("mobile_camera", "mobile camera page"),
+        ("mobile_files", "mobile file-transfer page"),
+    ):
+        page = sources[source_name]
+        require(page, "late final SessionID sessionId;", f"{label} exact session field")
+        require(
+            page,
+            "sessionId = gFFI.start(",
+            f"{label} captures start identity",
+        )
+        require(
+            page,
+            "gFFI.close(expectedSessionId: sessionId)",
+            f"{label} exact close path",
+        )
+        require(
+            page,
+            "if (gFFI.sessionId == sessionId)",
+            f"{label} stale shared-state cleanup guard",
+        )
+    require_order(
+        sources["mobile_files"],
+        (
+            "await model.close(sessionId);",
+            "await gFFI.close(expectedSessionId: sessionId);",
+        ),
+        "file-page exact state persistence before native close",
+    )
+    for source_name, label in (
+        ("mobile_remote", "mobile remote-control page"),
+        ("mobile_camera", "mobile camera page"),
+    ):
+        page = sources[source_name]
+        require(
+            page,
+            ".tryShowAndroidActionsOverlay(sessionId);",
+            f"{label} exact delayed-overlay identity",
+        )
+        orientation_timer = extract_item(
+            page,
+            "Timer(const Duration(milliseconds: 200), ()",
+            f"{label} delayed orientation callback",
+        )
+        require_order(
+            orientation_timer,
+            (
+                "!gFFI.isCurrentSession(sessionId)",
+                ".resetMobileActionsOverlay(ffi: gFFI);",
+                "expectedSessionId: sessionId",
+            ),
+            f"{label} delayed orientation exact-session refusal",
+        )
+    require(
+        sources["web_bridge"],
+        "required UuidValue clientOwnerId,",
+        "authored web bridge dual-identity compatibility",
+    )
+    require(
+        sources["requirements"],
+        '<span class="id">R-S11eb</span>',
+        "mobile owner/connection normative requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>281</td>",
+        "mobile owner/connection Appendix C disposition",
+    )
+    require(
+        sources["hardening"],
+        "R-S11eb/R-S11e-146",
+        "mobile owner/connection hardening ledger",
+    )
+
     remove_rust = extract_item(
         flutter,
         "fn remove_connection(&self, id: i32, close: bool)",
@@ -1171,6 +1908,109 @@ def validate(sources: Dict[str, str]) -> None:
         "python3 scripts/verify-android-voice-call-ownership.py --repo . --self-test",
         "shared Android recorder gate wiring",
     )
+    require(
+        sources["verify"],
+        "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs",
+        "shared mobile replacement-drain gate",
+    )
+    require(
+        sources["verify"],
+        "if [ \"$(grep -cF 'check_remove_unused_displays(None, None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then",
+        "shared post-drain all-remaining-display reconciliation gate",
+    )
+    require(
+        sources["verify"],
+        "grep -qF 'flutter::mobile_session_lifecycle_tests:: -- --test-threads=1' scripts/dart-verify.sh",
+        "shared generated-bridge mobile lifecycle gate",
+    )
+    require(
+        sources["dart_verify"],
+        "cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n"
+        "      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1",
+        "generated-bridge mobile lifecycle behavior gate",
+    )
+    require(
+        sources["dart_verify"],
+        "flutter test --no-pub test/mobile_file_session_lifecycle_test.dart",
+        "mobile file-session lifecycle behavior gate",
+    )
+    require_order(
+        sources["mobile_file_lifecycle_test"],
+        (
+            "final retired = fetcher.registerReadTask(false, path);",
+            "fetcher.cancelPending();",
+            "final replacement = fetcher.registerReadTask(false, path);",
+            "fetcher.tryCompleteTask(",
+            "await replacement.timeout(",
+            "expect(directory.path, path);",
+        ),
+        "retired file timeout versus replacement behavior proof",
+    )
+    remote_keyboard = extract_item(
+        sources["mobile_remote"],
+        "  void onSoftKeyboardChanged(bool visible)",
+        "remote-page delayed keyboard lifecycle",
+    )
+    require_order(
+        remote_keyboard,
+        (
+            "void onSoftKeyboardChanged(bool visible)",
+            "if (!mounted || !gFFI.isCurrentSession(sessionId)) return;",
+            "if (!visible)",
+        ),
+        "remote-page keyboard callback exact-session refusal",
+    )
+    require(
+        sources["mobile_remote"],
+        "class KeyHelpTools extends StatefulWidget {\n  final SessionID sessionId;",
+        "remote-page key-help captured session identity",
+    )
+    remote_key_help = extract_item(
+        sources["mobile_remote"],
+        "class _KeyHelpToolsState",
+        "remote-page delayed key-help resource",
+    )
+    require_order(
+        remote_key_help,
+        (
+            "if (!mounted || !gFFI.isCurrentSession(widget.sessionId)) return;",
+            "Future.delayed(Duration(milliseconds: 500), () {",
+            "if (!mounted || !gFFI.isCurrentSession(widget.sessionId)) return;",
+            "_updateRect();",
+        ),
+        "remote-page key-help exact-session timer refusal",
+    )
+    camera_metrics = extract_item(
+        sources["mobile_camera"],
+        "  void didChangeMetrics()",
+        "camera-page delayed metrics lifecycle",
+    )
+    require_count(
+        camera_metrics,
+        "if (!mounted || !gFFI.isCurrentSession(sessionId)) return;",
+        2,
+        "camera-page metrics and timer exact-session refusal",
+    )
+    file_view = extract_item(
+        sources["mobile_files"],
+        "class _FileManagerViewState",
+        "mobile file-view resource lifecycle",
+    )
+    require_order(
+        file_view,
+        (
+            "late final StreamSubscription<FileDirectory> _directorySubscription;",
+            "_directorySubscription =",
+            "controller.directory.listen((e) => breadCrumbScrollToEnd());",
+            "void dispose()",
+            "unawaited(_directorySubscription.cancel());",
+            "_breadCrumbTimer?.cancel();",
+            "_listScrollController.dispose();",
+            "_breadCrumbScroller.dispose();",
+            "super.dispose();",
+        ),
+        "mobile file-view subscription/timer/controller retirement",
+    )
 
 
 Mutation = Tuple[str, str, str, str]
@@ -1249,6 +2089,71 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("direct_service", "expected_generation.checked_add(1)", "expected_generation.wrapping_add(1)", "exact server-generation stop"),
     ("flutter_ffi", "bind_main_service_generation(&env, &service, generation)", "true", "exact-object listener/callback generation binding"),
     ("flutter", "|| self.session_id.as_ref() != Some(&session_id)", "|| false", "Rust cross-isolate Activity resume refusal"),
+    ("flutter", "client_owner_id: Option<SessionID>", "client_owner_id: Option<()>", "stored mobile client-owner association"),
+    ("flutter", "acquire_android_client_owner(&client_owner_id)?", "acquire_android_client_owner(&session_id)?", "existing-session owner admission"),
+    ("flutter", "close_previous_mobile_client_sessions(client_owner_id, session_id)", "(0, 0)", "replacement pre-insertion drain"),
+    ("flutter", "sessions::session_has_client_owner(session_id, client_owner_id)", "true", "start-time owner association"),
+    ("flutter", "handler_session_id != session_id\n                        || handler.client_owner_id.as_ref() != Some(client_owner_id)", "handler_session_id != session_id\n                        && handler.client_owner_id.as_ref() != Some(client_owner_id)", "exact owner-and-session preservation"),
+    ("flutter", "check_remove_unused_displays(None, None, session, &handlers);", "check_remove_unused_displays(None, Some(session_id), session, &handlers);", "replacement display reconciliation includes preserved exact session"),
+    ("flutter", "if owned_handler_ids.is_empty() {\n                continue;\n            }\n            if handlers.is_empty() {\n                removed_keys.push(key.clone());\n            } else {\n                check_remove_unused_displays(None, None, session, &handlers);", "if owned_handler_ids.is_empty() {\n                continue;\n            }\n            if handlers.is_empty() {\n                removed_keys.push(key.clone());\n            } else {\n                check_remove_unused_displays(None, Some(client_owner_id), session, &handlers);", "Activity-owner display reconciliation includes all remaining sessions"),
+    ("flutter", "excluded_session_id: Option<&SessionID>", "excluded_session_id: &SessionID", "optional display-reconciliation exclusion"),
+    ("flutter", "fn stale_mobile_session_close_cannot_select_replacement_from_same_owner()", "fn stale_mobile_session_close_can_select_replacement_from_same_owner()", "same-owner stale-close behavior proof"),
+    ("flutter_ffi", "client_owner_id: SessionID,", "client_owner_id: String,", "authored dual-identity bridge"),
+    ("dart_main", "'register_client_session_owner', gFFI.clientOwnerId.toString())", "'register_client_session_owner', gFFI.sessionId.toString())", "Activity owner registration identity"),
+    ("dart_model", "final _mobileClientOwnerId = Uuid().v4obj();", "final _mobileClientOwnerId = SessionID.nil();", "canonical mobile owner UUID"),
+    ("dart_model", "late SessionID sessionId;\n  late final SessionID clientOwnerId;", "late final SessionID sessionId;\n  late final SessionID clientOwnerId;", "rotating connection identity"),
+    ("dart_model", "sessionId = Uuid().v4obj();", "sessionId = clientOwnerId;", "fresh per-connection UUID"),
+    ("dart_model", "mobileReset(previousSessionId);", "mobileReset(clientOwnerId);", "pre-rotation exact-session model reset"),
+    ("dart_model", "qualityMonitorModel.reset();", "// quality monitor retained", "quality-monitor state retirement"),
+    ("dart_model", "recordingModel.reset();", "// recording state retained", "recording state retirement"),
+    ("dart_model", "void reconnect(OverlayDialogManager dialogManager, SessionID sessionId) {\n    if (!_isCurrentSession(sessionId)) return;", "void reconnect(OverlayDialogManager dialogManager, SessionID sessionId) {", "delayed reconnect session refusal"),
+    ("dart_model", "tryShowAndroidActionsOverlay(SessionID expectedSessionId,", "tryShowAndroidActionsOverlay(SessionID ignoredSessionId,", "delayed Android overlay session identity"),
+    ("dart_model", "void mobileFocusCanvasCursor() {\n    final expectedSessionId = parent.target?.sessionId;", "void mobileFocusCanvasCursor() {\n    final expectedSessionId = SessionID.nil();", "delayed mobile canvas-focus session identity"),
+    ("dart_model", "void restoreMobileOffsetAfterSoftKeyboard() {\n    final expectedSessionId = parent.target?.sessionId;", "void restoreMobileOffsetAfterSoftKeyboard() {\n    final expectedSessionId = SessionID.nil();", "delayed mobile canvas-restore session identity"),
+    ("dart_model", "final remoteWindowCoords = <RemoteWindowCoords>[];\n      final windowRect =\n          await InputModel.fillRemoteCoordsAndGetCurFrame(remoteWindowCoords);", "final windowRect =\n          await InputModel.fillRemoteCoordsAndGetCurFrame(_remoteWindowCoords);", "cursor coordinate staging"),
+    ("dart_model", "_x = -10000;\n    _y = -10000;\n    _id = \"-1\";", "_x = -10000;\n    _x = -10000;\n    _id = \"-1\";", "cursor y-state retirement"),
+    ("dart_model", "_edgeScrollFallbackState = null;", "// edge-scroll fallback retained", "canvas fallback retirement"),
+    ("dart_model", "if (closed || sessionId != activeSessionId) return;", "if (closed) return;", "stale event-stream refusal"),
+    ("dart_model", "SessionID get sessionId => parent.target!.sessionId;", "late final SessionID sessionId;", "borrowed long-lived model identity"),
+    ("dart_model", "await bind.sessionClose(sessionId: closingSessionId);", "await bind.sessionClose(sessionId: sessionId);", "exact captured native close"),
+    ("mobile_files", "await model.close(sessionId);", "await Future<void>.delayed(Duration.zero);", "file-page state persistence before native close"),
+    ("dart_input_model", "SessionID get sessionId => parent.target!.sessionId;", "late final SessionID sessionId;", "borrowed input identity"),
+    ("dart_input_model", "_relativeMouse.resetForSession(expectedSessionId);", "_relativeMouse.dispose();", "reusable input-model session reset"),
+    ("dart_input_model", "_lastScale = 1.0;\n    _pointerMovedAfterEnter = false;\n    _pointerInsideImage = false;\n    _lastButtons = 0;\n    lastMousePos = Offset.zero;", "_pointerMovedAfterEnter = false;\n    _pointerInsideImage = false;\n    _lastButtons = 0;", "reusable input gesture-coordinate reset"),
+    ("dart_input_model", "Future<void> _sendMousePair(MouseButtons button, Duration hold) async {\n    if (!keyboardPerm || isViewCamera) return;\n    final expectedSessionId = sessionId;", "Future<void> _sendMousePair(MouseButtons button, Duration hold) async {\n    if (!keyboardPerm || isViewCamera) return;\n    final expectedSessionId = SessionID.nil();", "paired mobile mouse session identity"),
+    ("dart_input_model", "Future<void> tapHidKey(int usbHidUsage) async {\n    final expectedSessionId = sessionId;", "Future<void> tapHidKey(int usbHidUsage) async {\n    final expectedSessionId = SessionID.nil();", "paired mobile HID session identity"),
+    ("dart_input_model", "final expectedSessionId = sessionId;\n      Future.delayed(Duration.zero, () async {\n        final remoteWindowCoords = <RemoteWindowCoords>[];", "Future.delayed(Duration.zero, () async {\n        final remoteWindowCoords = <RemoteWindowCoords>[];", "input coordinate session identity"),
+    ("dart_chat_model", "SessionID get sessionId => parent.target!.sessionId;", "late final SessionID sessionId;", "borrowed chat identity"),
+    ("dart_relative_mouse", "sessionId: expectedSessionId ?? getSessionId(),", "sessionId: SessionID.nil(),", "borrowed relative-mouse identity"),
+    ("dart_relative_mouse", "_performCleanupCore(expectedSessionId: expectedSessionId);", "_performCleanupCore();", "relative-mouse exact retired-session cleanup"),
+    ("dart_file_model", "fileFetcher.cancelPending();", "// stale file tasks retained", "file-transfer pending-resource retirement"),
+    ("dart_file_model", "localController.resetForSession();", "// local controller retained", "file-controller prior-peer state retirement"),
+    ("dart_file_model", "void clear() {\n    super.clear();\n    _overrideConfirm = null;\n    _skip = false;", "void clear() {\n    super.clear();", "file-dialog remembered-policy retirement"),
+    ("dart_file_model", "if (model == null || !model._isCurrentSession(expectedSessionId))", "if (model == null)", "file-dialog stale-session callback refusal"),
+    ("dart_file_model", "if (identical(tasks[", "if (false && identical(tasks[", "file-fetch timeout exact-completer retirement"),
+    ("dart_file_model", "Future<bool> _openDirectoryPath(String path,\n      {bool isBack = false, SessionID? expectedSessionId}) async {\n    final selectedSessionId = expectedSessionId ?? sessionId;", "Future<bool> _openDirectoryPath(String path,\n      {bool isBack = false, SessionID? expectedSessionId}) async {\n    final selectedSessionId = sessionId;", "file-controller captured directory session"),
+    ("dart_file_model", "Future<FileDirectory> fetchDirectory(\n      String path, bool isLocal, bool showHidden,\n      {SessionID? expectedSessionId}) async {\n    final selectedSessionId = expectedSessionId ?? sessionId;", "Future<FileDirectory> fetchDirectory(\n      String path, bool isLocal, bool showHidden,\n      {SessionID? expectedSessionId}) async {\n    final selectedSessionId = sessionId;", "file-fetcher captured native session"),
+    ("dart_file_model", "final home = await bind.mainGetHomeDir();\n      if (!_isCurrentSession(expectedSessionId)) return;\n      options.value.home = home;", "options.value.home = await bind.mainGetHomeDir();", "file-controller local-home post-await refusal"),
+    ("dart_event_loop", "generation == _generation", "generation <= _generation", "event-loop exact generation"),
+    ("mobile_remote", "gFFI.close(expectedSessionId: sessionId)", "gFFI.close(expectedSessionId: gFFI.sessionId)", "remote-page exact cleanup"),
+    ("mobile_camera", "gFFI.close(expectedSessionId: sessionId)", "gFFI.close(expectedSessionId: gFFI.sessionId)", "camera-page exact cleanup"),
+    ("mobile_files", "gFFI.close(expectedSessionId: sessionId)", "gFFI.close(expectedSessionId: gFFI.sessionId)", "file-page exact cleanup"),
+    ("mobile_remote", ".tryShowAndroidActionsOverlay(sessionId);", ".tryShowAndroidActionsOverlay(gFFI.sessionId);", "remote-page delayed overlay identity"),
+    ("mobile_camera", ".tryShowAndroidActionsOverlay(sessionId);", ".tryShowAndroidActionsOverlay(gFFI.sessionId);", "camera-page delayed overlay identity"),
+    ("mobile_remote", "Timer(const Duration(milliseconds: 200), () {\n                                  if (!mounted ||\n                                      !gFFI.isCurrentSession(sessionId)) {", "Timer(const Duration(milliseconds: 200), () {\n                                  if (!mounted) {", "remote-page delayed orientation refusal"),
+    ("mobile_camera", "Timer(const Duration(milliseconds: 200), () {\n                            if (!mounted || !gFFI.isCurrentSession(sessionId)) {", "Timer(const Duration(milliseconds: 200), () {\n                            if (!mounted) {", "camera-page delayed orientation refusal"),
+    ("mobile_remote", "void onSoftKeyboardChanged(bool visible) {\n    if (!mounted || !gFFI.isCurrentSession(sessionId)) return;", "void onSoftKeyboardChanged(bool visible) {", "remote-page delayed keyboard session refusal"),
+    ("mobile_remote", "if (!mounted || !gFFI.isCurrentSession(widget.sessionId)) return;", "if (!mounted) return;", "remote-page delayed key-help session refusal"),
+    ("mobile_camera", "void didChangeMetrics() {\n    if (!mounted || !gFFI.isCurrentSession(sessionId)) return;", "void didChangeMetrics() {", "camera-page delayed metrics session refusal"),
+    ("mobile_files", "unawaited(_directorySubscription.cancel());", "// directory subscription retained", "mobile file-view subscription retirement"),
+    ("requirements", '<span class="id">R-S11eb</span>', '<span class="id">R-S11eb-disabled</span>', "mobile owner/connection requirement"),
+    ("requirements", "<tr><td>281</td>", "<tr><td>281-disabled</td>", "mobile owner/connection disposition"),
+    ("hardening", "R-S11eb/R-S11e-146", "R-S11eb-disabled/R-S11e-146", "mobile owner/connection hardening ledger"),
+    ("verify", "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs", "true # replacement-drain shared gate disabled", "shared mobile replacement-drain gate"),
+    ("verify", "if [ \"$(grep -cF 'check_remove_unused_displays(None, None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then", "if false; then # post-drain display gate disabled", "shared post-drain display-reconciliation gate"),
+    ("dart_verify", "cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1", "true # generated-bridge mobile lifecycle tests disabled", "generated-bridge mobile lifecycle behavior gate"),
+    ("dart_verify", "flutter test --no-pub test/mobile_file_session_lifecycle_test.dart", "true # mobile file-session lifecycle test disabled", "mobile file-session lifecycle behavior gate"),
+    ("mobile_file_lifecycle_test", "expect(directory.path, path);", "expect(directory.path, isEmpty);", "retired file timeout replacement behavior proof"),
     ("io_loop", "self.voice_call_thread = self.start_voice_call();\n                                if self.voice_call_thread.is_some() {\n                                    self.handler.on_voice_call_started();", "self.handler.on_voice_call_started();\n                                self.voice_call_thread = self.start_voice_call();\n                                if self.voice_call_thread.is_some() {", "worker-before-native voice activation"),
     ("io_loop", '.on_voice_call_closed("Failed to start voice call audio")', '.on_voice_call_started()', "outgoing voice start-failure retirement"),
     ("test", "one controlled teardown cleared another owner", "controlled teardown passed", "controlled behavior proof"),

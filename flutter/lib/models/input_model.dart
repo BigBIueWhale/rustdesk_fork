@@ -366,8 +366,10 @@ class InputModel {
               !model.isViewCamera) {
             _sideButtonDownModels[mb] = model;
             // Fire-and-forget to avoid blocking the platform channel handler.
-            unawaited(model._sendMouseUnchecked(type, mb).catchError((Object e) {
-              debugPrint('[InputModel] failed to send side button $type for $mb: $e');
+            unawaited(
+                model._sendMouseUnchecked(type, mb).catchError((Object e) {
+              debugPrint(
+                  '[InputModel] failed to send side button $type for $mb: $e');
             }));
           }
         } else {
@@ -377,8 +379,10 @@ class InputModel {
           // release always goes through even if permissions changed.
           final model = _sideButtonDownModels.remove(mb);
           if (model != null) {
-            unawaited(model._sendMouseUnchecked(type, mb).catchError((Object e) {
-              debugPrint('[InputModel] failed to send side button $type for $mb: $e');
+            unawaited(
+                model._sendMouseUnchecked(type, mb).catchError((Object e) {
+              debugPrint(
+                  '[InputModel] failed to send side button $type for $mb: $e');
             }));
           }
         }
@@ -390,7 +394,7 @@ class InputModel {
   /// Clear any static references to this model (prevents stale routing).
   /// Releases any held side buttons on the peer so closing a session
   /// mid-press does not leave a stuck button.
-  void disposeSideButtonTracking() {
+  void disposeSideButtonTracking({SessionID? expectedSessionId}) {
     if (_activeSideButtonModel == this) _activeSideButtonModel = null;
     final held = _sideButtonDownModels.entries
         .where((e) => e.value == this)
@@ -399,7 +403,9 @@ class InputModel {
     for (final mb in held) {
       _sideButtonDownModels.remove(mb);
       // Best-effort release; session may already be tearing down.
-      unawaited(_sendMouseUnchecked('up', mb).catchError((Object e) {
+      unawaited(
+          _sendMouseUnchecked('up', mb, expectedSessionId: expectedSessionId)
+              .catchError((Object e) {
         debugPrint('[InputModel] failed to release side button $mb: $e');
       }));
     }
@@ -472,7 +478,7 @@ class InputModel {
   Rect? _windowRect;
   List<RemoteWindowCoords> _remoteWindowCoords = [];
 
-  late final SessionID sessionId;
+  SessionID get sessionId => parent.target!.sessionId;
 
   // Local gate for clipboard-assisted input flows on mobile Wayland dialogs.
   // It should not block physical keyboard events.
@@ -495,9 +501,8 @@ class InputModel {
 
   InputModel(this.parent) {
     initSideButtonChannel();
-    sessionId = parent.target!.sessionId;
     _relativeMouse = RelativeMouseModel(
-      sessionId: sessionId,
+      getSessionId: () => sessionId,
       enabled: relativeMouseMode,
       keyboardPerm: () => keyboardPerm,
       isViewCamera: () => isViewCamera,
@@ -937,10 +942,11 @@ class InputModel {
 
   /// Send Key Event
   void newKeyboardMode(
-      String character, int usbHid, bool down, bool iosCapsLock) {
+      String character, int usbHid, bool down, bool iosCapsLock,
+      {SessionID? expectedSessionId}) {
     final lockModes = _buildLockModes(iosCapsLock);
     bind.sessionHandleFlutterKeyEvent(
-        sessionId: sessionId,
+        sessionId: expectedSessionId ?? sessionId,
         character: character,
         usbHid: usbHid,
         lockModes: lockModes,
@@ -1094,9 +1100,19 @@ class InputModel {
   }
 
   /// Send a mouse tap event(down and up).
-  Future<void> tap(MouseButtons button) async {
-    await sendMouse('down', button);
-    await sendMouse('up', button);
+  Future<void> tap(MouseButtons button) =>
+      _sendMousePair(button, Duration.zero);
+
+  Future<void> _sendMousePair(MouseButtons button, Duration hold) async {
+    if (!keyboardPerm || isViewCamera) return;
+    final expectedSessionId = sessionId;
+    await _sendMouseUnchecked('down', button,
+        expectedSessionId: expectedSessionId);
+    if (hold > Duration.zero) {
+      await Future.delayed(hold);
+    }
+    await _sendMouseUnchecked('up', button,
+        expectedSessionId: expectedSessionId);
   }
 
   Future<void> tapDown(MouseButtons button) async {
@@ -1133,9 +1149,10 @@ class InputModel {
   /// Send mouse event unconditionally (no permission checks).
   /// Used for side button releases that must go through even if permissions
   /// changed after the matching down was sent.
-  Future<void> _sendMouseUnchecked(String type, MouseButtons button) async {
+  Future<void> _sendMouseUnchecked(String type, MouseButtons button,
+      {SessionID? expectedSessionId}) async {
     await bind.sessionSendMouse(
-        sessionId: sessionId,
+        sessionId: expectedSessionId ?? sessionId,
         msg: json.encode(modify({'type': type, 'buttons': button.value})));
   }
 
@@ -1274,8 +1291,39 @@ class InputModel {
     _relativeMouse.setRelativeMouseMode(false);
   }
 
-  void disposeRelativeMouseMode() {
-    _relativeMouse.dispose();
+  void resetForSession(SessionID expectedSessionId) {
+    disposeSideButtonTracking(expectedSessionId: expectedSessionId);
+    _relativeMouse.resetForSession(expectedSessionId);
+    onRelativeMouseModeDisabled = null;
+    _flingTimer?.cancel();
+    _flingTimer = null;
+    _fling = false;
+    _stopFling = true;
+    _trackpadLastDelta = Offset.zero;
+    _trackpadScrollUnsent = Offset.zero;
+    _mobileDeltaRemainderX = 0;
+    _mobileDeltaRemainderY = 0;
+    _lastScale = 1.0;
+    _pointerMovedAfterEnter = false;
+    _pointerInsideImage = false;
+    _lastButtons = 0;
+    lastMousePos = Offset.zero;
+    _lastWheelTsUs = 0;
+    _queryOtherWindowCoords = false;
+    _windowRect = null;
+    _remoteWindowCoords.clear();
+    toReleaseKeys.reset();
+    toReleaseRawKeys.reset();
+    resetModifiers();
+    keyboardInputAllowed = true;
+    final peerId = id;
+    if (peerId.isNotEmpty) {
+      stateGlobal.relativeMouseModeState.remove(peerId);
+    }
+  }
+
+  void disposeRelativeMouseMode({SessionID? expectedSessionId}) {
+    _relativeMouse.dispose(expectedSessionId: expectedSessionId);
     onRelativeMouseModeDisabled = null;
     // Cancel the relative mouse mode observer and clean up global state.
     _relativeMouseModeDisposer?.dispose();
@@ -1596,8 +1644,14 @@ class InputModel {
     }
 
     if (_queryOtherWindowCoords) {
+      final expectedSessionId = sessionId;
       Future.delayed(Duration.zero, () async {
-        _windowRect = await fillRemoteCoordsAndGetCurFrame(_remoteWindowCoords);
+        final remoteWindowCoords = <RemoteWindowCoords>[];
+        final windowRect =
+            await fillRemoteCoordsAndGetCurFrame(remoteWindowCoords);
+        if (parent.target?.isCurrentSession(expectedSessionId) != true) return;
+        _remoteWindowCoords = remoteWindowCoords;
+        _windowRect = windowRect;
       });
       _queryOtherWindowCoords = false;
     }
@@ -1640,7 +1694,8 @@ class InputModel {
     if (e is PointerScrollEvent) {
       final rawDx = e.scrollDelta.dx;
       final rawDy = e.scrollDelta.dy;
-      final dominantDelta = rawDx.abs() > rawDy.abs() ? rawDx.abs() : rawDy.abs();
+      final dominantDelta =
+          rawDx.abs() > rawDy.abs() ? rawDx.abs() : rawDy.abs();
       final isSmooth = dominantDelta < 1;
       final nowUs = DateTime.now().microsecondsSinceEpoch;
       final dtUs = _lastWheelTsUs == 0 ? 0 : nowUs - _lastWheelTsUs;
@@ -2102,18 +2157,18 @@ class InputModel {
   }
 
   void onMobileHome() => tap(MouseButtons.wheel);
-  Future<void> onMobileApps() async {
-    sendMouse('down', MouseButtons.wheel);
-    await Future.delayed(const Duration(milliseconds: 500));
-    sendMouse('up', MouseButtons.wheel);
-  }
+  Future<void> onMobileApps() =>
+      _sendMousePair(MouseButtons.wheel, const Duration(milliseconds: 500));
 
   // Simulate a key press event.
   // `usbHidUsage` is the USB HID usage code of the key.
   Future<void> tapHidKey(int usbHidUsage) async {
-    newKeyboardMode(kKeyFlutterKey, usbHidUsage, true, false);
+    final expectedSessionId = sessionId;
+    newKeyboardMode(kKeyFlutterKey, usbHidUsage, true, false,
+        expectedSessionId: expectedSessionId);
     await Future.delayed(Duration(milliseconds: 100));
-    newKeyboardMode(kKeyFlutterKey, usbHidUsage, false, false);
+    newKeyboardMode(kKeyFlutterKey, usbHidUsage, false, false,
+        expectedSessionId: expectedSessionId);
   }
 
   Future<void> onMobileVolumeUp() async =>

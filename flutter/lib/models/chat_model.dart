@@ -115,11 +115,10 @@ class ChatModel with ChangeNotifier {
 
   final WeakReference<FFI> parent;
 
-  late final SessionID sessionId;
+  SessionID get sessionId => parent.target!.sessionId;
   late FocusNode inputNode;
 
   ChatModel(this.parent) {
-    sessionId = parent.target!.sessionId;
     inputNode = FocusNode(
       onKey: (_, event) {
         bool isShiftPressed = event.isKeyPressed(LogicalKeyboardKey.shiftLeft);

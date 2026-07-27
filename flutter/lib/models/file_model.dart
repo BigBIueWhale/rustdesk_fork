@@ -83,17 +83,40 @@ class FileModel {
     evtLoop = FileDialogEventLoop();
   }
 
-  Future<void> onReady() async {
-    await evtLoop.onReady();
-    if (!isWeb) await localController.onReady();
-    await remoteController.onReady();
+  bool _isCurrentSession(SessionID expectedSessionId) =>
+      parent.target?.isCurrentSession(expectedSessionId) == true;
+
+  void beginSession(SessionID expectedSessionId) {
+    if (!_isCurrentSession(expectedSessionId)) return;
+    unawaited(evtLoop.close());
+    evtLoop.clear();
+    parent.target?.dialogManager.dismissAll();
+    fileFetcher.cancelPending();
+    jobController.clear();
+    localController.resetForSession();
+    remoteController.resetForSession();
+    fileConfirmCheckboxRemember = false;
   }
 
-  Future<void> close() async {
+  Future<void> onReady(SessionID expectedSessionId) async {
+    if (!_isCurrentSession(expectedSessionId)) return;
+    await evtLoop.onReady();
+    if (!_isCurrentSession(expectedSessionId)) return;
+    if (!isWeb) {
+      await localController.onReady(expectedSessionId);
+      if (!_isCurrentSession(expectedSessionId)) return;
+    }
+    await remoteController.onReady(expectedSessionId);
+  }
+
+  Future<void> close(SessionID expectedSessionId) async {
+    if (parent.target?.sessionId != expectedSessionId) return;
     await evtLoop.close();
+    if (parent.target?.sessionId != expectedSessionId) return;
     parent.target?.dialogManager.dismissAll();
-    await localController.close();
-    await remoteController.close();
+    await localController.close(expectedSessionId);
+    if (parent.target?.sessionId != expectedSessionId) return;
+    await remoteController.close(expectedSessionId);
   }
 
   Future<void> refreshAll() async {
@@ -141,13 +164,18 @@ class FileModel {
     jobController.jobError(evt);
   }
 
-  Future<void> postOverrideFileConfirm(Map<String, dynamic> evt) async {
-    evtLoop.pushEvent(
-        _FileDialogEvent(WeakReference(this), FileDialogType.overwrite, evt));
+  Future<void> postOverrideFileConfirm(
+      Map<String, dynamic> evt, SessionID expectedSessionId) async {
+    if (!_isCurrentSession(expectedSessionId)) return;
+    evtLoop.pushEvent(_FileDialogEvent(
+        WeakReference(this), expectedSessionId, FileDialogType.overwrite, evt));
   }
 
   Future<void> overrideFileConfirm(Map<String, dynamic> evt,
-      {bool? overrideConfirm, bool skip = false}) async {
+      {required SessionID expectedSessionId,
+      bool? overrideConfirm,
+      bool skip = false}) async {
+    if (!_isCurrentSession(expectedSessionId)) return;
     // If `skip == true`, it means to skip this file without showing dialog.
     // Because `resp` may be null after the user operation or the last remembered operation,
     // and we should distinguish them.
@@ -156,11 +184,13 @@ class FileModel {
             ? await showFileConfirmDialog(translate("Overwrite"),
                 "${evt['read_path']}", true, evt['is_identical'] == "true")
             : null);
+    if (!_isCurrentSession(expectedSessionId)) return;
     final id = int.tryParse(evt['id']) ?? 0;
     if (false == resp) {
       final jobIndex = jobController.getJob(id);
       if (jobIndex != -1) {
         await jobController.cancelJob(id);
+        if (!_isCurrentSession(expectedSessionId)) return;
         final job = jobController.jobTable[jobIndex];
         job.state = JobState.done;
         jobController.jobTable.refresh();
@@ -179,12 +209,13 @@ class FileModel {
         evtLoop.setSkip(!need_override);
       }
       await bind.sessionSetConfirmOverrideFile(
-          sessionId: sessionId,
+          sessionId: expectedSessionId,
           actId: id,
           fileNum: int.parse(evt['file_num']),
           needOverride: need_override,
           remember: fileConfirmCheckboxRemember,
           isUpload: evt['is_upload'] == "true");
+      if (!_isCurrentSession(expectedSessionId)) return;
     }
     // Update the loop config.
     if (fileConfirmCheckboxRemember) {
@@ -354,6 +385,13 @@ class FileController {
       required this.fileFetcher,
       required this.getOtherSideDirectoryData});
 
+  void resetForSession() {
+    directory.value.clear();
+    options.value.clear();
+    history.clear();
+    selectedItems.clear();
+  }
+
   String get homePath => options.value.home;
   void set homePath(String path) => options.value.home = path;
   OverlayDialogManager? get dialogManager => rootState.target?.dialogManager;
@@ -377,22 +415,34 @@ class FileController {
     return DirectoryData(directory.value, options.value);
   }
 
-  Future<void> onReady() async {
+  bool _isCurrentSession(SessionID expectedSessionId) =>
+      rootState.target?.isCurrentSession(expectedSessionId) == true;
+
+  Future<void> onReady(SessionID expectedSessionId) async {
+    if (!_isCurrentSession(expectedSessionId)) return;
     if (isLocal) {
-      options.value.home = await bind.mainGetHomeDir();
+      final home = await bind.mainGetHomeDir();
+      if (!_isCurrentSession(expectedSessionId)) return;
+      options.value.home = home;
     }
-    options.value.showHidden = (await bind.sessionGetPeerOption(
-            sessionId: sessionId,
-            name: isLocal ? "local_show_hidden" : "remote_show_hidden"))
+    final showHidden = (await bind.sessionGetPeerOption(
+      sessionId: expectedSessionId,
+      name: isLocal ? "local_show_hidden" : "remote_show_hidden",
+    ))
         .isNotEmpty;
+    if (!_isCurrentSession(expectedSessionId)) return;
+    options.value.showHidden = showHidden;
     options.value.isWindows = isLocal
         ? isWindows
         : rootState.target?.ffiModel.pi.platform == kPeerPlatformWindows;
 
     await Future.delayed(Duration(milliseconds: 100));
+    if (!_isCurrentSession(expectedSessionId)) return;
 
     final savedDir = (await bind.sessionGetPeerOption(
-        sessionId: sessionId, name: isLocal ? "local_dir" : "remote_dir"));
+        sessionId: expectedSessionId,
+        name: isLocal ? "local_dir" : "remote_dir"));
+    if (!_isCurrentSession(expectedSessionId)) return;
     Future<bool> tryOpenReadyDirs() async {
       final dirs = <String>{
         if (directory.value.path.isNotEmpty) directory.value.path,
@@ -400,16 +450,20 @@ class FileController {
         options.value.home,
       };
       for (final dir in dirs) {
-        if (await _openDirectoryPath(dir, isBack: true)) {
+        if (await _openDirectoryPath(dir,
+            isBack: true, expectedSessionId: expectedSessionId)) {
           return true;
         }
+        if (!_isCurrentSession(expectedSessionId)) return false;
       }
       return false;
     }
 
     var opened = await tryOpenReadyDirs();
+    if (!_isCurrentSession(expectedSessionId)) return;
 
     await Future.delayed(Duration(seconds: 1));
+    if (!_isCurrentSession(expectedSessionId)) return;
 
     if (!opened) {
       // The peer may become ready during the reconnect delay, so retry the
@@ -418,7 +472,8 @@ class FileController {
     }
   }
 
-  Future<void> close() async {
+  Future<void> close(SessionID expectedSessionId) async {
+    if (rootState.target?.sessionId != expectedSessionId) return;
     // save config
     Map<String, String> msgMap = {};
     msgMap[isLocal ? "local_dir" : "remote_dir"] = directory.value.path;
@@ -426,7 +481,8 @@ class FileController {
         options.value.showHidden ? "Y" : "";
     for (final msg in msgMap.entries) {
       await bind.sessionPeerOption(
-          sessionId: sessionId, name: msg.key, value: msg.value);
+          sessionId: expectedSessionId, name: msg.key, value: msg.value);
+      if (rootState.target?.sessionId != expectedSessionId) return;
     }
     directory.value.clear();
     options.value.clear();
@@ -461,7 +517,10 @@ class FileController {
     return await _openDirectoryPath(path, isBack: isBack);
   }
 
-  Future<bool> _openDirectoryPath(String path, {bool isBack = false}) async {
+  Future<bool> _openDirectoryPath(String path,
+      {bool isBack = false, SessionID? expectedSessionId}) async {
+    final selectedSessionId = expectedSessionId ?? sessionId;
+    if (!_isCurrentSession(selectedSessionId)) return false;
     if (!isBack) {
       pushHistory();
     }
@@ -475,7 +534,9 @@ class FileController {
       }
     }
     try {
-      final fd = await fileFetcher.fetchDirectory(path, isLocal, showHidden);
+      final fd = await fileFetcher.fetchDirectory(path, isLocal, showHidden,
+          expectedSessionId: selectedSessionId);
+      if (!_isCurrentSession(selectedSessionId)) return false;
       fd.format(isWindows, sort: sortBy.value);
       directory.value = fd;
       return true;
@@ -1248,6 +1309,27 @@ class FileFetcher {
 
   FileFetcher(this.getSessionID);
 
+  void cancelPending() {
+    for (final task in remoteTasks.values) {
+      if (!task.isCompleted) {
+        task.completeError("Superseded file-transfer session");
+      }
+    }
+    for (final task in remoteEmptyDirsTasks.values) {
+      if (!task.isCompleted) {
+        task.completeError("Superseded file-transfer session");
+      }
+    }
+    for (final task in readRecursiveTasks.values) {
+      if (!task.isCompleted) {
+        task.completeError("Superseded file-transfer session");
+      }
+    }
+    remoteTasks.clear();
+    remoteEmptyDirsTasks.clear();
+    readRecursiveTasks.clear();
+  }
+
   Future<List<FileDirectory>> registerReadEmptyDirsTask(
       bool isLocal, String path) {
     // final jobs = isLocal?localJobs:remoteJobs; // maybe we will use read local dir async later
@@ -1259,7 +1341,9 @@ class FileFetcher {
     tasks[path] = c;
 
     Timer(Duration(seconds: 2), () {
-      tasks.remove(path);
+      if (identical(tasks[path], c)) {
+        tasks.remove(path);
+      }
       if (c.isCompleted) return;
       c.completeError("Failed to read empty dirs, timeout");
     });
@@ -1276,7 +1360,9 @@ class FileFetcher {
     tasks[path] = c;
 
     Timer(Duration(seconds: 2), () {
-      tasks.remove(path);
+      if (identical(tasks[path], c)) {
+        tasks.remove(path);
+      }
       if (c.isCompleted) return;
       c.completeError("Failed to read dir, timeout");
     });
@@ -1292,7 +1378,9 @@ class FileFetcher {
     tasks[actID] = c;
 
     Timer(Duration(seconds: 2), () {
-      tasks.remove(actID);
+      if (identical(tasks[actID], c)) {
+        tasks.remove(actID);
+      }
       if (c.isCompleted) return;
       c.completeError("Failed to read dir, timeout");
     });
@@ -1373,16 +1461,20 @@ class FileFetcher {
   }
 
   Future<FileDirectory> fetchDirectory(
-      String path, bool isLocal, bool showHidden) async {
+      String path, bool isLocal, bool showHidden,
+      {SessionID? expectedSessionId}) async {
+    final selectedSessionId = expectedSessionId ?? sessionId;
     try {
       if (isLocal) {
         final res = await bind.sessionReadLocalDirSync(
-            sessionId: sessionId, path: path, showHidden: showHidden);
+            sessionId: selectedSessionId, path: path, showHidden: showHidden);
         final fd = FileDirectory.fromJson(jsonDecode(res));
         return fd;
       } else {
         await bind.sessionReadRemoteDir(
-            sessionId: sessionId, path: path, includeHidden: showHidden);
+            sessionId: selectedSessionId,
+            path: path,
+            includeHidden: showHidden);
         return registerReadTask(isLocal, path);
       }
     } catch (e) {
@@ -1810,10 +1902,12 @@ enum FileDialogType { overwrite, unknown }
 
 class _FileDialogEvent extends BaseEvent<FileDialogType, Map<String, dynamic>> {
   WeakReference<FileModel> fileModel;
+  final SessionID expectedSessionId;
   bool? _overrideConfirm;
   bool _skip = false;
 
-  _FileDialogEvent(this.fileModel, super.type, super.data);
+  _FileDialogEvent(
+      this.fileModel, this.expectedSessionId, super.type, super.data);
 
   void setOverrideConfirm(bool? confirm) {
     _overrideConfirm = confirm;
@@ -1826,14 +1920,16 @@ class _FileDialogEvent extends BaseEvent<FileDialogType, Map<String, dynamic>> {
   @override
   EventCallback<Map<String, dynamic>>? findCallback(FileDialogType type) {
     final model = fileModel.target;
-    if (model == null) {
+    if (model == null || !model._isCurrentSession(expectedSessionId)) {
       return null;
     }
     switch (type) {
       case FileDialogType.overwrite:
         return (data) async {
           return await model.overrideFileConfirm(data,
-              overrideConfirm: _overrideConfirm, skip: _skip);
+              expectedSessionId: expectedSessionId,
+              overrideConfirm: _overrideConfirm,
+              skip: _skip);
         };
       default:
         debugPrint("Unknown event type: $type with $data");
@@ -1846,6 +1942,13 @@ class FileDialogEventLoop
     extends BaseEventLoop<FileDialogType, Map<String, dynamic>> {
   bool? _overrideConfirm;
   bool _skip = false;
+
+  @override
+  void clear() {
+    super.clear();
+    _overrideConfirm = null;
+    _skip = false;
+  }
 
   @override
   Future<void> onPreConsume(

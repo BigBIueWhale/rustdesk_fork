@@ -9950,19 +9950,20 @@ if [ -n "$r_d7a" ]; then
 else
   echo "  ok  R-D7a keep-screen-on pinned during-controlled + onStartCommand START_NOT_STICKY + dead useVP9/MediaCodec encoder excised (raw ImageReader single) + Android raw media JNI copies into bounded Rust-owned storage"
 fi
-# R-D7a / R-T4: MainService deliberately survives task removal, but its outgoing viewer sessions
-# belong to one Flutter Activity/isolate. Lifecycle callbacks must therefore carry exact owner
-# authority. An argument-free global drain lets an obsolete Activity/onTaskRemoved callback close a
-# replacement isolate's live session. Bind a monotonic Activity generation to the isolate UUID,
-# reject stale session admission in Rust, drain only that UUID, and do not admit a replacement until
-# the retired viewer I/O worker has joined every native media child it owns.
+# R-D7a / R-T4 / R-S11eb: MainService deliberately survives task removal. One Flutter
+# Activity/isolate therefore keeps one exact owner UUID while each successive outgoing connection
+# has a fresh UUID. Lifecycle callbacks drain by stored owner association; route teardown selects
+# only its exact connection; replacement is not admitted until prior outgoing I/O/media ownership is
+# joined. Generated-bridge behavior runs in dart-verify with the Flutter feature enabled.
 android_client_owner_bad=
 ma=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainActivity.kt
 ffi_kt=flutter/android/app/src/main/kotlin/ffi.kt
 flutter_main=flutter/lib/main.dart
-"${RUN[@]}" cargo test --lib --features linux-pkg-config \
-  flutter::mobile_session_lifecycle_tests::android_owner_transition_joins_outgoing_worker_before_replacement \
-  --color never
+flutter_model=flutter/lib/models/model.dart
+flutter_file_model=flutter/lib/models/file_model.dart
+flutter_input_model=flutter/lib/models/input_model.dart
+flutter_relative_mouse=flutter/lib/models/relative_mouse_model.dart
+flutter_event_loop=flutter/lib/utils/event_loop.dart
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
   client::tests::owned_media_thread_ -- --test-threads=1
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
@@ -9981,12 +9982,29 @@ grep -qF 'FFI.closeClientSessions()' "$ma" "$ms" "$ffi_kt" src/flutter_ffi.rs \
   && android_client_owner_bad="$android_client_owner_bad argument-free-global-close-present"
 grep -qF 'takeStoppedClientSessionOwners()' "$ma" "$ms" \
   || android_client_owner_bad="$android_client_owner_bad task-removal-not-stopped-owner-bound"
-grep -qF 'let owner_admission = acquire_android_client_owner(session_id)?;' src/flutter.rs \
+grep -qF 'let owner_admission = acquire_android_client_owner(client_owner_id)?;' src/flutter.rs \
   || android_client_owner_bad="$android_client_owner_bad session-admission-not-owner-bound"
-grep -qF 'take_sessions_owned_by(session_id)' src/flutter.rs \
-  || android_client_owner_bad="$android_client_owner_bad teardown-not-uuid-scoped"
+grep -qF 'client_owner_id: Option<SessionID>' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad stored-owner-association-missing"
+grep -qF 'take_sessions_owned_by(client_owner_id)' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad teardown-not-owner-association-scoped"
+grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad replacement-pre-insertion-drain-missing"
+grep -qF 'sessions::session_has_client_owner(session_id, client_owner_id)' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad start-owner-association-check-missing"
+grep -qF 'excluded_session_id: Option<&SessionID>' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad display-reconciliation-exclusion-not-explicit"
+if [ "$(grep -cF 'check_remove_unused_displays(None, None, session, &handlers);' src/flutter.rs)" -ne 2 ]; then
+  android_client_owner_bad="$android_client_owner_bad post-drain-display-reconciliation-not-all-remaining"
+fi
 grep -qF 'close_all_sessions' src/flutter.rs src/flutter_ffi.rs \
   && android_client_owner_bad="$android_client_owner_bad global-client-drain-surface-present"
+grep -qF 'new_mobile_owner_closes_stale_peer_before_reusing_it' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad replacement-drain-regression-test-missing"
+grep -qF 'mobile_cleanup_preserves_only_the_exact_current_connection' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad exact-current-connection-regression-test-missing"
+grep -qF 'stale_mobile_session_close_cannot_select_replacement_from_same_owner' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad stale-close-regression-test-missing"
 grep -qF 'delayed_android_owner_callbacks_cannot_retire_or_close_the_replacement_owner' src/flutter.rs \
   || android_client_owner_bad="$android_client_owner_bad aba-regression-test-missing"
 grep -qF 'android_owner_admission_excludes_a_generation_transition' src/flutter.rs \
@@ -10066,6 +10084,34 @@ grep -qF '<tr><td>206</td>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad connection-round-disposition-missing"
 grep -qF 'shared outgoing-viewer reconnect round ownership' HARDENING_STATUS.md \
   || android_client_owner_bad="$android_client_owner_bad connection-round-ledger-missing"
+grep -qF "'register_client_session_owner', gFFI.clientOwnerId.toString())" "$flutter_main" \
+  || android_client_owner_bad="$android_client_owner_bad Activity-registration-not-owner-bound"
+grep -qF 'final _mobileClientOwnerId = Uuid().v4obj();' "$flutter_model" \
+  || android_client_owner_bad="$android_client_owner_bad canonical-mobile-owner-missing"
+grep -qF 'sessionId = Uuid().v4obj();' "$flutter_model" \
+  || android_client_owner_bad="$android_client_owner_bad fresh-connection-uuid-missing"
+grep -qF 'if (closed || sessionId != activeSessionId) return;' "$flutter_model" \
+  || android_client_owner_bad="$android_client_owner_bad stale-event-stream-guard-missing"
+grep -qF 'mobileReset(previousSessionId);' "$flutter_model" \
+  || android_client_owner_bad="$android_client_owner_bad pre-rotation-model-reset-missing"
+grep -qF 'fileFetcher.cancelPending();' "$flutter_file_model" \
+  || android_client_owner_bad="$android_client_owner_bad stale-file-resource-retirement-missing"
+grep -qF '_relativeMouse.resetForSession(expectedSessionId);' "$flutter_input_model" \
+  || android_client_owner_bad="$android_client_owner_bad reusable-input-reset-missing"
+grep -qF '_performCleanupCore(expectedSessionId: expectedSessionId);' "$flutter_relative_mouse" \
+  || android_client_owner_bad="$android_client_owner_bad exact-relative-mouse-retirement-missing"
+grep -qF 'generation == _generation' "$flutter_event_loop" \
+  || android_client_owner_bad="$android_client_owner_bad event-loop-generation-retirement-missing"
+grep -qF '<span class="id">R-S11eb</span>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad mobile-owner-connection-requirement-missing"
+grep -qF '<tr><td>281</td>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad mobile-owner-connection-disposition-missing"
+grep -qF 'R-S11eb/R-S11e-146' HARDENING_STATUS.md \
+  || android_client_owner_bad="$android_client_owner_bad mobile-owner-connection-ledger-missing"
+grep -qF 'cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \' scripts/dart-verify.sh \
+  || android_client_owner_bad="$android_client_owner_bad generated-bridge-lifecycle-test-command-missing"
+grep -qF 'flutter::mobile_session_lifecycle_tests:: -- --test-threads=1' scripts/dart-verify.sh \
+  || android_client_owner_bad="$android_client_owner_bad generated-bridge-lifecycle-test-filter-missing"
 if ! python3 - "$ma" "$ms" "$flutter_main" src/flutter.rs <<'PY'
 import sys
 from pathlib import Path
@@ -10107,18 +10153,20 @@ ok = (
     and "FFI.closeClientSessions(owner.generation, owner.sessionId)" in task_removed
     and run_mobile.index("final ownerRegistered = await gFFI.invokeMethod(")
         < run_mobile.index("register_client_session_owner")
+        < run_mobile.index("gFFI.clientOwnerId.toString()")
         < run_mobile.index("if (ownerRegistered != true)")
         < run_mobile.index("runApp(App())")
     and registration_failure.index("SystemNavigator.pop()")
         < registration_failure.index("return;")
-    and session_add_existed.index("acquire_android_client_owner(&session_id)")
+    and session_add_existed.index("acquire_android_client_owner(&client_owner_id)")
         < session_add_existed.index("sessions::insert_peer_session_id")
         < session_add_existed.index("drop(owner_admission)")
-    and session_add.index("acquire_android_client_owner(session_id)")
-        < session_add.index("close_sessions_from_previous_mobile_isolate(session_id)")
+    and session_add.index("acquire_android_client_owner(client_owner_id)")
+        < session_add.index("close_previous_mobile_client_sessions(client_owner_id, session_id)")
         < session_add.index("sessions::insert_session")
         < session_add.index("drop(owner_admission)")
-    and session_start.index("acquire_android_client_owner(session_id)")
+    and session_start.index("acquire_android_client_owner(client_owner_id)")
+        < session_start.index("sessions::session_has_client_owner(session_id, client_owner_id)")
         < session_start.index("session.start_io_thread()?")
         < session_start.index("drop(owner_admission)")
     and owner_begin.index("ANDROID_CLIENT_OWNER.write()")
@@ -10296,7 +10344,7 @@ fi
 if [ -n "$android_client_owner_bad" ]; then
   echo "  FAIL R-D7a/R-T4: Android outgoing-client Activity/isolate ownership regressed:$android_client_owner_bad"; rc=1
 else
-  echo "  ok  R-D7a/R-T4 Android outgoing sessions are generation+isolate-owned; stale Activity/task callbacks cannot drain a replacement isolate; replacement waits for exact I/O/media-worker completion"
+  echo "  ok  R-D7a/R-T4/R-S11eb Android outgoing sessions separate generation+isolate ownership from exact connection identity; stale Activity/route teardown cannot select a replacement; replacement waits for exact I/O/media-worker completion"
 fi
 # R-T13 (§20, SHOULD): Android controlled-side networking lifecycle. The foreground service must
 # observe network loss/availability and drive the existing direct-listener rebuild path (`listener =

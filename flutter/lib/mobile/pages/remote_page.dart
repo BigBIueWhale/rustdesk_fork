@@ -41,11 +41,7 @@ void _disableAndroidSoftKeyboard({bool? isKeyboardVisible}) {
 }
 
 class RemotePage extends StatefulWidget {
-  RemotePage(
-      {Key? key,
-      required this.id,
-      this.password,
-      this.isSharedPassword})
+  RemotePage({Key? key, required this.id, this.password, this.isSharedPassword})
       : super(key: key);
 
   final String id;
@@ -74,7 +70,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   var _showEdit = false; // use soft keyboard
 
   InputModel get inputModel => gFFI.inputModel;
-  SessionID get sessionId => gFFI.sessionId;
+  late final SessionID sessionId;
 
   final TextEditingController _textController =
       TextEditingController(text: initText);
@@ -88,13 +84,14 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
-    gFFI.ffiModel.updateEventListener(sessionId, widget.id);
-    gFFI.start(
+    sessionId = gFFI.start(
       widget.id,
       password: widget.password,
       isSharedPassword: widget.isSharedPassword,
     );
+    gFFI.ffiModel.updateEventListener(sessionId, widget.id);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
       gFFI.dialogManager
           .showLoading(translate('Connecting...'), onCancel: closeConnection);
@@ -109,8 +106,9 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         .changeCurrentKey(MessageKey(widget.id, ChatModel.clientModeID));
     _blockableOverlayState.applyFfi(gFFI);
     gFFI.imageModel.addCallbackOnFirstImage((String peerId) {
+      if (!gFFI.isCurrentSession(sessionId)) return;
       gFFI.recordingModel
-          .updateStatus(bind.sessionGetIsRecording(sessionId: gFFI.sessionId));
+          .updateStatus(bind.sessionGetIsRecording(sessionId: sessionId));
       if (gFFI.recordingModel.start) {
         showToast(translate('Automatically record outgoing sessions'));
       }
@@ -125,41 +123,45 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   @override
   Future<void> dispose() async {
     WidgetsBinding.instance.removeObserver(this);
-    // Close the session up-front. `gFFI.close()` below only calls `sessionClose`
-    // after several awaits (canvas save, image update, the `enable_soft_keyboard`
-    // platform call), so if the app is backgrounded while this page is disposing,
-    // dispose can be suspended before reaching it and the connection is never torn
-    // down. The reconnect then re-attaches to the leaked session and is stuck on
-    // "Connecting...". Dispatching it here makes teardown happen synchronously on
-    // pop; the `sessionClose` in `gFFI.close()` becomes a no-op once removed.
-    unawaited(bind.sessionClose(sessionId: sessionId));
+    // Start exact route cleanup immediately. State persistence may await before native close, but
+    // the Activity owner transition and the next mobile start also synchronously retire/join this
+    // old native connection. Its captured UUID cannot select a replacement route.
+    final closeFuture = gFFI.close(expectedSessionId: sessionId);
     // https://github.com/flutter/flutter/issues/64935
     super.dispose();
-    gFFI.dialogManager.hideMobileActionsOverlay(store: false);
-    gFFI.inputModel.listenToMouse(false);
-    gFFI.imageModel.disposeImage();
-    gFFI.cursorModel.disposeImages();
-    await gFFI.invokeMethod("enable_soft_keyboard", true);
     _mobileFocusNode.dispose();
     _physicalFocusNode.dispose();
-    inputModel.keyboardInputAllowed = true;
-    await gFFI.close();
     _timer?.cancel();
     _iosKeyboardWorkaroundTimer?.cancel();
-    gFFI.dialogManager.dismissAll();
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
-        overlays: SystemUiOverlay.values);
     WakelockManager.disable(_uniqueKey);
     await keyboardSubscription.cancel();
-    removeSharedStates(widget.id);
-    // `on_voice_call_closed` should be called when the connection is ended.
-    // The inner logic of `on_voice_call_closed` will check if the voice call is active.
-    // Only one client is considered here for now.
-    gFFI.chatModel.onVoiceCallClosed("End connetion");
+    if (gFFI.sessionId == sessionId) {
+      gFFI.dialogManager.hideMobileActionsOverlay(store: false);
+      gFFI.inputModel.listenToMouse(false);
+      gFFI.imageModel.disposeImage();
+      gFFI.cursorModel.disposeImages();
+      await gFFI.invokeMethod("enable_soft_keyboard", true);
+      if (gFFI.sessionId == sessionId) {
+        inputModel.keyboardInputAllowed = true;
+      }
+    }
+    await closeFuture;
+    if (gFFI.sessionId == sessionId) {
+      gFFI.dialogManager.dismissAll();
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
+          overlays: SystemUiOverlay.values);
+      if (gFFI.sessionId == sessionId) {
+        removeSharedStates(widget.id);
+        // `on_voice_call_closed` should be called when the connection is ended.
+        // The inner logic of `on_voice_call_closed` checks whether a call is active.
+        gFFI.chatModel.onVoiceCallClosed("End connetion");
+      }
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
     if (state == AppLifecycleState.resumed) {
       trySyncClipboard();
     }
@@ -189,6 +191,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       );
 
   void onSoftKeyboardChanged(bool visible) {
+    if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
     if (!visible) {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
       // [pi.version.isNotEmpty] -> check ready or not, avoid login without soft-keyboard
@@ -203,10 +206,10 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       if (isIOS) {
         _iosKeyboardWorkaroundTimer?.cancel();
         _iosKeyboardWorkaroundTimer = Timer(Duration(milliseconds: 100), () {
-          if (!mounted) return;
+          if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
           _physicalFocusNode.unfocus();
           _iosKeyboardWorkaroundTimer = Timer(Duration(milliseconds: 50), () {
-            if (!mounted) return;
+            if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
             _physicalFocusNode.requestFocus();
           });
         });
@@ -216,6 +219,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       _iosKeyboardWorkaroundTimer = null;
       _timer?.cancel();
       _timer = Timer(kMobileDelaySoftKeyboardFocus, () {
+        if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
             overlays: SystemUiOverlay.values);
         _mobileFocusNode.requestFocus();
@@ -346,6 +350,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   }
 
   void _openKeyboardUnlocked() {
+    if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
     inputModel.keyboardInputAllowed = true;
     gFFI.invokeMethod("enable_soft_keyboard", true);
     // destroy first, so that our _value trick can work
@@ -354,11 +359,13 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
     setState(() => _showEdit = false);
     _timer?.cancel();
     _timer = Timer(kMobileDelaySoftKeyboard, () {
+      if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
       // show now, and sleep a while to requestFocus to
       // make sure edit ready, so that keyboard won't show/hide/show/hide happen
       setState(() => _showEdit = true);
       _timer?.cancel();
       _timer = Timer(kMobileDelaySoftKeyboardFocus, () {
+        if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
         SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
             overlays: SystemUiOverlay.values);
         _mobileFocusNode.requestFocus();
@@ -420,7 +427,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                           gFFI.ffiModel.waitForFirstImage.isTrue
                       ? emptyOverlay(MyTheme.canvasColor)
                       : () {
-                          gFFI.ffiModel.tryShowAndroidActionsOverlay();
+                          gFFI.ffiModel.tryShowAndroidActionsOverlay(sessionId);
                           return Offstage();
                         }(),
                   _bottomWidget(),
@@ -442,10 +449,15 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
                                 OrientationBuilder(builder: (ctx, orientation) {
                               if (_currentOrientation != orientation) {
                                 Timer(const Duration(milliseconds: 200), () {
+                                  if (!mounted ||
+                                      !gFFI.isCurrentSession(sessionId)) {
+                                    return;
+                                  }
                                   gFFI.dialogManager
                                       .resetMobileActionsOverlay(ffi: gFFI);
                                   _currentOrientation = orientation;
-                                  gFFI.canvasModel.updateViewStyle();
+                                  gFFI.canvasModel.updateViewStyle(
+                                      expectedSessionId: sessionId);
                                 });
                               }
                               return Container(
@@ -598,6 +610,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
               child: QualityMonitor(gFFI.qualityMonitorModel),
             ),
             KeyHelpTools(
+                sessionId: sessionId,
                 keyboardIsVisible: keyboardIsVisible,
                 showGestureHelp: _showGestureHelp),
             SizedBox(
@@ -793,6 +806,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         .map((e) => PopupMenuItem<int>(child: e.value.getChild(), value: e.key))
         .toList();
     Future.delayed(Duration.zero, () async {
+      if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
       final size = MediaQuery.of(context).size;
       final x = 120.0;
       final y = size.height;
@@ -802,6 +816,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
         items: menuItems,
         elevation: 8,
       );
+      if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
       if (index != null && index < menus.length) {
         menus[index].onPressed?.call();
       }
@@ -847,6 +862,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
 }
 
 class KeyHelpTools extends StatefulWidget {
+  final SessionID sessionId;
   final bool keyboardIsVisible;
   final bool showGestureHelp;
 
@@ -854,7 +870,9 @@ class KeyHelpTools extends StatefulWidget {
   bool get requestShow => keyboardIsVisible || showGestureHelp;
 
   KeyHelpTools(
-      {required this.keyboardIsVisible, required this.showGestureHelp});
+      {required this.sessionId,
+      required this.keyboardIsVisible,
+      required this.showGestureHelp});
 
   @override
   State<KeyHelpTools> createState() => _KeyHelpToolsState();
@@ -891,6 +909,7 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
   }
 
   _updateRect() {
+    if (!mounted || !gFFI.isCurrentSession(widget.sessionId)) return;
     RenderObject? renderObject = _key.currentContext?.findRenderObject();
     if (renderObject == null) {
       return;
@@ -1050,6 +1069,7 @@ class _KeyHelpToolsState extends State<KeyHelpTools> {
     final space = size.width > 320 ? 4.0 : 2.0;
     // 500 ms is long enough for this widget to be built!
     Future.delayed(Duration(milliseconds: 500), () {
+      if (!mounted || !gFFI.isCurrentSession(widget.sessionId)) return;
       _updateRect();
     });
     return Container(

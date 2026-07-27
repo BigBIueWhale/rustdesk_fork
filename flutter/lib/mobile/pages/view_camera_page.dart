@@ -38,10 +38,7 @@ void _disableAndroidSoftKeyboard({bool? isKeyboardVisible}) {
 
 class ViewCameraPage extends StatefulWidget {
   ViewCameraPage(
-      {Key? key,
-      required this.id,
-      this.password,
-      this.isSharedPassword})
+      {Key? key, required this.id, this.password, this.isSharedPassword})
       : super(key: key);
 
   final String id;
@@ -70,7 +67,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   var _showEdit = false; // use soft keyboard
 
   InputModel get inputModel => gFFI.inputModel;
-  SessionID get sessionId => gFFI.sessionId;
+  late final SessionID sessionId;
 
   final TextEditingController _textController =
       TextEditingController(text: initText);
@@ -84,14 +81,15 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   @override
   void initState() {
     super.initState();
-    gFFI.ffiModel.updateEventListener(sessionId, widget.id);
-    gFFI.start(
+    sessionId = gFFI.start(
       widget.id,
       isViewCamera: true,
       password: widget.password,
       isSharedPassword: widget.isSharedPassword,
     );
+    gFFI.ffiModel.updateEventListener(sessionId, widget.id);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual, overlays: []);
       gFFI.dialogManager
           .showLoading(translate('Connecting...'), onCancel: closeConnection);
@@ -104,8 +102,9 @@ class _ViewCameraPageState extends State<ViewCameraPage>
         .changeCurrentKey(MessageKey(widget.id, ChatModel.clientModeID));
     _blockableOverlayState.applyFfi(gFFI);
     gFFI.imageModel.addCallbackOnFirstImage((String peerId) {
+      if (!gFFI.isCurrentSession(sessionId)) return;
       gFFI.recordingModel
-          .updateStatus(bind.sessionGetIsRecording(sessionId: gFFI.sessionId));
+          .updateStatus(bind.sessionGetIsRecording(sessionId: sessionId));
       if (gFFI.recordingModel.start) {
         showToast(translate('Automatically record outgoing sessions'));
       }
@@ -118,27 +117,33 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   @override
   Future<void> dispose() async {
     WidgetsBinding.instance.removeObserver(this);
+    final closeFuture = gFFI.close(expectedSessionId: sessionId);
     // https://github.com/flutter/flutter/issues/64935
     super.dispose();
-    gFFI.dialogManager.hideMobileActionsOverlay(store: false);
-    gFFI.inputModel.listenToMouse(false);
-    gFFI.imageModel.disposeImage();
-    gFFI.cursorModel.disposeImages();
-    await gFFI.invokeMethod("enable_soft_keyboard", true);
     _mobileFocusNode.dispose();
     _physicalFocusNode.dispose();
-    await gFFI.close();
     _timer?.cancel();
     _timerDidChangeMetrics?.cancel();
-    gFFI.dialogManager.dismissAll();
-    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
-        overlays: SystemUiOverlay.values);
     WakelockManager.disable(_uniqueKey);
-    removeSharedStates(widget.id);
-    // `on_voice_call_closed` should be called when the connection is ended.
-    // The inner logic of `on_voice_call_closed` will check if the voice call is active.
-    // Only one client is considered here for now.
-    gFFI.chatModel.onVoiceCallClosed("End connetion");
+    if (gFFI.sessionId == sessionId) {
+      gFFI.dialogManager.hideMobileActionsOverlay(store: false);
+      gFFI.inputModel.listenToMouse(false);
+      gFFI.imageModel.disposeImage();
+      gFFI.cursorModel.disposeImages();
+      await gFFI.invokeMethod("enable_soft_keyboard", true);
+    }
+    await closeFuture;
+    if (gFFI.sessionId == sessionId) {
+      gFFI.dialogManager.dismissAll();
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
+          overlays: SystemUiOverlay.values);
+      if (gFFI.sessionId == sessionId) {
+        removeSharedStates(widget.id);
+        // `on_voice_call_closed` should be called when the connection is ended.
+        // The inner logic of `on_voice_call_closed` checks whether a call is active.
+        gFFI.chatModel.onVoiceCallClosed("End connetion");
+      }
+    }
   }
 
   @override
@@ -146,6 +151,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
 
   @override
   void didChangeMetrics() {
+    if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
     // If the soft keyboard is visible and the canvas has been changed(panned or scaled)
     // Don't try reset the view style and focus the cursor.
     if (gFFI.cursorModel.lastKeyboardIsVisible &&
@@ -156,6 +162,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
     final newBottom = MediaQueryData.fromView(ui.window).viewInsets.bottom;
     _timerDidChangeMetrics?.cancel();
     _timerDidChangeMetrics = Timer(Duration(milliseconds: 100), () async {
+      if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
       // We need this comparation because poping up the floating action will also trigger `didChangeMetrics()`.
       if (newBottom != _viewInsetsBottom) {
         gFFI.canvasModel.mobileFocusCanvasCursor();
@@ -229,7 +236,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
                           gFFI.ffiModel.waitForFirstImage.isTrue
                       ? emptyOverlay(MyTheme.canvasColor)
                       : () {
-                          gFFI.ffiModel.tryShowAndroidActionsOverlay();
+                          gFFI.ffiModel.tryShowAndroidActionsOverlay(sessionId);
                           return Offstage();
                         }(),
                   _bottomWidget(),
@@ -248,10 +255,14 @@ class _ViewCameraPageState extends State<ViewCameraPage>
                       child: OrientationBuilder(builder: (ctx, orientation) {
                         if (_currentOrientation != orientation) {
                           Timer(const Duration(milliseconds: 200), () {
+                            if (!mounted || !gFFI.isCurrentSession(sessionId)) {
+                              return;
+                            }
                             gFFI.dialogManager
                                 .resetMobileActionsOverlay(ffi: gFFI);
                             _currentOrientation = orientation;
-                            gFFI.canvasModel.updateViewStyle();
+                            gFFI.canvasModel
+                                .updateViewStyle(expectedSessionId: sessionId);
                           });
                         }
                         return Container(
@@ -539,6 +550,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
         .map((e) => PopupMenuItem<int>(child: e.value.getChild(), value: e.key))
         .toList();
     Future.delayed(Duration.zero, () async {
+      if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
       final size = MediaQuery.of(context).size;
       final x = 120.0;
       final y = size.height;
@@ -548,6 +560,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
         items: menuItems,
         elevation: 8,
       );
+      if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
       if (index != null && index < menus.length) {
         menus[index].onPressed?.call();
       }

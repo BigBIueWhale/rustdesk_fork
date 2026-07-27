@@ -175,7 +175,7 @@ void runMobileApp() async {
   if (isAndroid) {
     androidChannelInit();
     final ownerRegistered = await gFFI.invokeMethod(
-        'register_client_session_owner', gFFI.sessionId.toString());
+        'register_client_session_owner', gFFI.clientOwnerId.toString());
     if (ownerRegistered != true) {
       debugPrint(
           'Android client session owner registration failed closed; terminating stale Activity');

@@ -85,14 +85,7 @@ const WINDOWS_URL_IPC_POSTFIX: &str = "_url";
 #[cfg(any(windows, test))]
 #[inline]
 fn windows_whiteboard_ipc_postfix_is_valid(postfix: &str) -> bool {
-    postfix
-        .strip_prefix(super::WHITEBOARD_ENDPOINT_POSTFIX_PREFIX)
-        .is_some_and(|suffix| {
-            suffix.len() == 32
-                && suffix
-                    .bytes()
-                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-        })
+    super::whiteboard_ipc_postfix_is_valid(postfix)
 }
 
 #[cfg(any(windows, test))]

@@ -1,6 +1,6 @@
 use super::{Cursor, CustomEvent};
 use crate::{
-    ipc::{self, Data},
+    ipc::{self, WhiteboardIpcCommand},
     CHILD_PROCESS,
 };
 use hbb_common::{
@@ -9,7 +9,7 @@ use hbb_common::{
     bail, log, sleep,
     tokio::{
         self,
-        sync::mpsc::{unbounded_channel, UnboundedSender},
+        sync::mpsc::{channel, error::TrySendError, Sender},
         time::interval_at,
     },
     ResultType,
@@ -25,28 +25,10 @@ use std::{
 };
 
 lazy_static! {
-    static ref TX_WHITEBOARD: RwLock<Option<UnboundedSender<WhiteboardCommand>>> =
+    static ref TX_WHITEBOARD: RwLock<Option<Sender<WhiteboardIpcCommand>>> =
         RwLock::new(None);
     static ref CONNS: RwLock<HashMap<i32, Conn>> = Default::default();
     static ref STARTING_WHITEBOARD: AtomicBool = AtomicBool::new(false);
-}
-
-#[derive(Clone)]
-enum WhiteboardCommand {
-    Bind {
-        conn_id: i32,
-        token: String,
-    },
-    Event {
-        conn_id: i32,
-        token: String,
-        event: CustomEvent,
-    },
-    Close {
-        conn_id: i32,
-        token: String,
-    },
-    Shutdown,
 }
 
 struct Conn {
@@ -75,6 +57,12 @@ pub fn register_whiteboard(conn_id: i32) {
     {
         let mut conns = CONNS.write().unwrap();
         if !conns.contains_key(&conn_id) {
+            if conns.len() >= ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS {
+                log::warn!(
+                    "Rejecting whiteboard registration beyond the active-connection limit"
+                );
+                return;
+            }
             let token = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
             conns.insert(
                 conn_id,
@@ -88,7 +76,7 @@ pub fn register_whiteboard(conn_id: i32) {
                     },
                 },
             );
-            bind = Some(WhiteboardCommand::Bind { conn_id, token });
+            bind = Some(WhiteboardIpcCommand::Bind { conn_id, token });
         }
     }
     std::thread::spawn(|| {
@@ -102,10 +90,12 @@ pub fn register_whiteboard(conn_id: i32) {
 pub fn unregister_whiteboard(conn_id: i32) {
     let (command, is_conns_empty) = {
         let mut conns = CONNS.write().unwrap();
-        let command = conns.remove(&conn_id).map(|conn| WhiteboardCommand::Close {
-            conn_id,
-            token: conn.token,
-        });
+        let command = conns
+            .remove(&conn_id)
+            .map(|conn| WhiteboardIpcCommand::Close {
+                conn_id,
+                token: conn.token,
+            });
         (command, conns.is_empty())
     };
 
@@ -113,7 +103,7 @@ pub fn unregister_whiteboard(conn_id: i32) {
         send_whiteboard_command(command);
     }
     if is_conns_empty {
-        send_whiteboard_command(WhiteboardCommand::Shutdown);
+        send_whiteboard_command(WhiteboardIpcCommand::Shutdown);
     }
 }
 
@@ -164,17 +154,31 @@ fn tx_send_event(conn: &mut Conn, conn_id: i32, event: CustomEvent) {
         }
     }
 
-    send_whiteboard_command(WhiteboardCommand::Event {
+    send_whiteboard_command(WhiteboardIpcCommand::Event {
         conn_id,
         token: conn.token.clone(),
         event,
     });
 }
 
-fn send_whiteboard_command(command: WhiteboardCommand) {
-    TX_WHITEBOARD.read().unwrap().as_ref().map(|tx| {
-        allow_err!(tx.send(command));
-    });
+fn send_whiteboard_command(command: WhiteboardIpcCommand) {
+    let result = {
+        let sender = TX_WHITEBOARD.read().unwrap();
+        sender.as_ref().map(|sender| sender.try_send(command))
+    };
+    match result {
+        None | Some(Ok(())) => {}
+        Some(Err(TrySendError::Full(WhiteboardIpcCommand::Event { .. }))) => {
+            log::debug!("Dropping a whiteboard event because the bounded queue is full");
+        }
+        Some(Err(TrySendError::Full(_))) => {
+            log::warn!("Retiring a saturated whiteboard command channel");
+            TX_WHITEBOARD.write().unwrap().take();
+        }
+        Some(Err(TrySendError::Closed(_))) => {
+            TX_WHITEBOARD.write().unwrap().take();
+        }
+    }
 }
 
 fn close_whiteboard_if_idle() -> bool {
@@ -183,7 +187,6 @@ fn close_whiteboard_if_idle() -> bool {
         return false;
     }
     TX_WHITEBOARD.write().unwrap().take();
-    STARTING_WHITEBOARD.store(false, Ordering::SeqCst);
     true
 }
 
@@ -294,7 +297,7 @@ async fn start_whiteboard_() -> ResultType<()> {
     }
 
     let mut stream = stream.ok_or(anyhow!("none stream"))?;
-    let (tx, mut rx) = unbounded_channel();
+    let (tx, mut rx) = channel(ipc::WHITEBOARD_IPC_COMMAND_CAPACITY);
     let initial_binds = {
         let conns = CONNS.read().unwrap();
         let mut tx_whiteboard = TX_WHITEBOARD.write().unwrap();
@@ -304,16 +307,19 @@ async fn start_whiteboard_() -> ResultType<()> {
         }
         tx_whiteboard.replace(tx.clone());
         for (conn_id, conn) in conns.iter() {
-            allow_err!(tx.send(WhiteboardCommand::Bind {
+            tx.try_send(WhiteboardIpcCommand::Bind {
                 conn_id: *conn_id,
                 token: conn.token.clone(),
-            }));
+            })
+            .map_err(|err| anyhow!("failed to enqueue initial whiteboard bind: {err}"))?;
         }
         conns.len()
     };
     if initial_binds == 0 {
-        allow_err!(tx.send(WhiteboardCommand::Shutdown));
+        tx.try_send(WhiteboardIpcCommand::Shutdown)
+            .map_err(|err| anyhow!("failed to enqueue initial whiteboard shutdown: {err}"))?;
     }
+    drop(tx);
     let _call_on_ret = crate::common::SimpleCallOnReturn {
         b: true,
         f: Box::new(move || {
@@ -328,25 +334,40 @@ async fn start_whiteboard_() -> ResultType<()> {
         tokio::select! {
             res = rx.recv() => {
                 match res {
-                    Some(WhiteboardCommand::Bind { conn_id, token }) => {
-                        allow_err!(stream.send(&Data::WhiteboardBind { conn_id, token }).await);
+                    Some(command @ WhiteboardIpcCommand::Bind { .. }) => {
+                        stream
+                            .send_whiteboard_command_timeout(
+                                &command,
+                                ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS,
+                            )
+                            .await?;
                         timer.reset();
                     }
-                    Some(WhiteboardCommand::Event { conn_id, token, event }) => {
-                        allow_err!(stream.send(&Data::WhiteboardEvent { conn_id, token, event }).await);
+                    Some(command @ WhiteboardIpcCommand::Event { .. }) => {
+                        stream
+                            .send_whiteboard_command_timeout(
+                                &command,
+                                ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS,
+                            )
+                            .await?;
                         timer.reset();
                     }
-                    Some(WhiteboardCommand::Close { conn_id, token }) => {
-                        allow_err!(stream.send(&Data::WhiteboardClose { conn_id, token }).await);
+                    Some(command @ WhiteboardIpcCommand::Close { .. }) => {
+                        stream
+                            .send_whiteboard_command_timeout(
+                                &command,
+                                ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS,
+                            )
+                            .await?;
                         timer.reset();
                     }
-                    Some(WhiteboardCommand::Shutdown) => {
+                    Some(WhiteboardIpcCommand::Shutdown) => {
                         if close_whiteboard_if_idle() {
                             break;
                         }
                     }
                     None => {
-                        bail!("expected");
+                        break;
                     }
                 }
             },
@@ -365,19 +386,44 @@ async fn start_whiteboard_() -> ResultType<()> {
                     pending
                 };
                 for (conn_id, token, event) in pending {
-                    allow_err!(
-                        stream
-                            .send(&Data::WhiteboardEvent {
+                    stream
+                        .send_whiteboard_command_timeout(
+                            &WhiteboardIpcCommand::Event {
                                 conn_id,
                                 token,
                                 event,
-                            })
-                            .await
-                    );
+                            },
+                            ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS,
+                        )
+                        .await?;
                 }
             }
         }
     }
-    allow_err!(stream.send(&Data::WhiteboardShutdown).await);
+    stream
+        .send_whiteboard_command_timeout(
+            &WhiteboardIpcCommand::Shutdown,
+            ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS,
+        )
+        .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn whiteboard_command_queue_has_a_hard_capacity() {
+        let (sender, _receiver) = channel(ipc::WHITEBOARD_IPC_COMMAND_CAPACITY);
+        for _ in 0..ipc::WHITEBOARD_IPC_COMMAND_CAPACITY {
+            sender
+                .try_send(WhiteboardIpcCommand::Shutdown)
+                .unwrap();
+        }
+        assert!(matches!(
+            sender.try_send(WhiteboardIpcCommand::Shutdown),
+            Err(TrySendError::Full(WhiteboardIpcCommand::Shutdown))
+        ));
+    }
 }

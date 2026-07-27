@@ -1526,25 +1526,25 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Linux, and macOS desktop whiteboard helper paths. Endpoint/action: `_whiteboard` overlay helper IPC formerly
   accepted `Data::Whiteboard((String, CustomEvent))` drawing events and `Exit` on a fixed endpoint.
   Boundary: local same-UID/same-session process ↔ active whiteboard overlay helper. Attack surface closed:
-  `src/ipc.rs` deletes the bare tuple message and replaces it with typed
-  `WhiteboardBind`, tokenized `WhiteboardEvent`, tokenized `WhiteboardClose`, and authenticated-stream
-  `WhiteboardShutdown` messages plus whiteboard-specific server/endpoint HMAC proof variants. The server-side
+  `src/ipc.rs` deletes the bare tuple message. R-S11dz subsequently removes the interim whiteboard variants
+  from the cross-purpose `Data` enum altogether and replaces them with independent directional handshake and
+  command protocols. The server-side
   producer in `src/whiteboard/client.rs` now creates a fresh 32-byte launch token per helper start, derives a
   launch-scoped `_whiteboard_<hmac>` endpoint from that token, passes the token and parent pid through the
   helper environment, authenticates the endpoint proof before binding any connection, and sends only
   per-connection tokens minted when a Remote-authenticated `Connection` registers `show_my_cursor`.
   `src/whiteboard/server.rs` reads the launch-scoped endpoint, admits only the recorded parent pid through
-  `ipc::authorize_whiteboard_ipc_connection`, completes the whiteboard launch proof before spawning the stream
-  loop, derives the render key from the validated `conn_id`, rejects unbound/wrong-token/`Exit` events, and no
-  longer sends a global overlay `Exit` on arbitrary stream close. Windows service-session whiteboard launch is
+  `ipc::authorize_whiteboard_ipc_connection`, completes the whiteboard launch proof before owning the sole
+  command stream, derives the render key from the validated `conn_id`, and rejects
+  unbound/wrong-token/`Exit` events. R-S11dz makes every terminal outcome exit that exact launch generation's
+  overlay after removing detached multi-stream admission. Windows service-session whiteboard launch is
   covered by `src/platform/windows.rs`/`src/platform/windows.cc`, which now pass caller-specified child
   environment entries through `CreateProcessAsUserW` without putting the token on the command line.
-  Verification closure: `scripts/verify.sh` runs `whiteboard_endpoint_proof_*` and `whiteboard_authority_*`
-  tests, asserts the typed protocol, launch-token/parent environment, launch-scoped endpoint, endpoint proof,
-  parent-pid admission, per-connection token state machine, Remote-only registration by `conn_id`, Windows
-  environment launcher, absence of the legacy tuple message/sends, absence of raw fixed `_whiteboard`
-  connect/listen, absence of caller-derived render keys outside the helper, and absence of unconditional
-  global `Exit`; `scripts/apple-conform-check.sh` mirrors the macOS source assertions.
+  Verification closure: `scripts/verify.sh` runs the whiteboard protocol, endpoint-proof, authority, token-bound,
+  and queue-capacity regressions and asserts the launch-token/parent environment, launch-scoped endpoint,
+  endpoint proof, parent-pid admission, per-connection token state machine, Remote-only registration by
+  `conn_id`, Windows environment launcher, absence of the legacy tuple/fixed endpoint, and the R-S11dz
+  closed-protocol/resource/finality model; `scripts/apple-conform-check.sh` mirrors the macOS source assertions.
 - **R-S11c-12 — Windows terminal helper pipe binding — CLOSED 2026-07-09.** Platform: Windows desktop
   installed-service terminal helper path. Endpoint/action: the SYSTEM service launches a logged-in-user
   terminal helper with `CreateProcessAsUserW`, then exchanges terminal input/output over per-terminal named
@@ -13959,6 +13959,111 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   release-artifact, installed/native behavior, device/reproduction evidence
   where separately required, and R-V3 external review remain open. The broader
   Ralph-loop goal remains active.
+- **R-S11dz/R-S11e-144 — whiteboard helper protocol and resource finality
+  — SOURCE CLOSED/GATED 2026-07-27; CONFINED LINUX
+  RUST/SOURCE/MUTATION VERIFIED; COLD
+  INSTALLED/NATIVE/DEVICE/EXTERNAL EVIDENCE PENDING.** A fresh desktop trace
+  covered Remote-only `show_my_cursor` registration, per-connection token
+  creation, helper launch, token-derived endpoint selection, kernel/process
+  parent admission, mutual role-bound HMAC, command transport, renderer state,
+  client teardown, helper event-loop cancellation, and transport failure.
+  Existing authority remains conjunctive and unchanged: each launch uses a
+  fresh 32-byte token-derived endpoint; the helper requires its recorded direct
+  parent under the platform-specific kernel/process policy; both directions
+  prove the exact `--whiteboard` role and launch token; and only a
+  Remote-authenticated connection can mint a token accepted for that
+  connection's cursor state. The trace found no source evidence that an
+  ambient same-UID process could issue an authorized overlay command.
+
+  It did find an independent parser/resource/finality gap. The four proof
+  messages and four post-proof commands were variants of the cross-purpose
+  `Data` union over the default unlimited `BytesCodec`. The client fed an
+  unbounded command channel and ignored every stream-send error. The helper
+  accepted each proved stream into a detached task, continued listening for
+  more streams in the same launch generation, retained an unbounded
+  connection-token map, parsed unrelated `Data` variants, and decided whether
+  disconnect should exit the overlay from the handler's incidental active
+  state. These were bounded-local denial-of-service, parser coupling,
+  lifecycle, and future-reactivation defects—not an authorization bypass,
+  exploitation, root acquisition, public listener, or evidence of
+  host/service/configuration/firewall/network mutation.
+
+  The source correction creates three distinct, unknown-field-denying
+  protocols outside `Data`: owner `ServerProof`/`EndpointChallenge`, helper
+  `ServerChallenge`/`EndpointProof`, and owner-to-helper
+  `Bind`/`Event`/`Close`/`Shutdown`. Both accepted and connecting streams
+  install the 64-KiB whiteboard codec before proof. Proof reads/writes and
+  command writes use one-second deadlines; strict reset, codec, UTF-8, and
+  schema errors are terminal. A post-proof command-read timeout is only a
+  one-second cancellation wake. The owner retains at most 16 positive IDs
+  with fresh exact 32-byte tokens and publishes a 64-slot bounded sender;
+  enqueue is nonblocking, lossy cursor/event overflow is diagnosed, critical
+  bind/close/shutdown overflow retires the stream owner, and the extra local
+  sender is dropped so retirement wakes the receiver. Every transport write
+  propagates failure. The helper independently validates the exact token shape
+  and 16-entry ceiling, directly awaits exactly one authenticated stream
+  instead of detaching it, stops listener admission, checks event-loop
+  cancellation on each deadline wake, and emits terminal overlay `Exit` after
+  shutdown, cancellation, reset, malformed traffic, or transport failure.
+
+  R-S11dz and Appendix C #279 make the directional wire, resource budgets, and
+  terminal ownership normative. The focused Linux Rust 1.75 diagnostic passes
+  all seven whiteboard-filtered regressions: exact directional wire and
+  cross-purpose/unknown-field rejection, codec/oversize/deadline/reset
+  behavior, endpoint token/role proof, exact Linux parent authority,
+  per-connection command authority, malformed/token-count rejection, and
+  queue capacity. The focused Linux CM/PA/whiteboard checker rejects all 71
+  deliberate mutations, and the updated Windows production-listener checker
+  rejects all 17 while proving that the DACL path delegates to the same exact
+  token-derived postfix classifier used for codec selection. The shared and
+  extracted Apple R-S11c-8/R-S11dz source blocks pass. The independent
+  workspace semantic baseline passes, and one uninterrupted complete run
+  rejects all 2,588 in-memory source mutations from mutation one. The
+  range-coupled Debian lifecycle and release-parent checkers reject all 44 and
+  27 mutations. Bash syntax, in-memory Python parsing, requirements HTML
+  parsing, native-codec normal/negative gates, and exact active requirements
+  hash synchronization pass. Requirements SHA-256 is
+  `d8c49669e1600f740f6d64404996e8a96e6eae3da2e149fe21f0959fb48c302d`.
+
+  Preliminary non-passes remain explicit. The prior compile session result was
+  unavailable after its process handle expired, so no result was inferred; the
+  exact focused Rust command was rerun and passed. The first complete workspace
+  catalog run exposed a stale `_pa` mutation anchor after the whiteboard
+  connector gained another nesting level. The next two complete runs correctly
+  rejected the new owner-schema and typed-write mutations but refused to count
+  them because the catalog labels did not match the independent validator's
+  more precise diagnostics. Each meta-verifier defect was corrected without
+  weakening the product contract, the baseline was rerun, and the complete
+  2,588-entry catalog restarted from mutation one; only the final uninterrupted
+  pass is counted. The pinned image lacks the `rustfmt` component, so no
+  formatting pass is claimed; manual Rust review and `git diff --check` are
+  used. The full verifier is not run as a monolith because it would require
+  nested Docker authority that is not granted; its affected Rust, source,
+  semantic, mutation, hash, and range-coupled components run separately
+  without a Docker socket. A final combined checker invocation also stopped
+  when Python byte-compilation attempted to create `scripts/__pycache__`
+  beneath the deliberately read-only repository mount; the source was not
+  made writable, and syntax was rechecked by in-memory AST compilation.
+  During cleanup preparation, one host-side
+  `verify-private-tree-closure.py --help` invocation mistakenly initialized
+  only the argument parser and printed usage. It did not inspect or mutate a
+  tree, use elevated authority, or run a product/verifier check, but it still
+  violated the project-execution-in-container rule and is not counted as
+  confined evidence. The actual authenticated target cleanup remains confined.
+
+  Counted project tests, semantic checks, mutation checks, and cleanup used
+  immutable image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric UID/GID 1000:1000 with no pull/network, a read-only root and
+  repository, recursive bind inclusion disabled, all capabilities dropped,
+  no-new-privileges, finite PID/memory/CPU/descriptor/core/file-size limits,
+  and no Docker/libvirt/service-manager socket, host namespace, device, port,
+  or host-configuration mount. No overlay, listener, host IPC endpoint,
+  service, root fixture, or host RustDesk/service/configuration/firewall/
+  network operation was invoked. Exact cold committed release artifacts,
+  installed/native behavior, device/reproduction evidence where separately
+  required, and R-V3 external review remain open. The broader Ralph-loop goal
+  remains active.
 - **Mobile (iOS + Android) at-rest config wrapper keyed by OS-protected mobile storage —
   SOURCE IMPLEMENTED 2026-07-18; ANDROID SIGNED-ARTIFACT VALIDATED 2026-07-18; ON-DEVICE AND iOS
   ARTIFACT VALIDATION PENDING.** This is the mobile face of
@@ -14676,9 +14781,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-51ea30a8cc8fa9a10599d82ffa881e6aafcb0fd5c6f092de549bc1aab415f7fe  requirements.html
+d8c49669e1600f740f6d64404996e8a96e6eae3da2e149fe21f0959fb48c302d  requirements.html
 ```
 
-This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dy, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.

@@ -6496,20 +6496,24 @@ fi
 if [ -n "$r_s11_docs" ]; then echo "  FAIL R-S11b/R-S11c ledger consistency:$r_s11_docs"; rc=1; else
   echo "  ok  R-S11b/R-S11c/R-S11i ledger and requirements match the implemented raw password, platform authority, finality, and controlled-input architecture while native/cold validation remains explicitly pending"; fi
 
-# (3b-iii-f3) R-S11c-8: whiteboard is a helper authority boundary. It must not accept
-# bare same-UID events, stale fixed-path listeners, caller-supplied display keys, or arbitrary Exit.
-echo "== (3b-iii-f3) Whiteboard helper IPC requires launch and connection authority (R-S11c-8) =="
-"${RUN[@]}" cargo test --lib --features linux-pkg-config whiteboard_endpoint_proof --color never
-"${RUN[@]}" cargo test --lib --features linux-pkg-config whiteboard_authority --color never
+# (3b-iii-f3) R-S11c-8/R-S11dz: whiteboard is a helper authority and resource
+# boundary. It must use a closed, bounded protocol after exact launch/connection
+# proof, own one stream to terminal exit, and never accept ambient Data traffic.
+echo "== (3b-iii-f3) Whiteboard helper IPC has closed bounded authority and terminal ownership (R-S11c-8/R-S11dz) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config whiteboard_ --color never
 r_s11c8=
-grep -q 'WhiteboardEndpointChallenge {' src/ipc.rs || r_s11c8="$r_s11c8 no-whiteboard-endpoint-challenge"
-grep -q 'WhiteboardEndpointProof {' src/ipc.rs || r_s11c8="$r_s11c8 no-whiteboard-endpoint-proof"
-grep -q 'WhiteboardServerChallenge {' src/ipc.rs || r_s11c8="$r_s11c8 no-whiteboard-server-challenge"
-grep -q 'WhiteboardServerProof {' src/ipc.rs || r_s11c8="$r_s11c8 no-whiteboard-server-proof"
-grep -q 'WhiteboardBind {' src/ipc.rs || r_s11c8="$r_s11c8 no-whiteboard-bind-message"
-grep -q 'WhiteboardEvent {' src/ipc.rs || r_s11c8="$r_s11c8 no-whiteboard-event-message"
-grep -q 'WhiteboardClose {' src/ipc.rs || r_s11c8="$r_s11c8 no-whiteboard-close-message"
-grep -q 'WhiteboardShutdown' src/ipc.rs || r_s11c8="$r_s11c8 no-whiteboard-shutdown-message"
+grep -q 'pub(crate) enum WhiteboardOwnerHandshake {' src/ipc.rs || r_s11c8="$r_s11c8 owner-handshake-protocol-missing"
+grep -q 'pub(crate) enum WhiteboardHelperHandshake {' src/ipc.rs || r_s11c8="$r_s11c8 helper-handshake-protocol-missing"
+grep -q 'pub(crate) enum WhiteboardIpcCommand {' src/ipc.rs || r_s11c8="$r_s11c8 command-protocol-missing"
+whiteboard_envelopes=$(grep -B2 -E 'pub\(crate\) enum Whiteboard(OwnerHandshake|HelperHandshake|IpcCommand)' src/ipc.rs || true)
+[ "$(echo "$whiteboard_envelopes" | grep -c 'deny_unknown_fields')" -eq 3 ] || r_s11c8="$r_s11c8 directional-protocols-do-not-all-deny-unknown-fields"
+grep -q 'pub(crate) const WHITEBOARD_IPC_MAX_FRAME_BYTES: usize = 64 \* 1024;' src/ipc.rs || r_s11c8="$r_s11c8 whiteboard-frame-cap-missing"
+grep -q 'pub(crate) const WHITEBOARD_IPC_COMMAND_CAPACITY: usize = 64;' src/ipc.rs || r_s11c8="$r_s11c8 whiteboard-command-capacity-missing"
+grep -q 'pub(crate) const WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS: usize = 16;' src/ipc.rs || r_s11c8="$r_s11c8 whiteboard-active-token-cap-missing"
+grep -q 'pub(crate) const WHITEBOARD_IPC_IO_TIMEOUT_MS: u64 = 1_000;' src/ipc.rs || r_s11c8="$r_s11c8 whiteboard-io-deadline-missing"
+grep -q 'Self::new_with_max_packet_length(conn, WHITEBOARD_IPC_MAX_FRAME_BYTES)' src/ipc.rs || r_s11c8="$r_s11c8 whiteboard-constructor-not-frame-capped"
+grep -q 'pub(crate) async fn next_whiteboard_command_timeout' src/ipc.rs || r_s11c8="$r_s11c8 strict-command-reader-missing"
+grep -q 'self.next_json_strict()' src/ipc.rs || r_s11c8="$r_s11c8 strict-json-reader-not-used"
 grep -q 'WHITEBOARD_LAUNCH_TOKEN_ENV' src/common.rs || r_s11c8="$r_s11c8 no-whiteboard-launch-token-env"
 grep -q 'WHITEBOARD_LAUNCH_PARENT_ENV' src/common.rs || r_s11c8="$r_s11c8 no-whiteboard-launch-parent-env"
 grep -q 'whiteboard_endpoint_postfix(&launch_token)' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-does-not-use-launch-scoped-endpoint"
@@ -6521,6 +6525,17 @@ grep -q 'fn whiteboard_role_bound_challenge' src/ipc.rs || r_s11c8="$r_s11c8 whi
 grep -q 'let role = current_whiteboard_process_role()?' src/ipc.rs || r_s11c8="$r_s11c8 whiteboard-proof-does-not-use-exact-current-role"
 grep -q 'WhiteboardIpcState' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-state-machine-missing"
 grep -q 'super::client::get_key_cursor(conn_id)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-does-not-derive-render-key"
+grep -q 'Connection::new_whiteboard(stream)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 accepted-stream-not-frame-capped"
+grep -q 'handle_new_stream(stream, &mut rx_exit).await' src/whiteboard/server.rs || r_s11c8="$r_s11c8 accepted-stream-not-owned"
+grep -q 'next_whiteboard_command_timeout(ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-command-read-not-bounded"
+grep -q 'self.active.len() < ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-active-token-map-unbounded"
+grep -q 'whiteboard_connection_token_is_valid(&token)' src/whiteboard/server.rs || r_s11c8="$r_s11c8 helper-accepts-malformed-token"
+grep -q 'send_whiteboard_event("".to_string(), CustomEvent::Exit);' src/whiteboard/server.rs || r_s11c8="$r_s11c8 terminal-stream-does-not-exit-overlay"
+grep -q 'let (tx, mut rx) = channel(ipc::WHITEBOARD_IPC_COMMAND_CAPACITY);' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-command-channel-unbounded"
+grep -q 'sender.try_send(command)' src/whiteboard/client.rs || r_s11c8="$r_s11c8 client-command-admission-not-nonblocking"
+grep -q 'TrySendError::Full(WhiteboardIpcCommand::Event { .. })' src/whiteboard/client.rs || r_s11c8="$r_s11c8 event-overflow-policy-missing"
+grep -q 'drop(tx);' src/whiteboard/client.rs || r_s11c8="$r_s11c8 local-sender-prevents-channel-closure"
+grep -q 'send_whiteboard_command_timeout(' src/whiteboard/client.rs || r_s11c8="$r_s11c8 typed-deadline-command-writer-missing"
 grep -q 'register_whiteboard(self.inner.id)' src/server/connection.rs || r_s11c8="$r_s11c8 connection-register-not-id-based"
 grep -q 'unregister_whiteboard(self.inner.id)' src/server/connection.rs || r_s11c8="$r_s11c8 connection-unregister-not-id-based"
 grep -q 'Refusing root-to-user whiteboard launch; the user-context service must own it' src/whiteboard/client.rs || r_s11c8="$r_s11c8 unix-root-to-user-whiteboard-not-fail-closed"
@@ -6534,6 +6549,9 @@ grep -q 'baseEntries.erase' src/platform/windows.cc || r_s11c8="$r_s11c8 windows
 grep -q 'std::sort(entries.begin(), entries.end(), environment_entry_less)' src/platform/windows.cc || r_s11c8="$r_s11c8 windows-env-block-not-sorted"
 grep -q 'Windows helper launch environment authority' requirements.html || r_s11c8="$r_s11c8 windows-env-requirements-disposition-missing"
 grep -q 'R-S11c-15 — Windows helper launch environment authority' HARDENING_STATUS.md || r_s11c8="$r_s11c8 windows-env-hardening-ledger-missing"
+grep -Fq '<span class="id">R-S11dz</span>' requirements.html || r_s11c8="$r_s11c8 whiteboard-protocol-requirement-missing"
+grep -Fq '<tr><td>279</td>' requirements.html || r_s11c8="$r_s11c8 whiteboard-protocol-appendix-row-missing"
+grep -Fq 'R-S11dz/R-S11e-144 — whiteboard helper protocol and resource finality' HARDENING_STATUS.md || r_s11c8="$r_s11c8 whiteboard-protocol-ledger-missing"
 if awk '/^extern "C"[[:space:]]*$/,/end of extern "C"/' src/platform/windows.cc | grep -q 'std::vector<wchar_t> merge_environment_blocks'; then
   r_s11c8="$r_s11c8 windows-env-helper-has-c-linkage"
 fi
@@ -6549,8 +6567,15 @@ fi
 if grep -q 'new_listener("_whiteboard")' src/whiteboard/server.rs; then
   r_s11c8="$r_s11c8 fixed-whiteboard-listener-present"
 fi
-if grep -q 'send_event(("".to_string(), CustomEvent::Exit))' src/whiteboard/server.rs; then
-  r_s11c8="$r_s11c8 unconditional-whiteboard-global-exit-present"
+if grep -q 'tokio::spawn(handle_new_stream' src/whiteboard/server.rs; then
+  r_s11c8="$r_s11c8 detached-whiteboard-stream-handler-present"
+fi
+data_protocol=$(awk '/^pub enum Data \{/{capture=1} capture{print} capture && /^}/{exit}' src/ipc.rs)
+if echo "$data_protocol" | grep -Eq 'Whiteboard(EndpointChallenge|EndpointProof|ServerChallenge|ServerProof|Bind|Event|Close|Shutdown)'; then
+  r_s11c8="$r_s11c8 cross-purpose-data-retains-whiteboard-protocol"
+fi
+if grep -q 'allow_err!(stream' src/whiteboard/client.rs; then
+  r_s11c8="$r_s11c8 whiteboard-transport-error-ignored"
 fi
 if grep -RIn 'get_key_cursor(conn)' src/server src/whiteboard/client.rs 2>/dev/null >"$VERIFY_TMP/rd_verify_whiteboard_keys"; then
   r_s11c8="$r_s11c8 caller-derived-whiteboard-key-present"
@@ -6558,7 +6583,7 @@ fi
 whiteboard_register_context=$(grep -B4 -A2 'register_whiteboard(self.inner.id)' src/server/connection.rs || true)
 echo "$whiteboard_register_context" | grep -q 'if self.is_authed_remote_conn()' || r_s11c8="$r_s11c8 register-not-remote-auth-type-gated"
 if [ -n "$r_s11c8" ]; then echo "  FAIL R-S11c-8 whiteboard helper authority:$r_s11c8"; rc=1; else
-  echo "  ok  R-S11c-8 whiteboard helper uses launch-scoped endpoint proof plus parent-pid admission and per-connection event tokens; fixed-path tuple events and arbitrary Exit are absent"; fi
+  echo "  ok  R-S11c-8/R-S11dz whiteboard uses directional closed protocols and a 64-KiB codec only after launch/parent proof, bounds its queue and active token map, owns one stream with deadline wakes, and exits the overlay on every terminal transport outcome"; fi
 
 # (3b-iii-g) R-S11c-5: macOS source-conformance for the privileged LaunchDaemon packaging.
 # The daemon may not shell-launch root code, write logs through /tmp, execute from an app bundle,

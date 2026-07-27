@@ -1,5 +1,5 @@
 use super::CustomEvent;
-use crate::ipc::{self, new_listener, Connection, Data};
+use crate::ipc::{self, new_listener, Connection, WhiteboardIpcCommand};
 #[cfg(any(target_os = "windows", target_os = "macos"))]
 use hbb_common::tokio::sync::mpsc::unbounded_channel;
 #[cfg(any(target_os = "windows", target_os = "linux"))]
@@ -74,7 +74,7 @@ pub(super) async fn start_ipc(mut rx_exit: UnboundedReceiver<()>) {
                     Some(result) => match result {
                         Ok(stream) => {
                             log::debug!("Got new connection");
-                            let mut stream = Connection::new(stream);
+                            let mut stream = Connection::new_whiteboard(stream);
                             if !ipc::authorize_whiteboard_ipc_connection(&stream, expected_parent_pid) {
                                 continue;
                             }
@@ -85,7 +85,8 @@ pub(super) async fn start_ipc(mut rx_exit: UnboundedReceiver<()>) {
                                 );
                                 continue;
                             }
-                            tokio::spawn(handle_new_stream(stream));
+                            handle_new_stream(stream, &mut rx_exit).await;
+                            break;
                         }
                         Err(err) => {
                             log::error!("Couldn't get whiteboard client: {:?}", err);
@@ -93,6 +94,7 @@ pub(super) async fn start_ipc(mut rx_exit: UnboundedReceiver<()>) {
                     },
                     None => {
                         log::error!("Failed to get whiteboard client");
+                        break;
                     }
                 }
             }
@@ -114,15 +116,19 @@ struct WhiteboardIpcState {
 }
 
 impl WhiteboardIpcState {
-    fn apply(&mut self, data: Data) -> Option<WhiteboardIpcAction> {
-        match data {
-            Data::WhiteboardBind { conn_id, token } => {
-                if conn_id > 0 && !token.is_empty() {
+    fn apply(&mut self, command: WhiteboardIpcCommand) -> Option<WhiteboardIpcAction> {
+        match command {
+            WhiteboardIpcCommand::Bind { conn_id, token } => {
+                if conn_id > 0
+                    && whiteboard_connection_token_is_valid(&token)
+                    && (self.active.contains_key(&conn_id)
+                        || self.active.len() < ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS)
+                {
                     self.active.insert(conn_id, token);
                 }
                 None
             }
-            Data::WhiteboardEvent {
+            WhiteboardIpcCommand::Event {
                 conn_id,
                 token,
                 event,
@@ -143,7 +149,7 @@ impl WhiteboardIpcState {
                     None
                 }
             }
-            Data::WhiteboardClose { conn_id, token } => {
+            WhiteboardIpcCommand::Close { conn_id, token } => {
                 let authorized = self
                     .active
                     .get(&conn_id)
@@ -158,16 +164,21 @@ impl WhiteboardIpcState {
                     None
                 }
             }
-            Data::WhiteboardShutdown => {
+            WhiteboardIpcCommand::Shutdown => {
                 if self.active.is_empty() {
                     Some(WhiteboardIpcAction::Shutdown)
                 } else {
                     None
                 }
             }
-            _ => None,
         }
     }
+}
+
+fn whiteboard_connection_token_is_valid(token: &str) -> bool {
+    crate::decode64(token)
+        .map(|decoded| decoded.len() == 32)
+        .unwrap_or(false)
 }
 
 fn send_whiteboard_event(k: String, evt: CustomEvent) {
@@ -176,68 +187,72 @@ fn send_whiteboard_event(k: String, evt: CustomEvent) {
     });
 }
 
-async fn handle_new_stream(mut conn: Connection) {
+async fn handle_new_stream(
+    mut conn: Connection,
+    rx_exit: &mut UnboundedReceiver<()>,
+) {
     let mut state = WhiteboardIpcState::default();
-    let shutdown_overlay = loop {
-        tokio::select! {
-            res = conn.next() => {
-                match res {
-                    Err(err) => {
-                        log::info!("whiteboard ipc connection closed: {}", err);
-                        break !state.active.is_empty();
-                    }
-                    Ok(Some(data)) => {
-                        match state.apply(data) {
-                            Some(WhiteboardIpcAction::Event(k, evt)) => send_whiteboard_event(k, evt),
-                            Some(WhiteboardIpcAction::Shutdown) => {
-                                break true;
-                            }
-                            None => {}
-                        }
-                    }
-                    Ok(None) => {
-                        log::info!("whiteboard ipc connection closed");
-                        break !state.active.is_empty();
-                    }
-                }
+    loop {
+        match rx_exit.try_recv() {
+            Ok(_) | Err(tokio::sync::mpsc::error::TryRecvError::Disconnected) => break,
+            Err(tokio::sync::mpsc::error::TryRecvError::Empty) => {}
+        }
+        match conn
+            .next_whiteboard_command_timeout(ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS)
+            .await
+        {
+            Err(err) => {
+                log::info!("whiteboard IPC connection terminated: {err}");
+                break;
+            }
+            Ok(Some(command)) => match state.apply(command) {
+                Some(WhiteboardIpcAction::Event(k, evt)) => send_whiteboard_event(k, evt),
+                Some(WhiteboardIpcAction::Shutdown) => break,
+                None => {}
+            },
+            Ok(None) => {
+                // The read deadline is a cancellation wake for the event-loop exit channel.
             }
         }
-    };
-    if shutdown_overlay {
-        send_whiteboard_event("".to_string(), CustomEvent::Exit);
     }
+    send_whiteboard_event("".to_string(), CustomEvent::Exit);
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    fn token(value: u8) -> String {
+        crate::encode64(&[value; 32])
+    }
+
     #[test]
     fn whiteboard_authority_rejects_unbound_events_and_exit() {
         let mut state = WhiteboardIpcState::default();
+        let token = token(7);
         assert!(state
-            .apply(Data::WhiteboardEvent {
+            .apply(WhiteboardIpcCommand::Event {
                 conn_id: 7,
-                token: "token".to_owned(),
+                token: token.clone(),
                 event: CustomEvent::Clear,
             })
             .is_none());
         assert!(state
-            .apply(Data::WhiteboardClose {
+            .apply(WhiteboardIpcCommand::Close {
                 conn_id: 7,
-                token: "token".to_owned(),
+                token: token.clone(),
             })
             .is_none());
         assert!(state
-            .apply(Data::WhiteboardBind {
+            .apply(WhiteboardIpcCommand::Bind {
                 conn_id: 7,
-                token: "token".to_owned(),
+                token: token.clone(),
             })
             .is_none());
         assert!(state
-            .apply(Data::WhiteboardEvent {
+            .apply(WhiteboardIpcCommand::Event {
                 conn_id: 7,
-                token: "token".to_owned(),
+                token,
                 event: CustomEvent::Exit,
             })
             .is_none());
@@ -246,18 +261,20 @@ mod tests {
     #[test]
     fn whiteboard_authority_is_per_connection_token() {
         let mut state = WhiteboardIpcState::default();
-        state.apply(Data::WhiteboardBind {
+        let alpha = token(1);
+        let beta = token(2);
+        state.apply(WhiteboardIpcCommand::Bind {
             conn_id: 7,
-            token: "alpha".to_owned(),
+            token: alpha.clone(),
         });
-        state.apply(Data::WhiteboardBind {
+        state.apply(WhiteboardIpcCommand::Bind {
             conn_id: 8,
-            token: "beta".to_owned(),
+            token: beta.clone(),
         });
 
-        match state.apply(Data::WhiteboardEvent {
+        match state.apply(WhiteboardIpcCommand::Event {
             conn_id: 7,
-            token: "alpha".to_owned(),
+            token: alpha.clone(),
             event: CustomEvent::Clear,
         }) {
             Some(WhiteboardIpcAction::Event(k, CustomEvent::Clear)) => {
@@ -267,27 +284,27 @@ mod tests {
         }
 
         assert!(state
-            .apply(Data::WhiteboardClose {
+            .apply(WhiteboardIpcCommand::Close {
                 conn_id: 7,
-                token: "beta".to_owned(),
+                token: beta.clone(),
             })
             .is_none());
-        assert!(state.apply(Data::WhiteboardShutdown).is_none());
+        assert!(state.apply(WhiteboardIpcCommand::Shutdown).is_none());
 
-        match state.apply(Data::WhiteboardClose {
+        match state.apply(WhiteboardIpcCommand::Close {
             conn_id: 7,
-            token: "alpha".to_owned(),
+            token: alpha,
         }) {
             Some(WhiteboardIpcAction::Event(k, CustomEvent::Clear)) => {
                 assert_eq!(k, super::super::client::get_key_cursor(7));
             }
             _ => panic!("authorized whiteboard close was not forwarded"),
         }
-        assert!(state.apply(Data::WhiteboardShutdown).is_none());
+        assert!(state.apply(WhiteboardIpcCommand::Shutdown).is_none());
 
-        match state.apply(Data::WhiteboardClose {
+        match state.apply(WhiteboardIpcCommand::Close {
             conn_id: 8,
-            token: "beta".to_owned(),
+            token: beta,
         }) {
             Some(WhiteboardIpcAction::Event(k, CustomEvent::Clear)) => {
                 assert_eq!(k, super::super::client::get_key_cursor(8));
@@ -295,9 +312,53 @@ mod tests {
             _ => panic!("second whiteboard close was not forwarded"),
         }
         assert!(matches!(
-            state.apply(Data::WhiteboardShutdown),
+            state.apply(WhiteboardIpcCommand::Shutdown),
             Some(WhiteboardIpcAction::Shutdown)
         ));
+    }
+
+    #[test]
+    fn whiteboard_authority_bounds_active_tokens_and_rejects_malformed_tokens() {
+        let mut state = WhiteboardIpcState::default();
+        state.apply(WhiteboardIpcCommand::Bind {
+            conn_id: 1,
+            token: "not-a-token".to_owned(),
+        });
+        assert!(state.active.is_empty());
+
+        for conn_id in 1..=ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS as i32 {
+            state.apply(WhiteboardIpcCommand::Bind {
+                conn_id,
+                token: token(conn_id as u8),
+            });
+        }
+        assert_eq!(
+            state.active.len(),
+            ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS
+        );
+
+        state.apply(WhiteboardIpcCommand::Bind {
+            conn_id: ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS as i32 + 1,
+            token: token(100),
+        });
+        assert_eq!(
+            state.active.len(),
+            ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS
+        );
+        assert!(!state
+            .active
+            .contains_key(&(ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS as i32 + 1)));
+
+        let replacement = token(200);
+        state.apply(WhiteboardIpcCommand::Bind {
+            conn_id: 1,
+            token: replacement.clone(),
+        });
+        assert_eq!(
+            state.active.len(),
+            ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS
+        );
+        assert_eq!(state.active.get(&1), Some(&replacement));
     }
 }
 

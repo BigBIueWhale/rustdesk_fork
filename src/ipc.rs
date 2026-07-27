@@ -137,11 +137,19 @@ pub(crate) const MAIN_IPC_MAX_FRAME_BYTES: usize = 256 * 1024;
 pub(crate) const PULSE_AUDIO_IPC_MAX_FRAME_BYTES: usize = 8 * 1024;
 #[cfg(target_os = "linux")]
 pub(crate) const PULSE_AUDIO_IPC_AUDIO_FRAME_BYTES: usize = 960 * 4;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) const WHITEBOARD_IPC_MAX_FRAME_BYTES: usize = 64 * 1024;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) const WHITEBOARD_IPC_COMMAND_CAPACITY: usize = 64;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) const WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS: usize = 16;
 pub(crate) const CM_IPC_MAX_FRAME_BYTES: usize = 128 * 1024 * 1024;
 pub(crate) const CM_FILE_BLOCK_MAX_FRAME_BYTES: usize = 256 * 1024;
 pub(crate) const SERVICE_IPC_REQUEST_TIMEOUT_MS: u64 = 1_000;
 #[cfg(target_os = "linux")]
 pub(crate) const PULSE_AUDIO_IPC_IO_TIMEOUT_MS: u64 = 1_000;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) const WHITEBOARD_IPC_IO_TIMEOUT_MS: u64 = 1_000;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 const MAIN_IPC_TRANSACTION_TIMEOUT_MS: u64 = 2_000;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -1674,6 +1682,42 @@ pub(crate) enum LinuxPulseAudioIpcRequest {
     },
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(tag = "t", deny_unknown_fields)]
+pub(crate) enum WhiteboardOwnerHandshake {
+    ServerProof { proof: String },
+    EndpointChallenge { challenge: String },
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Debug, Serialize, Deserialize, Clone, Eq, PartialEq)]
+#[serde(tag = "t", deny_unknown_fields)]
+pub(crate) enum WhiteboardHelperHandshake {
+    ServerChallenge { challenge: String },
+    EndpointProof { proof: String },
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(tag = "t", deny_unknown_fields)]
+pub(crate) enum WhiteboardIpcCommand {
+    Bind {
+        conn_id: i32,
+        token: String,
+    },
+    Event {
+        conn_id: i32,
+        token: String,
+        event: crate::whiteboard::CustomEvent,
+    },
+    Close {
+        conn_id: i32,
+        token: String,
+    },
+    Shutdown,
+}
+
 #[cfg(any(target_os = "windows", test))]
 #[derive(Debug, Serialize, Deserialize, Clone, Copy, Eq, PartialEq)]
 #[serde(tag = "t", deny_unknown_fields)]
@@ -1741,22 +1785,6 @@ pub enum Data {
     CmServerProof {
         proof: String,
     },
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    WhiteboardEndpointChallenge {
-        challenge: String,
-    },
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    WhiteboardEndpointProof {
-        proof: String,
-    },
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    WhiteboardServerChallenge {
-        challenge: String,
-    },
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    WhiteboardServerProof {
-        proof: String,
-    },
     ChatMessage {
         text: String,
     },
@@ -1797,24 +1825,6 @@ pub enum Data {
     CloseVoiceCall(String),
     FileTransferLog((String, String)),
     CmErr(String),
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    WhiteboardBind {
-        conn_id: i32,
-        token: String,
-    },
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    WhiteboardEvent {
-        conn_id: i32,
-        token: String,
-        event: crate::whiteboard::CustomEvent,
-    },
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    WhiteboardClose {
-        conn_id: i32,
-        token: String,
-    },
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    WhiteboardShutdown,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -4091,8 +4101,17 @@ const WHITEBOARD_ENDPOINT_NAME_CONTEXT: &[u8] = b"rustdesk.whiteboard.endpoint-n
 #[cfg(any(not(any(target_os = "android", target_os = "ios")), test))]
 const WHITEBOARD_ENDPOINT_POSTFIX_PREFIX: &str = "_whiteboard_";
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-const WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS: u64 = 1_000;
+#[cfg(any(not(any(target_os = "android", target_os = "ios")), test))]
+pub(crate) fn whiteboard_ipc_postfix_is_valid(postfix: &str) -> bool {
+    postfix
+        .strip_prefix(WHITEBOARD_ENDPOINT_POSTFIX_PREFIX)
+        .is_some_and(|suffix| {
+            suffix.len() == 32
+                && suffix
+                    .bytes()
+                    .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+        })
+}
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 const WHITEBOARD_PROCESS_ROLE: &str = "--whiteboard";
@@ -4511,45 +4530,49 @@ where
     T: AsyncRead + AsyncWrite + std::marker::Unpin,
 {
     match stream
-        .next_timeout(WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS)
+        .next_whiteboard_helper_handshake_timeout(WHITEBOARD_IPC_IO_TIMEOUT_MS)
         .await?
     {
-        Some(Data::WhiteboardServerChallenge { challenge }) => {
+        WhiteboardHelperHandshake::ServerChallenge { challenge } => {
             let proof = whiteboard_server_proof_for_challenge(
                 &challenge,
                 launch_token,
                 WHITEBOARD_PROCESS_ROLE,
             )?;
             stream
-                .send_json_timeout(
-                    &Data::WhiteboardServerProof { proof },
-                    WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS,
+                .send_whiteboard_owner_handshake_timeout(
+                    &WhiteboardOwnerHandshake::ServerProof { proof },
+                    WHITEBOARD_IPC_IO_TIMEOUT_MS,
                 )
                 .await?;
         }
-        _ => bail!("whiteboard server launch challenge missing"),
+        WhiteboardHelperHandshake::EndpointProof { .. } => {
+            bail!("whiteboard server launch challenge missing")
+        }
     }
 
     let challenge = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
     stream
-        .send_json_timeout(
-            &Data::WhiteboardEndpointChallenge {
+        .send_whiteboard_owner_handshake_timeout(
+            &WhiteboardOwnerHandshake::EndpointChallenge {
                 challenge: challenge.clone(),
             },
-            WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS,
+            WHITEBOARD_IPC_IO_TIMEOUT_MS,
         )
         .await?;
     match stream
-        .next_timeout(WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS)
+        .next_whiteboard_helper_handshake_timeout(WHITEBOARD_IPC_IO_TIMEOUT_MS)
         .await?
     {
-        Some(Data::WhiteboardEndpointProof { proof }) => verify_whiteboard_endpoint_proof(
+        WhiteboardHelperHandshake::EndpointProof { proof } => verify_whiteboard_endpoint_proof(
             &challenge,
             &proof,
             launch_token,
             WHITEBOARD_PROCESS_ROLE,
         ),
-        _ => bail!("whiteboard endpoint did not prove launch authority"),
+        WhiteboardHelperHandshake::ServerChallenge { .. } => {
+            bail!("whiteboard endpoint did not prove launch authority")
+        }
     }
 }
 
@@ -4565,37 +4588,41 @@ where
     let role = current_whiteboard_process_role()?;
     let server_challenge = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
     stream
-        .send_json_timeout(
-            &Data::WhiteboardServerChallenge {
+        .send_whiteboard_helper_handshake_timeout(
+            &WhiteboardHelperHandshake::ServerChallenge {
                 challenge: server_challenge.clone(),
             },
-            WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS,
+            WHITEBOARD_IPC_IO_TIMEOUT_MS,
         )
         .await?;
     match stream
-        .next_timeout(WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS)
+        .next_whiteboard_owner_handshake_timeout(WHITEBOARD_IPC_IO_TIMEOUT_MS)
         .await?
     {
-        Some(Data::WhiteboardServerProof { proof }) => {
+        WhiteboardOwnerHandshake::ServerProof { proof } => {
             verify_whiteboard_server_proof(&server_challenge, &proof, &launch_token, &role)?;
         }
-        _ => bail!("whiteboard server launch proof missing"),
+        WhiteboardOwnerHandshake::EndpointChallenge { .. } => {
+            bail!("whiteboard server launch proof missing")
+        }
     }
 
     match stream
-        .next_timeout(WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS)
+        .next_whiteboard_owner_handshake_timeout(WHITEBOARD_IPC_IO_TIMEOUT_MS)
         .await?
     {
-        Some(Data::WhiteboardEndpointChallenge { challenge }) => {
+        WhiteboardOwnerHandshake::EndpointChallenge { challenge } => {
             let proof = whiteboard_endpoint_proof_for_challenge(&challenge, &launch_token, &role)?;
             stream
-                .send_json_timeout(
-                    &Data::WhiteboardEndpointProof { proof },
-                    WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS,
+                .send_whiteboard_helper_handshake_timeout(
+                    &WhiteboardHelperHandshake::EndpointProof { proof },
+                    WHITEBOARD_IPC_IO_TIMEOUT_MS,
                 )
                 .await
         }
-        _ => bail!("whiteboard endpoint challenge missing"),
+        WhiteboardOwnerHandshake::ServerProof { .. } => {
+            bail!("whiteboard endpoint challenge missing")
+        }
     }
 }
 
@@ -5567,6 +5594,8 @@ async fn connect_with_path(
             ConnectionTmpl::new_protected_service(client)
         } else if postfix.is_empty() {
             ConnectionTmpl::new_main(client)
+        } else if whiteboard_ipc_postfix_is_valid(postfix) {
+            ConnectionTmpl::new_whiteboard(client)
         } else {
             ConnectionTmpl::new(client)
         };
@@ -5594,15 +5623,26 @@ async fn connect_with_path(
                 bail!("desktop main IPC is unavailable on mobile");
             }
         } else {
-            #[cfg(target_os = "linux")]
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {
-                if postfix == "_pa" {
-                    ConnectionTmpl::new_pulse_audio(client)
+                if whiteboard_ipc_postfix_is_valid(postfix) {
+                    ConnectionTmpl::new_whiteboard(client)
                 } else {
-                    ConnectionTmpl::new(client)
+                    #[cfg(target_os = "linux")]
+                    {
+                        if postfix == "_pa" {
+                            ConnectionTmpl::new_pulse_audio(client)
+                        } else {
+                            ConnectionTmpl::new(client)
+                        }
+                    }
+                    #[cfg(not(target_os = "linux"))]
+                    {
+                        ConnectionTmpl::new(client)
+                    }
                 }
             }
-            #[cfg(not(target_os = "linux"))]
+            #[cfg(any(target_os = "android", target_os = "ios"))]
             {
                 ConnectionTmpl::new(client)
             }
@@ -6129,6 +6169,11 @@ where
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub(crate) fn new_whiteboard(conn: T) -> Self {
+        Self::new_with_max_packet_length(conn, WHITEBOARD_IPC_MAX_FRAME_BYTES)
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub(crate) fn new_main(conn: T) -> Self {
         Self::new_with_max_packet_length(conn, MAIN_IPC_MAX_FRAME_BYTES)
     }
@@ -6165,6 +6210,14 @@ where
             return Ok(None);
         };
         Ok(serde_json::from_str(text).ok())
+    }
+
+    async fn next_json_strict<D: serde::de::DeserializeOwned>(&mut self) -> ResultType<D> {
+        let Some(bytes) = self.inner.next().await else {
+            bail!("reset by the peer");
+        };
+        let bytes = bytes?;
+        Ok(serde_json::from_slice(&bytes)?)
     }
 
     pub async fn send(&mut self, data: &Data) -> ResultType<()> {
@@ -6275,6 +6328,59 @@ where
             );
         }
         Ok(Some(frame))
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub(crate) async fn send_whiteboard_owner_handshake_timeout(
+        &mut self,
+        message: &WhiteboardOwnerHandshake,
+        ms_timeout: u64,
+    ) -> ResultType<()> {
+        self.send_json_timeout(message, ms_timeout).await
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub(crate) async fn next_whiteboard_owner_handshake_timeout(
+        &mut self,
+        ms_timeout: u64,
+    ) -> ResultType<WhiteboardOwnerHandshake> {
+        Ok(timeout(ms_timeout, self.next_json_strict()).await??)
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub(crate) async fn send_whiteboard_helper_handshake_timeout(
+        &mut self,
+        message: &WhiteboardHelperHandshake,
+        ms_timeout: u64,
+    ) -> ResultType<()> {
+        self.send_json_timeout(message, ms_timeout).await
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub(crate) async fn next_whiteboard_helper_handshake_timeout(
+        &mut self,
+        ms_timeout: u64,
+    ) -> ResultType<WhiteboardHelperHandshake> {
+        Ok(timeout(ms_timeout, self.next_json_strict()).await??)
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub(crate) async fn send_whiteboard_command_timeout(
+        &mut self,
+        command: &WhiteboardIpcCommand,
+        ms_timeout: u64,
+    ) -> ResultType<()> {
+        self.send_json_timeout(command, ms_timeout).await
+    }
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    pub(crate) async fn next_whiteboard_command_timeout(
+        &mut self,
+        ms_timeout: u64,
+    ) -> ResultType<Option<WhiteboardIpcCommand>> {
+        match tokio::time::timeout(
+            std::time::Duration::from_millis(ms_timeout),
+            self.next_json_strict(),
+        )
+        .await
+        {
+            Ok(result) => result.map(Some),
+            Err(_) => Ok(None),
+        }
     }
     #[cfg(target_os = "windows")]
     pub(crate) async fn send_windows_service_sas_request_timeout(
@@ -8419,6 +8525,177 @@ mod test {
         let cross_purpose = serde_json::to_vec(&Data::Close).unwrap();
         assert!(serde_json::from_slice::<WindowsServiceSasIpcRequest>(&cross_purpose).is_err());
         assert!(serde_json::from_slice::<WindowsServiceSasIpcResponse>(&cross_purpose).is_err());
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[tokio::test(flavor = "current_thread")]
+    async fn whiteboard_channel_uses_closed_directional_bounded_protocols() {
+        let owner_proof = WhiteboardOwnerHandshake::ServerProof {
+            proof: "owner-proof".to_owned(),
+        };
+        let encoded_owner = serde_json::to_vec(&owner_proof).unwrap();
+        assert_eq!(
+            encoded_owner,
+            br#"{"t":"ServerProof","proof":"owner-proof"}"#
+        );
+        assert_eq!(
+            serde_json::from_slice::<WhiteboardOwnerHandshake>(&encoded_owner).unwrap(),
+            owner_proof
+        );
+        assert!(
+            serde_json::from_slice::<WhiteboardHelperHandshake>(&encoded_owner).is_err()
+        );
+        assert!(
+            serde_json::from_slice::<WhiteboardOwnerHandshake>(
+                br#"{"t":"ServerProof","proof":"owner-proof","extra":true}"#
+            )
+            .is_err()
+        );
+
+        let helper_challenge = WhiteboardHelperHandshake::ServerChallenge {
+            challenge: "helper-challenge".to_owned(),
+        };
+        let encoded_helper = serde_json::to_vec(&helper_challenge).unwrap();
+        assert_eq!(
+            encoded_helper,
+            br#"{"t":"ServerChallenge","challenge":"helper-challenge"}"#
+        );
+        assert_eq!(
+            serde_json::from_slice::<WhiteboardHelperHandshake>(&encoded_helper).unwrap(),
+            helper_challenge
+        );
+        assert!(
+            serde_json::from_slice::<WhiteboardOwnerHandshake>(&encoded_helper).is_err()
+        );
+
+        let command = WhiteboardIpcCommand::Bind {
+            conn_id: 7,
+            token: "token".to_owned(),
+        };
+        let encoded_command = serde_json::to_vec(&command).unwrap();
+        assert_eq!(
+            encoded_command,
+            br#"{"t":"Bind","conn_id":7,"token":"token"}"#
+        );
+        assert!(
+            serde_json::from_slice::<WhiteboardOwnerHandshake>(&encoded_command).is_err()
+        );
+        assert!(
+            serde_json::from_slice::<WhiteboardHelperHandshake>(&encoded_command).is_err()
+        );
+        assert!(
+            serde_json::from_slice::<WhiteboardIpcCommand>(
+                br#"{"t":"Bind","conn_id":7,"token":"token","extra":true}"#
+            )
+            .is_err()
+        );
+        let cross_purpose = serde_json::to_vec(&Data::Close).unwrap();
+        assert!(
+            serde_json::from_slice::<WhiteboardOwnerHandshake>(&cross_purpose).is_err()
+        );
+        assert!(
+            serde_json::from_slice::<WhiteboardHelperHandshake>(&cross_purpose).is_err()
+        );
+        assert!(serde_json::from_slice::<WhiteboardIpcCommand>(&cross_purpose).is_err());
+
+        let (owner_end, helper_end) = tokio::io::duplex(WHITEBOARD_IPC_MAX_FRAME_BYTES * 2);
+        let mut owner = ConnectionTmpl::new_whiteboard(owner_end);
+        let mut helper = ConnectionTmpl::new_whiteboard(helper_end);
+        assert_eq!(
+            owner.inner.codec().max_packet_length(),
+            WHITEBOARD_IPC_MAX_FRAME_BYTES
+        );
+        helper
+            .send_whiteboard_helper_handshake_timeout(
+                &helper_challenge,
+                WHITEBOARD_IPC_IO_TIMEOUT_MS,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            owner
+                .next_whiteboard_helper_handshake_timeout(WHITEBOARD_IPC_IO_TIMEOUT_MS)
+                .await
+                .unwrap(),
+            helper_challenge
+        );
+        owner
+            .send_whiteboard_owner_handshake_timeout(
+                &owner_proof,
+                WHITEBOARD_IPC_IO_TIMEOUT_MS,
+            )
+            .await
+            .unwrap();
+        assert_eq!(
+            helper
+                .next_whiteboard_owner_handshake_timeout(WHITEBOARD_IPC_IO_TIMEOUT_MS)
+                .await
+                .unwrap(),
+            owner_proof
+        );
+        owner
+            .send_whiteboard_command_timeout(&command, WHITEBOARD_IPC_IO_TIMEOUT_MS)
+            .await
+            .unwrap();
+        match helper
+            .next_whiteboard_command_timeout(WHITEBOARD_IPC_IO_TIMEOUT_MS)
+            .await
+            .unwrap()
+            .unwrap()
+        {
+            WhiteboardIpcCommand::Bind { conn_id, token } => {
+                assert_eq!(conn_id, 7);
+                assert_eq!(token, "token");
+            }
+            _ => panic!("unexpected whiteboard command"),
+        }
+
+        assert!(helper
+            .next_whiteboard_command_timeout(1)
+            .await
+            .unwrap()
+            .is_none());
+        owner.send(&Data::Close).await.unwrap();
+        assert!(
+            helper
+                .next_whiteboard_command_timeout(WHITEBOARD_IPC_IO_TIMEOUT_MS)
+                .await
+                .is_err()
+        );
+
+        let (oversize_end, _oversize_peer) =
+            tokio::io::duplex(WHITEBOARD_IPC_MAX_FRAME_BYTES * 2);
+        let mut oversize = ConnectionTmpl::new_whiteboard(oversize_end);
+        let oversize_command = WhiteboardIpcCommand::Event {
+            conn_id: 7,
+            token: "token".to_owned(),
+            event: crate::whiteboard::CustomEvent::Cursor(crate::whiteboard::Cursor {
+                x: 0.0,
+                y: 0.0,
+                argb: 0,
+                btns: 0,
+                text: "x".repeat(WHITEBOARD_IPC_MAX_FRAME_BYTES),
+            }),
+        };
+        assert!(
+            oversize
+                .send_whiteboard_command_timeout(
+                    &oversize_command,
+                    WHITEBOARD_IPC_IO_TIMEOUT_MS,
+                )
+                .await
+                .is_err()
+        );
+
+        let (reset_end, reset_peer) = tokio::io::duplex(WHITEBOARD_IPC_MAX_FRAME_BYTES);
+        let mut reset = ConnectionTmpl::new_whiteboard(reset_end);
+        drop(reset_peer);
+        assert!(
+            reset
+                .next_whiteboard_command_timeout(WHITEBOARD_IPC_IO_TIMEOUT_MS)
+                .await
+                .is_err()
+        );
     }
 
     #[cfg(target_os = "linux")]

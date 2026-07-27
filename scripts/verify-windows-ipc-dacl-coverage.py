@@ -70,6 +70,7 @@ def validate_listener_inventory(sources: Dict[str, str]) -> None:
             ("src/ipc.rs", "password::USER_PASSWORD_IPC_POSTFIX"): 1,
             ("src/ipc.rs", "postfix"): 1,
             ("src/ipc.rs", "password::SERVICE_PASSWORD_IPC_POSTFIX"): 1,
+            ("src/ipc.rs", "password::SERVICE_CREDENTIAL_IPC_POSTFIX"): 1,
             ("src/ipc.rs", "WINDOWS_SERVICE_CREDENTIAL_IPC_POSTFIX"): 1,
             ("src/ipc.rs", "WINDOWS_SERVICE_MAIN_CONTROL_IPC_POSTFIX"): 1,
             ("src/ipc.rs", '"_pa"'): 1,
@@ -127,7 +128,8 @@ def validate(sources: Dict[str, str]) -> None:
     whiteboard_name = region(
         sources["ipc"],
         "const WHITEBOARD_ENDPOINT_NAME_CONTEXT:",
-        "\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\nconst WHITEBOARD_ENDPOINT_AUTH_TIMEOUT_MS:",
+        "\n#[cfg(any(not(any(target_os = \"android\", target_os = \"ios\")), test))]\n"
+        "pub(crate) fn whiteboard_ipc_postfix_is_valid(",
         "shared whiteboard endpoint-name policy",
     )
     require_all(
@@ -165,22 +167,53 @@ def validate(sources: Dict[str, str]) -> None:
         "duplicated whiteboard postfix literal",
     )
 
-    classifier = region(
+    shared_classifier = region(
+        sources["ipc"],
+        "pub(crate) fn whiteboard_ipc_postfix_is_valid(",
+        "\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n"
+        "const WHITEBOARD_PROCESS_ROLE:",
+        "shared whiteboard endpoint classifier",
+    )
+    require_all(
+        shared_classifier,
+        (
+            (
+                ".strip_prefix(WHITEBOARD_ENDPOINT_POSTFIX_PREFIX)",
+                "shared whiteboard prefix validation",
+            ),
+            ("suffix.len() == 32", "exact whiteboard suffix length"),
+            ("byte.is_ascii_digit()", "whiteboard decimal hex validation"),
+            ("(b'a'..=b'f').contains(&byte)", "lowercase whiteboard hex validation"),
+        ),
+    )
+
+    classifier_wrapper = region(
         sources["auth"],
         "fn windows_whiteboard_ipc_postfix_is_valid(",
+        "\n#[cfg(any(windows, test))]\n#[inline]\n"
+        "pub(crate) fn windows_ipc_postfix_uses_restricted_dacl(",
+        "Windows whiteboard classifier wrapper",
+    )
+    require(
+        classifier_wrapper,
+        "super::whiteboard_ipc_postfix_is_valid(postfix)",
+        "single shared whiteboard classifier delegation",
+    )
+    absent(
+        classifier_wrapper,
+        "strip_prefix",
+        "duplicated Windows whiteboard classifier",
+    )
+
+    classifier = region(
+        sources["auth"],
+        "pub(crate) fn windows_ipc_postfix_uses_restricted_dacl(",
         "\n#[cfg(windows)]\npub(crate) const WINDOWS_NAMED_PIPE_CLIENT_ACCESS_MASK:",
         "Windows IPC listener-postfix policy",
     )
     require_all(
         classifier,
         (
-            (
-                ".strip_prefix(super::WHITEBOARD_ENDPOINT_POSTFIX_PREFIX)",
-                "shared whiteboard prefix validation",
-            ),
-            ("suffix.len() == 32", "exact whiteboard suffix length"),
-            ("byte.is_ascii_digit()", "whiteboard decimal hex validation"),
-            ("(b'a'..=b'f').contains(&byte)", "lowercase whiteboard hex validation"),
             ("postfix.is_empty()", "main endpoint classification"),
             (
                 "postfix == super::password::USER_PASSWORD_IPC_POSTFIX",
@@ -400,9 +433,15 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "|| false && windows_whiteboard_ipc_postfix_is_valid(postfix)",
         "whiteboard DACL policy",
     ),
-    ("auth", "suffix.len() == 32", "suffix.len() == 31", "whiteboard suffix length"),
     (
         "auth",
+        "super::whiteboard_ipc_postfix_is_valid(postfix)",
+        "postfix.starts_with(\"_whiteboard_\")",
+        "shared whiteboard classifier delegation",
+    ),
+    ("ipc", "suffix.len() == 32", "suffix.len() == 31", "whiteboard suffix length"),
+    (
+        "ipc",
         "(b'a'..=b'f').contains(&byte)",
         "byte.is_ascii_alphabetic()",
         "lowercase whiteboard hex alphabet",

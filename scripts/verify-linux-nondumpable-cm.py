@@ -648,12 +648,274 @@ def validate(sources: Dict[str, str]) -> None:
     ordered(
         whiteboard_admission,
         (
+            "Connection::new_whiteboard(stream)",
             "authorize_whiteboard_ipc_connection(&stream, expected_parent_pid)",
             "answer_whiteboard_endpoint_challenge(&mut stream).await",
-            "tokio::spawn(handle_new_stream(stream))",
+            "handle_new_stream(stream, &mut rx_exit).await",
+            "break",
         ),
-        "whiteboard parent proof and mutual HMAC before traffic",
+        "whiteboard capped stream, parent proof, mutual HMAC, and owned terminal traffic",
     )
+    absent(
+        whiteboard_admission,
+        "tokio::spawn(handle_new_stream",
+        "detached whiteboard stream handler",
+    )
+
+    for enum_name, expected in (
+        (
+            "WhiteboardOwnerHandshake",
+            "pub(crate)enumWhiteboardOwnerHandshake{"
+            "ServerProof{proof:String},"
+            "EndpointChallenge{challenge:String},}",
+        ),
+        (
+            "WhiteboardHelperHandshake",
+            "pub(crate)enumWhiteboardHelperHandshake{"
+            "ServerChallenge{challenge:String},"
+            "EndpointProof{proof:String},}",
+        ),
+        (
+            "WhiteboardIpcCommand",
+            "pub(crate)enumWhiteboardIpcCommand{"
+            "Bind{conn_id:i32,token:String,},"
+            "Event{conn_id:i32,token:String,event:crate::whiteboard::CustomEvent,},"
+            "Close{conn_id:i32,token:String,},"
+            "Shutdown,}",
+        ),
+    ):
+        require(
+            ipc,
+            '#[serde(tag = "t", deny_unknown_fields)]\n'
+            f"pub(crate) enum {enum_name}",
+            f"closed {enum_name} envelope",
+        )
+        protocol = block(ipc, f"pub(crate) enum {enum_name}", enum_name)
+        if compact_whitespace(protocol) != expected:
+            raise VerificationError(f"{enum_name} is not the exact closed schema")
+
+    data_protocol = block(ipc, "pub enum Data {", "cross-purpose Data protocol")
+    for variant in (
+        "WhiteboardEndpointChallenge",
+        "WhiteboardEndpointProof",
+        "WhiteboardServerChallenge",
+        "WhiteboardServerProof",
+        "WhiteboardBind",
+        "WhiteboardEvent",
+        "WhiteboardClose",
+        "WhiteboardShutdown",
+    ):
+        absent(data_protocol, variant, f"cross-purpose {variant}")
+
+    for marker, label in (
+        (
+            "pub(crate) const WHITEBOARD_IPC_MAX_FRAME_BYTES: usize = 64 * 1024;",
+            "whiteboard frame cap",
+        ),
+        (
+            "pub(crate) const WHITEBOARD_IPC_COMMAND_CAPACITY: usize = 64;",
+            "whiteboard command queue cap",
+        ),
+        (
+            "pub(crate) const WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS: usize = 16;",
+            "whiteboard active-token cap",
+        ),
+        (
+            "pub(crate) const WHITEBOARD_IPC_IO_TIMEOUT_MS: u64 = 1_000;",
+            "whiteboard I/O deadline",
+        ),
+        ("pub(crate) fn new_whiteboard", "whiteboard purpose-specific constructor"),
+        (
+            "Self::new_with_max_packet_length(conn, WHITEBOARD_IPC_MAX_FRAME_BYTES)",
+            "whiteboard purpose-specific codec cap",
+        ),
+        (
+            "pub(crate) async fn send_whiteboard_owner_handshake_timeout",
+            "whiteboard owner-handshake writer",
+        ),
+        (
+            "pub(crate) async fn next_whiteboard_owner_handshake_timeout",
+            "whiteboard owner-handshake reader",
+        ),
+        (
+            "pub(crate) async fn send_whiteboard_helper_handshake_timeout",
+            "whiteboard helper-handshake writer",
+        ),
+        (
+            "pub(crate) async fn next_whiteboard_helper_handshake_timeout",
+            "whiteboard helper-handshake reader",
+        ),
+        (
+            "pub(crate) async fn send_whiteboard_command_timeout",
+            "whiteboard command writer",
+        ),
+        (
+            "pub(crate) async fn next_whiteboard_command_timeout",
+            "whiteboard command reader",
+        ),
+    ):
+        require(ipc, marker, label)
+    if ipc.count("ConnectionTmpl::new_whiteboard(client)") != 2:
+        raise VerificationError(
+            "whiteboard connecting-stream cap must cover Windows and Unix desktop paths"
+        )
+
+    whiteboard_strict_reader = block(
+        ipc, "async fn next_json_strict", "strict JSON frame reader"
+    )
+    ordered(
+        whiteboard_strict_reader,
+        (
+            "self.inner.next().await",
+            'bail!("reset by the peer")',
+            "let bytes = bytes?",
+            "serde_json::from_slice(&bytes)?",
+        ),
+        "strict whiteboard reset/codec/UTF-8/schema failure",
+    )
+    whiteboard_command_reader = block(
+        ipc,
+        "pub(crate) async fn next_whiteboard_command_timeout",
+        "whiteboard command reader",
+    )
+    ordered(
+        whiteboard_command_reader,
+        (
+            "tokio::time::timeout(",
+            "self.next_json_strict()",
+            "Ok(result) => result.map(Some)",
+            "Err(_) => Ok(None)",
+        ),
+        "whiteboard cancellation wake with terminal parse/transport errors",
+    )
+
+    whiteboard_owner_proof = block(
+        ipc,
+        "pub(crate) async fn authenticate_whiteboard_endpoint_launch_proof",
+        "whiteboard owner proof exchange",
+    )
+    ordered(
+        whiteboard_owner_proof,
+        (
+            "next_whiteboard_helper_handshake_timeout",
+            "WhiteboardHelperHandshake::ServerChallenge",
+            "send_whiteboard_owner_handshake_timeout",
+            "WhiteboardOwnerHandshake::ServerProof",
+            "WhiteboardOwnerHandshake::EndpointChallenge",
+            "next_whiteboard_helper_handshake_timeout",
+            "WhiteboardHelperHandshake::EndpointProof",
+        ),
+        "directional whiteboard owner proof exchange",
+    )
+    ordered(
+        whiteboard_answer,
+        (
+            "send_whiteboard_helper_handshake_timeout",
+            "WhiteboardHelperHandshake::ServerChallenge",
+            "next_whiteboard_owner_handshake_timeout",
+            "WhiteboardOwnerHandshake::ServerProof",
+            "next_whiteboard_owner_handshake_timeout",
+            "WhiteboardOwnerHandshake::EndpointChallenge",
+            "send_whiteboard_helper_handshake_timeout",
+            "WhiteboardHelperHandshake::EndpointProof",
+        ),
+        "directional whiteboard helper proof exchange",
+    )
+
+    whiteboard_state = block(
+        whiteboard_server, "impl WhiteboardIpcState", "whiteboard command state"
+    )
+    ordered(
+        whiteboard_state,
+        (
+            "WhiteboardIpcCommand::Bind",
+            "whiteboard_connection_token_is_valid(&token)",
+            "self.active.len() < ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS",
+            "WhiteboardIpcCommand::Event",
+            "matches!(event, CustomEvent::Exit)",
+            "WhiteboardIpcCommand::Close",
+            "WhiteboardIpcCommand::Shutdown",
+            "self.active.is_empty()",
+        ),
+        "bounded per-connection whiteboard command authority",
+    )
+    whiteboard_handler = block(
+        whiteboard_server, "async fn handle_new_stream", "owned whiteboard stream"
+    )
+    ordered(
+        whiteboard_handler,
+        (
+            "rx_exit.try_recv()",
+            "next_whiteboard_command_timeout(ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS)",
+            "Err(err) =>",
+            "Ok(Some(command))",
+            "state.apply(command)",
+            "Ok(None) =>",
+            'send_whiteboard_event("".to_string(), CustomEvent::Exit);',
+        ),
+        "whiteboard cancellation wake, terminal failure, and overlay exit",
+    )
+
+    whiteboard_register = block(
+        whiteboard_client, "pub fn register_whiteboard", "whiteboard registration"
+    )
+    ordered(
+        whiteboard_register,
+        (
+            "if conn_id <= 0",
+            "conns.len() >= ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS",
+            "random::<[u8; 32]>()",
+            "WhiteboardIpcCommand::Bind",
+        ),
+        "bounded minted whiteboard connection authority",
+    )
+    whiteboard_queue = block(
+        whiteboard_client, "fn send_whiteboard_command", "whiteboard queue admission"
+    )
+    ordered(
+        whiteboard_queue,
+        (
+            "sender.try_send(command)",
+            "TrySendError::Full(WhiteboardIpcCommand::Event { .. })",
+            "TrySendError::Full(_)",
+            "TX_WHITEBOARD.write().unwrap().take()",
+            "TrySendError::Closed(_)",
+        ),
+        "bounded nonblocking whiteboard queue overflow policy",
+    )
+    ordered(
+        whiteboard_launch,
+        (
+            "channel(ipc::WHITEBOARD_IPC_COMMAND_CAPACITY)",
+            "tx.try_send(WhiteboardIpcCommand::Bind",
+            "drop(tx)",
+            "send_whiteboard_command_timeout(",
+            ".await?",
+        ),
+        "bounded whiteboard queue and propagated deadline write",
+    )
+    if whiteboard_launch.count(".send_whiteboard_command_timeout(") != 5:
+        raise VerificationError(
+            "whiteboard stream owner must use exactly five typed deadline write sites"
+        )
+    absent(whiteboard_client, "unbounded_channel", "unbounded whiteboard command queue")
+    absent(whiteboard_client, "allow_err!(stream", "ignored whiteboard transport error")
+
+    for marker, label in (
+        (
+            "whiteboard_channel_uses_closed_directional_bounded_protocols",
+            "whiteboard protocol regression",
+        ),
+        (
+            "whiteboard_command_queue_has_a_hard_capacity",
+            "whiteboard queue-capacity regression",
+        ),
+        (
+            "whiteboard_authority_bounds_active_tokens_and_rejects_malformed_tokens",
+            "whiteboard active-token regression",
+        ),
+    ):
+        require(ipc + whiteboard_client + whiteboard_server, marker, label)
 
     for key, needle, label in (
         ("requirements", '<span class="id">R-S11cc</span>', "R-S11cc requirement"),
@@ -686,6 +948,18 @@ def validate(sources: Dict[str, str]) -> None:
             "verify",
             "R-S11c-7/R-S11dy Linux _pa capture uses one bounded typed start request",
             "shared PA protocol/resource gate",
+        ),
+        ("requirements", '<span class="id">R-S11dz</span>', "R-S11dz requirement"),
+        ("requirements", "<tr><td>279</td>", "Appendix C #279"),
+        (
+            "hardening",
+            "R-S11dz/R-S11e-144 — whiteboard helper protocol and resource finality",
+            "R-S11e-144 hardening ledger",
+        ),
+        (
+            "verify",
+            "R-S11c-8/R-S11dz whiteboard uses directional closed protocols",
+            "shared whiteboard protocol/resource gate",
         ),
     ):
         require(sources[key], needle, label)
@@ -905,6 +1179,174 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "Linux whiteboard parent-death launch",
     ),
     (
+        "ipc",
+        "    ServerProof { proof: String },",
+        "    OwnerProof { proof: String },",
+        "whiteboard owner-handshake schema",
+    ),
+    (
+        "ipc",
+        '#[serde(tag = "t", deny_unknown_fields)]\n'
+        "pub(crate) enum WhiteboardHelperHandshake",
+        '#[serde(tag = "t")]\n'
+        "pub(crate) enum WhiteboardHelperHandshake",
+        "whiteboard helper unknown-field rejection",
+    ),
+    (
+        "ipc",
+        '#[serde(tag = "t", deny_unknown_fields)]\n'
+        "pub(crate) enum WhiteboardIpcCommand",
+        '#[serde(tag = "t")]\n'
+        "pub(crate) enum WhiteboardIpcCommand",
+        "whiteboard command unknown-field rejection",
+    ),
+    (
+        "ipc",
+        "pub enum Data {\n",
+        "pub enum Data {\n    WhiteboardBind { conn_id: i32, token: String },\n",
+        "whiteboard cross-purpose Data absence",
+    ),
+    (
+        "ipc",
+        "pub(crate) const WHITEBOARD_IPC_MAX_FRAME_BYTES: usize = 64 * 1024;",
+        "pub(crate) const WHITEBOARD_IPC_MAX_FRAME_BYTES: usize = usize::MAX;",
+        "whiteboard frame cap",
+    ),
+    (
+        "ipc",
+        "pub(crate) const WHITEBOARD_IPC_COMMAND_CAPACITY: usize = 64;",
+        "pub(crate) const WHITEBOARD_IPC_COMMAND_CAPACITY: usize = usize::MAX;",
+        "whiteboard command queue cap",
+    ),
+    (
+        "ipc",
+        "pub(crate) const WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS: usize = 16;",
+        "pub(crate) const WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS: usize = usize::MAX;",
+        "whiteboard active-token cap",
+    ),
+    (
+        "ipc",
+        "Self::new_with_max_packet_length(conn, WHITEBOARD_IPC_MAX_FRAME_BYTES)",
+        "Self::new(conn)",
+        "whiteboard purpose-specific codec cap",
+    ),
+    (
+        "ipc",
+        "} else if whiteboard_ipc_postfix_is_valid(postfix) {\n"
+        "            ConnectionTmpl::new_whiteboard(client)",
+        "} else if whiteboard_ipc_postfix_is_valid(postfix) {\n"
+        "            ConnectionTmpl::new(client)",
+        "Windows whiteboard connecting-stream cap",
+    ),
+    (
+        "ipc",
+        "Ok(serde_json::from_slice(&bytes)?)",
+        "Ok(serde_json::from_slice(&bytes).unwrap_or_else(|_| panic!()))",
+        "strict whiteboard schema failure",
+    ),
+    (
+        "ipc",
+        "            self.next_json_strict(),\n"
+        "        )\n"
+        "        .await\n"
+        "        {\n"
+        "            Ok(result) => result.map(Some),\n"
+        "            Err(_) => Ok(None),",
+        "            self.next_json(),\n"
+        "        )\n"
+        "        .await\n"
+        "        {\n"
+        "            Ok(result) => result,\n"
+        "            Err(_) => Ok(None),",
+        "strict whiteboard command read",
+    ),
+    (
+        "ipc",
+        "match stream\n"
+        "        .next_whiteboard_helper_handshake_timeout(WHITEBOARD_IPC_IO_TIMEOUT_MS)\n"
+        "        .await?\n"
+        "    {\n"
+        "        WhiteboardHelperHandshake::ServerChallenge",
+        "match stream\n"
+        "        .next_timeout(WHITEBOARD_IPC_IO_TIMEOUT_MS)\n"
+        "        .await?\n"
+        "    {\n"
+        "        WhiteboardHelperHandshake::ServerChallenge",
+        "directional whiteboard owner proof reader",
+    ),
+    (
+        "whiteboard_server",
+        "let mut stream = Connection::new_whiteboard(stream);",
+        "let mut stream = Connection::new(stream);",
+        "whiteboard accepted-stream frame cap",
+    ),
+    (
+        "whiteboard_server",
+        "handle_new_stream(stream, &mut rx_exit).await;",
+        "tokio::spawn(handle_new_stream(stream, &mut rx_exit));",
+        "whiteboard stream ownership",
+    ),
+    (
+        "whiteboard_server",
+        "&& whiteboard_connection_token_is_valid(&token)",
+        "&& true",
+        "whiteboard token-shape validation",
+    ),
+    (
+        "whiteboard_server",
+        "|| self.active.len() < ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS)",
+        "|| true)",
+        "whiteboard active-token map cap",
+    ),
+    (
+        "whiteboard_server",
+        ".next_whiteboard_command_timeout(ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS)",
+        ".next()",
+        "whiteboard typed deadline command read",
+    ),
+    (
+        "whiteboard_server",
+        'send_whiteboard_event("".to_string(), CustomEvent::Exit);',
+        'log::info!("whiteboard stream ended");',
+        "whiteboard terminal overlay exit",
+    ),
+    (
+        "whiteboard_client",
+        "let (tx, mut rx) = channel(ipc::WHITEBOARD_IPC_COMMAND_CAPACITY);",
+        "let (tx, mut rx) = unbounded_channel();",
+        "whiteboard bounded command channel",
+    ),
+    (
+        "whiteboard_client",
+        "sender.as_ref().map(|sender| sender.try_send(command))",
+        "sender.as_ref().map(|sender| sender.blocking_send(command))",
+        "whiteboard nonblocking command admission",
+    ),
+    (
+        "whiteboard_client",
+        "Some(Err(TrySendError::Full(WhiteboardIpcCommand::Event { .. })))",
+        "Some(Err(TrySendError::Full(_)))",
+        "whiteboard event overflow policy",
+    ),
+    (
+        "whiteboard_client",
+        "    drop(tx);\n",
+        "",
+        "whiteboard channel-closure wake",
+    ),
+    (
+        "whiteboard_client",
+        "                    Some(command @ WhiteboardIpcCommand::Bind { .. }) => {\n"
+        "                        stream\n"
+        "                            .send_whiteboard_command_timeout(\n"
+        "                                &command,",
+        "                    Some(command @ WhiteboardIpcCommand::Bind { .. }) => {\n"
+        "                        stream\n"
+        "                            .send(\n"
+        "                                &command,",
+        "whiteboard typed deadline command write",
+    ),
+    (
         "requirements",
         '<span class="id">R-S11cc</span>',
         '<span class="id">R-S11cc-disabled</span>',
@@ -969,6 +1411,30 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "R-S11c-7/R-S11dy Linux _pa capture uses one bounded typed start request",
         "R-S11c-7 Linux _pa capture uses a generic request",
         "shared PA protocol/resource gate",
+    ),
+    (
+        "requirements",
+        '<span class="id">R-S11dz</span>',
+        '<span class="id">R-S11dz-disabled</span>',
+        "R-S11dz requirement",
+    ),
+    (
+        "requirements",
+        "<tr><td>279</td>",
+        "<tr><td>279-disabled</td>",
+        "Appendix C #279",
+    ),
+    (
+        "hardening",
+        "R-S11dz/R-S11e-144 — whiteboard helper protocol and resource finality",
+        "R-S11dz/R-S11e-144 — whiteboard remains generic and unbounded",
+        "whiteboard protocol hardening ledger",
+    ),
+    (
+        "verify",
+        "R-S11c-8/R-S11dz whiteboard uses directional closed protocols",
+        "R-S11c-8 whiteboard uses generic Data traffic",
+        "shared whiteboard protocol/resource gate",
     ),
 )
 

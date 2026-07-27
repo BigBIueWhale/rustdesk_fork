@@ -10792,7 +10792,17 @@ def validate_windows_ipc_dacl_coverage_contract(sources):
             "fn windows_whiteboard_ipc_postfix_is_valid(postfix: &str) -> bool",
             "strict whiteboard postfix classifier",
         ),
-        (auth_source, "suffix.len() == 32", "exact whiteboard postfix length"),
+        (
+            auth_source,
+            "super::whiteboard_ipc_postfix_is_valid(postfix)",
+            "shared whiteboard postfix classifier delegation",
+        ),
+        (ipc_source, "suffix.len() == 32", "exact whiteboard postfix length"),
+        (
+            ipc_source,
+            "(b'a'..=b'f').contains(&byte)",
+            "lowercase whiteboard postfix alphabet",
+        ),
         (
             auth_source,
             '|| postfix == "_cm"',
@@ -12057,7 +12067,7 @@ def validate_portable_quick_support_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
+        "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12138,7 +12148,7 @@ def validate_windows_installer_application_launch_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
+        "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12317,7 +12327,7 @@ def validate_windows_installer_api_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
+        "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12451,7 +12461,7 @@ def validate_windows_certificate_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
+        "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12619,7 +12629,7 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
+        "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -12812,7 +12822,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
+        "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -13146,7 +13156,7 @@ def validate_debian_vendor_unit_ownership_contract(sources):
         require_text(sysv_ledger, text, label)
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
+        "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -14339,6 +14349,440 @@ def validate_pulse_audio_ipc_protocol_contract(sources):
             "hardening",
             "R-S11dy/R-S11e-143 — Linux PulseAudio helper protocol and resource finality",
             "PulseAudio protocol/resource hardening ledger",
+        ),
+    ):
+        require_text(sources[source_key], text, label)
+
+
+def validate_whiteboard_ipc_protocol_contract(sources):
+    ipc = sources["ipc_source"]
+    client = sources["whiteboard_client"]
+    server = sources["whiteboard_server"]
+
+    expected_variants = (
+        ("WhiteboardOwnerHandshake", ("ServerProof", "EndpointChallenge")),
+        ("WhiteboardHelperHandshake", ("ServerChallenge", "EndpointProof")),
+        ("WhiteboardIpcCommand", ("Bind", "Event", "Close", "Shutdown")),
+    )
+    for enum_name, expected in expected_variants:
+        variants = extract_rust_enum_variants(
+            ipc,
+            f"pub(crate) enum {enum_name}",
+            f"{enum_name} protocol",
+        )
+        if variants != expected:
+            raise VerificationError(
+                f"{enum_name} protocol: expected exactly {expected}, got {variants}"
+            )
+        require_text(
+            ipc,
+            '#[serde(tag = "t", deny_unknown_fields)]\n'
+            f"pub(crate) enum {enum_name}",
+            f"{enum_name} exact envelope",
+        )
+
+    for schema, label in (
+        (
+            "pub(crate) enum WhiteboardOwnerHandshake {\n"
+            "    ServerProof { proof: String },\n"
+            "    EndpointChallenge { challenge: String },\n}",
+            "whiteboard owner-handshake field schema",
+        ),
+        (
+            "pub(crate) enum WhiteboardHelperHandshake {\n"
+            "    ServerChallenge { challenge: String },\n"
+            "    EndpointProof { proof: String },\n}",
+            "whiteboard helper-handshake field schema",
+        ),
+        (
+            "pub(crate) enum WhiteboardIpcCommand {\n"
+            "    Bind {\n        conn_id: i32,\n        token: String,\n    },\n"
+            "    Event {\n        conn_id: i32,\n        token: String,\n"
+            "        event: crate::whiteboard::CustomEvent,\n    },\n"
+            "    Close {\n        conn_id: i32,\n        token: String,\n    },\n"
+            "    Shutdown,\n}",
+            "whiteboard command field schema",
+        ),
+    ):
+        require_text(ipc, schema, label)
+
+    data_variants = set(
+        extract_rust_enum_variants(ipc, "pub enum Data {", "cross-purpose Data protocol")
+    )
+    stale_variants = {
+        "WhiteboardEndpointChallenge",
+        "WhiteboardEndpointProof",
+        "WhiteboardServerChallenge",
+        "WhiteboardServerProof",
+        "WhiteboardBind",
+        "WhiteboardEvent",
+        "WhiteboardClose",
+        "WhiteboardShutdown",
+    }
+    retained = sorted(data_variants.intersection(stale_variants))
+    if retained:
+        raise VerificationError(
+            f"cross-purpose Data retains whiteboard variants: {retained}"
+        )
+
+    for text, label in (
+        (
+            "pub(crate) const WHITEBOARD_IPC_MAX_FRAME_BYTES: usize = 64 * 1024;",
+            "whiteboard codec ceiling",
+        ),
+        (
+            "pub(crate) const WHITEBOARD_IPC_COMMAND_CAPACITY: usize = 64;",
+            "whiteboard command queue ceiling",
+        ),
+        (
+            "pub(crate) const WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS: usize = 16;",
+            "whiteboard active-token ceiling",
+        ),
+        (
+            "pub(crate) const WHITEBOARD_IPC_IO_TIMEOUT_MS: u64 = 1_000;",
+            "whiteboard I/O deadline",
+        ),
+        ("pub(crate) fn new_whiteboard", "whiteboard purpose-specific constructor"),
+        (
+            "Self::new_with_max_packet_length(conn, WHITEBOARD_IPC_MAX_FRAME_BYTES)",
+            "whiteboard constructor codec ceiling",
+        ),
+        (
+            "pub(crate) async fn send_whiteboard_owner_handshake_timeout(",
+            "whiteboard owner-handshake writer",
+        ),
+        (
+            "pub(crate) async fn next_whiteboard_owner_handshake_timeout(",
+            "whiteboard owner-handshake reader",
+        ),
+        (
+            "pub(crate) async fn send_whiteboard_helper_handshake_timeout(",
+            "whiteboard helper-handshake writer",
+        ),
+        (
+            "pub(crate) async fn next_whiteboard_helper_handshake_timeout(",
+            "whiteboard helper-handshake reader",
+        ),
+        (
+            "pub(crate) async fn send_whiteboard_command_timeout(",
+            "whiteboard command writer",
+        ),
+        (
+            "pub(crate) async fn next_whiteboard_command_timeout(",
+            "whiteboard command reader",
+        ),
+    ):
+        require_text(ipc, text, label)
+
+    connector = extract_between(
+        ipc,
+        "async fn connect_with_path(",
+        "\n\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n"
+        "pub(crate) async fn validate_cm_connection_authority(",
+        "IPC endpoint connector",
+    )
+    require_exact_count(
+        connector,
+        "ConnectionTmpl::new_whiteboard(client)",
+        2,
+        "Windows and Unix whiteboard connecting-stream caps",
+    )
+    require_exact_count(
+        connector,
+        "whiteboard_ipc_postfix_is_valid(postfix)",
+        2,
+        "Windows and Unix whiteboard endpoint classification",
+    )
+
+    strict_reader = extract_between(
+        ipc,
+        "async fn next_json_strict",
+        "\n\n    pub async fn send(&mut self, data: &Data)",
+        "strict IPC JSON reader",
+    )
+    require_order(
+        strict_reader,
+        (
+            "self.inner.next().await",
+            'bail!("reset by the peer")',
+            "let bytes = bytes?",
+            "serde_json::from_slice(&bytes)?",
+        ),
+        "whiteboard strict reset/codec/UTF-8/schema failure",
+    )
+    command_reader = extract_between(
+        ipc,
+        "pub(crate) async fn next_whiteboard_command_timeout(",
+        "\n    #[cfg(target_os = \"windows\")]\n"
+        "    pub(crate) async fn send_windows_service_sas_request_timeout(",
+        "whiteboard command reader",
+    )
+    require_order(
+        command_reader,
+        (
+            "tokio::time::timeout(",
+            "self.next_json_strict()",
+            "Ok(result) => result.map(Some)",
+            "Err(_) => Ok(None)",
+        ),
+        "whiteboard timeout wake with terminal reset/codec/schema failure",
+    )
+
+    owner_proof = extract_between(
+        ipc,
+        "pub(crate) async fn authenticate_whiteboard_endpoint_launch_proof",
+        "\n\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n"
+        "pub(crate) async fn answer_whiteboard_endpoint_challenge",
+        "whiteboard owner proof exchange",
+    )
+    require_order(
+        owner_proof,
+        (
+            "next_whiteboard_helper_handshake_timeout",
+            "WhiteboardHelperHandshake::ServerChallenge",
+            "send_whiteboard_owner_handshake_timeout",
+            "WhiteboardOwnerHandshake::ServerProof",
+            "WhiteboardOwnerHandshake::EndpointChallenge",
+            "next_whiteboard_helper_handshake_timeout",
+            "WhiteboardHelperHandshake::EndpointProof",
+        ),
+        "whiteboard directional owner proof exchange",
+    )
+    helper_proof = extract_between(
+        ipc,
+        "pub(crate) async fn answer_whiteboard_endpoint_challenge",
+        "\n\n#[cfg(target_os = \"linux\")]\n"
+        "const SET_UNATTENDED_PASSWORD_POLKIT_ACTION:",
+        "whiteboard helper proof exchange",
+    )
+    require_order(
+        helper_proof,
+        (
+            "send_whiteboard_helper_handshake_timeout",
+            "WhiteboardHelperHandshake::ServerChallenge",
+            "next_whiteboard_owner_handshake_timeout",
+            "WhiteboardOwnerHandshake::ServerProof",
+            "next_whiteboard_owner_handshake_timeout",
+            "WhiteboardOwnerHandshake::EndpointChallenge",
+            "send_whiteboard_helper_handshake_timeout",
+            "WhiteboardHelperHandshake::EndpointProof",
+        ),
+        "whiteboard directional helper proof exchange",
+    )
+    for forbidden, label in (
+        ("Data::Whiteboard", "whiteboard generic proof/command use"),
+        ("next_timeout(", "whiteboard generic proof reader"),
+    ):
+        require_absent(owner_proof + helper_proof, forbidden, label)
+
+    admission = extract_between(
+        server,
+        "pub(super) async fn start_ipc",
+        "\nenum WhiteboardIpcAction",
+        "whiteboard listener admission",
+    )
+    require_order(
+        admission,
+        (
+            "Connection::new_whiteboard(stream)",
+            "authorize_whiteboard_ipc_connection(&stream, expected_parent_pid)",
+            "answer_whiteboard_endpoint_challenge(&mut stream).await",
+            "handle_new_stream(stream, &mut rx_exit).await",
+            "break",
+        ),
+        "whiteboard cap, parent/proof admission, and single owned stream",
+    )
+    require_absent(
+        admission,
+        "tokio::spawn(handle_new_stream",
+        "detached whiteboard stream handler",
+    )
+
+    state = extract_between(
+        server,
+        "impl WhiteboardIpcState",
+        "\n\nfn whiteboard_connection_token_is_valid",
+        "whiteboard command authority",
+    )
+    require_order(
+        state,
+        (
+            "WhiteboardIpcCommand::Bind",
+            "whiteboard_connection_token_is_valid(&token)",
+            "self.active.len() < ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS",
+            "WhiteboardIpcCommand::Event",
+            "matches!(event, CustomEvent::Exit)",
+            "WhiteboardIpcCommand::Close",
+            "WhiteboardIpcCommand::Shutdown",
+            "self.active.is_empty()",
+        ),
+        "whiteboard bounded per-connection command authority",
+    )
+    handler = extract_between(
+        server,
+        "async fn handle_new_stream",
+        "\n\n#[cfg(test)]",
+        "whiteboard owned stream handler",
+    )
+    require_order(
+        handler,
+        (
+            "rx_exit.try_recv()",
+            "next_whiteboard_command_timeout(ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS)",
+            "Err(err) =>",
+            "Ok(Some(command))",
+            "state.apply(command)",
+            "Ok(None) =>",
+            'send_whiteboard_event("".to_string(), CustomEvent::Exit);',
+        ),
+        "whiteboard cancellation wake and terminal overlay exit",
+    )
+
+    register = extract_between(
+        client,
+        "pub fn register_whiteboard",
+        "\n\npub fn unregister_whiteboard",
+        "whiteboard owner registration",
+    )
+    require_order(
+        register,
+        (
+            "if conn_id <= 0",
+            "conns.len() >= ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS",
+            "random::<[u8; 32]>()",
+            "WhiteboardIpcCommand::Bind",
+        ),
+        "whiteboard bounded minted connection authority",
+    )
+    queue = extract_between(
+        client,
+        "fn send_whiteboard_command",
+        "\n\nfn close_whiteboard_if_idle",
+        "whiteboard command admission",
+    )
+    require_order(
+        queue,
+        (
+            "sender.try_send(command)",
+            "TrySendError::Full(WhiteboardIpcCommand::Event { .. })",
+            "TrySendError::Full(_)",
+            "TX_WHITEBOARD.write().unwrap().take()",
+            "TrySendError::Closed(_)",
+        ),
+        "whiteboard bounded nonblocking overflow policy",
+    )
+    start = extract_between(
+        client,
+        "async fn start_whiteboard_",
+        "\n\n#[cfg(test)]",
+        "whiteboard stream owner",
+    )
+    require_order(
+        start,
+        (
+            "channel(ipc::WHITEBOARD_IPC_COMMAND_CAPACITY)",
+            "tx.try_send(WhiteboardIpcCommand::Bind",
+            "drop(tx)",
+            "send_whiteboard_command_timeout(",
+            ".await?",
+        ),
+        "whiteboard bounded queue and propagated deadline write",
+    )
+    require_exact_count(
+        start,
+        ".send_whiteboard_command_timeout(",
+        5,
+        "whiteboard typed command write sites",
+    )
+    for forbidden, label in (
+        ("unbounded_channel", "unbounded whiteboard command queue"),
+        ("allow_err!(stream", "ignored whiteboard transport error"),
+    ):
+        require_absent(client, forbidden, label)
+
+    regression = extract_between(
+        ipc,
+        "async fn whiteboard_channel_uses_closed_directional_bounded_protocols()",
+        "\n\n    #[cfg(target_os = \"linux\")]\n"
+        "    #[tokio::test(flavor = \"current_thread\")]\n"
+        "    async fn linux_pulse_audio_channel_uses_closed_bounded_protocol()",
+        "whiteboard protocol regression",
+    )
+    for text, label in (
+        (
+            'br#"{"t":"ServerProof","proof":"owner-proof"}"#',
+            "whiteboard owner exact-wire regression",
+        ),
+        (
+            'br#"{"t":"ServerChallenge","challenge":"helper-challenge"}"#',
+            "whiteboard helper exact-wire regression",
+        ),
+        (
+            'br#"{"t":"Bind","conn_id":7,"token":"token"}"#',
+            "whiteboard command exact-wire regression",
+        ),
+        ("extra\":true", "whiteboard unknown-field regression"),
+        ("serde_json::to_vec(&Data::Close)", "whiteboard cross-purpose regression"),
+        (
+            "owner.inner.codec().max_packet_length()",
+            "whiteboard codec-ceiling regression",
+        ),
+        (
+            "next_whiteboard_command_timeout(1)",
+            "whiteboard cancellation-wake regression",
+        ),
+        (
+            '"x".repeat(WHITEBOARD_IPC_MAX_FRAME_BYTES)',
+            "whiteboard oversize regression",
+        ),
+        ("drop(reset_peer)", "whiteboard peer-reset regression"),
+    ):
+        require_text(regression, text, label)
+    for source_key, text, label in (
+        (
+            "whiteboard_client",
+            "whiteboard_command_queue_has_a_hard_capacity",
+            "whiteboard queue-capacity regression",
+        ),
+        (
+            "whiteboard_server",
+            "whiteboard_authority_bounds_active_tokens_and_rejects_malformed_tokens",
+            "whiteboard token-shape/count regression",
+        ),
+        (
+            "verify",
+            "R-S11c-8/R-S11dz whiteboard uses directional closed protocols",
+            "shared whiteboard protocol/resource gate",
+        ),
+        (
+            "apple",
+            "R-S11c-8/R-S11dz macOS whiteboard uses closed directional protocols",
+            "Apple whiteboard protocol/resource gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11dz</span>',
+            "whiteboard protocol/resource requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>279</td>",
+            "whiteboard protocol/resource Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11dz/R-S11e-144 — whiteboard helper protocol and resource finality",
+            "whiteboard protocol/resource hardening ledger",
+        ),
+        (
+            "linux_nondumpable_cm_verifier",
+            "whiteboard capped stream, parent proof, mutual HMAC, and owned terminal traffic",
+            "focused whiteboard stream-ownership contract",
+        ),
+        (
+            "linux_nondumpable_cm_verifier",
+            "whiteboard protocol hardening ledger",
+            "focused whiteboard mutation binding",
         ),
     ):
         require_text(sources[source_key], text, label)
@@ -17172,9 +17616,9 @@ def validate_cleanup_docker_authority_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dy, R-SV4a,\n"
+        "R-S11n through R-S11dz, R-SV4a,\n"
         "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
+        "R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -17360,9 +17804,9 @@ def validate_cleanup_process_domain_path_authority_contract(sources):
 
     require_text(
         sources["hardening"],
-        "R-S11n through R-S11dy, R-SV4a,\n"
+        "R-S11n through R-S11dz, R-SV4a,\n"
         "R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, "
-        "R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
+        "R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
         "current GitHub-automation requirements-hash scope",
     )
 
@@ -27356,6 +27800,7 @@ def validate_sources(sources):
     validate_unix_helper_process_role_contract(sources)
     validate_service_ipc_protocol_authority_contract(sources)
     validate_pulse_audio_ipc_protocol_contract(sources)
+    validate_whiteboard_ipc_protocol_contract(sources)
     validate_unix_listener_incumbent_contract(sources)
     validate_viewer_voice_call_worker_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
@@ -35526,6 +35971,24 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_auth_source",
+            "super::whiteboard_ipc_postfix_is_valid(postfix)",
+            "postfix.starts_with(\"_whiteboard_\")",
+            "shared whiteboard postfix classifier delegation",
+        ),
+        (
+            "ipc_source",
+            "suffix.len() == 32",
+            "suffix.len() == 31",
+            "exact whiteboard postfix length",
+        ),
+        (
+            "ipc_source",
+            "(b'a'..=b'f').contains(&byte)",
+            "byte.is_ascii_alphabetic()",
+            "lowercase whiteboard postfix alphabet",
+        ),
+        (
+            "ipc_auth_source",
             "let sddl = windows_ipc_listener_sddl(postfix)?;",
             "if !windows_ipc_postfix_uses_restricted_dacl(postfix) { return Ok(parity_tokio_ipc::SecurityAttributes::empty()); }\n    let sddl = windows_ipc_listener_sddl(postfix)?;",
             "default/null Windows listener security attributes remain",
@@ -40703,7 +41166,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11n through R-S11dy, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#278",
+            "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
             "R-S11n through R-S11bp, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#209",
             "current GitHub-automation requirements-hash scope",
         ),
@@ -41875,9 +42338,9 @@ def run_source_mutations(sources):
         (
             "ipc_source",
             'if postfix == "_pa" {\n'
-            "                    ConnectionTmpl::new_pulse_audio(client)",
+            "                            ConnectionTmpl::new_pulse_audio(client)",
             'if postfix == "_pa" {\n'
-            "                    ConnectionTmpl::new(client)",
+            "                            ConnectionTmpl::new(client)",
             "PulseAudio connecting-stream cap",
         ),
         (
@@ -42001,6 +42464,210 @@ def run_source_mutations(sources):
             "R-S11dy/R-S11e-143 — Linux PulseAudio helper protocol and resource finality",
             "R-S11dy/R-S11e-143 — Linux PulseAudio IPC remains generic and unbounded",
             "PulseAudio protocol/resource hardening ledger",
+        ),
+        (
+            "ipc_source",
+            "    ServerProof { proof: String },",
+            "    OwnerProof { proof: String },",
+            "WhiteboardOwnerHandshake protocol",
+        ),
+        (
+            "ipc_source",
+            '#[serde(tag = "t", deny_unknown_fields)]\n'
+            "pub(crate) enum WhiteboardHelperHandshake",
+            '#[serde(tag = "t")]\n'
+            "pub(crate) enum WhiteboardHelperHandshake",
+            "WhiteboardHelperHandshake exact envelope",
+        ),
+        (
+            "ipc_source",
+            '#[serde(tag = "t", deny_unknown_fields)]\n'
+            "pub(crate) enum WhiteboardIpcCommand",
+            '#[serde(tag = "t")]\n'
+            "pub(crate) enum WhiteboardIpcCommand",
+            "WhiteboardIpcCommand exact envelope",
+        ),
+        (
+            "ipc_source",
+            "pub enum Data {\n",
+            "pub enum Data {\n    WhiteboardBind { conn_id: i32, token: String },\n",
+            "cross-purpose Data retains whiteboard variants",
+        ),
+        (
+            "ipc_source",
+            "pub(crate) const WHITEBOARD_IPC_MAX_FRAME_BYTES: usize = 64 * 1024;",
+            "pub(crate) const WHITEBOARD_IPC_MAX_FRAME_BYTES: usize = usize::MAX;",
+            "whiteboard codec ceiling",
+        ),
+        (
+            "ipc_source",
+            "pub(crate) const WHITEBOARD_IPC_COMMAND_CAPACITY: usize = 64;",
+            "pub(crate) const WHITEBOARD_IPC_COMMAND_CAPACITY: usize = usize::MAX;",
+            "whiteboard command queue ceiling",
+        ),
+        (
+            "ipc_source",
+            "pub(crate) const WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS: usize = 16;",
+            "pub(crate) const WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS: usize = usize::MAX;",
+            "whiteboard active-token ceiling",
+        ),
+        (
+            "ipc_source",
+            "Self::new_with_max_packet_length(conn, WHITEBOARD_IPC_MAX_FRAME_BYTES)",
+            "Self::new(conn)",
+            "whiteboard constructor codec ceiling",
+        ),
+        (
+            "ipc_source",
+            "} else if whiteboard_ipc_postfix_is_valid(postfix) {\n"
+            "            ConnectionTmpl::new_whiteboard(client)",
+            "} else if whiteboard_ipc_postfix_is_valid(postfix) {\n"
+            "            ConnectionTmpl::new(client)",
+            "Windows and Unix whiteboard connecting-stream caps",
+        ),
+        (
+            "ipc_source",
+            "Ok(serde_json::from_slice(&bytes)?)",
+            "Ok(serde_json::from_slice(&bytes).ok().unwrap())",
+            "whiteboard strict reset/codec/UTF-8/schema failure",
+        ),
+        (
+            "ipc_source",
+            "            self.next_json_strict(),\n"
+            "        )\n"
+            "        .await\n"
+            "        {\n"
+            "            Ok(result) => result.map(Some),\n"
+            "            Err(_) => Ok(None),",
+            "            self.next_json(),\n"
+            "        )\n"
+            "        .await\n"
+            "        {\n"
+            "            Ok(result) => result,\n"
+            "            Err(_) => Ok(None),",
+            "whiteboard timeout wake with terminal reset/codec/schema failure",
+        ),
+        (
+            "ipc_source",
+            "match stream\n"
+            "        .next_whiteboard_helper_handshake_timeout(WHITEBOARD_IPC_IO_TIMEOUT_MS)\n"
+            "        .await?\n"
+            "    {\n"
+            "        WhiteboardHelperHandshake::ServerChallenge",
+            "match stream\n"
+            "        .next_timeout(WHITEBOARD_IPC_IO_TIMEOUT_MS)\n"
+            "        .await?\n"
+            "    {\n"
+            "        WhiteboardHelperHandshake::ServerChallenge",
+            "whiteboard directional owner proof exchange",
+        ),
+        (
+            "whiteboard_server",
+            "let mut stream = Connection::new_whiteboard(stream);",
+            "let mut stream = Connection::new(stream);",
+            "whiteboard cap, parent/proof admission, and single owned stream",
+        ),
+        (
+            "whiteboard_server",
+            "handle_new_stream(stream, &mut rx_exit).await;",
+            "tokio::spawn(handle_new_stream(stream, &mut rx_exit));",
+            "whiteboard cap, parent/proof admission, and single owned stream",
+        ),
+        (
+            "whiteboard_server",
+            "&& whiteboard_connection_token_is_valid(&token)",
+            "&& true",
+            "whiteboard bounded per-connection command authority",
+        ),
+        (
+            "whiteboard_server",
+            "|| self.active.len() < ipc::WHITEBOARD_IPC_MAX_ACTIVE_CONNECTIONS)",
+            "|| true)",
+            "whiteboard bounded per-connection command authority",
+        ),
+        (
+            "whiteboard_server",
+            ".next_whiteboard_command_timeout(ipc::WHITEBOARD_IPC_IO_TIMEOUT_MS)",
+            ".next()",
+            "whiteboard cancellation wake and terminal overlay exit",
+        ),
+        (
+            "whiteboard_server",
+            'send_whiteboard_event("".to_string(), CustomEvent::Exit);',
+            'log::info!("whiteboard stream ended");',
+            "whiteboard cancellation wake and terminal overlay exit",
+        ),
+        (
+            "whiteboard_client",
+            "let (tx, mut rx) = channel(ipc::WHITEBOARD_IPC_COMMAND_CAPACITY);",
+            "let (tx, mut rx) = unbounded_channel();",
+            "whiteboard bounded queue and propagated deadline write",
+        ),
+        (
+            "whiteboard_client",
+            "sender.as_ref().map(|sender| sender.try_send(command))",
+            "sender.as_ref().map(|sender| sender.blocking_send(command))",
+            "whiteboard bounded nonblocking overflow policy",
+        ),
+        (
+            "whiteboard_client",
+            "Some(Err(TrySendError::Full(WhiteboardIpcCommand::Event { .. })))",
+            "Some(Err(TrySendError::Full(_)))",
+            "whiteboard bounded nonblocking overflow policy",
+        ),
+        (
+            "whiteboard_client",
+            "    drop(tx);\n",
+            "",
+            "whiteboard bounded queue and propagated deadline write",
+        ),
+        (
+            "whiteboard_client",
+            "                    Some(command @ WhiteboardIpcCommand::Bind { .. }) => {\n"
+            "                        stream\n"
+            "                            .send_whiteboard_command_timeout(\n"
+            "                                &command,",
+            "                    Some(command @ WhiteboardIpcCommand::Bind { .. }) => {\n"
+            "                        stream\n"
+            "                            .send(\n"
+            "                                &command,",
+            "whiteboard typed command write sites",
+        ),
+        (
+            "linux_nondumpable_cm_verifier",
+            "whiteboard capped stream, parent proof, mutual HMAC, and owned terminal traffic",
+            "whiteboard parent proof and mutual HMAC before detached traffic",
+            "focused whiteboard stream-ownership contract",
+        ),
+        (
+            "verify",
+            "R-S11c-8/R-S11dz whiteboard uses directional closed protocols",
+            "R-S11c-8 whiteboard uses generic Data traffic",
+            "shared whiteboard protocol/resource gate",
+        ),
+        (
+            "apple",
+            "R-S11c-8/R-S11dz macOS whiteboard uses closed directional protocols",
+            "R-S11c-8 macOS whiteboard uses generic Data traffic",
+            "Apple whiteboard protocol/resource gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11dz</span>',
+            '<span class="id">R-S11dz-disabled</span>',
+            "whiteboard protocol/resource requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>279</td>",
+            "<tr><td>279-disabled</td>",
+            "whiteboard protocol/resource Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11dz/R-S11e-144 — whiteboard helper protocol and resource finality",
+            "R-S11dz/R-S11e-144 — whiteboard IPC remains generic and unbounded",
+            "whiteboard protocol/resource hardening ledger",
         ),
         (
             "viewer_voice_call_worker_verifier",

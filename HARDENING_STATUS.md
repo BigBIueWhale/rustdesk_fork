@@ -898,6 +898,23 @@ consumption are unchanged. This is verifier alignment with the already-implement
 transaction, not evidence of a failed download, weakened digest check, root acquisition, privilege escalation,
 compromise, public exposure, container escape, or a host RustDesk/service/firewall/network change.
 
+Follow-up verifier correction (2026-07-28),
+**R-S11e-159 scoped Linux protected-service permit mutation authority**: the R-S11e-60 focused validator's
+`password permit transfer` self-test still mutated the generic two-line `identity, permit` argument fragment that
+was unique when the validator was introduced. The later protected Linux credential-snapshot transaction correctly
+added a second identity-bound, permit-owned dispatch with the same fragment. Normal semantic validation continued
+to isolate the password branch and require its exact sensitive-transaction dispatch, but the deliberate-mutation
+harness failed closed before it could execute because its older global anchor was no longer unique.
+
+The focused mutation now scopes the replacement to the exact
+`handle_sensitive_linux_service_ipc_transaction(stream, identity, permit)` call already required by the semantic
+contract. The independent workspace validator binds that scoped meta-verifier anchor, forbids restoration of the
+ambiguous fragment, and deliberately mutates the scoped anchor back to the old form. Production admission,
+authorization, transaction budgets, identity proof, permit ownership, and IPC behavior are unchanged. This is a
+verifier-authority correction after a legitimate additional protected transaction, not evidence of an unbounded
+service admission, authorization bypass, root acquisition, privilege escalation, compromise, public exposure,
+container escape, or a host RustDesk/service/firewall/network change.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust

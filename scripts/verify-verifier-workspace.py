@@ -10463,9 +10463,21 @@ def validate_linux_service_admission_contract(sources):
         ("def validate(sources", "focused validator semantic entry"),
         ("def run_mutations(sources", "focused validator mutation entry"),
         ("MUTATIONS: Tuple[Mutation, ...]", "focused validator mutation inventory"),
+        (
+            '("ipc", "handle_sensitive_linux_service_ipc_transaction(\\n'
+            "                        stream,\\n"
+            "                        identity,\\n"
+            '                        permit,",',
+            "scoped password permit transfer mutation",
+        ),
         ("mutation was not rejected", "focused validator mutation rejection"),
     ):
         require_text(validator, text, label)
+    require_absent(
+        validator,
+        '("ipc", "                        identity,\\n                        permit,",',
+        "unscoped password permit transfer mutation",
+    )
 
     cached_accessor = extract_between(
         linux_source,
@@ -38842,6 +38854,16 @@ def run_source_mutations(sources):
             "def run_mutations(sources",
             "def skip_mutations(sources",
             "focused validator mutation entry",
+        ),
+        (
+            "linux_service_admission_validator",
+            '("ipc", "handle_sensitive_linux_service_ipc_transaction(\\n'
+            "                        stream,\\n"
+            "                        identity,\\n"
+            '                        permit,",',
+            '("ipc", "                        identity,\\n'
+            '                        permit,",',
+            "scoped password permit transfer mutation",
         ),
         (
             "linux_source",

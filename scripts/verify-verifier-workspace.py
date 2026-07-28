@@ -12766,6 +12766,10 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
             "Windows Amyuni cleanup shared rejection",
         ),
         (
+            'rd_verify_r_s11e20_amyuni_remove" -rInE',
+            "Windows Amyuni cleanup recursive shared scan",
+        ),
+        (
             "current-windows-release-amyuni-payload-staging-leftover",
             "Windows Amyuni payload shared rejection",
         ),
@@ -12812,6 +12816,11 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     )
     require_text(
         sources["hardening"],
+        "R-S11e-156 recursive Windows Amyuni absence-scan authority",
+        "Windows Amyuni recursive-scan hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
         "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
         "current GitHub-automation requirements-hash scope",
     )
@@ -12837,7 +12846,9 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
         ("retained Amyuni shared-driver lifecycle acknowledgement", "shared-lifecycle mutation"),
         ("retained Amyuni device-I/O implementation", "device-I/O mutation"),
         ("Windows Amyuni cleanup shared rejection", "shared-gate mutation"),
+        ("Windows Amyuni cleanup recursive shared scan", "recursive shared-scan mutation"),
         ("Windows Amyuni payload shared rejection", "shared-payload-gate mutation"),
+        ("Windows Amyuni recursive-scan hardening ledger", "recursive-scan ledger mutation"),
         ("Windows Amyuni cleanup shared success disposition", "shared-success mutation"),
         ("unowned Windows Amyuni cleanup excision requirement", "requirement mutation"),
         ("unowned Windows Amyuni cleanup Appendix C row", "Appendix mutation"),
@@ -44868,6 +44879,18 @@ def run_source_mutations(sources):
             "# python build.py --flutter; hwcodec/vram dropped",
             "# python build.py --flutter; usbmmidd_v2 payload staged; hwcodec/vram dropped",
             "current Windows release Amyuni payload staging absence",
+        ),
+        (
+            "verify",
+            'rd_verify_r_s11e20_amyuni_remove" -rInE',
+            'rd_verify_r_s11e20_amyuni_remove" -nE',
+            "Windows Amyuni cleanup recursive shared scan",
+        ),
+        (
+            "hardening",
+            "R-S11e-156 recursive Windows Amyuni absence-scan authority",
+            "R-S11e-156 nonrecursive Windows Amyuni absence-scan compatibility",
+            "Windows Amyuni recursive-scan hardening ledger",
         ),
         (
             "virtual_display_manager_source",

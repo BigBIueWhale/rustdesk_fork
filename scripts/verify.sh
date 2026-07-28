@@ -2372,7 +2372,7 @@ printf '%s\n' "$wix_stage" | grep -Fq 'stage_archive_bundle wix "$ONLINE_DIR" .r
 printf '%s\n' "$wix_stage" | grep -Fq '"$WIX_NUGET_RETIRE_HELPER" retire' \
   || r_s11e20="$r_s11e20 obsolete-wix-cache-retirement-missing"
 
-if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_amyuni_remove" -nE 'RemoveAmyuniIdd|DriverUninstallStatus|UninstallDriver|DeviceUtils\.cpp|Common\.h|DI_REMOVEDEVICE_GLOBAL|DIF_REMOVE|WcaDeferredActionRequiresReboot|remove usbmmidd|DeviceInstaller64RebootPolicy|pub (unsafe )?fn uninstall_driver' \
+if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e20_amyuni_remove" -rInE 'RemoveAmyuniIdd|DriverUninstallStatus|UninstallDriver|DeviceUtils\.cpp|Common\.h|DI_REMOVEDEVICE_GLOBAL|DIF_REMOVE|WcaDeferredActionRequiresReboot|remove usbmmidd|DeviceInstaller64RebootPolicy|pub (unsafe )?fn uninstall_driver' \
   res/msi src/virtual_display_manager.rs src/platform/win_device.rs; then
   r_s11e20="$r_s11e20 amyuni-device-removal-surface-leftover"
 fi

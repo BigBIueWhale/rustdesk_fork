@@ -850,6 +850,22 @@ verifier alignment with the already-implemented stronger CM lifetime contract, n
 privilege escalation, compromise, public exposure, container escape, or a host RustDesk/service/firewall/network
 change, and it does not close exact cold artifact, installed-native, device, or external-review evidence.
 
+Follow-up verifier correction (2026-07-28),
+**R-S11e-156 recursive Windows Amyuni absence-scan authority**: the Windows Installer source gate broadened its
+Amyuni device-removal absence check from an explicit list of files to the complete `res/msi` tree, but retained
+GNU grep's nonrecursive `-nE` mode. GNU grep reports status 2 when given that directory, and the fail-closed
+`verify_scan_capture` wrapper correctly terminated the verifier instead of treating the operational error as a
+clean absence verdict. The live product/package sources remained clean; the call site, not the scanner's strict
+status handling or the source policy, was defective.
+
+That exact call now uses recursive, filename-reporting `-rInE`, matching every other shared absence scan that
+accepts a directory. Confined A/B execution proves the old invocation returns status 2, the corrected invocation
+returns the clean no-match status 1 on the current tree, and the corrected invocation returns status 0 and names a
+prohibited token in a nested fixture file. The independent semantic validator binds the recursive option, mutates
+it back to the operationally broken nonrecursive form, and binds this ledger entry. No product source, package
+content, scanner failure classification, build input/output, runtime behavior, root authority, host
+process/service/listener/firewall/network state, or release artifact is modified.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust

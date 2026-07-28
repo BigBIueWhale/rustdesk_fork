@@ -13623,6 +13623,24 @@ def validate_mobile_build_authority_verifier_contract(sources):
             "commands != (EXPECTED_FLUTTER_COMMAND,)",
             "exact arm64 Flutter command semantics",
         ),
+        (
+            'EXPECTED_ANDROID_CONTAINER_LAUNCHER = (\n'
+            '    "local_docker run --rm --pull=never --network=none --read-only"\n'
+            ")",
+            "current fixed-local Android container launcher",
+        ),
+        (
+            "EXPECTED_ANDROID_CONTAINER_LAUNCHER,\n"
+            "        1,\n"
+            '        "sole fixed-local networkless Android container launcher",',
+            "current Android launcher cardinality semantics",
+        ),
+        (
+            'EXPECTED_ANDROID_CONTAINER_LAUNCHER.replace(\n'
+            '            "--network=none", "--network=host"\n'
+            "        )",
+            "current Android host-network negative mutation",
+        ),
         ("historical_on:", "schema-demoted workflow trigger semantics"),
         ("historical_jobs:", "schema-demoted workflow jobs semantics"),
         ('re.search(r"(?m)^(?:on|jobs):", disabled)', "active workflow schema rejection"),
@@ -13636,6 +13654,16 @@ def validate_mobile_build_authority_verifier_contract(sources):
         sources["verify"],
         "python3 scripts/verify-mobile-build-authority.py --repo . --self-test",
         "mobile authority focused-verifier wiring",
+    )
+    require_absent(
+        focused,
+        '"$DOCKER_BIN" run --rm --pull=never --network=none --read-only',
+        "retired direct-Docker Android mutation anchor",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11e-165 current mobile build-authority launcher mutation",
+        "mobile current-launcher hardening ledger",
     )
 
 
@@ -45686,6 +45714,38 @@ def run_source_mutations(sources):
             'if sources[f"path:{relative}"] != "absent":',
             "if False:",
             "mobile path-state rejection semantics",
+        ),
+        (
+            "mobile_build_authority_verifier",
+            '"local_docker run --rm --pull=never --network=none --read-only"',
+            '"\\"$DOCKER_BIN\\" run --rm --pull=never --network=none --read-only"',
+            "current fixed-local Android container launcher",
+        ),
+        (
+            "mobile_build_authority_verifier",
+            "EXPECTED_ANDROID_CONTAINER_LAUNCHER,\n"
+            "        1,\n"
+            '        "sole fixed-local networkless Android container launcher",',
+            "EXPECTED_ANDROID_CONTAINER_LAUNCHER,\n"
+            "        2,\n"
+            '        "sole fixed-local networkless Android container launcher",',
+            "current Android launcher cardinality semantics",
+        ),
+        (
+            "mobile_build_authority_verifier",
+            'EXPECTED_ANDROID_CONTAINER_LAUNCHER.replace(\n'
+            '            "--network=none", "--network=host"\n'
+            "        )",
+            'EXPECTED_ANDROID_CONTAINER_LAUNCHER.replace(\n'
+            '            "--network=none", "--network=none"\n'
+            "        )",
+            "current Android host-network negative mutation",
+        ),
+        (
+            "hardening",
+            "R-S11e-165 current mobile build-authority launcher mutation",
+            "R-S11e-165 retired direct-Docker launcher compatibility",
+            "mobile current-launcher hardening ledger",
         ),
         (
             "verify",

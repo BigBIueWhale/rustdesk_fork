@@ -37,6 +37,10 @@ EXPECTED_FLUTTER_COMMAND = (
     "--target-platform android-arm64 --split-per-abi"
 )
 
+EXPECTED_ANDROID_CONTAINER_LAUNCHER = (
+    "local_docker run --rm --pull=never --network=none --read-only"
+)
+
 
 def require(source: str, needle: str, label: str) -> None:
     if needle not in source:
@@ -182,7 +186,12 @@ def validate(sources: Dict[str, str]) -> None:
 
     outer = sources["android_outer"]
     require(outer, "scripts/android-apk-build.sh", "container-owned Android inner harness")
-    require(outer, "--network=none", "networkless Android container execution")
+    require_count(
+        outer,
+        EXPECTED_ANDROID_CONTAINER_LAUNCHER,
+        1,
+        "sole fixed-local networkless Android container launcher",
+    )
     require(outer, '--user "$BUILD_UID:$BUILD_GID"', "nonroot Android container execution")
     if "--network=host" in outer or "--privileged" in outer or "--user 0:0" in outer:
         raise VerificationError("Android outer harness retains forbidden container authority")
@@ -313,8 +322,10 @@ MUTATIONS: Tuple[Mutation, ...] = tuple(
     ),
     (
         "android_outer",
-        '"$DOCKER_BIN" run --rm --pull=never --network=none --read-only',
-        '"$DOCKER_BIN" run --rm --pull=never --network=host --read-only',
+        EXPECTED_ANDROID_CONTAINER_LAUNCHER,
+        EXPECTED_ANDROID_CONTAINER_LAUNCHER.replace(
+            "--network=none", "--network=host"
+        ),
         "host-network Android container",
     ),
     (

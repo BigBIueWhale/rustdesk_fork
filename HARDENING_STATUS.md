@@ -1037,6 +1037,25 @@ Android service persistence, capture resources, protocol behavior, build feature
 unchanged. This is source-role classification for the verifier, not evidence that hardware codecs were enabled
 or that any host/device/service/network state changed.
 
+Follow-up verifier correction (2026-07-29),
+**R-S11e-165 current mobile build-authority launcher mutation**: the focused R-R2/R-R2c verifier's ordinary
+semantic checks followed the current Android builder, but its host-network negative mutation still searched for
+the deleted direct `"$DOCKER_BIN" run` launcher. R-S11cj's Android builder authority closure in
+`9236d84bcbfb7493c495596918e2b52a2c7a1864` replaced that direct execution with the stronger fixed
+`local_docker` authority, so the old mutation anchor occurred zero times and the self-test aborted before
+testing host-network rejection. The product builder already had one unique
+`local_docker run --rm --pull=never --network=none --read-only` launcher and retained its numeric non-root,
+no-pull, read-only-root, capability-free, no-new-privileges, and bounded-resource execution.
+
+The focused verifier now names that current launcher once as its expected contract, requires exactly one
+occurrence in the Android outer builder, and derives the hostile mutation by changing only `--network=none` to
+`--network=host`. Its existing forbidden-authority check then rejects the effective mutation. The independent
+workspace verifier binds the current fixed-local launcher, exact cardinality check, exact host-network mutation,
+absence of the retired direct-Docker anchor, focused self-test wiring, and this ledger entry; deliberate
+mutations restore the retired launcher, weaken cardinality, neutralize the network mutation, or drift the
+ledger. No Android build product, Docker authority, Cargo/Flutter feature, APK, runtime, device, installed
+service, host process, listener, firewall, or network state changes in this correction.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust

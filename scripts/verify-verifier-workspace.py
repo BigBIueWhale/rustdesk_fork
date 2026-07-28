@@ -31039,6 +31039,81 @@ def validate_main_verifier_authority_contract(sources):
     )
 
 
+def validate_universal_software_codec_build_gate(sources):
+    gate = extract_between(
+        sources["verify"],
+        "# §18 / R-R2b (universal software codec):",
+        "# R-R2b (native deps):",
+        "software-codec build-path gate",
+    )
+    require_order(
+        gate,
+        (
+            "software_codec_build_hits() (",
+            "grep -rInE 'hwcodec|vram|mediacodec'",
+            "--exclude-dir='.git' --exclude-dir='target'",
+            "--include='*.sh' --include='*.py' --include='*.yml' --include='*.yaml' --include='*.ps1'",
+            "software_codec_default_feature_is_forbidden() {",
+            "grep -E '^default *=' \"$1/Cargo.toml\" | grep -qiE 'hwcodec|vram|mediacodec'",
+        ),
+        "software-codec build-path scan inputs",
+    )
+    exclusion_lines = tuple(
+        line.strip()
+        for line in gate.splitlines()
+        if line.strip().startswith("| grep -v")
+    )
+    expected_exclusion_lines = (
+        "| grep -vE '^\\./scripts/(verify-android-voice-call-ownership|verify-verifier-workspace)\\.py:[0-9]+:' \\",
+        "| grep -vE '/target/|requirements\\.html|scripts/verify\\.sh' \\",
+        "| grep -vE ':[0-9]+:[[:space:]]*#' \\",
+        "| grep -vE 'scrap_hwcodec|macos_hwcodec_check|has_hwcodec|hwcodec_check|common/hwcodec\\.rs' \\",
+        r"| grep -viE 'nvram' || true",
+    )
+    if exclusion_lines != expected_exclusion_lines:
+        raise VerificationError(
+            "software-codec exact verifier-fixture scope: exclusion pipeline is not the exact two-file/no-wildcard policy"
+        )
+    require_order(
+        gate,
+        (
+            "software_codec_build_gate_self_test() {",
+            '>"$fixture/scripts/verify-android-voice-call-ownership.py"',
+            '>"$fixture/scripts/verify-verifier-workspace.py"',
+            '>"$fixture/build.py"',
+            "'default = []'",
+            '[ -z "$hits" ] || return 1',
+            'software_codec_default_feature_is_forbidden "$fixture" && return 1',
+            "'features.append(\"hwcodec\")'",
+            """[ "$hits" = './build.py:1:features.append("hwcodec")' ] || return 1""",
+            '>"$fixture/scripts/verify-new-build.py"',
+            """[ "$hits" = './scripts/verify-new-build.py:1:features.append("mediacodec")' ] || return 1""",
+            "'default = [\"vram\"]'",
+            'software_codec_default_feature_is_forbidden "$fixture"',
+        ),
+        "software-codec behavioral fixture",
+    )
+    require_order(
+        gate,
+        (
+            "software_codec_gate_failure=",
+            "if ! software_codec_build_gate_self_test; then",
+            "software_codec_gate_failure=behavior-self-test",
+            'hw_hits="$(software_codec_build_hits .)" || software_codec_gate_failure=source-scan',
+            'if [ -n "$software_codec_gate_failure" ]; then',
+            'elif [ -n "$hw_hits" ]; then',
+            "elif software_codec_default_feature_is_forbidden .; then",
+            "§18/R-R2b hwcodec/vram/mediacodec never selected in any build path",
+        ),
+        "software-codec live verdict",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11e-164 exact software-codec build-path verifier scope",
+        "software-codec build-path hardening ledger",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -31106,6 +31181,7 @@ def validate_sources(sources):
         sources["hardening"],
     )
     validate_smoke_container_authority_contract(sources)
+    validate_universal_software_codec_build_gate(sources)
     validate_wayland_capture_source_excision_contract(sources)
     validate_portable_quick_support_excision_contract(sources)
     validate_windows_installer_application_launch_excision_contract(sources)
@@ -48467,6 +48543,84 @@ def run_source_mutations(sources):
             "R-S11e-163 current R-S19 controlled screenshot and Android capture-type gate authority",
             "R-S11e-163 obsolete R-S19 screenshot and Android capture compatibility",
             "R-S19 edge verifier-authority hardening ledger",
+        ),
+        (
+            "verify",
+            "grep -rInE 'hwcodec|vram|mediacodec'",
+            "grep -RInE 'hwcodec|vram|mediacodec'",
+            "software-codec build-path scan inputs",
+        ),
+        (
+            "verify",
+            "--include='*.sh' --include='*.py' --include='*.yml' --include='*.yaml' --include='*.ps1' . 2>/dev/null",
+            "--include='*.sh' --include='*.py' --include='*.yml' --include='*.yaml' . 2>/dev/null",
+            "software-codec build-path scan inputs",
+        ),
+        (
+            "verify",
+            "| grep -vE '^\\./scripts/(verify-android-voice-call-ownership|verify-verifier-workspace)\\.py:[0-9]+:'",
+            "| grep -vE '^\\./scripts/verify-'",
+            "software-codec exact verifier-fixture scope",
+        ),
+        (
+            "verify",
+            "| grep -vE ':[0-9]+:[[:space:]]*#'",
+            "| grep -vE ':[0-9]+:'",
+            "software-codec exact verifier-fixture scope",
+        ),
+        (
+            "verify",
+            '>"$fixture/scripts/verify-android-voice-call-ownership.py" || return 1',
+            '>"$fixture/scripts/verify-android-ownership.py" || return 1',
+            "software-codec behavioral fixture",
+        ),
+        (
+            "verify",
+            '[ -z "$hits" ] || return 1',
+            "true # baseline fixture result ignored",
+            "software-codec behavioral fixture",
+        ),
+        (
+            "verify",
+            """[ "$hits" = './build.py:1:features.append("hwcodec")' ] || return 1""",
+            '[ -n "$hits" ] || return 1',
+            "software-codec behavioral fixture",
+        ),
+        (
+            "verify",
+            """[ "$hits" = './scripts/verify-new-build.py:1:features.append("mediacodec")' ] || return 1""",
+            '[ -n "$hits" ] || return 1',
+            "software-codec behavioral fixture",
+        ),
+        (
+            "verify",
+            "printf '%s\\n' '[features]' 'default = [\"vram\"]' >\"$fixture/Cargo.toml\" || return 1",
+            "printf '%s\\n' '[features]' 'default = []' >\"$fixture/Cargo.toml\" || return 1",
+            "software-codec behavioral fixture",
+        ),
+        (
+            "verify",
+            "if ! software_codec_build_gate_self_test; then",
+            "if false; then",
+            "software-codec live verdict",
+        ),
+        (
+            "verify",
+            'hw_hits="$(software_codec_build_hits .)" || software_codec_gate_failure=source-scan',
+            'hw_hits=""',
+            "software-codec live verdict",
+        ),
+        (
+            "verify",
+            "elif software_codec_default_feature_is_forbidden .; then",
+            "elif false; then",
+            "software-codec live verdict",
+        ),
+        (
+            "hardening",
+            "R-S11e-164 exact software-codec build-path verifier scope",
+            "R-S11e-164 broad verifier compatibility scope",
+            "software-codec build-path hardening ledger",
         ),
         (
             "video_service_source",

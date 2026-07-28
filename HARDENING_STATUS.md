@@ -1014,6 +1014,29 @@ This is verifier alignment with already-implemented stronger ownership/type cont
 reproduction or evidence of root acquisition, privilege escalation, compromise, public exposure, container
 escape, or a host RustDesk/service/firewall/listener/network change.
 
+Follow-up verifier correction (2026-07-28),
+**R-S11e-164 exact software-codec build-path verifier scope**: the §18/R-R2b source gate recursively scanned
+every shell, Python, workflow, and PowerShell source as if each were a build driver. Later exact-ownership work
+correctly added `restore_vram` product/source-mutation fixtures to
+`scripts/verify-android-voice-call-ownership.py` and repeated them in the independent workspace mutation
+catalog. That catalog also necessarily carries inert `mediacodec` feature-declaration and historical
+`hwcodec`/`vram` comment mutations. None of those strings executes a build or selects a Cargo feature, but the
+token-only scan reported all of them as hardware-codec build enablement. The full verifier's independent
+vcpkg/native-set gate passed, and its finding contained no production build script, CI job, release driver, or
+Cargo default feature.
+
+The source gate now excludes exactly those two named verifier-fixture programs and no filename class. It uses
+non-symlink-following recursion, retains every build-source extension and the exact existing comment/identifier
+exceptions, and scans every new script—including a newly named `verify-*` script—by default. A private
+behavioral fixture proves the two exact verifier sources may retain negative-test literals, a full-line
+historical comment remains inert, an ordinary Python build driver is rejected, a new verifier-like Python
+driver is rejected, and a forbidden Cargo default is rejected. The independent workspace validator binds the
+scan inputs, exact no-wildcard exclusion pipeline, behavioral fixture, live failure/default-feature verdicts,
+and this ledger entry, with deliberate mutations for each authority. Product/runtime Rust, Kotlin, Dart,
+Android service persistence, capture resources, protocol behavior, build features, and release outputs are
+unchanged. This is source-role classification for the verifier, not evidence that hardware codecs were enabled
+or that any host/device/service/network state changed.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust

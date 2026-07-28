@@ -12396,16 +12396,60 @@ fi
 # `nvram` (a libvirt term in cleanup.sh) is not a match. The desktop scripts dropped it
 # early, but the flutter mobile scripts + the CI matrix + build.py's own flags still
 # selected it until 575859a's follow-on — this locks the universal drop in tree-wide.
-hw_hits=$(grep -RInE 'hwcodec|vram|mediacodec' \
-            --include='*.sh' --include='*.py' --include='*.yml' --include='*.yaml' --include='*.ps1' . 2>/dev/null \
-          | grep -vE '/target/|requirements\.html|scripts/verify\.sh' \
-          | grep -vE ':[0-9]+:[[:space:]]*#' \
-          | grep -vE 'scrap_hwcodec|macos_hwcodec_check|has_hwcodec|hwcodec_check|common/hwcodec\.rs' \
-          | grep -viE 'nvram' || true)
-if [ -n "$hw_hits" ]; then
+#
+# Two exact verifier programs carry forbidden-token strings solely as source and
+# mutation fixtures. They are not build drivers. Exclude those exact paths rather
+# than a verify-* class, so every new script remains scanned by default.
+software_codec_build_hits() (
+  cd -- "$1" || return 1
+  grep -rInE 'hwcodec|vram|mediacodec' \
+      --exclude-dir='.git' --exclude-dir='target' \
+      --include='*.sh' --include='*.py' --include='*.yml' --include='*.yaml' --include='*.ps1' . 2>/dev/null \
+    | grep -vE '^\./scripts/(verify-android-voice-call-ownership|verify-verifier-workspace)\.py:[0-9]+:' \
+    | grep -vE '/target/|requirements\.html|scripts/verify\.sh' \
+    | grep -vE ':[0-9]+:[[:space:]]*#' \
+    | grep -vE 'scrap_hwcodec|macos_hwcodec_check|has_hwcodec|hwcodec_check|common/hwcodec\.rs' \
+    | grep -viE 'nvram' || true
+)
+software_codec_default_feature_is_forbidden() {
+  grep -E '^default *=' "$1/Cargo.toml" | grep -qiE 'hwcodec|vram|mediacodec'
+}
+software_codec_build_gate_self_test() {
+  local fixture="$VERIFY_TMP/software-codec-build-gate" hits
+  install -d -m 0700 "$fixture/scripts" || return 1
+  printf '%s\n' 'screenshot.request.restore_vram = true' \
+    >"$fixture/scripts/verify-android-voice-call-ownership.py" || return 1
+  printf '%s\n' 'mediacodec = ["ndk"]' \
+    >"$fixture/scripts/verify-verifier-workspace.py" || return 1
+  printf '%s\n' '# features.append("hwcodec"); vram dropped' >"$fixture/build.py" || return 1
+  printf '%s\n' '[features]' 'default = []' >"$fixture/Cargo.toml" || return 1
+  hits="$(software_codec_build_hits "$fixture")" || return 1
+  [ -z "$hits" ] || return 1
+  software_codec_default_feature_is_forbidden "$fixture" && return 1
+
+  printf '%s\n' 'features.append("hwcodec")' >"$fixture/build.py" || return 1
+  hits="$(software_codec_build_hits "$fixture")" || return 1
+  [ "$hits" = './build.py:1:features.append("hwcodec")' ] || return 1
+
+  printf '%s\n' '# active production fixture retired' >"$fixture/build.py" || return 1
+  printf '%s\n' 'features.append("mediacodec")' >"$fixture/scripts/verify-new-build.py" || return 1
+  hits="$(software_codec_build_hits "$fixture")" || return 1
+  [ "$hits" = './scripts/verify-new-build.py:1:features.append("mediacodec")' ] || return 1
+
+  printf '%s\n' '[features]' 'default = ["vram"]' >"$fixture/Cargo.toml" || return 1
+  software_codec_default_feature_is_forbidden "$fixture"
+}
+software_codec_gate_failure=
+if ! software_codec_build_gate_self_test; then
+  software_codec_gate_failure=behavior-self-test
+fi
+hw_hits="$(software_codec_build_hits .)" || software_codec_gate_failure=source-scan
+if [ -n "$software_codec_gate_failure" ]; then
+  echo "  FAIL §18/R-R2b: universal software-codec build-path gate failed: $software_codec_gate_failure"; rc=1
+elif [ -n "$hw_hits" ]; then
   echo "  FAIL §18/R-R2b: a build path still ENABLES hwcodec/vram/mediacodec (must be universally compiled out):"
   echo "$hw_hits" | sed 's/^/      /'; rc=1
-elif grep -E '^default *=' Cargo.toml | grep -qiE 'hwcodec|vram|mediacodec'; then
+elif software_codec_default_feature_is_forbidden .; then
   echo "  FAIL §18/R-R2b: the Cargo.toml default feature pulls in hwcodec/vram/mediacodec"; rc=1
 else
   echo "  ok  §18/R-R2b hwcodec/vram/mediacodec never selected in any build path (CPU-only software codec)"

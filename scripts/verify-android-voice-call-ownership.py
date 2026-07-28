@@ -2472,6 +2472,11 @@ def validate(sources: Dict[str, str]) -> None:
     forbid(screenshot, "Mutex", "process-global screenshot cache lock")
     forbid(screenshot, "struct Screenshot", "process-global screenshot cache type")
     forbid(screenshot, "set_screenshot", "process-global screenshot setter")
+    forbid(
+        io_loop,
+        "crate::client::screenshot::set_screenshot(",
+        "process-global screenshot setter call",
+    )
     require(
         screenshot,
         "pub fn handle_screenshot(data: bytes::Bytes, action: String) -> String",
@@ -3182,6 +3187,55 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "diagnosed audio mutex poison recovery",
     )
+
+    audio_constructor = extract_item(
+        sources["client"],
+        "pub fn start_audio_thread()",
+        "sole owning audio constructor",
+    )
+    require_order(
+        audio_constructor,
+        (
+            "-> OwnedMediaThread",
+            "let (audio_sender, thread) = new_audio_thread();",
+            'OwnedMediaThread::new("audio decoder", audio_sender, thread)',
+        ),
+        "sole owning audio constructor",
+    )
+    forbid(
+        audio_constructor,
+        "let (audio_sender, _thread) = new_audio_thread();",
+        "detached audio constructor worker",
+    )
+    controlled_audio_owner = extract_item(
+        server_connection,
+        "struct ControlledAudioThread",
+        "controlled audio exact owner",
+    )
+    require_order(
+        controlled_audio_owner,
+        (
+            "format: (u32, u32)",
+            "decoder: OwnedMediaThread",
+        ),
+        "controlled audio format and decoder owner",
+    )
+    connection_owner = extract_item(
+        server_connection,
+        "pub struct Connection",
+        "controlled connection exact owner",
+    )
+    require(
+        connection_owner,
+        "controlled_audio: Option<ControlledAudioThread>",
+        "controlled audio owner field",
+    )
+    for retired, label in (
+        ("audio_sender:", "retired controlled audio sender field"),
+        ("audio_format:", "retired controlled audio format field"),
+        ("voice_calling:", "retired controlled voice-call boolean field"),
+    ):
+        forbid(connection_owner, retired, label)
 
     conn_inner = extract_item(server_connection, "pub struct ConnInner", "connection subscriber")
     require(
@@ -4144,6 +4198,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("verify", "client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement", "client::io_loop::tests::os_password_gate_disabled", "shared OS-password exact-round behavior gate"),
     ("dart_verify", "client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement", "client::io_loop::tests::os_password_gate_disabled", "generated-bridge OS-password exact-round behavior gate"),
     ("screenshot", "pub fn handle_screenshot(data: bytes::Bytes, action: String) -> String", "pub fn handle_screenshot(action: String) -> String", "value-owned screenshot action"),
+    ("io_loop", "let data = (!data.is_empty()).then_some(data);", "crate::client::screenshot::set_screenshot(data.clone());\n                            let data = (!data.is_empty()).then_some(data);", "process-global screenshot setter call"),
     ("io_loop", ".retain(|_, existing_owner_sid| existing_owner_sid != &owner_sid);", ".retain(|_, _| true);", "prior exact-session screenshot request retirement"),
     ("io_loop", "if self.owners.len() >= MAX_PENDING_SCREENSHOT_RESPONSES", "if false", "screenshot request capacity"),
     ("io_loop", ".next_sequence\n            .checked_add(1)", ".next_sequence\n            .wrapping_add(1)", "monotonic screenshot request identity"),
@@ -4239,6 +4294,11 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("server_connection", "self.wake.blocking_recv()?", "self.wake.try_recv().ok()?", "event-driven blocking audio receive"),
     ("server_connection", "impl Drop for AudioEgressReceiver", "impl AudioEgressReceiver", "receiver retained-state retirement"),
     ("server_connection", 'log::error!("audio egress state was poisoned")', 'log::debug!("audio egress state was poisoned")', "audio poison diagnostic"),
+    ("client", "let (audio_sender, thread) = new_audio_thread();\n    OwnedMediaThread::new(\"audio decoder\", audio_sender, thread)", "let (audio_sender, _thread) = new_audio_thread();\n    audio_sender", "sole owning audio constructor"),
+    ("server_connection", "decoder: OwnedMediaThread,", "decoder: MediaSender,", "controlled audio decoder owner"),
+    ("server_connection", "controlled_audio: Option<ControlledAudioThread>,", "controlled_audio: Option<ControlledAudioThread>,\n    audio_sender: Option<MediaSender>,", "retired controlled audio sender field"),
+    ("server_connection", "controlled_audio: Option<ControlledAudioThread>,", "controlled_audio: Option<ControlledAudioThread>,\n    audio_format: Option<(u32, u32)>,", "retired controlled audio format field"),
+    ("server_connection", "controlled_audio: Option<ControlledAudioThread>,", "controlled_audio: Option<ControlledAudioThread>,\n    voice_calling: bool,", "retired controlled voice-call boolean field"),
     ("server_connection", "tx_audio: Option<AudioEgressSender>", "tx_audio_removed: Option<AudioEgressSender>", "exact connection audio sender"),
     ("server_connection", "let tx_by_audio = match &msg.union", "let tx_by_audio = match &None", "audio route classification"),
     ("server_connection", "Some(misc::Union::AudioFormat(_))", "Some(misc::Union::StopService(_))", "audio format route classification"),

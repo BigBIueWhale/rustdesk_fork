@@ -961,6 +961,32 @@ transaction, not evidence of a path-based post-drop launch, missing privilege bo
 privilege escalation, compromise, public exposure, container escape, or a host
 RustDesk/service/firewall/network change.
 
+Follow-up verifier correction (2026-07-28),
+**R-S11e-162 current outgoing screenshot and controlled-audio owner-gate authority**: the shared R-D7a/R-T4
+shell gate retained two broad textual checks that no longer represented the exact retired ownership shapes.
+R-S11ee deleted the process-global screenshot cache and setter, but the shared gate searched both
+`src/client/screenshot.rs` and `src/client/io_loop.rs` for the substring `set_screenshot`; the valid generated
+protobuf call `msg.set_screenshot_request(...)` therefore produced
+`screenshot-process-global-cache-present`. Separately, the media-owner check rejected `_thread` across the
+correct function name `start_audio_thread`, rejected `audio_sender` and `voice_calling` across the complete
+connection source instead of the `Connection` fields, and selected the first audio-format match after R-S11eh
+added an earlier bounded-mailbox match. Those stale scopes produced
+`media-owner-or-controlled-audio-order-regressed` despite the exact full transaction passing the bounded-audio
+behavior regressions.
+
+The screenshot gate now rejects only the retired `static ref SCREENSHOT`, public screenshot setter definition,
+and exact I/O-loop call to that setter, while leaving protobuf request construction valid. The media gate
+extracts the exact owning constructor, `ControlledAudioThread`, `Connection` fields, and uniquely commented
+controlled playback handler. It requires `OwnedMediaThread`, the combined format/decoder owner, the current
+connection field, and read-before-install order, while rejecting the former detached `_thread` local and the
+retired `audio_sender:`, `audio_format:`, and `voice_calling:` fields only in their semantic owner scope. The
+focused Android ownership verifier independently enforces those product invariants and deliberately restores
+each retired shape; the workspace verifier binds both focused and shared authority. Product/runtime behavior,
+Android service persistence, protocol traffic, and release outputs are unchanged. This is verifier alignment
+with already-implemented exact ownership, not device reproduction or evidence of root acquisition, privilege
+escalation, compromise, public exposure, container escape, or a host
+RustDesk/service/firewall/listener/network change.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust

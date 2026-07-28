@@ -10204,7 +10204,8 @@ grep -qF 'r_s11e149_screenshot_responses_require_the_current_exact_request' src/
 grep -qF 'r_s11e149_screenshot_data_is_owned_by_the_exact_ui_session' src/flutter.rs \
   || android_client_owner_bad="$android_client_owner_bad screenshot-exact-session-regression-missing"
 if grep -qF 'static ref SCREENSHOT' src/client/screenshot.rs \
-  || grep -qF 'set_screenshot' src/client/screenshot.rs src/client/io_loop.rs; then
+  || grep -qF 'pub fn set_screenshot(' src/client/screenshot.rs \
+  || grep -qF 'crate::client::screenshot::set_screenshot(' src/client/io_loop.rs; then
   android_client_owner_bad="$android_client_owner_bad screenshot-process-global-cache-present"
 fi
 grep -qF '<span class="id">R-S11ee</span>' requirements.html \
@@ -10397,7 +10398,7 @@ from pathlib import Path
 client, io_loop, connection, requirements = (Path(path).read_text() for path in sys.argv[1:])
 
 audio_constructor = client[
-    client.index("pub fn start_audio_thread() -> OwnedMediaThread"):
+    client.index("pub fn start_audio_thread()"):
     client.index("fn fps_calculate(")
 ]
 media_drop = client[
@@ -10411,6 +10412,10 @@ voice_drop = io_loop[
 controlled_fields = connection[
     connection.index("struct ControlledAudioThread"):
     connection.index("pub struct Connection")
+]
+connection_fields = connection[
+    connection.index("pub struct Connection {"):
+    connection.index("\nimpl Connection {")
 ]
 handle_voice = connection[
     connection.index("pub async fn handle_voice_call"):
@@ -10432,14 +10437,21 @@ connection_drop = connection[
     connection.index("impl Drop for Connection"):
     connection.index("struct LinuxHeadlessHandle")
 ]
+audio_format_start = connection.index(
+    "// R-S19: peer->host audio playback is voice-call only."
+)
 audio_format = connection[
-    connection.index("Some(misc::Union::AudioFormat(format))"):
-    connection.index("Some(misc::Union::ChangeResolution")
+    audio_format_start:
+    connection.index(
+        "Some(misc::Union::ChangeResolution",
+        audio_format_start,
+    )
 ]
 
 ok = (
     "OwnedMediaThread::new(\"audio decoder\"" in audio_constructor
-    and "_thread" not in audio_constructor
+    and "-> OwnedMediaThread" in audio_constructor
+    and "let (audio_sender, _thread) = new_audio_thread();" not in audio_constructor
     and "reap_media_worker(role, worker)" in media_drop
     and ".join()" not in media_drop
     and "self.stop();" in voice_drop
@@ -10447,10 +10459,14 @@ ok = (
     and "reap_media_worker(\"voice-call\"" not in voice_drop
     and "format: (u32, u32)" in controlled_fields
     and "decoder: OwnedMediaThread" in controlled_fields
-    and "audio_sender" not in connection
-    and "voice_calling" not in connection
-    and "self.controlled_audio.as_ref().map(|audio| audio.format)" in audio_format
-    and "self.controlled_audio = Some(ControlledAudioThread" in audio_format
+    and "controlled_audio: Option<ControlledAudioThread>" in connection_fields
+    and "audio_sender:" not in connection_fields
+    and "audio_format:" not in connection_fields
+    and "voice_calling:" not in connection_fields
+    and audio_format.index("self.controlled_audio")
+        < audio_format.index(".as_ref()")
+        < audio_format.index(".map(|audio| audio.format)")
+        < audio_format.index("self.controlled_audio = Some(ControlledAudioThread")
     and handle_voice.index("acquire_voice_call_input(")
         < handle_voice.index("self.voice_call_input = Some(input_lease)")
         < handle_voice.index("self.send(msg).await")

@@ -15679,6 +15679,30 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android recorder priority contract",
         ),
         (
+            '"process-global screenshot setter call"',
+            "Android retired screenshot setter-call contract",
+        ),
+        (
+            '"sole owning audio constructor"',
+            "Android/shared sole owning audio-constructor contract",
+        ),
+        (
+            '"controlled audio format and decoder owner"',
+            "Android/shared controlled audio composite-owner contract",
+        ),
+        (
+            '"retired controlled audio sender field"',
+            "Android/shared retired controlled audio-sender contract",
+        ),
+        (
+            '"retired controlled audio format field"',
+            "Android/shared retired controlled audio-format contract",
+        ),
+        (
+            '"retired controlled voice-call boolean field"',
+            "Android/shared retired controlled voice-state contract",
+        ),
+        (
             '"receiver close before retained audio release"',
             "Android/shared audio receiver retirement contract",
         ),
@@ -16637,6 +16661,11 @@ def validate_android_voice_call_ownership_contract(sources):
         "pending_screenshot_sids",
         "session-UUID-only screenshot pending set source",
     )
+    require_absent(
+        client_io_loop,
+        "crate::client::screenshot::set_screenshot(",
+        "process-global screenshot setter call source",
+    )
     require_text(
         client_io_loop,
         "r_s11e149_screenshot_responses_require_the_current_exact_request",
@@ -17413,6 +17442,12 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
+        '"crate::client::screenshot::set_screenshot(",\n'
+        '        "process-global screenshot setter call",',
+        "focused process-global screenshot setter-call refusal",
+    )
+    require_text(
+        focused,
         'pending_screenshots = extract_item(\n'
         "        io_loop,\n"
         '        "impl PendingScreenshotRequests",',
@@ -17443,6 +17478,11 @@ def validate_android_voice_call_ownership_contract(sources):
         focused,
         '("screenshot", "pub fn handle_screenshot(data: bytes::Bytes, action: String) -> String", "pub fn handle_screenshot(action: String) -> String", "value-owned screenshot action"),',
         "value-owned screenshot focused mutation",
+    )
+    require_text(
+        focused,
+        '("io_loop", "let data = (!data.is_empty()).then_some(data);", "crate::client::screenshot::set_screenshot(data.clone());\\n                            let data = (!data.is_empty()).then_some(data);", "process-global screenshot setter call"),',
+        "process-global screenshot setter-call focused mutation",
     )
     require_text(
         focused,
@@ -17739,6 +17779,21 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         sources["verify"],
+        "grep -qF 'pub fn set_screenshot(' src/client/screenshot.rs",
+        "shared exact retired screenshot setter-definition gate",
+    )
+    require_text(
+        sources["verify"],
+        "grep -qF 'crate::client::screenshot::set_screenshot(' src/client/io_loop.rs",
+        "shared exact retired screenshot setter-call gate",
+    )
+    require_absent(
+        sources["verify"],
+        "grep -qF 'set_screenshot' src/client/screenshot.rs src/client/io_loop.rs",
+        "shared broad screenshot setter substring gate",
+    )
+    require_text(
+        sources["verify"],
         "grep -qF 'stale_android_activity_cannot_reclaim_the_replacement_owner' src/flutter.rs",
         "Android shared stale-Activity refusal gate source",
     )
@@ -17817,6 +17872,54 @@ def validate_android_voice_call_ownership_contract(sources):
         "Android audio-owner-before-native outgoing voice-call activation source",
     )
 
+    for text, label in (
+        (
+            'audio_constructor = extract_item(\n'
+            '        sources["client"],\n'
+            '        "pub fn start_audio_thread()",',
+            "focused sole owning audio-constructor extraction",
+        ),
+        (
+            'controlled_audio_owner = extract_item(\n'
+            "        server_connection,\n"
+            '        "struct ControlledAudioThread",',
+            "focused controlled audio composite-owner extraction",
+        ),
+        (
+            '"controlled_audio: Option<ControlledAudioThread>",\n'
+            '        "controlled audio owner field",',
+            "focused controlled audio Connection owner",
+        ),
+        (
+            '("client", "let (audio_sender, thread) = new_audio_thread();\\n    '
+            'OwnedMediaThread::new(\\"audio decoder\\", audio_sender, thread)", '
+            '"let (audio_sender, _thread) = new_audio_thread();\\n    audio_sender", '
+            '"sole owning audio constructor"),',
+            "focused detached audio-constructor mutation",
+        ),
+        (
+            '("server_connection", "decoder: OwnedMediaThread,", "decoder: MediaSender,", '
+            '"controlled audio decoder owner"),',
+            "focused controlled audio decoder-owner mutation",
+        ),
+        (
+            '"controlled_audio: Option<ControlledAudioThread>,\\n    '
+            'audio_sender: Option<MediaSender>,", "retired controlled audio sender field"),',
+            "focused retired controlled audio-sender mutation",
+        ),
+        (
+            '"controlled_audio: Option<ControlledAudioThread>,\\n    '
+            'audio_format: Option<(u32, u32)>,", "retired controlled audio format field"),',
+            "focused retired controlled audio-format mutation",
+        ),
+        (
+            '"controlled_audio: Option<ControlledAudioThread>,\\n    '
+            'voice_calling: bool,", "retired controlled voice-call boolean field"),',
+            "focused retired controlled voice-state mutation",
+        ),
+    ):
+        require_text(focused, text, label)
+
     connection = sources["connection_source"]
     audio_mailbox = extract_between(
         connection,
@@ -17860,6 +17963,58 @@ def validate_android_voice_call_ownership_contract(sources):
             retired,
             f"shared audio mailbox retired runtime shape {retired}",
         )
+
+    audio_constructor = extract_between(
+        sources["client_source"],
+        "pub fn start_audio_thread()",
+        "\n#[inline]\nfn fps_calculate(",
+        "sole owning audio constructor source",
+    )
+    require_order(
+        audio_constructor,
+        (
+            "-> OwnedMediaThread",
+            "let (audio_sender, thread) = new_audio_thread();",
+            'OwnedMediaThread::new("audio decoder", audio_sender, thread)',
+        ),
+        "sole owning audio constructor source",
+    )
+    require_absent(
+        audio_constructor,
+        "let (audio_sender, _thread) = new_audio_thread();",
+        "detached audio constructor worker source",
+    )
+    controlled_audio_owner = extract_between(
+        connection,
+        "struct ControlledAudioThread {",
+        "\npub struct Connection {",
+        "controlled audio exact owner source",
+    )
+    require_order(
+        controlled_audio_owner,
+        (
+            "format: (u32, u32)",
+            "decoder: OwnedMediaThread",
+        ),
+        "controlled audio format and decoder owner source",
+    )
+    connection_owner = extract_between(
+        connection,
+        "pub struct Connection {",
+        "\nimpl Connection {",
+        "controlled connection exact owner source",
+    )
+    require_text(
+        connection_owner,
+        "controlled_audio: Option<ControlledAudioThread>",
+        "controlled audio owner field source",
+    )
+    for retired, label in (
+        ("audio_sender:", "retired controlled audio sender field source"),
+        ("audio_format:", "retired controlled audio format field source"),
+        ("voice_calling:", "retired controlled voice-call boolean field source"),
+    ):
+        require_absent(connection_owner, retired, label)
 
     subscriber = extract_between(
         connection,
@@ -18018,6 +18173,56 @@ def validate_android_voice_call_ownership_contract(sources):
         connection,
         "receiver retirement must release retained audio without another producer send",
         "receiver-retirement retained-audio behavior proof source",
+    )
+    for text, label in (
+        (
+            'client.index("pub fn start_audio_thread()")',
+            "shared owning audio-constructor scope",
+        ),
+        (
+            '"let (audio_sender, _thread) = new_audio_thread();" not in audio_constructor',
+            "shared detached audio-constructor rejection",
+        ),
+        (
+            "connection_fields = connection[",
+            "shared controlled Connection-field scope",
+        ),
+        (
+            '"audio_sender:" not in connection_fields',
+            "shared retired controlled audio-sender field gate",
+        ),
+        (
+            '"audio_format:" not in connection_fields',
+            "shared retired controlled audio-format field gate",
+        ),
+        (
+            '"voice_calling:" not in connection_fields',
+            "shared retired controlled voice-state field gate",
+        ),
+        (
+            'audio_format_start = connection.index(\n'
+            '    "// R-S19: peer->host audio playback is voice-call only."\n'
+            ")",
+            "shared controlled audio-format handler scope",
+        ),
+        (
+            "audio_format = connection[\n"
+            "    audio_format_start:\n"
+            "    connection.index(\n"
+            '        "Some(misc::Union::ChangeResolution",\n'
+            "        audio_format_start,",
+            "shared controlled audio-format slice",
+        ),
+        (
+            '< audio_format.index(".map(|audio| audio.format)")',
+            "shared controlled audio read-before-install order gate",
+        ),
+    ):
+        require_text(sources["verify"], text, label)
+    require_text(
+        sources["hardening"],
+        "R-S11e-162 current outgoing screenshot and controlled-audio owner-gate authority",
+        "outgoing owner verifier-authority hardening ledger",
     )
 
     for text, label in (
@@ -46874,6 +47079,98 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
+            '"crate::client::screenshot::set_screenshot(",\n'
+            '        "process-global screenshot setter call",',
+            '"msg.set_screenshot_request(",\n'
+            '        "process-global screenshot setter call",',
+            "focused process-global screenshot setter-call refusal",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '("io_loop", "let data = (!data.is_empty()).then_some(data);", '
+            '"crate::client::screenshot::set_screenshot(data.clone());\\n'
+            '                            let data = (!data.is_empty()).then_some(data);", '
+            '"process-global screenshot setter call"),',
+            '("io_loop", "let data = (!data.is_empty()).then_some(data);", '
+            '"let data = (!data.is_empty()).then_some(data);", '
+            '"process-global screenshot setter call disabled"),',
+            "process-global screenshot setter-call focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            'audio_constructor = extract_item(\n'
+            '        sources["client"],\n'
+            '        "pub fn start_audio_thread()",',
+            'audio_constructor = extract_item(\n'
+            '        sources["client"],\n'
+            '        "fn new_audio_thread()",',
+            "focused sole owning audio-constructor extraction",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '("client", "let (audio_sender, thread) = new_audio_thread();\\n    '
+            'OwnedMediaThread::new(\\"audio decoder\\", audio_sender, thread)", '
+            '"let (audio_sender, _thread) = new_audio_thread();\\n    audio_sender", '
+            '"sole owning audio constructor"),',
+            '("client", "let (audio_sender, thread) = new_audio_thread();\\n    '
+            'OwnedMediaThread::new(\\"audio decoder\\", audio_sender, thread)", '
+            '"let (audio_sender, thread) = new_audio_thread();\\n    '
+            'OwnedMediaThread::new(\\"audio decoder\\", audio_sender, thread)", '
+            '"sole owning audio constructor disabled"),',
+            "focused detached audio-constructor mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            'controlled_audio_owner = extract_item(\n'
+            "        server_connection,\n"
+            '        "struct ControlledAudioThread",',
+            'controlled_audio_owner = extract_item(\n'
+            "        server_connection,\n"
+            '        "pub struct Connection",',
+            "focused controlled audio composite-owner extraction",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"controlled_audio: Option<ControlledAudioThread>",\n'
+            '        "controlled audio owner field",',
+            '"controlled_audio: Option<ControlledAudioThread>",\n'
+            '        "controlled audio owner field disabled",',
+            "focused controlled audio Connection owner",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '("server_connection", "decoder: OwnedMediaThread,", "decoder: MediaSender,", '
+            '"controlled audio decoder owner"),',
+            '("server_connection", "decoder: OwnedMediaThread,", "decoder: OwnedMediaThread,", '
+            '"controlled audio decoder owner disabled"),',
+            "focused controlled audio decoder-owner mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"controlled_audio: Option<ControlledAudioThread>,\\n    '
+            'audio_sender: Option<MediaSender>,", "retired controlled audio sender field"),',
+            '"controlled_audio: Option<ControlledAudioThread>,\\n    '
+            'audio_sender: Option<MediaSender>,", "retired controlled audio sender field disabled"),',
+            "focused retired controlled audio-sender mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"controlled_audio: Option<ControlledAudioThread>,\\n    '
+            'audio_format: Option<(u32, u32)>,", "retired controlled audio format field"),',
+            '"controlled_audio: Option<ControlledAudioThread>,\\n    '
+            'audio_format: Option<(u32, u32)>,", "retired controlled audio format field disabled"),',
+            "focused retired controlled audio-format mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"controlled_audio: Option<ControlledAudioThread>,\\n    '
+            'voice_calling: bool,", "retired controlled voice-call boolean field"),',
+            '"controlled_audio: Option<ControlledAudioThread>,\\n    '
+            'voice_calling: bool,", "retired controlled voice-call boolean field disabled"),',
+            "focused retired controlled voice-state mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
             'pending_screenshots = extract_item(\n'
             "        io_loop,\n"
             '        "impl PendingScreenshotRequests",',
@@ -47845,6 +48142,31 @@ def run_source_mutations(sources):
             "pub fn handle_screenshot(data: bytes::Bytes, action: String) -> String",
             "pub fn handle_screenshot(action: String) -> String",
             "value-owned screenshot action source",
+        ),
+        (
+            "client_io_loop",
+            "let data = (!data.is_empty()).then_some(data);",
+            "crate::client::screenshot::set_screenshot(data.clone());\n"
+            "                            let data = (!data.is_empty()).then_some(data);",
+            "process-global screenshot setter call source",
+        ),
+        (
+            "verify",
+            "grep -qF 'pub fn set_screenshot(' src/client/screenshot.rs",
+            "grep -qF 'set_screenshot' src/client/screenshot.rs src/client/io_loop.rs",
+            "shared exact retired screenshot setter-definition gate",
+        ),
+        (
+            "verify",
+            "grep -qF 'crate::client::screenshot::set_screenshot(' src/client/io_loop.rs",
+            "grep -qF 'set_screenshot' src/client/io_loop.rs",
+            "shared exact retired screenshot setter-call gate",
+        ),
+        (
+            "hardening",
+            "R-S11e-162 current outgoing screenshot and controlled-audio owner-gate authority",
+            "R-S11e-162 obsolete outgoing screenshot and controlled-audio compatibility",
+            "outgoing owner verifier-authority hardening ledger",
         ),
         (
             "client_io_loop",
@@ -52662,6 +52984,109 @@ def run_source_mutations(sources):
             '.on_voice_call_closed("Failed to start voice call audio")',
             ".on_voice_call_started()",
             "Android audio-owner-before-native outgoing voice-call activation source",
+        ),
+        (
+            "client_source",
+            "let (audio_sender, thread) = new_audio_thread();\n"
+            '    OwnedMediaThread::new("audio decoder", audio_sender, thread)',
+            "let (audio_sender, _thread) = new_audio_thread();\n"
+            "    audio_sender",
+            "sole owning audio constructor source",
+        ),
+        (
+            "connection_source",
+            "decoder: OwnedMediaThread,",
+            "decoder: MediaSender,",
+            "controlled audio format and decoder owner source",
+        ),
+        (
+            "connection_source",
+            "controlled_audio: Option<ControlledAudioThread>,",
+            "controlled_audio: Option<ControlledAudioThread>,\n"
+            "    audio_sender: Option<MediaSender>,",
+            "retired controlled audio sender field source",
+        ),
+        (
+            "connection_source",
+            "controlled_audio: Option<ControlledAudioThread>,",
+            "controlled_audio: Option<ControlledAudioThread>,\n"
+            "    audio_format: Option<(u32, u32)>,",
+            "retired controlled audio format field source",
+        ),
+        (
+            "connection_source",
+            "controlled_audio: Option<ControlledAudioThread>,",
+            "controlled_audio: Option<ControlledAudioThread>,\n"
+            "    voice_calling: bool,",
+            "retired controlled voice-call boolean field source",
+        ),
+        (
+            "verify",
+            'client.index("pub fn start_audio_thread()")',
+            'client.index("pub fn start_audio_thread() -> OwnedMediaThread")',
+            "shared owning audio-constructor scope",
+        ),
+        (
+            "verify",
+            '"let (audio_sender, _thread) = new_audio_thread();" not in audio_constructor',
+            '"let (audio_sender, _thread) = new_audio_thread();" in audio_constructor',
+            "shared detached audio-constructor rejection",
+        ),
+        (
+            "verify",
+            "connection_fields = connection[",
+            "connection_owner = connection[",
+            "shared controlled Connection-field scope",
+        ),
+        (
+            "verify",
+            '"audio_sender:" not in connection_fields',
+            '"audio_sender:" not in connection',
+            "shared retired controlled audio-sender field gate",
+        ),
+        (
+            "verify",
+            '"audio_format:" not in connection_fields',
+            '"audio_format:" not in connection',
+            "shared retired controlled audio-format field gate",
+        ),
+        (
+            "verify",
+            '"voice_calling:" not in connection_fields',
+            '"voice_calling:" not in connection',
+            "shared retired controlled voice-state field gate",
+        ),
+        (
+            "verify",
+            'audio_format_start = connection.index(\n'
+            '    "// R-S19: peer->host audio playback is voice-call only."\n'
+            ")",
+            'audio_format_start = connection.index(\n'
+            '    "Some(misc::Union::AudioFormat(format))"\n'
+            ")",
+            "shared controlled audio-format handler scope",
+        ),
+        (
+            "verify",
+            "audio_format = connection[\n"
+            "    audio_format_start:\n"
+            "    connection.index(\n"
+            '        "Some(misc::Union::ChangeResolution",\n'
+            "        audio_format_start,",
+            "audio_format = connection[\n"
+            "    connection.index(\n"
+            '        "Some(misc::Union::AudioFormat(format))"\n'
+            "    ):\n"
+            "    connection.index(\n"
+            '        "Some(misc::Union::ChangeResolution",\n'
+            "        audio_format_start,",
+            "shared controlled audio-format slice",
+        ),
+        (
+            "verify",
+            '< audio_format.index(".map(|audio| audio.format)")',
+            '> audio_format.index(".map(|audio| audio.format)")',
+            "shared controlled audio read-before-install order gate",
         ),
         (
             "connection_source",

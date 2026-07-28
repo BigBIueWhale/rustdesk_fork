@@ -451,8 +451,9 @@ listener, projection grant, and capture resources are deliberately unchanged.
 Follow-up correction (2026-07-21), **shared controlled-audio and hard-drop completion ownership**: the broader
 worker audit found one exception to that closure. `start_audio_thread()` still returned only its channel sender and
 discarded the controlled-side voice decoder's `JoinHandle`; accepted format and sender were separate connection
-fields; call close retained both; audio disable merely dropped them; and `OwnedMediaThread::Drop` plus
-`VoiceCallThread::Drop` joined inline. The sender-only and compatibility-named constructors are deleted.
+fields; call close retained both; audio disable merely dropped them; and `OwnedMediaThread::Drop` plus the
+then-current `VoiceCallThread::Drop` joined inline. The sender-only and compatibility-named constructors are
+deleted; R-S11eh later removes that outgoing voice thread after closing its downstream unbounded queue.
 `start_audio_thread()` is now the sole owning constructor. A controlled connection owns accepted format plus exact
 decoder as one `ControlledAudioThread`, refuses overlapping call requests, clears voice authority first, and
 closes/awaits that owner on call close, audio disable, format-start failure, and connection close. Normal viewer
@@ -653,6 +654,41 @@ source-scoped displayless wake, 64-controller capacity plus exact retirement, an
 enqueue. Focused/shared/independent source and deliberate-mutation gates bind R-S11eg, Appendix C #286, and
 R-S11e-151. Installed native behavior, current APK/device reproduction, exact cold R-B2/R-B10 artifacts,
 separately required independent reproduction, and external review remain open.
+
+Follow-up correction (2026-07-27), **R-S11eh/R-S11e-152 bounded exact-subscriber real-time audio
+egress**: every controlled connection sent locally captured `AudioFrame` and `AudioFormat` messages through the
+same unbounded Tokio queue as non-droppable control/state traffic. The one-second stale-frame refusal ran only
+after dequeue, so a stalled stream write could leave the audio producer allocating indefinitely before the check
+ran. The shared non-iOS outgoing voice-call service subscription was also unbounded. Its R-S11bp blocking worker
+removed hot polling but drained that service queue into the viewer round's separate unbounded `Data` command
+queue, moving rather than closing the resource debt. This is source-proven real-time audio availability/resource
+debt shared by controlled desktop/Android paths and outgoing desktop/Android viewers. It is not proof of the
+reported Android screen-control hang, a controlled-service authorization bypass, exploitation, root acquisition,
+public exposure, container escape, or host RustDesk/service/firewall/network modification.
+
+Each exact audio-service subscriber now owns one constant-size mailbox: at most one pending `AudioFormat`, one
+latest pending `AudioFrame`, and one capacity-one Tokio wake token. Repeated frames replace the pending frame. A
+new format replaces the pending format and clears an old pending frame; dequeue takes format before frame, so a
+codec-generation transition cannot be crossed by queued old audio. Producer send is synchronous and nonblocking;
+a full wake is coalesced, and closed-receiver send clears retained state. Standard mutex poisoning is diagnosed
+and recovered, and neither async nor blocking receive holds the lock across its event-driven wait. There is no
+unbounded collection, per-message task/thread, nested runtime, or sleep-poll.
+
+`ConnInner` routes exactly `AudioFrame` and `Misc::AudioFormat` to that mailbox before its existing video/general
+routes. A controlled `Connection` creates one exact mailbox, drains it in a separate branch of the sole stream
+writer, preserves the one-second stale-frame refusal after dequeue, and never sees audio on the general unbounded
+receiver. The outgoing `VoiceCallAudio` owner contains the exact synthetic subscription, non-cloneable input
+lease, and mailbox receiver; the existing connection select writes received audio directly to the peer. The
+dedicated voice worker, durable stop flag/channel, intermediate `Data::Message` forwarding, and voice-specific
+completion handoff are deleted. Explicit stop, replacement/final shutdown, and hard `Drop` unsubscribe the exact
+connection before releasing the exact lease. Android's persistent `MainService`, incoming controlled listener
+and capture resources, and native one-recorder coordinator are unchanged.
+
+Six behavior regressions cover latest-frame coalescing, format-before-frame ordering, codec-generation
+retirement, separation from control/video channels, exact-sender closure, and asynchronous wait/wake/closure.
+Focused/shared/independent source and deliberate-mutation gates bind R-S11eh, Appendix C #287, and R-S11e-152.
+Installed native behavior, current APK/device reproduction, exact cold R-B2/R-B10 artifacts, separately required
+independent reproduction, and external review remain open.
 
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
@@ -7954,48 +7990,31 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   installed service, exact release artifact, or end-to-end helper connection is claimed, and those
   evidence obligations remain R-R2/R-B2.
 - **R-S11bp/R-S11e-82 — outgoing voice-call capture is event-driven and exact-subscription-owned —
-  SOURCE IMPLEMENTED/GATED 2026-07-22; EXACT NATIVE/APK/DEVICE/ARTIFACT EVIDENCE REMAINS
-  R-B2/R-B10.** Platforms: the shared non-iOS outgoing viewer (Android plus desktop; iOS has no local
-  audio-service voice-capture worker). Endpoint/action: an accepted outgoing voice call subscribes one
-  synthetic `ConnInner` to the process-local audio service and forwards its audio frames into that
-  exact viewer round. Boundary: the viewer round's `VoiceCallThread` owner ↔ the subscription, audio
-  receiver, global voice-input selection, and dedicated worker handle. The inherited worker created a
-  separate standard-library stop channel, then executed an unconditional loop that called
-  `try_recv()` on both stop and audio. With neither channel ready it performed no wait at all, so every
-  active voice call could consume a CPU core while idle. The stop sender did not itself revoke the
-  exact service subscription keeping the audio receiver open. Git history places this loop in the
-  imported baseline. This is a source-proven shared resource-availability and lifecycle-coherence
-  defect. Android's persistent process can amplify its duration, but it is not an on-device causal
-  reproduction or proved explanation of the reported one-host screen-control hang; it is unrelated to
-  host RustDesk, firewall/listener state, Docker privilege, exploitation, or compromise.
+  SOURCE IMPLEMENTED/GATED 2026-07-22; FINAL DATA-PLANE SHAPE SUPERSEDED BY R-S11eh 2026-07-27;
+  EXACT NATIVE/APK/DEVICE/ARTIFACT EVIDENCE REMAINS R-B2/R-B10.** Platforms: the shared non-iOS
+  outgoing viewer (Android plus desktop; iOS has no local audio-service voice capture). Endpoint/action:
+  an accepted outgoing voice call subscribes one synthetic `ConnInner` to the process-local audio
+  service and sends its audio through that exact viewer round. The imported worker hot-polled separate
+  stop and audio channels and did not own subscription revocation. The first R-S11bp closure made the
+  worker block and gave it exact subscription/stop/handle ownership. R-S11eh's later end-to-end audit
+  proved that the worker still drained into the viewer's unbounded general `Data` queue, so it moved
+  rather than closed real-time resource accumulation.
 
-  `VoiceCallThread` now owns one durable stop flag, the exact subscribed synthetic `ConnInner`, and the
-  exact worker handle. Every normal voice-call close, reconnect/final viewer teardown, and hard-Drop
-  handoff reaches the same `stop()`: it publishes retirement first, then unsubscribes that exact
-  connection. Removing the service copy and dropping the owner's retained sender closes the channel,
-  waking a worker blocked without audio. The worker uses `blocking_recv()` on its dedicated standard
-  thread—no sleep, polling, nested runtime, or detached task—and rechecks the stop flag after wake, so
-  already queued audio cannot cross retirement. Spontaneous audio-channel closure performs an
-  idempotent unsubscribe and restores voice-input state. Named-thread spawn failure immediately rolls
-  back the just-created subscription and input selection. The existing fixed media-completion pool
-  retains and joins the exact handle; this slice does not weaken its bounded admission or abort-on-loss
-  rules.
+  The final topology has no voice worker. `VoiceCallAudio` owns the exact synthetic subscription,
+  non-cloneable input lease, and R-S11eh bounded receiver. The connection round's existing Tokio select
+  waits on that receiver and its sole peer-stream writer sends the message directly. Normal stop,
+  reconnect/final shutdown, and hard `Drop` all unsubscribe the exact synthetic connection before
+  releasing the exact lease. No voice stop flag/channel, polling or blocking loop, nested runtime,
+  intermediate `Data::Message` forwarding, detached handle, or voice-specific completion-pool handoff
+  remains. This does not change Android's persistent `MainService` or incoming controlled-service
+  lifetime.
 
-  Focused behavior regressions prove that an idle receiver remains blocked, exact subscription-channel
-  closure wakes it within a fixed test deadline, a durable stop suppresses already queued audio, and a
-  live message preserves object identity. The standalone
-  `scripts/verify-viewer-voice-call-worker.py` binds the composite owner, stop-before-unsubscribe
-  ordering, blocking receive and post-wake check, worker cleanup, spawn-failure rollback, existing
-  completion-pool sinks, polling-channel absence, R-S11bp, Appendix C #209, this row, and shared-gate
-  and Apple-gate wiring; its combined R-S11bp/R-S11bq self-test now rejects 36 deliberate semantic
-  weakenings. The independent
-  workspace verifier passes normally and its complete current-tree source-mutation matrix rejects the
-  registered weakened contracts. Exact Rust 1.75 locked/offline compilation from the reviewed local
-  vendor closure in a fresh bounded, non-root, network-disabled tmpfs target passes both focused tests:
-  2 passed, 0 failed, 340 unrelated tests filtered. Python byte-compilation, edited-shell syntax,
-  `git diff --check`, requirements-hash equality, and native-codec normal/self-test gates also pass.
-  The available diagnostic image has no Rustfmt component, so no formatter result is claimed. No current
-  APK, native Android/desktop voice-call session, real device, exact release artifact, or R-B2/R-B10
+  The updated `scripts/verify-viewer-voice-call-worker.py` binds the exact composite owner,
+  unsubscribe-before-lease-release, event-driven direct-select consumption, sole-writer send,
+  R-S11eh mailbox use, retired worker/stop/intermediate-queue absence, R-S11bp, Appendix C #209/#287,
+  this row, and shared/Apple gate wiring while retaining its independent R-S11bq input-lease checks.
+  The R-S11eh focused behavior and semantic gates supply the mailbox/resource proof. No current APK,
+  native Android/desktop voice-call session, real device, exact release artifact, or R-B2/R-B10
   transaction is claimed here.
 - **R-S11bq/R-S11e-83 — voice-call input selection has exact concurrent owners — SOURCE, FOCUSED RUST,
   SOURCE GATE, AND MUTATION VERIFIED; EXACT NATIVE/APK/DEVICE/ARTIFACT EVIDENCE REMAIN OPEN.** Platforms: the shared Rust audio service used by
@@ -8023,9 +8042,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   mutation, while impossible release underflow logs the invariant failure and aborts instead of silently
   continuing with corrupt accounting. The obsolete `set_if_present` API is deleted.
 
-  `VoiceCallThread` now owns its lease alongside the exact subscription, durable stop flag, and worker handle.
-  Stop publishes retirement, removes the exact subscription, and then drops only that lease; the worker and its
-  spawn-failure branch have no global-`None` cleanup authority, so lexical lease drop supplies exact rollback.
+  `VoiceCallAudio` now owns its lease alongside the exact subscription and R-S11eh bounded receiver.
+  Stop removes the exact subscription and then drops only that lease; no intermediate worker has
+  global-`None` cleanup authority, so lexical owner drop supplies exact rollback.
   Controlled `Connection` stores `Option<VoiceCallInputLease>` instead of `voice_calling`, acquires before its
   first response await, reports refusal if acquisition fails, derives overlap/audio admission from lease
   presence, and takes only its exact lease during explicit close, asynchronous close before its first cleanup
@@ -8044,8 +8063,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   Verification: exact Rust 1.75 locked/offline library tests compiled against the complete pinned read-only
   `online/cargo-vendor` source map in a fresh non-root/network-disabled tmpfs target. Both R-S11e-83 ownership
-  regressions passed (`2 passed`, `0 failed`, `342 filtered`); the two adjacent R-S11e-82 event-driven worker
-  regressions also passed (`2 passed`, `0 failed`, `342 filtered`). Compilation completed with the repository's
+  regressions passed (`2 passed`, `0 failed`, `342 filtered`). The former R-S11e-82 worker regressions are
+  superseded by R-S11eh's bounded mailbox and direct-select behavior set. Compilation completed with the repository's
   existing warning set and is not claimed warning-free. The focused semantic verifier passed normally and rejected
   all 36 registered R-S11bp/R-S11bq mutations. The independent workspace verifier passed normally and its complete
   current-tree in-memory source-mutation matrix passed. Python byte-compilation, edited Bash syntax, retired-symbol
@@ -8098,10 +8117,12 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   exact connection removal before publishing UI removal. Service binding has no audio-ownership semantics and the
   obsolete local/service recorder callbacks and state booleans are deleted.
 
-  The shared outgoing response path now stops the prior exact voice worker, constructs the replacement, and
-  publishes `on_voice_call_started` only after that worker exists. Lease-acquisition or worker-spawn failure instead
-  publishes closed state and sends the peer an explicit close request, so Android native capture cannot be activated
-  for a call whose Rust audio worker never started.
+  The shared outgoing response path stops the prior exact audio owner, constructs the replacement
+  subscription/lease/bounded receiver, and publishes `on_voice_call_started` only after that complete owner exists.
+  Lease-acquisition failure instead publishes closed state and sends the peer an explicit close request, so Android
+  native capture cannot be activated for a call whose Rust audio path was not admitted. R-S11eh later removes the
+  interim dedicated Rust voice worker and binds this direct-select topology; Android's native recorder worker is
+  independent and unchanged.
 
   Reconciliation has one closed priority: any active voice owner selects `VOICE_COMMUNICATION`, otherwise the live
   exact MediaProjection selects playback capture, otherwise capture stops. Playback reuse also requires object
@@ -8140,7 +8161,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   isolate invalidation, and service clearing. `scripts/verify-android-voice-call-ownership.py` binds the complete
   Kotlin/Rust topology, lifecycle
   ordering, one-recorder count, mode priority, projection identity, buffer/start/worker cleanup, platform-channel
-  completion, worker-before-native start publication, requirement, disposition, ledger, and shared-gate wiring, and
+  completion, audio-owner-before-native start publication, requirement, disposition, ledger, and shared-gate wiring, and
   rejects 61 deliberate semantic mutations. The independent workspace verifier loads every new source, validates the
   focused verifier rather than
   trusting its output, and mutation-binds the new gate/requirement/disposition/ledger plus the updated
@@ -8152,8 +8173,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   in-memory source-mutation matrix. The Android release Kotlin compilation completed with `BUILD SUCCESSFUL` in 30
   seconds (`228` actionable tasks: `227` executed, `1` up-to-date); existing unrelated deprecation and static-analysis
   warnings remain and no APK was assembled. Locked/offline Rust 1.75 library tests passed all three Android
-  Activity-owner regressions (`3 passed`, `0 failed`, `347 filtered`) and both adjacent event-driven voice-worker
-  regressions (`2 passed`, `0 failed`, `348 filtered`); pinned Rustfmt passed the two changed Rust files and
+  Activity-owner regressions (`3 passed`, `0 failed`, `347 filtered`) and both then-current event-driven voice-worker
+  regressions (`2 passed`, `0 failed`, `348 filtered`); R-S11eh supersedes that worker with six bounded-mailbox and
+  direct-select regressions. Pinned Rustfmt passed the two changed Rust files and
   `Cargo.lock` remained byte-identical. Python byte-compilation, edited Bash syntax, requirements-hash equality
   (`19765e32030adbbb3c25b2f98ec28a09ba6f6bd8da2b95287911023b8797e120`), and native-codec normal/self-test gates
   passed. These checks used no published port, Docker socket, host PID/network namespace, host service/config mount,
@@ -15075,7 +15097,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-197509f7c3eb3c12489222f85d22507adad7ffeab2b2562cdc269b9b83ff161f  requirements.html
+64c00703faa02c54f05cd8e86cd5a17fb0d9be2e2e853f4e62ae032a80309bd1  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

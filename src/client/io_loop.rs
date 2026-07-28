@@ -1,9 +1,12 @@
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-use crate::clipboard::{update_clipboard, ClipboardSide};
 #[cfg(not(target_os = "ios"))]
 use crate::client::ClientClipboardSession;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use crate::clipboard::{update_clipboard, ClipboardSide};
 #[cfg(not(any(target_os = "ios")))]
-use crate::{audio_service, clipboard::CLIPBOARD_INTERVAL, ConnInner, CLIENT_SERVER};
+use crate::{
+    audio_egress_channel, audio_service, clipboard::CLIPBOARD_INTERVAL, AudioEgressReceiver,
+    ConnInner, CLIENT_SERVER,
+};
 use crate::{
     client::{
         self, new_voice_call_request, Client, Data, Interface, MediaData, OwnedMediaThread,
@@ -42,8 +45,6 @@ use hbb_common::{
 #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
 use hbb_common::{tokio::sync::Mutex as TokioMutex, ResultType};
 use scrap::CodecFormat;
-#[cfg(not(target_os = "ios"))]
-use std::sync::atomic::AtomicBool;
 use std::{
     collections::HashMap,
     ffi::c_void,
@@ -77,40 +78,35 @@ fn native_video_frame_runtime_supported(vf: &VideoFrame) -> bool {
     }
 }
 
-struct VoiceCallThread {
-    #[cfg(not(target_os = "ios"))]
-    stop_requested: Arc<AtomicBool>,
+struct VoiceCallAudio {
     #[cfg(not(target_os = "ios"))]
     subscription: Option<ConnInner>,
     #[cfg(not(target_os = "ios"))]
     input_lease: Option<audio_service::VoiceCallInputLease>,
-    thread: Option<std::thread::JoinHandle<()>>,
+    #[cfg(not(target_os = "ios"))]
+    receiver: AudioEgressReceiver,
 }
 
-impl VoiceCallThread {
+impl VoiceCallAudio {
     #[cfg(not(target_os = "ios"))]
     fn new(
-        stop_requested: Arc<AtomicBool>,
         subscription: ConnInner,
         input_lease: audio_service::VoiceCallInputLease,
-        thread: std::thread::JoinHandle<()>,
+        receiver: AudioEgressReceiver,
     ) -> Self {
         Self {
-            stop_requested,
             subscription: Some(subscription),
             input_lease: Some(input_lease),
-            thread: Some(thread),
+            receiver,
         }
     }
 
-    fn stop(&mut self) -> Option<std::thread::JoinHandle<()>> {
+    fn stop(&mut self) {
         #[cfg(not(target_os = "ios"))]
         {
-            self.stop_requested.store(true, Ordering::Release);
             if let Some(subscription) = self.subscription.take() {
-                // Removing the exact subscription drops the audio service's sender. Dropping our
-                // retained copy immediately afterwards closes the channel and wakes a worker that
-                // is blocked without audio; it does not need to poll for stop ownership.
+                // Removing the exact subscription and dropping our retained copy closes capture
+                // admission before the input lease can release the process-wide source.
                 CLIENT_SERVER
                     .write()
                     .unwrap()
@@ -118,32 +114,27 @@ impl VoiceCallThread {
             }
             drop(self.input_lease.take());
         }
-        self.thread.take()
     }
 }
 
-impl Drop for VoiceCallThread {
+impl Drop for VoiceCallAudio {
     fn drop(&mut self) {
-        if let Some(thread) = self.stop() {
-            crate::client::reap_media_worker("voice-call", thread);
-        }
+        self.stop();
     }
 }
 
 #[cfg(not(target_os = "ios"))]
-fn recv_voice_call_audio(
-    receiver: &mut mpsc::UnboundedReceiver<(Instant, Arc<Message>)>,
-    stop_requested: &AtomicBool,
-) -> Option<Arc<Message>> {
-    if stop_requested.load(Ordering::Acquire) {
-        return None;
+async fn recv_voice_call_audio(voice_call: &mut Option<VoiceCallAudio>) -> Option<Arc<Message>> {
+    match voice_call.as_mut() {
+        Some(voice_call) => voice_call.receiver.recv().await.map(|(_, message)| message),
+        None => std::future::pending().await,
     }
-    let (_, message) = receiver.blocking_recv()?;
-    if stop_requested.load(Ordering::Acquire) {
-        None
-    } else {
-        Some(message)
-    }
+}
+
+#[cfg(target_os = "ios")]
+async fn recv_voice_call_audio(voice_call: &mut Option<VoiceCallAudio>) -> Option<Arc<Message>> {
+    let _ = voice_call;
+    std::future::pending().await
 }
 
 // R-S11ed: this is the sole owner of the delayed OS-password sequence admitted by one
@@ -193,7 +184,7 @@ pub struct Remote<T: InvokeUiSession> {
     sender: mpsc::UnboundedSender<Data>,
     input_os_password_task: OwnedInputOsPasswordTask,
     // Stop sending local audio to remote client.
-    voice_call_thread: Option<VoiceCallThread>,
+    voice_call_audio: Option<VoiceCallAudio>,
     voice_call_request_timestamp: Option<NonZeroI64>,
     read_jobs: Vec<fs::TransferJob>,
     write_jobs: Vec<fs::TransferJob>,
@@ -586,7 +577,7 @@ impl<T: InvokeUiSession> Remote<T> {
             client_conn_id: 0,
             data_count: Arc::new(AtomicUsize::new(0)),
             video_format: CodecFormat::Unknown,
-            voice_call_thread: None,
+            voice_call_audio: None,
             voice_call_request_timestamp: None,
             peer_info: Default::default(),
             video_threads: Default::default(),
@@ -734,6 +725,19 @@ impl<T: InvokeUiSession> Remote<T> {
                                 if !self.handle_msg_from_ui(d, &mut peer).await {
                                     break;
                                 }
+                            }
+                        }
+                        voice_call_audio = recv_voice_call_audio(&mut self.voice_call_audio) => {
+                            let Some(message) = voice_call_audio else {
+                                self.stop_voice_call().await;
+                                self.handler.on_voice_call_closed(
+                                    "Voice call audio service stopped",
+                                );
+                                continue;
+                            };
+                            if let Err(err) = peer.send(&message as &Message).await {
+                                log::error!("Failed to send voice call audio to peer: {err}");
+                                break;
                             }
                         }
                         _msg = rx_clip_client.recv() => {
@@ -901,23 +905,17 @@ impl<T: InvokeUiSession> Remote<T> {
     }
 
     async fn stop_voice_call(&mut self) {
-        let Some(mut voice_call_thread) = self.voice_call_thread.take() else {
+        let Some(mut voice_call_audio) = self.voice_call_audio.take() else {
             return;
         };
-        let worker = voice_call_thread.stop();
-        drop(voice_call_thread);
-        if let Some(worker) = worker {
-            Self::join_workers(vec![("voice-call", worker)]).await;
-        }
+        voice_call_audio.stop();
     }
 
     async fn shutdown_workers(&mut self) {
         self.input_os_password_task.stop_and_join().await;
-        let mut workers = Vec::with_capacity(self.video_threads.len() + 2);
-        if let Some(mut voice_call_thread) = self.voice_call_thread.take() {
-            if let Some(worker) = voice_call_thread.stop() {
-                workers.push(("voice-call", worker));
-            }
+        let mut workers = Vec::with_capacity(self.video_threads.len() + 1);
+        if let Some(mut voice_call_audio) = self.voice_call_audio.take() {
+            voice_call_audio.stop();
         }
         for (_, mut video_thread) in self.video_threads.drain() {
             *video_thread.discard_queue.write().unwrap() = true;
@@ -932,7 +930,7 @@ impl<T: InvokeUiSession> Remote<T> {
     }
 
     // Start a voice call recorder, records audio and send to remote
-    fn start_voice_call(&mut self) -> Option<VoiceCallThread> {
+    fn start_voice_call(&mut self) -> Option<VoiceCallAudio> {
         if self.handler.is_file_transfer()
             || self.handler.is_port_forward()
             || self.handler.is_terminal()
@@ -950,64 +948,20 @@ impl<T: InvokeUiSession> Remote<T> {
                         return None;
                     }
                 };
-            let (tx_audio_data, mut rx_audio_data) =
-                hbb_common::tokio::sync::mpsc::unbounded_channel();
+            let (tx_audio_data, rx_audio_data) = audio_egress_channel();
             // Create a stand-alone inner, add subscribe to audio service
             let conn_id = CLIENT_SERVER.write().unwrap().get_new_id();
-            let client_conn_inner = ConnInner::new(conn_id, Some(tx_audio_data), None);
+            let client_conn_inner = ConnInner::with_audio(conn_id, None, None, Some(tx_audio_data));
             // now we subscribe
             CLIENT_SERVER.write().unwrap().subscribe(
                 audio_service::NAME,
                 client_conn_inner.clone(),
                 true,
             );
-            let tx_audio = self.sender.clone();
-            let stop_requested = Arc::new(AtomicBool::new(false));
-            let worker_stop_requested = stop_requested.clone();
-            let cleanup_subscription = ConnInner::new(conn_id, None, None);
-            let thread = match std::thread::Builder::new()
-                .name("rustdesk-viewer-voice-call".to_owned())
-                .spawn(move || {
-                    while let Some(msg) =
-                        recv_voice_call_audio(&mut rx_audio_data, &worker_stop_requested)
-                    {
-                        match &msg.union {
-                            Some(message::Union::AudioFrame(frame)) => {
-                                let mut msg = Message::new();
-                                msg.set_audio_frame(frame.clone());
-                                tx_audio.send(Data::Message(msg)).ok();
-                            }
-                            Some(message::Union::Misc(misc)) => {
-                                let mut msg = Message::new();
-                                msg.set_misc(misc.clone());
-                                tx_audio.send(Data::Message(msg)).ok();
-                            }
-                            _ => {}
-                        }
-                    }
-                    log::debug!("Exit voice call audio service of client");
-                    CLIENT_SERVER.write().unwrap().subscribe(
-                        audio_service::NAME,
-                        cleanup_subscription,
-                        false,
-                    );
-                }) {
-                Ok(thread) => thread,
-                Err(err) => {
-                    log::error!("Failed to start voice-call audio worker: {err}");
-                    CLIENT_SERVER.write().unwrap().subscribe(
-                        audio_service::NAME,
-                        client_conn_inner,
-                        false,
-                    );
-                    return None;
-                }
-            };
-            return Some(VoiceCallThread::new(
-                stop_requested,
+            return Some(VoiceCallAudio::new(
                 client_conn_inner,
                 input_lease,
-                thread,
+                rx_audio_data,
             ));
         }
         #[cfg(target_os = "ios")]
@@ -2523,7 +2477,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         // TODO: maybe we will do a voice call from the peer in the future.
                     } else {
                         log::debug!("The remote has requested to close the voice call");
-                        if self.voice_call_thread.is_some() {
+                        if self.voice_call_audio.is_some() {
                             self.stop_voice_call().await;
                             self.handler.on_voice_call_closed("");
                         }
@@ -2538,8 +2492,8 @@ impl<T: InvokeUiSession> Remote<T> {
                             if response.accepted {
                                 // The peer accepted the voice call.
                                 self.stop_voice_call().await;
-                                self.voice_call_thread = self.start_voice_call();
-                                if self.voice_call_thread.is_some() {
+                                self.voice_call_audio = self.start_voice_call();
+                                if self.voice_call_audio.is_some() {
                                     self.handler.on_voice_call_started();
                                 } else {
                                     self.handler
@@ -3172,82 +3126,6 @@ mod tests {
             pending.complete(&replacement).is_none(),
             "a response ID may complete only once"
         );
-    }
-
-    #[cfg(not(target_os = "ios"))]
-    #[test]
-    fn r_s11e82_voice_call_audio_wait_is_event_driven_and_stop_is_terminal() {
-        let (sender, mut receiver) = mpsc::unbounded_channel();
-        let stop_requested = Arc::new(AtomicBool::new(false));
-        let worker_stop_requested = stop_requested.clone();
-        let ready = Arc::new(std::sync::Barrier::new(2));
-        let worker_ready = ready.clone();
-        let (completed, result) = std::sync::mpsc::channel();
-        let worker = std::thread::spawn(move || {
-            worker_ready.wait();
-            let value = recv_voice_call_audio(&mut receiver, &worker_stop_requested);
-            completed.send(value).unwrap();
-        });
-
-        ready.wait();
-        assert!(
-            result
-                .recv_timeout(std::time::Duration::from_millis(50))
-                .is_err(),
-            "an idle voice-call worker must block instead of polling"
-        );
-        stop_requested.store(true, Ordering::Release);
-        drop(sender);
-        assert!(result
-            .recv_timeout(std::time::Duration::from_secs(1))
-            .expect("subscription closure must wake the blocked worker")
-            .is_none());
-        worker.join().unwrap();
-
-        let (sender, mut receiver) = mpsc::unbounded_channel();
-        let stop_requested = Arc::new(AtomicBool::new(false));
-        let worker_stop_requested = stop_requested.clone();
-        let ready = Arc::new(std::sync::Barrier::new(2));
-        let worker_ready = ready.clone();
-        let (completed, result) = std::sync::mpsc::channel();
-        let worker = std::thread::spawn(move || {
-            worker_ready.wait();
-            completed
-                .send(recv_voice_call_audio(&mut receiver, &worker_stop_requested))
-                .unwrap();
-        });
-        ready.wait();
-        assert!(result
-            .recv_timeout(std::time::Duration::from_millis(50))
-            .is_err());
-        stop_requested.store(true, Ordering::Release);
-        sender
-            .send((Instant::now(), Arc::new(Message::new())))
-            .unwrap();
-        assert!(result
-            .recv_timeout(std::time::Duration::from_secs(1))
-            .expect("queued audio must wake into the post-receive stop check")
-            .is_none());
-        worker.join().unwrap();
-
-        let (sender, mut receiver) = mpsc::unbounded_channel();
-        sender
-            .send((Instant::now(), Arc::new(Message::new())))
-            .unwrap();
-        let stop_requested = AtomicBool::new(true);
-        assert!(recv_voice_call_audio(&mut receiver, &stop_requested).is_none());
-    }
-
-    #[cfg(not(target_os = "ios"))]
-    #[test]
-    fn r_s11e82_voice_call_audio_wait_delivers_a_live_message() {
-        let (sender, mut receiver) = mpsc::unbounded_channel();
-        let expected = Arc::new(Message::new());
-        sender.send((Instant::now(), expected.clone())).unwrap();
-
-        let actual = recv_voice_call_audio(&mut receiver, &AtomicBool::new(false))
-            .expect("live audio must be delivered");
-        assert!(Arc::ptr_eq(&actual, &expected));
     }
 
     fn peer_info_with_display_count(count: usize) -> PeerInfo {

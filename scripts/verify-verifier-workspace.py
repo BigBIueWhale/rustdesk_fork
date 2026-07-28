@@ -15057,16 +15057,40 @@ def validate_viewer_voice_call_worker_contract(sources):
         ("def extract_rust_item(", "voice-call Rust item parser"),
         ("def validate(sources", "voice-call semantic entry"),
         (
-            '"receiver.blocking_recv()?",\n            "if stop_requested.load(Ordering::Acquire)"',
-            "voice-call blocking receive contract",
+            '"voice_call.receiver.recv().await"',
+            "voice-call event-driven async receive contract",
         ),
         (
-            '"stop_requested.load(Ordering::Acquire)"',
-            "voice-call durable stop contract",
+            '"receiver: AudioEgressReceiver"',
+            "voice-call bounded receiver owner contract",
         ),
         (
-            'for forbidden in ("try_recv", "thread::sleep", "Runtime::new", "block_on"):',
+            'for forbidden in ("try_recv", "thread::sleep", "Runtime::new", "block_on")',
             "voice-call polling/runtime rejection inventory",
+        ),
+        (
+            '"const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;"',
+            "voice-call capacity-one audio wake contract",
+        ),
+        (
+            '"state.format.take().or_else(|| state.frame.take())"',
+            "voice-call format-before-frame contract",
+        ),
+        (
+            '"peer.send(&message as &Message).await"',
+            "voice-call direct sole-writer contract",
+        ),
+        (
+            '"iOS voice-call receive remains permanently disabled"',
+            "voice-call iOS disabled receive contract",
+        ),
+        (
+            '"impl Drop for AudioEgressReceiver"',
+            "voice-call receiver retained-state retirement contract",
+        ),
+        (
+            '"receiver-retirement retained-audio behavior assertion"',
+            "voice-call receiver-retirement behavior contract",
         ),
         (
             '"subscription: Option<ConnInner>"',
@@ -15143,6 +15167,31 @@ def validate_viewer_voice_call_worker_contract(sources):
         sources["hardening"],
         "R-S11bq/R-S11e-83 — voice-call input selection has exact concurrent owners",
         "voice-call input ownership hardening ledger",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11eh</span>',
+        "bounded audio egress requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>287</td>",
+        "bounded audio egress Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11eh/R-S11e-152",
+        "bounded audio egress hardening ledger",
+    )
+    require_text(
+        sources["verify"],
+        "server::connection::audio_egress_tests::r_s11eh_ -- --test-threads=1",
+        "shared bounded audio behavior gate",
+    )
+    require_text(
+        sources["dart_verify"],
+        "server::connection::audio_egress_tests::r_s11eh_",
+        "generated-bridge bounded audio behavior gate",
     )
 
 
@@ -15315,11 +15364,11 @@ def validate_android_voice_call_ownership_contract(sources):
         ),
         (
             '"only then publish native/UI started state"',
-            "Android worker-before-native start requirement contract",
+            "Android audio-owner-before-native start requirement contract",
         ),
         (
-            '"publishes `on_voice_call_started` only after that worker exists"',
-            "Android worker-before-native start ledger contract",
+            '"publishes `on_voice_call_started` only after that complete owner exists"',
+            "Android audio-owner-before-native start ledger contract",
         ),
         (
             'require_count(all_android, "= AudioRecordHandle(", 1',
@@ -15340,6 +15389,14 @@ def validate_android_voice_call_ownership_contract(sources):
         (
             '"voice-over-playback-over-stopped recorder priority"',
             "Android recorder priority contract",
+        ),
+        (
+            '"receiver close before retained audio release"',
+            "Android/shared audio receiver retirement contract",
+        ),
+        (
+            '"receiver-retirement retained-audio behavior proof"',
+            "Android/shared audio receiver-retirement behavior contract",
         ),
         (
             '"serialized exact-AuthConnType controlled-resource admission"',
@@ -16159,7 +16216,7 @@ def validate_android_voice_call_ownership_contract(sources):
         os_password_shutdown,
         (
             "self.input_os_password_task.stop_and_join().await;",
-            "self.voice_call_thread.take()",
+            "self.voice_call_audio.take()",
             "self.video_threads.drain()",
             "self.audio_thread.close()",
             "Self::join_workers(workers).await;",
@@ -17369,13 +17426,13 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
-        '("requirements", "only then publish native/UI started state", "publish native/UI started state before construction", "worker-before-native start requirement"),',
-        "Android worker-before-native start requirement contract",
+        '("requirements", "only then publish native/UI started state", "publish native/UI started state before construction", "audio-owner-before-native start requirement"),',
+        "Android audio-owner-before-native start requirement contract",
     )
     require_text(
         focused,
-        '("hardening", "publishes `on_voice_call_started` only after that worker exists", "publishes `on_voice_call_started` before that worker exists", "worker-before-native start ledger"),',
-        "Android worker-before-native start ledger contract",
+        '("hardening", "publishes `on_voice_call_started` only after that complete owner exists", "publishes `on_voice_call_started` before that complete owner exists", "audio-owner-before-native start ledger"),',
+        "Android audio-owner-before-native start ledger contract",
     )
     require_text(
         focused,
@@ -17384,8 +17441,8 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         validation,
-        '"worker-before-native outgoing voice-call activation"',
-        "Android worker-before-native voice activation contract",
+        '"audio-owner-before-native outgoing voice-call activation"',
+        "Android audio-owner-before-native voice activation contract",
     )
     require_text(
         sources["verify"],
@@ -17423,7 +17480,7 @@ def validate_android_voice_call_ownership_contract(sources):
     require_text(
         sources["requirements"],
         "only then publish native/UI started state",
-        "Android worker-before-native start requirement source",
+        "Android audio-owner-before-native start requirement source",
     )
     require_text(
         sources["requirements"],
@@ -17447,8 +17504,8 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "publishes `on_voice_call_started` only after that worker exists",
-        "Android worker-before-native start ledger source",
+        "publishes `on_voice_call_started` only after that complete owner exists",
+        "Android audio-owner-before-native start ledger source",
     )
 
     outgoing_voice_response = extract_between(
@@ -17462,14 +17519,217 @@ def validate_android_voice_call_ownership_contract(sources):
         (
             "if response.accepted",
             "self.stop_voice_call().await",
-            "self.voice_call_thread = self.start_voice_call()",
-            "if self.voice_call_thread.is_some()",
+            "self.voice_call_audio = self.start_voice_call()",
+            "if self.voice_call_audio.is_some()",
             "self.handler.on_voice_call_started()",
             '.on_voice_call_closed("Failed to start voice call audio")',
             "let msg = new_voice_call_request(false)",
             "peer.send(&msg).await",
         ),
-        "Android worker-before-native outgoing voice-call activation source",
+        "Android audio-owner-before-native outgoing voice-call activation source",
+    )
+
+    connection = sources["connection_source"]
+    audio_mailbox = extract_between(
+        connection,
+        "pub static CLICK_TIME: AtomicI64 = AtomicI64::new(0);",
+        "#[derive(Clone, Default)]\npub struct ConnInner",
+        "shared bounded audio mailbox source",
+    )
+    require_order(
+        audio_mailbox,
+        (
+            "const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;",
+            "format: Option<(Instant, Arc<Message>)>",
+            "frame: Option<(Instant, Arc<Message>)>",
+            "mpsc::channel(AUDIO_EGRESS_WAKE_CAPACITY)",
+            "state.frame = Some(queued);",
+            "state.format = Some(queued);",
+            "state.frame = None;",
+            "self.wake.try_send(())",
+            "TrySendError::Full(_)",
+            "TrySendError::Closed(_)",
+            "state.format.take().or_else(|| state.frame.take())",
+            "self.wake.recv().await?",
+            "impl Drop for AudioEgressReceiver",
+            "self.wake.close();",
+            "state.format = None;",
+            "state.frame = None;",
+        ),
+        "shared bounded audio coalescing, generation, wake, and retirement source",
+    )
+    for retired in (
+        "unbounded_channel",
+        "try_recv",
+        "tokio::spawn",
+        "std::thread",
+        "Runtime::new",
+        "block_on",
+        "thread::sleep",
+    ):
+        require_absent(
+            audio_mailbox,
+            retired,
+            f"shared audio mailbox retired runtime shape {retired}",
+        )
+
+    subscriber = extract_between(
+        connection,
+        "impl Subscriber for ConnInner",
+        "#[cfg(test)]\nmod audio_egress_tests",
+        "shared audio subscriber routing source",
+    )
+    require_order(
+        subscriber,
+        (
+            "let tx_by_audio = match &msg.union",
+            "Some(message::Union::AudioFrame(_))",
+            "Some(misc::Union::AudioFormat(_))",
+            "if tx_by_audio",
+            "self.tx_audio.as_ref()",
+            "tx.send(msg);",
+            "return;",
+            "let tx_by_video = match &msg.union",
+        ),
+        "shared audio route precedes general and video routes",
+    )
+
+    connection_start = extract_between(
+        connection,
+        "impl Connection {\n    pub async fn start(",
+        "\n    async fn start_input_worker",
+        "controlled connection bounded audio writer source",
+    )
+    require_order(
+        connection_start,
+        (
+            "let (tx, mut rx) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();",
+            "let (tx_audio, mut rx_audio) = audio_egress_channel();",
+            "ConnInner::with_audio(id, Some(tx), Some(tx_video), Some(tx_audio))",
+            "Some((instant, value)) = rx_audio.recv()",
+            "instant.elapsed() > Duration::from_secs(1)",
+            "Some(message::Union::AudioFrame(_))",
+            "conn.stream.send(&value as &Message).await",
+            "Some((_instant, value)) = rx.recv()",
+        ),
+        "controlled bounded audio receiver to sole stream writer source",
+    )
+    general_start = connection_start.index("Some((_instant, value)) = rx.recv()")
+    general_end = connection_start.index("_ = second_timer.tick()", general_start)
+    require_absent(
+        connection_start[general_start:general_end],
+        "message::Union::AudioFrame",
+        "controlled general queue audio handling source",
+    )
+
+    outgoing_audio_owner = extract_between(
+        sources["client_io_loop"],
+        "struct VoiceCallAudio",
+        "// R-S11ed:",
+        "outgoing bounded audio exact owner source",
+    )
+    require_order(
+        outgoing_audio_owner,
+        (
+            "subscription: Option<ConnInner>",
+            "input_lease: Option<audio_service::VoiceCallInputLease>",
+            "receiver: AudioEgressReceiver",
+            "if let Some(subscription) = self.subscription.take()",
+            ".subscribe(audio_service::NAME, subscription, false)",
+            "drop(self.input_lease.take());",
+            "impl Drop for VoiceCallAudio",
+            "self.stop();",
+            "voice_call.receiver.recv().await",
+            "None => std::future::pending().await",
+            '#[cfg(target_os = "ios")]',
+            "let _ = voice_call;",
+            "std::future::pending().await",
+        ),
+        "outgoing exact audio owner, async receive, and iOS-disabled source",
+    )
+    for retired in (
+        "VoiceCallThread",
+        "voice_call_thread",
+        "rustdesk-viewer-voice-call",
+        'reap_media_worker("voice-call"',
+        "unbounded_channel",
+        "try_recv",
+        "blocking_recv",
+        "tokio::spawn",
+        "std::thread",
+    ):
+        require_absent(
+            outgoing_audio_owner,
+            retired,
+            f"outgoing audio owner retired shape {retired}",
+        )
+
+    outgoing_voice_start = extract_between(
+        sources["client_io_loop"],
+        "    // Start a voice call recorder, records audio and send to remote",
+        "\n    async fn send_close_reason",
+        "outgoing bounded audio start source",
+    )
+    require_order(
+        outgoing_voice_start,
+        (
+            "acquire_voice_call_input(get_default_sound_input())",
+            "let (tx_audio_data, rx_audio_data) = audio_egress_channel();",
+            "ConnInner::with_audio(conn_id, None, None, Some(tx_audio_data))",
+            "client_conn_inner.clone()",
+            "true",
+            "VoiceCallAudio::new(",
+            "client_conn_inner",
+            "input_lease",
+            "rx_audio_data",
+        ),
+        "outgoing bounded audio subscription and composite owner source",
+    )
+    outgoing_round = extract_between(
+        sources["client_io_loop"],
+        "    pub async fn io_loop(",
+        "\n    async fn handle_local_clipboard_msg(",
+        "outgoing bounded audio sole writer source",
+    )
+    require_order(
+        outgoing_round,
+        (
+            "voice_call_audio = recv_voice_call_audio(&mut self.voice_call_audio)",
+            "let Some(message) = voice_call_audio",
+            "peer.send(&message as &Message).await",
+        ),
+        "outgoing bounded audio direct sole-writer source",
+    )
+    outgoing_branch_start = outgoing_round.index(
+        "voice_call_audio = recv_voice_call_audio(&mut self.voice_call_audio)"
+    )
+    outgoing_branch_end = outgoing_round.index(
+        "_msg = rx_clip_client.recv()", outgoing_branch_start
+    )
+    for retired in ("self.sender.send", "Data::Message", "tokio::spawn", "std::thread"):
+        require_absent(
+            outgoing_round[outgoing_branch_start:outgoing_branch_end],
+            retired,
+            f"outgoing audio intermediate writer shape {retired}",
+        )
+
+    for test_name in (
+        "r_s11eh_audio_egress_retains_only_the_latest_frame",
+        "r_s11eh_audio_format_precedes_its_latest_frame",
+        "r_s11eh_new_audio_format_retires_an_old_pending_frame",
+        "r_s11eh_conn_inner_routes_audio_away_from_control_and_video",
+        "r_s11eh_audio_egress_closes_after_the_exact_sender_retires",
+        "r_s11eh_async_audio_egress_waits_without_polling_and_closes",
+    ):
+        require_text(
+            connection,
+            test_name,
+            f"bounded audio behavior proof source {test_name}",
+        )
+    require_text(
+        connection,
+        "receiver retirement must release retained audio without another producer send",
+        "receiver-retirement retained-audio behavior proof source",
     )
 
 
@@ -44836,15 +45096,65 @@ def run_source_mutations(sources):
         ),
         (
             "viewer_voice_call_worker_verifier",
-            '"receiver.blocking_recv()?",\n            "if stop_requested.load(Ordering::Acquire)"',
-            '"receiver.try_recv().ok()?",\n            "if stop_requested.load(Ordering::Acquire)"',
-            "voice-call blocking receive contract",
+            '"Some(voice_call)",\n            "voice_call.receiver.recv().await",',
+            '"Some(voice_call)",\n            "voice_call.receiver.try_recv().ok()",',
+            "voice-call event-driven async receive contract",
         ),
         (
             "viewer_voice_call_worker_verifier",
-            'for forbidden in ("try_recv", "thread::sleep", "Runtime::new", "block_on"):',
+            '("receiver: AudioEgressReceiver", "bounded audio receiver owner"),',
+            '("receiver_removed: AudioEgressReceiver", "bounded audio receiver owner"),',
+            "voice-call bounded receiver owner contract",
+        ),
+        (
+            "viewer_voice_call_worker_verifier",
+            'for forbidden in ("try_recv", "thread::sleep", "Runtime::new", "block_on")',
             "for forbidden in ():",
             "voice-call polling/runtime rejection inventory",
+        ),
+        (
+            "viewer_voice_call_worker_verifier",
+            '"const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;",\n'
+            '        "capacity-one audio wake",',
+            '"const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1024;",\n'
+            '        "capacity-one audio wake",',
+            "voice-call capacity-one audio wake contract",
+        ),
+        (
+            "viewer_voice_call_worker_verifier",
+            '"state.format.take().or_else(|| state.frame.take())",\n'
+            '            "pub(crate) async fn recv(&mut self)",',
+            '"state.frame.take().or_else(|| state.format.take())",\n'
+            '            "pub(crate) async fn recv(&mut self)",',
+            "voice-call format-before-frame contract",
+        ),
+        (
+            "viewer_voice_call_worker_verifier",
+            '"self.stop_voice_call().await;",\n'
+            '            "peer.send(&message as &Message).await",',
+            '"self.stop_voice_call().await;",\n'
+            '            "self.sender.send(Data::Message((*message).clone()))",',
+            "voice-call direct sole-writer contract",
+        ),
+        (
+            "viewer_voice_call_worker_verifier",
+            '"iOS voice-call receive remains permanently disabled"',
+            '"iOS voice-call receive may restart"',
+            "voice-call iOS disabled receive contract",
+        ),
+        (
+            "viewer_voice_call_worker_verifier",
+            '"impl Drop for AudioEgressReceiver",\n'
+            '        "audio receiver retained-state retirement",',
+            '"impl AudioEgressReceiver",\n'
+            '        "audio receiver retained-state retirement",',
+            "voice-call receiver retained-state retirement contract",
+        ),
+        (
+            "viewer_voice_call_worker_verifier",
+            '"receiver-retirement retained-audio behavior assertion"',
+            '"receiver-retirement retained-audio behavior omitted"',
+            "voice-call receiver-retirement behavior contract",
         ),
         (
             "viewer_voice_call_worker_verifier",
@@ -44921,6 +45231,36 @@ def run_source_mutations(sources):
             "R-S11bq/R-S11e-83 — voice-call input selection has exact concurrent owners",
             "R-S11bq/R-S11e-83 — voice-call input selection is ambient",
             "voice-call input ownership hardening ledger",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11eh</span>',
+            '<span class="id">R-S11eh-disabled</span>',
+            "bounded audio egress requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>287</td>",
+            "<tr><td>287-disabled</td>",
+            "bounded audio egress Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11eh/R-S11e-152",
+            "R-S11eh-disabled/R-S11e-152",
+            "bounded audio egress hardening ledger",
+        ),
+        (
+            "verify",
+            "server::connection::audio_egress_tests::r_s11eh_ -- --test-threads=1",
+            "server::connection::audio_egress_tests::disabled_ -- --test-threads=1",
+            "shared bounded audio behavior gate",
+        ),
+        (
+            "dart_verify",
+            "server::connection::audio_egress_tests::r_s11eh_",
+            "server::connection::audio_egress_tests::disabled_",
+            "generated-bridge bounded audio behavior gate",
         ),
         (
             "android_voice_call_ownership_verifier",
@@ -45188,13 +45528,25 @@ def run_source_mutations(sources):
             "android_voice_call_ownership_verifier",
             '"only then publish native/UI started state"',
             '"publish native/UI started state before construction"',
-            "Android worker-before-native start requirement contract",
+            "Android audio-owner-before-native start requirement contract",
         ),
         (
             "android_voice_call_ownership_verifier",
-            '"publishes `on_voice_call_started` only after that worker exists"',
-            '"publishes `on_voice_call_started` before that worker exists"',
-            "Android worker-before-native start ledger contract",
+            '"publishes `on_voice_call_started` only after that complete owner exists"',
+            '"publishes `on_voice_call_started` before that complete owner exists"',
+            "Android audio-owner-before-native start ledger contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"receiver close before retained audio release"',
+            '"receiver leaves retained audio"',
+            "Android/shared audio receiver retirement contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"receiver-retirement retained-audio behavior proof"',
+            '"receiver-retirement retained-audio behavior omitted"',
+            "Android/shared audio receiver-retirement behavior contract",
         ),
         (
             "android_voice_call_ownership_verifier",
@@ -46759,7 +47111,7 @@ def run_source_mutations(sources):
             "requirements",
             "only then publish native/UI started state",
             "publish native/UI started state before construction",
-            "Android worker-before-native start requirement source",
+            "Android audio-owner-before-native start requirement source",
         ),
         (
             "requirements",
@@ -46799,9 +47151,9 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "publishes `on_voice_call_started` only after that worker exists",
-            "publishes `on_voice_call_started` before that worker exists",
-            "Android worker-before-native start ledger source",
+            "publishes `on_voice_call_started` only after that complete owner exists",
+            "publishes `on_voice_call_started` before that complete owner exists",
+            "Android audio-owner-before-native start ledger source",
         ),
         (
             "hardening",
@@ -50818,15 +51170,89 @@ def run_source_mutations(sources):
         ),
         (
             "client_io_loop",
-            "self.voice_call_thread = self.start_voice_call();\n                                if self.voice_call_thread.is_some() {\n                                    self.handler.on_voice_call_started();",
-            "self.handler.on_voice_call_started();\n                                self.voice_call_thread = self.start_voice_call();\n                                if self.voice_call_thread.is_some() {",
-            "Android worker-before-native outgoing voice-call activation source",
+            "self.voice_call_audio = self.start_voice_call();\n                                if self.voice_call_audio.is_some() {\n                                    self.handler.on_voice_call_started();",
+            "self.handler.on_voice_call_started();\n                                self.voice_call_audio = self.start_voice_call();\n                                if self.voice_call_audio.is_some() {",
+            "Android audio-owner-before-native outgoing voice-call activation source",
         ),
         (
             "client_io_loop",
             '.on_voice_call_closed("Failed to start voice call audio")',
             ".on_voice_call_started()",
-            "Android worker-before-native outgoing voice-call activation source",
+            "Android audio-owner-before-native outgoing voice-call activation source",
+        ),
+        (
+            "connection_source",
+            "const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;",
+            "const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1024;",
+            "shared bounded audio coalescing, generation, wake, and retirement source",
+        ),
+        (
+            "connection_source",
+            "state.frame = Some(queued);",
+            "drop(queued);",
+            "shared bounded audio coalescing, generation, wake, and retirement source",
+        ),
+        (
+            "connection_source",
+            "state.format.take().or_else(|| state.frame.take())",
+            "state.frame.take().or_else(|| state.format.take())",
+            "shared bounded audio coalescing, generation, wake, and retirement source",
+        ),
+        (
+            "connection_source",
+            "impl Drop for AudioEgressReceiver",
+            "impl AudioEgressReceiver",
+            "shared bounded audio coalescing, generation, wake, and retirement source",
+        ),
+        (
+            "connection_source",
+            "receiver retirement must release retained audio without another producer send",
+            "receiver retirement retained audio",
+            "receiver-retirement retained-audio behavior proof source",
+        ),
+        (
+            "connection_source",
+            "if tx_by_audio {",
+            "if false && tx_by_audio {",
+            "shared audio route precedes general and video routes",
+        ),
+        (
+            "connection_source",
+            "let (tx_audio, mut rx_audio) = audio_egress_channel();",
+            "let (tx_audio, mut rx_audio) = mpsc::unbounded_channel();",
+            "controlled bounded audio receiver to sole stream writer source",
+        ),
+        (
+            "connection_source",
+            "Some((instant, value)) = rx_audio.recv()",
+            "Some((instant, value)) = rx.recv()",
+            "controlled bounded audio receiver to sole stream writer source",
+        ),
+        (
+            "client_io_loop",
+            '#[cfg(target_os = "ios")]\nasync fn recv_voice_call_audio(',
+            '#[cfg(any())]\nasync fn recv_voice_call_audio(',
+            "outgoing exact audio owner, async receive, and iOS-disabled source",
+        ),
+        (
+            "client_io_loop",
+            "let (tx_audio_data, rx_audio_data) = audio_egress_channel();",
+            "let (tx_audio_data, rx_audio_data) = mpsc::unbounded_channel();",
+            "outgoing bounded audio subscription and composite owner source",
+        ),
+        (
+            "client_io_loop",
+            "ConnInner::with_audio(conn_id, None, None, Some(tx_audio_data))",
+            "ConnInner::new(conn_id, Some(tx_audio_data), None)",
+            "outgoing bounded audio subscription and composite owner source",
+        ),
+        (
+            "client_io_loop",
+            'if let Err(err) = peer.send(&message as &Message).await {\n'
+            '                                log::error!("Failed to send voice call audio to peer: {err}");',
+            'if let Err(err) = self.sender.send(Data::Message((*message).clone())) {\n'
+            '                                log::error!("Failed to send voice call audio to peer: {err}");',
+            "outgoing bounded audio direct sole-writer source",
         ),
         (
             "android_main_service",

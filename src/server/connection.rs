@@ -389,11 +389,130 @@ lazy_static::lazy_static! {
 }
 pub static CLICK_TIME: AtomicI64 = AtomicI64::new(0);
 
+const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;
+
+#[derive(Default)]
+struct AudioEgressState {
+    format: Option<(Instant, Arc<Message>)>,
+    frame: Option<(Instant, Arc<Message>)>,
+}
+
+#[derive(Clone)]
+pub(crate) struct AudioEgressSender {
+    state: Arc<Mutex<AudioEgressState>>,
+    wake: mpsc::Sender<()>,
+}
+
+pub(crate) struct AudioEgressReceiver {
+    state: Arc<Mutex<AudioEgressState>>,
+    wake: mpsc::Receiver<()>,
+}
+
+pub(crate) fn audio_egress_channel() -> (AudioEgressSender, AudioEgressReceiver) {
+    let state = Arc::new(Mutex::new(AudioEgressState::default()));
+    let (wake, receiver) = mpsc::channel(AUDIO_EGRESS_WAKE_CAPACITY);
+    (
+        AudioEgressSender {
+            state: Arc::clone(&state),
+            wake,
+        },
+        AudioEgressReceiver {
+            state,
+            wake: receiver,
+        },
+    )
+}
+
+fn lock_audio_egress_state(
+    state: &Mutex<AudioEgressState>,
+) -> std::sync::MutexGuard<'_, AudioEgressState> {
+    match state.lock() {
+        Ok(state) => state,
+        Err(poisoned) => {
+            log::error!("audio egress state was poisoned");
+            poisoned.into_inner()
+        }
+    }
+}
+
+impl AudioEgressSender {
+    pub(crate) fn send(&self, msg: Arc<Message>) {
+        let queued = (Instant::now(), msg);
+        {
+            let mut state = lock_audio_egress_state(&self.state);
+            match &queued.1.union {
+                Some(message::Union::AudioFrame(_)) => {
+                    state.frame = Some(queued);
+                }
+                Some(message::Union::Misc(misc))
+                    if matches!(&misc.union, Some(misc::Union::AudioFormat(_))) =>
+                {
+                    // A new codec generation must be observed before any frame encoded for it.
+                    // Retire a pending old-generation frame rather than delivering it afterwards.
+                    state.format = Some(queued);
+                    state.frame = None;
+                }
+                _ => {
+                    log::error!("refusing a non-audio message on the audio egress mailbox");
+                    return;
+                }
+            }
+        }
+
+        match self.wake.try_send(()) {
+            Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                // The receiver is terminal. Release any retained local audio immediately even if
+                // an exact service unsubscribe is still propagating.
+                let mut state = lock_audio_egress_state(&self.state);
+                state.format = None;
+                state.frame = None;
+            }
+        }
+    }
+}
+
+impl AudioEgressReceiver {
+    fn take_next(&mut self) -> Option<(Instant, Arc<Message>)> {
+        let mut state = lock_audio_egress_state(&self.state);
+        state.format.take().or_else(|| state.frame.take())
+    }
+
+    pub(crate) async fn recv(&mut self) -> Option<(Instant, Arc<Message>)> {
+        loop {
+            if let Some(queued) = self.take_next() {
+                return Some(queued);
+            }
+            self.wake.recv().await?;
+        }
+    }
+
+    #[cfg(test)]
+    fn blocking_recv(&mut self) -> Option<(Instant, Arc<Message>)> {
+        loop {
+            if let Some(queued) = self.take_next() {
+                return Some(queued);
+            }
+            self.wake.blocking_recv()?;
+        }
+    }
+}
+
+impl Drop for AudioEgressReceiver {
+    fn drop(&mut self) {
+        self.wake.close();
+        let mut state = lock_audio_egress_state(&self.state);
+        state.format = None;
+        state.frame = None;
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct ConnInner {
     id: i32,
     tx: Option<Sender>,
     tx_video: Option<Sender>,
+    tx_audio: Option<AudioEgressSender>,
     #[cfg(target_os = "windows")]
     cm_clipboard_authority: Option<ipc::CmClipboardAuthority>,
 }
@@ -2570,10 +2689,20 @@ pub struct Connection {
 
 impl ConnInner {
     pub fn new(id: i32, tx: Option<Sender>, tx_video: Option<Sender>) -> Self {
+        Self::with_audio(id, tx, tx_video, None)
+    }
+
+    pub(crate) fn with_audio(
+        id: i32,
+        tx: Option<Sender>,
+        tx_video: Option<Sender>,
+        tx_audio: Option<AudioEgressSender>,
+    ) -> Self {
         Self {
             id,
             tx,
             tx_video,
+            tx_audio,
             #[cfg(target_os = "windows")]
             cm_clipboard_authority: None,
         }
@@ -2606,6 +2735,20 @@ impl Subscriber for ConnInner {
 
     #[inline]
     fn send(&mut self, msg: Arc<Message>) {
+        let tx_by_audio = match &msg.union {
+            Some(message::Union::AudioFrame(_)) => true,
+            Some(message::Union::Misc(misc)) => {
+                matches!(&misc.union, Some(misc::Union::AudioFormat(_)))
+            }
+            _ => false,
+        };
+        if tx_by_audio {
+            if let Some(tx) = self.tx_audio.as_ref() {
+                tx.send(msg);
+            }
+            return;
+        }
+
         // Send SwitchDisplay on the same channel as VideoFrame to avoid send order problems.
         let tx_by_video = match &msg.union {
             Some(message::Union::VideoFrame(_)) => true,
@@ -2623,6 +2766,181 @@ impl Subscriber for ConnInner {
         tx.map(|tx| {
             allow_err!(tx.send((Instant::now(), msg)));
         });
+    }
+}
+
+#[cfg(test)]
+mod audio_egress_tests {
+    use super::*;
+
+    fn frame(data: &[u8]) -> Arc<Message> {
+        let mut message = Message::new();
+        message.set_audio_frame(AudioFrame {
+            data: data.to_vec().into(),
+            ..Default::default()
+        });
+        Arc::new(message)
+    }
+
+    fn format(sample_rate: u32) -> Arc<Message> {
+        let mut misc = Misc::new();
+        misc.set_audio_format(AudioFormat {
+            sample_rate,
+            channels: 2,
+            ..Default::default()
+        });
+        let mut message = Message::new();
+        message.set_misc(misc);
+        Arc::new(message)
+    }
+
+    fn frame_data(message: &Message) -> &[u8] {
+        match &message.union {
+            Some(message::Union::AudioFrame(frame)) => &frame.data,
+            _ => panic!("expected an audio frame"),
+        }
+    }
+
+    fn format_sample_rate(message: &Message) -> u32 {
+        match &message.union {
+            Some(message::Union::Misc(misc)) => match &misc.union {
+                Some(misc::Union::AudioFormat(format)) => format.sample_rate,
+                _ => panic!("expected an audio format"),
+            },
+            _ => panic!("expected an audio format"),
+        }
+    }
+
+    #[test]
+    fn r_s11eh_audio_egress_retains_only_the_latest_frame() {
+        let (sender, mut receiver) = audio_egress_channel();
+        sender.send(frame(b"first"));
+        sender.send(frame(b"second"));
+        sender.send(frame(b"latest"));
+
+        let (_, actual) = receiver
+            .blocking_recv()
+            .expect("the latest frame must remain available");
+        assert_eq!(frame_data(&actual), b"latest");
+        assert!(receiver.take_next().is_none());
+    }
+
+    #[test]
+    fn r_s11eh_audio_format_precedes_its_latest_frame() {
+        let (sender, mut receiver) = audio_egress_channel();
+        sender.send(format(48_000));
+        sender.send(frame(b"first"));
+        sender.send(frame(b"latest"));
+
+        let (_, actual_format) = receiver
+            .blocking_recv()
+            .expect("the pending format must remain available");
+        let (_, actual_frame) = receiver
+            .blocking_recv()
+            .expect("the pending frame must remain available");
+        assert_eq!(format_sample_rate(&actual_format), 48_000);
+        assert_eq!(frame_data(&actual_frame), b"latest");
+        assert!(receiver.take_next().is_none());
+    }
+
+    #[test]
+    fn r_s11eh_new_audio_format_retires_an_old_pending_frame() {
+        let (sender, mut receiver) = audio_egress_channel();
+        sender.send(format(24_000));
+        sender.send(frame(b"old-generation"));
+        sender.send(format(48_000));
+        sender.send(frame(b"new-generation"));
+
+        let (_, actual_format) = receiver
+            .blocking_recv()
+            .expect("the replacement format must remain available");
+        let (_, actual_frame) = receiver
+            .blocking_recv()
+            .expect("the replacement frame must remain available");
+        assert_eq!(format_sample_rate(&actual_format), 48_000);
+        assert_eq!(frame_data(&actual_frame), b"new-generation");
+        assert!(receiver.take_next().is_none());
+    }
+
+    #[test]
+    fn r_s11eh_conn_inner_routes_audio_away_from_control_and_video() {
+        let (control_sender, mut control_receiver) = mpsc::unbounded_channel();
+        let (video_sender, mut video_receiver) = mpsc::unbounded_channel();
+        let (audio_sender, mut audio_receiver) = audio_egress_channel();
+        let mut subscriber = ConnInner::with_audio(
+            41,
+            Some(control_sender),
+            Some(video_sender),
+            Some(audio_sender),
+        );
+
+        subscriber.send(format(48_000));
+        subscriber.send(frame(b"audio"));
+        let control = Arc::new(Message::new());
+        subscriber.send(Arc::clone(&control));
+        let mut video = Message::new();
+        video.set_video_frame(VideoFrame::new());
+        subscriber.send(Arc::new(video));
+
+        let (_, actual_control) = control_receiver
+            .try_recv()
+            .expect("control traffic must retain its existing channel");
+        assert!(Arc::ptr_eq(&actual_control, &control));
+        assert!(control_receiver.try_recv().is_err());
+        assert!(video_receiver.try_recv().is_ok());
+        assert!(video_receiver.try_recv().is_err());
+
+        let (_, actual_format) = audio_receiver
+            .blocking_recv()
+            .expect("audio format must use the audio mailbox");
+        let (_, actual_frame) = audio_receiver
+            .blocking_recv()
+            .expect("audio frame must use the audio mailbox");
+        assert_eq!(format_sample_rate(&actual_format), 48_000);
+        assert_eq!(frame_data(&actual_frame), b"audio");
+    }
+
+    #[test]
+    fn r_s11eh_audio_egress_closes_after_the_exact_sender_retires() {
+        let (sender, mut receiver) = audio_egress_channel();
+        drop(sender);
+        assert!(receiver.blocking_recv().is_none());
+
+        let (sender, receiver) = audio_egress_channel();
+        let pending = frame(b"retained-until-receiver-close");
+        let pending_weak = Arc::downgrade(&pending);
+        sender.send(pending);
+        drop(receiver);
+        assert!(
+            pending_weak.upgrade().is_none(),
+            "receiver retirement must release retained audio without another producer send"
+        );
+        drop(sender);
+    }
+
+    #[tokio::test]
+    async fn r_s11eh_async_audio_egress_waits_without_polling_and_closes() {
+        let (sender, mut receiver) = audio_egress_channel();
+        assert!(
+            time::timeout(Duration::from_millis(20), receiver.recv())
+                .await
+                .is_err(),
+            "an empty audio mailbox must remain pending"
+        );
+
+        let expected = frame(b"async");
+        sender.send(Arc::clone(&expected));
+        let (_, actual) = time::timeout(Duration::from_secs(1), receiver.recv())
+            .await
+            .expect("audio wake must be bounded")
+            .expect("the live sender must keep the mailbox open");
+        assert!(Arc::ptr_eq(&actual, &expected));
+
+        drop(sender);
+        assert!(time::timeout(Duration::from_secs(1), receiver.recv())
+            .await
+            .expect("sender retirement must wake the receiver")
+            .is_none());
     }
 }
 
@@ -2653,6 +2971,7 @@ impl Connection {
         let (tx_to_cm, rx_to_cm) = mpsc::unbounded_channel::<ipc::Data>();
         let (tx, mut rx) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();
         let (tx_video, mut rx_video) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();
+        let (tx_audio, mut rx_audio) = audio_egress_channel();
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let (tx_input, rx_input) = std_mpsc::sync_channel(INPUT_QUEUE_CAPACITY);
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2675,7 +2994,7 @@ impl Connection {
 
         let cm_auth_token = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
         let mut conn = Self {
-            inner: ConnInner::new(id, Some(tx), Some(tx_video)),
+            inner: ConnInner::with_audio(id, Some(tx), Some(tx_video), Some(tx_audio)),
             display_idx: *display_service::PRIMARY_DISPLAY_IDX,
             stream,
             server,
@@ -3027,20 +3346,21 @@ impl Connection {
                         break;
                     }
                 },
-                Some((instant, value)) = rx.recv() => {
-                    let latency = instant.elapsed().as_millis() as i64;
+                Some((instant, value)) = rx_audio.recv() => {
+                    if instant.elapsed() > Duration::from_secs(1)
+                        && matches!(&value.union, Some(message::Union::AudioFrame(_)))
+                    {
+                        continue;
+                    }
+                    if let Err(err) = conn.stream.send(&value as &Message).await {
+                        conn.on_close(&err.to_string(), false).await;
+                        break;
+                    }
+                },
+                Some((_instant, value)) = rx.recv() => {
                     #[allow(unused_mut)]
                     let mut msg = value;
 
-                    if latency > 1000 {
-                        match &msg.union {
-                            Some(message::Union::AudioFrame(_)) => {
-                                // log::info!("audio frame latency {}", instant.elapsed().as_secs_f32());
-                                continue;
-                            }
-                            _ => {}
-                        }
-                    }
                     match &msg.union {
                         Some(message::Union::Misc(m)) => {
                             match &m.union {

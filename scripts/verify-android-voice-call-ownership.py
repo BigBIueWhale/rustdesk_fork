@@ -1763,14 +1763,14 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "if response.accepted",
             "self.stop_voice_call().await",
-            "self.voice_call_thread = self.start_voice_call()",
-            "if self.voice_call_thread.is_some()",
+            "self.voice_call_audio = self.start_voice_call()",
+            "if self.voice_call_audio.is_some()",
             "self.handler.on_voice_call_started()",
             ".on_voice_call_closed(\"Failed to start voice call audio\")",
             "let msg = new_voice_call_request(false)",
             "peer.send(&msg).await",
         ),
-        "worker-before-native outgoing voice-call activation",
+        "audio-owner-before-native outgoing voice-call activation",
     )
 
     behavior = sources["test"]
@@ -1815,7 +1815,7 @@ def validate(sources: Dict[str, str]) -> None:
     require(
         sources["requirements"],
         "only then publish native/UI started state",
-        "Android worker-before-native start requirement",
+        "Android audio-owner-before-native start requirement",
     )
     require(
         sources["requirements"],
@@ -1869,8 +1869,8 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["hardening"],
-        "publishes `on_voice_call_started` only after that worker exists",
-        "Android worker-before-native start ledger",
+        "publishes `on_voice_call_started` only after that complete owner exists",
+        "Android audio-owner-before-native start ledger",
     )
     require(
         sources["hardening"],
@@ -2396,7 +2396,7 @@ def validate(sources: Dict[str, str]) -> None:
         shutdown_workers,
         (
             "self.input_os_password_task.stop_and_join().await;",
-            "self.voice_call_thread.take()",
+            "self.voice_call_audio.take()",
             "self.video_threads.drain()",
             "self.audio_thread.close()",
             "Self::join_workers(workers).await;",
@@ -3047,6 +3047,318 @@ def validate(sources: Dict[str, str]) -> None:
         "generated-bridge controlled video acknowledgement behavior gate wiring",
     )
 
+    server_connection = sources["server_connection"]
+    require(
+        server_connection,
+        "const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;",
+        "audio egress wake capacity",
+    )
+    audio_state = extract_item(
+        server_connection,
+        "struct AudioEgressState",
+        "bounded audio egress state",
+    )
+    require_order(
+        audio_state,
+        (
+            "format: Option<(Instant, Arc<Message>)>",
+            "frame: Option<(Instant, Arc<Message>)>",
+        ),
+        "one-format one-frame audio state",
+    )
+    for retired in ("Vec<", "VecDeque", "HashMap", "Unbounded"):
+        forbid(audio_state, retired, f"unbounded audio state shape {retired}")
+
+    audio_channel = extract_item(
+        server_connection,
+        "pub(crate) fn audio_egress_channel()",
+        "bounded audio egress channel",
+    )
+    require_order(
+        audio_channel,
+        (
+            "AudioEgressState::default()",
+            "mpsc::channel(AUDIO_EGRESS_WAKE_CAPACITY)",
+            "AudioEgressSender",
+            "AudioEgressReceiver",
+        ),
+        "bounded audio state plus capacity-one wake construction",
+    )
+    audio_sender = extract_item(
+        server_connection,
+        "impl AudioEgressSender",
+        "nonblocking audio egress sender",
+    )
+    require_order(
+        audio_sender,
+        (
+            "Some(message::Union::AudioFrame(_))",
+            "state.frame = Some(queued);",
+            "Some(message::Union::Misc(misc))",
+            "Some(misc::Union::AudioFormat(_))",
+            "state.format = Some(queued);",
+            "state.frame = None;",
+            "self.wake.try_send(())",
+            "TrySendError::Full(_)",
+            "TrySendError::Closed(_)",
+            "state.format = None;",
+            "state.frame = None;",
+        ),
+        "latest-frame format-generation and wake coalescing",
+    )
+    for retired in (
+        "unbounded_channel",
+        "tokio::spawn",
+        "std::thread",
+        "Runtime::new",
+        "block_on",
+        "thread::sleep",
+    ):
+        forbid(audio_sender, retired, f"retired audio sender shape {retired}")
+
+    audio_receiver = extract_item(
+        server_connection,
+        "impl AudioEgressReceiver",
+        "event-driven audio egress receiver",
+    )
+    require_order(
+        audio_receiver,
+        (
+            "state.format.take().or_else(|| state.frame.take())",
+            "pub(crate) async fn recv",
+            "if let Some(queued) = self.take_next()",
+            "self.wake.recv().await?",
+            "fn blocking_recv",
+            "self.wake.blocking_recv()?",
+        ),
+        "format-first async and blocking event-driven receive",
+    )
+    for retired in (
+        "try_recv",
+        "tokio::spawn",
+        "std::thread",
+        "Runtime::new",
+        "block_on",
+        "thread::sleep",
+    ):
+        forbid(audio_receiver, retired, f"retired audio receiver shape {retired}")
+    audio_receiver_drop = extract_item(
+        server_connection,
+        "impl Drop for AudioEgressReceiver",
+        "audio receiver retained-state retirement",
+    )
+    require_order(
+        audio_receiver_drop,
+        (
+            "self.wake.close();",
+            "lock_audio_egress_state(&self.state)",
+            "state.format = None;",
+            "state.frame = None;",
+        ),
+        "receiver close before retained audio release",
+    )
+    forbid(
+        audio_receiver_drop,
+        ".await",
+        "asynchronous audio receiver Drop cleanup",
+    )
+    require_order(
+        server_connection,
+        (
+            'log::error!("audio egress state was poisoned")',
+            "poisoned.into_inner()",
+        ),
+        "diagnosed audio mutex poison recovery",
+    )
+
+    conn_inner = extract_item(server_connection, "pub struct ConnInner", "connection subscriber")
+    require(
+        conn_inner,
+        "tx_audio: Option<AudioEgressSender>",
+        "exact connection audio sender",
+    )
+    subscriber_send = extract_item(
+        server_connection,
+        "impl Subscriber for ConnInner",
+        "connection service routing",
+    )
+    require_order(
+        subscriber_send,
+        (
+            "let tx_by_audio = match &msg.union",
+            "Some(message::Union::AudioFrame(_))",
+            "Some(misc::Union::AudioFormat(_))",
+            "if tx_by_audio",
+            "self.tx_audio.as_ref()",
+            "tx.send(msg);",
+            "return;",
+            "let tx_by_video = match &msg.union",
+        ),
+        "audio route before video/general routes",
+    )
+
+    connection_start = extract_item(
+        server_connection,
+        "pub async fn start(",
+        "controlled connection run loop",
+    )
+    require_order(
+        connection_start,
+        (
+            "let (tx, mut rx) = mpsc::unbounded_channel",
+            "let (tx_video, mut rx_video) = mpsc::unbounded_channel",
+            "let (tx_audio, mut rx_audio) = audio_egress_channel();",
+            "ConnInner::with_audio(id, Some(tx), Some(tx_video), Some(tx_audio))",
+            "Some((instant, value)) = rx_audio.recv()",
+            "instant.elapsed() > Duration::from_secs(1)",
+            "Some(message::Union::AudioFrame(_))",
+            "conn.stream.send(&value as &Message).await",
+            "Some((_instant, value)) = rx.recv()",
+        ),
+        "controlled bounded audio mailbox to sole stream writer",
+    )
+    general_start = connection_start.index("Some((_instant, value)) = rx.recv()")
+    general_end = connection_start.index("_ = second_timer.tick()", general_start)
+    forbid(
+        connection_start[general_start:general_end],
+        "message::Union::AudioFrame",
+        "audio handling in general unbounded connection queue",
+    )
+    for retired in (
+        "let (tx_audio, mut rx_audio) = mpsc::unbounded_channel",
+        "Some((instant, value)) = rx.recv()",
+    ):
+        forbid(connection_start, retired, f"retired unbounded audio connection shape {retired}")
+
+    io_loop = sources["io_loop"]
+    voice_owner = extract_item(io_loop, "struct VoiceCallAudio", "outgoing voice-call audio owner")
+    require_order(
+        voice_owner,
+        (
+            "subscription: Option<ConnInner>",
+            "input_lease: Option<audio_service::VoiceCallInputLease>",
+            "receiver: AudioEgressReceiver",
+        ),
+        "exact outgoing subscription/input/receiver owner",
+    )
+    voice_stop = extract_item(io_loop, "fn stop(&mut self)", "outgoing voice-call stop")
+    require_order(
+        voice_stop,
+        (
+            "if let Some(subscription) = self.subscription.take()",
+            ".subscribe(audio_service::NAME, subscription, false)",
+            "drop(self.input_lease.take());",
+        ),
+        "exact unsubscribe before outgoing input release",
+    )
+    voice_receive = extract_item(
+        io_loop,
+        "async fn recv_voice_call_audio(",
+        "outgoing event-driven audio receive",
+    )
+    require_order(
+        voice_receive,
+        (
+            "voice_call.as_mut()",
+            "voice_call.receiver.recv().await",
+            "None => std::future::pending().await",
+        ),
+        "outgoing exact-owner async receive",
+    )
+    voice_start = extract_item(
+        io_loop,
+        "fn start_voice_call(&mut self) -> Option<VoiceCallAudio>",
+        "outgoing voice-call audio start",
+    )
+    require_order(
+        voice_start,
+        (
+            "acquire_voice_call_input(get_default_sound_input())",
+            "let (tx_audio_data, rx_audio_data) = audio_egress_channel();",
+            "ConnInner::with_audio(conn_id, None, None, Some(tx_audio_data))",
+            "client_conn_inner.clone()",
+            "true",
+            "VoiceCallAudio::new(",
+            "client_conn_inner",
+            "input_lease",
+            "rx_audio_data",
+        ),
+        "outgoing exact bounded audio owner construction",
+    )
+    outgoing_round = extract_item(io_loop, "pub async fn io_loop(", "outgoing connection round")
+    require_order(
+        outgoing_round,
+        (
+            "voice_call_audio = recv_voice_call_audio(&mut self.voice_call_audio)",
+            "let Some(message) = voice_call_audio",
+            "peer.send(&message as &Message).await",
+        ),
+        "outgoing bounded receiver to sole stream writer",
+    )
+    branch_start = outgoing_round.index(
+        "voice_call_audio = recv_voice_call_audio(&mut self.voice_call_audio)"
+    )
+    branch_end = outgoing_round.index("_msg = rx_clip_client.recv()", branch_start)
+    for retired in ("self.sender.send", "Data::Message", "tokio::spawn", "std::thread"):
+        forbid(
+            outgoing_round[branch_start:branch_end],
+            retired,
+            f"outgoing audio intermediate path {retired}",
+        )
+    for retired in (
+        "VoiceCallThread",
+        "voice_call_thread",
+        "rustdesk-viewer-voice-call",
+        'reap_media_worker("voice-call"',
+        "tx_audio.send(Data::Message",
+    ):
+        forbid(io_loop, retired, f"retired outgoing voice worker shape {retired}")
+
+    for behavior_test in (
+        "r_s11eh_audio_egress_retains_only_the_latest_frame",
+        "r_s11eh_audio_format_precedes_its_latest_frame",
+        "r_s11eh_new_audio_format_retires_an_old_pending_frame",
+        "r_s11eh_conn_inner_routes_audio_away_from_control_and_video",
+        "r_s11eh_audio_egress_closes_after_the_exact_sender_retires",
+        "r_s11eh_async_audio_egress_waits_without_polling_and_closes",
+    ):
+        require(
+            server_connection,
+            behavior_test,
+            f"bounded audio egress behavior proof {behavior_test}",
+        )
+    require(
+        server_connection,
+        "receiver retirement must release retained audio without another producer send",
+        "receiver-retirement retained-audio behavior proof",
+    )
+    require(
+        sources["requirements"],
+        '<span class="id">R-S11eh</span>',
+        "bounded audio egress normative requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>287</td>",
+        "bounded audio egress Appendix C disposition",
+    )
+    require(
+        sources["hardening"],
+        "R-S11eh/R-S11e-152",
+        "bounded audio egress hardening ledger",
+    )
+    require(
+        sources["verify"],
+        '"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\n'
+        "  server::connection::audio_egress_tests::r_s11eh_ -- --test-threads=1",
+        "shared bounded audio behavior gate wiring",
+    )
+    require(
+        sources["dart_verify"],
+        "server::connection::audio_egress_tests::r_s11eh_",
+        "generated-bridge bounded audio behavior gate wiring",
+    )
+
 
 Mutation = Tuple[str, str, str, str]
 
@@ -3307,12 +3619,50 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("hardening", "R-S11eg/R-S11e-151", "R-S11eg-disabled/R-S11e-151", "controlled video acknowledgement hardening ledger"),
     ("verify", "\"${RUN[@]}\" cargo test --lib --features linux-pkg-config \\\n  server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1", "true # shared video acknowledgement behavior gate disabled", "shared controlled video acknowledgement behavior gate"),
     ("dart_verify", "server::video_service::video_frame_ack_tests::r_s11eg_", "server::video_service::video_frame_ack_tests::disabled_", "generated-bridge controlled video acknowledgement behavior gate"),
+    ("server_connection", "const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;", "const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1024;", "audio wake capacity"),
+    ("server_connection", "format: Option<(Instant, Arc<Message>)>,", "format: Vec<(Instant, Arc<Message>)>,", "one pending audio format"),
+    ("server_connection", "frame: Option<(Instant, Arc<Message>)>,", "frame: Vec<(Instant, Arc<Message>)>,", "one pending audio frame"),
+    ("server_connection", "mpsc::channel(AUDIO_EGRESS_WAKE_CAPACITY)", "mpsc::unbounded_channel()", "bounded audio wake channel"),
+    ("server_connection", "state.frame = Some(queued);", "drop(queued);", "latest audio frame replacement"),
+    ("server_connection", "state.format = Some(queued);", "drop(queued);", "latest audio format replacement"),
+    ("server_connection", "state.frame = None;", "// old-generation frame retained", "audio format generation retirement"),
+    ("server_connection", "self.wake.try_send(())", "self.wake.send(())", "nonblocking audio wake"),
+    ("server_connection", "Err(mpsc::error::TrySendError::Full(_))", "Err(mpsc::error::TrySendError::Closed(_))", "coalesced full audio wake"),
+    ("server_connection", "state.format.take().or_else(|| state.frame.take())", "state.frame.take().or_else(|| state.format.take())", "format-before-frame dequeue"),
+    ("server_connection", "self.wake.recv().await?", "self.wake.try_recv().ok()?", "event-driven async audio receive"),
+    ("server_connection", "self.wake.blocking_recv()?", "self.wake.try_recv().ok()?", "event-driven blocking audio receive"),
+    ("server_connection", "impl Drop for AudioEgressReceiver", "impl AudioEgressReceiver", "receiver retained-state retirement"),
+    ("server_connection", 'log::error!("audio egress state was poisoned")', 'log::debug!("audio egress state was poisoned")', "audio poison diagnostic"),
+    ("server_connection", "tx_audio: Option<AudioEgressSender>", "tx_audio_removed: Option<AudioEgressSender>", "exact connection audio sender"),
+    ("server_connection", "let tx_by_audio = match &msg.union", "let tx_by_audio = match &None", "audio route classification"),
+    ("server_connection", "Some(misc::Union::AudioFormat(_))", "Some(misc::Union::StopService(_))", "audio format route classification"),
+    ("server_connection", "if tx_by_audio {", "if false {", "audio route admission"),
+    ("server_connection", "let (tx_audio, mut rx_audio) = audio_egress_channel();", "let (tx_audio, mut rx_audio) = mpsc::unbounded_channel();", "controlled bounded audio channel"),
+    ("server_connection", "ConnInner::with_audio(id, Some(tx), Some(tx_video), Some(tx_audio))", "ConnInner::new(id, Some(tx), Some(tx_video))", "controlled audio sender installation"),
+    ("server_connection", "Some((instant, value)) = rx_audio.recv()", "Some((instant, value)) = rx.recv()", "controlled separate audio receive"),
+    ("server_connection", "instant.elapsed() > Duration::from_secs(1)", "false", "stale controlled audio refusal"),
+    ("io_loop", "receiver: AudioEgressReceiver", "receiver_removed: AudioEgressReceiver", "outgoing bounded receiver owner"),
+    ("io_loop", "if let Some(subscription) = self.subscription.take()", "if false", "outgoing exact unsubscribe"),
+    ("io_loop", ".subscribe(audio_service::NAME, subscription, false)", ".subscribe(audio_service::NAME, subscription, true)", "outgoing unsubscribe action"),
+    ("io_loop", "voice_call.receiver.recv().await", "std::future::pending().await", "outgoing event-driven receive"),
+    ("io_loop", "let (tx_audio_data, rx_audio_data) = audio_egress_channel();", "let (tx_audio_data, rx_audio_data) = mpsc::unbounded_channel();", "outgoing bounded audio channel"),
+    ("io_loop", "ConnInner::with_audio(conn_id, None, None, Some(tx_audio_data))", "ConnInner::new(conn_id, Some(tx_audio_data), None)", "outgoing audio-only subscription"),
+    ("io_loop", "peer.send(&message as &Message).await", "self.sender.send(Data::Message((*message).clone()))", "outgoing sole peer writer"),
+    ("server_connection", "r_s11eh_audio_egress_retains_only_the_latest_frame", "audio_latest_frame_test_disabled", "latest-frame audio behavior proof"),
+    ("server_connection", "r_s11eh_new_audio_format_retires_an_old_pending_frame", "audio_generation_test_disabled", "audio generation behavior proof"),
+    ("server_connection", "r_s11eh_async_audio_egress_waits_without_polling_and_closes", "audio_async_test_disabled", "async audio behavior proof"),
+    ("server_connection", "receiver retirement must release retained audio without another producer send", "receiver retirement retained audio", "receiver-retirement behavior proof"),
+    ("requirements", '<span class="id">R-S11eh</span>', '<span class="id">R-S11eh-disabled</span>', "bounded audio egress requirement"),
+    ("requirements", "<tr><td>287</td>", "<tr><td>287-disabled</td>", "bounded audio egress disposition"),
+    ("hardening", "R-S11eh/R-S11e-152", "R-S11eh-disabled/R-S11e-152", "bounded audio egress hardening ledger"),
+    ("verify", "\"${RUN[@]}\" cargo test --lib --features linux-pkg-config \\\n  server::connection::audio_egress_tests::r_s11eh_ -- --test-threads=1", "true # shared bounded audio behavior gate disabled", "shared bounded audio behavior gate"),
+    ("dart_verify", "server::connection::audio_egress_tests::r_s11eh_", "server::connection::audio_egress_tests::disabled_", "generated-bridge bounded audio behavior gate"),
     ("verify", "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs", "true # replacement-drain shared gate disabled", "shared mobile replacement-drain gate"),
     ("verify", "if [ \"$(grep -cF 'check_remove_unused_displays(None, None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then", "if false; then # post-drain display gate disabled", "shared post-drain display-reconciliation gate"),
     ("dart_verify", "cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1", "true # generated-bridge mobile lifecycle tests disabled", "generated-bridge mobile lifecycle behavior gate"),
     ("dart_verify", "flutter test --no-pub test/mobile_file_session_lifecycle_test.dart", "true # mobile file-session lifecycle test disabled", "mobile file-session lifecycle behavior gate"),
     ("mobile_file_lifecycle_test", "expect(directory.path, path);", "expect(directory.path, isEmpty);", "retired file timeout replacement behavior proof"),
-    ("io_loop", "self.voice_call_thread = self.start_voice_call();\n                                if self.voice_call_thread.is_some() {\n                                    self.handler.on_voice_call_started();", "self.handler.on_voice_call_started();\n                                self.voice_call_thread = self.start_voice_call();\n                                if self.voice_call_thread.is_some() {", "worker-before-native voice activation"),
+    ("io_loop", "self.voice_call_audio = self.start_voice_call();\n                                if self.voice_call_audio.is_some() {\n                                    self.handler.on_voice_call_started();", "self.handler.on_voice_call_started();\n                                self.voice_call_audio = self.start_voice_call();\n                                if self.voice_call_audio.is_some() {", "audio-owner-before-native voice activation"),
     ("io_loop", '.on_voice_call_closed("Failed to start voice call audio")', '.on_voice_call_started()', "outgoing voice start-failure retirement"),
     ("test", "one controlled teardown cleared another owner", "controlled teardown passed", "controlled behavior proof"),
     ("connection_type_test", '"PortForward" to ControlledConnectionType.PORT_FORWARD', '"PortForward" to ControlledConnectionType.REMOTE', "PortForward behavior proof"),
@@ -3321,7 +3671,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("connection_type_test", "add-then-remove ordering lost new Remote demand", "add-before-remove convergence disabled", "capture add-before-remove behavior"),
     ("requirements", '<span class="id">R-S11br</span>', '<span class="id">R-S11br-disabled</span>', "normative requirement"),
     ("requirements", "generation that is equal (idempotent ordinary resume) or newer (lost-response recovery)", "a strictly newer generation", "idempotent same-generation resume requirement"),
-    ("requirements", "only then publish native/UI started state", "publish native/UI started state before construction", "worker-before-native start requirement"),
+    ("requirements", "only then publish native/UI started state", "publish native/UI started state before construction", "audio-owner-before-native start requirement"),
     ("requirements", "service-owned set of exact positive connection IDs", "one global Boolean reconstructed in Rust", "service-owned capture-demand requirement"),
     ("requirements", "detached global stop edge", "best-effort global stop edge", "stale capture-stop prohibition"),
     ("requirements", "gate its controlled-state and input JNI callbacks against the exact live Service generation", "route callbacks through the latest Service object", "stale-generation callback prohibition"),
@@ -3331,7 +3681,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("hardening", "R-S11br/R-S11e-84 — Android native voice-call capture has exact process-wide owners", "R-S11br/R-S11e-84 — Android native voice-call capture is best effort", "hardening ledger"),
     ("hardening", "same-or-newer resume with active-state retention plus older/cross-isolate refusal", "strictly newer resume with active-state retention", "idempotent same-generation resume ledger"),
     ("hardening", "it never mints a generation, replaces an owner, or drains sessions", "allocating a fresh generation and draining a different superseded owner", "read-only Activity-resume summary"),
-    ("hardening", "publishes `on_voice_call_started` only after that worker exists", "publishes `on_voice_call_started` before that worker exists", "worker-before-native start ledger"),
+    ("hardening", "publishes `on_voice_call_started` only after that complete owner exists", "publishes `on_voice_call_started` before that complete owner exists", "audio-owner-before-native start ledger"),
     ("hardening", "service-owned exact Remote connection-ID set", "Rust-owned Boolean capture snapshot", "exact capture-owner hardening ledger"),
     ("hardening", "exact-object JNI release", "process-lifetime stale JNI retention", "service callback-owner release ledger"),
     ("hardening", "refuses a zero, stopped, or replaced generation before entering Java", "accepts callbacks from any native generation", "callback-generation hardening ledger"),

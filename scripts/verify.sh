@@ -1212,13 +1212,12 @@ else
   rc=1
 fi
 
-echo "== (3b-iii-a1a01) Voice-call worker and exact input ownership (R-S11bp/R-S11bq/R-S11e-82/R-S11e-83) =="
-"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e82_ --color never
+echo "== (3b-iii-a1a01) Voice-call bounded audio and exact input ownership (R-S11bp/R-S11bq/R-S11eh/R-S11e-82/R-S11e-83/R-S11e-152) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e83_ --color never
 if python3 scripts/verify-viewer-voice-call-worker.py --repo . --self-test; then
-  echo "  ok  R-S11e-82/R-S11e-83 voice-call capture blocks on audio and tears down through exact subscription and input owners"
+  echo "  ok  R-S11e-82/R-S11e-83/R-S11e-152 voice-call capture uses bounded direct audio and tears down through exact subscription and input owners"
 else
-  echo "  FAIL R-S11e-82/R-S11e-83 voice-call capture regained polling, detached subscription lifecycle, or ambient input ownership"
+  echo "  FAIL R-S11e-82/R-S11e-83/R-S11e-152 voice-call capture regained polling, detached subscription lifecycle, intermediate unbounded audio, or ambient input ownership"
   rc=1
 fi
 
@@ -9975,6 +9974,8 @@ flutter_event_loop=flutter/lib/utils/event_loop.dart
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
   server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
+  server::connection::audio_egress_tests::r_s11eh_ -- --test-threads=1
+"${RUN[@]}" cargo test --lib --features linux-pkg-config \
   ui_session_interface::connection_round_ownership_tests:: -- --test-threads=1
 grep -qF 'external fun beginClientSessionOwner(): Long' "$ffi_kt" \
   || android_client_owner_bad="$android_client_owner_bad no-generation-begin-jni"
@@ -10055,12 +10056,20 @@ grep -qF 'const MEDIA_WORKER_REAPER_THREADS: usize = 4;' src/client.rs \
   || android_client_owner_bad="$android_client_owner_bad fixed-media-reaper-missing"
 grep -qF 'crate::client::join_media_workers_off_runtime(workers).await;' src/client/io_loop.rs \
   || android_client_owner_bad="$android_client_owner_bad media-worker-fixed-pool-join-missing"
-grep -qF 'crate::client::reap_media_worker("voice-call", thread);' src/client/io_loop.rs \
-  || android_client_owner_bad="$android_client_owner_bad voice-hard-drop-handoff-missing"
 grep -qF 'media_thread: OwnedMediaThread' src/client/io_loop.rs \
   || android_client_owner_bad="$android_client_owner_bad video-worker-owner-missing"
-grep -qF 'voice_call_thread: Option<VoiceCallThread>' src/client/io_loop.rs \
-  || android_client_owner_bad="$android_client_owner_bad voice-worker-owner-missing"
+grep -qF 'voice_call_audio: Option<VoiceCallAudio>' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad voice-audio-owner-missing"
+grep -qF 'receiver: AudioEgressReceiver' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad voice-bounded-receiver-owner-missing"
+grep -qF 'voice_call_audio = recv_voice_call_audio(&mut self.voice_call_audio)' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad voice-direct-select-receive-missing"
+grep -qF 'peer.send(&message as &Message).await' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad voice-sole-writer-send-missing"
+if grep -qF 'crate::client::reap_media_worker("voice-call", thread);' src/client/io_loop.rs \
+    || grep -qF 'voice_call_thread: Option<VoiceCallThread>' src/client/io_loop.rs; then
+  android_client_owner_bad="$android_client_owner_bad retired-voice-worker-present"
+fi
 grep -qF 'owned_media_thread_closes_admission_before_join' src/client.rs \
   || android_client_owner_bad="$android_client_owner_bad media-owner-regression-test-missing"
 grep -qF 'owned_media_thread_hard_drop_never_joins_inline' src/client.rs \
@@ -10247,6 +10256,26 @@ grep -qF '<tr><td>286</td>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad video-ack-disposition-missing"
 grep -qF 'R-S11eg/R-S11e-151' HARDENING_STATUS.md \
   || android_client_owner_bad="$android_client_owner_bad video-ack-ledger-missing"
+grep -qF 'const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad bounded-audio-wake-cap-missing"
+grep -qF 'state.format.take().or_else(|| state.frame.take())' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad audio-format-before-frame-missing"
+grep -qF 'state.frame = None;' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad audio-format-generation-retirement-missing"
+grep -qF 'Some((instant, value)) = rx_audio.recv()' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-audio-direct-receive-missing"
+grep -qF 'let (tx_audio_data, rx_audio_data) = audio_egress_channel();' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad outgoing-bounded-audio-channel-missing"
+grep -qF 'ConnInner::with_audio(conn_id, None, None, Some(tx_audio_data))' src/client/io_loop.rs \
+  || android_client_owner_bad="$android_client_owner_bad outgoing-audio-only-subscription-missing"
+grep -qF 'r_s11eh_async_audio_egress_waits_without_polling_and_closes' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad bounded-audio-async-regression-missing"
+grep -qF '<span class="id">R-S11eh</span>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad bounded-audio-requirement-missing"
+grep -qF '<tr><td>287</td>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad bounded-audio-disposition-missing"
+grep -qF 'R-S11eh/R-S11e-152' HARDENING_STATUS.md \
+  || android_client_owner_bad="$android_client_owner_bad bounded-audio-ledger-missing"
 grep -qF 'cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-lifecycle-test-command-missing"
 grep -qF 'flutter::mobile_session_lifecycle_tests:: -- --test-threads=1' scripts/dart-verify.sh \
@@ -10257,6 +10286,8 @@ grep -qF 'server::video_service::screenshot_ownership_tests::r_s11ef_' scripts/d
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-controlled-screenshot-test-filter-missing"
 grep -qF 'server::video_service::video_frame_ack_tests::r_s11eg_' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-video-ack-test-filter-missing"
+grep -qF 'server::connection::audio_egress_tests::r_s11eh_' scripts/dart-verify.sh \
+  || android_client_owner_bad="$android_client_owner_bad generated-bridge-bounded-audio-test-filter-missing"
 if ! python3 - "$ma" "$ms" "$flutter_main" src/flutter.rs <<'PY'
 import sys
 from pathlib import Path
@@ -10348,7 +10379,7 @@ media_drop = client[
     client.index("/// Start video thread.")
 ]
 voice_drop = io_loop[
-    io_loop.index("impl Drop for VoiceCallThread"):
+    io_loop.index("impl Drop for VoiceCallAudio"):
     io_loop.index("pub struct Remote")
 ]
 controlled_fields = connection[
@@ -10385,8 +10416,9 @@ ok = (
     and "_thread" not in audio_constructor
     and "reap_media_worker(role, worker)" in media_drop
     and ".join()" not in media_drop
-    and "reap_media_worker(\"voice-call\", thread)" in voice_drop
+    and "self.stop();" in voice_drop
     and ".join()" not in voice_drop
+    and "reap_media_worker(\"voice-call\"" not in voice_drop
     and "format: (u32, u32)" in controlled_fields
     and "decoder: OwnedMediaThread" in controlled_fields
     and "audio_sender" not in connection

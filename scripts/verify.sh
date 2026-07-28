@@ -1094,10 +1094,6 @@ echo "$get_uuid_body" | grep -qF 'mobile_device_id()' \
 if echo "$get_uuid_body" | grep -qF 'at_rest_storage_key()'; then
   mobile_at_rest_bad="$mobile_at_rest_bad mobile-uuid-exposes-at-rest-key"
 fi
-grep -A20 '#\[cfg(any(target_os = "android", target_os = "ios"))\]' libs/hbb_common/src/password_security.rs | grep -qF 'Config::get_existing_key_pair()' \
-  || mobile_at_rest_bad="$mobile_at_rest_bad mobile-legacy-keypair-fallback-missing"
-grep -A26 '#\[cfg(any(target_os = "android", target_os = "ios"))\]' libs/hbb_common/src/password_security.rs | grep -qF 'should_rewrap: true' \
-  || mobile_at_rest_bad="$mobile_at_rest_bad mobile-legacy-fallback-not-rewrapped"
 grep -qF 'external fun setMobileAtRestStorageKey(key: ByteArray): Boolean' flutter/android/app/src/main/kotlin/ffi.kt \
   || mobile_at_rest_bad="$mobile_at_rest_bad android-jni-declaration-missing"
 grep -qF 'AndroidKeyStore' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MobileAtRestStorageKey.kt \
@@ -1125,8 +1121,10 @@ grep -qF -- '-keep class com.carriez.flutter_hbb.MainApplication { *; }' flutter
   || mobile_at_rest_bad="$mobile_at_rest_bad android-bootstrap-not-kept-for-artifact-audit"
 grep -qF -- '-keep class com.carriez.flutter_hbb.MobileAtRestStorageKey { *; }' flutter/android/app/proguard-rules \
   || mobile_at_rest_bad="$mobile_at_rest_bad android-key-wrapper-not-kept-for-artifact-audit"
-[ "$(grep -cF 'verify-android-mobile-key-artifact.py' scripts/build-android.sh)" -eq 2 ] \
-  || mobile_at_rest_bad="$mobile_at_rest_bad android-signed-artifact-helper-not-wired-at-both-gates"
+[ "$(grep -cF 'target=/checks/verify-android-mobile-key-artifact.py,readonly' scripts/build-android.sh)" -eq 2 ] \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-signed-artifact-helper-not-mounted-at-both-gates"
+[ "$(grep -cF 'python3 /checks/verify-android-mobile-key-artifact.py' scripts/build-android.sh)" -eq 2 ] \
+  || mobile_at_rest_bad="$mobile_at_rest_bad android-signed-artifact-helper-not-invoked-at-both-gates"
 grep -qF -- '--dexdump /online/android-sdk/build-tools/' scripts/build-android.sh \
   || mobile_at_rest_bad="$mobile_at_rest_bad android-signed-artifact-dexdump-not-pinned"
 grep -qF -- '--readelf /usr/bin/readelf' scripts/build-android.sh \

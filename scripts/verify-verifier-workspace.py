@@ -13475,6 +13475,24 @@ def validate_mobile_build_authority_verifier_contract(sources):
 def validate_mobile_at_rest_fail_closed_contract(sources):
     focused = sources["mobile_at_rest_fail_closed_verifier"]
     for text, label in (
+        (
+            "grep -A20 '#\\[cfg(any(target_os = \"android\", target_os = \"ios\"))\\]' "
+            "libs/hbb_common/src/password_security.rs",
+            "obsolete mobile cfg-split keypair fallback shell check",
+        ),
+        (
+            "grep -A26 '#\\[cfg(any(target_os = \"android\", target_os = \"ios\"))\\]' "
+            "libs/hbb_common/src/password_security.rs",
+            "obsolete mobile cfg-split rewrap shell check",
+        ),
+        (
+            "[ \"$(grep -cF 'verify-android-mobile-key-artifact.py' "
+            "scripts/build-android.sh)\" -eq 2 ]",
+            "obsolete undifferentiated Android mobile-key checker path count",
+        ),
+    ):
+        require_absent(sources["verify"], text, label)
+    for text, label in (
         ("def extract_rust_function(", "mobile at-rest Rust function parser"),
         ("def validate(sources", "mobile at-rest semantic entry"),
         (
@@ -13499,6 +13517,46 @@ def validate_mobile_at_rest_fail_closed_contract(sources):
         "mobile at-rest shared focused-verifier wiring",
     )
     require_text(
+        sources["verify"],
+        "[ \"$(grep -cF 'target=/checks/verify-android-mobile-key-artifact.py,readonly' "
+        "scripts/build-android.sh)\" -eq 2 ]",
+        "mobile at-rest shared immutable checker-mount cardinality",
+    )
+    require_text(
+        sources["verify"],
+        "[ \"$(grep -cF 'python3 /checks/verify-android-mobile-key-artifact.py' "
+        "scripts/build-android.sh)\" -eq 2 ]",
+        "mobile at-rest shared checker-invocation cardinality",
+    )
+    android_builder = sources["android_builder_authority_verifier"]
+    for text, label in (
+        (
+            "signed APK mobile-key verifier invocations",
+            "Android builder signed APK invocation-cardinality enforcement",
+        ),
+        (
+            "{} mobile-key checker mount before invocation",
+            "Android builder per-transaction mobile-key checker order enforcement",
+        ),
+        (
+            "verify-only mobile-key checker mount",
+            "Android builder verify-only checker-mount mutation authority",
+        ),
+        (
+            "signing mobile-key checker mount",
+            "Android builder signing checker-mount mutation authority",
+        ),
+        (
+            "verify-only mobile-key checker invocation",
+            "Android builder verify-only checker-invocation mutation authority",
+        ),
+        (
+            "signing mobile-key checker invocation",
+            "Android builder signing checker-invocation mutation authority",
+        ),
+    ):
+        require_text(android_builder, text, label)
+    require_text(
         sources["apple"],
         "python3 scripts/verify-mobile-at-rest-fail-closed.py --repo . --self-test",
         "mobile at-rest Apple focused-verifier wiring",
@@ -13517,6 +13575,11 @@ def validate_mobile_at_rest_fail_closed_contract(sources):
         sources["hardening"],
         "R-S11bh/R-S11e-74 — mobile legacy at-rest migration requires live OS-key authority",
         "mobile at-rest unavailable-key hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11e-160 current mobile at-rest and signed-artifact gate authority",
+        "current mobile at-rest shared-gate hardening ledger",
     )
 
 
@@ -45079,6 +45142,80 @@ def run_source_mutations(sources):
         (
             "verify",
             "python3 scripts/verify-mobile-at-rest-fail-closed.py --repo . --self-test",
+            "grep -A20 '#\\[cfg(any(target_os = \"android\", target_os = \"ios\"))\\]' "
+            "libs/hbb_common/src/password_security.rs",
+            "obsolete mobile cfg-split keypair fallback shell check",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-mobile-at-rest-fail-closed.py --repo . --self-test",
+            "grep -A26 '#\\[cfg(any(target_os = \"android\", target_os = \"ios\"))\\]' "
+            "libs/hbb_common/src/password_security.rs",
+            "obsolete mobile cfg-split rewrap shell check",
+        ),
+        (
+            "verify",
+            "[ \"$(grep -cF 'target=/checks/verify-android-mobile-key-artifact.py,readonly' "
+            "scripts/build-android.sh)\" -eq 2 ]",
+            "[ \"$(grep -cF 'verify-android-mobile-key-artifact.py' "
+            "scripts/build-android.sh)\" -eq 2 ]",
+            "obsolete undifferentiated Android mobile-key checker path count",
+        ),
+        (
+            "verify",
+            "[ \"$(grep -cF 'target=/checks/verify-android-mobile-key-artifact.py,readonly' "
+            "scripts/build-android.sh)\" -eq 2 ]",
+            "[ \"$(grep -cF 'target=/checks/verify-android-mobile-key-artifact.py,readonly' "
+            "scripts/build-android.sh)\" -eq 1 ]",
+            "mobile at-rest shared immutable checker-mount cardinality",
+        ),
+        (
+            "verify",
+            "[ \"$(grep -cF 'python3 /checks/verify-android-mobile-key-artifact.py' "
+            "scripts/build-android.sh)\" -eq 2 ]",
+            "[ \"$(grep -cF 'python3 /checks/verify-android-mobile-key-artifact.py' "
+            "scripts/build-android.sh)\" -eq 1 ]",
+            "mobile at-rest shared checker-invocation cardinality",
+        ),
+        (
+            "android_builder_authority_verifier",
+            "signed APK mobile-key verifier invocations",
+            "signed APK mobile-key verifier calls",
+            "Android builder signed APK invocation-cardinality enforcement",
+        ),
+        (
+            "android_builder_authority_verifier",
+            "{} mobile-key checker mount before invocation",
+            "{} mobile-key checker invocation before mount",
+            "Android builder per-transaction mobile-key checker order enforcement",
+        ),
+        (
+            "android_builder_authority_verifier",
+            "verify-only mobile-key checker mount",
+            "verify-only mobile-key checker bind",
+            "Android builder verify-only checker-mount mutation authority",
+        ),
+        (
+            "android_builder_authority_verifier",
+            "signing mobile-key checker mount",
+            "signing mobile-key checker bind",
+            "Android builder signing checker-mount mutation authority",
+        ),
+        (
+            "android_builder_authority_verifier",
+            "verify-only mobile-key checker invocation",
+            "verify-only mobile-key checker call",
+            "Android builder verify-only checker-invocation mutation authority",
+        ),
+        (
+            "android_builder_authority_verifier",
+            "signing mobile-key checker invocation",
+            "signing mobile-key checker call",
+            "Android builder signing checker-invocation mutation authority",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-mobile-at-rest-fail-closed.py --repo . --self-test",
             "true # mobile at-rest fail-closed verifier removed",
             "mobile at-rest shared focused-verifier wiring",
         ),
@@ -45105,6 +45242,12 @@ def run_source_mutations(sources):
             "R-S11bh/R-S11e-74 — mobile legacy at-rest migration requires live OS-key authority",
             "R-S11bh/R-S11e-74 — mobile legacy at-rest migration accepts missing OS-key authority",
             "mobile at-rest unavailable-key hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11e-160 current mobile at-rest and signed-artifact gate authority",
+            "R-S11e-160 obsolete mobile at-rest and signed-artifact compatibility",
+            "current mobile at-rest shared-gate hardening ledger",
         ),
         (
             "macos_launchd_lifecycle_verifier",

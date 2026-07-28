@@ -212,6 +212,48 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(build, "source=$KEYSTORE_PASS_FILE,target=/ks/pass,readonly", 2, "read-only password mounts")
     require_count(build, "target=/checks/verify-android-apk-manifest.py,readonly", 2, "immutable manifest-checker mounts")
     require_count(build, "target=/checks/verify-android-mobile-key-artifact.py,readonly", 2, "immutable mobile-key-checker mounts")
+    require_count(
+        build,
+        "python3 /checks/verify-android-mobile-key-artifact.py",
+        2,
+        "signed APK mobile-key verifier invocations",
+    )
+    artifact_verifier = extract(
+        build,
+        "verify_apk_artifact() {",
+        "\n}\n\nbuild_apk() {",
+        "verify-only signed APK transaction",
+    )
+    signing = extract(
+        build,
+        "sign_apk() {",
+        "\n}\n\nassert_exact_private_result_inventory() {",
+        "Android signing transaction",
+    )
+    for transaction, label in (
+        (artifact_verifier, "verify-only"),
+        (signing, "signing"),
+    ):
+        require_count(
+            transaction,
+            "target=/checks/verify-android-mobile-key-artifact.py,readonly",
+            1,
+            "{} mobile-key checker mount".format(label),
+        )
+        require_count(
+            transaction,
+            "python3 /checks/verify-android-mobile-key-artifact.py",
+            1,
+            "{} mobile-key checker invocation".format(label),
+        )
+        require_order(
+            transaction,
+            (
+                "target=/checks/verify-android-mobile-key-artifact.py,readonly",
+                "python3 /checks/verify-android-mobile-key-artifact.py",
+            ),
+            "{} mobile-key checker mount before invocation".format(label),
+        )
     if build.count("verify_build_source_unchanged") != 5:
         raise AuthorityError(
             "independent source identity is not checked before, after, and before publication"
@@ -1710,6 +1752,42 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "keystore read-only mount",
     ),
     Mutation("build", 'source=$resolved,target=/verify/app.apk,readonly" \\\n        --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/verify-android-apk-manifest.py,target=/checks/verify-android-apk-manifest.py,readonly', 'source=$resolved,target=/verify/app.apk,readonly" \\\n        --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/verify-android-apk-manifest.py,target=/checks/verify-android-apk-manifest.py', "manifest checker read-only mount"),
+    Mutation(
+        "build",
+        '        --mount "type=bind,source=$resolved,target=/verify/app.apk,readonly" \\\n'
+        '        --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/verify-android-apk-manifest.py,target=/checks/verify-android-apk-manifest.py,readonly" \\\n'
+        '        --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/verify-android-mobile-key-artifact.py,target=/checks/verify-android-mobile-key-artifact.py,readonly" \\\n',
+        '        --mount "type=bind,source=$resolved,target=/verify/app.apk,readonly" \\\n'
+        '        --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/verify-android-apk-manifest.py,target=/checks/verify-android-apk-manifest.py,readonly" \\\n'
+        '        --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/verify-android-mobile-key-artifact.py,target=/checks/verify-android-mobile-key-artifact.py" \\\n',
+        "verify-only mobile-key checker mount",
+    ),
+    Mutation(
+        "build",
+        '        --mount "type=bind,source=$KEYSTORE_PASS_FILE,target=/ks/pass,readonly" \\\n'
+        '        --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/verify-android-apk-manifest.py,target=/checks/verify-android-apk-manifest.py,readonly" \\\n'
+        '        --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/verify-android-mobile-key-artifact.py,target=/checks/verify-android-mobile-key-artifact.py,readonly" \\\n',
+        '        --mount "type=bind,source=$KEYSTORE_PASS_FILE,target=/ks/pass,readonly" \\\n'
+        '        --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/verify-android-apk-manifest.py,target=/checks/verify-android-apk-manifest.py,readonly" \\\n'
+        '        --mount "type=bind,source=$SOURCE_AUTHORITY_ROOT/scripts/verify-android-mobile-key-artifact.py,target=/checks/verify-android-mobile-key-artifact.py" \\\n',
+        "signing mobile-key checker mount",
+    ),
+    Mutation(
+        "build",
+        "            python3 /checks/verify-android-mobile-key-artifact.py \\\n"
+        "                --apk /verify/app.apk",
+        "            python3 /checks/verify-android-mobile-key-artifact-disabled.py \\\n"
+        "                --apk /verify/app.apk",
+        "verify-only mobile-key checker invocation",
+    ),
+    Mutation(
+        "build",
+        "            python3 /checks/verify-android-mobile-key-artifact.py \\\n"
+        "                --apk /out/rustdesk-arm64.apk",
+        "            python3 /checks/verify-android-mobile-key-artifact-disabled.py \\\n"
+        "                --apk /out/rustdesk-arm64.apk",
+        "signing mobile-key checker invocation",
+    ),
     Mutation(
         "build",
         'PASS_A_APK="$apk"',

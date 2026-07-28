@@ -915,6 +915,28 @@ verifier-authority correction after a legitimate additional protected transactio
 service admission, authorization bypass, root acquisition, privilege escalation, compromise, public exposure,
 container escape, or a host RustDesk/service/firewall/network change.
 
+Follow-up verifier correction (2026-07-28),
+**R-S11e-160 current mobile at-rest and signed-artifact gate authority**: the Appendix C #14 shared shell gate
+retained three assertions against source shapes superseded by stronger transactions. R-S11e-74 unified the
+desktop/mobile legacy decrypt functions behind one platform-classified policy that denies mobile keypair access
+when the live OS key is absent and returns `should_rewrap: mobile` after an authorized legacy decrypt. The old
+shell assertions still searched for the deleted pair of `#[cfg]`-split functions even though the focused semantic
+validator bound the current policy and passed all 12 mutations. Separately, Android builder confinement replaced
+two broad source-tree consumers with two read-only checker-file mounts plus one checker invocation in each of the
+signing and verify-only signed-artifact transactions. The old shell gate counted the checker path globally and
+expected two references, so the correct two mounts plus two invocations failed its obsolete cardinality.
+
+The shared gate now delegates legacy decrypt policy to the focused semantic validator and separately requires
+exactly two immutable mobile-key checker mounts and exactly two invocations. The Android builder semantic validator
+extracts the signing and verify-only transactions and requires each to mount the checker read-only before invoking
+it exactly once; four focused mutations independently weaken both mounts and both invocations. The independent
+workspace validator binds the current shared assertions, rejects all three obsolete checks, binds the strengthened
+focused enforcement and mutation inventory, and deliberately mutates each authority. Rust/Kotlin/Swift behavior,
+at-rest data, build inputs, signing, artifact bytes, and publication are unchanged. This is verifier alignment
+with the already-implemented fail-closed storage policy and immutable signed-artifact checks, not evidence of
+credential fallback, a missing migration, an unverified APK, root acquisition, privilege escalation, compromise,
+public exposure, container escape, or a host RustDesk/service/firewall/network change.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust

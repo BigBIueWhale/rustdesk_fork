@@ -2072,8 +2072,13 @@ grep -Fq 'Refusing root-to-user whiteboard launch; the user-context service must
 grep -Fq 'WindowsUserHelperLaunch::ConnectionManager {' src/server/connection.rs || r_s11e38="$r_s11e38 typed-windows-cm-launch-missing"
 grep -Fq 'WindowsUserHelperLaunch::Whiteboard {' src/whiteboard/client.rs || r_s11e38="$r_s11e38 typed-windows-whiteboard-launch-missing"
 grep -Fq 'WindowsUserHelperLaunch::Tray' src/server/connection.rs || r_s11e38="$r_s11e38 typed-windows-tray-launch-missing"
-grep -Fq 'let child = if headless_cm {' src/server/connection.rs || r_s11e38="$r_s11e38 same-user-cm-launch-selection-missing"
-grep -Fq 'super::CHILD_PROCESS.lock().unwrap().push(child);' src/server/connection.rs || r_s11e38="$r_s11e38 same-user-cm-launch-missing"
+same_user_cm_launch=$(awk '/if stream.is_none\(\) \{/,/for _ in 0\.\.20/' src/server/connection.rs)
+grep -Fq 'let child = crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?;' <<<"$same_user_cm_launch" \
+  || r_s11e38="$r_s11e38 linux-same-user-cm-parent-bound-launch-missing"
+grep -Fq 'let child = crate::run_me_with_env(args, cm_launch_env())?;' <<<"$same_user_cm_launch" \
+  || r_s11e38="$r_s11e38 macos-windows-same-user-cm-launch-missing"
+grep -Fq 'super::CHILD_PROCESS.lock().unwrap().push(child);' <<<"$same_user_cm_launch" \
+  || r_s11e38="$r_s11e38 same-user-cm-child-ownership-missing"
 grep -Fq 'whiteboard_launch_env(&launch_token)' src/whiteboard/client.rs || r_s11e38="$r_s11e38 same-user-whiteboard-launch-missing"
 grep -Fq '<span class="id">R-S11x</span>' requirements.html || r_s11e38="$r_s11e38 normative-requirement-missing"
 grep -Fq '<tr><td>146</td>' requirements.html || r_s11e38="$r_s11e38 appendix-disposition-missing"

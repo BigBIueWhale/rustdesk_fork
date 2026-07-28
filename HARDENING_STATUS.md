@@ -833,6 +833,23 @@ matrix bind the correction. This changes only disposable verifier fixture metada
 production acquisition, product runtime, root authority, host process/service/listener/firewall/network state,
 or release artifact is modified.
 
+Follow-up verifier correction (2026-07-28),
+**R-S11e-155 current same-user connection-manager launch-gate authority**: the R-S11e-38 shared shell gate
+still required the obsolete conditional text `let child = if headless_cm`. R-S11e-95 had correctly made every
+Linux CM child parent-bound, replacing that conditional with the unconditional
+`run_me_with_env_and_parent_death` launch while retaining the macOS/Windows same-principal launch, exact CM proof
+environment, and retained child ownership. The stale literal therefore reported
+`same-user-cm-launch-selection-missing` even though the live source had the stronger current lifetime authority.
+
+The shared gate now extracts the exact launch block and separately requires the Linux parent-bound launch, the
+macOS/Windows current-image same-user launch with `cm_launch_env()`, and transfer of the resulting child into the
+retained `CHILD_PROCESS` owner. The independent semantic validator requires those operations in order after the
+typed-Windows/fail-closed root branch, binds all three shared-gate diagnostics, and deliberately mutates both
+platform launch shapes and all three gate anchors. Product source and runtime behavior are unchanged. This is
+verifier alignment with the already-implemented stronger CM lifetime contract, not evidence of root acquisition,
+privilege escalation, compromise, public exposure, container escape, or a host RustDesk/service/firewall/network
+change, and it does not close exact cold artifact, installed-native, device, or external-review evidence.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust

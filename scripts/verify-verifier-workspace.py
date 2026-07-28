@@ -7675,6 +7675,8 @@ def validate_cross_platform_user_helper_contract(sources):
             "if crate::platform::is_root() && !headless_service_user {",
             "WindowsUserHelperLaunch::ConnectionManager {",
             "Refusing root-to-user connection-manager launch; the user-context service must own it",
+            "let child = crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?;",
+            "let child = crate::run_me_with_env(args, cm_launch_env())?;",
             "super::CHILD_PROCESS.lock().unwrap().push(child);",
         ),
         "connection-manager typed/fail-closed/same-user launch topology",
@@ -7704,6 +7706,21 @@ def validate_cross_platform_user_helper_contract(sources):
             "cross-platform helper source gate",
         ),
         (
+            "verify",
+            "linux-same-user-cm-parent-bound-launch-missing",
+            "cross-platform Linux same-user CM source gate",
+        ),
+        (
+            "verify",
+            "macos-windows-same-user-cm-launch-missing",
+            "cross-platform macOS/Windows same-user CM source gate",
+        ),
+        (
+            "verify",
+            "same-user-cm-child-ownership-missing",
+            "cross-platform same-user CM child-ownership source gate",
+        ),
+        (
             "apple",
             'echo "== (2b-iv-a) Cross-platform root-to-user helper authority is closed (R-S11x/R-S11e-38) =="',
             "cross-platform helper Apple gate",
@@ -7722,6 +7739,11 @@ def validate_cross_platform_user_helper_contract(sources):
             "hardening",
             "R-S11e-38 — cross-platform root-to-user helper launch authority",
             "cross-platform helper hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11e-155 current same-user connection-manager launch-gate authority",
+            "current same-user CM launch-gate hardening ledger",
         ),
     ):
         require_text(sources[source_key], text, label)
@@ -37031,6 +37053,12 @@ def run_source_mutations(sources):
             "connection-manager typed/fail-closed/same-user launch topology",
         ),
         (
+            "connection_source",
+            "let child = crate::run_me_with_env(args, cm_launch_env())?;",
+            "let child = crate::run_me(args)?;",
+            "connection-manager typed/fail-closed/same-user launch topology",
+        ),
+        (
             "whiteboard_client",
             "Refusing root-to-user whiteboard launch; the user-context service must own it",
             "Attempting root-to-user whiteboard launch",
@@ -37041,6 +37069,24 @@ def run_source_mutations(sources):
             'echo "== (3b-iii-a5d2c) Cross-platform root-to-user helper authority is closed (R-S11x/R-S11e-38) =="',
             'echo "== (3b-iii-a5d2c) Cross-platform root-to-user helper compatibility (R-S11x/R-S11e-38) =="',
             "cross-platform helper source gate",
+        ),
+        (
+            "verify",
+            "linux-same-user-cm-parent-bound-launch-missing",
+            "linux-same-user-cm-parent-bound-gate-disabled",
+            "cross-platform Linux same-user CM source gate",
+        ),
+        (
+            "verify",
+            "macos-windows-same-user-cm-launch-missing",
+            "macos-windows-same-user-cm-gate-disabled",
+            "cross-platform macOS/Windows same-user CM source gate",
+        ),
+        (
+            "verify",
+            "same-user-cm-child-ownership-missing",
+            "same-user-cm-child-ownership-gate-disabled",
+            "cross-platform same-user CM child-ownership source gate",
         ),
         (
             "apple",
@@ -37065,6 +37111,12 @@ def run_source_mutations(sources):
             "R-S11e-38 — cross-platform root-to-user helper launch authority",
             "R-S11e-38 — cross-platform root-to-user helper compatibility",
             "cross-platform helper hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11e-155 current same-user connection-manager launch-gate authority",
+            "R-S11e-155 obsolete same-user connection-manager launch compatibility",
+            "current same-user CM launch-gate hardening ledger",
         ),
         (
             "verify",
@@ -39853,7 +39905,7 @@ def run_source_mutations(sources):
             "connection_source",
             "crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?",
             "crate::run_me_with_env(args, cm_launch_env())?",
-            "all-Linux parent-bound launch selection",
+            "connection-manager typed/fail-closed/same-user launch topology",
         ),
         (
             "common_source",

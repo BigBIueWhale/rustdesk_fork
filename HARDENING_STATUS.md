@@ -1056,6 +1056,27 @@ mutations restore the retired launcher, weaken cardinality, neutralize the netwo
 ledger. No Android build product, Docker authority, Cargo/Flutter feature, APK, runtime, device, installed
 service, host process, listener, firewall, or network state changes in this correction.
 
+Follow-up verifier correction (2026-07-29),
+**R-S11e-166 current shared Apple companion-gate authority**: the shared R-R2/R-A6 shell gate still searched
+for the retired one-line `DEFAULT_APPLE_TARGETS` declaration, a short `-e SOURCE_DATE_EPOCH` transfer, and a
+short `-v "$REPO:/work:ro"` bind. The Apple verifier authority closure had already replaced those forms with a
+fixed multiline `SELECTED_APPLE_TARGETS` matrix whose caller overrides are rejected, the long
+`--env SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"` transfer, and two read-only private
+`$APPLE_SOURCE` mounts. The focused Apple authority verifier and the independent workspace's product contract
+already required those stronger forms; only the older shared shell shape assertions had drifted. Consequently,
+the full verifier reported three missing tokens even though the current Apple checker retained the stronger
+target, reproducibility, and source-isolation authorities.
+
+The shared gate now compares the extracted target-array declaration byte-for-byte with the exact three-target
+matrix, requires rejection of both target override inputs, and proves the selected matrix drives the target
+loop. It counts exactly one long reproducibility-epoch transfer and exactly two private read-only source mounts,
+covering both the metadata parser and cross-check launch. The independent workspace validator extracts only
+this shared gate, binds every current assertion in transaction order, forbids the retired weak spellings, and
+deliberately mutates the extraction, matrix, verdict, override refusal, target-loop use, epoch count, mount
+count, and this ledger entry. Apple product source, toolchain inputs, container authority, release integration,
+runtime behavior, Android code, APK/device state, installed services, host processes, listeners, firewall, and
+network state are unchanged.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust

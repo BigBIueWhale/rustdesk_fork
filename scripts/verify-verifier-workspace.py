@@ -22194,6 +22194,7 @@ def validate_windows_build_domain_authority_contract(sources):
 def validate_apple_verifier_authority_contract(sources):
     focused = sources["apple_verifier_authority_verifier"]
     apple = sources["apple"]
+    verify = sources["verify"]
     provenance = sources["offline_image_provenance"]
     online_fetch = sources["online_fetch"]
     apple_dockerfile_digest = hashlib.sha256(
@@ -22225,6 +22226,87 @@ def validate_apple_verifier_authority_contract(sources):
          "Apple focused archive-path enforcement"),
     ):
         require_text(focused, text, label)
+    shared_gate = extract_between(
+        verify,
+        "# R-R2/R-A6 Apple gate shape:",
+        "# R-R2/R-A6 release-gate integration:",
+        "shared Apple companion shape gate",
+    )
+    for text, label in (
+        (
+            "readonly_apple_targets=$(awk "
+            "'/^readonly SELECTED_APPLE_TARGETS=\\($/,/^\\)$/' \"$apple_gate\")",
+            "shared Apple exact target-matrix extraction",
+        ),
+        (
+            "expected_apple_targets='readonly SELECTED_APPLE_TARGETS=(\n"
+            "  aarch64-apple-darwin\n"
+            "  x86_64-apple-darwin\n"
+            "  aarch64-apple-ios\n"
+            ")'",
+            "shared Apple exact target-matrix expectation",
+        ),
+        (
+            '[ "$readonly_apple_targets" = "$expected_apple_targets" ] '
+            '|| apple_gate_bad="$apple_gate_bad target-matrix"',
+            "shared Apple exact target-matrix verdict",
+        ),
+        (
+            "grep -qF '[ -z \"${APPLE_TARGET:-}\" ] && "
+            "[ -z \"${APPLE_TARGETS:-}\" ]' \"$apple_gate\" "
+            '|| apple_gate_bad="$apple_gate_bad target-override-not-rejected"',
+            "shared Apple target-override rejection",
+        ),
+        (
+            "grep -qF 'for target in \"${SELECTED_APPLE_TARGETS[@]}\"; do' "
+            '"$apple_gate" || apple_gate_bad="$apple_gate_bad '
+            'selected-target-matrix-unused"',
+            "shared Apple selected-matrix execution",
+        ),
+        (
+            "[ \"$(grep -cF -- '--env SOURCE_DATE_EPOCH="
+            "\"$SOURCE_DATE_EPOCH_PIN\"' \"$apple_gate\")\" -eq 1 ] "
+            '|| apple_gate_bad="$apple_gate_bad source-date-epoch-not-pinned"',
+            "shared Apple exact reproducibility-epoch transfer",
+        ),
+        (
+            "[ \"$(grep -cF -- '--mount \"type=bind,source=$APPLE_SOURCE,"
+            "target=/work,readonly\"' \"$apple_gate\")\" -eq 2 ] "
+            '|| apple_gate_bad="$apple_gate_bad '
+            'private-source-mounts-not-readonly"',
+            "shared Apple exact private read-only source mounts",
+        ),
+    ):
+        require_text(shared_gate, text, label)
+    require_order(
+        shared_gate,
+        (
+            "readonly_apple_targets=$(awk ",
+            "expected_apple_targets='readonly SELECTED_APPLE_TARGETS=(",
+            '[ "$readonly_apple_targets" = "$expected_apple_targets" ]',
+            "target-override-not-rejected",
+            "selected-target-matrix-unused",
+            "source-date-epoch-not-pinned",
+            "private-source-mounts-not-readonly",
+        ),
+        "shared Apple target and confinement assertion order",
+    )
+    for text, label in (
+        ("DEFAULT_APPLE_TARGETS", "retired Apple default-target compatibility"),
+        (
+            "grep -qF 'APPLE_TARGETS'",
+            "weak Apple target-override token check",
+        ),
+        (
+            '-e SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"',
+            "retired short Apple reproducibility-epoch transfer",
+        ),
+        (
+            '-v "$REPO:/work:ro"',
+            "retired real-checkout Apple source bind",
+        ),
+    ):
+        require_absent(shared_gate, text, label)
     for text, label in (
         ("readonly DOCKER_BIN=/usr/bin/docker",
          "Apple fixed Docker client"),
@@ -22379,6 +22461,11 @@ def validate_apple_verifier_authority_contract(sources):
         sources["hardening"],
         "`9f675754d52962952a2bfc1d74e98d1a37b1b0d220e670780dca78f653d8a7cc`",
         "Apple canonical archive ledger evidence",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11e-166 current shared Apple companion-gate authority",
+        "current shared Apple companion-gate hardening ledger",
     )
 
 
@@ -51380,6 +51467,80 @@ def run_source_mutations(sources):
             "    status=1",
             'echo "apple-conform-check: failed to restore private workspace directory modes: $APPLE_CHECK_TMP" >&2',
             "Apple private-workspace restoration failure status",
+        ),
+        (
+            "verify",
+            "readonly_apple_targets=$(awk "
+            "'/^readonly SELECTED_APPLE_TARGETS=\\($/,/^\\)$/' \"$apple_gate\")",
+            "readonly_apple_targets=$(awk "
+            "'/^readonly DEFAULT_APPLE_TARGETS=\\($/,/^\\)$/' \"$apple_gate\")",
+            "shared Apple exact target-matrix extraction",
+        ),
+        (
+            "verify",
+            "expected_apple_targets='readonly SELECTED_APPLE_TARGETS=(\n"
+            "  aarch64-apple-darwin\n"
+            "  x86_64-apple-darwin\n"
+            "  aarch64-apple-ios\n"
+            ")'",
+            "expected_apple_targets='readonly SELECTED_APPLE_TARGETS=(\n"
+            "  aarch64-apple-darwin\n"
+            "  i686-apple-darwin\n"
+            "  aarch64-apple-ios\n"
+            ")'",
+            "shared Apple exact target-matrix expectation",
+        ),
+        (
+            "verify",
+            '[ "$readonly_apple_targets" = "$expected_apple_targets" ] '
+            '|| apple_gate_bad="$apple_gate_bad target-matrix"',
+            "true # shared Apple target matrix unchecked",
+            "shared Apple exact target-matrix verdict",
+        ),
+        (
+            "verify",
+            "grep -qF '[ -z \"${APPLE_TARGET:-}\" ] && "
+            "[ -z \"${APPLE_TARGETS:-}\" ]' \"$apple_gate\" "
+            '|| apple_gate_bad="$apple_gate_bad target-override-not-rejected"',
+            "true # shared Apple target overrides accepted",
+            "shared Apple target-override rejection",
+        ),
+        (
+            "verify",
+            "grep -qF 'for target in \"${SELECTED_APPLE_TARGETS[@]}\"; do' "
+            '"$apple_gate" || apple_gate_bad="$apple_gate_bad '
+            'selected-target-matrix-unused"',
+            "grep -qF 'SELECTED_APPLE_TARGETS' \"$apple_gate\" "
+            '|| apple_gate_bad="$apple_gate_bad selected-target-matrix-unused"',
+            "shared Apple selected-matrix execution",
+        ),
+        (
+            "verify",
+            "[ \"$(grep -cF -- '--env SOURCE_DATE_EPOCH="
+            "\"$SOURCE_DATE_EPOCH_PIN\"' \"$apple_gate\")\" -eq 1 ] "
+            '|| apple_gate_bad="$apple_gate_bad source-date-epoch-not-pinned"',
+            "[ \"$(grep -cF -- '--env SOURCE_DATE_EPOCH="
+            "\"$SOURCE_DATE_EPOCH_PIN\"' \"$apple_gate\")\" -ge 0 ] "
+            '|| apple_gate_bad="$apple_gate_bad source-date-epoch-not-pinned"',
+            "shared Apple exact reproducibility-epoch transfer",
+        ),
+        (
+            "verify",
+            "[ \"$(grep -cF -- '--mount \"type=bind,source=$APPLE_SOURCE,"
+            "target=/work,readonly\"' \"$apple_gate\")\" -eq 2 ] "
+            '|| apple_gate_bad="$apple_gate_bad '
+            'private-source-mounts-not-readonly"',
+            "[ \"$(grep -cF -- '--mount \"type=bind,source=$APPLE_SOURCE,"
+            "target=/work,readonly\"' \"$apple_gate\")\" -ge 0 ] "
+            '|| apple_gate_bad="$apple_gate_bad '
+            'private-source-mounts-not-readonly"',
+            "shared Apple exact private read-only source mounts",
+        ),
+        (
+            "hardening",
+            "R-S11e-166 current shared Apple companion-gate authority",
+            "R-S11e-166 retired shared Apple companion-gate compatibility",
+            "current shared Apple companion-gate hardening ledger",
         ),
         (
             "verify",

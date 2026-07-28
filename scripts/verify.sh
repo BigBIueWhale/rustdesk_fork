@@ -12705,8 +12705,15 @@ fi
 # proves the cargo check does not silently mutate generated source.
 apple_gate_bad=
 apple_gate=scripts/apple-conform-check.sh
-grep -qF 'DEFAULT_APPLE_TARGETS=(aarch64-apple-darwin x86_64-apple-darwin aarch64-apple-ios)' "$apple_gate" || apple_gate_bad="$apple_gate_bad target-matrix"
-grep -qF 'APPLE_TARGETS' "$apple_gate" || apple_gate_bad="$apple_gate_bad APPLE_TARGETS-override"
+readonly_apple_targets=$(awk '/^readonly SELECTED_APPLE_TARGETS=\($/,/^\)$/' "$apple_gate")
+expected_apple_targets='readonly SELECTED_APPLE_TARGETS=(
+  aarch64-apple-darwin
+  x86_64-apple-darwin
+  aarch64-apple-ios
+)'
+[ "$readonly_apple_targets" = "$expected_apple_targets" ] || apple_gate_bad="$apple_gate_bad target-matrix"
+grep -qF '[ -z "${APPLE_TARGET:-}" ] && [ -z "${APPLE_TARGETS:-}" ]' "$apple_gate" || apple_gate_bad="$apple_gate_bad target-override-not-rejected"
+grep -qF 'for target in "${SELECTED_APPLE_TARGETS[@]}"; do' "$apple_gate" || apple_gate_bad="$apple_gate_bad selected-target-matrix-unused"
 grep -qF 'flutter,unix-file-copy-paste' "$apple_gate" || apple_gate_bad="$apple_gate_bad macos-real-features"
 grep -qF 'target_features()' "$apple_gate" || apple_gate_bad="$apple_gate_bad feature-dispatch"
 grep -qF 'plistlib' "$apple_gate" || apple_gate_bad="$apple_gate_bad plist-parser"
@@ -12715,8 +12722,8 @@ grep -qF 'APPLE_POD_ALLOWLISTS' "$apple_gate" || apple_gate_bad="$apple_gate_bad
 grep -qF 'PBXShellScriptBuildPhase allow-list' "$apple_gate" || apple_gate_bad="$apple_gate_bad pbx-shell-allowlist"
 grep -qF 'source scripts/lib.sh' "$apple_gate" || apple_gate_bad="$apple_gate_bad pin-loader-missing"
 grep -qF 'load_pins' "$apple_gate" || apple_gate_bad="$apple_gate_bad pins-not-loaded"
-grep -qF -- '-e SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"' "$apple_gate" || apple_gate_bad="$apple_gate_bad source-date-epoch-not-pinned"
-grep -qF -- '-v "$REPO:/work:ro"' "$apple_gate" || apple_gate_bad="$apple_gate_bad mutable-source-bind"
+[ "$(grep -cF -- '--env SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH_PIN"' "$apple_gate")" -eq 1 ] || apple_gate_bad="$apple_gate_bad source-date-epoch-not-pinned"
+[ "$(grep -cF -- '--mount "type=bind,source=$APPLE_SOURCE,target=/work,readonly"' "$apple_gate")" -eq 2 ] || apple_gate_bad="$apple_gate_bad private-source-mounts-not-readonly"
 grep -qF 'source tree has no generated src/version.rs' "$apple_gate" || apple_gate_bad="$apple_gate_bad non-mutating-version-proof"
 grep -qF 'VCPKG_ROOT="$stub"' "$apple_gate" || apple_gate_bad="$apple_gate_bad apple-vcpkg-stub"
 if [ -n "$apple_gate_bad" ]; then

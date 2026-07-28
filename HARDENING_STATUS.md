@@ -729,6 +729,41 @@ current APK install and physical-device controlled-Android connect/disconnect/ta
 separate outgoing viewer reproduction, exact cold R-B2/R-B10 artifacts, separately required independent
 reproduction, and external review remain open.
 
+Follow-up verifier correction (2026-07-28), **R-S11ej/R-S11e-154 current release target-contract authority**:
+the shared executable target fixture had drifted behind both production build scripts. It created its output
+directory even though current publication requires a freshly absent destination; installed fake `git` and
+`docker` commands through `PATH` even though the targets replace `PATH` with `/usr/bin:/bin`; injected inherited
+`DOCKER_HOST`/`DOCKER_CONFIG` even though the targets now reject those inputs and create one private target-owned
+Docker authority; omitted `LOCAL_DOCKER_AUTHORITY_INITIALIZED` and the current initialization/assertion/removal
+API; expected obsolete volume syntax; and invoked Android's `--verify-apk` branch instead of the normal build
+consumer. The first concrete result was a Debian no-clobber rejection followed by an unbound cleanup variable,
+not evidence about the current build consumer. This was a verifier-integrity and release-evidence defect, not a
+product runtime defect, privilege escalation, compromise, root acquisition, public exposure, container escape,
+or host RustDesk/service/firewall/network change.
+
+The fixture now copies the exact target, Android inner-build, Android exact-source validator, and private-tree
+cleanup helper sources into one private real SHA-1 Git repository, commits them, removes ambient Git
+configuration, detaches `HEAD`, and supplies that actual full commit to release-child mode. Runtime inputs remain
+untracked, and every target still proves its own exact clean source. The output edge remains absent before and
+after every case. A fixture-local `lib.sh` models the current target-owned Docker lifecycle: it rejects inherited
+Docker client inputs, creates and identity-binds exact private `{}` configuration below the target-owned
+workspace, routes only through one exact private fake client under an explicitly empty environment carrying only
+the fixture log/mutation selector, checks authority before/after use, and removes the configuration before the
+production closure helper removes the exact workspace. Each initialization records its workspace so the outer
+fixture rejects any retained path.
+
+Android now follows its normal build path with exact private signing-file modes. The fake client recognizes only
+the keytool certificate preflight, returns the pinned fixture RSA/signature/fingerprint properties without
+logging it as a build consumer, and records/fails the subsequent build invocation. Both targets must reach
+exactly one recorded build consumer using their immutable image and exact `type=bind` read-only online snapshot;
+direct mode must use a private target-created copy. Existing missing/private/symlink/closure/image/online-override
+and post-consumer-mutation cases remain, inherited `DOCKER_CONFIG` refusal replaces the obsolete caller-owned
+config-byte test, and mutable tags, output creation, or retained workspaces fail. The independent semantic
+validator now binds the exact helper sources, real detached Git setup, no-clobber order, local Docker lifecycle,
+keytool/build separation, exact mount grammar, poison rejection, normal Android command, and cleanup proof; its
+deliberate mutation catalog changes each edge and requires the named rejection. This slice runs no release build
+and does not satisfy the still-open clean committed cold R-B2/R-B10 transaction.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust
@@ -15136,7 +15171,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-64b052cb0830193e599c4342f30ab694f24cce31aa138acd35125b313bc02383  requirements.html
+4eb4173b44d49b8eed6bc5644bd1051d9d9bb3e5730b9e0193fef273e929a747  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -15151,3 +15186,4 @@ The same identity additionally binds R-S11ef and Appendix C #285.
 The same identity additionally binds R-S11eg and Appendix C #286.
 The same identity additionally binds R-S11eh and Appendix C #287.
 The same identity additionally binds R-S11ei and Appendix C #288.
+The same identity additionally binds R-S11ej and Appendix C #289.

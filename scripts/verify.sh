@@ -139,15 +139,18 @@ install -d -m 0700 "$VERIFIER_FIXTURE_TMP"
 source scripts/fork-version.sh
 rc=0
 
-echo "== (0) verifier workspace authority + release source/workflow ordering (R-S11c-10w/R-B2) =="
+echo "== (0) verifier workspace + current target authority + release source/workflow ordering (R-S11c-10w/R-S11ej/R-S11e-154/R-B2) =="
 r_s11c10w=
 if ! /usr/bin/python3 -I -S scripts/verify-verifier-workspace.py --repo . --self-test --scratch "$VERIFIER_FIXTURE_TMP"; then
   r_s11c10w="$r_s11c10w workspace-or-release-source-mutation-gate-failed"
 fi
 grep -qF 'R-S11c-10w — verifier private scratch workspace authority' HARDENING_STATUS.md || r_s11c10w="$r_s11c10w hardening-ledger-missing"
 grep -qF 'Verifier private scratch workspace authority' requirements.html || r_s11c10w="$r_s11c10w requirements-disposition-missing"
-if [ -n "$r_s11c10w" ]; then echo "  FAIL R-S11c-10w/R-B2 verifier workspace or release source ordering:$r_s11c10w"; rc=1; else
-  echo "  ok  R-S11c-10w/R-B2 private verifier workspace + same-clean-HEAD release verification + publish/version workflow ordering"; fi
+grep -qF 'R-S11ej/R-S11e-154 current release target-contract authority' HARDENING_STATUS.md || r_s11c10w="$r_s11c10w target-contract-ledger-missing"
+grep -qF '<span class="id">R-S11ej</span>' requirements.html || r_s11c10w="$r_s11c10w target-contract-requirement-missing"
+grep -qF '<tr><td>289</td>' requirements.html || r_s11c10w="$r_s11c10w target-contract-appendix-missing"
+if [ -n "$r_s11c10w" ]; then echo "  FAIL R-S11c-10w/R-S11ej/R-S11e-154/R-B2 verifier workspace, current target authority, or release source ordering:$r_s11c10w"; rc=1; else
+  echo "  ok  R-S11c-10w/R-S11ej/R-S11e-154/R-B2 private verifier workspace + current exact-source/no-clobber/target-owned-Docker fixtures + same-clean-HEAD release verification + publish/version workflow ordering"; fi
 
 echo "== (0a) dependency, workflow, build-script, and unsafe-source inventory =="
 inventory_gate=

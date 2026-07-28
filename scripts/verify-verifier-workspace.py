@@ -30523,6 +30523,30 @@ def validate_sources(sources):
     validate_faillo_contract(sources["faillo"])
     validate_private_tree_closure(sources["closure"])
     validate_workspace_verifier_self_contract(sources["workspace_verifier"])
+    require_exact_count(
+        sources["verify"],
+        "R-S11c-10w/R-S11ej/R-S11e-154/R-B2",
+        3,
+        "target-contract shared verifier wiring",
+    )
+    for source_name, text, label in (
+        (
+            "requirements",
+            '<span class="id">R-S11ej</span>',
+            "target-contract authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>289</td>",
+            "target-contract authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11ej/R-S11e-154 current release target-contract authority",
+            "target-contract authority hardening ledger",
+        ),
+    ):
+        require_text(sources[source_name], text, label)
 
 
 def handle_managed_signal(signum, frame):
@@ -33648,7 +33672,6 @@ def run_transaction_fixtures(repo):
 
 
 def run_target_contract_fixtures(sources, scratch):
-    commit = "a" * 40
     image_ids = {
         "debian": "sha256:" + "d" * 64,
         "android": "sha256:" + "a" * 64,
@@ -33665,6 +33688,14 @@ def run_target_contract_fixtures(sources, scratch):
             path = scripts / f"build-{target}.sh"
             path.write_text(sources[target], encoding="utf-8")
             path.chmod(0o700)
+        for name, source in (
+            ("android-apk-build.sh", sources["android_apk_build"]),
+            ("verify-android-build-source.py", sources["android_build_source_verifier"]),
+            ("verify-private-tree-closure.py", sources["closure"]),
+        ):
+            path = scripts / name
+            path.write_text(source, encoding="utf-8")
+            path.chmod(0o700)
         (scripts / "lib.sh").write_text(
             r'''set -euo pipefail
 LIB_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -33673,7 +33704,16 @@ ONLINE_DIR="$REPO_ROOT/online"
 DEFAULT_ANDROID_KEYSTORE="$REPO_ROOT/private/key.jks"
 DEFAULT_ANDROID_KEYSTORE_PASS_FILE="$REPO_ROOT/private/pass"
 SHA_PENDING="__PENDING_R_B12__"
+LOCAL_DOCKER_AUTHORITY_INITIALIZED=0
+LOCAL_DOCKER_AUTHORITY_LABEL=""
+LOCAL_DOCKER_AUTHORITY_PARENT=""
+LOCAL_DOCKER_AUTHORITY_PARENT_ID=""
+LOCAL_DOCKER_AUTHORITY_CONFIG=""
+LOCAL_DOCKER_AUTHORITY_CONFIG_ID=""
+LOCAL_DOCKER_AUTHORITY_CONFIG_FILE_ID=""
+LOCAL_DOCKER_AUTHORITY_CLIENT_ID=""
 die() { printf 'fixture:FATAL: %s\n' "$*" >&2; exit 1; }
+warn() { printf 'fixture:WARN: %s\n' "$*" >&2; }
 log() { :; }
 load_pins() {
     SOURCE_DATE_EPOCH_PIN=1700000000
@@ -33703,6 +33743,98 @@ require_cmd() { :; }
 assert_repo_state() { :; }
 assert_clean_worktree() { :; }
 assert_source_date_epoch() { [ "${SOURCE_DATE_EPOCH:-}" = 1700000000 ] || die "bad epoch"; }
+initialize_local_docker_authority() {
+    [ "$#" -eq 2 ] || die "initialize_local_docker_authority requires CONFIG_PATH LABEL"
+    [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 0 ] \
+        || die "local Docker authority is already initialized"
+    local config="$1" label="$2" parent variable
+    case "$config" in
+        /*/docker-config) ;;
+        *) die "$label Docker configuration must be an absolute docker-config path" ;;
+    esac
+    parent="${config%/docker-config}"
+    [ -d "$parent" ] && [ ! -L "$parent" ] \
+        || die "$label Docker authority parent is not a real directory"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$parent" 2>/dev/null)" = \
+        "$(/usr/bin/id -u):$(/usr/bin/id -g):700" ] \
+        || die "$label Docker authority parent is not current-user/current-group mode 0700"
+    printf '%s\n' "$parent" >> "$FIXTURE_WORKSPACE_LOG"
+    { [ ! -e "$config" ] && [ ! -L "$config" ]; } \
+        || die "$label Docker configuration path already exists"
+    [ "${FIXTURE_DOCKER_CLIENT:-}" = "$REPO_ROOT/bin/docker" ] \
+        && [ -f "$FIXTURE_DOCKER_CLIENT" ] && [ ! -L "$FIXTURE_DOCKER_CLIENT" ] \
+        && [ -x "$FIXTURE_DOCKER_CLIENT" ] \
+        || die "$label fixture Docker client authority is unavailable"
+    for variable in \
+        DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS \
+        DOCKER_API_VERSION DOCKER_DEFAULT_PLATFORM DOCKER_CONTENT_TRUST \
+        DOCKER_CONTENT_TRUST_SERVER DOCKER_CUSTOM_HEADERS; do
+        [ -z "${!variable+x}" ] \
+            || die "$label rejects inherited Docker client input $variable"
+    done
+    /usr/bin/install -d -m 0700 -- "$config"
+    (umask 077 && set -o noclobber && printf '{}\n' >"$config/config.json") \
+        || die "$label Docker config.json creation failed"
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$config" 2>/dev/null)" = \
+        "$(/usr/bin/id -u):$(/usr/bin/id -g):700" ] \
+        || die "$label fixture Docker configuration is not private"
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$config/config.json" 2>/dev/null)" = \
+        "$(/usr/bin/id -u):$(/usr/bin/id -g):600:1" ] \
+        || die "$label fixture Docker config.json is not private and single-link"
+    [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$FIXTURE_DOCKER_CLIENT" 2>/dev/null)" = \
+        "$(/usr/bin/id -u):$(/usr/bin/id -g):700:1" ] \
+        || die "$label fixture Docker client is not private and single-link"
+    LOCAL_DOCKER_AUTHORITY_LABEL="$label"
+    LOCAL_DOCKER_AUTHORITY_PARENT="$parent"
+    LOCAL_DOCKER_AUTHORITY_PARENT_ID="$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$parent")"
+    LOCAL_DOCKER_AUTHORITY_CONFIG="$config"
+    LOCAL_DOCKER_AUTHORITY_CONFIG_ID="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- "$config")"
+    LOCAL_DOCKER_AUTHORITY_CONFIG_FILE_ID="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- "$config/config.json")"
+    LOCAL_DOCKER_AUTHORITY_CLIENT_ID="$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- "$FIXTURE_DOCKER_CLIENT")"
+    LOCAL_DOCKER_AUTHORITY_INITIALIZED=1
+    assert_local_docker_authority
+}
+assert_local_docker_authority() {
+    [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
+        || { echo "local Docker authority is not initialized" >&2; return 1; }
+    [ -d "$LOCAL_DOCKER_AUTHORITY_PARENT" ] && [ ! -L "$LOCAL_DOCKER_AUTHORITY_PARENT" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$LOCAL_DOCKER_AUTHORITY_PARENT" 2>/dev/null)" = \
+            "$LOCAL_DOCKER_AUTHORITY_PARENT_ID" ] \
+        || { echo "$LOCAL_DOCKER_AUTHORITY_LABEL Docker authority parent identity changed" >&2; return 1; }
+    [ -d "$LOCAL_DOCKER_AUTHORITY_CONFIG" ] && [ ! -L "$LOCAL_DOCKER_AUTHORITY_CONFIG" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- "$LOCAL_DOCKER_AUTHORITY_CONFIG" 2>/dev/null)" = \
+            "$LOCAL_DOCKER_AUTHORITY_CONFIG_ID" ] \
+        || { echo "$LOCAL_DOCKER_AUTHORITY_LABEL Docker configuration identity changed" >&2; return 1; }
+    [ -f "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" ] \
+        && [ ! -L "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" 2>/dev/null)" = \
+            "$LOCAL_DOCKER_AUTHORITY_CONFIG_FILE_ID" ] \
+        && /usr/bin/cmp -s -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" <(printf '{}\n') \
+        || { echo "$LOCAL_DOCKER_AUTHORITY_LABEL Docker config.json authority changed" >&2; return 1; }
+    [ -f "$FIXTURE_DOCKER_CLIENT" ] && [ ! -L "$FIXTURE_DOCKER_CLIENT" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a:%h' -- "$FIXTURE_DOCKER_CLIENT" 2>/dev/null)" = \
+            "$LOCAL_DOCKER_AUTHORITY_CLIENT_ID" ] \
+        || { echo "$LOCAL_DOCKER_AUTHORITY_LABEL fixture Docker client identity changed" >&2; return 1; }
+}
+local_docker() {
+    local status=0
+    assert_local_docker_authority || return 1
+    /usr/bin/env -i \
+        PATH=/usr/bin:/bin \
+        FIXTURE_DOCKER_LOG="$FIXTURE_DOCKER_LOG" \
+        FIXTURE_MUTATE_ONLINE="${FIXTURE_MUTATE_ONLINE:-0}" \
+        "$FIXTURE_DOCKER_CLIENT" "$@" || status=$?
+    assert_local_docker_authority || return 1
+    return "$status"
+}
+remove_local_docker_authority() {
+    assert_local_docker_authority || return 125
+    /usr/bin/rm -- "$LOCAL_DOCKER_AUTHORITY_CONFIG/config.json" || return 125
+    /usr/bin/rmdir -- "$LOCAL_DOCKER_AUTHORITY_CONFIG" || return 125
+    [ "$(/usr/bin/stat -c '%d:%i:%u:%g:%a' -- "$LOCAL_DOCKER_AUTHORITY_PARENT" 2>/dev/null)" = \
+        "$LOCAL_DOCKER_AUTHORITY_PARENT_ID" ] || return 125
+    LOCAL_DOCKER_AUTHORITY_INITIALIZED=0
+}
 require_online_complete() {
     [ "$(cat "$ONLINE_DIR/closure" 2>/dev/null)" = pinned ] || die "canonical online closure mismatch"
 }
@@ -33733,23 +33865,33 @@ create_private_online_snapshot() {
 ''',
             encoding="utf-8",
         )
-        (tools / "git").write_text(
-            f"#!/usr/bin/env bash\nprintf '%s\\n' '{commit}'\n",
-            encoding="utf-8",
-        )
-        (tools / "git").chmod(0o700)
         (tools / "docker").write_text(
             """#!/usr/bin/python3
 import json
 import os
 import sys
+arguments = sys.argv[1:]
+if (
+    any("target=/ks/keystore.jks,readonly" in value for value in arguments)
+    and any("keytool " in value for value in arguments)
+):
+    print("Signature algorithm name: SHA256withRSA")
+    print("Subject Public Key Algorithm: 4096-bit RSA key")
+    print("SHA256: 9")
+    raise SystemExit(0)
 with open(os.environ["FIXTURE_DOCKER_LOG"], "a", encoding="utf-8") as stream:
-    stream.write(json.dumps(sys.argv[1:]) + "\\n")
+    stream.write(json.dumps(arguments) + "\\n")
 if os.environ.get("FIXTURE_MUTATE_ONLINE") == "1":
-    mounts = [value for value in sys.argv[1:] if value.endswith(":/online:ro")]
+    prefix = "type=bind,source="
+    suffix = ",target=/online,readonly"
+    mounts = [
+        value
+        for value in arguments
+        if value.startswith(prefix) and value.endswith(suffix)
+    ]
     if len(mounts) != 1:
         raise SystemExit(18)
-    closure = os.path.join(mounts[0][:-len(":/online:ro")], "closure")
+    closure = os.path.join(mounts[0][len(prefix):-len(suffix)], "closure")
     os.chmod(closure, 0o600)
     with open(closure, "w", encoding="ascii") as stream:
         stream.write("consumer mutation\\n")
@@ -33759,6 +33901,60 @@ raise SystemExit(17)
             encoding="utf-8",
         )
         (tools / "docker").chmod(0o700)
+
+        home = root / "home"
+        home.mkdir(mode=0o700)
+        git_environment = {
+            "HOME": str(home),
+            "PATH": "/usr/bin:/bin",
+            "LC_ALL": "C",
+            "LANG": "C",
+            "GIT_CONFIG_NOSYSTEM": "1",
+            "GIT_CONFIG_GLOBAL": "/dev/null",
+            "GIT_CONFIG_SYSTEM": "/dev/null",
+            "GIT_TERMINAL_PROMPT": "0",
+            "GIT_NO_REPLACE_OBJECTS": "1",
+        }
+
+        def fixture_git(*arguments):
+            result = run_managed_command(
+                [
+                    "/usr/bin/git",
+                    "--no-replace-objects",
+                    "-c",
+                    "core.hooksPath=/dev/null",
+                    *arguments,
+                ],
+                root,
+                git_environment,
+                timeout_seconds=90,
+                cleanup_grace_seconds=5,
+                kill_grace_seconds=2,
+            )
+            if result.returncode != 0:
+                raise VerificationError(
+                    f"target-contract fixture Git command failed: {result.stderr.strip()}"
+                )
+            return result.stdout.strip()
+
+        fixture_git("init", "--quiet", "--initial-branch=fixture", "--object-format=sha1", ".")
+        fixture_git("add", "--", "scripts")
+        fixture_git(
+            "-c",
+            "user.name=RustDesk fixture",
+            "-c",
+            "user.email=fixture.invalid@localhost",
+            "commit",
+            "--quiet",
+            "--no-gpg-sign",
+            "--no-verify",
+            "-m",
+            "Exact target-contract fixture source",
+        )
+        fixture_git("checkout", "--quiet", "--detach", "HEAD")
+        commit = fixture_git("rev-parse", "--verify", "HEAD^{commit}")
+        if re.fullmatch(r"[0-9a-f]{40}", commit) is None:
+            raise VerificationError("target-contract fixture did not create one exact SHA-1 commit")
 
         online = root / "online"
         online.mkdir(mode=0o700)
@@ -33770,32 +33966,34 @@ raise SystemExit(17)
         (snapshot_online / "closure").write_text("pinned\n", encoding="ascii")
         (snapshot_online / "closure").chmod(0o400)
         snapshot_online.chmod(0o500)
-        docker_config = root / "docker-config"
-        docker_config.mkdir(mode=0o700)
-        (docker_config / "config.json").write_text("{}\n", encoding="ascii")
-        (docker_config / "config.json").chmod(0o600)
-        home = root / "home"
-        home.mkdir(mode=0o700)
-        apk = root / "app.apk"
-        apk.write_bytes(b"fixture apk")
+        private = root / "private"
+        private.mkdir(mode=0o700)
+        for name, contents in (("key.jks", b"fixture key\n"), ("pass", b"fixture pass\n")):
+            path = private / name
+            path.write_bytes(contents)
+            path.chmod(0o600)
         output = root / "out"
-        output.mkdir(mode=0o700)
         helper_log = root / "helper.log"
         docker_log = root / "docker.log"
+        workspace_log = root / "workspace.log"
 
         def invoke(target, *, release=True, supplied_snapshot=snapshot, extra_env=None):
             root_authority.assert_bound()
+            if os.path.lexists(output):
+                raise VerificationError("target-contract fixture output was not freshly absent")
             helper_log.write_text("", encoding="ascii")
             docker_log.write_text("", encoding="ascii")
+            workspace_log.write_text("", encoding="ascii")
             environment = {
                 "HOME": str(home),
-                "PATH": f"{tools}:/usr/bin:/bin",
+                "PATH": "/usr/bin:/bin",
                 "LC_ALL": "C",
                 "LANG": "C",
                 "SOURCE_DATE_EPOCH": "1700000000",
-                "DOCKER_HOST": "unix:///var/run/docker.sock",
                 "FIXTURE_LOG": str(helper_log),
                 "FIXTURE_DOCKER_LOG": str(docker_log),
+                "FIXTURE_DOCKER_CLIENT": str(tools / "docker"),
+                "FIXTURE_WORKSPACE_LOG": str(workspace_log),
                 "OUT_DIR": str(output),
                 "DOUBLE_BUILD": "0",
             }
@@ -33804,7 +34002,6 @@ raise SystemExit(17)
                     {
                         "RELEASE_SRC_COMMIT": commit,
                         "RELEASE_DOCKER_IMAGE_ID": image_ids[target],
-                        "DOCKER_CONFIG": str(docker_config),
                     }
                 )
                 if supplied_snapshot is not None:
@@ -33812,10 +34009,9 @@ raise SystemExit(17)
             if extra_env:
                 environment.update(extra_env)
             command = ["/usr/bin/bash", str(scripts / f"build-{target}.sh")]
-            if target == "android":
-                command.extend(("--verify-apk", str(apk)))
+            result = None
             try:
-                return run_managed_command(
+                result = run_managed_command(
                     command,
                     root,
                     environment,
@@ -33825,6 +34021,20 @@ raise SystemExit(17)
                 )
             finally:
                 root_authority.assert_bound()
+                if os.path.lexists(output):
+                    raise VerificationError(
+                        f"{target} target-contract fixture violated no-clobber output absence"
+                    )
+                for workspace in workspace_log.read_text(encoding="ascii").splitlines():
+                    if os.path.lexists(workspace):
+                        diagnostics = ""
+                        if result is not None:
+                            diagnostics = (result.stdout + result.stderr)[-2000:]
+                        raise VerificationError(
+                            f"{target} target-contract fixture retained its owned workspace: "
+                            f"{diagnostics}"
+                        )
+            return result
 
         def output_of(result):
             return result.stdout + result.stderr
@@ -33852,7 +34062,9 @@ raise SystemExit(17)
             }
             if any(argument in mutable_images for argument in docker_arguments):
                 raise VerificationError(f"{target} Docker invocation retained a mutable image tag")
-            expected_mount = f"{snapshot_online}:/online:ro"
+            expected_mount = (
+                f"type=bind,source={snapshot_online},target=/online,readonly"
+            )
             if expected_mount not in docker_arguments:
                 raise VerificationError(f"{target} release child did not mount the supplied private snapshot")
 
@@ -33875,11 +34087,12 @@ raise SystemExit(17)
             if "current-UID mode-0700 directory" not in output_of(result):
                 raise VerificationError(f"{target} accepted a non-private snapshot parent")
 
-            (docker_config / "config.json").write_text('{"currentContext":"hostile"}\n', encoding="ascii")
-            result = invoke(target)
-            (docker_config / "config.json").write_text("{}\n", encoding="ascii")
-            if "empty canonical configuration" not in output_of(result):
-                raise VerificationError(f"{target} accepted mutable Docker configuration bytes")
+            result = invoke(
+                target,
+                extra_env={"DOCKER_CONFIG": str(root / "hostile-docker-config")},
+            )
+            if "rejects inherited Docker client input DOCKER_CONFIG" not in output_of(result):
+                raise VerificationError(f"{target} accepted inherited Docker configuration authority")
 
             (snapshot_online / "closure").chmod(0o600)
             (snapshot_online / "closure").write_text("mutated\n", encoding="ascii")
@@ -33914,8 +34127,17 @@ raise SystemExit(17)
             if len(docker_lines) != 1:
                 raise VerificationError(f"{target} direct invocation did not reach one Docker consumer")
             docker_arguments = json.loads(docker_lines[0])
-            online_mounts = [argument for argument in docker_arguments if argument.endswith(":/online:ro")]
-            if len(online_mounts) != 1 or online_mounts[0] == f"{online}:/online:ro":
+            online_mounts = [
+                argument
+                for argument in docker_arguments
+                if argument.startswith("type=bind,source=")
+                and argument.endswith(",target=/online,readonly")
+            ]
+            if (
+                len(online_mounts) != 1
+                or online_mounts[0]
+                == f"type=bind,source={online},target=/online,readonly"
+            ):
                 raise VerificationError(f"{target} direct invocation consumed the mutable canonical online tree")
 
 
@@ -52092,6 +52314,142 @@ def run_source_mutations(sources):
             "R-R2d — retained GitHub Actions references remain executable",
             "workflow authority hardening ledger",
         ),
+        (
+            "workspace_verifier",
+            '("verify-private-tree-closure.py", sources["closure"]),',
+            '("verify-private-tree-closure.py", "# cleanup helper omitted\\n"),',
+            "target-contract exact cleanup helper source",
+        ),
+        (
+            "workspace_verifier",
+            'fixture_git("init", "--quiet", "--initial-branch=fixture", "--object-format=sha1", ".")',
+            'fixture_git("init", "--quiet", "--initial-branch=fixture", ".")',
+            "target-contract exact Git source initialization",
+        ),
+        (
+            "workspace_verifier",
+            'fixture_git("checkout", "--quiet", "--detach", "HEAD")',
+            'fixture_git("checkout", "--quiet", "fixture")',
+            "target-contract exact detached Git source",
+        ),
+        (
+            "workspace_verifier",
+            '"FIXTURE_DOCKER_CLIENT": str(tools / "docker"),',
+            '"FIXTURE_DOCKER_CLIENT": "/usr/bin/docker",',
+            "target-contract fixture-local Docker client routing",
+        ),
+        (
+            "workspace_verifier",
+            '/usr/bin/env -i \\\n'
+            '        PATH=/usr/bin:/bin \\\n'
+            '        FIXTURE_DOCKER_LOG="$FIXTURE_DOCKER_LOG" \\\n'
+            '        FIXTURE_MUTATE_ONLINE="${FIXTURE_MUTATE_ONLINE:-0}"',
+            '/usr/bin/env \\\n'
+            '        PATH=/usr/bin:/bin \\\n'
+            '        FIXTURE_DOCKER_LOG="$FIXTURE_DOCKER_LOG" \\\n'
+            '        FIXTURE_MUTATE_ONLINE="${FIXTURE_MUTATE_ONLINE:-0}"',
+            "target-contract empty fake-client environment",
+        ),
+        (
+            "workspace_verifier",
+            '"$(/usr/bin/id -u):$(/usr/bin/id -g):600:1" ] \\\n'
+            '        || die "$label fixture Docker config.json is not private and single-link"',
+            '"$(/usr/bin/id -u):$(/usr/bin/id -g):644:1" ] \\\n'
+            '        || die "$label fixture Docker config.json is not private and single-link"',
+            "target-contract Docker-config metadata proof",
+        ),
+        (
+            "workspace_verifier",
+            '"$(/usr/bin/id -u):$(/usr/bin/id -g):700:1" ] \\\n'
+            '        || die "$label fixture Docker client is not private and single-link"',
+            '"$(/usr/bin/id -u):$(/usr/bin/id -g):755:1" ] \\\n'
+            '        || die "$label fixture Docker client is not private and single-link"',
+            "target-contract fixture-client metadata proof",
+        ),
+        (
+            "workspace_verifier",
+            'and any("keytool " in value for value in arguments)',
+            "and False",
+            "target-contract Android keytool-only fixture preflight",
+        ),
+        (
+            "workspace_verifier",
+            'f"type=bind,source={snapshot_online},target=/online,readonly"',
+            'f"{snapshot_online}:/online:ro"',
+            "target-contract exact release online mount",
+        ),
+        (
+            "workspace_verifier",
+            '"rejects inherited Docker client input DOCKER_CONFIG" not in output_of(result)',
+            '"unrelated diagnostic" not in output_of(result)',
+            "target-contract inherited Docker authority rejection",
+        ),
+        (
+            "workspace_verifier",
+            'for workspace in workspace_log.read_text(encoding="ascii").splitlines():',
+            "for workspace in ():",
+            "target-contract owned-workspace retirement proof",
+        ),
+        (
+            "workspace_verifier",
+            'if os.path.lexists(output):\n                raise VerificationError("target-contract fixture output was not freshly absent")',
+            'if False:\n                raise VerificationError("target-contract fixture output was not freshly absent")',
+            "target-contract no-clobber output absence",
+        ),
+        (
+            "workspace_verifier",
+            'if os.path.lexists(output):\n                    raise VerificationError(\n                        f"{target} target-contract fixture violated no-clobber output absence"',
+            'if False:\n                    raise VerificationError(\n                        f"{target} target-contract fixture violated no-clobber output absence"',
+            "target-contract no-clobber output absence",
+        ),
+        (
+            "workspace_verifier",
+            'output = root / "out"',
+            'output = root / "out"\n        output.mkdir(mode=0o700)',
+            "precreated target-contract output",
+        ),
+        (
+            "workspace_verifier",
+            '"SOURCE_DATE_EPOCH": "1700000000",',
+            '"SOURCE_DATE_EPOCH": "1700000000",\n                "DOCKER_HOST": "unix:///var/run/docker.sock",',
+            "ambient target-contract Docker endpoint",
+        ),
+        (
+            "workspace_verifier",
+            '"LANG": "C",\n                "SOURCE_DATE_EPOCH": "1700000000",',
+            '"LANG": "C",\n                "DOCKER_CONTEXT": "hostile",\n                "SOURCE_DATE_EPOCH": "1700000000",',
+            "ambient target-contract Docker endpoint",
+        ),
+        (
+            "workspace_verifier",
+            'command = ["/usr/bin/bash", str(scripts / f"build-{target}.sh")]',
+            'command = ["/usr/bin/bash", str(scripts / f"build-{target}.sh"), "--verify-apk"]',
+            "Android verification-only target-contract shortcut",
+        ),
+        (
+            "verify",
+            "R-S11c-10w/R-S11ej/R-S11e-154/R-B2",
+            "R-S11c-10w/R-B2",
+            "target-contract shared verifier wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ej</span>',
+            '<span class="id">R-S11ej-disabled</span>',
+            "target-contract authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>289</td>",
+            "<tr><td>289-disabled</td>",
+            "target-contract authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11ej/R-S11e-154 current release target-contract authority",
+            "R-S11ej/R-S11e-154 obsolete release target-contract compatibility",
+            "target-contract authority hardening ledger",
+        ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
     for key, old, new, expected in mutations:
@@ -53450,6 +53808,58 @@ def validate_workspace_verifier_self_contract(source):
         "run_target_contract_fixtures",
         "target-contract behavioral fixtures",
     )
+    target_contract_functions = [
+        node
+        for node in module.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "run_target_contract_fixtures"
+    ]
+    if len(target_contract_functions) != 1:
+        raise VerificationError("target-contract ordinary Docker environment: expected one fixture")
+    target_invocations = [
+        node
+        for node in ast.walk(target_contract_functions[0])
+        if isinstance(node, ast.FunctionDef) and node.name == "invoke"
+    ]
+    if len(target_invocations) != 1:
+        raise VerificationError("target-contract ordinary Docker environment: expected one invocation helper")
+    target_environments = [
+        node.value
+        for node in ast.walk(target_invocations[0])
+        if isinstance(node, ast.Assign)
+        and any(
+            isinstance(target, ast.Name) and target.id == "environment"
+            for target in node.targets
+        )
+        and isinstance(node.value, ast.Dict)
+    ]
+    if len(target_environments) != 1 or any(
+        not isinstance(key, ast.Constant) or not isinstance(key.value, str)
+        for key in target_environments[0].keys
+    ):
+        raise VerificationError("target-contract ordinary Docker environment is not one literal map")
+    target_environment_keys = {
+        key.value for key in target_environments[0].keys
+    }
+    inherited_docker_keys = {
+        "DOCKER_HOST",
+        "DOCKER_CONTEXT",
+        "DOCKER_CONFIG",
+        "DOCKER_CERT_PATH",
+        "DOCKER_TLS_VERIFY",
+        "DOCKER_TLS",
+        "DOCKER_API_VERSION",
+        "DOCKER_DEFAULT_PLATFORM",
+        "DOCKER_CONTENT_TRUST",
+        "DOCKER_CONTENT_TRUST_SERVER",
+        "DOCKER_CUSTOM_HEADERS",
+    }
+    inherited_target_inputs = sorted(target_environment_keys & inherited_docker_keys)
+    if inherited_target_inputs:
+        raise VerificationError(
+            "ambient target-contract Docker endpoint/configuration is present: "
+            + ", ".join(inherited_target_inputs)
+        )
     version_fixtures = "\n".join(
         extract_python_definition(source, module, name, "fork-version behavioral fixtures")
         for name in (
@@ -54101,8 +54511,117 @@ def validate_workspace_verifier_self_contract(source):
     for text, label in (
         ("root = root_authority.canonical_path()", "canonical-path target-contract exception"),
         ("root_authority.assert_bound()", "target-contract edge authority proof"),
+        (
+            '("verify-private-tree-closure.py", sources["closure"])',
+            "target-contract exact cleanup helper source",
+        ),
+        (
+            '("verify-android-build-source.py", sources["android_build_source_verifier"])',
+            "target-contract exact Android source validator",
+        ),
+        (
+            'fixture_git("init", "--quiet", "--initial-branch=fixture", "--object-format=sha1", ".")',
+            "target-contract exact Git source initialization",
+        ),
+        (
+            'fixture_git("checkout", "--quiet", "--detach", "HEAD")',
+            "target-contract exact detached Git source",
+        ),
+        (
+            'if re.fullmatch(r"[0-9a-f]{40}", commit) is None:',
+            "target-contract exact Git commit identity",
+        ),
+        (
+            "initialize_local_docker_authority() {",
+            "target-contract fixture-local Docker authority initialization",
+        ),
+        (
+            "(umask 077 && set -o noclobber && printf '{}\\n' >\"$config/config.json\")",
+            "target-contract private Docker configuration creation",
+        ),
+        (
+            '"$(/usr/bin/id -u):$(/usr/bin/id -g):600:1" ] \\\n'
+            '        || die "$label fixture Docker config.json is not private and single-link"',
+            "target-contract Docker-config metadata proof",
+        ),
+        (
+            '"$(/usr/bin/id -u):$(/usr/bin/id -g):700:1" ] \\\n'
+            '        || die "$label fixture Docker client is not private and single-link"',
+            "target-contract fixture-client metadata proof",
+        ),
+        (
+            '"FIXTURE_DOCKER_CLIENT": str(tools / "docker"),',
+            "target-contract fixture-local Docker client routing",
+        ),
+        (
+            '/usr/bin/env -i \\\n'
+            '        PATH=/usr/bin:/bin \\\n'
+            '        FIXTURE_DOCKER_LOG="$FIXTURE_DOCKER_LOG" \\\n'
+            '        FIXTURE_MUTATE_ONLINE="${FIXTURE_MUTATE_ONLINE:-0}"',
+            "target-contract empty fake-client environment",
+        ),
+        (
+            'and any("keytool " in value for value in arguments)',
+            "target-contract Android keytool-only fixture preflight",
+        ),
+        (
+            'f"type=bind,source={snapshot_online},target=/online,readonly"',
+            "target-contract exact release online mount",
+        ),
+        (
+            '"rejects inherited Docker client input DOCKER_CONFIG" not in output_of(result)',
+            "target-contract inherited Docker authority rejection",
+        ),
+        (
+            'for workspace in workspace_log.read_text(encoding="ascii").splitlines():',
+            "target-contract owned-workspace retirement proof",
+        ),
     ):
         require_text(target_contract_fixtures, text, label)
+    for forbidden, label in (
+        ("output.mkdir(", "precreated target-contract output"),
+        ('"DOCKER_HOST": "unix:///var/run/docker.sock",', "ambient target-contract Docker endpoint"),
+        ('"DOCKER_CONFIG": str(docker_config),', "caller-owned target-contract Docker configuration"),
+        ('"--verify-apk"', "Android verification-only target-contract shortcut"),
+    ):
+        if forbidden in target_contract_fixtures:
+            raise VerificationError(f"{label} is present")
+    require_exact_count(
+        target_contract_fixtures,
+        "if os.path.lexists(output):",
+        2,
+        "target-contract no-clobber output absence",
+    )
+    require_order(
+        target_contract_fixtures,
+        (
+            "LOCAL_DOCKER_AUTHORITY_INITIALIZED=0",
+            "initialize_local_docker_authority() {",
+            "assert_local_docker_authority() {",
+            "local_docker() {",
+            "remove_local_docker_authority() {",
+        ),
+        "target-contract fixture-local Docker authority lifecycle",
+    )
+    require_order(
+        target_contract_fixtures,
+        (
+            'any("target=/ks/keystore.jks,readonly" in value for value in arguments)',
+            'and any("keytool " in value for value in arguments)',
+            'with open(os.environ["FIXTURE_DOCKER_LOG"], "a", encoding="utf-8") as stream:',
+        ),
+        "target-contract Android preflight/build-consumer separation",
+    )
+    require_order(
+        target_contract_fixtures,
+        (
+            "output = root / \"out\"",
+            "if os.path.lexists(output):",
+            'command = ["/usr/bin/bash", str(scripts / f"build-{target}.sh")]',
+            "if os.path.lexists(output):",
+        ),
+        "target-contract no-clobber execution order",
+    )
     require_order(
         scratch_validator,
         (

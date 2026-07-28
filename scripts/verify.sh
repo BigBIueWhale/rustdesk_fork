@@ -6993,10 +6993,13 @@ grep -qF 'ARTIFACT EXECUTION PENDING' HARDENING_STATUS.md || r_s11c27a="$r_s11c2
 if grep -Fq 'OPEN.** Replace process-name/text-based server cleanup with an' HARDENING_STATUS.md; then
   r_s11c27a="$r_s11c27a stale-parent-source-open-wording"
 fi
+service_child_image_block=$(awk '/fn open_active_user_service_child_executable/,/fn try_start_server_/' src/platform/linux.rs)
 service_child_launch_block=$(awk '/fn try_start_server_/,/pub fn require_service_owned_server_parent_liveness/' src/platform/linux.rs)
 grep -qF 'struct OwnedServiceChild {' src/platform/linux.rs || r_s11c27a="$r_s11c27a no-owned-child-type"
-echo "$service_child_launch_block" | grep -qF '.custom_flags(hbb_common::libc::O_CLOEXEC)' || r_s11c27a="$r_s11c27a credential-drop-executable-not-opened-cloexec"
-echo "$service_child_launch_block" | grep -qF '.open("/proc/self/exe")' || r_s11c27a="$r_s11c27a credential-drop-executable-object-not-opened"
+echo "$service_child_image_block" | grep -qF '.custom_flags(hbb_common::libc::O_CLOEXEC)' || r_s11c27a="$r_s11c27a credential-drop-executable-not-opened-cloexec"
+echo "$service_child_image_block" | grep -qF '.open("/proc/self/exe")' || r_s11c27a="$r_s11c27a credential-drop-executable-object-not-opened"
+echo "$service_child_image_block" | grep -qF '.custom_flags(hbb_common::libc::O_CLOEXEC | hbb_common::libc::O_NOFOLLOW)' || r_s11c27a="$r_s11c27a installed-service-child-executable-not-opened-cloexec-nofollow"
+echo "$service_child_launch_block" | grep -qF 'open_active_user_service_child_executable()?' || r_s11c27a="$r_s11c27a credential-drop-executable-helper-not-used"
 echo "$service_child_launch_block" | grep -qF 'format!("/proc/self/fd/{}", executable.as_raw_fd())' || r_s11c27a="$r_s11c27a credential-drop-launch-not-descriptor-bound"
 echo "$service_child_launch_block" | grep -qF 'unwrap_or_else(|| "/proc/self/exe".to_owned())' || r_s11c27a="$r_s11c27a root-launch-not-current-executable-object"
 echo "$service_child_launch_block" | grep -qF '.arg("--server")' || r_s11c27a="$r_s11c27a server-role-argument-missing"

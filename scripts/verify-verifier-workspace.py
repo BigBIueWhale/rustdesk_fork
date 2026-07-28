@@ -11293,6 +11293,173 @@ def validate_linux_service_child_principal_contract(sources):
     )
 
 
+def validate_linux_service_child_image_gate_contract(sources):
+    verify = sources["verify"]
+    focused = sources["linux_password_ipc_validator"]
+    hardening = sources["hardening"]
+
+    shared = extract_between(
+        verify,
+        'echo "== (3b-iii-h2b) Linux supervisor directly owns server children (R-S11c-27a) =="',
+        '\necho "== (3b-iii-h2c) Linux service-child durable crash recovery authority (R-S11c-27b) =="',
+        "Linux service-child image shared gate",
+    )
+    for text, label in (
+        (
+            "service_child_image_block=$(awk '/fn open_active_user_service_child_executable/,/fn try_start_server_/' src/platform/linux.rs)",
+            "Linux service-child image shared helper scope",
+        ),
+        (
+            "service_child_launch_block=$(awk '/fn try_start_server_/,/pub fn require_service_owned_server_parent_liveness/' src/platform/linux.rs)",
+            "Linux service-child image shared launcher scope",
+        ),
+        (
+            "echo \"$service_child_image_block\" | grep -qF '.custom_flags(hbb_common::libc::O_CLOEXEC)'",
+            "Linux running service image close-on-exec shared check",
+        ),
+        (
+            "echo \"$service_child_image_block\" | grep -qF '.open(\"/proc/self/exe\")'",
+            "Linux running service image object-open shared check",
+        ),
+        (
+            "echo \"$service_child_image_block\" | grep -qF '.custom_flags(hbb_common::libc::O_CLOEXEC | hbb_common::libc::O_NOFOLLOW)'",
+            "Linux installed service-child close-on-exec no-follow shared check",
+        ),
+        (
+            "echo \"$service_child_launch_block\" | grep -qF 'open_active_user_service_child_executable()?'",
+            "Linux service-child validated-image helper invocation",
+        ),
+    ):
+        require_text(shared, text, label)
+    for text, label in (
+        (
+            "echo \"$service_child_launch_block\" | grep -qF '.custom_flags(hbb_common::libc::O_CLOEXEC)'",
+            "obsolete launcher-scoped running-image close-on-exec check",
+        ),
+        (
+            "echo \"$service_child_launch_block\" | grep -qF '.open(\"/proc/self/exe\")'",
+            "obsolete launcher-scoped running-image object-open check",
+        ),
+    ):
+        require_absent(shared, text, label)
+
+    for text, label in (
+        (
+            'child_image = platform.function("open_active_user_service_child_executable")',
+            "Linux dedicated service-child image checker",
+        ),
+        (
+            "running service image close-on-exec open",
+            "Linux focused running-image close-on-exec enforcement",
+        ),
+        (
+            "installed service-child close-on-exec no-follow open",
+            "Linux focused installed-image close-on-exec enforcement",
+        ),
+        (
+            "running service image loses close-on-exec",
+            "Linux focused running-image close-on-exec mutation authority",
+        ),
+        (
+            "installed service-child image loses close-on-exec",
+            "Linux focused installed-image close-on-exec mutation authority",
+        ),
+    ):
+        require_text(focused, text, label)
+    require_text(
+        hardening,
+        "R-S11e-161 current Linux service-child executable-object gate authority",
+        "current Linux service-child image gate hardening ledger",
+    )
+
+    workspace = sources["workspace_verifier"]
+    try:
+        workspace_module = ast.parse(workspace)
+    except SyntaxError as exc:
+        raise VerificationError(
+            f"Linux service-child image gate contract dispatch: workspace verifier does not parse: {exc}"
+        ) from exc
+    definitions = [
+        node
+        for node in workspace_module.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "validate_linux_service_child_image_gate_contract"
+    ]
+    source_validators = [
+        node
+        for node in workspace_module.body
+        if isinstance(node, ast.FunctionDef) and node.name == "validate_sources"
+    ]
+    dispatches = (
+        [
+            node
+            for node in ast.walk(source_validators[0])
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "validate_linux_service_child_image_gate_contract"
+        ]
+        if len(source_validators) == 1
+        else []
+    )
+    if len(definitions) != 1 or len(dispatches) != 1:
+        raise VerificationError(
+            "Linux service-child image gate contract dispatch: expected one definition and one validate_sources call"
+        )
+    mutation_matrix = extract_between(
+        workspace,
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "Linux service-child image gate deliberate-mutation matrix",
+    )
+    for text, label in (
+        (
+            "Linux service-child image shared helper scope",
+            "shared helper-scope source mutation",
+        ),
+        (
+            "Linux running service image close-on-exec shared check",
+            "running-image flag shared-check source mutation",
+        ),
+        (
+            "Linux running service image object-open shared check",
+            "running-image open shared-check source mutation",
+        ),
+        (
+            "Linux installed service-child close-on-exec no-follow shared check",
+            "installed-image flag shared-check source mutation",
+        ),
+        (
+            "Linux service-child validated-image helper invocation",
+            "launcher helper-invocation source mutation",
+        ),
+        (
+            "Linux focused running-image close-on-exec enforcement",
+            "focused running-image enforcement source mutation",
+        ),
+        (
+            "Linux focused installed-image close-on-exec enforcement",
+            "focused installed-image enforcement source mutation",
+        ),
+        (
+            "Linux focused running-image close-on-exec mutation authority",
+            "focused running-image mutation-authority source mutation",
+        ),
+        (
+            "Linux focused installed-image close-on-exec mutation authority",
+            "focused installed-image mutation-authority source mutation",
+        ),
+        (
+            "current Linux service-child image gate hardening ledger",
+            "hardening-ledger source mutation",
+        ),
+        (
+            "Linux service-child image gate contract dispatch",
+            "workspace-dispatch source mutation",
+        ),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
 def validate_service_owned_server_role_contract(sources):
     verify = sources["verify"]
     requirements = sources["requirements"]
@@ -30643,6 +30810,7 @@ def validate_sources(sources):
     validate_cross_platform_user_helper_contract(sources)
     validate_macos_service_principal_contract(sources)
     validate_linux_service_child_principal_contract(sources)
+    validate_linux_service_child_image_gate_contract(sources)
     validate_service_owned_server_role_contract(sources)
     validate_service_supervisor_role_contract(sources)
     validate_windows_scm_service_entry_contract(sources)
@@ -34562,7 +34730,10 @@ def python_mutation_scopes(source, offsets):
             continue
         start, end = node_span(node)
         named.append((start, end, node.name))
-        if node.name.startswith("validate_") or node.name == "run_source_mutations":
+        if (
+            node.name.startswith("validate_")
+            and node.name != "validate_sources"
+        ) or node.name == "run_source_mutations":
             excluded.append((start, end))
     result = []
     for offset in offsets:
@@ -43484,6 +43655,72 @@ def run_source_mutations(sources):
             'child_image = platform.function("open_active_user_service_child_executable")',
             'child_image = platform.function("open_active_user_service_child_executable_disabled")',
             "Linux dedicated service-child image checker",
+        ),
+        (
+            "verify",
+            "service_child_image_block=$(awk '/fn open_active_user_service_child_executable/,/fn try_start_server_/' src/platform/linux.rs)",
+            "service_child_image_block=$(awk '/fn open_active_user_service_child_executable_disabled/,/fn try_start_server_/' src/platform/linux.rs)",
+            "Linux service-child image shared helper scope",
+        ),
+        (
+            "verify",
+            "echo \"$service_child_image_block\" | grep -qF '.custom_flags(hbb_common::libc::O_CLOEXEC)'",
+            "echo \"$service_child_launch_block\" | grep -qF '.custom_flags(hbb_common::libc::O_CLOEXEC)'",
+            "Linux running service image close-on-exec shared check",
+        ),
+        (
+            "verify",
+            "echo \"$service_child_image_block\" | grep -qF '.open(\"/proc/self/exe\")'",
+            "echo \"$service_child_launch_block\" | grep -qF '.open(\"/proc/self/exe\")'",
+            "Linux running service image object-open shared check",
+        ),
+        (
+            "verify",
+            "echo \"$service_child_image_block\" | grep -qF '.custom_flags(hbb_common::libc::O_CLOEXEC | hbb_common::libc::O_NOFOLLOW)'",
+            "echo \"$service_child_image_block\" | grep -qF '.custom_flags(hbb_common::libc::O_NOFOLLOW)'",
+            "Linux installed service-child close-on-exec no-follow shared check",
+        ),
+        (
+            "verify",
+            "echo \"$service_child_launch_block\" | grep -qF 'open_active_user_service_child_executable()?'",
+            "echo \"$service_child_launch_block\" | grep -qF 'open_active_user_service_child_executable_disabled()?'",
+            "Linux service-child validated-image helper invocation",
+        ),
+        (
+            "linux_password_ipc_validator",
+            "running service image close-on-exec open",
+            "running service image open",
+            "Linux focused running-image close-on-exec enforcement",
+        ),
+        (
+            "linux_password_ipc_validator",
+            "installed service-child close-on-exec no-follow open",
+            "installed service-child no-follow open",
+            "Linux focused installed-image close-on-exec enforcement",
+        ),
+        (
+            "linux_password_ipc_validator",
+            "running service image loses close-on-exec",
+            "running service image retains close-on-exec",
+            "Linux focused running-image close-on-exec mutation authority",
+        ),
+        (
+            "linux_password_ipc_validator",
+            "installed service-child image loses close-on-exec",
+            "installed service-child image retains close-on-exec",
+            "Linux focused installed-image close-on-exec mutation authority",
+        ),
+        (
+            "hardening",
+            "R-S11e-161 current Linux service-child executable-object gate authority",
+            "R-S11e-161 obsolete Linux service-child path gate compatibility",
+            "current Linux service-child image gate hardening ledger",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_linux_service_child_image_gate_contract(sources)",
+            "    validate_linux_service_child_image_gate_contract_disabled(sources)",
+            "Linux service-child image gate contract dispatch",
         ),
         (
             "linux_password_ipc_validator",

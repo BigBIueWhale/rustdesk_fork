@@ -937,6 +937,30 @@ with the already-implemented fail-closed storage policy and immutable signed-art
 credential fallback, a missing migration, an unverified APK, root acquisition, privilege escalation, compromise,
 public exposure, container escape, or a host RustDesk/service/firewall/network change.
 
+Follow-up verifier correction (2026-07-28),
+**R-S11e-161 current Linux service-child executable-object gate authority**: the R-S11c-27a shared shell gate
+still searched only the `try_start_server_()` function body for the close-on-exec `/proc/self/exe` open that had
+originally been inline there. R-S11c-27h subsequently extracted that operation into
+`open_active_user_service_child_executable()`, where the privileged supervisor opens the running image with
+`O_CLOEXEC`, validates its root-owned regular-file identity, and either retains the execute-only current object
+or opens an exact byte-identical root/root mode-0711 installed child with `O_CLOEXEC|O_NOFOLLOW`.
+`try_start_server_()` invokes that helper before its credential-changing pre-exec hook and continues to launch
+through the retained descriptor. The stale function scope therefore reported
+`credential-drop-executable-not-opened-cloexec` and `credential-drop-executable-object-not-opened` even though
+the stronger executable-object transaction was present and its behavior regression passed.
+
+The shared gate now extracts the dedicated image helper separately, requires both exact close-on-exec open
+shapes there, and requires the launcher to invoke it before retaining the existing descriptor-launch checks.
+The focused Linux service credential validator now binds both exact flag shapes in the helper's semantic order
+and independently mutation-tests removal of close-on-exec from the running and installed image opens. The
+independent workspace validator binds the corrected shared scopes, rejects restoration of the obsolete
+launch-block checks, binds the focused enforcement and mutations, and deliberately mutates each authority.
+Linux runtime code, credential transition, executable selection, package contents, service units, and release
+outputs are unchanged. This is verifier alignment with the already-implemented stronger executable-object
+transaction, not evidence of a path-based post-drop launch, missing privilege boundary, root acquisition,
+privilege escalation, compromise, public exposure, container escape, or a host
+RustDesk/service/firewall/network change.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust

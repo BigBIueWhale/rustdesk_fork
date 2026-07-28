@@ -825,7 +825,11 @@ def self_test() -> None:
         base.mkdir()
         online = base / "online"
         online.mkdir(mode=0o700)
-        create_fake_sdk(online / "android-sdk", build_tools, compile_sdk)
+        previous_umask = os.umask(0o077)
+        try:
+            create_fake_sdk(online / "android-sdk", build_tools, compile_sdk)
+        finally:
+            os.umask(previous_umask)
         staging = make_stage(online)
         prepare(online, staging, uid, gid)
         create_fake_gradle(staging / "gradle-home", version, archive)

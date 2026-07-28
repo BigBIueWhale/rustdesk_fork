@@ -22356,8 +22356,41 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
          "Gradle-output SDK mutation fixture"),
         ("self-test accepted an occupied Gradle publication destination",
          "Gradle-output destination-race fixture"),
+        (
+            "previous_umask = os.umask(0o077)\n"
+            "        try:\n"
+            '            create_fake_sdk(online / "android-sdk", '
+            "build_tools, compile_sdk)\n"
+            "        finally:\n"
+            "            os.umask(previous_umask)",
+            "Gradle-output private SDK fixture umask scope",
+        ),
     ):
         require_text(helper, text, label)
+    require_exact_count(
+        helper,
+        "previous_umask = os.umask(0o077)",
+        1,
+        "Gradle-output private SDK fixture umask",
+    )
+    require_exact_count(
+        helper,
+        "os.umask(previous_umask)",
+        1,
+        "Gradle-output SDK fixture umask restoration",
+    )
+    require_exact_count(
+        focused,
+        "previous_umask = os.umask(0o077)",
+        2,
+        "Gradle-output focused private SDK fixture umask",
+    )
+    require_exact_count(
+        focused,
+        "os.umask(previous_umask)",
+        2,
+        "Gradle-output focused SDK fixture umask restoration",
+    )
     require_order(
         helper,
         (
@@ -22404,6 +22437,11 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
         sources["hardening"],
         "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
         "online-fetch Android SDK/Gradle correction hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cl/R-S11e-104 umask-independent Gradle SDK fixture authority",
+        "online-fetch Gradle SDK fixture correction ledger",
     )
 
 
@@ -50387,6 +50425,12 @@ def run_source_mutations(sources):
             "online-fetch Gradle source authority hardening ledger",
         ),
         (
+            "hardening",
+            "R-S11cl/R-S11e-104 umask-independent Gradle SDK fixture authority",
+            "R-S11cl/R-S11e-104 ambient Gradle SDK fixture authority",
+            "online-fetch Gradle SDK fixture correction ledger",
+        ),
+        (
             "online_fetch_gradle_output_authority_verifier",
             "checked one-name publication",
             "unchecked output replacement",
@@ -50411,6 +50455,30 @@ def run_source_mutations(sources):
             "read-only Android SDK content postcondition failed",
             "read-only Android SDK mutation accepted",
             "Gradle-output publication SDK postcondition",
+        ),
+        (
+            "online_gradle_output_helper",
+            "previous_umask = os.umask(0o077)",
+            "previous_umask = os.umask(0o002)",
+            "Gradle-output private SDK fixture umask scope",
+        ),
+        (
+            "online_gradle_output_helper",
+            "os.umask(previous_umask)",
+            "os.umask(0o077)",
+            "Gradle-output private SDK fixture umask scope",
+        ),
+        (
+            "online_fetch_gradle_output_authority_verifier",
+            "previous_umask = os.umask(0o077)",
+            "previous_umask = os.umask(0o002)",
+            "Gradle-output focused private SDK fixture umask",
+        ),
+        (
+            "online_fetch_gradle_output_authority_verifier",
+            "os.umask(previous_umask)",
+            "os.umask(0o077)",
+            "Gradle-output focused SDK fixture umask restoration",
         ),
         (
             "online_fetch",

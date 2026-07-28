@@ -299,6 +299,15 @@ def validate(sources: Dict[str, str]) -> None:
             "checksum fixture",
         ),
         ("self-test accepted a symlinked output", "symlink fixture"),
+        (
+            "previous_umask = os.umask(0o077)\n"
+            "        try:\n"
+            '            create_fake_sdk(online / "android-sdk", '
+            "build_tools, compile_sdk)\n"
+            "        finally:\n"
+            "            os.umask(previous_umask)",
+            "private SDK fixture umask scope",
+        ),
     ):
         require(helper, token, label)
     for token, label in (
@@ -351,6 +360,11 @@ def validate(sources: Dict[str, str]) -> None:
         sources["hardening"],
         "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
         "hardening-ledger disposition",
+    )
+    require(
+        sources["hardening"],
+        "R-S11cl/R-S11e-104 umask-independent Gradle SDK fixture authority",
+        "private SDK fixture correction ledger",
     )
     require(
         sources["workspace"],
@@ -515,6 +529,18 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "publication rollback",
     ),
     Mutation(
+        "helper",
+        "previous_umask = os.umask(0o077)",
+        "previous_umask = os.umask(0o002)",
+        "private SDK fixture umask",
+    ),
+    Mutation(
+        "helper",
+        "os.umask(previous_umask)",
+        "os.umask(0o077)",
+        "SDK fixture umask restoration",
+    ),
+    Mutation(
         "verify",
         "/usr/bin/python3 -I -S "
         "scripts/verify-online-fetch-gradle-output-authority.py --repo . --self-test",
@@ -538,6 +564,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
         "R-S11cr/R-S11e-110 — ambient Android SDK authority",
         "hardening disposition",
+    ),
+    Mutation(
+        "hardening",
+        "R-S11cl/R-S11e-104 umask-independent Gradle SDK fixture authority",
+        "R-S11cl/R-S11e-104 ambient Gradle SDK fixture authority",
+        "private SDK fixture correction ledger",
     ),
 )
 

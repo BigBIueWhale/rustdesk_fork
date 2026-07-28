@@ -798,6 +798,24 @@ RustDesk/service/firewall/network modification, and it does not close exact cold
 evidence.
 
 Follow-up verifier correction (2026-07-28),
+**R-S11cl/R-S11e-104 umask-independent Gradle SDK fixture authority**: the Gradle output helper correctly
+rejects a group- or world-writable read-only Android SDK source, but its self-test constructed the complete
+synthetic SDK with default `Path.mkdir` and file-creation modes. Under ambient umask 0022 the fixture was
+non-group-writable and passed; under the ordinary collaborative 0002 profile its SDK root, descendants, and
+ordinary files could be group-writable, so the production validator correctly rejected the synthetic input.
+This failure did not identify unsafe metadata in the separately validated live SDK.
+
+The self-test now scopes umask 0077 only around construction of the synthetic SDK and restores the caller's
+previous umask in `finally`. That gives the complete fake read-only input private directory/file modes without
+normalizing a production SDK, changing the production validator, or affecting later fixtures. The focused
+verifier binds the exact scope and independently mutates both the private setting and restoration. The workspace
+validator requires one helper occurrence and exactly two focused check/mutation anchors for each operation, then
+mutates the helper and focused verifier independently. Confined behavioral runs under ambient umasks 0022, 0002,
+and 0000 plus both complete mutation matrices bind the correction. No persistent cache, product runtime,
+production acquisition, root authority, host process/service/listener/firewall/network state, or release artifact
+is modified.
+
+Follow-up verifier correction (2026-07-28),
 **R-S11cv/R-S11e-114 umask-independent libvpx self-test source authority**: the libvpx local-output helper
 correctly refuses a group- or world-writable committed source root, but its self-test created the synthetic
 `source` directory through `Path.mkdir(parents=True)` without first choosing and normalizing the source-root

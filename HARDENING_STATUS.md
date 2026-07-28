@@ -881,6 +881,23 @@ ignore rule, and binds this ledger entry; the existing recursive shared shell sc
 tree. This removes dangling repository policy rather than changing package/runtime behavior, and it modifies no
 build output, privilege boundary, host process/service/listener/firewall/network state, or release artifact.
 
+Follow-up verifier correction (2026-07-28),
+**R-S11e-158 current olefile fixed-archive gate authority**: the Windows Installer shared gate still searched
+`scripts/online-fetch.sh` for the obsolete multiline `fetch_verify` spelling and braced digest argument introduced
+with the original olefile acquisition. The R-S11e-111 correction subsequently moved olefile into the exact
+fourteen-entry fixed-archive manifest and its independently verified transaction, deleting that call while
+preserving and strengthening the name, URL, exact-length, SHA-256, and redirect-host authority. The stale literals
+therefore reported `olefile-fetch-missing` and `olefile-fetch-not-digest-checked` even though the current
+acquisition contract was present and the Windows VM consumer remained digest-bound.
+
+The shared gate now extracts olefile only from `FIXED_ARCHIVE_ARGS` and compares the complete six-line entry with
+the current fixed name, URL, size variable, digest variable, and admitted host. The independent semantic validator
+binds the manifest scope, every expected entry field, exact comparison, and diagnostic, and deliberately mutates
+each anchor independently. Product acquisition, archive bytes, pins, redirect policy, publication, and Windows
+consumption are unchanged. This is verifier alignment with the already-implemented stronger fixed-archive
+transaction, not evidence of a failed download, weakened digest check, root acquisition, privilege escalation,
+compromise, public exposure, container escape, or a host RustDesk/service/firewall/network change.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust

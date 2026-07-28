@@ -2472,8 +2472,25 @@ if [ -z "$canonicalize_line" ] || [ -z "$validation_line" ] || [ -z "$payload_co
 fi
 grep -Fq 'OLEFILE_VERSION="0.47"' scripts/pins.env || r_s11e20="$r_s11e20 olefile-version-pin-missing"
 grep -Fq 'SHA256_OLEFILE_0_47="543c7da2a7adadf21214938bb79c83ea12b473a4b6ee4ad4bf854e7715e13d1f"' scripts/pins.env || r_s11e20="$r_s11e20 olefile-digest-pin-missing"
-grep -Fq 'olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" \' scripts/online-fetch.sh || r_s11e20="$r_s11e20 olefile-fetch-missing"
-grep -Fq '"${SHA256_OLEFILE_0_47}"' scripts/online-fetch.sh || r_s11e20="$r_s11e20 olefile-fetch-not-digest-checked"
+olefile_fixed_archive_entry=$(
+  awk '
+    /^readonly -a FIXED_ARCHIVE_ARGS=\(/ { in_manifest = 1; next }
+    !in_manifest { next }
+    /^    --entry$/ { entry = $0 ORS; next }
+    /^\)$/ { exit }
+    entry != "" { entry = entry $0 ORS }
+    /^    "olefile-\$\{OLEFILE_VERSION\}-py2\.py3-none-any\.whl"$/ { olefile = 1 }
+    olefile && /^    "files\.pythonhosted\.org"$/ { printf "%s", entry; exit }
+  ' scripts/online-fetch.sh
+)
+expected_olefile_fixed_archive_entry='    --entry
+    "olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl"
+    "https://files.pythonhosted.org/packages/17/d3/b64c356a907242d719fc668b71befd73324e47ab46c8ebbbede252c154b2/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl"
+    "$SIZE_OLEFILE_0_47"
+    "$SHA256_OLEFILE_0_47"
+    "files.pythonhosted.org"'
+[ "$olefile_fixed_archive_entry" = "$expected_olefile_fixed_archive_entry" ] \
+  || r_s11e20="$r_s11e20 olefile-fixed-archive-entry-mismatch"
 grep -Fq 'verify_sha256 "$ONLINE_DIR/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" "$SHA256_OLEFILE_0_47"' scripts/build-windows-vm.sh || r_s11e20="$r_s11e20 olefile-vm-preflight-missing"
 grep -Fq '/python-wheels/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl=/online/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl' scripts/build-windows-vm.sh || r_s11e20="$r_s11e20 olefile-offline-media-graft-missing"
 grep -Fq "\$olefileWheel = Join-Path \$offline 'python-wheels\olefile-0.47-py2.py3-none-any.whl'" "$windows_build" || r_s11e20="$r_s11e20 olefile-offline-wheel-not-selected"

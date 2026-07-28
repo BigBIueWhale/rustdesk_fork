@@ -23468,6 +23468,7 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
     focused = sources["online_fetch_fixed_archive_authority_verifier"]
     helper = sources["online_fixed_archive_output_helper"]
     online = sources["online_fetch"]
+    verify = sources["verify"]
     for text, label in (
         (
             "Bind fixed toolchain, Dart, WiX, vcpkg, and Debian image acquisition authority",
@@ -23568,6 +23569,41 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
         require_text(lifecycle, text, label)
     require_exact_count(lifecycle, "--mount ", 3, "fixed-archive exact mount inventory")
     require_absent(lifecycle, "source=$ONLINE_DIR,target=", "fixed-archive broad online mount")
+    olefile_installer_gate = extract_between(
+        verify,
+        "olefile_fixed_archive_entry=$(",
+        '\ngrep -Fq \'verify_sha256 "$ONLINE_DIR/olefile-',
+        "Installer olefile fixed-archive gate",
+    )
+    for text, label in (
+        (
+            "/^readonly -a FIXED_ARCHIVE_ARGS=\\(/",
+            "Installer olefile fixed-manifest scope",
+        ),
+        (
+            '"olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl"',
+            "Installer olefile fixed-archive name",
+        ),
+        (
+            '"https://files.pythonhosted.org/packages/17/d3/'
+            "b64c356a907242d719fc668b71befd73324e47ab46c8ebbbede252c154b2/"
+            'olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl"',
+            "Installer olefile fixed-archive URL",
+        ),
+        ('"$SIZE_OLEFILE_0_47"', "Installer olefile fixed-archive size"),
+        ('"$SHA256_OLEFILE_0_47"', "Installer olefile fixed-archive digest"),
+        ('"files.pythonhosted.org"', "Installer olefile fixed-archive host"),
+        (
+            '[ "$olefile_fixed_archive_entry" = '
+            '"$expected_olefile_fixed_archive_entry" ]',
+            "Installer olefile exact-entry comparison",
+        ),
+        (
+            "olefile-fixed-archive-entry-mismatch",
+            "Installer olefile fixed-archive diagnostic",
+        ),
+    ):
+        require_text(olefile_installer_gate, text, label)
     require_text(
         online,
         "cloud.debian.org,laotzu.ftp.acc.umu.se",
@@ -23792,6 +23828,11 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
         sources["hardening"],
         "R-S11cu/R-S11e-113 retained-identity systemd image consumer authority",
         "retained-identity systemd image consumer ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11e-158 current olefile fixed-archive gate authority",
+        "current olefile fixed-archive gate ledger",
     )
 
 
@@ -51301,6 +51342,67 @@ def run_source_mutations(sources):
             "fixed-archive acquisition lifecycle",
         ),
         (
+            "verify",
+            "/^readonly -a FIXED_ARCHIVE_ARGS=\\(/",
+            "/^readonly -a FIXED_ARCHIVE_ARGS_DISABLED=\\(/",
+            "Installer olefile fixed-manifest scope",
+        ),
+        (
+            "verify",
+            '    "olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl"\n'
+            '    "https://files.pythonhosted.org/packages/17/d3/',
+            '    "olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl.disabled"\n'
+            '    "https://files.pythonhosted.org/packages/17/d3/',
+            "Installer olefile fixed-archive name",
+        ),
+        (
+            "verify",
+            '"https://files.pythonhosted.org/packages/17/d3/'
+            "b64c356a907242d719fc668b71befd73324e47ab46c8ebbbede252c154b2/"
+            'olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl"',
+            '"https://files.pythonhosted.org/disabled/'
+            'olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl"',
+            "Installer olefile fixed-archive URL",
+        ),
+        (
+            "verify",
+            '    "$SIZE_OLEFILE_0_47"\n'
+            '    "$SHA256_OLEFILE_0_47"',
+            '    "$SIZE_OLEFILE_0_47_DISABLED"\n'
+            '    "$SHA256_OLEFILE_0_47"',
+            "Installer olefile fixed-archive size",
+        ),
+        (
+            "verify",
+            '    "$SHA256_OLEFILE_0_47"\n'
+            '    "files.pythonhosted.org"\'',
+            '    "$SHA256_OLEFILE_0_47_DISABLED"\n'
+            '    "files.pythonhosted.org"\'',
+            "Installer olefile fixed-archive digest",
+        ),
+        (
+            "verify",
+            '    "files.pythonhosted.org"\'\n'
+            '[ "$olefile_fixed_archive_entry"',
+            '    "disabled.pythonhosted.org"\'\n'
+            '[ "$olefile_fixed_archive_entry"',
+            "Installer olefile fixed-archive host",
+        ),
+        (
+            "verify",
+            '[ "$olefile_fixed_archive_entry" = '
+            '"$expected_olefile_fixed_archive_entry" ]',
+            '[ "$olefile_fixed_archive_entry" != '
+            '"$expected_olefile_fixed_archive_entry" ]',
+            "Installer olefile exact-entry comparison",
+        ),
+        (
+            "verify",
+            "olefile-fixed-archive-entry-mismatch",
+            "olefile-fixed-archive-entry-disabled",
+            "Installer olefile fixed-archive diagnostic",
+        ),
+        (
             "online_fetch",
             "source=$staging/state.json,target=/state.json,readonly",
             "source=$staging/state.json,target=/state.json",
@@ -51447,6 +51549,12 @@ def run_source_mutations(sources):
             "R-S11cu/R-S11e-113 retained-identity systemd image consumer authority",
             "R-S11cu/R-S11e-113 ambient systemd image consumer authority",
             "retained-identity systemd image consumer ledger",
+        ),
+        (
+            "hardening",
+            "R-S11e-158 current olefile fixed-archive gate authority",
+            "R-S11e-158 ambient olefile acquisition gate authority",
+            "current olefile fixed-archive gate ledger",
         ),
         (
             "online_fetch_libvpx_local_output_authority_verifier",

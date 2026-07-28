@@ -9971,6 +9971,8 @@ flutter_event_loop=flutter/lib/utils/event_loop.dart
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
   client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement -- --test-threads=1
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
+  server::video_service::screenshot_ownership_tests::r_s11ef_ -- --test-threads=1
+"${RUN[@]}" cargo test --lib --features linux-pkg-config \
   ui_session_interface::connection_round_ownership_tests:: -- --test-threads=1
 grep -qF 'external fun beginClientSessionOwner(): Long' "$ffi_kt" \
   || android_client_owner_bad="$android_client_owner_bad no-generation-begin-jni"
@@ -10174,12 +10176,50 @@ grep -qF '<tr><td>284</td>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad screenshot-exact-session-disposition-missing"
 grep -qF 'R-S11ee/R-S11e-149' HARDENING_STATUS.md \
   || android_client_owner_bad="$android_client_owner_bad screenshot-exact-session-ledger-missing"
+grep -qF 'const MAX_SCREENSHOT_REQUEST_OWNERS: usize = 64;' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-owner-cap-missing"
+grep -qF 'const SCREENSHOT_ENCODE_QUEUE_CAPACITY: usize = 2;' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-encoder-cap-missing"
+grep -qF 'static ref SCREENSHOTS: Mutex<PendingScreenshots> = Default::default();' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-exact-owner-missing"
+grep -qF 'static ref SCREENSHOT_ENCODER: Result<ScreenshotEncoder, String> = ScreenshotEncoder::new();' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-retained-encoder-missing"
+grep -qF 'owner.tx.same_channel(&tx)' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-replacement-channel-unbound"
+grep -qF 'request.source == source && request.display_idx == display_idx' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-source-display-unbound"
+grep -qF 'owner.in_flight && owner.tx.same_channel(&screenshot.tx)' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-completion-channel-unbound"
+grep -qF 'video_service::cancel_take_screenshot(id, tx);' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-disconnect-cancel-missing"
+grep -qF 'is_bounded_peer_screenshot_request_id(&request.sid)' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-request-id-unbounded"
+grep -qF 'match sender.try_send(job)' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-encoder-admission-unbounded"
+grep -qF 'png.len() > crate::peer_text::MAX_PEER_SCREENSHOT_RESPONSE_BYTES' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-response-bytes-unbounded"
+grep -qF 'if next_len > self.max_bytes {' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-png-writer-unbounded"
+if grep -qF 'Mutex<HashMap<(VideoSource, usize), Screenshot>>' src/server/video_service.rs \
+  || grep -qF 'handle_screenshot(screenshot, msg, w, h, data);' src/server/video_service.rs; then
+  android_client_owner_bad="$android_client_owner_bad controlled-screenshot-global-slot-or-detached-worker-present"
+fi
+grep -qF 'r_s11ef_stale_channel_cannot_cancel_reused_connection_id' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-aba-regression-missing"
+grep -qF '<span class="id">R-S11ef</span>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-requirement-missing"
+grep -qF '<tr><td>285</td>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-disposition-missing"
+grep -qF 'R-S11ef/R-S11e-150' HARDENING_STATUS.md \
+  || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-ledger-missing"
 grep -qF 'cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-lifecycle-test-command-missing"
 grep -qF 'flutter::mobile_session_lifecycle_tests:: -- --test-threads=1' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-lifecycle-test-filter-missing"
 grep -qF 'client::io_loop::tests::r_s11e149_screenshot_responses_require_the_current_exact_request' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-screenshot-test-filter-missing"
+grep -qF 'server::video_service::screenshot_ownership_tests::r_s11ef_' scripts/dart-verify.sh \
+  || android_client_owner_bad="$android_client_owner_bad generated-bridge-controlled-screenshot-test-filter-missing"
 if ! python3 - "$ma" "$ms" "$flutter_main" src/flutter.rs <<'PY'
 import sys
 from pathlib import Path

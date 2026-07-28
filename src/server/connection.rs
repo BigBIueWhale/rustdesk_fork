@@ -5792,20 +5792,29 @@ impl Connection {
                 }
                 Some(message::Union::ScreenshotRequest(request)) => {
                     if let Some(tx) = self.inner.tx.clone() {
+                        if !crate::peer_text::is_bounded_peer_screenshot_request_id(&request.sid) {
+                            log::warn!(
+                                "dropping screenshot request with an invalid request id from conn_id={}",
+                                self.inner.id()
+                            );
+                            return true;
+                        }
                         let Some(display) =
                             self.validate_peer_display_index(request.display, "screenshot request")
                         else {
                             return true;
                         };
-                        // R-S19: pass the session's video source so a ViewCamera screenshot can only
-                        // be fulfilled by the camera loop, never a concurrent Remote monitor loop.
-                        crate::video_service::set_take_screenshot(
+                        // R-S11ef/R-S19: the exact connection/channel owns the request and its
+                        // source selects the only capture loop allowed to fulfill it.
+                        if crate::video_service::set_take_screenshot(
+                            self.inner.id(),
                             self.video_source(),
                             display,
                             request.sid.clone(),
                             tx,
-                        );
-                        self.refresh_video_display(Some(display));
+                        ) {
+                            self.refresh_video_display(Some(display));
+                        }
                     }
                 }
                 Some(message::Union::TerminalAction(action)) => {
@@ -9041,6 +9050,9 @@ impl Drop for Connection {
         // action is synchronous and Drop-safe: the server lock is taken with `if let Ok` (never
         // `.unwrap()` — a poisoned-lock panic in Drop would abort), and each effect is best-effort.
         let id = self.inner.id();
+        if let Some(tx) = self.inner.tx.as_ref() {
+            video_service::cancel_take_screenshot(id, tx);
+        }
         if !self.closed {
             // R-T4: cancellation can drop the run-loop future at any `.await`, skipping
             // `on_close()`. The CM notification is synchronous on this unbounded sender, so send

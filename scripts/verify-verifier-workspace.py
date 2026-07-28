@@ -16434,6 +16434,214 @@ def validate_android_voice_call_ownership_contract(sources):
         "client::io_loop::tests::r_s11e149_screenshot_responses_require_the_current_exact_request",
         "exact screenshot generated-bridge behavior gate source",
     )
+    controlled_screenshots = sources["video_service_source"]
+    for text, label in (
+        (
+            "const MAX_SCREENSHOT_REQUEST_OWNERS: usize = 64;",
+            "controlled screenshot exact-owner capacity source",
+        ),
+        (
+            "const SCREENSHOT_ENCODE_QUEUE_CAPACITY: usize = 2;",
+            "controlled screenshot encoder queue capacity source",
+        ),
+        (
+            "static ref SCREENSHOTS: Mutex<PendingScreenshots> = Default::default();",
+            "controlled screenshot exact-owner registry source",
+        ),
+        (
+            "static ref SCREENSHOT_ENCODER: Result<ScreenshotEncoder, String> = ScreenshotEncoder::new();",
+            "controlled screenshot retained encoder owner source",
+        ),
+        (
+            "_worker: std::thread::JoinHandle<()>,",
+            "controlled screenshot retained encoder handle source",
+        ),
+    ):
+        require_text(controlled_screenshots, text, label)
+    require_absent(
+        controlled_screenshots,
+        "Mutex<HashMap<(VideoSource, usize), Screenshot>>",
+        "source/display-only controlled screenshot singleton source",
+    )
+    controlled_screenshot_png_writer = extract_between(
+        controlled_screenshots,
+        "impl std::io::Write for BoundedScreenshotPng {",
+        "\nimpl PendingScreenshots {",
+        "controlled screenshot bounded PNG writer source",
+    )
+    require_order(
+        controlled_screenshot_png_writer,
+        (
+            ".checked_add(buf.len())",
+            "if next_len > self.max_bytes",
+            "return Err(std::io::Error::new(",
+            "self.data.extend_from_slice(buf);",
+        ),
+        "controlled screenshot PNG allocation stops before encoded-byte limit source",
+    )
+    controlled_screenshot_manager = extract_between(
+        controlled_screenshots,
+        "impl PendingScreenshots {",
+        "\nimpl ScreenshotEncoder {",
+        "controlled screenshot ownership manager source",
+    )
+    require_order(
+        controlled_screenshot_manager,
+        (
+            "fn replace(",
+            "if owner.tx.same_channel(&tx)",
+            "owner.pending = Some(request);",
+            "self.owners.len() >= MAX_SCREENSHOT_REQUEST_OWNERS",
+            "fn take_for_frame(",
+            "let matches_frame = !owner.in_flight",
+            "request.source == source && request.display_idx == display_idx",
+            "owner.in_flight = true;",
+            "fn complete(",
+            "owner.tx.same_channel(tx) && owner.in_flight",
+            "fn retry_after_texture(",
+            "!owner.tx.same_channel(&screenshot.tx) || !owner.in_flight",
+            "if owner.pending.is_none()",
+            "screenshot.request.restore_vram = true;",
+            "fn cancel(",
+            "owner.tx.same_channel(tx)",
+            "fn is_in_flight(",
+            "owner.in_flight && owner.tx.same_channel(&screenshot.tx)",
+        ),
+        "controlled screenshot pending/in-flight/ABA transitions source",
+    )
+    controlled_screenshot_encoder = extract_between(
+        controlled_screenshots,
+        "impl ScreenshotEncoder {",
+        "\n#[inline]\npub fn notify_video_frame_fetched",
+        "controlled screenshot retained encoder source",
+    )
+    require_order(
+        controlled_screenshot_encoder,
+        (
+            "std::sync::mpsc::sync_channel::<ScreenshotEncodeJob>(SCREENSHOT_ENCODE_QUEUE_CAPACITY)",
+            '.name("screenshot-encoder".to_owned())',
+            "while let Ok(job) = receiver.recv()",
+            "handle_screenshot_job(job);",
+            "_worker: worker,",
+        ),
+        "one retained bounded controlled screenshot encoder source",
+    )
+    controlled_screenshot_pipeline = extract_between(
+        controlled_screenshots,
+        "fn submit_screenshot_job(job: ScreenshotEncodeJob)",
+        "\n#[cfg(test)]\nmod screenshot_ownership_tests",
+        "controlled screenshot bounded encoder pipeline source",
+    )
+    require_order(
+        controlled_screenshot_pipeline,
+        (
+            "match sender.try_send(job)",
+            "TrySendError::Full(job)",
+            "TrySendError::Disconnected(job)",
+            "fn handle_screenshot_job(mut job: ScreenshotEncodeJob)",
+            ".retain(|screenshot| pending.is_in_flight(screenshot));",
+            "screenshot_dimensions_are_bounded(job.width, job.height)",
+            "job.rgba.len() != expected_len",
+            "png.len() > crate::peer_text::MAX_PEER_SCREENSHOT_RESPONSE_BYTES",
+            "complete_screenshot_work(screenshot, \"\", &png);",
+        ),
+        "controlled screenshot bounded exact-owner completion source",
+    )
+    require_absent(
+        controlled_screenshots,
+        "std::thread::spawn(move || {\n                            handle_screenshot",
+        "per-request detached controlled screenshot encoder source",
+    )
+    controlled_screenshot_request = extract_between(
+        sources["connection_source"],
+        "Some(message::Union::ScreenshotRequest(request))",
+        "\n                Some(message::Union::TerminalAction(action))",
+        "controlled screenshot connection admission source",
+    )
+    require_order(
+        controlled_screenshot_request,
+        (
+            "is_bounded_peer_screenshot_request_id(&request.sid)",
+            "if crate::video_service::set_take_screenshot(",
+            "self.inner.id(),",
+            "self.video_source(),",
+            "request.sid.clone(),",
+            "self.refresh_video_display(Some(display));",
+        ),
+        "bounded exact-connection controlled screenshot admission source",
+    )
+    connection_drop = extract_between(
+        sources["connection_source"],
+        "impl Drop for Connection {",
+        "\n#[cfg(target_os = \"linux\")]\nstruct LinuxHeadlessHandle",
+        "controlled connection cleanup source",
+    )
+    require_order(
+        connection_drop,
+        (
+            "let id = self.inner.id();",
+            "if let Some(tx) = self.inner.tx.as_ref()",
+            "video_service::cancel_take_screenshot(id, tx);",
+        ),
+        "exact-channel controlled screenshot disconnect cleanup source",
+    )
+    require_order(
+        sources["peer_text_source"],
+        (
+            "pub fn is_bounded_peer_screenshot_request_id(request_id: &str) -> bool",
+            "!request_id.is_empty()",
+            "request_id.len() <= MAX_PEER_SCREENSHOT_SID_BYTES",
+            "!request_id.chars().any(char::is_control)",
+        ),
+        "nonempty bounded control-free controlled screenshot request IDs source",
+    )
+    for behavior_test in (
+        "r_s11ef_concurrent_connections_keep_distinct_screenshot_requests",
+        "r_s11ef_in_flight_request_has_one_replaceable_successor",
+        "r_s11ef_stale_channel_cannot_cancel_reused_connection_id",
+        "r_s11ef_disconnect_retires_pending_and_in_flight_authority",
+        "r_s11ef_texture_retry_never_overwrites_newer_pending_request",
+        "r_s11ef_texture_retry_is_owned_and_happens_only_once",
+        "r_s11ef_screenshot_owner_table_is_bounded",
+        "r_s11ef_screenshot_dimensions_and_pixels_are_bounded",
+        "r_s11ef_png_writer_stops_at_encoded_byte_limit",
+    ):
+        require_text(
+            controlled_screenshots,
+            behavior_test,
+            f"controlled screenshot behavior proof source {behavior_test}",
+        )
+    require_text(
+        sources["peer_text_source"],
+        "screenshot_request_ids_are_nonempty_bounded_labels",
+        "controlled screenshot request-ID behavior proof source",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11ef</span>',
+        "controlled screenshot normative requirement source",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>285</td>",
+        "controlled screenshot Appendix C row source",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ef/R-S11e-150",
+        "controlled screenshot hardening ledger source",
+    )
+    require_text(
+        sources["verify"],
+        '"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\n'
+        "  server::video_service::screenshot_ownership_tests::r_s11ef_ -- --test-threads=1",
+        "controlled screenshot shared behavior gate source",
+    )
+    require_text(
+        sources["dart_verify"],
+        "server::video_service::screenshot_ownership_tests::r_s11ef_",
+        "controlled screenshot generated-bridge behavior gate source",
+    )
     require_text(
         sources["verify"],
         "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs",
@@ -16737,6 +16945,99 @@ def validate_android_voice_call_ownership_contract(sources):
         focused,
         '("hardening", "R-S11ee/R-S11e-149", "R-S11ee-disabled/R-S11e-149", "exact-session screenshot hardening ledger"),',
         "exact-session screenshot ledger focused mutation",
+    )
+    require_text(
+        focused,
+        '"video_service": (repo / "src/server/video_service.rs").read_text(',
+        "focused controlled screenshot source loading",
+    )
+    require_text(
+        focused,
+        'pending_controlled_screenshots = extract_item(\n'
+        "        video_service,\n"
+        '        "impl PendingScreenshots",',
+        "focused controlled screenshot manager extraction",
+    )
+    require_text(
+        focused,
+        'bounded_png = extract_item(\n'
+        "        video_service,\n"
+        '        "impl std::io::Write for BoundedScreenshotPng",',
+        "focused controlled screenshot bounded-writer extraction",
+    )
+    require_text(
+        focused,
+        "screenshot_encoder,\n"
+        "        (\n"
+        '            "std::sync::mpsc::sync_channel::<ScreenshotEncodeJob>(SCREENSHOT_ENCODE_QUEUE_CAPACITY)",',
+        "focused retained bounded screenshot encoder assertion",
+    )
+    require_text(
+        focused,
+        "connection_drop,\n"
+        "        (\n"
+        '            "let id = self.inner.id();",\n'
+        '            "if let Some(tx) = self.inner.tx.as_ref()",\n'
+        '            "video_service::cancel_take_screenshot(id, tx);",',
+        "focused controlled screenshot disconnect assertion",
+    )
+    require_text(
+        focused,
+        'sources["verify"],\n'
+        '        \'"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\\\\n\'\n'
+        '        "  server::video_service::screenshot_ownership_tests::r_s11ef_ -- --test-threads=1",',
+        "focused shared controlled screenshot behavior-gate assertion",
+    )
+    require_text(
+        focused,
+        'sources["dart_verify"],\n'
+        '        "server::video_service::screenshot_ownership_tests::r_s11ef_",',
+        "focused generated-bridge controlled screenshot behavior-gate assertion",
+    )
+    require_text(
+        focused,
+        '("video_service", "if owner.tx.same_channel(&tx) {\\n                owner.pending = Some(request);", "if true {\\n                owner.pending = Some(request);", "same-channel screenshot pending replacement"),',
+        "controlled screenshot same-channel focused mutation",
+    )
+    require_text(
+        focused,
+        '("video_service", "if owner.pending.is_none() {\\n            screenshot.request.restore_vram = true;", "if true {\\n            screenshot.request.restore_vram = true;", "successor-preserving screenshot fallback"),',
+        "controlled screenshot fallback focused mutation",
+    )
+    require_text(
+        focused,
+        '("video_service", "match sender.try_send(job)", "match sender.send(job)", "nonblocking screenshot encoder admission"),',
+        "controlled screenshot nonblocking encoder focused mutation",
+    )
+    require_text(
+        focused,
+        '("video_service", "std::sync::mpsc::sync_channel::<ScreenshotEncodeJob>(SCREENSHOT_ENCODE_QUEUE_CAPACITY)", "std::sync::mpsc::channel::<ScreenshotEncodeJob>()", "bounded screenshot encoder channel"),',
+        "controlled screenshot bounded encoder focused mutation",
+    )
+    require_text(
+        focused,
+        '("video_service", "if next_len > self.max_bytes {", "if false {", "screenshot PNG writer allocation bound"),',
+        "controlled screenshot PNG writer focused mutation",
+    )
+    require_text(
+        focused,
+        '("peer_text", "!request_id.is_empty()\\n        && request_id.len() <= MAX_PEER_SCREENSHOT_SID_BYTES", "request_id.len() <= MAX_PEER_SCREENSHOT_SID_BYTES", "nonempty controlled screenshot request ID"),',
+        "controlled screenshot request-ID focused mutation",
+    )
+    require_text(
+        focused,
+        '("server_connection", "video_service::cancel_take_screenshot(id, tx);", "// stale screenshot authority retained", "controlled screenshot disconnect cancellation"),',
+        "controlled screenshot disconnect focused mutation",
+    )
+    require_text(
+        focused,
+        '("requirements", \'<span class="id">R-S11ef</span>\', \'<span class="id">R-S11ef-disabled</span>\', "controlled screenshot ownership requirement"),',
+        "controlled screenshot requirement focused mutation",
+    )
+    require_text(
+        focused,
+        '("hardening", "R-S11ef/R-S11e-150", "R-S11ef-disabled/R-S11e-150", "controlled screenshot ownership hardening ledger"),',
+        "controlled screenshot ledger focused mutation",
     )
     require_text(
         focused,
@@ -44659,6 +44960,127 @@ def run_source_mutations(sources):
             "focused all-action screenshot request-binding assertion",
         ),
         (
+            "android_voice_call_ownership_verifier",
+            '"video_service": (repo / "src/server/video_service.rs").read_text(',
+            '"video_service": (repo / "src/server/disabled_video_service.rs").read_text(',
+            "focused controlled screenshot source loading",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            'pending_controlled_screenshots = extract_item(\n'
+            "        video_service,\n"
+            '        "impl PendingScreenshots",',
+            'pending_controlled_screenshots = extract_item(\n'
+            "        video_service,\n"
+            '        "impl ScreenshotEncoder",',
+            "focused controlled screenshot manager extraction",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            'bounded_png = extract_item(\n'
+            "        video_service,\n"
+            '        "impl std::io::Write for BoundedScreenshotPng",',
+            'bounded_png = extract_item(\n'
+            "        video_service,\n"
+            '        "impl PendingScreenshots",',
+            "focused controlled screenshot bounded-writer extraction",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            "screenshot_encoder,\n"
+            "        (\n"
+            '            "std::sync::mpsc::sync_channel::<ScreenshotEncodeJob>(SCREENSHOT_ENCODE_QUEUE_CAPACITY)",',
+            "screenshot_encoder,\n"
+            "        (\n"
+            '            "std::sync::mpsc::channel::<ScreenshotEncodeJob>()",',
+            "focused retained bounded screenshot encoder assertion",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            "connection_drop,\n"
+            "        (\n"
+            '            "let id = self.inner.id();",\n'
+            '            "if let Some(tx) = self.inner.tx.as_ref()",\n'
+            '            "video_service::cancel_take_screenshot(id, tx);",',
+            "connection_drop,\n"
+            "        (\n"
+            '            "let id = self.inner.id();",\n'
+            '            "if let Some(tx) = self.inner.tx.as_ref()",\n'
+            '            "video_service::notify_video_frame_fetched_by_conn_id(id, None);",',
+            "focused controlled screenshot disconnect assertion",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            'sources["verify"],\n'
+            '        \'"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\\\\n\'\n'
+            '        "  server::video_service::screenshot_ownership_tests::r_s11ef_ -- --test-threads=1",',
+            'sources["verify"],\n'
+            '        "true # shared controlled screenshot behavior gate disabled",',
+            "focused shared controlled screenshot behavior-gate assertion",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            'sources["dart_verify"],\n'
+            '        "server::video_service::screenshot_ownership_tests::r_s11ef_",',
+            'sources["dart_verify"],\n'
+            '        "server::video_service::screenshot_ownership_tests::disabled_",',
+            "focused generated-bridge controlled screenshot behavior-gate assertion",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"same-channel screenshot pending replacement"),',
+            '"same-channel screenshot pending replacement disabled"),',
+            "controlled screenshot same-channel focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"successor-preserving screenshot fallback"),',
+            '"successor-preserving screenshot fallback disabled"),',
+            "controlled screenshot fallback focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"nonblocking screenshot encoder admission"),',
+            '"nonblocking screenshot encoder admission disabled"),',
+            "controlled screenshot nonblocking encoder focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"bounded screenshot encoder channel"),',
+            '"bounded screenshot encoder channel disabled"),',
+            "controlled screenshot bounded encoder focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"screenshot PNG writer allocation bound"),',
+            '"screenshot PNG writer allocation bound disabled"),',
+            "controlled screenshot PNG writer focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"nonempty controlled screenshot request ID"),',
+            '"nonempty controlled screenshot request ID disabled"),',
+            "controlled screenshot request-ID focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"controlled screenshot disconnect cancellation"),',
+            '"controlled screenshot disconnect cancellation disabled"),',
+            "controlled screenshot disconnect focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"controlled screenshot ownership requirement"),',
+            '"controlled screenshot ownership requirement disabled"),',
+            "controlled screenshot requirement focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"controlled screenshot ownership hardening ledger"),',
+            '"controlled screenshot ownership hardening ledger disabled"),',
+            "controlled screenshot ledger focused mutation",
+        ),
+        (
             "android_voice_call_owner_state",
             "internal class VoiceCallOwnerState {",
             "internal class DisabledVoiceCallOwnerState {",
@@ -45540,6 +45962,187 @@ def run_source_mutations(sources):
             "client::io_loop::tests::r_s11e149_screenshot_responses_require_the_current_exact_request",
             "client::io_loop::tests::screenshot_gate_disabled",
             "exact screenshot generated-bridge behavior gate source",
+        ),
+        (
+            "video_service_source",
+            "const MAX_SCREENSHOT_REQUEST_OWNERS: usize = 64;",
+            "const MAX_SCREENSHOT_REQUEST_OWNERS: usize = usize::MAX;",
+            "controlled screenshot exact-owner capacity source",
+        ),
+        (
+            "video_service_source",
+            "const SCREENSHOT_ENCODE_QUEUE_CAPACITY: usize = 2;",
+            "const SCREENSHOT_ENCODE_QUEUE_CAPACITY: usize = 1024;",
+            "controlled screenshot encoder queue capacity source",
+        ),
+        (
+            "video_service_source",
+            "static ref SCREENSHOTS: Mutex<PendingScreenshots> = Default::default();",
+            "static ref SCREENSHOTS: Mutex<HashMap<(VideoSource, usize), PendingScreenshotRequest>> = Default::default();",
+            "controlled screenshot exact-owner registry source",
+        ),
+        (
+            "video_service_source",
+            "static ref SCREENSHOT_ENCODER: Result<ScreenshotEncoder, String> = ScreenshotEncoder::new();",
+            "static ref SCREENSHOT_ENCODER: Option<ScreenshotEncoder> = None;",
+            "controlled screenshot retained encoder owner source",
+        ),
+        (
+            "video_service_source",
+            "if owner.tx.same_channel(&tx) {\n                owner.pending = Some(request);",
+            "if true {\n                owner.pending = Some(request);",
+            "controlled screenshot pending/in-flight/ABA transitions source",
+        ),
+        (
+            "video_service_source",
+            "let matches_frame = !owner.in_flight",
+            "let matches_frame = true",
+            "controlled screenshot pending/in-flight/ABA transitions source",
+        ),
+        (
+            "video_service_source",
+            "request.source == source && request.display_idx == display_idx",
+            "request.display_idx == display_idx",
+            "controlled screenshot pending/in-flight/ABA transitions source",
+        ),
+        (
+            "video_service_source",
+            "if owner.tx.same_channel(tx) && owner.in_flight {",
+            "if owner.in_flight {",
+            "controlled screenshot pending/in-flight/ABA transitions source",
+        ),
+        (
+            "video_service_source",
+            "if owner.pending.is_none() {\n            screenshot.request.restore_vram = true;",
+            "if true {\n            screenshot.request.restore_vram = true;",
+            "controlled screenshot pending/in-flight/ABA transitions source",
+        ),
+        (
+            "video_service_source",
+            ".map(|owner| owner.tx.same_channel(tx))\n            .unwrap_or(false);",
+            ".map(|_| true)\n            .unwrap_or(false);",
+            "controlled screenshot pending/in-flight/ABA transitions source",
+        ),
+        (
+            "video_service_source",
+            "_worker: std::thread::JoinHandle<()>,",
+            "_worker: (),",
+            "controlled screenshot retained encoder handle source",
+        ),
+        (
+            "video_service_source",
+            "std::sync::mpsc::sync_channel::<ScreenshotEncodeJob>(SCREENSHOT_ENCODE_QUEUE_CAPACITY)",
+            "std::sync::mpsc::channel::<ScreenshotEncodeJob>()",
+            "one retained bounded controlled screenshot encoder source",
+        ),
+        (
+            "video_service_source",
+            "while let Ok(job) = receiver.recv() {\n                    handle_screenshot_job(job);",
+            "while let Ok(_job) = receiver.recv() {",
+            "one retained bounded controlled screenshot encoder source",
+        ),
+        (
+            "video_service_source",
+            "match sender.try_send(job)",
+            "match sender.send(job)",
+            "controlled screenshot bounded exact-owner completion source",
+        ),
+        (
+            "video_service_source",
+            ".retain(|screenshot| pending.is_in_flight(screenshot));",
+            ".retain(|_| true);",
+            "controlled screenshot bounded exact-owner completion source",
+        ),
+        (
+            "video_service_source",
+            "if !screenshot_dimensions_are_bounded(job.width, job.height) {",
+            "if false {",
+            "controlled screenshot bounded exact-owner completion source",
+        ),
+        (
+            "video_service_source",
+            "if job.rgba.len() != expected_len {",
+            "if false {",
+            "controlled screenshot bounded exact-owner completion source",
+        ),
+        (
+            "video_service_source",
+            "if png.len() > crate::peer_text::MAX_PEER_SCREENSHOT_RESPONSE_BYTES {",
+            "if false {",
+            "controlled screenshot bounded exact-owner completion source",
+        ),
+        (
+            "video_service_source",
+            "if next_len > self.max_bytes {",
+            "if false {",
+            "controlled screenshot PNG allocation stops before encoded-byte limit source",
+        ),
+        (
+            "video_service_source",
+            "r_s11ef_stale_channel_cannot_cancel_reused_connection_id",
+            "controlled_screenshot_aba_gate_disabled",
+            "controlled screenshot behavior proof source r_s11ef_stale_channel_cannot_cancel_reused_connection_id",
+        ),
+        (
+            "video_service_source",
+            "r_s11ef_png_writer_stops_at_encoded_byte_limit",
+            "controlled_screenshot_png_bound_gate_disabled",
+            "controlled screenshot behavior proof source r_s11ef_png_writer_stops_at_encoded_byte_limit",
+        ),
+        (
+            "peer_text_source",
+            "!request_id.is_empty()\n        && request_id.len() <= MAX_PEER_SCREENSHOT_SID_BYTES",
+            "request_id.len() <= MAX_PEER_SCREENSHOT_SID_BYTES",
+            "nonempty bounded control-free controlled screenshot request IDs source",
+        ),
+        (
+            "peer_text_source",
+            "&& !request_id.chars().any(char::is_control)",
+            "&& true",
+            "nonempty bounded control-free controlled screenshot request IDs source",
+        ),
+        (
+            "connection_source",
+            "if !crate::peer_text::is_bounded_peer_screenshot_request_id(&request.sid) {",
+            "if false {",
+            "bounded exact-connection controlled screenshot admission source",
+        ),
+        (
+            "connection_source",
+            "video_service::cancel_take_screenshot(id, tx);",
+            "// stale screenshot authority retained",
+            "exact-channel controlled screenshot disconnect cleanup source",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ef</span>',
+            '<span class="id">R-S11ef-disabled</span>',
+            "controlled screenshot normative requirement source",
+        ),
+        (
+            "requirements",
+            "<tr><td>285</td>",
+            "<tr><td>285-disabled</td>",
+            "controlled screenshot Appendix C row source",
+        ),
+        (
+            "hardening",
+            "R-S11ef/R-S11e-150",
+            "R-S11ef-disabled/R-S11e-150",
+            "controlled screenshot hardening ledger source",
+        ),
+        (
+            "verify",
+            '"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\n'
+            "  server::video_service::screenshot_ownership_tests::r_s11ef_ -- --test-threads=1",
+            "true # shared controlled screenshot behavior gate disabled",
+            "controlled screenshot shared behavior gate source",
+        ),
+        (
+            "dart_verify",
+            "server::video_service::screenshot_ownership_tests::r_s11ef_",
+            "server::video_service::screenshot_ownership_tests::disabled_",
+            "controlled screenshot generated-bridge behavior gate source",
         ),
         (
             "main_dart",
@@ -50677,6 +51280,10 @@ def main():
                 repo / "src/client/screenshot.rs"
             ).read_text(encoding="utf-8"),
             "client_io_loop": (repo / "src/client/io_loop.rs").read_text(encoding="utf-8"),
+            "video_service_source": (
+                repo / "src/server/video_service.rs"
+            ).read_text(encoding="utf-8"),
+            "peer_text_source": (repo / "src/peer_text.rs").read_text(encoding="utf-8"),
             "port_forward_source": (repo / "src/port_forward.rs").read_text(encoding="utf-8"),
             "ui_session_source": (repo / "src/ui_session_interface.rs").read_text(encoding="utf-8"),
             "flutter_source": (repo / "src/flutter.rs").read_text(encoding="utf-8"),

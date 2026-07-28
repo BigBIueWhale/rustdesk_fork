@@ -67,6 +67,8 @@ pub const OPTION_REFRESH: &'static str = "refresh";
 
 type FrameFetchedNotifierSender = UnboundedSender<(i32, Option<Instant>)>;
 type FrameFetchedNotifierReceiver = Arc<TokioMutex<UnboundedReceiver<(i32, Option<Instant>)>>>;
+const MAX_SCREENSHOT_REQUEST_OWNERS: usize = 64;
+const SCREENSHOT_ENCODE_QUEUE_CAPACITY: usize = 2;
 
 lazy_static::lazy_static! {
     static ref FRAME_FETCHED_NOTIFIERS: Mutex<HashMap<usize, (FrameFetchedNotifierSender, FrameFetchedNotifierReceiver)>> = Mutex::new(HashMap::default());
@@ -80,16 +82,221 @@ lazy_static::lazy_static! {
     pub static ref VIDEO_QOS: Arc<Mutex<VideoQoS>> = Default::default();
     pub static ref IS_UAC_RUNNING: Arc<Mutex<bool>> = Default::default();
     pub static ref IS_FOREGROUND_WINDOW_ELEVATED: Arc<Mutex<bool>> = Default::default();
-    // R-S19: keyed by (video source, display index) — see set_take_screenshot. Keying by index
-    // alone let a concurrent Remote(monitor) capture loop fulfill a ViewCamera peer's screenshot
-    // request at the same index, leaking a desktop frame to a camera-only session.
-    static ref SCREENSHOTS: Mutex<HashMap<(VideoSource, usize), Screenshot>> = Default::default();
+    static ref SCREENSHOTS: Mutex<PendingScreenshots> = Default::default();
+    static ref SCREENSHOT_ENCODER: Result<ScreenshotEncoder, String> = ScreenshotEncoder::new();
 }
 
-struct Screenshot {
+struct PendingScreenshotRequest {
+    source: VideoSource,
+    display_idx: usize,
     sid: String,
-    tx: Sender,
     restore_vram: bool,
+}
+
+struct PendingScreenshotOwner {
+    tx: Sender,
+    pending: Option<PendingScreenshotRequest>,
+    in_flight: bool,
+}
+
+#[derive(Default)]
+struct PendingScreenshots {
+    owners: HashMap<i32, PendingScreenshotOwner>,
+}
+
+struct ScreenshotWork {
+    connection_id: i32,
+    tx: Sender,
+    request: PendingScreenshotRequest,
+}
+
+struct ScreenshotEncodeJob {
+    screenshots: Vec<ScreenshotWork>,
+    msg: String,
+    width: usize,
+    height: usize,
+    rgba: Vec<u8>,
+}
+
+struct BoundedScreenshotPng {
+    data: Vec<u8>,
+    max_bytes: usize,
+}
+
+struct ScreenshotEncoder {
+    sender: std::sync::mpsc::SyncSender<ScreenshotEncodeJob>,
+    _worker: std::thread::JoinHandle<()>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ScreenshotAdmissionError {
+    Capacity,
+}
+
+impl BoundedScreenshotPng {
+    fn new() -> Self {
+        Self::with_limit(crate::peer_text::MAX_PEER_SCREENSHOT_RESPONSE_BYTES)
+    }
+
+    fn with_limit(max_bytes: usize) -> Self {
+        Self {
+            data: Vec::new(),
+            max_bytes,
+        }
+    }
+
+    fn into_bytes(self) -> Vec<u8> {
+        self.data
+    }
+}
+
+impl std::io::Write for BoundedScreenshotPng {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        let next_len =
+            self.data.len().checked_add(buf.len()).ok_or_else(|| {
+                std::io::Error::new(std::io::ErrorKind::InvalidData, "PNG too large")
+            })?;
+        if next_len > self.max_bytes {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidData,
+                "PNG exceeds screenshot response limit",
+            ));
+        }
+        self.data.extend_from_slice(buf);
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl PendingScreenshots {
+    fn replace(
+        &mut self,
+        connection_id: i32,
+        source: VideoSource,
+        display_idx: usize,
+        sid: String,
+        tx: Sender,
+    ) -> Result<(), ScreenshotAdmissionError> {
+        let request = PendingScreenshotRequest {
+            source,
+            display_idx,
+            sid,
+            restore_vram: false,
+        };
+        if let Some(owner) = self.owners.get_mut(&connection_id) {
+            if owner.tx.same_channel(&tx) {
+                owner.pending = Some(request);
+                return Ok(());
+            }
+        }
+        if !self.owners.contains_key(&connection_id)
+            && self.owners.len() >= MAX_SCREENSHOT_REQUEST_OWNERS
+        {
+            return Err(ScreenshotAdmissionError::Capacity);
+        }
+        self.owners.insert(
+            connection_id,
+            PendingScreenshotOwner {
+                tx,
+                pending: Some(request),
+                in_flight: false,
+            },
+        );
+        Ok(())
+    }
+
+    fn take_for_frame(&mut self, source: VideoSource, display_idx: usize) -> Vec<ScreenshotWork> {
+        let mut screenshots = Vec::new();
+        for (&connection_id, owner) in self.owners.iter_mut() {
+            let matches_frame = !owner.in_flight
+                && owner
+                    .pending
+                    .as_ref()
+                    .map(|request| request.source == source && request.display_idx == display_idx)
+                    .unwrap_or(false);
+            if matches_frame {
+                if let Some(request) = owner.pending.take() {
+                    owner.in_flight = true;
+                    screenshots.push(ScreenshotWork {
+                        connection_id,
+                        tx: owner.tx.clone(),
+                        request,
+                    });
+                }
+            }
+        }
+        screenshots
+    }
+
+    fn complete(&mut self, connection_id: i32, tx: &Sender) {
+        let remove = if let Some(owner) = self.owners.get_mut(&connection_id) {
+            if owner.tx.same_channel(tx) && owner.in_flight {
+                owner.in_flight = false;
+                owner.pending.is_none()
+            } else {
+                false
+            }
+        } else {
+            false
+        };
+        if remove {
+            self.owners.remove(&connection_id);
+        }
+    }
+
+    fn retry_after_texture(&mut self, mut screenshot: ScreenshotWork) {
+        let Some(owner) = self.owners.get_mut(&screenshot.connection_id) else {
+            return;
+        };
+        if !owner.tx.same_channel(&screenshot.tx) || !owner.in_flight {
+            return;
+        }
+        owner.in_flight = false;
+        if owner.pending.is_none() {
+            screenshot.request.restore_vram = true;
+            owner.pending = Some(screenshot.request);
+        }
+    }
+
+    fn cancel(&mut self, connection_id: i32, tx: &Sender) {
+        let remove = self
+            .owners
+            .get(&connection_id)
+            .map(|owner| owner.tx.same_channel(tx))
+            .unwrap_or(false);
+        if remove {
+            self.owners.remove(&connection_id);
+        }
+    }
+
+    fn is_in_flight(&self, screenshot: &ScreenshotWork) -> bool {
+        self.owners
+            .get(&screenshot.connection_id)
+            .map(|owner| owner.in_flight && owner.tx.same_channel(&screenshot.tx))
+            .unwrap_or(false)
+    }
+}
+
+impl ScreenshotEncoder {
+    fn new() -> Result<Self, String> {
+        let (sender, receiver) =
+            std::sync::mpsc::sync_channel::<ScreenshotEncodeJob>(SCREENSHOT_ENCODE_QUEUE_CAPACITY);
+        let worker = std::thread::Builder::new()
+            .name("screenshot-encoder".to_owned())
+            .spawn(move || {
+                while let Ok(job) = receiver.recv() {
+                    handle_screenshot_job(job);
+                }
+            })
+            .map_err(|err| format!("failed to start screenshot encoder: {err}"))?;
+        Ok(Self {
+            sender,
+            _worker: worker,
+        })
+    }
 }
 
 #[inline]
@@ -697,48 +904,83 @@ fn run(vs: VideoService) -> ResultType<()> {
             Ok(frame) => {
                 repeat_encode_counter = 0;
                 if frame.valid() {
-                    let screenshot = SCREENSHOTS.lock().unwrap().remove(&(source, display_idx));
-                    if let Some(mut screenshot) = screenshot {
-                        let restore_vram = screenshot.restore_vram;
-                        let (msg, w, h, data) = match &frame {
-                            scrap::Frame::PixelBuffer(f) => match get_rgba_from_pixelbuf(f) {
-                                Ok(rgba) => ("".to_owned(), f.width(), f.height(), rgba),
-                                Err(e) => {
-                                    let serr = e.to_string();
-                                    log::error!(
-                                        "Failed to convert the pix format into rgba, {}",
-                                        &serr
-                                    );
-                                    (format!("Convert pixfmt: {}", serr), 0, 0, vec![])
-                                }
-                            },
+                    let screenshots = SCREENSHOTS
+                        .lock()
+                        .unwrap()
+                        .take_for_frame(source, display_idx);
+                    if !screenshots.is_empty() {
+                        let restore_vram = screenshots
+                            .iter()
+                            .any(|screenshot| screenshot.request.restore_vram);
+                        match &frame {
+                            scrap::Frame::PixelBuffer(f) => {
+                                let (msg, width, height, rgba) =
+                                    if screenshot_dimensions_are_bounded(f.width(), f.height()) {
+                                        match get_rgba_from_pixelbuf(f) {
+                                            Ok(rgba) => {
+                                                (String::new(), f.width(), f.height(), rgba)
+                                            }
+                                            Err(err) => {
+                                                log::error!(
+                                                    "Failed to convert screenshot pixels into RGBA: {err}"
+                                                );
+                                                (
+                                                    "Failed to convert screenshot pixels."
+                                                        .to_owned(),
+                                                    0,
+                                                    0,
+                                                    Vec::new(),
+                                                )
+                                            }
+                                        }
+                                    } else {
+                                        log::warn!(
+                                            "Rejecting screenshot dimensions {}x{}",
+                                            f.width(),
+                                            f.height()
+                                        );
+                                        (
+                                            "Screenshot dimensions exceed the safety limit."
+                                                .to_owned(),
+                                            0,
+                                            0,
+                                            Vec::new(),
+                                        )
+                                    };
+                                submit_screenshot_job(ScreenshotEncodeJob {
+                                    screenshots,
+                                    msg,
+                                    width,
+                                    height,
+                                    rgba,
+                                });
+                            }
                             scrap::Frame::Texture(_) => {
-                                if restore_vram {
-                                    // Already set one time, just ignore to break infinite loop.
-                                    // Though it's unreachable, this branch is kept to avoid infinite loop.
-                                    (
-                                        "Please change codec and try again.".to_owned(),
-                                        0,
-                                        0,
-                                        vec![],
-                                    )
-                                } else {
+                                let (retry, failed): (Vec<_>, Vec<_>) = screenshots
+                                    .into_iter()
+                                    .partition(|screenshot| !screenshot.request.restore_vram);
+                                if !failed.is_empty() {
+                                    submit_screenshot_job(ScreenshotEncodeJob {
+                                        screenshots: failed,
+                                        msg: "Please change codec and try again.".to_owned(),
+                                        width: 0,
+                                        height: 0,
+                                        rgba: Vec::new(),
+                                    });
+                                }
+                                if !retry.is_empty() {
+                                    let mut pending = SCREENSHOTS.lock().unwrap();
+                                    for screenshot in retry {
+                                        pending.retry_after_texture(screenshot);
+                                    }
+                                    drop(pending);
                                     #[cfg(all(windows, feature = "vram"))]
                                     VRamEncoder::set_not_use(sp.name(), true);
-                                    screenshot.restore_vram = true;
-                                    SCREENSHOTS
-                                        .lock()
-                                        .unwrap()
-                                        .insert((source, display_idx), screenshot);
                                     _raii.try_vram = false;
-                                    bail!("SWITCH");
                                 }
                             }
-                        };
-                        std::thread::spawn(move || {
-                            handle_screenshot(screenshot, msg, w, h, data);
-                        });
-                        if restore_vram {
+                        }
+                        if restore_vram || matches!(&frame, scrap::Frame::Texture(_)) {
                             bail!("SWITCH");
                         }
                     }
@@ -1323,19 +1565,45 @@ fn check_qos(
     Ok(())
 }
 
-// R-S19: key the screenshot request by (video source, display index), not the index alone, so a
-// ViewCamera peer's request is fulfilled ONLY by the camera capture loop and a Remote peer's only by
-// the monitor loop — a concurrent Remote(monitor) session can no longer serve a ViewCamera requester
-// a desktop screenshot at the same integer index.
-pub fn set_take_screenshot(source: VideoSource, display_idx: usize, sid: String, tx: Sender) {
-    SCREENSHOTS.lock().unwrap().insert(
-        (source, display_idx),
-        Screenshot {
-            sid,
-            tx,
-            restore_vram: false,
-        },
-    );
+// R-S11ef/R-S19: source/display chooses the capture loop, while connection id plus the exact
+// response channel owns the request. One connection may have one in-flight and one replaceable
+// pending request; different connections never overwrite each other.
+pub fn set_take_screenshot(
+    connection_id: i32,
+    source: VideoSource,
+    display_idx: usize,
+    sid: String,
+    tx: Sender,
+) -> bool {
+    match SCREENSHOTS.lock().unwrap().replace(
+        connection_id,
+        source,
+        display_idx,
+        sid.clone(),
+        tx.clone(),
+    ) {
+        Ok(()) => true,
+        Err(ScreenshotAdmissionError::Capacity) => {
+            log::warn!(
+                "Rejecting screenshot request because {} owners are already pending",
+                MAX_SCREENSHOT_REQUEST_OWNERS
+            );
+            send_screenshot_response(
+                &tx,
+                sid,
+                "Too many screenshot requests are pending.".to_owned(),
+                bytes::Bytes::new(),
+            );
+            false
+        }
+    }
+}
+
+pub fn cancel_take_screenshot(connection_id: i32, tx: &Sender) {
+    match SCREENSHOTS.lock() {
+        Ok(mut pending) => pending.cancel(connection_id, tx),
+        Err(err) => log::error!("Failed to cancel screenshot request after lock poisoning: {err}"),
+    }
 }
 
 // We need to this function, because the `stride` may be larger than `width * 4`.
@@ -1364,39 +1632,353 @@ fn get_rgba_from_pixelbuf<'a>(pixbuf: &scrap::PixelBuffer<'a>) -> ResultType<Vec
     }
 }
 
-fn handle_screenshot(screenshot: Screenshot, msg: String, w: usize, h: usize, data: Vec<u8>) {
+fn screenshot_dimensions_are_bounded(width: usize, height: usize) -> bool {
+    width > 0
+        && height > 0
+        && width <= crate::peer_text::MAX_PEER_SCREENSHOT_DIMENSION as usize
+        && height <= crate::peer_text::MAX_PEER_SCREENSHOT_DIMENSION as usize
+        && width
+            .checked_mul(height)
+            .map(|pixels| pixels as u64 <= crate::peer_text::MAX_PEER_SCREENSHOT_PIXELS)
+            .unwrap_or(false)
+        && width
+            .checked_mul(height)
+            .and_then(|pixels| pixels.checked_mul(4))
+            .is_some()
+}
+
+fn send_screenshot_response(tx: &Sender, sid: String, msg: String, data: bytes::Bytes) {
     let mut response = ScreenshotResponse::new();
-    response.sid = screenshot.sid;
-    if msg.is_empty() {
-        if data.is_empty() {
-            response.msg = "Failed to take screenshot, please try again later.".to_owned();
-        } else {
-            fn encode_png(width: usize, height: usize, rgba: Vec<u8>) -> ResultType<Vec<u8>> {
-                let mut png = Vec::new();
-                let mut encoder =
-                    repng::Options::smallest(width as _, height as _).build(&mut png)?;
-                encoder.write(&rgba)?;
-                encoder.finish()?;
-                Ok(png)
-            }
-            match encode_png(w as _, h as _, data) {
-                Ok(png) => {
-                    response.data = png.into();
-                }
-                Err(e) => {
-                    response.msg = format!("Error encoding png: {}", e);
-                }
-            }
-        }
-    } else {
-        response.msg = msg;
-    }
+    response.sid = sid;
+    response.msg = msg;
+    response.data = data;
     let mut msg_out = Message::new();
     msg_out.set_screenshot_response(response);
-    if let Err(e) = screenshot
-        .tx
-        .send((hbb_common::tokio::time::Instant::now(), Arc::new(msg_out)))
+    if let Err(err) = tx.send((hbb_common::tokio::time::Instant::now(), Arc::new(msg_out))) {
+        log::error!("Failed to send screenshot: {err}");
+    }
+}
+
+fn complete_screenshot_work(screenshot: ScreenshotWork, msg: &str, data: &bytes::Bytes) {
+    send_screenshot_response(
+        &screenshot.tx,
+        screenshot.request.sid,
+        msg.to_owned(),
+        data.clone(),
+    );
+    SCREENSHOTS
+        .lock()
+        .unwrap()
+        .complete(screenshot.connection_id, &screenshot.tx);
+}
+
+fn fail_screenshot_job(job: ScreenshotEncodeJob, msg: &str) {
+    let empty = bytes::Bytes::new();
+    for screenshot in job.screenshots {
+        if SCREENSHOTS.lock().unwrap().is_in_flight(&screenshot) {
+            complete_screenshot_work(screenshot, msg, &empty);
+        }
+    }
+}
+
+fn submit_screenshot_job(job: ScreenshotEncodeJob) {
+    if job.screenshots.is_empty() {
+        return;
+    }
+    let sender = match &*SCREENSHOT_ENCODER {
+        Ok(encoder) => &encoder.sender,
+        Err(err) => {
+            log::error!("{err}");
+            fail_screenshot_job(job, "Screenshot encoder is unavailable.");
+            return;
+        }
+    };
+    match sender.try_send(job) {
+        Ok(()) => {}
+        Err(std::sync::mpsc::TrySendError::Full(job)) => {
+            log::warn!("Screenshot encoder queue is full");
+            fail_screenshot_job(job, "Screenshot encoder is busy; please try again.");
+        }
+        Err(std::sync::mpsc::TrySendError::Disconnected(job)) => {
+            log::error!("Screenshot encoder worker stopped");
+            fail_screenshot_job(job, "Screenshot encoder is unavailable.");
+        }
+    }
+}
+
+fn handle_screenshot_job(mut job: ScreenshotEncodeJob) {
     {
-        log::error!("Failed to send screenshot, {}", e);
+        let pending = SCREENSHOTS.lock().unwrap();
+        job.screenshots
+            .retain(|screenshot| pending.is_in_flight(screenshot));
+    }
+    if job.screenshots.is_empty() {
+        return;
+    }
+
+    if !job.msg.is_empty() {
+        let msg = std::mem::take(&mut job.msg);
+        fail_screenshot_job(job, &msg);
+        return;
+    }
+    if !screenshot_dimensions_are_bounded(job.width, job.height) {
+        fail_screenshot_job(job, "Screenshot dimensions exceed the safety limit.");
+        return;
+    }
+    let Some(expected_len) = job
+        .width
+        .checked_mul(job.height)
+        .and_then(|pixels| pixels.checked_mul(4))
+    else {
+        fail_screenshot_job(job, "Screenshot dimensions exceed the safety limit.");
+        return;
+    };
+    if job.rgba.len() != expected_len {
+        fail_screenshot_job(job, "Screenshot pixel data is invalid.");
+        return;
+    }
+
+    let mut png = BoundedScreenshotPng::new();
+    let encoded = (|| -> ResultType<()> {
+        let mut encoder =
+            repng::Options::smallest(job.width as _, job.height as _).build(&mut png)?;
+        encoder.write(&job.rgba)?;
+        encoder.finish()?;
+        Ok(())
+    })();
+    if let Err(err) = encoded {
+        log::error!("Failed to encode screenshot PNG: {err}");
+        fail_screenshot_job(job, "Failed to encode screenshot.");
+        return;
+    }
+    let png = png.into_bytes();
+    if png.len() > crate::peer_text::MAX_PEER_SCREENSHOT_RESPONSE_BYTES {
+        log::warn!(
+            "Rejecting encoded screenshot of {} bytes (limit {})",
+            png.len(),
+            crate::peer_text::MAX_PEER_SCREENSHOT_RESPONSE_BYTES
+        );
+        fail_screenshot_job(job, "Encoded screenshot exceeds the safety limit.");
+        return;
+    }
+
+    let png = bytes::Bytes::from(png);
+    for screenshot in job.screenshots {
+        if SCREENSHOTS.lock().unwrap().is_in_flight(&screenshot) {
+            complete_screenshot_work(screenshot, "", &png);
+        }
+    }
+}
+
+#[cfg(test)]
+mod screenshot_ownership_tests {
+    use super::*;
+
+    fn sender() -> Sender {
+        let (tx, _rx) = unbounded_channel();
+        tx
+    }
+
+    #[test]
+    fn r_s11ef_concurrent_connections_keep_distinct_screenshot_requests() {
+        let mut pending = PendingScreenshots::default();
+        let first_tx = sender();
+        let second_tx = sender();
+        pending
+            .replace(11, VideoSource::Monitor, 0, "first".to_owned(), first_tx)
+            .unwrap();
+        pending
+            .replace(12, VideoSource::Monitor, 0, "second".to_owned(), second_tx)
+            .unwrap();
+
+        let mut work = pending.take_for_frame(VideoSource::Monitor, 0);
+        work.sort_by_key(|screenshot| screenshot.connection_id);
+        assert_eq!(work.len(), 2);
+        assert_eq!(work[0].connection_id, 11);
+        assert_eq!(work[0].request.sid, "first");
+        assert_eq!(work[1].connection_id, 12);
+        assert_eq!(work[1].request.sid, "second");
+    }
+
+    #[test]
+    fn r_s11ef_in_flight_request_has_one_replaceable_successor() {
+        let mut pending = PendingScreenshots::default();
+        let tx = sender();
+        pending
+            .replace(21, VideoSource::Monitor, 1, "first".to_owned(), tx.clone())
+            .unwrap();
+        let mut first = pending.take_for_frame(VideoSource::Monitor, 1);
+        assert_eq!(first.len(), 1);
+
+        pending
+            .replace(21, VideoSource::Monitor, 1, "second".to_owned(), tx.clone())
+            .unwrap();
+        pending
+            .replace(21, VideoSource::Monitor, 1, "latest".to_owned(), tx.clone())
+            .unwrap();
+        assert!(pending.take_for_frame(VideoSource::Monitor, 1).is_empty());
+
+        let first = first.pop().unwrap();
+        pending.complete(first.connection_id, &first.tx);
+        let successor = pending.take_for_frame(VideoSource::Monitor, 1);
+        assert_eq!(successor.len(), 1);
+        assert_eq!(successor[0].request.sid, "latest");
+    }
+
+    #[test]
+    fn r_s11ef_stale_channel_cannot_cancel_reused_connection_id() {
+        let mut pending = PendingScreenshots::default();
+        let stale_tx = sender();
+        let replacement_tx = sender();
+        pending
+            .replace(
+                31,
+                VideoSource::Monitor,
+                0,
+                "stale".to_owned(),
+                stale_tx.clone(),
+            )
+            .unwrap();
+        pending
+            .replace(
+                31,
+                VideoSource::Camera,
+                2,
+                "replacement".to_owned(),
+                replacement_tx.clone(),
+            )
+            .unwrap();
+
+        pending.cancel(31, &stale_tx);
+        let work = pending.take_for_frame(VideoSource::Camera, 2);
+        assert_eq!(work.len(), 1);
+        assert_eq!(work[0].request.sid, "replacement");
+        assert!(work[0].tx.same_channel(&replacement_tx));
+    }
+
+    #[test]
+    fn r_s11ef_disconnect_retires_pending_and_in_flight_authority() {
+        let mut pending = PendingScreenshots::default();
+        let pending_tx = sender();
+        let in_flight_tx = sender();
+        pending
+            .replace(
+                35,
+                VideoSource::Monitor,
+                0,
+                "pending".to_owned(),
+                pending_tx.clone(),
+            )
+            .unwrap();
+        pending
+            .replace(
+                36,
+                VideoSource::Monitor,
+                0,
+                "in-flight".to_owned(),
+                in_flight_tx.clone(),
+            )
+            .unwrap();
+        let work = pending.take_for_frame(VideoSource::Monitor, 0);
+        assert_eq!(work.len(), 2);
+
+        pending.cancel(35, &pending_tx);
+        pending.cancel(36, &in_flight_tx);
+        assert!(!pending.owners.contains_key(&35));
+        assert!(!pending.owners.contains_key(&36));
+        assert!(work
+            .iter()
+            .all(|screenshot| !pending.is_in_flight(screenshot)));
+    }
+
+    #[test]
+    fn r_s11ef_texture_retry_never_overwrites_newer_pending_request() {
+        let mut pending = PendingScreenshots::default();
+        let tx = sender();
+        pending
+            .replace(41, VideoSource::Monitor, 3, "old".to_owned(), tx.clone())
+            .unwrap();
+        let mut old = pending.take_for_frame(VideoSource::Monitor, 3);
+        pending
+            .replace(41, VideoSource::Monitor, 3, "new".to_owned(), tx.clone())
+            .unwrap();
+        pending.retry_after_texture(old.pop().unwrap());
+
+        let work = pending.take_for_frame(VideoSource::Monitor, 3);
+        assert_eq!(work.len(), 1);
+        assert_eq!(work[0].request.sid, "new");
+        assert!(!work[0].request.restore_vram);
+    }
+
+    #[test]
+    fn r_s11ef_texture_retry_is_owned_and_happens_only_once() {
+        let mut pending = PendingScreenshots::default();
+        let tx = sender();
+        pending
+            .replace(51, VideoSource::Monitor, 4, "retry".to_owned(), tx)
+            .unwrap();
+        let mut first = pending.take_for_frame(VideoSource::Monitor, 4);
+        pending.retry_after_texture(first.pop().unwrap());
+
+        let retry = pending.take_for_frame(VideoSource::Monitor, 4);
+        assert_eq!(retry.len(), 1);
+        assert_eq!(retry[0].request.sid, "retry");
+        assert!(retry[0].request.restore_vram);
+    }
+
+    #[test]
+    fn r_s11ef_screenshot_owner_table_is_bounded() {
+        let mut pending = PendingScreenshots::default();
+        for connection_id in 0..MAX_SCREENSHOT_REQUEST_OWNERS {
+            pending
+                .replace(
+                    connection_id as i32,
+                    VideoSource::Monitor,
+                    0,
+                    format!("request-{connection_id}"),
+                    sender(),
+                )
+                .unwrap();
+        }
+        assert_eq!(pending.owners.len(), MAX_SCREENSHOT_REQUEST_OWNERS);
+        assert_eq!(
+            pending.replace(
+                MAX_SCREENSHOT_REQUEST_OWNERS as i32,
+                VideoSource::Monitor,
+                0,
+                "overflow".to_owned(),
+                sender(),
+            ),
+            Err(ScreenshotAdmissionError::Capacity)
+        );
+        pending
+            .replace(
+                0,
+                VideoSource::Camera,
+                1,
+                "replacement".to_owned(),
+                sender(),
+            )
+            .unwrap();
+        assert_eq!(pending.owners.len(), MAX_SCREENSHOT_REQUEST_OWNERS);
+    }
+
+    #[test]
+    fn r_s11ef_screenshot_dimensions_and_pixels_are_bounded() {
+        assert!(screenshot_dimensions_are_bounded(1920, 1080));
+        assert!(!screenshot_dimensions_are_bounded(0, 1080));
+        assert!(!screenshot_dimensions_are_bounded(
+            crate::peer_text::MAX_PEER_SCREENSHOT_DIMENSION as usize + 1,
+            1
+        ));
+        assert!(!screenshot_dimensions_are_bounded(8_193, 8_193));
+    }
+
+    #[test]
+    fn r_s11ef_png_writer_stops_at_encoded_byte_limit() {
+        let mut png = BoundedScreenshotPng::with_limit(4);
+        std::io::Write::write_all(&mut png, b"1234").unwrap();
+        assert!(std::io::Write::write_all(&mut png, b"5").is_err());
+        assert_eq!(png.into_bytes(), b"1234");
     }
 }

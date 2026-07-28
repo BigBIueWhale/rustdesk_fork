@@ -596,6 +596,36 @@ behavior regressions plus generated-bridge/Dart analysis and focused/shared/inde
 bind R-S11ee and Appendix C #284. Installed native behavior, current APK/device reproduction, and exact cold
 R-B2/R-B10 release evidence remain open under their existing rows.
 
+Follow-up correction (2026-07-27), **R-S11ef/R-S11e-150 controlled-side screenshot request and encoder
+ownership**: R-S19 had separated monitor and camera screenshot capture, but the controlled side still retained
+one process-global request per `(VideoSource, display_idx)`. A second authorized Remote or ViewCamera connection
+at the same source/display silently destroyed the earlier request and response channel. The entry had no
+connection identity, so disconnect could not cancel it; first-pass VRAM fallback removed and reinserted old work
+and could overwrite a newer request; and every captured response spawned an unretained native PNG thread. This
+is source-proven response-integrity, availability, and resource-lifecycle debt shared by controlled desktop
+builds and Android's controlled service path. It is not proof of the reported Android screen-control hang, an
+authorization bypass, exploitation, root acquisition, public exposure, container escape, or a host
+RustDesk/service/firewall/network modification.
+
+The controlled screenshot manager now binds every nonempty, control-free, at-most-128-byte request ID to the
+internal connection ID and exact Tokio response channel. It retains at most 64 exact owners; each owns at most
+one in-flight request and one replaceable pending successor. Concurrent connections at the same source/display
+coexist and share one frame/PNG encode, while a later request from the same exact channel replaces only its
+pending successor. Completion, VRAM retry, and cancellation double-match the connection ID and channel;
+`Connection::drop` cancels that exact authority, and cleanup from a stale channel cannot select a replacement
+that reused the numeric ID. VRAM fallback requeues old work once only when no newer pending request exists.
+
+One process-lifetime retained worker replaces per-response detached threads and admits through a two-slot
+nonblocking queue. Startup failure, queue saturation, or worker retirement sends an explicit error and releases
+the exact in-flight owner. Capture dimensions, pixel multiplication, and exact RGBA length are checked against
+the existing 16,384-side and 8,192 × 8,192-pixel limits. The PNG writer refuses before its allocation crosses
+the 32-MiB response limit, with a post-encode check retained as defense in depth. Behavior regressions cover
+concurrent owners, pending/in-flight replacement, numeric-ID/channel ABA, disconnect retirement,
+successor-preserving VRAM retry, exact owner capacity, request-ID labels, dimension/pixel limits, and bounded
+PNG writing. Focused/shared/independent source and deliberate-mutation gates bind R-S11ef, Appendix C
+#285, and R-S11e-150. Installed native behavior, current APK/device reproduction, exact cold R-B2/R-B10
+artifacts, separately required independent reproduction, and external review remain open.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust
@@ -15017,7 +15047,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-1153266b64530a16a48629324afb9d66d77d0214f5d31812b5ca5b456a30b873  requirements.html
+d8764ea20be2d845ce423d520c3db32ea7d1d65ca7cbe12776b21d80c6aa8c1e  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

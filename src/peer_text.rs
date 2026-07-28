@@ -135,6 +135,12 @@ pub fn bound_peer_notification_details(details: String) -> String {
     bound_peer_text(details, MAX_PEER_UI_TEXT_BYTES)
 }
 
+pub fn is_bounded_peer_screenshot_request_id(request_id: &str) -> bool {
+    !request_id.is_empty()
+        && request_id.len() <= MAX_PEER_SCREENSHOT_SID_BYTES
+        && !request_id.chars().any(char::is_control)
+}
+
 pub fn admit_peer_screenshot_response(
     mut response: ScreenshotResponse,
 ) -> Result<ScreenshotResponse, (String, String)> {
@@ -361,6 +367,16 @@ mod tests {
         assert!(admitted.sid.len() <= MAX_PEER_SCREENSHOT_SID_BYTES);
         assert!(!admitted.sid.contains('\n'));
         assert!(admitted.msg.is_empty());
+    }
+
+    #[test]
+    fn screenshot_request_ids_are_nonempty_bounded_labels() {
+        assert!(is_bounded_peer_screenshot_request_id("session:1"));
+        assert!(!is_bounded_peer_screenshot_request_id(""));
+        assert!(!is_bounded_peer_screenshot_request_id("session\n1"));
+        assert!(!is_bounded_peer_screenshot_request_id(
+            &"x".repeat(MAX_PEER_SCREENSHOT_SID_BYTES + 1)
+        ));
     }
 
     #[test]

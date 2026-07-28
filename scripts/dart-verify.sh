@@ -198,6 +198,9 @@ local_docker run --rm --pull=never --network=none --read-only \
     echo "  == R-S11ee exact-session screenshot ownership regressions =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       client::io_loop::tests::r_s11e149_screenshot_responses_require_the_current_exact_request -- --test-threads=1
+    echo "  == R-S11ef controlled screenshot exact-owner/resource regressions =="
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      server::video_service::screenshot_ownership_tests::r_s11ef_ -- --test-threads=1
     cargo_lock_after="$(sha256sum Cargo.lock | awk "{print \$1}")"
     if [ "$cargo_lock_before" != "$cargo_lock_after" ]; then
       echo "DART-VERIFY: FAILED — cargo check rewrote Cargo.lock" >&2

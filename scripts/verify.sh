@@ -1221,11 +1221,11 @@ else
   rc=1
 fi
 
-echo "== (3b-iii-a1a02) Android exact voice-call recorder ownership (R-S11br/R-S11e-84) =="
+echo "== (3b-iii-a1a02) Android exact voice/input ownership (R-S11br/R-S11ei/R-S11e-84/R-S11e-153) =="
 if python3 scripts/verify-android-voice-call-ownership.py --repo . --self-test; then
-  echo "  ok  R-S11e-84 Android voice-call capture has serialized controlled-connection and outgoing-Activity owners over one recorder"
+  echo "  ok  R-S11e-84/R-S11e-153 Android voice capture and controlled input have exact lifecycle owners and bounded process-persistent work"
 else
-  echo "  FAIL R-S11e-84 Android voice-call capture regained per-event switching, dual recorders, stale owner teardown, or binding-dependent handoff"
+  echo "  FAIL R-S11e-84/R-S11e-153 Android voice/input regained per-event switching, dual recorders, erased connection identity, stale owner teardown, unbounded delayed work, or binding-dependent handoff"
   rc=1
 fi
 
@@ -12926,10 +12926,14 @@ fi
 # negating parallel presentation fields. The listener generation crosses each accepted connection
 # and gates controlled-state/input JNI dispatch, so a stopped server's late callback cannot enter a
 # replacement MainService or stop its listener.
-echo "== Android MediaProjection lifecycle finality (R-S14/R-T4) =="
+echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11e-153/R-T4) =="
 r_s14_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
 r_s14_type_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt
 r_s14_owners_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledCaptureOwnerState.kt
+r_s14_input_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/InputService.kt
+r_s14_input_owner_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledInputOwner.kt
+r_s14_input_queue_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ExactOwnerBoundedQueue.kt
+r_s14_input_test=scripts/android-controlled-input-owner-test.kt
 r_s14_ffi_kt=flutter/android/app/src/main/kotlin/ffi.kt
 r_s14_ffi_rs=libs/scrap/src/android/ffi.rs
 r_s14_flutter=src/flutter.rs
@@ -12958,6 +12962,7 @@ printf '%s\n' "$on_destroy_block" | grep -qF 'FFI.releaseService(this)' || r_s14
 printf '%s\n' "$destroy_block" | grep -qF 'releaseControlledConnectionResources()' || r_s14_missing="$r_s14_missing destroy-no-shared-owner-resource-teardown"
 printf '%s\n' "$resource_release_block" | grep -qF 'acceptingControlledConnections = false' || r_s14_missing="$r_s14_missing teardown-does-not-close-resource-admission"
 printf '%s\n' "$resource_release_block" | grep -qF 'controlledCaptureOwners.clear()' || r_s14_missing="$r_s14_missing teardown-retains-capture-owners"
+printf '%s\n' "$resource_release_block" | grep -qF 'InputService.ctx?.retireServiceGeneration(nativeServerGeneration)' || r_s14_missing="$r_s14_missing teardown-retains-input-generation"
 printf '%s\n' "$resource_release_block" | grep -qF 'releaseCaptureResources()' || r_s14_missing="$r_s14_missing teardown-does-not-release-capture"
 printf '%s\n' "$reconcile_capture_block" | grep -qF 'captureRequested = controlledCaptureOwners.requiresDesktopCapture' || r_s14_missing="$r_s14_missing exact-owner-demand-not-recorded"
 printf '%s\n' "$reconcile_capture_block" | grep -qF 'if (captureRequested)' || r_s14_missing="$r_s14_missing exact-owner-demand-not-applied"
@@ -13004,6 +13009,7 @@ grep -qF 'internal class ControlledCaptureOwnerState' "$r_s14_owners_kt" || r_s1
 grep -qF 'private val owners = mutableSetOf<Int>()' "$r_s14_owners_kt" || r_s14_missing="$r_s14_missing exact-capture-owner-set-missing"
 grep -qF 'authorized && connectionType.requiresDesktopCapture' "$r_s14_owners_kt" || r_s14_missing="$r_s14_missing owner-admission-not-authorized-remote-only"
 grep -qF 'get() = owners.isNotEmpty()' "$r_s14_owners_kt" || r_s14_missing="$r_s14_missing capture-demand-not-derived-from-owner-set"
+grep -qF 'fun ownsRemoteInput(connectionId: Int): Boolean = owners.contains(connectionId)' "$r_s14_owners_kt" || r_s14_missing="$r_s14_missing exact-remote-input-owner-lookup"
 [ "$(grep -cF 'owners.remove(connectionId)' "$r_s14_owners_kt")" -eq 2 ] || r_s14_missing="$r_s14_missing exact-capture-owner-retirement-paths-incomplete"
 grep -qF 'one Remote teardown cleared another live owner' scripts/android-controlled-connection-type-test.kt || r_s14_missing="$r_s14_missing concurrent-owner-regression-missing"
 grep -qF 'remove-then-add ordering lost new Remote demand' scripts/android-controlled-connection-type-test.kt || r_s14_missing="$r_s14_missing remove-then-add-regression-missing"
@@ -13032,14 +13038,30 @@ grep -qF 'call_main_service_set_by_name_for_generation(' "$r_s14_flutter" || r_s
 grep -qF 'android_server_generation: u64' "$r_s14_connection" || r_s14_missing="$r_s14_missing connection-generation-owner-missing"
 grep -qF 'call_main_service_pointer_input_for_generation' "$r_s14_connection" || r_s14_missing="$r_s14_missing pointer-input-not-generation-bound"
 grep -qF 'call_main_service_key_event_for_generation' "$r_s14_connection" || r_s14_missing="$r_s14_missing key-input-not-generation-bound"
+grep -qF 'internal data class ControlledInputOwner' "$r_s14_input_owner_kt" || r_s14_missing="$r_s14_missing exact-input-owner-type"
+grep -qF 'serviceGeneration > 0 && connectionId > 0' "$r_s14_input_owner_kt" || r_s14_missing="$r_s14_missing exact-input-owner-validity"
+grep -qF 'internal class ExactOwnerBoundedQueue' "$r_s14_input_queue_kt" || r_s14_missing="$r_s14_missing bounded-input-queue-type"
+grep -qF 'entries.size >= capacity' "$r_s14_input_queue_kt" || r_s14_missing="$r_s14_missing bounded-input-queue-capacity"
+grep -qF 'private const val MAX_PENDING_WHEEL_ACTIONS = 32' "$r_s14_input_kt" || r_s14_missing="$r_s14_missing bounded-wheel-capacity"
+grep -qF 'private const val MAX_PENDING_KEY_ACTIONS = 64' "$r_s14_input_kt" || r_s14_missing="$r_s14_missing bounded-key-capacity"
+grep -qF 'private var wheelActionInFlight: OwnedControlledInput<GestureDescription>? = null' "$r_s14_input_kt" || r_s14_missing="$r_s14_missing single-wheel-in-flight"
+grep -qF 'override fun onCancelled(gestureDescription: GestureDescription)' "$r_s14_input_kt" || r_s14_missing="$r_s14_missing wheel-cancellation-drain"
+if grep -qF 'Timer()' "$r_s14_input_kt" \
+    || grep -qE 'TimerTask|wheelActionsQueue|isWheelActionsPolling' "$r_s14_input_kt"; then
+  r_s14_missing="$r_s14_missing retired-unbounded-input-timer-path"
+fi
+grep -qF 'old generation retirement selected the replacement owner' "$r_s14_input_test" || r_s14_missing="$r_s14_missing exact-input-generation-aba-regression"
+grep -qF '"(IIIII)Z"' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing pointer-jni-connection-id-or-result"
+grep -qF '"(I[B)Z"' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing key-jni-connection-id-or-result"
+grep -qF 'R-S11ei/R-S11e-153' HARDENING_STATUS.md || r_s14_missing="$r_s14_missing exact-input-ledger"
 grep -qF 'bind_main_service_generation(&env, &service, generation)' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing listener-callback-generation-not-exact-object-bound"
 grep -qF 'android_request_stop(' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing exact-generation-stop-jni-missing"
 grep -qF 'expected_generation.checked_add(1)' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing exact-generation-stop-overflow-gate-missing"
 grep -qF 'ANDROID_SERVER_GENERATION.compare_exchange(' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing stale-service-stop-not-rejected"
 if [ -n "$r_s14_missing" ]; then
-  echo "  FAIL R-S14/R-T4: Android capture/projection owner invariant is incomplete:$r_s14_missing"; rc=1
+  echo "  FAIL R-S14/R-S11ei/R-S11e-153/R-T4: Android capture/input owner invariant is incomplete:$r_s14_missing"; rc=1
 else
-  echo "  ok  R-S14/R-T4 Android capture commits only after VirtualDisplay creation; exact service-owned Remote IDs serialize demand; stale global stops, callback owners, and server generations are rejected"
+  echo "  ok  R-S14/R-S11ei/R-S11e-153/R-T4 Android capture/input commits only for exact service-owned Remote IDs; delayed input is bounded and stale owners, callbacks, global stops, and server generations are rejected"
 fi
 # R-X7a / R-G1 (no inert pinned-policy SELECTOR survives — removed, not greyed): verification-method +
 # approve-mode are R-S16-pinned (use-permanent-password / password), so a UI that PRESENTS+WRITES them

@@ -690,6 +690,45 @@ Focused/shared/independent source and deliberate-mutation gates bind R-S11eh, Ap
 Installed native behavior, current APK/device reproduction, exact cold R-B2/R-B10 artifacts, separately required
 independent reproduction, and external review remain open.
 
+Follow-up correction (2026-07-27), **R-S11ei/R-S11e-153 exact-owner bounded Android controlled input**:
+Android's controlled-side `InputService` retained one uncancelled process-lifetime `Timer`, an unbounded
+`LinkedList<GestureDescription>` wheel queue drained by elapsed-delay tasks, a fresh main-handler post for every
+pre-API-33 key event, and globally replaceable long-press/recents tasks carrying no connection identity. Repeated
+down events could create tasks which the sole retained pointer could not cancel. Rust checked only the live
+`MainService` generation and then erased the authenticated connection ID at JNI; Kotlin returned `void`, and
+authorization/type replacement, disconnect, and service teardown retired no pending input. A task swipe
+intentionally preserves the foreground/accessibility process, whereas Force Stop destroys it, so this was real
+Android process-persistent stale-action and unbounded-resource debt. It is confined to the controlled path used
+when the Android device itself receives remote input; it is not the outgoing Android viewer path used to control
+a desktop host and is therefore not proof of the reported viewer-to-host screen-control hang. It is also not
+evidence of an authorization bypass, exploitation, root acquisition, public exposure, container escape, or host
+RustDesk/service/firewall/network modification.
+
+Pointer and key JNI now carry the exact `(MainService generation, authenticated Remote connection ID)` and return
+Kotlin admission as a Boolean. The serialized `MainService` constructs `ControlledInputOwner` only while
+controlled admission is open, its native generation is positive, and the exact ID remains in the authorized
+Remote capture/input owner set. Rust closes that exact connection on owner/queue refusal or JNI failure.
+`InputService` retains a set of exact live owners, one typed exact-owner mouse/touch continuation, and no
+latest-owner fallback. Authorization/type replacement, connection removal, and service teardown remove only the
+exact owner's or generation's queued/delayed state. Retirement of an API-26+ pointer sequence finishes an already
+admitted continued stroke before resetting it; a staged down with no admitted stroke is discarded rather than
+turned into a click. The persistent `MainService` and `AccessibilityService` remain alive and are not killed as a
+cleanup mechanism.
+
+The wheel and key queues are exact-owner `ArrayDeque`s capped at 32 and 64 pending entries. Each has one retained
+main-handler drain callback; at most one wheel action is OS-admitted, and Android's completion/cancellation
+callback exclusively advances the next still-live owner. Key drain processes one event per turn. Long-press and
+recents each have one owner/sequence-checked delayed slot. Post failure removes that owner's pending queue before
+refusal. `Timer`, `TimerTask`, the delay-polled wheel loop, unbounded controlled-input collection, and per-key
+handler allocation are deleted. Exact capacity, owner removal, other-owner ordering, invalid-owner, and
+generation-ABA fixtures plus focused/shared/independent source and deliberate-mutation gates bind R-S11ei,
+Appendix C #288, and R-S11e-153. The targeted Android release-Kotlin task compiles this source in the pinned
+networkless nonroot Android builder without producing an APK. The pinned networkless nonroot
+`aarch64-linux-android` Rust cross-check also compiles the exact JNI signatures and connection-ID handoff. A
+current APK install and physical-device controlled-Android connect/disconnect/task-swipe/reconnect sequence, the
+separate outgoing viewer reproduction, exact cold R-B2/R-B10 artifacts, separately required independent
+reproduction, and external review remain open.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust
@@ -15097,7 +15136,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-64c00703faa02c54f05cd8e86cd5a17fb0d9be2e2e853f4e62ae032a80309bd1  requirements.html
+64b052cb0830193e599c4342f30ab694f24cce31aa138acd35125b313bc02383  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -15110,3 +15149,5 @@ The same identity additionally binds R-S11ed and Appendix C #283.
 The same identity additionally binds R-S11ee and Appendix C #284.
 The same identity additionally binds R-S11ef and Appendix C #285.
 The same identity additionally binds R-S11eg and Appendix C #286.
+The same identity additionally binds R-S11eh and Appendix C #287.
+The same identity additionally binds R-S11ei and Appendix C #288.

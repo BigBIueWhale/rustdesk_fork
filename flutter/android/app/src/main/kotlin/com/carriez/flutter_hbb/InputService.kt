@@ -59,10 +59,13 @@ const val TOUCH_PAN_END = 6
 const val WHEEL_STEP = 120
 const val WHEEL_DURATION = 50L
 const val LONG_TAP_DELAY = 200L
+private const val MAX_PENDING_WHEEL_ACTIONS = 32
+private const val MAX_PENDING_KEY_ACTIONS = 64
 
 class InputService : AccessibilityService() {
 
     companion object {
+        @Volatile
         var ctx: InputService? = null
         val isOpen: Boolean
             get() = ctx != null
@@ -75,13 +78,23 @@ class InputService : AccessibilityService() {
     private var lastTouchGestureStartTime = 0L
     private var mouseX = 0
     private var mouseY = 0
-    private var timer = Timer()
-    private var recentActionTask: TimerTask? = null
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val activeInputOwners = mutableSetOf<ControlledInputOwner>()
+    private val wheelActions =
+        ExactOwnerBoundedQueue<GestureDescription>(MAX_PENDING_WHEEL_ACTIONS)
+    private val keyActions = ExactOwnerBoundedQueue<KeyEvent>(MAX_PENDING_KEY_ACTIONS)
+    private var wheelActionInFlight: OwnedControlledInput<GestureDescription>? = null
+    private var wheelDrainPosted = false
+    private var keyDrainPosted = false
+    private var destroyed = false
+    private var pointerOwner: ControlledInputOwner? = null
+    private var pointerSequence: PointerSequence? = null
+    private var pendingLongPress: PendingOwnedAction? = null
+    private var pendingRecentAction: PendingOwnedAction? = null
+    private var delayedActionSequence = 0L
     // 100(tap timeout) + 400(long press timeout)
     private val longPressDuration = ViewConfiguration.getTapTimeout().toLong() + ViewConfiguration.getLongPressTimeout().toLong()
 
-    private val wheelActionsQueue = LinkedList<GestureDescription>()
-    private var isWheelActionsPolling = false
     private var isWaitingLongPress = false
 
     private var fakeEditTextForTextStateCalculation: EditText? = null
@@ -91,8 +104,71 @@ class InputService : AccessibilityService() {
 
     private val volumeController: VolumeController by lazy { VolumeController(applicationContext.getSystemService(AUDIO_SERVICE) as AudioManager) }
 
+    private data class PendingOwnedAction(
+        val owner: ControlledInputOwner,
+        val sequence: Long,
+        val runnable: Runnable,
+    )
+
+    private enum class PointerSequence {
+        MOUSE,
+        TOUCH,
+    }
+
+    private val wheelDrain = Runnable { drainWheelAction() }
+    private val keyDrain = Runnable { drainKeyAction() }
+
+    @Synchronized
+    internal fun registerInputOwner(owner: ControlledInputOwner): Boolean {
+        if (destroyed || !owner.isValid) {
+            return false
+        }
+        activeInputOwners.add(owner)
+        return true
+    }
+
+    @Synchronized
+    internal fun retireInputOwner(owner: ControlledInputOwner) {
+        activeInputOwners.remove(owner)
+        wheelActions.removeOwner(owner)
+        keyActions.removeOwner(owner)
+        cancelLongPress(owner)
+        cancelRecentAction(owner)
+        if (pointerOwner == owner) {
+            finishAndResetPointerSequence()
+        }
+    }
+
+    @Synchronized
+    internal fun retireServiceGeneration(serviceGeneration: Long) {
+        val owners = activeInputOwners
+            .filter { it.serviceGeneration == serviceGeneration }
+            .toList()
+        for (owner in owners) {
+            retireInputOwner(owner)
+        }
+    }
+
     @RequiresApi(Build.VERSION_CODES.N)
-    fun onMouseInput(mask: Int, _x: Int, _y: Int) {
+    @Synchronized
+    internal fun onMouseInput(
+        owner: ControlledInputOwner,
+        mask: Int,
+        _x: Int,
+        _y: Int,
+    ): Boolean {
+        if (destroyed || owner !in activeInputOwners) {
+            return false
+        }
+        val activePointerOwner = pointerOwner
+        if (activePointerOwner != null) {
+            if (activePointerOwner != owner ||
+                pointerSequence != PointerSequence.MOUSE ||
+                (mask != 0 && mask != LEFT_MOVE && mask != LEFT_UP)
+            ) {
+                return false
+            }
+        }
         val x = max(0, _x)
         val y = max(0, _y)
 
@@ -112,23 +188,29 @@ class InputService : AccessibilityService() {
 
         // left button down, was up
         if (mask == LEFT_DOWN) {
+            if (leftIsDown || pointerOwner != null) {
+                return false
+            }
+            pointerOwner = owner
+            pointerSequence = PointerSequence.MOUSE
             isWaitingLongPress = true
-            timer.schedule(object : TimerTask() {
-                override fun run() {
-                    if (isWaitingLongPress) {
-                        isWaitingLongPress = false
-                        continueGesture(mouseX, mouseY)
-                    }
-                }
-            }, longPressDuration)
+            if (!scheduleLongPress(owner)) {
+                isWaitingLongPress = false
+                pointerOwner = null
+                pointerSequence = null
+                return false
+            }
 
             leftIsDown = true
             startGesture(mouseX, mouseY)
-            return
+            return true
         }
 
         // left down, was down
         if (leftIsDown) {
+            if (pointerOwner != owner) {
+                return false
+            }
             continueGesture(mouseX, mouseY)
         }
 
@@ -137,45 +219,48 @@ class InputService : AccessibilityService() {
             if (leftIsDown) {
                 leftIsDown = false
                 isWaitingLongPress = false
+                cancelLongPress(owner)
                 endGesture(mouseX, mouseY)
-                return
+                pointerOwner = null
+                pointerSequence = null
+                return true
             }
         }
 
         if (mask == RIGHT_UP) {
             longPress(mouseX, mouseY)
-            return
+            return true
         }
 
         if (mask == BACK_UP) {
             performGlobalAction(GLOBAL_ACTION_BACK)
-            return
+            return true
         }
 
         // long WHEEL_BUTTON_DOWN -> GLOBAL_ACTION_RECENTS
         if (mask == WHEEL_BUTTON_DOWN) {
-            timer.purge()
-            recentActionTask = object : TimerTask() {
-                override fun run() {
-                    performGlobalAction(GLOBAL_ACTION_RECENTS)
-                    recentActionTask = null
-                }
+            if (pendingRecentAction != null) {
+                return false
             }
-            timer.schedule(recentActionTask, LONG_TAP_DELAY)
+            return scheduleRecentAction(owner)
         }
 
         // wheel button up
         if (mask == WHEEL_BUTTON_UP) {
-            if (recentActionTask != null) {
-                recentActionTask!!.cancel()
+            val pending = pendingRecentAction
+            if (pending != null) {
+                if (pending.owner != owner) {
+                    return false
+                }
+                cancelRecentAction(owner)
                 performGlobalAction(GLOBAL_ACTION_HOME)
             }
-            return
+            return true
         }
 
         if (mask == WHEEL_DOWN) {
             if (mouseY < WHEEL_STEP) {
-                return
+                return true
             }
             val path = Path()
             path.moveTo(mouseX.toFloat(), mouseY.toFloat())
@@ -187,14 +272,12 @@ class InputService : AccessibilityService() {
             )
             val builder = GestureDescription.Builder()
             builder.addStroke(stroke)
-            wheelActionsQueue.offer(builder.build())
-            consumeWheelActions()
-
+            return enqueueWheelAction(owner, builder.build())
         }
 
         if (mask == WHEEL_UP) {
             if (mouseY < WHEEL_STEP) {
-                return
+                return true
             }
             val path = Path()
             path.moveTo(mouseX.toFloat(), mouseY.toFloat())
@@ -206,15 +289,27 @@ class InputService : AccessibilityService() {
             )
             val builder = GestureDescription.Builder()
             builder.addStroke(stroke)
-            wheelActionsQueue.offer(builder.build())
-            consumeWheelActions()
+            return enqueueWheelAction(owner, builder.build())
         }
+        return true
     }
 
     @RequiresApi(Build.VERSION_CODES.N)
-    fun onTouchInput(mask: Int, _x: Int, _y: Int) {
+    @Synchronized
+    internal fun onTouchInput(
+        owner: ControlledInputOwner,
+        mask: Int,
+        _x: Int,
+        _y: Int,
+    ): Boolean {
+        if (destroyed || owner !in activeInputOwners) {
+            return false
+        }
         when (mask) {
             TOUCH_PAN_UPDATE -> {
+                if (pointerOwner != owner || pointerSequence != PointerSequence.TOUCH) {
+                    return false
+                }
                 mouseX -= _x * SCREEN_INFO.scale
                 mouseY -= _y * SCREEN_INFO.scale
                 mouseX = max(0, mouseX);
@@ -222,39 +317,194 @@ class InputService : AccessibilityService() {
                 continueGesture(mouseX, mouseY)
             }
             TOUCH_PAN_START -> {
+                if (pointerOwner != null) {
+                    return false
+                }
+                pointerOwner = owner
+                pointerSequence = PointerSequence.TOUCH
                 mouseX = max(0, _x) * SCREEN_INFO.scale
                 mouseY = max(0, _y) * SCREEN_INFO.scale
                 startGesture(mouseX, mouseY)
             }
             TOUCH_PAN_END -> {
+                if (pointerOwner != owner || pointerSequence != PointerSequence.TOUCH) {
+                    return false
+                }
                 endGesture(mouseX, mouseY)
+                pointerOwner = null
+                pointerSequence = null
                 mouseX = max(0, _x) * SCREEN_INFO.scale
                 mouseY = max(0, _y) * SCREEN_INFO.scale
             }
             else -> {}
         }
+        return true
     }
 
     @RequiresApi(Build.VERSION_CODES.N)
-    private fun consumeWheelActions() {
-        if (isWheelActionsPolling) {
-            return
-        } else {
-            isWheelActionsPolling = true
+    private fun enqueueWheelAction(
+        owner: ControlledInputOwner,
+        gesture: GestureDescription,
+    ): Boolean {
+        if (!wheelActions.offer(owner, gesture)) {
+            Log.w(logTag, "Rejecting Android input owner after wheel queue saturation")
+            return false
         }
-        wheelActionsQueue.poll()?.let {
-            dispatchGesture(it, null, null)
-            timer.purge()
-            timer.schedule(object : TimerTask() {
-                override fun run() {
-                    isWheelActionsPolling = false
-                    consumeWheelActions()
+        if (scheduleWheelDrain()) {
+            return true
+        }
+        wheelActions.removeOwner(owner)
+        return false
+    }
+
+    @Synchronized
+    private fun scheduleWheelDrain(): Boolean {
+        if (destroyed || wheelActionInFlight != null || wheelDrainPosted || wheelActions.size == 0) {
+            return !destroyed
+        }
+        wheelDrainPosted = true
+        if (mainHandler.post(wheelDrain)) {
+            return true
+        }
+        wheelDrainPosted = false
+        return false
+    }
+
+    @RequiresApi(Build.VERSION_CODES.N)
+    private fun drainWheelAction() {
+        synchronized(this) {
+            wheelDrainPosted = false
+            if (destroyed || wheelActionInFlight != null) {
+                return
+            }
+            var next = wheelActions.poll()
+            while (next != null && next.owner !in activeInputOwners) {
+                next = wheelActions.poll()
+            }
+            val admitted = next ?: return
+            wheelActionInFlight = admitted
+            val callback = object : GestureResultCallback() {
+                override fun onCompleted(gestureDescription: GestureDescription) {
+                    completeWheelAction(admitted)
                 }
-            }, WHEEL_DURATION + 10)
-        } ?: let {
-            isWheelActionsPolling = false
+
+                override fun onCancelled(gestureDescription: GestureDescription) {
+                    completeWheelAction(admitted)
+                }
+            }
+            if (!dispatchGesture(admitted.value, callback, mainHandler)) {
+                completeWheelAction(admitted)
+            }
+        }
+    }
+
+    @Synchronized
+    private fun completeWheelAction(completed: OwnedControlledInput<GestureDescription>) {
+        if (wheelActionInFlight !== completed) {
             return
         }
+        wheelActionInFlight = null
+        scheduleWheelDrain()
+    }
+
+    private fun nextDelayedActionSequence(): Long? {
+        if (delayedActionSequence == Long.MAX_VALUE) {
+            return null
+        }
+        delayedActionSequence += 1
+        return delayedActionSequence
+    }
+
+    @Synchronized
+    private fun scheduleLongPress(owner: ControlledInputOwner): Boolean {
+        cancelLongPress(null)
+        val sequence = nextDelayedActionSequence() ?: return false
+        val runnable = Runnable { runLongPress(owner, sequence) }
+        pendingLongPress = PendingOwnedAction(owner, sequence, runnable)
+        if (mainHandler.postDelayed(runnable, longPressDuration)) {
+            return true
+        }
+        pendingLongPress = null
+        return false
+    }
+
+    @Synchronized
+    private fun runLongPress(owner: ControlledInputOwner, sequence: Long) {
+        val pending = pendingLongPress
+        if (pending?.owner != owner || pending.sequence != sequence) {
+            return
+        }
+        pendingLongPress = null
+        if (destroyed ||
+            owner !in activeInputOwners ||
+            pointerOwner != owner ||
+            !leftIsDown ||
+            !isWaitingLongPress
+        ) {
+            return
+        }
+        isWaitingLongPress = false
+        continueGesture(mouseX, mouseY)
+    }
+
+    @Synchronized
+    private fun cancelLongPress(owner: ControlledInputOwner?) {
+        val pending = pendingLongPress ?: return
+        if (owner != null && pending.owner != owner) {
+            return
+        }
+        mainHandler.removeCallbacks(pending.runnable)
+        pendingLongPress = null
+    }
+
+    @Synchronized
+    private fun scheduleRecentAction(owner: ControlledInputOwner): Boolean {
+        val sequence = nextDelayedActionSequence() ?: return false
+        val runnable = Runnable { runRecentAction(owner, sequence) }
+        pendingRecentAction = PendingOwnedAction(owner, sequence, runnable)
+        if (mainHandler.postDelayed(runnable, LONG_TAP_DELAY)) {
+            return true
+        }
+        pendingRecentAction = null
+        return false
+    }
+
+    @Synchronized
+    private fun runRecentAction(owner: ControlledInputOwner, sequence: Long) {
+        val pending = pendingRecentAction
+        if (destroyed ||
+            pending?.owner != owner ||
+            pending.sequence != sequence ||
+            owner !in activeInputOwners
+        ) {
+            return
+        }
+        pendingRecentAction = null
+        performGlobalAction(GLOBAL_ACTION_RECENTS)
+    }
+
+    @Synchronized
+    private fun cancelRecentAction(owner: ControlledInputOwner?) {
+        val pending = pendingRecentAction ?: return
+        if (owner != null && pending.owner != owner) {
+            return
+        }
+        mainHandler.removeCallbacks(pending.runnable)
+        pendingRecentAction = null
+    }
+
+    @RequiresApi(Build.VERSION_CODES.N)
+    private fun finishAndResetPointerSequence() {
+        cancelLongPress(pointerOwner)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && stroke != null) {
+            endGesture(mouseX, mouseY)
+        }
+        leftIsDown = false
+        isWaitingLongPress = false
+        pointerOwner = null
+        pointerSequence = null
+        stroke = null
+        touchPath.reset()
     }
 
     @RequiresApi(Build.VERSION_CODES.N)
@@ -383,8 +633,61 @@ class InputService : AccessibilityService() {
     }
 
     @RequiresApi(Build.VERSION_CODES.N)
-    fun onKeyEvent(data: ByteArray) {
-        val keyEvent = KeyEvent.parseFrom(data)
+    @Synchronized
+    internal fun onKeyEvent(owner: ControlledInputOwner, data: ByteArray): Boolean {
+        if (destroyed || owner !in activeInputOwners) {
+            return false
+        }
+        val keyEvent = try {
+            KeyEvent.parseFrom(data)
+        } catch (e: Exception) {
+            Log.w(logTag, "Rejected malformed Android key input", e)
+            return false
+        }
+        if (!keyActions.offer(owner, keyEvent)) {
+            Log.w(logTag, "Rejecting Android input owner after key queue saturation")
+            return false
+        }
+        if (scheduleKeyDrain()) {
+            return true
+        }
+        keyActions.removeOwner(owner)
+        return false
+    }
+
+    @Synchronized
+    private fun scheduleKeyDrain(): Boolean {
+        if (destroyed || keyDrainPosted || keyActions.size == 0) {
+            return !destroyed
+        }
+        keyDrainPosted = true
+        if (mainHandler.post(keyDrain)) {
+            return true
+        }
+        keyDrainPosted = false
+        return false
+    }
+
+    @RequiresApi(Build.VERSION_CODES.N)
+    private fun drainKeyAction() {
+        synchronized(this) {
+            keyDrainPosted = false
+            if (destroyed) {
+                return
+            }
+            var next = keyActions.poll()
+            while (next != null && next.owner !in activeInputOwners) {
+                next = keyActions.poll()
+            }
+            if (next != null) {
+                processKeyEvent(next.value)
+            }
+            scheduleKeyDrain()
+        }
+    }
+
+    @RequiresApi(Build.VERSION_CODES.N)
+    private fun processKeyEvent(keyEvent: KeyEvent) {
         val keyboardMode = keyEvent.getMode()
 
         var textToCommit: String? = null
@@ -438,20 +741,17 @@ class InputService : AccessibilityService() {
                 }
             }
         } else {
-            val handler = Handler(Looper.getMainLooper())
-            handler.post {
-                ke?.let { event ->
-                    val possibleNodes = possibleAccessibiltyNodes()
-                    Log.d(logTag, "possibleNodes:$possibleNodes")
-                    for (item in possibleNodes) {
-                        val success = trySendKeyEvent(event, item, textToCommit)
-                        if (success) {
-                            if (keyEvent.getPress()) {
-                                val actionUpEvent = KeyEventAndroid(KeyEventAndroid.ACTION_UP, event.keyCode)
-                                trySendKeyEvent(actionUpEvent, item, textToCommit)
-                            }
-                            break
+            ke?.let { event ->
+                val possibleNodes = possibleAccessibiltyNodes()
+                Log.d(logTag, "possibleNodes:$possibleNodes")
+                for (item in possibleNodes) {
+                    val success = trySendKeyEvent(event, item, textToCommit)
+                    if (success) {
+                        if (keyEvent.getPress()) {
+                            val actionUpEvent = KeyEventAndroid(KeyEventAndroid.ACTION_UP, event.keyCode)
+                            trySendKeyEvent(actionUpEvent, item, textToCommit)
                         }
+                        break
                     }
                 }
             }
@@ -715,6 +1015,9 @@ class InputService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        synchronized(this) {
+            destroyed = false
+        }
         ctx = this
         val info = AccessibilityServiceInfo()
         if (Build.VERSION.SDK_INT >= 33) {
@@ -733,9 +1036,38 @@ class InputService : AccessibilityService() {
     }
 
     override fun onDestroy() {
-        ctx = null
+        synchronized(this) {
+            destroyed = true
+            activeInputOwners.clear()
+            wheelActions.clear()
+            keyActions.clear()
+            wheelActionInFlight = null
+            wheelDrainPosted = false
+            keyDrainPosted = false
+            cancelLongPress(null)
+            cancelRecentAction(null)
+            pointerOwner = null
+            pointerSequence = null
+            leftIsDown = false
+            isWaitingLongPress = false
+            stroke = null
+            touchPath.reset()
+            fakeEditTextForTextStateCalculation = null
+            mainHandler.removeCallbacks(wheelDrain)
+            mainHandler.removeCallbacks(keyDrain)
+        }
+        if (ctx === this) {
+            ctx = null
+        }
         super.onDestroy()
     }
 
-    override fun onInterrupt() {}
+    override fun onInterrupt() {
+        synchronized(this) {
+            val owners = activeInputOwners.toList()
+            for (owner in owners) {
+                retireInputOwner(owner)
+            }
+        }
+    }
 }

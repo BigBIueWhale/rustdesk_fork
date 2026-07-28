@@ -418,17 +418,18 @@ pub fn clear_codec_info() {
 */
 pub fn call_main_service_pointer_input_for_generation(
     generation: u64,
+    connection_id: i32,
     kind: &str,
     mask: i32,
     x: i32,
     y: i32,
-) -> JniResult<()> {
+) -> JniResult<bool> {
     let jvm = JVM.read().unwrap();
     let context = MAIN_SERVICE_CTX.read().unwrap();
     let (Some(jvm), Some(context)) = (jvm.as_ref(), context.as_ref()) else {
         return Err(JniError::ThrowFailed(-1));
     };
-    if generation == 0 || context.generation != Some(generation) {
+    if generation == 0 || connection_id <= 0 || context.generation != Some(generation) {
         return Err(JniError::ThrowFailed(-1));
     }
     let mut env = jvm.attach_current_thread_as_daemon()?;
@@ -436,24 +437,29 @@ pub fn call_main_service_pointer_input_for_generation(
     env.call_method(
         &context.owner,
         "rustPointerInput",
-        "(IIII)V",
+        "(IIIII)Z",
         &[
+            JValue::Int(connection_id),
             JValue::Int(kind),
             JValue::Int(mask),
             JValue::Int(x),
             JValue::Int(y),
         ],
-    )?;
-    Ok(())
+    )?
+    .z()
 }
 
-pub fn call_main_service_key_event_for_generation(generation: u64, data: &[u8]) -> JniResult<()> {
+pub fn call_main_service_key_event_for_generation(
+    generation: u64,
+    connection_id: i32,
+    data: &[u8],
+) -> JniResult<bool> {
     let jvm = JVM.read().unwrap();
     let context = MAIN_SERVICE_CTX.read().unwrap();
     let (Some(jvm), Some(context)) = (jvm.as_ref(), context.as_ref()) else {
         return Err(JniError::ThrowFailed(-1));
     };
-    if generation == 0 || context.generation != Some(generation) {
+    if generation == 0 || connection_id <= 0 || context.generation != Some(generation) {
         return Err(JniError::ThrowFailed(-1));
     }
     let mut env = jvm.attach_current_thread_as_daemon()?;
@@ -462,10 +468,13 @@ pub fn call_main_service_key_event_for_generation(generation: u64, data: &[u8]) 
     env.call_method(
         &context.owner,
         "rustKeyEventInput",
-        "([B)V",
-        &[JValue::Object(&JObject::from(data))],
-    )?;
-    Ok(())
+        "(I[B)Z",
+        &[
+            JValue::Int(connection_id),
+            JValue::Object(&JObject::from(data)),
+        ],
+    )?
+    .z()
 }
 
 fn _call_clipboard_manager<S, T>(name: S, sig: T, args: &[JValue]) -> JniResult<()>

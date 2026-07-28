@@ -64,9 +64,11 @@ class MainService : Service() {
     @Keep
     @RequiresApi(Build.VERSION_CODES.N)
     @Synchronized
-    fun rustPointerInput(kind: Int, mask: Int, x: Int, y: Int) {
-        if (!acceptingControlledConnections) {
-            return
+    fun rustPointerInput(connectionId: Int, kind: Int, mask: Int, x: Int, y: Int): Boolean {
+        val owner = controlledInputOwner(connectionId) ?: return false
+        val inputService = InputService.ctx ?: return false
+        if (!inputService.registerInputOwner(owner)) {
+            return false
         }
         // turn on screen with LEFT_DOWN when screen off
         if (!powerManager.isInteractive && (kind == 0 || mask == LEFT_DOWN)) {
@@ -76,16 +78,16 @@ class MainService : Service() {
             }
             Log.d(logTag,"Turn on Screen")
             wakeLock.acquire(5000)
+            return true
         } else {
-            when (kind) {
+            return when (kind) {
                 0 -> { // touch
-                    InputService.ctx?.onTouchInput(mask, x, y)
+                    inputService.onTouchInput(owner, mask, x, y)
                 }
                 1 -> { // mouse
-                    InputService.ctx?.onMouseInput(mask, x, y)
+                    inputService.onMouseInput(owner, mask, x, y)
                 }
-                else -> {
-                }
+                else -> false
             }
         }
     }
@@ -93,11 +95,23 @@ class MainService : Service() {
     @Keep
     @RequiresApi(Build.VERSION_CODES.N)
     @Synchronized
-    fun rustKeyEventInput(input: ByteArray) {
-        if (!acceptingControlledConnections) {
-            return
+    fun rustKeyEventInput(connectionId: Int, input: ByteArray): Boolean {
+        val owner = controlledInputOwner(connectionId) ?: return false
+        val inputService = InputService.ctx ?: return false
+        if (!inputService.registerInputOwner(owner)) {
+            return false
         }
-        InputService.ctx?.onKeyEvent(input)
+        return inputService.onKeyEvent(owner, input)
+    }
+
+    private fun controlledInputOwner(connectionId: Int): ControlledInputOwner? {
+        if (!acceptingControlledConnections ||
+            nativeServerGeneration <= 0L ||
+            !controlledCaptureOwners.ownsRemoteInput(connectionId)
+        ) {
+            return null
+        }
+        return ControlledInputOwner(nativeServerGeneration, connectionId)
     }
 
     @Keep
@@ -143,6 +157,10 @@ class MainService : Service() {
                         Log.e(logTag, "Rejected invalid controlled capture owner: $id")
                         return
                     }
+                    val inputOwner = ControlledInputOwner(nativeServerGeneration, id)
+                    if (!controlledCaptureOwners.ownsRemoteInput(id)) {
+                        InputService.ctx?.retireInputOwner(inputOwner)
+                    }
                     // R-S14/R-S19: resource authority comes from the exact AuthConnType carried
                     // by Rust, never by reconstructing Remote from parallel presentation fields.
                     if (connectionType.allowsVoiceCall &&
@@ -171,6 +189,9 @@ class MainService : Service() {
                     Log.e(logTag, "Rejected invalid controlled connection removal: $arg1")
                 } else {
                     val captureOwnerRemoved = controlledCaptureOwners.unregister(id)
+                    InputService.ctx?.retireInputOwner(
+                        ControlledInputOwner(nativeServerGeneration, id)
+                    )
                     val voiceOwnerRemoved =
                         VoiceCallAudioCoordinator.unregisterControlledConnection(id)
                     if (!captureOwnerRemoved || !voiceOwnerRemoved) {
@@ -723,6 +744,7 @@ class MainService : Service() {
     private fun releaseControlledConnectionResources() {
         acceptingControlledConnections = false
         controlledCaptureOwners.clear()
+        InputService.ctx?.retireServiceGeneration(nativeServerGeneration)
         releaseCaptureResources()
         if (!VoiceCallAudioCoordinator.clearControlledConnections()) {
             Log.e(logTag, "Failed to release controlled voice-call owners during service teardown")

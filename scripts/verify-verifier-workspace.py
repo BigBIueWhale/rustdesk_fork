@@ -17732,6 +17732,320 @@ def validate_android_voice_call_ownership_contract(sources):
         "receiver-retirement retained-audio behavior proof source",
     )
 
+    for text, label in (
+        (
+            '"input_owner": (android / "ControlledInputOwner.kt").read_text(',
+            "focused controlled-input owner source loading",
+        ),
+        (
+            '"input_queue": (android / "ExactOwnerBoundedQueue.kt").read_text(',
+            "focused controlled-input queue source loading",
+        ),
+        (
+            '"input_service": (android / "InputService.kt").read_text(',
+            "focused controlled-input service source loading",
+        ),
+        (
+            '"input_owner_test": (\n'
+            '            repo / "scripts/android-controlled-input-owner-test.kt"',
+            "focused controlled-input behavior fixture loading",
+        ),
+        (
+            '"exact-owner delayed and pointer-state retirement"',
+            "focused controlled-input exact-retirement contract",
+        ),
+        (
+            '"one exact live wheel action driven by platform completion"',
+            "focused controlled-input wheel completion contract",
+        ),
+        (
+            '"generation-and-connection-bound Boolean pointer JNI"',
+            "focused controlled-input pointer JNI contract",
+        ),
+        (
+            '"generation-and-connection-bound Boolean key JNI"',
+            "focused controlled-input key JNI contract",
+        ),
+        (
+            '("input_queue", "if (!owner.isValid || entries.size >= capacity)", "if (!owner.isValid)", "controlled-input queue capacity"),',
+            "focused controlled-input queue-capacity mutation",
+        ),
+        (
+            '("input_service", "private val mainHandler = Handler(Looper.getMainLooper())", "private val timer = Timer()", "retired controlled-input Timer thread"),',
+            "focused retired-Timer mutation",
+        ),
+        (
+            '("android_ffi", "\\"(IIIII)Z\\"", "\\"(IIII)Z\\"", "controlled-input pointer JNI identity"),',
+            "focused controlled-input pointer-JNI mutation",
+        ),
+        (
+            '("requirements", \'<span class="id">R-S11ei</span>\', \'<span class="id">R-S11ei-disabled</span>\', "controlled-input ownership requirement"),',
+            "focused controlled-input requirement mutation",
+        ),
+        (
+            '("hardening", "R-S11ei/R-S11e-153", "R-S11ei-disabled/R-S11e-153", "controlled-input ownership hardening ledger"),',
+            "focused controlled-input ledger mutation",
+        ),
+    ):
+        require_text(focused, text, label)
+
+    input_owner = sources["android_controlled_input_owner"]
+    require_text(
+        input_owner,
+        "internal data class ControlledInputOwner(\n"
+        "    val serviceGeneration: Long,\n"
+        "    val connectionId: Int,",
+        "independent exact controlled-input owner source",
+    )
+    require_text(
+        input_owner,
+        "serviceGeneration > 0 && connectionId > 0",
+        "independent controlled-input owner validity source",
+    )
+    input_queue = sources["android_controlled_input_queue"]
+    require_order(
+        input_queue,
+        (
+            "private val entries = ArrayDeque<OwnedControlledInput<T>>()",
+            "require(capacity > 0)",
+            "if (!owner.isValid || entries.size >= capacity)",
+            "entries.addLast(OwnedControlledInput(owner, value))",
+            "fun poll(): OwnedControlledInput<T>? = entries.pollFirst()",
+            "if (iterator.next().owner == owner)",
+        ),
+        "independent exact-owner bounded input queue source",
+    )
+    require_absent(
+        input_queue,
+        "LinkedList",
+        "independent controlled-input linked-list queue source",
+    )
+    require_text(
+        sources["android_controlled_capture_owner_state"],
+        "fun ownsRemoteInput(connectionId: Int): Boolean = owners.contains(connectionId)",
+        "independent service-owned Remote input authority source",
+    )
+
+    android_service = sources["android_main_service"]
+    pointer_entry = extract_between(
+        android_service,
+        "    fun rustPointerInput(",
+        "\n\n    @Keep\n    @RequiresApi(Build.VERSION_CODES.N)\n    @Synchronized\n    fun rustKeyEventInput(",
+        "independent Android pointer JNI receiver source",
+    )
+    require_order(
+        pointer_entry,
+        (
+            "connectionId: Int",
+            "controlledInputOwner(connectionId) ?: return false",
+            "InputService.ctx ?: return false",
+            "registerInputOwner(owner)",
+            "inputService.onTouchInput(owner, mask, x, y)",
+            "inputService.onMouseInput(owner, mask, x, y)",
+        ),
+        "independent exact-owner pointer admission source",
+    )
+    key_entry = extract_between(
+        android_service,
+        "    fun rustKeyEventInput(",
+        "\n\n    private fun controlledInputOwner(",
+        "independent Android key JNI receiver source",
+    )
+    require_order(
+        key_entry,
+        (
+            "connectionId: Int",
+            "controlledInputOwner(connectionId) ?: return false",
+            "InputService.ctx ?: return false",
+            "registerInputOwner(owner)",
+            "return inputService.onKeyEvent(owner, input)",
+        ),
+        "independent exact-owner key admission source",
+    )
+    input_authority = extract_between(
+        android_service,
+        "    private fun controlledInputOwner(",
+        "\n\n    @Keep\n    fun rustGetByName(",
+        "independent Android controlled-input authority source",
+    )
+    require_order(
+        input_authority,
+        (
+            "!acceptingControlledConnections",
+            "nativeServerGeneration <= 0L",
+            "!controlledCaptureOwners.ownsRemoteInput(connectionId)",
+            "return null",
+            "ControlledInputOwner(nativeServerGeneration, connectionId)",
+        ),
+        "independent live generation/Remote input authority source",
+    )
+    require_order(
+        android_service,
+        (
+            "controlledCaptureOwners.unregister(id)",
+            "InputService.ctx?.retireInputOwner(",
+            "ControlledInputOwner(nativeServerGeneration, id)",
+        ),
+        "independent connection-removal input retirement source",
+    )
+    require_order(
+        android_service,
+        (
+            "acceptingControlledConnections = false",
+            "controlledCaptureOwners.clear()",
+            "InputService.ctx?.retireServiceGeneration(nativeServerGeneration)",
+            "releaseCaptureResources()",
+        ),
+        "independent generation input teardown source",
+    )
+
+    input_service = sources["android_input_service"]
+    for retired in (
+        "Timer()",
+        "TimerTask",
+        "wheelActionsQueue",
+        "isWheelActionsPolling",
+        "val handler = Handler(Looper.getMainLooper())",
+    ):
+        require_absent(
+            input_service,
+            retired,
+            f"independent retired controlled-input shape {retired}",
+        )
+    require_exact_count(
+        input_service,
+        "Handler(Looper.getMainLooper())",
+        1,
+        "independent one retained controlled-input Handler source",
+    )
+    for text, label in (
+        (
+            "private const val MAX_PENDING_WHEEL_ACTIONS = 32",
+            "independent wheel input capacity source",
+        ),
+        (
+            "private const val MAX_PENDING_KEY_ACTIONS = 64",
+            "independent key input capacity source",
+        ),
+        (
+            "private val activeInputOwners = mutableSetOf<ControlledInputOwner>()",
+            "independent active exact input-owner source",
+        ),
+        (
+            "activeInputOwners.remove(owner)\n"
+            "        wheelActions.removeOwner(owner)\n"
+            "        keyActions.removeOwner(owner)",
+            "independent exact queued-input retirement source",
+        ),
+        (
+            "if (pointerOwner == owner) {\n"
+            "            finishAndResetPointerSequence()",
+            "independent exact pointer-owner retirement source",
+        ),
+        (
+            "Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && stroke != null",
+            "independent admitted continuation finality source",
+        ),
+        (
+            "override fun onCompleted(gestureDescription: GestureDescription)",
+            "independent wheel completion callback source",
+        ),
+        (
+            "override fun onCancelled(gestureDescription: GestureDescription)",
+            "independent wheel cancellation callback source",
+        ),
+        (
+            "pending?.owner != owner || pending.sequence != sequence",
+            "independent delayed exact-owner/sequence source",
+        ),
+        (
+            "wheelActions.removeOwner(owner)\n"
+            "        return false",
+            "independent wheel-post failure cleanup source",
+        ),
+        (
+            "keyActions.removeOwner(owner)\n"
+            "        return false",
+            "independent key-post failure cleanup source",
+        ),
+        (
+            "mainHandler.removeCallbacks(wheelDrain)\n"
+            "            mainHandler.removeCallbacks(keyDrain)",
+            "independent service-destroy drain cleanup source",
+        ),
+    ):
+        require_text(input_service, text, label)
+    require_exact_count(
+        input_service,
+        "while (next != null && next.owner !in activeInputOwners)",
+        2,
+        "independent stale queued-owner filtering source",
+    )
+
+    android_ffi = sources["android_scrap_ffi"]
+    for text, label in (
+        ("connection_id: i32", "independent Android JNI connection identity source"),
+        (
+            "generation == 0 || connection_id <= 0 || context.generation != Some(generation)",
+            "independent Android JNI generation/connection validation source",
+        ),
+        ('"(IIIII)Z"', "independent Boolean pointer JNI signature source"),
+        ('"(I[B)Z"', "independent Boolean key JNI signature source"),
+    ):
+        require_text(android_ffi, text, label)
+    require_exact_count(
+        android_ffi,
+        "JValue::Int(connection_id)",
+        2,
+        "independent pointer/key JNI exact connection handoff source",
+    )
+    connection = sources["connection_source"]
+    require_text(
+        connection,
+        "call_main_service_key_event_for_generation(\n"
+        "                                self.android_server_generation,\n"
+        "                                self.inner.id(),",
+        "independent key exact connection-ID handoff source",
+    )
+    for diagnostic in (
+        "Closing Android connection after input owner or queue refusal",
+        "Closing Android connection after pointer owner or queue refusal",
+        "Closing Android connection after key owner or queue refusal",
+        "Closing Android connection after input JNI failure",
+        "Closing Android connection after pointer JNI failure",
+        "Closing Android connection after key JNI failure",
+    ):
+        require_text(
+            connection,
+            diagnostic,
+            f"independent fail-closed controlled-input diagnostic {diagnostic}",
+        )
+    require_text(
+        sources["android_controlled_input_owner_test"],
+        "old generation retirement selected the replacement owner",
+        "independent controlled-input generation-ABA behavior source",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11ei</span>',
+        "independent controlled-input normative requirement source",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>288</td>",
+        "independent controlled-input Appendix C source",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ei/R-S11e-153",
+        "independent controlled-input hardening ledger source",
+    )
+    require_text(
+        sources["verify"],
+        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11e-153/R-T4) =="',
+        "independent shared controlled-input gate label source",
+    )
+
 
 def validate_android_builder_authority_contract(sources):
     focused = sources["android_builder_authority_verifier"]
@@ -25080,7 +25394,7 @@ def validate_android_media_projection_finality_contract(sources):
     )
     require_text(
         sources["verify"],
-        "Android MediaProjection lifecycle finality (R-S14/R-T4)",
+        "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11e-153/R-T4)",
         "Android MediaProjection shared source gate",
     )
     require_text(
@@ -25090,7 +25404,7 @@ def validate_android_media_projection_finality_contract(sources):
     )
     require_text(
         sources["verify"],
-        "stale global stops, callback owners, and server generations are rejected",
+        "delayed input is bounded and stale owners, callbacks, global stops, and server generations are rejected",
         "Android service-owned capture-demand shared gate",
     )
 
@@ -45550,6 +45864,130 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
+            '"one exact live wheel action driven by platform completion"',
+            '"wheel actions advance on elapsed delay"',
+            "focused controlled-input wheel completion contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"generation-and-connection-bound Boolean pointer JNI"',
+            '"generation-only pointer JNI"',
+            "focused controlled-input pointer JNI contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '("input_service", "private val mainHandler = Handler(Looper.getMainLooper())", "private val timer = Timer()", "retired controlled-input Timer thread"),',
+            '("input_service", "private val mainHandler = Handler(Looper.getMainLooper())", "private val handler = Handler(Looper.getMainLooper())", "retired controlled-input Timer thread"),',
+            "focused retired-Timer mutation",
+        ),
+        (
+            "android_controlled_input_owner",
+            "serviceGeneration > 0 && connectionId > 0",
+            "serviceGeneration >= 0 && connectionId > 0",
+            "independent controlled-input owner validity source",
+        ),
+        (
+            "android_controlled_input_queue",
+            "if (!owner.isValid || entries.size >= capacity)",
+            "if (!owner.isValid)",
+            "independent exact-owner bounded input queue source",
+        ),
+        (
+            "android_controlled_input_queue",
+            "if (iterator.next().owner == owner)",
+            "if (iterator.next().owner.connectionId == owner.connectionId)",
+            "independent exact-owner bounded input queue source",
+        ),
+        (
+            "android_controlled_capture_owner_state",
+            "fun ownsRemoteInput(connectionId: Int): Boolean = owners.contains(connectionId)",
+            "fun ownsRemoteInput(connectionId: Int): Boolean = true",
+            "independent service-owned Remote input authority source",
+        ),
+        (
+            "android_main_service",
+            "!controlledCaptureOwners.ownsRemoteInput(connectionId)",
+            "false",
+            "independent live generation/Remote input authority source",
+        ),
+        (
+            "android_main_service",
+            "InputService.ctx?.retireServiceGeneration(nativeServerGeneration)",
+            "// input generation retained",
+            "independent generation input teardown source",
+        ),
+        (
+            "android_input_service",
+            "private const val MAX_PENDING_WHEEL_ACTIONS = 32",
+            "private const val MAX_PENDING_WHEEL_ACTIONS = Int.MAX_VALUE",
+            "independent wheel input capacity source",
+        ),
+        (
+            "android_input_service",
+            "while (next != null && next.owner !in activeInputOwners)",
+            "while (false)",
+            "independent stale queued-owner filtering source",
+        ),
+        (
+            "android_input_service",
+            "override fun onCancelled(gestureDescription: GestureDescription)",
+            "fun onCancelledDisabled(gestureDescription: GestureDescription)",
+            "independent wheel cancellation callback source",
+        ),
+        (
+            "android_input_service",
+            "private val mainHandler = Handler(Looper.getMainLooper())",
+            "private val timer = Timer()",
+            "independent retired controlled-input shape Timer()",
+        ),
+        (
+            "android_scrap_ffi",
+            '"(IIIII)Z"',
+            '"(IIII)Z"',
+            "independent Boolean pointer JNI signature source",
+        ),
+        (
+            "connection_source",
+            "call_main_service_key_event_for_generation(\n"
+            "                                self.android_server_generation,\n"
+            "                                self.inner.id(),",
+            "call_main_service_key_event_for_generation(\n"
+            "                                self.android_server_generation,\n"
+            "                                0,",
+            "independent key exact connection-ID handoff source",
+        ),
+        (
+            "android_controlled_input_owner_test",
+            "old generation retirement selected the replacement owner",
+            "old generation retirement passed",
+            "independent controlled-input generation-ABA behavior source",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ei</span>',
+            '<span class="id">R-S11ei-disabled</span>',
+            "independent controlled-input normative requirement source",
+        ),
+        (
+            "requirements",
+            "<tr><td>288</td>",
+            "<tr><td>288-disabled</td>",
+            "independent controlled-input Appendix C source",
+        ),
+        (
+            "hardening",
+            "R-S11ei/R-S11e-153",
+            "R-S11ei-disabled/R-S11e-153",
+            "independent controlled-input hardening ledger source",
+        ),
+        (
+            "verify",
+            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11e-153/R-T4) =="',
+            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11e-153/R-T4) =="',
+            "independent shared controlled-input gate label source",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
             'forbid(screenshot, "lazy_static", "process-global screenshot cache")',
             'require(screenshot, "lazy_static", "process-global screenshot cache")',
             "focused process-global screenshot cache refusal",
@@ -51130,13 +51568,13 @@ def run_source_mutations(sources):
             "android_main_service",
             "controlledCaptureOwners.unregister(id)",
             "true",
-            "Android exact capture-owner retirement and reconciliation",
+            "independent connection-removal input retirement source",
         ),
         (
             "android_main_service",
             "acceptingControlledConnections = false",
             "acceptingControlledConnections = true",
-            "Android closed-admission controlled-resource teardown",
+            "independent generation input teardown source",
         ),
         (
             "android_main_service",
@@ -51358,9 +51796,19 @@ def run_source_mutations(sources):
         ),
         (
             "connection_source",
-            "call_main_service_key_event_for_generation",
-            "call_main_service_key_event",
+            "call_main_service_key_event_for_generation, call_main_service_pointer_input_for_generation,",
+            "call_main_service_key_event, call_main_service_pointer_input_for_generation,",
             "Android generation-bound key input",
+        ),
+        (
+            "connection_source",
+            "call_main_service_key_event_for_generation(\n"
+            "                                self.android_server_generation,\n"
+            "                                self.inner.id(),",
+            "call_main_service_key_event(\n"
+            "                                self.android_server_generation,\n"
+            "                                self.inner.id(),",
+            "independent key exact connection-ID handoff source",
         ),
         (
             "direct_service",
@@ -51388,9 +51836,9 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "Android MediaProjection lifecycle finality (R-S14/R-T4)",
-            "Android MediaProjection lifecycle compatibility (R-S14/R-T4)",
-            "Android MediaProjection shared source gate",
+            "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11e-153/R-T4)",
+            "Android MediaProjection/input lifecycle compatibility (R-S14/R-S11ei/R-S11e-153/R-T4)",
+            "independent shared controlled-input gate label source",
         ),
         (
             "verify",
@@ -52415,6 +52863,9 @@ def main():
             "android_controlled_connection_type_test": (
                 repo / "scripts/android-controlled-connection-type-test.kt"
             ).read_text(encoding="utf-8"),
+            "android_controlled_input_owner_test": (
+                repo / "scripts/android-controlled-input-owner-test.kt"
+            ).read_text(encoding="utf-8"),
             "android_build_source_verifier": (
                 repo / "scripts/verify-android-build-source.py"
             ).read_text(encoding="utf-8"),
@@ -52615,6 +53066,18 @@ def main():
             "android_controlled_capture_owner_state": (
                 repo
                 / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledCaptureOwnerState.kt"
+            ).read_text(encoding="utf-8"),
+            "android_controlled_input_owner": (
+                repo
+                / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledInputOwner.kt"
+            ).read_text(encoding="utf-8"),
+            "android_controlled_input_queue": (
+                repo
+                / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ExactOwnerBoundedQueue.kt"
+            ).read_text(encoding="utf-8"),
+            "android_input_service": (
+                repo
+                / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/InputService.kt"
             ).read_text(encoding="utf-8"),
             "android_ffi_kt": (
                 repo / "flutter/android/app/src/main/kotlin/ffi.kt"

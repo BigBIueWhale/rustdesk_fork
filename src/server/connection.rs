@@ -4932,14 +4932,29 @@ impl Connection {
                             );
                             return false;
                         }
-                        if let Err(e) = call_main_service_pointer_input_for_generation(
+                        match call_main_service_pointer_input_for_generation(
                             self.android_server_generation,
+                            self.inner.id(),
                             "mouse",
                             me.mask,
                             me.x,
                             me.y,
                         ) {
-                            log::debug!("call_main_service_pointer_input fail:{}", e);
+                            Ok(true) => {}
+                            Ok(false) => {
+                                log::warn!(
+                                    "Closing Android connection after input owner or queue refusal: conn_id={}",
+                                    self.inner.id()
+                                );
+                                return false;
+                            }
+                            Err(err) => {
+                                log::warn!(
+                                    "Closing Android connection after input JNI failure: conn_id={} err={err}",
+                                    self.inner.id()
+                                );
+                                return false;
+                            }
                         }
                     }
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -4999,12 +5014,13 @@ impl Connection {
                             );
                             return false;
                         }
-                        if let Err(e) = match pde.union {
+                        let dispatch_result = match pde.union {
                             Some(pointer_device_event::Union::TouchEvent(touch)) => {
                                 match touch.union {
                                     Some(touch_event::Union::PanStart(pan_start)) => {
                                         call_main_service_pointer_input_for_generation(
                                             self.android_server_generation,
+                                            self.inner.id(),
                                             "touch",
                                             4,
                                             pan_start.x,
@@ -5014,6 +5030,7 @@ impl Connection {
                                     Some(touch_event::Union::PanUpdate(pan_update)) => {
                                         call_main_service_pointer_input_for_generation(
                                             self.android_server_generation,
+                                            self.inner.id(),
                                             "touch",
                                             5,
                                             pan_update.x,
@@ -5023,18 +5040,34 @@ impl Connection {
                                     Some(touch_event::Union::PanEnd(pan_end)) => {
                                         call_main_service_pointer_input_for_generation(
                                             self.android_server_generation,
+                                            self.inner.id(),
                                             "touch",
                                             6,
                                             pan_end.x,
                                             pan_end.y,
                                         )
                                     }
-                                    _ => Ok(()),
+                                    _ => Ok(true),
                                 }
                             }
-                            _ => Ok(()),
-                        } {
-                            log::debug!("call_main_service_pointer_input fail:{}", e);
+                            _ => Ok(true),
+                        };
+                        match dispatch_result {
+                            Ok(true) => {}
+                            Ok(false) => {
+                                log::warn!(
+                                    "Closing Android connection after pointer owner or queue refusal: conn_id={}",
+                                    self.inner.id()
+                                );
+                                return false;
+                            }
+                            Err(err) => {
+                                log::warn!(
+                                    "Closing Android connection after pointer JNI failure: conn_id={} err={err}",
+                                    self.inner.id()
+                                );
+                                return false;
+                            }
                         }
                     }
                     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -5113,10 +5146,25 @@ impl Connection {
                         Ok(data) => {
                             let result = call_main_service_key_event_for_generation(
                                 self.android_server_generation,
+                                self.inner.id(),
                                 &data,
                             );
-                            if let Err(e) = result {
-                                log::debug!("call_main_service_key_event fail: {}", e);
+                            match result {
+                                Ok(true) => {}
+                                Ok(false) => {
+                                    log::warn!(
+                                        "Closing Android connection after key owner or queue refusal: conn_id={}",
+                                        self.inner.id()
+                                    );
+                                    return false;
+                                }
+                                Err(err) => {
+                                    log::warn!(
+                                        "Closing Android connection after key JNI failure: conn_id={} err={err}",
+                                        self.inner.id()
+                                    );
+                                    return false;
+                                }
                             }
                         }
                         Err(e) => {

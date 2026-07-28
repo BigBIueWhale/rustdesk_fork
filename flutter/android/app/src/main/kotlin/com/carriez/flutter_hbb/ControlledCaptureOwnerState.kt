@@ -6,6 +6,8 @@ internal class ControlledCaptureOwnerState {
     val requiresDesktopCapture: Boolean
         get() = owners.isNotEmpty()
 
+    fun ownsRemoteInput(connectionId: Int): Boolean = owners.contains(connectionId)
+
     fun upsert(
         connectionId: Int,
         authorized: Boolean,

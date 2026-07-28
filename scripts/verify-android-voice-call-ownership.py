@@ -69,6 +69,15 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "capture_owners": (android / "ControlledCaptureOwnerState.kt").read_text(
             encoding="utf-8"
         ),
+        "input_owner": (android / "ControlledInputOwner.kt").read_text(
+            encoding="utf-8"
+        ),
+        "input_queue": (android / "ExactOwnerBoundedQueue.kt").read_text(
+            encoding="utf-8"
+        ),
+        "input_service": (android / "InputService.kt").read_text(
+            encoding="utf-8"
+        ),
         "ffi_kt": (repo / "flutter/android/app/src/main/kotlin/ffi.kt").read_text(
             encoding="utf-8"
         ),
@@ -134,6 +143,9 @@ def load_sources(repo: Path) -> Dict[str, str]:
         ),
         "connection_type_test": (
             repo / "scripts/android-controlled-connection-type-test.kt"
+        ).read_text(encoding="utf-8"),
+        "input_owner_test": (
+            repo / "scripts/android-controlled-input-owner-test.kt"
         ).read_text(encoding="utf-8"),
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
@@ -3359,6 +3371,600 @@ def validate(sources: Dict[str, str]) -> None:
         "generated-bridge bounded audio behavior gate wiring",
     )
 
+    input_owner = sources["input_owner"]
+    require(
+        input_owner,
+        "internal data class ControlledInputOwner(\n"
+        "    val serviceGeneration: Long,\n"
+        "    val connectionId: Int,",
+        "exact Android controlled-input owner",
+    )
+    require(
+        input_owner,
+        "get() = serviceGeneration > 0 && connectionId > 0",
+        "controlled-input owner validity",
+    )
+
+    input_queue = sources["input_queue"]
+    queue = extract_item(
+        input_queue,
+        "internal class ExactOwnerBoundedQueue",
+        "exact-owner bounded Android input queue",
+    )
+    for needle, label in (
+        (
+            "private val entries = ArrayDeque<OwnedControlledInput<T>>()",
+            "bounded queue storage",
+        ),
+        ("require(capacity > 0)", "positive queue capacity"),
+        (
+            "if (!owner.isValid || entries.size >= capacity)",
+            "invalid-owner and capacity refusal",
+        ),
+        (
+            "entries.addLast(OwnedControlledInput(owner, value))",
+            "exact-owner queue admission",
+        ),
+        (
+            "fun poll(): OwnedControlledInput<T>? = entries.pollFirst()",
+            "FIFO queue consumption",
+        ),
+        ("if (iterator.next().owner == owner)", "exact-owner queue retirement"),
+    ):
+        require(queue, needle, label)
+    forbid(input_queue, "LinkedList", "linked-list controlled input queue")
+
+    capture_owner_state = sources["capture_owners"]
+    require(
+        capture_owner_state,
+        "fun ownsRemoteInput(connectionId: Int): Boolean = owners.contains(connectionId)",
+        "Remote-only service-owned input authority lookup",
+    )
+
+    main_service = sources["service"]
+    pointer_entry = extract_item(
+        main_service,
+        "fun rustPointerInput(",
+        "Android pointer JNI receiver",
+    )
+    require_order(
+        pointer_entry,
+        (
+            "connectionId: Int",
+            "val owner = controlledInputOwner(connectionId) ?: return false",
+            "val inputService = InputService.ctx ?: return false",
+            "if (!inputService.registerInputOwner(owner))",
+            "return false",
+            "inputService.onTouchInput(owner, mask, x, y)",
+            "inputService.onMouseInput(owner, mask, x, y)",
+        ),
+        "exact-owner pointer admission and Boolean result",
+    )
+    key_entry = extract_item(
+        main_service,
+        "fun rustKeyEventInput(",
+        "Android key JNI receiver",
+    )
+    require_order(
+        key_entry,
+        (
+            "connectionId: Int",
+            "val owner = controlledInputOwner(connectionId) ?: return false",
+            "val inputService = InputService.ctx ?: return false",
+            "if (!inputService.registerInputOwner(owner))",
+            "return false",
+            "return inputService.onKeyEvent(owner, input)",
+        ),
+        "exact-owner key admission and Boolean result",
+    )
+    controlled_input_owner = extract_item(
+        main_service,
+        "private fun controlledInputOwner(",
+        "service-owned controlled-input authority",
+    )
+    require_order(
+        controlled_input_owner,
+        (
+            "!acceptingControlledConnections",
+            "nativeServerGeneration <= 0L",
+            "!controlledCaptureOwners.ownsRemoteInput(connectionId)",
+            "return null",
+            "return ControlledInputOwner(nativeServerGeneration, connectionId)",
+        ),
+        "live generation and authenticated Remote input authority",
+    )
+    require_order(
+        main_service,
+        (
+            "controlledCaptureOwners.upsert(id, authorized, connectionType)",
+            "if (!controlledCaptureOwners.ownsRemoteInput(id))",
+            "InputService.ctx?.retireInputOwner(inputOwner)",
+        ),
+        "authorization/type replacement input retirement",
+    )
+    require_order(
+        main_service,
+        (
+            "val captureOwnerRemoved = controlledCaptureOwners.unregister(id)",
+            "InputService.ctx?.retireInputOwner(",
+            "ControlledInputOwner(nativeServerGeneration, id)",
+        ),
+        "connection-removal exact input retirement",
+    )
+    release_resources = extract_item(
+        main_service,
+        "private fun releaseControlledConnectionResources()",
+        "controlled-service resource teardown",
+    )
+    require_order(
+        release_resources,
+        (
+            "acceptingControlledConnections = false",
+            "controlledCaptureOwners.clear()",
+            "InputService.ctx?.retireServiceGeneration(nativeServerGeneration)",
+            "releaseCaptureResources()",
+        ),
+        "admission-close then exact input-generation teardown",
+    )
+
+    input_service = sources["input_service"]
+    for retired, label in (
+        ("Timer()", "process-retained Timer thread"),
+        ("TimerTask", "per-action Timer task"),
+        ("wheelActionsQueue", "unbounded wheel linked list"),
+        ("isWheelActionsPolling", "Timer-polled wheel state"),
+        (
+            "val handler = Handler(Looper.getMainLooper())",
+            "per-key-event Handler allocation",
+        ),
+    ):
+        forbid(input_service, retired, label)
+    require_count(
+        input_service,
+        "Handler(Looper.getMainLooper())",
+        1,
+        "one retained Android input main Handler",
+    )
+    for needle, label in (
+        (
+            "private const val MAX_PENDING_WHEEL_ACTIONS = 32",
+            "wheel queue capacity",
+        ),
+        (
+            "private const val MAX_PENDING_KEY_ACTIONS = 64",
+            "key queue capacity",
+        ),
+        (
+            "private val activeInputOwners = mutableSetOf<ControlledInputOwner>()",
+            "active exact input-owner set",
+        ),
+        (
+            "ExactOwnerBoundedQueue<GestureDescription>(MAX_PENDING_WHEEL_ACTIONS)",
+            "bounded wheel action queue",
+        ),
+        (
+            "ExactOwnerBoundedQueue<KeyEvent>(MAX_PENDING_KEY_ACTIONS)",
+            "bounded key action queue",
+        ),
+        (
+            "private var wheelActionInFlight: OwnedControlledInput<GestureDescription>? = null",
+            "one wheel gesture in flight",
+        ),
+        (
+            "private var pendingLongPress: PendingOwnedAction? = null",
+            "one delayed long press",
+        ),
+        (
+            "private var pendingRecentAction: PendingOwnedAction? = null",
+            "one delayed recents action",
+        ),
+        ("private enum class PointerSequence", "typed pointer sequence state"),
+    ):
+        require(input_service, needle, label)
+
+    register_input_owner = extract_item(
+        input_service,
+        "internal fun registerInputOwner(",
+        "controlled-input owner registration",
+    )
+    require_order(
+        register_input_owner,
+        (
+            "if (destroyed || !owner.isValid)",
+            "return false",
+            "activeInputOwners.add(owner)",
+            "return true",
+        ),
+        "valid live exact-owner registration",
+    )
+    retire_input_owner = extract_item(
+        input_service,
+        "internal fun retireInputOwner(",
+        "controlled-input owner retirement",
+    )
+    require_order(
+        retire_input_owner,
+        (
+            "activeInputOwners.remove(owner)",
+            "wheelActions.removeOwner(owner)",
+            "keyActions.removeOwner(owner)",
+            "cancelLongPress(owner)",
+            "cancelRecentAction(owner)",
+            "if (pointerOwner == owner)",
+            "finishAndResetPointerSequence()",
+        ),
+        "exact-owner delayed and pointer-state retirement",
+    )
+    retire_generation = extract_item(
+        input_service,
+        "internal fun retireServiceGeneration(",
+        "controlled-input generation teardown",
+    )
+    require_order(
+        retire_generation,
+        (
+            ".filter { it.serviceGeneration == serviceGeneration }",
+            ".toList()",
+            "for (owner in owners)",
+            "retireInputOwner(owner)",
+        ),
+        "generation-scoped owner teardown",
+    )
+
+    mouse_input = extract_item(
+        input_service,
+        "internal fun onMouseInput(",
+        "exact-owner mouse input",
+    )
+    require_order(
+        mouse_input,
+        (
+            "if (destroyed || owner !in activeInputOwners)",
+            "val activePointerOwner = pointerOwner",
+            "if (activePointerOwner != null)",
+            "activePointerOwner != owner",
+            "pointerSequence != PointerSequence.MOUSE",
+            "(mask != 0 && mask != LEFT_MOVE && mask != LEFT_UP)",
+            "return false",
+            "pointerOwner = owner",
+            "pointerSequence = PointerSequence.MOUSE",
+        ),
+        "single exact mouse-sequence ownership",
+    )
+    require_order(
+        mouse_input,
+        (
+            "if (pendingRecentAction != null)",
+            "return false",
+            "return scheduleRecentAction(owner)",
+        ),
+        "single delayed recents admission",
+    )
+    touch_input = extract_item(
+        input_service,
+        "internal fun onTouchInput(",
+        "exact-owner touch input",
+    )
+    require_order(
+        touch_input,
+        (
+            "if (destroyed || owner !in activeInputOwners)",
+            "TOUCH_PAN_UPDATE",
+            "pointerOwner != owner || pointerSequence != PointerSequence.TOUCH",
+            "TOUCH_PAN_START",
+            "if (pointerOwner != null)",
+            "pointerOwner = owner",
+            "pointerSequence = PointerSequence.TOUCH",
+            "TOUCH_PAN_END",
+            "pointerOwner = null",
+            "pointerSequence = null",
+        ),
+        "single exact touch-sequence ownership",
+    )
+    finish_pointer = extract_item(
+        input_service,
+        "private fun finishAndResetPointerSequence()",
+        "retired pointer-sequence finalization",
+    )
+    require_order(
+        finish_pointer,
+        (
+            "cancelLongPress(pointerOwner)",
+            "Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && stroke != null",
+            "endGesture(mouseX, mouseY)",
+            "leftIsDown = false",
+            "pointerOwner = null",
+            "pointerSequence = null",
+            "stroke = null",
+            "touchPath.reset()",
+        ),
+        "finish admitted continuation before local pointer reset",
+    )
+
+    enqueue_wheel = extract_item(
+        input_service,
+        "private fun enqueueWheelAction(",
+        "bounded wheel admission",
+    )
+    require_order(
+        enqueue_wheel,
+        (
+            "if (!wheelActions.offer(owner, gesture))",
+            "return false",
+            "if (scheduleWheelDrain())",
+            "return true",
+            "wheelActions.removeOwner(owner)",
+            "return false",
+        ),
+        "wheel capacity and post-failure exact-owner cleanup",
+    )
+    drain_wheel = extract_item(
+        input_service,
+        "private fun drainWheelAction()",
+        "wheel queue drain",
+    )
+    require_order(
+        drain_wheel,
+        (
+            "wheelDrainPosted = false",
+            "wheelActionInFlight != null",
+            "while (next != null && next.owner !in activeInputOwners)",
+            "val admitted = next ?: return",
+            "wheelActionInFlight = admitted",
+            "override fun onCompleted",
+            "completeWheelAction(admitted)",
+            "override fun onCancelled",
+            "completeWheelAction(admitted)",
+            "dispatchGesture(admitted.value, callback, mainHandler)",
+        ),
+        "one exact live wheel action driven by platform completion",
+    )
+
+    schedule_long_press = extract_item(
+        input_service,
+        "private fun scheduleLongPress(",
+        "exact delayed long-press admission",
+    )
+    require_order(
+        schedule_long_press,
+        (
+            "cancelLongPress(null)",
+            "val sequence = nextDelayedActionSequence() ?: return false",
+            "pendingLongPress = PendingOwnedAction(owner, sequence, runnable)",
+            "mainHandler.postDelayed(runnable, longPressDuration)",
+        ),
+        "single sequenced long-press slot",
+    )
+    run_long_press = extract_item(
+        input_service,
+        "private fun runLongPress(",
+        "exact delayed long-press execution",
+    )
+    require_order(
+        run_long_press,
+        (
+            "pending?.owner != owner || pending.sequence != sequence",
+            "pendingLongPress = null",
+            "owner !in activeInputOwners",
+            "pointerOwner != owner",
+            "!leftIsDown",
+            "!isWaitingLongPress",
+            "continueGesture(mouseX, mouseY)",
+        ),
+        "owner/sequence/current-pointer long-press validation",
+    )
+    run_recent = extract_item(
+        input_service,
+        "private fun runRecentAction(",
+        "exact delayed recents execution",
+    )
+    require_order(
+        run_recent,
+        (
+            "pending?.owner != owner",
+            "pending.sequence != sequence",
+            "owner !in activeInputOwners",
+            "pendingRecentAction = null",
+            "performGlobalAction(GLOBAL_ACTION_RECENTS)",
+        ),
+        "owner/sequence recents validation",
+    )
+
+    key_input = extract_item(
+        input_service,
+        "internal fun onKeyEvent(",
+        "bounded exact-owner key admission",
+    )
+    require_order(
+        key_input,
+        (
+            "if (destroyed || owner !in activeInputOwners)",
+            "KeyEvent.parseFrom(data)",
+            "if (!keyActions.offer(owner, keyEvent))",
+            "return false",
+            "if (scheduleKeyDrain())",
+            "return true",
+            "keyActions.removeOwner(owner)",
+            "return false",
+        ),
+        "key parse, capacity, and post-failure cleanup",
+    )
+    drain_key = extract_item(
+        input_service,
+        "private fun drainKeyAction()",
+        "bounded key drain",
+    )
+    require_order(
+        drain_key,
+        (
+            "keyDrainPosted = false",
+            "while (next != null && next.owner !in activeInputOwners)",
+            "processKeyEvent(next.value)",
+            "scheduleKeyDrain()",
+        ),
+        "one posted key drain with stale-owner filtering",
+    )
+    input_destroy = extract_item(
+        input_service,
+        "override fun onDestroy()",
+        "AccessibilityService input teardown",
+    )
+    require_order(
+        input_destroy,
+        (
+            "destroyed = true",
+            "activeInputOwners.clear()",
+            "wheelActions.clear()",
+            "keyActions.clear()",
+            "wheelActionInFlight = null",
+            "cancelLongPress(null)",
+            "cancelRecentAction(null)",
+            "pointerOwner = null",
+            "pointerSequence = null",
+            "mainHandler.removeCallbacks(wheelDrain)",
+            "mainHandler.removeCallbacks(keyDrain)",
+            "if (ctx === this)",
+            "ctx = null",
+        ),
+        "complete persistent AccessibilityService input teardown",
+    )
+
+    android_ffi = sources["android_ffi"]
+    pointer_ffi = extract_item(
+        android_ffi,
+        "pub fn call_main_service_pointer_input_for_generation(",
+        "Android pointer JNI sender",
+    )
+    require_order(
+        pointer_ffi,
+        (
+            "generation: u64",
+            "connection_id: i32",
+            ") -> JniResult<bool>",
+            "generation == 0 || connection_id <= 0",
+            "context.generation != Some(generation)",
+            '"(IIIII)Z"',
+            "JValue::Int(connection_id)",
+            ".z()",
+        ),
+        "generation-and-connection-bound Boolean pointer JNI",
+    )
+    key_ffi = extract_item(
+        android_ffi,
+        "pub fn call_main_service_key_event_for_generation(",
+        "Android key JNI sender",
+    )
+    require_order(
+        key_ffi,
+        (
+            "generation: u64",
+            "connection_id: i32",
+            ") -> JniResult<bool>",
+            "generation == 0 || connection_id <= 0",
+            "context.generation != Some(generation)",
+            '"(I[B)Z"',
+            "JValue::Int(connection_id)",
+            ".z()",
+        ),
+        "generation-and-connection-bound Boolean key JNI",
+    )
+
+    server_connection = sources["server_connection"]
+    require_count(
+        server_connection,
+        "call_main_service_pointer_input_for_generation(\n"
+        "                            self.android_server_generation,\n"
+        "                            self.inner.id(),",
+        1,
+        "mouse input exact connection-ID JNI handoff",
+    )
+    require_count(
+        server_connection,
+        "call_main_service_pointer_input_for_generation(\n"
+        "                                            self.android_server_generation,\n"
+        "                                            self.inner.id(),",
+        3,
+        "touch input exact connection-ID JNI handoff",
+    )
+    require(
+        server_connection,
+        "call_main_service_key_event_for_generation(\n"
+        "                                self.android_server_generation,\n"
+        "                                self.inner.id(),",
+        "key input exact connection-ID JNI handoff",
+    )
+    for diagnostic, label in (
+        (
+            "Closing Android connection after input owner or queue refusal",
+            "mouse refusal connection closure",
+        ),
+        (
+            "Closing Android connection after pointer owner or queue refusal",
+            "touch refusal connection closure",
+        ),
+        (
+            "Closing Android connection after key owner or queue refusal",
+            "key refusal connection closure",
+        ),
+        (
+            "Closing Android connection after input JNI failure",
+            "mouse JNI-failure connection closure",
+        ),
+        (
+            "Closing Android connection after pointer JNI failure",
+            "touch JNI-failure connection closure",
+        ),
+        (
+            "Closing Android connection after key JNI failure",
+            "key JNI-failure connection closure",
+        ),
+    ):
+        require(server_connection, diagnostic, label)
+
+    input_test = sources["input_owner_test"]
+    for behavior, label in (
+        ("queue capacity was not enforced", "queue-capacity behavior proof"),
+        (
+            "exact owner retirement did not remove all owned work",
+            "exact owner retirement behavior proof",
+        ),
+        (
+            "one owner retirement removed or reordered another owner's work",
+            "other-owner preservation behavior proof",
+        ),
+        (
+            "old generation retirement selected the replacement owner",
+            "generation-ABA behavior proof",
+        ),
+        ("invalid owner reached the bounded queue", "invalid-owner behavior proof"),
+    ):
+        require(input_test, behavior, label)
+    require(
+        sources["requirements"],
+        '<span class="id">R-S11ei</span>',
+        "Android controlled-input ownership normative requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>288</td>",
+        "Android controlled-input ownership Appendix C disposition",
+    )
+    require(
+        sources["hardening"],
+        "R-S11ei/R-S11e-153",
+        "Android controlled-input ownership hardening ledger",
+    )
+    require(
+        sources["verify"],
+        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11e-153/R-T4) =="',
+        "shared Android controlled-input ownership gate label",
+    )
+    require(
+        sources["verify"],
+        "android-controlled-input-owner-test.kt",
+        "shared Android controlled-input behavior fixture gate",
+    )
+
 
 Mutation = Tuple[str, str, str, str]
 
@@ -3657,6 +4263,28 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("hardening", "R-S11eh/R-S11e-152", "R-S11eh-disabled/R-S11e-152", "bounded audio egress hardening ledger"),
     ("verify", "\"${RUN[@]}\" cargo test --lib --features linux-pkg-config \\\n  server::connection::audio_egress_tests::r_s11eh_ -- --test-threads=1", "true # shared bounded audio behavior gate disabled", "shared bounded audio behavior gate"),
     ("dart_verify", "server::connection::audio_egress_tests::r_s11eh_", "server::connection::audio_egress_tests::disabled_", "generated-bridge bounded audio behavior gate"),
+    ("input_owner", "serviceGeneration > 0 && connectionId > 0", "serviceGeneration >= 0 && connectionId > 0", "controlled-input owner validity"),
+    ("input_queue", "if (!owner.isValid || entries.size >= capacity)", "if (!owner.isValid)", "controlled-input queue capacity"),
+    ("input_queue", "if (iterator.next().owner == owner)", "if (iterator.next().owner.connectionId == owner.connectionId)", "controlled-input exact generation retirement"),
+    ("capture_owners", "fun ownsRemoteInput(connectionId: Int): Boolean = owners.contains(connectionId)", "fun ownsRemoteInput(connectionId: Int): Boolean = true", "controlled-input Remote authority lookup"),
+    ("service", "!controlledCaptureOwners.ownsRemoteInput(connectionId)", "false", "controlled-input service authority"),
+    ("service", "InputService.ctx?.retireServiceGeneration(nativeServerGeneration)", "// input generation retained", "controlled-input service-generation teardown"),
+    ("input_service", "private const val MAX_PENDING_WHEEL_ACTIONS = 32", "private const val MAX_PENDING_WHEEL_ACTIONS = Int.MAX_VALUE", "controlled-input wheel capacity"),
+    ("input_service", "if (destroyed || owner !in activeInputOwners)", "if (destroyed)", "controlled-input active-owner admission"),
+    ("input_service", "private val mainHandler = Handler(Looper.getMainLooper())", "private val timer = Timer()", "retired controlled-input Timer thread"),
+    ("input_service", "activePointerOwner != owner", "false", "controlled-input pointer owner"),
+    ("input_service", "while (next != null && next.owner !in activeInputOwners)", "while (false)", "controlled-input stale queued-owner filtering"),
+    ("input_service", "override fun onCancelled(gestureDescription: GestureDescription)", "fun onCancelledDisabled(gestureDescription: GestureDescription)", "controlled-input gesture cancellation drain"),
+    ("input_service", "if (!keyActions.offer(owner, keyEvent))", "if (false)", "controlled-input key capacity"),
+    ("android_ffi", "\"(IIIII)Z\"", "\"(IIII)Z\"", "controlled-input pointer JNI identity"),
+    ("android_ffi", "\"(I[B)Z\"", "\"([B)Z\"", "controlled-input key JNI identity"),
+    ("server_connection", "call_main_service_key_event_for_generation(\n                                self.android_server_generation,\n                                self.inner.id(),", "call_main_service_key_event_for_generation(\n                                self.android_server_generation,\n                                0,", "controlled-input Rust connection identity"),
+    ("input_owner_test", "old generation retirement selected the replacement owner", "old generation retirement passed", "controlled-input generation-ABA behavior proof"),
+    ("requirements", '<span class="id">R-S11ei</span>', '<span class="id">R-S11ei-disabled</span>', "controlled-input ownership requirement"),
+    ("requirements", "<tr><td>288</td>", "<tr><td>288-disabled</td>", "controlled-input ownership disposition"),
+    ("hardening", "R-S11ei/R-S11e-153", "R-S11ei-disabled/R-S11e-153", "controlled-input ownership hardening ledger"),
+    ("verify", 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11e-153/R-T4) =="', 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11e-153/R-T4) =="', "shared controlled-input ownership gate"),
+    ("verify", "android-controlled-input-owner-test.kt", "android-controlled-input-owner-test-disabled.kt", "shared controlled-input behavior fixture gate"),
     ("verify", "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs", "true # replacement-drain shared gate disabled", "shared mobile replacement-drain gate"),
     ("verify", "if [ \"$(grep -cF 'check_remove_unused_displays(None, None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then", "if false; then # post-drain display gate disabled", "shared post-drain display-reconciliation gate"),
     ("dart_verify", "cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1", "true # generated-bridge mobile lifecycle tests disabled", "generated-bridge mobile lifecycle behavior gate"),

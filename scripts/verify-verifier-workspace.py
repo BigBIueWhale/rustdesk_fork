@@ -12862,6 +12862,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     service_wxs = sources["windows_service_wxs"]
     package_surface = sources["windows_package_wxs"]
     package_project = sources["windows_package_project"]
+    msi_ignore = sources["windows_msi_ignore"]
     solution = sources["windows_msi_solution"]
     preprocess = sources["windows_msi_preprocess"]
     windows_build = sources["windows_build_script"]
@@ -12895,6 +12896,11 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
         sources["windows_custom_actions_fragment_state"],
         "windows-custom-actions-fragment-absent",
         "Windows custom-action fragment absence",
+    )
+    require_absent(
+        msi_ignore,
+        "CustomActions",
+        "Windows custom-action ignore surface absence",
     )
     for surface, forbidden, label in (
         (package_surface, "<CustomAction", "Windows package custom-action declaration absence"),
@@ -13016,6 +13022,11 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
     )
     require_text(
         sources["hardening"],
+        "R-S11e-157 Windows custom-action ignore-surface excision",
+        "Windows custom-action ignore-surface hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
         "R-S11n through R-S11dz, R-SV4a,\nR-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279",
         "current GitHub-automation requirements-hash scope",
     )
@@ -13031,6 +13042,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
         ("runtime-broker cleanup application-component ownership", "component ownership mutation"),
         ("Windows custom-action project directory absence", "deleted directory mutation"),
         ("Windows custom-action fragment absence", "deleted fragment mutation"),
+        ("Windows custom-action ignore surface absence", "ignore-surface mutation"),
         ("Windows package custom-action project-reference absence", "project-reference mutation"),
         ("Windows solution custom-action project absence", "solution-project mutation"),
         ("Windows custom-action preprocess hook absence", "preprocess-hook mutation"),
@@ -13043,6 +13055,7 @@ def validate_windows_declarative_runtime_cleanup_contract(sources):
         ("Windows extension-owned action attribution requirement", "extension-action boundary mutation"),
         ("declarative Windows runtime-cleanup Appendix C row", "Appendix mutation"),
         ("declarative Windows runtime-cleanup hardening ledger", "hardening-ledger mutation"),
+        ("Windows custom-action ignore-surface hardening ledger", "ignore-surface ledger mutation"),
         ("current GitHub-automation requirements-hash scope", "hash-scope mutation"),
     ):
         require_text(mutation_matrix, text, label)
@@ -44556,6 +44569,12 @@ def run_source_mutations(sources):
             "Windows custom-action fragment absence",
         ),
         (
+            "windows_msi_ignore",
+            "Package/Resources\n",
+            "CustomActions/x64\nPackage/Resources\n",
+            "Windows custom-action ignore surface absence",
+        ),
+        (
             "windows_package_project",
             '    <Content Include="Includes.wxi" />',
             '    <Content Include="Includes.wxi" />\n    <ProjectReference Include="..\\CustomActions\\CustomActions.vcxproj" />',
@@ -44627,6 +44646,12 @@ def run_source_mutations(sources):
             "R-S11bx/R-S11e-90 — Windows runtime-broker cleanup is declarative with no RustDesk-authored cleanup action",
             "R-S11bx/R-S11e-90 — Windows runtime-broker cleanup uses a custom-action DLL",
             "declarative Windows runtime-cleanup hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11e-157 Windows custom-action ignore-surface excision",
+            "R-S11e-157 Windows custom-action ignore-surface compatibility",
+            "Windows custom-action ignore-surface hardening ledger",
         ),
         (
             "build_py",
@@ -53836,6 +53861,9 @@ def main():
             "windows_package_project": (
                 repo / "res/msi/Package/Package.wixproj"
             ).read_text(encoding="utf-8"),
+            "windows_msi_ignore": (repo / "res/msi/.gitignore").read_text(
+                encoding="utf-8"
+            ),
             "windows_msi_solution": (repo / "res/msi/msi.sln").read_text(encoding="utf-8"),
             "windows_msi_preprocess": (repo / "res/msi/preprocess.py").read_text(encoding="utf-8"),
             "windows_certificate_cleanup_source_state": (

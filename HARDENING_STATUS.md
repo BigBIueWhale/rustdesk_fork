@@ -866,6 +866,21 @@ it back to the operationally broken nonrecursive form, and binds this ledger ent
 content, scanner failure classification, build input/output, runtime behavior, root authority, host
 process/service/listener/firewall/network state, or release artifact is modified.
 
+Follow-up source-coherence correction (2026-07-28),
+**R-S11e-157 Windows custom-action ignore-surface excision**: R-S11e-90 deleted the complete RustDesk-authored
+MSI `CustomActions` project, its package fragment, solution/project references, build path, and offline
+dependencies, but the inherited `res/msi/.gitignore` still named three paths below that deleted directory. Once
+R-S11e-156 made the complete MSI absence scan operationally recursive, those stale entries correctly failed the
+same no-custom-action source contract. History attributes all three lines to the upstream import and shows that
+the project-deletion commit omitted only this inert ignore surface.
+
+The three `CustomActions/x64`, `CustomActions/*.user`, and `CustomActions/*.filters` entries are deleted. The
+remaining ignore rules still cover the active solution/package outputs. The independent semantic validator now
+loads the MSI ignore file, rejects any `CustomActions` spelling there, deliberately regrows a nested custom-action
+ignore rule, and binds this ledger entry; the existing recursive shared shell scan independently covers the same
+tree. This removes dangling repository policy rather than changing package/runtime behavior, and it modifies no
+build output, privilege boundary, host process/service/listener/firewall/network state, or release artifact.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust

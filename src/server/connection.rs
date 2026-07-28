@@ -3014,7 +3014,12 @@ impl Connection {
                 Some((instant, value)) = rx_video.recv() => {
                     if !conn.video_ack_required {
                         if let Some(message::Union::VideoFrame(vf)) = &value.union {
-                            video_service::notify_video_frame_fetched(vf.display as usize, id, Some(instant.into()));
+                            video_service::notify_video_frame_fetched(
+                                conn.video_source(),
+                                vf.display as usize,
+                                id,
+                                Some(instant.into()),
+                            );
                         }
                     }
                     if let Err(err) = conn.stream.send(&value as &Message).await {
@@ -5602,6 +5607,7 @@ impl Connection {
                     }
                     Some(misc::Union::VideoReceived(_)) => {
                         video_service::notify_video_frame_fetched_by_conn_id(
+                            self.video_source(),
                             self.inner.id,
                             Some(Instant::now().into()),
                         );
@@ -9065,7 +9071,7 @@ impl Drop for Connection {
                 let _ = Self::turn_off_privacy_to_msg(id, String::new());
             }
         }
-        video_service::notify_video_frame_fetched_by_conn_id(id, None);
+        video_service::notify_video_frame_fetched_by_conn_id(self.video_source(), id, None);
         if let Some(s) = self.server.upgrade() {
             if let Ok(mut s) = s.write() {
                 s.remove_connection(&self.inner);

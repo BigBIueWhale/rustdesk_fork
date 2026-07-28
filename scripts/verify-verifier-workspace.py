@@ -16642,6 +16642,199 @@ def validate_android_voice_call_ownership_contract(sources):
         "server::video_service::screenshot_ownership_tests::r_s11ef_",
         "controlled screenshot generated-bridge behavior gate source",
     )
+    for text, label in (
+        (
+            "const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = 64;",
+            "controlled video acknowledgement controller capacity source",
+        ),
+        (
+            "static ref VIDEO_FRAME_ACK_CONTROLLERS: Mutex<HashMap<VideoFrameStreamKey, Weak<VideoFrameAckState>>> = Default::default();",
+            "controlled video exact source/display registry source",
+        ),
+    ):
+        require_text(controlled_screenshots, text, label)
+    video_ack_state = extract_between(
+        controlled_screenshots,
+        "impl VideoFrameAckState {",
+        "\nstruct VideoFrameController",
+        "controlled video acknowledgement round source",
+    )
+    require_order(
+        video_ack_state,
+        (
+            "fn reset(&self)",
+            "round.pending.clear();",
+            "round.acknowledged.clear();",
+            "fn prepare(&self, connection_ids: &HashSet<i32>)",
+            "round.pending.clone_from(connection_ids);",
+            "fn acknowledge(&self, connection_id: i32)",
+            "!round.pending.contains(&connection_id)",
+            "!round.acknowledged.insert(connection_id)",
+            "fn wait_for_all(&self, timeout: Duration)",
+            ".wait_timeout_while(round, timeout, |round| !round.complete())",
+        ),
+        "bounded exact pending/acknowledged video round source",
+    )
+    video_ack_controller = extract_between(
+        controlled_screenshots,
+        "impl VideoFrameController {",
+        "\nimpl Drop for VideoFrameController",
+        "controlled video acknowledgement controller source",
+    )
+    require_order(
+        video_ack_controller,
+        (
+            "fn new(source: VideoSource, display_idx: usize)",
+            "controllers.retain(|_, state| state.strong_count() != 0);",
+            ".and_then(Weak::upgrade)",
+            "controllers.len() >= MAX_VIDEO_FRAME_ACK_CONTROLLERS",
+            "controllers.insert(key, Arc::downgrade(&state));",
+            "fn prepare(&self, connection_ids: &HashSet<i32>)",
+            "fn wait_for_all(&self, timeout: Duration)",
+        ),
+        "bounded exact source/display video controller source",
+    )
+    video_ack_drop = extract_between(
+        controlled_screenshots,
+        "impl Drop for VideoFrameController {",
+        "\nfn video_frame_ack_state",
+        "controlled video acknowledgement retirement source",
+    )
+    require_order(
+        video_ack_drop,
+        (
+            ".and_then(Weak::upgrade)",
+            "Arc::ptr_eq(&state, &self.state)",
+            "controllers.remove(&self.key);",
+            "self.state.reset();",
+        ),
+        "exact-generation video controller retirement source",
+    )
+    require_order(
+        controlled_screenshots,
+        (
+            "pub fn notify_video_frame_fetched(",
+            "source: VideoSource,",
+            "display_idx: usize,",
+            "state.acknowledge(conn_id)",
+            "pub fn notify_video_frame_fetched_by_conn_id(",
+            "(key.source == source)",
+            "state.acknowledge(conn_id)",
+        ),
+        "source-exact controlled video acknowledgement callbacks source",
+    )
+    video_run = extract_between(
+        controlled_screenshots,
+        "fn run(vs: VideoService)",
+        "\nstruct Raii",
+        "controlled video capture loop source",
+    )
+    require_order(
+        video_run,
+        (
+            "let frame_controller = VideoFrameController::new(source, display_idx)?;",
+            "frame_controller.reset();",
+            "frame_controller.wait_for_all(Duration::from_millis(300))",
+        ),
+        "source-exact controlled video acknowledgement capture loop source",
+    )
+    video_handle_one_frame = extract_between(
+        controlled_screenshots,
+        "fn handle_one_frame(",
+        "\n#[inline]\nfn try_broadcast_display_changed",
+        "controlled video frame sender source",
+    )
+    require_order(
+        video_handle_one_frame,
+        (
+            "sp.send_video_frame_with_targets(msg, |connection_ids|",
+            "frame_controller.prepare(connection_ids);",
+        ),
+        "source-exact controlled video acknowledgement frame send source",
+    )
+    for retired in (
+        "FRAME_FETCHED_NOTIFIERS",
+        "DISPLAY_CONN_IDS",
+        "#[tokio::main",
+        "FrameFetchedNotifierSender",
+        "FrameFetchedNotifierReceiver",
+    ):
+        require_absent(
+            controlled_screenshots,
+            retired,
+            f"retired unbounded/display-only video acknowledgement source {retired}",
+        )
+    video_service_send = extract_between(
+        sources["server_service_source"],
+        "pub fn send_video_frame_with_targets<F>",
+        "\n    pub fn send_without",
+        "prepare-before-enqueue video service source",
+    )
+    require_order(
+        video_service_send,
+        (
+            "let conn_ids = lock.subscribes.keys().copied().collect::<HashSet<_>>();",
+            "prepare(&conn_ids);",
+            "for s in lock.subscribes.values_mut()",
+            "s.send(msg.clone());",
+        ),
+        "video acknowledgement ownership before frame enqueue source",
+    )
+    require_order(
+        sources["connection_source"],
+        (
+            "video_service::notify_video_frame_fetched(",
+            "conn.video_source(),",
+            "vf.display as usize,",
+            "Some(misc::Union::VideoReceived(_))",
+            "video_service::notify_video_frame_fetched_by_conn_id(",
+            "self.video_source(),",
+        ),
+        "connection video acknowledgement source preservation source",
+    )
+    require_text(
+        sources["connection_source"],
+        "notify_video_frame_fetched_by_conn_id(self.video_source(), id, None);",
+        "source-exact disconnect video acknowledgement source",
+    )
+    for behavior_test in (
+        "r_s11eg_monitor_and_camera_acknowledgements_are_source_exact",
+        "r_s11eg_only_pending_exact_connection_ids_complete_a_round",
+        "r_s11eg_displayless_acknowledgement_reaches_only_its_source",
+        "r_s11eg_controller_registration_is_bounded_and_exactly_retired",
+        "r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue",
+    ):
+        require_text(
+            controlled_screenshots,
+            behavior_test,
+            f"controlled video acknowledgement behavior proof source {behavior_test}",
+        )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11eg</span>',
+        "controlled video acknowledgement normative requirement source",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>286</td>",
+        "controlled video acknowledgement Appendix C row source",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11eg/R-S11e-151",
+        "controlled video acknowledgement hardening ledger source",
+    )
+    require_text(
+        sources["verify"],
+        '"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\n'
+        "  server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1",
+        "controlled video acknowledgement shared behavior gate source",
+    )
+    require_text(
+        sources["dart_verify"],
+        "server::video_service::video_frame_ack_tests::r_s11eg_",
+        "controlled video acknowledgement generated-bridge behavior gate source",
+    )
     require_text(
         sources["verify"],
         "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs",
@@ -17038,6 +17231,96 @@ def validate_android_voice_call_ownership_contract(sources):
         focused,
         '("hardening", "R-S11ef/R-S11e-150", "R-S11ef-disabled/R-S11e-150", "controlled screenshot ownership hardening ledger"),',
         "controlled screenshot ledger focused mutation",
+    )
+    require_text(
+        focused,
+        '"server_service": (repo / "src/server/service.rs").read_text(encoding="utf-8"),',
+        "focused video service API source loading",
+    )
+    require_text(
+        focused,
+        'video_ack_state = extract_item(\n'
+        "        video_service,\n"
+        '        "impl VideoFrameAckState",',
+        "focused video acknowledgement round extraction",
+    )
+    require_text(
+        focused,
+        'video_ack_controller = extract_item(\n'
+        "        video_service,\n"
+        '        "impl VideoFrameController",',
+        "focused video acknowledgement controller extraction",
+    )
+    require_text(
+        focused,
+        'service_video_send = extract_item(\n'
+        '        sources["server_service"],\n'
+        '        "pub fn send_video_frame_with_targets",',
+        "focused prepare-before-enqueue service extraction",
+    )
+    require_text(
+        focused,
+        "video_ack_drop,\n"
+        "        (\n"
+        '            ".and_then(Weak::upgrade)",\n'
+        '            "Arc::ptr_eq(&state, &self.state)",',
+        "focused exact-generation video controller retirement assertion",
+    )
+    require_text(
+        focused,
+        'sources["server_connection"],\n'
+        "        (\n"
+        '            "video_service::notify_video_frame_fetched(",\n'
+        '            "conn.video_source(),",',
+        "focused video acknowledgement callback-source assertion",
+    )
+    require_text(
+        focused,
+        'sources["verify"],\n'
+        '        \'"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\\\\n\'\n'
+        '        "  server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1",',
+        "focused shared video acknowledgement behavior-gate assertion",
+    )
+    require_text(
+        focused,
+        'sources["dart_verify"],\n'
+        '        "server::video_service::video_frame_ack_tests::r_s11eg_",',
+        "focused generated-bridge video acknowledgement behavior-gate assertion",
+    )
+    require_text(
+        focused,
+        '("video_service", "round.pending.clone_from(connection_ids);", "round.pending.clear();", "exact video acknowledgement round targets"),',
+        "video acknowledgement exact-target focused mutation",
+    )
+    require_text(
+        focused,
+        '("video_service", "Arc::ptr_eq(&state, &self.state)", "true", "exact-generation video controller retirement"),',
+        "video acknowledgement exact-retirement focused mutation",
+    )
+    require_text(
+        focused,
+        '("video_service", "(key.source == source).then(|| state.upgrade()).flatten()", "state.upgrade()", "source-scoped displayless video acknowledgement"),',
+        "video acknowledgement source-scope focused mutation",
+    )
+    require_text(
+        focused,
+        '("server_service", "prepare(&conn_ids);\\n        for s in lock.subscribes.values_mut() {", "for s in lock.subscribes.values_mut() {\\n            // acknowledgement ownership prepared too late", "prepare-before-enqueue video round"),',
+        "video acknowledgement prepare-order focused mutation",
+    )
+    require_text(
+        focused,
+        '("server_connection", "notify_video_frame_fetched_by_conn_id(self.video_source(), id, None);", "notify_video_frame_fetched_by_conn_id(VideoSource::Monitor, id, None);", "source-exact video disconnect wake"),',
+        "video acknowledgement disconnect-source focused mutation",
+    )
+    require_text(
+        focused,
+        '("requirements", \'<span class="id">R-S11eg</span>\', \'<span class="id">R-S11eg-disabled</span>\', "controlled video acknowledgement requirement"),',
+        "controlled video acknowledgement requirement focused mutation",
+    )
+    require_text(
+        focused,
+        '("hardening", "R-S11eg/R-S11e-151", "R-S11eg-disabled/R-S11e-151", "controlled video acknowledgement hardening ledger"),',
+        "controlled video acknowledgement ledger focused mutation",
     )
     require_text(
         focused,
@@ -45081,6 +45364,116 @@ def run_source_mutations(sources):
             "controlled screenshot ledger focused mutation",
         ),
         (
+            "android_voice_call_ownership_verifier",
+            '"server_service": (repo / "src/server/service.rs").read_text(encoding="utf-8"),',
+            '"server_service_disabled": (repo / "src/server/service.rs").read_text(encoding="utf-8"),',
+            "focused video service API source loading",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            'video_ack_state = extract_item(\n'
+            "        video_service,\n"
+            '        "impl VideoFrameAckState",',
+            'video_ack_state = extract_item(\n'
+            "        video_service,\n"
+            '        "impl VideoFrameAckRound",',
+            "focused video acknowledgement round extraction",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            'video_ack_controller = extract_item(\n'
+            "        video_service,\n"
+            '        "impl VideoFrameController",',
+            'video_ack_controller = extract_item(\n'
+            "        video_service,\n"
+            '        "impl VideoFrameAckState",',
+            "focused video acknowledgement controller extraction",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            'service_video_send = extract_item(\n'
+            '        sources["server_service"],\n'
+            '        "pub fn send_video_frame_with_targets",',
+            'service_video_send = extract_item(\n'
+            '        sources["server_service"],\n'
+            '        "pub fn send_shared",',
+            "focused prepare-before-enqueue service extraction",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"Arc::ptr_eq(&state, &self.state)",\n'
+            '            "controllers.remove(&self.key);",',
+            '"controllers.remove(&self.key);",',
+            "focused exact-generation video controller retirement assertion",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"video_service::notify_video_frame_fetched(",\n'
+            '            "conn.video_source(),",',
+            '"video_service::notify_video_frame_fetched(",\n'
+            '            "vf.display as usize,",',
+            "focused video acknowledgement callback-source assertion",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            'sources["verify"],\n'
+            '        \'"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\\\\n\'\n'
+            '        "  server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1",',
+            'sources["verify"],\n'
+            '        "true # shared controlled video acknowledgement behavior gate disabled",',
+            "focused shared video acknowledgement behavior-gate assertion",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            'sources["dart_verify"],\n'
+            '        "server::video_service::video_frame_ack_tests::r_s11eg_",',
+            'sources["dart_verify"],\n'
+            '        "server::video_service::video_frame_ack_tests::disabled_",',
+            "focused generated-bridge video acknowledgement behavior-gate assertion",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"exact video acknowledgement round targets"),',
+            '"exact video acknowledgement round targets disabled"),',
+            "video acknowledgement exact-target focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"exact-generation video controller retirement"),',
+            '"exact-generation video controller retirement disabled"),',
+            "video acknowledgement exact-retirement focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"source-scoped displayless video acknowledgement"),',
+            '"source-scoped displayless video acknowledgement disabled"),',
+            "video acknowledgement source-scope focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"prepare-before-enqueue video round"),',
+            '"prepare-before-enqueue video round disabled"),',
+            "video acknowledgement prepare-order focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"source-exact video disconnect wake"),',
+            '"source-exact video disconnect wake disabled"),',
+            "video acknowledgement disconnect-source focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"controlled video acknowledgement requirement"),',
+            '"controlled video acknowledgement requirement disabled"),',
+            "controlled video acknowledgement requirement focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"controlled video acknowledgement hardening ledger"),',
+            '"controlled video acknowledgement hardening ledger disabled"),',
+            "controlled video acknowledgement ledger focused mutation",
+        ),
+        (
             "android_voice_call_owner_state",
             "internal class VoiceCallOwnerState {",
             "internal class DisabledVoiceCallOwnerState {",
@@ -46143,6 +46536,155 @@ def run_source_mutations(sources):
             "server::video_service::screenshot_ownership_tests::r_s11ef_",
             "server::video_service::screenshot_ownership_tests::disabled_",
             "controlled screenshot generated-bridge behavior gate source",
+        ),
+        (
+            "video_service_source",
+            "const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = 64;",
+            "const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = usize::MAX;",
+            "controlled video acknowledgement controller capacity source",
+        ),
+        (
+            "video_service_source",
+            "static ref VIDEO_FRAME_ACK_CONTROLLERS: Mutex<HashMap<VideoFrameStreamKey, Weak<VideoFrameAckState>>> = Default::default();",
+            "static ref VIDEO_FRAME_ACK_CONTROLLERS: Mutex<HashMap<usize, Arc<VideoFrameAckState>>> = Default::default();",
+            "controlled video exact source/display registry source",
+        ),
+        (
+            "video_service_source",
+            "round.pending.clone_from(connection_ids);",
+            "round.pending.clear();",
+            "bounded exact pending/acknowledged video round source",
+        ),
+        (
+            "video_service_source",
+            "if !round.pending.contains(&connection_id) || !round.acknowledged.insert(connection_id) {",
+            "if !round.acknowledged.insert(connection_id) {",
+            "bounded exact pending/acknowledged video round source",
+        ),
+        (
+            "video_service_source",
+            ".wait_timeout_while(round, timeout, |round| !round.complete())",
+            ".wait_timeout_while(round, timeout, |_| false)",
+            "bounded exact pending/acknowledged video round source",
+        ),
+        (
+            "video_service_source",
+            "let mut controllers = VIDEO_FRAME_ACK_CONTROLLERS.lock().unwrap();\n"
+            "        controllers.retain(|_, state| state.strong_count() != 0);\n"
+            "        if controllers.get(&key).and_then(Weak::upgrade).is_some() {",
+            "let mut controllers = VIDEO_FRAME_ACK_CONTROLLERS.lock().unwrap();\n"
+            "        controllers.clear();\n"
+            "        if controllers.get(&key).and_then(Weak::upgrade).is_some() {",
+            "bounded exact source/display video controller source",
+        ),
+        (
+            "video_service_source",
+            "controllers.len() >= MAX_VIDEO_FRAME_ACK_CONTROLLERS",
+            "false",
+            "bounded exact source/display video controller source",
+        ),
+        (
+            "video_service_source",
+            "controllers.insert(key, Arc::downgrade(&state));",
+            "controllers.clear();",
+            "bounded exact source/display video controller source",
+        ),
+        (
+            "video_service_source",
+            "Arc::ptr_eq(&state, &self.state)",
+            "true",
+            "exact-generation video controller retirement source",
+        ),
+        (
+            "video_service_source",
+            "(key.source == source).then(|| state.upgrade()).flatten()",
+            "state.upgrade()",
+            "source-exact controlled video acknowledgement callbacks source",
+        ),
+        (
+            "video_service_source",
+            "let frame_controller = VideoFrameController::new(source, display_idx)?;",
+            "let frame_controller = VideoFrameController::new(VideoSource::Monitor, display_idx)?;",
+            "source-exact controlled video acknowledgement capture loop source",
+        ),
+        (
+            "server_service_source",
+            "prepare(&conn_ids);\n        for s in lock.subscribes.values_mut() {",
+            "for s in lock.subscribes.values_mut() {\n            // acknowledgement ownership prepared too late",
+            "video acknowledgement ownership before frame enqueue source",
+        ),
+        (
+            "connection_source",
+            "video_service::notify_video_frame_fetched(\n                                conn.video_source(),",
+            "video_service::notify_video_frame_fetched(\n                                VideoSource::Monitor,",
+            "connection video acknowledgement source preservation source",
+        ),
+        (
+            "connection_source",
+            "notify_video_frame_fetched_by_conn_id(self.video_source(), id, None);",
+            "notify_video_frame_fetched_by_conn_id(VideoSource::Monitor, id, None);",
+            "source-exact disconnect video acknowledgement source",
+        ),
+        (
+            "video_service_source",
+            "r_s11eg_monitor_and_camera_acknowledgements_are_source_exact",
+            "video_ack_source_test_disabled",
+            "controlled video acknowledgement behavior proof source r_s11eg_monitor_and_camera_acknowledgements_are_source_exact",
+        ),
+        (
+            "video_service_source",
+            "r_s11eg_only_pending_exact_connection_ids_complete_a_round",
+            "video_ack_pending_test_disabled",
+            "controlled video acknowledgement behavior proof source r_s11eg_only_pending_exact_connection_ids_complete_a_round",
+        ),
+        (
+            "video_service_source",
+            "r_s11eg_displayless_acknowledgement_reaches_only_its_source",
+            "video_ack_displayless_test_disabled",
+            "controlled video acknowledgement behavior proof source r_s11eg_displayless_acknowledgement_reaches_only_its_source",
+        ),
+        (
+            "video_service_source",
+            "r_s11eg_controller_registration_is_bounded_and_exactly_retired",
+            "video_ack_retirement_test_disabled",
+            "controlled video acknowledgement behavior proof source r_s11eg_controller_registration_is_bounded_and_exactly_retired",
+        ),
+        (
+            "video_service_source",
+            "r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue",
+            "video_ack_prepare_order_test_disabled",
+            "controlled video acknowledgement behavior proof source r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11eg</span>',
+            '<span class="id">R-S11eg-disabled</span>',
+            "controlled video acknowledgement normative requirement source",
+        ),
+        (
+            "requirements",
+            "<tr><td>286</td>",
+            "<tr><td>286-disabled</td>",
+            "controlled video acknowledgement Appendix C row source",
+        ),
+        (
+            "hardening",
+            "R-S11eg/R-S11e-151",
+            "R-S11eg-disabled/R-S11e-151",
+            "controlled video acknowledgement hardening ledger source",
+        ),
+        (
+            "verify",
+            '"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\n'
+            "  server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1",
+            "true # shared controlled video acknowledgement behavior gate disabled",
+            "controlled video acknowledgement shared behavior gate source",
+        ),
+        (
+            "dart_verify",
+            "server::video_service::video_frame_ack_tests::r_s11eg_",
+            "server::video_service::video_frame_ack_tests::disabled_",
+            "controlled video acknowledgement generated-bridge behavior gate source",
         ),
         (
             "main_dart",

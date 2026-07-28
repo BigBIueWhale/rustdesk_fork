@@ -9973,6 +9973,8 @@ flutter_event_loop=flutter/lib/utils/event_loop.dart
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
   server::video_service::screenshot_ownership_tests::r_s11ef_ -- --test-threads=1
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
+  server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1
+"${RUN[@]}" cargo test --lib --features linux-pkg-config \
   ui_session_interface::connection_round_ownership_tests:: -- --test-threads=1
 grep -qF 'external fun beginClientSessionOwner(): Long' "$ffi_kt" \
   || android_client_owner_bad="$android_client_owner_bad no-generation-begin-jni"
@@ -10212,6 +10214,39 @@ grep -qF '<tr><td>285</td>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-disposition-missing"
 grep -qF 'R-S11ef/R-S11e-150' HARDENING_STATUS.md \
   || android_client_owner_bad="$android_client_owner_bad controlled-screenshot-ledger-missing"
+grep -qF 'const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = 64;' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-controller-cap-missing"
+grep -qF 'static ref VIDEO_FRAME_ACK_CONTROLLERS: Mutex<HashMap<VideoFrameStreamKey, Weak<VideoFrameAckState>>> = Default::default();' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-exact-stream-registry-missing"
+grep -qF 'round.pending.clone_from(connection_ids);' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-exact-round-targets-missing"
+grep -qF 'if !round.pending.contains(&connection_id) || !round.acknowledged.insert(connection_id)' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-pending-id-gate-missing"
+grep -qF '.wait_timeout_while(round, timeout, |round| !round.complete())' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-condition-wait-missing"
+grep -qF 'sp.send_video_frame_with_targets(msg, |connection_ids|' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-prepare-before-send-wiring-missing"
+grep -qF 'prepare(&conn_ids);' src/server/service.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-service-prepare-before-send-missing"
+grep -qF 'conn.video_source(),' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-dequeue-source-missing"
+grep -qF 'notify_video_frame_fetched_by_conn_id(self.video_source(), id, None);' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-disconnect-source-missing"
+if grep -qF 'FRAME_FETCHED_NOTIFIERS' src/server/video_service.rs \
+  || grep -qF 'DISPLAY_CONN_IDS' src/server/video_service.rs \
+  || grep -qF '#[tokio::main' src/server/video_service.rs; then
+  android_client_owner_bad="$android_client_owner_bad video-ack-unbounded-display-only-or-runtime-path-present"
+fi
+grep -qF 'r_s11eg_monitor_and_camera_acknowledgements_are_source_exact' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-source-exact-regression-missing"
+grep -qF 'r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-prepare-order-regression-missing"
+grep -qF '<span class="id">R-S11eg</span>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-requirement-missing"
+grep -qF '<tr><td>286</td>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-disposition-missing"
+grep -qF 'R-S11eg/R-S11e-151' HARDENING_STATUS.md \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-ledger-missing"
 grep -qF 'cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-lifecycle-test-command-missing"
 grep -qF 'flutter::mobile_session_lifecycle_tests:: -- --test-threads=1' scripts/dart-verify.sh \
@@ -10220,6 +10255,8 @@ grep -qF 'client::io_loop::tests::r_s11e149_screenshot_responses_require_the_cur
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-screenshot-test-filter-missing"
 grep -qF 'server::video_service::screenshot_ownership_tests::r_s11ef_' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-controlled-screenshot-test-filter-missing"
+grep -qF 'server::video_service::video_frame_ack_tests::r_s11eg_' scripts/dart-verify.sh \
+  || android_client_owner_bad="$android_client_owner_bad generated-bridge-video-ack-test-filter-missing"
 if ! python3 - "$ma" "$ms" "$flutter_main" src/flutter.rs <<'PY'
 import sys
 from pathlib import Path

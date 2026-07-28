@@ -626,6 +626,34 @@ PNG writing. Focused/shared/independent source and deliberate-mutation gates bin
 #285, and R-S11e-150. Installed native behavior, current APK/device reproduction, exact cold R-B2/R-B10
 artifacts, separately required independent reproduction, and external review remain open.
 
+Follow-up correction (2026-07-27), **R-S11eg/R-S11e-151 controlled video-frame acknowledgement
+ownership**: the controlled video service retained one process-global unbounded Tokio acknowledgement channel
+and one pending connection-ID set per numeric display index. Monitor display 0 and camera display 0 therefore
+shared one receiver and overwrote the same pending entry. Their capture threads competed for acknowledgements,
+counted distinct IDs that did not belong to their own frame, and could prematurely complete or starve each
+other. Displayless peer acknowledgement and disconnect wake used the overwritten display map; notifier entries
+survived capture-loop retirement; and every 300-ms wait constructed a fresh current-thread Tokio runtime. This
+is source-proven cross-source frame-pacing integrity, availability, and resource-lifecycle debt shared by
+controlled desktop builds and Android's controlled service path. It is not proof of the reported Android
+screen-control hang, a screen/camera authorization bypass, exploitation, root acquisition, public exposure,
+container escape, or a host RustDesk/service/firewall/network modification.
+
+Every live controller is now keyed by exact `(VideoSource, display_idx)` and owns one current pending/acknowledged
+set behind a standard condition variable. The weak process index admits at most 64 live controller generations,
+rejects an already-live key, and removes only the dropping controller's exact `Arc`. The generic service snapshots
+current subscribers and installs that round under its service lock before enqueueing the encoded frame, so a fast
+local dequeue cannot precede ownership. Explicit dequeue acknowledgement carries source/display/connection;
+displayless peer acknowledgement and disconnect carry the connection's source and visit only that source's live
+controllers. Only an ID pending in the exact round inserts once; unrelated and duplicate IDs do nothing. The
+capture thread retains its 300-ms cancellation/privacy wake and three-second pacing bound through the condition
+variable, without a channel, async mutex, retained stopped-loop notifier, or per-wait runtime.
+
+Five behavior regressions cover same-index monitor/camera separation, exact pending-ID and duplicate handling,
+source-scoped displayless wake, 64-controller capacity plus exact retirement, and preparation before frame
+enqueue. Focused/shared/independent source and deliberate-mutation gates bind R-S11eg, Appendix C #286, and
+R-S11e-151. Installed native behavior, current APK/device reproduction, exact cold R-B2/R-B10 artifacts,
+separately required independent reproduction, and external review remain open.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust
@@ -15047,7 +15075,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-d8764ea20be2d845ce423d520c3db32ea7d1d65ca7cbe12776b21d80c6aa8c1e  requirements.html
+197509f7c3eb3c12489222f85d22507adad7ffeab2b2562cdc269b9b83ff161f  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -15057,3 +15085,6 @@ The same identity additionally binds R-S11ea and Appendix C #280.
 The same identity additionally binds R-S11eb and Appendix C #281.
 The same identity additionally binds R-S11ec and Appendix C #282.
 The same identity additionally binds R-S11ed and Appendix C #283.
+The same identity additionally binds R-S11ee and Appendix C #284.
+The same identity additionally binds R-S11ef and Appendix C #285.
+The same identity additionally binds R-S11eg and Appendix C #286.

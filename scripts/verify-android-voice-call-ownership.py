@@ -79,6 +79,7 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "server_connection": (repo / "src/server/connection.rs").read_text(
             encoding="utf-8"
         ),
+        "server_service": (repo / "src/server/service.rs").read_text(encoding="utf-8"),
         "video_service": (repo / "src/server/video_service.rs").read_text(
             encoding="utf-8"
         ),
@@ -2860,6 +2861,192 @@ def validate(sources: Dict[str, str]) -> None:
         "generated-bridge controlled screenshot behavior gate wiring",
     )
 
+    require(
+        video_service,
+        "const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = 64;",
+        "controlled video acknowledgement controller capacity",
+    )
+    require(
+        video_service,
+        "static ref VIDEO_FRAME_ACK_CONTROLLERS: Mutex<HashMap<VideoFrameStreamKey, Weak<VideoFrameAckState>>> = Default::default();",
+        "exact source/display video acknowledgement registry",
+    )
+    video_ack_state = extract_item(
+        video_service,
+        "impl VideoFrameAckState",
+        "controlled video acknowledgement round state",
+    )
+    require_order(
+        video_ack_state,
+        (
+            "fn reset(&self)",
+            "round.pending.clear();",
+            "round.acknowledged.clear();",
+            "fn prepare(&self, connection_ids: &HashSet<i32>)",
+            "round.pending.clone_from(connection_ids);",
+            "round.acknowledged.clear();",
+            "fn acknowledge(&self, connection_id: i32)",
+            "!round.pending.contains(&connection_id)",
+            "!round.acknowledged.insert(connection_id)",
+            "fn wait_for_all(&self, timeout: Duration)",
+            ".wait_timeout_while(round, timeout, |round| !round.complete())",
+        ),
+        "bounded exact pending/acknowledged video round",
+    )
+    video_ack_controller = extract_item(
+        video_service,
+        "impl VideoFrameController",
+        "controlled video acknowledgement controller",
+    )
+    require_order(
+        video_ack_controller,
+        (
+            "fn new(source: VideoSource, display_idx: usize)",
+            "controllers.retain(|_, state| state.strong_count() != 0);",
+            ".and_then(Weak::upgrade)",
+            "controllers.len() >= MAX_VIDEO_FRAME_ACK_CONTROLLERS",
+            "controllers.insert(key, Arc::downgrade(&state));",
+            "fn prepare(&self, connection_ids: &HashSet<i32>)",
+            "fn wait_for_all(&self, timeout: Duration)",
+        ),
+        "bounded exact source/display video controller registration",
+    )
+    video_ack_drop = extract_item(
+        video_service,
+        "impl Drop for VideoFrameController",
+        "controlled video acknowledgement controller cleanup",
+    )
+    require_order(
+        video_ack_drop,
+        (
+            ".and_then(Weak::upgrade)",
+            "Arc::ptr_eq(&state, &self.state)",
+            "controllers.remove(&self.key);",
+            "self.state.reset();",
+        ),
+        "exact-generation video controller retirement",
+    )
+    require_order(
+        video_service,
+        (
+            "pub fn notify_video_frame_fetched(",
+            "source: VideoSource,",
+            "display_idx: usize,",
+            "conn_id: i32,",
+            "state.acknowledge(conn_id)",
+            "pub fn notify_video_frame_fetched_by_conn_id(",
+            "source: VideoSource,",
+            "(key.source == source)",
+            "state.acknowledge(conn_id)",
+        ),
+        "source-exact controlled video acknowledgement callbacks",
+    )
+    video_run = extract_item(
+        video_service,
+        "fn run(vs: VideoService)",
+        "controlled video capture loop",
+    )
+    require_order(
+        video_run,
+        (
+            "let frame_controller = VideoFrameController::new(source, display_idx)?;",
+            "frame_controller.reset();",
+            "frame_controller.wait_for_all(Duration::from_millis(300))",
+        ),
+        "source-exact controlled video acknowledgement capture loop",
+    )
+    video_handle_one_frame = extract_item(
+        video_service,
+        "fn handle_one_frame",
+        "controlled video frame sender",
+    )
+    require_order(
+        video_handle_one_frame,
+        (
+            "sp.send_video_frame_with_targets(msg, |connection_ids|",
+            "frame_controller.prepare(connection_ids);",
+        ),
+        "source-exact controlled video acknowledgement frame send",
+    )
+    for retired in (
+        "FRAME_FETCHED_NOTIFIERS",
+        "DISPLAY_CONN_IDS",
+        "#[tokio::main",
+        "FrameFetchedNotifierSender",
+        "FrameFetchedNotifierReceiver",
+    ):
+        forbid(
+            video_service,
+            retired,
+            f"retired unbounded/display-only video acknowledgement path {retired}",
+        )
+    service_video_send = extract_item(
+        sources["server_service"],
+        "pub fn send_video_frame_with_targets",
+        "prepare-before-enqueue video service API",
+    )
+    require_order(
+        service_video_send,
+        (
+            "let conn_ids = lock.subscribes.keys().copied().collect::<HashSet<_>>();",
+            "prepare(&conn_ids);",
+            "for s in lock.subscribes.values_mut()",
+            "s.send(msg.clone());",
+        ),
+        "video acknowledgement ownership precedes frame enqueue",
+    )
+    require_order(
+        sources["server_connection"],
+        (
+            "video_service::notify_video_frame_fetched(",
+            "conn.video_source(),",
+            "vf.display as usize,",
+            "Some(misc::Union::VideoReceived(_))",
+            "video_service::notify_video_frame_fetched_by_conn_id(",
+            "self.video_source(),",
+        ),
+        "connection video acknowledgement callbacks preserve source",
+    )
+    require(
+        sources["server_connection"],
+        "notify_video_frame_fetched_by_conn_id(self.video_source(), id, None);",
+        "source-exact disconnect video acknowledgement wake",
+    )
+    for behavior_test in (
+        "r_s11eg_monitor_and_camera_acknowledgements_are_source_exact",
+        "r_s11eg_only_pending_exact_connection_ids_complete_a_round",
+        "r_s11eg_displayless_acknowledgement_reaches_only_its_source",
+        "r_s11eg_controller_registration_is_bounded_and_exactly_retired",
+        "r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue",
+    ):
+        require(video_service, behavior_test, f"video acknowledgement behavior proof {behavior_test}")
+    require(
+        sources["requirements"],
+        '<span class="id">R-S11eg</span>',
+        "controlled video acknowledgement normative requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>286</td>",
+        "controlled video acknowledgement Appendix C disposition",
+    )
+    require(
+        sources["hardening"],
+        "R-S11eg/R-S11e-151",
+        "controlled video acknowledgement hardening ledger",
+    )
+    require(
+        sources["verify"],
+        '"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\n'
+        "  server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1",
+        "shared controlled video acknowledgement behavior gate wiring",
+    )
+    require(
+        sources["dart_verify"],
+        "server::video_service::video_frame_ack_tests::r_s11eg_",
+        "generated-bridge controlled video acknowledgement behavior gate wiring",
+    )
+
 
 Mutation = Tuple[str, str, str, str]
 
@@ -3099,6 +3286,27 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("hardening", "R-S11ef/R-S11e-150", "R-S11ef-disabled/R-S11e-150", "controlled screenshot ownership hardening ledger"),
     ("verify", "\"${RUN[@]}\" cargo test --lib --features linux-pkg-config \\\n  server::video_service::screenshot_ownership_tests::r_s11ef_ -- --test-threads=1", "true # shared controlled screenshot behavior gate disabled", "shared controlled screenshot behavior gate"),
     ("dart_verify", "server::video_service::screenshot_ownership_tests::r_s11ef_", "server::video_service::screenshot_ownership_tests::disabled_", "generated-bridge controlled screenshot behavior gate"),
+    ("video_service", "const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = 64;", "const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = usize::MAX;", "video acknowledgement controller capacity"),
+    ("video_service", "static ref VIDEO_FRAME_ACK_CONTROLLERS: Mutex<HashMap<VideoFrameStreamKey, Weak<VideoFrameAckState>>> = Default::default();", "static ref VIDEO_FRAME_ACK_CONTROLLERS: Mutex<HashMap<usize, Arc<VideoFrameAckState>>> = Default::default();", "exact source/display video acknowledgement registry"),
+    ("video_service", "round.pending.clone_from(connection_ids);", "round.pending.clear();", "exact video acknowledgement round targets"),
+    ("video_service", "if !round.pending.contains(&connection_id) || !round.acknowledged.insert(connection_id) {", "if !round.acknowledged.insert(connection_id) {", "pending-only video acknowledgement"),
+    ("video_service", ".wait_timeout_while(round, timeout, |round| !round.complete())", ".wait_timeout_while(round, timeout, |_| false)", "condition-driven video acknowledgement wait"),
+    ("video_service", "controllers.retain(|_, state| state.strong_count() != 0);", "controllers.clear();", "live weak video controller retention"),
+    ("video_service", "controllers.len() >= MAX_VIDEO_FRAME_ACK_CONTROLLERS", "false", "bounded video controller admission"),
+    ("video_service", "controllers.insert(key, Arc::downgrade(&state));", "controllers.clear();", "weak video controller registration"),
+    ("video_service", "Arc::ptr_eq(&state, &self.state)", "true", "exact-generation video controller retirement"),
+    ("video_service", "(key.source == source).then(|| state.upgrade()).flatten()", "state.upgrade()", "source-scoped displayless video acknowledgement"),
+    ("video_service", "let frame_controller = VideoFrameController::new(source, display_idx)?;", "let frame_controller = VideoFrameController::new(VideoSource::Monitor, display_idx)?;", "capture-source-bound video controller"),
+    ("server_service", "prepare(&conn_ids);\n        for s in lock.subscribes.values_mut() {", "for s in lock.subscribes.values_mut() {\n            // acknowledgement ownership prepared too late", "prepare-before-enqueue video round"),
+    ("server_connection", "video_service::notify_video_frame_fetched(\n                                conn.video_source(),", "video_service::notify_video_frame_fetched(\n                                VideoSource::Monitor,", "source-exact video dequeue acknowledgement"),
+    ("server_connection", "notify_video_frame_fetched_by_conn_id(self.video_source(), id, None);", "notify_video_frame_fetched_by_conn_id(VideoSource::Monitor, id, None);", "source-exact video disconnect wake"),
+    ("video_service", "r_s11eg_monitor_and_camera_acknowledgements_are_source_exact", "video_ack_source_test_disabled", "video acknowledgement source behavior proof"),
+    ("video_service", "r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue", "video_ack_prepare_order_test_disabled", "video acknowledgement prepare-order behavior proof"),
+    ("requirements", '<span class="id">R-S11eg</span>', '<span class="id">R-S11eg-disabled</span>', "controlled video acknowledgement requirement"),
+    ("requirements", "<tr><td>286</td>", "<tr><td>286-disabled</td>", "controlled video acknowledgement disposition"),
+    ("hardening", "R-S11eg/R-S11e-151", "R-S11eg-disabled/R-S11e-151", "controlled video acknowledgement hardening ledger"),
+    ("verify", "\"${RUN[@]}\" cargo test --lib --features linux-pkg-config \\\n  server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1", "true # shared video acknowledgement behavior gate disabled", "shared controlled video acknowledgement behavior gate"),
+    ("dart_verify", "server::video_service::video_frame_ack_tests::r_s11eg_", "server::video_service::video_frame_ack_tests::disabled_", "generated-bridge controlled video acknowledgement behavior gate"),
     ("verify", "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs", "true # replacement-drain shared gate disabled", "shared mobile replacement-drain gate"),
     ("verify", "if [ \"$(grep -cF 'check_remove_unused_displays(None, None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then", "if false; then # post-drain display gate disabled", "shared post-drain display-reconciliation gate"),
     ("dart_verify", "cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1", "true # generated-bridge mobile lifecycle tests disabled", "generated-bridge mobile lifecycle behavior gate"),

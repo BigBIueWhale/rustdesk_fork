@@ -201,6 +201,9 @@ local_docker run --rm --pull=never --network=none --read-only \
     echo "  == R-S11ef controlled screenshot exact-owner/resource regressions =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       server::video_service::screenshot_ownership_tests::r_s11ef_ -- --test-threads=1
+    echo "  == R-S11eg controlled video acknowledgement exact-round regressions =="
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1
     cargo_lock_after="$(sha256sum Cargo.lock | awk "{print \$1}")"
     if [ "$cargo_lock_before" != "$cargo_lock_after" ]; then
       echo "DART-VERIFY: FAILED — cargo check rewrote Cargo.lock" >&2

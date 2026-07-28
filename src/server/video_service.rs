@@ -30,14 +30,7 @@ use crate::{
     privacy_mode::{is_current_privacy_mode_impl, PRIVACY_MODE_IMPL_WIN_MAG},
     ui_interface::is_installed,
 };
-use hbb_common::{
-    anyhow::anyhow,
-    config,
-    tokio::sync::{
-        mpsc::{unbounded_channel, UnboundedReceiver, UnboundedSender},
-        Mutex as TokioMutex,
-    },
-};
+use hbb_common::{anyhow::anyhow, config};
 #[cfg(feature = "hwcodec")]
 use scrap::hwcodec::{HwRamEncoder, HwRamEncoderConfig};
 #[cfg(feature = "vram")]
@@ -57,28 +50,21 @@ use scrap::{
 #[cfg(windows)]
 use std::sync::Once;
 use std::{
-    collections::HashSet,
+    collections::{HashMap, HashSet},
     io::ErrorKind::WouldBlock,
     ops::{Deref, DerefMut},
+    sync::{Arc, Condvar, Mutex, Weak},
     time::{self, Duration, Instant},
 };
 
 pub const OPTION_REFRESH: &'static str = "refresh";
 
-type FrameFetchedNotifierSender = UnboundedSender<(i32, Option<Instant>)>;
-type FrameFetchedNotifierReceiver = Arc<TokioMutex<UnboundedReceiver<(i32, Option<Instant>)>>>;
+const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = 64;
 const MAX_SCREENSHOT_REQUEST_OWNERS: usize = 64;
 const SCREENSHOT_ENCODE_QUEUE_CAPACITY: usize = 2;
 
 lazy_static::lazy_static! {
-    static ref FRAME_FETCHED_NOTIFIERS: Mutex<HashMap<usize, (FrameFetchedNotifierSender, FrameFetchedNotifierReceiver)>> = Mutex::new(HashMap::default());
-
-    // display_idx -> set of conn id.
-    // Used to record which connections need to be notified when
-    // 1. A new frame is received from a web client.
-    //   Because web client does not send the display index in message `VideoReceived`.
-    // 2. The client is closing.
-    static ref DISPLAY_CONN_IDS: Arc<Mutex<HashMap<usize, HashSet<i32>>>> = Default::default();
+    static ref VIDEO_FRAME_ACK_CONTROLLERS: Mutex<HashMap<VideoFrameStreamKey, Weak<VideoFrameAckState>>> = Default::default();
     pub static ref VIDEO_QOS: Arc<Mutex<VideoQoS>> = Default::default();
     pub static ref IS_UAC_RUNNING: Arc<Mutex<bool>> = Default::default();
     pub static ref IS_FOREGROUND_WINDOW_ELEVATED: Arc<Mutex<bool>> = Default::default();
@@ -299,108 +285,181 @@ impl ScreenshotEncoder {
     }
 }
 
-#[inline]
-pub fn notify_video_frame_fetched(display_idx: usize, conn_id: i32, frame_tm: Option<Instant>) {
-    if let Some(notifier) = FRAME_FETCHED_NOTIFIERS.lock().unwrap().get(&display_idx) {
-        notifier.0.send((conn_id, frame_tm)).ok();
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+struct VideoFrameStreamKey {
+    source: VideoSource,
+    display_idx: usize,
+}
+
+#[derive(Default)]
+struct VideoFrameAckRound {
+    pending: HashSet<i32>,
+    acknowledged: HashSet<i32>,
+}
+
+impl VideoFrameAckRound {
+    fn complete(&self) -> bool {
+        self.pending
+            .iter()
+            .all(|connection_id| self.acknowledged.contains(connection_id))
     }
 }
 
-#[inline]
-pub fn notify_video_frame_fetched_by_conn_id(conn_id: i32, frame_tm: Option<Instant>) {
-    let vec_display_idx: Vec<usize> = {
-        let display_conn_ids = DISPLAY_CONN_IDS.lock().unwrap();
-        display_conn_ids
-            .iter()
-            .filter_map(|(display_idx, conn_ids)| {
-                if conn_ids.contains(&conn_id) {
-                    Some(*display_idx)
-                } else {
-                    None
-                }
-            })
-            .collect()
-    };
-    let notifiers = FRAME_FETCHED_NOTIFIERS.lock().unwrap();
-    for display_idx in vec_display_idx {
-        if let Some(notifier) = notifiers.get(&display_idx) {
-            notifier.0.send((conn_id, frame_tm)).ok();
+#[derive(Default)]
+struct VideoFrameAckState {
+    round: Mutex<VideoFrameAckRound>,
+    changed: Condvar,
+}
+
+impl VideoFrameAckState {
+    fn reset(&self) {
+        let mut round = self.round.lock().unwrap();
+        round.pending.clear();
+        round.acknowledged.clear();
+        self.changed.notify_all();
+    }
+
+    fn prepare(&self, connection_ids: &HashSet<i32>) {
+        let mut round = self.round.lock().unwrap();
+        round.pending.clone_from(connection_ids);
+        round.acknowledged.clear();
+        self.changed.notify_all();
+    }
+
+    fn acknowledge(&self, connection_id: i32) -> bool {
+        let mut round = self.round.lock().unwrap();
+        if !round.pending.contains(&connection_id) || !round.acknowledged.insert(connection_id) {
+            return false;
         }
+        self.changed.notify_all();
+        true
+    }
+
+    fn wait_for_all(&self, timeout: Duration) -> bool {
+        let round = self.round.lock().unwrap();
+        if round.complete() {
+            return true;
+        }
+        let (round, _) = self
+            .changed
+            .wait_timeout_while(round, timeout, |round| !round.complete())
+            .unwrap();
+        round.complete()
     }
 }
 
 struct VideoFrameController {
-    display_idx: usize,
-    cur: Instant,
-    send_conn_ids: HashSet<i32>,
+    key: VideoFrameStreamKey,
+    state: Arc<VideoFrameAckState>,
 }
 
 impl VideoFrameController {
-    fn new(display_idx: usize) -> Self {
-        Self {
+    fn new(source: VideoSource, display_idx: usize) -> ResultType<Self> {
+        let key = VideoFrameStreamKey {
+            source,
             display_idx,
-            cur: Instant::now(),
-            send_conn_ids: HashSet::new(),
-        }
-    }
-
-    fn reset(&mut self) {
-        self.send_conn_ids.clear();
-    }
-
-    fn set_send(&mut self, tm: Instant, conn_ids: HashSet<i32>) {
-        if !conn_ids.is_empty() {
-            self.cur = tm;
-            self.send_conn_ids = conn_ids;
-            DISPLAY_CONN_IDS
-                .lock()
-                .unwrap()
-                .insert(self.display_idx, self.send_conn_ids.clone());
-        }
-    }
-
-    #[tokio::main(flavor = "current_thread")]
-    async fn try_wait_next(&mut self, fetched_conn_ids: &mut HashSet<i32>, timeout_millis: u64) {
-        if self.send_conn_ids.is_empty() {
-            return;
-        }
-
-        let timeout_dur = Duration::from_millis(timeout_millis as u64);
-        let receiver = {
-            match FRAME_FETCHED_NOTIFIERS
-                .lock()
-                .unwrap()
-                .get(&self.display_idx)
-            {
-                Some(notifier) => notifier.1.clone(),
-                None => {
-                    return;
-                }
-            }
         };
-        let mut receiver_guard = receiver.lock().await;
-        match tokio::time::timeout(timeout_dur, receiver_guard.recv()).await {
-            Err(_) => {
-                // break if timeout
-                // log::error!("blocking wait frame receiving timeout {}", timeout_millis);
-            }
-            Ok(Some((id, instant))) => {
-                if let Some(tm) = instant {
-                    log::trace!("Channel recv latency: {}", tm.elapsed().as_secs_f32());
-                }
-                fetched_conn_ids.insert(id);
-            }
-            Ok(None) => {
-                // this branch would never be reached
-            }
+        let state = Arc::new(VideoFrameAckState::default());
+        let mut controllers = VIDEO_FRAME_ACK_CONTROLLERS.lock().unwrap();
+        controllers.retain(|_, state| state.strong_count() != 0);
+        if controllers.get(&key).and_then(Weak::upgrade).is_some() {
+            bail!(
+                "video acknowledgement controller is already active for {:?} display {}",
+                source,
+                display_idx
+            );
         }
-        while !receiver_guard.is_empty() {
-            if let Some((id, instant)) = receiver_guard.recv().await {
-                if let Some(tm) = instant {
-                    log::trace!("Channel recv latency: {}", tm.elapsed().as_secs_f32());
-                }
-                fetched_conn_ids.insert(id);
-            }
+        if controllers.len() >= MAX_VIDEO_FRAME_ACK_CONTROLLERS {
+            bail!(
+                "video acknowledgement controller limit {} reached",
+                MAX_VIDEO_FRAME_ACK_CONTROLLERS
+            );
+        }
+        controllers.insert(key, Arc::downgrade(&state));
+        drop(controllers);
+        Ok(Self { key, state })
+    }
+
+    fn reset(&self) {
+        self.state.reset();
+    }
+
+    fn prepare(&self, connection_ids: &HashSet<i32>) {
+        self.state.prepare(connection_ids);
+    }
+
+    fn wait_for_all(&self, timeout: Duration) -> bool {
+        self.state.wait_for_all(timeout)
+    }
+}
+
+impl Drop for VideoFrameController {
+    fn drop(&mut self) {
+        let mut controllers = VIDEO_FRAME_ACK_CONTROLLERS.lock().unwrap();
+        let remove = controllers
+            .get(&self.key)
+            .and_then(Weak::upgrade)
+            .map(|state| Arc::ptr_eq(&state, &self.state))
+            .unwrap_or(false);
+        if remove {
+            controllers.remove(&self.key);
+        }
+        drop(controllers);
+        self.state.reset();
+    }
+}
+
+fn video_frame_ack_state(key: VideoFrameStreamKey) -> Option<Arc<VideoFrameAckState>> {
+    let mut controllers = VIDEO_FRAME_ACK_CONTROLLERS.lock().unwrap();
+    let state = controllers.get(&key).and_then(Weak::upgrade);
+    if state.is_none() {
+        controllers.remove(&key);
+    }
+    state
+}
+
+#[inline]
+pub fn notify_video_frame_fetched(
+    source: VideoSource,
+    display_idx: usize,
+    conn_id: i32,
+    frame_tm: Option<Instant>,
+) {
+    let key = VideoFrameStreamKey {
+        source,
+        display_idx,
+    };
+    if video_frame_ack_state(key)
+        .map(|state| state.acknowledge(conn_id))
+        .unwrap_or(false)
+    {
+        if let Some(tm) = frame_tm {
+            log::trace!("Channel recv latency: {}", tm.elapsed().as_secs_f32());
+        }
+    }
+}
+
+#[inline]
+pub fn notify_video_frame_fetched_by_conn_id(
+    source: VideoSource,
+    conn_id: i32,
+    frame_tm: Option<Instant>,
+) {
+    let states = {
+        let mut controllers = VIDEO_FRAME_ACK_CONTROLLERS.lock().unwrap();
+        controllers.retain(|_, state| state.strong_count() != 0);
+        controllers
+            .iter()
+            .filter_map(|(key, state)| (key.source == source).then(|| state.upgrade()).flatten())
+            .collect::<Vec<_>>()
+    };
+    let mut acknowledged = false;
+    for state in states {
+        acknowledged |= state.acknowledge(conn_id);
+    }
+    if acknowledged {
+        if let Some(tm) = frame_tm {
+            log::trace!("Channel recv latency: {}", tm.elapsed().as_secs_f32());
         }
     }
 }
@@ -454,14 +513,6 @@ pub fn get_service_name(source: VideoSource, idx: usize) -> String {
 }
 
 pub fn new(source: VideoSource, idx: usize) -> GenericService {
-    let _ = FRAME_FETCHED_NOTIFIERS
-        .lock()
-        .unwrap()
-        .entry(idx)
-        .or_insert_with(|| {
-            let (tx, rx) = unbounded_channel();
-            (tx, Arc::new(TokioMutex::new(rx)))
-        });
     let vs = VideoService {
         sp: GenericService::new(get_service_name(source, idx), true),
         idx,
@@ -720,7 +771,7 @@ fn get_capturer(source: VideoSource, current: usize) -> ResultType<CapturerInfo>
 }
 
 fn run(vs: VideoService) -> ResultType<()> {
-    let mut _raii = Raii::new(vs.idx, vs.sp.name());
+    let mut _raii = Raii::new(vs.sp.name());
     // Wayland only support one video capturer for now. It is ok to call ensure_inited() here.
     //
     // ensure_inited() is needed because clear() may be called.
@@ -813,7 +864,7 @@ fn run(vs: VideoService) -> ResultType<()> {
         sp.set_option_bool(OPTION_REFRESH, false);
     }
 
-    let mut frame_controller = VideoFrameController::new(display_idx);
+    let frame_controller = VideoFrameController::new(source, display_idx)?;
 
     let start = time::Instant::now();
     let mut last_check_displays = time::Instant::now();
@@ -986,9 +1037,10 @@ fn run(vs: VideoService) -> ResultType<()> {
                     }
 
                     let frame = frame.to(encoder.yuvfmt(), &mut yuv, &mut mid_data)?;
-                    let send_conn_ids = handle_one_frame(
+                    handle_one_frame(
                         display_idx,
                         &sp,
+                        &frame_controller,
                         frame,
                         ms,
                         &mut encoder,
@@ -998,7 +1050,6 @@ fn run(vs: VideoService) -> ResultType<()> {
                         capture_width,
                         capture_height,
                     )?;
-                    frame_controller.set_send(now, send_conn_ids);
                     send_counter += 1;
                 }
                 #[cfg(windows)]
@@ -1045,9 +1096,10 @@ fn run(vs: VideoService) -> ResultType<()> {
                     // yun.len() > 0 means the frame is not texture.
                     if repeat_encode_counter < repeat_encode_max {
                         repeat_encode_counter += 1;
-                        let send_conn_ids = handle_one_frame(
+                        handle_one_frame(
                             display_idx,
                             &sp,
+                            &frame_controller,
                             EncodeInput::YUV(&yuv),
                             ms,
                             &mut encoder,
@@ -1057,7 +1109,6 @@ fn run(vs: VideoService) -> ResultType<()> {
                             capture_width,
                             capture_height,
                         )?;
-                        frame_controller.set_send(now, send_conn_ids);
                         send_counter += 1;
                     }
                 }
@@ -1085,20 +1136,16 @@ fn run(vs: VideoService) -> ResultType<()> {
             }
         }
 
-        let mut fetched_conn_ids = HashSet::new();
         let timeout_millis = 3_000u64;
         let wait_begin = Instant::now();
         while wait_begin.elapsed().as_millis() < timeout_millis as _ {
             if vs.source.is_monitor() {
                 check_privacy_mode_changed(&sp, display_idx, &c)?;
             }
-            frame_controller.try_wait_next(&mut fetched_conn_ids, 300);
-            // break if all connections have received current frame
-            if fetched_conn_ids.len() >= frame_controller.send_conn_ids.len() {
+            if frame_controller.wait_for_all(Duration::from_millis(300)) {
                 break;
             }
         }
-        DISPLAY_CONN_IDS.lock().unwrap().remove(&display_idx);
 
         let elapsed = now.elapsed();
         // may need to enable frame(timeout)
@@ -1112,17 +1159,15 @@ fn run(vs: VideoService) -> ResultType<()> {
 }
 
 struct Raii {
-    display_idx: usize,
     name: String,
     try_vram: bool,
 }
 
 impl Raii {
-    fn new(display_idx: usize, name: String) -> Self {
+    fn new(name: String) -> Self {
         log::info!("new video service: {}", name);
         VIDEO_QOS.lock().unwrap().new_display(name.clone());
         Raii {
-            display_idx,
             name,
             try_vram: true,
         }
@@ -1139,7 +1184,6 @@ impl Drop for Raii {
         #[cfg(feature = "vram")]
         Encoder::update(scrap::codec::EncodingUpdate::Check);
         VIDEO_QOS.lock().unwrap().remove_display(&self.name);
-        DISPLAY_CONN_IDS.lock().unwrap().remove(&self.display_idx);
     }
 }
 
@@ -1350,6 +1394,7 @@ fn check_privacy_mode_changed(
 fn handle_one_frame(
     display: usize,
     sp: &GenericService,
+    frame_controller: &VideoFrameController,
     frame: EncodeInput,
     ms: i64,
     encoder: &mut Encoder,
@@ -1358,7 +1403,7 @@ fn handle_one_frame(
     first_frame: &mut bool,
     width: usize,
     height: usize,
-) -> ResultType<HashSet<i32>> {
+) -> ResultType<()> {
     sp.snapshot(|sps| {
         // so that new sub and old sub share the same encoder after switch
         if sps.has_subscribes() {
@@ -1368,7 +1413,6 @@ fn handle_one_frame(
         Ok(())
     })?;
 
-    let mut send_conn_ids: HashSet<i32> = Default::default();
     let first = *first_frame;
     *first_frame = false;
     match encoder.encode_to_message(frame, ms) {
@@ -1382,7 +1426,9 @@ fn handle_one_frame(
                 .unwrap()
                 .as_mut()
                 .map(|r| r.write_message(&msg, width, height));
-            send_conn_ids = sp.send_video_frame(msg);
+            sp.send_video_frame_with_targets(msg, |connection_ids| {
+                frame_controller.prepare(connection_ids);
+            });
         }
         Err(e) => {
             *encode_fail_counter += 1;
@@ -1415,7 +1461,7 @@ fn handle_one_frame(
             }
         }
     }
-    Ok(send_conn_ids)
+    Ok(())
 }
 
 #[inline]
@@ -1771,11 +1817,108 @@ fn handle_screenshot_job(mut job: ScreenshotEncodeJob) {
 }
 
 #[cfg(test)]
+mod video_frame_ack_tests {
+    use super::*;
+
+    static ACK_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn ids(values: &[i32]) -> HashSet<i32> {
+        values.iter().copied().collect()
+    }
+
+    #[test]
+    fn r_s11eg_monitor_and_camera_acknowledgements_are_source_exact() {
+        let _test = ACK_TEST_LOCK.lock().unwrap();
+        let monitor = VideoFrameController::new(VideoSource::Monitor, 10_001).unwrap();
+        let camera = VideoFrameController::new(VideoSource::Camera, 10_001).unwrap();
+        monitor.prepare(&ids(&[11]));
+        camera.prepare(&ids(&[12]));
+
+        notify_video_frame_fetched(VideoSource::Monitor, 10_001, 11, None);
+        assert!(monitor.wait_for_all(Duration::ZERO));
+        assert!(!camera.wait_for_all(Duration::ZERO));
+
+        notify_video_frame_fetched(VideoSource::Camera, 10_001, 12, None);
+        assert!(camera.wait_for_all(Duration::ZERO));
+    }
+
+    #[test]
+    fn r_s11eg_only_pending_exact_connection_ids_complete_a_round() {
+        let _test = ACK_TEST_LOCK.lock().unwrap();
+        let controller = VideoFrameController::new(VideoSource::Monitor, 10_002).unwrap();
+        controller.prepare(&ids(&[21, 22]));
+
+        notify_video_frame_fetched(VideoSource::Monitor, 10_002, 99, None);
+        notify_video_frame_fetched(VideoSource::Monitor, 10_002, 21, None);
+        notify_video_frame_fetched(VideoSource::Monitor, 10_002, 21, None);
+        assert!(!controller.wait_for_all(Duration::ZERO));
+
+        notify_video_frame_fetched(VideoSource::Monitor, 10_002, 22, None);
+        assert!(controller.wait_for_all(Duration::ZERO));
+    }
+
+    #[test]
+    fn r_s11eg_displayless_acknowledgement_reaches_only_its_source() {
+        let _test = ACK_TEST_LOCK.lock().unwrap();
+        let first_monitor = VideoFrameController::new(VideoSource::Monitor, 10_003).unwrap();
+        let second_monitor = VideoFrameController::new(VideoSource::Monitor, 10_004).unwrap();
+        let camera = VideoFrameController::new(VideoSource::Camera, 10_003).unwrap();
+        for controller in [&first_monitor, &second_monitor, &camera] {
+            controller.prepare(&ids(&[31]));
+        }
+
+        notify_video_frame_fetched_by_conn_id(VideoSource::Monitor, 31, None);
+        assert!(first_monitor.wait_for_all(Duration::ZERO));
+        assert!(second_monitor.wait_for_all(Duration::ZERO));
+        assert!(!camera.wait_for_all(Duration::ZERO));
+    }
+
+    #[test]
+    fn r_s11eg_controller_registration_is_bounded_and_exactly_retired() {
+        let _test = ACK_TEST_LOCK.lock().unwrap();
+        let controllers = (0..MAX_VIDEO_FRAME_ACK_CONTROLLERS)
+            .map(|display_idx| {
+                VideoFrameController::new(VideoSource::Monitor, 20_000 + display_idx)
+            })
+            .collect::<Result<Vec<_>, _>>()
+            .unwrap();
+        assert!(VideoFrameController::new(VideoSource::Camera, 30_000).is_err());
+        assert!(
+            VideoFrameController::new(VideoSource::Monitor, 20_000).is_err(),
+            "an active stream key must not be adopted or replaced"
+        );
+
+        drop(controllers);
+        VideoFrameController::new(VideoSource::Monitor, 20_000).unwrap();
+    }
+
+    #[test]
+    fn r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue() {
+        let _test = ACK_TEST_LOCK.lock().unwrap();
+        let service = GenericService::new("ack-order-test".to_owned(), false);
+        let (sender, mut receiver) = hbb_common::tokio::sync::mpsc::unbounded_channel();
+        service.on_subscribe(ConnInner::new(41, Some(sender), None));
+
+        service.send_video_frame_with_targets(Message::new(), |connection_ids| {
+            assert_eq!(connection_ids, &ids(&[41]));
+            assert!(
+                receiver.try_recv().is_err(),
+                "the frame must not be enqueued before acknowledgement ownership exists"
+            );
+        });
+        assert!(
+            receiver.try_recv().is_ok(),
+            "the frame must be enqueued after exact targets are prepared"
+        );
+    }
+}
+
+#[cfg(test)]
 mod screenshot_ownership_tests {
     use super::*;
 
     fn sender() -> Sender {
-        let (tx, _rx) = unbounded_channel();
+        let (tx, _rx) = hbb_common::tokio::sync::mpsc::unbounded_channel();
         tx
     }
 

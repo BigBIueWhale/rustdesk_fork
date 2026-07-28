@@ -241,18 +241,19 @@ impl<T: Subscriber + From<ConnInner>> ServiceTmpl<T> {
         }
     }
 
-    pub fn send_video_frame(&self, msg: Message) -> HashSet<i32> {
-        self.send_video_frame_shared(Arc::new(msg))
-    }
-
-    pub fn send_video_frame_shared(&self, msg: Arc<Message>) -> HashSet<i32> {
-        let mut conn_ids = HashSet::new();
+    pub fn send_video_frame_with_targets<F>(&self, msg: Message, prepare: F)
+    where
+        F: FnOnce(&HashSet<i32>),
+    {
+        let msg = Arc::new(msg);
         let mut lock = self.0.write().unwrap();
+        let conn_ids = lock.subscribes.keys().copied().collect::<HashSet<_>>();
+        // Install the exact acknowledgement round before any connection can dequeue this frame.
+        // Preparing after send would lose a fast local dequeue and wait for the full timeout.
+        prepare(&conn_ids);
         for s in lock.subscribes.values_mut() {
             s.send(msg.clone());
-            conn_ids.insert(s.id());
         }
-        conn_ids
     }
 
     pub fn send_without(&self, msg: Message, sub: i32) {

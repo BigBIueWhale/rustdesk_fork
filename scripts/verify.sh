@@ -11742,22 +11742,37 @@ else
   echo "  FAIL R-S19: capability confinement weakened:$rs19"; rc=1
 fi
 # R-S19 edge residuals (found by the final all-platform sweep): capability-confinement instances the
-# connection.rs on_message dispatch did not reach. (1) SCREENSHOTS keyed by (video source, display
-# index) so a concurrent Remote monitor loop cannot fulfill a ViewCamera peer's screenshot request;
+# connection.rs on_message dispatch did not reach. (1) controlled screenshot requests retain exact
+# connection/channel ownership while source/display selects only the matching capture loop;
 # (2) the VIEWER syncs a peer's clipboard into its own OS clipboard only in a default (Remote) session
 # (io_loop is_default gate on both Clipboard/MultiClipboards arms); (3) the Windows file-clipboard->CM
 # forward gated on the confined self.clipboard && self.file; (4) Android MediaProjection capture
-# excludes view-camera/terminal (Dart server_model + Kotlin MainService).
+# demand is derived from the exact typed Remote-only owner set, excluding ViewCamera/terminal/tunnel
+# sessions without reconstructing parallel booleans (Dart server_model + typed Kotlin owner state).
 rs19e=
-grep -q 'set_take_screenshot(source: VideoSource' src/server/video_service.rs        || rs19e="$rs19e screenshot-not-source-keyed"
-grep -q 'HashMap<(VideoSource, usize), Screenshot>' src/server/video_service.rs       || rs19e="$rs19e screenshot-map-not-source-keyed"
+grep -qF 'static ref SCREENSHOTS: Mutex<PendingScreenshots> = Default::default();' src/server/video_service.rs \
+  || rs19e="$rs19e screenshot-exact-owner-registry-missing"
+grep -qF 'owners: HashMap<i32, PendingScreenshotOwner>' src/server/video_service.rs \
+  || rs19e="$rs19e screenshot-not-connection-keyed"
+grep -qF 'request.source == source && request.display_idx == display_idx' src/server/video_service.rs \
+  || rs19e="$rs19e screenshot-not-source-keyed"
 vc_gated=$(grep -A1 'self.handler.is_default()' src/client/io_loop.rs | grep -c 'disable_clipboard.v' || true)
 if [ "${vc_gated:-0}" -ge 2 ]; then :; else rs19e="$rs19e viewer-clipboard-not-default-gated"; fi
 if grep -B1 'send_to_cm(ipc::Data::ClipboardFile(clip))' src/server/connection.rs | grep -q 'self.clipboard && self.file'; then :; else rs19e="$rs19e win-cliprdr-not-file-gated"; fi
 grep -q 'isViewCamera' flutter/lib/models/server_model.dart                                                  || rs19e="$rs19e android-dart-no-viewcamera-gate"
-grep -q 'isViewCamera' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt            || rs19e="$rs19e android-kotlin-no-viewcamera-gate"
+if grep -qF 'val requiresDesktopCapture: Boolean' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt \
+  && grep -qF 'get() = this == REMOTE' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt \
+  && grep -qF 'controlledCaptureOwners.upsert(id, authorized, connectionType)' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt \
+  && grep -qF 'captureRequested = controlledCaptureOwners.requiresDesktopCapture' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt; then
+  :
+else
+  rs19e="$rs19e android-kotlin-no-typed-remote-capture-gate"
+fi
+if grep -qF 'isViewCamera' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt; then
+  rs19e="$rs19e android-kotlin-legacy-viewcamera-gate"
+fi
 if [ -z "$rs19e" ]; then
-  echo "  ok  R-S19 edge residuals confined (screenshot source-keyed + viewer-clipboard default-only + win-CLIPRDR file-gated + Android capture excludes view-camera/terminal)"
+  echo "  ok  R-S19 edge residuals confined (screenshot exact-connection/source-owned + viewer-clipboard default-only + win-CLIPRDR file-gated + Android typed Remote-only capture)"
 else
   echo "  FAIL R-S19 edge residuals:$rs19e"; rc=1
 fi

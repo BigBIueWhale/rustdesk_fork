@@ -987,6 +987,33 @@ with already-implemented exact ownership, not device reproduction or evidence of
 escalation, compromise, public exposure, container escape, or a host
 RustDesk/service/firewall/listener/network change.
 
+Follow-up verifier correction (2026-07-28),
+**R-S11e-163 current R-S19 controlled screenshot and Android capture-type gate authority**: the shared R-S19
+edge gate retained the exact source shapes from its original closure. It required the old source-first
+`set_take_screenshot(source: VideoSource, ...)` signature and the old
+`HashMap<(VideoSource, usize), Screenshot>` singleton. R-S11ef later replaced that weaker singleton with a
+bounded `PendingScreenshots` registry keyed by exact internal connection ID and response channel, while retaining
+source/display solely as the matching capture-loop selector. The old checks therefore reported
+`screenshot-not-source-keyed` and `screenshot-map-not-source-keyed` precisely because the current design is
+stronger. The same edge gate required the deleted Kotlin presentation boolean `isViewCamera`. The typed Android
+capture correction now carries exact `ControlledConnectionType`, defines desktop-capture demand as Remote-only,
+admits authorized exact owners through `ControlledCaptureOwnerState`, and reconciles that owner set in serialized
+`MainService` dispatch. Requiring the deleted boolean therefore reported
+`android-kotlin-no-viewcamera-gate` even though ViewCamera, file transfer, terminal, port forwarding, and unknown
+types cannot demand desktop capture.
+
+The shared edge gate now requires the bounded exact-owner screenshot registry, connection-keyed owner map, and
+source/display frame match. Its Android side requires the typed Remote-only capture policy plus exact owner
+upsert/reconciliation and rejects restoration of `MainService.isViewCamera`. The independent workspace validator
+binds each current shared assertion, rejects all three obsolete checks, deliberately mutates every authority, and
+binds this ledger entry. Existing focused and independent semantic validators already mutation-test the complete
+product behavior: screenshot connection/channel ABA safety and source selection, exact five-tag decoding,
+authorized Remote-only capture demand, owner aggregation, and serialized reconciliation. Product/runtime
+behavior, Android service persistence, capture resources, protocol traffic, and release outputs are unchanged.
+This is verifier alignment with already-implemented stronger ownership/type contracts, not an APK/device causal
+reproduction or evidence of root acquisition, privilege escalation, compromise, public exposure, container
+escape, or a host RustDesk/service/firewall/listener/network change.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust

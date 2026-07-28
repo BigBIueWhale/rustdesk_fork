@@ -17016,6 +17016,48 @@ def validate_android_voice_call_ownership_contract(sources):
         "server::video_service::screenshot_ownership_tests::r_s11ef_",
         "controlled screenshot generated-bridge behavior gate source",
     )
+    current_r_s19_edge = extract_between(
+        sources["verify"],
+        "# R-S19 edge residuals (found by the final all-platform sweep)",
+        "# R-F1/R-F2 (functional: FILE TRANSFER preserved on the headless unix --server).",
+        "current R-S19 edge ownership/type gate",
+    )
+    require_order(
+        current_r_s19_edge,
+        (
+            "grep -qF 'static ref SCREENSHOTS: Mutex<PendingScreenshots> = Default::default();' src/server/video_service.rs",
+            'screenshot-exact-owner-registry-missing"',
+            "grep -qF 'owners: HashMap<i32, PendingScreenshotOwner>' src/server/video_service.rs",
+            'screenshot-not-connection-keyed"',
+            "grep -qF 'request.source == source && request.display_idx == display_idx' src/server/video_service.rs",
+            'screenshot-not-source-keyed"',
+            "grep -qF 'val requiresDesktopCapture: Boolean' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt",
+            "grep -qF 'get() = this == REMOTE' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt",
+            "grep -qF 'controlledCaptureOwners.upsert(id, authorized, connectionType)' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt",
+            "grep -qF 'captureRequested = controlledCaptureOwners.requiresDesktopCapture' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt",
+            'android-kotlin-no-typed-remote-capture-gate"',
+            "if grep -qF 'isViewCamera' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt; then",
+            'android-kotlin-legacy-viewcamera-gate"',
+            "screenshot exact-connection/source-owned",
+            "Android typed Remote-only capture",
+        ),
+        "current R-S19 edge ownership/type gate",
+    )
+    for stale in (
+        "set_take_screenshot(source: VideoSource",
+        "HashMap<(VideoSource, usize), Screenshot>",
+        "grep -q 'isViewCamera' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt",
+    ):
+        require_absent(
+            current_r_s19_edge,
+            stale,
+            f"obsolete R-S19 edge gate {stale}",
+        )
+    require_text(
+        sources["hardening"],
+        "R-S11e-163 current R-S19 controlled screenshot and Android capture-type gate authority",
+        "R-S19 edge verifier-authority hardening ledger",
+    )
     for text, label in (
         (
             "const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = 64;",
@@ -48365,6 +48407,66 @@ def run_source_mutations(sources):
             "static ref SCREENSHOTS: Mutex<PendingScreenshots> = Default::default();",
             "static ref SCREENSHOTS: Mutex<HashMap<(VideoSource, usize), PendingScreenshotRequest>> = Default::default();",
             "controlled screenshot exact-owner registry source",
+        ),
+        (
+            "verify",
+            "grep -qF 'static ref SCREENSHOTS: Mutex<PendingScreenshots> = Default::default();' src/server/video_service.rs \\\n"
+            '  || rs19e="$rs19e screenshot-exact-owner-registry-missing"',
+            "grep -q 'HashMap<(VideoSource, usize), Screenshot>' src/server/video_service.rs \\\n"
+            '  || rs19e="$rs19e screenshot-map-not-source-keyed"',
+            "current R-S19 edge ownership/type gate",
+        ),
+        (
+            "verify",
+            "grep -qF 'owners: HashMap<i32, PendingScreenshotOwner>' src/server/video_service.rs \\\n"
+            '  || rs19e="$rs19e screenshot-not-connection-keyed"',
+            "grep -q 'HashMap<(VideoSource, usize), Screenshot>' src/server/video_service.rs \\\n"
+            '  || rs19e="$rs19e screenshot-map-not-source-keyed"',
+            "current R-S19 edge ownership/type gate",
+        ),
+        (
+            "verify",
+            "grep -qF 'request.source == source && request.display_idx == display_idx' src/server/video_service.rs \\\n"
+            '  || rs19e="$rs19e screenshot-not-source-keyed"',
+            "grep -q 'set_take_screenshot(source: VideoSource' src/server/video_service.rs \\\n"
+            '  || rs19e="$rs19e screenshot-not-source-keyed"',
+            "current R-S19 edge ownership/type gate",
+        ),
+        (
+            "verify",
+            "grep -qF 'val requiresDesktopCapture: Boolean' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt",
+            "grep -q 'isViewCamera' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt",
+            "current R-S19 edge ownership/type gate",
+        ),
+        (
+            "verify",
+            "grep -qF 'get() = this == REMOTE' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt",
+            "grep -qF 'get() = this != FILE_TRANSFER' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt",
+            "current R-S19 edge ownership/type gate",
+        ),
+        (
+            "verify",
+            "grep -qF 'controlledCaptureOwners.upsert(id, authorized, connectionType)' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt",
+            "grep -qF 'true' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt",
+            "current R-S19 edge ownership/type gate",
+        ),
+        (
+            "verify",
+            "grep -qF 'captureRequested = controlledCaptureOwners.requiresDesktopCapture' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt",
+            "grep -qF 'captureRequested = false' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt",
+            "current R-S19 edge ownership/type gate",
+        ),
+        (
+            "verify",
+            "if grep -qF 'isViewCamera' flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt; then",
+            "if false; then",
+            "current R-S19 edge ownership/type gate",
+        ),
+        (
+            "hardening",
+            "R-S11e-163 current R-S19 controlled screenshot and Android capture-type gate authority",
+            "R-S11e-163 obsolete R-S19 screenshot and Android capture compatibility",
+            "R-S19 edge verifier-authority hardening ledger",
         ),
         (
             "video_service_source",

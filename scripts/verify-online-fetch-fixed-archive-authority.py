@@ -629,9 +629,10 @@ def verify_sources(sources: Mapping[str, str]) -> None:
     require_all(
         systemd_smoke,
         (
+            'readonly HOST_UID="$(/usr/bin/id -u)"',
+            'readonly HOST_GID="$(/usr/bin/id -g)"',
             'IMAGE_METADATA="$(stat -c \'%u:%g:%a:%h\' "$IMAGE")"',
-            '"$(id -u):$(id -g):400:1"',
-            '"$(id -u):$(id -g):444:1"',
+            '"$HOST_UID:$HOST_GID:400:1" | "$HOST_UID:$HOST_GID:444:1") ;;',
             'verify_sha512 "$IMAGE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
             'qemu-img check -q "$IMAGE"',
         ),
@@ -769,6 +770,11 @@ def verify_sources(sources: Mapping[str, str]) -> None:
     require("R-S11cs/R-S11e-111" in ledger, "hardening ledger omits R-S11e-111")
     require("R-S11ct/R-S11e-112" in ledger, "hardening ledger omits R-S11e-112")
     require("R-S11cu/R-S11e-113" in ledger, "hardening ledger omits R-S11e-113")
+    require(
+        "R-S11cu/R-S11e-113 retained-identity systemd image consumer authority"
+        in ledger,
+        "hardening ledger omits the retained-identity systemd consumer correction",
+    )
 
 
 @dataclass(frozen=True)
@@ -961,6 +967,24 @@ MUTATIONS = (
     ),
     Mutation(
         "systemd_smoke",
+        'readonly HOST_UID="$(/usr/bin/id -u)"',
+        'readonly HOST_UID="$(id -u)"',
+        "systemd image consumer absolute UID",
+    ),
+    Mutation(
+        "systemd_smoke",
+        'readonly HOST_GID="$(/usr/bin/id -g)"',
+        'readonly HOST_GID="$(id -g)"',
+        "systemd image consumer absolute GID",
+    ),
+    Mutation(
+        "systemd_smoke",
+        '"$HOST_UID:$HOST_GID:400:1" | "$HOST_UID:$HOST_GID:444:1") ;;',
+        '"$HOST_UID:$HOST_GID:600:1" | "$HOST_UID:$HOST_GID:444:1") ;;',
+        "systemd image downstream metadata profiles",
+    ),
+    Mutation(
+        "systemd_smoke",
         'verify_sha512 "$IMAGE" "$SHA512_DEBIAN_SYSTEMD_SMOKE_IMAGE"',
         "true # publisher digest bypassed",
         "systemd image downstream SHA-512 proof",
@@ -1091,6 +1115,12 @@ MUTATIONS = (
         "R-S11cu/R-S11e-113",
         "R-S11cu-removed/R-S11e-113",
         "systemd image ledger disposition",
+    ),
+    Mutation(
+        "ledger",
+        "R-S11cu/R-S11e-113 retained-identity systemd image consumer authority",
+        "R-S11cu/R-S11e-113 ambient systemd image consumer authority",
+        "retained-identity systemd image consumer disposition",
     ),
 )
 

@@ -23411,6 +23411,28 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
         ),
     ):
         require_text(focused, text, label)
+    for text, label in (
+        (
+            'readonly HOST_UID="$(/usr/bin/id -u)"',
+            "fixed-archive focused systemd consumer absolute UID",
+        ),
+        (
+            'readonly HOST_GID="$(/usr/bin/id -g)"',
+            "fixed-archive focused systemd consumer absolute GID",
+        ),
+    ):
+        require_exact_count(focused, text, 2, label)
+    require_exact_count(
+        focused,
+        '"$HOST_UID:$HOST_GID:400:1" | "$HOST_UID:$HOST_GID:444:1") ;;',
+        2,
+        "fixed-archive focused systemd consumer metadata profiles",
+    )
+    require_absent(
+        focused,
+        '"$(id -u):$(id -g):400:1"',
+        "fixed-archive stale inline systemd consumer identity",
+    )
     lifecycle = extract_between(
         online,
         "stage_archive_bundle() {",
@@ -23681,6 +23703,11 @@ def validate_online_fetch_fixed_archive_authority_contract(sources):
         sources["hardening"],
         "R-S11cu/R-S11e-113 — Debian systemd VM image acquisition authority",
         "systemd-image fixed-input hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cu/R-S11e-113 retained-identity systemd image consumer authority",
+        "retained-identity systemd image consumer ledger",
     )
 
 
@@ -51060,6 +51087,24 @@ def run_source_mutations(sources):
             "fixed-archive focused Dart advisory manifest",
         ),
         (
+            "online_fetch_fixed_archive_authority_verifier",
+            'readonly HOST_UID="$(/usr/bin/id -u)"',
+            'readonly HOST_UID="$(id -u)"',
+            "fixed-archive focused systemd consumer absolute UID",
+        ),
+        (
+            "online_fetch_fixed_archive_authority_verifier",
+            'readonly HOST_GID="$(/usr/bin/id -g)"',
+            'readonly HOST_GID="$(id -g)"',
+            "fixed-archive focused systemd consumer absolute GID",
+        ),
+        (
+            "online_fetch_fixed_archive_authority_verifier",
+            '"$HOST_UID:$HOST_GID:400:1" | "$HOST_UID:$HOST_GID:444:1") ;;',
+            '"$(id -u):$(id -g):400:1" | "$(id -u):$(id -g):444:1") ;;',
+            "fixed-archive focused systemd consumer metadata profiles",
+        ),
+        (
             "online_fetch",
             "stage_archive_bundle() {",
             "stage_archive_bundle_disabled() {",
@@ -51206,6 +51251,12 @@ def run_source_mutations(sources):
             "R-S11cu/R-S11e-113 — Debian systemd VM image acquisition authority",
             "R-S11cu-disabled/R-S11e-113 — ambient systemd image authority",
             "systemd-image fixed-input hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11cu/R-S11e-113 retained-identity systemd image consumer authority",
+            "R-S11cu/R-S11e-113 ambient systemd image consumer authority",
+            "retained-identity systemd image consumer ledger",
         ),
         (
             "online_fetch_libvpx_local_output_authority_verifier",

@@ -779,6 +779,24 @@ deliberately regrows the global form to prove rejection. This correction changes
 container invocation, product runtime, host process, service, listener, firewall, network state, or release
 artifact, and it does not close the still-open exact clean release/device evidence.
 
+Follow-up verifier correction (2026-07-28),
+**R-S11cu/R-S11e-113 retained-identity systemd image consumer authority**: the fixed-archive verifier still
+expected the Debian lifecycle consumer to invoke ambient `id` separately inside each accepted image-metadata
+profile. R-S11dl commit `e7b0b41` had correctly moved identity selection ahead of repository loading, fixed it to
+absolute `/usr/bin/id`, refused UID or primary GID zero, and retained `HOST_UID`/`HOST_GID` for the lifecycle.
+The stale expectation therefore stopped with a missing
+`"$(id -u):$(id -g):400:1"` token even though the live consumer used the stronger current authority.
+
+The fixed-archive gate now requires both absolute retained identity captures and the exact single
+`"$HOST_UID:$HOST_GID:400:1" | "$HOST_UID:$HOST_GID:444:1"` metadata profile before the existing SHA-512 and
+`qemu-img` checks. Its focused mutations replace each absolute identity command and widen the accepted profile.
+The independent workspace validator binds exactly two copies of each focused token—the check and its mutation
+anchor—forbids the obsolete inline-`id` expectation, and deliberately regrows it to prove rejection. The
+production acquisition and lifecycle sources are unchanged. This is release-verifier alignment, not evidence of
+a changed image, weakened consumer, root acquisition, container escape, public exposure, compromise, or host
+RustDesk/service/firewall/network modification, and it does not close exact cold artifact or installed/native
+evidence.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust

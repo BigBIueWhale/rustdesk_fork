@@ -23127,6 +23127,29 @@ def validate_online_fetch_android_sdk_output_authority_contract(sources):
         ),
     ):
         require_text(focused, text, label)
+    require_text(
+        focused,
+        '    Mutation(\n'
+        '        "shell",\n'
+        '        "online_docker_run_archive_acquisition() {\\n"\n'
+        '        "    online_docker run --rm --pull=never --network=bridge --read-only \\\\\\n"\n'
+        '        \'        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\\\\n\'\n'
+        '        "        --cap-drop=ALL --security-opt=no-new-privileges \\\\\\n"\n'
+        '        "        --pids-limit=256 --memory=4g",\n'
+        '        "online_docker_run_archive_acquisition() {\\n"\n'
+        '        "    online_docker run --rm --pull=never --network=bridge --read-only \\\\\\n"\n'
+        '        \'        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\\\\n\'\n'
+        '        "        --cap-drop=ALL --security-opt=no-new-privileges \\\\\\n"\n'
+        '        "        --pids-limit=-1 --memory=4g",\n'
+        '        "archive-acquisition PID bound",\n'
+        "    ),",
+        "Android SDK archive-specific PID mutation",
+    )
+    require_absent(
+        focused,
+        'Mutation("shell", "--pids-limit=256 --memory=4g",',
+        "Android SDK global PID mutation selector",
+    )
     funnel = extract_between(
         online,
         "online_docker_run_archive_acquisition() {",
@@ -23275,6 +23298,11 @@ def validate_online_fetch_android_sdk_output_authority_contract(sources):
         sources["hardening"],
         "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
         "online-fetch Android SDK hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cr/R-S11e-110 archive-specific PID mutation authority",
+        "Android SDK archive-specific PID mutation ledger",
     )
 
 
@@ -50844,6 +50872,26 @@ def run_source_mutations(sources):
             "Android SDK focused mount binding",
         ),
         (
+            "online_fetch_android_sdk_output_authority_verifier",
+            '    Mutation(\n'
+            '        "shell",\n'
+            '        "online_docker_run_archive_acquisition() {\\n"\n'
+            '        "    online_docker run --rm --pull=never --network=bridge --read-only \\\\\\n"\n'
+            '        \'        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\\\\n\'\n'
+            '        "        --cap-drop=ALL --security-opt=no-new-privileges \\\\\\n"\n'
+            '        "        --pids-limit=256 --memory=4g",\n'
+            '        "online_docker_run_archive_acquisition() {\\n"\n'
+            '        "    online_docker run --rm --pull=never --network=bridge --read-only \\\\\\n"\n'
+            '        \'        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\\\\n\'\n'
+            '        "        --cap-drop=ALL --security-opt=no-new-privileges \\\\\\n"\n'
+            '        "        --pids-limit=-1 --memory=4g",\n'
+            '        "archive-acquisition PID bound",\n'
+            "    ),",
+            '    Mutation("shell", "--pids-limit=256 --memory=4g",\n'
+            '             "--pids-limit=-1 --memory=4g", "archive-acquisition PID bound"),',
+            "Android SDK archive-specific PID mutation",
+        ),
+        (
             "online_fetch",
             "online_docker_run_archive_acquisition() {\n"
             "    online_docker run --rm --pull=never --network=bridge --read-only",
@@ -50932,6 +50980,12 @@ def run_source_mutations(sources):
             "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
             "R-S11cr/R-S11e-110 — ambient Android SDK authority",
             "online-fetch Android SDK/Gradle correction hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11cr/R-S11e-110 archive-specific PID mutation authority",
+            "R-S11cr/R-S11e-110 global PID mutation authority",
+            "Android SDK archive-specific PID mutation ledger",
         ),
         (
             "wix_nuget_authority_verifier",

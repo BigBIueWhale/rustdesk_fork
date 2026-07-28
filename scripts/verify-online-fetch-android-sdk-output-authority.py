@@ -356,6 +356,11 @@ def validate(sources: Dict[str, str]) -> None:
         "hardening disposition",
     )
     require(
+        sources["hardening"],
+        "R-S11cr/R-S11e-110 archive-specific PID mutation authority",
+        "archive-specific PID mutation disposition",
+    )
+    require(
         sources["workspace"],
         '"online_fetch_android_sdk_output_authority_verifier"',
         "workspace source ownership",
@@ -384,8 +389,20 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "    online_docker run --rm --pull=always --network=bridge --read-only",
         "no-pull acquisition",
     ),
-    Mutation("shell", "--pids-limit=256 --memory=4g",
-             "--pids-limit=-1 --memory=4g", "PID bound"),
+    Mutation(
+        "shell",
+        "online_docker_run_archive_acquisition() {\n"
+        "    online_docker run --rm --pull=never --network=bridge --read-only \\\n"
+        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
+        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
+        "        --pids-limit=256 --memory=4g",
+        "online_docker_run_archive_acquisition() {\n"
+        "    online_docker run --rm --pull=never --network=bridge --read-only \\\n"
+        '        --user "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID" \\\n'
+        "        --cap-drop=ALL --security-opt=no-new-privileges \\\n"
+        "        --pids-limit=-1 --memory=4g",
+        "archive-acquisition PID bound",
+    ),
     Mutation(
         "shell",
         "online_docker_run_archive_acquisition() {\n"
@@ -537,6 +554,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
         "R-S11cr/R-S11e-110 — ambient Android SDK authority",
         "hardening disposition",
+    ),
+    Mutation(
+        "hardening",
+        "R-S11cr/R-S11e-110 archive-specific PID mutation authority",
+        "R-S11cr/R-S11e-110 global PID mutation authority",
+        "archive-specific PID mutation disposition",
     ),
 )
 

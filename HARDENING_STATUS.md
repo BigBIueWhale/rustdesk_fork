@@ -764,6 +764,21 @@ keytool/build separation, exact mount grammar, poison rejection, normal Android 
 deliberate mutation catalog changes each edge and requires the named rejection. This slice runs no release build
 and does not satisfy the still-open clean committed cold R-B2/R-B10 transaction.
 
+Follow-up verifier correction (2026-07-28), **R-S11cr/R-S11e-110 archive-specific PID mutation authority**:
+the focused Android SDK output verifier selected the text
+`--pids-limit=256 --memory=4g` from the complete `online-fetch.sh` source. The later Cargo semantic funnel
+legitimately acquired the same PID and memory values, so the mutation harness stopped before exercising the SDK
+contract with `mutation target for PID bound occurs 2 times`. The production archive-acquisition funnel remained
+correct and uniquely extracted by the validator; the defect was the mutation selector's broader authority.
+
+The PID mutation now includes the exact `online_docker_run_archive_acquisition` function header and its
+constrained launch prefix before changing only that funnel's PID limit. The focused self-test therefore changes
+the semantic region the validator owns even when an unrelated funnel uses identical numeric limits. The
+independent workspace validator requires that exact contextual mutation, forbids the old global selector, and
+deliberately regrows the global form to prove rejection. This correction changes no acquisition producer,
+container invocation, product runtime, host process, service, listener, firewall, network state, or release
+artifact, and it does not close the still-open exact clean release/device evidence.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust

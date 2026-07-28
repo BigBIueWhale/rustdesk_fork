@@ -311,6 +311,11 @@ def validate(sources: Mapping[str, str]) -> None:
             "self-test accepted recorded staging from a different source authority",
             "recorded source-authority fixture",
         ),
+        (
+            "source.mkdir(mode=0o700)\n"
+            "    source.chmod(0o700)",
+            "umask-independent private source fixture",
+        ),
     ):
         require_text(helper, text, label)
     require_exact_count(
@@ -355,6 +360,11 @@ def validate(sources: Mapping[str, str]) -> None:
         hardening,
         "R-S11cv/R-S11e-114 — committed libvpx patch and native-key publication authority",
         "local-output hardening ledger",
+    )
+    require_text(
+        hardening,
+        "R-S11cv/R-S11e-114 umask-independent libvpx self-test source authority",
+        "umask-independent fixture correction ledger",
     )
 
 
@@ -521,6 +531,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "recorded source-authority fixture",
     ),
     (
+        "helper",
+        "source.chmod(0o700)",
+        "source.chmod(0o770)",
+        "umask-independent private source fixture",
+    ),
+    (
         "verify",
         "/usr/bin/python3 -I -S scripts/online-libvpx-local-output.py self-test",
         "true # local-output transaction self-test removed",
@@ -543,6 +559,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "R-S11cv/R-S11e-114 — committed libvpx patch and native-key publication authority",
         "R-S11cv/R-S11e-114 — ambient local publication authority",
         "local-output hardening ledger",
+    ),
+    (
+        "hardening",
+        "R-S11cv/R-S11e-114 umask-independent libvpx self-test source authority",
+        "R-S11cv/R-S11e-114 ambient libvpx self-test source authority",
+        "umask-independent fixture correction ledger",
     ),
 )
 

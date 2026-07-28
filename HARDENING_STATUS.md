@@ -797,6 +797,24 @@ a changed image, weakened consumer, root acquisition, container escape, public e
 RustDesk/service/firewall/network modification, and it does not close exact cold artifact or installed/native
 evidence.
 
+Follow-up verifier correction (2026-07-28),
+**R-S11cv/R-S11e-114 umask-independent libvpx self-test source authority**: the libvpx local-output helper
+correctly refuses a group- or world-writable committed source root, but its self-test created the synthetic
+`source` directory through `Path.mkdir(parents=True)` without first choosing and normalizing the source-root
+mode. The main verifier intentionally preserves its caller's umask; under the ordinary collaborative `0002`
+profile, that fixture therefore became mode 0775 and the helper correctly rejected its own synthetic source.
+The real checkout root was current-user-owned mode 0755, so the failure did not show unsafe live source metadata
+or a weakened production verdict.
+
+The fixture now creates its source root with private intent and explicitly normalizes it to mode 0700 before
+creating the nested patch path. The production group/world-writable rejection is unchanged. The focused verifier
+requires the exact create-and-normalize sequence and mutates 0700 to 0770; the independent workspace validator
+binds the helper and both focused check/mutation anchors and independently widens each one. Confined executions
+under ambient umasks 0022 and 0002, the focused mutation matrix, and the independent workspace source-mutation
+matrix bind the correction. This changes only disposable verifier fixture metadata: no persistent cache,
+production acquisition, product runtime, root authority, host process/service/listener/firewall/network state,
+or release artifact is modified.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust

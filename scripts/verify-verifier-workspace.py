@@ -23850,6 +23850,11 @@ def validate_online_fetch_libvpx_local_output_authority_contract(sources):
             "self-test accepted recorded staging from a different source authority",
             "libvpx recorded source-authority fixture",
         ),
+        (
+            "source.mkdir(mode=0o700)\n"
+            "    source.chmod(0o700)",
+            "libvpx umask-independent private source fixture",
+        ),
     ):
         require_text(helper, text, label)
     require_exact_count(
@@ -23857,6 +23862,18 @@ def validate_online_fetch_libvpx_local_output_authority_contract(sources):
         'if uid == 0 or gid == 0 or (os.geteuid(), os.getegid()) != (uid, gid):',
         2,
         "libvpx local-output non-root identity",
+    )
+    require_exact_count(
+        helper,
+        "source.chmod(0o700)",
+        1,
+        "libvpx private source fixture normalization",
+    )
+    require_exact_count(
+        focused,
+        "source.chmod(0o700)",
+        2,
+        "libvpx focused private source fixture authority",
     )
     require_absent(
         helper,
@@ -23889,6 +23906,11 @@ def validate_online_fetch_libvpx_local_output_authority_contract(sources):
         sources["hardening"],
         "R-S11cv/R-S11e-114 — committed libvpx patch and native-key publication authority",
         "libvpx local-output hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cv/R-S11e-114 umask-independent libvpx self-test source authority",
+        "libvpx self-test source correction ledger",
     )
 
 
@@ -51319,6 +51341,18 @@ def run_source_mutations(sources):
             "libvpx stable state retirement recheck",
         ),
         (
+            "online_libvpx_local_output_helper",
+            "source.chmod(0o700)",
+            "source.chmod(0o770)",
+            "libvpx umask-independent private source fixture",
+        ),
+        (
+            "online_fetch_libvpx_local_output_authority_verifier",
+            "source.chmod(0o700)",
+            "source.chmod(0o770)",
+            "libvpx focused private source fixture authority",
+        ),
+        (
             "verify",
             "/usr/bin/python3 -I -S "
             "scripts/verify-online-fetch-libvpx-local-output-authority.py "
@@ -51343,6 +51377,12 @@ def run_source_mutations(sources):
             "R-S11cv/R-S11e-114 — committed libvpx patch and native-key publication authority",
             "R-S11cv/R-S11e-114 — ambient local publication authority",
             "libvpx local-output hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11cv/R-S11e-114 umask-independent libvpx self-test source authority",
+            "R-S11cv/R-S11e-114 ambient libvpx self-test source authority",
+            "libvpx self-test source correction ledger",
         ),
         (
             "online_fetch_cargo_vendor_output_authority_verifier",

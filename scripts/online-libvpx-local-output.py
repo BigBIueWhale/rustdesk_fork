@@ -1266,6 +1266,8 @@ def expect_failure(action, message: str) -> None:
 
 def fixture_source(root: Path, patch: bytes) -> tuple[Path, Path]:
     source = root / "source"
+    source.mkdir(mode=0o700)
+    source.chmod(0o700)
     patch_path = source / PATCH_SOURCE_RELATIVE
     patch_path.parent.mkdir(parents=True)
     patch_path.write_bytes(patch)

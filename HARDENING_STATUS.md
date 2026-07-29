@@ -1113,6 +1113,57 @@ message check, and this ledger entry; its mutation catalog exercises all seven n
 No acquisition runs, and no Pub cache, lockfile, dependency graph, product source, runtime behavior, APK/device
 state, installed service, host process, listener, firewall, network state, or release output changes.
 
+Follow-up correction (2026-07-29),
+**R-S11ek/R-S11e-169 exact MainService-generation Android controlled voice/playback ownership**:
+the source audit found that Android's intentionally process-wide `VoiceCallAudioCoordinator` kept controlled
+connection and active-voice sets keyed only by numeric connection ID, retained an unowned playback
+`MediaProjection`, and exposed a global `clearControlledConnections()`. `MainService` called that global clear
+from teardown. Although Rust-to-Java controlled callbacks and controlled input already carried the exact native
+service generation, the final Kotlin audio coordinator boundary discarded it. A delayed obsolete service
+teardown could consequently clear a replacement generation's live same-number controlled voice owner or
+playback projection. An Android Force Stop destroys the process and masks this class of lifetime error, while an
+ordinary task swipe intentionally leaves the foreground/accessibility process alive.
+
+`VoiceCallOwnerState` now retains the greatest admitted and exact active controlled-service generations.
+Positive monotonic replacement clears only the predecessor controlled sets, a begin for the current active
+generation is idempotent and state-preserving, and clearing a generation retires it so the same value cannot be
+reactivated. Controlled register/update/unregister/clear operations require the exact active generation.
+`VoiceCallAudioCoordinator` serializes the same generation transaction, stores playback ownership as
+`(generation, MediaProjection)`, retires a predecessor projection only on an actual newer-generation begin, and
+refuses stale projection updates and teardown before recorder reconciliation. `MainService` begins with
+controlled admission closed, installs the exact positive generation returned by `FFI.startServer(this, ...)`,
+opens admission only after coordinator binding succeeds, and carries that generation through every controlled
+voice and playback operation. A stale teardown therefore cannot select or clear the replacement generation,
+even when Android/Rust reuses the same numeric connection ID. The outgoing viewer voice owner remains a
+separate exact session/generation domain and survives controlled-service replacement.
+
+The pure Kotlin behavior fixture covers closed-before-generation admission, monotonic replacement, same-ID ABA
+register/update/clear refusal, replacement-state preservation, idempotent current begin, retired-generation
+refusal, and controlled/outgoing replacement overlap. The focused verifier binds the state machine, coordinator transaction,
+closed-until-bound service order, exact call-site propagation, normative R-S11ek, Appendix C #290, and this
+ledger entry, and deliberately mutates each authority. The shared Android lifecycle gate and independent
+workspace validator bind the same current source and focused-mutation authority; the targeted Android Kotlin
+task compiles the changed production sources. These checks run without starting a service, listener, capture,
+peer, or host process and without root or host-state changes.
+
+Final confined prepublication proof on the authored source passes the focused baseline and rejects all `385`
+deliberate ownership regressions, passes the independent workspace baseline and its complete unsliced in-memory
+source-mutation catalog, compiles and executes the pure Kotlin owner-state fixture, and passes the native-codec
+requirements-hash gate in normal and hostile-mutation modes. The real Android arm64
+`:app:compileReleaseKotlin` production graph also completed successfully (`23` actionable tasks, `22` executed)
+in the cached immutable previously certified Android builder; the current release builder pin was not locally
+available, so that bounded compile is source evidence rather than a current release-artifact claim. Later review
+changed only the pure fixture and verifier assertions, not the successfully compiled production Kotlin. No APK
+was created, installed, or executed.
+
+This is source-proven Android process-persistent resource, availability, and lifecycle debt and a scoped source
+correction. It is not a physical-device causal reproduction of the reported outgoing viewer-to-host
+screen-control hang, an authorization bypass, exploitation, root acquisition, privilege escalation, compromise,
+public exposure, container escape, or a host RustDesk/service/firewall/listener/network change. Raw-video JNI
+enablement and companion-service status publication remain separate audit boundaries and are not claimed fixed
+here. Current APK/device task-swipe/Force-Stop reproduction, exact cold R-B2/R-B10 release artifacts, separately
+required independent reproduction, and external review remain open.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust
@@ -15520,7 +15571,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-4eb4173b44d49b8eed6bc5644bd1051d9d9bb3e5730b9e0193fef273e929a747  requirements.html
+9ade24ed7a5ff34bd727125a2abaede378d389c51f599e8a373d666ffa5c90ec  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -15536,3 +15587,4 @@ The same identity additionally binds R-S11eg and Appendix C #286.
 The same identity additionally binds R-S11eh and Appendix C #287.
 The same identity additionally binds R-S11ei and Appendix C #288.
 The same identity additionally binds R-S11ej and Appendix C #289.
+The same identity additionally binds R-S11ek and Appendix C #290.

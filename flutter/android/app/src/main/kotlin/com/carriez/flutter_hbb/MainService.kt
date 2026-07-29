@@ -164,7 +164,10 @@ class MainService : Service() {
                     // R-S14/R-S19: resource authority comes from the exact AuthConnType carried
                     // by Rust, never by reconstructing Remote from parallel presentation fields.
                     if (connectionType.allowsVoiceCall &&
-                        !VoiceCallAudioCoordinator.registerControlledConnection(id)
+                        !VoiceCallAudioCoordinator.registerControlledConnection(
+                            nativeServerGeneration,
+                            id,
+                        )
                     ) {
                         Log.e(logTag, "Rejected invalid controlled voice-call owner: $id")
                     }
@@ -193,7 +196,10 @@ class MainService : Service() {
                         ControlledInputOwner(nativeServerGeneration, id)
                     )
                     val voiceOwnerRemoved =
-                        VoiceCallAudioCoordinator.unregisterControlledConnection(id)
+                        VoiceCallAudioCoordinator.unregisterControlledConnection(
+                            nativeServerGeneration,
+                            id,
+                        )
                     if (!captureOwnerRemoved || !voiceOwnerRemoved) {
                         Log.e(logTag, "Rejected invalid controlled connection removal: $arg1")
                     }
@@ -213,7 +219,12 @@ class MainService : Service() {
                     val peerId = jsonObject["peer_id"] as String
                     val inVoiceCall = jsonObject["in_voice_call"] as Boolean
                     val incomingVoiceCall = jsonObject["incoming_voice_call"] as Boolean
-                    if (!VoiceCallAudioCoordinator.setControlledVoiceCallActive(id, inVoiceCall)) {
+                    if (!VoiceCallAudioCoordinator.setControlledVoiceCallActive(
+                            nativeServerGeneration,
+                            id,
+                            inVoiceCall,
+                        )
+                    ) {
                         Log.e(logTag, "Failed to reconcile controlled voice-call owner: $id")
                         MainActivity.flutterMethodChannel?.invokeMethod("msgbox", mapOf(
                             "type" to "custom-nook-nocancel-hasclose-error",
@@ -287,7 +298,7 @@ class MainService : Service() {
     private var mediaProjectionCallback: MediaProjection.Callback? = null
     @Volatile
     private var captureRequested = false
-    private var acceptingControlledConnections = true
+    private var acceptingControlledConnections = false
     private val controlledCaptureOwners = ControlledCaptureOwnerState()
     private var surface: Surface? = null
     private var imageReader: ImageReader? = null
@@ -368,6 +379,13 @@ class MainService : Service() {
         nativeServerGeneration = FFI.startServer(this, configPath, "")
         if (nativeServerGeneration <= 0L) {
             Log.e(logTag, "Failed to bind the native server to this MainService generation")
+        } else if (!VoiceCallAudioCoordinator.beginControlledServiceGeneration(
+                nativeServerGeneration
+            )
+        ) {
+            Log.e(logTag, "Failed to bind process-wide audio ownership to this MainService generation")
+        } else {
+            acceptingControlledConnections = true
         }
 
         createForegroundNotification()
@@ -599,7 +617,11 @@ class MainService : Service() {
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
-                if (!VoiceCallAudioCoordinator.setPlaybackCaptureProjection(projection)) {
+                if (!VoiceCallAudioCoordinator.setPlaybackCaptureProjection(
+                        nativeServerGeneration,
+                        projection,
+                    )
+                ) {
                     Log.w(logTag, "Failed to start playback audio capture")
                 }
             } catch (e: RuntimeException) {
@@ -650,7 +672,11 @@ class MainService : Service() {
         surface?.release()
         surface = null
 
-        if (!VoiceCallAudioCoordinator.setPlaybackCaptureProjection(null)) {
+        if (!VoiceCallAudioCoordinator.setPlaybackCaptureProjection(
+                nativeServerGeneration,
+                null,
+            )
+        ) {
             Log.e(logTag, "Failed to reconcile audio after screen-capture stop")
         }
     }
@@ -746,7 +772,7 @@ class MainService : Service() {
         controlledCaptureOwners.clear()
         InputService.ctx?.retireServiceGeneration(nativeServerGeneration)
         releaseCaptureResources()
-        if (!VoiceCallAudioCoordinator.clearControlledConnections()) {
+        if (!VoiceCallAudioCoordinator.clearControlledConnections(nativeServerGeneration)) {
             Log.e(logTag, "Failed to release controlled voice-call owners during service teardown")
         }
     }

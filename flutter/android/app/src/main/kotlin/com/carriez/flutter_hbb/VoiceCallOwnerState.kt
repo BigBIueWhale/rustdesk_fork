@@ -10,22 +10,52 @@ internal data class OutgoingVoiceCallOwner(
 internal class VoiceCallOwnerState {
     private val controlledConnections = mutableSetOf<Int>()
     private val activeControlledConnections = mutableSetOf<Int>()
+    private var greatestControlledServiceGeneration = 0L
+    private var activeControlledServiceGeneration: Long? = null
     private var outgoingOwner: OutgoingVoiceCallOwner? = null
     private var outgoingVoiceCallActive = false
 
     val requiresVoiceCapture: Boolean
         get() = activeControlledConnections.isNotEmpty() || outgoingVoiceCallActive
 
-    fun registerControlledConnection(connectionId: Int): Boolean {
-        if (connectionId <= 0) {
+    fun beginControlledServiceGeneration(generation: Long): Boolean {
+        if (generation <= 0 ||
+            generation < greatestControlledServiceGeneration ||
+            (generation == greatestControlledServiceGeneration &&
+                activeControlledServiceGeneration != generation)
+        ) {
+            return false
+        }
+        if (activeControlledServiceGeneration == generation) {
+            return true
+        }
+        greatestControlledServiceGeneration = generation
+        activeControlledServiceGeneration = generation
+        controlledConnections.clear()
+        activeControlledConnections.clear()
+        return true
+    }
+
+    fun isControlledServiceGeneration(generation: Long): Boolean {
+        return generation > 0 && activeControlledServiceGeneration == generation
+    }
+
+    fun registerControlledConnection(generation: Long, connectionId: Int): Boolean {
+        if (!isControlledServiceGeneration(generation) || connectionId <= 0) {
             return false
         }
         controlledConnections.add(connectionId)
         return true
     }
 
-    fun setControlledVoiceCallActive(connectionId: Int, active: Boolean): Boolean {
-        if (!controlledConnections.contains(connectionId)) {
+    fun setControlledVoiceCallActive(
+        generation: Long,
+        connectionId: Int,
+        active: Boolean,
+    ): Boolean {
+        if (!isControlledServiceGeneration(generation) ||
+            !controlledConnections.contains(connectionId)
+        ) {
             return false
         }
         if (active) {
@@ -36,8 +66,8 @@ internal class VoiceCallOwnerState {
         return true
     }
 
-    fun unregisterControlledConnection(connectionId: Int): Boolean {
-        if (connectionId <= 0) {
+    fun unregisterControlledConnection(generation: Long, connectionId: Int): Boolean {
+        if (!isControlledServiceGeneration(generation) || connectionId <= 0) {
             return false
         }
         controlledConnections.remove(connectionId)
@@ -45,9 +75,14 @@ internal class VoiceCallOwnerState {
         return true
     }
 
-    fun clearControlledConnections() {
+    fun clearControlledConnections(generation: Long): Boolean {
+        if (!isControlledServiceGeneration(generation)) {
+            return false
+        }
         controlledConnections.clear()
         activeControlledConnections.clear()
+        activeControlledServiceGeneration = null
+        return true
     }
 
     fun invalidateOutgoingOwner() {

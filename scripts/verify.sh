@@ -1222,11 +1222,11 @@ else
   rc=1
 fi
 
-echo "== (3b-iii-a1a02) Android exact voice/input ownership (R-S11br/R-S11ei/R-S11e-84/R-S11e-153) =="
+echo "== (3b-iii-a1a02) Android exact voice/input ownership (R-S11br/R-S11ei/R-S11ek/R-S11e-84/R-S11e-153/R-S11e-169) =="
 if python3 scripts/verify-android-voice-call-ownership.py --repo . --self-test; then
-  echo "  ok  R-S11e-84/R-S11e-153 Android voice capture and controlled input have exact lifecycle owners and bounded process-persistent work"
+  echo "  ok  R-S11e-84/R-S11e-153/R-S11e-169 Android voice/playback capture and controlled input have exact service/session lifecycle owners and bounded process-persistent work"
 else
-  echo "  FAIL R-S11e-84/R-S11e-153 Android voice/input regained per-event switching, dual recorders, erased connection identity, stale owner teardown, unbounded delayed work, or binding-dependent handoff"
+  echo "  FAIL R-S11e-84/R-S11e-153/R-S11e-169 Android voice/input regained per-event switching, dual recorders, erased service/connection identity, stale owner teardown, unbounded delayed work, or binding-dependent handoff"
   rc=1
 fi
 
@@ -13033,11 +13033,16 @@ fi
 # CmAuthConnType crosses the Rust→Kotlin bridge intact; neither side may reconstruct Remote by
 # negating parallel presentation fields. The listener generation crosses each accepted connection
 # and gates controlled-state/input JNI dispatch, so a stopped server's late callback cannot enter a
-# replacement MainService or stop its listener.
-echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11e-153/R-T4) =="
+# replacement MainService or stop its listener. Process-wide controlled voice and playback
+# ownership retains that exact generation too, so obsolete service teardown cannot clear a
+# replacement service's same-number owner or projection.
+echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4) =="
 r_s14_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
 r_s14_type_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt
 r_s14_owners_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledCaptureOwnerState.kt
+r_s14_voice_owners_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/VoiceCallOwnerState.kt
+r_s14_voice_coordinator_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/VoiceCallAudioCoordinator.kt
+r_s14_voice_test=scripts/android-voice-call-owner-state-test.kt
 r_s14_input_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/InputService.kt
 r_s14_input_owner_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledInputOwner.kt
 r_s14_input_queue_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ExactOwnerBoundedQueue.kt
@@ -13064,6 +13069,8 @@ virtual_display_block=$(sed -n '/private fun createOrSetVirtualDisplay/,/private
 add_connection_block=$(sed -n '/"add_connection" -> {/,/"remove_connection" -> {/p' "$r_s14_kt")
 remove_connection_kt_block=$(sed -n '/"remove_connection" -> {/,/"update_voice_call_state" -> {/p' "$r_s14_kt")
 resource_release_block=$(sed -n '/private fun releaseControlledConnectionResources()/,/fun destroy()/p' "$r_s14_kt")
+on_create_block=$(sed -n '/override fun onCreate()/,/override fun onDestroy()/p' "$r_s14_kt")
+update_voice_block=$(sed -n '/"update_voice_call_state" -> {/,/"half_scale" -> {/p' "$r_s14_kt")
 printf '%s\n' "$on_destroy_block" | grep -qF 'releaseControlledConnectionResources()' || r_s14_missing="$r_s14_missing onDestroy-no-exact-owner-teardown"
 printf '%s\n' "$on_destroy_block" | grep -qF 'FFI.stopServer(nativeServerGeneration)' || r_s14_missing="$r_s14_missing onDestroy-stop-not-generation-bound"
 printf '%s\n' "$on_destroy_block" | grep -qF 'FFI.releaseService(this)' || r_s14_missing="$r_s14_missing onDestroy-retains-stale-service-callback-owner"
@@ -13072,6 +13079,10 @@ printf '%s\n' "$resource_release_block" | grep -qF 'acceptingControlledConnectio
 printf '%s\n' "$resource_release_block" | grep -qF 'controlledCaptureOwners.clear()' || r_s14_missing="$r_s14_missing teardown-retains-capture-owners"
 printf '%s\n' "$resource_release_block" | grep -qF 'InputService.ctx?.retireServiceGeneration(nativeServerGeneration)' || r_s14_missing="$r_s14_missing teardown-retains-input-generation"
 printf '%s\n' "$resource_release_block" | grep -qF 'releaseCaptureResources()' || r_s14_missing="$r_s14_missing teardown-does-not-release-capture"
+printf '%s\n' "$resource_release_block" | grep -qF 'VoiceCallAudioCoordinator.clearControlledConnections(nativeServerGeneration)' || r_s14_missing="$r_s14_missing teardown-voice-playback-not-generation-bound"
+grep -qF 'private var acceptingControlledConnections = false' "$r_s14_kt" || r_s14_missing="$r_s14_missing controlled-admission-not-closed-by-default"
+printf '%s\n' "$on_create_block" | grep -qF 'VoiceCallAudioCoordinator.beginControlledServiceGeneration(' || r_s14_missing="$r_s14_missing audio-coordinator-generation-not-bound"
+printf '%s\n' "$on_create_block" | grep -qF 'acceptingControlledConnections = true' || r_s14_missing="$r_s14_missing controlled-admission-not-opened-after-generation-bind"
 printf '%s\n' "$reconcile_capture_block" | grep -qF 'captureRequested = controlledCaptureOwners.requiresDesktopCapture' || r_s14_missing="$r_s14_missing exact-owner-demand-not-recorded"
 printf '%s\n' "$reconcile_capture_block" | grep -qF 'if (captureRequested)' || r_s14_missing="$r_s14_missing exact-owner-demand-not-applied"
 printf '%s\n' "$reconcile_capture_block" | grep -qF 'startCapture()' || r_s14_missing="$r_s14_missing live-owner-demand-not-started"
@@ -13084,7 +13095,10 @@ printf '%s\n' "$start_capture_block" | grep -qF '_isStart = true' || r_s14_missi
 printf '%s\n' "$start_capture_block" | grep -qF 'mediaProjection!!' && r_s14_missing="$r_s14_missing projection-force-unwrap"
 printf '%s\n' "$pipeline_block" | grep -qF 'virtualDisplay?.release()' || r_s14_missing="$r_s14_missing pipeline-no-virtual-display-release"
 printf '%s\n' "$pipeline_block" | grep -qF 'surface = null' || r_s14_missing="$r_s14_missing pipeline-surface-not-nulled"
-printf '%s\n' "$pipeline_block" | grep -qF 'VoiceCallAudioCoordinator.setPlaybackCaptureProjection(null)' || r_s14_missing="$r_s14_missing pipeline-no-playback-owner-retirement"
+printf '%s\n' "$start_capture_block" | grep -qF 'VoiceCallAudioCoordinator.setPlaybackCaptureProjection(' || r_s14_missing="$r_s14_missing start-no-playback-owner-admission"
+printf '%s\n' "$start_capture_block" | grep -qF 'nativeServerGeneration' || r_s14_missing="$r_s14_missing start-playback-owner-not-generation-bound"
+printf '%s\n' "$pipeline_block" | grep -qF 'VoiceCallAudioCoordinator.setPlaybackCaptureProjection(' || r_s14_missing="$r_s14_missing pipeline-no-playback-owner-retirement"
+printf '%s\n' "$pipeline_block" | grep -qF 'nativeServerGeneration' || r_s14_missing="$r_s14_missing pipeline-playback-retirement-not-generation-bound"
 printf '%s\n' "$teardown_block" | grep -qF 'stopCapturePipeline(keepReusableDisplay = false)' || r_s14_missing="$r_s14_missing teardown-keeps-reusable-display"
 printf '%s\n' "$teardown_block" | grep -qF 'releaseMediaProjection()' || r_s14_missing="$r_s14_missing teardown-no-mediaProjection-stop"
 printf '%s\n' "$projection_release_block" | grep -qF 'projection.unregisterCallback(callback)' || r_s14_missing="$r_s14_missing projection-callback-not-unregistered"
@@ -13099,9 +13113,15 @@ printf '%s\n' "$virtual_display_block" | grep -qF 'catch (e: IllegalStateExcepti
 printf '%s\n' "$add_connection_block" | grep -qF 'jsonObject.getJSONObject("conn_type").getString("t")' || r_s14_missing="$r_s14_missing exact-connection-type-not-decoded"
 printf '%s\n' "$add_connection_block" | grep -qF 'if (connectionType == null)' || r_s14_missing="$r_s14_missing unknown-connection-type-not-rejected"
 printf '%s\n' "$add_connection_block" | grep -qF 'controlledCaptureOwners.upsert(id, authorized, connectionType)' || r_s14_missing="$r_s14_missing exact-capture-owner-not-upserted"
+printf '%s\n' "$add_connection_block" | grep -qF 'VoiceCallAudioCoordinator.registerControlledConnection(' || r_s14_missing="$r_s14_missing controlled-voice-owner-not-registered"
+printf '%s\n' "$add_connection_block" | grep -qF 'nativeServerGeneration' || r_s14_missing="$r_s14_missing controlled-voice-registration-not-generation-bound"
 printf '%s\n' "$add_connection_block" | grep -qF 'reconcileControlledCaptureDemand()' || r_s14_missing="$r_s14_missing capture-not-reconciled-after-owner-admission"
 printf '%s\n' "$remove_connection_kt_block" | grep -qF 'controlledCaptureOwners.unregister(id)' || r_s14_missing="$r_s14_missing exact-capture-owner-not-retired"
+printf '%s\n' "$remove_connection_kt_block" | grep -qF 'VoiceCallAudioCoordinator.unregisterControlledConnection(' || r_s14_missing="$r_s14_missing controlled-voice-owner-not-retired"
+printf '%s\n' "$remove_connection_kt_block" | grep -qF 'nativeServerGeneration' || r_s14_missing="$r_s14_missing controlled-voice-retirement-not-generation-bound"
 printf '%s\n' "$remove_connection_kt_block" | grep -qF 'reconcileControlledCaptureDemand()' || r_s14_missing="$r_s14_missing capture-not-reconciled-after-owner-retirement"
+printf '%s\n' "$update_voice_block" | grep -qF 'VoiceCallAudioCoordinator.setControlledVoiceCallActive(' || r_s14_missing="$r_s14_missing controlled-voice-state-not-updated"
+printf '%s\n' "$update_voice_block" | grep -qF 'nativeServerGeneration' || r_s14_missing="$r_s14_missing controlled-voice-update-not-generation-bound"
 awk 'previous ~ /^[[:space:]]*@Synchronized[[:space:]]*$/ && $0 ~ /^[[:space:]]*fun rustSetByName\(/ { serialized = 1 } { previous = $0 } END { exit serialized ? 0 : 1 }' "$r_s14_kt" || r_s14_missing="$r_s14_missing controlled-resource-dispatch-not-serialized"
 if printf '%s\n' "$add_connection_block" | grep -qE 'isFileTransfer|isViewCamera|isTerminal|portForward'; then
   r_s14_missing="$r_s14_missing reconstructed-connection-type"
@@ -13158,17 +13178,24 @@ if grep -qF 'Timer()' "$r_s14_input_kt" \
   r_s14_missing="$r_s14_missing retired-unbounded-input-timer-path"
 fi
 grep -qF 'old generation retirement selected the replacement owner' "$r_s14_input_test" || r_s14_missing="$r_s14_missing exact-input-generation-aba-regression"
+grep -qF 'private var greatestControlledServiceGeneration = 0L' "$r_s14_voice_owners_kt" || r_s14_missing="$r_s14_missing monotonic-controlled-audio-generation"
+grep -qF 'private var activeControlledServiceGeneration: Long? = null' "$r_s14_voice_owners_kt" || r_s14_missing="$r_s14_missing exact-active-controlled-audio-generation"
+grep -qF 'private var playbackProjection: Pair<Long, MediaProjection>? = null' "$r_s14_voice_coordinator_kt" || r_s14_missing="$r_s14_missing playback-projection-generation-owner"
+grep -qF 'if (!owners.clearControlledConnections(generation))' "$r_s14_voice_coordinator_kt" || r_s14_missing="$r_s14_missing stale-controlled-audio-clear-not-rejected"
+grep -qF 'if (playbackProjection?.first == generation)' "$r_s14_voice_coordinator_kt" || r_s14_missing="$r_s14_missing playback-clear-not-exact-generation"
+grep -qF 'stale generation cleared replacement controlled owners' "$r_s14_voice_test" || r_s14_missing="$r_s14_missing controlled-audio-generation-aba-regression"
 grep -qF '"(IIIII)Z"' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing pointer-jni-connection-id-or-result"
 grep -qF '"(I[B)Z"' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing key-jni-connection-id-or-result"
 grep -qF 'R-S11ei/R-S11e-153' HARDENING_STATUS.md || r_s14_missing="$r_s14_missing exact-input-ledger"
+grep -qF 'R-S11ek/R-S11e-169' HARDENING_STATUS.md || r_s14_missing="$r_s14_missing exact-controlled-audio-generation-ledger"
 grep -qF 'bind_main_service_generation(&env, &service, generation)' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing listener-callback-generation-not-exact-object-bound"
 grep -qF 'android_request_stop(' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing exact-generation-stop-jni-missing"
 grep -qF 'expected_generation.checked_add(1)' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing exact-generation-stop-overflow-gate-missing"
 grep -qF 'ANDROID_SERVER_GENERATION.compare_exchange(' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing stale-service-stop-not-rejected"
 if [ -n "$r_s14_missing" ]; then
-  echo "  FAIL R-S14/R-S11ei/R-S11e-153/R-T4: Android capture/input owner invariant is incomplete:$r_s14_missing"; rc=1
+  echo "  FAIL R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4: Android capture/input/audio owner invariant is incomplete:$r_s14_missing"; rc=1
 else
-  echo "  ok  R-S14/R-S11ei/R-S11e-153/R-T4 Android capture/input commits only for exact service-owned Remote IDs; delayed input is bounded and stale owners, callbacks, global stops, and server generations are rejected"
+  echo "  ok  R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4 Android capture/input/audio commits only for exact service-generation-owned Remote IDs; delayed input is bounded and stale owners, callbacks, global stops, and server generations are rejected"
 fi
 # R-X7a / R-G1 (no inert pinned-policy SELECTOR survives — removed, not greyed): verification-method +
 # approve-mode are R-S16-pinned (use-permanent-password / password), so a UI that PRESENTS+WRITES them

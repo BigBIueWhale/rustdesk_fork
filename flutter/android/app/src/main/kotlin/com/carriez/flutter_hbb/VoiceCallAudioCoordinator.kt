@@ -6,7 +6,7 @@ import android.media.projection.MediaProjection
 internal object VoiceCallAudioCoordinator {
     private val owners = VoiceCallOwnerState()
     private var audioRecordHandle: AudioRecordHandle? = null
-    private var playbackProjection: MediaProjection? = null
+    private var playbackProjection: Pair<Long, MediaProjection>? = null
 
     @Synchronized
     fun initialize(context: Context): Boolean {
@@ -17,29 +17,50 @@ internal object VoiceCallAudioCoordinator {
     }
 
     @Synchronized
-    fun registerControlledConnection(connectionId: Int): Boolean {
-        return owners.registerControlledConnection(connectionId)
+    fun beginControlledServiceGeneration(generation: Long): Boolean {
+        val alreadyCurrent = owners.isControlledServiceGeneration(generation)
+        if (!owners.beginControlledServiceGeneration(generation)) {
+            return false
+        }
+        if (!alreadyCurrent) {
+            playbackProjection = null
+        }
+        return reconcileRecorder()
     }
 
     @Synchronized
-    fun setControlledVoiceCallActive(connectionId: Int, active: Boolean): Boolean {
-        if (!owners.setControlledVoiceCallActive(connectionId, active)) {
+    fun registerControlledConnection(generation: Long, connectionId: Int): Boolean {
+        return owners.registerControlledConnection(generation, connectionId)
+    }
+
+    @Synchronized
+    fun setControlledVoiceCallActive(
+        generation: Long,
+        connectionId: Int,
+        active: Boolean,
+    ): Boolean {
+        if (!owners.setControlledVoiceCallActive(generation, connectionId, active)) {
             return false
         }
         return reconcileRecorder()
     }
 
     @Synchronized
-    fun unregisterControlledConnection(connectionId: Int): Boolean {
-        if (!owners.unregisterControlledConnection(connectionId)) {
+    fun unregisterControlledConnection(generation: Long, connectionId: Int): Boolean {
+        if (!owners.unregisterControlledConnection(generation, connectionId)) {
             return false
         }
         return reconcileRecorder()
     }
 
     @Synchronized
-    fun clearControlledConnections(): Boolean {
-        owners.clearControlledConnections()
+    fun clearControlledConnections(generation: Long): Boolean {
+        if (!owners.clearControlledConnections(generation)) {
+            return false
+        }
+        if (playbackProjection?.first == generation) {
+            playbackProjection = null
+        }
         return reconcileRecorder()
     }
 
@@ -79,8 +100,14 @@ internal object VoiceCallAudioCoordinator {
     }
 
     @Synchronized
-    fun setPlaybackCaptureProjection(projection: MediaProjection?): Boolean {
-        playbackProjection = projection
+    fun setPlaybackCaptureProjection(
+        generation: Long,
+        projection: MediaProjection?,
+    ): Boolean {
+        if (!owners.isControlledServiceGeneration(generation)) {
+            return false
+        }
+        playbackProjection = projection?.let { generation to it }
         return reconcileRecorder()
     }
 
@@ -92,7 +119,7 @@ internal object VoiceCallAudioCoordinator {
         if (owners.requiresVoiceCapture) {
             return recorder.switchToVoiceCall()
         }
-        val projection = playbackProjection
+        val projection = playbackProjection?.second
         if (projection != null) {
             return recorder.switchToPlaybackCapture(projection)
         }

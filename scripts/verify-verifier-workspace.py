@@ -15739,8 +15739,32 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android/shared audio receiver-retirement behavior contract",
         ),
         (
-            '"serialized exact-AuthConnType controlled-resource admission"',
-            "Android exact connection-type controlled-resource admission contract",
+            '"serialized generation-and-AuthConnType-bound controlled-resource admission"',
+            "Android generation-and-connection-type controlled-resource admission contract",
+        ),
+        (
+            '"positive monotonic idempotent controlled-service generation admission"',
+            "Android monotonic controlled-service generation contract",
+        ),
+        (
+            '"coordinator exact-generation teardown"',
+            "Android exact-generation audio coordinator teardown contract",
+        ),
+        (
+            '"closed-until-bound exact MainService generation ownership"',
+            "Android closed-until-bound service generation contract",
+        ),
+        (
+            '"same-ID generation-ABA registration refusal"',
+            "Android controlled-audio generation-ABA behavior contract",
+        ),
+        (
+            '"Android controlled-service audio generation requirement"',
+            "Android controlled-audio generation normative contract",
+        ),
+        (
+            '"Android controlled-service audio generation hardening ledger"',
+            "Android controlled-audio generation ledger contract",
         ),
         (
             '"get() = this == REMOTE || this == VIEW_CAMERA"',
@@ -15810,9 +15834,29 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android lost-response resume-retry source",
         ),
         (
+            "android_voice_call_owner_state",
+            "private var greatestControlledServiceGeneration = 0L",
+            "Android monotonic controlled-audio generation source",
+        ),
+        (
+            "android_voice_call_owner_state",
+            "activeControlledServiceGeneration == generation",
+            "Android exact active controlled-audio generation source",
+        ),
+        (
             "android_voice_call_coordinator",
             "internal object VoiceCallAudioCoordinator {",
             "Android process-wide coordinator source",
+        ),
+        (
+            "android_voice_call_coordinator",
+            "private var playbackProjection: Pair<Long, MediaProjection>? = null",
+            "Android generation-bound playback projection source",
+        ),
+        (
+            "android_voice_call_coordinator",
+            "fun beginControlledServiceGeneration(generation: Long): Boolean",
+            "Android controlled-audio generation transaction source",
         ),
         (
             "android_audio_record_handle",
@@ -15838,6 +15882,36 @@ def validate_android_voice_call_ownership_contract(sources):
             "android_main_service",
             '"remove_connection" ->',
             "Android controlled-owner retirement dispatch source",
+        ),
+        (
+            "android_main_service",
+            "VoiceCallAudioCoordinator.beginControlledServiceGeneration(",
+            "Android MainService audio-generation binding source",
+        ),
+        (
+            "android_main_service",
+            "VoiceCallAudioCoordinator.clearControlledConnections(nativeServerGeneration)",
+            "Android exact-generation audio teardown source",
+        ),
+        (
+            "android_voice_call_owner_test",
+            "stale generation cleared replacement controlled owners",
+            "Android controlled-audio generation-ABA behavior source",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ek</span>',
+            "Android controlled-audio generation requirement source",
+        ),
+        (
+            "requirements",
+            "<tr><td>290</td>",
+            "Android controlled-audio generation Appendix C source",
+        ),
+        (
+            "hardening",
+            "R-S11ek/R-S11e-169",
+            "Android controlled-audio generation ledger source",
         ),
         (
             "flutter_source",
@@ -18605,8 +18679,8 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         sources["verify"],
-        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11e-153/R-T4) =="',
-        "independent shared controlled-input gate label source",
+        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4) =="',
+        "independent shared controlled-input/audio generation gate label source",
     )
 
 
@@ -25535,6 +25609,9 @@ def validate_android_media_projection_finality_contract(sources):
     connection_type = sources["android_controlled_connection_type"]
     connection_type_test = sources["android_controlled_connection_type_test"]
     capture_owners = sources["android_controlled_capture_owner_state"]
+    voice_owners = sources["android_voice_call_owner_state"]
+    voice_coordinator = sources["android_voice_call_coordinator"]
+    voice_owner_test = sources["android_voice_call_owner_test"]
     ffi_kt = sources["android_ffi_kt"]
     android_ffi = sources["android_scrap_ffi"]
     flutter = sources["flutter_source"]
@@ -25546,7 +25623,7 @@ def validate_android_media_projection_finality_contract(sources):
     shared_gate = extract_between(
         verify,
         'echo "== Android MediaProjection/input lifecycle finality '
-        '(R-S14/R-S11ei/R-S11e-153/R-T4) =="',
+        '(R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4) =="',
         "# R-X7a / R-G1",
         "shared Android MediaProjection/input lifecycle gate",
     )
@@ -25566,6 +25643,42 @@ def validate_android_media_projection_finality_contract(sources):
         "grep -qF 'fun rustSetByName'",
         "retired quiet Android context pipeline",
     )
+    for text, label in (
+        (
+            "VoiceCallAudioCoordinator.clearControlledConnections(nativeServerGeneration)",
+            "exact-generation audio teardown",
+        ),
+        (
+            "VoiceCallAudioCoordinator.beginControlledServiceGeneration(",
+            "audio coordinator generation binding",
+        ),
+        (
+            "private var acceptingControlledConnections = false",
+            "closed-by-default controlled admission",
+        ),
+        (
+            "private var playbackProjection: Pair<Long, MediaProjection>? = null",
+            "generation-bound playback projection",
+        ),
+        (
+            "if (!owners.clearControlledConnections(generation))",
+            "stale controlled-audio clear refusal",
+        ),
+        (
+            "if (playbackProjection?.first == generation)",
+            "exact-generation playback clear",
+        ),
+        (
+            "stale generation cleared replacement controlled owners",
+            "controlled-audio generation-ABA behavior",
+        ),
+        ("R-S11ek/R-S11e-169", "controlled-audio generation ledger"),
+    ):
+        require_text(
+            shared_gate,
+            text,
+            f"current shared Android {label} gate",
+        )
 
     add_connection = extract_between(
         android,
@@ -25586,9 +25699,12 @@ def validate_android_media_projection_finality_contract(sources):
             "if (connectionType == null)",
             "return",
             "controlledCaptureOwners.upsert(id, authorized, connectionType)",
+            "VoiceCallAudioCoordinator.registerControlledConnection(",
+            "nativeServerGeneration",
+            "id",
             "reconcileControlledCaptureDemand()",
         ),
-        "Android exact-AuthConnType capture-owner admission and reconciliation",
+        "Android generation-and-AuthConnType-bound capture/audio admission and reconciliation",
     )
     for legacy in (
         'jsonObject["is_file_transfer"]',
@@ -25729,11 +25845,31 @@ def validate_android_media_projection_finality_contract(sources):
         (
             "val id = arg1.toIntOrNull()",
             "controlledCaptureOwners.unregister(id)",
-            "VoiceCallAudioCoordinator.unregisterControlledConnection(id)",
+            "VoiceCallAudioCoordinator.unregisterControlledConnection(",
+            "nativeServerGeneration",
+            "id",
             "reconcileControlledCaptureDemand()",
             "cancelNotification(id)",
         ),
-        "Android exact capture-owner retirement and reconciliation",
+        "Android exact-generation capture/audio-owner retirement and reconciliation",
+    )
+    update_voice = extract_between(
+        android,
+        '            "update_voice_call_state" -> {',
+        '            "half_scale" -> {',
+        "Android controlled voice update",
+    )
+    require_order(
+        update_voice,
+        (
+            'val id = jsonObject["id"] as Int',
+            'val inVoiceCall = jsonObject["in_voice_call"] as Boolean',
+            "VoiceCallAudioCoordinator.setControlledVoiceCallActive(",
+            "nativeServerGeneration",
+            "id",
+            "inVoiceCall",
+        ),
+        "Android exact-generation controlled voice update",
     )
     reconcile_capture = extract_between(
         android,
@@ -25760,8 +25896,10 @@ def validate_android_media_projection_finality_contract(sources):
     )
     require_text(
         start_capture,
-        "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(projection)",
-        "Android MediaProjection playback-owner admission",
+        "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(\n"
+        "                        nativeServerGeneration,\n"
+        "                        projection,",
+        "Android generation-bound MediaProjection playback-owner admission",
     )
     require_order(
         start_capture,
@@ -25775,7 +25913,9 @@ def validate_android_media_projection_finality_contract(sources):
             "releaseCaptureResources(clearCaptureRequest = false)",
             "requestMediaProjection()",
             "return false",
-            "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(projection)",
+            "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(",
+            "nativeServerGeneration",
+            "projection",
             "_isStart = true",
             'FFI.setFrameRawEnable("video",true)',
         ),
@@ -25804,8 +25944,10 @@ def validate_android_media_projection_finality_contract(sources):
         ("surface?.release()", "Surface release"),
         ("surface = null", "Surface clear"),
         (
-            "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(null)",
-            "exact playback-owner retirement",
+            "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(\n"
+            "                nativeServerGeneration,\n"
+            "                null,",
+            "exact-generation playback-owner retirement",
         ),
     ):
         require_text(capture_pipeline, text, f"Android capture pipeline {label}")
@@ -25958,9 +26100,9 @@ def validate_android_media_projection_finality_contract(sources):
             "acceptingControlledConnections = false",
             "controlledCaptureOwners.clear()",
             "releaseCaptureResources()",
-            "VoiceCallAudioCoordinator.clearControlledConnections()",
+            "VoiceCallAudioCoordinator.clearControlledConnections(nativeServerGeneration)",
         ),
-        "Android closed-admission controlled-resource teardown",
+        "Android closed-admission exact-generation controlled-resource teardown",
     )
     on_destroy = extract_between(
         android,
@@ -25990,9 +26132,252 @@ def validate_android_media_projection_finality_contract(sources):
             "FFI.init(this, applicationContext)",
             'nativeServerGeneration = FFI.startServer(this, configPath, "")',
             "if (nativeServerGeneration <= 0L)",
+            "VoiceCallAudioCoordinator.beginControlledServiceGeneration(",
+            "nativeServerGeneration",
+            "acceptingControlledConnections = true",
         ),
-        "Android exact native server generation ownership",
+        "Android closed-until-bound native/audio service generation ownership",
     )
+    require_text(
+        android,
+        "private var acceptingControlledConnections = false",
+        "Android closed-by-default controlled-resource admission",
+    )
+    for text, label in (
+        (
+            "private var greatestControlledServiceGeneration = 0L",
+            "monotonic controlled-service generation",
+        ),
+        (
+            "private var activeControlledServiceGeneration: Long? = null",
+            "exact active controlled-service generation",
+        ),
+    ):
+        require_text(voice_owners, text, f"Android voice owner {label}")
+    owner_begin = extract_between(
+        voice_owners,
+        "fun beginControlledServiceGeneration",
+        "fun isControlledServiceGeneration",
+        "Android voice owner controlled-service generation admission",
+    )
+    require_order(
+        owner_begin,
+        (
+            "generation <= 0",
+            "generation < greatestControlledServiceGeneration",
+            "generation == greatestControlledServiceGeneration",
+            "activeControlledServiceGeneration != generation",
+            "return false",
+            "if (activeControlledServiceGeneration == generation)",
+            "return true",
+            "greatestControlledServiceGeneration = generation",
+            "activeControlledServiceGeneration = generation",
+            "controlledConnections.clear()",
+            "activeControlledConnections.clear()",
+        ),
+        "Android voice owner monotonic controlled-service generation admission",
+    )
+    require_absent(
+        owner_begin,
+        "outgoingOwner",
+        "Android controlled-service generation replacement mutates outgoing ownership",
+    )
+    require_absent(
+        owner_begin,
+        "outgoingVoiceCallActive",
+        "Android controlled-service generation replacement mutates outgoing activity",
+    )
+    owner_identity = extract_between(
+        voice_owners,
+        "fun isControlledServiceGeneration",
+        "fun registerControlledConnection",
+        "Android voice owner controlled-service generation identity",
+    )
+    require_text(
+        owner_identity,
+        "generation > 0 && activeControlledServiceGeneration == generation",
+        "Android voice owner positive exact controlled-service generation identity",
+    )
+    owner_register = extract_between(
+        voice_owners,
+        "fun registerControlledConnection",
+        "fun setControlledVoiceCallActive",
+        "Android voice owner controlled registration",
+    )
+    require_order(
+        owner_register,
+        (
+            "if (!isControlledServiceGeneration(generation) || connectionId <= 0)",
+            "return false",
+            "controlledConnections.add(connectionId)",
+        ),
+        "Android voice owner generation-bound controlled registration",
+    )
+    owner_set = extract_between(
+        voice_owners,
+        "fun setControlledVoiceCallActive",
+        "fun unregisterControlledConnection",
+        "Android voice owner controlled update",
+    )
+    require_order(
+        owner_set,
+        (
+            "if (!isControlledServiceGeneration(generation)",
+            "!controlledConnections.contains(connectionId)",
+            "return false",
+            "activeControlledConnections.add(connectionId)",
+            "activeControlledConnections.remove(connectionId)",
+        ),
+        "Android voice owner generation-and-registration-bound controlled update",
+    )
+    owner_unregister = extract_between(
+        voice_owners,
+        "fun unregisterControlledConnection",
+        "fun clearControlledConnections",
+        "Android voice owner controlled retirement",
+    )
+    require_order(
+        owner_unregister,
+        (
+            "if (!isControlledServiceGeneration(generation) || connectionId <= 0)",
+            "return false",
+            "controlledConnections.remove(connectionId)",
+            "activeControlledConnections.remove(connectionId)",
+        ),
+        "Android voice owner generation-bound controlled retirement",
+    )
+    owner_clear = extract_between(
+        voice_owners,
+        "fun clearControlledConnections",
+        "fun invalidateOutgoingOwner",
+        "Android voice owner controlled teardown",
+    )
+    require_order(
+        owner_clear,
+        (
+            "if (!isControlledServiceGeneration(generation))",
+            "return false",
+            "controlledConnections.clear()",
+            "activeControlledConnections.clear()",
+            "activeControlledServiceGeneration = null",
+            "return true",
+        ),
+        "Android voice owner exact-generation controlled teardown",
+    )
+
+    require_text(
+        voice_coordinator,
+        "private var playbackProjection: Pair<Long, MediaProjection>? = null",
+        "Android audio coordinator generation-bound playback projection",
+    )
+    coordinator_begin = extract_between(
+        voice_coordinator,
+        "fun beginControlledServiceGeneration",
+        "fun registerControlledConnection",
+        "Android audio coordinator controlled-generation admission",
+    )
+    require_order(
+        coordinator_begin,
+        (
+            "val alreadyCurrent = owners.isControlledServiceGeneration(generation)",
+            "if (!owners.beginControlledServiceGeneration(generation))",
+            "return false",
+            "if (!alreadyCurrent)",
+            "playbackProjection = null",
+            "return reconcileRecorder()",
+        ),
+        "Android audio coordinator controlled-generation admission",
+    )
+    coordinator_register = extract_between(
+        voice_coordinator,
+        "fun registerControlledConnection",
+        "fun setControlledVoiceCallActive",
+        "Android audio coordinator controlled registration",
+    )
+    require_text(
+        coordinator_register,
+        "owners.registerControlledConnection(generation, connectionId)",
+        "Android audio coordinator exact-generation controlled registration",
+    )
+    coordinator_set = extract_between(
+        voice_coordinator,
+        "fun setControlledVoiceCallActive",
+        "fun unregisterControlledConnection",
+        "Android audio coordinator controlled update",
+    )
+    require_text(
+        coordinator_set,
+        "owners.setControlledVoiceCallActive(generation, connectionId, active)",
+        "Android audio coordinator exact-generation controlled update",
+    )
+    coordinator_unregister = extract_between(
+        voice_coordinator,
+        "fun unregisterControlledConnection",
+        "fun clearControlledConnections",
+        "Android audio coordinator controlled retirement",
+    )
+    require_text(
+        coordinator_unregister,
+        "owners.unregisterControlledConnection(generation, connectionId)",
+        "Android audio coordinator exact-generation controlled retirement",
+    )
+    coordinator_clear = extract_between(
+        voice_coordinator,
+        "fun clearControlledConnections",
+        "fun invalidateOutgoingOwner",
+        "Android audio coordinator controlled teardown",
+    )
+    require_order(
+        coordinator_clear,
+        (
+            "if (!owners.clearControlledConnections(generation))",
+            "return false",
+            "if (playbackProjection?.first == generation)",
+            "playbackProjection = null",
+            "return reconcileRecorder()",
+        ),
+        "Android audio coordinator exact-generation controlled teardown",
+    )
+    coordinator_projection = extract_between(
+        voice_coordinator,
+        "fun setPlaybackCaptureProjection",
+        "private fun reconcileRecorder",
+        "Android audio coordinator playback update",
+    )
+    require_order(
+        coordinator_projection,
+        (
+            "if (!owners.isControlledServiceGeneration(generation))",
+            "return false",
+            "playbackProjection = projection?.let { generation to it }",
+            "return reconcileRecorder()",
+        ),
+        "Android audio coordinator exact-generation playback update",
+    )
+    for text, label in (
+        (
+            "stale generation registered a same-number controlled owner",
+            "same-ID generation-ABA registration",
+        ),
+        (
+            "stale generation cleared replacement controlled owners",
+            "stale-generation teardown refusal",
+        ),
+        (
+            "current generation idempotent begin cleared live owners",
+            "idempotent current-generation preservation",
+        ),
+        (
+            "controlled-service replacement cleared the outgoing owner",
+            "controlled replacement preserves outgoing ownership",
+        ),
+        (
+            "superseded controlled generation was reactivated",
+            "superseded-generation refusal",
+        ),
+        ("retired generation was reactivated", "retired-generation refusal"),
+    ):
+        require_text(voice_owner_test, text, f"Android audio behavior {label}")
     require_text(
         ffi_kt,
         "external fun init(service: Context, applicationContext: Context)",
@@ -26283,8 +26668,23 @@ def validate_android_media_projection_finality_contract(sources):
         "current shared Android serialization-gate hardening ledger",
     )
     require_text(
+        sources["requirements"],
+        '<span class="id">R-S11ek</span>',
+        "Android controlled-service audio generation requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>290</td>",
+        "Android controlled-service audio generation Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ek/R-S11e-169",
+        "Android controlled-service audio generation hardening ledger",
+    )
+    require_text(
         sources["verify"],
-        "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11e-153/R-T4)",
+        "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4)",
         "Android MediaProjection shared source gate",
     )
     require_text(
@@ -26295,7 +26695,7 @@ def validate_android_media_projection_finality_contract(sources):
     require_text(
         sources["verify"],
         "delayed input is bounded and stale owners, callbacks, global stops, and server generations are rejected",
-        "Android service-owned capture-demand shared gate",
+        "Android service-generation-owned capture/audio shared gate",
     )
 
 
@@ -47416,9 +47816,9 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11e-153/R-T4) =="',
-            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11e-153/R-T4) =="',
-            "independent shared controlled-input gate label source",
+            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4) =="',
+            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11e-153/R-S11e-169/R-T4) =="',
+            "independent shared controlled-input/audio generation gate label source",
         ),
         (
             "android_voice_call_ownership_verifier",
@@ -53559,7 +53959,7 @@ def run_source_mutations(sources):
             "android_main_service",
             "controlledCaptureOwners.upsert(id, authorized, connectionType)",
             "true",
-            "Android exact-AuthConnType capture-owner admission and reconciliation",
+            "Android generation-and-AuthConnType-bound capture/audio admission and reconciliation",
         ),
         (
             "android_main_service",
@@ -53575,15 +53975,67 @@ def run_source_mutations(sources):
         ),
         (
             "android_main_service",
-            "acceptingControlledConnections = false",
-            "acceptingControlledConnections = true",
-            "independent generation input teardown source",
+            "acceptingControlledConnections = false\n"
+            "        controlledCaptureOwners.clear()",
+            "acceptingControlledConnections = true\n"
+            "        controlledCaptureOwners.clear()",
+            "Android closed-admission exact-generation controlled-resource teardown",
+        ),
+        (
+            "android_main_service",
+            "private var acceptingControlledConnections = false",
+            "private var acceptingControlledConnections = true",
+            "Android closed-by-default controlled-resource admission",
         ),
         (
             "android_main_service",
             'nativeServerGeneration = FFI.startServer(this, configPath, "")',
             'FFI.startServer(configPath, "")',
-            "Android exact native server generation ownership",
+            "Android closed-until-bound native/audio service generation ownership",
+        ),
+        (
+            "android_main_service",
+            "VoiceCallAudioCoordinator.beginControlledServiceGeneration(\n"
+            "                nativeServerGeneration",
+            "VoiceCallAudioCoordinator.beginControlledServiceGeneration(\n"
+            "                1",
+            "Android closed-until-bound native/audio service generation ownership",
+        ),
+        (
+            "android_main_service",
+            "VoiceCallAudioCoordinator.registerControlledConnection(\n"
+            "                            nativeServerGeneration,\n"
+            "                            id,",
+            "VoiceCallAudioCoordinator.registerControlledConnection(\n"
+            "                            1,\n"
+            "                            id,",
+            "Android generation-and-AuthConnType-bound capture/audio admission and reconciliation",
+        ),
+        (
+            "android_main_service",
+            "VoiceCallAudioCoordinator.unregisterControlledConnection(\n"
+            "                            nativeServerGeneration,\n"
+            "                            id,",
+            "VoiceCallAudioCoordinator.unregisterControlledConnection(\n"
+            "                            1,\n"
+            "                            id,",
+            "Android exact-generation capture/audio-owner retirement and reconciliation",
+        ),
+        (
+            "android_main_service",
+            "VoiceCallAudioCoordinator.setControlledVoiceCallActive(\n"
+            "                            nativeServerGeneration,\n"
+            "                            id,",
+            "VoiceCallAudioCoordinator.setControlledVoiceCallActive(\n"
+            "                            1,\n"
+            "                            id,",
+            "Android exact-generation controlled voice update",
+        ),
+        (
+            "android_main_service",
+            "VoiceCallAudioCoordinator.clearControlledConnections(nativeServerGeneration)",
+            "true",
+            "Android exact-generation audio teardown source",
         ),
         (
             "android_main_service",
@@ -53599,15 +54051,183 @@ def run_source_mutations(sources):
         ),
         (
             "android_main_service",
-            "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(projection)",
-            "true",
-            "Android MediaProjection playback-owner admission",
+            "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(\n"
+            "                        nativeServerGeneration,\n"
+            "                        projection,",
+            "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(\n"
+            "                        1,\n"
+            "                        projection,",
+            "Android generation-bound MediaProjection playback-owner admission",
         ),
         (
             "android_main_service",
-            "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(null)",
-            "true",
-            "Android capture pipeline exact playback-owner retirement",
+            "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(\n"
+            "                nativeServerGeneration,\n"
+            "                null,",
+            "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(\n"
+            "                1,\n"
+            "                null,",
+            "Android capture pipeline exact-generation playback-owner retirement",
+        ),
+        (
+            "android_voice_call_owner_state",
+            "generation < greatestControlledServiceGeneration",
+            "false",
+            "Android voice owner monotonic controlled-service generation admission",
+        ),
+        (
+            "android_voice_call_owner_state",
+            "activeControlledServiceGeneration != generation",
+            "false",
+            "Android voice owner monotonic controlled-service generation admission",
+        ),
+        (
+            "android_voice_call_owner_state",
+            "if (activeControlledServiceGeneration == generation)",
+            "if (false)",
+            "Android voice owner monotonic controlled-service generation admission",
+        ),
+        (
+            "android_voice_call_owner_state",
+            "activeControlledServiceGeneration = generation",
+            "activeControlledServiceGeneration = null",
+            "Android voice owner monotonic controlled-service generation admission",
+        ),
+        (
+            "android_voice_call_owner_state",
+            "activeControlledServiceGeneration = generation\n"
+            "        controlledConnections.clear()\n"
+            "        activeControlledConnections.clear()",
+            "activeControlledServiceGeneration = generation\n"
+            "        controlledConnections.clear()\n"
+            "        activeControlledConnections.clear()\n"
+            "        outgoingOwner = null",
+            "Android controlled-service generation replacement mutates outgoing ownership",
+        ),
+        (
+            "android_voice_call_owner_state",
+            "fun registerControlledConnection(generation: Long, connectionId: Int): Boolean {\n"
+            "        if (!isControlledServiceGeneration(generation) || connectionId <= 0)",
+            "fun registerControlledConnection(generation: Long, connectionId: Int): Boolean {\n"
+            "        if (connectionId <= 0)",
+            "Android voice owner generation-bound controlled registration",
+        ),
+        (
+            "android_voice_call_owner_state",
+            "if (!isControlledServiceGeneration(generation) ||\n"
+            "            !controlledConnections.contains(connectionId)",
+            "if (!controlledConnections.contains(connectionId)",
+            "Android voice owner generation-and-registration-bound controlled update",
+        ),
+        (
+            "android_voice_call_owner_state",
+            "fun unregisterControlledConnection(generation: Long, connectionId: Int): Boolean {\n"
+            "        if (!isControlledServiceGeneration(generation) || connectionId <= 0)",
+            "fun unregisterControlledConnection(generation: Long, connectionId: Int): Boolean {\n"
+            "        if (connectionId <= 0)",
+            "Android voice owner generation-bound controlled retirement",
+        ),
+        (
+            "android_voice_call_owner_state",
+            "if (!isControlledServiceGeneration(generation)) {\n"
+            "            return false\n"
+            "        }\n"
+            "        controlledConnections.clear()",
+            "if (false) {\n"
+            "            return false\n"
+            "        }\n"
+            "        controlledConnections.clear()",
+            "Android voice owner exact-generation controlled teardown",
+        ),
+        (
+            "android_voice_call_coordinator",
+            "val alreadyCurrent = owners.isControlledServiceGeneration(generation)",
+            "val alreadyCurrent = false",
+            "Android audio coordinator controlled-generation admission",
+        ),
+        (
+            "android_voice_call_coordinator",
+            "if (!owners.beginControlledServiceGeneration(generation))",
+            "if (false)",
+            "Android audio coordinator controlled-generation admission",
+        ),
+        (
+            "android_voice_call_coordinator",
+            "owners.registerControlledConnection(generation, connectionId)",
+            "owners.registerControlledConnection(1, connectionId)",
+            "Android audio coordinator exact-generation controlled registration",
+        ),
+        (
+            "android_voice_call_coordinator",
+            "owners.setControlledVoiceCallActive(generation, connectionId, active)",
+            "owners.setControlledVoiceCallActive(1, connectionId, active)",
+            "Android audio coordinator exact-generation controlled update",
+        ),
+        (
+            "android_voice_call_coordinator",
+            "owners.unregisterControlledConnection(generation, connectionId)",
+            "owners.unregisterControlledConnection(1, connectionId)",
+            "Android audio coordinator exact-generation controlled retirement",
+        ),
+        (
+            "android_voice_call_coordinator",
+            "if (!owners.clearControlledConnections(generation))",
+            "if (false)",
+            "Android audio coordinator exact-generation controlled teardown",
+        ),
+        (
+            "android_voice_call_coordinator",
+            "if (playbackProjection?.first == generation)",
+            "if (playbackProjection != null)",
+            "Android audio coordinator exact-generation controlled teardown",
+        ),
+        (
+            "android_voice_call_coordinator",
+            "if (!owners.isControlledServiceGeneration(generation))",
+            "if (false)",
+            "Android audio coordinator exact-generation playback update",
+        ),
+        (
+            "android_voice_call_coordinator",
+            "projection?.let { generation to it }",
+            "projection?.let { 1L to it }",
+            "Android audio coordinator exact-generation playback update",
+        ),
+        (
+            "android_voice_call_owner_test",
+            "stale generation cleared replacement controlled owners",
+            "stale generation clear passed",
+            "Android controlled-audio generation-ABA behavior source",
+        ),
+        (
+            "android_voice_call_owner_test",
+            "controlled-service replacement cleared the outgoing owner",
+            "controlled-service replacement passed",
+            "Android audio behavior controlled replacement preserves outgoing ownership",
+        ),
+        (
+            "android_voice_call_owner_test",
+            "superseded controlled generation was reactivated",
+            "superseded controlled generation passed",
+            "Android audio behavior superseded-generation refusal",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ek</span>',
+            '<span class="id">R-S11ek-disabled</span>',
+            "Android controlled-audio generation requirement source",
+        ),
+        (
+            "requirements",
+            "<tr><td>290</td>",
+            "<tr><td>290-disabled</td>",
+            "Android controlled-audio generation Appendix C source",
+        ),
+        (
+            "hardening",
+            "R-S11ek/R-S11e-169",
+            "R-S11ek-disabled/R-S11e-169",
+            "Android controlled-audio generation ledger source",
         ),
         (
             "client_io_loop",
@@ -53942,9 +54562,57 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11e-153/R-T4)",
-            "Android MediaProjection/input lifecycle compatibility (R-S14/R-S11ei/R-S11e-153/R-T4)",
-            "independent shared controlled-input gate label source",
+            "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4)",
+            "Android MediaProjection/input lifecycle compatibility (R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4)",
+            "independent shared controlled-input/audio generation gate label source",
+        ),
+        (
+            "verify",
+            "VoiceCallAudioCoordinator.clearControlledConnections(nativeServerGeneration)",
+            "VoiceCallAudioCoordinator.clearControlledConnections()",
+            "current shared Android exact-generation audio teardown gate",
+        ),
+        (
+            "verify",
+            "VoiceCallAudioCoordinator.beginControlledServiceGeneration(",
+            "VoiceCallAudioCoordinator.beginControlledServiceGenerationDisabled(",
+            "current shared Android audio coordinator generation binding gate",
+        ),
+        (
+            "verify",
+            "private var acceptingControlledConnections = false",
+            "private var acceptingControlledConnections = true",
+            "current shared Android closed-by-default controlled admission gate",
+        ),
+        (
+            "verify",
+            "private var playbackProjection: Pair<Long, MediaProjection>? = null",
+            "private var playbackProjection: MediaProjection? = null",
+            "current shared Android generation-bound playback projection gate",
+        ),
+        (
+            "verify",
+            "if (!owners.clearControlledConnections(generation))",
+            "if (false)",
+            "current shared Android stale controlled-audio clear refusal gate",
+        ),
+        (
+            "verify",
+            "if (playbackProjection?.first == generation)",
+            "if (playbackProjection != null)",
+            "current shared Android exact-generation playback clear gate",
+        ),
+        (
+            "verify",
+            "stale generation cleared replacement controlled owners",
+            "stale generation clear passed",
+            "current shared Android controlled-audio generation-ABA behavior gate",
+        ),
+        (
+            "verify",
+            "grep -qF 'R-S11ek/R-S11e-169' HARDENING_STATUS.md",
+            "true # controlled-audio generation ledger gate disabled",
+            "current shared Android controlled-audio generation ledger gate",
         ),
         (
             "verify",

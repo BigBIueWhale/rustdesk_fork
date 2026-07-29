@@ -20555,6 +20555,14 @@ def validate_windows_helper_authority_contract(sources):
          "Windows helper focused recursive-bind binding"),
         ("finite Windows-helper file-size ceiling",
          "Windows helper focused resource binding"),
+        (
+            'completion_start = \'    log "waiting for win-guest-setup to COMPLETE\'',
+            "Windows helper focused exact completion-phase start",
+        ),
+        (
+            'completion_end = "\\n}\\n\\ncleanup_provision() {"',
+            "Windows helper focused exact completion-phase end",
+        ),
     ):
         require_text(focused, text, label)
     for text, label in (
@@ -20748,9 +20756,14 @@ def validate_windows_helper_authority_contract(sources):
         ),
         "Windows provision existing-golden hash-before-inspection",
     )
-    provision_loop = provision[provision.index("    while true; do") :]
+    provision_completion = extract_between(
+        provision,
+        '    log "waiting for win-guest-setup to COMPLETE',
+        "\n}\n\ncleanup_provision() {",
+        "Windows provision exact completion phase",
+    )
     require_order(
-        provision_loop,
+        provision_completion,
         (
             "if golden_has_done_marker; then",
             'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
@@ -20798,6 +20811,11 @@ def validate_windows_helper_authority_contract(sources):
         "current Windows helper authority Appendix C row",
     )
     require_text(
+        sources["requirements"],
+        "<tr><td>292</td>",
+        "Windows helper completion-order verifier Appendix C row",
+    )
+    require_text(
         sources["hardening"],
         "R-S11ch/R-S11e-100 — Windows helper container and KVM authority",
         "Windows helper authority hardening ledger",
@@ -20806,6 +20824,11 @@ def validate_windows_helper_authority_contract(sources):
         sources["hardening"],
         "R-S11do/R-S11e-133 — Windows-helper fixed local-Docker, mount, resource, KVM, and cleanup authority",
         "current Windows helper authority hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ch/R-S11e-171 — Windows helper completion-order verifier exact phase scoping",
+        "Windows helper completion-order verifier hardening ledger",
     )
 
 
@@ -51128,6 +51151,18 @@ def run_source_mutations(sources):
             "Windows helper focused forbidden-authority enforcement",
         ),
         (
+            "windows_helper_authority_verifier",
+            'completion_start = \'    log "waiting for win-guest-setup to COMPLETE\'',
+            'completion_start = "    while true; do"',
+            "Windows helper focused exact completion-phase start",
+        ),
+        (
+            "windows_helper_authority_verifier",
+            'completion_end = "\\n}\\n\\ncleanup_provision() {"',
+            'completion_end = "\\n}\\n\\ncleanup_provision_disabled() {"',
+            "Windows helper focused exact completion-phase end",
+        ),
+        (
             "windows_helper_runtime",
             "local_docker run --rm --pull=never --network=none --read-only",
             "run --rm",
@@ -51392,6 +51427,12 @@ def run_source_mutations(sources):
             "Windows provision marker/final-hash/acceptance order",
         ),
         (
+            "windows_provision",
+            '    log "waiting for win-guest-setup to COMPLETE',
+            '    log "waiting for an unspecified provision phase',
+            "Windows provision exact completion phase",
+        ),
+        (
             "windows_golden_verify",
             'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
             "true # diagnostic golden prehash removed",
@@ -51434,6 +51475,12 @@ def run_source_mutations(sources):
             "current Windows helper authority Appendix C row",
         ),
         (
+            "requirements",
+            "<tr><td>292</td>",
+            "<tr><td>292-disabled</td>",
+            "Windows helper completion-order verifier Appendix C row",
+        ),
+        (
             "hardening",
             "R-S11ch/R-S11e-100 — Windows helper container and KVM authority",
             "R-S11ch/R-S11e-100 — Windows ambient helper authority",
@@ -51444,6 +51491,12 @@ def run_source_mutations(sources):
             "R-S11do/R-S11e-133 — Windows-helper fixed local-Docker, mount, resource, KVM, and cleanup authority",
             "R-S11do/R-S11e-133 — Windows-helper ambient authority",
             "current Windows helper authority hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11ch/R-S11e-171 — Windows helper completion-order verifier exact phase scoping",
+            "R-S11ch/R-S11e-171 — Windows helper ambient completion-order verifier",
+            "Windows helper completion-order verifier hardening ledger",
         ),
         (
             "windows_provision",

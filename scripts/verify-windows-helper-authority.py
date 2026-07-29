@@ -426,9 +426,25 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "existing golden hash-before-marker inspection",
     )
-    provision_loop = provision[provision.index("    while true; do") :]
+    completion_start = '    log "waiting for win-guest-setup to COMPLETE'
+    completion_end = "\n}\n\ncleanup_provision() {"
+    require_count(
+        provision,
+        completion_start,
+        1,
+        "one provision completion-phase anchor",
+    )
+    require_count(
+        provision,
+        completion_end,
+        1,
+        "one provision completion-phase boundary",
+    )
+    provision_completion = provision[
+        provision.index(completion_start) : provision.index(completion_end)
+    ]
     require_order(
-        provision_loop,
+        provision_completion,
         (
             "if golden_has_done_marker; then",
             'verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"',
@@ -521,6 +537,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(sources["requirements"], "<tr><td>227</td>", "Appendix C #227 disposition")
     require(sources["requirements"], "<tr><td>268</td>", "Appendix C #268 disposition")
+    require(sources["requirements"], "<tr><td>292</td>", "Appendix C #292 disposition")
     require(
         sources["hardening"],
         "R-S11ch/R-S11e-100 — Windows helper container and KVM authority",
@@ -530,6 +547,11 @@ def validate(sources: Dict[str, str]) -> None:
         sources["hardening"],
         "R-S11do/R-S11e-133 — Windows-helper fixed local-Docker, mount, resource, KVM, and cleanup authority",
         "current Windows-helper hardening-ledger disposition",
+    )
+    require(
+        sources["hardening"],
+        "R-S11ch/R-S11e-171 — Windows helper completion-order verifier exact phase scoping",
+        "completion-order verifier hardening-ledger disposition",
     )
     require(
         sources["workspace"],
@@ -892,6 +914,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "provision final hash before acceptance",
     ),
     Mutation(
+        "provision",
+        '    log "waiting for win-guest-setup to COMPLETE',
+        '    log "waiting for an unspecified provision phase',
+        "provision completion-phase anchor",
+    ),
+    Mutation(
         "golden_verify",
         'windows_helper_runtime_resolve "$ONLINE_DIR/build-images/win-helper.docker.tar.gz"',
         "true # golden verifier helper authority resolution removed",
@@ -973,6 +1001,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
              "Appendix C #227 disposition"),
     Mutation("requirements", "<tr><td>268</td>", "<tr><td>268-disabled</td>",
              "Appendix C #268 disposition"),
+    Mutation("requirements", "<tr><td>292</td>", "<tr><td>292-disabled</td>",
+             "Appendix C #292 disposition"),
     Mutation("hardening", "R-S11ch/R-S11e-100 — Windows helper container and KVM authority",
              "R-S11ch/R-S11e-100 — Windows ambient helper authority",
              "hardening ledger"),
@@ -981,6 +1011,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "R-S11do/R-S11e-133 — Windows-helper fixed local-Docker, mount, resource, KVM, and cleanup authority",
         "R-S11do/R-S11e-133 — Windows-helper ambient authority",
         "current Windows-helper hardening ledger",
+    ),
+    Mutation(
+        "hardening",
+        "R-S11ch/R-S11e-171 — Windows helper completion-order verifier exact phase scoping",
+        "R-S11ch/R-S11e-171 — Windows helper ambient completion-order verifier",
+        "completion-order verifier hardening ledger",
     ),
     Mutation(
         "workspace",

@@ -14011,6 +14011,65 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Exact cold R-B2/R-B10 artifacts, executable libvirt/VM behavior,
   installed/native/device evidence, separately required reproduction, and
   R-V3 external review remain open; the Ralph loop remains active.
+- **R-S11ch/R-S11e-171 — Windows helper completion-order verifier exact phase scoping —
+  SOURCE CORRECTED AND CONFINED FOCUSED/INDEPENDENT MUTATION VERIFIED 2026-07-29;
+  EXECUTABLE LIBVIRT/VM AND COLD RELEASE EVIDENCE OPEN.**
+  Platform: source-only Windows-helper authority verification. Endpoint/action:
+  the proof that a provision-owned in-progress golden is accepted only after
+  its completion marker and final pinned SHA-256 are both present. Boundary:
+  generic loops and earlier established-golden checks elsewhere in
+  `scripts/provision-windows-vm.sh` ↔ the exact post-install completion phase
+  whose ordering the focused and independent verifiers claim to prove.
+
+  The strict-umask canonical verification of published exact-setsid-admission
+  commit `3ae4974f43af37beb8028ec4b044bb81236d3a29` passed the complete
+  independent mutation catalog and both new process-group focused gates, then
+  failed the older focused helper gate with `provision marker, final hash, and
+  acceptance is incomplete or misordered`. That verifier sliced from
+  `provision.index("    while true; do")`; the exact admission helper had
+  legitimately introduced an earlier loop. The widened slice therefore
+  included established-golden handling, where the required pre-inspection
+  hash precedes its marker test. The focused verifier's first-occurrence order
+  helper compared that unrelated prehash with the later completion marker and
+  emitted a false failure. Source inspection proved that the real completion
+  branch still retains marker, final hash, exact-domain retirement, and success
+  logging in the required order. This was verifier phase-selection and
+  availability debt, not a production VM/helper failure.
+
+  The focused verifier now requires exactly one post-install
+  `waiting for win-guest-setup to COMPLETE` phase anchor and exactly one
+  `build_golden` terminal boundary, slices only between those edges, and proves
+  marker then final pinned hash then acceptance inside that exact phase. The
+  independent workspace contract uses its bounded extractor against the same
+  two edges. Focused and independent deliberate mutations bind the phase
+  anchor, adjacent final hash, Appendix C #292, and this ledger. A generic loop
+  introduced anywhere else can no longer select or widen the proof.
+
+  Confined verification used cached immutable development image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric UID:GID 1000:1000 with no pull/network, read-only root and source,
+  all capabilities dropped, no-new-privileges, bounded PID/memory/no-swap/CPU,
+  non-executable scratch, and no port, device, Docker socket, or host namespace.
+  Python source parsing, the independent baseline, native-codec normal and
+  negative gates, and the focused verifier passed; the focused verifier
+  rejected all 81 deliberate mutations. The final complete unsliced
+  independent source-mutation catalog restarted at mutation one and passed
+  under umask 0077.
+
+  Preliminary catalog results were retained rather than hidden. The first run
+  found that the independent contract bound only a descriptive label rather
+  than the focused verifier's exact completion-start assignment. After both
+  exact start/end assignments were bound, the next two complete runs correctly
+  rejected the start-anchor mutations but stopped because their expected
+  diagnostic labels lagged the new exact start and production-phase labels.
+  Those fixture labels were aligned with the actual rejecting contracts, and
+  the fourth complete run passed from mutation one.
+
+  No production launcher behavior is changed by this verifier-only follow-up.
+  The failed canonical log is retained privately as exact published-state
+  evidence. No root/sudo, RustDesk/service/configuration/firewall/network,
+  listener/port, Docker port/device/socket, libvirt/VM, cold release,
+  APK/device, or online-acquisition action is authorized or claimed.
 - **R-S11dt/R-S11e-138 — Windows build run-state cleanup is identity-bound and authority-last —
   SOURCE IMPLEMENTED AND CONFINED SOURCE/MUTATION VERIFIED 2026-07-26;
   EXECUTABLE WINDOWS-BUILD/LIBVIRT/VM EVIDENCE PENDING.**
@@ -15687,7 +15746,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-160d0744984f040571f8011c14ae885fb65c79d4765545c72358ead8a0d9c64b  requirements.html
+b7223a25b358668dc2b84a89049552de03289e2bd06fab5e8909627abe45a9e2  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

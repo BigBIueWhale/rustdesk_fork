@@ -1077,6 +1077,24 @@ count, and this ledger entry. Apple product source, toolchain inputs, container 
 runtime behavior, Android code, APK/device state, installed services, host processes, listeners, firewall, and
 network state are unchanged.
 
+Follow-up verifier correction (2026-07-29),
+**R-S11e-167 current shared Android serialization-gate authority**: the shared Android lifecycle shell gate
+attempted to prove that `MainService.rustSetByName` is synchronized with
+`grep -qA2 '@Synchronized' ... | grep -qF 'fun rustSetByName'`. The first grep's quiet mode suppresses all
+selected and context output, so the downstream grep deterministically receives no bytes and reports the
+current synchronized declaration missing. The Kotlin product already has the exact adjacent
+`@Keep`, `@Synchronized`, and `fun rustSetByName` lines. Both the focused Android ownership verifier and the
+independent workspace product contract already require that exact declaration, deliberately remove the
+annotation, and bind owner-set mutation plus capture reconciliation inside the serialized dispatch.
+
+The shared gate now uses one direct `awk` adjacency predicate: an exact annotation-only `@Synchronized` line
+must be immediately followed by the `rustSetByName` declaration. This replaces both the broken quiet-context
+pipeline and its weaker repository-wide annotation-presence check. The independent workspace validator
+extracts the exact shared Android lifecycle block, binds the current predicate, rejects the retired quiet
+pipeline, deliberately neutralizes the predicate, and binds this ledger entry. Kotlin/product code, service
+persistence, capture/input ownership, protocol behavior, APK/device state, installed services, host processes,
+listeners, firewall, network state, and release outputs are unchanged.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust

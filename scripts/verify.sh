@@ -13102,8 +13102,7 @@ printf '%s\n' "$add_connection_block" | grep -qF 'controlledCaptureOwners.upsert
 printf '%s\n' "$add_connection_block" | grep -qF 'reconcileControlledCaptureDemand()' || r_s14_missing="$r_s14_missing capture-not-reconciled-after-owner-admission"
 printf '%s\n' "$remove_connection_kt_block" | grep -qF 'controlledCaptureOwners.unregister(id)' || r_s14_missing="$r_s14_missing exact-capture-owner-not-retired"
 printf '%s\n' "$remove_connection_kt_block" | grep -qF 'reconcileControlledCaptureDemand()' || r_s14_missing="$r_s14_missing capture-not-reconciled-after-owner-retirement"
-grep -qF '@Synchronized' "$r_s14_kt" || r_s14_missing="$r_s14_missing service-dispatch-not-serialized"
-grep -qA2 '@Synchronized' "$r_s14_kt" | grep -qF 'fun rustSetByName' || r_s14_missing="$r_s14_missing controlled-resource-dispatch-not-serialized"
+awk 'previous ~ /^[[:space:]]*@Synchronized[[:space:]]*$/ && $0 ~ /^[[:space:]]*fun rustSetByName\(/ { serialized = 1 } { previous = $0 } END { exit serialized ? 0 : 1 }' "$r_s14_kt" || r_s14_missing="$r_s14_missing controlled-resource-dispatch-not-serialized"
 if printf '%s\n' "$add_connection_block" | grep -qE 'isFileTransfer|isViewCamera|isTerminal|portForward'; then
   r_s14_missing="$r_s14_missing reconstructed-connection-type"
 fi

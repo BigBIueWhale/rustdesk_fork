@@ -25476,6 +25476,7 @@ def validate_online_fetch_android_ndk_output_authority_contract(sources):
 
 def validate_android_media_projection_finality_contract(sources):
     android = sources["android_main_service"]
+    verify = sources["verify"]
     cm = sources["ui_cm_source"]
     connection_type = sources["android_controlled_connection_type"]
     connection_type_test = sources["android_controlled_connection_type_test"]
@@ -25487,6 +25488,30 @@ def validate_android_media_projection_finality_contract(sources):
     server = sources["server_source"]
     server_connection = sources["connection_source"]
     direct_service = sources["direct_service"]
+
+    shared_gate = extract_between(
+        verify,
+        'echo "== Android MediaProjection/input lifecycle finality '
+        '(R-S14/R-S11ei/R-S11e-153/R-T4) =="',
+        "# R-X7a / R-G1",
+        "shared Android MediaProjection/input lifecycle gate",
+    )
+    require_text(
+        shared_gate,
+        "awk 'previous ~ /^[[:space:]]*@Synchronized[[:space:]]*$/ "
+        "&& $0 ~ /^[[:space:]]*fun rustSetByName\\(/ "
+        "{ serialized = 1 } { previous = $0 } "
+        "END { exit serialized ? 0 : 1 }' \"$r_s14_kt\" "
+        '|| r_s14_missing="$r_s14_missing '
+        'controlled-resource-dispatch-not-serialized"',
+        "current shared Android controlled-resource serialization gate",
+    )
+    require_absent(
+        shared_gate,
+        "grep -qA2 '@Synchronized' \"$r_s14_kt\" | "
+        "grep -qF 'fun rustSetByName'",
+        "retired quiet Android context pipeline",
+    )
 
     add_connection = extract_between(
         android,
@@ -26197,6 +26222,11 @@ def validate_android_media_projection_finality_contract(sources):
         sources["hardening"],
         "`startServer(this, ...)` returns that exact generation only after JNI proves",
         "Android exact-object listener-generation hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11e-167 current shared Android serialization-gate authority",
+        "current shared Android serialization-gate hardening ledger",
     )
     require_text(
         sources["verify"],
@@ -53347,6 +53377,23 @@ def run_source_mutations(sources):
             "@Volatile\n    private var captureRequested = false",
             "private var captureRequested = false",
             "Android cross-thread capture-demand state",
+        ),
+        (
+            "verify",
+            "awk 'previous ~ /^[[:space:]]*@Synchronized[[:space:]]*$/ "
+            "&& $0 ~ /^[[:space:]]*fun rustSetByName\\(/ "
+            "{ serialized = 1 } { previous = $0 } "
+            "END { exit serialized ? 0 : 1 }' \"$r_s14_kt\" "
+            '|| r_s14_missing="$r_s14_missing '
+            'controlled-resource-dispatch-not-serialized"',
+            "true # shared Android controlled-resource serialization unchecked",
+            "current shared Android controlled-resource serialization gate",
+        ),
+        (
+            "hardening",
+            "R-S11e-167 current shared Android serialization-gate authority",
+            "R-S11e-167 retired shared Android serialization-gate compatibility",
+            "current shared Android serialization-gate hardening ledger",
         ),
         (
             "android_main_service",

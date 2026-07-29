@@ -734,6 +734,7 @@ def extract_packages(
         files, directories = compose_manifest(manifests)
         root = output / "android-sdk"
         root.mkdir(mode=0o755)
+        os.chmod(root, 0o755, follow_symlinks=False)
         for relative in sorted(
             (item for item in directories if item),
             key=lambda item: (item.count("/"), os.fsencode(item)),
@@ -2271,14 +2272,18 @@ def run_self_test() -> None:
                         (root / "authority" / spec.filename).read_bytes()
                     )
                     destination.chmod(0o600)
-                extract_packages(
-                    cmdline,
-                    staging / "downloads",
-                    staging / "output",
-                    uid,
-                    gid,
-                    pins,
-                )
+                previous_umask = os.umask(0o077)
+                try:
+                    extract_packages(
+                        cmdline,
+                        staging / "downloads",
+                        staging / "output",
+                        uid,
+                        gid,
+                        pins,
+                    )
+                finally:
+                    os.umask(previous_umask)
                 return online, staging, cmdline
 
             online, staging, cmdline = fixture(root / "normal")

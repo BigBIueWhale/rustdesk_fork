@@ -10928,6 +10928,40 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   was limited to the disposable container proof above. This is source, negative-fixture, exact
   archive, and complete temporary acquisition evidence—not exact clean R-B2/R-B10 release output or
   installed Android device evidence.
+
+  Follow-up correction (2026-07-29), **R-S11cr/R-S11e-110 umask-independent raw SDK root authority**:
+  the exact-output contract requires the producer's raw SDK root and every descendant
+  directory to be mode 0755 before the verified tree is sealed. Descendant directories were
+  explicitly normalized after creation, but the root used only `Path.mkdir(mode=0o755)`. Python
+  applies the process umask to that requested creation mode, so an otherwise valid extraction under
+  ambient umask 0077 created the root as 0700 and the helper's own raw-profile comparison correctly
+  rejected it. This was a fail-closed availability and reproducibility defect in the build
+  transaction, not a relaxation of validation, an SDK-content change, root execution, a container
+  escape, a public listener, or a host RustDesk/service/firewall/network mutation.
+
+  Extraction now no-follow normalizes the newly and exclusively created root to 0755 immediately
+  after creation, matching the existing explicit normalization of every inner directory and file.
+  The transaction self-test scopes umask 0077 around the real extraction call and restores the
+  caller's previous mask in `finally`; it therefore exercises the production path rather than a
+  mode-only surrogate. The focused verifier binds the exact normalization order, restrictive-mask
+  fixture, and restoration through deliberate mutations. The shared R-S11cr gate executes both that
+  behavioral self-test and the focused matrix, while the independent workspace verifier binds and
+  source-mutates the helper, focused verifier, and this ledger. The normative R-S11cr text and
+  Appendix C #245 already require exact raw modes independent of archive/extractor authority, so
+  their existing requirements hash remains unchanged.
+
+  Confined verification used cached immutable development image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric UID:GID 1000:1000 with no pull or network, read-only root and repository, all
+  capabilities dropped, no-new-privileges, bounded resources and non-executable scratch, and no
+  port, device, socket, or host namespace. Under explicit umask 0077, the real transaction self-test
+  passed, the focused authority verifier rejected all 42 deliberate mutations, the independent
+  workspace baseline passed, and the complete unsliced independent source-mutation matrix passed.
+  Two preceding full-matrix attempts correctly failed on new meta-verifier debt: first, the
+  independent gate did not bind the focused verifier's exact 0755 assertion; second, its deliberate
+  mutation expected the old diagnostic label. The independent assertion and mutation classification
+  were corrected before the successful full rerun. No acquisition, release build, live SDK
+  publication, or host/mobile runtime action was part of this evidence.
 - **R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority —
   SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE LIVE
   FOURTEEN-ARCHIVE ACQUISITION EVIDENCE RECORDED; BROADER RELEASE EVIDENCE OPEN.** Platform: the unprivileged Linux

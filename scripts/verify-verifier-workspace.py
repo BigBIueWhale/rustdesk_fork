@@ -23934,6 +23934,14 @@ def validate_online_fetch_android_sdk_output_authority_contract(sources):
             "Android SDK focused byte binding",
         ),
         (
+            "umask-independent raw SDK root mode",
+            "Android SDK focused root-mode binding",
+        ),
+        (
+            "restrictive-umask extraction fixture",
+            "Android SDK focused umask-fixture binding",
+        ),
+        (
             "MUTATIONS: Tuple[Mutation, ...]",
             "Android SDK focused mutation inventory",
         ),
@@ -23943,6 +23951,20 @@ def validate_online_fetch_android_sdk_output_authority_contract(sources):
         ),
     ):
         require_text(focused, text, label)
+    require_text(
+        focused,
+        '"root.mkdir(mode=0o755)\\n"\n'
+        '            "        os.chmod(root, 0o755, follow_symlinks=False)",\n'
+        '            "umask-independent raw SDK root mode",',
+        "Android SDK focused exact raw-root assertion",
+    )
+    require_text(
+        focused,
+        '"previous_umask = os.umask(0o077)\\n"\n'
+        '            "                try:\\n"\n'
+        '            "                    extract_packages(\\n"',
+        "Android SDK focused exact restrictive-umask assertion",
+    )
     require_text(
         focused,
         '    Mutation(\n'
@@ -24052,6 +24074,26 @@ def validate_online_fetch_android_sdk_output_authority_contract(sources):
         ("output inventory differs from the pinned archives", "Android SDK inventory"),
         ("carries extended attributes", "Android SDK xattr refusal"),
         ("reject_mount_at_or_below(root)", "Android SDK mount closure"),
+        (
+            "root.mkdir(mode=0o755)\n"
+            "        os.chmod(root, 0o755, follow_symlinks=False)",
+            "Android SDK umask-independent raw root mode",
+        ),
+        (
+            "previous_umask = os.umask(0o077)\n"
+            "                try:\n"
+            "                    extract_packages(\n"
+            "                        cmdline,\n"
+            '                        staging / "downloads",\n'
+            '                        staging / "output",\n'
+            "                        uid,\n"
+            "                        gid,\n"
+            "                        pins,\n"
+            "                    )\n"
+            "                finally:\n"
+            "                    os.umask(previous_umask)",
+            "Android SDK restrictive-umask extraction fixture",
+        ),
         ("seal_and_sync_tree", "Android SDK durability/sealing"),
         (
             "if mode == 0o700:\n"
@@ -24119,6 +24161,11 @@ def validate_online_fetch_android_sdk_output_authority_contract(sources):
         sources["hardening"],
         "R-S11cr/R-S11e-110 archive-specific PID mutation authority",
         "Android SDK archive-specific PID mutation ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11cr/R-S11e-110 umask-independent raw SDK root authority",
+        "Android SDK raw-root mode ledger",
     )
 
 
@@ -52874,6 +52921,16 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch_android_sdk_output_authority_verifier",
+            '"root.mkdir(mode=0o755)\\n"\n'
+            '            "        os.chmod(root, 0o755, follow_symlinks=False)",\n'
+            '            "umask-independent raw SDK root mode",',
+            '"root.mkdir(mode=0o755)\\n"\n'
+            '            "        os.chmod(root, 0o700, follow_symlinks=False)",\n'
+            '            "umask-independent raw SDK root mode",',
+            "Android SDK focused exact raw-root assertion",
+        ),
+        (
+            "online_fetch_android_sdk_output_authority_verifier",
             '    Mutation(\n'
             '        "shell",\n'
             '        "online_docker_run_archive_acquisition() {\\n"\n'
@@ -52934,6 +52991,26 @@ def run_source_mutations(sources):
         ),
         (
             "online_android_sdk_output_helper",
+            "root.mkdir(mode=0o755)\n"
+            "        os.chmod(root, 0o755, follow_symlinks=False)",
+            "root.mkdir(mode=0o755)\n"
+            "        os.chmod(root, 0o700, follow_symlinks=False)",
+            "Android SDK umask-independent raw root mode",
+        ),
+        (
+            "online_android_sdk_output_helper",
+            "previous_umask = os.umask(0o077)",
+            "previous_umask = os.umask(0o002)",
+            "Android SDK restrictive-umask extraction fixture",
+        ),
+        (
+            "online_android_sdk_output_helper",
+            "os.umask(previous_umask)",
+            "os.umask(0o077)",
+            "Android SDK restrictive-umask extraction fixture",
+        ),
+        (
+            "online_android_sdk_output_helper",
             "validate_required_summary(summary)\n"
             "        validate_semantics(candidate)\n"
             "        candidate_identity = identity(os.lstat(candidate))",
@@ -52987,6 +53064,12 @@ def run_source_mutations(sources):
             "R-S11cr/R-S11e-110 archive-specific PID mutation authority",
             "R-S11cr/R-S11e-110 global PID mutation authority",
             "Android SDK archive-specific PID mutation ledger",
+        ),
+        (
+            "hardening",
+            "R-S11cr/R-S11e-110 umask-independent raw SDK root authority",
+            "R-S11cr/R-S11e-110 ambient raw SDK root authority",
+            "Android SDK raw-root mode ledger",
         ),
         (
             "wix_nuget_authority_verifier",

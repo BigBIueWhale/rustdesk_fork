@@ -278,6 +278,26 @@ def validate(sources: Dict[str, str]) -> None:
             "    files, directories = compose_manifest(manifests)",
             "raw-output mount closure",
         ),
+        (
+            "root.mkdir(mode=0o755)\n"
+            "        os.chmod(root, 0o755, follow_symlinks=False)",
+            "umask-independent raw SDK root mode",
+        ),
+        (
+            "previous_umask = os.umask(0o077)\n"
+            "                try:\n"
+            "                    extract_packages(\n"
+            "                        cmdline,\n"
+            '                        staging / "downloads",\n'
+            '                        staging / "output",\n'
+            "                        uid,\n"
+            "                        gid,\n"
+            "                        pins,\n"
+            "                    )\n"
+            "                finally:\n"
+            "                    os.umask(previous_umask)",
+            "restrictive-umask extraction fixture",
+        ),
         ("seal_and_sync_tree", "sealed durable tree"),
         ("transition_directory_mode", "descriptor-bound root mode transition"),
         (
@@ -359,6 +379,11 @@ def validate(sources: Dict[str, str]) -> None:
         sources["hardening"],
         "R-S11cr/R-S11e-110 archive-specific PID mutation authority",
         "archive-specific PID mutation disposition",
+    )
+    require(
+        sources["hardening"],
+        "R-S11cr/R-S11e-110 umask-independent raw SDK root authority",
+        "raw SDK root mode disposition",
     )
     require(
         sources["workspace"],
@@ -497,6 +522,26 @@ MUTATIONS: Tuple[Mutation, ...] = (
              "extended attributes accepted", "xattr rejection"),
     Mutation(
         "helper",
+        "root.mkdir(mode=0o755)\n"
+        "        os.chmod(root, 0o755, follow_symlinks=False)",
+        "root.mkdir(mode=0o755)\n"
+        "        os.chmod(root, 0o700, follow_symlinks=False)",
+        "umask-independent raw SDK root mode",
+    ),
+    Mutation(
+        "helper",
+        "previous_umask = os.umask(0o077)",
+        "previous_umask = os.umask(0o002)",
+        "restrictive-umask extraction fixture",
+    ),
+    Mutation(
+        "helper",
+        "os.umask(previous_umask)",
+        "os.umask(0o077)",
+        "extraction fixture umask restoration",
+    ),
+    Mutation(
+        "helper",
         'validate_absolute(root, "Android SDK output")\n'
         "    reject_mount_at_or_below(root)\n"
         "    files, directories = compose_manifest(manifests)",
@@ -560,6 +605,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "R-S11cr/R-S11e-110 archive-specific PID mutation authority",
         "R-S11cr/R-S11e-110 global PID mutation authority",
         "archive-specific PID mutation disposition",
+    ),
+    Mutation(
+        "hardening",
+        "R-S11cr/R-S11e-110 umask-independent raw SDK root authority",
+        "R-S11cr/R-S11e-110 ambient raw SDK root authority",
+        "raw SDK root mode disposition",
     ),
 )
 

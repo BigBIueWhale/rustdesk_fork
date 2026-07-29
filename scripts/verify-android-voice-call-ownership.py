@@ -1895,16 +1895,14 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         exact_stop,
         (
-            "expected_generation.checked_add(1)",
-            "ANDROID_SERVER_GENERATION.compare_exchange(",
-            "expected_generation",
-            "next_generation",
-            "Ok(_) =>",
+            "ANDROID_LISTENER_LIFECYCLE.lock().unwrap()",
+            "if lifecycle.stop_generation(expected_generation)",
+            "deactivated owned listener generation",
             "true",
-            "Err(current) =>",
+            "else",
             "false",
         ),
-        "exact generation compare-and-exchange stop",
+        "exact serialized generation stop",
     )
     flutter_ffi = sources["flutter_ffi"]
     start_server = extract_item(
@@ -4347,7 +4345,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("server_connection", "android_server_generation: u64", "android_server_generation: i64", "connection service-generation ownership"),
     ("server_connection", "call_main_service_pointer_input_for_generation", "call_main_service_pointer_input", "generation-bound controlled pointer dispatch"),
     ("server_connection", "call_main_service_key_event_for_generation", "call_main_service_key_event", "generation-bound controlled key dispatch"),
-    ("direct_service", "expected_generation.checked_add(1)", "expected_generation.wrapping_add(1)", "exact server-generation stop"),
+    ("direct_service", "lifecycle.stop_generation(expected_generation)", "lifecycle.stop_generation(lifecycle.generation)", "exact serialized server-generation stop"),
     ("flutter_ffi", "bind_main_service_generation(&env, &service, generation)", "true", "exact-object listener/callback generation binding"),
     ("flutter", "|| self.session_id.as_ref() != Some(&session_id)", "|| false", "Rust cross-isolate Activity resume refusal"),
     ("flutter", "client_owner_id: Option<SessionID>", "client_owner_id: Option<()>", "stored mobile client-owner association"),

@@ -9866,7 +9866,7 @@ def validate_controlled_server_lifecycle_contract(sources):
     )
     require_text(
         start,
-        "android_generation_current(my_generation)",
+        "android_listener_lifecycle_snapshot(my_generation)",
         "Android service-generation listener ownership",
     )
 
@@ -10396,7 +10396,11 @@ def validate_desktop_ipc_retained_owner_contract(sources):
         require_absent(source, forbidden, label)
 
     require_text(server_source, "start_direct_only(Some(generation)).await;", "Android generation transfer")
-    require_text(direct_service, "android_generation_current(my_generation)", "Android generation ownership")
+    require_text(
+        direct_service,
+        "android_listener_lifecycle_snapshot(my_generation)",
+        "Android generation ownership",
+    )
     protected = extract_between(
         ipc_source,
         "async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc)",
@@ -15791,7 +15795,7 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android Rust generation-bound removal bridge contract",
         ),
         (
-            '"exact generation compare-and-exchange stop"',
+            '"exact serialized generation stop"',
             "Android exact server-generation stop contract",
         ),
         (
@@ -17401,7 +17405,7 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
-        '("direct_service", "expected_generation.checked_add(1)", "expected_generation.wrapping_add(1)", "exact server-generation stop"),',
+        '("direct_service", "lifecycle.stop_generation(expected_generation)", "lifecycle.stop_generation(lifecycle.generation)", "exact serialized server-generation stop"),',
         "Android exact server-generation stop mutation",
     )
     require_text(
@@ -18682,6 +18686,229 @@ def validate_android_voice_call_ownership_contract(sources):
         'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4) =="',
         "independent shared controlled-input/audio generation gate label source",
     )
+
+
+def validate_android_listener_generation_contract(sources):
+    focused = sources["android_listener_generation_verifier"]
+    try:
+        ast.parse(focused)
+    except SyntaxError as error:
+        raise VerificationError(
+            f"Android listener-generation focused verifier does not parse: {error}"
+        ) from error
+    for text, label in (
+        (
+            "Validate exact-generation ownership of Android listener rebuilds.",
+            "focused verifier purpose",
+        ),
+        ("single listener lifecycle state", "focused state binding"),
+        ("exact checked fail-closed rebuild admission", "focused rebuild binding"),
+        ("stop-before-callback-drain teardown", "focused teardown binding"),
+        ("generation-bound JNI admission", "focused JNI binding"),
+        (
+            "stale network callback generation",
+            "focused stale-callback mutation",
+        ),
+        ("run_mutations(sources)", "focused mutation dispatch"),
+    ):
+        require_text(focused, text, f"Android listener generation {label}")
+
+    direct = sources["direct_service"]
+    for text, label in (
+        (
+            "struct AndroidListenerLifecycle {\n"
+            "    generation: u64,\n"
+            "    rebuild_epoch: u64,\n"
+            "    active: bool,\n"
+            "}",
+            "single lifecycle state",
+        ),
+        (
+            "static ANDROID_LISTENER_LIFECYCLE: Mutex<AndroidListenerLifecycle>",
+            "serialized lifecycle authority",
+        ),
+        (
+            "fn request_rebuild(&mut self, expected_generation: u64) -> Option<u64>",
+            "generation-bound rebuild transition",
+        ),
+        (
+            "fn android_listener_lifecycle_snapshot(expected_generation: u64) -> Option<u64>",
+            "generation/epoch snapshot",
+        ),
+        (
+            "stale_network_callback_cannot_advance_replacement_generation_epoch",
+            "generation-ABA behavior regression",
+        ),
+        (
+            "invalid_or_exhausted_listener_lifecycle_transitions_fail_closed",
+            "invalid/exhausted behavior regression",
+        ),
+    ):
+        require_text(direct, text, f"independent Android listener {label}")
+    for text, label in (
+        ("LISTENER_REBUILD_EPOCH", "generationless rebuild epoch"),
+        ("ANDROID_SERVER_GENERATION", "separate server generation"),
+        ("request_direct_listener_rebuild(", "generationless rebuild API"),
+    ):
+        require_absent(direct, text, f"independent Android listener {label}")
+
+    rebuild_transition = extract_between(
+        direct,
+        "    fn request_rebuild(&mut self, expected_generation: u64) -> Option<u64> {",
+        "\n    fn snapshot(",
+        "independent Android rebuild transition",
+    )
+    require_order(
+        rebuild_transition,
+        (
+            "!self.active",
+            "expected_generation == 0",
+            "self.generation != expected_generation",
+            "return None",
+            "let Some(next) = self.rebuild_epoch.checked_add(1) else",
+            "self.active = false",
+            "return None",
+            "self.rebuild_epoch = next",
+            "Some(next)",
+        ),
+        "independent exact-generation rebuild admission",
+    )
+    rebuild_api = extract_between(
+        direct,
+        "pub fn android_request_listener_rebuild(expected_generation: u64, reason: &str) -> bool {",
+        "\n}\n\n/// Return the rebuild epoch",
+        "independent Android rebuild API",
+    )
+    require_order(
+        rebuild_api,
+        (
+            "ANDROID_LISTENER_LIFECYCLE.lock().unwrap()",
+            "lifecycle.request_rebuild(expected_generation)",
+            "Some(epoch)",
+            "true",
+            "None",
+            "false",
+        ),
+        "independent exact-generation rebuild API forwarding",
+    )
+    direct_loop = extract_between(
+        direct,
+        "async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {",
+        "\n// R-D4:",
+        "independent Android direct listener loop",
+    )
+    require_order(
+        direct_loop,
+        (
+            "let mut seen_rebuild_epoch = match android_listener_lifecycle_snapshot(my_generation)",
+            "let rebuild_epoch = match android_listener_lifecycle_snapshot(my_generation)",
+            "if rebuild_epoch != seen_rebuild_epoch",
+            "seen_rebuild_epoch = rebuild_epoch",
+            "listener = None;",
+        ),
+        "independent exact-generation listener rebind",
+    )
+    require_text(
+        direct_loop,
+        "                    listener = None;\n"
+        "                    continue;",
+        "independent exact listener drop-and-retry transition",
+    )
+
+    main_service = sources["android_main_service"]
+    callback = extract_between(
+        main_service,
+        "    private fun requestDirectListenerRebuild(reason: String) {",
+        "\n    @Synchronized\n    private fun registerNetworkCallback()",
+        "independent Android network callback",
+    )
+    require_order(
+        callback,
+        (
+            "val generation = nativeServerGeneration",
+            "generation <= 0L",
+            "FFI.rebuildDirectServerListener(generation)",
+            "ignored network change from stale MainService generation",
+            "Android network change admitted for MainService generation",
+        ),
+        "independent exact-generation callback admission",
+    )
+    require_text(
+        main_service,
+        "@Volatile\n    private var nativeServerGeneration = 0L",
+        "independent cross-thread generation visibility",
+    )
+    destroy = extract_between(
+        main_service,
+        "    override fun onDestroy() {",
+        "\n    override fun onTaskRemoved(",
+        "independent Android MainService teardown",
+    )
+    require_order(
+        destroy,
+        (
+            "releaseControlledConnectionResources()",
+            "FFI.stopServer(nativeServerGeneration)",
+            "serviceLooper?.quitSafely()",
+            "unregisterNetworkCallback()",
+            "FFI.releaseService(this)",
+        ),
+        "independent listener stop before callback drain",
+    )
+
+    require_text(
+        sources["android_ffi_kt"],
+        "external fun rebuildDirectServerListener(generation: Long): Boolean",
+        "independent generation-bound Kotlin JNI declaration",
+    )
+    rebuild_jni = extract_between(
+        sources["flutter_ffi_source"],
+        '    pub unsafe extern "system" fn Java_ffi_FFI_rebuildDirectServerListener(',
+        '\n    #[no_mangle]\n    pub unsafe extern "system" fn Java_ffi_FFI_translateLocale(',
+        "independent Android listener rebuild JNI",
+    )
+    require_order(
+        rebuild_jni,
+        (
+            "\n        generation: jlong,\n",
+            ") -> jboolean",
+            "u64::try_from(generation)",
+            "android_request_listener_rebuild(",
+            "generation",
+            '"android-network-change"',
+        ),
+        "independent exact-generation JNI admission",
+    )
+
+    for source, text, label in (
+        (
+            sources["verify"],
+            "direct_service::android_listener_lifecycle_tests:: -- --test-threads=1",
+            "shared lifecycle behavior gate",
+        ),
+        (
+            sources["verify"],
+            "/usr/bin/python3 -I -S scripts/verify-android-listener-generation.py --repo . --self-test",
+            "shared focused gate",
+        ),
+        (
+            sources["verify"],
+            "R-S11el/R-S11e-172 Android exact-generation listener rebuild authority",
+            "shared verdict",
+        ),
+        (
+            sources["requirements"],
+            '<span class="id">R-S11el</span>',
+            "normative requirement",
+        ),
+        (sources["requirements"], "<tr><td>293</td>", "Appendix C row"),
+        (
+            sources["hardening"],
+            "R-S11el/R-S11e-172 exact MainService-generation Android listener rebuild ownership",
+            "hardening ledger",
+        ),
+    ):
+        require_text(source, text, f"independent Android listener {label}")
 
 
 def validate_android_builder_authority_contract(sources):
@@ -26775,22 +27002,20 @@ def validate_android_media_projection_finality_contract(sources):
     exact_stop = extract_between(
         direct_service,
         "pub fn android_request_stop",
-        "/// R-D7a: true iff",
+        "/// R-T13/R-D7a:",
         "Android exact server-generation stop",
     )
     require_order(
         exact_stop,
         (
-            "expected_generation.checked_add(1)",
-            "ANDROID_SERVER_GENERATION.compare_exchange(",
-            "expected_generation",
-            "next_generation",
-            "Ok(_) =>",
+            "ANDROID_LISTENER_LIFECYCLE.lock().unwrap()",
+            "if lifecycle.stop_generation(expected_generation)",
+            "deactivated owned listener generation",
             "true",
-            "Err(current) =>",
+            "else",
             "false",
         ),
-        "Android compare-and-exchange server-generation stop",
+        "Android exact serialized server-generation stop",
     )
     native_start = extract_between(
         flutter_ffi,
@@ -32029,6 +32254,7 @@ def validate_sources(sources):
     validate_unix_listener_incumbent_contract(sources)
     validate_viewer_voice_call_worker_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
+    validate_android_listener_generation_contract(sources)
     validate_android_builder_authority_contract(sources)
     validate_android_builder_image_authority_contract(sources)
     validate_deb_builder_image_authority_contract(sources)
@@ -47806,7 +48032,7 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
-            '"exact generation compare-and-exchange stop"',
+            '"exact serialized generation stop"',
             '"unqualified Android server stop"',
             "Android exact server-generation stop contract",
         ),
@@ -54415,7 +54641,7 @@ def run_source_mutations(sources):
             "android_main_service",
             "FFI.stopServer(nativeServerGeneration)",
             "FFI.stopServer(0)",
-            "Android resource-before-exact-callback-owner teardown",
+            "independent listener stop before callback drain",
         ),
         (
             "android_main_service",
@@ -54912,9 +55138,75 @@ def run_source_mutations(sources):
         ),
         (
             "direct_service",
-            "expected_generation.checked_add(1)",
-            "expected_generation.wrapping_add(1)",
-            "Android compare-and-exchange server-generation stop",
+            "lifecycle.stop_generation(expected_generation)",
+            "lifecycle.stop_generation(lifecycle.generation)",
+            "Android exact serialized server-generation stop",
+        ),
+        (
+            "android_listener_generation_verifier",
+            "Validate exact-generation ownership of Android listener rebuilds.",
+            "Validate ambient ownership of Android listener rebuilds.",
+            "Android listener generation focused verifier purpose",
+        ),
+        (
+            "direct_service",
+            "lifecycle.request_rebuild(expected_generation)",
+            "lifecycle.request_rebuild(lifecycle.generation)",
+            "independent exact-generation rebuild API forwarding",
+        ),
+        (
+            "android_main_service",
+            "@Volatile\n    private var nativeServerGeneration = 0L",
+            "private var nativeServerGeneration = 0L",
+            "independent cross-thread generation visibility",
+        ),
+        (
+            "android_main_service",
+            "FFI.rebuildDirectServerListener(generation)",
+            "FFI.rebuildDirectServerListener(0L)",
+            "independent exact-generation callback admission",
+        ),
+        (
+            "android_ffi_kt",
+            "external fun rebuildDirectServerListener(generation: Long): Boolean",
+            "external fun rebuildDirectServerListener(): Unit",
+            "independent generation-bound Kotlin JNI declaration",
+        ),
+        (
+            "flutter_ffi_source",
+            "android_request_listener_rebuild(\n            generation,",
+            "android_request_listener_rebuild(\n            1,",
+            "independent exact-generation JNI admission",
+        ),
+        (
+            "verify",
+            "direct_service::android_listener_lifecycle_tests:: -- --test-threads=1",
+            "direct_service::disabled_android_listener_lifecycle_tests:: -- --test-threads=1",
+            "independent Android listener shared lifecycle behavior gate",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/verify-android-listener-generation.py --repo . --self-test",
+            "true # Android listener-generation focused gate disabled",
+            "independent Android listener shared focused gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11el</span>',
+            '<span class="id">R-S11el-disabled</span>',
+            "independent Android listener normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>293</td>",
+            "<tr><td>293-disabled</td>",
+            "independent Android listener Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11el/R-S11e-172 exact MainService-generation Android listener rebuild ownership",
+            "R-S11el/R-S11e-172 ambient Android listener rebuild ownership",
+            "independent Android listener hardening ledger",
         ),
         (
             "flutter_ffi_source",
@@ -56140,6 +56432,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "android_voice_call_ownership_verifier": (
                 repo / "scripts/verify-android-voice-call-ownership.py"
+            ).read_text(encoding="utf-8"),
+            "android_listener_generation_verifier": (
+                repo / "scripts/verify-android-listener-generation.py"
             ).read_text(encoding="utf-8"),
             "android_voice_call_owner_test": (
                 repo / "scripts/android-voice-call-owner-state-test.kt"

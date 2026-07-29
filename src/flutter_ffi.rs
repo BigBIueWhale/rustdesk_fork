@@ -2339,11 +2339,13 @@ pub mod server_side {
         }
         // R-D7a (N1/F1 fix): establish a fresh service-owned-listener generation and CAPTURE it,
         // then hand it BY VALUE to the spawned server thread. The server runs under exactly this
-        // generation — not a late `ANDROID_SERVER_GENERATION.load()` inside the thread, which a
-        // concurrent stopServer/startServer could have superseded before the thread read it (the
-        // orphaned-listener race where a stopped service's listener survived). Any begin/stop after
-        // this point makes GEN != generation, so MainService.onDestroy -> stopServer deterministically
-        // tears this listener down. The direct listener is owned by this MainService instance.
+        // generation — not a late listener-lifecycle state read inside the thread, which a
+        // concurrent stopServer/startServer could have replaced before the thread read it (the
+        // orphaned-listener race where a stopped service's listener survived). A newer begin changes
+        // the generation; an exact stop leaves the number unchanged but marks its ownership
+        // inactive. Either transition makes the exact lifecycle snapshot unavailable, so
+        // MainService.onDestroy -> stopServer deterministically tears this listener down. The direct
+        // listener is owned by this MainService instance.
         let generation = crate::direct_service::android_begin_generation();
         if generation == 0 {
             return 0;
@@ -2478,9 +2480,16 @@ pub mod server_side {
     pub unsafe extern "system" fn Java_ffi_FFI_rebuildDirectServerListener(
         _env: JNIEnv,
         _class: JClass,
-    ) {
+        generation: jlong,
+    ) -> jboolean {
         log::debug!("R-T13 rebuildDirectServerListener from jvm");
-        crate::direct_service::request_direct_listener_rebuild("android-network-change");
+        let Ok(generation) = u64::try_from(generation) else {
+            return jboolean::from(false);
+        };
+        jboolean::from(crate::direct_service::android_request_listener_rebuild(
+            generation,
+            "android-network-change",
+        ))
     }
 
     #[no_mangle]

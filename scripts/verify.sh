@@ -9939,7 +9939,7 @@ fi
 # builtin) are removed too — bringing the legacy sciter front-end + the shared set_option to flutter parity
 # (flutter excised its stop-service button earlier). (Android has no stop-service config toggle: the
 # controlled-side stop is the MainService.onDestroy -> JNI stopServer foreground-service lifecycle that
-# supersedes the direct listener's service-owned generation — not a Config write — R-D7a.)
+# deactivates the exact direct-listener generation — not a Config write — R-D7a.)
 r_x9_killsvc=
 grep -qE '&key == "stop-service"' src/ui_interface.rs && r_x9_killsvc="$r_x9_killsvc ui_interface-special-case"
 grep -qE '(ipc::set_option|Config::set_option)\("stop-service"' src/platform/*.rs src/ui_interface.rs src/core_main.rs && r_x9_killsvc="$r_x9_killsvc stop-service-config-writer"
@@ -10565,6 +10565,15 @@ if [ -n "$android_client_owner_bad" ]; then
 else
   echo "  ok  R-D7a/R-T4/R-S11eb Android outgoing sessions separate generation+isolate ownership from exact connection identity; stale Activity/route teardown cannot select a replacement; replacement waits for exact I/O/media-worker completion"
 fi
+echo "== Android exact-generation listener rebuild authority (R-S11el/R-S11e-172) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config \
+  direct_service::android_listener_lifecycle_tests:: -- --test-threads=1
+if /usr/bin/python3 -I -S scripts/verify-android-listener-generation.py --repo . --self-test; then
+  echo "  ok  R-S11el/R-S11e-172 Android exact-generation listener rebuild authority"
+else
+  echo "  FAIL R-S11el/R-S11e-172: Android exact-generation listener rebuild authority regressed"
+  rc=1
+fi
 # R-T13 (§20, SHOULD): Android controlled-side networking lifecycle. The foreground service must
 # observe network loss/availability and drive the existing direct-listener rebuild path (`listener =
 # None`, not a full server restart), and the R-T10 TCP keepalive must be paired with a foreground
@@ -10578,22 +10587,99 @@ grep -qF 'NET_CAPABILITY_INTERNET' "$ms" && r_t13="$r_t13 internet-only-network-
 grep -qF '@Synchronized' "$ms" || r_t13="$r_t13 callback-registration-unsynchronized"
 grep -qF 'connectivityManager.registerNetworkCallback(request, networkCallback)' "$ms" || r_t13="$r_t13 no-register"
 grep -qF 'connectivityManager.unregisterNetworkCallback(networkCallback)' "$ms" || r_t13="$r_t13 no-unregister"
-grep -qF 'FFI.rebuildDirectServerListener()' "$ms" || r_t13="$r_t13 no-kotlin-rebuild-call"
+grep -qF '@Volatile' "$ms" || r_t13="$r_t13 server-generation-not-cross-thread-visible"
+grep -qF 'FFI.rebuildDirectServerListener(generation)' "$ms" || r_t13="$r_t13 no-exact-generation-kotlin-rebuild-call"
 grep -qF 'PowerManager.PARTIAL_WAKE_LOCK' "$ms" || r_t13="$r_t13 no-partial-wakelock"
 grep -qF 'rustdesk:network-keepalive' "$ms" || r_t13="$r_t13 no-wakelock-tag"
 grep -qF 'setReferenceCounted(false)' "$ms" || r_t13="$r_t13 wakelock-refcounted"
 grep -qF 'networkKeepaliveWakeLock.acquire()' "$ms" || r_t13="$r_t13 no-wakelock-acquire"
 grep -qF 'networkKeepaliveWakeLock.release()' "$ms" || r_t13="$r_t13 no-wakelock-release"
-grep -qF 'external fun rebuildDirectServerListener()' flutter/android/app/src/main/kotlin/ffi.kt || r_t13="$r_t13 no-kotlin-ffi"
+grep -qF 'external fun rebuildDirectServerListener(generation: Long): Boolean' flutter/android/app/src/main/kotlin/ffi.kt || r_t13="$r_t13 no-generation-bound-kotlin-ffi"
 grep -qF 'Java_ffi_FFI_rebuildDirectServerListener' src/flutter_ffi.rs || r_t13="$r_t13 no-jni-export"
-grep -qF 'request_direct_listener_rebuild("android-network-change")' src/flutter_ffi.rs || r_t13="$r_t13 no-jni-rebuild-hook"
-grep -qF 'static LISTENER_REBUILD_EPOCH' src/direct_service.rs || r_t13="$r_t13 no-rebuild-epoch"
-grep -qF 'R-T13: rebuilding direct listener after Android network change' src/direct_service.rs || r_t13="$r_t13 no-rebuild-log"
+grep -qF 'android_request_listener_rebuild(' src/flutter_ffi.rs || r_t13="$r_t13 no-exact-generation-jni-rebuild-hook"
+grep -qF 'static ANDROID_LISTENER_LIFECYCLE: Mutex<AndroidListenerLifecycle>' src/direct_service.rs || r_t13="$r_t13 no-serialized-listener-lifecycle"
+grep -qF 'fn request_rebuild(&mut self, expected_generation: u64) -> Option<u64>' src/direct_service.rs || r_t13="$r_t13 no-generation-bound-rebuild-transition"
+grep -qF 'fn android_listener_lifecycle_snapshot(expected_generation: u64) -> Option<u64>' src/direct_service.rs || r_t13="$r_t13 no-atomic-generation-epoch-snapshot"
+grep -qF 'R-T13: rebuilding direct listener after exact-generation Android network change' src/direct_service.rs || r_t13="$r_t13 no-exact-generation-rebuild-log"
 grep -qF 'listener = None;' src/direct_service.rs || r_t13="$r_t13 no-listener-none-rebuild"
+grep -qF 'stale_network_callback_cannot_advance_replacement_generation_epoch' src/direct_service.rs || r_t13="$r_t13 no-generation-aba-regression"
+if ! /usr/bin/python3 -I -S - "$ms" flutter/android/app/src/main/kotlin/ffi.kt src/flutter_ffi.rs src/direct_service.rs <<'PY'
+import pathlib
+import sys
+
+main_service = pathlib.Path(sys.argv[1]).read_text(encoding="utf-8")
+kotlin_ffi = pathlib.Path(sys.argv[2]).read_text(encoding="utf-8")
+rust_ffi = pathlib.Path(sys.argv[3]).read_text(encoding="utf-8")
+direct = pathlib.Path(sys.argv[4]).read_text(encoding="utf-8")
+
+def between(text: str, start: str, end: str) -> str:
+    begin = text.index(start)
+    finish = text.index(end, begin)
+    return text[begin:finish]
+
+request = between(
+    main_service,
+    "    private fun requestDirectListenerRebuild(reason: String) {",
+    "\n    @Synchronized\n    private fun registerNetworkCallback()",
+)
+destroy = between(
+    main_service,
+    "    override fun onDestroy() {",
+    "\n    override fun onTaskRemoved(",
+)
+jni = between(
+    rust_ffi,
+    "    pub unsafe extern \"system\" fn Java_ffi_FFI_rebuildDirectServerListener(",
+    "\n    #[no_mangle]\n    pub unsafe extern \"system\" fn Java_ffi_FFI_translateLocale(",
+)
+transition = between(
+    direct,
+    "    fn request_rebuild(&mut self, expected_generation: u64) -> Option<u64> {",
+    "\n    fn snapshot(&self, expected_generation: u64) -> Option<u64> {",
+)
+server_loop = between(
+    direct,
+    "async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {",
+    "\n// R-D4:",
+)
+
+ok = (
+    "external fun rebuildDirectServerListener(generation: Long): Boolean" in kotlin_ffi
+    and "@Volatile\n    private var nativeServerGeneration = 0L" in main_service
+    and request.index("val generation = nativeServerGeneration")
+        < request.index("generation <= 0L")
+        < request.index("FFI.rebuildDirectServerListener(generation)")
+    and destroy.index("releaseControlledConnectionResources()")
+        < destroy.index("FFI.stopServer(nativeServerGeneration)")
+        < destroy.index("unregisterNetworkCallback()")
+        < destroy.index("FFI.releaseService(this)")
+    and "generation: jlong" in jni
+    and jni.index("u64::try_from(generation)")
+        < jni.index("android_request_listener_rebuild(")
+        < jni.index('\"android-network-change\"')
+    and transition.index("!self.active")
+        < transition.index("expected_generation == 0")
+        < transition.index("self.generation != expected_generation")
+        < transition.index("let Some(next) = self.rebuild_epoch.checked_add(1) else")
+        < transition.index("self.active = false")
+        < transition.index("self.rebuild_epoch = next")
+    and "android_listener_lifecycle_snapshot(my_generation)" in server_loop
+    and server_loop.index("let rebuild_epoch = match android_listener_lifecycle_snapshot(my_generation)")
+        < server_loop.index("if rebuild_epoch != seen_rebuild_epoch")
+        < server_loop.index("listener = None;")
+    and "LISTENER_REBUILD_EPOCH" not in direct
+    and "ANDROID_SERVER_GENERATION" not in direct
+    and "request_direct_listener_rebuild(" not in direct
+)
+raise SystemExit(0 if ok else 1)
+PY
+then
+  r_t13="$r_t13 exact-generation-lifecycle-order-regressed"
+fi
 if [ -n "$r_t13" ]; then
   echo "  FAIL R-T13: Android network-change listener rebuild / partial-wakelock keepalive missing:$r_t13"; rc=1
 else
-  echo "  ok  R-T13 Android network lifecycle: ConnectivityManager callback -> JNI rebuild hook -> listener=None rebind, with foreground partial wakelock for TCP keepalive"
+  echo "  ok  R-T13 Android network lifecycle: exact MainService generation -> serialized JNI rebuild admission -> listener=None rebind, with stale callbacks rejected and foreground partial wakelock for TCP keepalive"
 fi
 # R-X4 (custom_server): the custom-rendezvous-server-from-exe-name feature is excised. The installer
 # could embed a rendezvous/api server in the exe NAME (rustdesk-host=... ; rustdesk-licensed-<b64>.exe),
@@ -13190,8 +13276,9 @@ grep -qF 'R-S11ei/R-S11e-153' HARDENING_STATUS.md || r_s14_missing="$r_s14_missi
 grep -qF 'R-S11ek/R-S11e-169' HARDENING_STATUS.md || r_s14_missing="$r_s14_missing exact-controlled-audio-generation-ledger"
 grep -qF 'bind_main_service_generation(&env, &service, generation)' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing listener-callback-generation-not-exact-object-bound"
 grep -qF 'android_request_stop(' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing exact-generation-stop-jni-missing"
-grep -qF 'expected_generation.checked_add(1)' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing exact-generation-stop-overflow-gate-missing"
-grep -qF 'ANDROID_SERVER_GENERATION.compare_exchange(' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing stale-service-stop-not-rejected"
+grep -qF 'static ANDROID_LISTENER_LIFECYCLE: Mutex<AndroidListenerLifecycle>' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing no-serialized-service-listener-lifecycle"
+grep -qF 'fn stop_generation(&mut self, expected_generation: u64) -> bool' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing no-exact-generation-deactivation-transition"
+grep -qF 'lifecycle.stop_generation(expected_generation)' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing stale-service-stop-not-rejected"
 if [ -n "$r_s14_missing" ]; then
   echo "  FAIL R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4: Android capture/input/audio owner invariant is incomplete:$r_s14_missing"; rc=1
 else

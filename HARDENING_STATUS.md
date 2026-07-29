@@ -362,8 +362,9 @@ read guard and refuses a zero, stopped, or replaced generation before entering J
 add/remove/voice/input event cannot mutate a replacement Service even if the server has restarted and eventually
 reuses the same positive connection ID. `startServer(this, ...)` returns that exact generation only after JNI proves
 the caller is the currently retained `MainService` object; an overlapping obsolete Service therefore cannot bind
-its generation to a replacement callback owner. `stopServer(generation)` uses compare-and-exchange rather than an
-unconditional global bump, so delayed destruction of an obsolete Service cannot stop the replacement listener.
+its generation to a replacement callback owner. `stopServer(generation)` serializes with begin and rebuild,
+deactivates only the active matching generation, and does not consume a generation ID, so delayed destruction of
+an obsolete Service cannot stop the replacement listener.
 Exact object identity, exact listener generation, and the service-owned connection-ID set are therefore one closed
 lifecycle boundary rather than three independently timed best-effort facts.
 
@@ -1163,6 +1164,63 @@ public exposure, container escape, or a host RustDesk/service/firewall/listener/
 enablement and companion-service status publication remain separate audit boundaries and are not claimed fixed
 here. Current APK/device task-swipe/Force-Stop reproduction, exact cold R-B2/R-B10 release artifacts, separately
 required independent reproduction, and external review remain open.
+
+Follow-up correction (2026-07-29),
+**R-S11el/R-S11e-172 exact MainService-generation Android listener rebuild ownership — SOURCE VERIFIED;
+COLD RELEASE, DEVICE REPRODUCTION, AND EXTERNAL REVIEW OPEN**: Android intentionally retains the controlled listener in its foreground
+`MainService` while UI tasks come and go. Its R-T13 `ConnectivityManager.NetworkCallback`, however, called
+generationless `FFI.rebuildDirectServerListener()`. The JNI operation unconditionally advanced the independent
+process-global `LISTENER_REBUILD_EPOCH`. Android may deliver an already-queued callback after the owning service
+is destroyed, so an obsolete service callback could race a same-process replacement and make that replacement's
+live listener drop and rebind. The exact server-generation counter correctly protected `stopServer`, but it and
+the rebuild epoch were separate atomics; adding a Kotlin generation check alone would leave a check/increment
+race. This was process-persistent Android listener availability and lifecycle ownership debt. It is not evidence
+of an authorization bypass, a second or public listener, a host RustDesk/service/firewall/network change,
+exploitation, root acquisition, container escape, or compromise.
+
+`src/direct_service.rs` now has one `AndroidListenerLifecycle` state containing the current service generation,
+its active ownership bit, and its per-generation rebuild epoch behind `ANDROID_LISTENER_LIFECYCLE`. Checked
+generation begin, exact-generation deactivation, and exact-generation rebuild admission all linearize under that
+single lock. A successful begin allocates only one generation ID, resets its epoch, and activates it; stop
+deactivates the exact owner without consuming another ID. The listener reads active generation and epoch in one
+snapshot; deactivation or supersession ends the exact accept loop, while only an epoch change observed with that
+same active generation selects `listener = None` and the existing pinned-port rebind path. Zero and stale
+operations leave current state unchanged; generation-allocation or epoch exhaustion deactivates the exact
+current ownership instead of wrapping or leaving its listener current. The old
+`ANDROID_SERVER_GENERATION`, `LISTENER_REBUILD_EPOCH`, and generationless rebuild API are absent.
+
+Kotlin retains the exact positive generation returned by `FFI.startServer` in a `@Volatile` field visible to
+`ConnectivityManager` callback threads, passes it through the now-Boolean rebuild JNI declaration, and
+distinguishes a rejected stale callback from an admitted rebuild. The JNI boundary performs a checked
+signed-to-unsigned conversion and forwards the exact value. `MainService.onDestroy` releases
+controlled capture/voice/input resources and then deactivates its exact listener generation before it drains the
+handler and unregisters the network callback, so later queued callbacks are rejected natively. The pure Rust
+state-machine regressions cover current rebuild, wrong-stop preservation, stop/replacement, same-process stale
+callback ABA, zero inputs, generation-allocation exhaustion, and rebuild-epoch exhaustion. R-S11el and Appendix C #293 make the boundary
+normative. The dedicated focused verifier, the shared R-T13/R-S14 source gate, and the independent workspace
+catalog bind the exact Kotlin/JNI/native propagation, single serialized state, teardown order, old-surface
+absence, behavior tests, requirement, and this ledger with deliberate mutations.
+
+Final confined source verification on 2026-07-29 used only immutable cached builders as UID:GID 1000:1000 with
+no pull/network, a read-only live repository, all capabilities dropped, no-new-privileges, bounded resources, and
+private scratch. The pinned Android Rust target check reported its aarch64 library green. The real production
+`:app:compileReleaseKotlin -x :app:compileFlutterBuildRelease` task completed offline in 31 seconds with
+228 actionable tasks (227 executed, one up-to-date); it did not build, sign, install, or run an APK. The two exact
+pure-Rust lifecycle regressions passed with 377 unrelated tests filtered. The focused listener gate rejected all
+34 deliberate mutations, the shared Android ownership gate rejected all 385, the independent workspace baseline
+passed, and native-codec watch normal/self-test passed. Complete unsliced independent source-mutation catalogs
+also passed from mutation one before and after the final semantic/comment cleanup. Preliminary harness diagnostics
+were retained rather than hidden: the Kotlin projector first refused a legacy mode-0755 live cache and the exact
+source archive lacked the ignored `gradlew`, so verification copied and normalized that cache privately and used
+the pinned Gradle 7.6.4 distribution directly; an initial Rust wrapper request used an unsupported image-role
+label and never entered a container; and one full-catalog wrapper had a mismatched cleanup quote and never launched
+Docker. None was a product compile/test failure or a live-source mutation.
+
+This source slice does not start an Android service or listener, deliver a network callback, connect a peer,
+build/install an APK, operate on a device, or modify any host RustDesk/service/firewall/listener/network state.
+Current APK/device network-switch/task-swipe/Force-Stop reproduction, exact cold R-B2/R-B10 release artifacts,
+separately required independent reproduction, and external review remain open. The broader Ralph-loop goal
+remains active.
 
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
@@ -15746,11 +15804,11 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-b7223a25b358668dc2b84a89049552de03289e2bd06fab5e8909627abe45a9e2  requirements.html
+16795a46a1a70a6f10505ce474c8a94b99e4f3707d0a74ebb45345d793e56a7c  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279. It also binds the later R-S11ea through R-S11el and Appendix C #280–#293 additions. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.
 The same identity additionally binds R-S11ea and Appendix C #280.
 The same identity additionally binds R-S11eb and Appendix C #281.

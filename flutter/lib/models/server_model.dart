@@ -406,8 +406,8 @@ class ServerModel with ChangeNotifier {
     closeAll();
     // R-D7a: the real stop is the OS foreground-service lifecycle — invokeMethod("stop_service")
     // -> MainActivity.stop_service -> MainService.destroy() -> onDestroy -> JNI stopServer, which
-    // supersedes the service-owned-listener generation so the accept loop drops the socket. There
-    // is no stop-service config write (the listener reads no such option, R-D4).
+    // deactivates the exact service-owned-listener generation so the accept loop drops the socket.
+    // There is no stop-service config write (the listener reads no such option, R-D4).
     await parent.target?.invokeMethod("stop_service");
     notifyListeners();
     // for androidUpdatekeepScreenOn only

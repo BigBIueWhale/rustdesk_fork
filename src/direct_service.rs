@@ -5,11 +5,13 @@ use hbb_common::{
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::{anyhow::anyhow, ResultType};
-use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering};
+#[cfg(target_os = "android")]
+use std::sync::Mutex;
 
-use crate::server::{new as new_server, ServerPtr};
 #[cfg(not(target_os = "android"))]
 use crate::server::check_zombie;
+use crate::server::{new as new_server, ServerPtr};
 
 // R-D4 (Stage 2): the rendezvous-mediator PROTOCOL is removed from the tree. The
 // registration loop, `register_pk`, the relay / punch-hole / intranet handlers, the
@@ -37,7 +39,60 @@ fn get_direct_port() -> i32 {
     config::DIRECT_PORT
 }
 
-static LISTENER_REBUILD_EPOCH: AtomicU64 = AtomicU64::new(0);
+#[cfg(any(target_os = "android", test))]
+#[derive(Default)]
+struct AndroidListenerLifecycle {
+    generation: u64,
+    rebuild_epoch: u64,
+    active: bool,
+}
+
+#[cfg(any(target_os = "android", test))]
+impl AndroidListenerLifecycle {
+    fn begin_generation(&mut self) -> Option<u64> {
+        let Some(next) = self.generation.checked_add(1) else {
+            self.active = false;
+            return None;
+        };
+        self.generation = next;
+        self.rebuild_epoch = 0;
+        self.active = true;
+        Some(next)
+    }
+
+    fn stop_generation(&mut self, expected_generation: u64) -> bool {
+        if !self.active || expected_generation == 0 || self.generation != expected_generation {
+            return false;
+        }
+        self.active = false;
+        true
+    }
+
+    fn request_rebuild(&mut self, expected_generation: u64) -> Option<u64> {
+        if !self.active || expected_generation == 0 || self.generation != expected_generation {
+            return None;
+        }
+        let Some(next) = self.rebuild_epoch.checked_add(1) else {
+            self.active = false;
+            return None;
+        };
+        self.rebuild_epoch = next;
+        Some(next)
+    }
+
+    fn snapshot(&self, expected_generation: u64) -> Option<u64> {
+        (self.active && expected_generation != 0 && self.generation == expected_generation)
+            .then_some(self.rebuild_epoch)
+    }
+}
+
+#[cfg(target_os = "android")]
+static ANDROID_LISTENER_LIFECYCLE: Mutex<AndroidListenerLifecycle> =
+    Mutex::new(AndroidListenerLifecycle {
+        generation: 0,
+        rebuild_epoch: 0,
+        active: false,
+    });
 
 /// R-D7a / R-S9 / R-G1 (verify-ground-truth): the REAL, live state of the direct listener —
 /// `true` iff `direct_server` currently holds a bound `TcpListener` on the pinned v4 port. It is
@@ -82,36 +137,27 @@ impl Drop for ListenerBoundGuard {
     }
 }
 
-/// R-T13 (§20): Android network switches can invalidate the direct listener while the foreground
-/// service stays alive. Kotlin observes the platform network lifecycle and calls this narrow hook;
-/// the accept loop below reacts by dropping the existing listener (`listener = None`) and rebinding
-/// the same pinned v4 port. This avoids restarting the whole server or reintroducing a runtime port
-/// mode while still driving the existing direct-listener rebuild path.
-pub fn request_direct_listener_rebuild(reason: &str) {
-    let epoch = LISTENER_REBUILD_EPOCH.fetch_add(1, Ordering::SeqCst) + 1;
-    log::info!(
-        "R-T13: direct listener rebuild requested by Android network lifecycle ({reason}); epoch={epoch}"
-    );
-}
-
 /// R-D7a: the Android controlled-side server is OWNED by the mandatory `MainService` foreground
 /// service and shares its lifetime — there is no headless `--service` on Android (a Flutter
-/// `cdylib`). This monotonic generation counter binds the direct listener to the service instance
-/// that started it. It is the STRUCTURAL TWIN of `LISTENER_REBUILD_EPOCH` above (R-T13): a
-/// `fetch_add(1)` supersedes any running generation, and the accept loop / keep-alive compare the
-/// generation they were STARTED UNDER against the current one — but here supersession means "the
-/// owning service was destroyed, tear the listener down" rather than "rebind the same port".
+/// `cdylib`). `ANDROID_LISTENER_LIFECYCLE` serializes generation begin, exact-generation stop, and
+/// exact-generation network rebuild. A callback queued by an obsolete service therefore cannot
+/// advance the rebuild epoch after a replacement service owns the listener. The accept loop and
+/// keep-alive compare the generation they were STARTED UNDER against the current active ownership
+/// snapshot. Exact deactivation means "the owning service was destroyed, tear the listener down";
+/// a newer begin supersedes an older generation, while an admitted rebuild advances only the
+/// current generation's epoch and rebinds the same port.
 ///   - `MainService.onCreate` -> JNI `startServer` calls `android_begin_generation()` and hands its
 ///     RETURN by value into the spawned server thread (through `start_server` -> `start_direct_only`
 ///     -> `direct_server`), so the accept loop + keep-alive run under EXACTLY that generation —
-///     never a late `ANDROID_SERVER_GENERATION.load()` inside the thread. That timing distinction
+///     never a late lifecycle-state read inside the thread. That timing distinction
 ///     is load-bearing (N1/F1): a late load could read a generation a concurrent `stopServer`/
 ///     `startServer` had already superseded (or the post-stop value itself), letting a stopped
 ///     service's thread believe it was current and keep the listener bound ("Stop doesn't stop").
-///     With the captured value, ANY begin/stop after this thread's start makes GEN != my_generation.
+///     With the captured value, any later begin changes the generation and an exact stop deactivates
+///     it, so the same lifecycle snapshot rejects this thread in either case.
 ///   - `MainService.onDestroy` -> JNI `stopServer` calls `android_request_stop()` with the exact
 ///     generation it owns. A delayed obsolete Service cannot supersede a replacement generation.
-///     `direct_server` observes a successful supersession at its loop top and `return`s (dropping
+///     `direct_server` observes deactivation or supersession at its loop top and `return`s (dropping
 ///     the `TcpListener` local -> socket closed), and `start_direct_only` observes it in its
 ///     keep-alive poll and `return`s (so the JNI thread + its `#[tokio::main]` runtime unwind,
 ///     aborting any live accept task -> socket closed). No config write — the stop is the OS
@@ -119,66 +165,73 @@ pub fn request_direct_listener_rebuild(reason: &str) {
 ///     key is pinned `N`).
 /// Desktop/iOS never touch this: their listener lifetime is the process / `systemd`-unit lifetime
 /// (R-X9), so the whole mechanism is `#[cfg(target_os = "android")]`.
-#[cfg(target_os = "android")]
-static ANDROID_SERVER_GENERATION: AtomicU64 = AtomicU64::new(0);
-
 /// R-D7a: establish a fresh Android server generation at service start (JNI `startServer`);
 /// returns the new generation the spawned server's accept loop + keep-alive run under.
 #[cfg(target_os = "android")]
 pub fn android_begin_generation() -> u64 {
-    let mut current = ANDROID_SERVER_GENERATION.load(Ordering::SeqCst);
-    loop {
-        let Some(next) = current.checked_add(1) else {
+    let mut lifecycle = ANDROID_LISTENER_LIFECYCLE.lock().unwrap();
+    match lifecycle.begin_generation() {
+        Some(generation) => generation,
+        None => {
             log::error!("R-D7a: Android server generation exhausted");
-            return 0;
-        };
-        match ANDROID_SERVER_GENERATION.compare_exchange(
-            current,
-            next,
-            Ordering::SeqCst,
-            Ordering::SeqCst,
-        ) {
-            Ok(_) => return next,
-            Err(observed) => current = observed,
+            0
         }
     }
 }
 
-/// R-D7a: supersede any running Android server generation (JNI `stopServer` on
+/// R-D7a: deactivate the exact owned Android server generation (JNI `stopServer` on
 /// `MainService.onDestroy`). The graceful teardown twin of process-death fd close: the running
-/// accept loop + keep-alive observe the bump and unwind, closing the listening socket.
+/// accept loop + keep-alive observe that exact generation becoming inactive and unwind, closing the
+/// listening socket. Stop does not allocate a generation ID; only a successful begin does.
 #[cfg(target_os = "android")]
 pub fn android_request_stop(expected_generation: u64) -> bool {
-    let Some(next_generation) = expected_generation.checked_add(1) else {
-        log::error!("R-D7a: Android server generation exhausted");
-        return false;
-    };
-    match ANDROID_SERVER_GENERATION.compare_exchange(
-        expected_generation,
-        next_generation,
-        Ordering::SeqCst,
-        Ordering::SeqCst,
-    ) {
-        Ok(_) => {
+    let mut lifecycle = ANDROID_LISTENER_LIFECYCLE.lock().unwrap();
+    if lifecycle.stop_generation(expected_generation) {
+        log::info!(
+            "R-D7a: Android stopServer — deactivated owned listener generation {expected_generation}"
+        );
+        true
+    } else {
+        log::warn!(
+            "R-D7a: rejected stale or inactive Android stopServer generation {expected_generation}; current generation is {}",
+            lifecycle.generation
+        );
+        false
+    }
+}
+
+/// R-T13/R-D7a: request a listener rebuild only for the exact current service generation.
+/// Generation validation and epoch advancement occur under the same lock as begin/stop, so a stale
+/// callback cannot pass validation and then advance the replacement generation's rebuild epoch.
+#[cfg(target_os = "android")]
+pub fn android_request_listener_rebuild(expected_generation: u64, reason: &str) -> bool {
+    let mut lifecycle = ANDROID_LISTENER_LIFECYCLE.lock().unwrap();
+    match lifecycle.request_rebuild(expected_generation) {
+        Some(epoch) => {
             log::info!(
-                "R-D7a: Android stopServer — superseding owned listener generation {expected_generation} (now {next_generation})"
+                "R-T13: direct listener rebuild requested by exact Android service generation {expected_generation} ({reason}); epoch={epoch}"
             );
             true
         }
-        Err(current) => {
+        None => {
             log::warn!(
-                "R-D7a: rejected stale Android stopServer generation {expected_generation}; current generation is {current}"
+                "R-T13: rejected stale or exhausted Android listener rebuild generation {expected_generation}; current generation is {}",
+                lifecycle.generation
             );
             false
         }
     }
 }
 
-/// R-D7a: true iff `generation` is still the current Android server generation, i.e. no later
-/// `android_begin_generation()` / `android_request_stop()` has superseded it.
+/// Return the rebuild epoch only while `expected_generation` is still the exact current Android
+/// service generation. The one snapshot prevents a stop/restart from interleaving between a
+/// generation check and an independently loaded rebuild counter.
 #[cfg(target_os = "android")]
-fn android_generation_current(generation: u64) -> bool {
-    ANDROID_SERVER_GENERATION.load(Ordering::SeqCst) == generation
+fn android_listener_lifecycle_snapshot(expected_generation: u64) -> Option<u64> {
+    ANDROID_LISTENER_LIFECYCLE
+        .lock()
+        .unwrap()
+        .snapshot(expected_generation)
 }
 
 /// R-A4 startup self-check: refuse to listen unless the controlled-side runtime
@@ -722,7 +775,7 @@ pub async fn start_direct_only(
         }
         // Android (R-D7a): the listener is OWNED by `MainService` and shares its lifetime. Poll the
         // service-owned-listener generation this server thread runs under; when `MainService.onDestroy`
-        // -> `stopServer` supersedes it, return so this `#[tokio::main]` runtime (the JNI-spawned
+        // -> `stopServer` deactivates it, return so this `#[tokio::main]` runtime (the JNI-spawned
         // thread) unwinds — dropping the runtime aborts the live `direct_server` accept task, closing
         // the listening socket. A graceful "Stop service" closes the socket via this teardown; an
         // OS/OEM/battery kill closes it by process death (onStartCommand is START_NOT_STICKY, so no
@@ -730,9 +783,9 @@ pub async fn start_direct_only(
         #[cfg(target_os = "android")]
         {
             // R-D7a (N1/F1 fix): compare against the generation CAPTURED at service start and passed
-            // in by value — NOT a late `ANDROID_SERVER_GENERATION.load()`, which could adopt a
-            // generation a concurrent `stopServer`/`startServer` already superseded and so keep this
-            // (stopped) service's thread alive. On the legitimate Android path this is always `Some`
+            // in by value — NOT a late lifecycle-state read, which could adopt the newer generation
+            // from a concurrent `stopServer`/`startServer` and so keep this (stopped) service's
+            // thread alive. On the legitimate Android path this is always `Some`
             // (the JNI `startServer` supplies it); a `None` here means a misrouted start — fail closed.
             let my_generation = match android_generation {
                 Some(g) => g,
@@ -744,7 +797,7 @@ pub async fn start_direct_only(
                 }
             };
             loop {
-                if !android_generation_current(my_generation) {
+                if android_listener_lifecycle_snapshot(my_generation).is_none() {
                     log::info!(
                         "R-D7a: Android service stopped — start_direct_only returns so the server thread + tokio runtime unwind (listener socket closed)"
                     );
@@ -760,14 +813,13 @@ pub async fn start_direct_only(
 async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
     let mut listener = None;
     let mut port = 0;
-    let mut seen_rebuild_epoch = LISTENER_REBUILD_EPOCH.load(Ordering::SeqCst);
     // R-D7a (Android, N1/F1 fix): the service-owned-listener generation this accept task runs
     // under is PASSED IN BY VALUE from the JNI `startServer` entry (android_begin_generation's
     // return, via start_server -> start_direct_only), NOT re-loaded from the global here. A late
     // `load()` could adopt a generation a concurrent stop/re-start already superseded — the N1/F1
     // orphaned-listener race — so a "stopped" service's accept task could keep the socket bound.
-    // Using the captured value, `MainService.onDestroy` -> `stopServer`'s bump always makes the
-    // loop-top check below observe GEN != my_generation, drop the `listener` local, and stop
+    // Using the captured value, `MainService.onDestroy` -> `stopServer` deactivates this exact
+    // generation, so the loop-top snapshot below fails, drops the `listener` local, and stops
     // accepting. Desktop/iOS: absent — the listener lifetime is the process/unit lifetime (R-X9).
     #[cfg(target_os = "android")]
     let my_generation = match android_generation {
@@ -775,6 +827,16 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
         None => {
             log::error!(
                 "R-D7a: direct_server started on Android with no service generation — fail closed (not binding)"
+            );
+            return;
+        }
+    };
+    #[cfg(target_os = "android")]
+    let mut seen_rebuild_epoch = match android_listener_lifecycle_snapshot(my_generation) {
+        Some(epoch) => epoch,
+        None => {
+            log::error!(
+                "R-D7a: direct_server generation was inactive or superseded before listener startup — fail closed (not binding)"
             );
             return;
         }
@@ -804,33 +866,37 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
             return;
         }
         // R-D7a (Android): the foreground service that owns this listener was destroyed
-        // (MainService.onDestroy -> stopServer -> android_request_stop bumped the generation).
+        // (MainService.onDestroy -> stopServer -> android_request_stop deactivated the generation).
         // Return so the `listener` local drops and the listening socket closes; the accept task
         // ends. No config write — symmetric with the desktop R-T9 edge above; a "service stopped,
         // listener still bound" half-state is unrepresentable. (Desktop/iOS never take this branch.)
         #[cfg(target_os = "android")]
-        if !android_generation_current(my_generation) {
-            log::info!(
-                "R-D7a: Android service stopped — direct_server drops the listener and stops accepting"
-            );
-            // R-G1: returning drops the `listener` local -> its ListenerBoundGuard's Drop publishes
-            // DIRECT_LISTENER_BOUND = false. (If the start_direct_only keep-alive returns first and
-            // the tokio runtime aborts this task instead, dropping the future ALSO drops `listener`
-            // -> same Drop -> false. Both stop paths converge on false, no stuck-true, no race.)
-            return;
-        }
-        let rebuild_epoch = LISTENER_REBUILD_EPOCH.load(Ordering::SeqCst);
-        if rebuild_epoch != seen_rebuild_epoch {
-            seen_rebuild_epoch = rebuild_epoch;
-            if listener.is_some() {
-                // R-T13: network-change rebuild — drop the existing listener so the next iteration
-                // re-enters the already-audited bind path (`listener = None` -> listen_any_v4).
-                log::info!("R-T13: rebuilding direct listener after Android network change");
-                // R-G1: dropping the listener tuple runs its ListenerBoundGuard Drop -> publishes
-                // false; the next iteration re-binds and constructs a fresh guard -> true. So the
-                // flag reflects the real bind across the rebuild.
-                listener = None;
-                continue;
+        {
+            let rebuild_epoch = match android_listener_lifecycle_snapshot(my_generation) {
+                Some(epoch) => epoch,
+                None => {
+                    log::info!(
+                        "R-D7a: Android service stopped — direct_server drops the listener and stops accepting"
+                    );
+                    // R-G1: returning drops the `listener` local -> its ListenerBoundGuard's Drop
+                    // publishes DIRECT_LISTENER_BOUND = false. If the start_direct_only keep-alive
+                    // returns first and aborts this task, dropping the future has the same result.
+                    return;
+                }
+            };
+            if rebuild_epoch != seen_rebuild_epoch {
+                seen_rebuild_epoch = rebuild_epoch;
+                if listener.is_some() {
+                    // R-T13: an exact-generation network-change rebuild drops the existing listener
+                    // so the next iteration re-enters the audited bind path.
+                    log::info!(
+                        "R-T13: rebuilding direct listener after exact-generation Android network change"
+                    );
+                    // R-G1: dropping the listener tuple publishes false; the next successful bind
+                    // constructs a fresh guard and publishes true.
+                    listener = None;
+                    continue;
+                }
             }
         }
         // R-S9 fail-closed: the "listen on 0.0.0.0 IFF a permanent password is set"
@@ -1034,3 +1100,62 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
 
 // R-D4: the `CheckIfResendPk` no-op RAII shell (the original resent `register_pk` on a post-config-
 // sync pk change — moot with no registration) is REMOVED with the mediator-shell sweep.
+
+#[cfg(test)]
+mod android_listener_lifecycle_tests {
+    use super::AndroidListenerLifecycle;
+
+    #[test]
+    fn stale_network_callback_cannot_advance_replacement_generation_epoch() {
+        let mut lifecycle = AndroidListenerLifecycle::default();
+
+        let first = lifecycle.begin_generation().unwrap();
+        assert_eq!(lifecycle.snapshot(first), Some(0));
+        assert_eq!(lifecycle.request_rebuild(first), Some(1));
+        assert_eq!(lifecycle.snapshot(first), Some(1));
+
+        assert!(!lifecycle.stop_generation(first + 1));
+        assert_eq!(lifecycle.snapshot(first), Some(1));
+        assert!(lifecycle.stop_generation(first));
+        assert_eq!(lifecycle.snapshot(first), None);
+
+        let replacement = lifecycle.begin_generation().unwrap();
+        assert!(replacement > first);
+        assert_eq!(lifecycle.snapshot(replacement), Some(0));
+        assert_eq!(lifecycle.request_rebuild(replacement), Some(1));
+
+        assert_eq!(lifecycle.request_rebuild(first), None);
+        assert_eq!(lifecycle.snapshot(replacement), Some(1));
+        assert!(!lifecycle.stop_generation(first));
+        assert_eq!(lifecycle.snapshot(replacement), Some(1));
+    }
+
+    #[test]
+    fn invalid_or_exhausted_listener_lifecycle_transitions_fail_closed() {
+        let mut lifecycle = AndroidListenerLifecycle::default();
+
+        assert_eq!(lifecycle.request_rebuild(0), None);
+        assert!(!lifecycle.stop_generation(0));
+        assert_eq!(lifecycle.snapshot(0), None);
+
+        lifecycle.generation = u64::MAX;
+        lifecycle.active = true;
+        assert!(lifecycle.stop_generation(u64::MAX));
+        assert_eq!(lifecycle.snapshot(u64::MAX), None);
+
+        lifecycle.active = true;
+        assert_eq!(lifecycle.begin_generation(), None);
+        assert!(!lifecycle.stop_generation(u64::MAX));
+        assert_eq!(lifecycle.generation, u64::MAX);
+        assert!(!lifecycle.active);
+        assert_eq!(lifecycle.snapshot(u64::MAX), None);
+
+        lifecycle.generation = 7;
+        lifecycle.rebuild_epoch = u64::MAX;
+        lifecycle.active = true;
+        assert_eq!(lifecycle.request_rebuild(7), None);
+        assert_eq!(lifecycle.rebuild_epoch, u64::MAX);
+        assert!(!lifecycle.active);
+        assert_eq!(lifecycle.snapshot(7), None);
+    }
+}

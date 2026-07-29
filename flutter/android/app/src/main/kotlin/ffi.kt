@@ -23,7 +23,7 @@ object FFI {
     external fun registerClientSessionOwner(generation: Long, sessionId: String): Boolean
     external fun resumeClientSessionOwner(generation: Long, sessionId: String): Long
     external fun closeClientSessions(generation: Long, sessionId: String): Int
-    external fun rebuildDirectServerListener()
+    external fun rebuildDirectServerListener(generation: Long): Boolean
     external fun onVideoFrameUpdate(buf: ByteBuffer)
     external fun onAudioFrameUpdate(buf: ByteBuffer)
     external fun translateLocale(localeName: String, input: String): String

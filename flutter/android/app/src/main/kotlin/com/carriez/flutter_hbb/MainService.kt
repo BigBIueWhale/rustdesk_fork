@@ -253,6 +253,7 @@ class MainService : Service() {
 
     private var serviceLooper: Looper? = null
     private var serviceHandler: Handler? = null
+    @Volatile
     private var nativeServerGeneration = 0L
 
     private val powerManager: PowerManager by lazy { applicationContext.getSystemService(Context.POWER_SERVICE) as PowerManager }
@@ -310,8 +311,18 @@ class MainService : Service() {
     private lateinit var notificationBuilder: NotificationCompat.Builder
 
     private fun requestDirectListenerRebuild(reason: String) {
-        Log.i(logTag, "R-T13: Android network change ($reason); rebuilding direct listener")
-        FFI.rebuildDirectServerListener()
+        val generation = nativeServerGeneration
+        if (generation <= 0L || !FFI.rebuildDirectServerListener(generation)) {
+            Log.d(
+                logTag,
+                "R-T13: ignored network change from stale MainService generation $generation ($reason)",
+            )
+            return
+        }
+        Log.i(
+            logTag,
+            "R-T13: Android network change admitted for MainService generation $generation ($reason)",
+        )
     }
 
     @Synchronized
@@ -395,6 +406,12 @@ class MainService : Service() {
 
     override fun onDestroy() {
         releaseControlledConnectionResources()
+        // Deactivate this exact listener generation before draining Android callbacks. A network
+        // callback already queued for this Service is then rejected in Rust and cannot rebuild a
+        // replacement Service's listener.
+        if (!FFI.stopServer(nativeServerGeneration)) {
+            Log.d(logTag, "Native server generation was already stopped or replaced")
+        }
         serviceLooper?.quitSafely()
         serviceHandler = null
         serviceLooper = null
@@ -402,14 +419,11 @@ class MainService : Service() {
         unregisterNetworkCallback()
         releaseNetworkKeepaliveWakeLock()
         // R-D7a: the direct listener is OWNED by this foreground service (started by FFI.startServer
-        // in onCreate). Tear it down as the service is destroyed — stopServer supersedes the Rust
-        // service-owned-listener generation, so the accept loop drops the TcpListener and the socket
-        // closes. The user "Stop service" path reaches here via MainActivity.stop_service -> destroy()
-        // -> stopSelf -> onDestroy; an OS/OEM/battery kill closes the socket by process death instead
-        // (START_NOT_STICKY means no zombie auto-restart rebinds it).
-        if (!FFI.stopServer(nativeServerGeneration)) {
-            Log.d(logTag, "Native server generation was already stopped or replaced")
-        }
+        // in onCreate). Tear it down as the service is destroyed — stopServer deactivates the exact
+        // Rust service-owned-listener generation, so the accept loop drops the TcpListener and the
+        // socket closes. The user "Stop service" path reaches here via MainActivity.stop_service ->
+        // destroy() -> stopSelf -> onDestroy; an OS/OEM/battery kill closes the socket by process
+        // death instead (START_NOT_STICKY means no zombie auto-restart rebinds it).
         if (!FFI.releaseService(this)) {
             Log.d(logTag, "MainService callback owner was already replaced or released")
         }

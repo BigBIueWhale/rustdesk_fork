@@ -24,4 +24,8 @@ pub mod dxgi;
 #[cfg(target_os = "android")]
 pub mod android;
 
+#[cfg(all(test, not(target_os = "android")))]
+#[path = "android/frame_raw_generation.rs"]
+mod android_frame_raw_generation_tests;
+
 mod common;

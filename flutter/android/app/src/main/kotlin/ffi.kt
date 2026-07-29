@@ -24,11 +24,12 @@ object FFI {
     external fun resumeClientSessionOwner(generation: Long, sessionId: String): Long
     external fun closeClientSessions(generation: Long, sessionId: String): Int
     external fun rebuildDirectServerListener(generation: Long): Boolean
-    external fun onVideoFrameUpdate(buf: ByteBuffer)
+    external fun onVideoFrameUpdate(generation: Long, buf: ByteBuffer)
     external fun onAudioFrameUpdate(buf: ByteBuffer)
     external fun translateLocale(localeName: String, input: String): String
     external fun refreshScreen()
-    external fun setFrameRawEnable(name: String, value: Boolean)
+    external fun setVideoFrameRawEnable(generation: Long, value: Boolean): Boolean
+    external fun setAudioFrameRawEnable(value: Boolean)
     external fun getLocalOption(key: String): String
     external fun getBuildinOption(key: String): String
     external fun onClipboardUpdate(clips: ByteBuffer)

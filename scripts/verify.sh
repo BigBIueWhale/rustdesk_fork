@@ -10574,6 +10574,15 @@ else
   echo "  FAIL R-S11el/R-S11e-172: Android exact-generation listener rebuild authority regressed"
   rc=1
 fi
+echo "== Android exact-generation raw-video authority (R-S11em/R-S11e-174) =="
+"${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config \
+  android_frame_raw_generation_tests::tests:: -- --test-threads=1
+if /usr/bin/python3 -I -S scripts/verify-android-frame-raw-generation.py --repo . --self-test; then
+  echo "  ok  R-S11em/R-S11e-174 Android exact-generation raw-video authority"
+else
+  echo "  FAIL R-S11em/R-S11e-174: Android exact-generation raw-video authority regressed"
+  rc=1
+fi
 # R-T13 (§20, SHOULD): Android controlled-side networking lifecycle. The foreground service must
 # observe network loss/availability and drive the existing direct-listener rebuild path (`listener =
 # None`, not a full server restart), and the R-T10 TCP keepalive must be paired with a foreground
@@ -13124,7 +13133,7 @@ fi
 # replacement MainService or stop its listener. Process-wide controlled voice and playback
 # ownership retains that exact generation too, so obsolete service teardown cannot clear a
 # replacement service's same-number owner or projection.
-echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4) =="
+echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4) =="
 r_s14_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
 r_s14_type_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt
 r_s14_owners_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledCaptureOwnerState.kt
@@ -13137,6 +13146,9 @@ r_s14_input_queue_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb
 r_s14_input_test=scripts/android-controlled-input-owner-test.kt
 r_s14_ffi_kt=flutter/android/app/src/main/kotlin/ffi.kt
 r_s14_ffi_rs=libs/scrap/src/android/ffi.rs
+r_s14_frame_raw=libs/scrap/src/android/frame_raw.rs
+r_s14_frame_raw_generation=libs/scrap/src/android/frame_raw_generation.rs
+r_s14_scrap_lib=libs/scrap/src/lib.rs
 r_s14_flutter=src/flutter.rs
 r_s14_flutter_ffi=src/flutter_ffi.rs
 r_s14_connection=src/server/connection.rs
@@ -13179,10 +13191,15 @@ printf '%s\n' "$start_capture_block" | grep -qF 'val projection = mediaProjectio
 printf '%s\n' "$start_capture_block" | grep -qF 'if (!startRawVideoRecorder(projection))' || r_s14_missing="$r_s14_missing start-no-virtual-display-commit-gate"
 printf '%s\n' "$start_capture_block" | grep -qF 'releaseCaptureResources(clearCaptureRequest = false)' || r_s14_missing="$r_s14_missing failed-start-does-not-preserve-live-demand"
 printf '%s\n' "$start_capture_block" | grep -qF 'requestMediaProjection()' || r_s14_missing="$r_s14_missing failed-start-no-fresh-consent"
+printf '%s\n' "$start_capture_block" | grep -qF 'FFI.setVideoFrameRawEnable(nativeServerGeneration, true)' || r_s14_missing="$r_s14_missing raw-video-start-not-generation-bound"
+printf '%s\n' "$start_capture_block" | grep -qF 'stopCapturePipeline(keepReusableDisplay = false)' || r_s14_missing="$r_s14_missing rejected-raw-video-start-not-retired"
+printf '%s\n' "$start_capture_block" | grep -qF 'captureActive = true' || r_s14_missing="$r_s14_missing local-capture-active-commit-missing"
 printf '%s\n' "$start_capture_block" | grep -qF '_isStart = true' || r_s14_missing="$r_s14_missing active-state-commit-missing"
 printf '%s\n' "$start_capture_block" | grep -qF 'mediaProjection!!' && r_s14_missing="$r_s14_missing projection-force-unwrap"
 printf '%s\n' "$pipeline_block" | grep -qF 'virtualDisplay?.release()' || r_s14_missing="$r_s14_missing pipeline-no-virtual-display-release"
 printf '%s\n' "$pipeline_block" | grep -qF 'surface = null' || r_s14_missing="$r_s14_missing pipeline-surface-not-nulled"
+printf '%s\n' "$pipeline_block" | grep -qF 'FFI.setVideoFrameRawEnable(nativeServerGeneration, false)' || r_s14_missing="$r_s14_missing raw-video-stop-not-generation-bound"
+printf '%s\n' "$pipeline_block" | grep -qF 'captureActive = false' || r_s14_missing="$r_s14_missing local-capture-active-clear-missing"
 printf '%s\n' "$start_capture_block" | grep -qF 'VoiceCallAudioCoordinator.setPlaybackCaptureProjection(' || r_s14_missing="$r_s14_missing start-no-playback-owner-admission"
 printf '%s\n' "$start_capture_block" | grep -qF 'nativeServerGeneration' || r_s14_missing="$r_s14_missing start-playback-owner-not-generation-bound"
 printf '%s\n' "$pipeline_block" | grep -qF 'VoiceCallAudioCoordinator.setPlaybackCaptureProjection(' || r_s14_missing="$r_s14_missing pipeline-no-playback-owner-retirement"
@@ -13238,6 +13255,21 @@ grep -qF 'external fun releaseService(service: Context): Boolean' "$r_s14_ffi_kt
 grep -qF 'external fun startServer(service: Context, app_dir: String, custom_client_config: String): Long' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-generation-not-exact-object-bound"
 grep -qF 'nativeServerGeneration = FFI.startServer(this, configPath, "")' "$r_s14_kt" || r_s14_missing="$r_s14_missing service-start-generation-not-exact-object-bound"
 grep -qF 'external fun stopServer(generation: Long): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing service-stop-not-exact-generation"
+grep -qF 'external fun onVideoFrameUpdate(generation: Long, buf: ByteBuffer)' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing video-frame-not-generation-bound"
+grep -qF 'external fun setVideoFrameRawEnable(generation: Long, value: Boolean): Boolean' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing raw-video-enable-not-generation-bound"
+grep -qF 'external fun setAudioFrameRawEnable(value: Boolean)' "$r_s14_ffi_kt" || r_s14_missing="$r_s14_missing typed-raw-audio-enable-missing"
+grep -qF 'FFI.onVideoFrameUpdate(nativeServerGeneration, buffer)' "$r_s14_kt" || r_s14_missing="$r_s14_missing video-frame-call-not-generation-bound"
+grep -qF '@Volatile' "$r_s14_kt" && grep -qF 'private var captureActive = false' "$r_s14_kt" || r_s14_missing="$r_s14_missing instance-local-capture-authority-missing"
+grep -qF 'pub(crate) struct FrameRawGenerationOwner' "$r_s14_frame_raw_generation" || r_s14_missing="$r_s14_missing raw-video-generation-state-missing"
+grep -qF 'generation != 0 && self.active_generation == Some(generation)' "$r_s14_frame_raw_generation" || r_s14_missing="$r_s14_missing raw-video-exact-generation-admission-missing"
+grep -qF 'owner: FrameRawGenerationOwner' "$r_s14_frame_raw" || r_s14_missing="$r_s14_missing raw-video-owner-not-coupled-to-buffer"
+grep -qF 'if !self.owner.admits(generation)' "$r_s14_frame_raw" || r_s14_missing="$r_s14_missing raw-video-mutation-not-owner-gated"
+grep -qF 'android_frame_raw_generation_tests' "$r_s14_scrap_lib" || r_s14_missing="$r_s14_missing raw-video-generation-behavior-source-not-host-tested"
+grep -qF 'VIDEO_RAW.lock().unwrap().begin_generation(generation)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing raw-video-generation-not-begun-with-service"
+grep -qF 'VIDEO_RAW.lock().unwrap().retire_generation(generation)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing raw-video-generation-not-retired-with-service"
+if grep -qF 'setFrameRawEnable' "$r_s14_ffi_kt" "$r_s14_ffi_rs" "$r_s14_kt"; then
+  r_s14_missing="$r_s14_missing ambient-video-audio-selector-retained"
+fi
 grep -qF 'Java_ffi_FFI_releaseService' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing exact-service-release-jni-missing"
 grep -qF 'env.is_same_object(owner.owner.as_obj(), &service)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-release-not-exact-object-bound"
 grep -qF 'current.take();' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-global-ref-not-released"
@@ -13276,15 +13308,16 @@ grep -qF '"(IIIII)Z"' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing pointer-j
 grep -qF '"(I[B)Z"' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing key-jni-connection-id-or-result"
 grep -qF 'R-S11ei/R-S11e-153' HARDENING_STATUS.md || r_s14_missing="$r_s14_missing exact-input-ledger"
 grep -qF 'R-S11ek/R-S11e-169' HARDENING_STATUS.md || r_s14_missing="$r_s14_missing exact-controlled-audio-generation-ledger"
+grep -qF 'R-S11em/R-S11e-174' HARDENING_STATUS.md || r_s14_missing="$r_s14_missing exact-raw-video-generation-ledger"
 grep -qF 'bind_main_service_generation(&env, &service, generation)' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing listener-callback-generation-not-exact-object-bound"
 grep -qF 'android_request_stop(' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing exact-generation-stop-jni-missing"
 grep -qF 'static ANDROID_LISTENER_LIFECYCLE: Mutex<AndroidListenerLifecycle>' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing no-serialized-service-listener-lifecycle"
 grep -qF 'fn stop_generation(&mut self, expected_generation: u64) -> bool' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing no-exact-generation-deactivation-transition"
 grep -qF 'lifecycle.stop_generation(expected_generation)' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing stale-service-stop-not-rejected"
 if [ -n "$r_s14_missing" ]; then
-  echo "  FAIL R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4: Android capture/input/audio owner invariant is incomplete:$r_s14_missing"; rc=1
+  echo "  FAIL R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4: Android capture/input/audio owner invariant is incomplete:$r_s14_missing"; rc=1
 else
-  echo "  ok  R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4 Android capture/input/audio commits only for exact service-generation-owned Remote IDs; delayed input is bounded and stale owners, callbacks, global stops, and server generations are rejected"
+  echo "  ok  R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4 Android capture/input/audio commits only for exact service-generation-owned Remote IDs; delayed input is bounded and stale owners, callbacks, raw frames, global stops, and server generations are rejected"
 fi
 # R-X7a / R-G1 (no inert pinned-policy SELECTOR survives — removed, not greyed): verification-method +
 # approve-mode are R-S16-pinned (use-permanent-password / password), so a UI that PRESENTS+WRITES them

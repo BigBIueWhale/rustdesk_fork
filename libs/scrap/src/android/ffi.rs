@@ -13,16 +13,19 @@ use hbb_common::{anyhow::anyhow, message_proto::MultiClipboards, protobuf::Messa
 use jni::errors::{Error as JniError, Result as JniResult};
 use lazy_static::lazy_static;
 use serde::Deserialize;
-use std::ops::Not;
+use std::convert::TryFrom;
 use std::os::raw::c_void;
 use std::sync::{Mutex, RwLock};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+
+use super::frame_raw::{FrameRaw, GenerationOwnedFrameRaw};
 
 lazy_static! {
     static ref JVM: RwLock<Option<JavaVM>> = RwLock::new(None);
     static ref MAIN_SERVICE_CTX: RwLock<Option<MainServiceContext>> = RwLock::new(None); // MainService -> video service / audio service / info
     static ref APPLICATION_CONTEXT: RwLock<Option<GlobalRef>> = RwLock::new(None);
-    static ref VIDEO_RAW: Mutex<FrameRaw> = Mutex::new(FrameRaw::new("video", MAX_VIDEO_FRAME_TIMEOUT));
+    static ref VIDEO_RAW: Mutex<GenerationOwnedFrameRaw> =
+        Mutex::new(GenerationOwnedFrameRaw::new("video", MAX_VIDEO_FRAME_TIMEOUT));
     static ref AUDIO_RAW: Mutex<FrameRaw> = Mutex::new(FrameRaw::new("audio", MAX_AUDIO_FRAME_TIMEOUT));
     static ref NDK_CONTEXT_INITED: Mutex<bool> = Default::default();
     static ref MEDIA_CODEC_INFOS: RwLock<Option<MediaCodecInfos>> = RwLock::new(None);
@@ -45,85 +48,6 @@ struct MainServiceContext {
     owner: GlobalRef,
 }
 
-struct FrameRaw {
-    name: &'static str,
-    data: Vec<u8>,
-    last_update: Instant,
-    timeout: Duration,
-    enable: bool,
-}
-
-impl FrameRaw {
-    fn new(name: &'static str, timeout: Duration) -> Self {
-        FrameRaw {
-            name,
-            data: Vec::new(),
-            last_update: Instant::now(),
-            timeout,
-            enable: false,
-        }
-    }
-
-    fn set_enable(&mut self, value: bool) {
-        self.enable = value;
-        self.data.clear();
-    }
-
-    fn update_from_jni_buffer(&mut self, data: *mut u8, len: usize, max_len: usize) {
-        if self.enable.not() {
-            return;
-        }
-        if data.is_null() || len == 0 {
-            log::warn!("dropping empty Android {} raw buffer", self.name);
-            return;
-        }
-        if len > max_len {
-            log::warn!(
-                "dropping oversized Android {} raw buffer before Rust-owned copy: {} > {}",
-                self.name,
-                len,
-                max_len
-            );
-            return;
-        }
-        let slice = unsafe { std::slice::from_raw_parts(data, len) };
-        self.data.clear();
-        self.data.extend_from_slice(slice);
-        self.last_update = Instant::now();
-    }
-
-    // take inner data as slice
-    // release when success
-    fn take<'a>(&mut self, dst: &mut Vec<u8>, last: &mut Vec<u8>) -> Option<()> {
-        if self.enable.not() {
-            return None;
-        }
-        if self.data.is_empty() {
-            None
-        } else {
-            if self.last_update.elapsed() > self.timeout {
-                log::trace!("Failed to take {} raw,timeout!", self.name);
-                self.release();
-                return None;
-            }
-            if last.len() == self.data.len()
-                && crate::would_block_if_equal(last, &self.data).is_err()
-            {
-                self.release();
-                return None;
-            }
-            dst.clear();
-            dst.extend_from_slice(&self.data);
-            self.release();
-            Some(())
-        }
-    }
-
-    fn release(&mut self) {
-        self.data.clear();
-    }
-}
-
 pub fn get_video_raw<'a>(dst: &mut Vec<u8>, last: &mut Vec<u8>) -> Option<()> {
     VIDEO_RAW.lock().ok()?.take(dst, last)
 }
@@ -144,12 +68,17 @@ pub fn get_clipboards(client: bool) -> Option<MultiClipboards> {
 pub extern "system" fn Java_ffi_FFI_onVideoFrameUpdate(
     env: JNIEnv,
     _class: JClass,
+    generation: jni::sys::jlong,
     buffer: JObject,
 ) {
+    let Ok(generation) = u64::try_from(generation) else {
+        return;
+    };
     let jb = JByteBuffer::from(buffer);
     if let Ok(data) = env.get_direct_buffer_address(&jb) {
         if let Ok(len) = env.get_direct_buffer_capacity(&jb) {
             VIDEO_RAW.lock().unwrap().update_from_jni_buffer(
+                generation,
                 data,
                 len,
                 MAX_ANDROID_VIDEO_RAW_BYTES,
@@ -217,22 +146,30 @@ pub extern "system" fn Java_ffi_FFI_onClipboardUpdate(
 }
 
 #[no_mangle]
-pub extern "system" fn Java_ffi_FFI_setFrameRawEnable(
-    env: JNIEnv,
+pub extern "system" fn Java_ffi_FFI_setVideoFrameRawEnable(
+    _env: JNIEnv,
     _class: JClass,
-    name: JString,
+    generation: jni::sys::jlong,
+    value: jboolean,
+) -> jboolean {
+    let Ok(generation) = u64::try_from(generation) else {
+        return jboolean::from(false);
+    };
+    jboolean::from(
+        VIDEO_RAW
+            .lock()
+            .unwrap()
+            .set_enable(generation, value.eq(&1)),
+    )
+}
+
+#[no_mangle]
+pub extern "system" fn Java_ffi_FFI_setAudioFrameRawEnable(
+    _env: JNIEnv,
+    _class: JClass,
     value: jboolean,
 ) {
-    let mut env = env;
-    if let Ok(name) = env.get_string(&name) {
-        let name: String = name.into();
-        let value = value.eq(&1);
-        if name.eq("video") {
-            VIDEO_RAW.lock().unwrap().set_enable(value);
-        } else if name.eq("audio") {
-            AUDIO_RAW.lock().unwrap().set_enable(value);
-        }
-    };
+    AUDIO_RAW.lock().unwrap().set_enable(value.eq(&1));
 }
 
 #[no_mangle]
@@ -277,7 +214,15 @@ pub extern "system" fn Java_ffi_FFI_init(
     if let Some(context_jobject) = install_application_context_once(java_vm, application_context) {
         try_init_rustls_platform_verifier(&mut env, context_jobject);
     }
-    *MAIN_SERVICE_CTX.write().unwrap() = Some(MainServiceContext {
+    let mut current = MAIN_SERVICE_CTX.write().unwrap();
+    if let Some(generation) = current.as_ref().and_then(|context| context.generation) {
+        if !VIDEO_RAW.lock().unwrap().retire_generation(generation) {
+            log::warn!(
+                "failed to retire Android raw-video generation {generation} during MainService replacement"
+            );
+        }
+    }
+    *current = Some(MainServiceContext {
         generation: None,
         owner: service,
     });
@@ -302,6 +247,10 @@ pub fn bind_main_service_generation(env: &JNIEnv, service: &JObject, generation:
     if current.generation.is_some() {
         return false;
     }
+    if !VIDEO_RAW.lock().unwrap().begin_generation(generation) {
+        log::error!("failed to begin Android raw-video generation {generation}");
+        return false;
+    }
     current.generation = Some(generation);
     true
 }
@@ -320,6 +269,7 @@ pub extern "system" fn Java_ffi_FFI_releaseService(
     let Some(owner) = current.as_ref() else {
         return jboolean::from(false);
     };
+    let generation = owner.generation;
     let is_current = match env.is_same_object(owner.owner.as_obj(), &service) {
         Ok(is_current) => is_current,
         Err(error) => {
@@ -328,6 +278,13 @@ pub extern "system" fn Java_ffi_FFI_releaseService(
         }
     };
     if is_current {
+        if let Some(generation) = generation {
+            if !VIDEO_RAW.lock().unwrap().retire_generation(generation) {
+                log::warn!(
+                    "failed to retire Android raw-video generation {generation} during MainService release"
+                );
+            }
+        }
         current.take();
     }
     jboolean::from(is_current)

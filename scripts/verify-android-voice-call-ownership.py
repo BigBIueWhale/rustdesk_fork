@@ -531,7 +531,7 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "if (!checkAudioReader())",
             "stopAudioRecorder()",
-            "FFI.setFrameRawEnable(\"audio\", true)",
+            "FFI.setAudioFrameRawEnable(true)",
             "recorder.startRecording()",
             "recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING",
             "audioRecordStat = true",
@@ -557,7 +557,7 @@ def validate(sources: Dict[str, str]) -> None:
             "minBufferSize = 0",
             "captureMode = AudioCaptureMode.STOPPED",
             "captureProjection = null",
-            "FFI.setFrameRawEnable(\"audio\", false)",
+            "FFI.setAudioFrameRawEnable(false)",
         ),
         "spontaneous worker exact cleanup",
     )
@@ -577,7 +577,7 @@ def validate(sources: Dict[str, str]) -> None:
             "recorder.release()",
             "captureMode = AudioCaptureMode.STOPPED",
             "captureProjection = null",
-            "FFI.setFrameRawEnable(\"audio\", false)",
+            "FFI.setAudioFrameRawEnable(false)",
         ),
         "stop-unblock-join-release ownership",
     )
@@ -4235,7 +4235,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["verify"],
-        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4) =="',
+        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4) =="',
         "shared Android controlled-input/audio generation ownership gate label",
     )
     require(
@@ -4595,7 +4595,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<span class="id">R-S11ei</span>', '<span class="id">R-S11ei-disabled</span>', "controlled-input ownership requirement"),
     ("requirements", "<tr><td>288</td>", "<tr><td>288-disabled</td>", "controlled-input ownership disposition"),
     ("hardening", "R-S11ei/R-S11e-153", "R-S11ei-disabled/R-S11e-153", "controlled-input ownership hardening ledger"),
-    ("verify", 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4) =="', 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11e-153/R-S11e-169/R-T4) =="', "shared controlled-input/audio generation ownership gate"),
+    ("verify", 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4) =="', 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4) =="', "shared controlled-input/audio generation ownership gate"),
     ("verify", "android-controlled-input-owner-test.kt", "android-controlled-input-owner-test-disabled.kt", "shared controlled-input behavior fixture gate"),
     ("verify", "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs", "true # replacement-drain shared gate disabled", "shared mobile replacement-drain gate"),
     ("verify", "if [ \"$(grep -cF 'check_remove_unused_displays(None, None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then", "if false; then # post-drain display gate disabled", "shared post-drain display-reconciliation gate"),

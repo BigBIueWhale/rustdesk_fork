@@ -18706,7 +18706,7 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         sources["verify"],
-        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4) =="',
+        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4) =="',
         "independent shared controlled-input/audio generation gate label source",
     )
 
@@ -18987,6 +18987,255 @@ def validate_android_listener_generation_contract(sources):
         ),
     ):
         require_text(source, text, f"independent Android listener {label}")
+
+
+def validate_android_frame_raw_generation_contract(sources):
+    focused = sources["android_frame_raw_generation_verifier"]
+    try:
+        ast.parse(focused)
+    except SyntaxError as error:
+        raise VerificationError(
+            f"Android raw-video focused verifier does not parse: {error}"
+        ) from error
+    for text, label in (
+        (
+            "Validate exact MainService-generation ownership of Android raw video.",
+            "focused verifier purpose",
+        ),
+        ("checked monotonic raw-video begin", "focused monotonic-state binding"),
+        (
+            "exact-object release retires only its raw-video generation",
+            "focused exact-object release binding",
+        ),
+        (
+            "display and raw admission before active-state commit",
+            "focused transactional-start binding",
+        ),
+        (
+            "exact raw disable before local pipeline retirement",
+            "focused teardown-order binding",
+        ),
+        ("run_mutations(sources)", "focused mutation dispatch"),
+    ):
+        require_text(focused, text, f"Android raw-video generation {label}")
+
+    owner = sources["android_frame_raw_generation"]
+    require_order(
+        owner,
+        (
+            "greatest_generation: u64",
+            "active_generation: Option<u64>",
+            "if generation == 0",
+            "if self.active_generation == Some(generation)",
+            "if generation <= self.greatest_generation",
+            "self.greatest_generation = generation",
+            "self.active_generation = Some(generation)",
+        ),
+        "independent monotonic raw-video generation ownership",
+    )
+    for text, label in (
+        (
+            "generation == 0 || self.active_generation != Some(generation)",
+            "stale raw-video generation retirement",
+        ),
+        (
+            "generation != 0 && self.active_generation == Some(generation)",
+            "exact admission",
+        ),
+        (
+            "stale_generation_cannot_mutate_replacement",
+            "stale-generation behavior regression",
+        ),
+        (
+            "exact_retirement_prevents_same_generation_reactivation",
+            "retired-generation behavior regression",
+        ),
+        (
+            "assert!(!owner.retire(7));\n        assert!(owner.admits(8));",
+            "replacement preservation behavior assertion",
+        ),
+    ):
+        require_text(owner, text, f"independent raw-video owner {label}")
+
+    frame = sources["android_frame_raw"]
+    require_exact_count(
+        frame,
+        "owner: FrameRawGenerationOwner",
+        2,
+        "independent raw-video frame generation/frame state composition",
+    )
+    for text, label in (
+        (
+            "match self.owner.begin(generation)",
+            "generation begin forwarding",
+        ),
+        (
+            "if !self.owner.retire(generation)",
+            "exact retirement forwarding",
+        ),
+        (
+            "if !self.owner.admits(generation)",
+            "exact mutation admission",
+        ),
+        (
+            "self.frame.set_enable(false)",
+            "replacement/retirement buffer clear",
+        ),
+    ):
+        require_text(frame, text, f"independent raw-video frame {label}")
+    require_text(
+        sources["scrap_lib"],
+        '#[path = "android/frame_raw_generation.rs"]\n'
+        "mod android_frame_raw_generation_tests;",
+        "independent production-state host behavior inclusion",
+    )
+
+    rust_ffi = sources["android_scrap_ffi"]
+    for text, label in (
+        (
+            "static ref VIDEO_RAW: Mutex<GenerationOwnedFrameRaw>",
+            "generation-owned process buffer",
+        ),
+        (
+            'pub extern "system" fn Java_ffi_FFI_onVideoFrameUpdate(',
+            "typed frame JNI",
+        ),
+        (
+            'pub extern "system" fn Java_ffi_FFI_setVideoFrameRawEnable(',
+            "typed enable JNI",
+        ),
+        (
+            'pub extern "system" fn Java_ffi_FFI_setAudioFrameRawEnable(',
+            "separate audio JNI",
+        ),
+        (
+            "VIDEO_RAW.lock().unwrap().begin_generation(generation)",
+            "raw owner begin at service bind",
+        ),
+        (
+            "VIDEO_RAW.lock().unwrap().retire_generation(generation)",
+            "raw owner retirement",
+        ),
+    ):
+        require_text(rust_ffi, text, f"independent raw-video JNI {label}")
+    require_absent(
+        rust_ffi,
+        "Java_ffi_FFI_setFrameRawEnable",
+        "independent ambient video/audio JNI selector",
+    )
+    bind = extract_between(
+        rust_ffi,
+        "pub fn bind_main_service_generation(",
+        '\n#[no_mangle]\npub extern "system" fn Java_ffi_FFI_releaseService(',
+        "independent raw-video exact-object generation bind",
+    )
+    require_order(
+        bind,
+        (
+            "env.is_same_object(current.owner.as_obj(), service)",
+            "if current.generation.is_some()",
+            "VIDEO_RAW.lock().unwrap().begin_generation(generation)",
+            "current.generation = Some(generation)",
+        ),
+        "independent raw generation before callback publication",
+    )
+
+    ffi_kt = sources["android_ffi_kt"]
+    for text, label in (
+        (
+            "external fun onVideoFrameUpdate(generation: Long, buf: ByteBuffer)",
+            "Kotlin exact frame generation",
+        ),
+        (
+            "external fun setVideoFrameRawEnable(generation: Long, value: Boolean): Boolean",
+            "Kotlin exact enable generation",
+        ),
+        (
+            "external fun setAudioFrameRawEnable(value: Boolean)",
+            "Kotlin typed audio operation",
+        ),
+    ):
+        require_text(ffi_kt, text, f"independent raw-video {label}")
+    require_absent(
+        ffi_kt,
+        "setFrameRawEnable",
+        "independent ambient Kotlin raw selector",
+    )
+
+    main_service = sources["android_main_service"]
+    for text, label in (
+        (
+            "@Volatile\n    private var captureActive = false",
+            "instance-local cross-thread capture authority",
+        ),
+        (
+            "FFI.onVideoFrameUpdate(nativeServerGeneration, buffer)",
+            "exact-generation frame publication",
+        ),
+        (
+            "if (!FFI.setVideoFrameRawEnable(nativeServerGeneration, true))",
+            "exact-generation capture start",
+        ),
+        (
+            "if (!FFI.setVideoFrameRawEnable(nativeServerGeneration, false))",
+            "exact-generation capture stop",
+        ),
+    ):
+        require_text(main_service, text, f"independent raw-video {label}")
+    start_capture = extract_between(
+        main_service,
+        "    fun startCapture(): Boolean {",
+        "\n    @Synchronized\n    private fun reconcileControlledCaptureDemand()",
+        "independent raw-video capture start",
+    )
+    require_order(
+        start_capture,
+        (
+            "if (captureActive)",
+            "if (!startRawVideoRecorder(projection))",
+            "if (!FFI.setVideoFrameRawEnable(nativeServerGeneration, true))",
+            "stopCapturePipeline(keepReusableDisplay = false)",
+            "return false",
+            "captureActive = true",
+            "_isStart = true",
+        ),
+        "independent raw admission before active commit",
+    )
+    require_absent(
+        main_service,
+        "if (isStart)",
+        "independent companion capture-resource authority",
+    )
+
+    for source, text, label in (
+        (
+            sources["verify"],
+            "android_frame_raw_generation_tests::tests:: -- --test-threads=1",
+            "shared pure behavior gate",
+        ),
+        (
+            sources["verify"],
+            "/usr/bin/python3 -I -S scripts/verify-android-frame-raw-generation.py --repo . --self-test",
+            "shared focused gate",
+        ),
+        (
+            sources["verify"],
+            "R-S11em/R-S11e-174 Android exact-generation raw-video authority",
+            "shared verdict",
+        ),
+        (
+            sources["requirements"],
+            '<span class="id">R-S11em</span>',
+            "normative requirement",
+        ),
+        (sources["requirements"], "<tr><td>295</td>", "Appendix C row"),
+        (
+            sources["hardening"],
+            "R-S11em/R-S11e-174 exact MainService-generation Android raw-video ownership",
+            "hardening ledger",
+        ),
+    ):
+        require_text(source, text, f"independent Android raw-video {label}")
 
 
 def validate_android_builder_authority_contract(sources):
@@ -26156,7 +26405,7 @@ def validate_android_media_projection_finality_contract(sources):
     shared_gate = extract_between(
         verify,
         'echo "== Android MediaProjection/input lifecycle finality '
-        '(R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4) =="',
+        '(R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4) =="',
         "# R-X7a / R-G1",
         "shared Android MediaProjection/input lifecycle gate",
     )
@@ -26446,11 +26695,12 @@ def validate_android_media_projection_finality_contract(sources):
             "releaseCaptureResources(clearCaptureRequest = false)",
             "requestMediaProjection()",
             "return false",
+            "FFI.setVideoFrameRawEnable(nativeServerGeneration, true)",
             "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(",
             "nativeServerGeneration",
             "projection",
+            "captureActive = true",
             "_isStart = true",
-            'FFI.setFrameRawEnable("video",true)',
         ),
         "Android VirtualDisplay-before-active transactional start",
     )
@@ -26468,7 +26718,11 @@ def validate_android_media_projection_finality_contract(sources):
         "Android capture-pipeline teardown",
     )
     for text, label in (
-        ('FFI.setFrameRawEnable("video",false)', "raw-video disable"),
+        (
+            "FFI.setVideoFrameRawEnable(nativeServerGeneration, false)",
+            "exact-generation raw-video disable",
+        ),
+        ("captureActive = false", "instance-local active-state clear"),
         ("_isStart = false", "active-state clear"),
         ("virtualDisplay?.release()", "VirtualDisplay release"),
         ("virtualDisplay = null", "VirtualDisplay clear"),
@@ -27215,7 +27469,7 @@ def validate_android_media_projection_finality_contract(sources):
     )
     require_text(
         sources["verify"],
-        "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4)",
+        "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4)",
         "Android MediaProjection shared source gate",
     )
     require_text(
@@ -27225,7 +27479,7 @@ def validate_android_media_projection_finality_contract(sources):
     )
     require_text(
         sources["verify"],
-        "delayed input is bounded and stale owners, callbacks, global stops, and server generations are rejected",
+        "delayed input is bounded and stale owners, callbacks, raw frames, global stops, and server generations are rejected",
         "Android service-generation-owned capture/audio shared gate",
     )
 
@@ -32360,6 +32614,7 @@ def validate_sources(sources):
     validate_online_fetch_windows_engine_output_authority_contract(sources)
     validate_online_fetch_flutter_pub_cache_output_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
+    validate_android_frame_raw_generation_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
     validate_direct_only_viewer_contract(sources)
@@ -48348,8 +48603,8 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4) =="',
-            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11e-153/R-S11e-169/R-T4) =="',
+            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4) =="',
+            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4) =="',
             "independent shared controlled-input/audio generation gate label source",
         ),
         (
@@ -55345,6 +55600,60 @@ def run_source_mutations(sources):
             "independent Android listener verifier-integration hardening ledger",
         ),
         (
+            "android_frame_raw_generation_verifier",
+            "Validate exact MainService-generation ownership of Android raw video.",
+            "Validate ambient ownership of Android raw video.",
+            "Android raw-video generation focused verifier purpose",
+        ),
+        (
+            "android_frame_raw_generation",
+            "generation == 0 || self.active_generation != Some(generation)",
+            "generation == 0",
+            "stale raw-video generation retirement",
+        ),
+        (
+            "android_frame_raw",
+            "owner: FrameRawGenerationOwner",
+            "owner: ()",
+            "independent raw-video frame generation/frame state composition",
+        ),
+        (
+            "android_scrap_ffi",
+            "VIDEO_RAW.lock().unwrap().begin_generation(generation)",
+            "VIDEO_RAW.lock().unwrap().begin_generation(1)",
+            "independent raw-video JNI raw owner begin at service bind",
+        ),
+        (
+            "verify",
+            "android_frame_raw_generation_tests::tests:: -- --test-threads=1",
+            "android_frame_raw_generation_tests_disabled::tests:: -- --test-threads=1",
+            "independent Android raw-video shared pure behavior gate",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/verify-android-frame-raw-generation.py --repo . --self-test",
+            "true # Android raw-video focused gate disabled",
+            "independent Android raw-video shared focused gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11em</span>',
+            '<span class="id">R-S11em-disabled</span>',
+            "independent Android raw-video normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>295</td>",
+            "<tr><td>295-disabled</td>",
+            "independent Android raw-video Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11em/R-S11e-174 exact MainService-generation Android raw-video ownership",
+            "R-S11em/R-S11e-174 ambient Android raw-video ownership",
+            "independent Android raw-video hardening ledger",
+        ),
+        (
             "flutter_ffi_source",
             "bind_main_service_generation(&env, &service, generation)",
             "true",
@@ -55364,8 +55673,8 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4)",
-            "Android MediaProjection/input lifecycle compatibility (R-S14/R-S11ei/R-S11ek/R-S11e-153/R-S11e-169/R-T4)",
+            "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4)",
+            "Android MediaProjection/input lifecycle compatibility (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4)",
             "independent shared controlled-input/audio generation gate label source",
         ),
         (
@@ -56572,6 +56881,9 @@ def main():
             "android_listener_generation_verifier": (
                 repo / "scripts/verify-android-listener-generation.py"
             ).read_text(encoding="utf-8"),
+            "android_frame_raw_generation_verifier": (
+                repo / "scripts/verify-android-frame-raw-generation.py"
+            ).read_text(encoding="utf-8"),
             "android_voice_call_owner_test": (
                 repo / "scripts/android-voice-call-owner-state-test.kt"
             ).read_text(encoding="utf-8"),
@@ -56799,6 +57111,12 @@ def main():
             ).read_text(encoding="utf-8"),
             "android_scrap_ffi": (
                 repo / "libs/scrap/src/android/ffi.rs"
+            ).read_text(encoding="utf-8"),
+            "android_frame_raw": (
+                repo / "libs/scrap/src/android/frame_raw.rs"
+            ).read_text(encoding="utf-8"),
+            "android_frame_raw_generation": (
+                repo / "libs/scrap/src/android/frame_raw_generation.rs"
             ).read_text(encoding="utf-8"),
             "android_main_activity": (
                 repo

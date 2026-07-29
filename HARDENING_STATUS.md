@@ -1224,7 +1224,7 @@ remains active.
 
 Follow-up verifier correction (2026-07-29),
 **R-S11el/R-S11e-173 Android listener lifecycle verifier integration — SOURCE CORRECTED AND CONFINED
-FOCUSED/SHARED/INDEPENDENT MUTATION VERIFIED; EXACT CLEAN-TREE CANONICAL RERUN AND PUBLICATION PENDING;
+FOCUSED/SHARED/INDEPENDENT MUTATION VERIFIED; EXACT CLEAN-TREE CANONICAL VERIFIED AND PUBLISHED;
 PRODUCT RUNTIME UNCHANGED.** Platform: source-only Android and shared
 desktop lifecycle verification. Endpoint/action: exact-generation service teardown and R-T13 listener rebuild
 proof. Boundary: verifier selectors that consume the Android listener lifecycle source ↔ the exact active
@@ -1268,11 +1268,76 @@ environment. Three complete catalog attempts correctly exposed one stale concate
 and then two expected-diagnostic labels that lagged the actual earlier enforcing contracts. After aligning the
 fixtures—not weakening an authority check—the fourth complete run passed from mutation one.
 
-The failed exact published-state log is retained privately with its digest and complete five-verdict diagnosis,
-as are every preliminary and passing verifier log. Exact current-source canonical verification, commit/push,
-exact published-commit rerun, and remote identity proof remain pending and will not be inferred from these
-focused results. No root/sudo, host RustDesk/service/config, firewall/nftables/iptables, listener/port, Docker
-socket/port/device/host namespace, APK/device, or online acquisition action is authorized or claimed.
+The failed predecessor-state log is retained privately with its digest and complete five-verdict diagnosis, as
+are every preliminary and passing verifier log. Commit
+`d80f8f80a30512ee87cf53c27bedcc31a90a9d1f` was pushed directly to `master`; local HEAD, local/remote-tracking
+`master`, `FETCH_HEAD`, and the live remote ref were proved identical with zero divergence and a clean worktree.
+The exact published commit then passed the complete canonical verifier under strict umask; its mode-0600 log
+hash is `1118266bc7502c8d60202602ff8c6596985f15df7b899802e8f53ddc07d99aea`. No root/sudo, host
+RustDesk/service/config, firewall/nftables/iptables, listener/port, Docker socket/port/device/host namespace,
+APK/device, or online acquisition action was used or claimed.
+
+Follow-up correction (2026-07-29),
+**R-S11em/R-S11e-174 exact MainService-generation Android raw-video ownership — SOURCE IMPLEMENTED;
+FOCUSED/SHARED/INDEPENDENT MUTATION AND ANDROID RUST TARGET VERIFIED; CLEAN KOTLIN/CANONICAL/PUBLICATION
+PENDING**: Android's screen-capture producer and native consumer shared one
+process-global `VIDEO_RAW` buffer. The inherited generic `setFrameRawEnable(name, value)` selector admitted
+generationless video enable and disable, and `onVideoFrameUpdate(buffer)` admitted every delayed
+`ImageReader` callback without the native generation already bound to the exact retained `MainService`. A stale
+service teardown could therefore disable and clear a replacement generation's live buffer, while a stale frame
+callback could publish predecessor pixels into it. The same service used companion `_isStart` as its internal
+capture-resource short circuit, so replacement status could be mistaken for instance-local pipeline ownership.
+Force Stop destroys this state with the process, whereas ordinary task removal intentionally preserves the
+foreground process.
+
+`FrameRawGenerationOwner` now holds the greatest admitted generation and exact active generation. Zero,
+retired, regressed, and superseded generations are rejected; a current begin is idempotent; a newer begin
+replaces ownership; and only exact retirement clears it. `GenerationOwnedFrameRaw` couples every new or retired
+owner transition to disabling and clearing the frame buffer, and gates both enablement and frame publication on
+that exact active generation. `bind_main_service_generation` begins raw-video ownership before it publishes the
+generation in the exact-object callback context. Replacing or releasing that exact context retires its recorded
+raw owner; an obsolete `releaseService` object cannot select a replacement. JNI now exposes typed
+`setVideoFrameRawEnable(generation, value)` and `onVideoFrameUpdate(generation, buffer)` operations. Audio keeps
+its separately coordinated ownership through a distinct typed `setAudioFrameRawEnable(value)` operation; the
+ambient video/audio string selector is deleted.
+
+Each `MainService` now keeps a volatile instance-local `captureActive` field for the exact service's start
+short-circuit, display reconfiguration, frame admission, and native `is_start` reply. Start creates the surface
+and non-null `VirtualDisplay`, then requires native admission for its exact positive generation before committing
+local active and companion publication state. Rejected stale admission releases the newly created local
+pipeline and returns false. Stop attempts exact-generation raw disable before clearing local active state and
+releasing the display, reader, surface, and playback projection. Its local Android objects can therefore be
+retired without a stale service disabling or publishing into replacement raw state. Companion readiness/start
+publication to Activities remains a separate open audit boundary; this slice removes it only from capture
+resource authority.
+
+Confined authored-tree verification used the current pinned Android builder
+`sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2` and exact offline closure
+`a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918` as UID:GID 1000:1000 with no
+pull/network, dropped capabilities, no-new-privileges, bounded resources, private scratch, and no Docker
+socket, port, device, or host namespace. The real `aarch64-linux-android` Rust library check completed green.
+Three pure generation-state regressions passed. The dedicated raw-video verifier rejected all 40 deliberate
+mutations, the adjacent Android voice/capture/input verifier rejected all 385, and the independent workspace
+baseline passed. The changed Rust modules pass the pinned Rust 1.75 `rustfmt` check; a recursive crate-wide
+attempt also exposed unrelated pre-existing formatting drift under `libs/scrap/src/common/`, which this narrow
+slice did not modify.
+
+The independent complete-catalog diagnostics were retained rather than hidden. Its first complete pass found
+that the new raw-video check ran before an established MediaProjection check and therefore stole the older
+mutation's expected diagnostic; the check was ordered after that existing owner. A second pass found a stale
+expected diagnostic label, and a third found a genuine presence-only verifier weakness: either of two
+`FrameRawGenerationOwner` occurrences could be removed while the other satisfied the assertion. The contract
+now requires an exact count of two. A fourth complete unsliced run passed from mutation one. The final
+post-ledger complete source-mutation catalog also restarted from mutation one and passed. Targeted production
+Kotlin compilation, the exact clean canonical verifier, commit, push, and published-state proof remain pending
+at this point in the ledger.
+
+This is Android controlled-side source-proven process-persistent capture availability and frame-ownership debt,
+not a causal reproduction of the reported outgoing Android viewer-to-desktop screen-control hang, an
+authorization bypass, exploitation, root acquisition, privilege escalation, compromise, public exposure,
+container escape, or a host RustDesk/service/firewall/listener/network change. Current APK/device
+capture-replacement/task-swipe/Force-Stop reproduction, exact cold R-B2/R-B10 release artifacts, separately
+required independent reproduction, and external review remain open. The broader Ralph loop remains active.
 
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
@@ -15856,11 +15921,11 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-6de5a75c34caecff1e323611de3f7d94a07271f482190516597d1e04a59e3beb  requirements.html
+691015d51a2a2168cb3774947d2d11ac11dec278e67922139ba0373151dd24e6  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279. It also binds the later R-S11ea through R-S11el and Appendix C #280–#294 additions. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279. It also binds the later R-S11ea through R-S11em and Appendix C #280–#295 additions. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.
 The same identity additionally binds R-S11ea and Appendix C #280.
 The same identity additionally binds R-S11eb and Appendix C #281.
@@ -15873,3 +15938,4 @@ The same identity additionally binds R-S11eh and Appendix C #287.
 The same identity additionally binds R-S11ei and Appendix C #288.
 The same identity additionally binds R-S11ej and Appendix C #289.
 The same identity additionally binds R-S11ek and Appendix C #290.
+The same identity additionally binds R-S11em and Appendix C #295.

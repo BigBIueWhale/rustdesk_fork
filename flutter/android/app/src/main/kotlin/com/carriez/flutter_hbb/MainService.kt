@@ -125,7 +125,7 @@ class MainService : Service() {
                 }.toString()
             }
             "is_start" -> {
-                isStart.toString()
+                captureActive.toString()
             }
             else -> ""
         }
@@ -299,6 +299,8 @@ class MainService : Service() {
     private var mediaProjectionCallback: MediaProjection.Callback? = null
     @Volatile
     private var captureRequested = false
+    @Volatile
+    private var captureActive = false
     private var acceptingControlledConnections = false
     private val controlledCaptureOwners = ControlledCaptureOwnerState()
     private var surface: Surface? = null
@@ -492,7 +494,7 @@ class MainService : Service() {
                 SCREEN_INFO.height = h
                 SCREEN_INFO.scale = scale
                 SCREEN_INFO.dpi = dpi
-                if (isStart) {
+                if (captureActive) {
                     stopCapturePipeline()
                     FFI.refreshScreen()
                     if (captureRequested) {
@@ -592,11 +594,11 @@ class MainService : Service() {
                     try {
                         // If not call acquireLatestImage, listener will not be called again
                         imageReader.acquireLatestImage().use { image ->
-                            if (image == null || !isStart) return@setOnImageAvailableListener
+                            if (image == null || !captureActive) return@setOnImageAvailableListener
                             val planes = image.planes
                             val buffer = planes[0].buffer
                             buffer.rewind()
-                            FFI.onVideoFrameUpdate(buffer)
+                            FFI.onVideoFrameUpdate(nativeServerGeneration, buffer)
                         }
                     } catch (ignored: java.lang.Exception) {
                     }
@@ -608,7 +610,7 @@ class MainService : Service() {
 
     @Synchronized
     fun startCapture(): Boolean {
-        if (isStart) {
+        if (captureActive) {
             return true
         }
         val projection = mediaProjection
@@ -629,6 +631,12 @@ class MainService : Service() {
             return false
         }
 
+        if (!FFI.setVideoFrameRawEnable(nativeServerGeneration, true)) {
+            Log.w(logTag, "Rejected raw-video start from stale MainService generation")
+            stopCapturePipeline(keepReusableDisplay = false)
+            return false
+        }
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             try {
                 if (!VoiceCallAudioCoordinator.setPlaybackCaptureProjection(
@@ -645,8 +653,8 @@ class MainService : Service() {
             }
         }
         checkMediaPermission()
+        captureActive = true
         _isStart = true
-        FFI.setFrameRawEnable("video",true)
         MainActivity.rdClipboardManager?.setCaptureStarted(_isStart)
         return true
     }
@@ -664,7 +672,10 @@ class MainService : Service() {
     @Synchronized
     private fun stopCapturePipeline(keepReusableDisplay: Boolean = reuseVirtualDisplay) {
         Log.d(logTag, "Stop Capture")
-        FFI.setFrameRawEnable("video",false)
+        if (!FFI.setVideoFrameRawEnable(nativeServerGeneration, false)) {
+            Log.d(logTag, "Ignored raw-video stop from stale MainService generation")
+        }
+        captureActive = false
         _isStart = false
         MainActivity.rdClipboardManager?.setCaptureStarted(_isStart)
         if (keepReusableDisplay) {

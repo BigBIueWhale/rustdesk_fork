@@ -151,7 +151,7 @@ internal class AudioRecordHandle(private val context: Context) {
             return false
         }
         return try {
-            FFI.setFrameRawEnable("audio", true)
+            FFI.setAudioFrameRawEnable(true)
             recorder.startRecording()
             if (recorder.recordingState != AudioRecord.RECORDSTATE_RECORDING) {
                 throw IllegalStateException("AudioRecord did not enter RECORDSTATE_RECORDING")
@@ -191,7 +191,7 @@ internal class AudioRecordHandle(private val context: Context) {
                         minBufferSize = 0
                         captureMode = AudioCaptureMode.STOPPED
                         captureProjection = null
-                        FFI.setFrameRawEnable("audio", false)
+                        FFI.setAudioFrameRawEnable(false)
                     }
                     Log.d(logTag, "Exit audio thread")
                 }
@@ -248,7 +248,7 @@ internal class AudioRecordHandle(private val context: Context) {
             minBufferSize = 0
             captureMode = AudioCaptureMode.STOPPED
             captureProjection = null
-            FFI.setFrameRawEnable("audio", false)
+            FFI.setAudioFrameRawEnable(false)
         }
     }
 

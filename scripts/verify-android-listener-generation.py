@@ -70,6 +70,7 @@ def validate(sources: Dict[str, str]) -> None:
     rust_ffi = sources["rust_ffi"]
     direct = sources["direct"]
     verify = sources["verify"]
+    desktop_ipc = sources["desktop_ipc"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
     workspace = sources["workspace"]
@@ -242,6 +243,7 @@ def validate(sources: Dict[str, str]) -> None:
         "\n// R-D4:",
         "direct listener loop",
     )
+    listener_rebind = "                    listener = None;\n                    continue;"
     require_order(
         server_loop,
         (
@@ -249,15 +251,43 @@ def validate(sources: Dict[str, str]) -> None:
             "let rebuild_epoch = match android_listener_lifecycle_snapshot(my_generation)",
             "if rebuild_epoch != seen_rebuild_epoch",
             "seen_rebuild_epoch = rebuild_epoch",
-            "listener = None;",
+            listener_rebind,
         ),
         "exact-generation listener rebuild",
     )
     require(
-        server_loop,
-        "                    listener = None;\n"
-        "                    continue;",
-        "exact listener drop-and-retry transition",
+        verify,
+        'rebind = "                    listener = None;\\n                    continue;"',
+        "shared exact listener rebind selection",
+    )
+    forbid(
+        verify,
+        '< server_loop.index("listener = None;")',
+        "shared generic first-occurrence listener rebind selection",
+    )
+    require(
+        desktop_ipc,
+        '    require(\n'
+        '        start,\n'
+        '        "if android_listener_lifecycle_snapshot(my_generation).is_none() {",\n'
+        '        "Android exact active-generation teardown",\n'
+        '    )',
+        "exact active-generation desktop lifecycle assertion",
+    )
+    require_count(
+        desktop_ipc,
+        "android_generation_current(my_generation)",
+        1,
+        "single stale desktop lifecycle generation token",
+    )
+    require(
+        desktop_ipc,
+        '    absent(\n'
+        '        start,\n'
+        '        "android_generation_current(my_generation)",\n'
+        '        "obsolete Android generation teardown",\n'
+        '    )',
+        "stale desktop lifecycle generation refusal",
     )
 
     request = extract(
@@ -392,12 +422,18 @@ def validate(sources: Dict[str, str]) -> None:
     for token, label in (
         ('<span class="id">R-S11el</span>', "R-S11el requirement"),
         ("<tr><td>293</td>", "Appendix C #293"),
+        ("<tr><td>294</td>", "Appendix C #294"),
     ):
         require(requirements, token, label)
     require(
         hardening,
         "R-S11el/R-S11e-172 exact MainService-generation Android listener rebuild ownership",
         "hardening disposition",
+    )
+    require(
+        hardening,
+        "R-S11el/R-S11e-173 Android listener lifecycle verifier integration",
+        "verifier-integration hardening disposition",
     )
     for token, label in (
         (
@@ -596,6 +632,40 @@ MUTATIONS = (
         "listener rebind transition",
     ),
     Mutation(
+        "verify",
+        'rebind = "                    listener = None;\\n                    continue;"',
+        'rebind = "listener = None;"',
+        "shared exact listener rebind selection",
+    ),
+    Mutation(
+        "desktop_ipc",
+        '    require(\n'
+        '        start,\n'
+        '        "if android_listener_lifecycle_snapshot(my_generation).is_none() {",\n'
+        '        "Android exact active-generation teardown",\n'
+        '    )',
+        '    require(\n'
+        '        start,\n'
+        '        "if android_listener_lifecycle_snapshot(0).is_none() {",\n'
+        '        "Android exact active-generation teardown",\n'
+        '    )',
+        "desktop exact active-generation assertion",
+    ),
+    Mutation(
+        "desktop_ipc",
+        '    absent(\n'
+        '        start,\n'
+        '        "android_generation_current(my_generation)",\n'
+        '        "obsolete Android generation teardown",\n'
+        '    )',
+        '    require(\n'
+        '        start,\n'
+        '        "android_generation_current(my_generation)",\n'
+        '        "obsolete Android generation teardown",\n'
+        '    )',
+        "desktop stale generation refusal",
+    ),
+    Mutation(
         "direct",
         "assert_eq!(lifecycle.request_rebuild(first), None);",
         "assert_eq!(lifecycle.request_rebuild(first), Some(3));",
@@ -642,10 +712,22 @@ MUTATIONS = (
         "Appendix C #293",
     ),
     Mutation(
+        "requirements",
+        "<tr><td>294</td>",
+        "<tr><td>294-disabled</td>",
+        "Appendix C #294",
+    ),
+    Mutation(
         "hardening",
         "R-S11el/R-S11e-172 exact MainService-generation Android listener rebuild ownership",
         "R-S11el/R-S11e-172 ambient Android listener rebuild ownership",
         "hardening disposition",
+    ),
+    Mutation(
+        "hardening",
+        "R-S11el/R-S11e-173 Android listener lifecycle verifier integration",
+        "R-S11el/R-S11e-173 ambient Android listener lifecycle verification",
+        "verifier-integration hardening disposition",
     ),
     Mutation(
         "workspace",
@@ -668,6 +750,9 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         "rust_ffi": (repo / "src/flutter_ffi.rs").read_text(encoding="utf-8"),
         "direct": (repo / "src/direct_service.rs").read_text(encoding="utf-8"),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
+        "desktop_ipc": (
+            repo / "scripts/verify-desktop-ipc-lifecycle.py"
+        ).read_text(encoding="utf-8"),
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
         "workspace": (

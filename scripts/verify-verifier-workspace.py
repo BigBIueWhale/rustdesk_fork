@@ -10398,8 +10398,31 @@ def validate_desktop_ipc_retained_owner_contract(sources):
     require_text(server_source, "start_direct_only(Some(generation)).await;", "Android generation transfer")
     require_text(
         direct_service,
-        "android_listener_lifecycle_snapshot(my_generation)",
-        "Android generation ownership",
+        "if android_listener_lifecycle_snapshot(my_generation).is_none() {",
+        "Android exact active-generation ownership",
+    )
+    require_absent(
+        direct_service,
+        "android_generation_current(my_generation)",
+        "obsolete Android generation ownership",
+    )
+    require_text(
+        validator,
+        '    require(\n'
+        '        start,\n'
+        '        "if android_listener_lifecycle_snapshot(my_generation).is_none() {",\n'
+        '        "Android exact active-generation teardown",\n'
+        '    )',
+        "focused Android exact active-generation ownership",
+    )
+    require_text(
+        validator,
+        '    absent(\n'
+        '        start,\n'
+        '        "android_generation_current(my_generation)",\n'
+        '        "obsolete Android generation teardown",\n'
+        '    )',
+        "focused obsolete Android generation refusal",
     )
     protected = extract_between(
         ipc_source,
@@ -18690,6 +18713,8 @@ def validate_android_voice_call_ownership_contract(sources):
 
 def validate_android_listener_generation_contract(sources):
     focused = sources["android_listener_generation_verifier"]
+    desktop_ipc = sources["desktop_ipc_validator"]
+    verify = sources["verify"]
     try:
         ast.parse(focused)
     except SyntaxError as error:
@@ -18709,9 +18734,29 @@ def validate_android_listener_generation_contract(sources):
             "stale network callback generation",
             "focused stale-callback mutation",
         ),
+        (
+            "exact active-generation desktop lifecycle assertion",
+            "focused desktop-lifecycle integration binding",
+        ),
+        (
+            "shared exact listener rebind selection",
+            "focused shared-rebind integration binding",
+        ),
         ("run_mutations(sources)", "focused mutation dispatch"),
     ):
         require_text(focused, text, f"Android listener generation {label}")
+    require_exact_count(
+        focused,
+        "android_listener_lifecycle_snapshot(my_generation).is_none() {",
+        2,
+        "Android listener focused desktop-lifecycle assertion and mutation",
+    )
+    require_exact_count(
+        focused,
+        'rebind = "                    listener = None;\\\\n                    continue;"',
+        2,
+        "Android listener focused shared-rebind assertion and mutation",
+    )
 
     direct = sources["direct_service"]
     for text, label in (
@@ -18797,6 +18842,7 @@ def validate_android_listener_generation_contract(sources):
         "\n// R-D4:",
         "independent Android direct listener loop",
     )
+    listener_rebind = "                    listener = None;\n                    continue;"
     require_order(
         direct_loop,
         (
@@ -18804,15 +18850,9 @@ def validate_android_listener_generation_contract(sources):
             "let rebuild_epoch = match android_listener_lifecycle_snapshot(my_generation)",
             "if rebuild_epoch != seen_rebuild_epoch",
             "seen_rebuild_epoch = rebuild_epoch",
-            "listener = None;",
+            listener_rebind,
         ),
         "independent exact-generation listener rebind",
-    )
-    require_text(
-        direct_loop,
-        "                    listener = None;\n"
-        "                    continue;",
-        "independent exact listener drop-and-retry transition",
     )
 
     main_service = sources["android_main_service"]
@@ -18879,6 +18919,34 @@ def validate_android_listener_generation_contract(sources):
         ),
         "independent exact-generation JNI admission",
     )
+    require_text(
+        desktop_ipc,
+        '    require(\n'
+        '        start,\n'
+        '        "if android_listener_lifecycle_snapshot(my_generation).is_none() {",\n'
+        '        "Android exact active-generation teardown",\n'
+        '    )',
+        "independent exact active-generation desktop lifecycle assertion",
+    )
+    require_text(
+        desktop_ipc,
+        '    absent(\n'
+        '        start,\n'
+        '        "android_generation_current(my_generation)",\n'
+        '        "obsolete Android generation teardown",\n'
+        '    )',
+        "independent stale desktop lifecycle generation refusal",
+    )
+    require_text(
+        verify,
+        'rebind = "                    listener = None;\\n                    continue;"',
+        "independent shared exact listener rebind selection",
+    )
+    require_absent(
+        verify,
+        '< server_loop.index("listener = None;")',
+        "independent shared generic first-occurrence listener rebind selection",
+    )
 
     for source, text, label in (
         (
@@ -18903,9 +18971,19 @@ def validate_android_listener_generation_contract(sources):
         ),
         (sources["requirements"], "<tr><td>293</td>", "Appendix C row"),
         (
+            sources["requirements"],
+            "<tr><td>294</td>",
+            "verifier-integration Appendix C row",
+        ),
+        (
             sources["hardening"],
             "R-S11el/R-S11e-172 exact MainService-generation Android listener rebuild ownership",
             "hardening ledger",
+        ),
+        (
+            sources["hardening"],
+            "R-S11el/R-S11e-173 Android listener lifecycle verifier integration",
+            "verifier-integration hardening ledger",
         ),
     ):
         require_text(source, text, f"independent Android listener {label}")
@@ -55149,10 +55227,56 @@ def run_source_mutations(sources):
             "Android listener generation focused verifier purpose",
         ),
         (
+            "android_listener_generation_verifier",
+            "android_listener_lifecycle_snapshot(my_generation).is_none() {",
+            "android_listener_lifecycle_snapshot(0).is_none() {",
+            "Android listener focused desktop-lifecycle assertion and mutation",
+        ),
+        (
+            "android_listener_generation_verifier",
+            'rebind = "                    listener = None;\\\\n                    continue;"',
+            'rebind = "listener = None;"',
+            "Android listener focused shared-rebind assertion and mutation",
+        ),
+        (
             "direct_service",
             "lifecycle.request_rebuild(expected_generation)",
             "lifecycle.request_rebuild(lifecycle.generation)",
             "independent exact-generation rebuild API forwarding",
+        ),
+        (
+            "direct_service",
+            "if android_listener_lifecycle_snapshot(my_generation).is_none() {",
+            "if android_listener_lifecycle_snapshot(0).is_none() {",
+            "Android service-generation listener ownership",
+        ),
+        (
+            "desktop_ipc_validator",
+            '        "if android_listener_lifecycle_snapshot(my_generation).is_none() {",\n'
+            '        "Android exact active-generation teardown",',
+            '        "if android_listener_lifecycle_snapshot(0).is_none() {",\n'
+            '        "Android exact active-generation teardown",',
+            "focused Android exact active-generation ownership",
+        ),
+        (
+            "desktop_ipc_validator",
+            '    absent(\n'
+            '        start,\n'
+            '        "android_generation_current(my_generation)",\n'
+            '        "obsolete Android generation teardown",\n'
+            '    )',
+            '    require(\n'
+            '        start,\n'
+            '        "android_generation_current(my_generation)",\n'
+            '        "obsolete Android generation teardown",\n'
+            '    )',
+            "focused obsolete Android generation refusal",
+        ),
+        (
+            "verify",
+            'rebind = "                    listener = None;\\n                    continue;"',
+            'rebind = "listener = None;"',
+            "independent shared exact listener rebind selection",
         ),
         (
             "android_main_service",
@@ -55203,10 +55327,22 @@ def run_source_mutations(sources):
             "independent Android listener Appendix C row",
         ),
         (
+            "requirements",
+            "<tr><td>294</td>",
+            "<tr><td>294-disabled</td>",
+            "independent Android listener verifier-integration Appendix C row",
+        ),
+        (
             "hardening",
             "R-S11el/R-S11e-172 exact MainService-generation Android listener rebuild ownership",
             "R-S11el/R-S11e-172 ambient Android listener rebuild ownership",
             "independent Android listener hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11el/R-S11e-173 Android listener lifecycle verifier integration",
+            "R-S11el/R-S11e-173 ambient Android listener lifecycle verification",
+            "independent Android listener verifier-integration hardening ledger",
         ),
         (
             "flutter_ffi_source",

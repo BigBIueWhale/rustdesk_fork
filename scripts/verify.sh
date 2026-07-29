@@ -10642,6 +10642,7 @@ server_loop = between(
     "async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {",
     "\n// R-D4:",
 )
+rebind = "                    listener = None;\n                    continue;"
 
 ok = (
     "external fun rebuildDirectServerListener(generation: Long): Boolean" in kotlin_ffi
@@ -10664,9 +10665,10 @@ ok = (
         < transition.index("self.active = false")
         < transition.index("self.rebuild_epoch = next")
     and "android_listener_lifecycle_snapshot(my_generation)" in server_loop
+    and rebind in server_loop
     and server_loop.index("let rebuild_epoch = match android_listener_lifecycle_snapshot(my_generation)")
         < server_loop.index("if rebuild_epoch != seen_rebuild_epoch")
-        < server_loop.index("listener = None;")
+        < server_loop.index(rebind)
     and "LISTENER_REBUILD_EPOCH" not in direct
     and "ANDROID_SERVER_GENERATION" not in direct
     and "request_direct_listener_rebuild(" not in direct

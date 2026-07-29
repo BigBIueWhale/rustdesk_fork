@@ -1222,6 +1222,58 @@ Current APK/device network-switch/task-swipe/Force-Stop reproduction, exact cold
 separately required independent reproduction, and external review remain open. The broader Ralph-loop goal
 remains active.
 
+Follow-up verifier correction (2026-07-29),
+**R-S11el/R-S11e-173 Android listener lifecycle verifier integration — SOURCE CORRECTED AND CONFINED
+FOCUSED/SHARED/INDEPENDENT MUTATION VERIFIED; EXACT CLEAN-TREE CANONICAL RERUN AND PUBLICATION PENDING;
+PRODUCT RUNTIME UNCHANGED.** Platform: source-only Android and shared
+desktop lifecycle verification. Endpoint/action: exact-generation service teardown and R-T13 listener rebuild
+proof. Boundary: verifier selectors that consume the Android listener lifecycle source ↔ the exact active
+generation snapshot and exact adjacent rebuild/drop-and-retry transition they claim to prove.
+
+The strict-umask canonical verifier was run from the clean published
+`b540b3781095c159623acd551a05ee1b1fe18da4` tree. Its exact lifecycle behavior tests and dedicated focused
+Android gate passed, as did every later shown source/vendor/image gate, but it ended with five verdict failures.
+Four R-S11e-56 through R-S11e-59 verdicts had one cause:
+`scripts/verify-desktop-ipc-lifecycle.py` still required the deleted
+`android_generation_current(my_generation)` predicate after R-S11el replaced it with a serialized
+generation-and-epoch snapshot. R-T13 had a separate selection error: its order expression searched for the first
+`listener = None;` substring, which matched the earlier `let mut listener = None;` initialization instead of the
+exact network-change rebuild assignment. These were fail-closed verifier integration/phase-selection defects,
+not product lifecycle failures.
+
+The desktop focused verifier now requires the exact
+`if android_listener_lifecycle_snapshot(my_generation).is_none()` teardown condition and forbids the obsolete
+predicate. The shared R-T13 proof names the exact adjacent `listener = None;` plus `continue;` transition, so
+listener initialization cannot satisfy or precede the rebuild proof. The dedicated Android listener verifier
+owns both cross-verifier assertions. Its mutations and the independent workspace catalog reject weakening either
+consumer back to an inexact generation or first-occurrence selector. R-S11el and Appendix C #294 bind this
+verifier-only correction. No production Rust, Kotlin, JNI, listener, service, or network behavior changes here.
+
+Confined verification used cached immutable development image
+`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric UID:GID
+1000:1000 with no pull/network, a read-only repository and root filesystem, all capabilities dropped,
+no-new-privileges, bounded PIDs/memory/CPU, private tmpfs, and no Docker socket, port, device, or host namespace.
+The desktop lifecycle verifier rejected all 25 mutations; the dedicated Android listener verifier rejected all
+39; the shared Android ownership verifier rejected all 385; the independent workspace baseline, Python and
+shell parsing, native-codec watch normal/self-test, and the exact extracted R-T13 inline proof passed. The final
+complete unsliced independent source-mutation catalog restarted from mutation one and passed.
+
+Preliminary diagnostics are retained rather than hidden. A bytecode parse first attempted to write beside the
+read-only source before `PYTHONPYCACHEPREFIX` was directed to private tmpfs. The broad first meta-check then
+mistook the old symbol inside its protective `absent(...)` assertion for an admitted use; the corrected contract
+requires that exact refusal block and mutates it to `require(...)`. A broad executable-fixture launch first
+omitted the preallocated mode-0700 scratch and then lacked the minimal container's `/run/user/1000`; the complete
+semantic catalog uses its dedicated source-only mode, while canonical `verify.sh` owns its full fixture
+environment. Three complete catalog attempts correctly exposed one stale concatenated-string mutation anchor
+and then two expected-diagnostic labels that lagged the actual earlier enforcing contracts. After aligning the
+fixtures—not weakening an authority check—the fourth complete run passed from mutation one.
+
+The failed exact published-state log is retained privately with its digest and complete five-verdict diagnosis,
+as are every preliminary and passing verifier log. Exact current-source canonical verification, commit/push,
+exact published-commit rerun, and remote identity proof remain pending and will not be inferred from these
+focused results. No root/sudo, host RustDesk/service/config, firewall/nftables/iptables, listener/port, Docker
+socket/port/device/host namespace, APK/device, or online acquisition action is authorized or claimed.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust
@@ -15804,11 +15856,11 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-16795a46a1a70a6f10505ce474c8a94b99e4f3707d0a74ebb45345d793e56a7c  requirements.html
+6de5a75c34caecff1e323611de3f7d94a07271f482190516597d1e04a59e3beb  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
-R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279. It also binds the later R-S11ea through R-S11el and Appendix C #280–#293 additions. It is a source-ledger identity; exact-commit artifact evidence is carried separately
+R-SV5a, R-SV6a, R-SV6b, R-SV6c, R-SV6d, R-G9, R-G4a, R-X12a, R-X9, R-R1a, R-R2c, R-R2d, R-T4, and Appendix C #192–#279. It also binds the later R-S11ea through R-S11el and Appendix C #280–#294 additions. It is a source-ledger identity; exact-commit artifact evidence is carried separately
 by the R-B2 manifest.
 The same identity additionally binds R-S11ea and Appendix C #280.
 The same identity additionally binds R-S11eb and Appendix C #281.

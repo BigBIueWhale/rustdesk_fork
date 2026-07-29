@@ -57,6 +57,7 @@ def validate(sources: Dict[str, str]) -> None:
     rust_ffi = sources["rust_ffi"]
     kotlin_ffi = sources["kotlin_ffi"]
     main_service = sources["main_service"]
+    clipboard = sources["clipboard"]
     audio = sources["audio"]
     scrap_mod = sources["scrap_mod"]
     scrap_lib = sources["scrap_lib"]
@@ -434,7 +435,6 @@ def validate(sources: Dict[str, str]) -> None:
             "return false",
             "VoiceCallAudioCoordinator.setPlaybackCaptureProjection(",
             "captureActive = true",
-            "_isStart = true",
             "return true",
         ),
         "display and raw admission before active-state commit",
@@ -451,7 +451,6 @@ def validate(sources: Dict[str, str]) -> None:
             "if (!FFI.setVideoFrameRawEnable(nativeServerGeneration, false))",
             "Ignored raw-video stop from stale MainService generation",
             "captureActive = false",
-            "_isStart = false",
             "virtualDisplay?.release()",
             "imageReader?.close()",
             "surface?.release()",
@@ -461,6 +460,10 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "exact raw disable before local pipeline retirement",
     )
+    forbid(main_service, "_isStart", "process-global capture-start publication")
+    forbid(main_service, "setCaptureStarted", "dead clipboard capture publication")
+    forbid(clipboard, "isCaptureStarted", "dead clipboard capture status")
+    forbid(clipboard, "setCaptureStarted", "dead clipboard capture status writer")
 
     for token, label in (
         ("FFI.setAudioFrameRawEnable(true)", "typed audio enable"),
@@ -484,7 +487,7 @@ def validate(sources: Dict[str, str]) -> None:
             "shared raw-video verdict",
         ),
         (
-            "R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4",
+            "R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4",
             "shared capture lifecycle integration label",
         ),
     ):
@@ -493,8 +496,8 @@ def validate(sources: Dict[str, str]) -> None:
         ('<span class="id">R-S11em</span>', "R-S11em requirement"),
         ("<tr><td>295</td>", "Appendix C #295"),
         (
-            "Companion-service status publication remains a separate audit boundary.",
-            "explicit residual boundary",
+            "R-S11en separately owns the Activity-visible service/MediaProjection status",
+            "explicit adjacent status boundary",
         ),
     ):
         require(requirements, token, label)
@@ -807,6 +810,10 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         "main_service": (
             repo
             / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt"
+        ).read_text(encoding="utf-8"),
+        "clipboard": (
+            repo
+            / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/RdClipboardManager.kt"
         ).read_text(encoding="utf-8"),
         "audio": (
             repo

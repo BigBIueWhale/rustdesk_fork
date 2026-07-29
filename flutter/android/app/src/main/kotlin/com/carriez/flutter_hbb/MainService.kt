@@ -279,14 +279,9 @@ class MainService : Service() {
     }
 
     companion object {
-        @Volatile
-        private var _isReady = false // media permission ready status
-        @Volatile
-        private var _isStart = false // screen capture start status
-        val isReady: Boolean
-            get() = _isReady
-        val isStart: Boolean
-            get() = _isStart
+        private val statusOwner = MainServiceStatusOwner()
+
+        internal fun currentStatus(): MainServiceStatus? = statusOwner.snapshot()
     }
 
     private val logTag = "LOG_SERVICE"
@@ -392,6 +387,8 @@ class MainService : Service() {
         nativeServerGeneration = FFI.startServer(this, configPath, "")
         if (nativeServerGeneration <= 0L) {
             Log.e(logTag, "Failed to bind the native server to this MainService generation")
+        } else if (!statusOwner.begin(nativeServerGeneration)) {
+            Log.e(logTag, "Failed to bind process-wide status to this MainService generation")
         } else if (!VoiceCallAudioCoordinator.beginControlledServiceGeneration(
                 nativeServerGeneration
             )
@@ -408,6 +405,9 @@ class MainService : Service() {
 
     override fun onDestroy() {
         releaseControlledConnectionResources()
+        if (!statusOwner.retire(nativeServerGeneration)) {
+            Log.d(logTag, "MainService status generation was already retired or replaced")
+        }
         // Deactivate this exact listener generation before draining Android callbacks. A network
         // callback already queued for this Service is then rejected in Rust and cannot rebuild a
         // replacement Service's listener.
@@ -424,8 +424,9 @@ class MainService : Service() {
         // in onCreate). Tear it down as the service is destroyed — stopServer deactivates the exact
         // Rust service-owned-listener generation, so the accept loop drops the TcpListener and the
         // socket closes. The user "Stop service" path reaches here via MainActivity.stop_service ->
-        // destroy() -> stopSelf -> onDestroy; an OS/OEM/battery kill closes the socket by process
-        // death instead (START_NOT_STICKY means no zombie auto-restart rebinds it).
+        // Context.stopService followed by unbinding the Activity's BIND_AUTO_CREATE client; an
+        // OS/OEM/battery kill closes the socket by process death instead (START_NOT_STICKY means no
+        // zombie auto-restart rebinds it).
         if (!FFI.releaseService(this)) {
             Log.d(logTag, "MainService callback owner was already replaced or released")
         }
@@ -654,8 +655,6 @@ class MainService : Service() {
         }
         checkMediaPermission()
         captureActive = true
-        _isStart = true
-        MainActivity.rdClipboardManager?.setCaptureStarted(_isStart)
         return true
     }
 
@@ -676,8 +675,6 @@ class MainService : Service() {
             Log.d(logTag, "Ignored raw-video stop from stale MainService generation")
         }
         captureActive = false
-        _isStart = false
-        MainActivity.rdClipboardManager?.setCaptureStarted(_isStart)
         if (keepReusableDisplay) {
             try {
                 virtualDisplay?.setSurface(null)
@@ -721,7 +718,9 @@ class MainService : Service() {
         val callback = mediaProjectionCallback
         mediaProjection = null
         mediaProjectionCallback = null
-        _isReady = false
+        if (!statusOwner.setMediaProjectionReady(nativeServerGeneration, false)) {
+            Log.d(logTag, "Ignored MediaProjection release from stale MainService generation")
+        }
         if (projection != null && callback != null) {
             try {
                 projection.unregisterCallback(callback)
@@ -767,7 +766,11 @@ class MainService : Service() {
             requestMediaProjection()
             return
         }
-        _isReady = true
+        if (!statusOwner.setMediaProjectionReady(nativeServerGeneration, true)) {
+            Log.w(logTag, "Rejected MediaProjection readiness from stale MainService generation")
+            releaseMediaProjection()
+            return
+        }
         checkMediaPermission()
         if (captureRequested) {
             startCapture()
@@ -786,7 +789,9 @@ class MainService : Service() {
         Log.i(logTag, "MediaProjection stopped; invalidating capture state")
         mediaProjection = null
         mediaProjectionCallback = null
-        _isReady = false
+        if (!statusOwner.setMediaProjectionReady(nativeServerGeneration, false)) {
+            Log.d(logTag, "Ignored MediaProjection stop from stale MainService generation")
+        }
         stopCapturePipeline(keepReusableDisplay = false)
         checkMediaPermission()
     }
@@ -802,23 +807,14 @@ class MainService : Service() {
         }
     }
 
-    fun destroy() {
-        Log.d(logTag, "destroy service")
-        _isReady = false
-
-        releaseControlledConnectionResources()
-        checkMediaPermission()
-        unregisterNetworkCallback()
-        releaseNetworkKeepaliveWakeLock()
-        stopForeground(true)
-        stopSelf()
-    }
-
     fun checkMediaPermission(): Boolean {
+        val ready = currentStatus()?.let {
+            it.generation == nativeServerGeneration && it.mediaProjectionReady
+        } == true
         Handler(Looper.getMainLooper()).post {
             MainActivity.flutterMethodChannel?.invokeMethod(
                 "on_state_changed",
-                mapOf("name" to "media", "value" to isReady.toString())
+                mapOf("name" to "media", "value" to ready.toString())
             )
         }
         Handler(Looper.getMainLooper()).post {
@@ -827,7 +823,7 @@ class MainService : Service() {
                 mapOf("name" to "input", "value" to InputService.isOpen.toString())
             )
         }
-        return isReady
+        return ready
     }
 
     private fun startRawVideoRecorder(mp: MediaProjection): Boolean {

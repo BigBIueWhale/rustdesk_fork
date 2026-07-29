@@ -10322,7 +10322,7 @@ from pathlib import Path
 activity, service, dart, rust = (Path(path).read_text() for path in sys.argv[1:])
 
 on_create = activity[activity.index("override fun onCreate("):activity.index("override fun onDestroy()")]
-activity_destroy = activity[activity.index("override fun onDestroy()"):activity.index("private fun bindMainService()")]
+activity_destroy = activity[activity.index("override fun onDestroy()"):activity.index("private fun bindMainService(")]
 on_stop = activity[activity.index("override fun onStop()"):activity.index("override fun onStart()")]
 on_start = activity[activity.index("override fun onStart()"):]
 task_removed = service[service.index("override fun onTaskRemoved("):service.index("private var isHalfScale")]
@@ -10581,6 +10581,13 @@ if /usr/bin/python3 -I -S scripts/verify-android-frame-raw-generation.py --repo 
   echo "  ok  R-S11em/R-S11e-174 Android exact-generation raw-video authority"
 else
   echo "  FAIL R-S11em/R-S11e-174: Android exact-generation raw-video authority regressed"
+  rc=1
+fi
+echo "== Android exact-generation service status and explicit-stop authority (R-S11en/R-S11e-175) =="
+if /usr/bin/python3 -I -S scripts/verify-android-main-service-status.py --repo . --self-test; then
+  echo "  ok  R-S11en/R-S11e-175 Android exact-generation service status and explicit-stop authority"
+else
+  echo "  FAIL R-S11en/R-S11e-175: Android service status or explicit-stop authority regressed"
   rc=1
 fi
 # R-T13 (§20, SHOULD): Android controlled-side networking lifecycle. The foreground service must
@@ -13133,8 +13140,12 @@ fi
 # replacement MainService or stop its listener. Process-wide controlled voice and playback
 # ownership retains that exact generation too, so obsolete service teardown cannot clear a
 # replacement service's same-number owner or projection.
-echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4) =="
+echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4) =="
 r_s14_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
+r_s14_activity_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainActivity.kt
+r_s14_status_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainServiceStatusOwner.kt
+r_s14_status_test=scripts/android-main-service-status-test.kt
+r_s14_clipboard_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/RdClipboardManager.kt
 r_s14_type_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledConnectionType.kt
 r_s14_owners_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/ControlledCaptureOwnerState.kt
 r_s14_voice_owners_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/VoiceCallOwnerState.kt
@@ -13157,24 +13168,29 @@ r_s14_missing=
 grep -q 'START_NOT_STICKY' "$r_s14_kt" 2>/dev/null || r_s14_missing="$r_s14_missing android-not-not-sticky"
 grep -qE 'return[[:space:]]+START_STICKY\b' "$r_s14_kt" 2>/dev/null && r_s14_missing="$r_s14_missing android-sticky-return"
 on_destroy_block=$(sed -n '/override fun onDestroy()/,/super.onDestroy()/p' "$r_s14_kt")
-destroy_block=$(sed -n '/fun destroy()/,/stopSelf()/p' "$r_s14_kt")
 reconcile_capture_block=$(sed -n '/private fun reconcileControlledCaptureDemand()/,/private fun stopCapturePipeline/p' "$r_s14_kt")
 start_capture_block=$(sed -n '/fun startCapture()/,/private fun reconcileControlledCaptureDemand()/p' "$r_s14_kt")
 pipeline_block=$(sed -n '/private fun stopCapturePipeline/,/private fun releaseCaptureResources/p' "$r_s14_kt")
 teardown_block=$(sed -n '/private fun releaseCaptureResources/,/private fun releaseMediaProjection/p' "$r_s14_kt")
 projection_release_block=$(sed -n '/private fun releaseMediaProjection/,/private fun installMediaProjection/p' "$r_s14_kt")
 projection_install_block=$(sed -n '/private fun installMediaProjection/,/private fun onMediaProjectionStopped/p' "$r_s14_kt")
-projection_stop_block=$(sed -n '/private fun onMediaProjectionStopped/,/fun destroy()/p' "$r_s14_kt")
+projection_stop_block=$(sed -n '/private fun onMediaProjectionStopped/,/private fun releaseControlledConnectionResources()/p' "$r_s14_kt")
 virtual_display_block=$(sed -n '/private fun createOrSetVirtualDisplay/,/private fun initNotification/p' "$r_s14_kt")
 add_connection_block=$(sed -n '/"add_connection" -> {/,/"remove_connection" -> {/p' "$r_s14_kt")
 remove_connection_kt_block=$(sed -n '/"remove_connection" -> {/,/"update_voice_call_state" -> {/p' "$r_s14_kt")
-resource_release_block=$(sed -n '/private fun releaseControlledConnectionResources()/,/fun destroy()/p' "$r_s14_kt")
+resource_release_block=$(sed -n '/private fun releaseControlledConnectionResources()/,/fun checkMediaPermission()/p' "$r_s14_kt")
 on_create_block=$(sed -n '/override fun onCreate()/,/override fun onDestroy()/p' "$r_s14_kt")
 update_voice_block=$(sed -n '/"update_voice_call_state" -> {/,/"half_scale" -> {/p' "$r_s14_kt")
+activity_destroy_block=$(sed -n '/override fun onDestroy()/,/private fun bindMainService/p' "$r_s14_activity_kt")
+activity_stop_block=$(sed -n '/"stop_service" -> {/,/"check_permission" -> {/p' "$r_s14_activity_kt")
 printf '%s\n' "$on_destroy_block" | grep -qF 'releaseControlledConnectionResources()' || r_s14_missing="$r_s14_missing onDestroy-no-exact-owner-teardown"
 printf '%s\n' "$on_destroy_block" | grep -qF 'FFI.stopServer(nativeServerGeneration)' || r_s14_missing="$r_s14_missing onDestroy-stop-not-generation-bound"
 printf '%s\n' "$on_destroy_block" | grep -qF 'FFI.releaseService(this)' || r_s14_missing="$r_s14_missing onDestroy-retains-stale-service-callback-owner"
-printf '%s\n' "$destroy_block" | grep -qF 'releaseControlledConnectionResources()' || r_s14_missing="$r_s14_missing destroy-no-shared-owner-resource-teardown"
+grep -qF 'fun destroy()' "$r_s14_kt" && r_s14_missing="$r_s14_missing duplicate-service-destroy-path"
+grep -qF 'stopSelf(' "$r_s14_kt" && r_s14_missing="$r_s14_missing bound-service-stopSelf-path"
+printf '%s\n' "$activity_stop_block" | grep -qF 'stopService(Intent(this, MainService::class.java))' || r_s14_missing="$r_s14_missing activity-no-platform-service-stop"
+printf '%s\n' "$activity_stop_block" | grep -qF 'val unbound = unbindMainService()' || r_s14_missing="$r_s14_missing activity-stop-retains-auto-create-binding"
+printf '%s\n' "$activity_destroy_block" | grep -qF 'unbindMainService()' || r_s14_missing="$r_s14_missing activity-destroy-retains-service-binding"
 printf '%s\n' "$resource_release_block" | grep -qF 'acceptingControlledConnections = false' || r_s14_missing="$r_s14_missing teardown-does-not-close-resource-admission"
 printf '%s\n' "$resource_release_block" | grep -qF 'controlledCaptureOwners.clear()' || r_s14_missing="$r_s14_missing teardown-retains-capture-owners"
 printf '%s\n' "$resource_release_block" | grep -qF 'InputService.ctx?.retireServiceGeneration(nativeServerGeneration)' || r_s14_missing="$r_s14_missing teardown-retains-input-generation"
@@ -13194,7 +13210,9 @@ printf '%s\n' "$start_capture_block" | grep -qF 'requestMediaProjection()' || r_
 printf '%s\n' "$start_capture_block" | grep -qF 'FFI.setVideoFrameRawEnable(nativeServerGeneration, true)' || r_s14_missing="$r_s14_missing raw-video-start-not-generation-bound"
 printf '%s\n' "$start_capture_block" | grep -qF 'stopCapturePipeline(keepReusableDisplay = false)' || r_s14_missing="$r_s14_missing rejected-raw-video-start-not-retired"
 printf '%s\n' "$start_capture_block" | grep -qF 'captureActive = true' || r_s14_missing="$r_s14_missing local-capture-active-commit-missing"
-printf '%s\n' "$start_capture_block" | grep -qF '_isStart = true' || r_s14_missing="$r_s14_missing active-state-commit-missing"
+grep -qF '_isStart' "$r_s14_kt" && r_s14_missing="$r_s14_missing process-global-capture-start-state"
+grep -qF 'setCaptureStarted' "$r_s14_kt" "$r_s14_clipboard_kt" && r_s14_missing="$r_s14_missing dead-process-global-clipboard-capture-state"
+grep -qF 'isCaptureStarted' "$r_s14_clipboard_kt" && r_s14_missing="$r_s14_missing dead-process-global-clipboard-capture-reader"
 printf '%s\n' "$start_capture_block" | grep -qF 'mediaProjection!!' && r_s14_missing="$r_s14_missing projection-force-unwrap"
 printf '%s\n' "$pipeline_block" | grep -qF 'virtualDisplay?.release()' || r_s14_missing="$r_s14_missing pipeline-no-virtual-display-release"
 printf '%s\n' "$pipeline_block" | grep -qF 'surface = null' || r_s14_missing="$r_s14_missing pipeline-surface-not-nulled"
@@ -13309,15 +13327,19 @@ grep -qF '"(I[B)Z"' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing key-jni-con
 grep -qF 'R-S11ei/R-S11e-153' HARDENING_STATUS.md || r_s14_missing="$r_s14_missing exact-input-ledger"
 grep -qF 'R-S11ek/R-S11e-169' HARDENING_STATUS.md || r_s14_missing="$r_s14_missing exact-controlled-audio-generation-ledger"
 grep -qF 'R-S11em/R-S11e-174' HARDENING_STATUS.md || r_s14_missing="$r_s14_missing exact-raw-video-generation-ledger"
+grep -qF 'R-S11en/R-S11e-175' HARDENING_STATUS.md || r_s14_missing="$r_s14_missing exact-service-status-generation-ledger"
+grep -qF 'internal class MainServiceStatusOwner' "$r_s14_status_kt" || r_s14_missing="$r_s14_missing exact-service-status-owner"
+grep -qF 'fun setMediaProjectionReady(generation: Long, ready: Boolean): Boolean' "$r_s14_status_kt" || r_s14_missing="$r_s14_missing exact-service-status-readiness-operation"
+grep -qF 'stale generation retired its replacement' "$r_s14_status_test" || r_s14_missing="$r_s14_missing service-status-stale-retirement-regression"
 grep -qF 'bind_main_service_generation(&env, &service, generation)' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing listener-callback-generation-not-exact-object-bound"
 grep -qF 'android_request_stop(' "$r_s14_flutter_ffi" || r_s14_missing="$r_s14_missing exact-generation-stop-jni-missing"
 grep -qF 'static ANDROID_LISTENER_LIFECYCLE: Mutex<AndroidListenerLifecycle>' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing no-serialized-service-listener-lifecycle"
 grep -qF 'fn stop_generation(&mut self, expected_generation: u64) -> bool' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing no-exact-generation-deactivation-transition"
 grep -qF 'lifecycle.stop_generation(expected_generation)' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing stale-service-stop-not-rejected"
 if [ -n "$r_s14_missing" ]; then
-  echo "  FAIL R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4: Android capture/input/audio owner invariant is incomplete:$r_s14_missing"; rc=1
+  echo "  FAIL R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4: Android capture/input/audio/status owner invariant is incomplete:$r_s14_missing"; rc=1
 else
-  echo "  ok  R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4 Android capture/input/audio commits only for exact service-generation-owned Remote IDs; delayed input is bounded and stale owners, callbacks, raw frames, global stops, and server generations are rejected"
+  echo "  ok  R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4 Android capture/input/audio/status commits only for exact service-generation-owned state; explicit Stop drops the started state and Activity binding, delayed input is bounded, and stale owners, callbacks, raw frames, status, global stops, and server generations are rejected"
 fi
 # R-X7a / R-G1 (no inert pinned-policy SELECTOR survives — removed, not greyed): verification-method +
 # approve-mode are R-S16-pinned (use-permanent-password / password), so a UI that PRESENTS+WRITES them

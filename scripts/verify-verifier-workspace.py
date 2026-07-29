@@ -18706,7 +18706,7 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         sources["verify"],
-        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4) =="',
+        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4) =="',
         "independent shared controlled-input/audio generation gate label source",
     )
 
@@ -19197,7 +19197,6 @@ def validate_android_frame_raw_generation_contract(sources):
             "stopCapturePipeline(keepReusableDisplay = false)",
             "return false",
             "captureActive = true",
-            "_isStart = true",
         ),
         "independent raw admission before active commit",
     )
@@ -19205,6 +19204,26 @@ def validate_android_frame_raw_generation_contract(sources):
         main_service,
         "if (isStart)",
         "independent companion capture-resource authority",
+    )
+    require_absent(
+        main_service,
+        "_isStart",
+        "independent process-global capture-start publication",
+    )
+    require_absent(
+        main_service,
+        "setCaptureStarted",
+        "independent dead clipboard capture publication",
+    )
+    require_absent(
+        sources["android_clipboard_manager"],
+        "isCaptureStarted",
+        "independent dead clipboard capture status",
+    )
+    require_absent(
+        sources["android_clipboard_manager"],
+        "setCaptureStarted",
+        "independent dead clipboard capture status writer",
     )
 
     for source, text, label in (
@@ -19236,6 +19255,222 @@ def validate_android_frame_raw_generation_contract(sources):
         ),
     ):
         require_text(source, text, f"independent Android raw-video {label}")
+
+
+def validate_android_main_service_status_contract(sources):
+    focused = sources["android_main_service_status_verifier"]
+    try:
+        ast.parse(focused)
+    except SyntaxError as error:
+        raise VerificationError(
+            f"Android MainService status focused verifier does not parse: {error}"
+        ) from error
+    for text, label in (
+        (
+            "Validate exact-generation Android MainService status and explicit Stop.",
+            "focused verifier purpose",
+        ),
+        (
+            "positive monotonic status generation begin",
+            "focused monotonic status binding",
+        ),
+        (
+            "platform stop before Activity binding retirement",
+            "focused explicit-stop ordering",
+        ),
+        ("run_mutations(sources)", "focused mutation dispatch"),
+    ):
+        require_text(focused, text, f"Android MainService status {label}")
+
+    owner = sources["android_main_service_status_owner"]
+    require_order(
+        owner,
+        (
+            "internal data class MainServiceStatus(",
+            "val generation: Long",
+            "val mediaProjectionReady: Boolean",
+            "private var greatestGeneration = 0L",
+            "private var activeGeneration: Long? = null",
+            "generation <= 0L",
+            "generation < greatestGeneration",
+            "generation == greatestGeneration && activeGeneration != generation",
+            "if (activeGeneration == generation)",
+            "greatestGeneration = generation",
+            "activeGeneration = generation",
+            "mediaProjectionReady = false",
+        ),
+        "independent monotonic MainService status ownership",
+    )
+    require_exact_count(
+        owner,
+        "@Synchronized\n    fun ",
+        4,
+        "independent serialized MainService status operations",
+    )
+    require_exact_count(
+        owner,
+        "generation <= 0L || activeGeneration != generation",
+        2,
+        "independent stale status generation retirement",
+    )
+    require_text(
+        owner,
+        "return MainServiceStatus(generation, mediaProjectionReady)",
+        "independent immutable active status snapshot",
+    )
+
+    behavior = sources["android_main_service_status_test"]
+    for text, label in (
+        (
+            "idempotent begin cleared current readiness",
+            "idempotent status behavior",
+        ),
+        (
+            "replacement generation inherited predecessor readiness",
+            "replacement reset behavior",
+        ),
+        (
+            "stale generation retired its replacement",
+            "stale retirement behavior",
+        ),
+        (
+            "retired generation was reactivated",
+            "retired reactivation behavior",
+        ),
+    ):
+        require_text(behavior, text, f"independent MainService status {label}")
+
+    service = sources["android_main_service"]
+    for text, label in (
+        (
+            "private val statusOwner = MainServiceStatusOwner()",
+            "private status mutation owner",
+        ),
+        (
+            "internal fun currentStatus(): MainServiceStatus? = statusOwner.snapshot()",
+            "read-only status snapshot",
+        ),
+        (
+            "else if (!statusOwner.begin(nativeServerGeneration))",
+            "exact generation begin",
+        ),
+        (
+            "statusOwner.retire(nativeServerGeneration)",
+            "exact generation retirement",
+        ),
+        (
+            "statusOwner.setMediaProjectionReady(nativeServerGeneration, true)",
+            "exact readiness admission",
+        ),
+        (
+            "it.generation == nativeServerGeneration && it.mediaProjectionReady",
+            "exact service status query",
+        ),
+    ):
+        require_text(service, text, f"independent MainService status {label}")
+    for text, label in (
+        ("_isReady", "generationless readiness companion"),
+        ("_isStart", "generationless capture-start companion"),
+        ("setCaptureStarted", "dead clipboard capture publication"),
+        ("fun destroy()", "duplicate teardown method"),
+        ("stopSelf(", "bound-service self-stop path"),
+    ):
+        require_absent(service, text, f"independent {label}")
+    require_absent(
+        sources["android_clipboard_manager"],
+        "isCaptureStarted",
+        "independent dead clipboard capture status",
+    )
+    require_absent(
+        sources["android_clipboard_manager"],
+        "setCaptureStarted",
+        "independent dead clipboard capture status writer",
+    )
+    on_destroy = extract_between(
+        service,
+        "override fun onDestroy()",
+        "override fun onTaskRemoved",
+        "independent MainService status teardown",
+    )
+    require_order(
+        on_destroy,
+        (
+            "releaseControlledConnectionResources()",
+            "statusOwner.retire(nativeServerGeneration)",
+            "FFI.stopServer(nativeServerGeneration)",
+            "FFI.releaseService(this)",
+        ),
+        "independent status-before-native MainService teardown",
+    )
+
+    activity = sources["android_main_activity"]
+    require_exact_count(
+        activity,
+        "Context.BIND_AUTO_CREATE",
+        1,
+        "independent explicit-only MainService auto-create binding",
+    )
+    for text, label in (
+        (
+            "val flags = if (createIfNeeded) Context.BIND_AUTO_CREATE else 0",
+            "explicit-only bind flag",
+        ),
+        (
+            "bindMainService(createIfNeeded = status == null)",
+            "status-aware explicit initialization",
+        ),
+        (
+            "if (status?.mediaProjectionReady == true)",
+            "readiness-specific consent skip",
+        ),
+    ):
+        require_text(activity, text, f"independent MainService {label}")
+    stop = extract_between(
+        activity,
+        '                "stop_service" -> {',
+        '                "check_permission" -> {',
+        "independent explicit MainService Stop",
+    )
+    require_order(
+        stop,
+        (
+            "val stopped = stopService(Intent(this, MainService::class.java))",
+            "val unbound = unbindMainService()",
+            "result.success(stopped || unbound)",
+        ),
+        "independent platform stop before Activity binding retirement",
+    )
+    activity_destroy = extract_between(
+        activity,
+        "override fun onDestroy()",
+        "private fun bindMainService",
+        "independent MainActivity binding teardown",
+    )
+    require_order(
+        activity_destroy,
+        ("unbindMainService()", "super.onDestroy()"),
+        "independent Activity destruction unbind",
+    )
+
+    for source, text, label in (
+        (
+            sources["verify"],
+            "/usr/bin/python3 -I -S scripts/verify-android-main-service-status.py --repo . --self-test",
+            "shared focused gate",
+        ),
+        (
+            sources["requirements"],
+            '<span class="id">R-S11en</span>',
+            "normative requirement",
+        ),
+        (sources["requirements"], "<tr><td>296</td>", "Appendix C row"),
+        (
+            sources["hardening"],
+            "R-S11en/R-S11e-175 exact MainService status and explicit-stop lifecycle ownership",
+            "hardening ledger",
+        ),
+    ):
+        require_text(source, text, f"independent Android MainService status {label}")
 
 
 def validate_android_builder_authority_contract(sources):
@@ -26405,7 +26640,7 @@ def validate_android_media_projection_finality_contract(sources):
     shared_gate = extract_between(
         verify,
         'echo "== Android MediaProjection/input lifecycle finality '
-        '(R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4) =="',
+        '(R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4) =="',
         "# R-X7a / R-G1",
         "shared Android MediaProjection/input lifecycle gate",
     )
@@ -26607,12 +26842,8 @@ def validate_android_media_projection_finality_contract(sources):
         "@Volatile\n    private var captureRequested = false",
         "Android cross-thread capture-demand state",
     )
-    for state in ("_isReady", "_isStart"):
-        require_text(
-            android,
-            f"@Volatile\n        private var {state} = false",
-            f"Android cross-thread {state} state",
-        )
+    require_absent(android, "_isReady", "generationless Android readiness state")
+    require_absent(android, "_isStart", "generationless Android capture-start state")
     require_absent(android, "_isAudioStart", "retired parallel Android audio state")
     require_absent(android, "AudioRecordHandle(", "retired service-local Android recorder")
 
@@ -26700,7 +26931,6 @@ def validate_android_media_projection_finality_contract(sources):
             "nativeServerGeneration",
             "projection",
             "captureActive = true",
-            "_isStart = true",
         ),
         "Android VirtualDisplay-before-active transactional start",
     )
@@ -26723,7 +26953,6 @@ def validate_android_media_projection_finality_contract(sources):
             "exact-generation raw-video disable",
         ),
         ("captureActive = false", "instance-local active-state clear"),
-        ("_isStart = false", "active-state clear"),
         ("virtualDisplay?.release()", "VirtualDisplay release"),
         ("virtualDisplay = null", "VirtualDisplay clear"),
         ("imageReader?.close()", "ImageReader close"),
@@ -26769,7 +26998,7 @@ def validate_android_media_projection_finality_contract(sources):
             "val callback = mediaProjectionCallback",
             "mediaProjection = null",
             "mediaProjectionCallback = null",
-            "_isReady = false",
+            "statusOwner.setMediaProjectionReady(nativeServerGeneration, false)",
             "projection.unregisterCallback(callback)",
             "it.stop()",
         ),
@@ -26792,7 +27021,9 @@ def validate_android_media_projection_finality_contract(sources):
             "mediaProjectionCallback = callback",
             "projection.registerCallback(",
             "requestMediaProjection()",
-            "_isReady = true",
+            "statusOwner.setMediaProjectionReady(nativeServerGeneration, true)",
+            "releaseMediaProjection()",
+            "return",
             "if (captureRequested)",
             "startCapture()",
         ),
@@ -26802,7 +27033,7 @@ def validate_android_media_projection_finality_contract(sources):
     stopped_projection = extract_between(
         android,
         "private fun onMediaProjectionStopped",
-        "fun destroy()",
+        "private fun releaseControlledConnectionResources",
         "Android MediaProjection stop callback",
     )
     require_order(
@@ -26812,7 +27043,7 @@ def validate_android_media_projection_finality_contract(sources):
             "return",
             "mediaProjection = null",
             "mediaProjectionCallback = null",
-            "_isReady = false",
+            "statusOwner.setMediaProjectionReady(nativeServerGeneration, false)",
             "stopCapturePipeline(keepReusableDisplay = false)",
             "checkMediaPermission()",
         ),
@@ -26878,7 +27109,7 @@ def validate_android_media_projection_finality_contract(sources):
     service_teardown = extract_between(
         android,
         "private fun releaseControlledConnectionResources",
-        "fun destroy()",
+        "fun checkMediaPermission",
         "Android controlled-resource teardown",
     )
     require_order(
@@ -26891,6 +27122,8 @@ def validate_android_media_projection_finality_contract(sources):
         ),
         "Android closed-admission exact-generation controlled-resource teardown",
     )
+    require_absent(android, "fun destroy()", "duplicate Android Service teardown path")
+    require_absent(android, "stopSelf(", "bound Android Service self-stop path")
     on_destroy = extract_between(
         android,
         "override fun onDestroy()",
@@ -27469,7 +27702,7 @@ def validate_android_media_projection_finality_contract(sources):
     )
     require_text(
         sources["verify"],
-        "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4)",
+        "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4)",
         "Android MediaProjection shared source gate",
     )
     require_text(
@@ -27479,8 +27712,8 @@ def validate_android_media_projection_finality_contract(sources):
     )
     require_text(
         sources["verify"],
-        "delayed input is bounded and stale owners, callbacks, raw frames, global stops, and server generations are rejected",
-        "Android service-generation-owned capture/audio shared gate",
+        "explicit Stop drops the started state and Activity binding, delayed input is bounded, and stale owners, callbacks, raw frames, status, global stops, and server generations are rejected",
+        "Android service-generation-owned capture/audio/status shared gate",
     )
 
 
@@ -32615,6 +32848,7 @@ def validate_sources(sources):
     validate_online_fetch_flutter_pub_cache_output_authority_contract(sources)
     validate_android_media_projection_finality_contract(sources)
     validate_android_frame_raw_generation_contract(sources)
+    validate_android_main_service_status_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
     validate_direct_only_viewer_contract(sources)
@@ -48603,8 +48837,8 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4) =="',
-            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4) =="',
+            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4) =="',
+            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4) =="',
             "independent shared controlled-input/audio generation gate label source",
         ),
         (
@@ -54842,12 +55076,6 @@ def run_source_mutations(sources):
         ),
         (
             "android_main_service",
-            "@Volatile\n        private var _isStart = false",
-            "private var _isStart = false",
-            "Android cross-thread _isStart state",
-        ),
-        (
-            "android_main_service",
             "@Keep\n    @Synchronized\n    fun rustSetByName",
             "@Keep\n    fun rustSetByName",
             "Android serialized controlled-resource dispatch",
@@ -55359,8 +55587,17 @@ def run_source_mutations(sources):
         ),
         (
             "android_main_service",
-            "            checkMediaPermission()\n            requestMediaProjection()\n            return\n        }\n        _isReady = true",
-            "            checkMediaPermission()\n            return\n        }\n        _isReady = true",
+            "            checkMediaPermission()\n"
+            "            requestMediaProjection()\n"
+            "            return\n"
+            "        }\n"
+            "        if (!statusOwner.setMediaProjectionReady("
+            "nativeServerGeneration, true))",
+            "            checkMediaPermission()\n"
+            "            return\n"
+            "        }\n"
+            "        if (!statusOwner.setMediaProjectionReady("
+            "nativeServerGeneration, true))",
             "Android exact projection owner installation and demand-gated resume",
         ),
         (
@@ -55654,6 +55891,61 @@ def run_source_mutations(sources):
             "independent Android raw-video hardening ledger",
         ),
         (
+            "android_main_service_status_verifier",
+            "Validate exact-generation Android MainService status and explicit Stop.",
+            "Validate ambient Android MainService status.",
+            "Android MainService status focused verifier purpose",
+        ),
+        (
+            "android_main_service_status_owner",
+            "generation <= 0L || activeGeneration != generation",
+            "generation <= 0L",
+            "independent stale status generation retirement",
+        ),
+        (
+            "android_main_service",
+            "it.generation == nativeServerGeneration && it.mediaProjectionReady",
+            "it.mediaProjectionReady",
+            "independent MainService status exact service status query",
+        ),
+        (
+            "android_clipboard_manager",
+            "class RdClipboardManager(private val clipboardManager: ClipboardManager) {",
+            "class RdClipboardManager(private val clipboardManager: ClipboardManager) {\n"
+            "    val isCaptureStarted = false",
+            "independent dead clipboard capture status",
+        ),
+        (
+            "android_main_activity",
+            "val flags = if (createIfNeeded) Context.BIND_AUTO_CREATE else 0",
+            "val flags = Context.BIND_AUTO_CREATE",
+            "independent MainService explicit-only bind flag",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/verify-android-main-service-status.py --repo . --self-test",
+            "true # Android MainService status focused gate disabled",
+            "independent Android MainService status shared focused gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11en</span>',
+            '<span class="id">R-S11en-disabled</span>',
+            "independent Android MainService status normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>296</td>",
+            "<tr><td>296-disabled</td>",
+            "independent Android MainService status Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11en/R-S11e-175 exact MainService status and explicit-stop lifecycle ownership",
+            "R-S11en/R-S11e-175 ambient MainService status ownership",
+            "independent Android MainService status hardening ledger",
+        ),
+        (
             "flutter_ffi_source",
             "bind_main_service_generation(&env, &service, generation)",
             "true",
@@ -55673,8 +55965,8 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4)",
-            "Android MediaProjection/input lifecycle compatibility (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11e-153/R-S11e-169/R-S11e-174/R-T4)",
+            "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4)",
+            "Android MediaProjection/input lifecycle compatibility (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4)",
             "independent shared controlled-input/audio generation gate label source",
         ),
         (
@@ -56884,8 +57176,14 @@ def main():
             "android_frame_raw_generation_verifier": (
                 repo / "scripts/verify-android-frame-raw-generation.py"
             ).read_text(encoding="utf-8"),
+            "android_main_service_status_verifier": (
+                repo / "scripts/verify-android-main-service-status.py"
+            ).read_text(encoding="utf-8"),
             "android_voice_call_owner_test": (
                 repo / "scripts/android-voice-call-owner-state-test.kt"
+            ).read_text(encoding="utf-8"),
+            "android_main_service_status_test": (
+                repo / "scripts/android-main-service-status-test.kt"
             ).read_text(encoding="utf-8"),
             "android_controlled_connection_type_test": (
                 repo / "scripts/android-controlled-connection-type-test.kt"
@@ -57085,6 +57383,14 @@ def main():
             "android_main_service": (
                 repo
                 / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt"
+            ).read_text(encoding="utf-8"),
+            "android_main_service_status_owner": (
+                repo
+                / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainServiceStatusOwner.kt"
+            ).read_text(encoding="utf-8"),
+            "android_clipboard_manager": (
+                repo
+                / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/RdClipboardManager.kt"
             ).read_text(encoding="utf-8"),
             "android_controlled_connection_type": (
                 repo

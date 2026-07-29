@@ -79,8 +79,8 @@ class MainActivity : FlutterActivity() {
             Log.e(logTag, "Failed to initialize process-wide audio capture ownership")
         }
         super.configureFlutterEngine(flutterEngine)
-        if (MainService.isReady) {
-            bindMainService()
+        if (MainService.currentStatus() != null) {
+            bindMainService(createIfNeeded = false)
         }
         val channel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
@@ -157,28 +157,20 @@ class MainActivity : FlutterActivity() {
         }
         activityFlutterMethodChannel = null
 
-        if (isServiceBound) {
-            try {
-                unbindService(serviceConnection)
-            } catch (e: IllegalArgumentException) {
-                Log.w(logTag, "MainService binding was already gone during Activity destroy", e)
-            } finally {
-                isServiceBound = false
-                mainService = null
-            }
-        }
+        unbindMainService()
         super.onDestroy()
     }
 
-    private fun bindMainService(): Boolean {
+    private fun bindMainService(createIfNeeded: Boolean): Boolean {
         if (isServiceBound) {
             return true
         }
+        val flags = if (createIfNeeded) Context.BIND_AUTO_CREATE else 0
         return try {
             bindService(
                 Intent(this, MainService::class.java),
                 serviceConnection,
-                Context.BIND_AUTO_CREATE
+                flags
             ).also { bound ->
                 isServiceBound = bound
                 if (!bound) {
@@ -188,6 +180,23 @@ class MainActivity : FlutterActivity() {
         } catch (e: SecurityException) {
             Log.e(logTag, "MainService binding was rejected", e)
             false
+        }
+    }
+
+    private fun unbindMainService(): Boolean {
+        if (!isServiceBound) {
+            mainService = null
+            return false
+        }
+        return try {
+            unbindService(serviceConnection)
+            true
+        } catch (e: IllegalArgumentException) {
+            Log.w(logTag, "MainService binding was already gone", e)
+            false
+        } finally {
+            isServiceBound = false
+            mainService = null
         }
     }
 
@@ -245,8 +254,9 @@ class MainActivity : FlutterActivity() {
                     }
                 }
                 "init_service" -> {
-                    bindMainService()
-                    if (MainService.isReady) {
+                    val status = MainService.currentStatus()
+                    bindMainService(createIfNeeded = status == null)
+                    if (status?.mediaProjectionReady == true) {
                         result.success(false)
                         return@setMethodCallHandler
                     }
@@ -255,12 +265,11 @@ class MainActivity : FlutterActivity() {
                 }
                 "stop_service" -> {
                     Log.d(logTag, "Stop service")
-                    mainService?.let {
-                        it.destroy()
-                        result.success(true)
-                    } ?: let {
-                        result.success(false)
-                    }
+                    // A stopped service with a BIND_AUTO_CREATE client is not destroyed until the
+                    // client unbinds. onDestroy is MainService's sole resource-teardown owner.
+                    val stopped = stopService(Intent(this, MainService::class.java))
+                    val unbound = unbindMainService()
+                    result.success(stopped || unbound)
                 }
                 "check_permission" -> {
                     if (call.arguments is String) {
@@ -289,7 +298,9 @@ class MainActivity : FlutterActivity() {
                     mainService?.let {
                         result.success(it.checkMediaPermission())
                     } ?: let {
-                        result.success(false)
+                        result.success(
+                            MainService.currentStatus()?.mediaProjectionReady == true
+                        )
                     }
                 }
                 "check_service" -> {
@@ -299,7 +310,12 @@ class MainActivity : FlutterActivity() {
                     )
                     Companion.flutterMethodChannel?.invokeMethod(
                         "on_state_changed",
-                        mapOf("name" to "media", "value" to MainService.isReady.toString())
+                        mapOf(
+                            "name" to "media",
+                            "value" to (
+                                MainService.currentStatus()?.mediaProjectionReady == true
+                            ).toString(),
+                        )
                     )
                     result.success(true)
                 }

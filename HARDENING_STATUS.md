@@ -1279,8 +1279,8 @@ APK/device, or online acquisition action was used or claimed.
 
 Follow-up correction (2026-07-29),
 **R-S11em/R-S11e-174 exact MainService-generation Android raw-video ownership — SOURCE IMPLEMENTED;
-FOCUSED/SHARED/INDEPENDENT MUTATION AND ANDROID RUST TARGET VERIFIED; CLEAN KOTLIN/CANONICAL/PUBLICATION
-PENDING**: Android's screen-capture producer and native consumer shared one
+FOCUSED/SHARED/INDEPENDENT MUTATION AND ANDROID RUST/KOTLIN TARGET VERIFIED; PUBLISHED;
+ROOT-REQUIRING CANONICAL TRANSACTION, COLD RELEASE, AND DEVICE EVIDENCE PENDING**: Android's screen-capture producer and native consumer shared one
 process-global `VIDEO_RAW` buffer. The inherited generic `setFrameRawEnable(name, value)` selector admitted
 generationless video enable and disable, and `onVideoFrameUpdate(buffer)` admitted every delayed
 `ImageReader` callback without the native generation already bound to the exact retained `MainService`. A stale
@@ -1304,12 +1304,12 @@ ambient video/audio string selector is deleted.
 Each `MainService` now keeps a volatile instance-local `captureActive` field for the exact service's start
 short-circuit, display reconfiguration, frame admission, and native `is_start` reply. Start creates the surface
 and non-null `VirtualDisplay`, then requires native admission for its exact positive generation before committing
-local active and companion publication state. Rejected stale admission releases the newly created local
+local active state. Rejected stale admission releases the newly created local
 pipeline and returns false. Stop attempts exact-generation raw disable before clearing local active state and
 releasing the display, reader, surface, and playback projection. Its local Android objects can therefore be
-retired without a stale service disabling or publishing into replacement raw state. Companion readiness/start
-publication to Activities remains a separate open audit boundary; this slice removes it only from capture
-resource authority.
+retired without a stale service disabling or publishing into replacement raw state. R-S11en subsequently deletes
+the dead clipboard capture-status replica and closes Activity-visible service/MediaProjection status and explicit
+Stop as their own exact lifecycle boundary.
 
 Confined authored-tree verification used the current pinned Android builder
 `sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2` and exact offline closure
@@ -1328,9 +1328,17 @@ mutation's expected diagnostic; the check was ordered after that existing owner.
 expected diagnostic label, and a third found a genuine presence-only verifier weakness: either of two
 `FrameRawGenerationOwner` occurrences could be removed while the other satisfied the assertion. The contract
 now requires an exact count of two. A fourth complete unsliced run passed from mutation one. The final
-post-ledger complete source-mutation catalog also restarted from mutation one and passed. Targeted production
-Kotlin compilation, the exact clean canonical verifier, commit, push, and published-state proof remain pending
-at this point in the ledger.
+post-ledger complete source-mutation catalog also restarted from mutation one and passed.
+
+The exact committed source then passed the real
+`:app:compileReleaseKotlin -x :app:compileFlutterBuildRelease` graph in the pinned Android builder:
+Gradle reported `BUILD SUCCESSFUL in 31s` with 228 actionable tasks (227 executed, one up-to-date). No APK was
+linked, signed, installed, or run. Commit `09b66acce42fb1bb806837160bcebe13e4d66dd3`
+(`Bind Android raw video to service generations`) was pushed directly to `origin/master`; local `HEAD`,
+local/tracking `master`, `FETCH_HEAD`, and the live remote ref were proved identical with zero divergence and a
+clean worktree. The full canonical verifier was deliberately not launched because its root-IPC stage explicitly
+starts two containers as UID:GID `0:0` with `CAP_CHOWN` and `CAP_FOWNER`, while the user prohibited acquiring
+root. It is not claimed green or silently bypassed.
 
 This is Android controlled-side source-proven process-persistent capture availability and frame-ownership debt,
 not a causal reproduction of the reported outgoing Android viewer-to-desktop screen-control hang, an
@@ -1338,6 +1346,73 @@ authorization bypass, exploitation, root acquisition, privilege escalation, comp
 container escape, or a host RustDesk/service/firewall/listener/network change. Current APK/device
 capture-replacement/task-swipe/Force-Stop reproduction, exact cold R-B2/R-B10 release artifacts, separately
 required independent reproduction, and external review remain open. The broader Ralph loop remains active.
+
+Follow-up correction (2026-07-30),
+**R-S11en/R-S11e-175 exact MainService status and explicit-stop lifecycle ownership — AUTHORED-TREE
+SOURCE IMPLEMENTED; FOCUSED/SHARED/INDEPENDENT MUTATION AND TARGETED KOTLIN VERIFIED; COMMIT AND PUBLICATION
+PENDING.**
+Platform: Android controlled-side foreground service and Flutter Activity. Endpoint/action: process-visible
+service/MediaProjection status, Activity binding, UI `init_service`, UI `stop_service`, and
+`MainService.onDestroy`. Boundary: an obsolete or stopped service generation and retained Activity client ↔ the
+current foreground service's status and sole capture/listener/resource teardown.
+
+The source and history audit found two related inherited paths. `MainService` published MediaProjection
+readiness and capture activity through companion `_isReady`/`_isStart` booleans introduced by the original
+upstream import, so an obsolete same-process callback had no generation identity. `MainActivity` bound using
+`BIND_AUTO_CREATE`; its explicit Stop called `MainService.destroy()`, and that duplicate teardown called
+`stopSelf()` without dropping the Activity binding. Android's documented started-and-bound lifecycle retains a
+stopped service until all auto-create clients unbind. Because `MainService.onDestroy` is the sole exact owner of
+native listener deactivation, controlled capture release, callback-owner release, network callback removal, and
+wake-lock release, the old UI could report Stop before that teardown became runnable. Force Stop destroys the
+process and masks both classes of stale state. This was inherited lifecycle and status ownership, not introduced
+by Docker or a host change.
+
+`MainServiceStatusOwner` now serializes one private monotonic status publication containing the exact positive
+native service generation and MediaProjection readiness. A current begin is idempotent and preserves readiness;
+a newer generation resets it; zero, regressed, retired, and superseded generations fail closed; and only the
+exact active generation can update readiness or retire the publication. `MainService` begins it only after JNI
+returns the exact server generation, carries that generation through projection install/release/stop, and retires
+it during `onDestroy`. The old companion booleans/getters are deleted. The unread process-global
+`RdClipboardManager` capture-start replica and its writers are deleted rather than generation-wrapped.
+
+Passive Activity attachment to a published running service now binds with flags `0`. `BIND_AUTO_CREATE` exists
+only behind explicit initialization when no status is published. Activity destruction uses one idempotent
+binding-retirement helper. Explicit Stop calls `Context.stopService` for the explicit `MainService` intent and
+then unbinds the Activity client, allowing the framework to deliver `onDestroy`. The callable
+`MainService.destroy()` and `stopSelf()` duplicate teardown are absent. Status remains observation only; capture,
+listener, connection, and authorization state remain owned by their exact service-generation resources.
+
+The pure Kotlin status-owner fixture compiled with pinned Kotlin 2.1.21 and passed its fresh, invalid, current,
+replacement, stale-update, stale-retire, exact-retire, and retired-reactivation cases. The dedicated focused
+verifier rejected all 35 deliberate source/behavior/requirement/ledger/shared-gate regressions. The adjacent raw
+video and combined Android lifecycle/ownership catalogs rejected all 40 and 385 mutations respectively. The
+independent workspace baseline and its complete unsliced `--source-mutations-only` catalog passed from mutation
+one. The real Android
+`:app:compileReleaseKotlin -x :app:compileFlutterBuildRelease` application graph then completed with
+`BUILD SUCCESSFUL in 40s`, 228 actionable tasks (227 executed, one up-to-date), and byte-for-byte post-build
+equality for every affected production source. It used immutable Android image
+`sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2`, verified projected Gradle-cache digest
+`522efa37b4b1da33d05369bea4ba7f2fd17ecd08b1afbd01bf3999d9a34299fe`, UID:GID `1000:1000`,
+`--network=none`, a read-only live repository and offline closure, dropped capabilities, no-new-privileges,
+bounded private scratch, and no port, device, Docker socket, or host namespace. It did not link, sign, install,
+or run an APK.
+
+Preliminary confined harness failures are retained explicitly. The first standalone Kotlin compiler invocation
+omitted the cached JetBrains annotations artifact and failed before code generation; the exact compiler POM
+closure was completed and the fixture passed. The first production-compile snapshot attempted to traverse
+unrelated stale build locks below `.claude/worktrees`; no Gradle task began, and the retry excluded that auxiliary
+tree. The second stopped before Gradle because the cache projector correctly refused a nonstandard owner-only
+`/tmp`; the successful transaction kept the process at UID:GID `1000:1000` while giving only the container tmpfs
+its standard root-owned mode-`01777` parent metadata. None of these diagnostics changed the live source or
+offline cache.
+
+The complete canonical `scripts/verify.sh` transaction is not run or claimed: its root-IPC stage explicitly
+launches two containers as UID:GID `0:0` with `CAP_CHOWN` and `CAP_FOWNER`, while the user prohibited acquiring
+root. No service, listener, MediaProjection, peer, APK, device, host RustDesk/service/configuration,
+firewall/UFW/nftables/iptables, host listener/port, root/sudo, VM/libvirt, or online acquisition action has
+occurred. Current APK/device start/status/explicit-Stop/task-swipe/Force-Stop/replacement reproduction, exact cold
+R-B2/R-B10 artifacts, separately required independent reproduction, external review, commit, and publication
+remain open. The broader Ralph loop remains active.
 
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
@@ -15921,7 +15996,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-691015d51a2a2168cb3774947d2d11ac11dec278e67922139ba0373151dd24e6  requirements.html
+084627ba95b37145b34b6a7de03f75d2a846a6be7d6f9e02bb6376d052193ecc  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

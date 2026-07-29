@@ -38,6 +38,7 @@ STATE_DIR="$REPO_ROOT/.harness-state"
 GOLDEN="$STATE_DIR/win11-golden.qcow2"
 DOMAIN="${HARNESS_PREFIX:-rustdesk-fork-harness}-win-golden"
 CONTROL_TIMEOUT_SECONDS=30
+PROCESS_ADMISSION_SECONDS=10
 PROCESS_STOP_SECONDS=10
 CREATE_TIMEOUT_SECONDS=300
 VM_TIMEOUT_SECONDS=7800
@@ -164,6 +165,24 @@ owned_virt_process_matches() {
     [ "$start" = "$PROVISION_VIRT_START" ] \
         && [ "$group" = "$PROVISION_VIRT_PID" ] \
         && [ "$session" = "$PROVISION_VIRT_PID" ]
+}
+
+wait_for_owned_virt_process_group() {
+    local deadline identity state start group session
+    [ -n "$PROVISION_VIRT_PID" ] && [ -n "$PROVISION_VIRT_START" ] || return 1
+    deadline=$(( $(monotonic_seconds) + PROCESS_ADMISSION_SECONDS ))
+    while true; do
+        identity="$(process_identity "$PROVISION_VIRT_PID" 2>/dev/null)" || return 1
+        read -r state start group session <<< "$identity"
+        [ "$start" = "$PROVISION_VIRT_START" ] || return 1
+        [ "$state" != Z ] && [ "$state" != X ] || return 1
+        if [ "$group" = "$PROVISION_VIRT_PID" ] \
+            && [ "$session" = "$PROVISION_VIRT_PID" ]; then
+            return 0
+        fi
+        [ "$(monotonic_seconds)" -lt "$deadline" ] || return 1
+        sleep 0.05
+    done
 }
 
 owned_virt_process_is_live() {
@@ -426,6 +445,8 @@ build_golden() {
     PROVISION_VIRT_PID=$!
     PROVISION_VIRT_START="$(process_start_time "$PROVISION_VIRT_PID")" \
         || die "could not bind the virt-install process identity"
+    wait_for_owned_virt_process_group \
+        || die "could not prove virt-install process-group admission"
     wait_for_owned_domain_creation
     # Clear the UEFI "Press any key to boot from CD or DVD" prompt: headless, it otherwise falls
     # through to "BdsDxe: No bootable option or device was found" and the install never starts.

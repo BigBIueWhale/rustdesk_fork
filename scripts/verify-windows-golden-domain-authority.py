@@ -57,6 +57,7 @@ def validate(sources):
         ("export LC_ALL=C", "fixed control-output locale"),
         ("CONTROL_TIMEOUT_SECONDS=30", "finite libvirt control deadline"),
         ("CREATE_TIMEOUT_SECONDS=300", "finite domain-creation deadline"),
+        ("PROCESS_ADMISSION_SECONDS=10", "finite process-group admission deadline"),
         ("VM_TIMEOUT_SECONDS=7800", "finite complete-provision deadline"),
         ('PROVISION_DOMAIN_UUID=""', "retained domain UUID state"),
         ("PROVISION_DOMAIN_CREATION_STARTED=0", "creation-intent state"),
@@ -82,6 +83,27 @@ def validate(sources):
         (
             "owned_virt_process_group_is_live() {",
             "complete owned process-group scanner",
+        ),
+        (
+            "wait_for_owned_virt_process_group() {",
+            "exact process-group admission",
+        ),
+        (
+            "deadline=$(( $(monotonic_seconds) + PROCESS_ADMISSION_SECONDS ))",
+            "monotonic process-group admission deadline",
+        ),
+        (
+            '[ "$start" = "$PROVISION_VIRT_START" ] || return 1',
+            "admission start-identity refusal",
+        ),
+        (
+            '[ "$state" != Z ] && [ "$state" != X ] || return 1',
+            "admission live-state refusal",
+        ),
+        (
+            'if [ "$group" = "$PROVISION_VIRT_PID" ] \\\n'
+            '            && [ "$session" = "$PROVISION_VIRT_PID" ]; then',
+            "admission group/session proof",
         ),
         (
             "for path in /proc/[0-9]*/stat; do",
@@ -142,6 +164,11 @@ def validate(sources):
         (
             'PROVISION_VIRT_START="$(process_start_time "$PROVISION_VIRT_PID")"',
             "post-launch process identity binding",
+        ),
+        (
+            "wait_for_owned_virt_process_group \\\n"
+            '        || die "could not prove virt-install process-group admission"',
+            "post-launch process-group admission",
         ),
         (
             "while owned_virt_process_group_is_live; do",
@@ -239,6 +266,8 @@ def validate(sources):
             "PROVISION_DOMAIN_CREATION_STARTED=1",
             "setsid --wait virt-install",
             '--uuid "$PROVISION_DOMAIN_UUID"',
+            'PROVISION_VIRT_START="$(process_start_time "$PROVISION_VIRT_PID")"',
+            "wait_for_owned_virt_process_group",
             "wait_for_owned_domain_creation",
         ),
         "UUID absence, creation intent, launch, and ownership order",
@@ -289,6 +318,14 @@ def validate(sources):
             "creation-intent normative boundary",
         ),
         (
+            "one finite admission step",
+            "process-group admission normative boundary",
+        ),
+        (
+            "pre-admission exit, identity change, or deadline",
+            "process-group admission failure boundary",
+        ),
+        (
             "every guest-specific <code>virsh</code> operation",
             "UUID-only normative control boundary",
         ),
@@ -308,9 +345,19 @@ def validate(sources):
         "Appendix C #271 disposition",
     )
     require_text(
+        sources["requirements"],
+        "<tr><td>291</td>",
+        "Appendix C #291 disposition",
+    )
+    require_text(
         sources["hardening"],
         "R-S11dr/R-S11e-136 — Windows golden provisioner owns one exact libvirt UUID",
         "hardening-ledger disposition",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
+        "setsid-admission hardening ledger",
     )
     require_text(
         sources["verify"],
@@ -346,6 +393,12 @@ def run_self_test(sources):
             "CONTROL_TIMEOUT_SECONDS=30",
             "CONTROL_TIMEOUT_SECONDS=0",
             "finite libvirt control deadline",
+        ),
+        (
+            "provision",
+            "PROCESS_ADMISSION_SECONDS=10",
+            "PROCESS_ADMISSION_SECONDS=0",
+            "finite process-group admission deadline",
         ),
         (
             "provision",
@@ -451,6 +504,31 @@ def run_self_test(sources):
         ),
         (
             "provision",
+            "wait_for_owned_virt_process_group() {",
+            "wait_for_unowned_virt_process_group() {",
+            "exact process-group admission",
+        ),
+        (
+            "provision",
+            '[ "$start" = "$PROVISION_VIRT_START" ] || return 1',
+            '[ -n "$start" ] || return 1',
+            "admission start-identity refusal",
+        ),
+        (
+            "provision",
+            '[ "$state" != Z ] && [ "$state" != X ] || return 1',
+            "true # terminal admission accepted",
+            "admission live-state refusal",
+        ),
+        (
+            "provision",
+            "wait_for_owned_virt_process_group \\\n"
+            '        || die "could not prove virt-install process-group admission"',
+            "true # process-group admission omitted",
+            "post-launch process-group admission",
+        ),
+        (
+            "provision",
             'virsh_bounded send-key "$PROVISION_DOMAIN_UUID"',
             'virsh_bounded send-key "$DOMAIN"',
             "UUID-addressed boot-key injection",
@@ -515,15 +593,33 @@ def run_self_test(sources):
         ),
         (
             "requirements",
+            "one finite admission step",
+            "an optional admission step",
+            "process-group admission normative boundary",
+        ),
+        (
+            "requirements",
             "<tr><td>271</td>",
             "<tr><td>271-disabled</td>",
             "Appendix C #271 disposition",
+        ),
+        (
+            "requirements",
+            "<tr><td>291</td>",
+            "<tr><td>291-disabled</td>",
+            "Appendix C #291 disposition",
         ),
         (
             "hardening",
             "R-S11dr/R-S11e-136 — Windows golden provisioner owns one exact libvirt UUID",
             "R-S11dr/R-S11e-136 — Windows golden provisioner owns a mutable name",
             "hardening-ledger disposition",
+        ),
+        (
+            "hardening",
+            "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
+            "R-S11dr/R-S11ds/R-S11e-170 — ambient setsid process-group admission",
+            "setsid-admission hardening ledger",
         ),
         (
             "verify",

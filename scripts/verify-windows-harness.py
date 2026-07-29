@@ -484,6 +484,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     launch_domain = shell_function(host, "launch_domain")
     process_identity = shell_function(host, "process_identity")
     owned_process_matches = shell_function(host, "owned_process_matches")
+    wait_for_owned_process_group = shell_function(host, "wait_for_owned_process_group")
     owned_process_is_live = shell_function(host, "owned_process_is_live")
     owned_process_group_is_live = shell_function(host, "owned_process_group_is_live")
     stop_owned_process = shell_function(host, "stop_owned_process")
@@ -521,6 +522,7 @@ def validate_sources(sources: dict[str, str]) -> None:
 
     require(host, "CREATE_TIMEOUT_SECONDS=300", "five-minute VM creation bound")
     require(host, "CONTROL_TIMEOUT_SECONDS=30", "bounded libvirt control timeout")
+    require(host, "PROCESS_ADMISSION_SECONDS=10", "bounded process-group admission timeout")
     require(host, "PROCESS_STOP_SECONDS=10", "bounded process-group stop timeout")
     require(host, "export LC_ALL=C", "fixed libvirt control locale")
     require(
@@ -622,6 +624,36 @@ def validate_sources(sources: dict[str, str]) -> None:
         require(body, '[ "$start" = "$CURRENT_VIRT_START" ]', f"start time in {description}")
         require(body, '[ "$group" = "$CURRENT_VIRT_PID" ]', f"process group in {description}")
         require(body, '[ "$session" = "$CURRENT_VIRT_PID" ]', f"session in {description}")
+    for literal, description in (
+        (
+            'deadline=$(( $(monotonic_seconds) + PROCESS_ADMISSION_SECONDS ))',
+            "monotonic process-group admission deadline",
+        ),
+        (
+            '[ "$start" = "$CURRENT_VIRT_START" ] || return 1',
+            "admission start-identity refusal",
+        ),
+        (
+            '[ "$state" != Z ] && [ "$state" != X ] || return 1',
+            "admission live-state refusal",
+        ),
+        (
+            'if [ "$group" = "$CURRENT_VIRT_PID" ] \\\n'
+            '            && [ "$session" = "$CURRENT_VIRT_PID" ]; then',
+            "admission group/session proof",
+        ),
+        (
+            '[ "$(monotonic_seconds)" -lt "$deadline" ] || return 1',
+            "admission deadline refusal",
+        ),
+    ):
+        require(wait_for_owned_process_group, literal, description)
+    require(
+        launch_domain,
+        "wait_for_owned_process_group \\\n"
+        '        || die "could not prove virt-install process-group admission"',
+        "post-launch process-group admission",
+    )
     require(owned_process_is_live, '[ "$state" != Z ] && [ "$state" != X ]', "exited child detection")
     require(stop_owned_process, 'kill -TERM -- "-$CURRENT_VIRT_PID"', "owned group TERM")
     require(stop_owned_process, 'kill -KILL -- "-$CURRENT_VIRT_PID"', "owned group KILL fallback")
@@ -675,6 +707,7 @@ def validate_sources(sources: dict[str, str]) -> None:
             '--uuid "$CURRENT_DOMAIN_UUID"',
             "CURRENT_VIRT_PID=$!",
             'CURRENT_VIRT_START="$(process_start_time "$CURRENT_VIRT_PID")"',
+            "wait_for_owned_process_group",
             'deadline=$(( $(monotonic_seconds) + CREATE_TIMEOUT_SECONDS ))',
             "stop_owned_process",
             "domain_uuid_is_listed",
@@ -911,6 +944,25 @@ def validate_sources(sources: dict[str, str]) -> None:
         require(closure, literal, description)
     require(host, "--network none", "networkless VM")
     require(host, "--graphics vnc,listen=127.0.0.1", "loopback-only Windows VM console")
+    for literal, description in (
+        (
+            "'sleep 1; exec setsid --wait bash -c \"$1\"'",
+            "delayed process-group admission fixture",
+        ),
+        (
+            "delayed process-group fixture skipped its pre-admission state",
+            "pre-admission refusal fixture",
+        ),
+        (
+            "PROCESS_ADMISSION_SECONDS=3",
+            "bounded delayed-admission fixture",
+        ),
+        (
+            "delayed process-group fixture did not admit conclusively",
+            "delayed-admission completion fixture",
+        ),
+    ):
+        require(harness_self_test, literal, description)
 
     exact_domain_requirement = html_requirement(requirements, "R-S11ds")
     for literal, description in (
@@ -919,7 +971,7 @@ def validate_sources(sources: dict[str, str]) -> None:
             "R-S11ds requirement title",
         ),
         (
-            "A selected UUID or creation intent alone",
+            "A selected UUID, creation intent, or unadmitted child alone",
             "normative ownership-commit boundary",
         ),
         (
@@ -929,6 +981,14 @@ def validate_sources(sources: dict[str, str]) -> None:
         (
             "complete retained matching client process group and session",
             "normative complete client-process authority",
+        ),
+        (
+            "boundedly re-prove that same live identity",
+            "normative process-group admission",
+        ),
+        (
+            "unadmitted child alone",
+            "normative pre-admission authority refusal",
         ),
         (
             "MUST NOT</span> request storage deletion",
@@ -942,10 +1002,16 @@ def validate_sources(sources: dict[str, str]) -> None:
     ):
         require(exact_domain_requirement, literal, description)
     require(requirements, "<tr><td>272</td>", "Appendix C #272 disposition")
+    require(requirements, "<tr><td>291</td>", "Appendix C #291 disposition")
     require(
         hardening,
         "R-S11ds/R-S11e-137 — Windows per-build VM owns one exact libvirt UUID",
         "R-S11ds hardening-ledger disposition",
+    )
+    require(
+        hardening,
+        "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
+        "setsid-admission hardening-ledger disposition",
     )
     require(
         verify,
@@ -2323,6 +2389,12 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
         ("VM deadline", "host", "VM_TIMEOUT_SECONDS=7200", "VM_TIMEOUT_SECONDS=0"),
         ("VM creation deadline", "host", "CREATE_TIMEOUT_SECONDS=300", "CREATE_TIMEOUT_SECONDS=0"),
         ("control timeout", "host", "CONTROL_TIMEOUT_SECONDS=30", "CONTROL_TIMEOUT_SECONDS=0"),
+        (
+            "bounded process-group admission timeout",
+            "host",
+            "PROCESS_ADMISSION_SECONDS=10",
+            "PROCESS_ADMISSION_SECONDS=0",
+        ),
         ("process stop deadline", "host", "PROCESS_STOP_SECONDS=10", "PROCESS_STOP_SECONDS=0"),
         ("fixed libvirt control locale", "host", "export LC_ALL=C", "export LC_ALL=en_US.UTF-8"),
         (
@@ -2683,6 +2755,49 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             '&& [ -n "$session" ]',
         ),
         (
+            "wait_for_owned_process_group",
+            "host",
+            "wait_for_owned_process_group() {",
+            "wait_for_unowned_process_group() {",
+        ),
+        (
+            "admission start-identity refusal",
+            "host",
+            '[ "$start" = "$CURRENT_VIRT_START" ] || return 1',
+            '[ -n "$start" ] || return 1',
+        ),
+        (
+            "admission live-state refusal",
+            "host",
+            '[ "$state" != Z ] && [ "$state" != X ] || return 1',
+            "true # terminal admission accepted",
+        ),
+        (
+            "post-launch process-group admission",
+            "host",
+            "wait_for_owned_process_group \\\n"
+            '        || die "could not prove virt-install process-group admission"',
+            "true # process-group admission omitted",
+        ),
+        (
+            "delayed process-group admission fixture",
+            "host",
+            "'sleep 1; exec setsid --wait bash -c \"$1\"'",
+            "'exec setsid --wait bash -c \"$1\"'",
+        ),
+        (
+            "pre-admission refusal fixture",
+            "host",
+            "delayed process-group fixture skipped its pre-admission state",
+            "delayed process-group fixture accepted its pre-admission state",
+        ),
+        (
+            "delayed-admission completion fixture",
+            "host",
+            "delayed process-group fixture did not admit conclusively",
+            "delayed process-group fixture admission was ignored",
+        ),
+        (
             "robust retained-leader proc-stat boundary",
             "host",
             'stat="$(<"/proc/$pid/stat")" || return 1\n'
@@ -2795,8 +2910,8 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
         (
             "normative ownership-commit boundary",
             "requirements",
-            "A selected UUID or creation intent alone",
-            "A selected UUID or creation intent always",
+            "A selected UUID, creation intent, or unadmitted child alone",
+            "A selected UUID, creation intent, or unadmitted child always",
         ),
         (
             "normative complete client-process authority",
@@ -2805,16 +2920,34 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "retained matching client leader",
         ),
         (
+            "normative process-group admission",
+            "requirements",
+            "boundedly re-prove that same live identity",
+            "optionally inspect that live identity",
+        ),
+        (
             "Appendix C #272 disposition",
             "requirements",
             "<tr><td>272</td>",
             "<tr><td>272-disabled</td>",
         ),
         (
+            "Appendix C #291 disposition",
+            "requirements",
+            "<tr><td>291</td>",
+            "<tr><td>291-disabled</td>",
+        ),
+        (
             "R-S11ds hardening-ledger disposition",
             "hardening",
             "R-S11ds/R-S11e-137 — Windows per-build VM owns one exact libvirt UUID",
             "R-S11ds/R-S11e-137 — Windows per-build VM owns a mutable name",
+        ),
+        (
+            "setsid-admission hardening-ledger disposition",
+            "hardening",
+            "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
+            "R-S11dr/R-S11ds/R-S11e-170 — ambient setsid process-group admission",
         ),
         (
             "R-S11ds focused gate wiring",

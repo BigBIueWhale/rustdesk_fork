@@ -21120,6 +21120,10 @@ def validate_windows_golden_domain_authority_contract(sources):
     for text, label in (
         ("export LC_ALL=C", "Windows golden fixed control locale"),
         (
+            "PROCESS_ADMISSION_SECONDS=10",
+            "Windows golden finite process-group admission deadline",
+        ),
+        (
             "require_cmd virt-install virsh qemu-img xorriso setsid timeout awk",
             "Windows golden exact lifecycle command preflight",
         ),
@@ -21172,6 +21176,27 @@ def validate_windows_golden_domain_authority_contract(sources):
         (
             "owned_virt_process_group_is_live() {",
             "Windows golden complete process-group scanner",
+        ),
+        (
+            "wait_for_owned_virt_process_group() {",
+            "Windows golden exact process-group admission",
+        ),
+        (
+            "deadline=$(( $(monotonic_seconds) + PROCESS_ADMISSION_SECONDS ))",
+            "Windows golden monotonic admission deadline",
+        ),
+        (
+            '[ "$start" = "$PROVISION_VIRT_START" ] || return 1',
+            "Windows golden admission start-identity refusal",
+        ),
+        (
+            '[ "$state" != Z ] && [ "$state" != X ] || return 1',
+            "Windows golden admission live-state refusal",
+        ),
+        (
+            "wait_for_owned_virt_process_group \\\n"
+            '        || die "could not prove virt-install process-group admission"',
+            "Windows golden post-launch admission",
         ),
         (
             "while owned_virt_process_group_is_live; do",
@@ -21279,6 +21304,8 @@ def validate_windows_golden_domain_authority_contract(sources):
             "PROVISION_DOMAIN_CREATION_STARTED=1",
             "setsid --wait virt-install",
             '--uuid "$PROVISION_DOMAIN_UUID"',
+            'PROVISION_VIRT_START="$(process_start_time "$PROVISION_VIRT_PID")"',
+            "wait_for_owned_virt_process_group",
             "wait_for_owned_domain_creation",
         ),
         "Windows golden identity/launch/ownership order",
@@ -21332,6 +21359,10 @@ def validate_windows_golden_domain_authority_contract(sources):
             "Windows golden normative creation intent",
         ),
         (
+            "one finite admission step",
+            "Windows golden normative process-group admission",
+        ),
+        (
             "Domain cleanup <span class=\"kw\">MUST NOT</span> request storage deletion",
             "Windows golden normative storage preservation",
         ),
@@ -21347,9 +21378,19 @@ def validate_windows_golden_domain_authority_contract(sources):
         "Windows golden Appendix C #271 disposition",
     )
     require_text(
+        sources["requirements"],
+        "<tr><td>291</td>",
+        "Windows golden Appendix C #291 disposition",
+    )
+    require_text(
         sources["hardening"],
         "R-S11dr/R-S11e-136 — Windows golden provisioner owns one exact libvirt UUID",
         "Windows golden hardening-ledger disposition",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
+        "Windows golden setsid-admission hardening ledger",
     )
     require_text(
         sources["verify"],
@@ -21374,6 +21415,14 @@ def validate_windows_golden_domain_authority_contract(sources):
         (
             "Appendix C #271 disposition",
             "Windows golden focused Appendix mutation",
+        ),
+        (
+            "Appendix C #291 disposition",
+            "Windows golden focused admission-Appendix mutation",
+        ),
+        (
+            "post-launch process-group admission",
+            "Windows golden focused admission binding",
         ),
     ):
         require_text(focused, text, label)
@@ -21442,6 +21491,22 @@ def validate_windows_golden_domain_authority_contract(sources):
             "Windows golden hardening-ledger disposition",
             "Windows golden ledger mutation",
         ),
+        (
+            "Windows golden finite process-group admission deadline",
+            "Windows golden admission-deadline mutation",
+        ),
+        (
+            "Windows golden post-launch admission",
+            "Windows golden admission-call mutation",
+        ),
+        (
+            "Windows golden Appendix C #291 disposition",
+            "Windows golden admission-Appendix mutation",
+        ),
+        (
+            "Windows golden setsid-admission hardening ledger",
+            "Windows golden admission-ledger mutation",
+        ),
     ):
         require_text(mutation_matrix, text, label)
 
@@ -21458,6 +21523,10 @@ def validate_windows_build_domain_authority_contract(sources):
     )
     for text, label in (
         ("export LC_ALL=C", "Windows build fixed control locale"),
+        (
+            "PROCESS_ADMISSION_SECONDS=10",
+            "Windows build finite process-group admission deadline",
+        ),
         (
             "require_cmd qemu-img virt-install virsh xorriso git python3 realpath "
             "sha256sum sha512sum timeout setsid awk",
@@ -21512,6 +21581,39 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             "owned_process_group_is_live() {",
             "Windows build complete process-group scanner",
+        ),
+        (
+            "wait_for_owned_process_group() {",
+            "Windows build exact process-group admission",
+        ),
+        (
+            "deadline=$(( $(monotonic_seconds) + PROCESS_ADMISSION_SECONDS ))",
+            "Windows build monotonic admission deadline",
+        ),
+        (
+            '[ "$start" = "$CURRENT_VIRT_START" ] || return 1',
+            "Windows build admission start-identity refusal",
+        ),
+        (
+            '[ "$state" != Z ] && [ "$state" != X ] || return 1',
+            "Windows build admission live-state refusal",
+        ),
+        (
+            "wait_for_owned_process_group \\\n"
+            '        || die "could not prove virt-install process-group admission"',
+            "Windows build post-launch admission",
+        ),
+        (
+            "'sleep 1; exec setsid --wait bash -c \"$1\"'",
+            "Windows build delayed-admission fixture",
+        ),
+        (
+            "delayed process-group fixture skipped its pre-admission state",
+            "Windows build pre-admission refusal fixture",
+        ),
+        (
+            "delayed process-group fixture did not admit conclusively",
+            "Windows build admission-completion fixture",
         ),
         (
             '[ ! -e "/proc/$CURRENT_VIRT_PID" ] || return 1',
@@ -21674,6 +21776,8 @@ def validate_windows_build_domain_authority_contract(sources):
             "CURRENT_DOMAIN_CREATION_STARTED=1",
             "setsid --wait virt-install",
             '--uuid "$CURRENT_DOMAIN_UUID"',
+            'CURRENT_VIRT_START="$(process_start_time "$CURRENT_VIRT_PID")"',
+            "wait_for_owned_process_group",
             "domain_uuid_is_listed",
             "prove_owned_domain",
             "verify_domain_xml",
@@ -21788,8 +21892,12 @@ def validate_windows_build_domain_authority_contract(sources):
             "Windows build requirement title",
         ),
         (
-            "A selected UUID or creation intent alone",
+            "A selected UUID, creation intent, or unadmitted child alone",
             "Windows build normative ownership boundary",
+        ),
+        (
+            "boundedly re-prove that same live identity",
+            "Windows build normative process-group admission",
         ),
         (
             "every guest-specific post-create read or control",
@@ -21816,9 +21924,19 @@ def validate_windows_build_domain_authority_contract(sources):
         "Windows build Appendix C #272 disposition",
     )
     require_text(
+        sources["requirements"],
+        "<tr><td>291</td>",
+        "Windows build Appendix C #291 disposition",
+    )
+    require_text(
         sources["hardening"],
         "R-S11ds/R-S11e-137 — Windows per-build VM owns one exact libvirt UUID",
         "Windows build hardening-ledger disposition",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
+        "Windows build setsid-admission hardening ledger",
     )
     require_text(
         sources["verify"],
@@ -22063,6 +22181,18 @@ def validate_windows_build_domain_authority_contract(sources):
             "Windows build focused Appendix mutation",
         ),
         (
+            "Appendix C #291 disposition",
+            "Windows build focused admission-Appendix mutation",
+        ),
+        (
+            "post-launch process-group admission",
+            "Windows build focused admission binding",
+        ),
+        (
+            "delayed process-group admission fixture",
+            "Windows build focused delayed-admission fixture",
+        ),
+        (
             "exact run-root retirement before authority clearing",
             "Windows build focused run-root retirement binding",
         ),
@@ -22090,6 +22220,10 @@ def validate_windows_build_domain_authority_contract(sources):
     for text, label in (
         ("Windows build fixed control locale", "Windows build locale mutation"),
         (
+            "Windows build finite process-group admission deadline",
+            "Windows build admission-deadline mutation",
+        ),
+        (
             "Windows build exact lifecycle command preflight",
             "Windows build command-preflight mutation",
         ),
@@ -22108,6 +22242,18 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             "Windows build ownership commit",
             "Windows build ownership-commit mutation",
+        ),
+        (
+            "Windows build exact process-group admission",
+            "Windows build admission-helper mutation",
+        ),
+        (
+            "Windows build post-launch admission",
+            "Windows build admission-call mutation",
+        ),
+        (
+            "Windows build delayed-admission fixture",
+            "Windows build admission-fixture mutation",
         ),
         (
             "Windows build robust retained-leader proc-stat boundary",
@@ -22162,8 +22308,16 @@ def validate_windows_build_domain_authority_contract(sources):
             "Windows build normative process-authority mutation",
         ),
         (
+            "Windows build normative process-group admission",
+            "Windows build normative admission mutation",
+        ),
+        (
             "Windows build Appendix C #272 disposition",
             "Windows build Appendix mutation",
+        ),
+        (
+            "Windows golden Appendix C #291 disposition",
+            "Windows shared admission-Appendix mutation",
         ),
         (
             "Windows build focused gate wiring",
@@ -22172,6 +22326,10 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             "Windows build hardening-ledger disposition",
             "Windows build ledger mutation",
+        ),
+        (
+            "Windows golden setsid-admission hardening ledger",
+            "Windows shared admission-ledger mutation",
         ),
         (
             "Windows build retained run-root device/inode",
@@ -51295,6 +51453,12 @@ def run_source_mutations(sources):
         ),
         (
             "windows_provision",
+            "PROCESS_ADMISSION_SECONDS=10",
+            "PROCESS_ADMISSION_SECONDS=0",
+            "Windows golden finite process-group admission deadline",
+        ),
+        (
+            "windows_provision",
             "require_cmd virt-install virsh qemu-img xorriso setsid timeout awk",
             "require_cmd virt-install virsh qemu-img xorriso setsid timeout",
             "Windows golden exact lifecycle command preflight",
@@ -51361,6 +51525,25 @@ def run_source_mutations(sources):
             'PROVISION_VIRT_START="$(process_start_time "$PROVISION_VIRT_PID")"',
             'PROVISION_VIRT_START=""',
             "Windows golden process-start binding",
+        ),
+        (
+            "windows_provision",
+            "wait_for_owned_virt_process_group() {",
+            "wait_for_unowned_virt_process_group() {",
+            "Windows golden exact process-group admission",
+        ),
+        (
+            "windows_provision",
+            '[ "$start" = "$PROVISION_VIRT_START" ] || return 1',
+            '[ -n "$start" ] || return 1',
+            "Windows golden admission start-identity refusal",
+        ),
+        (
+            "windows_provision",
+            "wait_for_owned_virt_process_group \\\n"
+            '        || die "could not prove virt-install process-group admission"',
+            "true # process-group admission omitted",
+            "Windows golden post-launch admission",
         ),
         (
             "windows_provision",
@@ -51456,9 +51639,21 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
+            "one finite admission step",
+            "an optional admission step",
+            "Windows golden normative process-group admission",
+        ),
+        (
+            "requirements",
             "<tr><td>271</td>",
             "<tr><td>271-disabled</td>",
             "Windows golden Appendix C #271 disposition",
+        ),
+        (
+            "requirements",
+            "<tr><td>291</td>",
+            "<tr><td>291-disabled</td>",
+            "Windows golden Appendix C #291 disposition",
         ),
         (
             "verify",
@@ -51473,10 +51668,22 @@ def run_source_mutations(sources):
             "Windows golden hardening-ledger disposition",
         ),
         (
+            "hardening",
+            "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
+            "R-S11dr/R-S11ds/R-S11e-170 — ambient setsid process-group admission",
+            "Windows golden setsid-admission hardening ledger",
+        ),
+        (
             "windows_build",
             "export LC_ALL=C",
             "export LC_ALL=en_US.UTF-8",
             "Windows build fixed control locale",
+        ),
+        (
+            "windows_build",
+            "PROCESS_ADMISSION_SECONDS=10",
+            "PROCESS_ADMISSION_SECONDS=0",
+            "Windows build finite process-group admission deadline",
         ),
         (
             "windows_build",
@@ -51509,6 +51716,31 @@ def run_source_mutations(sources):
             "CURRENT_DOMAIN_OWNERSHIP_COMMITTED=1",
             "CURRENT_DOMAIN_OWNERSHIP_COMMITTED=0",
             "Windows build ownership commit",
+        ),
+        (
+            "windows_build",
+            "wait_for_owned_process_group() {",
+            "wait_for_unowned_process_group() {",
+            "Windows build exact process-group admission",
+        ),
+        (
+            "windows_build",
+            '[ "$start" = "$CURRENT_VIRT_START" ] || return 1',
+            '[ -n "$start" ] || return 1',
+            "Windows build admission start-identity refusal",
+        ),
+        (
+            "windows_build",
+            "wait_for_owned_process_group \\\n"
+            '        || die "could not prove virt-install process-group admission"',
+            "true # process-group admission omitted",
+            "Windows build post-launch admission",
+        ),
+        (
+            "windows_build",
+            "'sleep 1; exec setsid --wait bash -c \"$1\"'",
+            "'exec setsid --wait bash -c \"$1\"'",
+            "Windows build delayed-admission fixture",
         ),
         (
             "windows_build",
@@ -51613,6 +51845,12 @@ def run_source_mutations(sources):
             "complete retained matching client process group and session",
             "retained matching client leader",
             "Windows build normative complete client-process authority",
+        ),
+        (
+            "requirements",
+            "boundedly re-prove that same live identity",
+            "optionally inspect that live identity",
+            "Windows build normative process-group admission",
         ),
         (
             "requirements",

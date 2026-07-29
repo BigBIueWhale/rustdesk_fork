@@ -13929,6 +13929,88 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   slice. No host RustDesk/service/configuration/firewall/network state was
   inspected or mutated. Those evidence obligations and the broader
   Ralph-loop goal remain open.
+- **R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission —
+  SOURCE IMPLEMENTED AND CONFINED BEHAVIOR/MUTATION VERIFIED 2026-07-29;
+  EXECUTABLE LIBVIRT/VM AND COLD RELEASE EVIDENCE OPEN.**
+  Platform: the unprivileged Linux Windows-golden and per-build VM launch
+  transactions. Endpoint/action: the interval between shell-backgrounding
+  `setsid --wait virt-install`, retaining `$!`, and treating the resulting
+  process group/session as exact cleanup and creation-observation authority.
+  Boundary: a newly owned child PID/start time that has not necessarily
+  completed `setsid(2)` ↔ negative-PGID signaling, complete-group scans,
+  libvirt creation observation, and terminal domain-cleanup authority.
+
+  The strict-umask exact verification of published SDK-mode commit
+  `7c3f55a5fb13ba18d9bf71c74fc622affaeaaef2` exposed the defect in the
+  per-build behavioral fixture before any product container ran. The fixture
+  backgrounded `setsid --wait`, sampled `/proc/$pid/stat` immediately, and
+  immediately called `stop_owned_process`. On the failed schedule the child
+  still carried the launching shell's process-group/session identity, so the
+  existing exact-identity guard correctly refused to send a negative-PGID
+  signal and reported that termination was inconclusive. The retained
+  mode-0700 fixture contained only synthetic golden/manifest/namespace inputs
+  and the diagnostic progress file. No libvirt command, VM, KVM/device,
+  Docker/helper workload, network/listener, or domain cleanup ran. A confined
+  repeat of the unchanged narrow shell self-test passed 100/100 times, proving
+  the window is narrow but not disproving the canonical observed failure.
+
+  Both duplicated production launchers now retain PID/start immediately and
+  enter one finite monotonic admission loop before any process-group scan,
+  signal, or domain-creation observation. Each sample must parse the same
+  still-live PID, preserve the exact start time, reject zombie/dead state, and
+  reach `PGID == SID == PID`; exit, PID reuse/start change, or deadline fails
+  closed without granting group-signal or domain-cleanup authority. The
+  existing complete-group scanner, TERM/KILL deadlines, identity rechecks,
+  UUID ownership-commit boundary, and ambiguous-domain preservation are not
+  relaxed.
+
+  The per-build behavioral fixture now deliberately keeps the exact child in
+  the old process group/session for one second before `exec setsid`. It proves
+  that this pre-admission identity is not accepted, requires the same retained
+  PID/start identity to complete admission within a separate three-second
+  bound, and only then exercises the existing TERM-resistant complete-group
+  drain. R-S11dr/R-S11ds and Appendix C #291 make the admission boundary
+  normative. The golden and per-build focused mutation verifiers, shared
+  gates, and independent workspace contract/catalog bind both launch copies,
+  the delayed behavior fixture, requirements, Appendix row, and this ledger.
+
+  Confined evidence used cached immutable development image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric UID:GID 1000:1000 with no pull/network, read-only root and
+  repository, all capabilities dropped, no-new-privileges, bounded
+  PID/memory/no-swap/CPU, an exact 524,544 descriptor ceiling required by the
+  private-tree fixture, non-executable scratch, and no socket, device, port, or
+  host namespace. The golden focused verifier rejected all 40 mutations. The
+  per-build verifier rejected all 220 mutations and passed all five bounded
+  behavioral suites using the exact SHA-256-pinned local `olefile` wheel
+  directly as a read-only Python ZIP path; nothing was installed. The narrow
+  delayed-admission shell behavior passed 25/25 fresh repetitions, each of
+  which had to observe and reject the forced pre-session state. The
+  independent workspace baseline and complete unsliced source-mutation catalog
+  passed under umask 0077.
+
+  Preliminary results were retained rather than hidden. A first confined full
+  Windows verifier attempt hit the container's too-low default descriptor
+  hard limit, and the exact declared bound was supplied on the next run. That
+  run progressed to the development image's absent `olefile`; an attempted
+  setup assumed nonexistent `/usr/bin/unzip` and, because its wrapper lacked
+  fail-fast mode, continued to the known import failure. The corrected
+  fail-fast invocation hash-checked the pinned wheel and imported it directly
+  without extraction. The first two independent-catalog runs correctly
+  rejected the shared Appendix #291 and R-S11e-170 mutations but stopped
+  because duplicate per-build catalog entries expected later per-build labels
+  after the golden contract had already rejected the single shared token. Each
+  shared token was assigned one independent mutation owner while the per-build
+  focused verifier retained its own mutation, and the final complete catalog
+  restarted from mutation one and passed.
+
+  No real golden provisioning or Windows build, `virt-install`, `virsh`,
+  libvirt/KVM/VM action, release artifact construction, host root/sudo,
+  listener/port, host RustDesk/service/configuration/firewall/network action,
+  or Android device/APK action is authorized or claimed by this source slice.
+  Exact cold R-B2/R-B10 artifacts, executable libvirt/VM behavior,
+  installed/native/device evidence, separately required reproduction, and
+  R-V3 external review remain open; the Ralph loop remains active.
 - **R-S11dt/R-S11e-138 — Windows build run-state cleanup is identity-bound and authority-last —
   SOURCE IMPLEMENTED AND CONFINED SOURCE/MUTATION VERIFIED 2026-07-26;
   EXECUTABLE WINDOWS-BUILD/LIBVIRT/VM EVIDENCE PENDING.**
@@ -15605,7 +15687,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-9ade24ed7a5ff34bd727125a2abaede378d389c51f599e8a373d666ffa5c90ec  requirements.html
+160d0744984f040571f8011c14ae885fb65c79d4765545c72358ead8a0d9c64b  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

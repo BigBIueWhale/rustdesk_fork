@@ -29,6 +29,7 @@ DOMAIN_PREFIX="${HARNESS_PREFIX:-rustdesk-fork-harness}"
 VM_TIMEOUT_SECONDS=7200
 CREATE_TIMEOUT_SECONDS=300
 CONTROL_TIMEOUT_SECONDS=30
+PROCESS_ADMISSION_SECONDS=10
 PROCESS_STOP_SECONDS=10
 TARGET_ID="windows-x86_64"
 FRB_OUTPUTS=(
@@ -231,6 +232,24 @@ owned_process_matches() {
     [ "$start" = "$CURRENT_VIRT_START" ] \
         && [ "$group" = "$CURRENT_VIRT_PID" ] \
         && [ "$session" = "$CURRENT_VIRT_PID" ]
+}
+
+wait_for_owned_process_group() {
+    local deadline identity state start group session
+    [ -n "$CURRENT_VIRT_PID" ] && [ -n "$CURRENT_VIRT_START" ] || return 1
+    deadline=$(( $(monotonic_seconds) + PROCESS_ADMISSION_SECONDS ))
+    while true; do
+        identity="$(process_identity "$CURRENT_VIRT_PID" 2>/dev/null)" || return 1
+        read -r state start group session <<< "$identity"
+        [ "$start" = "$CURRENT_VIRT_START" ] || return 1
+        [ "$state" != Z ] && [ "$state" != X ] || return 1
+        if [ "$group" = "$CURRENT_VIRT_PID" ] \
+            && [ "$session" = "$CURRENT_VIRT_PID" ]; then
+            return 0
+        fi
+        [ "$(monotonic_seconds)" -lt "$deadline" ] || return 1
+        sleep 0.05
+    done
 }
 
 owned_process_is_live() {
@@ -1132,6 +1151,8 @@ launch_domain() {
     CURRENT_VIRT_PID=$!
     CURRENT_VIRT_START="$(process_start_time "$CURRENT_VIRT_PID")" \
         || die "could not bind the virt-install process identity"
+    wait_for_owned_process_group \
+        || die "could not prove virt-install process-group admission"
 
     local deadline rc
     deadline=$(( $(monotonic_seconds) + CREATE_TIMEOUT_SECONDS ))
@@ -1483,10 +1504,18 @@ harness_self_test() {
         die "bounded virsh self-test accepted an unbounded control call"
     fi
 
-    setsid --wait bash -c 'trap "" TERM; exec sleep 30' &
+    bash -c \
+        'sleep 1; exec setsid --wait bash -c "$1"' \
+        _ 'trap "" TERM; exec sleep 30' &
     CURRENT_VIRT_PID=$!
     CURRENT_VIRT_START="$(process_start_time "$CURRENT_VIRT_PID")" \
         || die "could not bind synthetic process-group identity"
+    if owned_process_matches; then
+        die "delayed process-group fixture skipped its pre-admission state"
+    fi
+    PROCESS_ADMISSION_SECONDS=3
+    wait_for_owned_process_group \
+        || die "delayed process-group fixture did not admit conclusively"
     PROCESS_STOP_SECONDS=1
     stop_owned_process || die "owned process-group deadline self-test did not terminate conclusively"
     [ -z "$CURRENT_VIRT_PID" ] && [ -z "$CURRENT_VIRT_START" ] \

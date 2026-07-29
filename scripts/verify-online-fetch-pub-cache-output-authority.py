@@ -298,7 +298,10 @@ def validate(sources: Dict[str, str]) -> None:
         ("dart pub get --offline --enforce-lockfile", "offline Dart lock enforcement"),
         ("flutter pub get --offline --enforce-lockfile",
          "offline Flutter lock enforcement"),
-        ("authority_lock=", "project lock preimage"),
+        ('authority_lock="$(sha256sum /authority/flutter/pubspec.lock',
+         "offline project lock preimage"),
+        ('[ "$authority_lock" = "$(sha256sum /tmp/project/pubspec.lock',
+         "offline project lock postcondition"),
         ("tools_lock=", "flutter_tools lock preimage"),
         ("git_specs=(", "closed Git dependency map"),
         ('[ "${#git_specs[@]}" -eq 8 ]', "exact Git dependency count"),
@@ -347,6 +350,16 @@ def validate(sources: Dict[str, str]) -> None:
         1,
         "semantic candidate mount",
     )
+    require_order(
+        semantic,
+        (
+            'authority_lock="$(sha256sum /authority/flutter/pubspec.lock',
+            "(cd /tmp/project && dart pub get --offline --enforce-lockfile >/dev/null)",
+            "(cd /tmp/project && flutter pub get --offline --enforce-lockfile >/dev/null)",
+            '[ "$authority_lock" = "$(sha256sum /tmp/project/pubspec.lock',
+        ),
+        "offline project lock preimage, resolution, and postcondition",
+    )
     require_count(stage, "online_docker_run ", 1, "networked Pub producer")
     require_count(
         stage,
@@ -393,6 +406,10 @@ def validate(sources: Dict[str, str]) -> None:
         ('source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled',
          "read-only exact project input"),
         ("cp -a /project-source/. /tmp/project/", "disposable project copy"),
+        ('project_lock="$(sha256sum /project-source/pubspec.lock',
+         "networked project lock preimage"),
+        ('[ "$project_lock" = "$(sha256sum /tmp/project/pubspec.lock',
+         "networked project lock postcondition"),
         ("dart pub get --enforce-lockfile", "flutter_tools lock enforcement"),
         ("flutter pub get --enforce-lockfile", "project lock enforcement"),
         ('rm -rf -- "$PUB_CACHE/_temp" "$PUB_CACHE/log" "$PUB_CACHE/README.md"',
@@ -408,6 +425,15 @@ def validate(sources: Dict[str, str]) -> None:
         ('[ "$publication_status" -eq 0 ]', "publication verdict"),
     ):
         require(stage, token, label)
+    require_order(
+        stage,
+        (
+            'project_lock="$(sha256sum /project-source/pubspec.lock',
+            "(cd /tmp/project && flutter pub get --enforce-lockfile)",
+            '[ "$project_lock" = "$(sha256sum /tmp/project/pubspec.lock',
+        ),
+        "networked project lock preimage, resolution, and postcondition",
+    )
     require_order(
         stage,
         (
@@ -580,6 +606,13 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "shell",
+        '[ "$project_lock" = "$(sha256sum /tmp/project/pubspec.lock '
+        '| awk "{print \\$1}")" ]',
+        "true # networked project lock drift accepted",
+        "networked project lock postcondition",
+    ),
+    Mutation(
+        "shell",
         "online_docker_run_pub_semantic() {\n"
         "    online_docker run --rm --pull=never --network=none --read-only",
         "online_docker_run_pub_semantic() {\n"
@@ -597,6 +630,13 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "flutter pub get --offline --enforce-lockfile",
         "flutter pub get --offline",
         "offline Flutter lock enforcement",
+    ),
+    Mutation(
+        "shell",
+        '[ "$authority_lock" = "$(sha256sum /tmp/project/pubspec.lock '
+        '| awk "{print \\$1}")" ]',
+        "true # offline project lock drift accepted",
+        "offline project lock postcondition",
     ),
     Mutation(
         "shell",

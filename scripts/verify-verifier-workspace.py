@@ -23261,10 +23261,23 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
     focused = sources["online_fetch_pub_cache_output_authority_verifier"]
     helper = sources["online_pub_cache_output_helper"]
     online = sources["online_fetch"]
+    verify = sources["verify"]
     for text, label in (
         ("Pub-cache output lifecycle", "Pub-cache focused lifecycle binding"),
         ("checked Pub-cache publication", "Pub-cache focused publication binding"),
         ("closed Git semantic mapping", "Pub-cache focused Git-map binding"),
+        (
+            "('[ \"$authority_lock\" = \"$(sha256sum "
+            "/tmp/project/pubspec.lock',\n"
+            '         "offline project lock postcondition"),',
+            "Pub-cache focused semantic lock-drift binding",
+        ),
+        (
+            "('[ \"$project_lock\" = \"$(sha256sum "
+            "/tmp/project/pubspec.lock',\n"
+            '         "networked project lock postcondition"),',
+            "Pub-cache focused acquisition lock-drift binding",
+        ),
         ("validate_consumers(sources)", "Pub-cache focused consumer binding"),
         ("MUTATIONS: Tuple[Mutation, ...]", "Pub-cache focused mutation inventory"),
         ("run_mutations(sources)", "Pub-cache focused mutation dispatch"),
@@ -23295,6 +23308,14 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
          "Pub-cache offline Dart lock enforcement"),
         ("flutter pub get --offline --enforce-lockfile",
          "Pub-cache offline Flutter lock enforcement"),
+        ('authority_lock="$(sha256sum /authority/flutter/pubspec.lock',
+         "Pub-cache offline project lock preimage"),
+        ('[ "$authority_lock" = "$(sha256sum /tmp/project/pubspec.lock',
+         "Pub-cache offline project lock postcondition"),
+        ('project_lock="$(sha256sum /project-source/pubspec.lock',
+         "Pub-cache networked project lock preimage"),
+        ('[ "$project_lock" = "$(sha256sum /tmp/project/pubspec.lock',
+         "Pub-cache networked project lock postcondition"),
         ('[ "${#git_specs[@]}" -eq 8 ]', "Pub-cache exact Git dependency count"),
         ("fsck --full --no-dangling --no-reflogs", "Pub-cache Git object closure"),
         (
@@ -23309,6 +23330,34 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
         ('&& [ "$semantic_status" -eq 0 ]', "Pub-cache semantic publication barrier"),
     ):
         require_text(online, text, label)
+    shared_gate = extract_between(
+        verify,
+        'echo "== (6c-b) Flutter/Dart lockfile is authoritative (R-R1/R-B12) =="',
+        'echo "== (6c-a) Android Gradle/Kotlin pins',
+        "shared Flutter/Dart lockfile authority gate",
+    )
+    for text, label in (
+        (
+            "grep -qF '[ \"$authority_lock\" = \"$(sha256sum "
+            "/tmp/project/pubspec.lock | awk \"{print \\$1}\")\" ]' "
+            "scripts/online-fetch.sh || dart_lock_bad=\"$dart_lock_bad "
+            "online-fetch:no-semantic-pub-lock-postcondition\"",
+            "current shared Pub-cache semantic lock postcondition",
+        ),
+        (
+            "grep -qF '[ \"$project_lock\" = \"$(sha256sum "
+            "/tmp/project/pubspec.lock | awk \"{print \\$1}\")\" ]' "
+            "scripts/online-fetch.sh || dart_lock_bad=\"$dart_lock_bad "
+            "online-fetch:no-acquisition-pub-lock-postcondition\"",
+            "current shared Pub-cache acquisition lock postcondition",
+        ),
+    ):
+        require_text(shared_gate, text, label)
+    require_absent(
+        shared_gate,
+        "pubspec.lock drifted during pub cache staging",
+        "retired Pub-cache diagnostic-string compatibility gate",
+    )
     lifecycle = extract_between(
         online,
         "stage_pub_cache() {",
@@ -23417,6 +23466,11 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
         sources["hardening"],
         "R-S11cn/R-S11e-106 — networked Pub-cache acquisition-output authority",
         "online-fetch Pub-cache output authority hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11e-168 current Pub-cache lock-postcondition gate authority",
+        "current Pub-cache lock-postcondition hardening ledger",
     )
 
 
@@ -52046,6 +52100,64 @@ def run_source_mutations(sources):
             'source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled',
             'source=$REPO_ROOT/flutter,target=/project-source,readonly',
             "Pub-cache read-only exact project input",
+        ),
+        (
+            "online_fetch",
+            '[ "$authority_lock" = "$(sha256sum /tmp/project/pubspec.lock '
+            '| awk "{print \\$1}")" ]',
+            "true # offline project lock drift accepted",
+            "Pub-cache offline project lock postcondition",
+        ),
+        (
+            "online_fetch",
+            '[ "$project_lock" = "$(sha256sum /tmp/project/pubspec.lock '
+            '| awk "{print \\$1}")" ]',
+            "true # networked project lock drift accepted",
+            "Pub-cache networked project lock postcondition",
+        ),
+        (
+            "verify",
+            "grep -qF '[ \"$authority_lock\" = \"$(sha256sum "
+            "/tmp/project/pubspec.lock | awk \"{print \\$1}\")\" ]' "
+            "scripts/online-fetch.sh || dart_lock_bad=\"$dart_lock_bad "
+            "online-fetch:no-semantic-pub-lock-postcondition\"",
+            "true # shared Pub-cache semantic lock postcondition removed",
+            "current shared Pub-cache semantic lock postcondition",
+        ),
+        (
+            "verify",
+            "grep -qF '[ \"$project_lock\" = \"$(sha256sum "
+            "/tmp/project/pubspec.lock | awk \"{print \\$1}\")\" ]' "
+            "scripts/online-fetch.sh || dart_lock_bad=\"$dart_lock_bad "
+            "online-fetch:no-acquisition-pub-lock-postcondition\"",
+            "true # shared Pub-cache acquisition lock postcondition removed",
+            "current shared Pub-cache acquisition lock postcondition",
+        ),
+        (
+            "online_fetch_pub_cache_output_authority_verifier",
+            "('[ \"$authority_lock\" = \"$(sha256sum "
+            "/tmp/project/pubspec.lock',\n"
+            '         "offline project lock postcondition"),',
+            "('[ \"$authority_lock\" = \"$(sha256sum "
+            "/tmp/project/pubspec.lock',\n"
+            '         "offline project lock observation"),',
+            "Pub-cache focused semantic lock-drift binding",
+        ),
+        (
+            "online_fetch_pub_cache_output_authority_verifier",
+            "('[ \"$project_lock\" = \"$(sha256sum "
+            "/tmp/project/pubspec.lock',\n"
+            '         "networked project lock postcondition"),',
+            "('[ \"$project_lock\" = \"$(sha256sum "
+            "/tmp/project/pubspec.lock',\n"
+            '         "networked project lock observation"),',
+            "Pub-cache focused acquisition lock-drift binding",
+        ),
+        (
+            "hardening",
+            "R-S11e-168 current Pub-cache lock-postcondition gate authority",
+            "R-S11e-168 retired Pub-cache diagnostic-string compatibility",
+            "current Pub-cache lock-postcondition hardening ledger",
         ),
         (
             "online_fetch",

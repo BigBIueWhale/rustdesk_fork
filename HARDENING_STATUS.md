@@ -1095,6 +1095,24 @@ pipeline, deliberately neutralizes the predicate, and binds this ledger entry. K
 persistence, capture/input ownership, protocol behavior, APK/device state, installed services, host processes,
 listeners, firewall, network state, and release outputs are unchanged.
 
+Follow-up verifier correction (2026-07-29),
+**R-S11e-168 current Pub-cache lock-postcondition gate authority**: the shared R-R1/R-B12 shell gate still
+searched `scripts/online-fetch.sh` for the retired diagnostic text “pubspec.lock drifted during pub cache
+staging.” The message check came from `f90f197f`; the later Pub-cache authority closure in `a2bfb83a` replaced
+that staging flow with stronger private-source hash postconditions but did not update the older shared gate.
+The current offline semantic replay hashes the exact read-only authority lock before enforced Dart and Flutter
+offline resolution and compares the disposable project's lock afterward. The networked producer independently
+hashes its read-only private project lock before enforced resolution and compares the disposable project
+afterward. Both paths also separately preserve Flutter's own `flutter_tools` lock.
+
+The shared gate now requires both current project-lock equality assertions instead of a diagnostic string. The
+focused Pub-cache authority verifier binds each exact read-only preimage, enforced resolution, and postcondition
+in order and deliberately neutralizes each equality edge. The independent workspace validator binds the exact
+focused assertions, both product preimages/postconditions, both current shared checks, absence of the retired
+message check, and this ledger entry; its mutation catalog exercises all seven new assertion/coverage edges.
+No acquisition runs, and no Pub cache, lockfile, dependency graph, product source, runtime behavior, APK/device
+state, installed service, host process, listener, firewall, network state, or release output changes.
+
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
 passes the same-path retired-file-timeout regression, checks the shipped `flutter,unix-file-copy-paste` Rust

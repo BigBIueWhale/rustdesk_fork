@@ -13506,7 +13506,8 @@ grep -q 'dart pub get --offline' scripts/dart-verify.sh          || dart_lock_ba
 grep -q 'pubspec.lock changed during offline pub resolution' scripts/build-debian.sh      || dart_lock_bad="$dart_lock_bad debian:no-pub-lock-drift-assert"
 grep -q 'pubspec.lock changed during offline pub resolution' scripts/android-apk-build.sh || dart_lock_bad="$dart_lock_bad android:no-pub-lock-drift-assert"
 grep -q 'pubspec.lock changed during offline pub resolution' scripts/build-windows.ps1    || dart_lock_bad="$dart_lock_bad windows:no-pub-lock-drift-assert"
-grep -q 'pubspec.lock drifted during pub cache staging' scripts/online-fetch.sh           || dart_lock_bad="$dart_lock_bad online-fetch:no-pub-lock-drift-assert"
+grep -qF '[ "$authority_lock" = "$(sha256sum /tmp/project/pubspec.lock | awk "{print \$1}")" ]' scripts/online-fetch.sh || dart_lock_bad="$dart_lock_bad online-fetch:no-semantic-pub-lock-postcondition"
+grep -qF '[ "$project_lock" = "$(sha256sum /tmp/project/pubspec.lock | awk "{print \$1}")" ]' scripts/online-fetch.sh || dart_lock_bad="$dart_lock_bad online-fetch:no-acquisition-pub-lock-postcondition"
 if grep -RInE 'ref:[[:space:]]*HEAD' flutter/pubspec.yaml flutter/pubspec.lock >"$VERIFY_TMP/rd_verify_pub_head"; then
   dart_lock_bad="$dart_lock_bad flutter-git-ref-head"
 fi

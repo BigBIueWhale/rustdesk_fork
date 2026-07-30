@@ -1815,6 +1815,52 @@ component-thread lifecycle defect and correction; it still does not establish th
 cause of the reported device incident or that other platforms reproduced it. The broader Ralph loop
 remains active.
 
+**R-S11er/R-S11e-179 desktop lock-screen mechanism authority — SOURCE IMPLEMENTED;
+CONFINED LINUX BEHAVIOR AND SEMANTIC VERIFICATION PASSED; NATIVE WINDOWS/macOS,
+COLD RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW OPEN.**
+Platforms: Linux, macOS, and Windows controlled desktop input. Endpoint/action: an authenticated
+Remote connection's `LockScreen` special-key edge and configured lock-on-disconnect action.
+Boundary: the connection-owned input arbiter and exact per-platform lock mechanism ↔ local desktop
+state and, historically, two external child-image launch surfaces.
+
+Current-tree call-graph and history review proved that both actions converge on
+`handle_owned_lock_screen` and `lock_screen_with_key_handler`. Rust's compile-time selector emits the
+Linux owned Meta+L branch or the macOS owned Control-Command-Q branch; only Windows selected the
+platform function. The separately compiled public Linux `xdg-screensaver lock` and macOS
+`CGSession -suspend` functions had no product caller. They were not runtime fallbacks, and no
+execution, privilege escalation, exploitation, host modification, or connection-incident causality
+is claimed. Prior R-S11r/R-S11t inventory wording is corrected to distinguish these dormant helpers
+from reachable external-child paths.
+
+The Linux fixed path constant, resolver, public function, command construction, and spawn are
+deleted. The macOS public `CGSession` function and command execution are deleted. Linux and macOS
+retain exactly their existing connection-owned physical chord; neither has a compatibility alias or
+external helper fallback. The Windows operation is named `lock_workstation` after its real native
+authority, returns `ResultType<()>`, treats a zero `LockWorkStation` result as failure, captures
+`GetLastError`, and propagates the failure through the owned input path. Success means only that the
+documented asynchronous Windows request was initiated, not proof that locked state completed.
+
+The source slice adds a Linux behavior regression over the production dispatcher that proves the
+four physical-map events Meta-down, L-down, L-up, Meta-up. R-S11er and Appendix C #300 bind both
+deletions, the exact three-platform selector, Windows error propagation, shared and Apple source
+gates, and the independent semantic deliberate-mutation catalog.
+
+Confined verification used immutable Rust 1.75 devcheck image
+`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+as UID:GID 1000:1000 with no network, read-only source/root, no capabilities, no-new-privileges,
+bounded resources/private tmpfs, and no port, device, Docker-socket, or host-namespace access. The
+new production-dispatch Linux chord regression and the adjusted fixed-command inventory regression
+both passed. Python and changed-shell syntax, HTML parsing, exact requirements-hash binding, the
+independent semantic verifier baseline and complete unsliced source-mutation catalog, and the
+native-codec watch plus its mutation self-test passed. Rustfmt 1.75 found no formatting change in a
+modified hunk; its whole-file check remains nonzero only for pre-existing unrelated Linux/Windows
+formatting drift, which this slice does not rewrite.
+
+No native Windows/macOS execution, host/product runtime action, or installed-platform result is
+inferred. Native Windows/macOS execution, the clean committed cold R-B2/R-B10 transaction,
+separately required independent reproduction, and external review remain open; this slice does not
+complete the broader Ralph loop.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -3146,7 +3192,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
 - **R-S11e-3 — Linux helper canonical target provenance — CLOSED 2026-07-11.**
   Platform: Linux `.deb` installed-service mode and shared Linux helper paths when invoked by privileged processes.
   Endpoint/action: fixed helper launches such as the then-present `w` display fallback, `xrandr`/
-  `xdg-screensaver`/`systemctl` app-side helpers, and shared `loginctl`/notification helpers. Boundary: privileged
+  `systemctl` app-side helpers, shared `loginctl`/notification helpers, and the then-present compiled but
+  product-unreachable `xdg-screensaver` helper deleted by R-S11e-179. Boundary: privileged
   RustDesk process execution authority ↔ local filesystem helper resolution. Attack surface closed: fixed helper
   resolution no longer verifies metadata through one path and executes the original candidate string. Resolvers reject
   relative and parent-traversal candidates, require the candidate parent directory to be root-owned and not
@@ -3156,7 +3203,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   target-swap class for privileged helper launches without changing helper command semantics. Verification closure:
   `scripts/verify.sh` runs app-side and shared helper resolver tests and requires canonicalization, candidate/canonical
   parent trust, executable-bit checks, canonical return wiring, and requirements/ledger disposition. R-S11e-42 later
-  deletes the `w` display fallback entirely; this entry continues to describe the remaining helper resolver contract.
+  deletes the `w` display fallback entirely; R-S11e-179 deletes the dormant `xdg-screensaver` resolver and launcher;
+  this entry continues to describe the retained helper resolver contract.
 - **R-S11e-4 — macOS service proof ownership — SOURCE IMPLEMENTED.** Generic `_service`, password
   `_service_password`, and credential `_service_credential` have independent proof capacities. The accepted socket's uid, effective-pid metadata, and
   `LOCAL_PEERTOKEN` are captured immediately. Security.framework proof executes on a dedicated exactly owned OS
@@ -3801,15 +3849,16 @@ unreachable and a source/test/AST gate prevents reintroduction.
   VERIFIED 2026-07-18; FINAL EXACT-DEBIAN-ARTIFACT EXECUTION REMAINS WITH
   R-B2/R-S11c-27.** Platform: Linux ordinary external and same-executable child launches outside the specialized
   exact service-child bootstrap. Endpoint/action: shared `loginctl` and desktop-notification helpers; root-crate
-  sudo/env, pkcheck, xdg-screensaver, xrandr, `w`, delayed reopen, and systemctl helpers; clipboard fusermount
+  sudo/env, pkcheck, xrandr, `w`, delayed reopen, and systemctl helpers; the then-present compiled but
+  product-unreachable xdg-screensaver helper later deleted by R-S11e-179; clipboard fusermount
   mount/unmount; same-executable `run_me_with_env`; and the feature-inert hardware-codec check launcher. Boundary:
   descriptors held by a possibly root/service-owned RustDesk image ↔ child images whose authority is normally
   argv, explicit environment, and stdio. The clipboard mount protocol deliberately adds exactly one non-stdio
   Unix socket. Attack surface closed: R-S11e-29 through R-S11e-31 placed the ordinary pre-exec hook in the root
   crate and covered the privileged helpers found in those slices, but shared `hbb_common` and dependent crates
-  could not call that API. The remaining command enumeration found direct launches without a RustDesk-owned
-  descriptor contract. The root service repeatedly reaches `loginctl` through desktop refresh and can reach
-  display/service helpers. A sensitive ambient descriptor lacking `FD_CLOEXEC` could therefore enter an external
+  could not call that API. The command enumeration found reachable launches and one dormant public helper without a
+  RustDesk-owned descriptor contract. The root service repeatedly reaches `loginctl` through desktop refresh and can
+  reach retained display/service helpers. A sensitive ambient descriptor lacking `FD_CLOEXEC` could therefore enter a reachable external
   image. Clipboard FUSE additionally cleared `FD_CLOEXEC` on `_FUSE_COMMFD` in the multithreaded parent before
   spawning, creating a process-wide inheritance race. This is a root/service-to-helper capability leak on
   service-reachable paths and descriptor-authority hygiene defect elsewhere, not a demonstrated promptless
@@ -3887,7 +3936,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   LaunchAgent, and root LaunchDaemon roles. Endpoint/action: service install/uninstall and LaunchAgent lifecycle
   helpers; the LaunchDaemon's `launchctl print` service-owned snapshot authorization query; `launchctl asuser`
   root-to-user helper transitions; same-executable CM/tray/whiteboard launches; the portable-PTY terminal shell;
-  app reopen, lock-state, and lock-screen tools; and the feature-inert hardware-codec checker. Boundary:
+  app reopen and lock-state tools; the then-present compiled but product-unreachable `CGSession` lock helper later
+  deleted by R-S11e-179; and the feature-inert hardware-codec checker. Boundary:
   descriptors held by the current
   RustDesk process, including root/service-owned IPC, credential-operation, log, directory, and kernel-object
   capabilities ↔ a child image whose deliberate authority is only argv, explicitly selected environment, and
@@ -3898,7 +3948,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   enumeration and close failures, and directly closed every descriptor above stderr. Besides violating the
   post-fork async-signal-safe contract, that could close Rust's internal exec-error pipe before `exec` and make a
   failed terminal image appear spawned. A sensitive descriptor lacking close-on-exec
-  could therefore enter `launchctl`, `osascript`, `open`, `ioreg`, `CGSession`, or a new RustDesk child. The
+  could therefore enter reachable `launchctl`, `osascript`, `open`, `ioreg`, or new RustDesk child images; the
+  dormant `CGSession` helper received the same hygiene policy but had no product caller. The
   LaunchDaemon authorization query and root/user transition make this a privileged-to-helper capability-boundary
   defect. It is not promoted to a demonstrated promptless ordinary-user-to-root primitive: exploitation still
   requires a live sensitive inheritable descriptor. Separately, an unused public `hbb_common` alert API retained
@@ -6873,14 +6924,16 @@ unreachable and a source/test/AST gate prevents reintroduction.
   control-script/package-build failures, the release build compares emitted `.deb` maintainer scripts to source
   and validates their lifecycle semantics before hashing artifacts, and the unit/supervisor stop path is
   cgroup/SIGTERM-first with a bounded forced-stop backstop. R-S11c-10k closes Linux root/service helper command provenance:
-  the then-present root-to-user `sudo` transition, `env` fallback, `w`, `xrandr`, `xdg-screensaver`, and `systemctl`
+  the then-present root-to-user `sudo` transition, `env` fallback, `w`, `xrandr`, the then-present compiled but
+  product-unreachable `xdg-screensaver` helper, and `systemctl`
   resolve only trusted fixed `/usr/bin`/`/bin` candidates and now execute the trusted canonical target after
   candidate-parent, canonical-parent, root-owned, non-writable, and executable-bit checks; the then-present `--cm`
   detection was `/proc`/current-exe/argv-backed instead of `ps` before R-S11e-45 deleted that lifecycle heuristic;
   and the X11
   socket fallback read `/tmp/.X11-unix` socket metadata plus passwd ownership instead of parsing `ls`. R-S11e-42
   later deletes both `w` and the X11 socket fallback because helper provenance and native metadata did not make
-  either source authoritative for the already-selected logind session.
+  either source authoritative for the already-selected logind session. R-S11e-179 later deletes the dormant
+  `xdg-screensaver` resolver and launcher rather than preserving unreachable command surface.
   R-S11c-10l first replaced Linux `--server` tray cleanup's PATH-selected `pkill -f` with exact executable/argv
   selection. R-S11e-45 completes the authority correction by deleting process-table tray signaling entirely:
   `--server` starts a tray candidate, and the `--tray` receiver's same-UID singleton check decides whether that new
@@ -16287,7 +16340,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-1843750ba46d5dd61b531d378ed349c87719a81b2abb34ffdfaadbd1423aa9fe  requirements.html
+48219b0c8fa14e76d29e20c3771a25e711f6a92ffb3e59e25d080e9c8c6f6f77  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

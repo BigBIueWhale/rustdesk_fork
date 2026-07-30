@@ -1044,6 +1044,44 @@ mod input_state_tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
 
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn linux_lock_screen_uses_owned_meta_l_chord() {
+        let expected_code = rdev::linux_keycode_from_key(RdevKey::KeyL).unwrap() as u32;
+        let mut events = Vec::new();
+        lock_screen_with_key_handler(|event| {
+            events.push(event.clone());
+            Ok(())
+        })
+        .unwrap();
+
+        assert_eq!(events.len(), 4);
+        assert!(matches!(
+            events[0].union.as_ref(),
+            Some(key_event::Union::ControlKey(key)) if key.value() == ControlKey::Meta.value()
+        ));
+        assert!(events[0].down);
+        assert!(matches!(
+            events[1].union.as_ref(),
+            Some(key_event::Union::Chr(code)) if *code == expected_code
+        ));
+        assert_eq!(
+            events[1].mode.enum_value_or(KeyboardMode::Legacy),
+            KeyboardMode::Map
+        );
+        assert!(events[1].down);
+        assert!(matches!(
+            events[2].union.as_ref(),
+            Some(key_event::Union::Chr(code)) if *code == expected_code
+        ));
+        assert!(!events[2].down);
+        assert!(matches!(
+            events[3].union.as_ref(),
+            Some(key_event::Union::ControlKey(key)) if key.value() == ControlKey::Meta.value()
+        ));
+        assert!(!events[3].down);
+    }
+
     #[test]
     fn owned_executor_initializes_once_before_actions_on_the_same_thread() {
         let calls = Arc::new(AtomicUsize::new(0));
@@ -1710,8 +1748,8 @@ fn lock_screen_with_key_handler(
             &[ControlKey::Meta, ControlKey::Control],
             code as u32,
         )?;
-    } else {
-        crate::platform::lock_screen();
+    } else if #[cfg(target_os = "windows")] {
+        crate::platform::lock_workstation()?;
     }
     }
     Ok(())

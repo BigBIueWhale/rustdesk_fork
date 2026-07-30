@@ -4226,13 +4226,17 @@ pub fn is_root() -> bool {
     unsafe { is_local_system() == TRUE }
 }
 
-pub fn lock_screen() {
+pub fn lock_workstation() -> ResultType<()> {
     extern "system" {
         pub fn LockWorkStation() -> BOOL;
     }
     unsafe {
-        LockWorkStation();
+        if LockWorkStation() == FALSE {
+            let error = GetLastError();
+            bail!("LockWorkStation failed with Windows error {error}");
+        }
     }
+    Ok(())
 }
 
 const UNINSTALL_REGISTRY_ROOT: &str = "Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall";

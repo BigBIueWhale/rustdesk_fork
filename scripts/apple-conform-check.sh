@@ -2297,7 +2297,7 @@ fi
 
 echo "== (2b-iv-a-0a) macOS numeric service-principal authority (R-S11ag/R-S11e-47) =="
 r_s11e47=
-macos_root_policy=$(awk '/fn effective_uid_is_root\(/,/pub fn lock_screen\(/' "$macos_rs")
+macos_root_policy=$(awk '/fn effective_uid_is_root\(/,/#\[cfg\(test\)\]/' "$macos_rs")
 macos_service_entry=$(awk '/pub fn start_os_service\(/,/#\[cfg\(test\)\]/' "$macos_rs")
 macos_root_test=$(awk '/fn r_s11e47_macos_root_principal_is_numeric_effective_uid\(\)/,/^    }/' "$macos_rs")
 macos_core_service_entry=$(awk '/#\[cfg\(target_os = "macos"\)\]/{capture=1} capture{print} capture && /#\[cfg\(target_os = "linux"\)\]/{exit}' "$REPO/src/core_main.rs")
@@ -2362,7 +2362,7 @@ echo "== (2b-iv-a-0b) macOS service-owned config/log root (R-S11al/R-S11e-52) ==
 r_s11e52=
 config_rs="$REPO/libs/hbb_common/src/config.rs"
 macos_service_home=$(awk '/fn service_principal_home\(\)/,/pub fn run_service\(\)/' "$macos_rs")
-macos_service_bootstrap=$(awk '/pub fn run_service\(\)/,/pub fn lock_screen\(\)/' "$macos_rs")
+macos_service_bootstrap=$(awk '/pub fn run_service\(\)/,/#\[cfg\(test\)\]/' "$macos_rs")
 macos_config_root=$(awk '/struct MacosServiceOwnedConfigRoot/,/#\[cfg\(target_os = "linux"\)\]/{print}' "$config_rs")
 macos_config_get_home=$(awk '/pub fn get_home\(\)/,/^    }/' "$config_rs")
 macos_config_initialize=$(awk '/pub fn initialize_macos_service_owned_root\(/,/#\[cfg\(target_os = "linux"\)\]/{print}' "$config_rs")
@@ -2569,7 +2569,7 @@ ordered(
     "install_macos_service_shutdown_handler()?;",
     "crate::ipc::start(crate::POSTFIX_SERVICE)",
 )
-run = region(macos, "pub fn run_service()", "\npub fn lock_screen()")
+run = region(macos, "pub fn run_service()", "\n#[cfg(test)]")
 ordered(
     run,
     "let home = service_principal_home()?;",
@@ -2679,7 +2679,6 @@ macos_checked_command=$(awk '/fn run_checked_command/,/fn launchctl_query_succee
 macos_launchctl_query=$(awk '/fn launchctl_query_succeeds/,/fn launchctl_service_loaded/' "$REPO/src/platform/macos.rs")
 macos_uninstall=$(awk '/pub fn uninstall_service/,/pub fn get_cursor_pos/' "$REPO/src/platform/macos.rs")
 macos_lock_query=$(awk '/pub fn is_locked/,/pub fn declare_remote_user_activity/' "$REPO/src/platform/macos.rs")
-macos_lock_screen=$(awk '/pub fn lock_screen/,/pub fn start_os_service/' "$REPO/src/platform/macos.rs")
 macos_service_snapshot_query=$(awk '/fn macos_launch_agent_owns_service_owned_server_pid/,/^[}]$/' "$REPO/src/ipc.rs")
 macos_run_me=$(awk '/pub fn run_me_with_env/,/#\[inline\]/{print}' "$REPO/src/common.rs")
 macos_hwcodec_check=$(awk '/pub fn start_check_process\(\)/,/^}/' "$REPO/libs/scrap/src/common/hwcodec.rs")
@@ -2724,7 +2723,6 @@ check_apple_r_s11e34_helper_contract "$macos_checked_command" 'configure_command
 check_apple_r_s11e34_helper_contract "$macos_launchctl_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.status()'
 check_apple_r_s11e34_helper_contract "$macos_uninstall" 'configure_command_close_nonstdio_on_exec(' 'command.spawn()'
 check_apple_r_s11e34_helper_contract "$macos_lock_query" 'configure_command_close_nonstdio_on_exec(' 'command.output()'
-check_apple_r_s11e34_helper_contract "$macos_lock_screen" 'configure_command_close_nonstdio_on_exec(' 'command.output()'
 check_apple_r_s11e34_helper_contract "$macos_service_snapshot_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.output()'
 check_apple_r_s11e34_helper_contract "$macos_run_me" 'platform::macos::configure_command_close_nonstdio_on_exec(&mut cmd)' 'let result = cmd.args(&args).spawn();'
 check_apple_r_s11e34_helper_contract "$macos_hwcodec_check" 'platform::macos::configure_command_close_nonstdio_on_exec(' 'command.spawn()'
@@ -2732,7 +2730,7 @@ check_apple_r_s11e34_helper_contract "$macos_hwcodec_check" 'platform::macos::co
   || r_s11e34="$r_s11e34 macos-platform-status-inventory-drift"
 [ "$(grep -cF 'command.spawn()' <<<"$macos_platform_source")" = 1 ] \
   || r_s11e34="$r_s11e34 macos-platform-spawn-inventory-drift"
-[ "$(grep -cF 'command.output()' <<<"$macos_platform_source")" = 3 ] \
+[ "$(grep -cF 'command.output()' <<<"$macos_platform_source")" = 2 ] \
   || r_s11e34="$r_s11e34 macos-platform-output-inventory-drift"
 [ "$(grep -cF 'run_checked_command(' <<<"$macos_platform_source")" = 6 ] \
   || r_s11e34="$r_s11e34 macos-checked-command-inventory-drift"
@@ -2819,6 +2817,54 @@ if [ -n "$r_s11e34" ]; then
   rc=1
 else
   note "ok  R-S11e-34 every production macOS child image is stdio-only; the unused dependency-owned PATH launch is absent"
+fi
+
+echo "== (2b-iv-a-1aa) desktop lock-screen mechanism authority (R-S11er/R-S11e-179) =="
+r_s11e179=
+lock_dispatch=$(awk '/fn lock_screen_with_key_handler\(/,/#\[cfg\(any\(target_os = "linux", target_os = "macos"\)\)\]/' "$REPO/src/server/input_service.rs")
+windows_lock_workstation=$(awk '/pub fn lock_workstation\(\)/,/^}/' "$REPO/src/platform/windows.rs")
+for lock_binding in \
+  'if #[cfg(target_os = "linux")]' \
+  'rdev::linux_keycode_from_key(RdevKey::KeyL)' \
+  'dispatch_physical_lock_chord(&mut key_handler, &[ControlKey::Meta], code as u32)?;' \
+  'else if #[cfg(target_os = "macos")]' \
+  'rdev::macos_keycode_from_key(RdevKey::KeyQ)' \
+  '&[ControlKey::Meta, ControlKey::Control]' \
+  'else if #[cfg(target_os = "windows")]' \
+  'crate::platform::lock_workstation()?;'; do
+  grep -qF "$lock_binding" <<<"$lock_dispatch" \
+    || r_s11e179="$r_s11e179 platform-lock-dispatch-binding-missing"
+done
+if grep -qF 'crate::platform::lock_screen' "$REPO/src/server/input_service.rs"; then
+  r_s11e179="$r_s11e179 generic-platform-lock-abstraction-present"
+fi
+if grep -qE 'XDG_SCREENSAVER_PATHS|xdg_screensaver|xdg-screensaver|pub fn lock_screen\(' "$REPO/src/platform/linux.rs"; then
+  r_s11e179="$r_s11e179 dormant-linux-lock-helper-present"
+fi
+if grep -qE 'CGSession|pub fn lock_screen\(' "$REPO/src/platform/macos.rs"; then
+  r_s11e179="$r_s11e179 dormant-macos-lock-helper-present"
+fi
+for windows_binding in \
+  'pub fn lock_workstation() -> ResultType<()> {' \
+  'pub fn LockWorkStation() -> BOOL;' \
+  'if LockWorkStation() == FALSE {' \
+  'let error = GetLastError();' \
+  'bail!("LockWorkStation failed with Windows error {error}");' \
+  'Ok(())'; do
+  grep -qF "$windows_binding" <<<"$windows_lock_workstation" \
+    || r_s11e179="$r_s11e179 windows-native-lock-result-binding-missing"
+done
+grep -qF '<span class="id">R-S11er</span>' "$REPO/requirements.html" \
+  || r_s11e179="$r_s11e179 normative-requirement-missing"
+grep -qF '<tr><td>300</td>' "$REPO/requirements.html" \
+  || r_s11e179="$r_s11e179 appendix-row-missing"
+grep -qF 'R-S11er/R-S11e-179 desktop lock-screen mechanism authority' "$REPO/HARDENING_STATUS.md" \
+  || r_s11e179="$r_s11e179 hardening-ledger-missing"
+if [ -n "$r_s11e179" ]; then
+  echo "  FAIL R-S11e-179 desktop lock-screen mechanism authority:$r_s11e179"
+  rc=1
+else
+  note "ok  R-S11e-179 macOS retains only the owned Control-Command-Q lock path; dormant CGSession launch is absent"
 fi
 
 echo "== (2b-iv-a-1a) macOS administrator-script environment finality (R-S11az/R-S11e-66) =="

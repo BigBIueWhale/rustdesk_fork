@@ -1032,21 +1032,6 @@ pub fn run_service() -> ResultType<()> {
     start_os_service()
 }
 
-pub fn lock_screen() {
-    let mut command = std::process::Command::new(
-        "/System/Library/CoreServices/Menu Extras/User.menu/Contents/Resources/CGSession",
-    );
-    command.arg("-suspend");
-    let output =
-        hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(&mut command)
-            .and_then(|()| command.output());
-    match output {
-        Ok(output) if output.status.success() => {}
-        Ok(output) => log::warn!("Failed to lock macOS screen: {}", output.status),
-        Err(err) => log::warn!("Failed to lock macOS screen: {err}"),
-    }
-}
-
 fn install_macos_service_shutdown_handler() -> ResultType<()> {
     ctrlc::set_handler(|| {
         crate::server::request_graceful_shutdown();

@@ -5837,14 +5837,6 @@ def validate_smoke_contract(
         ),
         (
             linux_source,
-            "pub fn lock_screen() {",
-            "\npub fn toggle_blank_screen",
-            "xdg-screensaver descriptor policy",
-            "configure_command_close_nonstdio_on_exec(&mut command)",
-            "command.spawn()",
-        ),
-        (
-            linux_source,
             "fn xrandr_query() -> ResultType<String> {",
             "\npub fn resolutions",
             "xrandr query descriptor policy",
@@ -7025,7 +7017,7 @@ def validate_macos_descriptor_contract(sources):
     for text, expected, label in (
         ("command.status()", 2, "macOS platform status execution inventory"),
         ("command.spawn()", 1, "macOS platform spawn execution inventory"),
-        ("command.output()", 3, "macOS platform output execution inventory"),
+        ("command.output()", 2, "macOS platform output execution inventory"),
         ("run_checked_command(", 6, "macOS checked-command inventory"),
     ):
         require_exact_count(platform, text, expected, label)
@@ -7059,14 +7051,6 @@ def validate_macos_descriptor_contract(sources):
             "pub fn is_locked() -> bool {",
             "\npub fn declare_remote_user_activity",
             "macOS lock-state query descriptor policy",
-            "configure_command_close_nonstdio_on_exec(",
-            "command.output()",
-        ),
-        (
-            platform,
-            "pub fn lock_screen() {",
-            "\npub fn start_os_service",
-            "macOS lock-screen helper descriptor policy",
             "configure_command_close_nonstdio_on_exec(",
             "command.output()",
         ),
@@ -7124,6 +7108,166 @@ def validate_macos_descriptor_contract(sources):
         ("hardening", "R-S11e-34 — macOS child inherited descriptor authority", "macOS descriptor hardening ledger"),
     ):
         require_text(sources[source_key], text, label)
+
+
+def validate_desktop_lock_screen_mechanism_contract(sources):
+    input_service = sources["desktop_input_source"]
+    connection = sources["connection_source"]
+    linux = sources["linux_source"]
+    macos = sources["macos_source"]
+    windows = sources["windows_source"]
+
+    lock_dispatch = extract_between(
+        input_service,
+        "fn lock_screen_with_key_handler(",
+        '\n#[cfg(any(target_os = "linux", target_os = "macos"))]',
+        "desktop lock-screen platform dispatch",
+    )
+    require_order(
+        lock_dispatch,
+        (
+            'if #[cfg(target_os = "linux")]',
+            "rdev::linux_keycode_from_key(RdevKey::KeyL)",
+            "dispatch_physical_lock_chord(&mut key_handler, &[ControlKey::Meta], code as u32)?;",
+            '} else if #[cfg(target_os = "macos")] {',
+            "rdev::macos_keycode_from_key(RdevKey::KeyQ)",
+            "&[ControlKey::Meta, ControlKey::Control]",
+            '} else if #[cfg(target_os = "windows")] {',
+            "crate::platform::lock_workstation()?;",
+        ),
+        "desktop lock-screen explicit per-platform mechanism order",
+    )
+    require_absent(
+        input_service,
+        "crate::platform::lock_screen",
+        "generic platform lock-screen abstraction",
+    )
+    require_exact_count(
+        connection,
+        "handle_owned_lock_screen(",
+        2,
+        "remote special-key and lock-on-disconnect consumers",
+    )
+
+    linux_test = extract_between(
+        input_service,
+        "fn linux_lock_screen_uses_owned_meta_l_chord()",
+        "\n    #[test]\n    fn owned_executor_initializes_once_before_actions_on_the_same_thread()",
+        "Linux lock-screen owned-chord behavior regression",
+    )
+    for token, label in (
+        ("lock_screen_with_key_handler(|event|", "production lock dispatcher"),
+        (
+            "let expected_code = rdev::linux_keycode_from_key(RdevKey::KeyL).unwrap() as u32;",
+            "expected L key",
+        ),
+        ("assert_eq!(events.len(), 4);", "exact four-event chord"),
+        (
+            "Some(key_event::Union::ControlKey(key)) if key.value() == ControlKey::Meta.value()",
+            "Meta down/up events",
+        ),
+        (
+            "Some(key_event::Union::Chr(code)) if *code == expected_code",
+            "L down/up events",
+        ),
+        ("KeyboardMode::Map", "physical map-mode key"),
+    ):
+        require_text(linux_test, token, f"Linux lock-screen behavior {label}")
+
+    for token, label in (
+        ("XDG_SCREENSAVER_PATHS", "fixed xdg-screensaver candidate list"),
+        ("xdg_screensaver", "xdg-screensaver resolver"),
+        ("xdg-screensaver", "xdg-screensaver image"),
+        ("pub fn lock_screen(", "generic Linux lock helper"),
+    ):
+        require_absent(linux, token, f"dormant Linux lock-screen {label}")
+    for token, label in (
+        ("CGSession", "CGSession image"),
+        ("pub fn lock_screen(", "generic macOS lock helper"),
+    ):
+        require_absent(macos, token, f"dormant macOS lock-screen {label}")
+
+    native_windows = extract_between(
+        windows,
+        "pub fn lock_workstation() -> ResultType<()> {",
+        "\nconst UNINSTALL_REGISTRY_ROOT",
+        "Windows native workstation-lock operation",
+    )
+    require_order(
+        native_windows,
+        (
+            "pub fn LockWorkStation() -> BOOL;",
+            "if LockWorkStation() == FALSE {",
+            "let error = GetLastError();",
+            'bail!("LockWorkStation failed with Windows error {error}");',
+            "Ok(())",
+        ),
+        "Windows native workstation-lock result propagation",
+    )
+    require_absent(
+        windows,
+        "pub fn lock_screen(",
+        "generic Windows lock helper name",
+    )
+
+    for source, token, label in (
+        (
+            sources["verify"],
+            'echo "== (3b-iii-d14) desktop lock-screen mechanism authority (R-S11er/R-S11e-179) =="',
+            "shared source gate",
+        ),
+        (
+            sources["apple"],
+            'echo "== (2b-iv-a-1aa) desktop lock-screen mechanism authority (R-S11er/R-S11e-179) =="',
+            "Apple source gate",
+        ),
+    ):
+        require_text(source, token, f"desktop lock-screen {label}")
+
+    requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11er",
+        "desktop lock-screen mechanism authority requirement",
+    )
+    for token, label in (
+        ("owned physical input", "Linux/macOS owned-input contract"),
+        ("xdg-screensaver", "Linux dormant-helper absence"),
+        ("CGSession", "macOS dormant-helper absence"),
+        ("LockWorkStation", "Windows native API contract"),
+        ("MUST</span> propagate", "Windows failure propagation"),
+    ):
+        require_text(requirement, token, f"desktop lock-screen requirement {label}")
+    require_text(
+        sources["requirements"],
+        "<tr><td>300</td>",
+        "desktop lock-screen mechanism Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11er/R-S11e-179 desktop lock-screen mechanism authority",
+        "desktop lock-screen mechanism hardening ledger",
+    )
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "desktop lock-screen deliberate-mutation matrix",
+    )
+    for token, label in (
+        ("desktop lock-screen explicit per-platform mechanism order", "platform mechanism mutations"),
+        ("Windows native workstation-lock result propagation", "Windows result mutation"),
+        ("dormant Linux lock-screen fixed xdg-screensaver candidate list", "Linux helper mutation"),
+        ("dormant macOS lock-screen CGSession image", "macOS helper mutation"),
+        ("Linux lock-screen behavior expected L key", "Linux expected-key mutation"),
+        ("Linux lock-screen behavior exact four-event chord", "Linux behavior mutation"),
+        ("desktop lock-screen shared source gate", "shared-gate mutation"),
+        ("desktop lock-screen Apple source gate", "Apple-gate mutation"),
+        ("desktop lock-screen mechanism authority requirement", "requirement mutation"),
+        ("desktop lock-screen mechanism Appendix C row", "Appendix mutation"),
+        ("desktop lock-screen mechanism hardening ledger", "hardening mutation"),
+    ):
+        require_text(mutation_matrix, token, label)
 
 
 def validate_macos_privileged_script_environment_contract(sources):
@@ -8745,7 +8889,7 @@ def validate_macos_service_principal_contract(sources):
     root_policy = extract_between(
         macos_source,
         "fn effective_uid_is_root(effective_uid: hbb_common::libc::uid_t) -> bool {",
-        "\npub fn lock_screen()",
+        "\n#[cfg(test)]",
         "macOS numeric effective-UID root policy",
     )
     if 'crate::username() == "root"' in root_policy:
@@ -8927,7 +9071,7 @@ def validate_macos_service_storage_root_contract(sources):
     bootstrap = extract_between(
         macos_source,
         "pub fn run_service() -> ResultType<()> {",
-        "\npub fn lock_screen()",
+        "\n#[cfg(test)]",
         "central macOS service bootstrap",
     )
     require_order(
@@ -9629,7 +9773,7 @@ def validate_macos_service_signal_drain_contract(sources):
     run_service = extract_between(
         macos_source,
         "pub fn run_service()",
-        "\npub fn lock_screen()",
+        "\n#[cfg(test)]",
         "central macOS root service bootstrap",
     )
     require_order(
@@ -33894,6 +34038,7 @@ def validate_sources(sources):
     validate_docs(sources)
     validate_fatal_signal_contract(sources)
     validate_macos_descriptor_contract(sources)
+    validate_desktop_lock_screen_mechanism_contract(sources)
     validate_macos_privileged_script_environment_contract(sources)
     validate_fusermount_process_context_contract(sources)
     validate_windows_helper_launch_contract(sources)
@@ -58052,6 +58197,90 @@ def run_source_mutations(sources):
             "true # Android lifecycle focused verifier disabled",
             "Android lifecycle shared focused-verifier wiring source",
         ),
+        (
+            "desktop_input_source",
+            'if #[cfg(target_os = "linux")] {\n'
+            "        let code = rdev::linux_keycode_from_key(RdevKey::KeyL)",
+            'if #[cfg(target_os = "linux")] {\n'
+            "        let code = rdev::linux_keycode_from_key(RdevKey::KeyK)",
+            "desktop lock-screen explicit per-platform mechanism order",
+        ),
+        (
+            "desktop_input_source",
+            "fn linux_lock_screen_uses_owned_meta_l_chord() {\n"
+            "        let expected_code = rdev::linux_keycode_from_key(RdevKey::KeyL).unwrap() as u32;",
+            "fn linux_lock_screen_uses_owned_meta_l_chord() {\n"
+            "        let expected_code = rdev::linux_keycode_from_key(RdevKey::KeyK).unwrap() as u32;",
+            "Linux lock-screen behavior expected L key",
+        ),
+        (
+            "desktop_input_source",
+            "rdev::macos_keycode_from_key(RdevKey::KeyQ)",
+            "rdev::macos_keycode_from_key(RdevKey::KeyW)",
+            "desktop lock-screen explicit per-platform mechanism order",
+        ),
+        (
+            "desktop_input_source",
+            "crate::platform::lock_workstation()?;",
+            "crate::platform::lock_workstation();",
+            "desktop lock-screen explicit per-platform mechanism order",
+        ),
+        (
+            "windows_source",
+            "if LockWorkStation() == FALSE {",
+            "if LockWorkStation() != FALSE {",
+            "Windows native workstation-lock result propagation",
+        ),
+        (
+            "linux_source",
+            'const XRANDR_PATHS: [&str; 2] = ["/usr/bin/xrandr", "/bin/xrandr"];',
+            'const XRANDR_PATHS: [&str; 2] = ["/usr/bin/xrandr", "/bin/xrandr"];\n'
+            'const XDG_SCREENSAVER_PATHS: [&str; 1] = ["/usr/bin/xdg-screensaver"];',
+            "dormant Linux lock-screen fixed xdg-screensaver candidate list",
+        ),
+        (
+            "macos_source",
+            "fn install_macos_service_shutdown_handler() -> ResultType<()> {",
+            "// CGSession dormant helper restored\n"
+            "fn install_macos_service_shutdown_handler() -> ResultType<()> {",
+            "dormant macOS lock-screen CGSession image",
+        ),
+        (
+            "desktop_input_source",
+            "assert_eq!(events.len(), 4);",
+            "assert_eq!(events.len(), 3);",
+            "Linux lock-screen behavior exact four-event chord",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d14) desktop lock-screen mechanism authority (R-S11er/R-S11e-179) =="',
+            'echo "== (3b-iii-d14) desktop lock-screen mechanism authority disabled (R-S11er/R-S11e-179) =="',
+            "desktop lock-screen shared source gate",
+        ),
+        (
+            "apple",
+            'echo "== (2b-iv-a-1aa) desktop lock-screen mechanism authority (R-S11er/R-S11e-179) =="',
+            'echo "== (2b-iv-a-1aa) desktop lock-screen mechanism authority disabled (R-S11er/R-S11e-179) =="',
+            "desktop lock-screen Apple source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11er</span>',
+            '<span class="id">R-S11er-disabled</span>',
+            "desktop lock-screen mechanism authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>300</td>",
+            "<tr><td>300-disabled</td>",
+            "desktop lock-screen mechanism Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11er/R-S11e-179 desktop lock-screen mechanism authority",
+            "R-S11er-disabled/R-S11e-179 desktop lock-screen mechanism authority",
+            "desktop lock-screen mechanism hardening ledger",
+        ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
     for key, old, new, expected in mutations:
@@ -59048,6 +59277,9 @@ def main():
             "whiteboard_server": (repo / "src/whiteboard/server.rs").read_text(encoding="utf-8"),
             "direct_service": (repo / "src/direct_service.rs").read_text(encoding="utf-8"),
             "connection_source": (repo / "src/server/connection.rs").read_text(encoding="utf-8"),
+            "desktop_input_source": (
+                repo / "src/server/input_service.rs"
+            ).read_text(encoding="utf-8"),
             "android_main_service": (
                 repo
                 / "flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt"

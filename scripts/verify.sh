@@ -4521,7 +4521,7 @@ if [ -n "$r_s11e46" ]; then echo "  FAIL R-S11e-46 Linux privileged service-to-t
 # classify privilege, and both executable entries must propagate rejection.
 echo "== (3b-iii-d9c6) macOS numeric service-principal authority (R-S11ag/R-S11e-47) =="
 r_s11e47=
-macos_root_policy=$(awk '/fn effective_uid_is_root\(/,/pub fn lock_screen\(/' src/platform/macos.rs)
+macos_root_policy=$(awk '/fn effective_uid_is_root\(/,/#\[cfg\(test\)\]/' src/platform/macos.rs)
 macos_service_entry=$(awk '/pub fn start_os_service\(/,/#\[cfg\(test\)\]/' src/platform/macos.rs)
 macos_root_test=$(awk '/fn r_s11e47_macos_root_principal_is_numeric_effective_uid\(\)/,/^    }/' src/platform/macos.rs)
 macos_core_service_entry=$(awk '/#\[cfg\(target_os = "macos"\)\]/{capture=1} capture{print} capture && /#\[cfg\(target_os = "linux"\)\]/{exit}' src/core_main.rs)
@@ -4986,7 +4986,7 @@ if [ -n "$r_s11e51" ]; then echo "  FAIL R-S11e-51 Windows SCM-owned service ent
 echo "== (3b-iii-d9cb) macOS service-owned config/log root (R-S11al/R-S11e-52) =="
 r_s11e52=
 macos_service_home=$(awk '/fn service_principal_home\(\)/,/pub fn run_service\(\)/' src/platform/macos.rs)
-macos_service_bootstrap=$(awk '/pub fn run_service\(\)/,/pub fn lock_screen\(\)/' src/platform/macos.rs)
+macos_service_bootstrap=$(awk '/pub fn run_service\(\)/,/#\[cfg\(test\)\]/' src/platform/macos.rs)
 macos_config_root=$(awk '/struct MacosServiceOwnedConfigRoot/,/#\[cfg\(target_os = "linux"\)\]/{print}' libs/hbb_common/src/config.rs)
 macos_config_get_home=$(awk '/pub fn get_home\(\)/,/^    }/' libs/hbb_common/src/config.rs)
 macos_config_initialize=$(awk '/pub fn initialize_macos_service_owned_root\(/,/#\[cfg\(target_os = "linux"\)\]/{print}' libs/hbb_common/src/config.rs)
@@ -5366,7 +5366,7 @@ ordered(
     "install_macos_service_shutdown_handler()?;",
     "crate::ipc::start(crate::POSTFIX_SERVICE)",
 )
-run = region(macos, "pub fn run_service()", "\npub fn lock_screen()")
+run = region(macos, "pub fn run_service()", "\n#[cfg(test)]")
 ordered(
     run,
     "let home = service_principal_home()?;",
@@ -5931,7 +5931,6 @@ echo "== (3b-iii-d11) Linux external-helper descriptor allowlist authority (R-S1
 r_s11e32=
 shared_descriptor_policy=$(awk '/fn linux_descriptor_upper_bound/,/\/\/ Deprecated/' libs/hbb_common/src/platform/linux.rs)
 loginctl_helper=$(awk '/fn run_loginctl/,/#\[derive\(Debug, Clone\)\]/' libs/hbb_common/src/platform/linux.rs)
-lock_screen_helper=$(awk '/pub fn lock_screen\(\)/,/pub fn toggle_blank_screen/' src/platform/linux.rs)
 xrandr_query_helper=$(awk '/fn xrandr_query\(\)/,/pub fn resolutions/' src/platform/linux.rs)
 xrandr_change_helper=$(awk '/pub fn change_resolution_directly/,/pub fn is_xwayland_running/' src/platform/linux.rs)
 systemctl_helper=$(awk '/fn systemctl_service/,/pub fn uninstall_service/' src/platform/linux.rs)
@@ -5971,7 +5970,6 @@ check_r_s11e32_helper_contract() {
   fi
 }
 check_r_s11e32_helper_contract "$loginctl_helper" 'configure_command_close_nonstdio_on_exec(&mut cmd)?;' 'cmd.output()'
-check_r_s11e32_helper_contract "$lock_screen_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.spawn()'
 check_r_s11e32_helper_contract "$xrandr_query_helper" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'command.output()?'
 check_r_s11e32_helper_contract "$xrandr_change_helper" 'configure_command_close_nonstdio_on_exec(&mut command)?;' 'command.spawn()?'
 check_r_s11e32_helper_contract "$systemctl_helper" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.status()'
@@ -6062,7 +6060,6 @@ macos_checked_command=$(awk '/fn run_checked_command/,/fn launchctl_query_succee
 macos_launchctl_query=$(awk '/fn launchctl_query_succeeds/,/fn launchctl_service_loaded/' src/platform/macos.rs)
 macos_uninstall=$(awk '/pub fn uninstall_service/,/pub fn get_cursor_pos/' src/platform/macos.rs)
 macos_lock_query=$(awk '/pub fn is_locked/,/pub fn declare_remote_user_activity/' src/platform/macos.rs)
-macos_lock_screen=$(awk '/pub fn lock_screen/,/pub fn start_os_service/' src/platform/macos.rs)
 macos_service_snapshot_query=$(awk '/fn macos_launch_agent_owns_service_owned_server_pid/,/^[}]$/' src/ipc.rs)
 macos_run_me=$(awk '/pub fn run_me_with_env/,/#\[inline\]/{print}' src/common.rs)
 macos_hwcodec_check=$(awk '/pub fn start_check_process\(\)/,/^}/' libs/scrap/src/common/hwcodec.rs)
@@ -6107,7 +6104,6 @@ check_r_s11e34_helper_contract "$macos_checked_command" 'configure_command_close
 check_r_s11e34_helper_contract "$macos_launchctl_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.status()'
 check_r_s11e34_helper_contract "$macos_uninstall" 'configure_command_close_nonstdio_on_exec(' 'command.spawn()'
 check_r_s11e34_helper_contract "$macos_lock_query" 'configure_command_close_nonstdio_on_exec(' 'command.output()'
-check_r_s11e34_helper_contract "$macos_lock_screen" 'configure_command_close_nonstdio_on_exec(' 'command.output()'
 check_r_s11e34_helper_contract "$macos_service_snapshot_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.output()'
 check_r_s11e34_helper_contract "$macos_run_me" 'platform::macos::configure_command_close_nonstdio_on_exec(&mut cmd)' 'let result = cmd.args(&args).spawn();'
 check_r_s11e34_helper_contract "$macos_hwcodec_check" 'platform::macos::configure_command_close_nonstdio_on_exec(' 'command.spawn()'
@@ -6115,7 +6111,7 @@ check_r_s11e34_helper_contract "$macos_hwcodec_check" 'platform::macos::configur
   || r_s11e34="$r_s11e34 macos-platform-status-inventory-drift"
 [ "$(grep -cF 'command.spawn()' <<<"$macos_platform_source")" = 1 ] \
   || r_s11e34="$r_s11e34 macos-platform-spawn-inventory-drift"
-[ "$(grep -cF 'command.output()' <<<"$macos_platform_source")" = 3 ] \
+[ "$(grep -cF 'command.output()' <<<"$macos_platform_source")" = 2 ] \
   || r_s11e34="$r_s11e34 macos-platform-output-inventory-drift"
 [ "$(grep -cF 'run_checked_command(' <<<"$macos_platform_source")" = 6 ] \
   || r_s11e34="$r_s11e34 macos-checked-command-inventory-drift"
@@ -6199,6 +6195,73 @@ grep -qF 'R-S11e-34 — macOS child inherited descriptor authority' HARDENING_ST
   || r_s11e34="$r_s11e34 hardening-ledger-missing"
 if [ -n "$r_s11e34" ]; then echo "  FAIL R-S11e-34 macOS child inherited descriptor authority:$r_s11e34"; rc=1; else
   echo "  ok  R-S11e-34 every production macOS child image is stdio-only; the unused dependency-owned PATH launch is absent"; fi
+
+# (3b-iii-d14) R-S11er/R-S11e-179: the controlled input path owns the
+# platform lock operation directly. Linux/macOS use their already-live owned
+# physical chords and retain no dormant external helper; Windows uses the
+# native interactive-desktop API and reports initiation failure.
+echo "== (3b-iii-d14) desktop lock-screen mechanism authority (R-S11er/R-S11e-179) =="
+"${RUN[@]}" cargo test --lib --features linux-pkg-config \
+  server::input_service::input_state_tests::linux_lock_screen_uses_owned_meta_l_chord --color never
+r_s11e179=
+lock_dispatch=$(awk '/fn lock_screen_with_key_handler\(/,/#\[cfg\(any\(target_os = "linux", target_os = "macos"\)\)\]/' src/server/input_service.rs)
+windows_lock_workstation=$(awk '/pub fn lock_workstation\(\)/,/^}/' src/platform/windows.rs)
+for lock_binding in \
+  'if #[cfg(target_os = "linux")]' \
+  'rdev::linux_keycode_from_key(RdevKey::KeyL)' \
+  'dispatch_physical_lock_chord(&mut key_handler, &[ControlKey::Meta], code as u32)?;' \
+  'else if #[cfg(target_os = "macos")]' \
+  'rdev::macos_keycode_from_key(RdevKey::KeyQ)' \
+  '&[ControlKey::Meta, ControlKey::Control]' \
+  'else if #[cfg(target_os = "windows")]' \
+  'crate::platform::lock_workstation()?;'; do
+  grep -qF "$lock_binding" <<<"$lock_dispatch" \
+    || r_s11e179="$r_s11e179 platform-lock-dispatch-binding-missing"
+done
+if grep -qF 'crate::platform::lock_screen' src/server/input_service.rs; then
+  r_s11e179="$r_s11e179 generic-platform-lock-abstraction-present"
+fi
+if grep -qE 'XDG_SCREENSAVER_PATHS|xdg_screensaver|xdg-screensaver|pub fn lock_screen\(' src/platform/linux.rs; then
+  r_s11e179="$r_s11e179 dormant-linux-lock-helper-present"
+fi
+if grep -qE 'CGSession|pub fn lock_screen\(' src/platform/macos.rs; then
+  r_s11e179="$r_s11e179 dormant-macos-lock-helper-present"
+fi
+for windows_binding in \
+  'pub fn lock_workstation() -> ResultType<()> {' \
+  'pub fn LockWorkStation() -> BOOL;' \
+  'if LockWorkStation() == FALSE {' \
+  'let error = GetLastError();' \
+  'bail!("LockWorkStation failed with Windows error {error}");' \
+  'Ok(())'; do
+  grep -qF "$windows_binding" <<<"$windows_lock_workstation" \
+    || r_s11e179="$r_s11e179 windows-native-lock-result-binding-missing"
+done
+if grep -qF 'pub fn lock_screen(' src/platform/windows.rs; then
+  r_s11e179="$r_s11e179 generic-windows-lock-name-present"
+fi
+for linux_behavior_binding in \
+  'fn linux_lock_screen_uses_owned_meta_l_chord()' \
+  'assert_eq!(events.len(), 4);' \
+  'Some(key_event::Union::ControlKey(key)) if key.value() == ControlKey::Meta.value()' \
+  'Some(key_event::Union::Chr(code)) if *code == expected_code'; do
+  grep -qF "$linux_behavior_binding" src/server/input_service.rs \
+    || r_s11e179="$r_s11e179 linux-lock-chord-behavior-binding-missing"
+done
+grep -qF 'desktop lock-screen mechanism authority (R-S11er/R-S11e-179)' scripts/apple-conform-check.sh \
+  || r_s11e179="$r_s11e179 apple-source-conformance-gate-missing"
+grep -qF '<span class="id">R-S11er</span>' requirements.html \
+  || r_s11e179="$r_s11e179 normative-requirement-missing"
+grep -qF '<tr><td>300</td>' requirements.html \
+  || r_s11e179="$r_s11e179 appendix-row-missing"
+grep -qF 'R-S11er/R-S11e-179 desktop lock-screen mechanism authority' HARDENING_STATUS.md \
+  || r_s11e179="$r_s11e179 hardening-ledger-missing"
+if [ -n "$r_s11e179" ]; then
+  echo "  FAIL R-S11e-179 desktop lock-screen mechanism authority:$r_s11e179"
+  rc=1
+else
+  echo "  ok  R-S11e-179 Linux/macOS lock through owned physical input only; Windows uses a result-bearing native lock request"
+fi
 
 # (3b-iii-e) R-S11c-2/R-S11c-3/R-S11g: remote input is connection-owned and bounded. Windows
 # SAS is consumed as an edge, then crosses a dedicated SYSTEM-only endpoint whose requester and
@@ -8159,7 +8222,6 @@ if [ -n "$r_s11c10i" ]; then echo "  FAIL R-S11c-10i Linux service lifecycle sys
 echo "== (3b-iii-h9b) Linux privileged helper command provenance is fixed-path (R-S11c-10k) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config platform::linux::service_lifecycle_tests::r_s11c10k --color never
 r_s11c10k=
-grep -q 'const XDG_SCREENSAVER_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-xdg-screensaver-paths"
 grep -q 'const SYSTEMCTL_PATHS' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-fixed-systemctl-paths"
 grep -q 'fn trusted_command_path' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-trusted-command-resolver"
 grep -q 'fn trusted_fixed_executable_path(path: &Path) -> Option<PathBuf>' src/platform/linux.rs || r_s11c10k="$r_s11c10k no-canonical-trusted-command-resolver"

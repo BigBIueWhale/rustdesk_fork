@@ -58,7 +58,6 @@ const SERVICE_CHILD_RECORD_TMP: &[u8] = b"service-child.record.tmp\0";
 const SERVICE_CHILD_BOOTSTRAP_READY: u8 = 0xa7;
 const SERVICE_CHILD_BOOTSTRAP_TIMEOUT: Duration = Duration::from_secs(10);
 const XRANDR_PATHS: [&str; 2] = ["/usr/bin/xrandr", "/bin/xrandr"];
-const XDG_SCREENSAVER_PATHS: [&str; 2] = ["/usr/bin/xdg-screensaver", "/bin/xdg-screensaver"];
 const LINUX_INSTALLED_EXECUTABLE_PATHS: [&str; 2] =
     ["/usr/share/rustdesk/rustdesk", "/usr/bin/rustdesk"];
 const LINUX_INSTALLED_SERVICE_CHILD_EXECUTABLE: &str = "/usr/share/rustdesk/rustdesk-service-child";
@@ -3025,22 +3024,6 @@ pub fn get_default_pa_source() -> Option<(String, String)> {
     None
 }
 
-pub fn lock_screen() {
-    let Some(xdg_screensaver) = xdg_screensaver_path() else {
-        log::warn!("xdg-screensaver was not found at a trusted fixed path");
-        return;
-    };
-    let mut command = Command::new(xdg_screensaver);
-    command.arg("lock");
-    if let Err(err) = configure_command_close_nonstdio_on_exec(&mut command) {
-        log::warn!("Failed to constrain xdg-screensaver descriptors: {err}");
-        return;
-    }
-    if let Err(err) = command.spawn() {
-        log::warn!("Failed to lock the screen with xdg-screensaver: {err}");
-    }
-}
-
 pub fn toggle_blank_screen(_v: bool) {
     // https://unix.stackexchange.com/questions/17170/disable-keyboard-mouse-input-on-unix-under-x
 }
@@ -4975,10 +4958,6 @@ fn xrandr_path() -> Option<PathBuf> {
     trusted_command_path(&XRANDR_PATHS)
 }
 
-fn xdg_screensaver_path() -> Option<PathBuf> {
-    trusted_command_path(&XDG_SCREENSAVER_PATHS)
-}
-
 fn systemctl_path() -> Option<PathBuf> {
     trusted_command_path(&SYSTEMCTL_PATHS)
 }
@@ -5276,7 +5255,7 @@ mod service_lifecycle_tests {
 
     #[test]
     fn r_s11c10_privileged_command_candidates_are_fixed_system_paths() {
-        let command_sets: [&[&str]; 3] = [&XRANDR_PATHS, &XDG_SCREENSAVER_PATHS, &SYSTEMCTL_PATHS];
+        let command_sets: [&[&str]; 2] = [&XRANDR_PATHS, &SYSTEMCTL_PATHS];
         for paths in command_sets {
             for path in paths {
                 assert!(Path::new(path).is_absolute());

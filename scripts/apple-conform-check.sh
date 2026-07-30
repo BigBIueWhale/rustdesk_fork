@@ -977,7 +977,6 @@ def analyze(sources):
         need("b1", "service-request-not-exact", request_variants == {
             "LivenessProbe",
             "EnsurePasswordRightReady",
-            "PermanentPasswordSnapshot",
             "SetShareRdp",
         } and "    LivenessProbe {}," in service_request
             and "    SetShareRdp {" in service_request
@@ -985,14 +984,10 @@ def analyze(sources):
         need("b1", "service-response-not-exact", response_variants == {
             "Liveness",
             "PasswordRightReady",
-            "PermanentPasswordSnapshotResult",
             "ShareRdpSet",
         } and "    Liveness {}," in service_response
             and "    PasswordRightReady {" in service_response
             and "ready: bool" in service_response
-            and "    PermanentPasswordSnapshotResult {" in service_response
-            and "storage: String" in service_response
-            and "salt: String" in service_response
             and "    ShareRdpSet {" in service_response
             and "accepted: bool" in service_response)
         need("b1", "service-sas-request-not-exact", sas_request_variants == {
@@ -1026,8 +1021,8 @@ def analyze(sources):
             "ServiceIpcResponse::Liveness {}",
             "ServiceIpcRequest::EnsurePasswordRightReady {}",
             "ServiceIpcResponse::PasswordRightReady { ready }",
-            "ServiceIpcRequest::PermanentPasswordSnapshot {}",
-        ]) and "Data::" not in handler)
+        ]) and "Data::" not in handler
+            and "PermanentPasswordSnapshot" not in handler)
         windows_service = item(windows, "async fn handle_windows_service_ipc_request")
         need("b1", "windows-service-handler-not-typed",
              ".next_service_request_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)" in windows_service
@@ -1038,12 +1033,20 @@ def analyze(sources):
              and "WindowsServiceSasIpcRequest::Dispatch {}" in windows_sas
              and ".next_timeout(" not in windows_sas and "ipc::Data::" not in windows_sas)
         snapshot_client = item(ipc, "pub async fn refresh_macos_service_owned_permanent_password_snapshot")
-        need("b1", "macos-service-snapshot-client-not-typed", all(token in snapshot_client for token in [
-            "send_service_request_timeout(",
-            "ServiceIpcRequest::PermanentPasswordSnapshot {}",
-            "next_service_response_timeout(",
-            "ServiceIpcResponse::PermanentPasswordSnapshotResult { storage, salt }",
-        ]) and "send_json_timeout(" not in snapshot_client and "next_timeout(" not in snapshot_client)
+        need("b1", "macos-service-snapshot-client-not-raw", all(token in snapshot_client for token in [
+            "is_service_owned_server_process()",
+            "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+            "Endpoint::connect(path)",
+            "macos_service_server_authorization_snapshot(",
+            "authorize_macos_service_server_snapshot_for_task(authorization, deadline).await",
+            "send_credential_snapshot_request_unix(",
+            "receive_credential_replica_unix(",
+            "Config::set_permanent_password_prs_for_runtime(replica.as_str())",
+        ]) and not any(token in snapshot_client for token in [
+            "connect_service(", "send_service_request_timeout(",
+            "next_service_response_timeout(", "ServiceIpcRequest::",
+            "ServiceIpcResponse::", "storage", "salt",
+        ]))
         readiness_client = item(ipc, "async fn macos_service_owned_password_authorization_right_ready")
         need("b1", "macos-service-readiness-client-not-typed", all(token in readiness_client for token in [
             "send_service_request_timeout(",
@@ -1072,7 +1075,14 @@ def analyze(sources):
             "ServiceOwnedShareRdp",
             "ServiceOwnedSasDispatch",
         ]) and not re.search(r"^    Test,$", data, re.MULTILINE))
-        need("b1", "password-secret-present-on-serde-protocol", not any(token in data + main_request + service_request for token in ["SensitivePassword", "PasswordWithAuthorization", "RequestMacosServiceOwnedUnattendedPasswordChange"]))
+        need("b1", "password-secret-present-on-serde-protocol", not any(
+            token in data + main_request + service_request + service_response
+            for token in [
+                "SensitivePassword", "PasswordWithAuthorization",
+                "RequestMacosServiceOwnedUnattendedPasswordChange",
+                "PermanentPasswordSnapshot", "PermanentPasswordSnapshotResult",
+            ]
+        ))
         need("b1", "service-directional-regression-missing", all(token in ipc for token in [
             "fn service_channel_uses_closed_directional_protocol()",
             "serde_json::from_slice::<ServiceIpcResponse>(&request).is_err()",
@@ -1099,7 +1109,14 @@ def analyze(sources):
         connect = item(ipc, "pub async fn connect(ms_timeout")
         connect_path = item(ipc, "async fn connect_with_path")
         raw_guard = "password::USER_PASSWORD_IPC_POSTFIX | password::SERVICE_PASSWORD_IPC_POSTFIX"
-        need("b1", "generic-connect-allows-password-endpoint", raw_guard in connect and raw_guard in connect_path and "sensitive password endpoints require the raw transport" in connect and "sensitive password endpoints require the raw transport" in connect_path)
+        credential_guard = 'if postfix == password::SERVICE_CREDENTIAL_IPC_POSTFIX'
+        need("b1", "generic-connect-allows-password-endpoint",
+             raw_guard in connect and raw_guard in connect_path
+             and "sensitive password endpoints require the raw transport" in connect
+             and "sensitive password endpoints require the raw transport" in connect_path
+             and credential_guard in connect and credential_guard in connect_path
+             and "the service credential endpoint requires the raw transport" in connect
+             and "the service credential endpoint requires the raw transport" in connect_path)
         password_prod = password.rsplit("#[cfg(test)]", 1)[0]
         forbidden_framing = ["serde::", "Serialize", "Deserialize", "serde_json", "Framed", "BytesCodec", "BytesMut", "tokio_util"]
         need("b1", "raw-password-module-uses-generic-framing", not any(token in password_prod for token in forbidden_framing))
@@ -1116,6 +1133,7 @@ def analyze(sources):
         mac_password_mutation = item(ipc, "async fn handle_macos_service_owned_unattended_password_request")
         mac_service_auth = item(ipc, "async fn authorize_macos_service_scoped_ipc_connection_for_task")
         mac_password_auth = item(ipc, "async fn authorize_macos_service_scoped_password_stream_for_task")
+        mac_credential_auth = item(ipc, "async fn authorize_macos_service_scoped_credential_stream_for_task")
         bounded_proof = item(ipc, "async fn run_bounded_macos_security_proof")
         proof_finish = item(ipc, "impl MacosSecurityProofWorker")
         proof_drop = item(ipc, "impl Drop for MacosSecurityProofWorker")
@@ -1126,7 +1144,7 @@ def analyze(sources):
         snapshot_path = item(ipc, "fn macos_root_wheel_path_is_trusted")
         snapshot_plist = item(ipc, "fn macos_service_owned_server_launch_agent_plist_value_is_expected")
         snapshot_launchd = item(ipc, "fn macos_launch_agent_owns_service_owned_server_pid")
-        snapshot_handler = item(ipc, "async fn handle_macos_service_owned_permanent_password_snapshot_request")
+        snapshot_handler = item(ipc, "async fn handle_macos_service_credential_snapshot_transaction")
         client = item(ipc, "async fn set_service_owned_unattended_password_with_ack")
         connect_sensitive = item(ipc, "async fn connect_sensitive_unix")
         connect_service = item(ipc, "async fn connect_with_path")
@@ -1139,7 +1157,11 @@ def analyze(sources):
         need("b2", "raw-endpoints-not-dedicated", all(token in password for token in [
             'USER_PASSWORD_IPC_POSTFIX: &str = "_password"',
             'SERVICE_PASSWORD_IPC_POSTFIX: &str = "_service_password"',
-        ]) and "new_listener(password::USER_PASSWORD_IPC_POSTFIX)" in prepare_main and "new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX)" in prepare_service)
+            'SERVICE_CREDENTIAL_IPC_POSTFIX: &str = "_service_credential"',
+        ]) and "new_listener(password::USER_PASSWORD_IPC_POSTFIX)" in prepare_main
+            and "new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX)" in prepare_service
+            and "new_listener(password::SERVICE_CREDENTIAL_IPC_POSTFIX)" in prepare_service
+            and "credential_incoming: Incoming" in ipc)
         need("b2", "raw-wire-shape-not-fixed", all(token in password for token in [
             'const REQUEST_MAGIC: [u8; 8] = *b"RDPWREQ\\0";',
             'const STATUS_MAGIC: [u8; 8] = *b"RDPWSTS\\0";',
@@ -1147,6 +1169,9 @@ def analyze(sources):
             "pub(crate) const REQUEST_HEADER_BYTES: usize = 36;",
             "pub(crate) const STATUS_FRAME_BYTES: usize = 32;",
             "const REQUEST_BODY_MAX_BYTES: usize = UNATTENDED_PASSWORD_MAX_BYTES + MACOS_AUTHORIZATION_MAX_BYTES;",
+            "const CREDENTIAL_REPLICA_BYTES: usize = 44;",
+            "CredentialSnapshotRequest = 3",
+            "CredentialReplica = 4",
         ]))
         header_decode = item(password, "pub(crate) fn decode(")
         header_validate = item(password, "fn validate(&self)")
@@ -1154,7 +1179,9 @@ def analyze(sources):
             "bytes[..8] != REQUEST_MAGIC", "bytes[8] != PROTOCOL_VERSION",
             "bytes[9] != 0 || bytes[11] != 0", "kind != expected_kind", "Self::new(",
         ]) and all(token in header_validate for token in [
-            "nil operation UUID", "UNATTENDED_PASSWORD_MAX_BYTES", "MACOS_AUTHORIZATION_MAX_BYTES", "checked_add",
+            "nil operation UUID", "UNATTENDED_PASSWORD_MAX_BYTES",
+            "MACOS_AUTHORIZATION_MAX_BYTES", "CredentialSnapshotRequest",
+            "CredentialReplica", "CREDENTIAL_REPLICA_BYTES", "checked_add",
         ]))
         receive_request = item(password, "pub(crate) async fn receive_request_unix")
         receive_status = item(password, "pub(crate) async fn receive_status_unix")
@@ -1195,6 +1222,25 @@ def analyze(sources):
             "run_bounded_macos_security_proof(", "request.into_password()", "handle_macos_service_owned_unattended_password_request(",
             "send_status_unix",
         ]))
+        credential_accept = run_service[
+            run_service.find("result = credential_incoming.next()")
+            : run_service.find("result = password_incoming.next()")
+        ]
+        need("b2", "macos-credential-peer-auth-not-before-request", ordered(
+            credential_accept,
+            [
+                "try_acquire_service_credential_ipc_transaction_slot()",
+                "try_acquire_macos_service_credential_ipc_authorization_slot()",
+                "service_scoped_ipc_authorization_snapshot_from_stream(",
+                "transactions.spawn(async move",
+                "authorize_macos_service_scoped_credential_stream_for_task(",
+                "handle_macos_service_credential_snapshot_transaction(",
+            ],
+        ) and "receive_credential_snapshot_request_unix" not in credential_accept
+            and all(token in mac_credential_auth for token in [
+                "run_bounded_macos_security_proof(",
+                "authorize_service_scoped_ipc_authorization_snapshot(",
+            ]))
         need("b2", "macos-audit-snapshot-not-immediate", ordered(mac_password_auth, [
             "service_scoped_ipc_authorization_snapshot_from_stream(stream, postfix)",
             "run_bounded_macos_security_proof(deadline", "authorize_service_scoped_ipc_authorization_snapshot(authorization)",
@@ -1209,7 +1255,16 @@ def analyze(sources):
             "static MACOS_SERVICE_IPC_AUTHORIZATION_SLOTS: OnceLock<Arc<Semaphore>>",
             "const MACOS_SERVICE_PASSWORD_IPC_AUTHORIZATION_BUDGET: usize = 4;",
             "static MACOS_SERVICE_PASSWORD_IPC_AUTHORIZATION_SLOTS: OnceLock<Arc<Semaphore>>",
-        ]) and "MACOS_SERVICE_PASSWORD_IPC_AUTHORIZATION_SLOTS" not in item(ipc, "fn try_acquire_macos_service_ipc_authorization_slot") and "MACOS_SERVICE_IPC_AUTHORIZATION_SLOTS" not in item(ipc, "fn try_acquire_macos_service_password_ipc_authorization_slot"))
+            "const SERVICE_CREDENTIAL_IPC_TRANSACTION_BUDGET: usize = 2;",
+            "static SERVICE_CREDENTIAL_IPC_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>>",
+            "const MACOS_SERVICE_CREDENTIAL_IPC_AUTHORIZATION_BUDGET: usize = 2;",
+            "static MACOS_SERVICE_CREDENTIAL_IPC_AUTHORIZATION_SLOTS: OnceLock<Arc<Semaphore>>",
+        ]) and "MACOS_SERVICE_PASSWORD_IPC_AUTHORIZATION_SLOTS" not in item(ipc, "fn try_acquire_macos_service_ipc_authorization_slot")
+            and "MACOS_SERVICE_IPC_AUTHORIZATION_SLOTS" not in item(ipc, "fn try_acquire_macos_service_password_ipc_authorization_slot")
+            and "MACOS_SERVICE_CREDENTIAL_IPC_AUTHORIZATION_SLOTS" not in item(ipc, "fn try_acquire_macos_service_ipc_authorization_slot")
+            and "MACOS_SERVICE_CREDENTIAL_IPC_AUTHORIZATION_SLOTS" not in item(ipc, "fn try_acquire_macos_service_password_ipc_authorization_slot")
+            and "MACOS_SERVICE_IPC_AUTHORIZATION_SLOTS" not in item(ipc, "fn try_acquire_macos_service_credential_ipc_authorization_slot")
+            and "MACOS_SERVICE_PASSWORD_IPC_AUTHORIZATION_SLOTS" not in item(ipc, "fn try_acquire_macos_service_credential_ipc_authorization_slot"))
         need("b2", "macos-proof-worker-ownership-not-exact", all(token in bounded_proof for token in [
             "std::thread::Builder::new()", "tokio::sync::oneshot::channel()", "MacosSecurityProofWorker",
             "tokio::time::timeout_at(deadline, result_rx)", "std::process::abort();", "owner.finish();",
@@ -1217,16 +1272,19 @@ def analyze(sources):
             "self.worker.take()", "worker.join().is_err()", "std::process::abort();",
         ]) and all(token in proof_drop for token in ["self.worker.is_some()", "std::process::abort();"]))
         need("b2", "macos-security-proof-not-absolute-deadline", "timeout_at(deadline" in bounded_proof and "timeout_at(deadline" in item(password, "async fn with_deadline"))
-        proof_callers = readiness_server + snapshot_peer + mac_password_auth + mac_service_auth + mac_sensitive + connect_sensitive + connect_service
+        proof_callers = readiness_server + snapshot_peer + snapshot_client + mac_password_auth + mac_credential_auth + mac_service_auth + mac_sensitive + connect_sensitive + connect_service
         need("b2", "macos-native-proof-detached-spawn-blocking", "spawn_blocking" not in proof_callers)
         need("b2", "readiness-snapshot-not-password-budgeted", ordered(readiness_server, [
             "try_acquire_macos_service_password_ipc_authorization_slot()", "run_bounded_macos_security_proof(deadline", "ensure_service_owned_unattended_password_authorization_right()",
         ]) and ordered(snapshot_peer, [
-            'macos_peer_process_identity("macOS service-owned password snapshot requester")',
-            "try_acquire_macos_service_password_ipc_authorization_slot()", "run_bounded_macos_security_proof(deadline", "macos_peer_is_service_owned_server_blocking(identity)",
+            "macos_peer_process_identity_from_stream(",
+            "try_acquire_macos_service_credential_ipc_authorization_slot()",
+            "run_bounded_macos_security_proof(deadline",
+            "macos_peer_is_service_owned_server_blocking(identity)",
         ]))
 
         server_snapshot = item(auth, "pub(crate) fn macos_service_server_authorization_snapshot")
+        peer_snapshot = item(auth, "pub(crate) fn macos_peer_process_identity_from_stream")
         server_verify = item(auth, "pub(crate) fn authorize_macos_service_server_snapshot")
         scoped_snapshot = item(auth, "pub(crate) fn service_scoped_ipc_authorization_snapshot_from_stream")
         scoped_verify = item(auth, "pub(crate) fn authorize_service_scoped_ipc_authorization_snapshot")
@@ -1250,10 +1308,16 @@ def analyze(sources):
         need("b2", "client-server-auth-not-before-send", ordered(connect_sensitive, [
             "Endpoint::connect(path)", "password::SERVICE_PASSWORD_IPC_POSTFIX =>", "macos_service_server_authorization_snapshot(",
             "authorize_macos_service_server_snapshot_for_task(authorization, deadline).await", "password::remaining_millis(deadline)", "Ok(stream)",
-        ]) and ordered(server_snapshot, [
+        ]) and "macos_peer_process_identity_from_stream(stream, context)?" in server_snapshot
+            and ordered(peer_snapshot, [
             "peer_uid_from_fd(fd)", "peer_pid_from_fd(fd)", "peer_audit_token_from_fd(fd)",
         ]) and ordered(server_verify, ["identity.uid != 0", "macos_peer_is_trusted_privileged_helper(&authorization.identity)"]) and ordered(service_client_wrapper, [
             "connect_sensitive_unix(deadline", "password::send_request_unix(",
+        ]) and ordered(snapshot_client, [
+            "Endpoint::connect(path)",
+            "macos_service_server_authorization_snapshot(",
+            "authorize_macos_service_server_snapshot_for_task(authorization, deadline).await",
+            "send_credential_snapshot_request_unix(",
         ]))
 
         prompt_call = "tokio::task::spawn_blocking(|| {\n                crate::platform::service_owned_unattended_password_authorization()"
@@ -1323,9 +1387,15 @@ def analyze(sources):
             'format!("gui/{peer_uid}/{label}")', "Command::new(MACOS_LAUNCHCTL)", "reported_pid != Some(peer_pid)",
             "reported_path != Some(expected_plist.as_str())",
         ]) and 'const MACOS_LAUNCHCTL: &str = "/bin/launchctl";' in ipc and ordered(snapshot_handler, [
-            "let deadline = tokio::time::Instant::now()", "macos_peer_is_service_owned_server(stream, deadline).await",
-            "Config::get_local_permanent_password_storage_and_salt()", "password::remaining_millis(deadline)",
-            "send_service_response_timeout(", "ServiceIpcResponse::PermanentPasswordSnapshotResult",
+            "let deadline = tokio::time::Instant::now()",
+            "receive_credential_snapshot_request_unix(&mut stream, deadline)",
+            "macos_peer_is_service_owned_server(&stream, deadline).await",
+            'service_owned_runtime_prs_replica("macOS")',
+            "send_credential_replica_unix(&mut stream, operation_id, &replica, deadline)",
+        ]) and not any(token in snapshot_handler for token in [
+            "get_local_permanent_password_storage_and_salt",
+            "send_service_response_timeout", "ServiceIpcResponse",
+            "storage", "salt",
         ]))
         need("b2", "service-password-ordinary-fallback-present", not any(token in service_setter + service_client_wrapper for token in [
             "set_user_owned_permanent_password", "Config::set_permanent_password", "main_ipc_request(",
@@ -1418,13 +1488,13 @@ def mutation(name, file_name, old, new, group, expected):
 mutation("service-request-shape", "ipc", "    LivenessProbe {},", "    LivenessProbe { nonce: String },", "b1", "service-request-not-exact")
 mutation("service-response-shape", "ipc", "    Liveness {},", "    Liveness { nonce: String },", "b1", "service-response-not-exact")
 mutation("service-unknown-fields", "ipc", '#[serde(tag = "t", deny_unknown_fields)]\npub(crate) enum ServiceIpcRequest', '#[serde(tag = "t")]\npub(crate) enum ServiceIpcRequest', "b1", "service-envelope-allows-unknown-fields")
-mutation("service-direction-tag-collision", "ipc", "    PermanentPasswordSnapshotResult {", "    PermanentPasswordSnapshot {", "b1", "service-response-not-exact")
+mutation("service-direction-tag-collision", "ipc", "    PasswordRightReady { ready: bool },", "    EnsurePasswordRightReady {},", "b1", "service-response-not-exact")
 mutation("service-sas-request-shape", "ipc", "    Dispatch {},", "    Dispatch { nonce: String },", "b1", "service-sas-request-not-exact")
 mutation("service-sas-response-shape", "ipc", "    DispatchAccepted { accepted: bool },", "    DispatchAccepted { accepted: String },", "b1", "service-sas-response-not-exact")
 mutation("service-generic-dispatch", "ipc", ".next_service_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)", ".next_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b1", "service-dispatch-not-single-bounded-frame")
 mutation("windows-service-generic-dispatch", "windows", ".next_service_request_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)", ".next_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b1", "windows-service-handler-not-typed")
 mutation("windows-service-sas-generic-dispatch", "windows", ".next_windows_service_sas_request_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)", ".next_timeout(ipc::SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b1", "windows-service-sas-handler-not-typed")
-mutation("macos-service-snapshot-generic-client", "ipc", "c.send_service_request_timeout(\n        &ServiceIpcRequest::PermanentPasswordSnapshot {},", "c.send_json_timeout(\n        &ServiceIpcRequest::PermanentPasswordSnapshot {},", "b1", "macos-service-snapshot-client-not-typed")
+mutation("macos-service-snapshot-raw-client", "ipc", "password::send_credential_snapshot_request_unix(&mut stream, operation_id, deadline).await?;", "c.send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, ms_timeout).await?;", "b1", "macos-service-snapshot-client-not-raw")
 mutation("macos-service-readiness-generic-client", "ipc", "c.send_service_request_timeout(\n        &ServiceIpcRequest::EnsurePasswordRightReady {},", "c.send_json_timeout(\n        &ServiceIpcRequest::EnsurePasswordRightReady {},", "b1", "macos-service-readiness-client-not-typed")
 mutation("windows-service-share-rdp-generic-client", "ipc", "c.send_service_request_timeout(\n        &ServiceIpcRequest::SetShareRdp { enabled: enable },", "c.send_json_timeout(\n        &ServiceIpcRequest::SetShareRdp { enabled: enable },", "b1", "windows-service-share-rdp-client-not-typed")
 mutation("windows-service-sas-generic-client", "ipc", ".send_windows_service_sas_request_timeout(", ".send_json_timeout(", "b1", "windows-service-sas-client-not-typed")
@@ -1432,6 +1502,8 @@ mutation("service-directional-wire-regression", "ipc", 'assert_eq!(request, br#"
 mutation("service-data-residue", "ipc", "    ClickTime(i64),\n    Close,", "    ClickTime(i64),\n    Test,\n    Close,", "b1", "service-variant-remains-in-data-union")
 mutation("generic-transport", "ipc", 'bail!("sensitive password endpoints require the raw transport");', 'return connect_with_path(ms_timeout, "", postfix).await;', "b1", "generic-connect-allows-password-endpoint")
 mutation("endpoint-kind", "ipc", "password::SensitivePayloadKind::PasswordWithAuthorization,\n        deadline,", "password::SensitivePayloadKind::Password,\n        deadline,", "b2", "macos-peer-auth-not-before-secret-read")
+mutation("credential-peer-proof", "ipc", "authorize_macos_service_scoped_credential_stream_for_task(", "authorize_macos_service_scoped_password_stream_for_task(", "b2", "macos-credential-peer-auth-not-before-request")
+mutation("credential-raw-response", "ipc", "password::send_credential_replica_unix(&mut stream, operation_id, &replica, deadline)", "stream.send_service_response_timeout(&ServiceIpcResponse::Liveness {}, SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
 mutation("absolute-proof-deadline", "ipc", "tokio::time::timeout_at(deadline, result_rx)", "tokio::time::timeout(std::time::Duration::from_secs(1), result_rx)", "b2", "macos-proof-worker-ownership-not-exact")
 mutation("proof-worker-owner", "ipc", "let worker = std::thread::Builder::new()", "let worker = tokio::task::spawn_blocking", "b2", "macos-proof-worker-ownership-not-exact")
 mutation("native-capability-wipe", "macos_mm", "explicit_bzero(&externalForm, sizeof(externalForm));", "memset(&externalForm, 0, sizeof(externalForm));", "b2", "macos-native-authorization-not-explicitly-wiped")
@@ -1475,7 +1547,16 @@ if [ -n "$r_s11b" ]; then
   echo "  FAIL R-S11b-1 macOS service IPC closure:$r_s11b"
   rc=1
 else
-  note "ok  R-S11b-1/R-S11c-1f/R-S11dx _service is a closed directional liveness/readiness/root-snapshot protocol outside Data; _password and _service_password remain raw-only"
+  note "ok  R-S11b-1/R-S11c-1f/R-S11dx _service is a closed directional liveness/readiness protocol outside Data; password and credential secrets remain raw-only"
+fi
+
+echo "== (2b-i-a) R-S11ep/R-S11e-177 macOS runtime PRS raw credential authority =="
+if /usr/bin/python3 -I -S "$REPO/scripts/verify-macos-service-credential-ipc.py" \
+    --repo "$REPO" --self-test; then
+  note "ok  R-S11ep/R-S11e-177 macOS proves both peers before a canonical raw _service_credential PRS exchange"
+else
+  echo "  FAIL R-S11ep/R-S11e-177 macOS runtime PRS escaped its raw proof-before-secret authority"
+  rc=1
 fi
 
 echo "== (2b-ii) R-S11b-2a/R-S11b-3a macOS raw password authority and finality =="
@@ -2393,6 +2474,7 @@ messages = (
     "main IPC listener ended unexpectedly",
     "protected service password IPC listener ended unexpectedly",
     "protected service credential IPC listener ended unexpectedly",
+    "protected macOS service credential IPC listener ended unexpectedly",
     "protected _service IPC listener ended unexpectedly",
     "Windows service-main control IPC listener ended unexpectedly",
     "Windows service credential IPC listener ended unexpectedly",

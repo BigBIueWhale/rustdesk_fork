@@ -1630,6 +1630,85 @@ settings, or prior service snapshots. Verification closure: config and integrati
 state; `scripts/verify.sh` gates the typed enum, explicit three-way CPace decision, deleted string adapters,
 server-status helper, direct-listener diagnostic, requirements/status disposition, and Appendix C #236.
 
+**R-S11ep/R-S11e-177 macOS runtime PRS raw credential authority — SOURCE IMPLEMENTED;
+CONFINED SOURCE/MUTATION AND RUST/macOS-CFG VERIFICATION PASSED; NATIVE
+INSTALLED-macOS/COLD-RELEASE EVIDENCE OPEN.**
+Platform: macOS installed-service mode. Endpoint/action: root LaunchDaemon to service-owned LaunchAgent
+runtime permanent-password PRS replication. Boundary: the durable root credential authority and its
+storage envelope/salt ↔ the replaceable user-session server that needs only a nonpersistent
+password-equivalent PRS.
+
+The audit found a direct specification/implementation contradiction. R-S11i already required every
+password-equivalent runtime replica to travel only on raw `_service_credential`, but macOS retained
+`ServiceIpcRequest::PermanentPasswordSnapshot` and
+`ServiceIpcResponse::PermanentPasswordSnapshotResult { storage, salt }` on serde/JSON framed
+`_service`. The receiver decrypted the durable storage envelope only to install a runtime PRS. Existing
+socket audit-token installed-app proof, exact live `--server --service-owned-server` argv, launchd
+pid/path, and root-owned parsed LaunchAgent plist restricted the recipient, so the finding is protocol
+separation, least-disclosure, and secret-memory ownership debt—not evidence of exploitation,
+unauthorized disclosure, root acquisition, public exposure, or host modification.
+
+The generic service request/response enums and old handler now contain no credential snapshot variant,
+storage, or salt. Generic macOS `_service` retains nonsecret liveness and Authorization Services
+right-readiness only. `prepare_service_ipc` creates a mandatory root-scoped `_service_credential`
+listener on both Unix service platforms. Its transaction budget and macOS Security.framework proof
+budget are fixed and independent of generic service and password work; accepted tasks remain in the
+service transaction `JoinSet`, listener failure requests graceful fail-stop, and shutdown closes
+admission before draining.
+
+On the root side, the accepted credential socket immediately snapshots uid, effective pid metadata,
+and `LOCAL_PEERTOKEN`, then an exactly owned bounded Security.framework worker proves the installed-app
+peer before any raw request is read. The request is bodyless and operation-UUID-bound. Before the
+root authority discloses the PRS, a second exactly owned proof binds the same connected peer to trusted
+installed-app code, exact live argv, launchd-reported pid/path, and the root-owned exact LaunchAgent
+plist. The root authority derives the canonical typed PRS-or-empty locally and sends only the raw
+empty-or-44-byte replica through the existing fixed wiping `SensitivePassword` transport. No durable
+storage envelope, salt, serde/JSON value, `Bytes`/`Framed` payload, or generic service response crosses
+the endpoint.
+
+On the LaunchAgent side, only the exact service-owned-server role may request the snapshot. It connects
+to uid 0's credential path under one absolute deadline, snapshots and proves the root privileged helper
+from that connected socket's audit token and trusted installation before sending the bodyless UUID
+request, requires the matching raw response UUID, validates the canonical PRS shape, and installs only
+the nonpersistent runtime PRS overlay. Both generic IPC constructors reject `_service_credential`.
+The shared raw-wire regressions now cover Linux and macOS compilation; the generic directional-protocol
+regression rejects the retired JSON tag.
+
+Requirements R-S11i/R-S11ep, Appendix C #298, a dedicated semantic verifier and deliberate-mutation
+catalog, the shared source gate, Apple source gate, and independent workspace catalog bind the
+correction.
+
+Confined verification on 2026-07-30 used only immutable, already-present images with the checkout
+read-only, uid/gid 1000:1000, no network, no capabilities, no-new-privileges, a read-only container
+  root, bounded CPU/memory/PIDs, private tmpfs output, no ports/devices/host namespace, and no Docker
+  socket inside the verifier:
+
+- image `sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2`
+  passed Python bytecode compilation, shell syntax, the dedicated macOS credential semantic verifier
+  with 26 deliberate mutations rejected, the desktop IPC lifecycle verifier with 26 deliberate
+  mutations rejected, the independent baseline, the complete 3,188-entry independent
+  `--source-mutations-only` catalog, requirements HTML parsing and both exact derived-hash bindings,
+  plus the native-codec ledger and its integrity/advisory/offline-acquisition mutation self-test;
+- image `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  with the pinned Rust 1.75 toolchain and vendored offline Cargo closure passed
+  `ipc::password::tests`, the closed directional service-protocol regression, and the
+  cross-uid service-path classification regression. The test source was read-only and the build
+  target existed only in container tmpfs;
+- image `sha256:1845e16ca1b255cc41dc57736b50263304937699d5e23e1353b843c00a2ea15f`
+  with the pinned Rust 1.81 Apple target toolchain compiled the x86_64-macOS `hbb_common`
+  workspace anchor cleanly, then checked the main crate with the real
+  `flutter,unix-file-copy-paste` macOS features to the expected missing-SDK boundary
+  (`AudioUnit/AudioUnit.h`) with no Rust compiler error. This was a targeted cfg/type coherence
+  check, not an installed-macOS runtime test.
+
+No live endpoint, helper, LaunchAgent, LaunchDaemon, launchd query, Security.framework operation,
+service, listener, root/sudo action, host RustDesk/configuration/firewall/network state, or public
+port was used for this proof. The full three-target Apple conformance transaction was not invoked;
+the targeted macOS cfg check cannot prove the native installed-macOS boundary on this Linux host,
+and this slice does not claim it. Exact native installed-macOS behavior, the clean cold R-B2/R-B10
+release transaction, separately required independent reproduction, and external review remain
+open; the broader Ralph loop remains active.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -1645,8 +1724,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
 - **R-S11b-1 — Linux/macOS generic `_service` boundary — SOURCE IMPLEMENTED.** `_service` is a narrow,
   frame/deadline/capacity-bounded control protocol. It carries no password body, whole `Config`/`Config2`, generic
   config mutation, storage/salt write, or password mutation request. Linux service password mutation is on raw
-  `_service_password`. macOS generic `_service` retains only no-secret right readiness and the narrow read-only
-  runtime snapshot request/response, plus unrelated explicitly admitted service controls.
+  `_service_password`. macOS generic `_service` retains only no-secret right readiness plus unrelated explicitly
+  admitted service controls; the read-only runtime PRS snapshot uses independently bounded raw
+  `_service_credential` under R-S11ep.
 - **R-S11b-2a/R-S11c-1a — ordinary main IPC cannot mutate passwords — SOURCE IMPLEMENTED.** Service-owned
   receivers are marked by exact process role and reject user-owned mutation authority. Ordinary main IPC has no
   password-bearing request or write. Its password-related surface is limited to nonsecret capability/status data
@@ -2041,9 +2121,10 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Closure deletes both dead salt readers and their challenge-only assertions and initially narrows the
   preset-envelope helper to its sole classifier. R-S11b-3q subsequently deletes that classifier and envelope
   altogether. Durable password provisioning remains the sole salt creator and owns it atomically with password
-  storage; the externally used local storage-and-salt snapshot
-  remains unchanged for the purpose-specific authenticated service credential-replica paths that require the
-  pair. Shared and Apple source gates reject all three retired public/salt-reader shapes. The independent semantic
+  storage; the local storage-and-salt snapshot remains only for exact durable-storage and Windows service-replica
+  consumers that require the pair. Linux/macOS raw runtime-replica IPC derives the canonical PRS inside the durable
+  authority and transfers only PRS-or-empty. Shared and Apple source gates reject all three retired
+  public/salt-reader shapes. The independent semantic
   validator binds source, both gates, R-S11b-3p, Appendix C #240, and this row with deliberate mutations. Exact
   native/reproducible artifact and installed-device evidence remain under R-B2.
 - **R-S11b-3q — preset-password credential/status compatibility excised — CLOSED/GATED
@@ -2335,8 +2416,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   Platform: macOS LaunchDaemon/LaunchAgent installed service. Surfaces: `src/ipc.rs`, `scripts/verify.sh`, and
   `scripts/apple-conform-check.sh`. Boundary: root LaunchDaemon credential snapshot delivery ↔ service-owned
   LaunchAgent process identity. Attack surface closed: the live peer-process proof for
-  `ServiceIpcRequest::PermanentPasswordSnapshot` no longer accepts a prefix-shaped command vector.
-  The LaunchDaemon still requires the `_service` peer to be the installed app talking to the trusted privileged
+  the runtime credential snapshot no longer accepts a prefix-shaped command vector.
+  The LaunchDaemon still requires the raw `_service_credential` peer to be the installed app talking to the trusted privileged
   helper, requires launchd to report the peer pid under the expected `gui/<uid>/<label>` job and root-owned plist,
   and parses that plist for the exact `ProgramArguments`/`RunAtLoad`/`KeepAlive` shape; this slice makes the live
   process proof match that exact job shape by rejecting any command vector other than the three-entry
@@ -2909,7 +2990,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   socket-bound polkit authorization, stable-root durable storage, a raw `_service_credential` PRS snapshot, and
   direct-parent/current-generation service-replica proof. The child is a nondumpable runtime-only replica. macOS adds a dedicated
   nonshared timeout-zero Authorization Services capability, root helper/installed-app audit-token proof, and exact
-  LaunchAgent runtime-snapshot proof. Windows terminates mutation in the stable LocalSystem SCM authority and gives
+  LaunchAgent runtime-snapshot proof on independently bounded raw `_service_credential`. Windows terminates mutation
+  in the stable LocalSystem SCM authority and gives
   the retained child only a generation-bound read-only replica. The final clean committed cold release build is
   still required.
 - **R-S11e — Linux polkit policy/package assurance — CLOSED 2026-07-10.**
@@ -2947,8 +3029,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   metadata/path regression tests, the requirements/ledger disposition, and absence of the old direct
   `Command::new("/usr/bin/pkcheck")` launch shape.
 - **R-S11e-2 — macOS service client-side server authentication — SOURCE IMPLEMENTED.** Generic `_service`
-  carries only no-secret readiness/runtime-snapshot control; raw `_service_password` carries mutation. Both client
-  paths snapshot peer uid, effective-pid metadata, and `LOCAL_PEERTOKEN` immediately and prove a root peer whose
+  carries only no-secret readiness control; raw `_service_password` carries mutation and raw
+  `_service_credential` carries runtime PRS replication. All client paths snapshot peer uid, effective-pid metadata,
+  and `LOCAL_PEERTOKEN` immediately and prove a root peer whose
   Security.framework live code satisfies the pinned privileged-helper requirement at the exact trusted
   `/Library/PrivilegedHelperTools/com.carriez.rustdesk_service` path. Root:wheel ownership, non-writable
   directory/file mode, executable type, no symlinks, and no extended ACLs are required. Effective pid is metadata,
@@ -2968,11 +3051,12 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `scripts/verify.sh` runs app-side and shared helper resolver tests and requires canonicalization, candidate/canonical
   parent trust, executable-bit checks, canonical return wiring, and requirements/ledger disposition. R-S11e-42 later
   deletes the `w` display fallback entirely; this entry continues to describe the remaining helper resolver contract.
-- **R-S11e-4 — macOS service proof ownership — SOURCE IMPLEMENTED.** Generic `_service` and password
-  `_service_password` have independent proof capacities. The accepted socket's uid, effective-pid metadata, and
+- **R-S11e-4 — macOS service proof ownership — SOURCE IMPLEMENTED.** Generic `_service`, password
+  `_service_password`, and credential `_service_credential` have independent proof capacities. The accepted socket's uid, effective-pid metadata, and
   `LOCAL_PEERTOKEN` are captured immediately. Security.framework proof executes on a dedicated exactly owned OS
   thread and is synchronously joined; timeout, cancellation, panic, lost result, or lost join ownership aborts the
-  process. No generic frame or raw password header/body is read before endpoint proof succeeds.
+  process. No generic frame, raw password header/body, or bodyless raw credential request is read before its
+  endpoint proof succeeds.
 - **R-S11e-5 — Linux service-owned replica receiver proof — SOURCE IMPLEMENTED.** Before listener admission, the
   child requests raw `_service_credential`; the root service proves the exact child from `SO_PEERCRED`, current
   executable, exact `--server --service-owned-server` argv, direct parent, launch-parent environment, and current
@@ -3011,8 +3095,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   authenticated readiness through `AuthorizationCopyRights` to fresh raw transport, exact native dictionary
   validation, absence of the old existence-only helper, and this requirements/ledger disposition.
 - **R-S11e-9 — macOS service audit-token peer code identity — SOURCE IMPLEMENTED.**
-  Platform: macOS installed-service mode. Endpoint/action: generic `_service` and raw `_service_password`
-  client-side server authentication, receiver-side admission, and the read-only runtime snapshot requester. Boundary:
+  Platform: macOS installed-service mode. Endpoint/action: generic `_service`, raw `_service_password`, and raw
+  `_service_credential` client-side server authentication, receiver-side admission, and the read-only runtime
+  snapshot requester. Boundary:
   local Unix-domain socket peers ↔ root privileged helper/app credential authority. Attack surface closed: macOS
   `_service` code identity no longer depends on re-observing an effective pid/path or shelling out to filesystem
   `codesign` after accept. The connected socket's uid, `LOCAL_PEEREPID` metadata, and `LOCAL_PEERTOKEN` are captured
@@ -3021,8 +3106,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `SecCodeCheckValidity(..., STRICT_VALIDATE)`; and the path from `SecCodeCopyPath` is used only for secondary
   installed-location, owner, mode, symlink, and ACL checks. `_service` client auth now requires a root peer whose
   audit-token code is the trusted privileged helper; receiver admission snapshots carry the audit token into an
-  exactly owned OS-thread proof that is synchronously joined before any generic frame or raw password header is read;
-  timeout, cancellation, panic, lost result, or lost join ownership is process-fatal. The runtime snapshot requester must be the
+  exactly owned OS-thread proof that is synchronously joined before any generic frame, raw password header, or
+  bodyless raw credential request is read; timeout, cancellation, panic, lost result, or lost join ownership is
+  process-fatal. The runtime snapshot requester must be the
   audit-token trusted installed app before launchd argv/plist proof is considered. There is no unauthenticated,
   PID-only, path-only, or subprocess-code-signing fallback. Verification closure: `scripts/verify.sh` and
   `scripts/apple-conform-check.sh` gate the direct `security-framework` dependency, `LOCAL_PEERTOKEN`,
@@ -5023,7 +5109,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   MUTATION VERIFIED; NATIVE/ARTIFACT EVIDENCE PENDING 2026-07-19.** Platforms: Linux, macOS, and Windows
   desktop process-lifetime IPC receivers. Endpoints:
   the desktop main listener and its password listener, the Linux/macOS protected `_service` listener and its
-  password listener, and the Windows service-owned main control and credential listeners. Boundary: an unexpected
+  password and credential listeners, and the Windows service-owned main control and credential listeners. Boundary: an unexpected
   terminal loss of a local authority-bearing listener ↔ process-manager recovery and operator-visible service
   outcome.
 
@@ -5051,7 +5137,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   that can be discarded by a detached thread or overwritten by a later clean shutdown path.
 
   Closure: `request_graceful_shutdown_after_listener_failure` stores the failure latch with Release ordering and
-  then invokes the unchanged cancellation request. All seven current unexpected listener-end branches use that helper; normal
+  then invokes the unchanged cancellation request. All eight current unexpected listener-end branches use that helper; normal
   cancellation, SIGINT/SIGTERM, and service-manager stop paths continue to call the ordinary request and never set
   the latch. Under R-S11as the retained desktop owner receives and joins local IPC before the sole finalizer call;
   that finalizer waits for authenticated connection cleanup, then loads the monotonic latch with Acquire ordering
@@ -5061,7 +5147,7 @@ unreachable and a source/test/AST gate prevents reintroduction.
   downgrade the latched failure.
 
   Proof/gates: the focused Rust regression binds clean and failure status selection. The R-S11e-53 source
-  and Apple gates bind the static latch, Release-before-cancellation producer ordering, exact seven error producers,
+  and Apple gates bind the static latch, Release-before-cancellation producer ordering, exact eight error producers,
   Acquire-at-the-finalizer sink selection, process exit using the selected value, protected-service error return,
   unchanged drain-before-terminal-outcome ordering, R-S11am, Appendix C #161, and this ledger. The semantic workspace verifier independently interprets those regions
   and mutation-tests every producer, memory-order weakening, hardcoded-success restoration, regression/gate removal,
@@ -5070,7 +5156,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
 
   Verification: the focused Rust regression passed (`1 passed`, 317 filtered) after compiling the root library with
   the audited vendored dependency tree. The R-S11e-53 shared and Apple source gates passed. The semantic workspace
-  verifier passed normally and its complete source-mutation suite rejected gate deletion, each of the six producer
+  verifier passed normally and its then-current complete source-mutation suite rejected gate deletion, each of the
+  original six producer
   downgrades, latch/removal/order weakening, drain removal, hardcoded-success restoration, clean-path
   misclassification, and normative/ledger drift. Shell syntax, in-memory Python syntax, and `git diff --check`
   passed; the pinned image does not contain `rustfmt`, so no formatter result is claimed and the two Rust edits were
@@ -6898,9 +6985,9 @@ unreachable and a source/test/AST gate prevents reintroduction.
   its user-owned/service-owned authority split. Main IPC now reports only receiver-derived nonsecret password
   status; raw password mutation never triggers a credential copy into the GUI process. macOS's service-owned
   LaunchAgent root-credential delivery is not a generic snapshot path: it is the
-  typed R-S11b-2e `_service` runtime snapshot, accepted only after socket audit-token installed-app proof, exact live
-  argv, and parsed root-owned plist command-shape proof for the LaunchAgent job, and applied only to
-  `RUNTIME_PERMANENT_PASSWORD_PRS`, never to serialized `Config`.
+  raw R-S11ep `_service_credential` runtime PRS snapshot, accepted only after socket audit-token installed-app
+  proof, exact live argv, launchd pid/path, and parsed root-owned plist command-shape proof for the LaunchAgent
+  job, and applied only to `RUNTIME_PERMANENT_PASSWORD_PRS`, never to serialized `Config`.
   R-S11b-4b closes the Unix at-rest file-mode half: `libs/hbb_common/src/config.rs::store_path`
   routes non-Windows writes through `confy::store_path_perms(..., 0o600)`, and
   `config::tests::store_path_writes_owner_only_permissions` behavior-tests the resulting mode. R-S11b-4c closes
@@ -15003,9 +15090,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   COLD INSTALLED/NATIVE/DEVICE/EXTERNAL EVIDENCE PENDING.** A fresh
   endpoint-to-action trace covered the Unix and Windows `_service` listener,
   its incumbent-liveness probe, macOS authorization-right readiness and
-  read-only permanent-password runtime snapshot, Windows service-owned
-  share-RDP mutation, and the separate Windows `_service_sas` listener and
-  `SendSAS` dispatch. Existing kernel peer-credential/role checks, Windows
+  Windows service-owned share-RDP mutation, the independently raw macOS
+  `_service_credential` runtime PRS snapshot, and the separate Windows
+  `_service_sas` listener and `SendSAS` dispatch. Existing kernel
+  peer-credential/role checks, Windows
   SYSTEM-only DACLs, deadlines, frame and capacity bounds, transaction
   ownership, receiver-side policy, macOS raw credential protocol, and final
   native-action checks were present and remain unchanged.
@@ -16093,7 +16181,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-bc15d2b7afe5f2d2751951b3f0cd7f4631c3ea6badd9e388ee43d1ec53ad6dc2  requirements.html
+5b7899ca14fb949b5f0658b09aed7a31640f1f2d0fcb1c50988c47dd86b5c026  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

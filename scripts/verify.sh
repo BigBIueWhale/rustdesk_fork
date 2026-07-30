@@ -794,11 +794,14 @@ grep -q 'password_mutations().drain().await;' src/ipc.rs                        
 grep -q 'PasswordMutation(PasswordMutationStatus)' src/ipc.rs                         || r_s11="$r_s11 typed-password-result-missing"
 grep -q 'new_listener(password::USER_PASSWORD_IPC_POSTFIX)' src/ipc.rs                || r_s11="$r_s11 raw-user-password-listener-missing"
 grep -q 'new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX)' src/ipc.rs             || r_s11="$r_s11 raw-service-password-listener-missing"
-grep -q 'new_listener(password::SERVICE_CREDENTIAL_IPC_POSTFIX)' src/ipc.rs           || r_s11="$r_s11 raw-linux-service-credential-listener-missing"
+grep -q 'new_listener(password::SERVICE_CREDENTIAL_IPC_POSTFIX)' src/ipc.rs           || r_s11="$r_s11 raw-unix-service-credential-listener-missing"
 grep -q 'connect_sensitive_unix(' src/ipc.rs                                           || r_s11="$r_s11 raw-password-client-missing"
 grep -q 'password::send_request_unix(' src/ipc.rs                                      || r_s11="$r_s11 raw-password-send-missing"
 grep -q 'password::receive_request_unix(' src/ipc.rs                                   || r_s11="$r_s11 raw-password-receive-missing"
 grep -q 'sensitive password endpoints require the raw transport' src/ipc.rs             || r_s11="$r_s11 generic-sensitive-endpoint-rejection-missing"
+grep -q 'the service credential endpoint requires the raw transport' src/ipc.rs          || r_s11="$r_s11 generic-credential-endpoint-rejection-missing"
+grep -q 'password::send_credential_snapshot_request_unix' src/ipc.rs                    || r_s11="$r_s11 raw-credential-request-send-missing"
+grep -q 'password::receive_credential_replica_unix' src/ipc.rs                          || r_s11="$r_s11 raw-credential-replica-receive-missing"
 grep -q 'REQUEST_HEADER_BYTES: usize = 36' src/ipc/password.rs                         || r_s11="$r_s11 raw-password-header-cap-missing"
 grep -q 'STATUS_FRAME_BYTES: usize = 32' src/ipc/password.rs                           || r_s11="$r_s11 raw-password-status-cap-missing"
 grep -q 'ACK_FRAME_BYTES: usize = 28' src/ipc/password.rs                              || r_s11="$r_s11 windows-password-ack-cap-missing"
@@ -917,13 +920,21 @@ grep -Fq '<span class="id">R-S11ce</span>' requirements.html || r_s11="$r_s11 li
 grep -Fq 'R-S11e-6 — Linux `_service_password` client-side server authentication' HARDENING_STATUS.md || r_s11="$r_s11 linux-service-client-auth-ledger-missing"
 grep -Fq 'R-S11ce/R-S11e-97 — Linux unprivileged clients authenticate root service endpoints without root procfs' HARDENING_STATUS.md || r_s11="$r_s11 linux-root-service-client-ledger-missing"
 macos_service_server_auth_block=$(awk '/pub\(crate\) fn authorize_macos_service_server_snapshot/,/^}/' src/ipc/auth.rs)
+macos_credential_snapshot_client=$(awk '/pub async fn refresh_macos_service_owned_permanent_password_snapshot/,/^}/' src/ipc.rs)
 grep -Fq 'pub(crate) struct MacosServiceServerAuthorization' src/ipc/auth.rs || r_s11="$r_s11 macos-service-server-snapshot-type-missing"
 grep -Fq 'pub(crate) fn macos_service_server_authorization_snapshot' src/ipc/auth.rs || r_s11="$r_s11 macos-service-server-snapshot-missing"
+grep -Fq 'pub(crate) fn macos_peer_process_identity_from_stream' src/ipc/auth.rs || r_s11="$r_s11 macos-peer-audit-token-snapshot-missing"
 echo "$macos_service_server_auth_block" | grep -Fq 'authorization.identity.uid != 0' || r_s11="$r_s11 macos-service-server-client-auth-not-root-gated"
 echo "$macos_service_server_auth_block" | grep -Fq 'macos_peer_is_trusted_privileged_helper(&authorization.identity)' || r_s11="$r_s11 macos-service-server-client-auth-not-helper-trusted"
 echo "$connect_with_path_block" | grep -Fq 'config::is_service_ipc_postfix(postfix)' || r_s11="$r_s11 macos-service-connect-not-postfix-scoped"
 echo "$connect_with_path_block" | grep -Fq 'macos_service_server_authorization_snapshot' || r_s11="$r_s11 macos-service-connect-server-snapshot-missing"
 echo "$connect_with_path_block" | grep -Fq 'authorize_macos_service_server_snapshot_for_task' || r_s11="$r_s11 macos-service-connect-not-client-authenticated"
+echo "$macos_credential_snapshot_client" | grep -Fq 'password::SERVICE_CREDENTIAL_IPC_POSTFIX' || r_s11="$r_s11 macos-credential-client-not-raw-endpoint"
+echo "$macos_credential_snapshot_client" | grep -Fq 'macos_service_server_authorization_snapshot' || r_s11="$r_s11 macos-credential-client-server-snapshot-missing"
+echo "$macos_credential_snapshot_client" | grep -Fq 'authorize_macos_service_server_snapshot_for_task' || r_s11="$r_s11 macos-credential-client-not-server-authenticated"
+echo "$macos_credential_snapshot_client" | grep -Fq 'password::send_credential_snapshot_request_unix' || r_s11="$r_s11 macos-credential-client-raw-request-missing"
+echo "$macos_credential_snapshot_client" | grep -Fq 'password::receive_credential_replica_unix' || r_s11="$r_s11 macos-credential-client-raw-response-missing"
+echo "$macos_credential_snapshot_client" | grep -Fq 'Config::set_permanent_password_prs_for_runtime(replica.as_str())' || r_s11="$r_s11 macos-credential-client-runtime-prs-install-missing"
 grep -Fq '<span class="id">R-S11i</span>' requirements.html || r_s11="$r_s11 raw-password-ipc-requirement-missing"
 grep -Fq 'R-S11e-2 — macOS service client-side server authentication' HARDENING_STATUS.md || r_s11="$r_s11 macos-service-client-auth-ledger-missing"
 grep -Fq 'pub(crate) fn ensure_user_owned_main_server_is_trusted' src/ipc/auth.rs || r_s11="$r_s11 user-owned-main-server-auth-missing"
@@ -2621,15 +2632,15 @@ service_response_enum=$(awk '/pub\(crate\) enum ServiceIpcResponse {/,/^}/' src/
 grep -Fq '#[serde(tag = "t", deny_unknown_fields)]' src/ipc.rs || r_s11b="$r_s11b service-protocol-unknown-fields-not-denied"
 echo "$service_request_enum" | grep -q 'LivenessProbe' || r_s11b="$r_s11b service-liveness-request-missing"
 echo "$service_request_enum" | grep -q 'EnsurePasswordRightReady' || r_s11b="$r_s11b macos-service-password-right-readiness-control-missing"
-echo "$service_request_enum" | grep -q 'PermanentPasswordSnapshot' || r_s11b="$r_s11b macos-runtime-snapshot-control-missing"
+echo "$service_request_enum" | grep -q 'PermanentPasswordSnapshot' && r_s11b="$r_s11b macos-credential-request-still-on-generic-service"
 echo "$service_request_enum" | grep -q 'SetShareRdp {' || r_s11b="$r_s11b windows-share-rdp-control-missing"
 echo "$service_request_enum" | grep -q 'enabled: bool' || r_s11b="$r_s11b windows-share-rdp-control-field-missing"
 echo "$service_response_enum" | grep -q 'Liveness' || r_s11b="$r_s11b service-liveness-response-missing"
 echo "$service_response_enum" | grep -q 'PasswordRightReady {' || r_s11b="$r_s11b macos-password-right-response-missing"
 echo "$service_response_enum" | grep -q 'ready: bool' || r_s11b="$r_s11b macos-password-right-response-field-missing"
-echo "$service_response_enum" | grep -q 'PermanentPasswordSnapshotResult' || r_s11b="$r_s11b macos-snapshot-response-missing"
-echo "$service_response_enum" | grep -q 'storage: String' || r_s11b="$r_s11b macos-snapshot-storage-missing"
-echo "$service_response_enum" | grep -q 'salt: String' || r_s11b="$r_s11b macos-snapshot-salt-missing"
+echo "$service_response_enum" | grep -q 'PermanentPasswordSnapshotResult' && r_s11b="$r_s11b macos-credential-response-still-on-generic-service"
+echo "$service_response_enum" | grep -q 'storage: String' && r_s11b="$r_s11b credential-storage-present-on-generic-service"
+echo "$service_response_enum" | grep -q 'salt: String' && r_s11b="$r_s11b credential-salt-present-on-generic-service"
 echo "$service_response_enum" | grep -q 'ShareRdpSet {' || r_s11b="$r_s11b windows-share-rdp-response-missing"
 echo "$service_response_enum" | grep -q 'accepted: bool' || r_s11b="$r_s11b windows-share-rdp-response-field-missing"
 if echo "$service_request_enum" | grep -Eq 'Password.*Change|password:[[:space:]]*String|authorization:[[:space:]]*Vec'; then
@@ -2647,6 +2658,8 @@ fi
 grep -q 'pub(crate) const SERVICE_IPC_MAX_FRAME_BYTES: usize = 32 \* 1024;' src/ipc.rs || r_s11b="$r_s11b service-frame-cap-constant-missing"
 grep -q 'pub(crate) const SERVICE_IPC_REQUEST_TIMEOUT_MS: u64 = 1_000;' src/ipc.rs || r_s11b="$r_s11b service-read-timeout-constant-missing"
 grep -q 'fn try_acquire_service_ipc_transaction_slot' src/ipc.rs || r_s11b="$r_s11b unix-service-transaction-budget-missing"
+grep -q 'fn try_acquire_service_credential_ipc_transaction_slot' src/ipc.rs || r_s11b="$r_s11b unix-service-credential-transaction-budget-missing"
+grep -q 'fn try_acquire_macos_service_credential_ipc_authorization_slot' src/ipc.rs || r_s11b="$r_s11b macos-service-credential-authorization-budget-missing"
 grep -q 'Connection::new_protected_service(stream)' src/ipc.rs || r_s11b="$r_s11b unix-service-accept-not-capped"
 grep -q 'ConnectionTmpl::new_protected_service(client)' src/ipc.rs || r_s11b="$r_s11b service-client-connect-not-capped"
 grep -q 'pub(crate) fn new_protected_service' src/ipc.rs || r_s11b="$r_s11b protected-service-constructor-missing"
@@ -2714,6 +2727,13 @@ if ! python3 scripts/verify-linux-service-password-ipc.py --repo . --self-test >
   cat "$VERIFY_TMP/rd_verify_linux_service_password_ipc"
   r_s11b2="$r_s11b2 linux-raw-password-semantic-verifier-failed"
 fi
+if ! /usr/bin/python3 -I -S scripts/verify-macos-service-credential-ipc.py \
+    --repo . --self-test >"$VERIFY_TMP/rd_verify_macos_service_credential_ipc" 2>&1; then
+  cat "$VERIFY_TMP/rd_verify_macos_service_credential_ipc"
+  r_s11b2="$r_s11b2 macos-raw-credential-semantic-verifier-failed"
+fi
+grep -Fq '<span class="id">R-S11ep</span>' requirements.html || r_s11b2="$r_s11b2 macos-raw-credential-requirement-missing"
+grep -Fq 'R-S11ep/R-S11e-177 macOS runtime PRS raw credential authority' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-raw-credential-ledger-missing"
 if ! python3 scripts/verify-polkit-policy.py --repo . >"$VERIFY_TMP/rd_verify_polkit_policy" 2>&1; then
   cat "$VERIFY_TMP/rd_verify_polkit_policy"
   r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"
@@ -3366,7 +3386,11 @@ grep -q 'Self::read_permanent_password_prs().is_available()' libs/hbb_common/src
 grep -q 'test_hard_settings_password_does_not_create_credential' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 hard-settings-not-a-credential-regression-missing"
 grep -qF 'R-S11b-3q — preset-password credential/status compatibility excised' HARDENING_STATUS.md || r_s11b4="$r_s11b4 preset-password-excision-ledger-missing"
 grep -qF '<tr><td>241</td>' requirements.html || r_s11b4="$r_s11b4 preset-password-excision-appendix-missing"
-grep -q 'ServiceIpcRequest::PermanentPasswordSnapshot' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-snapshot-request-missing"
+grep -q 'ServiceIpcRequest::PermanentPasswordSnapshot' src/ipc.rs && r_s11b4="$r_s11b4 macos-runtime-snapshot-still-generic-serde"
+grep -q 'ServiceIpcResponse::PermanentPasswordSnapshotResult' src/ipc.rs && r_s11b4="$r_s11b4 macos-runtime-snapshot-response-still-generic-serde"
+grep -q 'handle_macos_service_credential_snapshot_transaction' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-raw-snapshot-handler-missing"
+grep -q 'send_credential_replica_unix' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-raw-replica-send-missing"
+grep -q 'receive_credential_replica_unix' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-raw-replica-receive-missing"
 grep -q 'macos_launch_agent_owns_service_owned_server_pid' src/ipc.rs || r_s11b4="$r_s11b4 macos-runtime-snapshot-launchd-proof-missing"
 grep -q 'RUNTIME_PERMANENT_PASSWORD_PRS' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 runtime-prs-overlay-missing"
 grep -q 'runtime_password_snapshot_does_not_persist' libs/hbb_common/src/config.rs || r_s11b4="$r_s11b4 runtime-snapshot-nonpersist-test-missing"
@@ -5102,6 +5126,7 @@ messages = (
     "main IPC listener ended unexpectedly",
     "protected service password IPC listener ended unexpectedly",
     "protected service credential IPC listener ended unexpectedly",
+    "protected macOS service credential IPC listener ended unexpectedly",
     "protected _service IPC listener ended unexpectedly",
     "Windows service-main control IPC listener ended unexpectedly",
     "Windows service credential IPC listener ended unexpectedly",
@@ -5132,7 +5157,7 @@ grep -qF 'authority-bearing IPC listener failure outcome (R-S11am/R-S11e-53)' sc
 grep -qF 'R-S11e-53 — authority-bearing IPC listener failure outcome' HARDENING_STATUS.md \
   || r_s11e53="$r_s11e53 hardening-ledger-missing"
 if [ -n "$r_s11e53" ]; then echo "  FAIL R-S11e-53 IPC listener failure outcome:$r_s11e53"; rc=1; else
-  echo "  ok  R-S11e-53 all seven fatal desktop IPC listener endings latch failure before cancellation; finalizer callers exit 1 and protected Unix service IPC returns an error only after their owned drain"; fi
+  echo "  ok  R-S11e-53 all eight fatal desktop IPC listener endings latch failure before cancellation; finalizer callers exit 1 and protected Unix service IPC returns an error only after their owned drain"; fi
 
 # (3b-iii-d9cd) R-S11an/R-S11e-54: the Linux root supervisor
 # positively owns protected service IPC readiness, failure, and complete drain

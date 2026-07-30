@@ -924,7 +924,7 @@ pub const DIRECT_PORT: i32 = 21118;
 #[inline]
 pub fn is_service_ipc_postfix(postfix: &str) -> bool {
     matches!(postfix, "_service" | "_service_password")
-        || cfg!(target_os = "linux") && postfix == "_service_credential"
+        || cfg!(any(target_os = "linux", target_os = "macos")) && postfix == "_service_credential"
 }
 
 // Keep Linux/macOS IPC parent directory rules in one place to avoid drift between
@@ -6322,10 +6322,8 @@ unrelated = "preserved"
         const ROOT_UID: u32 = 0;
         const USER_UID: u32 = 1000;
 
-        #[cfg(target_os = "linux")]
+        #[cfg(any(target_os = "linux", target_os = "macos"))]
         let service_postfixes = ["_service", "_service_password", "_service_credential"];
-        #[cfg(target_os = "macos")]
-        let service_postfixes = ["_service", "_service_password"];
 
         for postfix in service_postfixes {
             assert!(is_service_ipc_postfix(postfix));

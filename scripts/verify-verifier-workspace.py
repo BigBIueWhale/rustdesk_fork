@@ -9237,13 +9237,14 @@ def validate_ipc_listener_failure_outcome_contract(sources):
         "main IPC listener ended unexpectedly",
         "protected service password IPC listener ended unexpectedly",
         "protected service credential IPC listener ended unexpectedly",
+        "protected macOS service credential IPC listener ended unexpectedly",
         "protected _service IPC listener ended unexpectedly",
         "Windows service-main control IPC listener ended unexpectedly",
         "Windows service credential IPC listener ended unexpectedly",
     )
     failure_helper = "crate::server::request_graceful_shutdown_after_listener_failure();"
     if ipc_source.count(failure_helper) != len(messages):
-        raise VerificationError("exact seven listener-failure latch producers are absent")
+        raise VerificationError("exact eight listener-failure latch producers are absent")
     for message in messages:
         anchor = f'listener_error = Some("{message}".to_owned());'
         if ipc_source.count(anchor) != 1:
@@ -9279,7 +9280,7 @@ def validate_ipc_listener_failure_outcome_contract(sources):
         "IPC listener failure outcome requirement",
     )
     for text, label in (
-        ("those seven listener streams", "seven-listener authority set"),
+        ("those eight listener streams", "eight-listener authority set"),
         ("release/acquire synchronization", "cross-task failure synchronization"),
         ("status 1 when the failure latch is set", "failure process status"),
         ("status 0 only for ordinary requested shutdown", "clean process status"),
@@ -14101,13 +14102,16 @@ def validate_unix_helper_process_role_contract(sources):
 
 def validate_service_ipc_protocol_authority_contract(sources):
     ipc = sources["ipc_source"]
+    password = sources["ipc_password_source"]
+    auth = sources["ipc_auth_source"]
+    config = sources["config_source"]
+    focused = sources["macos_service_credential_ipc_verifier"]
     expected_enums = (
         (
             "pub(crate) enum ServiceIpcRequest",
             (
                 "LivenessProbe",
                 "EnsurePasswordRightReady",
-                "PermanentPasswordSnapshot",
                 "SetShareRdp",
             ),
             "service IPC request protocol",
@@ -14117,7 +14121,6 @@ def validate_service_ipc_protocol_authority_contract(sources):
             (
                 "Liveness",
                 "PasswordRightReady",
-                "PermanentPasswordSnapshotResult",
                 "ShareRdpSet",
             ),
             "service IPC response protocol",
@@ -14151,10 +14154,6 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "service password-right request empty field schema",
         ),
         (
-            "PermanentPasswordSnapshot {},",
-            "service password-snapshot request empty field schema",
-        ),
-        (
             "Liveness {},",
             "service liveness response empty field schema",
         ),
@@ -14169,10 +14168,6 @@ def validate_service_ipc_protocol_authority_contract(sources):
         (
             "PasswordRightReady { ready: bool },",
             "service password-right response field schema",
-        ),
-        (
-            "PermanentPasswordSnapshotResult {\n        storage: String,\n        salt: String,\n    },",
-            "service password-snapshot response field schema",
         ),
         (
             "ShareRdpSet { accepted: bool },",
@@ -14354,32 +14349,225 @@ def validate_service_ipc_protocol_authority_contract(sources):
     )
     for text, label in (
         (
-            "send_service_request_timeout(",
-            "typed macOS password snapshot request writer",
+            "is_service_owned_server_process()",
+            "exact-role macOS credential snapshot request",
         ),
         (
-            "ServiceIpcRequest::PermanentPasswordSnapshot {}",
-            "typed macOS password snapshot request",
+            "password::SERVICE_CREDENTIAL_IPC_POSTFIX",
+            "raw macOS credential endpoint",
         ),
         (
-            "next_service_response_timeout(",
-            "typed macOS password snapshot response reader",
+            "macos_service_server_authorization_snapshot(",
+            "macOS credential server audit-token snapshot",
         ),
         (
-            "ServiceIpcResponse::PermanentPasswordSnapshotResult { storage, salt }",
-            "typed macOS password snapshot response",
+            "authorize_macos_service_server_snapshot_for_task(authorization, deadline).await",
+            "macOS credential server proof",
+        ),
+        (
+            "send_credential_snapshot_request_unix(",
+            "raw macOS credential request writer",
+        ),
+        (
+            "receive_credential_replica_unix(",
+            "raw macOS credential response reader",
+        ),
+        (
+            "Config::set_permanent_password_prs_for_runtime(replica.as_str())",
+            "nonpersistent macOS PRS installation",
         ),
     ):
         require_text(snapshot_client, text, label)
-    require_absent(
-        snapshot_client,
-        "send_json_timeout(",
-        "generic macOS password snapshot writer",
+    for text, label in (
+        ("connect_service(", "generic macOS credential service connector"),
+        ("ServiceIpcRequest::", "serde macOS credential request"),
+        ("ServiceIpcResponse::", "serde macOS credential response"),
+        ("send_service_request_timeout(", "typed generic macOS credential writer"),
+        ("next_service_response_timeout(", "typed generic macOS credential reader"),
+        ("storage", "persistent macOS credential storage replica"),
+        ("salt", "persistent macOS credential salt replica"),
+    ):
+        require_absent(snapshot_client, text, label)
+
+    status_refresh = extract_between(
+        ipc,
+        "async fn refresh_macos_service_owned_permanent_password_snapshot_for_status()",
+        "\n}\n\n#[cfg(not(target_os = \"macos\"))]\n"
+        "async fn permanent_password_is_set_for_current_process()",
+        "macOS service-owned status snapshot refresh",
+    )
+    require_text(
+        status_refresh,
+        'Config::set_permanent_password_prs_for_runtime("")',
+        "nonpersistent macOS status refresh failure clear",
     )
     require_absent(
-        snapshot_client,
-        "next_timeout(",
-        "generic macOS password snapshot reader",
+        status_refresh,
+        "set_permanent_password_storage_for_runtime",
+        "storage-envelope macOS status refresh failure clear",
+    )
+
+    for text, label in (
+        (
+            '#[cfg(any(target_os = "linux", target_os = "macos"))]\n'
+            'pub(crate) const SERVICE_CREDENTIAL_IPC_POSTFIX: &str = "_service_credential";',
+            "Unix raw service credential endpoint",
+        ),
+        (
+            "CredentialSnapshotRequest = 3",
+            "raw credential snapshot request kind",
+        ),
+        (
+            "CredentialReplica = 4",
+            "raw credential replica kind",
+        ),
+        (
+            "const CREDENTIAL_REPLICA_BYTES: usize = 44;",
+            "canonical raw credential replica length",
+        ),
+        (
+            "pub(crate) async fn send_credential_snapshot_request_unix",
+            "raw credential snapshot request writer",
+        ),
+        (
+            "pub(crate) async fn receive_credential_snapshot_request_unix",
+            "raw credential snapshot request reader",
+        ),
+        (
+            "pub(crate) async fn send_credential_replica_unix",
+            "raw credential replica writer",
+        ),
+        (
+            "pub(crate) async fn receive_credential_replica_unix",
+            "raw credential replica reader",
+        ),
+    ):
+        require_text(password, text, label)
+    require_text(
+        config,
+        'cfg!(any(target_os = "linux", target_os = "macos"))',
+        "macOS service credential shared root IPC path",
+    )
+    for text, label in (
+        (
+            "credential_incoming: Incoming",
+            "mandatory Unix credential listener ownership",
+        ),
+        (
+            "new_listener(password::SERVICE_CREDENTIAL_IPC_POSTFIX).await?",
+            "mandatory Unix raw credential listener",
+        ),
+        (
+            "fn try_acquire_macos_service_credential_ipc_authorization_slot()",
+            "independent macOS credential authorization capacity",
+        ),
+        (
+            "const MACOS_SERVICE_CREDENTIAL_IPC_AUTHORIZATION_BUDGET: usize = 2;",
+            "bounded macOS credential authorization capacity",
+        ),
+        (
+            "const SERVICE_CREDENTIAL_IPC_TRANSACTION_BUDGET: usize = 2;",
+            "bounded Unix credential transaction capacity",
+        ),
+    ):
+        require_text(ipc, text, label)
+
+    credential_accept = extract_between(
+        ipc,
+        "result = credential_incoming.next()",
+        "result = password_incoming.next()",
+        "Unix service credential accept branch",
+    )
+    require_order(
+        credential_accept,
+        (
+            "try_acquire_service_credential_ipc_transaction_slot()",
+            "try_acquire_macos_service_credential_ipc_authorization_slot()",
+            "service_scoped_ipc_authorization_snapshot_from_stream(",
+            "transactions.spawn(async move",
+            "authorize_macos_service_scoped_credential_stream_for_task(",
+            "handle_macos_service_credential_snapshot_transaction(",
+        ),
+        "macOS credential admission before raw request",
+    )
+    require_absent(
+        credential_accept,
+        "receive_credential_snapshot_request_unix",
+        "raw credential request before macOS admission",
+    )
+    credential_handler = extract_between(
+        ipc,
+        "async fn handle_macos_service_credential_snapshot_transaction(",
+        "\n\n#[cfg(target_os = \"macos\")]\n"
+        "async fn handle_sensitive_macos_service_ipc_transaction(",
+        "macOS raw credential snapshot handler",
+    )
+    require_order(
+        credential_handler,
+        (
+            "receive_credential_snapshot_request_unix(&mut stream, deadline)",
+            "macos_peer_is_service_owned_server(&stream, deadline).await",
+            'service_owned_runtime_prs_replica("macOS")',
+            "send_credential_replica_unix(&mut stream, operation_id, &replica, deadline)",
+        ),
+        "bodyless request, exact requester proof, and raw PRS response",
+    )
+    for text, label in (
+        (
+            "get_local_permanent_password_storage_and_salt",
+            "persistent storage/salt in macOS credential handler",
+        ),
+        (
+            "send_service_response_timeout",
+            "generic framed macOS credential response",
+        ),
+        (
+            "ServiceIpcResponse",
+            "serde macOS credential response",
+        ),
+    ):
+        require_absent(credential_handler, text, label)
+    require_exact_count(
+        ipc,
+        'br#"{"t":"PermanentPasswordSnapshot"}"#',
+        1,
+        "retired generic macOS credential tag rejection fixture",
+    )
+    for text, label in (
+        (
+            "ServiceIpcRequest::PermanentPasswordSnapshot",
+            "retired generic macOS credential request",
+        ),
+        (
+            "PermanentPasswordSnapshotResult",
+            "retired generic macOS credential response",
+        ),
+        (
+            "handle_macos_service_owned_permanent_password_snapshot_request",
+            "retired generic macOS credential handler",
+        ),
+    ):
+        require_absent(ipc, text, label)
+    require_absent(
+        ipc,
+        "get_local_permanent_password_storage_and_salt()",
+        "persistent credential envelope crossing IPC",
+    )
+    peer_snapshot = extract_between(
+        auth,
+        "pub(crate) fn macos_peer_process_identity_from_stream",
+        "\n}\n\n#[cfg(target_os = \"macos\")]\n"
+        "pub(crate) fn macos_service_server_authorization_snapshot",
+        "macOS raw-stream peer audit-token snapshot",
+    )
+    require_order(
+        peer_snapshot,
+        (
+            "peer_uid_from_fd(fd)",
+            "peer_pid_from_fd(fd)",
+            "peer_audit_token_from_fd(fd)",
+        ),
+        "macOS raw-stream kernel peer snapshot",
     )
 
     readiness_client = extract_between(
@@ -14520,6 +14708,9 @@ def validate_service_ipc_protocol_authority_contract(sources):
                 "serde_json::from_slice::<ServiceIpcRequest>(&response).is_err()",
                 "serde_json::from_slice::<ServiceIpcRequest>(&cross_purpose).is_err()",
                 "serde_json::from_slice::<ServiceIpcResponse>(&cross_purpose).is_err()",
+                'br#"{"t":"PermanentPasswordSnapshot"}"#',
+                "serde_json::from_slice::<ServiceIpcRequest>(retired_credential_request).is_err()",
+                "serde_json::from_slice::<ServiceIpcResponse>(retired_credential_request).is_err()",
             ),
             "service exact wire/direction/cross-purpose regression",
         ),
@@ -14583,6 +14774,54 @@ def validate_service_ipc_protocol_authority_contract(sources):
         sources["hardening"],
         "R-S11dx/R-S11e-142 — privileged service-control and SAS protocol type",
         "service protocol authority hardening ledger",
+    )
+    for text, label in (
+        (
+            "def validate(sources: Dict[str, str]) -> None:",
+            "macOS raw credential semantic validator",
+        ),
+        (
+            "MUTATIONS = (",
+            "macOS raw credential deliberate mutation inventory",
+        ),
+        (
+            "run_mutations(sources)",
+            "macOS raw credential deliberate mutation dispatch",
+        ),
+        (
+            "root-helper-proof-before-request and nonpersistent PRS install",
+            "macOS raw credential client proof contract",
+        ),
+        (
+            "bodyless request, exact LaunchAgent proof, and secret response",
+            "macOS raw credential server proof contract",
+        ),
+    ):
+        require_text(focused, text, label)
+    for gate, label in (
+        (sources["verify"], "shared macOS raw credential gate"),
+        (sources["apple"], "Apple macOS raw credential gate"),
+    ):
+        for text in (
+            "verify-macos-service-credential-ipc.py",
+            "R-S11ep",
+            "R-S11e-177",
+        ):
+            require_text(gate, text, f"{label}: {text}")
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11ep</span>',
+        "macOS raw credential authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>298</td>",
+        "macOS raw credential authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ep/R-S11e-177 macOS runtime PRS raw credential authority",
+        "macOS raw credential authority hardening ledger",
     )
 
 
@@ -29489,8 +29728,8 @@ def validate_permanent_password_salt_reader_excision_contract(sources):
             "effective salt-reader normative prohibition",
         ),
         (
-            "read storage and salt atomically as one pair",
-            "purpose-specific credential-envelope read contract",
+            "derive the canonical PRS inside the durable credential authority",
+            "purpose-specific PRS-only credential-replica contract",
         ),
         (
             "<code>Hash{salt, challenge}</code>",
@@ -30284,7 +30523,7 @@ def validate_main_ipc_credential_mirror_excision_contract(sources):
             "receiver status mutation",
         ),
         (
-            "main receiver credential-storage read",
+            "persistent credential envelope crossing IPC",
             "receiver secret-read mutation",
         ),
         (
@@ -40714,7 +40953,7 @@ def run_source_mutations(sources):
             "ipc_source",
             "crate::server::request_graceful_shutdown_after_listener_failure();",
             "crate::server::request_graceful_shutdown();",
-            "exact seven listener-failure latch producers are absent",
+            "exact eight listener-failure latch producers are absent",
         ),
         (
             "server_source",
@@ -45137,7 +45376,7 @@ def run_source_mutations(sources):
             "ipc_source",
             "if permanent_password_is_set_for_current_process().await {",
             "if { let _ = Config::get_local_permanent_password_storage_and_salt(); permanent_password_is_set_for_current_process().await } {",
-            "main receiver credential-storage read",
+            "persistent credential envelope crossing IPC",
         ),
         (
             "ui_interface_source",
@@ -48293,8 +48532,8 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_source",
-            "    PermanentPasswordSnapshotResult {\n",
-            "    PermanentPasswordSnapshot {\n",
+            "    PasswordRightReady { ready: bool },\n",
+            "    EnsurePasswordRightReady { ready: bool },\n",
             "service IPC response protocol",
         ),
         (
@@ -48335,11 +48574,25 @@ def run_source_mutations(sources):
         ),
         (
             "ipc_source",
-            "c.send_service_request_timeout(\n"
-            "        &ServiceIpcRequest::PermanentPasswordSnapshot {},",
-            "c.send_json_timeout(\n"
-            "        &ServiceIpcRequest::PermanentPasswordSnapshot {},",
-            "typed macOS password snapshot request writer",
+            "    authorize_macos_service_server_snapshot_for_task(authorization, deadline).await?;\n"
+            "    password::remaining_millis(deadline)?;\n"
+            "    let operation_id = hbb_common::uuid::Uuid::new_v4();\n"
+            "    password::send_credential_snapshot_request_unix(&mut stream, operation_id, deadline)",
+            "    authorize_macos_service_server_snapshot_for_task(authorization, deadline).await?;\n"
+            "    password::remaining_millis(deadline)?;\n"
+            "    let operation_id = hbb_common::uuid::Uuid::new_v4();\n"
+            "    c.send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000)",
+            "raw macOS credential request writer",
+        ),
+        (
+            "ipc_source",
+            '            if let Err(clear_err) = Config::set_permanent_password_prs_for_runtime("") {\n'
+            "                log::warn!(\n"
+            '                    "Failed to clear macOS service-owned runtime PRS after snapshot refresh failure: {clear_err}"',
+            '            if let Err(clear_err) = Config::set_permanent_password_storage_for_runtime("", "") {\n'
+            "                log::warn!(\n"
+            '                    "Failed to clear macOS service-owned runtime PRS after snapshot refresh failure: {clear_err}"',
+            "nonpersistent macOS status refresh failure clear",
         ),
         (
             "ipc_source",
@@ -48402,6 +48655,42 @@ def run_source_mutations(sources):
             "R-S11dx/R-S11e-142 — privileged service-control and SAS protocol type",
             "R-S11dx/R-S11e-142 — privileged service protocols remain cross-purpose",
             "service protocol authority hardening ledger",
+        ),
+        (
+            "macos_service_credential_ipc_verifier",
+            "root-helper-proof-before-request and nonpersistent PRS install",
+            "generic-service request and storage-envelope install",
+            "macOS raw credential client proof contract",
+        ),
+        (
+            "verify",
+            "verify-macos-service-credential-ipc.py",
+            "verify-macos-service-credential-ipc-disabled.py",
+            "shared macOS raw credential gate: verify-macos-service-credential-ipc.py",
+        ),
+        (
+            "apple",
+            "verify-macos-service-credential-ipc.py",
+            "verify-macos-service-credential-ipc-disabled.py",
+            "Apple macOS raw credential gate: verify-macos-service-credential-ipc.py",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ep</span>',
+            '<span class="id">R-S11ep-disabled</span>',
+            "macOS raw credential authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>298</td>",
+            "<tr><td>298-disabled</td>",
+            "macOS raw credential authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11ep/R-S11e-177 macOS runtime PRS raw credential authority",
+            "R-S11ep/R-S11e-177 macOS runtime PRS generic serde authority",
+            "macOS raw credential authority hardening ledger",
         ),
         (
             "ipc_source",
@@ -57728,6 +58017,9 @@ def main():
             "smoke_typed_probe": (repo / "examples/smoke_readiness.rs").read_text(encoding="utf-8"),
             "session_probe": (repo / "examples/probe_client.rs").read_text(encoding="utf-8"),
             "ipc_source": (repo / "src/ipc.rs").read_text(encoding="utf-8"),
+            "ipc_password_source": (repo / "src/ipc/password.rs").read_text(
+                encoding="utf-8"
+            ),
             "audio_service_source": (
                 repo / "src/server/audio_service.rs"
             ).read_text(encoding="utf-8"),
@@ -57742,6 +58034,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "linux_password_ipc_validator": (
                 repo / "scripts/verify-linux-service-password-ipc.py"
+            ).read_text(encoding="utf-8"),
+            "macos_service_credential_ipc_verifier": (
+                repo / "scripts/verify-macos-service-credential-ipc.py"
             ).read_text(encoding="utf-8"),
             "macos_helper_binding_validator": (
                 repo / "scripts/verify-macos-helper-build-binding.py"

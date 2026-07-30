@@ -2122,6 +2122,25 @@ pub(crate) struct MacosServiceServerAuthorization {
 }
 
 #[cfg(target_os = "macos")]
+pub(crate) fn macos_peer_process_identity_from_stream<T>(
+    stream: &T,
+    description: &str,
+) -> ResultType<MacosPeerProcessIdentity>
+where
+    T: std::os::unix::io::AsRawFd,
+{
+    let fd = stream.as_raw_fd();
+    Ok(MacosPeerProcessIdentity {
+        uid: peer_uid_from_fd(fd)
+            .ok_or_else(|| anyhow::anyhow!("Failed to resolve {description} uid"))?,
+        pid: peer_pid_from_fd(fd)
+            .ok_or_else(|| anyhow::anyhow!("Failed to resolve {description} effective pid"))?,
+        audit_token: peer_audit_token_from_fd(fd)
+            .ok_or_else(|| anyhow::anyhow!("Failed to resolve {description} audit token"))?,
+    })
+}
+
+#[cfg(target_os = "macos")]
 pub(crate) fn macos_service_server_authorization_snapshot<T>(
     stream: &T,
     context: &'static str,
@@ -2129,16 +2148,8 @@ pub(crate) fn macos_service_server_authorization_snapshot<T>(
 where
     T: std::os::unix::io::AsRawFd,
 {
-    let fd = stream.as_raw_fd();
     Ok(MacosServiceServerAuthorization {
-        identity: MacosPeerProcessIdentity {
-            uid: peer_uid_from_fd(fd)
-                .ok_or_else(|| anyhow::anyhow!("Failed to resolve {context} uid"))?,
-            pid: peer_pid_from_fd(fd)
-                .ok_or_else(|| anyhow::anyhow!("Failed to resolve {context} pid"))?,
-            audit_token: peer_audit_token_from_fd(fd)
-                .ok_or_else(|| anyhow::anyhow!("Failed to resolve {context} audit token"))?,
-        },
+        identity: macos_peer_process_identity_from_stream(stream, context)?,
         context,
     })
 }
@@ -3561,14 +3572,11 @@ where
     T: std::os::unix::io::AsRawFd,
 {
     let fd = stream.as_raw_fd();
+    let peer_uid = peer_uid_from_fd(fd);
     #[cfg(target_os = "linux")]
     let peer_pid = peer_pid_from_fd(fd);
     #[cfg(target_os = "macos")]
-    let macos_peer_identity = match (
-        peer_uid_from_fd(fd),
-        peer_pid_from_fd(fd),
-        peer_audit_token_from_fd(fd),
-    ) {
+    let macos_peer_identity = match (peer_uid, peer_pid_from_fd(fd), peer_audit_token_from_fd(fd)) {
         (Some(uid), Some(pid), Some(audit_token)) => Some(MacosPeerProcessIdentity {
             uid,
             pid,
@@ -3576,7 +3584,6 @@ where
         }),
         _ => None,
     };
-    let peer_uid = peer_uid_from_fd(fd);
     #[cfg(target_os = "macos")]
     let active_uid = active_uid_fresh();
     #[cfg(target_os = "linux")]
@@ -4181,27 +4188,6 @@ where
 
     pub(crate) fn peer_pid(&self) -> Option<u32> {
         peer_pid_from_fd(self.inner.get_ref().as_raw_fd())
-    }
-
-    #[cfg(target_os = "macos")]
-    pub(crate) fn macos_peer_process_identity(
-        &self,
-        description: &str,
-    ) -> ResultType<MacosPeerProcessIdentity> {
-        let fd = self.inner.get_ref().as_raw_fd();
-        let uid = self
-            .peer_uid()
-            .ok_or_else(|| anyhow::anyhow!("Failed to resolve {description} uid"))?;
-        let pid = self
-            .peer_pid()
-            .ok_or_else(|| anyhow::anyhow!("Failed to resolve {description} effective pid"))?;
-        let audit_token = peer_audit_token_from_fd(fd)
-            .ok_or_else(|| anyhow::anyhow!("Failed to resolve {description} audit token"))?;
-        Ok(MacosPeerProcessIdentity {
-            uid,
-            pid,
-            audit_token,
-        })
     }
 }
 

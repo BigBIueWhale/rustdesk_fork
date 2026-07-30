@@ -190,9 +190,9 @@ static SERVICE_IPC_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new()
 const SERVICE_PASSWORD_IPC_TRANSACTION_BUDGET: usize = 4;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 static SERVICE_PASSWORD_IPC_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 const SERVICE_CREDENTIAL_IPC_TRANSACTION_BUDGET: usize = 2;
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 static SERVICE_CREDENTIAL_IPC_TRANSACTION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 const MAIN_PASSWORD_IPC_TRANSACTION_BUDGET: usize = 16;
@@ -301,6 +301,10 @@ static MACOS_SERVICE_IPC_AUTHORIZATION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLoc
 const MACOS_SERVICE_PASSWORD_IPC_AUTHORIZATION_BUDGET: usize = 4;
 #[cfg(target_os = "macos")]
 static MACOS_SERVICE_PASSWORD_IPC_AUTHORIZATION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
+#[cfg(target_os = "macos")]
+const MACOS_SERVICE_CREDENTIAL_IPC_AUTHORIZATION_BUDGET: usize = 2;
+#[cfg(target_os = "macos")]
+static MACOS_SERVICE_CREDENTIAL_IPC_AUTHORIZATION_SLOTS: OnceLock<Arc<Semaphore>> = OnceLock::new();
 
 #[cfg(windows)]
 use std::{
@@ -380,6 +384,26 @@ fn try_acquire_macos_service_password_ipc_authorization_slot() -> Option<OwnedSe
         Err(_) => {
             log::debug!(
                 "Rejected macOS service password IPC connection because password authorization work is at capacity"
+            );
+            None
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn try_acquire_macos_service_credential_ipc_authorization_slot() -> Option<OwnedSemaphorePermit> {
+    let semaphore = MACOS_SERVICE_CREDENTIAL_IPC_AUTHORIZATION_SLOTS
+        .get_or_init(|| {
+            Arc::new(Semaphore::new(
+                MACOS_SERVICE_CREDENTIAL_IPC_AUTHORIZATION_BUDGET,
+            ))
+        })
+        .clone();
+    match semaphore.try_acquire_owned() {
+        Ok(permit) => Some(permit),
+        Err(_) => {
+            log::debug!(
+                "Rejected macOS service credential IPC connection because credential authorization work is at capacity"
             );
             None
         }
@@ -480,7 +504,7 @@ fn try_acquire_service_password_ipc_transaction_slot() -> Option<OwnedSemaphoreP
     }
 }
 
-#[cfg(target_os = "linux")]
+#[cfg(any(target_os = "linux", target_os = "macos"))]
 fn try_acquire_service_credential_ipc_transaction_slot() -> Option<OwnedSemaphorePermit> {
     let semaphore = SERVICE_CREDENTIAL_IPC_TRANSACTION_SLOTS
         .get_or_init(|| Arc::new(Semaphore::new(SERVICE_CREDENTIAL_IPC_TRANSACTION_BUDGET)))
@@ -1300,6 +1324,25 @@ async fn authorize_macos_service_scoped_password_stream_for_task(
 }
 
 #[cfg(target_os = "macos")]
+async fn authorize_macos_service_scoped_credential_stream_for_task(
+    authorization: ipc_auth::ServiceScopedIpcAuthorization,
+    _authorization_slot: OwnedSemaphorePermit,
+    deadline: tokio::time::Instant,
+) -> bool {
+    match run_bounded_macos_security_proof(deadline, "macos-credential-ipc-proof", move || {
+        Ok(ipc_auth::authorize_service_scoped_ipc_authorization_snapshot(authorization))
+    })
+    .await
+    {
+        Ok(authorized) => authorized,
+        Err(err) => {
+            log::error!("macOS service credential IPC authorization task failed: {err}");
+            false
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
 async fn authorize_macos_service_server_snapshot_for_task(
     authorization: ipc_auth::MacosServiceServerAuthorization,
     deadline: tokio::time::Instant,
@@ -1650,8 +1693,6 @@ pub(crate) enum ServiceIpcRequest {
     LivenessProbe {},
     #[cfg(target_os = "macos")]
     EnsurePasswordRightReady {},
-    #[cfg(target_os = "macos")]
-    PermanentPasswordSnapshot {},
     #[cfg(target_os = "windows")]
     SetShareRdp { enabled: bool },
 }
@@ -1663,11 +1704,6 @@ pub(crate) enum ServiceIpcResponse {
     Liveness {},
     #[cfg(target_os = "macos")]
     PasswordRightReady { ready: bool },
-    #[cfg(target_os = "macos")]
-    PermanentPasswordSnapshotResult {
-        storage: String,
-        salt: String,
-    },
     #[cfg(target_os = "windows")]
     ShareRdpSet { accepted: bool },
 }
@@ -3024,7 +3060,7 @@ async fn handle_sensitive_main_ipc_transaction(
 struct PreparedServiceIpc {
     incoming: Incoming,
     password_incoming: Incoming,
-    credential_incoming: Option<Incoming>,
+    credential_incoming: Incoming,
     listener_guard: LocalIpcListenerGuard,
 }
 
@@ -3035,10 +3071,7 @@ async fn prepare_service_ipc(postfix: &str) -> ResultType<PreparedServiceIpc> {
     }
     let incoming = new_listener(postfix).await?;
     let password_incoming = new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX).await?;
-    #[cfg(target_os = "linux")]
-    let credential_incoming = Some(new_listener(password::SERVICE_CREDENTIAL_IPC_POSTFIX).await?);
-    #[cfg(target_os = "macos")]
-    let credential_incoming = None;
+    let credential_incoming = new_listener(password::SERVICE_CREDENTIAL_IPC_POSTFIX).await?;
     let listener_guard = LocalIpcListenerGuard::activate(
         &SERVICE_IPC_LISTENER_STATE,
         "protected service IPC listener",
@@ -3085,12 +3118,7 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                     log::error!("protected _service IPC transaction failed: {err}");
                 }
             }
-            result = async {
-                match credential_incoming.as_mut() {
-                    Some(incoming) => incoming.next().await,
-                    None => std::future::pending().await,
-                }
-            } => {
+            result = credential_incoming.next() => {
                 #[cfg(target_os = "linux")]
                 {
                     let Some(result) = result else {
@@ -3125,7 +3153,51 @@ async fn run_service_ipc(postfix: &str, listeners: PreparedServiceIpc) -> Result
                     ));
                 }
                 #[cfg(target_os = "macos")]
-                let _ = result;
+                {
+                    let Some(result) = result else {
+                        listener_error = Some("protected macOS service credential IPC listener ended unexpectedly".to_owned());
+                        crate::server::request_graceful_shutdown_after_listener_failure();
+                        break;
+                    };
+                    let stream = match result {
+                        Ok(stream) => stream,
+                        Err(err) => {
+                            log::error!("Could not accept protected service credential IPC client: {err}");
+                            continue;
+                        }
+                    };
+                    let Some(permit) = try_acquire_service_credential_ipc_transaction_slot() else {
+                        continue;
+                    };
+                    let Some(authorization_permit) =
+                        try_acquire_macos_service_credential_ipc_authorization_slot()
+                    else {
+                        continue;
+                    };
+                    let authorization =
+                        ipc_auth::service_scoped_ipc_authorization_snapshot_from_stream(
+                            &stream,
+                            password::SERVICE_CREDENTIAL_IPC_POSTFIX,
+                        );
+                    transactions.spawn(async move {
+                        let deadline = tokio::time::Instant::now()
+                            + std::time::Duration::from_millis(
+                                SERVICE_IPC_REQUEST_TIMEOUT_MS,
+                            );
+                        if authorize_macos_service_scoped_credential_stream_for_task(
+                            authorization,
+                            authorization_permit,
+                            deadline,
+                        )
+                        .await
+                        {
+                            handle_macos_service_credential_snapshot_transaction(
+                                stream, permit,
+                            )
+                            .await;
+                        }
+                    });
+                }
             }
             result = password_incoming.next() => {
                 let Some(result) = result else {
@@ -3331,7 +3403,7 @@ async fn handle_linux_service_credential_snapshot_transaction(
         log::warn!("Rejected Linux service credential requester whose identity changed");
         return;
     }
-    let replica = match linux_service_owned_runtime_prs_replica() {
+    let replica = match service_owned_runtime_prs_replica("Linux") {
         Ok(replica) => replica,
         Err(err) => {
             log::error!("Linux root service credential snapshot is unavailable: {err}");
@@ -3342,6 +3414,39 @@ async fn handle_linux_service_credential_snapshot_transaction(
         password::send_credential_replica_unix(&mut stream, operation_id, &replica, deadline).await
     {
         log::trace!("Linux service credential snapshot could not be returned: {err}");
+    }
+}
+
+#[cfg(target_os = "macos")]
+async fn handle_macos_service_credential_snapshot_transaction(
+    mut stream: Conn,
+    _permit: OwnedSemaphorePermit,
+) {
+    let deadline = tokio::time::Instant::now()
+        + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
+    let operation_id =
+        match password::receive_credential_snapshot_request_unix(&mut stream, deadline).await {
+            Ok(operation_id) => operation_id,
+            Err(err) => {
+                log::trace!("macOS service credential snapshot request was rejected: {err}");
+                return;
+            }
+        };
+    if !macos_peer_is_service_owned_server(&stream, deadline).await {
+        log::warn!("Rejected macOS service credential snapshot requester");
+        return;
+    }
+    let replica = match service_owned_runtime_prs_replica("macOS") {
+        Ok(replica) => replica,
+        Err(err) => {
+            log::error!("macOS root service credential snapshot is unavailable: {err}");
+            return;
+        }
+    };
+    if let Err(err) =
+        password::send_credential_replica_unix(&mut stream, operation_id, &replica, deadline).await
+    {
+        log::trace!("macOS service credential snapshot could not be returned: {err}");
     }
 }
 
@@ -3690,9 +3795,15 @@ async fn handle_service_ipc_transaction(mut stream: Connection, postfix: &str) {
         .next_service_request_timeout(SERVICE_IPC_REQUEST_TIMEOUT_MS)
         .await
     {
-        Err(err) => log::trace!("protected _service IPC request closed before a bounded request frame: {err}"),
+        Err(err) => log::trace!(
+            "protected _service IPC request closed before a bounded request frame: {err}"
+        ),
         Ok(Some(request)) => handle_service_request(request, &mut stream).await,
-        Ok(None) => log::warn!("Rejected malformed data on protected _service IPC channel: postfix={}, peer_uid={:?}", postfix, stream.peer_uid()),
+        Ok(None) => log::warn!(
+            "Rejected malformed data on protected _service IPC channel: postfix={}, peer_uid={:?}",
+            postfix,
+            stream.peer_uid()
+        ),
     }
 }
 
@@ -4967,7 +5078,7 @@ async fn commit_service_owned_unattended_password_change(
     if !durable_result {
         return Ok(IpcMutationResult::Rejected);
     }
-    let replica = match linux_service_owned_runtime_prs_replica() {
+    let replica = match service_owned_runtime_prs_replica("Linux") {
         Ok(replica) => replica,
         Err(err) => {
             crate::server::request_graceful_shutdown_after_authority_failure();
@@ -4994,8 +5105,8 @@ async fn commit_service_owned_unattended_password_change(
     }
 }
 
-#[cfg(target_os = "linux")]
-fn linux_service_owned_runtime_prs_replica() -> ResultType<SensitivePassword> {
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn service_owned_runtime_prs_replica(platform: &str) -> ResultType<SensitivePassword> {
     match Config::read_permanent_password_prs() {
         hbb_common::config::PermanentPasswordPrsRead::Available(prs) => {
             Ok(SensitivePassword::new(prs))
@@ -5004,7 +5115,7 @@ fn linux_service_owned_runtime_prs_replica() -> ResultType<SensitivePassword> {
             Ok(SensitivePassword::new(String::new()))
         }
         hbb_common::config::PermanentPasswordPrsRead::UndecryptableStorage => {
-            bail!("Linux root service credential storage is undecryptable")
+            bail!("{platform} root service credential storage is undecryptable")
         }
     }
 }
@@ -5118,24 +5229,25 @@ async fn macos_service_owned_password_authorization_right_is_ready(
 }
 
 #[cfg(target_os = "macos")]
-async fn macos_peer_is_service_owned_server(
-    stream: &Connection,
-    deadline: tokio::time::Instant,
-) -> bool {
-    let identity = match stream
-        .macos_peer_process_identity("macOS service-owned password snapshot requester")
-    {
+async fn macos_peer_is_service_owned_server<T>(stream: &T, deadline: tokio::time::Instant) -> bool
+where
+    T: std::os::unix::io::AsRawFd,
+{
+    let identity = match ipc_auth::macos_peer_process_identity_from_stream(
+        stream,
+        "macOS service-owned credential snapshot requester",
+    ) {
         Ok(identity) => identity,
         Err(err) => {
-            log::warn!("Rejected macOS service-owned password snapshot request: {err}");
+            log::warn!("Rejected macOS service-owned credential snapshot request: {err}");
             return false;
         }
     };
-    let Some(_authorization_slot) = try_acquire_macos_service_password_ipc_authorization_slot()
+    let Some(_authorization_slot) = try_acquire_macos_service_credential_ipc_authorization_slot()
     else {
         return false;
     };
-    match run_bounded_macos_security_proof(deadline, "macos-password-snapshot-proof", move || {
+    match run_bounded_macos_security_proof(deadline, "macos-credential-snapshot-proof", move || {
         Ok(macos_peer_is_service_owned_server_blocking(identity))
     })
     .await
@@ -5143,7 +5255,7 @@ async fn macos_peer_is_service_owned_server(
         Ok(accepted) => accepted,
         Err(err) => {
             log::warn!(
-                "Rejected macOS service-owned password snapshot request: peer proof task failed: {err}"
+                "Rejected macOS service-owned credential snapshot request: peer proof task failed: {err}"
             );
             false
         }
@@ -5163,7 +5275,7 @@ fn macos_peer_is_service_owned_server_blocking(
 ) -> bool {
     if !ipc_auth::macos_peer_is_trusted_installed_app(&identity) {
         log::warn!(
-            "Rejected macOS service-owned password snapshot request: peer code is not the trusted installed app, peer_pid={}",
+            "Rejected macOS service-owned credential snapshot request: peer code is not the trusted installed app, peer_pid={}",
             identity.pid()
         );
         return false;
@@ -5178,19 +5290,19 @@ fn macos_peer_is_service_owned_server_blocking(
         .find(|process| process.pid().as_u32() == peer_pid)
     else {
         log::warn!(
-            "Rejected macOS service-owned password snapshot request: peer process disappeared, peer_pid={peer_pid}"
+            "Rejected macOS service-owned credential snapshot request: peer process disappeared, peer_pid={peer_pid}"
         );
         return false;
     };
     if !process.name().eq_ignore_ascii_case(&app_name) {
         log::warn!(
-            "Rejected macOS service-owned password snapshot request: peer process is not {app_name}, peer_pid={peer_pid}"
+            "Rejected macOS service-owned credential snapshot request: peer process is not {app_name}, peer_pid={peer_pid}"
         );
         return false;
     }
     if !macos_service_owned_server_live_argv_is_expected(process.cmd()) {
         log::warn!(
-            "Rejected macOS service-owned password snapshot request: peer process is not service-owned --server, peer_pid={peer_pid}"
+            "Rejected macOS service-owned credential snapshot request: peer process is not service-owned --server, peer_pid={peer_pid}"
         );
         return false;
     }
@@ -5327,14 +5439,14 @@ fn macos_service_owned_server_launch_agent_plist_content_is_expected(
         }
         Ok(_) => {
             log::warn!(
-                "Rejected macOS service-owned password snapshot request: LaunchAgent plist does not match service-owned server command shape: {}",
+                "Rejected macOS service-owned credential snapshot request: LaunchAgent plist does not match service-owned server command shape: {}",
                 path.display()
             );
             false
         }
         Err(err) => {
             log::warn!(
-                "Rejected macOS service-owned password snapshot request: failed to parse LaunchAgent plist '{}': {err}",
+                "Rejected macOS service-owned credential snapshot request: failed to parse LaunchAgent plist '{}': {err}",
                 path.display()
             );
             false
@@ -5359,7 +5471,7 @@ fn macos_launch_agent_owns_service_owned_server_pid(peer_uid: u32, peer_pid: u32
     let expected_plist_path = std::path::Path::new(&expected_plist);
     if !macos_service_owned_server_launch_agent_plist_is_trusted(expected_plist_path) {
         log::warn!(
-            "Rejected macOS service-owned password snapshot request: LaunchAgent plist is not trusted: {expected_plist}"
+            "Rejected macOS service-owned credential snapshot request: LaunchAgent plist is not trusted: {expected_plist}"
         );
         return false;
     }
@@ -5374,7 +5486,7 @@ fn macos_launch_agent_owns_service_owned_server_pid(peer_uid: u32, peer_pid: u32
         hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(&mut command)
     {
         log::warn!(
-            "Rejected macOS service-owned password snapshot request: failed to constrain launchctl descriptors: {err}"
+            "Rejected macOS service-owned credential snapshot request: failed to constrain launchctl descriptors: {err}"
         );
         return false;
     }
@@ -5382,14 +5494,14 @@ fn macos_launch_agent_owns_service_owned_server_pid(peer_uid: u32, peer_pid: u32
         Ok(output) if output.status.success() => output,
         Ok(output) => {
             log::warn!(
-                "Rejected macOS service-owned password snapshot request: launchctl print {target} failed with status {}",
+                "Rejected macOS service-owned credential snapshot request: launchctl print {target} failed with status {}",
                 output.status
             );
             return false;
         }
         Err(err) => {
             log::warn!(
-                "Rejected macOS service-owned password snapshot request: failed to run launchctl print {target}: {err}"
+                "Rejected macOS service-owned credential snapshot request: failed to run launchctl print {target}: {err}"
             );
             return false;
         }
@@ -5400,44 +5512,11 @@ fn macos_launch_agent_owns_service_owned_server_pid(peer_uid: u32, peer_pid: u32
     let reported_path = macos_launchctl_print_value(&output, "path");
     if reported_pid != Some(peer_pid) || reported_path != Some(expected_plist.as_str()) {
         log::warn!(
-            "Rejected macOS service-owned password snapshot request: LaunchAgent target={target} reported pid={reported_pid:?} path={reported_path:?}"
+            "Rejected macOS service-owned credential snapshot request: LaunchAgent target={target} reported pid={reported_pid:?} path={reported_path:?}"
         );
         return false;
     }
     true
-}
-
-#[cfg(target_os = "macos")]
-async fn handle_macos_service_owned_permanent_password_snapshot_request(stream: &mut Connection) {
-    let deadline = tokio::time::Instant::now()
-        + std::time::Duration::from_millis(SERVICE_IPC_REQUEST_TIMEOUT_MS);
-    let (storage, salt) = if macos_peer_is_service_owned_server(stream, deadline).await {
-        let (storage, salt) = Config::get_local_permanent_password_storage_and_salt();
-        if storage.is_empty() {
-            (String::new(), String::new())
-        } else {
-            (storage, salt)
-        }
-    } else {
-        log::warn!("Rejected macOS service-owned password snapshot request");
-        (String::new(), String::new())
-    };
-    let response_timeout = match password::remaining_millis(deadline) {
-        Ok(timeout) => timeout,
-        Err(err) => {
-            log::warn!("macOS service-owned password snapshot deadline expired: {err}");
-            return;
-        }
-    };
-    if let Err(err) = stream
-        .send_service_response_timeout(
-            &ServiceIpcResponse::PermanentPasswordSnapshotResult { storage, salt },
-            response_timeout,
-        )
-        .await
-    {
-        log::warn!("Failed to send macOS service-owned password snapshot: {err}");
-    }
 }
 
 #[cfg(target_os = "macos")]
@@ -5454,9 +5533,9 @@ async fn refresh_macos_service_owned_permanent_password_snapshot_for_status() ->
         Ok(is_set) => is_set,
         Err(err) => {
             log::debug!("Failed to refresh macOS service-owned password status snapshot: {err}");
-            if let Err(clear_err) = Config::set_permanent_password_storage_for_runtime("", "") {
+            if let Err(clear_err) = Config::set_permanent_password_prs_for_runtime("") {
                 log::warn!(
-                    "Failed to clear macOS service-owned password status snapshot after refresh failure: {clear_err}"
+                    "Failed to clear macOS service-owned runtime PRS after snapshot refresh failure: {clear_err}"
                 );
             }
             false
@@ -5593,10 +5672,6 @@ async fn handle_service_request(request: ServiceIpcRequest, stream: &mut Connect
                 log::warn!("Failed to send macOS password-right readiness result: {err}");
             }
         }
-        #[cfg(target_os = "macos")]
-        ServiceIpcRequest::PermanentPasswordSnapshot {} => {
-            handle_macos_service_owned_permanent_password_snapshot_request(stream).await;
-        }
     }
 }
 
@@ -5638,7 +5713,7 @@ async fn connect_with_path(
     ) {
         bail!("sensitive password endpoints require the raw transport");
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     if postfix == password::SERVICE_CREDENTIAL_IPC_POSTFIX {
         bail!("the service credential endpoint requires the raw transport");
     }
@@ -5864,7 +5939,7 @@ pub async fn connect(ms_timeout: u64, postfix: &str) -> ResultType<ConnectionTmp
     ) {
         bail!("sensitive password endpoints require the raw transport");
     }
-    #[cfg(target_os = "linux")]
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     if postfix == password::SERVICE_CREDENTIAL_IPC_POSTFIX {
         bail!("the service credential endpoint requires the raw transport");
     }
@@ -6915,22 +6990,28 @@ pub async fn set_voice_call_input_device(value: String) -> ResultType<()> {
 pub async fn refresh_macos_service_owned_permanent_password_snapshot(
     ms_timeout: u64,
 ) -> ResultType<bool> {
-    let mut c = connect_service(ms_timeout).await?;
-    c.send_service_request_timeout(
-        &ServiceIpcRequest::PermanentPasswordSnapshot {},
-        ms_timeout,
-    )
-    .await?;
-    match c.next_service_response_timeout(ms_timeout).await? {
-        Some(ServiceIpcResponse::PermanentPasswordSnapshotResult { storage, salt }) => {
-            Config::set_permanent_password_storage_for_runtime(&storage, &salt)?;
-            Ok(Config::has_permanent_password())
-        }
-        _ => {
-            Config::set_permanent_password_storage_for_runtime("", "")?;
-            Ok(false)
-        }
+    if !crate::common::is_service_owned_server_process() {
+        bail!("macOS service credential snapshots require the exact service-owned server role");
     }
+    let deadline = tokio::time::Instant::now() + std::time::Duration::from_millis(ms_timeout);
+    let path = Config::ipc_path_for_uid(0, password::SERVICE_CREDENTIAL_IPC_POSTFIX);
+    let mut stream = timeout(
+        password::remaining_millis(deadline)?,
+        Endpoint::connect(path),
+    )
+    .await??;
+    let authorization = ipc_auth::macos_service_server_authorization_snapshot(
+        &stream,
+        "macOS service credential server",
+    )?;
+    authorize_macos_service_server_snapshot_for_task(authorization, deadline).await?;
+    password::remaining_millis(deadline)?;
+    let operation_id = hbb_common::uuid::Uuid::new_v4();
+    password::send_credential_snapshot_request_unix(&mut stream, operation_id, deadline).await?;
+    let replica =
+        password::receive_credential_replica_unix(&mut stream, operation_id, deadline).await?;
+    Config::set_permanent_password_prs_for_runtime(replica.as_str())?;
+    Ok(!replica.as_str().is_empty())
 }
 
 #[cfg(target_os = "linux")]
@@ -8733,6 +8814,14 @@ mod test {
         let cross_purpose = serde_json::to_vec(&Data::Close).unwrap();
         assert!(serde_json::from_slice::<ServiceIpcRequest>(&cross_purpose).is_err());
         assert!(serde_json::from_slice::<ServiceIpcResponse>(&cross_purpose).is_err());
+
+        let retired_credential_request = br#"{"t":"PermanentPasswordSnapshot"}"#;
+        assert!(
+            serde_json::from_slice::<ServiceIpcRequest>(retired_credential_request).is_err()
+        );
+        assert!(
+            serde_json::from_slice::<ServiceIpcResponse>(retired_credential_request).is_err()
+        );
     }
 
     #[test]

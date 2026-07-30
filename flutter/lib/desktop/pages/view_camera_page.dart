@@ -439,11 +439,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
 
   Widget getBodyForDesktop(BuildContext context) {
     var paints = <Widget>[
-      MouseRegion(onEnter: (evt) {
-        if (!isWeb) bind.hostStopSystemKeyPropagate(stopped: false);
-      }, onExit: (evt) {
-        if (!isWeb) bind.hostStopSystemKeyPropagate(stopped: true);
-      }, child: LayoutBuilder(builder: (context, constraints) {
+      LayoutBuilder(builder: (context, constraints) {
         final c = Provider.of<CanvasModel>(context, listen: false);
         Future.delayed(Duration.zero, () => c.updateViewStyle());
         final peerDisplay = CurrentDisplayState.find(widget.id);
@@ -461,7 +457,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
                   );
                 }),
         );
-      }))
+      })
     ];
 
     paints.add(

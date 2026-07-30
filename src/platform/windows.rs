@@ -618,10 +618,6 @@ extern "C" {
     fn drawOutline(out: *mut u8, in_: *const u8, width: i32, height: i32, out_size: i32);
     fn get_di_bits(out: *mut u8, dc: HDC, hbmColor: HBITMAP, width: i32, height: i32) -> i32;
     fn blank_screen(v: BOOL);
-    fn win32_enable_lowlevel_keyboard(hwnd: HWND) -> i32;
-    fn win32_disable_lowlevel_keyboard(hwnd: HWND);
-    fn win_stop_system_key_propagate(v: BOOL);
-    fn is_win_down() -> BOOL;
     fn is_local_system() -> BOOL;
     fn alloc_console_and_redirect();
     fn is_service_running_w(svc_name: *const u16) -> bool;
@@ -4828,26 +4824,6 @@ pub fn create_shortcut(id: &str) -> ResultType<()> {
             .map_err(|err| anyhow!("IPersistFile::Save failed: {err}"))?;
     }
     Ok(())
-}
-
-pub fn enable_lowlevel_keyboard(hwnd: HWND) {
-    let ret = unsafe { win32_enable_lowlevel_keyboard(hwnd) };
-    if ret != 0 {
-        log::error!("Failure grabbing keyboard");
-        return;
-    }
-}
-
-pub fn disable_lowlevel_keyboard(hwnd: HWND) {
-    unsafe { win32_disable_lowlevel_keyboard(hwnd) };
-}
-
-pub fn stop_system_key_propagate(v: bool) {
-    unsafe { win_stop_system_key_propagate(if v { TRUE } else { FALSE }) };
-}
-
-pub fn get_win_key_state() -> bool {
-    unsafe { is_win_down() == TRUE }
 }
 
 pub fn quit_gui() {

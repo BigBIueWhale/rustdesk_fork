@@ -1861,6 +1861,66 @@ inferred. Native Windows/macOS execution, the clean committed cold R-B2/R-B10 tr
 separately required independent reproduction, and external review remain open; this slice does not
 complete the broader Ralph loop.
 
+**R-S11es/R-S11e-180 Windows viewer keyboard interception authority — SOURCE IMPLEMENTED;
+CONFINED FRB/DART/RUST, SEMANTIC, AND DELIBERATE-MUTATION VERIFICATION GREEN; NATIVE WINDOWS,
+COLD RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW OPEN.**
+Platform: Windows desktop viewer, with cross-platform Flutter bridge cleanup. Endpoint/action: local
+keyboard capture and system-key propagation while a Remote/ViewCamera window gains or loses focus.
+Boundary: the exact active Flutter session's keyboard-grab ownership ↔ a historical process-global
+native hook and HWND/Boolean state.
+
+Current-source and history review proved that `src/platform/windows.cc` retained a TigerVNC-derived
+`WH_KEYBOARD_LL` thread, Sciter target `HWND`, posted-key relay, and process-global Win-key/
+propagation booleans. Its sole product enable-call initialized the Sciter frame in `src/ui.rs`; commit
+`0d2c882` deleted that entire UI. Current Flutter never enabled the hook, but pointer enter/exit and
+Remote-page disposal still called `hostStopSystemKeyPropagate`, which changed only the dormant
+Boolean. `keyboard::legacy_keyboard_mode` and `Session::send_mouse` still read `get_win_key_state`,
+whose value could change only inside that never-started hook. This was live-looking dead behavior,
+redundant global input-interception surface, and a misleading modifier fallback. No hook execution,
+captured input, privilege escalation, exploitation, host modification, or causal relationship to an
+Android/device/connection incident is claimed.
+
+The complete native hook, thread, target window, relay, booleans, and C ABI are deleted. The Rust
+externs and `enable_lowlevel_keyboard`/`disable_lowlevel_keyboard`/
+`stop_system_key_propagate`/`get_win_key_state` wrappers are deleted. The Flutter FFI operation,
+desktop Remote/ViewCamera calls, toggle-only `MouseRegion` wrappers, disposal fallback, and web shim
+are deleted; fresh FRB output therefore has no operation to generate.
+
+Viewer interception remains solely in the existing rdev loop. `change_grab_status` serializes
+`Run`/`Wait` against `GrabOwnerState.owner: Option<u128>` using the full per-window session UUID;
+stale owners cannot release a replacement. The event path updates `MODIFIERS_STATE` for both Meta
+keys before conversion. Legacy-key fallback reads the current OS left- and right-Meta state through
+Enigo and merges it with the event state before special-key decisions and outbound modifiers. Mouse
+fallback likewise queries both keys and then merges the tracked state. No second native hook, compatibility
+alias, constant-result FFI, or ambient Boolean remains. The separate controlled-side privacy-mode
+hook in `src/privacy_mode/win_input.rs` retains its own R-S19a lifecycle and is not part of the
+deleted viewer path.
+
+R-S11es and Appendix C #301 bind the deletion, exact-session replacement owner, modifier sources,
+privacy-hook separation, shared source gate, and independent semantic deliberate-mutation catalog.
+In the immutable Rust 1.75 devcheck image
+`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`,
+numeric UID:GID 1000, networking disabled, read-only root/source, all capabilities dropped,
+no-new-privileges, and bounded resources, the independent semantic verifier passed normally and its
+complete unsliced source-mutation catalog rejected every mutation, including the twelve new
+native/Rust/FFI/Dart/owner/modifier/privacy/gate/requirement/Appendix/ledger fixtures. The extracted
+shared R-S11e-180 gate, changed-shell/Python/HTML syntax, requirements digest, native-codec watch,
+and its adversarial self-test passed under the same confinement.
+
+The canonical locked Dart closure digest
+`a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918` and immutable builder
+`sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`
+freshly generated FRB output in a private source copy, formatted authored/generated Dart with no
+changes, completed Flutter analysis and the lifecycle tests, completed the shipped
+`flutter,unix-file-copy-paste` Rust library check and generated-bridge Rust regressions, and passed
+the Section 19 source gates. The verifier image does not contain the `rustfmt` component, so no
+standalone Rustfmt verdict is claimed; the changed Rust hunks were reviewed directly, passed the
+locked Rust check, and `git diff --check` is clean. No product ran on the host, and no host service,
+listener, firewall, device, or Docker daemon-global state was inspected or modified beyond
+ephemeral, non-privileged, networkless verification containers. Native Windows viewer execution,
+exact clean committed cold R-B2/R-B10 artifacts, separately required independent reproduction, and
+external review remain open; this slice does not complete the broader Ralph loop.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -16340,7 +16400,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-48219b0c8fa14e76d29e20c3771a25e711f6a92ffb3e59e25d080e9c8c6f6f77  requirements.html
+e8cd6e9cf1e2e6cb0c14dd12f8b0094feac3e88fb5ca80fcaa6e9570ccf93f29  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

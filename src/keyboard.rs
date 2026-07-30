@@ -1044,10 +1044,9 @@ pub fn legacy_keyboard_mode(event: &Event, mut key_event: KeyEvent) -> Vec<KeyEv
     #[cfg(not(windows))]
     let ctrl = get_key_state(enigo::Key::Control) || get_key_state(enigo::Key::RightControl);
     let shift = get_key_state(enigo::Key::Shift) || get_key_state(enigo::Key::RightShift);
-    #[cfg(windows)]
-    let command = crate::platform::windows::get_win_key_state();
-    #[cfg(not(windows))]
-    let command = get_key_state(enigo::Key::Meta);
+    let command =
+        get_key_state(enigo::Key::Meta) || get_key_state(enigo::Key::RWin);
+    let (_, _, _, command) = client::get_modifiers_state(false, false, false, command);
     let control_key = match key {
         Key::Alt => Some(ControlKey::Alt),
         Key::AltGr => Some(ControlKey::RAlt),

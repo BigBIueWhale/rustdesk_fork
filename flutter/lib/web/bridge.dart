@@ -55,11 +55,6 @@ class RustdeskImpl {
     throw UnimplementedError("stopGlobalEventStream");
   }
 
-  Future<void> hostStopSystemKeyPropagate(
-      {required bool stopped, dynamic hint}) {
-    throw UnimplementedError("hostStopSystemKeyPropagate");
-  }
-
   int peerGetSessionsCount(
       {required String id, required int connType, dynamic hint}) {
     return 0;

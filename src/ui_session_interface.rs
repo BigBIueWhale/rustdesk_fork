@@ -1281,14 +1281,10 @@ impl<T: InvokeUiSession> Session<T> {
         shift: bool,
         command: bool,
     ) {
-        #[allow(unused_mut)]
-        let mut command = command;
         #[cfg(windows)]
-        {
-            if !command && crate::platform::windows::get_win_key_state() {
-                command = true;
-            }
-        }
+        let command = command
+            || crate::client::get_key_state(enigo::Key::Meta)
+            || crate::client::get_key_state(enigo::Key::RWin);
 
         // Compute event type once using MOUSE_TYPE_MASK for reuse
         let event_type = mask & MOUSE_TYPE_MASK;

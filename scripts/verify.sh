@@ -1939,7 +1939,7 @@ grep -q 'if hr == RPC_E_CHANGED_MODE' src/platform/windows.rs || r_s11d="$r_s11d
 if grep -q 'Err(err) if err.code() == RPC_E_CHANGED_MODE' src/platform/windows.rs || grep -q 'Ok(()) => Ok(Self { uninitialize: true })' src/platform/windows.rs; then
   r_s11d="$r_s11d user-shortcut:com-init-uses-wrong-windows-061-result-shape"
 fi
-create_shortcut_body=$(awk '/^pub fn create_shortcut\(id: &str\)/,/^pub fn enable_lowlevel_keyboard/' src/platform/windows.rs)
+create_shortcut_body=$(awk '/^pub fn create_shortcut\(id: &str\)/,/^pub fn quit_gui/' src/platform/windows.rs)
 echo "$create_shortcut_body" | grep -q 'validate_shortcut_connect_id(id)?' || r_s11d="$r_s11d user-shortcut:id-not-validated"
 echo "$create_shortcut_body" | grep -q 'CoCreateInstance(&ShellLink, None, CLSCTX_INPROC_SERVER)' || r_s11d="$r_s11d user-shortcut:not-native-shelllink"
 echo "$create_shortcut_body" | grep -q 'IPersistFile' || r_s11d="$r_s11d user-shortcut:persistfile-save-missing"
@@ -6261,6 +6261,74 @@ if [ -n "$r_s11e179" ]; then
   rc=1
 else
   echo "  ok  R-S11e-179 Linux/macOS lock through owned physical input only; Windows uses a result-bearing native lock request"
+fi
+
+# (3b-iii-d15) R-S11es/R-S11e-180: the Windows viewer has one
+# exact-session-owned rdev grab. The dormant Sciter HWND hook, ambient Boolean
+# state, Flutter bridge toggle, and toggle-only pointer wrappers are absent.
+echo "== (3b-iii-d15) Windows viewer keyboard interception authority (R-S11es/R-S11e-180) =="
+r_s11e180=
+if grep -Eq 'SetWindowsHookEx|WH_KEYBOARD_LL|win32_(enable|disable)_lowlevel_keyboard|win_stop_system_key_propagate|is_win_down|default_hook_wnd|target_wnd|stop_system_key_propagate|PostThreadMessage' src/platform/windows.cc; then
+  r_s11e180="$r_s11e180 dormant-native-viewer-hook-present"
+fi
+if grep -Eq 'win32_(enable|disable)_lowlevel_keyboard|win_stop_system_key_propagate|is_win_down|enable_lowlevel_keyboard|disable_lowlevel_keyboard|stop_system_key_propagate|get_win_key_state' src/platform/windows.rs src/keyboard.rs src/ui_session_interface.rs; then
+  r_s11e180="$r_s11e180 dormant-rust-viewer-hook-surface-present"
+fi
+if grep -Eq 'host_stop_system_key_propagate|hostStopSystemKeyPropagate' \
+  src/flutter_ffi.rs \
+  flutter/lib/desktop/pages/remote_page.dart \
+  flutter/lib/desktop/pages/view_camera_page.dart \
+  flutter/lib/web/bridge.dart; then
+  r_s11e180="$r_s11e180 dormant-flutter-viewer-hook-surface-present"
+fi
+for grab_binding in \
+  'struct GrabOwnerState {' \
+  'owner: Option<u128>,' \
+  'if gs.owner == Some(session_id) {' \
+  'if gs.owner != Some(session_id) {' \
+  'rdev::grab(func)' \
+  'm.insert(Key::MetaLeft, false);' \
+  'm.insert(Key::MetaRight, false);' \
+  'update_modifiers_state(event);'; do
+  grep -qF "$grab_binding" src/keyboard.rs \
+    || r_s11e180="$r_s11e180 exact-session-grab-or-meta-state-binding-missing"
+done
+legacy_keyboard_body=$(awk '/pub fn legacy_keyboard_mode\(/,/^}/' src/keyboard.rs)
+for legacy_binding in \
+  'get_key_state(enigo::Key::Meta) || get_key_state(enigo::Key::RWin);' \
+  'let (_, _, _, command) = client::get_modifiers_state(false, false, false, command);' \
+  "if chr == 'l' && is_win && command {"; do
+  grep -qF "$legacy_binding" <<<"$legacy_keyboard_body" \
+    || r_s11e180="$r_s11e180 legacy-meta-source-binding-missing"
+done
+viewer_mouse_body=$(awk '/    pub fn send_mouse\(/,/    pub fn reconnect\(/' src/ui_session_interface.rs)
+for mouse_binding in \
+  '|| crate::client::get_key_state(enigo::Key::Meta)' \
+  '|| crate::client::get_key_state(enigo::Key::RWin);' \
+  'keyboard::client::get_modifiers_state(alt, ctrl, shift, command);'; do
+  grep -qF "$mouse_binding" <<<"$viewer_mouse_body" \
+    || r_s11e180="$r_s11e180 mouse-meta-source-binding-missing"
+done
+for privacy_binding in \
+  'SetWindowsHookExA(' \
+  'WH_KEYBOARD_LL' \
+  'UnhookWindowsHookEx(hook_keyboard'; do
+  grep -qF "$privacy_binding" src/privacy_mode/win_input.rs \
+    || r_s11e180="$r_s11e180 separate-privacy-hook-lifecycle-missing"
+done
+grep -qF 'validate_windows_viewer_keyboard_authority_contract(sources)' scripts/verify-verifier-workspace.py \
+  || r_s11e180="$r_s11e180 independent-semantic-verifier-binding-missing"
+grep -qF '<span class="id">R-S11es</span>' requirements.html \
+  || r_s11e180="$r_s11e180 normative-requirement-missing"
+grep -qF '<tr><td>301</td>' requirements.html \
+  || r_s11e180="$r_s11e180 appendix-row-missing"
+grep -qF 'R-S11es/R-S11e-180 Windows viewer keyboard interception authority' HARDENING_STATUS.md \
+  || r_s11e180="$r_s11e180 hardening-ledger-missing"
+if [ -n "$r_s11e180" ]; then
+  echo "  FAIL R-S11e-180 Windows viewer keyboard interception authority:$r_s11e180"
+  rc=1
+else
+  echo "  ok  R-S11e-180 viewer keyboard capture has one exact-session grab; dormant Sciter hook and Flutter toggle are absent"
 fi
 
 # (3b-iii-e) R-S11c-2/R-S11c-3/R-S11g: remote input is connection-owned and bounded. Windows

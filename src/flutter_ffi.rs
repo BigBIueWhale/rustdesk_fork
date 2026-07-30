@@ -125,11 +125,6 @@ pub enum EventToUI {
     Texture(usize, bool), // (display, gpu_texture)
 }
 
-pub fn host_stop_system_key_propagate(_stopped: bool) {
-    #[cfg(windows)]
-    crate::platform::windows::stop_system_key_propagate(_stopped);
-}
-
 // This function is only used to count the number of control sessions.
 pub fn peer_get_sessions_count(id: String, conn_type: i32) -> SyncReturn<usize> {
     let conn_type = if conn_type == ConnType::VIEW_CAMERA as i32 {

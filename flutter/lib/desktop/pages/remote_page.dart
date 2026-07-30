@@ -307,10 +307,6 @@ class _RemotePageState extends State<RemotePage>
     super.dispose();
     debugPrint("REMOTE PAGE dispose session $sessionId ${widget.id}");
 
-    // Defensive cleanup: ensure host system-key propagation is reset even if
-    // MouseRegion.onExit never fired (e.g., tab closed while cursor inside).
-    if (!isWeb) bind.hostStopSystemKeyPropagate(stopped: true);
-
     _pointerLockCenterDebounceTimer?.cancel();
     _pointerLockCenterDebounceTimer = null;
     // Clear callback reference to prevent memory leaks and stale references
@@ -567,38 +563,29 @@ class _RemotePageState extends State<RemotePage>
 
   Widget getBodyForDesktop(BuildContext context) {
     var paints = <Widget>[
-      MouseRegion(
-        onEnter: (evt) {
-          if (!isWeb) bind.hostStopSystemKeyPropagate(stopped: false);
-        },
-        onExit: (evt) {
-          if (!isWeb) bind.hostStopSystemKeyPropagate(stopped: true);
-        },
-        child: _ViewStyleUpdater(
-          canvasModel: _ffi.canvasModel,
-          inputModel: _ffi.inputModel,
-          child: Builder(builder: (context) {
-            final peerDisplay = CurrentDisplayState.find(widget.id);
-            return Obx(
-              () => _ffi.ffiModel.pi.isSet.isFalse
-                  ? Container(color: Colors.transparent)
-                  : Obx(() {
-                      _ffi.textureModel.updateCurrentDisplay(peerDisplay.value);
-                      return ImagePaint(
-                        id: widget.id,
-                        zoomCursor: _zoomCursor,
-                        cursorOverImage: _cursorOverImage,
-                        keyboardEnabled: _keyboardEnabled,
-                        remoteCursorMoved: _remoteCursorMoved,
-                        listenerBuilder: (child) =>
-                            _buildRawTouchAndPointerRegion(
-                                child, enterView, leaveView),
-                        ffi: _ffi,
-                      );
-                    }),
-            );
-          }),
-        ),
+      _ViewStyleUpdater(
+        canvasModel: _ffi.canvasModel,
+        inputModel: _ffi.inputModel,
+        child: Builder(builder: (context) {
+          final peerDisplay = CurrentDisplayState.find(widget.id);
+          return Obx(
+            () => _ffi.ffiModel.pi.isSet.isFalse
+                ? Container(color: Colors.transparent)
+                : Obx(() {
+                    _ffi.textureModel.updateCurrentDisplay(peerDisplay.value);
+                    return ImagePaint(
+                      id: widget.id,
+                      zoomCursor: _zoomCursor,
+                      cursorOverImage: _cursorOverImage,
+                      keyboardEnabled: _keyboardEnabled,
+                      remoteCursorMoved: _remoteCursorMoved,
+                      listenerBuilder: (child) => _buildRawTouchAndPointerRegion(
+                          child, enterView, leaveView),
+                      ffi: _ffi,
+                    );
+                  }),
+          );
+        }),
       )
     ];
 

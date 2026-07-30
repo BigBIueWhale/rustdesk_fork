@@ -227,6 +227,8 @@ pub fn session_add_mobile(
     let _transaction = MOBILE_SESSION_ADD_TRANSACTION
         .lock()
         .map_err(|_| hbb_common::anyhow::anyhow!("mobile session preparation lock was poisoned"))?;
+    #[cfg(target_os = "android")]
+    flutter::wait_for_android_client_owner_drain(&client_owner_id)?;
     session_add(
         &session_id,
         &client_owner_id,
@@ -2492,7 +2494,7 @@ pub mod server_side {
     }
 
     #[no_mangle]
-    pub unsafe extern "system" fn Java_ffi_FFI_closeClientSessions(
+    pub unsafe extern "system" fn Java_ffi_FFI_retireClientSessions(
         env: JNIEnv,
         _class: JClass,
         generation: jlong,
@@ -2510,10 +2512,10 @@ pub mod server_side {
             return 0;
         };
         let (peer_count, ui_count) =
-            crate::flutter::close_android_client_owner(generation, &session_id);
+            crate::flutter::retire_android_client_owner(generation, &session_id);
         if peer_count != 0 || ui_count != 0 {
             log::info!(
-                "Closed {peer_count} Android client peer session(s) ({ui_count} UI handler(s)) for Activity owner generation {generation}"
+                "Retired {peer_count} Android client peer session(s) ({ui_count} UI handler(s)) into the exact background drain for Activity owner generation {generation}"
             );
         }
         i32::try_from(peer_count).unwrap_or(i32::MAX)

@@ -16303,7 +16303,7 @@ def validate_android_voice_call_ownership_contract(sources):
         ),
         (
             "flutter_source",
-            "close_previous_mobile_client_sessions(client_owner_id, session_id)",
+            "take_previous_android_mobile_client_sessions(client_owner_id, session_id)?",
             "Android replacement pre-insertion drain source",
         ),
         (
@@ -16669,8 +16669,8 @@ def validate_android_voice_call_ownership_contract(sources):
         ),
         (
             "android_main_activity",
-            "val closedUnreconciledSessions =\n                FFI.closeClientSessions(owner.generation, owner.sessionId)",
-            "Android unreconciled resume original-owner close source",
+            "val retiredUnreconciledSessions =\n                FFI.retireClientSessions(owner.generation, owner.sessionId)",
+            "Android unreconciled resume original-owner retirement source",
         ),
         (
             "android_voice_call_owner_test",
@@ -16800,6 +16800,7 @@ def validate_android_voice_call_ownership_contract(sources):
             'if !cfg!(any(target_os = "android", target_os = "ios"))',
             "MOBILE_SESSION_ADD_TRANSACTION",
             ".lock()",
+            "flutter::wait_for_android_client_owner_drain(&client_owner_id)?;",
             "session_add(",
             "Ok(())",
         ),
@@ -18127,7 +18128,7 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         sources["verify"],
-        "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs",
+        'and session_add.index("take_previous_android_mobile_client_sessions(client_owner_id, session_id)?")',
         "Android shared mobile replacement-drain gate source",
     )
     require_text(
@@ -18203,7 +18204,7 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
-        '("flutter", "close_previous_mobile_client_sessions(client_owner_id, session_id)", "(0, 0)", "replacement pre-insertion drain"),',
+        '("flutter", "take_previous_android_mobile_client_sessions(client_owner_id, session_id)?", "sessions::ClientOwnerDrain::default()", "replacement pre-insertion drain"),',
         "Android replacement-drain mutation",
     )
     require_text(
@@ -18635,8 +18636,8 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
-        '("activity", "val closedUnreconciledSessions =\\n                FFI.closeClientSessions(owner.generation, owner.sessionId)", "val closedUnreconciledSessions =\\n                FFI.closeClientSessions(resumedOwner.generation, resumedOwner.sessionId)", "unreconciled resume cannot close replacement Rust owner"),',
-        "Android unreconciled resume original-owner close mutation",
+        '("activity", "val retiredUnreconciledSessions =\\n                FFI.retireClientSessions(owner.generation, owner.sessionId)", "val retiredUnreconciledSessions =\\n                FFI.retireClientSessions(resumedOwner.generation, resumedOwner.sessionId)", "unreconciled resume cannot retire replacement Rust owner"),',
+        "Android unreconciled resume original-owner retirement mutation",
     )
     require_text(
         focused,
@@ -19453,6 +19454,411 @@ def validate_android_voice_call_ownership_contract(sources):
         sources["verify"],
         'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4) =="',
         "independent shared controlled-input/audio generation gate label source",
+    )
+
+
+def validate_android_client_lifecycle_drain_contract(sources):
+    focused = sources["android_client_lifecycle_drain_verifier"]
+    try:
+        ast.parse(focused)
+    except SyntaxError as error:
+        raise VerificationError(
+            f"Android lifecycle-drain focused verifier does not parse: {error}"
+        ) from error
+    focused_validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMUTATIONS = (",
+        "Android lifecycle-drain focused validation",
+    )
+    for text, label in (
+        (
+            '"flutter": (repo / "src/flutter.rs").read_text(encoding="utf-8")',
+            "focused Rust lifecycle source loading",
+        ),
+        (
+            '"flutter_ffi": (repo / "src/flutter_ffi.rs").read_text(encoding="utf-8")',
+            "focused JNI lifecycle source loading",
+        ),
+        (
+            '"activity": (android / "MainActivity.kt").read_text(encoding="utf-8")',
+            "focused Activity lifecycle source loading",
+        ),
+        (
+            '"service": (android / "MainService.kt").read_text(encoding="utf-8")',
+            "focused Service lifecycle source loading",
+        ),
+        ("def extract_item(", "focused structural item extraction"),
+        (
+            '"checked nonblocking complete-drain handoff"',
+            "focused nonblocking handoff contract",
+        ),
+        (
+            '"exact drain-before-strict-completion worker"',
+            "focused exact finality-before-ticket contract",
+        ),
+        (
+            '"pre/post-wait exact owner revalidation"',
+            "focused exact admission revalidation contract",
+        ),
+        (
+            '"owner-admitted removal before releasing authority for exact finality"',
+            "focused pre-finality owner removal contract",
+        ),
+        (
+            '"off-component finality then exact-owner revalidation and insertion"',
+            "focused post-finality owner insertion contract",
+        ),
+        (
+            '"lifecycle transition independent of asynchronous mobile replacement finality"',
+            "focused indirect-lock finality contract",
+        ),
+        (
+            '"task-removal exact nonblocking owner retirement"',
+            "focused Service task-removal contract",
+        ),
+        ("MUTATIONS = (", "focused mutation inventory"),
+        ("run_self_test(sources)", "focused mutation dispatch"),
+    ):
+        whole_file_contract = (
+            text in ("def extract_item(", "MUTATIONS = (", "run_self_test(sources)")
+            or "repo /" in text
+            or label.endswith("source loading")
+        )
+        require_text(
+            focused if whole_file_contract else focused_validation,
+            text,
+            label,
+        )
+    for text, label in (
+        ('"exact one-slot drain capacity"', "focused one-slot mutation"),
+        ('"retained drain worker join authority"', "focused retained-worker mutation"),
+        ('"nonblocking lifecycle handoff"', "focused nonblocking-handoff mutation"),
+        (
+            '"owner guard release before prior-mobile finality"',
+            "focused indirect-lock release mutation",
+        ),
+        (
+            '"post-drain exact-owner revalidation"',
+            "focused post-finality revalidation mutation",
+        ),
+        (
+            '"blocked mobile-replacement drain behavior proof"',
+            "focused indirect-lock behavior mutation",
+        ),
+        ('"shared lifecycle-drain gate wiring"', "focused shared-wiring mutation"),
+    ):
+        require_text(focused, text, label)
+
+    rust = sources["flutter_source"]
+    require_text(
+        rust,
+        "const ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY: usize = 1;",
+        "Android lifecycle exact one-slot drain source",
+    )
+    coordinator = extract_between(
+        rust,
+        "struct AndroidClientDrainCoordinator {",
+        "\n#[cfg(any(target_os = \"android\", test))]\nimpl AndroidClientDrainCoordinator",
+        "Android lifecycle process coordinator source",
+    )
+    require_order(
+        coordinator,
+        (
+            "sender: mpsc::SyncSender<AndroidClientDrainRequest>",
+            "progress: Arc<(Mutex<AndroidClientDrainProgress>, Condvar)>",
+            "_worker: std::thread::JoinHandle<()>",
+        ),
+        "Android lifecycle bounded retained coordinator source",
+    )
+    coordinator_impl = extract_between(
+        rust,
+        "impl AndroidClientDrainCoordinator {",
+        "\n#[cfg(any(target_os = \"android\", test))]\nfn run_android_client_drain_worker(",
+        "Android lifecycle coordinator implementation source",
+    )
+    require_order(
+        coordinator_impl,
+        (
+            "mpsc::sync_channel(ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY)",
+            '.name("rustdesk-android-client-drain".to_owned())',
+            "run_android_client_drain_worker(receiver, worker_progress)",
+            "fn lock_progress(",
+            'log::error!("Android client drain progress lock was poisoned")',
+            "std::process::abort()",
+            "progress.issued.checked_add(1)",
+            ".try_send(AndroidClientDrainRequest { ticket, drain })",
+            "while progress.completed < ticket",
+            "completed",
+            ".wait(progress)",
+        ),
+        "Android lifecycle bounded handoff and exact wait source",
+    )
+    coordinator_wait = extract_between(
+        rust,
+        "fn wait(&self, ticket: u64) -> ResultType<()>",
+        "\n}\n\n#[cfg(any(target_os = \"android\", test))]\nfn run_android_client_drain_worker(",
+        "Android lifecycle exact coordinator wait source",
+    )
+    require_exact_count(
+        coordinator_wait,
+        "std::process::abort();",
+        2,
+        "Android lifecycle progress poison fail-stop source",
+    )
+    require_absent(
+        coordinator_impl,
+        ".send(AndroidClientDrainRequest",
+        "Android lifecycle blocking handoff source",
+    )
+    for text, label in (
+        ("wait_timeout", "Android lifecycle false finality timeout source"),
+        ("sleep(", "Android lifecycle completion polling source"),
+    ):
+        require_absent(coordinator_impl, text, label)
+    worker = extract_between(
+        rust,
+        "fn run_android_client_drain_worker(",
+        "\n#[cfg(any(target_os = \"android\", test))]\nlazy_static::lazy_static!",
+        "Android lifecycle exact drain worker source",
+    )
+    require_order(
+        worker,
+        (
+            "receiver.recv()",
+            "std::panic::catch_unwind",
+            "close_client_owner_drain(request.drain)",
+            "progress.completed.checked_add(1) != Some(ticket)",
+            "progress.completed = ticket",
+            "completed.notify_all()",
+        ),
+        "Android lifecycle exact finality-before-completion source",
+    )
+    require_text(
+        rust,
+        "static ref ANDROID_CLIENT_DRAIN_COORDINATOR: AndroidClientDrainCoordinator =",
+        "Android lifecycle process-owned coordinator source",
+    )
+
+    owner_begin = extract_between(
+        rust,
+        "pub fn begin_android_client_owner()",
+        "\n#[cfg(any(target_os = \"android\", test))]\npub fn bind_android_client_owner",
+        "Android lifecycle begin source",
+    )
+    require_order(
+        owner_begin,
+        (
+            "ANDROID_CLIENT_DRAIN_COORDINATOR",
+            "ANDROID_CLIENT_OWNER.write()",
+            "owner.begin(drain_coordinator.latest_ticket())",
+            "sessions::take_sessions_owned_by(&previous_owner)",
+            "drain_coordinator.handoff(",
+            "owner.drain_barrier = drain_barrier",
+            "drop(owner)",
+        ),
+        "Android lifecycle atomic begin/handoff source",
+    )
+    owner_wait = extract_between(
+        rust,
+        "pub fn wait_for_android_client_owner_drain(",
+        "\n#[cfg(any(target_os = \"android\", test))]\npub fn retire_android_client_owner",
+        "Android lifecycle replacement wait source",
+    )
+    require_order(
+        owner_wait,
+        (
+            ".admission_barrier(session_id)",
+            "ANDROID_CLIENT_DRAIN_COORDINATOR.wait(drain_barrier)?",
+            "ANDROID_CLIENT_OWNER.read()",
+            "owner.generation != generation",
+            "owner.admission_barrier(session_id) != Some((generation, drain_barrier))",
+        ),
+        "Android lifecycle exact pre/post wait owner source",
+    )
+    owner_retire = extract_between(
+        rust,
+        "pub fn retire_android_client_owner(",
+        "\n#[cfg(test)]\nmod mobile_session_lifecycle_tests",
+        "Android lifecycle retire source",
+    )
+    require_order(
+        owner_retire,
+        (
+            "ANDROID_CLIENT_DRAIN_COORDINATOR",
+            "ANDROID_CLIENT_OWNER.write()",
+            "owner.retire(generation, session_id)",
+            "sessions::take_sessions_owned_by(session_id)",
+            "drain_coordinator.handoff(",
+            "drop(owner)",
+        ),
+        "Android lifecycle exact retirement/handoff source",
+    )
+    for lifecycle_path, path_label in (
+        (owner_begin, "begin"),
+        (owner_retire, "retire"),
+    ):
+        for text, label in (
+            ("close_client_owner_drain", "inline drain"),
+            ("close_and_join", "inline worker join"),
+            (".wait(", "completion wait"),
+        ):
+            require_absent(
+                lifecycle_path,
+                text,
+                f"Android lifecycle {path_label} {label} source",
+            )
+
+    replacement_take = extract_between(
+        rust,
+        "fn take_previous_android_mobile_client_sessions(",
+        "\n#[cfg(test)]\nfn close_previous_mobile_client_sessions(",
+        "Android prior-mobile removal source",
+    )
+    require_order(
+        replacement_take,
+        (
+            "acquire_android_client_owner(client_owner_id)?",
+            "sessions::take_mobile_sessions_except(client_owner_id, session_id)",
+            "drop(owner_admission)",
+            "Ok(drain)",
+        ),
+        "Android prior-mobile removal and owner release source",
+    )
+    for text, label in (
+        ("close_client_owner_drain", "finality under owner admission"),
+        ("close_and_join", "join under owner admission"),
+    ):
+        require_absent(
+            replacement_take,
+            text,
+            f"Android prior-mobile {label} source",
+        )
+    session_add = extract_between(
+        rust,
+        "pub fn session_add(\n",
+        "\n/// start a session with the given id.",
+        "Android mobile replacement insertion source",
+    )
+    require_order(
+        session_add,
+        (
+            "take_previous_android_mobile_client_sessions(client_owner_id, session_id)?",
+            "close_client_owner_drain(previous_mobile_client_sessions)",
+            "let owner_admission = acquire_android_client_owner(client_owner_id)?",
+            "sessions::insert_session(",
+            "drop(owner_admission)",
+        ),
+        "Android unlocked finality then exact-owner insertion source",
+    )
+    for behavior in (
+        "fn android_lifecycle_retirement_is_nonblocking_and_replacement_waits_for_exact_drain()",
+        "fn android_lifecycle_transition_does_not_wait_for_mobile_replacement_drain()",
+    ):
+        require_text(
+            rust,
+            behavior,
+            f"Android lifecycle blocked-worker behavior source {behavior}",
+        )
+
+    flutter_ffi = sources["flutter_ffi_source"]
+    mobile_add = extract_between(
+        flutter_ffi,
+        "pub fn session_add_mobile(",
+        "\npub fn session_start(",
+        "Android lifecycle asynchronous mobile-add source",
+    )
+    require_order(
+        mobile_add,
+        (
+            "MOBILE_SESSION_ADD_TRANSACTION",
+            ".lock()",
+            "flutter::wait_for_android_client_owner_drain(&client_owner_id)?",
+            "session_add(",
+        ),
+        "Android lifecycle serialized barrier-before-add source",
+    )
+    retirement_jni = extract_between(
+        flutter_ffi,
+        "fn Java_ffi_FFI_retireClientSessions(",
+        "\n    #[no_mangle]\n    pub unsafe extern \"system\" fn Java_ffi_FFI_rebuildDirectServerListener",
+        "Android lifecycle retirement JNI source",
+    )
+    require_order(
+        retirement_jni,
+        (
+            "parse_client_session_owner",
+            "retire_android_client_owner(generation, &session_id)",
+            "Retired {peer_count} Android client peer session(s)",
+        ),
+        "Android lifecycle exact retirement JNI source",
+    )
+    require_absent(
+        flutter_ffi,
+        "Java_ffi_FFI_closeClientSessions",
+        "retired synchronous-close JNI source",
+    )
+    require_text(
+        sources["android_ffi_kt"],
+        "external fun retireClientSessions(generation: Long, sessionId: String): Int",
+        "Android lifecycle typed Kotlin retirement source",
+    )
+    require_absent(
+        sources["android_ffi_kt"],
+        "closeClientSessions",
+        "retired synchronous-close Kotlin source",
+    )
+    require_exact_count(
+        sources["android_main_activity"],
+        "FFI.retireClientSessions(owner.generation, owner.sessionId)",
+        3,
+        "Android lifecycle Activity retirement paths source",
+    )
+    require_text(
+        sources["android_main_service"],
+        "FFI.retireClientSessions(owner.generation, owner.sessionId)",
+        "Android lifecycle Service task-removal retirement source",
+    )
+    require_absent(
+        sources["android_main_activity"] + sources["android_main_service"],
+        "FFI.closeClientSessions",
+        "retired synchronous-close component source",
+    )
+
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11eq</span>',
+        "Android lifecycle normative requirement source",
+    )
+    require_text(
+        sources["requirements"],
+        "MUST NOT</span> retain an owner read guard across predecessor finality",
+        "Android lifecycle indirect-lock prohibition source",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>299</td>",
+        "Android lifecycle Appendix C source",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11eq/R-S11e-178 Android component-thread outgoing-owner retirement",
+        "Android lifecycle hardening ledger source",
+    )
+    require_text(
+        sources["hardening"],
+        "the owner read guard is\nreleased before the off-component `close_and_join`",
+        "Android lifecycle indirect-lock ledger source",
+    )
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-android-client-lifecycle-drain.py --repo . --self-test",
+        "Android lifecycle shared focused-verifier wiring source",
+    )
+    require_text(
+        sources["verify"],
+        "android_lifecycle_transition_does_not_wait_for_mobile_replacement_drain",
+        "Android lifecycle shared indirect-lock behavior gate source",
     )
 
 
@@ -33564,6 +33970,7 @@ def validate_sources(sources):
     validate_unix_listener_incumbent_contract(sources)
     validate_viewer_voice_call_worker_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
+    validate_android_client_lifecycle_drain_contract(sources)
     validate_android_listener_generation_contract(sources)
     validate_android_builder_authority_contract(sources)
     validate_android_builder_image_authority_contract(sources)
@@ -50049,9 +50456,9 @@ def run_source_mutations(sources):
         ),
         (
             "android_main_activity",
-            "val closedUnreconciledSessions =\n                FFI.closeClientSessions(owner.generation, owner.sessionId)",
-            "val closedUnreconciledSessions =\n                FFI.closeClientSessions(resumedOwner.generation, resumedOwner.sessionId)",
-            "Android unreconciled resume original-owner close source",
+            "val retiredUnreconciledSessions =\n                FFI.retireClientSessions(owner.generation, owner.sessionId)",
+            "val retiredUnreconciledSessions =\n                FFI.retireClientSessions(resumedOwner.generation, resumedOwner.sessionId)",
+            "Android unreconciled resume original-owner retirement source",
         ),
         (
             "android_main_activity",
@@ -50100,8 +50507,8 @@ def run_source_mutations(sources):
         ),
         (
             "flutter_source",
-            "close_previous_mobile_client_sessions(client_owner_id, session_id)",
-            "(0, 0)",
+            "take_previous_android_mobile_client_sessions(client_owner_id, session_id)?",
+            "sessions::ClientOwnerDrain::default()",
             "Android replacement pre-insertion drain source",
         ),
         (
@@ -51413,8 +51820,8 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs",
-            "true # replacement-drain shared gate disabled",
+            'and session_add.index("take_previous_android_mobile_client_sessions(client_owner_id, session_id)?")',
+            'and session_add.index("close_previous_mobile_client_sessions(client_owner_id, session_id)")',
             "Android shared mobile replacement-drain gate source",
         ),
         (
@@ -57486,6 +57893,165 @@ def run_source_mutations(sources):
             'and dart_close.count("await _awaitMobileSessionStart(closingSessionId);") >= 0',
             "Android shared close-preparation finality gate source",
         ),
+        (
+            "android_client_lifecycle_drain_verifier",
+            '"checked nonblocking complete-drain handoff"',
+            '"blocking best-effort drain handoff"',
+            "focused nonblocking handoff contract",
+        ),
+        (
+            "android_client_lifecycle_drain_verifier",
+            '"owner-admitted removal before releasing authority for exact finality"',
+            '"owner guard retained through exact finality"',
+            "focused pre-finality owner removal contract",
+        ),
+        (
+            "android_client_lifecycle_drain_verifier",
+            '"off-component finality then exact-owner revalidation and insertion"',
+            '"off-component finality without exact-owner revalidation"',
+            "focused post-finality owner insertion contract",
+        ),
+        (
+            "android_client_lifecycle_drain_verifier",
+            '"blocked mobile-replacement drain behavior proof"',
+            '"unchecked mobile-replacement drain behavior"',
+            "focused indirect-lock behavior mutation",
+        ),
+        (
+            "android_client_lifecycle_drain_verifier",
+            "run_self_test(sources)",
+            "run_self_test_disabled(sources)",
+            "focused mutation dispatch",
+        ),
+        (
+            "flutter_source",
+            "const ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY: usize = 1;",
+            "const ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY: usize = 2;",
+            "Android lifecycle exact one-slot drain source",
+        ),
+        (
+            "flutter_source",
+            "_worker: std::thread::JoinHandle<()>",
+            "_worker: std::thread::Thread",
+            "Android lifecycle bounded retained coordinator source",
+        ),
+        (
+            "flutter_source",
+            ".try_send(AndroidClientDrainRequest { ticket, drain })",
+            ".send(AndroidClientDrainRequest { ticket, drain })",
+            "Android lifecycle bounded handoff and exact wait source",
+        ),
+        (
+            "flutter_source",
+            "fn lock_progress(&self) -> std::sync::MutexGuard<'_, AndroidClientDrainProgress>",
+            "fn lock_progress_disabled(&self) -> std::sync::MutexGuard<'_, AndroidClientDrainProgress>",
+            "Android lifecycle bounded handoff and exact wait source",
+        ),
+        (
+            "flutter_source",
+            'log::error!("Android client drain progress lock was poisoned");\n'
+            "                std::process::abort();\n"
+            "            }\n"
+            "        };\n"
+            "        if ticket > progress.issued",
+            'return Err(anyhow!("Android client drain progress lock was poisoned"));\n'
+            "            }\n"
+            "        };\n"
+            "        if ticket > progress.issued",
+            "Android lifecycle progress poison fail-stop source",
+        ),
+        (
+            "flutter_source",
+            "close_client_owner_drain(request.drain)",
+            "drop(request.drain)",
+            "Android lifecycle exact finality-before-completion source",
+        ),
+        (
+            "flutter_source",
+            "owner.begin(drain_coordinator.latest_ticket())",
+            "owner.begin(0)",
+            "Android lifecycle atomic begin/handoff source",
+        ),
+        (
+            "flutter_source",
+            "ANDROID_CLIENT_DRAIN_COORDINATOR.wait(drain_barrier)?;",
+            "Ok::<(), anyhow::Error>(())?;",
+            "Android lifecycle exact pre/post wait owner source",
+        ),
+        (
+            "flutter_source",
+            "let retired_drain = sessions::take_sessions_owned_by(session_id);",
+            "let retired_drain = sessions::ClientOwnerDrain::default();",
+            "Android lifecycle exact retirement/handoff source",
+        ),
+        (
+            "flutter_source",
+            "drop(owner_admission);\n    Ok(drain)",
+            "Ok(drain)",
+            "Android prior-mobile removal and owner release source",
+        ),
+        (
+            "flutter_source",
+            "let owner_admission = acquire_android_client_owner(client_owner_id)?;\n\n"
+            "    // to-do: check the same id session.",
+            "// post-drain owner revalidation omitted\n\n"
+            "    // to-do: check the same id session.",
+            "Android unlocked finality then exact-owner insertion source",
+        ),
+        (
+            "flutter_source",
+            "fn android_lifecycle_retirement_is_nonblocking_and_replacement_waits_for_exact_drain()",
+            "fn android_lifecycle_retirement_skips_exact_drain()",
+            "Android lifecycle blocked-worker behavior source",
+        ),
+        (
+            "flutter_source",
+            "fn android_lifecycle_transition_does_not_wait_for_mobile_replacement_drain()",
+            "fn android_lifecycle_transition_waits_for_mobile_replacement_drain()",
+            "Android lifecycle blocked-worker behavior source",
+        ),
+        (
+            "flutter_ffi_source",
+            "flutter::wait_for_android_client_owner_drain(&client_owner_id)?;",
+            "// exact Android predecessor barrier omitted",
+            "Android serialized asynchronous mobile-add source",
+        ),
+        (
+            "flutter_ffi_source",
+            "fn Java_ffi_FFI_retireClientSessions(",
+            "fn Java_ffi_FFI_closeClientSessions(",
+            "Android lifecycle retirement JNI source",
+        ),
+        (
+            "android_ffi_kt",
+            "external fun retireClientSessions(generation: Long, sessionId: String): Int",
+            "external fun closeClientSessions(generation: Long, sessionId: String): Int",
+            "Android lifecycle typed Kotlin retirement source",
+        ),
+        (
+            "requirements",
+            "MUST NOT</span> retain an owner read guard across predecessor finality",
+            "MAY</span> retain an owner read guard across predecessor finality",
+            "Android lifecycle indirect-lock prohibition source",
+        ),
+        (
+            "requirements",
+            "<tr><td>299</td>",
+            "<tr><td>299-disabled</td>",
+            "Android lifecycle Appendix C source",
+        ),
+        (
+            "hardening",
+            "R-S11eq/R-S11e-178 Android component-thread outgoing-owner retirement",
+            "R-S11eq-disabled/R-S11e-178 Android component-thread outgoing-owner retirement",
+            "Android lifecycle hardening ledger source",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-android-client-lifecycle-drain.py --repo . --self-test",
+            "true # Android lifecycle focused verifier disabled",
+            "Android lifecycle shared focused-verifier wiring source",
+        ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
     for key, old, new, expected in mutations:
@@ -58268,6 +58834,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "android_voice_call_ownership_verifier": (
                 repo / "scripts/verify-android-voice-call-ownership.py"
+            ).read_text(encoding="utf-8"),
+            "android_client_lifecycle_drain_verifier": (
+                repo / "scripts/verify-android-client-lifecycle-drain.py"
             ).read_text(encoding="utf-8"),
             "android_listener_generation_verifier": (
                 repo / "scripts/verify-android-listener-generation.py"

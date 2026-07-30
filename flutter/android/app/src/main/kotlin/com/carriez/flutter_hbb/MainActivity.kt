@@ -144,9 +144,9 @@ class MainActivity : FlutterActivity() {
             if (!VoiceCallAudioCoordinator.unregisterOutgoingOwner(owner.toVoiceCallOwner())) {
                 Log.e(logTag, "Failed to reconcile outgoing voice-call audio during Activity teardown")
             }
-            val closedSessions = FFI.closeClientSessions(owner.generation, owner.sessionId)
-            if (closedSessions > 0) {
-                Log.i(logTag, "Closed $closedSessions outgoing client peer session(s) for Activity owner ${owner.generation}")
+            val retiredSessions = FFI.retireClientSessions(owner.generation, owner.sessionId)
+            if (retiredSessions > 0) {
+                Log.i(logTag, "Retired $retiredSessions outgoing client peer session(s) for Activity owner ${owner.generation}")
             }
         }
         clientSessionOwner = null
@@ -242,7 +242,7 @@ class MainActivity : FlutterActivity() {
                         val owner = ClientSessionOwner(clientSessionOwnerGeneration, canonicalSessionId)
                         if (!VoiceCallAudioCoordinator.registerOutgoingOwner(owner.toVoiceCallOwner())) {
                             Log.e(logTag, "Rejected stale outgoing voice-call owner registration")
-                            FFI.closeClientSessions(owner.generation, owner.sessionId)
+                            FFI.retireClientSessions(owner.generation, owner.sessionId)
                             result.success(false)
                         } else {
                             clientSessionOwner = owner
@@ -457,12 +457,12 @@ class MainActivity : FlutterActivity() {
             if (!retiredUnreconciledOwner) {
                 Log.d(logTag, "Unreconciled Activity did not own the current voice-call recorder")
             }
-            val closedUnreconciledSessions =
-                FFI.closeClientSessions(owner.generation, owner.sessionId)
-            if (closedUnreconciledSessions > 0) {
+            val retiredUnreconciledSessions =
+                FFI.retireClientSessions(owner.generation, owner.sessionId)
+            if (retiredUnreconciledSessions > 0) {
                 Log.i(
                     logTag,
-                    "Closed $closedUnreconciledSessions session(s) for the exact unreconciled Activity owner",
+                    "Retired $retiredUnreconciledSessions session(s) for the exact unreconciled Activity owner",
                 )
             }
             clientSessionOwner = null

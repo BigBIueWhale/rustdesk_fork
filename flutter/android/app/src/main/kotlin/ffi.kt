@@ -22,7 +22,7 @@ object FFI {
     external fun beginClientSessionOwner(): Long
     external fun registerClientSessionOwner(generation: Long, sessionId: String): Boolean
     external fun resumeClientSessionOwner(generation: Long, sessionId: String): Long
-    external fun closeClientSessions(generation: Long, sessionId: String): Int
+    external fun retireClientSessions(generation: Long, sessionId: String): Int
     external fun rebuildDirectServerListener(generation: Long): Boolean
     external fun onVideoFrameUpdate(generation: Long, buf: ByteBuffer)
     external fun onAudioFrameUpdate(buf: ByteBuffer)

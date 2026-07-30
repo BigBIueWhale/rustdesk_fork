@@ -831,7 +831,7 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "MainActivity.takeStoppedClientSessionOwners()",
             "VoiceCallAudioCoordinator.unregisterOutgoingOwner(owner.toVoiceCallOwner())",
-            "FFI.closeClientSessions(owner.generation, owner.sessionId)",
+            "FFI.retireClientSessions(owner.generation, owner.sessionId)",
         ),
         "task-removal native-before-Rust exact-owner retirement",
     )
@@ -895,7 +895,7 @@ def validate(sources: Dict[str, str]) -> None:
             "FFI.registerClientSessionOwner(clientSessionOwnerGeneration, canonicalSessionId)",
             "val owner = ClientSessionOwner(clientSessionOwnerGeneration, canonicalSessionId)",
             "VoiceCallAudioCoordinator.registerOutgoingOwner(owner.toVoiceCallOwner())",
-            "FFI.closeClientSessions(owner.generation, owner.sessionId)",
+            "FFI.retireClientSessions(owner.generation, owner.sessionId)",
             "clientSessionOwner = owner",
         ),
         "Rust-then-native outgoing-owner admission with rollback",
@@ -930,7 +930,7 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "forgetClientSessionOwner(owner)",
             "VoiceCallAudioCoordinator.unregisterOutgoingOwner(owner.toVoiceCallOwner())",
-            "FFI.closeClientSessions(owner.generation, owner.sessionId)",
+            "FFI.retireClientSessions(owner.generation, owner.sessionId)",
         ),
         "Activity native-before-Rust exact-owner retirement",
     )
@@ -949,8 +949,8 @@ def validate(sources: Dict[str, str]) -> None:
             "resumedOwner.toVoiceCallOwner()",
             "val retiredUnreconciledOwner =",
             "VoiceCallAudioCoordinator.unregisterOutgoingOwner(owner.toVoiceCallOwner())",
-            "val closedUnreconciledSessions =",
-            "FFI.closeClientSessions(owner.generation, owner.sessionId)",
+            "val retiredUnreconciledSessions =",
+            "FFI.retireClientSessions(owner.generation, owner.sessionId)",
             "clientSessionOwner = resumedOwner",
         ),
         "same-isolate Rust-and-recorder Activity resume with exact failure cleanup",
@@ -1012,6 +1012,26 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         flutter,
+        "const ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY: usize = 1;",
+        "one-slot Android client lifecycle drain",
+    )
+    require(
+        flutter,
+        "_worker: std::thread::JoinHandle<()>",
+        "retained Android client lifecycle drain worker",
+    )
+    require(
+        flutter,
+        "fn android_lifecycle_retirement_is_nonblocking_and_replacement_waits_for_exact_drain()",
+        "nonblocking lifecycle and exact replacement-barrier regression",
+    )
+    require(
+        flutter,
+        "fn android_lifecycle_transition_does_not_wait_for_mobile_replacement_drain()",
+        "nonblocking lifecycle during mobile replacement-drain regression",
+    )
+    require(
+        flutter,
         "resume_android_client_owner(first_generation, first_session_id),\n            None",
         "Rust cross-isolate resume refusal regression",
     )
@@ -1045,13 +1065,39 @@ def validate(sources: Dict[str, str]) -> None:
         session_add,
         (
             "client_owner_id: &SessionID",
-            "acquire_android_client_owner(client_owner_id)?",
-            "close_previous_mobile_client_sessions(client_owner_id, session_id)",
+            "take_previous_android_mobile_client_sessions(client_owner_id, session_id)?",
+            "close_client_owner_drain(previous_mobile_client_sessions)",
+            "let owner_admission = acquire_android_client_owner(client_owner_id)?;",
             "sessions::insert_session(",
             "*client_owner_id,",
             "drop(owner_admission)",
         ),
         "owner-admitted replacement drain and insertion",
+    )
+    replacement_take = extract_item(
+        flutter,
+        "fn take_previous_android_mobile_client_sessions(",
+        "Rust Android prior-mobile removal transaction",
+    )
+    require_order(
+        replacement_take,
+        (
+            "acquire_android_client_owner(client_owner_id)?",
+            "sessions::take_mobile_sessions_except(client_owner_id, session_id)",
+            "drop(owner_admission)",
+            "Ok(drain)",
+        ),
+        "Android exact owner removal before unlocked predecessor finality",
+    )
+    forbid(
+        replacement_take,
+        "close_client_owner_drain",
+        "Android predecessor finality under owner admission",
+    )
+    forbid(
+        replacement_take,
+        "close_and_join",
+        "Android predecessor join under owner admission",
     )
     session_start = extract_item(
         flutter, "pub fn session_start_(", "Rust outgoing-session start"
@@ -1174,6 +1220,7 @@ def validate(sources: Dict[str, str]) -> None:
             'if !cfg!(any(target_os = "android", target_os = "ios"))',
             "MOBILE_SESSION_ADD_TRANSACTION",
             ".lock()",
+            "flutter::wait_for_android_client_owner_drain(&client_owner_id)?;",
             "session_add(",
             "&session_id,",
             "&client_owner_id,",
@@ -1609,6 +1656,26 @@ def validate(sources: Dict[str, str]) -> None:
         sources["hardening"],
         "R-S11eo/R-S11e-176",
         "mobile outgoing-session preparation hardening ledger",
+    )
+    require(
+        sources["requirements"],
+        '<span class="id">R-S11eq</span>',
+        "Android component-thread lifecycle-drain requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>299</td>",
+        "Android component-thread lifecycle-drain disposition",
+    )
+    require(
+        sources["hardening"],
+        "R-S11eq/R-S11e-178 Android component-thread outgoing-owner retirement",
+        "Android component-thread lifecycle-drain hardening ledger",
+    )
+    require(
+        sources["verify"],
+        "python3 scripts/verify-android-client-lifecycle-drain.py --repo . --self-test",
+        "shared Android lifecycle-drain focused gate",
     )
     require(
         sources["verify"],
@@ -2595,7 +2662,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["verify"],
-        "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs",
+        "grep -qF 'take_previous_android_mobile_client_sessions(client_owner_id, session_id)?' src/flutter.rs",
         "shared mobile replacement-drain gate",
     )
     require(
@@ -4764,7 +4831,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("activity", "VoiceCallAudioCoordinator.resumeOutgoingOwner(", "VoiceCallAudioCoordinator.registerOutgoingOwner(", "resume exact transfer"),
     ("activity", "val retiredRejectedOwner =\n                VoiceCallAudioCoordinator.unregisterOutgoingOwner(owner.toVoiceCallOwner())", "val retiredRejectedOwner = true", "Rust-rejected resume exact recorder cleanup"),
     ("activity", "val retiredUnreconciledOwner =\n                VoiceCallAudioCoordinator.unregisterOutgoingOwner(owner.toVoiceCallOwner())", "val retiredUnreconciledOwner = true", "unreconciled resume exact recorder cleanup"),
-    ("activity", "val closedUnreconciledSessions =\n                FFI.closeClientSessions(owner.generation, owner.sessionId)", "val closedUnreconciledSessions =\n                FFI.closeClientSessions(resumedOwner.generation, resumedOwner.sessionId)", "unreconciled resume cannot close replacement Rust owner"),
+    ("activity", "val retiredUnreconciledSessions =\n                FFI.retireClientSessions(owner.generation, owner.sessionId)", "val retiredUnreconciledSessions =\n                FFI.retireClientSessions(resumedOwner.generation, resumedOwner.sessionId)", "unreconciled resume cannot retire replacement Rust owner"),
     ("flutter", 'call_main_service_set_by_name_for_generation(\n                    self.service_generation,\n                    "remove_connection"', 'call_main_service_set_by_name(\n                    "remove_connection"', "generation-bound controlled callback"),
     ("flutter", "service_generation: u64", "service_generation: i64", "connection-manager callback generation"),
     ("ui_cm", "        self.ui_handler.remove_connection(id, close);", '        let _ = scrap::android::call_main_service_set_by_name("stop_capture", None, None);\n        self.ui_handler.remove_connection(id, close);', "detached global capture-stop edge"),
@@ -4786,13 +4853,19 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "|| self.session_id.as_ref() != Some(&session_id)", "|| false", "Rust cross-isolate Activity resume refusal"),
     ("flutter", "client_owner_id: Option<SessionID>", "client_owner_id: Option<()>", "stored mobile client-owner association"),
     ("flutter", "acquire_android_client_owner(&client_owner_id)?", "acquire_android_client_owner(&session_id)?", "existing-session owner admission"),
-    ("flutter", "close_previous_mobile_client_sessions(client_owner_id, session_id)", "(0, 0)", "replacement pre-insertion drain"),
+    ("flutter", "take_previous_android_mobile_client_sessions(client_owner_id, session_id)?", "sessions::ClientOwnerDrain::default()", "replacement pre-insertion drain"),
     ("flutter", "sessions::session_has_client_owner(session_id, client_owner_id)", "true", "start-time owner association"),
     ("flutter", "handler_session_id != session_id\n                        || handler.client_owner_id.as_ref() != Some(client_owner_id)", "handler_session_id != session_id\n                        && handler.client_owner_id.as_ref() != Some(client_owner_id)", "exact owner-and-session preservation"),
     ("flutter", "check_remove_unused_displays(None, None, session, &handlers);", "check_remove_unused_displays(None, Some(session_id), session, &handlers);", "replacement display reconciliation includes preserved exact session"),
     ("flutter", "if owned_handler_ids.is_empty() {\n                continue;\n            }\n            if handlers.is_empty() {\n                removed_keys.push(key.clone());\n            } else {\n                check_remove_unused_displays(None, None, session, &handlers);", "if owned_handler_ids.is_empty() {\n                continue;\n            }\n            if handlers.is_empty() {\n                removed_keys.push(key.clone());\n            } else {\n                check_remove_unused_displays(None, Some(client_owner_id), session, &handlers);", "Activity-owner display reconciliation includes all remaining sessions"),
     ("flutter", "excluded_session_id: Option<&SessionID>", "excluded_session_id: &SessionID", "optional display-reconciliation exclusion"),
     ("flutter", "fn stale_mobile_session_close_cannot_select_replacement_from_same_owner()", "fn stale_mobile_session_close_can_select_replacement_from_same_owner()", "same-owner stale-close behavior proof"),
+    ("flutter", "const ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY: usize = 1;", "const ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY: usize = 2;", "one-slot Android client lifecycle drain"),
+    ("flutter", "_worker: std::thread::JoinHandle<()>", "_worker: std::thread::Thread", "retained Android client lifecycle drain worker"),
+    ("flutter", "fn android_lifecycle_retirement_is_nonblocking_and_replacement_waits_for_exact_drain()", "fn android_lifecycle_retirement_may_block_and_replacement_skips_exact_drain()", "nonblocking lifecycle exact-barrier behavior proof"),
+    ("flutter", "drop(owner_admission);\n    Ok(drain)", "Ok(drain)", "owner guard release before prior-mobile finality"),
+    ("flutter", "let owner_admission = acquire_android_client_owner(client_owner_id)?;\n\n    // to-do: check the same id session.", "// post-drain owner revalidation omitted\n\n    // to-do: check the same id session.", "post-drain exact-owner revalidation"),
+    ("flutter", "fn android_lifecycle_transition_does_not_wait_for_mobile_replacement_drain()", "fn android_lifecycle_transition_waits_for_mobile_replacement_drain()", "nonblocking lifecycle during mobile replacement-drain behavior proof"),
     ("flutter_ffi", "client_owner_id: SessionID,", "client_owner_id: String,", "authored dual-identity bridge"),
     ("dart_main", "'register_client_session_owner', gFFI.clientOwnerId.toString())", "'register_client_session_owner', gFFI.sessionId.toString())", "Activity owner registration identity"),
     ("dart_model", "final _mobileClientOwnerId = Uuid().v4obj();", "final _mobileClientOwnerId = SessionID.nil();", "canonical mobile owner UUID"),
@@ -5033,7 +5106,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("hardening", "R-S11ei/R-S11e-153", "R-S11ei-disabled/R-S11e-153", "controlled-input ownership hardening ledger"),
     ("verify", 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4) =="', 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4) =="', "shared controlled-input/audio/status generation ownership gate"),
     ("verify", "android-controlled-input-owner-test.kt", "android-controlled-input-owner-test-disabled.kt", "shared controlled-input behavior fixture gate"),
-    ("verify", "grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs", "true # replacement-drain shared gate disabled", "shared mobile replacement-drain gate"),
+    ("verify", "grep -qF 'take_previous_android_mobile_client_sessions(client_owner_id, session_id)?' src/flutter.rs", "true # replacement-drain shared gate disabled", "shared mobile replacement-drain gate"),
     ("verify", "if [ \"$(grep -cF 'check_remove_unused_displays(None, None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then", "if false; then # post-drain display gate disabled", "shared post-drain display-reconciliation gate"),
     ("dart_verify", "cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1", "true # generated-bridge mobile lifecycle tests disabled", "generated-bridge mobile lifecycle behavior gate"),
     ("dart_verify", "flutter test --no-pub test/mobile_file_session_lifecycle_test.dart", "true # mobile file-session lifecycle test disabled", "mobile file-session lifecycle behavior gate"),
@@ -5076,6 +5149,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter_ffi", "pub fn session_add_mobile(", "pub fn session_add_mobile_sync(", "asynchronous mobile-add entry"),
     ("flutter_ffi", "    conn_token: Option<String>,\n) -> Result<()> {\n    if !cfg!(any(target_os = \"android\", target_os = \"ios\"))", "    conn_token: Option<String>,\n) -> ResultType<()> {\n    if !cfg!(any(target_os = \"android\", target_os = \"ios\"))", "concrete codegen-compatible mobile-add result"),
     ("flutter_ffi", "let _transaction = MOBILE_SESSION_ADD_TRANSACTION\n        .lock()", "let _transaction = MOBILE_SESSION_ADD_TRANSACTION\n        .try_lock()", "complete mobile add transaction serialization"),
+    ("flutter_ffi", "flutter::wait_for_android_client_owner_drain(&client_owner_id)?;", "// Android predecessor drain barrier omitted", "Android lifecycle predecessor drain barrier"),
     ("flutter_ffi", "Synchronous session preparation is unavailable on mobile", "Synchronous session preparation is available on mobile", "synchronous mobile-add refusal"),
     ("flutter_ffi", "Existing-session attachment is unavailable on mobile", "Existing-session attachment is available on mobile", "synchronous mobile-attachment refusal"),
     ("dart_mobile_start_queue", "_pending?.complete(MobileSessionStartDisposition.superseded);", "// superseded pending request retained", "latest-pending replacement"),
@@ -5107,6 +5181,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<span class="id">R-S11eo</span>', '<span class="id">R-S11eo-disabled</span>', "mobile preparation requirement"),
     ("requirements", "<tr><td>297</td>", "<tr><td>297-disabled</td>", "mobile preparation disposition"),
     ("hardening", "R-S11eo/R-S11e-176", "R-S11eo-disabled/R-S11e-176", "mobile preparation hardening ledger"),
+    ("requirements", '<span class="id">R-S11eq</span>', '<span class="id">R-S11eq-disabled</span>', "Android lifecycle-drain requirement"),
+    ("requirements", "<tr><td>299</td>", "<tr><td>299-disabled</td>", "Android lifecycle-drain disposition"),
+    ("hardening", "R-S11eq/R-S11e-178 Android component-thread outgoing-owner retirement", "R-S11eq-disabled/R-S11e-178 Android component-thread outgoing-owner retirement", "Android lifecycle-drain hardening ledger"),
+    ("verify", "python3 scripts/verify-android-client-lifecycle-drain.py --repo . --self-test", "true # Android lifecycle-drain focused gate disabled", "shared Android lifecycle-drain focused gate"),
     ("verify", "grep -qF 'test/mobile_session_start_queue_test.dart' scripts/dart-verify.sh", "true # mobile preparation shared queue gate disabled", "shared mobile preparation queue gate"),
     ("verify", "and session_start.count(\"rollback_failed_session_start(session_id);\") == 2", "and session_start.count(\"rollback_failed_session_start(session_id);\") >= 0", "shared failed-start rollback-count gate"),
     ("verify", "and dart_close.count(\"await _awaitMobileSessionStart(closingSessionId);\") == 2", "and dart_close.count(\"await _awaitMobileSessionStart(closingSessionId);\") >= 0", "shared dual close-preparation finality gate"),

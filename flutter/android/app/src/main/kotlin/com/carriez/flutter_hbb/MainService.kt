@@ -442,9 +442,9 @@ class MainService : Service() {
             if (!VoiceCallAudioCoordinator.unregisterOutgoingOwner(owner.toVoiceCallOwner())) {
                 Log.e(logTag, "Failed to reconcile removed-task voice-call owner ${owner.generation}")
             }
-            val closedSessions = FFI.closeClientSessions(owner.generation, owner.sessionId)
-            if (closedSessions > 0) {
-                Log.i(logTag, "Closed $closedSessions outgoing client peer session(s) for removed task owner ${owner.generation}")
+            val retiredSessions = FFI.retireClientSessions(owner.generation, owner.sessionId)
+            if (retiredSessions > 0) {
+                Log.i(logTag, "Retired $retiredSessions outgoing client peer session(s) for removed task owner ${owner.generation}")
             }
         }
         super.onTaskRemoved(rootIntent)

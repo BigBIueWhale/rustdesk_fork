@@ -420,11 +420,14 @@ Flutter UI owner ↔ the process-static native peer/session table that survives 
 in source: the old argument-free global client drain is deleted. Each Activity allocates a monotonic native
 generation before `super.onCreate`; Dart binds that generation to its isolate-wide UUID before `runApp`; Rust
 admits add/attach/start only while a read-held exact owner binding remains live through table insertion or I/O-loop
-spawn. Owner replacement and exact generation+UUID retirement hold the opposing write lock through the UUID-scoped
-drain, so neither a delayed obsolete Activity/task callback nor a check/use race can retire, insert, start, or close
-the replacement owner's sessions. Starting a replacement generation proactively drains the superseded UUID; task
-removal consumes only owner pairs recorded by stopped Activities. An invalid/missing/stale binding fails closed,
-while `MainService` remains persistent and continues owning only incoming controlled-side service state.
+spawn. Owner replacement and exact generation+UUID retirement hold the opposing write lock through UUID-scoped
+table removal and bounded transfer to the process-owned exact drain coordinator; the replacement generation records
+that completion ticket, and its off-UI mobile-add transaction waits and revalidates it before insertion under
+R-S11eq. Thus neither a delayed obsolete Activity/task callback nor a check/use race can retire, insert, start, or
+close the replacement owner's sessions, while Android's component thread no longer waits for native worker finality.
+Starting a replacement generation proactively retires the superseded UUID; task removal consumes only owner pairs
+recorded by stopped Activities. An invalid/missing/stale binding fails closed, while `MainService` remains
+persistent and continues owning only incoming controlled-side service state.
 Follow-up closure (2026-07-19): a stopped `MainActivity` can remain in Android's back stack while a newer
 instance advances the native generation; returning to that older instance runs `onStart()` without another
 `onCreate()`. It now reconciles only when its isolate UUID is still the exact current native owner. The read-only
@@ -444,11 +447,14 @@ observed shape in which file transfer (a separate session) remained usable but s
 Force Stop terminated the process. Git history places these detach shapes in the fork baseline rather than the
 recent owner-generation work; this is a source-proven mechanism consistent with the report, not yet an on-device
 causal reproduction. Initial start now retains the exact I/O worker. Reconnect and final owner teardown serialize
-through that worker slot, request close, join the old round, and only then admit replacement. The I/O worker in
-turn owns its exact video/audio decoder and voice-capture workers, closes their channels/signals, and transfers
-their exact handles to a bounded fixed completion pool before awaiting them and marking the round disconnected.
-Explicit session close and test cleanup use the same completion sink. The incoming `MainService`, controlled
-listener, projection grant, and capture resources are deliberately unchanged.
+through that worker slot, request close, join the old round, and only then admit replacement. R-S11eq subsequently
+moved Activity/service lifecycle initiation of that exact drain off Android's component thread without weakening
+this finality: the component removes and transfers ownership, while a retained native worker performs the join and
+the replacement add waits its exact completion ticket. The I/O worker in turn owns its exact video/audio decoder
+and voice-capture workers, closes their channels/signals, and transfers their exact handles to a bounded fixed
+completion pool before awaiting them and marking the round disconnected. Explicit route close and test cleanup
+retain their exact completion sinks. The incoming `MainService`, controlled listener, projection grant, and capture
+resources are deliberately unchanged.
 Follow-up correction (2026-07-21), **shared controlled-audio and hard-drop completion ownership**: the broader
 worker audit found one exception to that closure. `start_audio_thread()` still returned only its channel sender and
 discarded the controlled-side voice decoder's `JoinHandle`; accepted format and sender were separate connection
@@ -1708,6 +1714,106 @@ the targeted macOS cfg check cannot prove the native installed-macOS boundary on
 and this slice does not claim it. Exact native installed-macOS behavior, the clean cold R-B2/R-B10
 release transaction, separately required independent reproduction, and external review remain
 open; the broader Ralph loop remains active.
+
+**R-S11eq/R-S11e-178 Android component-thread outgoing-owner retirement — SOURCE AND CONFINED
+SEMANTIC/MUTATION/ANDROID-TARGET GATES VERIFIED 2026-07-30; CURRENT APK/DEVICE/COLD-RELEASE,
+INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.**
+Platform: Android outgoing Flutter viewer in the process deliberately retained by the foreground
+`MainService`. Endpoint/action: `MainActivity` creation/destruction and owner-registration/resume
+failure, `MainService.onTaskRemoved`, JNI client-owner retirement, exact native outgoing-session
+drain, and replacement mobile-session admission. Boundary: Android's shared application/component
+main thread and exact Activity generation/UUID authority ↔ potentially slow outgoing I/O and native
+media-worker finality.
+
+The current-tree audit found that `MainActivity.onCreate` called `beginClientSessionOwner` before
+`super.onCreate`, while Activity teardown/failure and `MainService.onTaskRemoved` called
+`closeClientSessions` directly. Both JNI entries took the `ANDROID_CLIENT_OWNER` write lock,
+removed the exact owner's sessions, and called `Session::close_and_join` before returning. That join
+waits for the outgoing I/O thread, whose shutdown closes and joins its video/audio/voice children.
+R-S11eo moved Dart's mobile-add drain to the normal bridge worker pool, but these direct Kotlin
+lifecycle calls did not traverse that path. Android's official service and responsiveness contracts
+state that service/component callbacks use the application main thread by default and that blocking
+work must leave it. The source therefore proved a component-thread blocking defect. It did not prove
+which exact worker, if any, caused the reported same-host screen-control incident, and it does not
+implicate the controlled-side persistent listener, capture service, host RustDesk, firewall, or
+network state.
+
+Lifecycle JNI now performs an authority transition rather than falsely synchronous cleanup. A
+process-lifetime `AndroidClientDrainCoordinator` is initialized before the owner lock. Under the
+owner write lock, begin/retire advances or validates the exact generation, removes only handlers and
+peer sessions associated with its owner UUID, and uses nonblocking `try_send` to transfer the complete
+`ClientOwnerDrain` to the coordinator. It then returns without joining or waiting. The Kotlin/JNI
+surface is named `retireClientSessions`, and its count means removed from live admission, not
+already joined.
+
+The coordinator retains one named native worker `JoinHandle`, a one-slot synchronous queue, and
+checked monotonic issued/completed ticket state behind one mutex/condition variable. One slot is the
+complete reachable bound: after a live tree is transferred, no replacement can insert another live
+tree until the inherited ticket completes; further Activity transitions can change authority but
+have no second admitted peer tree to queue. Each request owns all removed sessions and handlers.
+The worker emits their exact close events, calls `close_and_join` on every peer tree, performs the
+existing mobile key release, then advances only the next exact ticket and wakes waiters. Worker
+creation/loss, queue failure, ticket exhaustion, panic before finality, poisoned progress, or
+out-of-order completion aborts the process rather than detaching ownership or reporting false
+completion. No finality timeout or per-retirement thread exists.
+
+Each owner generation records the latest issued ticket, including one created by an explicit exact
+retirement before the next Activity begins. A begin that retires its predecessor records that new
+ticket. Android `session_add_mobile`, already a typed asynchronous normal bridge operation under the
+serialized mobile-add mutex, waits for the captured ticket before `session_add`, then revalidates
+that the same generation/UUID still owns admission. Within normal Android `session_add`, prior
+mobile handlers/sessions are removed while holding exact owner admission, the owner read guard is
+released before the off-component `close_and_join`, and the same owner is reacquired/revalidated
+after finality before replacement insertion. The reacquired guard remains through insertion. This
+lock split is mandatory: retaining the read guard across the join would make a lifecycle callback
+waiting for the write guard indirectly wait on native worker finality and would falsify the
+component-thread guarantee. iOS keeps R-S11eo's direct off-UI close/join transaction and has no
+Android lifecycle coordinator.
+
+R-S11eq and Appendix C #299 bind the corrected model. Confined verification used immutable,
+already-present images addressed only by content digest. `scripts/dart-verify.sh` ran the repository's
+audited private-source harness in Debian builder
+`sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`: Flutter bridge
+generation completed; Dart formatting and Flutter analysis were clean; all six selected Flutter test
+files passed; Rust formatting and the shipped `flutter,unix-file-copy-paste` library check passed; all
+ten `flutter::mobile_session_lifecycle_tests` passed, including both new independently blocked-worker
+regressions; the selected clipboard, OS-password, screenshot, controlled-screenshot, video-ack, and
+audio-egress regressions passed; the Dart-layer source gates passed; and the harness proved that the
+live source tree was unchanged.
+
+`scripts/android-rust-check.sh` used Android builder
+`sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2`; its private exact-source
+pre/post checks passed and `cargo ndk` checked the aarch64 Android Rust library with the real generated
+Flutter bridge and release feature selection. This was an Android Rust target/type check, not a
+Gradle/Kotlin APK build. The repository has no narrow Kotlin-only release gate; the established Gradle
+path proceeds to a full release APK, so that unrequested release operation was not substituted for
+source verification.
+
+In verifier image
+`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`, the dedicated Android
+lifecycle-drain baseline passed and all 39 deliberate mutations were rejected; the shared Android
+voice/input/lifecycle ownership baseline passed and all 438 deliberate mutations were rejected; the
+independent workspace baseline and its complete unsliced `--source-mutations-only` catalog passed
+against the exact final source. Shell syntax, in-memory Python parsing, requirements HTML5 parsing and
+both exact derived-hash bindings, native-codec normal/self-test, and `git diff --check` passed.
+Requirements SHA-256 is
+`1843750ba46d5dd61b531d378ed349c87719a81b2abb34ffdfaadbd1423aa9fe`, synchronized to this ledger and
+the native-codec ledger.
+
+Every product/compiler/verifier container ran as numeric UID:GID 1000:1000 with `--pull=never`, no
+network, a read-only root, all capabilities dropped, no-new-privileges, bounded PID/memory/no-swap/CPU/
+descriptor/tmpfs resources, no Docker socket, no host namespace, no device, and no published port.
+Live source was read-only or copied into a private exact-source workspace with checked pre/post
+identity. No root/sudo operation, host RustDesk process/service/configuration action, listener/
+firewall/network inspection or mutation, APK build/sign/install/run, device operation, full
+`scripts/verify.sh`, root fixture, or release transaction was performed.
+
+Current installed APK and physical-device connect → task swipe → relaunch → same-host screen-control/
+Force-Stop reproduction, exact clean committed cold R-B2/R-B10 artifacts, separately required
+independent reproduction, and external review remain open. Source analysis supports an Android
+component-thread lifecycle defect and correction; it still does not establish that this was the exact
+cause of the reported device incident or that other platforms reproduced it. The broader Ralph loop
+remains active.
 
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
@@ -16181,7 +16287,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-5b7899ca14fb949b5f0658b09aed7a31640f1f2d0fcb1c50988c47dd86b5c026  requirements.html
+1843750ba46d5dd61b531d378ed349c87719a81b2abb34ffdfaadbd1423aa9fe  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

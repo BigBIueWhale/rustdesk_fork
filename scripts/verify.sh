@@ -1233,11 +1233,17 @@ else
   rc=1
 fi
 
-echo "== (3b-iii-a1a02) Android exact voice/input ownership (R-S11br/R-S11ei/R-S11ek/R-S11e-84/R-S11e-153/R-S11e-169) =="
+echo "== (3b-iii-a1a02) Android exact voice/input/lifecycle ownership (R-S11br/R-S11ei/R-S11ek/R-S11eq/R-S11e-84/R-S11e-153/R-S11e-169/R-S11e-178) =="
 if python3 scripts/verify-android-voice-call-ownership.py --repo . --self-test; then
   echo "  ok  R-S11e-84/R-S11e-153/R-S11e-169 Android voice/playback capture and controlled input have exact service/session lifecycle owners and bounded process-persistent work"
 else
   echo "  FAIL R-S11e-84/R-S11e-153/R-S11e-169 Android voice/input regained per-event switching, dual recorders, erased service/connection identity, stale owner teardown, unbounded delayed work, or binding-dependent handoff"
+  rc=1
+fi
+if python3 scripts/verify-android-client-lifecycle-drain.py --repo . --self-test; then
+  echo "  ok  R-S11e-178 Android component lifecycle retires exact outgoing owners without waiting on native worker finality"
+else
+  echo "  FAIL R-S11e-178 Android lifecycle retirement regained main-thread joins, detached cleanup, inexact completion, or pre-finality replacement admission"
   rc=1
 fi
 
@@ -10036,9 +10042,9 @@ grep -qF 'external fun resumeClientSessionOwner(generation: Long, sessionId: Str
   || android_client_owner_bad="$android_client_owner_bad no-stopped-activity-resume-jni"
 grep -qF 'fn Java_ffi_FFI_resumeClientSessionOwner(' src/flutter_ffi.rs \
   || android_client_owner_bad="$android_client_owner_bad no-stopped-activity-resume-native-jni"
-grep -qF 'external fun closeClientSessions(generation: Long, sessionId: String): Int' "$ffi_kt" \
+grep -qF 'external fun retireClientSessions(generation: Long, sessionId: String): Int' "$ffi_kt" \
   || android_client_owner_bad="$android_client_owner_bad teardown-not-owner-scoped"
-grep -qF 'FFI.closeClientSessions()' "$ma" "$ms" "$ffi_kt" src/flutter_ffi.rs \
+grep -qF 'FFI.retireClientSessions()' "$ma" "$ms" "$ffi_kt" src/flutter_ffi.rs \
   && android_client_owner_bad="$android_client_owner_bad argument-free-global-close-present"
 grep -qF 'takeStoppedClientSessionOwners()' "$ma" "$ms" \
   || android_client_owner_bad="$android_client_owner_bad task-removal-not-stopped-owner-bound"
@@ -10048,7 +10054,7 @@ grep -qF 'client_owner_id: Option<SessionID>' src/flutter.rs \
   || android_client_owner_bad="$android_client_owner_bad stored-owner-association-missing"
 grep -qF 'take_sessions_owned_by(client_owner_id)' src/flutter.rs \
   || android_client_owner_bad="$android_client_owner_bad teardown-not-owner-association-scoped"
-grep -qF 'close_previous_mobile_client_sessions(client_owner_id, session_id)' src/flutter.rs \
+grep -qF 'take_previous_android_mobile_client_sessions(client_owner_id, session_id)?' src/flutter.rs \
   || android_client_owner_bad="$android_client_owner_bad replacement-pre-insertion-drain-missing"
 grep -qF 'sessions::session_has_client_owner(session_id, client_owner_id)' src/flutter.rs \
   || android_client_owner_bad="$android_client_owner_bad start-owner-association-check-missing"
@@ -10071,8 +10077,16 @@ grep -qF 'android_owner_admission_excludes_a_generation_transition' src/flutter.
   || android_client_owner_bad="$android_client_owner_bad admission-transition-regression-test-missing"
 grep -qF 'stale_android_activity_cannot_reclaim_the_replacement_owner' src/flutter.rs \
   || android_client_owner_bad="$android_client_owner_bad stale-activity-resume-refusal-test-missing"
-grep -qF 'android_owner_transition_joins_outgoing_worker_before_replacement' src/flutter.rs \
-  || android_client_owner_bad="$android_client_owner_bad exact-worker-join-regression-test-missing"
+grep -qF 'android_lifecycle_retirement_is_nonblocking_and_replacement_waits_for_exact_drain' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad nonblocking-lifecycle-exact-drain-regression-test-missing"
+grep -qF 'android_lifecycle_transition_does_not_wait_for_mobile_replacement_drain' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad nonblocking-mobile-replacement-drain-regression-test-missing"
+grep -qF 'const ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY: usize = 1;' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad one-slot-lifecycle-drain-missing"
+grep -qF '_worker: std::thread::JoinHandle<()>' src/flutter.rs \
+  || android_client_owner_bad="$android_client_owner_bad retained-lifecycle-drain-worker-missing"
+grep -qF 'flutter::wait_for_android_client_owner_drain(&client_owner_id)?;' src/flutter_ffi.rs \
+  || android_client_owner_bad="$android_client_owner_bad mobile-add-lifecycle-drain-barrier-missing"
 grep -qF 'session.close_and_join();' src/flutter.rs \
   || android_client_owner_bad="$android_client_owner_bad owner-drain-does-not-join-worker"
 grep -qF 'session.close_and_join();' src/flutter_ffi.rs \
@@ -10352,6 +10366,12 @@ grep -qF '<tr><td>297</td>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad mobile-session-preparation-disposition-missing"
 grep -qF 'R-S11eo/R-S11e-176' HARDENING_STATUS.md \
   || android_client_owner_bad="$android_client_owner_bad mobile-session-preparation-ledger-missing"
+grep -qF '<span class="id">R-S11eq</span>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad Android-lifecycle-drain-requirement-missing"
+grep -qF '<tr><td>299</td>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad Android-lifecycle-drain-disposition-missing"
+grep -qF 'R-S11eq/R-S11e-178 Android component-thread outgoing-owner retirement' HARDENING_STATUS.md \
+  || android_client_owner_bad="$android_client_owner_bad Android-lifecycle-drain-ledger-missing"
 if ! python3 - "$ma" "$ms" "$flutter_main" src/flutter.rs src/flutter_ffi.rs \
   flutter/lib/models/model.dart flutter/lib/models/mobile_session_start_queue.dart \
   flutter/lib/models/session_stream_finality.dart \
@@ -10409,7 +10429,12 @@ dart_start = model[model.index("SessionID start("):model.index("void onEvent2UIR
 dart_close = model[model.index("Future<void> close("):model.index("void setMethodCallHandler(")]
 owner_begin = rust[rust.index("pub fn begin_android_client_owner("):rust.index("pub fn bind_android_client_owner(")]
 owner_resume = rust[rust.index("pub fn resume_android_client_owner("):rust.index("fn acquire_android_client_owner(")]
-owner_close = rust[rust.index("pub fn close_android_client_owner("):rust.index("mod mobile_session_lifecycle_tests")]
+owner_wait = rust[rust.index("pub fn wait_for_android_client_owner_drain("):rust.index("pub fn retire_android_client_owner(")]
+owner_retire = rust[rust.index("pub fn retire_android_client_owner("):rust.index("mod mobile_session_lifecycle_tests")]
+replacement_take = rust[
+    rust.index("fn take_previous_android_mobile_client_sessions("):
+    rust.index("fn close_previous_mobile_client_sessions(")
+]
 registration_failure = run_mobile[
     run_mobile.index("if (ownerRegistered != true)"):
     run_mobile.index("platformFFI.syncAndroidServiceAppDirConfigPath()")
@@ -10428,9 +10453,9 @@ ok = (
         < on_start.index("FFI.resumeClientSessionOwner(owner.generation, owner.sessionId)")
         < on_start.index("clientSessionOwner = resumedOwner")
         < on_start.index("markClientSessionOwnerStarted(resumedOwner)")
-    and "FFI.closeClientSessions(owner.generation, owner.sessionId)" in activity_destroy
+    and "FFI.retireClientSessions(owner.generation, owner.sessionId)" in activity_destroy
     and "for (owner in MainActivity.takeStoppedClientSessionOwners())" in task_removed
-    and "FFI.closeClientSessions(owner.generation, owner.sessionId)" in task_removed
+    and "FFI.retireClientSessions(owner.generation, owner.sessionId)" in task_removed
     and run_mobile.index("final ownerRegistered = await gFFI.invokeMethod(")
         < run_mobile.index("register_client_session_owner")
         < run_mobile.index("gFFI.clientOwnerId.toString()")
@@ -10441,10 +10466,17 @@ ok = (
     and session_add_existed.index("acquire_android_client_owner(&client_owner_id)")
         < session_add_existed.index("sessions::insert_peer_session_id")
         < session_add_existed.index("drop(owner_admission)")
-    and session_add.index("acquire_android_client_owner(client_owner_id)")
-        < session_add.index("close_previous_mobile_client_sessions(client_owner_id, session_id)")
+    and session_add.index("take_previous_android_mobile_client_sessions(client_owner_id, session_id)?")
+        < session_add.index("close_client_owner_drain(previous_mobile_client_sessions)")
+        < session_add.index("let owner_admission = acquire_android_client_owner(client_owner_id)?;")
         < session_add.index("sessions::insert_session")
         < session_add.index("drop(owner_admission)")
+    and replacement_take.index("acquire_android_client_owner(client_owner_id)?")
+        < replacement_take.index("sessions::take_mobile_sessions_except(client_owner_id, session_id)")
+        < replacement_take.index("drop(owner_admission)")
+        < replacement_take.index("Ok(drain)")
+    and "close_client_owner_drain" not in replacement_take
+    and "close_and_join" not in replacement_take
     and session_start.index("acquire_android_client_owner(client_owner_id)")
         < session_start.index("sessions::session_has_client_owner(session_id, client_owner_id)")
         < session_start.index("match session.start_io_thread()")
@@ -10462,6 +10494,7 @@ ok = (
     and 'if !cfg!(any(target_os = "android", target_os = "ios"))' in ffi_add_mobile
     and ffi_add_mobile.index("MOBILE_SESSION_ADD_TRANSACTION")
         < ffi_add_mobile.index(".lock()")
+        < ffi_add_mobile.index("flutter::wait_for_android_client_owner_drain(&client_owner_id)?;")
         < ffi_add_mobile.index("session_add(")
     and ") -> Result<()> {" in ffi_add_mobile
     and "SyncReturn" not in ffi_add_mobile
@@ -10506,19 +10539,35 @@ ok = (
     and "if (_expectedCloseReceived || _unexpectedTerminationReported)" in stream_finality
     and "qualityMonitorModel.checkShowQualityMonitor(sessionId)" not in mobile_remote
     and "qualityMonitorModel.checkShowQualityMonitor(sessionId)" not in mobile_camera
-    and owner_begin.index("ANDROID_CLIENT_OWNER.write()")
-        < owner_begin.index("owner.begin()")
-        < owner_begin.index("close_sessions_owned_by(&previous_owner)")
+    and owner_begin.index("ANDROID_CLIENT_DRAIN_COORDINATOR")
+        < owner_begin.index("ANDROID_CLIENT_OWNER.write()")
+        < owner_begin.index("owner.begin(drain_coordinator.latest_ticket())")
+        < owner_begin.index("sessions::take_sessions_owned_by(&previous_owner)")
+        < owner_begin.index("drain_coordinator.handoff(")
+        < owner_begin.index("owner.drain_barrier = drain_barrier")
         < owner_begin.index("drop(owner)")
+    and "close_sessions_owned_by" not in owner_begin
+    and "close_and_join" not in owner_begin
     and owner_resume.index("ANDROID_CLIENT_OWNER")
         < owner_resume.index(".read()")
         < owner_resume.index(".resume(generation, session_id)")
     and "ANDROID_CLIENT_OWNER.write()" not in owner_resume
     and "close_sessions_owned_by" not in owner_resume
-    and owner_close.index("ANDROID_CLIENT_OWNER.write()")
-        < owner_close.index("owner.retire(generation, session_id)")
-        < owner_close.index("close_sessions_owned_by(session_id)")
-        < owner_close.index("drop(owner)")
+    and owner_wait.index(".admission_barrier(session_id)")
+        < owner_wait.index("ANDROID_CLIENT_DRAIN_COORDINATOR.wait(drain_barrier)?;")
+        < owner_wait.index("ANDROID_CLIENT_OWNER.read()")
+        < owner_wait.index("owner.generation != generation")
+        < owner_wait.index("owner.admission_barrier(session_id) != Some((generation, drain_barrier))")
+    and owner_retire.index("ANDROID_CLIENT_DRAIN_COORDINATOR")
+        < owner_retire.index("ANDROID_CLIENT_OWNER.write()")
+        < owner_retire.index("owner.retire(generation, session_id)")
+        < owner_retire.index("sessions::take_sessions_owned_by(session_id)")
+        < owner_retire.index("drain_coordinator.handoff(")
+        < owner_retire.index("drop(owner)")
+    and "close_sessions_owned_by" not in owner_retire
+    and "close_and_join" not in owner_retire
+    and "android_lifecycle_retirement_is_nonblocking_and_replacement_waits_for_exact_drain" in rust
+    and "android_lifecycle_transition_does_not_wait_for_mobile_replacement_drain" in rust
 )
 raise SystemExit(0 if ok else 1)
 PY

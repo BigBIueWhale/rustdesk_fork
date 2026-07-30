@@ -19,6 +19,8 @@ use serde_json::json;
 use std::ffi::CStr;
 #[cfg(target_os = "windows")]
 use std::io::{Error as IoError, ErrorKind as IoErrorKind};
+#[cfg(any(target_os = "android", test))]
+use std::sync::{mpsc, Condvar, Mutex};
 use std::{
     collections::{HashMap, HashSet},
     ffi::CString,
@@ -63,15 +65,17 @@ lazy_static::lazy_static! {
 struct AndroidClientOwnerState {
     generation: u64,
     session_id: Option<SessionID>,
+    drain_barrier: u64,
 }
 
 impl AndroidClientOwnerState {
-    fn begin(&mut self) -> Option<(u64, Option<SessionID>)> {
+    fn begin(&mut self, drain_barrier: u64) -> Option<(u64, Option<SessionID>)> {
         let generation = self.generation.checked_add(1)?;
         if generation > i64::MAX as u64 {
             return None;
         }
         self.generation = generation;
+        self.drain_barrier = drain_barrier;
         Some((generation, self.session_id.take()))
     }
 
@@ -103,6 +107,11 @@ impl AndroidClientOwnerState {
 
     fn allows(&self, session_id: &SessionID) -> bool {
         self.session_id.as_ref() == Some(session_id)
+    }
+
+    fn admission_barrier(&self, session_id: &SessionID) -> Option<(u64, u64)> {
+        self.allows(session_id)
+            .then_some((self.generation, self.drain_barrier))
     }
 
     fn retire(&mut self, generation: u64, session_id: &SessionID) -> bool {
@@ -1451,9 +1460,6 @@ pub fn session_add(
         bail!("Port forwarding is unavailable on mobile");
     }
 
-    #[cfg(target_os = "android")]
-    let owner_admission = acquire_android_client_owner(client_owner_id)?;
-
     let conn_type = if is_file_transfer {
         ConnType::FILE_TRANSFER
     } else if is_view_camera {
@@ -1475,16 +1481,27 @@ pub fn session_add(
     // Activity/task goes away, and Flutter does not await State.dispose(). Retire every prior
     // mobile connection before insertion. A late close still carries the retired connection UUID
     // and therefore cannot select the replacement connection.
+    #[cfg(target_os = "android")]
+    let previous_mobile_client_sessions =
+        take_previous_android_mobile_client_sessions(client_owner_id, session_id)?;
+    #[cfg(target_os = "ios")]
+    let previous_mobile_client_sessions =
+        sessions::take_mobile_sessions_except(client_owner_id, session_id);
     #[cfg(any(target_os = "android", target_os = "ios"))]
     {
-        let (peer_count, ui_count) =
-            close_previous_mobile_client_sessions(client_owner_id, session_id);
+        let (peer_count, ui_count) = close_client_owner_drain(previous_mobile_client_sessions);
         if peer_count != 0 {
             log::warn!(
                 "Closed {peer_count} prior mobile client peer session(s) ({ui_count} UI handler(s)) before starting a replacement connection"
             );
         }
     }
+
+    // Android may change Activity authority while the off-component preparation above waits for
+    // exact predecessor finality. Reacquire and revalidate only after that wait, then keep the
+    // read guard through insertion so a lifecycle transition cannot cross the new live session.
+    #[cfg(target_os = "android")]
+    let owner_admission = acquire_android_client_owner(client_owner_id)?;
 
     // to-do: check the same id session.
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
@@ -2679,6 +2696,178 @@ fn close_client_owner_drain(
     (peer_count, ui_count)
 }
 
+#[cfg(any(target_os = "android", test))]
+const ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY: usize = 1;
+
+#[cfg(any(target_os = "android", test))]
+#[derive(Default)]
+struct AndroidClientDrainProgress {
+    issued: u64,
+    completed: u64,
+}
+
+#[cfg(any(target_os = "android", test))]
+struct AndroidClientDrainRequest {
+    ticket: u64,
+    drain: sessions::ClientOwnerDrain,
+}
+
+#[cfg(any(target_os = "android", test))]
+struct AndroidClientDrainCoordinator {
+    sender: mpsc::SyncSender<AndroidClientDrainRequest>,
+    progress: Arc<(Mutex<AndroidClientDrainProgress>, Condvar)>,
+    _worker: std::thread::JoinHandle<()>,
+}
+
+#[cfg(any(target_os = "android", test))]
+impl AndroidClientDrainCoordinator {
+    fn new() -> Self {
+        let (sender, receiver) = mpsc::sync_channel(ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY);
+        let progress = Arc::new((
+            Mutex::new(AndroidClientDrainProgress::default()),
+            Condvar::new(),
+        ));
+        let worker_progress = Arc::clone(&progress);
+        let worker = match std::thread::Builder::new()
+            .name("rustdesk-android-client-drain".to_owned())
+            .spawn(move || run_android_client_drain_worker(receiver, worker_progress))
+        {
+            Ok(worker) => worker,
+            Err(error) => {
+                log::error!("failed to create Android client drain worker: {error}");
+                std::process::abort();
+            }
+        };
+        Self {
+            sender,
+            progress,
+            _worker: worker,
+        }
+    }
+
+    fn lock_progress(&self) -> std::sync::MutexGuard<'_, AndroidClientDrainProgress> {
+        match self.progress.0.lock() {
+            Ok(progress) => progress,
+            Err(_) => {
+                log::error!("Android client drain progress lock was poisoned");
+                std::process::abort();
+            }
+        }
+    }
+
+    fn latest_ticket(&self) -> u64 {
+        self.lock_progress().issued
+    }
+
+    fn handoff(&self, drain: sessions::ClientOwnerDrain) -> ((usize, usize), u64) {
+        let counts = (drain.sessions.len(), drain.handlers.len());
+        if counts == (0, 0) {
+            return (counts, self.latest_ticket());
+        }
+
+        let ticket = {
+            let mut progress = self.lock_progress();
+            let Some(ticket) = progress.issued.checked_add(1) else {
+                log::error!("Android client drain ticket space exhausted");
+                std::process::abort();
+            };
+            progress.issued = ticket;
+            ticket
+        };
+        if self
+            .sender
+            .try_send(AndroidClientDrainRequest { ticket, drain })
+            .is_err()
+        {
+            log::error!("Android client drain ownership handoff failed");
+            std::process::abort();
+        }
+        (counts, ticket)
+    }
+
+    fn wait(&self, ticket: u64) -> ResultType<()> {
+        let (progress_lock, completed) = &*self.progress;
+        let mut progress = match progress_lock.lock() {
+            Ok(progress) => progress,
+            Err(_) => {
+                log::error!("Android client drain progress lock was poisoned");
+                std::process::abort();
+            }
+        };
+        if ticket > progress.issued {
+            bail!("Android client drain barrier is not owned by this process");
+        }
+        while progress.completed < ticket {
+            progress = match completed.wait(progress) {
+                Ok(progress) => progress,
+                Err(_) => {
+                    log::error!("Android client drain progress lock was poisoned");
+                    std::process::abort();
+                }
+            };
+        }
+        Ok(())
+    }
+}
+
+#[cfg(any(target_os = "android", test))]
+fn run_android_client_drain_worker(
+    receiver: mpsc::Receiver<AndroidClientDrainRequest>,
+    progress: Arc<(Mutex<AndroidClientDrainProgress>, Condvar)>,
+) -> ! {
+    loop {
+        let request = match receiver.recv() {
+            Ok(request) => request,
+            Err(_) => {
+                log::error!("Android client drain worker lost its process-lifetime owner");
+                std::process::abort();
+            }
+        };
+        let ticket = request.ticket;
+        if std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            close_client_owner_drain(request.drain)
+        }))
+        .is_err()
+        {
+            log::error!("Android client drain worker panicked before exact finality");
+            std::process::abort();
+        }
+
+        let (progress_lock, completed) = &*progress;
+        let mut progress = match progress_lock.lock() {
+            Ok(progress) => progress,
+            Err(_) => {
+                log::error!("Android client drain progress lock was poisoned");
+                std::process::abort();
+            }
+        };
+        if progress.completed.checked_add(1) != Some(ticket) || ticket > progress.issued {
+            log::error!("Android client drain completion order was corrupted");
+            std::process::abort();
+        }
+        progress.completed = ticket;
+        completed.notify_all();
+    }
+}
+
+#[cfg(any(target_os = "android", test))]
+lazy_static::lazy_static! {
+    static ref ANDROID_CLIENT_DRAIN_COORDINATOR: AndroidClientDrainCoordinator =
+        AndroidClientDrainCoordinator::new();
+}
+
+#[cfg(any(target_os = "android", test))]
+fn take_previous_android_mobile_client_sessions(
+    client_owner_id: &SessionID,
+    session_id: &SessionID,
+) -> ResultType<sessions::ClientOwnerDrain> {
+    let owner_admission = acquire_android_client_owner(client_owner_id)?;
+    let drain = sessions::take_mobile_sessions_except(client_owner_id, session_id);
+    drop(owner_admission);
+    Ok(drain)
+}
+
+#[cfg(test)]
 fn close_previous_mobile_client_sessions(
     client_owner_id: &SessionID,
     session_id: &SessionID,
@@ -2689,21 +2878,26 @@ fn close_previous_mobile_client_sessions(
     ))
 }
 
+#[cfg(test)]
 fn close_sessions_owned_by(client_owner_id: &SessionID) -> (usize, usize) {
     close_client_owner_drain(sessions::take_sessions_owned_by(client_owner_id))
 }
 
 #[cfg(any(target_os = "android", test))]
 pub fn begin_android_client_owner() -> Option<u64> {
-    // Keep the owner write lock outside the session table lock. Admission takes the same locks in
-    // this order, so no obsolete add/start can cross the generation transition and land afterward.
+    let drain_coordinator = &*ANDROID_CLIENT_DRAIN_COORDINATOR;
+    // Admission takes the owner and session-table locks in this order. Keep the owner write lock
+    // through exact table removal and bounded handoff so no obsolete add/start can land after the
+    // transition and no replacement can observe an unregistered predecessor drain.
     let mut owner = ANDROID_CLIENT_OWNER.write().unwrap();
-    let (generation, previous_owner) = owner.begin()?;
+    let (generation, previous_owner) = owner.begin(drain_coordinator.latest_ticket())?;
     if let Some(previous_owner) = previous_owner {
-        let (peer_count, ui_count) = close_sessions_owned_by(&previous_owner);
+        let previous_drain = sessions::take_sessions_owned_by(&previous_owner);
+        let ((peer_count, ui_count), drain_barrier) = drain_coordinator.handoff(previous_drain);
+        owner.drain_barrier = drain_barrier;
         if peer_count != 0 || ui_count != 0 {
             log::info!(
-                "Closed {peer_count} superseded Android client peer session(s) ({ui_count} UI handler(s)) before creating Activity owner generation {generation}"
+                "Retired {peer_count} superseded Android client peer session(s) ({ui_count} UI handler(s)) into exact drain ticket {drain_barrier} before creating Activity owner generation {generation}"
             );
         }
     }
@@ -2742,23 +2936,42 @@ fn acquire_android_client_owner(
 }
 
 #[cfg(any(target_os = "android", test))]
-pub fn close_android_client_owner(generation: u64, session_id: &SessionID) -> (usize, usize) {
+pub fn wait_for_android_client_owner_drain(session_id: &SessionID) -> ResultType<()> {
+    let (generation, drain_barrier) = ANDROID_CLIENT_OWNER
+        .read()
+        .unwrap()
+        .admission_barrier(session_id)
+        .ok_or_else(|| anyhow!("Android client session owner is no longer active"))?;
+
+    ANDROID_CLIENT_DRAIN_COORDINATOR.wait(drain_barrier)?;
+
+    let owner = ANDROID_CLIENT_OWNER.read().unwrap();
+    if owner.generation != generation
+        || owner.admission_barrier(session_id) != Some((generation, drain_barrier))
+    {
+        bail!("Android client session owner changed while its predecessor drained");
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "android", test))]
+pub fn retire_android_client_owner(generation: u64, session_id: &SessionID) -> (usize, usize) {
+    let drain_coordinator = &*ANDROID_CLIENT_DRAIN_COORDINATOR;
     let mut owner = ANDROID_CLIENT_OWNER.write().unwrap();
     if !owner.retire(generation, session_id) {
         return (0, 0);
     }
-    let closed = close_sessions_owned_by(session_id);
+    let retired_drain = sessions::take_sessions_owned_by(session_id);
+    let (retired, _) = drain_coordinator.handoff(retired_drain);
     drop(owner);
-    closed
+    retired
 }
 
 #[cfg(test)]
 mod mobile_session_lifecycle_tests {
     use super::*;
-    use std::sync::{
-        atomic::{AtomicBool, Ordering},
-        mpsc, Arc, Mutex,
-    };
+    use std::sync::{atomic::AtomicBool, Arc};
+    use std::time::Duration;
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
 
@@ -2925,12 +3138,20 @@ mod mobile_session_lifecycle_tests {
     }
 
     #[test]
-    fn android_owner_transition_joins_outgoing_worker_before_replacement() {
+    fn android_lifecycle_retirement_is_nonblocking_and_replacement_waits_for_exact_drain() {
         let _guard = TEST_LOCK.lock().unwrap();
         sessions::clear_for_test();
 
+        let generation = begin_android_client_owner().unwrap();
         let owner = SessionID::new_v4();
-        let session = sessions::insert_test_session(owner, "host-control", ConnType::DEFAULT_CONN);
+        assert!(bind_android_client_owner(generation, owner));
+        let session_id = SessionID::new_v4();
+        let session = sessions::insert_test_session_for_owner(
+            session_id,
+            owner,
+            "host-control",
+            ConnType::DEFAULT_CONN,
+        );
         let close_requested = session.close_requested.clone();
         let finished = Arc::new(AtomicBool::new(false));
         let finished_by_worker = finished.clone();
@@ -2946,21 +3167,110 @@ mod mobile_session_lifecycle_tests {
         });
         *session.thread.lock().unwrap() = Some(worker);
 
-        let (cleanup_done_tx, cleanup_done_rx) = mpsc::channel();
-        let cleanup = std::thread::spawn(move || {
-            cleanup_done_tx
-                .send(close_sessions_owned_by(&owner))
+        let (transition_done_tx, transition_done_rx) = mpsc::channel();
+        let transition = std::thread::spawn(move || {
+            transition_done_tx
+                .send(begin_android_client_owner())
                 .unwrap();
         });
-        worker_reached_close_rx.recv().unwrap();
-        assert!(cleanup_done_rx.try_recv().is_err());
+        let replacement_generation = transition_done_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("Activity owner transition blocked on predecessor finality")
+            .expect("replacement Activity owner generation");
+        worker_reached_close_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("exact drain did not close the predecessor worker");
+        transition.join().unwrap();
         assert!(!finished.load(Ordering::Acquire));
 
+        let replacement_owner = SessionID::new_v4();
+        assert!(bind_android_client_owner(
+            replacement_generation,
+            replacement_owner
+        ));
+        let (wait_started_tx, wait_started_rx) = mpsc::channel();
+        let (wait_done_tx, wait_done_rx) = mpsc::channel();
+        let wait = std::thread::spawn(move || {
+            wait_started_tx.send(()).unwrap();
+            wait_done_tx
+                .send(wait_for_android_client_owner_drain(&replacement_owner))
+                .unwrap();
+        });
+        wait_started_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("replacement drain waiter did not start");
+        assert!(
+            wait_done_rx
+                .recv_timeout(Duration::from_millis(100))
+                .is_err(),
+            "replacement admission crossed an incomplete predecessor drain"
+        );
+
         release_worker_tx.send(()).unwrap();
-        assert_eq!(cleanup_done_rx.recv().unwrap(), (1, 1));
-        cleanup.join().unwrap();
+        wait_done_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("replacement drain barrier did not complete")
+            .expect("replacement owner changed while predecessor drained");
+        wait.join().unwrap();
         assert!(finished.load(Ordering::Acquire));
         assert!(session.thread.lock().unwrap().is_none());
+        assert_eq!(
+            retire_android_client_owner(replacement_generation, &replacement_owner),
+            (0, 0)
+        );
+        sessions::clear_for_test();
+    }
+
+    #[test]
+    fn android_lifecycle_transition_does_not_wait_for_mobile_replacement_drain() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        sessions::clear_for_test();
+
+        let generation = begin_android_client_owner().unwrap();
+        let owner = SessionID::new_v4();
+        assert!(bind_android_client_owner(generation, owner));
+        let predecessor_session_id = SessionID::new_v4();
+        let session = sessions::insert_test_session_for_owner(
+            predecessor_session_id,
+            owner,
+            "host-control",
+            ConnType::DEFAULT_CONN,
+        );
+        let close_requested = session.close_requested.clone();
+        let (worker_reached_close_tx, worker_reached_close_rx) = mpsc::channel();
+        let (release_worker_tx, release_worker_rx) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            while !close_requested.load(Ordering::Acquire) {
+                std::thread::yield_now();
+            }
+            worker_reached_close_tx.send(()).unwrap();
+            release_worker_rx.recv().unwrap();
+        });
+        *session.thread.lock().unwrap() = Some(worker);
+
+        let replacement_session_id = SessionID::new_v4();
+        let predecessor_drain =
+            take_previous_android_mobile_client_sessions(&owner, &replacement_session_id)
+                .expect("active Android owner");
+        let cleanup = std::thread::spawn(move || close_client_owner_drain(predecessor_drain));
+        worker_reached_close_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("mobile replacement drain did not close its predecessor worker");
+
+        let (transition_done_tx, transition_done_rx) = mpsc::channel();
+        let transition = std::thread::spawn(move || {
+            transition_done_tx
+                .send(begin_android_client_owner())
+                .unwrap();
+        });
+        transition_done_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("Activity owner transition waited on mobile replacement finality")
+            .expect("replacement Activity owner generation");
+        transition.join().unwrap();
+
+        release_worker_tx.send(()).unwrap();
+        assert_eq!(cleanup.join().unwrap(), (1, 1));
         sessions::clear_for_test();
     }
 
@@ -3030,7 +3340,7 @@ mod mobile_session_lifecycle_tests {
         let mut owners = AndroidClientOwnerState::default();
         let old_session_id = SessionID::new_v4();
         let new_session_id = SessionID::new_v4();
-        let (old_generation, previous) = owners.begin().unwrap();
+        let (old_generation, previous) = owners.begin(0).unwrap();
         assert!(previous.is_none());
         assert!(owners.bind(old_generation, old_session_id));
         assert!(owners.allows(&old_session_id));
@@ -3045,7 +3355,7 @@ mod mobile_session_lifecycle_tests {
             "host-old-files",
             ConnType::FILE_TRANSFER,
         );
-        let (new_generation, previous) = owners.begin().unwrap();
+        let (new_generation, previous) = owners.begin(0).unwrap();
         assert_eq!(previous, Some(old_session_id));
         assert_eq!(close_sessions_owned_by(&previous.unwrap()), (2, 2));
         assert!(old_control.close_requested.load(Ordering::Acquire));

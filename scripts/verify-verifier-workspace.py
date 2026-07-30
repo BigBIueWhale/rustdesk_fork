@@ -15582,8 +15582,8 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android owner-associated worker-start contract",
         ),
         (
-            '"fresh mobile connection and captured event-stream identity"',
-            "Android fresh connection/event-epoch contract",
+            '"fresh mobile identity, asynchronous mobile admission, and desktop start"',
+            "Android asynchronous mobile admission contract",
         ),
         (
             '"exact state-persist then native-close and stale shared-model refusal"',
@@ -15592,6 +15592,58 @@ def validate_android_voice_call_ownership_contract(sources):
         (
             '"both stale-entry and persisted-current exact native closes"',
             "Android dual exact-close count contract",
+        ),
+        (
+            '"false/error initial worker-start rollback"',
+            "Android failed-start dual rollback contract",
+        ),
+        (
+            '"normal-close marker that would hide failed-start stream error"',
+            "Android failed-start visible-error contract",
+        ),
+        (
+            '"serialized mobile replacement drain and insertion bridge"',
+            "Android asynchronous serialized mobile-add contract",
+        ),
+        (
+            '"bounded latest-pending-wins admission"',
+            "Android bounded latest-wins start contract",
+        ),
+        (
+            '"exact pending cancellation before running-finality lookup"',
+            "Android exact pending-or-running finality contract",
+        ),
+        (
+            '"running close remains incomplete before native finality"',
+            "Android admitted-running close-finality behavior contract",
+        ),
+        (
+            '"expected-close versus unexpected-termination finality"',
+            "Android stream-finality discriminator contract",
+        ),
+        (
+            '"off-UI add, stale exact close, stream start, and post-add option read"',
+            "Android off-UI preparation ordering contract",
+        ),
+        (
+            '"exact pending cancellation or running-preparation wait"',
+            "Android exact preparation close-wait contract",
+        ),
+        (
+            '"current-exact bounded visible failure and native retirement"',
+            "Android visible exact stream-failure contract",
+        ),
+        (
+            '"expected close and one-shot error/end visibility"',
+            "Android error/end stream listener contract",
+        ),
+        (
+            '"both exact mobile close paths await or cancel preparation"',
+            "Android dual close-preparation finality contract",
+        ),
+        (
+            '"generated normal worker-pool mobile-add gate"',
+            "Android generated asynchronous bridge contract",
         ),
         (
             '"complete pre-rotation reusable-model reset"',
@@ -15849,6 +15901,56 @@ def validate_android_voice_call_ownership_contract(sources):
         )
         require_text(source, text, label)
 
+    for text, label in (
+        (
+            '"failed-start normal-close marker refusal"',
+            "Android focused failed-start marker mutation",
+        ),
+        (
+            '"complete mobile add transaction serialization"',
+            "Android focused mobile-add serialization mutation",
+        ),
+        (
+            '"unbounded mobile-start backlog refusal"',
+            "Android focused bounded-start mutation",
+        ),
+        (
+            '"running exact-finality lookup"',
+            "Android focused running-finality mutation",
+        ),
+        (
+            '"expected-close stream termination suppression"',
+            "Android focused stream-finality mutation",
+        ),
+        (
+            '"off-UI mobile session add"',
+            "Android focused asynchronous-add mutation",
+        ),
+        (
+            '"stale-entry mobile close preparation finality"',
+            "Android focused close-finality mutation",
+        ),
+        (
+            '"session stream error handler"',
+            "Android focused stream-error mutation",
+        ),
+        (
+            '"generated asynchronous mobile-add gate"',
+            "Android focused generated-bridge mutation",
+        ),
+        (
+            '"shared dual close-preparation finality gate"',
+            "Android focused shared-gate mutation",
+        ),
+    ):
+        require_text(focused, text, label)
+    require_exact_count(
+        focused,
+        '"shared dual close-preparation finality gate"',
+        2,
+        "Android focused shared-gate mutation cardinality",
+    )
+
     for key, text, label in (
         (
             "android_voice_call_owner_state",
@@ -15972,6 +16074,21 @@ def validate_android_voice_call_ownership_contract(sources):
         ),
         (
             "flutter_source",
+            "match session.start_io_thread()",
+            "Android fallible outgoing worker-start transaction source",
+        ),
+        (
+            "flutter_source",
+            "fn rollback_failed_session_start(session_id: &SessionID)",
+            "Android exact failed-start rollback source",
+        ),
+        (
+            "flutter_source",
+            "fn failed_session_start_rolls_back_and_joins_only_the_exact_session()",
+            "Android exact failed-start rollback behavior source",
+        ),
+        (
+            "flutter_source",
             "excluded_session_id: Option<&SessionID>",
             "Android optional display-reconciliation exclusion source",
         ),
@@ -15979,6 +16096,26 @@ def validate_android_voice_call_ownership_contract(sources):
             "flutter_source",
             "fn stale_mobile_session_close_cannot_select_replacement_from_same_owner()",
             "Android stale-close replacement regression source",
+        ),
+        (
+            "flutter_ffi_source",
+            "static ref MOBILE_SESSION_ADD_TRANSACTION: Mutex<()> = Mutex::new(());",
+            "Android serialized mobile-add transaction source",
+        ),
+        (
+            "flutter_ffi_source",
+            "pub fn session_add_mobile(",
+            "Android asynchronous mobile-add bridge source",
+        ),
+        (
+            "flutter_ffi_source",
+            "Synchronous session preparation is unavailable on mobile",
+            "Android synchronous mobile-add refusal source",
+        ),
+        (
+            "flutter_ffi_source",
+            "Existing-session attachment is unavailable on mobile",
+            "Android synchronous mobile-attachment refusal source",
         ),
         (
             "model_dart",
@@ -15999,6 +16136,71 @@ def validate_android_voice_call_ownership_contract(sources):
             "model_dart",
             "mobileReset(previousSessionId);",
             "Android pre-rotation exact-session model reset source",
+        ),
+        (
+            "model_dart",
+            "await bind.sessionAddMobile(",
+            "Android off-UI mobile-add source",
+        ),
+        (
+            "model_dart",
+            "_mobileSessionStarts.cancelPendingOrGetRunning(",
+            "Android exact pending-or-running close source",
+        ),
+        (
+            "model_dart",
+            "await _closeNativeSession(request.sessionId);",
+            "Android stale preparation exact-close source",
+        ),
+        (
+            "model_dart",
+            "final streamFinality = SessionStreamFinality();",
+            "Android session-stream finality source",
+        ),
+        (
+            "model_dart",
+            "onError: (Object error, StackTrace stackTrace)",
+            "Android session-stream error visibility source",
+        ),
+        (
+            "model_dart",
+            "qualityMonitorModel.checkShowQualityMonitor(request.sessionId)",
+            "Android post-add quality-option source",
+        ),
+        (
+            "mobile_session_start_queue_dart",
+            "_MobileSessionStartEntry<T>? _running;",
+            "Android one-running mobile-start source",
+        ),
+        (
+            "mobile_session_start_queue_dart",
+            "_MobileSessionStartEntry<T>? _pending;",
+            "Android one-pending mobile-start source",
+        ),
+        (
+            "mobile_session_start_queue_dart",
+            "_pending?.complete(MobileSessionStartDisposition.superseded);",
+            "Android latest-pending replacement source",
+        ),
+        (
+            "mobile_session_start_queue_dart",
+            "return running.done.future;",
+            "Android running exact-finality source",
+        ),
+        (
+            "session_stream_finality_dart",
+            "if (_expectedCloseReceived || _unexpectedTerminationReported)",
+            "Android expected-close stream-finality source",
+        ),
+        (
+            "mobile_session_start_queue_test",
+            "closing the running request waits while a newer request is pending",
+            "Android running-preparation finality behavior source",
+        ),
+        (
+            "session_stream_finality_test",
+            "unexpected stream termination is admitted exactly once",
+            "Android stream-termination behavior source",
         ),
         (
             "model_dart",
@@ -16275,10 +16477,267 @@ def validate_android_voice_call_ownership_contract(sources):
         "check_remove_unused_displays(None, None, session, &handlers);",
         "Android Activity-owner drain all-remaining-display reconciliation source",
     )
+    session_start = extract_between(
+        sources["flutter_source"],
+        "pub fn session_start_(",
+        "\nfn rollback_failed_session_start(",
+        "Android outgoing worker-start transaction source",
+    )
+    require_order(
+        session_start,
+        (
+            "match session.start_io_thread()",
+            "Ok(false)",
+            "rollback_failed_session_start(session_id);",
+            "Err(error)",
+            "rollback_failed_session_start(session_id);",
+        ),
+        "Android failed-start dual rollback source",
+    )
+    require_exact_count(
+        session_start,
+        "rollback_failed_session_start(session_id);",
+        2,
+        "Android false/error failed-start rollback source",
+    )
+    failed_start_rollback = extract_between(
+        sources["flutter_source"],
+        "fn rollback_failed_session_start(",
+        "\n#[inline]\nfn try_send_close_event(",
+        "Android exact failed-start rollback helper source",
+    )
+    require_order(
+        failed_start_rollback,
+        (
+            "sessions::remove_session_by_session_id(session_id)",
+            "session.close_and_join();",
+        ),
+        "Android exact failed-start removal and join source",
+    )
+    require_absent(
+        failed_start_rollback,
+        "close_event_stream",
+        "Android failed-start forged normal-close marker",
+    )
+    existing_add = extract_between(
+        sources["flutter_ffi_source"],
+        "pub fn session_add_existed_sync(",
+        "\npub fn session_add_sync(",
+        "Android synchronous existing-session bridge source",
+    )
+    require_order(
+        existing_add,
+        (
+            'if cfg!(any(target_os = "android", target_os = "ios"))',
+            "Existing-session attachment is unavailable on mobile",
+            "session_add_existed(",
+        ),
+        "Android synchronous existing-session mobile refusal source",
+    )
+    synchronous_add = extract_between(
+        sources["flutter_ffi_source"],
+        "pub fn session_add_sync(",
+        "\npub fn session_add_mobile(",
+        "Android synchronous session-add bridge source",
+    )
+    require_order(
+        synchronous_add,
+        (
+            'if cfg!(any(target_os = "android", target_os = "ios"))',
+            "Synchronous session preparation is unavailable on mobile",
+            "let add_res = session_add(",
+        ),
+        "Android synchronous session-add mobile refusal source",
+    )
+    mobile_add = extract_between(
+        sources["flutter_ffi_source"],
+        "pub fn session_add_mobile(",
+        "\npub fn session_start(",
+        "Android asynchronous mobile-add bridge source",
+    )
+    require_order(
+        mobile_add,
+        (
+            'if !cfg!(any(target_os = "android", target_os = "ios"))',
+            "MOBILE_SESSION_ADD_TRANSACTION",
+            ".lock()",
+            "session_add(",
+            "Ok(())",
+        ),
+        "Android serialized asynchronous mobile-add source",
+    )
+    require_text(
+        mobile_add,
+        ") -> Result<()> {",
+        "Android codegen-compatible mobile-add result source",
+    )
+    require_absent(
+        mobile_add,
+        "SyncReturn",
+        "Android synchronous mobile-add return",
+    )
+    mobile_run = extract_between(
+        sources["model_dart"],
+        "Future<void> _runMobileSessionStart(",
+        "\n  Future<void> _closeNativeSession(",
+        "Android asynchronous Dart mobile preparation source",
+    )
+    require_order(
+        mobile_run,
+        (
+            "await bind.sessionAddMobile(",
+            "if (!isCurrentSession(request.sessionId))",
+            "await _closeNativeSession(request.sessionId);",
+            "stream = bind.sessionStart(",
+            "_listenToSessionStream(",
+            "qualityMonitorModel.checkShowQualityMonitor(request.sessionId)",
+        ),
+        "Android off-UI add and exact post-add publication source",
+    )
+    require_absent(
+        mobile_run,
+        "sessionAddSync",
+        "Android synchronous Dart mobile preparation",
+    )
+    native_close = extract_between(
+        sources["model_dart"],
+        "Future<void> _closeNativeSession(",
+        "\n  Future<void> _awaitMobileSessionStart(",
+        "Android captured native-session retirement source",
+    )
+    require_text(
+        native_close,
+        "await bind.sessionClose(sessionId: closingSessionId);",
+        "Android exact captured native close source",
+    )
+    mobile_close = extract_between(
+        sources["model_dart"],
+        "Future<void> close(",
+        "\n  void setMethodCallHandler(",
+        "Android mobile close-finality source",
+    )
+    require_exact_count(
+        mobile_close,
+        "await bind.sessionClose(sessionId: closingSessionId);",
+        2,
+        "Android dual exact native close source",
+    )
+    mobile_finality = extract_between(
+        sources["model_dart"],
+        "Future<void> _awaitMobileSessionStart(",
+        "\n  void _reportSessionStreamFailure(",
+        "Android exact Dart preparation finality source",
+    )
+    require_order(
+        mobile_finality,
+        (
+            "_mobileSessionStarts.cancelPendingOrGetRunning(",
+            "(request) => request.sessionId == closingSessionId",
+            "await preparation;",
+        ),
+        "Android exact pending cancellation or running wait source",
+    )
+    stream_failure = extract_between(
+        sources["model_dart"],
+        "void _reportSessionStreamFailure(",
+        "\n  void _listenToSessionStream(",
+        "Android visible exact stream failure source",
+    )
+    require_order(
+        stream_failure,
+        (
+            "if (!isCurrentSession(expectedSessionId))",
+            "dialogManager.dismissAll();",
+            "'title': 'Connection Error'",
+            "closed = true;",
+            "_closeNativeSession(expectedSessionId)",
+        ),
+        "Android current-exact visible stream-failure source",
+    )
+    stream_listener = extract_between(
+        sources["model_dart"],
+        "void _listenToSessionStream(",
+        "\n  /// Start with the given [id].",
+        "Android stream termination listener source",
+    )
+    require_order(
+        stream_listener,
+        (
+            "final streamFinality = SessionStreamFinality();",
+            "streamFinality.acceptExpectedClose();",
+            "onError:",
+            "onDone:",
+        ),
+        "Android expected-close versus error/end source",
+    )
+    require_exact_count(
+        stream_listener,
+        "streamFinality.acceptUnexpectedTermination()",
+        2,
+        "Android one-shot error/end admission source",
+    )
+    mobile_close = extract_between(
+        sources["model_dart"],
+        "Future<void> close(",
+        "\n  void setMethodCallHandler(",
+        "Android exact outgoing close source",
+    )
+    require_exact_count(
+        mobile_close,
+        "await _awaitMobileSessionStart(closingSessionId);",
+        2,
+        "Android dual preparation-finality close source",
+    )
+    start_queue = sources["mobile_session_start_queue_dart"]
+    require_order(
+        start_queue,
+        (
+            "_MobileSessionStartEntry<T>? _running;",
+            "_MobileSessionStartEntry<T>? _pending;",
+            "_pending?.complete(MobileSessionStartDisposition.superseded);",
+            "pending.complete(MobileSessionStartDisposition.cancelled);",
+            "return running.done.future;",
+            "while (true)",
+            "final entry = _running;",
+            "if (entry == null)",
+            "return;",
+            "await _run(entry.request);",
+            "_running = _pending;",
+            "_pending = null;",
+        ),
+        "Android bounded latest-wins preparation coordinator source",
+    )
+    for collection in (
+        "final List<",
+        "final Queue<",
+        "final Map<",
+        "final Set<",
+        "dart:collection",
+    ):
+        require_absent(
+            start_queue,
+            collection,
+            "Android unbounded mobile preparation collection",
+        )
+    require_absent(
+        sources["mobile_remote_page_dart"],
+        "qualityMonitorModel.checkShowQualityMonitor(sessionId)",
+        "Android pre-add remote quality-option read",
+    )
+    require_absent(
+        sources["mobile_camera_page_dart"],
+        "qualityMonitorModel.checkShowQualityMonitor(sessionId)",
+        "Android pre-add camera quality-option read",
+    )
+    require_text(
+        sources["web_bridge_dart"],
+        "Future<void> sessionAddMobile(",
+        "Android web bridge mobile-add interface parity source",
+    )
     require_exact_count(
         sources["flutter_ffi_source"],
         "client_owner_id: SessionID,",
-        4,
+        5,
         "Android authored add/attach/start dual-identity bridge source",
     )
     require_exact_count(
@@ -16335,6 +16794,53 @@ def validate_android_voice_call_ownership_contract(sources):
         sources["hardening"],
         "R-S11eb/R-S11e-146",
         "Android owner/connection hardening ledger source",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11eo</span>',
+        "Android mobile preparation normative requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>297</td>",
+        "Android mobile preparation Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11eo/R-S11e-176",
+        "Android mobile preparation hardening ledger source",
+    )
+    require_exact_count(
+        sources["dart_verify"],
+        "test/mobile_session_start_queue_test.dart",
+        2,
+        "Android mobile preparation queue behavior gate source",
+    )
+    require_exact_count(
+        sources["dart_verify"],
+        "test/session_stream_finality_test.dart",
+        2,
+        "Android session-stream finality behavior gate source",
+    )
+    require_text(
+        sources["dart_verify"],
+        "_platform.executeNormal(FlutterRustBridgeTask(",
+        "Android generated asynchronous mobile-add gate source",
+    )
+    require_text(
+        sources["verify"],
+        "grep -qF 'test/mobile_session_start_queue_test.dart' scripts/dart-verify.sh",
+        "Android shared mobile preparation queue gate source",
+    )
+    require_text(
+        sources["verify"],
+        'and session_start.count("rollback_failed_session_start(session_id);") == 2',
+        "Android shared failed-start rollback gate source",
+    )
+    require_text(
+        sources["verify"],
+        'and dart_close.count("await _awaitMobileSessionStart(closingSessionId);") == 2',
+        "Android shared close-preparation finality gate source",
     )
     client = sources["client_source"]
     client_io_loop = sources["client_io_loop"]
@@ -48483,9 +48989,9 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
-            '"fresh mobile connection and captured event-stream identity"',
-            '"reused mobile connection identity"',
-            "Android fresh connection/event-epoch contract",
+            '"fresh mobile identity, asynchronous mobile admission, and desktop start"',
+            '"synchronous reused mobile connection identity"',
+            "Android asynchronous mobile admission contract",
         ),
         (
             "android_voice_call_ownership_verifier",
@@ -56405,6 +56911,292 @@ def run_source_mutations(sources):
             "R-S11ej/R-S11e-154 obsolete release target-contract compatibility",
             "target-contract authority hardening ledger",
         ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"false/error initial worker-start rollback"',
+            '"unchecked initial worker-start failure"',
+            "Android failed-start dual rollback contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"bounded latest-pending-wins admission"',
+            '"unbounded mobile-start admission"',
+            "Android bounded latest-wins start contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"exact pending cancellation before running-finality lookup"',
+            '"ambient pending cancellation"',
+            "Android exact pending-or-running finality contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"expected close and one-shot error/end visibility"',
+            '"silent stream termination"',
+            "Android error/end stream listener contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"generated normal worker-pool mobile-add gate"',
+            '"generated synchronous mobile-add gate"',
+            "Android generated asynchronous bridge contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"failed-start normal-close marker refusal"',
+            '"failed-start normal-close marker accepted"',
+            "Android focused failed-start marker mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"unbounded mobile-start backlog refusal"',
+            '"unbounded mobile-start backlog accepted"',
+            "Android focused bounded-start mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"running exact-finality lookup"',
+            '"running best-effort lookup"',
+            "Android focused running-finality mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"session stream error handler"',
+            '"session stream error logging"',
+            "Android focused stream-error mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"shared dual close-preparation finality gate"',
+            '"shared best-effort close-preparation gate"',
+            "Android focused shared-gate mutation",
+        ),
+        (
+            "flutter_source",
+            "match session.start_io_thread()",
+            "if session.start_io_thread().is_ok()",
+            "Android fallible outgoing worker-start transaction source",
+        ),
+        (
+            "flutter_source",
+            "fn rollback_failed_session_start(session_id: &SessionID) {\n"
+            "    if let Some(session) = sessions::remove_session_by_session_id(session_id) {",
+            "fn rollback_failed_session_start(session_id: &SessionID) {\n"
+            "    if let Some(session) = sessions::get_session_by_session_id(session_id) {\n"
+            "        session.close_event_stream(*session_id);\n"
+            "    }\n"
+            "    if let Some(session) = sessions::remove_session_by_session_id(session_id) {",
+            "Android failed-start forged normal-close marker",
+        ),
+        (
+            "flutter_source",
+            "fn failed_session_start_rolls_back_and_joins_only_the_exact_session()",
+            "fn failed_session_start_rollback_is_unchecked()",
+            "Android exact failed-start rollback behavior source",
+        ),
+        (
+            "flutter_ffi_source",
+            "static ref MOBILE_SESSION_ADD_TRANSACTION: Mutex<()> = Mutex::new(());",
+            "static ref MOBILE_SESSION_ADD_TRANSACTION_DISABLED: Mutex<()> = Mutex::new(());",
+            "Android serialized mobile-add transaction source",
+        ),
+        (
+            "flutter_ffi_source",
+            "pub fn session_add_mobile(",
+            "pub fn session_add_mobile_sync(",
+            "Android asynchronous mobile-add bridge source",
+        ),
+        (
+            "flutter_ffi_source",
+            "    conn_token: Option<String>,\n"
+            ") -> Result<()> {\n"
+            "    if !cfg!(any(target_os = \"android\", target_os = \"ios\"))",
+            "    conn_token: Option<String>,\n"
+            ") -> ResultType<()> {\n"
+            "    if !cfg!(any(target_os = \"android\", target_os = \"ios\"))",
+            "Android codegen-compatible mobile-add result source",
+        ),
+        (
+            "flutter_ffi_source",
+            "let _transaction = MOBILE_SESSION_ADD_TRANSACTION\n"
+            "        .lock()",
+            "let _transaction = MOBILE_SESSION_ADD_TRANSACTION\n"
+            "        .try_lock()",
+            "Android serialized asynchronous mobile-add source",
+        ),
+        (
+            "flutter_ffi_source",
+            "Synchronous session preparation is unavailable on mobile",
+            "Synchronous session preparation is available on mobile",
+            "Android synchronous mobile-add refusal source",
+        ),
+        (
+            "flutter_ffi_source",
+            "Existing-session attachment is unavailable on mobile",
+            "Existing-session attachment is available on mobile",
+            "Android synchronous mobile-attachment refusal source",
+        ),
+        (
+            "model_dart",
+            "await bind.sessionAddMobile(",
+            "bind.sessionAddSync(",
+            "Android off-UI mobile-add source",
+        ),
+        (
+            "model_dart",
+            "await _closeNativeSession(request.sessionId);",
+            "await _closeNativeSession(sessionId);",
+            "Android stale preparation exact-close source",
+        ),
+        (
+            "model_dart",
+            "Future<void> _closeNativeSession(SessionID closingSessionId) async {\n"
+            "    try {\n"
+            "      await bind.sessionClose(sessionId: closingSessionId);",
+            "Future<void> _closeNativeSession(SessionID closingSessionId) async {\n"
+            "    try {\n"
+            "      await bind.sessionClose(sessionId: sessionId);",
+            "Android exact captured native close source",
+        ),
+        (
+            "model_dart",
+            "await _awaitMobileSessionStart(closingSessionId);",
+            "// exact preparation finality omitted",
+            "Android dual preparation-finality close source",
+        ),
+        (
+            "model_dart",
+            "}, onError: (Object error, StackTrace stackTrace) {\n"
+            "      if (!streamFinality.acceptUnexpectedTermination())",
+            "}, onErrorDisabled: (Object error, StackTrace stackTrace) {\n"
+            "      if (!streamFinality.acceptUnexpectedTermination())",
+            "Android expected-close versus error/end source",
+        ),
+        (
+            "model_dart",
+            "qualityMonitorModel.checkShowQualityMonitor(request.sessionId)",
+            "qualityMonitorModel.checkShowQualityMonitor(sessionId)",
+            "Android post-add quality-option source",
+        ),
+        (
+            "mobile_session_start_queue_dart",
+            "_pending?.complete(MobileSessionStartDisposition.superseded);",
+            "// superseded pending request retained",
+            "Android latest-pending replacement source",
+        ),
+        (
+            "mobile_session_start_queue_dart",
+            "return running.done.future;",
+            "return null;",
+            "Android running exact-finality source",
+        ),
+        (
+            "mobile_session_start_queue_dart",
+            "if (entry == null) {\n"
+            "        return;",
+            "if (entry == null) {\n"
+            "        continue;",
+            "Android bounded latest-wins preparation coordinator source",
+        ),
+        (
+            "mobile_session_start_queue_dart",
+            "_MobileSessionStartEntry<T>? _pending;",
+            "_MobileSessionStartEntry<T>? _pending;\n"
+            "  final List<T> backlog = [];",
+            "Android unbounded mobile preparation collection",
+        ),
+        (
+            "mobile_session_start_queue_test",
+            "closing the running request waits while a newer request is pending",
+            "closing the running request returns while a newer request is pending",
+            "Android running-preparation finality behavior source",
+        ),
+        (
+            "session_stream_finality_dart",
+            "if (_expectedCloseReceived || _unexpectedTerminationReported)",
+            "if (_unexpectedTerminationReported)",
+            "Android expected-close stream-finality source",
+        ),
+        (
+            "session_stream_finality_test",
+            "unexpected stream termination is admitted exactly once",
+            "unexpected stream termination may be admitted repeatedly",
+            "Android stream-termination behavior source",
+        ),
+        (
+            "mobile_remote_page_dart",
+            "gFFI.inputModel.listenToMouse(true);",
+            "gFFI.inputModel.listenToMouse(true);\n"
+            "    gFFI.qualityMonitorModel.checkShowQualityMonitor(sessionId);",
+            "Android pre-add remote quality-option read",
+        ),
+        (
+            "mobile_camera_page_dart",
+            "gFFI.inputModel.listenToMouse(true);",
+            "gFFI.inputModel.listenToMouse(true);\n"
+            "    gFFI.qualityMonitorModel.checkShowQualityMonitor(sessionId);",
+            "Android pre-add camera quality-option read",
+        ),
+        (
+            "web_bridge_dart",
+            "Future<void> sessionAddMobile(",
+            "void sessionAddMobile(",
+            "Android web bridge mobile-add interface parity source",
+        ),
+        (
+            "dart_verify",
+            "test/mobile_session_start_queue_test.dart",
+            "test/mobile_session_start_queue_test_disabled.dart",
+            "Android mobile preparation queue behavior gate source",
+        ),
+        (
+            "dart_verify",
+            "test/session_stream_finality_test.dart",
+            "test/session_stream_finality_test_disabled.dart",
+            "Android session-stream finality behavior gate source",
+        ),
+        (
+            "dart_verify",
+            "_platform.executeNormal(FlutterRustBridgeTask(",
+            "_platform.executeSync(FlutterRustBridgeSyncTask(",
+            "Android generated asynchronous mobile-add gate source",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11eo</span>',
+            '<span class="id">R-S11eo-disabled</span>',
+            "Android mobile preparation normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>297</td>",
+            "<tr><td>297-disabled</td>",
+            "Android mobile preparation Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11eo/R-S11e-176",
+            "R-S11eo-disabled/R-S11e-176",
+            "Android mobile preparation hardening ledger source",
+        ),
+        (
+            "verify",
+            "grep -qF 'test/mobile_session_start_queue_test.dart' scripts/dart-verify.sh",
+            "true # mobile session queue shared gate disabled",
+            "Android shared mobile preparation queue gate source",
+        ),
+        (
+            "verify",
+            'and session_start.count("rollback_failed_session_start(session_id);") == 2',
+            'and session_start.count("rollback_failed_session_start(session_id);") >= 0',
+            "Android shared failed-start rollback gate source",
+        ),
+        (
+            "verify",
+            'and dart_close.count("await _awaitMobileSessionStart(closingSessionId);") == 2',
+            'and dart_close.count("await _awaitMobileSessionStart(closingSessionId);") >= 0',
+            "Android shared close-preparation finality gate source",
+        ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
     for key, old, new, expected in mutations:
@@ -57034,6 +57826,12 @@ def main():
                 )
             ),
             "model_dart": (repo / "flutter/lib/models/model.dart").read_text(encoding="utf-8"),
+            "mobile_session_start_queue_dart": (
+                repo / "flutter/lib/models/mobile_session_start_queue.dart"
+            ).read_text(encoding="utf-8"),
+            "session_stream_finality_dart": (
+                repo / "flutter/lib/models/session_stream_finality.dart"
+            ).read_text(encoding="utf-8"),
             "file_model_dart": (
                 repo / "flutter/lib/models/file_model.dart"
             ).read_text(encoding="utf-8"),
@@ -57060,6 +57858,12 @@ def main():
             ).read_text(encoding="utf-8"),
             "mobile_file_lifecycle_test": (
                 repo / "flutter/test/mobile_file_session_lifecycle_test.dart"
+            ).read_text(encoding="utf-8"),
+            "mobile_session_start_queue_test": (
+                repo / "flutter/test/mobile_session_start_queue_test.dart"
+            ).read_text(encoding="utf-8"),
+            "session_stream_finality_test": (
+                repo / "flutter/test/session_stream_finality_test.dart"
             ).read_text(encoding="utf-8"),
             "peer_model_dart": (repo / "flutter/lib/models/peer_model.dart").read_text(
                 encoding="utf-8"

@@ -36,7 +36,9 @@ import '../common.dart';
 import '../utils/image.dart' as img;
 import '../common/widgets/dialog.dart';
 import 'input_model.dart';
+import 'mobile_session_start_queue.dart';
 import 'platform_model.dart';
+import 'session_stream_finality.dart';
 import 'package:flutter_hbb/utils/scale.dart';
 
 import 'package:flutter_hbb/generated_bridge.dart'
@@ -49,6 +51,32 @@ typedef ReconnectHandle = Function(OverlayDialogManager, SessionID);
 // One UUID owns the mobile Flutter isolate. Each outgoing connection receives a different UUID
 // below; conflating the two lets a delayed dispose from an old route close its replacement.
 final _mobileClientOwnerId = Uuid().v4obj();
+
+class _MobileSessionStartRequest {
+  const _MobileSessionStartRequest({
+    required this.sessionId,
+    required this.peerId,
+    required this.isFileTransfer,
+    required this.isViewCamera,
+    required this.isPortForward,
+    required this.isRdp,
+    required this.isTerminal,
+    required this.password,
+    required this.isSharedPassword,
+    required this.connToken,
+  });
+
+  final SessionID sessionId;
+  final String peerId;
+  final bool isFileTransfer;
+  final bool isViewCamera;
+  final bool isPortForward;
+  final bool isRdp;
+  final bool isTerminal;
+  final String password;
+  final bool isSharedPassword;
+  final String? connToken;
+}
 
 const int kMaxRemoteCursorPixels = 1024 * 1024;
 const int kMaxRemoteCursorRgbaBytes = kMaxRemoteCursorPixels * 4;
@@ -3410,6 +3438,8 @@ class FFI {
   late final TextureModel textureModel; //session
   late final Peers recentPeersModel; // global
   late final Peers favoritePeersModel; // global
+  late final MobileSessionStartQueue<_MobileSessionStartRequest>
+      _mobileSessionStarts;
 
   // Terminal model registry for multiple terminals
   final Map<int, TerminalModel> _terminalModels = {};
@@ -3444,6 +3474,8 @@ class FFI {
         name: PeersModelName.favorite,
         loadEvent: LoadEvent.favorite,
         getInitPeers: null);
+    _mobileSessionStarts = MobileSessionStartQueue<_MobileSessionStartRequest>(
+        _runMobileSessionStart);
   }
 
   /// Mobile reuse FFI
@@ -3461,6 +3493,221 @@ class FFI {
     qualityMonitorModel.reset();
     recordingModel.reset();
     inputModel.resetForSession(previousSessionId);
+  }
+
+  void _scheduleMobileSessionStart(_MobileSessionStartRequest request) {
+    final start = _mobileSessionStarts.submit(request);
+    unawaited(start.then<void>((_) {},
+        onError: (Object error, StackTrace stackTrace) {
+      debugPrint('Mobile session preparation failed: ${error.runtimeType}');
+      _reportSessionStreamFailure(request.sessionId, request.peerId,
+          'The connection could not be started');
+    }));
+  }
+
+  Future<void> _runMobileSessionStart(
+      _MobileSessionStartRequest request) async {
+    try {
+      await bind.sessionAddMobile(
+        sessionId: request.sessionId,
+        clientOwnerId: clientOwnerId,
+        id: request.peerId,
+        isFileTransfer: request.isFileTransfer,
+        isViewCamera: request.isViewCamera,
+        isPortForward: request.isPortForward,
+        isRdp: request.isRdp,
+        isTerminal: request.isTerminal,
+        password: request.password,
+        isSharedPassword: request.isSharedPassword,
+        connToken: request.connToken,
+      );
+    } catch (error) {
+      debugPrint('Mobile session add failed: ${error.runtimeType}');
+      _reportSessionStreamFailure(request.sessionId, request.peerId,
+          'The connection could not be started');
+      return;
+    }
+
+    if (!isCurrentSession(request.sessionId)) {
+      await _closeNativeSession(request.sessionId);
+      return;
+    }
+
+    late final Stream<EventToUI> stream;
+    try {
+      stream = bind.sessionStart(
+          sessionId: request.sessionId,
+          clientOwnerId: clientOwnerId,
+          id: request.peerId);
+    } catch (error) {
+      debugPrint('Mobile session stream failed to start: ${error.runtimeType}');
+      _reportSessionStreamFailure(request.sessionId, request.peerId,
+          'The connection could not be started');
+      return;
+    }
+    _listenToSessionStream(
+        stream, request.sessionId, request.peerId, null, null);
+    if (!request.isFileTransfer &&
+        !request.isPortForward &&
+        !request.isRdp &&
+        !request.isTerminal) {
+      unawaited(qualityMonitorModel.checkShowQualityMonitor(request.sessionId));
+    }
+  }
+
+  Future<void> _closeNativeSession(SessionID closingSessionId) async {
+    try {
+      await bind.sessionClose(sessionId: closingSessionId);
+    } catch (error) {
+      debugPrint(
+          'Exact native session retirement failed: ${error.runtimeType}');
+    }
+  }
+
+  Future<void> _awaitMobileSessionStart(SessionID closingSessionId) async {
+    final preparation = _mobileSessionStarts.cancelPendingOrGetRunning(
+        (request) => request.sessionId == closingSessionId);
+    if (preparation == null) {
+      return;
+    }
+    try {
+      await preparation;
+    } catch (error) {
+      debugPrint(
+          'Mobile session preparation drain failed: ${error.runtimeType}');
+    }
+  }
+
+  void _reportSessionStreamFailure(
+      SessionID expectedSessionId, String peerId, String text) {
+    if (!isCurrentSession(expectedSessionId)) {
+      return;
+    }
+    dialogManager.dismissAll();
+    ffiModel.handleMsgBox({
+      'type': 'error',
+      'title': 'Connection Error',
+      'text': text,
+      'link': '',
+      'hasRetry': 'false',
+    }, expectedSessionId, peerId);
+    closed = true;
+    unawaited(_closeNativeSession(expectedSessionId));
+  }
+
+  void _listenToSessionStream(
+    Stream<EventToUI> stream,
+    SessionID activeSessionId,
+    String peerId,
+    int? tabWindowId,
+    int? display,
+  ) {
+    if (isWeb) {
+      platformFFI.setRgbaCallback((int display, Uint8List data) {
+        onEvent2UIRgba(activeSessionId);
+        imageModel.onRgba(activeSessionId, display, data);
+      });
+      return;
+    }
+
+    final cb = ffiModel.startEventListener(activeSessionId, peerId);
+    imageModel.updateUserTextureRender();
+    final hasGpuTextureRender = bind.mainHasGpuTextureRender();
+    final SimpleWrapper<bool> isToNewWindowNotified = SimpleWrapper(false);
+    final streamFinality = SessionStreamFinality();
+    // Preserved for the rgba data.
+    stream.listen((message) {
+      if (closed || sessionId != activeSessionId) return;
+      if (tabWindowId != null && !isToNewWindowNotified.value) {
+        // Session is ready to be moved to a new window.
+        // Get the cached data and handle the cached data.
+        Future.delayed(Duration.zero, () async {
+          final args = jsonEncode({'id': peerId, 'close': display == null});
+          final cachedData = await DesktopMultiWindow.invokeMethod(
+              tabWindowId, kWindowEventGetCachedSessionData, args);
+          if (!isCurrentSession(activeSessionId)) return;
+          if (cachedData == null) {
+            // unreachable
+            debugPrint('Unreachable, the cached data is empty.');
+            return;
+          }
+          final data = CachedPeerData.fromString(cachedData);
+          if (data == null) {
+            debugPrint('Unreachable, the cached data cannot be decoded.');
+            return;
+          }
+          ffiModel.setPermissions(data.permissions);
+          await ffiModel.handleCachedPeerData(data, peerId, activeSessionId);
+          if (!isCurrentSession(activeSessionId)) return;
+          await sessionRefreshVideo(activeSessionId, ffiModel.pi);
+          if (!isCurrentSession(activeSessionId)) return;
+          await bind.sessionRequestNewDisplayInitMsgs(
+              sessionId: activeSessionId, display: ffiModel.pi.currentDisplay);
+        });
+        isToNewWindowNotified.value = true;
+      }
+      () async {
+        if (message is EventToUI_Event) {
+          if (message.field0 == "close") {
+            streamFinality.acceptExpectedClose();
+            if (sessionId == activeSessionId) {
+              closed = true;
+            }
+            debugPrint('Exit session event loop');
+            return;
+          }
+
+          Map<String, dynamic>? event;
+          try {
+            event = json.decode(message.field0);
+          } catch (e) {
+            debugPrint('json.decode fail1(): $e, ${message.field0}');
+          }
+          if (event != null) {
+            await cb(event);
+          }
+        } else if (message is EventToUI_Rgba) {
+          final display = message.field0;
+          // Fetch the image buffer from rust codes.
+          final sz = platformFFI.getRgbaSize(activeSessionId, display);
+          if (sz == 0) {
+            platformFFI.nextRgba(activeSessionId, display);
+            return;
+          }
+          final rgba = platformFFI.getRgba(activeSessionId, display, sz);
+          if (rgba != null) {
+            onEvent2UIRgba(activeSessionId);
+            await imageModel.onRgba(activeSessionId, display, rgba);
+          } else {
+            platformFFI.nextRgba(activeSessionId, display);
+          }
+        } else if (message is EventToUI_Texture) {
+          final display = message.field0;
+          final gpuTexture = message.field1;
+          debugPrint(
+              "EventToUI_Texture display:$display, gpuTexture:$gpuTexture");
+          if (gpuTexture && !hasGpuTextureRender) {
+            debugPrint('the gpuTexture is not supported.');
+            return;
+          }
+          textureModel.setTextureType(display: display, gpuTexture: gpuTexture);
+          onEvent2UIRgba(activeSessionId);
+        }
+      }();
+    }, onError: (Object error, StackTrace stackTrace) {
+      if (!streamFinality.acceptUnexpectedTermination()) {
+        return;
+      }
+      debugPrint('Remote session stream failed: ${error.runtimeType}');
+      _reportSessionStreamFailure(
+          activeSessionId, peerId, 'The connection could not be started');
+    }, onDone: () {
+      if (!streamFinality.acceptUnexpectedTermination()) {
+        return;
+      }
+      _reportSessionStreamFailure(
+          activeSessionId, peerId, 'The connection ended unexpectedly');
+    });
   }
 
   /// Start with the given [id]. Only transfer file if [isFileTransfer], only view camera if [isViewCamera], only port forward if [isPortForward].
@@ -3513,6 +3760,23 @@ class FFI {
     }
 
     final isNewPeer = tabWindowId == null;
+    this.id = id;
+    if (isMobile && isNewPeer) {
+      _scheduleMobileSessionStart(_MobileSessionStartRequest(
+        sessionId: activeSessionId,
+        peerId: id,
+        isFileTransfer: isFileTransfer,
+        isViewCamera: isViewCamera,
+        isPortForward: isPortForward,
+        isRdp: isRdp,
+        isTerminal: isTerminal,
+        password: password ?? '',
+        isSharedPassword: isSharedPassword ?? false,
+        connToken: connToken,
+      ));
+      return activeSessionId;
+    }
+
     // If tabWindowId != null, this session is a "tab -> window" one.
     // Else this session is a new one.
     if (isNewPeer) {
@@ -3531,6 +3795,8 @@ class FFI {
       );
       if (addRes != '') {
         debugPrint('Failed to add session to $id, $addRes');
+        _reportSessionStreamFailure(
+            activeSessionId, id, 'The connection could not be started');
         return activeSessionId;
       }
     } else if (display != null) {
@@ -3548,6 +3814,8 @@ class FFI {
       if (addRes != '') {
         debugPrint(
             'Unreachable, failed to add existed session to $id, $addRes');
+        _reportSessionStreamFailure(
+            activeSessionId, id, 'The connection could not be started');
         return activeSessionId;
       }
       ffiModel.pi.currentDisplay = display;
@@ -3581,102 +3849,7 @@ class FFI {
           id: id,
           displays: Int32List.fromList(displays));
     }
-
-    if (isWeb) {
-      platformFFI.setRgbaCallback((int display, Uint8List data) {
-        onEvent2UIRgba(activeSessionId);
-        imageModel.onRgba(activeSessionId, display, data);
-      });
-      this.id = id;
-      return activeSessionId;
-    }
-
-    final cb = ffiModel.startEventListener(activeSessionId, id);
-
-    imageModel.updateUserTextureRender();
-    final hasGpuTextureRender = bind.mainHasGpuTextureRender();
-    final SimpleWrapper<bool> isToNewWindowNotified = SimpleWrapper(false);
-    // Preserved for the rgba data.
-    stream.listen((message) {
-      if (closed || sessionId != activeSessionId) return;
-      if (tabWindowId != null && !isToNewWindowNotified.value) {
-        // Session is read to be moved to a new window.
-        // Get the cached data and handle the cached data.
-        Future.delayed(Duration.zero, () async {
-          final args = jsonEncode({'id': id, 'close': display == null});
-          final cachedData = await DesktopMultiWindow.invokeMethod(
-              tabWindowId, kWindowEventGetCachedSessionData, args);
-          if (!isCurrentSession(activeSessionId)) return;
-          if (cachedData == null) {
-            // unreachable
-            debugPrint('Unreachable, the cached data is empty.');
-            return;
-          }
-          final data = CachedPeerData.fromString(cachedData);
-          if (data == null) {
-            debugPrint('Unreachable, the cached data cannot be decoded.');
-            return;
-          }
-          ffiModel.setPermissions(data.permissions);
-          await ffiModel.handleCachedPeerData(data, id, activeSessionId);
-          if (!isCurrentSession(activeSessionId)) return;
-          await sessionRefreshVideo(activeSessionId, ffiModel.pi);
-          if (!isCurrentSession(activeSessionId)) return;
-          await bind.sessionRequestNewDisplayInitMsgs(
-              sessionId: activeSessionId, display: ffiModel.pi.currentDisplay);
-        });
-        isToNewWindowNotified.value = true;
-      }
-      () async {
-        if (message is EventToUI_Event) {
-          if (message.field0 == "close") {
-            if (sessionId == activeSessionId) {
-              closed = true;
-            }
-            debugPrint('Exit session event loop');
-            return;
-          }
-
-          Map<String, dynamic>? event;
-          try {
-            event = json.decode(message.field0);
-          } catch (e) {
-            debugPrint('json.decode fail1(): $e, ${message.field0}');
-          }
-          if (event != null) {
-            await cb(event);
-          }
-        } else if (message is EventToUI_Rgba) {
-          final display = message.field0;
-          // Fetch the image buffer from rust codes.
-          final sz = platformFFI.getRgbaSize(activeSessionId, display);
-          if (sz == 0) {
-            platformFFI.nextRgba(activeSessionId, display);
-            return;
-          }
-          final rgba = platformFFI.getRgba(activeSessionId, display, sz);
-          if (rgba != null) {
-            onEvent2UIRgba(activeSessionId);
-            await imageModel.onRgba(activeSessionId, display, rgba);
-          } else {
-            platformFFI.nextRgba(activeSessionId, display);
-          }
-        } else if (message is EventToUI_Texture) {
-          final display = message.field0;
-          final gpuTexture = message.field1;
-          debugPrint(
-              "EventToUI_Texture display:$display, gpuTexture:$gpuTexture");
-          if (gpuTexture && !hasGpuTextureRender) {
-            debugPrint('the gpuTexture is not supported.');
-            return;
-          }
-          textureModel.setTextureType(display: display, gpuTexture: gpuTexture);
-          onEvent2UIRgba(activeSessionId);
-        }
-      }();
-    });
-    // every instance will bind a stream
-    this.id = id;
+    _listenToSessionStream(stream, activeSessionId, id, tabWindowId, display);
     return activeSessionId;
   }
 
@@ -3720,6 +3893,9 @@ class FFI {
     }
     if (sessionId != closingSessionId) {
       if (closeSession) {
+        if (isMobile) {
+          await _awaitMobileSessionStart(closingSessionId);
+        }
         await bind.sessionClose(sessionId: closingSessionId);
       }
       return;
@@ -3747,6 +3923,9 @@ class FFI {
       // be selected by this close. The finally block makes native retirement independent of a
       // best-effort state-persistence failure.
       if (closeSession) {
+        if (isMobile) {
+          await _awaitMobileSessionStart(closingSessionId);
+        }
         await bind.sessionClose(sessionId: closingSessionId);
       }
     }

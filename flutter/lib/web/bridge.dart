@@ -101,6 +101,23 @@ class RustdeskImpl {
     ]);
   }
 
+  Future<void> sessionAddMobile(
+      {required UuidValue sessionId,
+      required UuidValue clientOwnerId,
+      required String id,
+      required bool isFileTransfer,
+      required bool isViewCamera,
+      required bool isPortForward,
+      required bool isRdp,
+      required bool isTerminal,
+      required String password,
+      required bool isSharedPassword,
+      String? connToken,
+      dynamic hint}) {
+    return Future.error(
+        UnsupportedError('Mobile session preparation is unavailable on web'));
+  }
+
   Stream<EventToUI> sessionStart(
       {required UuidValue sessionId,
       required UuidValue clientOwnerId,
@@ -152,10 +169,7 @@ class RustdeskImpl {
       dynamic hint}) {
     return Future(() => js.context.callMethod('setByName', [
           'login',
-          jsonEncode({
-            'password': password,
-            'remember': remember
-          })
+          jsonEncode({'password': password, 'remember': remember})
         ]));
   }
 
@@ -784,7 +798,6 @@ class RustdeskImpl {
     throw UnimplementedError("mainStartStatusSync");
   }
 
-
   String mainGetLocalOption({required String key, dynamic hint}) {
     return js.context.callMethod('getByName', ['option:local', key]);
   }
@@ -946,7 +959,6 @@ class RustdeskImpl {
   String mainGetUserDefaultOption({required String key, dynamic hint}) {
     return js.context.callMethod('getByName', ['option:user:default', key]);
   }
-
 
   String mainGetMainDisplay({dynamic hint}) {
     return js.context.callMethod('getByName', ['main_display']);
@@ -1120,8 +1132,6 @@ class RustdeskImpl {
       {required UuidValue sessionId, dynamic hint}) {
     return Future(() => js.context.callMethod('setByName', ['restart']));
   }
-
-
 
   Future<String> sessionAlternativeCodecs(
       {required UuidValue sessionId, dynamic hint}) {
@@ -1564,9 +1574,6 @@ class RustdeskImpl {
       {required UuidValue sessionId, dynamic hint}) {
     return true;
   }
-
-
-
 
   bool mainSetCursorPosition({required int x, required int y, dynamic hint}) {
     return false;

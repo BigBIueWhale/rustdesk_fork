@@ -1348,8 +1348,8 @@ capture-replacement/task-swipe/Force-Stop reproduction, exact cold R-B2/R-B10 re
 required independent reproduction, and external review remain open. The broader Ralph loop remains active.
 
 Follow-up correction (2026-07-30),
-**R-S11en/R-S11e-175 exact MainService status and explicit-stop lifecycle ownership — AUTHORED-TREE
-SOURCE IMPLEMENTED; FOCUSED/SHARED/INDEPENDENT MUTATION AND TARGETED KOTLIN VERIFIED; COMMIT AND PUBLICATION
+**R-S11en/R-S11e-175 exact MainService status and explicit-stop lifecycle ownership — SOURCE IMPLEMENTED;
+FOCUSED/SHARED/INDEPENDENT MUTATION AND TARGETED KOTLIN VERIFIED; PUBLISHED; COLD RELEASE AND DEVICE EVIDENCE
 PENDING.**
 Platform: Android controlled-side foreground service and Flutter Activity. Endpoint/action: process-visible
 service/MediaProjection status, Activity binding, UI `init_service`, UI `stop_service`, and
@@ -1410,9 +1410,106 @@ The complete canonical `scripts/verify.sh` transaction is not run or claimed: it
 launches two containers as UID:GID `0:0` with `CAP_CHOWN` and `CAP_FOWNER`, while the user prohibited acquiring
 root. No service, listener, MediaProjection, peer, APK, device, host RustDesk/service/configuration,
 firewall/UFW/nftables/iptables, host listener/port, root/sudo, VM/libvirt, or online acquisition action has
-occurred. Current APK/device start/status/explicit-Stop/task-swipe/Force-Stop/replacement reproduction, exact cold
-R-B2/R-B10 artifacts, separately required independent reproduction, external review, commit, and publication
-remain open. The broader Ralph loop remains active.
+occurred. Commit `cb6efb3634ee5878ef696cc4ebbe040c47bfcba9`
+(`Bind Android service status to lifecycle`) was pushed directly to `origin/master`; at the start of the next
+Ralph-loop slice local `HEAD`, tracking `origin/master`, and the clean worktree all proved that exact identity.
+Current APK/device start/status/explicit-Stop/task-swipe/Force-Stop/replacement reproduction, exact cold R-B2/R-B10
+artifacts, separately required independent reproduction, and external review remain open. The broader Ralph loop
+remains active.
+
+Follow-up correction (2026-07-30),
+**R-S11eo/R-S11e-176 mobile outgoing-session preparation finality and failure visibility — SOURCE/GATES
+COMPLETE AND PUBLISHED IN THIS COHERENT MASTER SLICE; CURRENT APK/iOS/DEVICE/COLD-RELEASE EVIDENCE OPEN.**
+Platforms: Android and iOS outgoing Flutter viewers, plus shared Flutter stream failure handling. Endpoint/action:
+new mobile route creation, prior mobile-session drain, initial native I/O-worker start, exact route close, and
+Rust-to-Dart event stream termination. Boundary: Flutter's main UI isolate and replaceable route identity ↔ the
+blocking exact native worker tree and asynchronous bridge worker pool.
+
+The source audit found that every new mobile `FFI.start()` called `sessionAddSync`. Native `session_add` then
+removed all previous mobile handlers and peer sessions and called `Session::close_and_join`; that exact top-level
+worker does not exit until its owned video/audio/voice children drain. This join is intentional R-S11eb finality.
+However, flutter_rust_bridge 1.80.1's `SyncReturn` executor directly invokes the Rust closure on its caller, while
+ordinary bridge calls run in its fixed four-worker pool. The potentially unbounded join therefore ran on Flutter's
+main Dart isolate. Flutter's official isolate guidance says the UI normally runs on that one isolate and work that
+cannot finish inside a frame gap—including asynchronous FFI work—must be moved off it. Android's retained process
+amplifies the lifetime, but iOS is routed through the same authored mobile close/join path.
+
+The failure path was independently incomplete. `sessionAddSync` converted an error into a string; Dart printed it
+and returned the freshly minted session UUID as if connection start had succeeded. The subsequent bridge stream
+had neither `onError` nor `onDone`. Native `session_start_` installed the event stream before
+`start_io_thread`; a false/error result left no transactional rollback. These paths could leave the route's
+loading dialog on “Connecting...” without a live outgoing worker.
+
+Mobile add is now one typed normal bridge Future, `session_add_mobile`, with the concrete codegen-compatible Rust
+result `Result<()>`. Generated flutter_rust_bridge 1.80.1 output proves `Future<void> sessionAddMobile` dispatches
+through `_platform.executeNormal(FlutterRustBridgeTask(` and contains no synchronous executor call, so the bridge's
+existing fixed worker pool owns the blocking native call instead of Flutter's UI isolate. A native mutex serializes
+its complete close/join-and-insert transaction, and the synchronous/new-existing add entries reject mobile before
+mutation. The required exact worker join remains unchanged and is neither detached nor bounded by a false
+completion deadline.
+
+The Dart owner submits mobile starts through `MobileSessionStartQueue`. It retains exactly one running request and
+one replaceable pending successor. A third request completes and discards the older pending request; exact pending
+cancel removes only its match; failure releases the running slot so the latest successor proceeds. Each running
+request rechecks its captured connection UUID after native add and closes that exact native session if the route
+was closed or superseded. Exact `FFI.close` cancels a matching pending request or awaits a matching running request
+before its final native close, so cancellation-before-add cannot become a later unowned session. Password and
+connection inputs are retained for at most those two bounded requests.
+
+`session_start_` now rolls a false or errored initial worker admission back through the exact session ID, removes
+and drops its handler/event stream without forging the normal-close marker, and, if it is the last handler,
+synchronously closes and joins that exact peer. The bridge failure therefore remains observable to Dart.
+The regression blocks rollback until the failed exact worker exits and proves a different replacement UUID remains
+present and unclosed. Every non-web Flutter event stream now distinguishes the native exact close event from an
+unexpected bridge error/end. Unexpected failure is accepted only for the still-current UUID, retires that exact
+native session, dismisses the loading state, and presents a bounded nonsecret Connection Error instead of logging
+and pretending success.
+
+The pure Dart queue regressions cover one-running/one-latest-pending capacity, pending supersession, exact pending
+cancellation without interrupting admitted finality, closing running A while successor B is pending, and
+failure-to-successor recovery. The stream-finality regressions prove that an exact normal-close marker suppresses
+later stream termination while one unexpected termination is admitted exactly once.
+
+The complete confined `scripts/dart-verify.sh` transaction regenerated FRB output in a private source snapshot,
+proved the normal worker-pool bridge call, reported zero changes across the eight selected Dart formatter inputs,
+reported zero Flutter analyzer errors, passed all selected existing Flutter tests, passed all four queue cases and
+both stream-finality cases, and passed exact Rust 1.75 `rustfmt --check` for `src/flutter.rs` and
+`src/flutter_ffi.rs`. The locked/offline `flutter,unix-file-copy-paste` library check passed. Its generated-bridge
+mobile lifecycle group passed 9/9, including
+`failed_session_start_rolls_back_and_joins_only_the_exact_session`; the subsequent exact clipboard, delayed
+OS-password, screenshot, frame-acknowledgement, and audio-egress groups also passed. The transaction used exact
+Debian builder
+`sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`, exact offline closure
+`a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`, UID:GID `1000:1000`, no network or
+pull, a read-only root, dropped capabilities, no-new-privileges, bounded resources, and a read-only live source.
+
+The focused Android ownership verifier passes and rejects all 427 deliberate mutations. The independent workspace
+verifier baseline and its final complete unsliced `--source-mutations-only` catalog pass against the exact final
+source. The shared source block, requirements R-S11eo, Appendix C #297, and this ledger row are bound into both
+verifiers. `native-codec-watch.sh` and its adversarial self-test, changed-shell syntax, requirements digest
+`bc15d2b7afe5f2d2751951b3f0cd7f4631c3ea6badd9e388ee43d1ec53ad6dc2`, and `git diff --check` pass.
+The separate confined `scripts/android-rust-check.sh` generated the bridge and compiled the aarch64 Android release
+library at API 21 successfully in exact Android builder
+`sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2`, then re-proved the private build
+source and unchanged live source against the same offline closure.
+
+Three preliminary gates failed closed and are not hidden: FRB rejected the aliased `ResultType<()>`, so the
+codegen boundary now uses concrete `Result<()>` and mutation-binds that spelling; Dart 3.5's formatter rejected the
+pattern-matching `while` form, so the identical bounded drain uses an explicit null-check loop; and an initially
+repository-wide `cargo fmt --all -- --check` exposed unrelated parent-tree formatting drift, so the retained gate
+checks only the two Rust files owned by this slice. The complete transaction was restarted after each correction;
+only the final green run is counted.
+
+The canonical `scripts/verify.sh` transaction is deliberately not run or claimed because its root-IPC stage launches
+UID:GID `0:0` containers with `CAP_CHOWN`/`CAP_FOWNER`, which the user prohibited. No APK or iOS artifact was
+built, signed, installed, or run; the Android result is a native aarch64 library compile, and iOS compilation
+requires an Apple build environment. No physical-device connect → task swipe → relaunch → same-host screen-control
+or Force-Stop reproduction was performed, so this correction is a source-proven mechanism and correctness repair,
+not a claim that the reported device symptom was reproduced. Exact cold R-B2/R-B10 artifacts, current Android/iOS
+installed behavior, separately required independent reproduction, and external review remain open. No root/sudo,
+privileged container, host RustDesk/service/process/configuration action, listener, published port, public endpoint
+probe, firewall/UFW/nftables/iptables/network mutation, Docker socket/device/host-namespace mount, or host service
+inspection occurred. The broader Ralph loop remains active.
 
 The complete `scripts/dart-verify.sh` transaction now regenerates the full Flutter bridge in a private source
 snapshot, reports zero Flutter analyzer errors, passes the focused address/saved-peer/retired-role Flutter tests,
@@ -15996,7 +16093,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-084627ba95b37145b34b6a7de03f75d2a846a6be7d6f9e02bb6376d052193ecc  requirements.html
+bc15d2b7afe5f2d2751951b3f0cd7f4631c3ea6badd9e388ee43d1ec53ad6dc2  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

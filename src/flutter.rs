@@ -1585,8 +1585,16 @@ pub fn session_start_(
                 id,
                 session.use_texture_render.load(Ordering::Relaxed)
             );
-            if !session.start_io_thread()? {
-                bail!("Outgoing viewer session is already active or has retired");
+            match session.start_io_thread() {
+                Ok(true) => {}
+                Ok(false) => {
+                    rollback_failed_session_start(session_id);
+                    bail!("Outgoing viewer session is already active or has retired");
+                }
+                Err(error) => {
+                    rollback_failed_session_start(session_id);
+                    return Err(error.into());
+                }
             }
         }
         #[cfg(target_os = "android")]
@@ -1594,6 +1602,12 @@ pub fn session_start_(
         Ok(())
     } else {
         bail!("No session with peer id {}", id)
+    }
+}
+
+fn rollback_failed_session_start(session_id: &SessionID) {
+    if let Some(session) = sessions::remove_session_by_session_id(session_id) {
+        session.close_and_join();
     }
 }
 
@@ -2947,6 +2961,64 @@ mod mobile_session_lifecycle_tests {
         cleanup.join().unwrap();
         assert!(finished.load(Ordering::Acquire));
         assert!(session.thread.lock().unwrap().is_none());
+        sessions::clear_for_test();
+    }
+
+    #[test]
+    fn failed_session_start_rolls_back_and_joins_only_the_exact_session() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        sessions::clear_for_test();
+
+        let owner = SessionID::new_v4();
+        let failed_session_id = SessionID::new_v4();
+        let replacement_session_id = SessionID::new_v4();
+        let failed = sessions::insert_test_session_for_owner(
+            failed_session_id,
+            owner,
+            "host-failed",
+            ConnType::DEFAULT_CONN,
+        );
+        let replacement = sessions::insert_test_session_for_owner(
+            replacement_session_id,
+            owner,
+            "host-replacement",
+            ConnType::FILE_TRANSFER,
+        );
+        let close_requested = failed.close_requested.clone();
+        let (worker_reached_close_tx, worker_reached_close_rx) = mpsc::channel();
+        let (release_worker_tx, release_worker_rx) = mpsc::channel();
+        *failed.thread.lock().unwrap() = Some(std::thread::spawn(move || {
+            while !close_requested.load(Ordering::Acquire) {
+                std::thread::yield_now();
+            }
+            worker_reached_close_tx.send(()).unwrap();
+            release_worker_rx.recv().unwrap();
+        }));
+
+        let (rollback_done_tx, rollback_done_rx) = mpsc::channel();
+        let rollback = std::thread::spawn(move || {
+            rollback_failed_session_start(&failed_session_id);
+            rollback_done_tx.send(()).unwrap();
+        });
+        worker_reached_close_rx.recv().unwrap();
+        assert!(
+            rollback_done_rx.try_recv().is_err(),
+            "failed-start rollback returned before the exact worker joined"
+        );
+        assert!(!replacement.close_requested.load(Ordering::Acquire));
+
+        release_worker_tx.send(()).unwrap();
+        rollback_done_rx.recv().unwrap();
+        rollback.join().unwrap();
+        assert!(!sessions::contains_peer(
+            "host-failed",
+            ConnType::DEFAULT_CONN
+        ));
+        assert!(sessions::contains_peer(
+            "host-replacement",
+            ConnType::FILE_TRANSFER
+        ));
+        assert!(!replacement.close_requested.load(Ordering::Acquire));
         sessions::clear_for_test();
     }
 

@@ -10315,11 +10315,29 @@ grep -qF 'server::video_service::video_frame_ack_tests::r_s11eg_' scripts/dart-v
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-video-ack-test-filter-missing"
 grep -qF 'server::connection::audio_egress_tests::r_s11eh_' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-bounded-audio-test-filter-missing"
-if ! python3 - "$ma" "$ms" "$flutter_main" src/flutter.rs <<'PY'
+grep -qF 'test/mobile_session_start_queue_test.dart' scripts/dart-verify.sh \
+  || android_client_owner_bad="$android_client_owner_bad mobile-session-start-queue-test-missing"
+grep -qF 'test/session_stream_finality_test.dart' scripts/dart-verify.sh \
+  || android_client_owner_bad="$android_client_owner_bad session-stream-finality-test-missing"
+grep -qF '_platform.executeNormal(FlutterRustBridgeTask(' scripts/dart-verify.sh \
+  || android_client_owner_bad="$android_client_owner_bad generated-mobile-add-normal-call-gate-missing"
+grep -qF '<span class="id">R-S11eo</span>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad mobile-session-preparation-requirement-missing"
+grep -qF '<tr><td>297</td>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad mobile-session-preparation-disposition-missing"
+grep -qF 'R-S11eo/R-S11e-176' HARDENING_STATUS.md \
+  || android_client_owner_bad="$android_client_owner_bad mobile-session-preparation-ledger-missing"
+if ! python3 - "$ma" "$ms" "$flutter_main" src/flutter.rs src/flutter_ffi.rs \
+  flutter/lib/models/model.dart flutter/lib/models/mobile_session_start_queue.dart \
+  flutter/lib/models/session_stream_finality.dart \
+  flutter/lib/mobile/pages/remote_page.dart \
+  flutter/lib/mobile/pages/view_camera_page.dart <<'PY'
 import sys
 from pathlib import Path
 
-activity, service, dart, rust = (Path(path).read_text() for path in sys.argv[1:])
+activity, service, dart, rust, flutter_ffi, model, start_queue, stream_finality, mobile_remote, mobile_camera = (
+    Path(path).read_text() for path in sys.argv[1:]
+)
 
 on_create = activity[activity.index("override fun onCreate("):activity.index("override fun onDestroy()")]
 activity_destroy = activity[activity.index("override fun onDestroy()"):activity.index("private fun bindMainService(")]
@@ -10330,6 +10348,40 @@ run_mobile = dart[dart.index("void runMobileApp()"):dart.index("void runMultiWin
 session_add_existed = rust[rust.index("pub fn session_add_existed("):rust.index("pub fn session_add(\n")]
 session_add = rust[rust.index("pub fn session_add(\n"):rust.index("pub fn session_start_(")]
 session_start = rust[rust.index("pub fn session_start_("):rust.index("fn try_send_close_event(")]
+failed_start_rollback = rust[
+    rust.index("fn rollback_failed_session_start("):
+    rust.index("fn try_send_close_event(")
+]
+ffi_add_existed = flutter_ffi[
+    flutter_ffi.index("pub fn session_add_existed_sync("):
+    flutter_ffi.index("pub fn session_add_sync(")
+]
+ffi_add_sync = flutter_ffi[
+    flutter_ffi.index("pub fn session_add_sync("):
+    flutter_ffi.index("pub fn session_add_mobile(")
+]
+ffi_add_mobile = flutter_ffi[
+    flutter_ffi.index("pub fn session_add_mobile("):
+    flutter_ffi.index("pub fn session_start(")
+]
+mobile_run = model[
+    model.index("Future<void> _runMobileSessionStart("):
+    model.index("Future<void> _closeNativeSession(")
+]
+mobile_finality = model[
+    model.index("Future<void> _awaitMobileSessionStart("):
+    model.index("void _reportSessionStreamFailure(")
+]
+stream_failure = model[
+    model.index("void _reportSessionStreamFailure("):
+    model.index("void _listenToSessionStream(")
+]
+stream_listener = model[
+    model.index("void _listenToSessionStream("):
+    model.index("SessionID start(")
+]
+dart_start = model[model.index("SessionID start("):model.index("void onEvent2UIRgba(")]
+dart_close = model[model.index("Future<void> close("):model.index("void setMethodCallHandler(")]
 owner_begin = rust[rust.index("pub fn begin_android_client_owner("):rust.index("pub fn bind_android_client_owner(")]
 owner_resume = rust[rust.index("pub fn resume_android_client_owner("):rust.index("fn acquire_android_client_owner(")]
 owner_close = rust[rust.index("pub fn close_android_client_owner("):rust.index("mod mobile_session_lifecycle_tests")]
@@ -10370,8 +10422,65 @@ ok = (
         < session_add.index("drop(owner_admission)")
     and session_start.index("acquire_android_client_owner(client_owner_id)")
         < session_start.index("sessions::session_has_client_owner(session_id, client_owner_id)")
-        < session_start.index("session.start_io_thread()?")
+        < session_start.index("match session.start_io_thread()")
+        < session_start.index("rollback_failed_session_start(session_id);")
         < session_start.index("drop(owner_admission)")
+    and session_start.count("rollback_failed_session_start(session_id);") == 2
+    and failed_start_rollback.index("sessions::remove_session_by_session_id(session_id)")
+        < failed_start_rollback.index("session.close_and_join();")
+    and "close_event_stream" not in failed_start_rollback
+    and "failed_session_start_rolls_back_and_joins_only_the_exact_session" in rust
+    and ffi_add_existed.index('if cfg!(any(target_os = "android", target_os = "ios"))')
+        < ffi_add_existed.index("session_add_existed(")
+    and ffi_add_sync.index('if cfg!(any(target_os = "android", target_os = "ios"))')
+        < ffi_add_sync.index("let add_res = session_add(")
+    and 'if !cfg!(any(target_os = "android", target_os = "ios"))' in ffi_add_mobile
+    and ffi_add_mobile.index("MOBILE_SESSION_ADD_TRANSACTION")
+        < ffi_add_mobile.index(".lock()")
+        < ffi_add_mobile.index("session_add(")
+    and ") -> Result<()> {" in ffi_add_mobile
+    and "SyncReturn" not in ffi_add_mobile
+    and mobile_run.index("await bind.sessionAddMobile(")
+        < mobile_run.index("if (!isCurrentSession(request.sessionId))")
+        < mobile_run.index("await _closeNativeSession(request.sessionId);")
+        < mobile_run.index("stream = bind.sessionStart(")
+        < mobile_run.index("_listenToSessionStream(")
+        < mobile_run.index("qualityMonitorModel.checkShowQualityMonitor(request.sessionId)")
+    and "sessionAddSync" not in mobile_run
+    and mobile_finality.index("_mobileSessionStarts.cancelPendingOrGetRunning(")
+        < mobile_finality.index("(request) => request.sessionId == closingSessionId")
+        < mobile_finality.index("await preparation;")
+    and stream_failure.index("if (!isCurrentSession(expectedSessionId))")
+        < stream_failure.index("dialogManager.dismissAll();")
+        < stream_failure.index("'title': 'Connection Error'")
+        < stream_failure.index("_closeNativeSession(expectedSessionId)")
+    and stream_listener.index("SessionStreamFinality()")
+        < stream_listener.index("streamFinality.acceptExpectedClose()")
+        < stream_listener.index("onError:")
+        < stream_listener.index("onDone:")
+    and stream_listener.count("streamFinality.acceptUnexpectedTermination()") == 2
+    and dart_start.index("if (isMobile && isNewPeer)")
+        < dart_start.index("_scheduleMobileSessionStart(")
+        < dart_start.index("sessionAddSync(")
+    and dart_close.count("await _awaitMobileSessionStart(closingSessionId);") == 2
+    and dart_close.count("await bind.sessionClose(sessionId: closingSessionId);") == 2
+    and start_queue.count("_MobileSessionStartEntry<T>? _running;") == 1
+    and start_queue.count("_MobileSessionStartEntry<T>? _pending;") == 1
+    and start_queue.index("while (true)")
+        < start_queue.index("final entry = _running;")
+        < start_queue.index("if (entry == null)")
+        < start_queue.index("return;")
+        < start_queue.index("await _run(entry.request);")
+    and "_pending?.complete(MobileSessionStartDisposition.superseded);" in start_queue
+    and "cancelPendingOrGetRunning" in start_queue
+    and "return running.done.future;" in start_queue
+    and all(
+        collection not in start_queue
+        for collection in ("final List<", "final Queue<", "final Map<", "final Set<", "dart:collection")
+    )
+    and "if (_expectedCloseReceived || _unexpectedTerminationReported)" in stream_finality
+    and "qualityMonitorModel.checkShowQualityMonitor(sessionId)" not in mobile_remote
+    and "qualityMonitorModel.checkShowQualityMonitor(sessionId)" not in mobile_camera
     and owner_begin.index("ANDROID_CLIENT_OWNER.write()")
         < owner_begin.index("owner.begin()")
         < owner_begin.index("close_sessions_owned_by(&previous_owner)")

@@ -160,6 +160,26 @@ local_docker run --rm --pull=never --network=none --read-only \
       echo "DART-VERIFY: FAILED — dart pub get --offline rewrote flutter/pubspec.lock" >&2
       exit 1
     fi
+    mobile_add_line="$(grep -nF "  Future<void> sessionAddMobile(" lib/generated_bridge.dart \
+      | tail -n 1 | cut -d: -f1)"
+    [ -n "$mobile_add_line" ] \
+      || { echo "DART-VERIFY: FAILED — generated bridge lacks asynchronous mobile session add" >&2; exit 1; }
+    mobile_add_impl="$(sed -n "${mobile_add_line},$((mobile_add_line + 90))p" lib/generated_bridge.dart)"
+    printf "%s\n" "$mobile_add_impl" | grep -qF "_platform.executeNormal(FlutterRustBridgeTask(" \
+      || { echo "DART-VERIFY: FAILED — mobile session add is not a normal worker-pool bridge call" >&2; exit 1; }
+    if printf "%s\n" "$mobile_add_impl" | grep -qF "_platform.executeSync("; then
+      echo "DART-VERIFY: FAILED — mobile session add regained synchronous UI-isolate execution" >&2
+      exit 1
+    fi
+    dart format --output=none --set-exit-if-changed \
+      lib/models/model.dart \
+      lib/models/mobile_session_start_queue.dart \
+      lib/models/session_stream_finality.dart \
+      lib/mobile/pages/remote_page.dart \
+      lib/mobile/pages/view_camera_page.dart \
+      lib/web/bridge.dart \
+      test/mobile_session_start_queue_test.dart \
+      test/session_stream_finality_test.dart
     set +e
     out="$(flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/ 2>&1)"
     analyze_status=$?
@@ -183,7 +203,12 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/server_model_test.dart
     echo "  == R-S11eb flutter test: retired file timeout cannot remove replacement =="
     flutter test --no-pub test/mobile_file_session_lifecycle_test.dart
+    echo "  == R-S11eo flutter test: mobile session preparation is bounded and latest-wins =="
+    flutter test --no-pub test/mobile_session_start_queue_test.dart
+    echo "  == R-S11eo flutter test: expected close and unexpected stream failure stay distinct =="
+    flutter test --no-pub test/session_stream_finality_test.dart
     cd /src
+    rustfmt --edition 2021 --check src/flutter.rs src/flutter_ffi.rs
     echo "  == shipped Debian Rust library check: flutter,unix-file-copy-paste =="
     cargo check --offline --locked --features flutter,unix-file-copy-paste --lib --color never
     echo "  == R-S11eb generated-bridge mobile session lifecycle regressions =="

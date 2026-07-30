@@ -14,6 +14,7 @@ use crate::{
 use flutter_rust_bridge::{StreamSink, SyncReturn};
 use hbb_common::anyhow::Result;
 use hbb_common::{
+    bail,
     config::{self, LocalConfig, PeerConfig},
     fs, lazy_static, log,
     rendezvous_proto::ConnType,
@@ -23,7 +24,7 @@ use std::{
     collections::HashMap,
     sync::{
         atomic::{AtomicI32, Ordering},
-        Arc,
+        Arc, Mutex,
     },
     time::SystemTime,
 };
@@ -43,6 +44,7 @@ pub type SessionID = uuid::Uuid;
 
 lazy_static::lazy_static! {
     static ref TEXTURE_RENDER_KEY: Arc<AtomicI32> = Arc::new(AtomicI32::new(0));
+    static ref MOBILE_SESSION_ADD_TRANSACTION: Mutex<()> = Mutex::new(());
 }
 
 #[cfg(any(target_os = "android", target_os = "ios"))]
@@ -153,6 +155,9 @@ pub fn session_add_existed_sync(
     displays: Vec<i32>,
     is_view_camera: bool,
 ) -> SyncReturn<String> {
+    if cfg!(any(target_os = "android", target_os = "ios")) {
+        return SyncReturn("Existing-session attachment is unavailable on mobile".to_owned());
+    }
     if let Err(e) = session_add_existed(
         id.clone(),
         session_id,
@@ -179,6 +184,9 @@ pub fn session_add_sync(
     is_shared_password: bool,
     conn_token: Option<String>,
 ) -> SyncReturn<String> {
+    if cfg!(any(target_os = "android", target_os = "ios")) {
+        return SyncReturn("Synchronous session preparation is unavailable on mobile".to_owned());
+    }
     let add_res = session_add(
         &session_id,
         &client_owner_id,
@@ -198,6 +206,41 @@ pub fn session_add_sync(
     } else {
         SyncReturn("".to_owned())
     }
+}
+
+pub fn session_add_mobile(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+    id: String,
+    is_file_transfer: bool,
+    is_view_camera: bool,
+    is_port_forward: bool,
+    is_rdp: bool,
+    is_terminal: bool,
+    password: String,
+    is_shared_password: bool,
+    conn_token: Option<String>,
+) -> Result<()> {
+    if !cfg!(any(target_os = "android", target_os = "ios")) {
+        bail!("Mobile session preparation is unavailable on desktop");
+    }
+    let _transaction = MOBILE_SESSION_ADD_TRANSACTION
+        .lock()
+        .map_err(|_| hbb_common::anyhow::anyhow!("mobile session preparation lock was poisoned"))?;
+    session_add(
+        &session_id,
+        &client_owner_id,
+        &id,
+        is_file_transfer,
+        is_view_camera,
+        is_port_forward,
+        is_rdp,
+        is_terminal,
+        password,
+        is_shared_password,
+        conn_token,
+    )?;
+    Ok(())
 }
 
 pub fn session_start(

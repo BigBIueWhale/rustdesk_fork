@@ -7488,6 +7488,81 @@ def validate_windows_viewer_keyboard_authority_contract(sources):
         require_text(mutation_matrix, token, label)
 
 
+def validate_windows_dormant_fixed_temp_diagnostic_contract(sources):
+    native = sources["windows_native_source"]
+
+    require_absent(
+        native,
+        "void flog(",
+        "dormant Windows native diagnostic helper symbol",
+    )
+    require_absent(
+        native,
+        "// flog(",
+        "dormant Windows diagnostic commented call",
+    )
+    require_absent(
+        native,
+        "flog(",
+        "dormant Windows native diagnostic helper or call catch-all",
+    )
+    require_absent(
+        native,
+        "test_rustdesk.log",
+        "dormant Windows fixed-temp diagnostic pathname",
+    )
+
+    require_text(
+        sources["verify"],
+        'echo "== (3b-iii-d16) Windows dormant fixed-temp diagnostic append authority (R-S11et/R-S11e-181) =="',
+        "Windows dormant fixed-temp diagnostic shared source gate",
+    )
+    requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11et",
+        "Windows dormant fixed-temp diagnostic append requirement",
+    )
+    for token, label in (
+        ("<code>flog(char const *, ...)</code>", "retired native helper"),
+        ("<code>test_rustdesk.log</code>", "retired fixed pathname"),
+        ("<code>GetTempPath2</code>", "SYSTEM-aware temporary-path design context"),
+        ("MUST NOT</span> define or call <code>flog</code>", "complete symbol/call absence"),
+        ("No replacement logger is required", "no compatibility diagnostic sink"),
+    ):
+        require_text(
+            requirement,
+            token,
+            f"Windows dormant fixed-temp diagnostic requirement {label}",
+        )
+    require_text(
+        sources["requirements"],
+        "<tr><td>302</td>",
+        "Windows dormant fixed-temp diagnostic Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11et/R-S11e-181 Windows dormant fixed-temp diagnostic append authority",
+        "Windows dormant fixed-temp diagnostic hardening ledger",
+    )
+
+    mutation_matrix = extract_between(
+        sources["workspace_verifier"],
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "Windows dormant fixed-temp diagnostic deliberate-mutation matrix",
+    )
+    for token, label in (
+        ("dormant Windows native diagnostic helper symbol", "native-symbol mutation"),
+        ("dormant Windows fixed-temp diagnostic pathname", "fixed-path mutation"),
+        ("dormant Windows diagnostic commented call", "commented-call mutation"),
+        ("Windows dormant fixed-temp diagnostic shared source gate", "shared-gate mutation"),
+        ("Windows dormant fixed-temp diagnostic append requirement", "requirement mutation"),
+        ("Windows dormant fixed-temp diagnostic Appendix C row", "Appendix mutation"),
+        ("Windows dormant fixed-temp diagnostic hardening ledger", "ledger mutation"),
+    ):
+        require_text(mutation_matrix, token, label)
+
+
 def validate_macos_privileged_script_environment_contract(sources):
     platform = sources["macos_source"]
     require_text(
@@ -34258,6 +34333,7 @@ def validate_sources(sources):
     validate_macos_descriptor_contract(sources)
     validate_desktop_lock_screen_mechanism_contract(sources)
     validate_windows_viewer_keyboard_authority_contract(sources)
+    validate_windows_dormant_fixed_temp_diagnostic_contract(sources)
     validate_macos_privileged_script_environment_contract(sources)
     validate_fusermount_process_context_contract(sources)
     validate_windows_helper_launch_contract(sources)
@@ -58575,6 +58651,51 @@ def run_source_mutations(sources):
             "R-S11es/R-S11e-180 Windows viewer keyboard interception authority",
             "R-S11es-disabled/R-S11e-180 Windows viewer keyboard interception authority",
             "Windows viewer keyboard hardening ledger",
+        ),
+        (
+            "windows_native_source",
+            "static const DWORD kCreateProcessTokenAccess = TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY;",
+            "void flog(char const *fmt, ...) {}\n\n"
+            "static const DWORD kCreateProcessTokenAccess = TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY;",
+            "dormant Windows native diagnostic helper symbol",
+        ),
+        (
+            "windows_native_source",
+            "static const DWORD kWtsUserTokenSource = 0xFFFFFFFF;",
+            "// C:\\\\Windows\\\\temp\\\\test_rustdesk.log\n"
+            "static const DWORD kWtsUserTokenSource = 0xFFFFFFFF;",
+            "dormant Windows fixed-temp diagnostic pathname",
+        ),
+        (
+            "windows_native_source",
+            "        return strcmp(currentname, inputname) == 0 ? TRUE : FALSE;",
+            '        // flog("%s %s\\n", currentname, inputname);\n'
+            "        return strcmp(currentname, inputname) == 0 ? TRUE : FALSE;",
+            "dormant Windows diagnostic commented call",
+        ),
+        (
+            "verify",
+            'echo "== (3b-iii-d16) Windows dormant fixed-temp diagnostic append authority (R-S11et/R-S11e-181) =="',
+            'echo "== (3b-iii-d16) Windows dormant fixed-temp diagnostic append authority disabled (R-S11et/R-S11e-181) =="',
+            "Windows dormant fixed-temp diagnostic shared source gate",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11et</span>',
+            '<span class="id">R-S11et-disabled</span>',
+            "Windows dormant fixed-temp diagnostic append requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>302</td>",
+            "<tr><td>302-disabled</td>",
+            "Windows dormant fixed-temp diagnostic Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11et/R-S11e-181 Windows dormant fixed-temp diagnostic append authority",
+            "R-S11et-disabled/R-S11e-181 Windows dormant fixed-temp diagnostic append authority",
+            "Windows dormant fixed-temp diagnostic hardening ledger",
         ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )

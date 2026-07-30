@@ -18,18 +18,6 @@
 
 extern "C" uint32_t get_session_user_info(PWSTR bufin, uint32_t nin, uint32_t id);
 
-void flog(char const *fmt, ...)
-{
-    FILE *h = fopen("C:\\Windows\\temp\\test_rustdesk.log", "at");
-    if (!h)
-        return;
-    va_list arg;
-    va_start(arg, fmt);
-    vfprintf(h, fmt, arg);
-    va_end(arg);
-    fclose(h);
-}
-
 static const DWORD kCreateProcessTokenAccess = TOKEN_QUERY | TOKEN_DUPLICATE | TOKEN_ASSIGN_PRIMARY;
 static const DWORD kWtsUserTokenSource = 0xFFFFFFFF;
 
@@ -495,7 +483,6 @@ extern "C"
             return FALSE;
         }
         CloseDesktop(input);
-        // flog("%s %s\n", currentname, inputname);
         return strcmp(currentname, inputname) == 0 ? TRUE : FALSE;
     }
 

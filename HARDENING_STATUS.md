@@ -1921,6 +1921,69 @@ ephemeral, non-privileged, networkless verification containers. Native Windows v
 exact clean committed cold R-B2/R-B10 artifacts, separately required independent reproduction, and
 external review remain open; this slice does not complete the broader Ralph loop.
 
+**R-S11et/R-S11e-181 Windows dormant fixed-temp diagnostic append authority — SOURCE IMPLEMENTED;
+CONFINED SEMANTIC AND DELIBERATE-MUTATION VERIFICATION GREEN; NATIVE WINDOWS, COLD RELEASE,
+INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW OPEN.**
+Platform: Windows native translation unit used by viewer, controlled-side, and service-capable
+builds. Endpoint/action: dormant native variadic diagnostic output. Boundary: a future native caller's
+arbitrary diagnostic text ↔ an ambient fixed Windows temporary-file pathname.
+
+Current-source and history review proved `src/platform/windows.cc` defined
+`flog(char const *, ...)`, which called
+`fopen("C:\\Windows\\temp\\test_rustdesk.log", "at")`, wrote through `vfprintf`, and silently
+returned on open failure. The only other whole-tree occurrence was an already-commented call in
+`inputDesktopSelected`; no live source caller, header declaration, Rust binding, FFI operation,
+export map, or supported diagnostic-file feature exists. Both the helper and commented call arrived
+unchanged in upstream-import commit `c2abd3b`. `build.rs` compiles this translation unit for Windows,
+but the current call graph does not prove the helper reaches a final artifact or executes.
+
+Microsoft's `fopen` contract documents that append mode opens the named file for end-of-file writes
+or creates it when absent. That pathname operation proves no application-owned diagnostic object.
+Microsoft's `GetTempPath2` contract separately explains that a SYSTEM caller normally receives the
+protected `C:\Windows\SystemTemp` location to prevent common pathname-redirection problems. The
+hard-coded older temp pathname selected neither caller-appropriate temporary storage nor an
+identity-checked owned file. If a future caller revived the helper in a privileged-capable process,
+the helper itself would establish no owner, ACL, reparse, object-identity, or lifecycle proof.
+This is dormant conceptual file-write/API debt. It is not evidence that the helper ran, that a
+particular installation's Windows Temp ACL was attacker-writable, that a redirection primitive
+existed, that privilege escalation, exploitation, or host modification occurred, or that this code
+caused an Android/device/connection incident.
+
+The helper and commented call are deleted. No alternate temporary pathname, environment-selected
+sink, compatibility alias, constant stub, guard, or new diagnostic-file API replaces them. The
+unrelated `<cstdio>` include remains required by the live `freopen("CONOUT$", ...)` console
+redirection. R-S11et and Appendix C #302 bind the complete deletion and its bounded classification.
+The focused shared source gate rejects the `flog(` token and `test_rustdesk.log` pathname and binds
+the independent verifier, requirement, Appendix row, and this ledger entry. The independent semantic
+validator separately requires definition, commented-call, catch-all call, and fixed-path absence;
+it binds the normative and ledger artifacts plus seven deliberate native-symbol/path/call, gate,
+requirement, Appendix, and ledger mutation families.
+
+In immutable Rust 1.75 devcheck image
+`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+as numeric UID:GID 1000:1000, with no network, read-only root/source, all capabilities dropped,
+no-new-privileges, bounded PID/memory/no-swap/CPU/descriptor/tmpfs resources, and no port, device,
+Docker-socket, or host-namespace access, the independent semantic baseline passed. Its complete
+unsliced `--source-mutations-only` catalog then passed after approximately eighteen minutes,
+including all seven new mutations. The first complete attempt correctly rejected the restored
+native helper but failed closed because the fixture expected a symbol-specific diagnostic while
+the validator emitted a broader symbol-or-call diagnostic; definition and commented-call
+diagnostics were separated while retaining the catch-all, the baseline passed again, and the
+complete unsliced rerun passed.
+
+The exact extracted shared R-S11e-181 gate, Bash parsing, in-memory Python compilation, requirements
+HTML parsing, exact requirements SHA-256 binding
+`bf704ac9bf2f5a70a33c96dc170f9872a9e440f27279c79358e778b2f79548f1`, native-codec watch, and
+its adversarial self-test passed in the same confinement. An initial combined-check wrapper expanded
+awk's `$1` under strict shell mode and stopped after the already-green gate/syntax/HTML steps, before
+the digest or native-watch verdicts; shell-native digest prefix extraction replaced that wrapper,
+and the entire combined check passed.
+
+No native Windows compilation/execution, product/host runtime action, installed-platform result, or
+release evidence is inferred. Native Windows execution, the exact clean committed cold R-B2/R-B10
+transaction, separately required independent reproduction, and external review remain open; this
+slice does not complete the broader Ralph loop.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -16400,7 +16463,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-e8cd6e9cf1e2e6cb0c14dd12f8b0094feac3e88fb5ca80fcaa6e9570ccf93f29  requirements.html
+bf704ac9bf2f5a70a33c96dc170f9872a9e440f27279c79358e778b2f79548f1  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -16418,3 +16481,4 @@ The same identity additionally binds R-S11ei and Appendix C #288.
 The same identity additionally binds R-S11ej and Appendix C #289.
 The same identity additionally binds R-S11ek and Appendix C #290.
 The same identity additionally binds R-S11em and Appendix C #295.
+The same identity additionally binds R-S11et and Appendix C #302.

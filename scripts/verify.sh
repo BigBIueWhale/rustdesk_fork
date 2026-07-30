@@ -6331,6 +6331,29 @@ else
   echo "  ok  R-S11e-180 viewer keyboard capture has one exact-session grab; dormant Sciter hook and Flutter toggle are absent"
 fi
 
+# (3b-iii-d16) R-S11et/R-S11e-181: the imported, uncalled native
+# diagnostic append helper and its fixed ambient Windows temp pathname are
+# deleted, together with the already-commented call scar.
+echo "== (3b-iii-d16) Windows dormant fixed-temp diagnostic append authority (R-S11et/R-S11e-181) =="
+r_s11e181=
+if grep -Eq '(^|[^[:alnum:]_])flog[[:space:]]*\(|test_rustdesk\.log' src/platform/windows.cc; then
+  r_s11e181="$r_s11e181 dormant-native-diagnostic-append-surface-present"
+fi
+grep -qF 'validate_windows_dormant_fixed_temp_diagnostic_contract(sources)' scripts/verify-verifier-workspace.py \
+  || r_s11e181="$r_s11e181 independent-semantic-verifier-binding-missing"
+grep -qF '<span class="id">R-S11et</span>' requirements.html \
+  || r_s11e181="$r_s11e181 normative-requirement-missing"
+grep -qF '<tr><td>302</td>' requirements.html \
+  || r_s11e181="$r_s11e181 appendix-row-missing"
+grep -qF 'R-S11et/R-S11e-181 Windows dormant fixed-temp diagnostic append authority' HARDENING_STATUS.md \
+  || r_s11e181="$r_s11e181 hardening-ledger-missing"
+if [ -n "$r_s11e181" ]; then
+  echo "  FAIL R-S11e-181 Windows dormant fixed-temp diagnostic append authority:$r_s11e181"
+  rc=1
+else
+  echo "  ok  R-S11e-181 dormant native diagnostic helper, fixed temp pathname, and commented call are absent"
+fi
+
 # (3b-iii-e) R-S11c-2/R-S11c-3/R-S11g: remote input is connection-owned and bounded. Windows
 # SAS is consumed as an edge, then crosses a dedicated SYSTEM-only endpoint whose requester and
 # supervised child are bound by immutable pid+creation-time identity. Policy is read-only.

@@ -728,21 +728,10 @@ pub fn video_save_directory(root: bool) -> String {
     Default::default()
 }
 
-#[inline]
-pub fn has_hwcodec() -> bool {
-    // Has real hardware codec using gpu
-    (cfg!(feature = "hwcodec") && cfg!(not(target_os = "ios"))) || cfg!(feature = "mediacodec")
-}
-
-#[inline]
-pub fn has_vram() -> bool {
-    cfg!(feature = "vram")
-}
-
 // R-R2b / R-G1 (§18/§19): supported_hwdecodings (the H264/H265 decode-ability the excised Default-Codec
 // radios read via the main_supported_hwdecodings FFI, removed with them) is excised — the FFI was its
-// sole caller. hwcodec/vram/mediacodec are compiled out and AV1/libaom is absent, so it only ever returned
-// (false, false). scrap::codec::Decoder::supported_decodings — the LIVE protocol decode-ability path —
+// sole caller. The hardware-capability query wrappers are also absent. hwcodec/vram/mediacodec are
+// compiled out and AV1/libaom is absent. scrap::codec::Decoder::supported_decodings — the LIVE protocol decode-ability path —
 // is deliberately retained; only this UI-only wrapper is gone.
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

@@ -43,7 +43,7 @@ impl Session {
             .lc
             .write()
             .unwrap()
-            .initialize(id.to_owned(), conn_type, None, None, None, None);
+            .initialize(id.to_owned(), conn_type, None, None);
         session
     }
 }

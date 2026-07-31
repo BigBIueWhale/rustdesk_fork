@@ -171,6 +171,11 @@ local_docker run --rm --pull=never --network=none --read-only \
       echo "DART-VERIFY: FAILED — mobile session add regained synchronous UI-isolate execution" >&2
       exit 1
     fi
+    if grep -qE "GpuTexture|gpu_texture|AdapterLuid|adapter_luid|mainHasHwcodec|mainHasVram|main_has_hwcodec|main_has_vram" \
+      lib/generated_bridge.dart lib/generated_bridge.freezed.dart; then
+      echo "DART-VERIFY: FAILED — freshly generated bridge retained the retired GPU/VRAM presentation surface" >&2
+      exit 1
+    fi
     dart format --output=none --set-exit-if-changed \
       lib/models/model.dart \
       lib/models/desktop_render_texture.dart \

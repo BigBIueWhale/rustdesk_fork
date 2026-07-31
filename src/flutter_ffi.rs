@@ -121,8 +121,8 @@ pub fn stop_global_event_stream(app_type: String) {
 }
 pub enum EventToUI {
     Event(String),
-    Rgba(usize, u64),     // (display, exact publication)
-    Texture(usize, bool), // (display, gpu_texture)
+    Rgba(usize, u64), // (display, exact publication)
+    Texture(usize),   // display
 }
 
 // This function is only used to count the number of control sessions.
@@ -1655,19 +1655,11 @@ pub fn main_remove_peer(id: String) {
     PeerConfig::remove(&id);
 }
 
-pub fn main_has_hwcodec() -> SyncReturn<bool> {
-    SyncReturn(has_hwcodec())
-}
-
-pub fn main_has_vram() -> SyncReturn<bool> {
-    SyncReturn(has_vram())
-}
-
 // R-R2b / R-G1 (§19): main_supported_hwdecodings (the {"h264","h265"} decode-ability query the
 // Default-Codec radios read) is excised with the last of those radios — the desktop set went at
 // 15778fc, the mobile set here (its sole surviving caller). hwcodec/vram/mediacodec are compiled out
 // and AV1/libaom is absent, so it only ever reported {false,false}; with no UI caller left it is dead.
-// ui_interface::supported_hwdecodings goes with it (this was its sole caller); scrap's
+// The obsolete hardware-capability queries and ui_interface wrapper go with it; scrap's
 // Decoder::supported_decodings — the live protocol decode-ability path — is untouched.
 
 pub fn main_is_root() -> bool {
@@ -2016,20 +2008,6 @@ pub fn session_register_pixelbuffer_texture(
     ))
 }
 
-pub fn session_register_gpu_texture(
-    session_id: SessionID,
-    client_owner_id: SessionID,
-    display: usize,
-    ptr: usize,
-) -> SyncReturn<()> {
-    SyncReturn(super::flutter::session_register_gpu_texture(
-        session_id,
-        client_owner_id,
-        display,
-        ptr,
-    ))
-}
-
 pub fn version_to_number(v: String) -> SyncReturn<i64> {
     SyncReturn(hbb_common::get_version_number(&v))
 }
@@ -2112,10 +2090,6 @@ pub fn main_hide_dock() -> SyncReturn<bool> {
 pub fn main_has_file_clipboard() -> SyncReturn<bool> {
     let ret = cfg!(any(target_os = "windows", feature = "unix-file-copy-paste",));
     SyncReturn(ret)
-}
-
-pub fn main_has_gpu_texture_render() -> SyncReturn<bool> {
-    SyncReturn(cfg!(feature = "vram"))
 }
 
 pub fn cm_init() {

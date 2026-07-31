@@ -108,13 +108,6 @@ class PlatformFFI {
           clientOwnerId: clientOwnerId,
           display: display,
           ptr: ptr);
-  void registerGpuTexture(
-          SessionID sessionId, SessionID clientOwnerId, int display, int ptr) =>
-      _ffiBind.sessionRegisterGpuTexture(
-          sessionId: sessionId,
-          clientOwnerId: clientOwnerId,
-          display: display,
-          ptr: ptr);
 
   Future<void> init(String appType) async {
     Completer completer = Completer();

@@ -69,12 +69,24 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "camera": "flutter/lib/desktop/pages/view_camera_page.dart",
         "flutter": "src/flutter.rs",
         "ffi": "src/flutter_ffi.rs",
+        "client": "src/client.rs",
+        "io_loop": "src/client/io_loop.rs",
+        "ui_session": "src/ui_session_interface.rs",
+        "ui_interface": "src/ui_interface.rs",
         "native_model": "flutter/lib/models/native_model.dart",
         "web_model": "flutter/lib/models/web_model.dart",
         "web_bridge": "flutter/lib/web/bridge.dart",
+        "windows_runner": "flutter/windows/runner/flutter_window.cpp",
+        "desktop_settings": "flutter/lib/desktop/pages/desktop_setting_page.dart",
         "tests": "flutter/test/desktop_texture_lifecycle_test.dart",
         "pubspec": "flutter/pubspec.yaml",
         "pub_lock": "flutter/pubspec.lock",
+        "online_fetch": "scripts/online-fetch.sh",
+        "pub_cache_output": "scripts/online-pub-cache-output.py",
+        "pub_cache_verifier": (
+            "scripts/verify-online-fetch-pub-cache-output-authority.py"
+        ),
+        "dependency_inventory": "scripts/dependency-inventory.py",
         "plugin_pubspec": "flutter/third_party/texture_rgba_renderer/pubspec.yaml",
         "plugin_license": "flutter/third_party/texture_rgba_renderer/LICENSE",
         "plugin_upstream": "flutter/third_party/texture_rgba_renderer/UPSTREAM.md",
@@ -286,53 +298,25 @@ def validate(sources: Dict[str, str]) -> None:
             "publish: _publish,",
             "unpublish: _unpublish,",
             "release: _release,",
+            "_lifecycle.start();",
             "await textureRenderer.createTexture(_textureKey);",
             "await textureRenderer.getTexturePtr(_textureKey);",
-            "_ffi.textureModel.setRgbaTextureId",
+            "_ffi.textureModel.setTextureId",
             "platformFFI.registerPixelbufferTexture(",
             "_sessionId, _clientOwnerId, _display, ptr",
             "_sessionId, _clientOwnerId, _display, 0",
-            "_ffi.textureModel.clearRgbaTextureId(display: _display, id: id);",
+            "_ffi.textureModel.clearTextureId(display: _display, id: id);",
             "await textureRenderer.closeTexture(_textureKey);",
             "Future<void> retire() => _lifecycle.retire();",
         ),
         "pixelbuffer lifecycle wiring",
-    )
-    gpu = extract_braced_item(render, "class _GpuTexture", "GPU texture owner")
-    require_order(
-        gpu,
-        (
-            "_lifecycle = DesktopTextureLifecycle(",
-            "await gpuTextureRenderer.registerTexture();",
-            "await gpuTextureRenderer.output(id);",
-            "platformFFI.registerGpuTexture(",
-            "_sessionId, _clientOwnerId, _display, output",
-            "_sessionId, _clientOwnerId, _display, 0",
-            "_ffi.textureModel.clearGpuTextureId(display: _display, id: id);",
-            "await gpuTextureRenderer.unregisterTexture(id);",
-            "Future<void> retire() => _lifecycle?.retire()",
-        ),
-        "GPU lifecycle wiring",
-    )
-    display_textures = extract_braced_item(
-        render, "class _DisplayTextures", "paired display texture owner"
-    )
-    require_order(
-        display_textures,
-        (
-            "_PixelbufferTexture(display, ffi.sessionId, ffi.clientOwnerId, ffi)",
-            "_GpuTexture(display, ffi.sessionId, ffi.clientOwnerId, ffi)",
-            "_pixelbuffer.start();",
-            "_gpu.start();",
-        ),
-        "both exact texture owners exist before either starts",
     )
     texture_model = extract_braced_item(
         render, "class TextureModel", "desktop texture model"
     )
     require(
         texture_model,
-        "Map<int, LatestDesktopTextureSlot<_DisplayTextures>>",
+        "Map<int, LatestDesktopTextureSlot<_PixelbufferTexture>>",
         "one serialized slot per display",
     )
     require_order(
@@ -344,7 +328,8 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "final desired = <int>{};",
             "_textureSlots.putIfAbsent(",
-            "create: () => _DisplayTextures(display, ffi)",
+            "create: () => _PixelbufferTexture(",
+            "display, ffi.sessionId, ffi.clientOwnerId, ffi)",
             "slot.setWanted(true);",
             "_control.remove(entry.key);",
             "entry.value.setWanted(false);",
@@ -361,25 +346,21 @@ def validate(sources: Dict[str, str]) -> None:
         "_textureSlots.values.map((slot) => slot.dispose())",
         "complete display-slot drain",
     )
-    for method, field in (
-        ("clearRgbaTextureId", "rgbaTextureId"),
-        ("clearGpuTextureId", "gpuTextureId"),
-    ):
-        clear = extract_braced_item(
-            texture_model,
-            f"{method}({{required int display, required int id}})",
-            f"exact {field} clearing",
-        )
-        require_order(
-            clear,
-            (
-                "if (_disposed) return;",
-                "final control = _control[display];",
-                f"if (control?.{field} == id)",
-                "(-1);",
-            ),
-            f"exact {field} clearing without control recreation",
-        )
+    clear = extract_braced_item(
+        texture_model,
+        "clearTextureId({required int display, required int id})",
+        "exact software texture ID clearing",
+    )
+    require_order(
+        clear,
+        (
+            "if (_disposed) return;",
+            "final control = _control[display];",
+            "if (control?.nativeTextureId == id)",
+            "control!.setTextureId(-1);",
+        ),
+        "exact software texture ID clearing without control recreation",
+    )
 
     model = sources["model"]
     require(
@@ -438,22 +419,6 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "exact-owner pixelbuffer export",
     )
-    exported_gpu = extract_braced_item(
-        flutter,
-        "pub fn session_register_gpu_texture(",
-        "GPU registration export",
-    )
-    require_order(
-        exported_gpu,
-        (
-            "_client_owner_id: SessionID,",
-            "s.ui_handler.register_gpu_texture(",
-            "&_session_id,",
-            "&_client_owner_id,",
-            "if !admitted",
-        ),
-        "exact-owner GPU export",
-    )
     require(
         flutter,
         "fn r_s11ex_retired_desktop_ui_owner_cannot_replace_or_clear_texture()",
@@ -461,59 +426,149 @@ def validate(sources: Dict[str, str]) -> None:
     )
 
     ffi = sources["ffi"]
-    for signature, label in (
-        (
-            "pub fn session_register_pixelbuffer_texture(",
-            "pixelbuffer bridge wrapper",
-        ),
-        ("pub fn session_register_gpu_texture(", "GPU bridge wrapper"),
-    ):
-        wrapper = extract_braced_item(ffi, signature, label)
-        require(
-            wrapper,
-            "client_owner_id: SessionID,",
-            f"{label} exact UI-owner argument",
-        )
-        require_order(
-            wrapper,
-            ("session_id,", "client_owner_id,", "display,", "ptr,"),
-            f"{label} exact argument propagation",
-        )
+    wrapper = extract_braced_item(
+        ffi,
+        "pub fn session_register_pixelbuffer_texture(",
+        "pixelbuffer bridge wrapper",
+    )
+    require(
+        wrapper,
+        "client_owner_id: SessionID,",
+        "pixelbuffer bridge wrapper exact UI-owner argument",
+    )
+    require_order(
+        wrapper,
+        ("session_id,", "client_owner_id,", "display,", "ptr,"),
+        "pixelbuffer bridge wrapper exact argument propagation",
+    )
 
     for key in ("native_model", "web_model"):
         wrapper = sources[key]
         pixel_start = wrapper.find("void registerPixelbufferTexture(")
-        gpu_start = wrapper.find("void registerGpuTexture(", pixel_start + 1)
-        init_start = wrapper.find("Future<void> init(", gpu_start + 1)
-        if min(pixel_start, gpu_start, init_start) < 0:
+        init_start = wrapper.find("Future<void> init(", pixel_start + 1)
+        if min(pixel_start, init_start) < 0:
             raise VerificationError(f"{key} texture wrapper boundaries are missing")
-        pixel_wrapper = wrapper[pixel_start:gpu_start]
-        gpu_wrapper = wrapper[gpu_start:init_start]
-        for method, body in (
-            ("pixelbuffer", pixel_wrapper),
-            ("GPU", gpu_wrapper),
-        ):
-            require(
-                body,
-                "SessionID clientOwnerId, int display, int ptr",
-                f"{key} {method} owner signature",
-            )
-            require(
-                body,
-                "clientOwnerId: clientOwnerId",
-                f"{key} {method} generated-bridge owner propagation",
-            )
-    web_bridge = sources["web_bridge"]
-    for signature in (
-        "void sessionRegisterPixelbufferTexture(",
-        "void sessionRegisterGpuTexture(",
-    ):
-        stub = extract_braced_item(web_bridge, signature, "web texture stub")
+        pixel_wrapper = wrapper[pixel_start:init_start]
         require(
-            stub,
-            "required UuidValue clientOwnerId,",
-            "web exact UI-owner parity",
+            pixel_wrapper,
+            "SessionID clientOwnerId, int display, int ptr",
+            f"{key} pixelbuffer owner signature",
         )
+        require(
+            pixel_wrapper,
+            "clientOwnerId: clientOwnerId",
+            f"{key} pixelbuffer generated-bridge owner propagation",
+        )
+    web_bridge = sources["web_bridge"]
+    stub = extract_braced_item(
+        web_bridge,
+        "void sessionRegisterPixelbufferTexture(",
+        "web texture stub",
+    )
+    require(
+        stub,
+        "required UuidValue clientOwnerId,",
+        "web exact UI-owner parity",
+    )
+
+    for key in (
+        "render",
+        "model",
+        "native_model",
+        "web_model",
+        "web_bridge",
+        "windows_runner",
+        "flutter",
+        "ffi",
+        "client",
+        "io_loop",
+        "ui_session",
+        "ui_interface",
+        "pubspec",
+        "pub_lock",
+        "online_fetch",
+        "dependency_inventory",
+    ):
+        for token in (
+            "flutter_gpu_texture_renderer",
+            "FlutterGpuTextureRenderer",
+            "session_register_gpu_texture",
+            "sessionRegisterGpuTexture",
+            "main_has_gpu_texture_render",
+            "mainHasGpuTextureRender",
+            "register_gpu_texture",
+            "registerGpuTexture",
+            "gpu_output_ptr",
+            "get_adapter_luid",
+            "adapter_luid",
+            "main_has_hwcodec",
+            "mainHasHwcodec",
+            "main_has_vram",
+            "mainHasVram",
+        ):
+            forbid(sources[key], token, f"retired GPU/VRAM surface in {key}")
+    for token in (
+        "class _GpuTexture",
+        "gpuTextureRenderer",
+        "gpuTextureId",
+        "setTextureType",
+    ):
+        forbid(render, token, "second desktop texture mode")
+    forbid(flutter, 'feature = "vram"', "Flutter VRAM feature branch")
+    forbid(sources["io_loop"], "handler.on_texture", "viewer GPU texture dispatch")
+    forbid(sources["ui_session"], "fn on_texture", "viewer GPU texture interface")
+    forbid(sources["ui_interface"], "pub fn has_vram", "VRAM capability query")
+    forbid(sources["ui_interface"], "pub fn has_hwcodec", "hardware-codec capability query")
+    require(ffi, "Texture(usize),   // display", "one-field software texture event")
+    require(
+        flutter,
+        "stream.add(EventToUI::Texture(display));",
+        "software texture-ready publication",
+    )
+    require_order(
+        extract_between(
+            model,
+            "} else if (message is EventToUI_Texture) {",
+            "onError: (Object error, StackTrace stackTrace)",
+            "software texture event consumer",
+        ),
+        (
+            "final display = message.field0;",
+            'debugPrint("EventToUI_Texture display:$display");',
+            "onEvent2UIRgba(activeSessionId);",
+        ),
+        "one-field software texture event consumption",
+    )
+    forbid(
+        extract_between(
+            web_bridge,
+            "const factory EventToUI.texture(",
+            ") = EventToUI_Texture;",
+            "web software texture event",
+        ),
+        "bool field1",
+        "web GPU texture event discriminator",
+    )
+    require_order(
+        sources["windows_runner"],
+        (
+            "#include <texture_rgba_renderer/texture_rgba_renderer_plugin_c_api.h>",
+            "TextureRgbaRendererPluginCApiRegisterWithRegistrar(",
+        ),
+        "sole child-window software texture plugin registration",
+    )
+    require(sources["pub_cache_output"], "EXPECTED_GIT_DEPENDENCIES = 6", "six-dependency Pub-cache output contract")
+    require(sources["pub_cache_output"], "exact six locked Git dependencies", "six-dependency Pub-cache diagnostic")
+    require(sources["pub_cache_verifier"], "EXPECTED_GIT_DEPENDENCIES = 6", "six-dependency Pub-cache verifier contract")
+    require(sources["online_fetch"], '[ "${#git_specs[@]}" -eq 6 ]', "six-dependency acquisition inventory")
+    for token in (
+        '"dependencies_entries": 57',
+        '"union_entries": 63',
+        '"git_hosted_records": 6',
+        '"package_records": 198',
+        '"rustdesk_org_git_records": 5',
+    ):
+        require(sources["dependency_inventory"], token, "updated Flutter dependency inventory")
 
     require_order(
         sources["pubspec"],
@@ -973,11 +1028,22 @@ def validate(sources: Dict[str, str]) -> None:
             '<div class="req"><span class="id">R-S11ex</span>',
             "R-S11ex requirement",
         ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11ey</span>',
+            "R-S11ey software-only presentation requirement",
+        ),
         ("requirements", "<tr><td>306</td>", "Appendix C #306"),
+        ("requirements", "<tr><td>307</td>", "Appendix C #307"),
         (
             "hardening",
             "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
             "desktop texture hardening ledger",
+        ),
+        (
+            "hardening",
+            "**R-S11ey/R-S11e-186 software-RGBA-only desktop presentation",
+            "software-only texture hardening ledger",
         ),
         (
             "verify",
@@ -1038,16 +1104,91 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("lifecycle", "await retiring.retire();", "retiring.retire();", "predecessor finality"),
     ("lifecycle", "if (identical(_current, retiring))", "if (_current != null)", "exact predecessor removal"),
     ("lifecycle", "if (_disposed && wanted)", "if (false)", "post-dispose refusal"),
-    ("render", "_pixelbuffer.start();", "_gpu.start();", "paired texture start"),
+    ("render", "    _lifecycle.start();", "    // lifecycle start removed", "software texture start"),
     ("render", "_sessionId, _clientOwnerId, _display, ptr", "_sessionId, _sessionId, _display, ptr", "pixel owner publication"),
     ("render", "_sessionId, _clientOwnerId, _display, 0", "_sessionId, _sessionId, _display, 0", "pixel owner unpublication"),
-    ("render", "control?.rgbaTextureId == id", "control != null", "exact pixel UI-ID clearing"),
+    ("render", "control?.nativeTextureId == id", "control != null", "exact software UI-ID clearing"),
     ("render", "await textureRenderer.closeTexture(_textureKey);", "textureRenderer.closeTexture(_textureKey);", "pixel release finality"),
-    ("render", "_sessionId, _clientOwnerId, _display, output", "_sessionId, _sessionId, _display, output", "GPU owner publication"),
-    ("render", "control?.gpuTextureId == id", "control != null", "exact GPU UI-ID clearing"),
-    ("render", "await gpuTextureRenderer.unregisterTexture(id);", "gpuTextureRenderer.unregisterTexture(id);", "GPU release finality"),
-    ("render", "Map<int, LatestDesktopTextureSlot<_DisplayTextures>>", "Map<int, _DisplayTextures>", "serialized display slots"),
+    ("render", "Map<int, LatestDesktopTextureSlot<_PixelbufferTexture>>", "Map<int, _PixelbufferTexture>", "serialized display slots"),
     ("render", "entry.value.setWanted(false);", "_textureSlots.remove(entry.key);", "serialized display retirement"),
+    (
+        "render",
+        "import 'package:flutter/material.dart';",
+        "import 'package:flutter_gpu_texture_renderer/flutter_gpu_texture_renderer.dart';",
+        "retired GPU Dart dependency",
+    ),
+    (
+        "pubspec",
+        "  uuid: ^3.0.7",
+        "  flutter_gpu_texture_renderer:\n    path: forbidden",
+        "retired GPU package dependency",
+    ),
+    (
+        "windows_runner",
+        "#include <texture_rgba_renderer/texture_rgba_renderer_plugin_c_api.h>",
+        "#include <flutter_gpu_texture_renderer/flutter_gpu_texture_renderer_plugin_c_api.h>",
+        "retired GPU Windows registration surface",
+    ),
+    (
+        "flutter",
+        "pub(super) type TextureRgbaPtr = usize;",
+        "pub(super) type TextureRgbaPtr = usize;\n    gpu_output_ptr: usize,",
+        "retired native GPU pointer",
+    ),
+    (
+        "ffi",
+        "    Texture(usize),   // display",
+        "    Texture(usize, bool), // display, gpu",
+        "retired GPU event discriminator",
+    ),
+    (
+        "client",
+        "impl VideoHandler {",
+        "impl VideoHandler {\n    pub fn get_adapter_luid() -> Option<i64> { None }",
+        "retired decoder adapter identity",
+    ),
+    (
+        "io_loop",
+        "handler.on_rgba(display, data);",
+        "handler.on_texture(display, _texture);",
+        "retired viewer GPU dispatch",
+    ),
+    (
+        "ui_session",
+        "fn on_rgba(&self, display: usize, rgba: &mut scrap::ImageRgb);",
+        "fn on_texture(&self, display: usize, texture: usize);",
+        "retired viewer GPU interface",
+    ),
+    (
+        "ui_interface",
+        "pub fn is_root() -> bool {",
+        "pub fn has_vram() -> bool { false }\n\npub fn is_root() -> bool {",
+        "retired VRAM capability query",
+    ),
+    (
+        "model",
+        'debugPrint("EventToUI_Texture display:$display");',
+        "final gpuTexture = message.field1;",
+        "retired GPU event consumption",
+    ),
+    (
+        "online_fetch",
+        '[ "${#git_specs[@]}" -eq 6 ]',
+        '[ "${#git_specs[@]}" -eq 7 ]',
+        "six-dependency acquisition inventory",
+    ),
+    (
+        "pub_cache_output",
+        "EXPECTED_GIT_DEPENDENCIES = 6",
+        "EXPECTED_GIT_DEPENDENCIES = 7",
+        "six-dependency Pub-cache output inventory",
+    ),
+    (
+        "dependency_inventory",
+        '"package_records": 198',
+        '"package_records": 199',
+        "updated Flutter package inventory",
+    ),
     ("model", "clientOwnerId = isMobile ? _mobileClientOwnerId : Uuid().v4obj();", "clientOwnerId = isMobile ? _mobileClientOwnerId : sessionId;", "fresh desktop UI owner"),
     ("remote", "await textureDisposal;", "textureDisposal;", "RemoteDesktop texture finality"),
     ("camera", "await textureDisposal;", "textureDisposal;", "ViewCamera texture finality"),
@@ -1237,8 +1378,11 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "macOS latest-wins pending-frame coalescing",
     ),
     ("requirements", '<div class="req"><span class="id">R-S11ex</span>', '<div class="req"><span class="id">R-S11ex-disabled</span>', "normative requirement"),
+    ("requirements", '<div class="req"><span class="id">R-S11ey</span>', '<div class="req"><span class="id">R-S11ey-disabled</span>', "software-only normative requirement"),
     ("requirements", "<tr><td>306</td>", "<tr><td>306-disabled</td>", "Appendix disposition"),
+    ("requirements", "<tr><td>307</td>", "<tr><td>307-disabled</td>", "software-only Appendix disposition"),
     ("hardening", "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "**R-S11ex-disabled/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "hardening ledger"),
+    ("hardening", "**R-S11ey/R-S11e-186 software-RGBA-only desktop presentation", "**R-S11ey-disabled/R-S11e-186 software-RGBA-only desktop presentation", "software-only hardening ledger"),
     ("dart_verify", "flutter test --no-pub test/desktop_texture_lifecycle_test.dart", "true # desktop texture lifecycle test disabled", "Dart behavior gate"),
     ("verify", "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test", "python3 scripts/verify-desktop-texture-lifecycle.py --repo .", "shared mutation gate"),
     ("apple", "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test", "python3 scripts/verify-desktop-texture-lifecycle.py --repo .", "Apple mutation gate"),

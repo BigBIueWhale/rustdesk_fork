@@ -202,6 +202,8 @@ def validate_contract(sources: Dict[str, str]) -> None:
             'cp -a "$FRB_OUTPUT/." "$ANALYSIS_ROOT/"',
             '    dart pub get --offline --enforce-lockfile >/dev/null',
             'if [ "$lock_before" != "$lock_after" ]; then',
+            'grep -qE "GpuTexture|gpu_texture|AdapterLuid|adapter_luid|mainHasHwcodec|mainHasVram|main_has_hwcodec|main_has_vram"',
+            'DART-VERIFY: FAILED — freshly generated bridge retained the retired GPU/VRAM presentation surface',
             'flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/',
             'flutter analyze --no-pub \\\n'
             '      third_party/texture_rgba_renderer/lib/',
@@ -600,6 +602,12 @@ MUTATIONS = (
         'if [ "$lock_before" != "$lock_after" ]; then',
         'if false; then',
         "Pub lock preservation",
+    ),
+    Mutation(
+        "dart",
+        'grep -qE "GpuTexture|gpu_texture|AdapterLuid|adapter_luid|mainHasHwcodec|mainHasVram|main_has_hwcodec|main_has_vram"',
+        'grep -qE "this_pattern_cannot_match"',
+        "fresh generated bridge GPU/VRAM absence",
     ),
     Mutation(
         "dart",

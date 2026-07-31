@@ -114,13 +114,6 @@ class PlatformFFI {
           clientOwnerId: clientOwnerId,
           display: display,
           ptr: ptr);
-  void registerGpuTexture(
-          SessionID sessionId, SessionID clientOwnerId, int display, int ptr) =>
-      _ffiBind.sessionRegisterGpuTexture(
-          sessionId: sessionId,
-          clientOwnerId: clientOwnerId,
-          display: display,
-          ptr: ptr);
 
   /// Init the FFI class, loads the native Rust core library.
   Future<void> init(String appType) async {

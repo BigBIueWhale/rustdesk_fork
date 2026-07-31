@@ -331,9 +331,9 @@ class _GeneralState extends State<_General> {
         // hide-stop-service config keys are retained (read on mobile + elsewhere) — only this desktop UI goes.
         theme(),
         _Card(title: 'Language', children: [language()]),
-        // R-R2b / R-G1 (§19): the "Hardware Codec" card is removed — hwcodec/vram are compiled out of
-        // every build, and AV1/libaom is runtime-quarantined, so mainHasHwcodec()/mainHasVram() are always false and
-        // the card only ever rendered Offstage (hidden ≠ removed, the R-G1 trap).
+        // R-R2b / R-G1 (§19): the "Hardware Codec" card is removed — hardware codec paths are
+        // compiled out of every build and AV1/libaom is runtime-quarantined, so the card had no
+        // supported state and only ever rendered Offstage (hidden ≠ removed, the R-G1 trap).
         if (!isWeb) audio(context),
         if (!isWeb) record(context),
         // R-X12 / R-G1 (§19): the "Wayland" settings card is removed, not hidden. Its only render
@@ -499,8 +499,8 @@ class _GeneralState extends State<_General> {
     });
   }
 
-  // R-R2b / R-G1 (§19): the hwcodec() "Hardware Codec" card is excised — hwcodec/vram (and Android
-  // mediacodec) are compiled out of every build, so mainHasHwcodec()/mainHasVram() are always false.
+  // R-R2b / R-G1 (§19): the hwcodec() "Hardware Codec" card and its capability queries are
+  // excised because hardware codec paths are compiled out of every build.
 
   Widget audio(BuildContext context) {
     if (bind.isOutgoingOnly()) {

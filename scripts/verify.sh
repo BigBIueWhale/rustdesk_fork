@@ -12916,6 +12916,24 @@ elif software_codec_default_feature_is_forbidden .; then
 else
   echo "  ok  §18/R-R2b hwcodec/vram/mediacodec never selected in any build path (CPU-only software codec)"
 fi
+# R-R2b / R-S11ey: a disabled Rust feature is not enough if Flutter still resolves,
+# links, registers, or exposes a native GPU texture plugin. Supported desktop builds
+# have one presentation path: software decode into the repository-owned RGBA plugin.
+software_renderer_surface_hits=$(
+  grep -RInE \
+    'flutter_gpu_texture_renderer|FlutterGpuTextureRenderer|session_register_gpu_texture|sessionRegisterGpuTexture|main_has_gpu_texture_render|mainHasGpuTextureRender|register_gpu_texture|registerGpuTexture|gpu_output_ptr|get_adapter_luid|adapter_luid|main_has_hwcodec|mainHasHwcodec|main_has_vram|mainHasVram' \
+    --exclude='generated_bridge.dart' --exclude='generated_bridge.freezed.dart' \
+    flutter/pubspec.yaml flutter/pubspec.lock flutter/lib flutter/windows/runner \
+    src/flutter.rs src/flutter_ffi.rs src/client.rs src/client/io_loop.rs \
+    src/ui_session_interface.rs src/ui_interface.rs 2>/dev/null || true
+)
+if [ -n "$software_renderer_surface_hits" ]; then
+  echo "  FAIL §18/R-R2b/R-S11ey: a retired GPU/VRAM Flutter dependency, registration, pointer, event, or capability query remains:"
+  echo "$software_renderer_surface_hits" | sed 's/^/      /'
+  rc=1
+else
+  echo "  ok  §18/R-R2b/R-S11ey desktop presentation is software-RGBA-only; GPU/VRAM Flutter surface absent"
+fi
 # R-R2b (native deps): the vcpkg manifest must not pull the hardware-codec native
 # libraries — ffmpeg (the amf/nvcodec/qsv hwaccel backend) and mfx-dispatch (Intel
 # MediaSDK/QSV) — nor their hwaccel override pins (ffnvcodec, amd-amf). The fork's

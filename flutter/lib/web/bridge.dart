@@ -25,7 +25,6 @@ sealed class EventToUI {
   ) = EventToUI_Rgba;
   const factory EventToUI.texture(
     int field0,
-    bool field1,
   ) = EventToUI_Texture;
 }
 
@@ -46,13 +45,9 @@ class EventToUI_Rgba implements EventToUI {
 }
 
 class EventToUI_Texture implements EventToUI {
-  const EventToUI_Texture(final int field0, final bool field1)
-      : f0 = field0,
-        f1 = field1;
+  const EventToUI_Texture(final int field0) : f0 = field0;
   final int f0;
-  final bool f1;
   int get field0 => f0;
-  bool get field1 => f1;
 }
 
 class RustdeskImpl {
@@ -1048,14 +1043,6 @@ class RustdeskImpl {
         () => js.context.callMethod('setByName', ['remove_peer', id]));
   }
 
-  bool mainHasHwcodec({dynamic hint}) {
-    throw UnimplementedError("mainHasHwcodec");
-  }
-
-  bool mainHasVram({dynamic hint}) {
-    throw UnimplementedError("mainHasVram");
-  }
-
   Future<bool> mainIsRoot({dynamic hint}) {
     throw UnimplementedError("mainIsRoot");
   }
@@ -1233,13 +1220,6 @@ class RustdeskImpl {
       required int ptr,
       dynamic hint}) {}
 
-  void sessionRegisterGpuTexture(
-      {required UuidValue sessionId,
-      required UuidValue clientOwnerId,
-      required int display,
-      required int ptr,
-      dynamic hint}) {}
-
   // Dup to the function in hbb_common, lib.rs
   // Maybe we need to move this function to js part.
   int versionToNumber({required String v, dynamic hint}) {
@@ -1309,10 +1289,6 @@ class RustdeskImpl {
   }
 
   bool mainHasFileClipboard({dynamic hint}) {
-    return false;
-  }
-
-  bool mainHasGpuTextureRender({dynamic hint}) {
     return false;
   }
 

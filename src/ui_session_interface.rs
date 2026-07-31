@@ -11,6 +11,8 @@ use async_trait::async_trait;
 use hbb_common::config::keys;
 #[cfg(not(feature = "flutter"))]
 use hbb_common::fs;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use hbb_common::ResultType;
 use hbb_common::{
     allow_err,
     config::{Config, LocalConfig, PeerConfig},
@@ -24,11 +26,7 @@ use hbb_common::{
     },
     whoami, Stream,
 };
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-use hbb_common::ResultType;
 use rdev::{Event, EventType::*, KeyCode};
-#[cfg(all(feature = "vram", feature = "flutter"))]
-use std::ffi::c_void;
 use std::{
     future::Future,
     ops::{Deref, DerefMut},
@@ -42,12 +40,12 @@ use std::{
 use uuid::Uuid;
 
 use crate::client::io_loop::Remote;
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+use crate::client::PortForwardTarget;
 use crate::client::{
     check_if_retry, handle_login_error, handle_login_from_ui, handle_test_delay, send_mouse,
     send_pointer_device_event, FileManager, Key, LoginConfigHandler, QualityStatus, KEY_MAP,
 };
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-use crate::client::PortForwardTarget;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::common::GrabState;
 use crate::keyboard;
@@ -600,12 +598,11 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn alternative_codecs(&self) -> (bool, bool, bool) {
-        let luid = self.lc.read().unwrap().adapter_luid;
         let mark_unsupported = self.lc.read().unwrap().mark_unsupported.clone();
         let decoder = scrap::codec::Decoder::supported_decodings(
             None,
             use_texture_render(),
-            luid,
+            None,
             &mark_unsupported,
         );
         let mut vp8 = decoder.ability_vp8 > 0;
@@ -1764,8 +1761,6 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn on_voice_call_closed(&self, reason: &str);
     fn on_voice_call_waiting(&self);
     fn on_voice_call_incoming(&self);
-    #[cfg(all(feature = "vram", feature = "flutter"))]
-    fn on_texture(&self, display: usize, texture: *mut c_void);
     fn set_multiple_windows_session(&self, sessions: Vec<WindowsSession>);
     fn set_current_display(&self, disp_idx: i32);
     #[cfg(feature = "flutter")]

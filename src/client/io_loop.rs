@@ -2946,9 +2946,6 @@ impl<T: InvokeUiSession> Remote<T> {
                 *decoder_frame_count.write().unwrap() += 1;
                 if pixelbuffer {
                     handler.on_rgba(display, data);
-                } else {
-                    #[cfg(all(feature = "vram", feature = "flutter"))]
-                    handler.on_texture(display, _texture);
                 }
             },
         );

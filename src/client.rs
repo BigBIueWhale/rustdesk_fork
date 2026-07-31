@@ -1325,20 +1325,9 @@ pub struct VideoHandler {
 }
 
 impl VideoHandler {
-    #[cfg(feature = "flutter")]
-    pub fn get_adapter_luid() -> Option<i64> {
-        crate::flutter::get_adapter_luid()
-    }
-
-    #[cfg(not(feature = "flutter"))]
-    pub fn get_adapter_luid() -> Option<i64> {
-        None
-    }
-
     /// Create a new video handler.
     pub fn new(format: CodecFormat, _display: usize) -> Self {
-        let luid = Self::get_adapter_luid();
-        log::info!("new video handler for display #{_display}, format: {format:?}, luid: {luid:?}");
+        log::info!("new video handler for display #{_display}, format: {format:?}");
         let rgba_format =
             if cfg!(feature = "flutter") && (cfg!(windows) || cfg!(target_os = "linux")) {
                 ImageFormat::ABGR
@@ -1346,7 +1335,7 @@ impl VideoHandler {
                 ImageFormat::ARGB
             };
         VideoHandler {
-            decoder: Decoder::new(format, luid),
+            decoder: Decoder::new(format, None),
             rgb: ImageRgb::new(rgba_format, crate::get_dst_align_rgba()),
             texture: Default::default(),
             recorder: Default::default(),
@@ -1419,9 +1408,8 @@ impl VideoHandler {
         );
         #[cfg(target_os = "macos")]
         self.rgb.set_align(crate::get_dst_align_rgba());
-        let luid = Self::get_adapter_luid();
         let format = format.unwrap_or(self.decoder.format());
-        self.decoder = Decoder::new(format, luid);
+        self.decoder = Decoder::new(format, None);
         self.fail_counter = 0;
         self.first_frame = true;
     }
@@ -1590,7 +1578,6 @@ pub struct LoginConfigHandler {
     pub save_ab_password_to_recent: bool, // true: connected with ab password
     pub custom_fps: Arc<Mutex<Option<usize>>>,
     pub last_auto_fps: Option<usize>,
-    pub adapter_luid: Option<i64>,
     pub mark_unsupported: Vec<CodecFormat>,
     pub selected_windows_session_id: Option<u32>,
     pub peer_info: Option<PeerInfo>,
@@ -1619,7 +1606,6 @@ impl LoginConfigHandler {
         &mut self,
         id: String,
         conn_type: ConnType,
-        adapter_luid: Option<i64>,
         shared_password: Option<String>,
         conn_token: Option<String>,
     ) {
@@ -1649,7 +1635,6 @@ impl LoginConfigHandler {
         self.supported_encoding = Default::default();
         self.restarting_remote_device = false;
         self.received = false;
-        self.adapter_luid = adapter_luid;
         self.selected_windows_session_id = None;
         self.shared_password = shared_password;
         self.record_state = false;
@@ -2038,7 +2023,7 @@ impl LoginConfigHandler {
         Decoder::supported_decodings(
             Some(&self.id),
             use_texture_render(),
-            self.adapter_luid,
+            None,
             &self.mark_unsupported,
         )
     }
@@ -2444,7 +2429,7 @@ impl LoginConfigHandler {
         let decoding = Decoder::supported_decodings(
             Some(&self.id),
             use_texture_render(),
-            self.adapter_luid,
+            None,
             &self.mark_unsupported,
         );
         let mut misc = Misc::new();
@@ -4053,13 +4038,7 @@ mod tests {
         isolate();
         let address = "12345@legacy.example?key=attacker";
         let mut handler = LoginConfigHandler::default();
-        handler.initialize(
-            address.to_owned(),
-            ConnType::DEFAULT_CONN,
-            None,
-            None,
-            None,
-        );
+        handler.initialize(address.to_owned(), ConnType::DEFAULT_CONN, None, None);
 
         assert_eq!(handler.id, address);
         let message = handler.create_login_msg(None).unwrap();

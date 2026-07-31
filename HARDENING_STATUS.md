@@ -13,13 +13,13 @@ history remains the traceability record for that intermediate work.
 
 **Current machine inventory expectation.** `Cargo.lock` has 905 package records: 36 git-sourced records from
 26 unique git source URLs, including 26 rustdesk-org records from 20 unique rustdesk-org URLs.
-`flutter/pubspec.lock` has 199 package records, including 8 git records and 7 rustdesk-org records;
-`flutter/pubspec.yaml` declares 58 main and 6 dev dependencies, a 64-name union. `.github/workflows/` has
+`flutter/pubspec.lock` has 198 package records, including 6 git records and 5 rustdesk-org records;
+`flutter/pubspec.yaml` declares 57 main and 6 dev dependencies, a 63-name union. `.github/workflows/` has
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 871 lexical `unsafe {`
-blocks across 247 tracked Rust files, 74 of which contain at least one; this is explicitly not AST proof.
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 862 lexical `unsafe {`
+blocks across 249 tracked Rust files, 75 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
 place and gated.** The single mandatory CPace PAKE runs at the `create_tcp_connection`
@@ -2422,7 +2422,7 @@ PLUGIN COMPILATION, ALL NATIVE RENDERER EXECUTION, REAL FOCUS/WINDOW-TRANSFER
 REPRODUCTION, COLD RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW
 PENDING.** Platforms: the
 Windows, Linux, and macOS outgoing-viewer
-Flutter texture path. Endpoint/action: pixelbuffer and optional GPU plugin creation,
+Flutter texture path. Endpoint/action: software-pixelbuffer plugin creation,
 publication to `VideoRenderer`, display replacement, tab-to-window transfer, and page/session
 teardown. Boundary: asynchronous plugin work can outlive one Flutter view while the connection
 UUID is deliberately reused by its replacement.
@@ -2442,11 +2442,11 @@ the old view therefore carried no identity by which native code could distinguis
 replacement view; old work could register into or clear the replacement renderer. Reconnect,
 window closure, or process exit destroyed enough state to mask the race. This is source proof of
 desktop renderer-registration and resource-finality debt. It is not proof that this mechanism
-caused the reported focus-loss display delay, that the pinned pixelbuffer/GPU plugins are correct,
+caused the reported focus-loss display delay, that the pinned RGBA plugin executes correctly,
 or that any native platform has executed the correction.
 
 Each desktop `FFI` now receives a fresh UI-owner UUID independent of the possibly reused
-connection UUID. Pixelbuffer and GPU registration carry both values through the Dart interface,
+connection UUID. Software-pixelbuffer registration carries both values through the Dart interface,
 fresh generated bridge, Rust FFI wrapper, and native renderer admission. Native mutation occurs
 only while the current handler for that connection has the exact owner. A same-session regression
 replaces an old handler with a new owner and requires both late old registration and late old
@@ -2457,9 +2457,8 @@ Retirement becomes visible before its first await, drains the exact initializati
 suppresses late publication, and shares one finality future across repeated retirement. Failed
 initialization releases any partial allocation immediately; a possibly-partial throwing
 publication is unpublished and released; unpublication failure cannot prevent the one release;
-all failures are reported rather than silently ignored. Pixelbuffer and GPU owners are both
-constructed before either begins allocation, so a synchronous sibling-constructor failure cannot
-strand already-started plugin work. Matching unpublication attempts native unregister first but
+all failures are reported rather than silently ignored. The sole software-pixelbuffer owner begins
+allocation only after its complete lifecycle owner has been constructed. Matching unpublication attempts native unregister first but
 clears the Dart UI texture ID in `finally`, and clears it only when that exact ID is still installed;
 a retired owner therefore cannot blank a replacement's UI state, while a native-unregister
 exception cannot leave the retired ID displayed.
@@ -2553,14 +2552,14 @@ unconsumed buffer while discarding newer frames or accumulate duplicate availabi
 Windows and Linux roll back the pending frame when their registrar reports notification failure;
 Linux also keeps pending dimensions separate from the last presented frame's dimensions, so a
 failed notification cannot corrupt the still-valid presented buffer's metadata. macOS's registrar
-method has no failure result. The separately pinned GPU plugin has not been
-corrected by this slice and remains an explicit next native-ownership audit boundary.
+method has no failure result. The separately pinned unsupported GPU plugin is excised by
+R-S11ey/R-S11e-186 rather than retained as another native-ownership boundary.
 
 The pre-existing canonical `online/pub-cache` was produced for the former eight-Git lock and still
-contains the now-unselected upstream RGBA checkout. Offline Pub resolution ignores that extra
-checkout and the confined source/native checks below can consume the new path lock, but this slice
-does not rewrite or bless the old cache as an exact seven-Git release input. A future checked
-networked Pub-cache production transaction must create and publish the exact seven-checkout/seven-bare
+contains the now-unselected upstream RGBA and GPU-plugin checkouts. Offline Pub resolution ignores
+those extra checkouts and the confined source/native checks below can consume the six-Git lock, but
+this slice does not rewrite or bless the old cache as an exact six-Git release input. A future checked
+networked Pub-cache production transaction must create and publish the exact six-checkout/six-bare
 closure before a cold release verdict; no manual deletion from the canonical cache is treated as a
 substitute for that transaction.
 
@@ -2707,6 +2706,97 @@ capture-through-presentation instrumentation and budgets, exact artifact identit
 committed cold R-B2/R-B10 release transaction, separately required independent reproduction, and
 external review remain open. This source correction does not complete the broader connection-flow
 correctness/performance mandate or the Ralph loop.
+
+**R-S11ey/R-S11e-186 software-RGBA-only desktop presentation — SOURCE IMPLEMENTED
+2026-07-31; EXACT-SOURCE CONFINED GENERATION, ANALYSIS, TEST, LINUX CHECK, AND
+PINNED AARCH64 ANDROID CROSS-CHECK PASSED; NATIVE WINDOWS
+COMPILATION, EXACT PACKAGED-PLUGIN INSPECTION, ALL RENDERER EXECUTION, REAL
+FOCUS/RECONNECT REPRODUCTION, COLD RELEASE, INDEPENDENT REPRODUCTION, AND
+EXTERNAL REVIEW PENDING.** Platforms: the Windows/Linux/macOS outgoing desktop
+viewer source and Flutter dependency/plugin graph. Endpoint/action: presentation-plugin
+resolution, registration, Dart ownership, Rust/FRB handoff, decoder adapter selection, and
+texture-ready notification. Boundary: a compile-time-disabled codec/render feature is not absent
+when its native plugin is still packaged and initialized by Flutter.
+
+R-R2b already forbids every supported build path from selecting `hwcodec`, `vram`, MediaCodec,
+or ffmpeg hardware features, but the application retained
+`flutter_gpu_texture_renderer` as a direct Git dependency. Flutter would therefore generate and
+load its Windows D3D11 plugin during engine startup, and the child-window runner manually
+registered it, even though `main_has_gpu_texture_render()` returned false in supported builds.
+Dart still constructed a second per-display owner and carried texture-mode selection. The Rust,
+FRB, and web surfaces still carried raw native-output registration, adapter-LUID discovery, a
+GPU/software event Boolean, GPU DLL/symbol lookup, and impossible hardware-capability queries.
+Runtime nonselection did not remove this packaged native attack, resource, supply-chain, or
+licensing surface.
+
+A read-only audit of the exact pinned checkout at
+`online/pub-cache/git/flutter_gpu_texture_renderer-08a471bb8ceccdd50483c81cdfa8b81b07b14b87`
+also found that the Windows-only plugin returns a raw `D3D11Output*` through its method-channel/C
+ABI boundary, can destroy callback/release state while Flutter's texture-unregister completion is
+asynchronous, shares immediate-context and rendering state across loose lifetime boundaries, and
+ships a placeholder `LICENSE` containing only `TODO: Add your license here.` Those findings
+justify deleting an unsupported component instead of attempting to make it a supported renderer.
+They are source findings, not evidence that the plugin executed, was exploitable, changed this
+host, opened a public port, or caused the reported focus-delay symptom.
+
+The dependency and lock record, online-fetch specification, Pub-cache output mapping, Windows
+header and manual child-window registration, Dart GPU owner/mode state, native plugin loader and
+raw output pointer, adapter-LUID plumbing, GPU registration bridge, texture event Boolean, and dead
+hardware-capability queries are deleted. The desktop app now owns one presentation plugin: the
+repository-owned software RGBA renderer governed by R-S11ex. Its ready event carries only the
+display. Decoder construction and advertised supported decoding receive no adapter identity, and
+enabling an unsupported Cargo feature does not reintroduce a Flutter GPU presentation route.
+
+The exact current inventory is 198 Flutter lock records, six Git records (five from
+`rustdesk-org`), and 57 main plus six development dependencies with a 63-name union. The current
+sealed `online/pub-cache` was produced for an older eight-Git graph and may still contain both the
+now-unselected upstream RGBA and GPU-plugin checkouts. Offline resolution may ignore those extra
+objects, but that cache is not claimed as a freshly produced exact six-Git release cache. A checked
+networked Pub-cache production transaction must eventually publish the exact six-checkout/six-bare
+closure; manual pruning is not accepted as equivalent evidence.
+
+The focused, shared, Apple, Dart-verifier-authority, dependency-inventory, Pub-cache-authority, and
+independent gates are extended to reject restoration of the retired package, native registration,
+raw pointer/adapter/FFI/event/query surfaces, stale counts, R-S11ey, Appendix C #307, or this ledger
+entry. Fresh bridge generation must independently prove the generated ABI no longer contains that
+surface.
+
+The exact source completed a confined fresh FRB 1.80.1 and `build_runner` generation transaction;
+the known nonfatal `_Dart_Handle` generator diagnostic remained visible, and the resulting Rust and
+Dart bridges contained none of the retired GPU/VRAM APIs. The Flutter lock remained byte-identical,
+the 12 selected Dart files were formatter-clean, full `flutter analyze lib/` completed with zero
+errors, the repository-owned RGBA wrapper reported no issues, and all seven desktop-texture
+lifecycle tests passed. Touched Rust files were `rustfmt`-clean; the locked/offline Linux
+`cargo check --features flutter,unix-file-copy-paste --lib` passed; and all 16
+`flutter::mobile_session_lifecycle_tests` passed, including the exact regression that prevents a
+retired desktop UI owner from replacing or clearing its successor's texture. In a separate pinned
+Android builder, fresh bridge generation followed by locked release
+`cargo ndk --platform 21 --target aarch64-linux-android check --features flutter --lib` passed and
+the fresh generated bridge again contained none of the retired surface.
+
+Those counted transactions used numeric UID/GID 1000:1000, immutable pinned builders, no network,
+read-only container roots, dropped capabilities, `no-new-privileges`, bounded CPU/memory/process
+resources, no published ports, no host devices, no Docker socket or host namespace, and disposable
+exact-source copies. They started no product, listener, service, peer, renderer, emulator, or host
+RustDesk process. One Linux transaction completed generation, Dart analysis/tests, and the locked
+Rust check before its Rust test compilation was killed at the 12-GiB container limit; the complete
+transaction was restarted at a bounded 20-GiB limit and passed. Other non-counted harness stops
+were an incorrect Rust archive label before extraction, intentionally rejected pre-existing broad-
+file formatter changes, required mechanical `rustfmt` corrections, an undefined focused-verifier
+variable, stale expected inventory/count contracts, and an initial Android disposable-source mount
+at `/work/src` where the existing helper requires `/src`. Each was corrected and its affected check
+was restarted; no partial result is counted as a pass. Final static and complete independent
+mutation-catalog results are reported only after their terminal reruns on the final ledger bytes.
+
+This source correction cannot honestly supply the operational evidence at the center of the user
+report. There is no current Windows native compilation or exact artifact plugin inventory; no
+Windows/Linux/macOS renderer has executed; no Android or Windows client has been backgrounded,
+focused, task-swiped, Force-Stopped, reconnected, or paired with a controlled peer; and no
+capture-through-presentation timestamps, sustained latency budget, or older-operational-artifact
+identity have been measured. No listener, RustDesk service, peer connection, product executable,
+device, host configuration, host firewall, or privileged process is used by this source slice.
+Consequently this row does not claim that the observed delay is fixed, that connection flow is
+fully correct or performant, or that the Ralph loop or broader hardening program is complete.
 
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
@@ -17187,7 +17277,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-b61493962b3cfa484c88b47c8780422c6ad4afc265ca807e4226fa3753d8c551  requirements.html
+5d48ebf70d4cbfaadb437300ccafc8e832dd894374a0f43c9be970fa61158915  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -17210,3 +17300,4 @@ The same identity additionally binds R-S11eu and Appendix C #303.
 The same identity additionally binds R-S11ev and Appendix C #304.
 The same identity additionally binds R-S11ew and Appendix C #305.
 The same identity additionally binds R-S11ex and Appendix C #306.
+The same identity additionally binds R-S11ey and Appendix C #307.

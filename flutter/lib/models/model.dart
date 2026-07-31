@@ -3617,7 +3617,6 @@ class FFI {
 
     final cb = ffiModel.startEventListener(activeSessionId, peerId);
     imageModel.updateUserTextureRender();
-    final hasGpuTextureRender = bind.mainHasGpuTextureRender();
     final SimpleWrapper<bool> isToNewWindowNotified = SimpleWrapper(false);
     final streamFinality = SessionStreamFinality();
     // Preserved for the rgba data.
@@ -3687,14 +3686,7 @@ class FFI {
           }
         } else if (message is EventToUI_Texture) {
           final display = message.field0;
-          final gpuTexture = message.field1;
-          debugPrint(
-              "EventToUI_Texture display:$display, gpuTexture:$gpuTexture");
-          if (gpuTexture && !hasGpuTextureRender) {
-            debugPrint('the gpuTexture is not supported.');
-            return;
-          }
-          textureModel.setTextureType(display: display, gpuTexture: gpuTexture);
+          debugPrint("EventToUI_Texture display:$display");
           onEvent2UIRgba(activeSessionId);
         }
       }();

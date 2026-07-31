@@ -6958,7 +6958,7 @@ def validate_macos_descriptor_contract(sources):
             "current rustdesk-org Git requirement inventory",
         ),
         (
-            "871 lexical <code>unsafe {</code> blocks across 247 tracked Rust files, with at least one match in 74 files",
+            "862 lexical <code>unsafe {</code> blocks across 249 tracked Rust files, with at least one match in 75 files",
             "current Rust unsafe requirement inventory",
         ),
         (
@@ -16591,6 +16591,26 @@ def validate_desktop_texture_lifecycle_contract(sources):
             '"let notificationNeeded = !framePending"',
             "macOS latest-wins native pending-frame contract",
         ),
+        (
+            '"flutter_gpu_texture_renderer",',
+            "retired GPU dependency absence contract",
+        ),
+        (
+            '"gpu_output_ptr",',
+            "retired native GPU pointer absence contract",
+        ),
+        (
+            '"main_has_gpu_texture_render",',
+            "retired GPU capability absence contract",
+        ),
+        (
+            '"dependencies_entries": 57',
+            "software-only Flutter dependency-count contract",
+        ),
+        (
+            '"package_records": 198',
+            "software-only Flutter lock-count contract",
+        ),
         ("MUTATIONS: Tuple[Mutation, ...]", "desktop texture mutation inventory"),
         ("run_self_test(sources)", "desktop texture mutation dispatch"),
     ):
@@ -16690,8 +16710,92 @@ def validate_desktop_texture_lifecycle_contract(sources):
             '        "macOS renderer-map release",',
             "macOS renderer-map release mutation",
         ),
+        (
+            '"render",\n'
+            '        "import \'package:flutter/material.dart\';",\n'
+            '        "import \'package:flutter_gpu_texture_renderer/flutter_gpu_texture_renderer.dart\';",',
+            "retired GPU Dart dependency mutation",
+        ),
+        (
+            '"flutter",\n'
+            '        "pub(super) type TextureRgbaPtr = usize;",\n'
+            '        "pub(super) type TextureRgbaPtr = usize;\\n    gpu_output_ptr: usize,",',
+            "retired native GPU pointer mutation",
+        ),
+        (
+            '"requirements", \'<div class="req"><span class="id">R-S11ey</span>\'',
+            "software-only requirement mutation",
+        ),
+        (
+            '"requirements", "<tr><td>307</td>"',
+            "software-only Appendix C mutation",
+        ),
+        (
+            '"hardening", "**R-S11ey/R-S11e-186 software-RGBA-only desktop presentation"',
+            "software-only hardening-ledger mutation",
+        ),
     ):
         require_text(focused, text, label)
+
+    retired_gpu_tokens = (
+        "flutter_gpu_texture_renderer",
+        "FlutterGpuTextureRenderer",
+        "session_register_gpu_texture",
+        "sessionRegisterGpuTexture",
+        "main_has_gpu_texture_render",
+        "mainHasGpuTextureRender",
+        "register_gpu_texture",
+        "registerGpuTexture",
+        "gpu_output_ptr",
+        "get_adapter_luid",
+        "adapter_luid",
+        "main_has_hwcodec",
+        "mainHasHwcodec",
+        "main_has_vram",
+        "mainHasVram",
+    )
+    for key in (
+        "desktop_render_texture_source",
+        "model_dart",
+        "native_model_source",
+        "web_model_source",
+        "web_bridge_source",
+        "windows_flutter_runner_source",
+        "flutter_source",
+        "flutter_ffi_source",
+        "client_source",
+        "client_io_loop",
+        "ui_session_source",
+        "ui_interface_source",
+        "flutter_pubspec_source",
+        "flutter_pubspec_lock_source",
+        "online_fetch",
+        "dependency_inventory_source",
+    ):
+        for token in retired_gpu_tokens:
+            require_absent(
+                sources[key],
+                token,
+                f"independent retired GPU/VRAM surface in {key}",
+            )
+    require_text(
+        sources["flutter_ffi_source"],
+        "Texture(usize),   // display",
+        "independent display-only texture event",
+    )
+    require_text(
+        sources["flutter_source"],
+        "stream.add(EventToUI::Texture(display));",
+        "independent software texture-ready event",
+    )
+    for text, label in (
+        ('"dependencies_entries": 57', "independent Flutter direct-dependency count"),
+        ('"union_entries": 63', "independent Flutter dependency-union count"),
+        ('"git_hosted_records": 6', "independent Flutter Git-lock count"),
+        ('"package_records": 198', "independent Flutter package-lock count"),
+        ('"rustdesk_org_git_records": 5', "independent RustDesk Git-lock count"),
+    ):
+        require_text(sources["dependency_inventory_source"], text, label)
 
     require_order(
         sources["texture_rgba_windows"],
@@ -16830,13 +16934,28 @@ def validate_desktop_texture_lifecycle_contract(sources):
     )
     require_text(
         sources["requirements"],
+        '<div class="req"><span class="id">R-S11ey</span>',
+        "software-only desktop presentation requirement",
+    )
+    require_text(
+        sources["requirements"],
         "<tr><td>306</td>",
         "desktop texture lifecycle Appendix C row",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>307</td>",
+        "software-only desktop presentation Appendix C row",
     )
     require_text(
         sources["hardening"],
         "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
         "desktop texture lifecycle hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11ey/R-S11e-186 software-RGBA-only desktop presentation",
+        "software-only desktop presentation hardening ledger",
     )
 
 
@@ -26950,7 +27069,7 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
          "Pub-cache networked project lock preimage"),
         ('[ "$project_lock" = "$(sha256sum /tmp/project/pubspec.lock',
          "Pub-cache networked project lock postcondition"),
-        ('[ "${#git_specs[@]}" -eq 7 ]', "Pub-cache exact Git dependency count"),
+        ('[ "${#git_specs[@]}" -eq 6 ]', "Pub-cache exact Git dependency count"),
         ("fsck --full --no-dangling --no-reflogs", "Pub-cache Git object closure"),
         (
             '[[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then\n'
@@ -27046,7 +27165,7 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
          "Pub-cache bounded transaction record"),
         ("TREE_LIMITS = (100_000, 30_000, 4 * 1024**3, 256 * 1024**2, 32)",
          "Pub-cache output bounds"),
-        ("EXPECTED_GIT_DEPENDENCIES = 7", "Pub-cache Git inventory bound"),
+        ("EXPECTED_GIT_DEPENDENCIES = 6", "Pub-cache Git inventory bound"),
         ('required = {"hosted", "hosted-hashes", "git"}',
          "Pub-cache exact top-level inventory"),
         ("reject_descendant_mounts(canonical)", "Pub-cache mount closure"),
@@ -30841,7 +30960,7 @@ def validate_direct_only_viewer_contract(sources):
     )
     require_text(
         sources["cli_source"],
-        ".initialize(id.to_owned(), conn_type, None, None, None, None);",
+        ".initialize(id.to_owned(), conn_type, None, None);",
         "relay-free CLI login initialization",
     )
     for text, label in (
@@ -41495,7 +41614,7 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            "871 lexical <code>unsafe {</code> blocks across 247 tracked Rust files, with at least one match in 74 files",
+            "862 lexical <code>unsafe {</code> blocks across 249 tracked Rust files, with at least one match in 75 files",
             "802 lexical <code>unsafe {</code> blocks across 243 tracked Rust files, with at least one match in 67 files",
             "current Rust unsafe requirement inventory",
         ),
@@ -46792,8 +46911,8 @@ def run_source_mutations(sources):
         ),
         (
             "ui_interface_source",
-            "#[inline]\npub fn has_hwcodec() -> bool {",
-            "pub enum DeployResult { Error(String) }\npub fn deploy_device(_: String, _: Option<String>) -> DeployResult { DeployResult::Error(String::new()) }\n\n#[inline]\npub fn has_hwcodec() -> bool {",
+            "#[inline]\npub fn get_license() -> String {",
+            "pub enum DeployResult { Error(String) }\npub fn deploy_device(_: String, _: Option<String>) -> DeployResult { DeployResult::Error(String::new()) }\n\n#[inline]\npub fn get_license() -> String {",
             "account control-plane symbol DeployResult",
         ),
         (
@@ -51345,6 +51464,48 @@ def run_source_mutations(sources):
             "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
             "**R-S11ex-disabled/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
             "desktop texture lifecycle hardening ledger",
+        ),
+        (
+            "desktop_render_texture_source",
+            "import 'package:flutter/material.dart';",
+            "import 'package:flutter_gpu_texture_renderer/flutter_gpu_texture_renderer.dart';",
+            "independent retired GPU/VRAM surface in desktop_render_texture_source",
+        ),
+        (
+            "flutter_source",
+            "pub(super) type TextureRgbaPtr = usize;",
+            "pub(super) type TextureRgbaPtr = usize;\ngpu_output_ptr: usize,",
+            "independent retired GPU/VRAM surface in flutter_source",
+        ),
+        (
+            "flutter_pubspec_source",
+            "  uuid: ^3.0.7",
+            "  flutter_gpu_texture_renderer: forbidden",
+            "independent retired GPU/VRAM surface in flutter_pubspec_source",
+        ),
+        (
+            "dependency_inventory_source",
+            '"package_records": 198',
+            '"package_records": 199',
+            "independent Flutter package-lock count",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11ey</span>',
+            '<div class="req"><span class="id">R-S11ey-disabled</span>',
+            "software-only desktop presentation requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>307</td>",
+            "<tr><td>307-disabled</td>",
+            "software-only desktop presentation Appendix C row",
+        ),
+        (
+            "hardening",
+            "**R-S11ey/R-S11e-186 software-RGBA-only desktop presentation",
+            "**R-S11ey-disabled/R-S11e-186 software-RGBA-only desktop presentation",
+            "software-only desktop presentation hardening ledger",
         ),
         (
             "texture_rgba_pubspec",
@@ -60901,6 +61062,30 @@ def main():
             "ui_session_source": (repo / "src/ui_session_interface.rs").read_text(encoding="utf-8"),
             "flutter_source": (repo / "src/flutter.rs").read_text(encoding="utf-8"),
             "flutter_ffi_source": (repo / "src/flutter_ffi.rs").read_text(encoding="utf-8"),
+            "desktop_render_texture_source": (
+                repo / "flutter/lib/models/desktop_render_texture.dart"
+            ).read_text(encoding="utf-8"),
+            "native_model_source": (
+                repo / "flutter/lib/models/native_model.dart"
+            ).read_text(encoding="utf-8"),
+            "web_model_source": (
+                repo / "flutter/lib/models/web_model.dart"
+            ).read_text(encoding="utf-8"),
+            "web_bridge_source": (
+                repo / "flutter/lib/web/bridge.dart"
+            ).read_text(encoding="utf-8"),
+            "windows_flutter_runner_source": (
+                repo / "flutter/windows/runner/flutter_window.cpp"
+            ).read_text(encoding="utf-8"),
+            "flutter_pubspec_source": (
+                repo / "flutter/pubspec.yaml"
+            ).read_text(encoding="utf-8"),
+            "flutter_pubspec_lock_source": (
+                repo / "flutter/pubspec.lock"
+            ).read_text(encoding="utf-8"),
+            "dependency_inventory_source": (
+                repo / "scripts/dependency-inventory.py"
+            ).read_text(encoding="utf-8"),
             "keyboard_source": (repo / "src/keyboard.rs").read_text(encoding="utf-8"),
             "cli_source": (repo / "src/cli.rs").read_text(encoding="utf-8"),
             "ui_interface_source": (repo / "src/ui_interface.rs").read_text(encoding="utf-8"),

@@ -16363,6 +16363,151 @@ def validate_viewer_video_mailbox_contract(sources):
     )
 
 
+def validate_viewer_rgba_mailbox_contract(sources):
+    focused = sources["viewer_rgba_mailbox_verifier"]
+    validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "viewer RGBA mailbox focused runtime validation",
+    )
+    for text, label in (
+        ("def extract_braced_item(", "viewer RGBA braced-item parser"),
+        ("def validate(sources", "viewer RGBA semantic entry"),
+        (
+            '"HashMap<(SessionID, usize), RgbaData>"',
+            "viewer RGBA exact mailbox-key contract",
+        ),
+        (
+            '"rgba_publication_counter: Arc<AtomicU64>"',
+            "viewer RGBA publication-counter contract",
+        ),
+        (
+            '"pending: Option<Vec<u8>>"',
+            "viewer RGBA pending-bound contract",
+        ),
+        (
+            '"self.valid && self.publication == publication"',
+            "viewer RGBA exact copy-token contract",
+        ),
+        (
+            '"if !self.valid || self.publication != publication"',
+            "viewer RGBA stale-acknowledgement contract",
+        ),
+        (
+            '".filter(|next| *next <= i64::MAX as u64)"',
+            "viewer RGBA checked Dart-token contract",
+        ),
+        (
+            '"SyncReturn<Option<Vec<u8>>>"',
+            "viewer RGBA owned generated-bridge result contract",
+        ),
+        (
+            '"pub extern \\"C\\" fn session_get_rgba"',
+            "viewer RGBA raw-pointer deletion contract",
+        ),
+        (
+            '"final publication = message.field1;"',
+            "viewer RGBA Dart publication propagation contract",
+        ),
+        (
+            '"r_s11ew_rgba_publication_exhaustion_fails_closed"',
+            "viewer RGBA exhaustion regression",
+        ),
+        ("MUTATIONS: Tuple[Mutation, ...]", "viewer RGBA mutation inventory"),
+        ("run_self_test(sources)", "viewer RGBA mutation dispatch"),
+    ):
+        source = (
+            focused
+            if text
+            in {
+                "def extract_braced_item(",
+                "def validate(sources",
+                "MUTATIONS: Tuple[Mutation, ...]",
+                "run_self_test(sources)",
+            }
+            else validation
+        )
+        require_text(source, text, label)
+
+    for text, label in (
+        (
+            '("flutter", "HashMap<(SessionID, usize), RgbaData>", '
+            '"HashMap<usize, RgbaData>", "exact mailbox key"),',
+            "viewer RGBA exact mailbox-key contract",
+        ),
+        (
+            '("flutter", "rgba_publication_counter: Arc<AtomicU64>", '
+            '"rgba_publication_counter: Arc<AtomicUsize>", "publication counter"),',
+            "viewer RGBA publication-counter contract",
+        ),
+        (
+            '("flutter", "pending: Option<Vec<u8>>", '
+            '"pending: Vec<Vec<u8>>", "single pending frame"),',
+            "viewer RGBA pending-bound contract",
+        ),
+        (
+            '("flutter", "self.valid && self.publication == publication", '
+            '"self.valid", "copy token check"),',
+            "viewer RGBA exact copy-token contract",
+        ),
+        (
+            '("flutter", "if !self.valid || self.publication != publication", '
+            '"if !self.valid", "stale acknowledgement"),',
+            "viewer RGBA stale-acknowledgement contract",
+        ),
+        (
+            '("flutter", ".filter(|next| *next <= i64::MAX as u64)", '
+            '".filter(|_| true)", "Dart token bound"),',
+            "viewer RGBA checked Dart-token contract",
+        ),
+        (
+            '("ffi", "SyncReturn<Option<Vec<u8>>>", '
+            '"SyncReturn<usize>", "owned bridge result"),',
+            "viewer RGBA owned generated-bridge result contract",
+        ),
+        (
+            '("model", "final publication = message.field1;", '
+            '"final publication = 0;", "Dart event token"),',
+            "viewer RGBA Dart publication propagation contract",
+        ),
+        (
+            '("flutter", '
+            '"fn r_s11ew_rgba_publication_exhaustion_fails_closed()", '
+            '"fn rgba_publication_exhaustion_fails_closed()", '
+            '"exhaustion regression"),',
+            "viewer RGBA exhaustion regression",
+        ),
+    ):
+        require_text(focused, text, label)
+
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test",
+        "viewer RGBA shared focused-verifier wiring",
+    )
+    require_text(
+        sources["apple"],
+        "python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test",
+        "viewer RGBA Apple focused-verifier wiring",
+    )
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11ew</span>',
+        "viewer RGBA mailbox requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>305</td>",
+        "viewer RGBA mailbox Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication",
+        "viewer RGBA mailbox hardening ledger",
+    )
+
+
 def validate_android_voice_call_ownership_contract(sources):
     focused = sources["android_voice_call_ownership_verifier"]
     validation = extract_between(
@@ -16419,8 +16564,8 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android dual exact-close count contract",
         ),
         (
-            '"false/error initial worker-start rollback"',
-            "Android failed-start dual rollback contract",
+            '"replay/false/error session-start rollback"',
+            "Android session-start triple rollback contract",
         ),
         (
             '"normal-close marker that would hide failed-start stream error"',
@@ -17317,13 +17462,13 @@ def validate_android_voice_call_ownership_contract(sources):
             "Err(error)",
             "rollback_failed_session_start(session_id);",
         ),
-        "Android failed-start dual rollback source",
+        "Android replay/failed-start rollback source",
     )
     require_exact_count(
         session_start,
         "rollback_failed_session_start(session_id);",
-        2,
-        "Android false/error failed-start rollback source",
+        3,
+        "Android replay/false/error session-start rollback source",
     )
     failed_start_rollback = extract_between(
         sources["flutter_source"],
@@ -17660,8 +17805,8 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         sources["verify"],
-        'and session_start.count("rollback_failed_session_start(session_id);") == 2',
-        "Android shared failed-start rollback gate source",
+        'and session_start.count("rollback_failed_session_start(session_id);") == 3',
+        "Android shared session-start rollback gate source",
     )
     require_text(
         sources["verify"],
@@ -34946,6 +35091,7 @@ def validate_sources(sources):
     validate_unix_listener_incumbent_contract(sources)
     validate_viewer_voice_call_worker_contract(sources)
     validate_viewer_video_mailbox_contract(sources)
+    validate_viewer_rgba_mailbox_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
     validate_android_client_lifecycle_drain_contract(sources)
     validate_android_listener_generation_contract(sources)
@@ -50695,6 +50841,96 @@ def run_source_mutations(sources):
             "viewer video mailbox hardening ledger",
         ),
         (
+            "viewer_rgba_mailbox_verifier",
+            '"HashMap<(SessionID, usize), RgbaData>"',
+            '"HashMap<usize, RgbaData>"',
+            "viewer RGBA exact mailbox-key contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '"rgba_publication_counter: Arc<AtomicU64>"',
+            '"rgba_publication_counter: Arc<AtomicUsize>"',
+            "viewer RGBA publication-counter contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '"pending: Option<Vec<u8>>"',
+            '"pending: Vec<Vec<u8>>"',
+            "viewer RGBA pending-bound contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '"self.valid && self.publication == publication"',
+            '"self.valid"',
+            "viewer RGBA exact copy-token contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '"if !self.valid || self.publication != publication"',
+            '"if !self.valid"',
+            "viewer RGBA stale-acknowledgement contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '".filter(|next| *next <= i64::MAX as u64)"',
+            '".filter(|_| true)"',
+            "viewer RGBA checked Dart-token contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '"SyncReturn<Option<Vec<u8>>>"',
+            '"SyncReturn<usize>"',
+            "viewer RGBA owned generated-bridge result contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '"pub extern \\"C\\" fn session_get_rgba"',
+            '"pub extern \\"C\\" fn session_get_rgba_disabled"',
+            "viewer RGBA raw-pointer deletion contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '"final publication = message.field1;"',
+            '"final publication = 0;"',
+            "viewer RGBA Dart publication propagation contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '"r_s11ew_rgba_publication_exhaustion_fails_closed"',
+            '"rgba_publication_exhaustion_fails_closed"',
+            "viewer RGBA exhaustion regression",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test",
+            "true # viewer RGBA mailbox verifier removed",
+            "viewer RGBA shared focused-verifier wiring",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test",
+            "true # viewer RGBA mailbox verifier removed",
+            "viewer RGBA Apple focused-verifier wiring",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11ew</span>',
+            '<div class="req"><span class="id">R-S11ew-disabled</span>',
+            "viewer RGBA mailbox requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>305</td>",
+            "<tr><td>305-disabled</td>",
+            "viewer RGBA mailbox Appendix C row",
+        ),
+        (
+            "hardening",
+            "**R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication",
+            "**R-S11ew-disabled/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication",
+            "viewer RGBA mailbox hardening ledger",
+        ),
+        (
             "android_voice_call_ownership_verifier",
             '"get() = activeControlledConnections.isNotEmpty() || outgoingVoiceCallActive"',
             '"get() = outgoingVoiceCallActive"',
@@ -51582,6 +51818,7 @@ def run_source_mutations(sources):
             "flutter_source",
             "for stale_handler_id in stale_handler_ids {\n"
             "                if let Some(handler) = handlers.remove(&stale_handler_id) {\n"
+            "                    session.ui_handler.retire_rgba_session(&stale_handler_id);\n"
             "                    removed_handlers.push(handler);\n"
             "                }\n"
             "            }\n"
@@ -51591,6 +51828,7 @@ def run_source_mutations(sources):
             "                check_remove_unused_displays(None, None, session, &handlers);",
             "for stale_handler_id in stale_handler_ids {\n"
             "                if let Some(handler) = handlers.remove(&stale_handler_id) {\n"
+            "                    session.ui_handler.retire_rgba_session(&stale_handler_id);\n"
             "                    removed_handlers.push(handler);\n"
             "                }\n"
             "            }\n"
@@ -58826,9 +59064,9 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
-            '"false/error initial worker-start rollback"',
+            '"replay/false/error session-start rollback"',
             '"unchecked initial worker-start failure"',
-            "Android failed-start dual rollback contract",
+            "Android session-start triple rollback contract",
         ),
         (
             "android_voice_call_ownership_verifier",
@@ -59100,9 +59338,9 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            'and session_start.count("rollback_failed_session_start(session_id);") == 2',
+            'and session_start.count("rollback_failed_session_start(session_id);") == 3',
             'and session_start.count("rollback_failed_session_start(session_id);") >= 0',
-            "Android shared failed-start rollback gate source",
+            "Android shared session-start rollback gate source",
         ),
         (
             "verify",
@@ -60263,6 +60501,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "viewer_video_mailbox_verifier": (
                 repo / "scripts/verify-viewer-video-mailbox.py"
+            ).read_text(encoding="utf-8"),
+            "viewer_rgba_mailbox_verifier": (
+                repo / "scripts/verify-viewer-rgba-mailbox.py"
             ).read_text(encoding="utf-8"),
             "android_voice_call_ownership_verifier": (
                 repo / "scripts/verify-android-voice-call-ownership.py"

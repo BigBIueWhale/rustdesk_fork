@@ -4,7 +4,6 @@ import 'dart:io';
 
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:external_path/external_path.dart';
-import 'package:ffi/ffi.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_hbb/consts.dart';
@@ -16,14 +15,6 @@ import 'package:path_provider/path_provider.dart';
 import '../common.dart';
 import '../generated_bridge.dart';
 
-final class RgbaFrame extends Struct {
-  @Uint32()
-  external int len;
-  external Pointer<Uint8> data;
-}
-
-typedef F3 = Pointer<Uint8> Function(Pointer<Utf8>, int);
-typedef F3Dart = Pointer<Uint8> Function(Pointer<Utf8>, Int32);
 typedef HandleEvent = Future<void> Function(Map<String, dynamic> evt);
 
 /// FFI wrapper around the native Rust core.
@@ -43,7 +34,6 @@ class PlatformFFI {
   final _toAndroidChannel = const MethodChannel('mChannel');
 
   RustdeskImpl get ffiBind => _ffiBind;
-  F3? _session_get_rgba;
 
   static get localeName => Platform.localeName;
 
@@ -111,26 +101,12 @@ class PlatformFFI {
   String translate(String name, String locale) =>
       _ffiBind.translate(name: name, locale: locale);
 
-  Uint8List? getRgba(SessionID sessionId, int display, int bufSize) {
-    if (_session_get_rgba == null) return null;
-    final sessionIdStr = sessionId.toString();
-    var a = sessionIdStr.toNativeUtf8();
-    try {
-      final buffer = _session_get_rgba!(a, display);
-      if (buffer == nullptr) {
-        return null;
-      }
-      final data = buffer.asTypedList(bufSize);
-      return data;
-    } finally {
-      malloc.free(a);
-    }
-  }
-
-  int getRgbaSize(SessionID sessionId, int display) =>
-      _ffiBind.sessionGetRgbaSize(sessionId: sessionId, display: display);
-  void nextRgba(SessionID sessionId, int display) =>
-      _ffiBind.sessionNextRgba(sessionId: sessionId, display: display);
+  Uint8List? copyRgba(SessionID sessionId, int display, int publication) =>
+      _ffiBind.sessionCopyRgba(
+          sessionId: sessionId, display: display, publication: publication);
+  void nextRgba(SessionID sessionId, int display, int publication) =>
+      _ffiBind.sessionNextRgba(
+          sessionId: sessionId, display: display, publication: publication);
   void registerPixelbufferTexture(SessionID sessionId, int display, int ptr) =>
       _ffiBind.sessionRegisterPixelbufferTexture(
           sessionId: sessionId, display: display, ptr: ptr);
@@ -144,7 +120,6 @@ class PlatformFFI {
     final dylib = _openBundledRustDeskCore();
     debugPrint('initializing FFI $_appType');
     try {
-      _session_get_rgba = dylib.lookupFunction<F3Dart, F3>("session_get_rgba");
       try {
         // SYSTEM user failed
         _dir = (await getApplicationDocumentsDirectory()).path;

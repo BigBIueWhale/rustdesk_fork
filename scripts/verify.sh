@@ -8961,6 +8961,13 @@ else
   echo "  FAIL R-S11ev/R-S11e-183: viewer video mailbox regained split frame/token reachability, stale-GOP, or teardown debt"
   rc=1
 fi
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ew_ --color never
+if python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test; then
+  echo "  ok  R-S11ew/R-S11e-184 Flutter software RGBA publication is exact-session/token-owned, bounded, latest-wins, and pointer-free"
+else
+  echo "  FAIL R-S11ew/R-S11e-184: Flutter software RGBA publication regained stale, cross-session, cross-stream, unbounded, or borrowed-pointer state"
+  rc=1
+fi
 grep -qF 'native_video_format_locally_unsupported(&lc.mark_unsupported, format)' src/client.rs ||
   { echo "  FAIL Appendix C #2b/R-T0: video receive loop must drop locally-unsupported peer codecs before recreating a native decoder worker"; rc=1; }
 grep -qF 'local decoder is marked unsupported' src/client.rs ||
@@ -10643,7 +10650,7 @@ ok = (
         < session_start.index("match session.start_io_thread()")
         < session_start.index("rollback_failed_session_start(session_id);")
         < session_start.index("drop(owner_admission)")
-    and session_start.count("rollback_failed_session_start(session_id);") == 2
+    and session_start.count("rollback_failed_session_start(session_id);") == 3
     and failed_start_rollback.index("sessions::remove_session_by_session_id(session_id)")
         < failed_start_rollback.index("session.close_and_join();")
     and "close_event_stream" not in failed_start_rollback

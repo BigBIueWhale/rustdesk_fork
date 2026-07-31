@@ -94,14 +94,13 @@ class PlatformFFI {
   String translate(String name, String locale) =>
       _ffiBind.translate(name: name, locale: locale);
 
-  Uint8List? getRgba(SessionID sessionId, int display, int bufSize) {
+  Uint8List? copyRgba(SessionID sessionId, int display, int publication) {
     throw UnimplementedError();
   }
 
-  int getRgbaSize(SessionID sessionId, int display) =>
-      _ffiBind.sessionGetRgbaSize(sessionId: sessionId, display: display);
-  void nextRgba(SessionID sessionId, int display) =>
-      _ffiBind.sessionNextRgba(sessionId: sessionId, display: display);
+  void nextRgba(SessionID sessionId, int display, int publication) =>
+      _ffiBind.sessionNextRgba(
+          sessionId: sessionId, display: display, publication: publication);
   void registerPixelbufferTexture(SessionID sessionId, int display, int ptr) =>
       _ffiBind.sessionRegisterPixelbufferTexture(
           sessionId: sessionId, display: display, ptr: ptr);

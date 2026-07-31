@@ -2300,6 +2300,118 @@ instrumentation and budgets; renderer/texture lifecycle review; the exact clean 
 R-B2/R-B10 release transaction; separately required independent reproduction; and external review
 remain open. Compilation and deterministic mailbox tests are not real-device validation.
 
+Follow-up correction (2026-07-31),
+**R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication — SOURCE
+IMPLEMENTED; FRESH PRODUCTION-STYLE BRIDGE GENERATION, PINNED RUST 1.75 FLUTTER-FEATURE
+COMPILATION, TARGETED DART ANALYSIS, AND FIVE CONFINED BEHAVIOR REGRESSIONS GREEN;
+FOCUSED 36-MUTATION AND COMPLETE INDEPENDENT SOURCE-MUTATION GATES, AND PINNED AARCH64
+ANDROID RUST CROSS-CHECK GREEN; NATIVE/DEVICE, COLD RELEASE, INDEPENDENT REPRODUCTION,
+AND EXTERNAL REVIEW PENDING.** Platforms: Android and iOS outgoing viewers plus the Windows/Linux/macOS
+software-render fallback. Endpoint/action: decoded RGBA ownership transfer, Rust-to-Dart frame
+notification, Dart acknowledgement, event-stream replacement, display switching, and exact UI
+session removal. Boundary: the native decoder can continue producing while one or more Flutter
+event consumers are unfocused, backgrounded, suspended, replaced, or independently delayed.
+
+The inherited bridge used one `HashMap<display, RgbaData { data, valid }>` across every UI session.
+Once `valid` became true, `on_rgba_soft_render` returned before swapping any newer decoded buffer
+or sending another event. The Dart consumer called `nextRgba` only after its asynchronous image
+decode completed. A paused consumer therefore pinned the oldest unconsumed frame for an unbounded
+wall-clock interval while every newer decoded frame was discarded. On resume, the old event still
+selected that old buffer. Reconnect or process death cleared `display_rgbas`, explaining why either
+could mask the state. This is source proof of a real software-publication freshness defect, not a
+device reproduction or proof about Windows' default native texture renderer.
+
+The same state was not keyed by UI session or publication. `session_get_rgba`, the raw pointer
+lookup, and `session_next_rgba` found the peer session from the UUID but then read or cleared a
+display-global Boolean. If two UI sessions consumed the same software-rendered display, the first
+acknowledgement could release the shared buffer while the other consumer still owned its
+publication. Replacing an event stream sent `close` to the old stream and installed the new one but
+did not replay an already valid RGBA event, so the replacement could wait forever for a
+notification whose frame continued to block new publication. Even if the event were replayed, a
+late asynchronous completion from the predecessor stream carried no publication identity and
+could acknowledge successor work for the same session UUID. The raw C symbol also returned a
+pointer into the Rust `Vec` after releasing its lock; Dart retained that pointer-backed
+`Uint8List` across asynchronous image decode, while session/display/renderer teardown could drop
+the allocation.
+
+R-S11ew replaces that state with one mailbox per `(SessionID, display)` and one handler-wide
+checked monotonic publication counter bounded to Dart's positive signed-integer range. Each mailbox
+owns one stable published buffer, its exact nonreused publication token, one `Option<Vec<u8>>`
+latest-wins pending frame, and an empty reusable capacity buffer. New frames replace the pending
+slot directly and return its prior allocation to the decoder instead of building a queue. Exact
+token acknowledgement either marks an empty mailbox or atomically promotes the newest pending
+frame under a new token and sends one replacement event to that exact session. Stale or duplicate
+acknowledgements are no-ops; token exhaustion retires the exact slot. The common decoder-to-mailbox
+path receives the decoder buffer by swap without copying; independent concurrent sessions receive
+independent mailbox storage.
+
+The raw `session_get_rgba` symbol and size-then-pointer protocol are deleted. A synchronous
+generated-bridge `sessionCopyRgba(session, display, publication)` validates the exact key and token
+and returns an owned byte result cloned while the mailbox read lock is held. Dart therefore never
+borrows a pointer into a Rust allocation across asynchronous image decode, and teardown cannot
+invalidate its bytes. This is an intentional correctness boundary, not a performance verdict: it
+adds a software-render copy that still requires Android/iOS and desktop-fallback profiling before
+release performance can be called validated.
+
+Eligible exact session IDs are frozen under the handler read lock before mailbox admission, and
+the handler-to-mailbox lock order is shared by removal and display transition. Initial event-send
+failure removes only that exact mailbox. Every event and acknowledgement carries the exact
+publication token. Event-stream replacement replays every ready display/token pair and rolls back
+the exact session start if the new stream rejects publication. Session removal and
+mobile owner drains retire only their exact mailboxes; display switching retains only the exact
+session's selected displays. With no live eligible software consumer, the decoded input buffer
+remains with the decoder and no mailbox is created. The obsolete display-only `InvokeUiSession`
+get/ack operations are deleted; neither the generic trait nor a raw C pointer can bypass exact
+session/token authority.
+
+Five deterministic Rust regressions prove that the published buffer remains stable while two
+newer frames arrive and only the newest is promoted; stale tokens cannot copy or acknowledge
+successor data; two exact sessions cannot copy, acknowledge, or retire each other's frame; a frame
+with no consumer creates no retained state; display switch retirement removes only the obsolete
+exact key; and publication exhaustion fails closed. In an immutable, numeric-nonroot, networkless,
+read-only-root/source, capability-free, no-new-privileges, resource-bounded container with no
+ports/devices/sockets/host namespaces, the pinned Rust and Flutter archives, sealed offline Pub
+cache, pinned FRB generator, and sealed Cargo vendor closure produced a fresh bridge, compiled the
+complete Linux Flutter-feature test graph, and ran all five tests successfully. Targeted analysis
+of the touched native/web model and bridge files reported no errors; its one warning and fifteen
+informational diagnostics are pre-existing broad-file findings and are not relabeled as clean
+whole-app analysis. The generator's
+existing nonfatal Dart C-header typedef diagnostic remained visible and generation returned
+success; it is not relabeled as a clean native/device verdict.
+
+The focused verifier rejected all 36 deliberate mutations. The complete independent source
+mutation catalog was restarted from mutation one after each verifier correction and finally
+passed from beginning to end. The preceding attempts found three test-authority defects rather
+than production-code defects: duplicated runtime/focused anchors had mismatched diagnostic
+identity for the exact mailbox key; the pending-slot bound used mismatched labels; and the existing
+Android drain mutation fixture had not incorporated the new exact RGBA retirement line. Each
+fixture/binding was corrected without weakening the production contract, and the final complete
+restart passed. The existing Android outgoing-owner verifier independently rejected all 438 of its
+mutations after its legitimate rollback and drain fixtures were updated. The shared and Apple gate
+wiring for the focused verifier is source-bound by that independent catalog; the full Apple gate
+and native Apple compilation were not run in this slice.
+
+The pinned Android builder then regenerated the production bridge and completed
+`cargo ndk --platform 21 --target aarch64-linux-android check --locked --release --features
+flutter --lib` from the exact uncommitted source in a numeric-nonroot, networkless,
+read-only-root/online-input, capability-free, no-new-privileges, resource-bounded container. This
+is an Android-target compile result, not an APK, emulator, device, lifecycle, renderer, or peer
+session result. The bridge generator repeated the same nonfatal Dart C-header typedef diagnostic
+described above. Exact-source syntax, requirements-hash synchronization, native-codec-watch normal
+and mutation self-tests, focused verifier rerun, independent-validator baseline, and scoped pinned
+format checks are green. Targeted Dart analysis still has no errors and retains the one pre-existing
+warning and fifteen pre-existing informational diagnostics; the sole formatter deltas in the
+touched broad files are also pre-existing and were not swept into this slice.
+
+This entry still lacks the evidence that matters for the reported operational behavior: native
+Windows texture/software renderer execution; Android/iOS device background, task-swipe, relaunch,
+and Force-Stop behavior; timestamped Windows-viewer/Debian-controlled and Android-viewer
+reproduction; sustained focus/unfocus and reconnect testing; complete capture-through-presentation
+instrumentation and budgets; software-copy allocation/throughput profiling; exact operational
+artifact identity; a clean committed cold R-B2/R-B10 release transaction; separately required
+independent reproduction; and external review. This software handoff correction does not complete
+the broader cross-platform connection correctness/performance mandate or the Ralph loop.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -16779,7 +16891,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-61dbaf1c5baa9fb7e7d2c2490843824692592bc2cb4786e9e655a8ae7cb1873e  requirements.html
+e59c90341543b2edd0be20a7a6ec37f47711df03f7bc9ac97eb6feb93d119448  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

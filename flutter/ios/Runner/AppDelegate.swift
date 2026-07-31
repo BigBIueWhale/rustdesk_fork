@@ -142,7 +142,6 @@ import Security
   }
 
   public func dummyMethodToEnforceBundling() {
-      dummy_method_to_enforce_bundling();
-    session_get_rgba(nil, 0);
+    dummy_method_to_enforce_bundling();
   }
 }

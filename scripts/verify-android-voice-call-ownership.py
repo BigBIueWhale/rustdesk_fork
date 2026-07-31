@@ -1117,8 +1117,8 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(
         session_start,
         "rollback_failed_session_start(session_id);",
-        2,
-        "false/error initial worker-start rollback",
+        3,
+        "replay/false/error session-start rollback",
     )
     failed_start_rollback = extract_item(
         flutter,
@@ -1684,7 +1684,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["verify"],
-        'and session_start.count("rollback_failed_session_start(session_id);") == 2',
+        'and session_start.count("rollback_failed_session_start(session_id);") == 3',
         "shared failed-start rollback-count gate",
     )
     require(
@@ -5173,7 +5173,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("hardening", "R-S11eq/R-S11e-178 Android component-thread outgoing-owner retirement", "R-S11eq-disabled/R-S11e-178 Android component-thread outgoing-owner retirement", "Android lifecycle-drain hardening ledger"),
     ("verify", "python3 scripts/verify-android-client-lifecycle-drain.py --repo . --self-test", "true # Android lifecycle-drain focused gate disabled", "shared Android lifecycle-drain focused gate"),
     ("verify", "grep -qF 'test/mobile_session_start_queue_test.dart' scripts/dart-verify.sh", "true # mobile preparation shared queue gate disabled", "shared mobile preparation queue gate"),
-    ("verify", "and session_start.count(\"rollback_failed_session_start(session_id);\") == 2", "and session_start.count(\"rollback_failed_session_start(session_id);\") >= 0", "shared failed-start rollback-count gate"),
+    ("verify", "and session_start.count(\"rollback_failed_session_start(session_id);\") == 3", "and session_start.count(\"rollback_failed_session_start(session_id);\") >= 0", "shared session-start rollback-count gate"),
     ("verify", "and dart_close.count(\"await _awaitMobileSessionStart(closingSessionId);\") == 2", "and dart_close.count(\"await _awaitMobileSessionStart(closingSessionId);\") >= 0", "shared dual close-preparation finality gate"),
     ("verify", "python3 scripts/verify-android-voice-call-ownership.py --repo . --self-test", "true # Android voice-call ownership gate removed", "shared gate wiring"),
 )

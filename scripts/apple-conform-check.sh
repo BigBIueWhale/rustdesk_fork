@@ -3459,6 +3459,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c2) R-S11ew Flutter software-RGBA publication mailbox =="
+if python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test; then
+  note "ok  R-S11ew Apple/shared software RGBA publication is exact-session/token-owned, bounded, latest-wins, and pointer-free"
+else
+  echo "  FAIL R-S11ew Apple/shared software RGBA publication regained stale, cross-session, cross-stream, unbounded, or borrowed-pointer state"
+  rc=1
+fi
+
 echo "== (3) cross-compile coherence matrix (Rust 1.81, actual Apple features) =="
 echo "  targets: ${SELECTED_APPLE_TARGETS[*]}"
 [ ! -e "$REPO/src/version.rs" ] || {

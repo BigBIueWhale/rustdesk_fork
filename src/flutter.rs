@@ -27,7 +27,7 @@ use std::{
     os::raw::{c_char, c_int, c_void},
     str::FromStr,
     sync::{
-        atomic::{AtomicBool, AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicU64, AtomicUsize, Ordering},
         Arc, RwLock,
     },
 };
@@ -358,7 +358,14 @@ enum RenderType {
 pub struct FlutterHandler {
     // ui session id -> display handler data
     session_handlers: Arc<RwLock<HashMap<SessionID, SessionHandler>>>,
-    display_rgbas: Arc<RwLock<HashMap<usize, RgbaData>>>,
+    // One software-render mailbox per exact UI session and display. A Dart view may keep the
+    // publication outstanding until it acknowledges that exact key, so another window must not
+    // release or replace it.
+    display_rgbas: Arc<RwLock<HashMap<(SessionID, usize), RgbaData>>>,
+    // Tokens are never reused within this peer-session handler. They distinguish a current
+    // publication from delayed completion of an older Flutter event, including across stream
+    // replacement for the same UI session UUID.
+    rgba_publication_counter: Arc<AtomicU64>,
     peer_info: Arc<RwLock<PeerInfo>>,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     hooks: Arc<RwLock<HashMap<String, SessionHook>>>,
@@ -370,6 +377,7 @@ impl Default for FlutterHandler {
         Self {
             session_handlers: Default::default(),
             display_rgbas: Default::default(),
+            rgba_publication_counter: Default::default(),
             peer_info: Default::default(),
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             hooks: Default::default(),
@@ -380,12 +388,100 @@ impl Default for FlutterHandler {
     }
 }
 
-#[derive(Default, Clone)]
+#[derive(Default)]
 struct RgbaData {
-    // SAFETY: [rgba] is guarded by [rgba_valid], and it's safe to reach [rgba] with `rgba_valid == true`.
-    // We must check the `rgba_valid` before reading [rgba].
+    // `data` is immutable while `valid` is true. It is copied through the generated bridge under
+    // the mailbox read lock, so Dart never borrows a pointer into this allocation.
     data: Vec<u8>,
     valid: bool,
+    publication: u64,
+    // A suspended/throttled UI retains at most the newest frame that arrived while `data` was
+    // published. Replacing this slot returns its previous allocation to the decoder immediately.
+    pending: Option<Vec<u8>>,
+    // Empty reusable capacity from the previously published frame. This avoids allocating a third
+    // frame buffer each time a delayed consumer catches up; it never represents queued work.
+    spare: Vec<u8>,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum RgbaAcknowledgement {
+    Ignored,
+    Drained,
+    Promoted(u64),
+    Exhausted,
+}
+
+impl RgbaData {
+    fn offer_swap<F>(&mut self, incoming: &mut Vec<u8>, next_publication: F) -> Option<u64>
+    where
+        F: FnOnce() -> Option<u64>,
+    {
+        if !self.valid {
+            let publication = next_publication()?;
+            std::mem::swap(incoming, &mut self.data);
+            self.valid = true;
+            self.publication = publication;
+            return Some(publication);
+        }
+
+        if let Some(pending) = self.pending.as_mut() {
+            std::mem::swap(incoming, pending);
+        } else {
+            std::mem::swap(incoming, &mut self.spare);
+            self.pending = Some(std::mem::take(&mut self.spare));
+        }
+        None
+    }
+
+    fn offer_copy<F>(&mut self, incoming: &[u8], next_publication: F) -> Option<u64>
+    where
+        F: FnOnce() -> Option<u64>,
+    {
+        if !self.valid {
+            let publication = next_publication()?;
+            self.valid = true;
+            self.publication = publication;
+            self.data.clear();
+            self.data.extend_from_slice(incoming);
+            return Some(publication);
+        }
+        if self.pending.is_none() {
+            self.pending = Some(std::mem::take(&mut self.spare));
+        }
+        if let Some(pending) = self.pending.as_mut() {
+            pending.clear();
+            pending.extend_from_slice(incoming);
+        }
+        None
+    }
+
+    fn copy(&self, publication: u64) -> Option<Vec<u8>> {
+        (self.valid && self.publication == publication).then(|| self.data.clone())
+    }
+
+    fn acknowledge<F>(&mut self, publication: u64, next_publication: F) -> RgbaAcknowledgement
+    where
+        F: FnOnce() -> Option<u64>,
+    {
+        if !self.valid || self.publication != publication {
+            return RgbaAcknowledgement::Ignored;
+        }
+        let Some(mut latest) = self.pending.take() else {
+            self.valid = false;
+            self.publication = 0;
+            return RgbaAcknowledgement::Drained;
+        };
+        let Some(publication) = next_publication() else {
+            self.valid = false;
+            self.publication = 0;
+            return RgbaAcknowledgement::Exhausted;
+        };
+        std::mem::swap(&mut self.data, &mut latest);
+        latest.clear();
+        self.spare = latest;
+        self.publication = publication;
+        RgbaAcknowledgement::Promoted(publication)
+    }
 }
 
 pub type FlutterRgbaRendererPluginOnRgba = unsafe extern "C" fn(
@@ -803,6 +899,140 @@ impl FlutterHandler {
             .store(crate::ui_interface::use_texture_render(), Ordering::Relaxed);
         self.display_rgbas.write().unwrap().clear();
     }
+
+    fn next_rgba_publication(&self) -> Option<u64> {
+        self.rgba_publication_counter
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                current
+                    .checked_add(1)
+                    .filter(|next| *next <= i64::MAX as u64)
+            })
+            .ok()
+            .and_then(|previous| previous.checked_add(1))
+    }
+
+    fn offer_rgba_to_sessions(
+        &self,
+        session_ids: &[SessionID],
+        display: usize,
+        incoming: &mut Vec<u8>,
+    ) -> Vec<(SessionID, u64)> {
+        let Some((last, preceding)) = session_ids.split_last() else {
+            return Vec::new();
+        };
+        let mut mailboxes = self.display_rgbas.write().unwrap();
+        let mut notify = Vec::new();
+        for session_id in preceding {
+            if let Some(publication) = mailboxes
+                .entry((*session_id, display))
+                .or_default()
+                .offer_copy(incoming, || self.next_rgba_publication())
+            {
+                notify.push((*session_id, publication));
+            }
+        }
+        if let Some(publication) = mailboxes
+            .entry((*last, display))
+            .or_default()
+            .offer_swap(incoming, || self.next_rgba_publication())
+        {
+            notify.push((*last, publication));
+        }
+        notify
+    }
+
+    fn copy_rgba(
+        &self,
+        session_id: &SessionID,
+        display: usize,
+        publication: u64,
+    ) -> Option<Vec<u8>> {
+        self.display_rgbas
+            .read()
+            .unwrap()
+            .get(&(*session_id, display))
+            .and_then(|rgba| rgba.copy(publication))
+    }
+
+    fn next_rgba(&self, session_id: &SessionID, display: usize, publication: u64) {
+        let acknowledgement = {
+            let mut mailboxes = self.display_rgbas.write().unwrap();
+            let Some(mailbox) = mailboxes.get_mut(&(*session_id, display)) else {
+                return;
+            };
+            let result = mailbox.acknowledge(publication, || self.next_rgba_publication());
+            if result == RgbaAcknowledgement::Exhausted {
+                mailboxes.remove(&(*session_id, display));
+            }
+            result
+        };
+        let RgbaAcknowledgement::Promoted(next_publication) = acknowledgement else {
+            return;
+        };
+        let stream = self
+            .session_handlers
+            .read()
+            .unwrap()
+            .get(session_id)
+            .and_then(|handler| handler.event_stream.as_ref())
+            .map_or(false, |stream| {
+                stream.add(EventToUI::Rgba(display, next_publication))
+            });
+        if !stream {
+            self.display_rgbas
+                .write()
+                .unwrap()
+                .remove(&(*session_id, display));
+        }
+    }
+
+    fn ready_rgba_publications(&self, session_id: &SessionID) -> Vec<(usize, u64)> {
+        self.display_rgbas
+            .read()
+            .unwrap()
+            .iter()
+            .filter_map(|((owner, display), rgba)| {
+                (owner == session_id && rgba.valid).then_some((*display, rgba.publication))
+            })
+            .collect()
+    }
+
+    fn replay_ready_rgba(&self, session_id: &SessionID) -> bool {
+        let publications = self.ready_rgba_publications(session_id);
+        if publications.is_empty() {
+            return true;
+        }
+        let handlers = self.session_handlers.read().unwrap();
+        let Some(stream) = handlers
+            .get(session_id)
+            .and_then(|handler| handler.event_stream.as_ref())
+        else {
+            return false;
+        };
+        publications
+            .into_iter()
+            .all(|(display, publication)| stream.add(EventToUI::Rgba(display, publication)))
+    }
+
+    fn retire_rgba_session(&self, session_id: &SessionID) {
+        self.display_rgbas
+            .write()
+            .unwrap()
+            .retain(|(owner, _), _| owner != session_id);
+    }
+
+    fn retire_rgba_displays_except(&self, session_id: &SessionID, displays: &[i32]) {
+        self.display_rgbas
+            .write()
+            .unwrap()
+            .retain(|(owner, display), _| {
+                owner != session_id
+                    || displays
+                        .iter()
+                        .filter_map(|kept| usize::try_from(*kept).ok())
+                        .any(|kept| kept == *display)
+            });
+    }
 }
 
 impl InvokeUiSession for FlutterHandler {
@@ -1213,23 +1443,6 @@ impl InvokeUiSession for FlutterHandler {
         self.push_event::<&str>("on_voice_call_incoming", &[], &[]);
     }
 
-    #[inline]
-    fn get_rgba(&self, _display: usize) -> *const u8 {
-        if let Some(rgba_data) = self.display_rgbas.read().unwrap().get(&_display) {
-            if rgba_data.valid {
-                return rgba_data.data.as_ptr();
-            }
-        }
-        std::ptr::null_mut()
-    }
-
-    #[inline]
-    fn next_rgba(&self, _display: usize) {
-        if let Some(rgba_data) = self.display_rgbas.write().unwrap().get_mut(&_display) {
-            rgba_data.valid = false;
-        }
-    }
-
     fn update_record_status(&self, start: bool) {
         self.push_event("record_status", &[("start", &start.to_string())], &[]);
     }
@@ -1341,53 +1554,45 @@ impl FlutterHandler {
                 }
             }
         }
-        // If the current rgba is not fetched by flutter, i.e., is valid.
-        // We give up sending a new event to flutter.
-        let mut rgba_write_lock = self.display_rgbas.write().unwrap();
-        if let Some(rgba_data) = rgba_write_lock.get_mut(&display) {
-            if rgba_data.valid {
-                return;
-            } else {
-                rgba_data.valid = true;
-            }
-            // Return the rgba buffer to the video handler for reusing allocated rgba buffer.
-            std::mem::swap::<Vec<u8>>(&mut rgba.raw, &mut rgba_data.data);
-        } else {
-            let mut rgba_data = RgbaData::default();
-            std::mem::swap::<Vec<u8>>(&mut rgba.raw, &mut rgba_data.data);
-            rgba_data.valid = true;
-            rgba_write_lock.insert(display, rgba_data);
-        }
-        drop(rgba_write_lock);
-
-        let mut is_sent = false;
-        let is_multi_sessions = self.is_multi_ui_session();
-        for h in self.session_handlers.read().unwrap().values() {
-            // The soft renderer does not support multi-displays session for now.
-            if h.displays.len() > 1 {
-                continue;
-            }
-            // If there're multiple ui sessions, we only notify the ui session that has the display.
-            if is_multi_sessions {
-                if !h.displays.contains(&display) {
-                    continue;
+        let handlers = self.session_handlers.read().unwrap();
+        let is_multi_sessions = handlers.len() > 1;
+        let session_ids = handlers
+            .iter()
+            .filter_map(|(session_id, handler)| {
+                // The soft renderer does not support multi-displays session for now.
+                if handler.displays.len() > 1 {
+                    return None;
                 }
-            }
-            if let Some(stream) = &h.event_stream {
-                stream.add(EventToUI::Rgba(display));
-                is_sent = true;
+                // If there are multiple UI sessions, notify only sessions using this display.
+                if is_multi_sessions && !handler.displays.contains(&display) {
+                    return None;
+                }
+                handler.event_stream.as_ref().map(|_| *session_id)
+            })
+            .collect::<Vec<_>>();
+        let notifications = self.offer_rgba_to_sessions(&session_ids, display, &mut rgba.raw);
+        if notifications.is_empty() {
+            return;
+        }
+
+        let mut failed = Vec::new();
+        for (session_id, publication) in notifications {
+            let Some(stream) = handlers
+                .get(&session_id)
+                .and_then(|handler| handler.event_stream.as_ref())
+            else {
+                failed.push(session_id);
+                continue;
+            };
+            if !stream.add(EventToUI::Rgba(display, publication)) {
+                failed.push(session_id);
             }
         }
-        // We need `is_sent` here. Because we use texture render for multi-displays session.
-        //
-        // Eg. We have two windows, one is display 1, the other is displays 0&1.
-        // When image of display 0 is received, we will not send the event.
-        //
-        // 1. "display 1" will not send the event.
-        // 2. "displays 0&1" will not send the event. Because it uses texutre render for now.
-        if !is_sent {
-            if let Some(rgba_data) = self.display_rgbas.write().unwrap().get_mut(&display) {
-                rgba_data.valid = false;
+        drop(handlers);
+        if !failed.is_empty() {
+            let mut mailboxes = self.display_rgbas.write().unwrap();
+            for session_id in failed {
+                mailboxes.remove(&(session_id, display));
             }
         }
     }
@@ -1595,6 +1800,10 @@ pub fn session_start_(
     }
 
     if let Some(session) = sessions::get_session_by_session_id(session_id) {
+        if !session.ui_handler.replay_ready_rgba(session_id) {
+            rollback_failed_session_start(session_id);
+            bail!("Outgoing session event stream rejected pending video");
+        }
         let is_first_ui_session = session.session_handlers.read().unwrap().len() == 1;
         if !is_connected && is_first_ui_session {
             log::info!(
@@ -1918,41 +2127,22 @@ fn serialize_resolutions(resolutions: &Vec<Resolution>) -> String {
     serde_json::ser::to_string(&v).unwrap_or("".to_string())
 }
 
-fn char_to_session_id(c: *const char) -> ResultType<SessionID> {
-    if c.is_null() {
-        bail!("Session id ptr is null");
-    }
-    let cstr = unsafe { std::ffi::CStr::from_ptr(c as _) };
-    let str = cstr.to_str()?;
-    SessionID::from_str(str).map_err(|e| anyhow!("{:?}", e))
-}
-
-pub fn session_get_rgba_size(session_id: SessionID, display: usize) -> usize {
+pub fn session_copy_rgba(
+    session_id: SessionID,
+    display: usize,
+    publication: u64,
+) -> Option<Vec<u8>> {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         return session
-            .display_rgbas
-            .read()
-            .unwrap()
-            .get(&display)
-            .map_or(0, |rgba| rgba.data.len());
+            .ui_handler
+            .copy_rgba(&session_id, display, publication);
     }
-    0
+    None
 }
 
-#[no_mangle]
-pub extern "C" fn session_get_rgba(session_uuid_str: *const char, display: usize) -> *const u8 {
-    if let Ok(session_id) = char_to_session_id(session_uuid_str) {
-        if let Some(s) = sessions::get_session_by_session_id(&session_id) {
-            return s.ui_handler.get_rgba(display);
-        }
-    }
-
-    std::ptr::null()
-}
-
-pub fn session_next_rgba(session_id: SessionID, display: usize) {
+pub fn session_next_rgba(session_id: SessionID, display: usize, publication: u64) {
     if let Some(s) = sessions::get_session_by_session_id(&session_id) {
-        return s.ui_handler.next_rgba(display);
+        s.ui_handler.next_rgba(&session_id, display, publication);
     }
 }
 
@@ -2335,6 +2525,7 @@ pub mod sessions {
             let remove_ret = write_lock.remove(id);
             match remove_ret {
                 Some(_) => {
+                    s.ui_handler.retire_rgba_session(id);
                     if write_lock.is_empty() {
                         remove_peer_key = Some(peer_key.clone());
                     } else {
@@ -2407,6 +2598,8 @@ pub mod sessions {
             let mut write_lock = s.ui_handler.session_handlers.write().unwrap();
             if let Some(h) = write_lock.get_mut(&session_id) {
                 h.displays = value.iter().map(|x| *x as usize).collect::<_>();
+                s.ui_handler
+                    .retire_rgba_displays_except(&session_id, &value);
                 #[cfg(not(any(target_os = "android", target_os = "ios")))]
                 let displays_refresh = value.clone();
                 if value.len() == 1 {
@@ -2414,8 +2607,6 @@ pub mod sessions {
                     // This operation will also cause the peer to send a switch display message.
                     // The switch display message will contain `SupportedResolutions`, which is useful when changing resolutions.
                     s.switch_display(value[0]);
-                    // Reset the valid flag of the display.
-                    s.next_rgba(value[0] as usize);
 
                     if !is_desktop {
                         s.capture_displays(vec![], vec![], value);
@@ -2506,11 +2697,6 @@ pub mod sessions {
                 .write()
                 .unwrap()
                 .insert(session_id, h);
-            // If the session is a single display session, it may be a software rgba rendered display.
-            // If this is the second time the display is opened, the old valid flag may be true.
-            if displays.len() == 1 {
-                s.ui_handler.next_rgba(displays[0] as usize);
-            }
             true
         } else {
             false
@@ -2556,6 +2742,7 @@ pub mod sessions {
                 .collect::<Vec<_>>();
             for stale_handler_id in stale_handler_ids {
                 if let Some(handler) = handlers.remove(&stale_handler_id) {
+                    session.ui_handler.retire_rgba_session(&stale_handler_id);
                     removed_handlers.push(handler);
                 }
             }
@@ -2593,6 +2780,7 @@ pub mod sessions {
                 .collect::<Vec<_>>();
             for owned_handler_id in &owned_handler_ids {
                 if let Some(handler) = handlers.remove(owned_handler_id) {
+                    session.ui_handler.retire_rgba_session(owned_handler_id);
                     removed_handlers.push(handler);
                 }
             }
@@ -2974,6 +3162,153 @@ mod mobile_session_lifecycle_tests {
     use std::time::Duration;
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn r_s11ew_rgba_mailbox_keeps_published_frame_stable_and_promotes_only_latest() {
+        let mut mailbox = RgbaData::default();
+        let mut first = vec![1; 16];
+        assert_eq!(mailbox.offer_swap(&mut first, || Some(1)), Some(1));
+        assert_eq!(mailbox.data, vec![1; 16]);
+        let published_ptr = mailbox.data.as_ptr();
+
+        let mut second = vec![2; 16];
+        assert_eq!(mailbox.offer_swap(&mut second, || Some(2)), None);
+        let mut latest = vec![3; 16];
+        assert_eq!(mailbox.offer_swap(&mut latest, || Some(3)), None);
+        assert_eq!(mailbox.data.as_ptr(), published_ptr);
+        assert_eq!(mailbox.data, vec![1; 16]);
+        assert_eq!(mailbox.pending.as_deref(), Some(&[3; 16][..]));
+        assert_eq!(mailbox.copy(2), None);
+        assert_eq!(mailbox.copy(1), Some(vec![1; 16]));
+
+        assert_eq!(
+            mailbox.acknowledge(1, || Some(2)),
+            RgbaAcknowledgement::Promoted(2)
+        );
+        assert_eq!(mailbox.data, vec![3; 16]);
+        assert!(mailbox.valid);
+        assert!(mailbox.pending.is_none());
+        assert!(mailbox.spare.is_empty());
+        assert_eq!(
+            mailbox.acknowledge(1, || Some(3)),
+            RgbaAcknowledgement::Ignored
+        );
+        assert!(mailbox.valid);
+
+        assert_eq!(
+            mailbox.acknowledge(2, || Some(3)),
+            RgbaAcknowledgement::Drained
+        );
+        assert!(!mailbox.valid);
+    }
+
+    #[test]
+    fn r_s11ew_rgba_mailboxes_are_exact_per_ui_session_and_display() {
+        let handler = FlutterHandler::default();
+        let first = SessionID::new_v4();
+        let second = SessionID::new_v4();
+        let mut initial = vec![10; 8];
+        let publications = handler.offer_rgba_to_sessions(&[first, second], 4, &mut initial);
+        assert_eq!(
+            publications
+                .iter()
+                .map(|(session_id, _)| *session_id)
+                .collect::<Vec<_>>(),
+            vec![first, second]
+        );
+        let first_publication = publications[0].1;
+        let second_publication = publications[1].1;
+        assert_eq!(
+            handler.copy_rgba(&first, 4, first_publication),
+            Some(vec![10; 8])
+        );
+        assert_eq!(
+            handler.copy_rgba(&second, 4, second_publication),
+            Some(vec![10; 8])
+        );
+        assert_eq!(
+            handler.copy_rgba(&SessionID::new_v4(), 4, first_publication),
+            None
+        );
+
+        let mut replacement = vec![20; 8];
+        assert!(handler
+            .offer_rgba_to_sessions(&[first, second], 4, &mut replacement)
+            .is_empty());
+        {
+            let mut mailboxes = handler.display_rgbas.write().unwrap();
+            let first_mailbox = mailboxes
+                .get_mut(&(first, 4))
+                .expect("first exact RGBA mailbox");
+            assert!(matches!(
+                first_mailbox.acknowledge(first_publication, || Some(3)),
+                RgbaAcknowledgement::Promoted(_)
+            ));
+            assert_eq!(first_mailbox.data, vec![20; 8]);
+
+            let second_mailbox = mailboxes
+                .get(&(second, 4))
+                .expect("second exact RGBA mailbox");
+            assert_eq!(second_mailbox.data, vec![10; 8]);
+            assert_eq!(second_mailbox.pending.as_deref(), Some(&[20; 8][..]));
+        }
+
+        handler.retire_rgba_session(&first);
+        assert_eq!(handler.copy_rgba(&first, 4, first_publication), None);
+        let mailboxes = handler.display_rgbas.read().unwrap();
+        assert!(!mailboxes.contains_key(&(first, 4)));
+        assert!(mailboxes.contains_key(&(second, 4)));
+    }
+
+    #[test]
+    fn r_s11ew_rgba_without_a_live_consumer_retains_no_frame() {
+        let handler = FlutterHandler::default();
+        let mut incoming = vec![7; 8];
+        assert!(handler
+            .offer_rgba_to_sessions(&[], 0, &mut incoming)
+            .is_empty());
+        assert_eq!(incoming, vec![7; 8]);
+        assert!(handler.display_rgbas.read().unwrap().is_empty());
+    }
+
+    #[test]
+    fn r_s11ew_display_switch_retires_only_obsolete_exact_mailboxes() {
+        let handler = FlutterHandler::default();
+        let current = SessionID::new_v4();
+        let other = SessionID::new_v4();
+        let mut frame = vec![1; 4];
+        handler.offer_rgba_to_sessions(&[current], 0, &mut frame);
+        let mut frame = vec![2; 4];
+        handler.offer_rgba_to_sessions(&[current], 1, &mut frame);
+        let mut frame = vec![3; 4];
+        handler.offer_rgba_to_sessions(&[other], 0, &mut frame);
+
+        handler.retire_rgba_displays_except(&current, &[1]);
+        let mailboxes = handler.display_rgbas.read().unwrap();
+        assert!(!mailboxes.contains_key(&(current, 0)));
+        assert!(mailboxes.contains_key(&(current, 1)));
+        assert!(mailboxes.contains_key(&(other, 0)));
+    }
+
+    #[test]
+    fn r_s11ew_rgba_publication_exhaustion_fails_closed() {
+        let mut mailbox = RgbaData::default();
+        let mut frame = vec![1; 4];
+        assert_eq!(mailbox.offer_swap(&mut frame, || None), None);
+        assert!(!mailbox.valid);
+        assert!(mailbox.data.is_empty());
+
+        assert_eq!(mailbox.offer_swap(&mut frame, || Some(1)), Some(1));
+        let mut pending = vec![2; 4];
+        assert_eq!(mailbox.offer_swap(&mut pending, || Some(2)), None);
+        assert_eq!(
+            mailbox.acknowledge(1, || None),
+            RgbaAcknowledgement::Exhausted
+        );
+        assert!(!mailbox.valid);
+        assert_eq!(mailbox.publication, 0);
+        assert!(mailbox.pending.is_none());
+    }
 
     #[test]
     fn r_s11e149_screenshot_data_is_owned_by_the_exact_ui_session() {

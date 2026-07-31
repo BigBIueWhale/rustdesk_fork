@@ -21,6 +21,7 @@ sealed class EventToUI {
   ) = EventToUI_Event;
   const factory EventToUI.rgba(
     int field0,
+    int field1,
   ) = EventToUI_Rgba;
   const factory EventToUI.texture(
     int field0,
@@ -35,9 +36,13 @@ class EventToUI_Event implements EventToUI {
 }
 
 class EventToUI_Rgba implements EventToUI {
-  const EventToUI_Rgba(final int field0) : field = field0;
-  final int field;
-  int get field0 => field;
+  const EventToUI_Rgba(final int field0, final int field1)
+      : f0 = field0,
+        f1 = field1;
+  final int f0;
+  final int f1;
+  int get field0 => f0;
+  int get field1 => f1;
 }
 
 class EventToUI_Texture implements EventToUI {
@@ -1215,13 +1220,11 @@ class RustdeskImpl {
     ]);
   }
 
-  int sessionGetRgbaSize(
-      {required UuidValue sessionId, required int display, dynamic hint}) {
-    return 0;
-  }
-
   void sessionNextRgba(
-      {required UuidValue sessionId, required int display, dynamic hint}) {}
+      {required UuidValue sessionId,
+      required int display,
+      required int publication,
+      dynamic hint}) {}
 
   void sessionRegisterPixelbufferTexture(
       {required UuidValue sessionId,

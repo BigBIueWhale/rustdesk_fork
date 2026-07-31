@@ -121,7 +121,7 @@ pub fn stop_global_event_stream(app_type: String) {
 }
 pub enum EventToUI {
     Event(String),
-    Rgba(usize),
+    Rgba(usize, u64),     // (display, exact publication)
     Texture(usize, bool), // (display, gpu_texture)
 }
 
@@ -1978,12 +1978,28 @@ pub fn translate(name: String, locale: String) -> SyncReturn<String> {
     SyncReturn(crate::client::translate_locale(name, &locale))
 }
 
-pub fn session_get_rgba_size(session_id: SessionID, display: usize) -> SyncReturn<usize> {
-    SyncReturn(super::flutter::session_get_rgba_size(session_id, display))
+pub fn session_copy_rgba(
+    session_id: SessionID,
+    display: usize,
+    publication: u64,
+) -> SyncReturn<Option<Vec<u8>>> {
+    SyncReturn(super::flutter::session_copy_rgba(
+        session_id,
+        display,
+        publication,
+    ))
 }
 
-pub fn session_next_rgba(session_id: SessionID, display: usize) -> SyncReturn<()> {
-    SyncReturn(super::flutter::session_next_rgba(session_id, display))
+pub fn session_next_rgba(
+    session_id: SessionID,
+    display: usize,
+    publication: u64,
+) -> SyncReturn<()> {
+    SyncReturn(super::flutter::session_next_rgba(
+        session_id,
+        display,
+        publication,
+    ))
 }
 
 pub fn session_register_pixelbuffer_texture(

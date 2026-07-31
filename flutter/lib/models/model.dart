@@ -1526,14 +1526,16 @@ class ImageModel with ChangeNotifier {
     _webDecodingRgba = false;
   }
 
-  Future<void> onRgba(
-      SessionID expectedSessionId, int display, Uint8List rgba) async {
+  Future<void> onRgba(SessionID expectedSessionId, int display, Uint8List rgba,
+      [int? publication]) async {
     try {
       await decodeAndUpdate(expectedSessionId, display, rgba);
     } catch (e) {
       debugPrint('onRgba error: $e');
     }
-    platformFFI.nextRgba(expectedSessionId, display);
+    if (publication != null) {
+      platformFFI.nextRgba(expectedSessionId, display, publication);
+    }
   }
 
   Future<void> decodeAndUpdate(
@@ -3668,18 +3670,17 @@ class FFI {
           }
         } else if (message is EventToUI_Rgba) {
           final display = message.field0;
-          // Fetch the image buffer from rust codes.
-          final sz = platformFFI.getRgbaSize(activeSessionId, display);
-          if (sz == 0) {
-            platformFFI.nextRgba(activeSessionId, display);
-            return;
-          }
-          final rgba = platformFFI.getRgba(activeSessionId, display, sz);
+          final publication = message.field1;
+          // Copy the exact publication through the generated bridge. Flutter never
+          // borrows a pointer into a Rust mailbox across an asynchronous decode.
+          final rgba =
+              platformFFI.copyRgba(activeSessionId, display, publication);
           if (rgba != null) {
             onEvent2UIRgba(activeSessionId);
-            await imageModel.onRgba(activeSessionId, display, rgba);
+            await imageModel.onRgba(
+                activeSessionId, display, rgba, publication);
           } else {
-            platformFFI.nextRgba(activeSessionId, display);
+            platformFFI.nextRgba(activeSessionId, display, publication);
           }
         } else if (message is EventToUI_Texture) {
           final display = message.field0;

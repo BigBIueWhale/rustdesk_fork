@@ -99,10 +99,20 @@ bool TextureRgba::MarkVideoFrameAvailable(const uint8_t* buffer,
 void TextureRgba::Retire() {
   const std::lock_guard<std::mutex> lock(mutex_);
   retired_ = true;
+  if (buffer_ready_) {
+    const int background_index = foreground_index_ ^ 1;
+    buffers_[background_index].clear();
+    width_[background_index] = 0;
+    height_[background_index] = 0;
+    buffer_ready_ = false;
+  }
 }
 
 const FlutterDesktopPixelBuffer* TextureRgba::CopyBuffer() {
   const std::lock_guard<std::mutex> lock(mutex_);
+  if (retired_) {
+    return nullptr;
+  }
   if (buffer_ready_) {
     foreground_index_ ^= 1;
     flutter_pixel_buffer_.buffer = buffers_[foreground_index_].data();

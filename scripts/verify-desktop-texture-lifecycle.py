@@ -97,8 +97,19 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "plugin_windows_texture_h": (
             "flutter/third_party/texture_rgba_renderer/windows/texture_rgba.h"
         ),
+        "plugin_windows_cmake": (
+            "flutter/third_party/texture_rgba_renderer/windows/CMakeLists.txt"
+        ),
         "plugin_windows_texture": (
             "flutter/third_party/texture_rgba_renderer/windows/texture_rgba.cpp"
+        ),
+        "plugin_windows_test": (
+            "flutter/third_party/texture_rgba_renderer/windows/test/"
+            "texture_rgba_test.cc"
+        ),
+        "plugin_windows_test_stub": (
+            "flutter/third_party/texture_rgba_renderer/windows/test/include/"
+            "flutter/texture_registrar.h"
         ),
         "plugin_windows": (
             "flutter/third_party/texture_rgba_renderer/windows/"
@@ -111,6 +122,10 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "plugin_linux": (
             "flutter/third_party/texture_rgba_renderer/linux/"
             "texture_rgba_renderer_plugin.cc"
+        ),
+        "plugin_linux_test": (
+            "flutter/third_party/texture_rgba_renderer/linux/test/"
+            "texture_rgba_renderer_plugin_test.cc"
         ),
         "plugin_macos_texture": (
             "flutter/third_party/texture_rgba_renderer/macos/Classes/"
@@ -644,6 +659,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
 
     windows_texture_h = sources["plugin_windows_texture_h"]
+    windows_cmake = sources["plugin_windows_cmake"]
     windows_texture = sources["plugin_windows_texture"]
     windows_plugin = sources["plugin_windows"]
     windows_c_api = sources["plugin_windows_c_api"]
@@ -652,6 +668,18 @@ def validate(sources: Dict[str, str]) -> None:
         "~TextureRgba() = default;",
         "Windows texture object has no second unregister owner",
     )
+    require_order(
+        windows_cmake,
+        (
+            '"texture_rgba_renderer_plugin.cpp"',
+            '"texture_rgba.cpp"',
+            '"texture_rgba.h"',
+            '"texture_rgba_renderer_plugin.h"',
+        ),
+        "explicit Windows production plugin source list",
+    )
+    forbid(windows_cmake, "test/", "test-only Windows texture source packaging")
+    forbid(windows_cmake, "file(GLOB", "globbed Windows plugin source authority")
     forbid(
         windows_texture,
         "UnregisterTexture",
@@ -678,6 +706,74 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "Windows latest-wins coalescing, retirement, and failed-mark rollback",
     )
+    require_order(
+        extract_braced_item(
+            windows_texture,
+            "void TextureRgba::Retire()",
+            "Windows texture retirement",
+        ),
+        (
+            "retired_ = true;",
+            "if (buffer_ready_)",
+            "const int background_index = foreground_index_ ^ 1;",
+            "buffers_[background_index].clear();",
+            "width_[background_index] = 0;",
+            "height_[background_index] = 0;",
+            "buffer_ready_ = false;",
+        ),
+        "Windows retirement cancels only the unconsumed pending frame",
+    )
+    require_order(
+        extract_braced_item(
+            windows_texture,
+            "const FlutterDesktopPixelBuffer* TextureRgba::CopyBuffer()",
+            "Windows pixel callback",
+        ),
+        (
+            "if (retired_)",
+            "return nullptr;",
+            "if (buffer_ready_)",
+            "foreground_index_ ^= 1;",
+        ),
+        "Windows pixel callback refuses publication after retirement",
+    )
+    windows_test = sources["plugin_windows_test"]
+    windows_test_stub = sources["plugin_windows_test_stub"]
+    require_order(
+        windows_test_stub,
+        (
+            "class PixelBufferTexture",
+            "using CopyBufferCallback =",
+            "class TextureVariant",
+            "class TextureRegistrar",
+            "virtual int64_t RegisterTexture(TextureVariant* texture) = 0;",
+            "virtual bool MarkTextureFrameAvailable(int64_t texture_id) = 0;",
+        ),
+        "portable Windows test-only Flutter registrar interface",
+    )
+    for needle, label in (
+        (
+            '#include "../texture_rgba.h"',
+            "portable Windows test uses the production texture class",
+        ),
+        (
+            "TextureRgba texture(&registrar);",
+            "portable Windows production texture construction",
+        ),
+        (
+            '"a pending frame crossed the retirement boundary"',
+            "portable Windows pending-frame retirement regression",
+        ),
+        (
+            '"retirement released the presented frame too early"',
+            "portable Windows presented-storage lifetime regression",
+        ),
+        (
+            '"a retired texture accepted a new frame"',
+            "portable Windows post-retirement admission regression",
+        ),
+    ):
+        require(windows_test, needle, label)
     windows_close = extract_braced_item(
         windows_plugin,
         'if (method_call.method_name() == "closeTexture")',
@@ -840,10 +936,31 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         extract_braced_item(
             linux,
+            "static void texture_rgba_retire(",
+            "Linux texture retirement",
+        ),
+        (
+            "self->retired = TRUE;",
+            "uint8_t* pending_buffer = self->buffer;",
+            "self->buffer = nullptr;",
+            "self->buffer_width = 0;",
+            "self->buffer_height = 0;",
+            "self->buffer_ready = FALSE;",
+            "g_mutex_unlock(&self->mutex);",
+            "delete[] pending_buffer;",
+        ),
+        "Linux retirement cancels only the unconsumed pending frame",
+    )
+    require_order(
+        extract_braced_item(
+            linux,
             "static gboolean texture_rgba_copy_pixels(",
             "Linux pixel callback",
         ),
         (
+            "if (self->retired)",
+            '"texture is retired"',
+            "return FALSE;",
             "if (self->buffer_ready)",
             "self->prior_buffer = self->buffer;",
             "self->prior_width = self->buffer_width;",
@@ -853,7 +970,6 @@ def validate(sources: Dict[str, str]) -> None:
             "*out_buffer = self->prior_buffer;",
             "*width = self->prior_width;",
             "*height = self->prior_height;",
-            "if (self->retired)",
             "if (self->prior_buffer != nullptr)",
             "*width = self->prior_width;",
             "*height = self->prior_height;",
@@ -862,6 +978,34 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "Linux pixel callback keeps presented metadata independent of pending rollback",
     )
+    linux_test = sources["plugin_linux_test"]
+    for needle, label in (
+        (
+            '#include "../texture_rgba_renderer_plugin.cc"',
+            "native test uses the production Linux callback implementation",
+        ),
+        (
+            '"a pending frame crossed the retirement boundary"',
+            "native pending-frame retirement regression",
+        ),
+        (
+            '"retirement retained pending frame state"',
+            "native pending-storage cancellation regression",
+        ),
+        (
+            '"retirement released the presented frame too early"',
+            "native presented-storage lifetime regression",
+        ),
+        (
+            'std::strcmp(error->message, "texture is retired") == 0',
+            "native retired-callback diagnostic regression",
+        ),
+        (
+            '"a retired texture accepted a new frame"',
+            "native post-retirement admission regression",
+        ),
+    ):
+        require(linux_test, needle, label)
     require_order(
         extract_braced_item(
             linux,
@@ -1033,8 +1177,14 @@ def validate(sources: Dict[str, str]) -> None:
             '<div class="req"><span class="id">R-S11ey</span>',
             "R-S11ey software-only presentation requirement",
         ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11ez</span>',
+            "R-S11ez native retirement-finality requirement",
+        ),
         ("requirements", "<tr><td>306</td>", "Appendix C #306"),
         ("requirements", "<tr><td>307</td>", "Appendix C #307"),
+        ("requirements", "<tr><td>308</td>", "Appendix C #308"),
         (
             "hardening",
             "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
@@ -1046,6 +1196,11 @@ def validate(sources: Dict[str, str]) -> None:
             "software-only texture hardening ledger",
         ),
         (
+            "hardening",
+            "**R-S11ez/R-S11e-187 pending desktop frame retirement finality",
+            "native retirement-finality hardening ledger",
+        ),
+        (
             "verify",
             "cargo test --lib --features linux-pkg-config,flutter r_s11ex_ --color never",
             "shared native behavior gate",
@@ -1054,6 +1209,16 @@ def validate(sources: Dict[str, str]) -> None:
             "dart_verify",
             "flutter test --no-pub test/desktop_texture_lifecycle_test.dart",
             "confined Dart behavior gate",
+        ),
+        (
+            "dart_verify",
+            "\n    /tmp/texture_rgba_renderer_plugin_test\n",
+            "confined Linux native callback behavior gate",
+        ),
+        (
+            "dart_verify",
+            "\n    /tmp/texture_rgba_windows_core_test\n",
+            "portable Windows callback-core behavior gate",
         ),
         (
             "verify",
@@ -1286,6 +1451,50 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "Windows latest-wins pending-frame coalescing",
     ),
     (
+        "plugin_windows_texture",
+        "  if (buffer_ready_) {\n"
+        "    const int background_index = foreground_index_ ^ 1;\n",
+        "  if (false) {\n"
+        "    const int background_index = foreground_index_ ^ 1;\n",
+        "Windows retirement cancels pending frame",
+    ),
+    (
+        "plugin_windows_texture",
+        "  if (retired_) {\n"
+        "    return nullptr;\n"
+        "  }\n"
+        "  if (buffer_ready_) {",
+        "  if (false) {\n"
+        "    return nullptr;\n"
+        "  }\n"
+        "  if (buffer_ready_) {",
+        "Windows callback retirement refusal",
+    ),
+    (
+        "plugin_windows_test_stub",
+        "class TextureRegistrar {",
+        "class DisabledTextureRegistrar {",
+        "portable Windows test registrar interface",
+    ),
+    (
+        "plugin_windows_cmake",
+        '  "texture_rgba.h"\n',
+        '  "texture_rgba.h"\n  "test/texture_rgba_test.cc"\n',
+        "test-only Windows source packaging exclusion",
+    ),
+    (
+        "plugin_windows_test",
+        '"a pending frame crossed the retirement boundary"',
+        '"pending frame publication was accepted"',
+        "portable Windows native retirement regression",
+    ),
+    (
+        "plugin_windows_test",
+        '"retirement released the presented frame too early"',
+        '"presented frame lifetime was not checked"',
+        "portable Windows presented-storage regression",
+    ),
+    (
         "plugin_windows",
         "auto texture_node = textures_.extract(found);",
         "textures_.erase(found);",
@@ -1343,6 +1552,36 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "plugin_linux",
+        "  self->buffer_ready = FALSE;\n"
+        "  g_mutex_unlock(&self->mutex);\n"
+        "  delete[] pending_buffer;\n",
+        "  g_mutex_unlock(&self->mutex);\n",
+        "Linux retirement cancels pending frame",
+    ),
+    (
+        "plugin_linux",
+        "  if (self->retired) {\n"
+        "    g_mutex_unlock(&self->mutex);\n"
+        "    g_set_error(error, g_quark_from_static_string(\"TextureRgbaRenderer\"), -1,\n",
+        "  if (false) {\n"
+        "    g_mutex_unlock(&self->mutex);\n"
+        "    g_set_error(error, g_quark_from_static_string(\"TextureRgbaRenderer\"), -1,\n",
+        "Linux callback retirement refusal",
+    ),
+    (
+        "plugin_linux_test",
+        '"a pending frame crossed the retirement boundary"',
+        '"pending frame publication was accepted"',
+        "Linux native retirement regression",
+    ),
+    (
+        "plugin_linux_test",
+        '"retirement released the presented frame too early"',
+        '"presented frame lifetime was not checked"',
+        "Linux native presented-storage regression",
+    ),
+    (
+        "plugin_linux",
         "    *width = self->prior_width;\n"
         "    *height = self->prior_height;\n"
         "    g_mutex_unlock(&self->mutex);\n"
@@ -1379,11 +1618,16 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     ("requirements", '<div class="req"><span class="id">R-S11ex</span>', '<div class="req"><span class="id">R-S11ex-disabled</span>', "normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11ey</span>', '<div class="req"><span class="id">R-S11ey-disabled</span>', "software-only normative requirement"),
+    ("requirements", '<div class="req"><span class="id">R-S11ez</span>', '<div class="req"><span class="id">R-S11ez-disabled</span>', "native retirement normative requirement"),
     ("requirements", "<tr><td>306</td>", "<tr><td>306-disabled</td>", "Appendix disposition"),
     ("requirements", "<tr><td>307</td>", "<tr><td>307-disabled</td>", "software-only Appendix disposition"),
+    ("requirements", "<tr><td>308</td>", "<tr><td>308-disabled</td>", "native retirement Appendix disposition"),
     ("hardening", "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "**R-S11ex-disabled/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "hardening ledger"),
     ("hardening", "**R-S11ey/R-S11e-186 software-RGBA-only desktop presentation", "**R-S11ey-disabled/R-S11e-186 software-RGBA-only desktop presentation", "software-only hardening ledger"),
+    ("hardening", "**R-S11ez/R-S11e-187 pending desktop frame retirement finality", "**R-S11ez-disabled/R-S11e-187 pending desktop frame retirement finality", "native retirement hardening ledger"),
     ("dart_verify", "flutter test --no-pub test/desktop_texture_lifecycle_test.dart", "true # desktop texture lifecycle test disabled", "Dart behavior gate"),
+    ("dart_verify", "\n    /tmp/texture_rgba_renderer_plugin_test\n", "\n    true # Linux native callback behavior gate disabled\n", "Linux native callback behavior gate"),
+    ("dart_verify", "\n    /tmp/texture_rgba_windows_core_test\n", "\n    true # portable Windows callback-core gate disabled\n", "portable Windows callback-core behavior gate"),
     ("verify", "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test", "python3 scripts/verify-desktop-texture-lifecycle.py --repo .", "shared mutation gate"),
     ("apple", "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test", "python3 scripts/verify-desktop-texture-lifecycle.py --repo .", "Apple mutation gate"),
     ("workspace", '"desktop_texture_lifecycle_verifier": (', '"desktop_texture_lifecycle_verifier_disabled": (', "independent source binding"),

@@ -16588,6 +16588,34 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "Linux latest-wins native pending-frame contract",
         ),
         (
+            '"Windows retirement cancels only the unconsumed pending frame"',
+            "Windows pending-frame retirement contract",
+        ),
+        (
+            '"Linux retirement cancels only the unconsumed pending frame"',
+            "Linux pending-frame retirement contract",
+        ),
+        (
+            '"a pending frame crossed the retirement boundary"',
+            "Linux native retirement regression contract",
+        ),
+        (
+            '"retirement retained pending frame state"',
+            "Linux native pending-storage regression contract",
+        ),
+        (
+            '"retirement released the presented frame too early"',
+            "Linux native presented-storage regression contract",
+        ),
+        (
+            '"portable Windows test-only Flutter registrar interface"',
+            "portable Windows test registrar contract",
+        ),
+        (
+            '"portable Windows pending-frame retirement regression"',
+            "portable Windows retirement regression contract",
+        ),
+        (
             '"let notificationNeeded = !framePending"',
             "macOS latest-wins native pending-frame contract",
         ),
@@ -16691,6 +16719,34 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "Linux latest-wins native pending-frame mutation",
         ),
         (
+            '"Windows callback retirement refusal"',
+            "Windows callback-retirement mutation",
+        ),
+        (
+            '"Linux callback retirement refusal"',
+            "Linux callback-retirement mutation",
+        ),
+        (
+            '"Linux native retirement regression"',
+            "Linux native retirement-test mutation",
+        ),
+        (
+            '"Linux native callback behavior gate"',
+            "Linux native callback gate mutation",
+        ),
+        (
+            '"portable Windows test registrar interface"',
+            "portable Windows registrar mutation",
+        ),
+        (
+            '"portable Windows native retirement regression"',
+            "portable Windows retirement-test mutation",
+        ),
+        (
+            '"portable Windows callback-core behavior gate"',
+            "portable Windows callback-core gate mutation",
+        ),
+        (
             '"plugin_linux",\n'
             '        "    *width = self->prior_width;\\n"\n'
             '        "    *height = self->prior_height;\\n"',
@@ -16733,6 +16789,18 @@ def validate_desktop_texture_lifecycle_contract(sources):
         (
             '"hardening", "**R-S11ey/R-S11e-186 software-RGBA-only desktop presentation"',
             "software-only hardening-ledger mutation",
+        ),
+        (
+            '"requirements", \'<div class="req"><span class="id">R-S11ez</span>\'',
+            "native retirement requirement mutation",
+        ),
+        (
+            '"requirements", "<tr><td>308</td>"',
+            "native retirement Appendix C mutation",
+        ),
+        (
+            '"hardening", "**R-S11ez/R-S11e-187 pending desktop frame retirement finality"',
+            "native retirement hardening-ledger mutation",
         ),
     ):
         require_text(focused, text, label)
@@ -16824,6 +16892,26 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "independent Windows texture-object unregister",
     )
     require_order(
+        sources["texture_rgba_windows_cmake"],
+        (
+            '"texture_rgba_renderer_plugin.cpp"',
+            '"texture_rgba.cpp"',
+            '"texture_rgba.h"',
+            '"texture_rgba_renderer_plugin.h"',
+        ),
+        "independent explicit Windows production plugin source list",
+    )
+    require_absent(
+        sources["texture_rgba_windows_cmake"],
+        "test/",
+        "independent test-only Windows texture source packaging",
+    )
+    require_absent(
+        sources["texture_rgba_windows_cmake"],
+        "file(GLOB",
+        "independent globbed Windows plugin source authority",
+    )
+    require_order(
         sources["texture_rgba_windows_texture"],
         (
             "const bool notification_needed = !buffer_ready_;",
@@ -16834,6 +16922,72 @@ def validate_desktop_texture_lifecycle_contract(sources):
         ),
         "independent Windows latest-wins and failed-mark rollback contract",
     )
+    windows_retire = extract_between(
+        sources["texture_rgba_windows_texture"],
+        "void TextureRgba::Retire() {",
+        "\n}\n\nconst FlutterDesktopPixelBuffer* TextureRgba::CopyBuffer()",
+        "independent Windows texture retirement",
+    )
+    require_order(
+        windows_retire,
+        (
+            "retired_ = true;",
+            "if (buffer_ready_)",
+            "buffers_[background_index].clear();",
+            "buffer_ready_ = false;",
+        ),
+        "independent Windows pending-frame retirement cancellation",
+    )
+    windows_copy = extract_through(
+        sources["texture_rgba_windows_texture"],
+        "const FlutterDesktopPixelBuffer* TextureRgba::CopyBuffer() {",
+        "  return &flutter_pixel_buffer_;\n}",
+        "independent Windows pixel callback",
+    )
+    require_order(
+        windows_copy,
+        (
+            "if (retired_)",
+            "return nullptr;",
+            "if (buffer_ready_)",
+        ),
+        "independent Windows callback retirement finality",
+    )
+    require_order(
+        sources["texture_rgba_windows_test_stub"],
+        (
+            "class PixelBufferTexture",
+            "using CopyBufferCallback =",
+            "class TextureVariant",
+            "class TextureRegistrar",
+            "virtual int64_t RegisterTexture(TextureVariant* texture) = 0;",
+            "virtual bool MarkTextureFrameAvailable(int64_t texture_id) = 0;",
+        ),
+        "independent portable Windows test registrar interface",
+    )
+    for text, label in (
+        (
+            '#include "../texture_rgba.h"',
+            "independent portable Windows production-class binding",
+        ),
+        (
+            "TextureRgba texture(&registrar);",
+            "independent portable Windows production texture construction",
+        ),
+        (
+            '"a pending frame crossed the retirement boundary"',
+            "independent portable Windows pending-frame retirement regression",
+        ),
+        (
+            '"retirement released the presented frame too early"',
+            "independent portable Windows presented-storage lifetime regression",
+        ),
+        (
+            '"a retired texture accepted a new frame"',
+            "independent portable Windows post-retirement admission regression",
+        ),
+    ):
+        require_text(sources["texture_rgba_windows_test"], text, label)
     require_order(
         sources["texture_rgba_linux"],
         (
@@ -16846,22 +17000,88 @@ def validate_desktop_texture_lifecycle_contract(sources):
         ),
         "independent Linux latest-wins and failed-mark rollback contract",
     )
-    require_order(
+    linux_retire = extract_between(
         sources["texture_rgba_linux"],
+        "static void texture_rgba_retire(",
+        "\n}\n\nstatic gboolean texture_rgba_copy_pixels(",
+        "independent Linux texture retirement",
+    )
+    require_order(
+        linux_retire,
         (
+            "self->retired = TRUE;",
+            "uint8_t* pending_buffer = self->buffer;",
+            "self->buffer = nullptr;",
+            "self->buffer_width = 0;",
+            "self->buffer_height = 0;",
+            "self->buffer_ready = FALSE;",
+            "g_mutex_unlock(&self->mutex);",
+            "delete[] pending_buffer;",
+        ),
+        "independent Linux pending-frame retirement cancellation",
+    )
+    linux_copy = extract_between(
+        sources["texture_rgba_linux"],
+        "static gboolean texture_rgba_copy_pixels(",
+        "\n}\n\nstatic void texture_rgba_finalize(",
+        "independent Linux pixel callback",
+    )
+    require_order(
+        linux_copy,
+        (
+            "if (self->retired)",
+            '"texture is retired"',
+            "return FALSE;",
+            "if (self->buffer_ready)",
+        ),
+        "independent Linux callback retirement finality",
+    )
+    require_order(
+        linux_copy,
+        (
+            "if (self->retired)",
+            '"texture is retired"',
+            "return FALSE;",
+            "if (self->buffer_ready)",
             "self->prior_width = self->buffer_width;",
             "self->prior_height = self->buffer_height;",
             "self->buffer_width = 0;",
             "self->buffer_height = 0;",
             "*width = self->prior_width;",
             "*height = self->prior_height;",
-            "if (self->retired)",
             "if (self->prior_buffer != nullptr)",
             "*width = self->prior_width;",
             "*height = self->prior_height;",
         ),
         "independent Linux pending/presented frame metadata ownership",
     )
+    for text, label in (
+        (
+            '#include "../texture_rgba_renderer_plugin.cc"',
+            "independent native test production-implementation binding",
+        ),
+        (
+            '"a pending frame crossed the retirement boundary"',
+            "independent native pending-frame retirement regression",
+        ),
+        (
+            'std::strcmp(error->message, "texture is retired") == 0',
+            "independent native retirement diagnostic regression",
+        ),
+        (
+            '"retirement retained pending frame state"',
+            "independent native pending-storage cancellation regression",
+        ),
+        (
+            '"retirement released the presented frame too early"',
+            "independent native presented-storage lifetime regression",
+        ),
+        (
+            '"a retired texture accepted a new frame"',
+            "independent native post-retirement admission regression",
+        ),
+    ):
+        require_text(sources["texture_rgba_linux_test"], text, label)
     require_order(
         sources["texture_rgba_linux"],
         (
@@ -16928,6 +17148,16 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "desktop texture confined Dart behavior gate",
     )
     require_text(
+        sources["dart_verify"],
+        "\n    /tmp/texture_rgba_renderer_plugin_test\n",
+        "desktop texture confined native callback behavior gate",
+    )
+    require_text(
+        sources["dart_verify"],
+        "\n    /tmp/texture_rgba_windows_core_test\n",
+        "desktop texture portable Windows callback-core behavior gate",
+    )
+    require_text(
         sources["requirements"],
         '<div class="req"><span class="id">R-S11ex</span>',
         "desktop texture lifecycle requirement",
@@ -16936,6 +17166,11 @@ def validate_desktop_texture_lifecycle_contract(sources):
         sources["requirements"],
         '<div class="req"><span class="id">R-S11ey</span>',
         "software-only desktop presentation requirement",
+    )
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11ez</span>',
+        "native retirement-finality requirement",
     )
     require_text(
         sources["requirements"],
@@ -16948,6 +17183,11 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "software-only desktop presentation Appendix C row",
     )
     require_text(
+        sources["requirements"],
+        "<tr><td>308</td>",
+        "native retirement-finality Appendix C row",
+    )
+    require_text(
         sources["hardening"],
         "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
         "desktop texture lifecycle hardening ledger",
@@ -16956,6 +17196,11 @@ def validate_desktop_texture_lifecycle_contract(sources):
         sources["hardening"],
         "**R-S11ey/R-S11e-186 software-RGBA-only desktop presentation",
         "software-only desktop presentation hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11ez/R-S11e-187 pending desktop frame retirement finality",
+        "native retirement-finality hardening ledger",
     )
 
 
@@ -51448,6 +51693,18 @@ def run_source_mutations(sources):
             "desktop texture confined Dart behavior gate",
         ),
         (
+            "dart_verify",
+            "\n    /tmp/texture_rgba_renderer_plugin_test\n",
+            "\n    true # native texture callback behavior gate removed\n",
+            "desktop texture confined native callback behavior gate",
+        ),
+        (
+            "dart_verify",
+            "\n    /tmp/texture_rgba_windows_core_test\n",
+            "\n    true # portable Windows callback-core gate removed\n",
+            "desktop texture portable Windows callback-core behavior gate",
+        ),
+        (
             "requirements",
             '<div class="req"><span class="id">R-S11ex</span>',
             '<div class="req"><span class="id">R-S11ex-disabled</span>',
@@ -51508,6 +51765,24 @@ def run_source_mutations(sources):
             "software-only desktop presentation hardening ledger",
         ),
         (
+            "requirements",
+            '<div class="req"><span class="id">R-S11ez</span>',
+            '<div class="req"><span class="id">R-S11ez-disabled</span>',
+            "native retirement-finality requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>308</td>",
+            "<tr><td>308-disabled</td>",
+            "native retirement-finality Appendix C row",
+        ),
+        (
+            "hardening",
+            "**R-S11ez/R-S11e-187 pending desktop frame retirement finality",
+            "**R-S11ez-disabled/R-S11e-187 pending desktop frame retirement finality",
+            "native retirement-finality hardening ledger",
+        ),
+        (
             "texture_rgba_pubspec",
             "publish_to: none",
             "publish_to: https://pub.dev",
@@ -51541,6 +51816,50 @@ def run_source_mutations(sources):
             "independent Windows latest-wins and failed-mark rollback contract",
         ),
         (
+            "texture_rgba_windows_texture",
+            "  if (buffer_ready_) {\n"
+            "    const int background_index = foreground_index_ ^ 1;\n",
+            "  if (false) {\n"
+            "    const int background_index = foreground_index_ ^ 1;\n",
+            "independent Windows pending-frame retirement cancellation",
+        ),
+        (
+            "texture_rgba_windows_texture",
+            "  if (retired_) {\n"
+            "    return nullptr;\n"
+            "  }\n"
+            "  if (buffer_ready_) {",
+            "  if (false) {\n"
+            "    return nullptr;\n"
+            "  }\n"
+            "  if (buffer_ready_) {",
+            "independent Windows callback retirement finality",
+        ),
+        (
+            "texture_rgba_windows_test_stub",
+            "class TextureRegistrar {",
+            "class DisabledTextureRegistrar {",
+            "independent portable Windows test registrar interface",
+        ),
+        (
+            "texture_rgba_windows_cmake",
+            '  "texture_rgba.h"\n',
+            '  "texture_rgba.h"\n  "test/texture_rgba_test.cc"\n',
+            "independent test-only Windows texture source packaging",
+        ),
+        (
+            "texture_rgba_windows_test",
+            '"a pending frame crossed the retirement boundary"',
+            '"pending frame publication was accepted"',
+            "independent portable Windows pending-frame retirement regression",
+        ),
+        (
+            "texture_rgba_windows_test",
+            '"retirement released the presented frame too early"',
+            '"presented frame lifetime was not checked"',
+            "independent portable Windows presented-storage lifetime regression",
+        ),
+        (
             "texture_rgba_linux",
             "self->renderers->erase(found);",
             "self->renderers->clear();",
@@ -51554,6 +51873,24 @@ def run_source_mutations(sources):
         ),
         (
             "texture_rgba_linux",
+            "  self->buffer_ready = FALSE;\n"
+            "  g_mutex_unlock(&self->mutex);\n"
+            "  delete[] pending_buffer;\n",
+            "  g_mutex_unlock(&self->mutex);\n",
+            "independent Linux pending-frame retirement cancellation",
+        ),
+        (
+            "texture_rgba_linux",
+            "  if (self->retired) {\n"
+            "    g_mutex_unlock(&self->mutex);\n"
+            "    g_set_error(error, g_quark_from_static_string(\"TextureRgbaRenderer\"), -1,\n",
+            "  if (false) {\n"
+            "    g_mutex_unlock(&self->mutex);\n"
+            "    g_set_error(error, g_quark_from_static_string(\"TextureRgbaRenderer\"), -1,\n",
+            "independent Linux callback retirement finality",
+        ),
+        (
+            "texture_rgba_linux",
             "    *width = self->prior_width;\n"
             "    *height = self->prior_height;\n"
             "    g_mutex_unlock(&self->mutex);\n"
@@ -51563,6 +51900,18 @@ def run_source_mutations(sources):
             "    g_mutex_unlock(&self->mutex);\n"
             "    return TRUE;",
             "independent Linux pending/presented frame metadata ownership",
+        ),
+        (
+            "texture_rgba_linux_test",
+            '"a pending frame crossed the retirement boundary"',
+            '"pending frame publication was accepted"',
+            "independent native pending-frame retirement regression",
+        ),
+        (
+            "texture_rgba_linux_test",
+            '"retirement released the presented frame too early"',
+            '"presented frame lifetime was not checked"',
+            "independent native presented-storage lifetime regression",
         ),
         (
             "texture_rgba_macos",
@@ -61277,10 +61626,30 @@ def main():
                 / "flutter/third_party/texture_rgba_renderer/windows/"
                 "texture_rgba.cpp"
             ).read_text(encoding="utf-8"),
+            "texture_rgba_windows_cmake": (
+                repo
+                / "flutter/third_party/texture_rgba_renderer/windows/"
+                "CMakeLists.txt"
+            ).read_text(encoding="utf-8"),
+            "texture_rgba_windows_test": (
+                repo
+                / "flutter/third_party/texture_rgba_renderer/windows/test/"
+                "texture_rgba_test.cc"
+            ).read_text(encoding="utf-8"),
+            "texture_rgba_windows_test_stub": (
+                repo
+                / "flutter/third_party/texture_rgba_renderer/windows/test/include/"
+                "flutter/texture_registrar.h"
+            ).read_text(encoding="utf-8"),
             "texture_rgba_linux": (
                 repo
                 / "flutter/third_party/texture_rgba_renderer/linux/"
                 "texture_rgba_renderer_plugin.cc"
+            ).read_text(encoding="utf-8"),
+            "texture_rgba_linux_test": (
+                repo
+                / "flutter/third_party/texture_rgba_renderer/linux/test/"
+                "texture_rgba_renderer_plugin_test.cc"
             ).read_text(encoding="utf-8"),
             "texture_rgba_macos": (
                 repo

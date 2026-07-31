@@ -220,6 +220,25 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/session_stream_finality_test.dart
     echo "  == R-S11ex flutter test: desktop texture lifecycle exact finality =="
     flutter test --no-pub test/desktop_texture_lifecycle_test.dart
+    echo "  == R-S11ez Linux native texture callback retirement finality =="
+    engine="${flutter_roots[0]}/bin/cache/artifacts/engine/linux-x64"
+    plugin=/src/flutter/third_party/texture_rgba_renderer/linux
+    [ -f "$engine/libflutter_linux_gtk.so" ]
+    c++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter \
+      -I"$engine" -I"$plugin" \
+      "$plugin/test/texture_rgba_renderer_plugin_test.cc" \
+      -L"$engine" -Wl,-rpath,"$engine" -lflutter_linux_gtk \
+      $(pkg-config --cflags --libs gtk+-3.0) \
+      -o /tmp/texture_rgba_renderer_plugin_test
+    /tmp/texture_rgba_renderer_plugin_test
+    echo "  == R-S11ez portable Windows texture callback-core retirement finality =="
+    windows_plugin=/src/flutter/third_party/texture_rgba_renderer/windows
+    c++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter \
+      -I"$windows_plugin/test/include" -I"$windows_plugin" \
+      "$windows_plugin/texture_rgba.cpp" \
+      "$windows_plugin/test/texture_rgba_test.cc" \
+      -o /tmp/texture_rgba_windows_core_test
+    /tmp/texture_rgba_windows_core_test
     cd /src
     rustfmt --edition 2021 --check src/flutter.rs src/flutter_ffi.rs
     echo "  == shipped Debian Rust library check: flutter,unix-file-copy-paste =="

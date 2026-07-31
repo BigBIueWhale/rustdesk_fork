@@ -138,7 +138,13 @@ static gboolean texture_rgba_mark_frame(TextureRgba* self,
 static void texture_rgba_retire(TextureRgba* self) {
   g_mutex_lock(&self->mutex);
   self->retired = TRUE;
+  uint8_t* pending_buffer = self->buffer;
+  self->buffer = nullptr;
+  self->buffer_width = 0;
+  self->buffer_height = 0;
+  self->buffer_ready = FALSE;
   g_mutex_unlock(&self->mutex);
+  delete[] pending_buffer;
 }
 
 static gboolean texture_rgba_copy_pixels(FlPixelBufferTexture* texture,
@@ -147,6 +153,12 @@ static gboolean texture_rgba_copy_pixels(FlPixelBufferTexture* texture,
                                          GError** error) {
   TextureRgba* self = reinterpret_cast<TextureRgba*>(texture);
   g_mutex_lock(&self->mutex);
+  if (self->retired) {
+    g_mutex_unlock(&self->mutex);
+    g_set_error(error, g_quark_from_static_string("TextureRgbaRenderer"), -1,
+                "texture is retired");
+    return FALSE;
+  }
   if (self->buffer_ready) {
     delete[] self->prior_buffer;
     self->prior_buffer = self->buffer;
@@ -161,12 +173,6 @@ static gboolean texture_rgba_copy_pixels(FlPixelBufferTexture* texture,
     self->buffer_ready = FALSE;
     g_mutex_unlock(&self->mutex);
     return TRUE;
-  }
-  if (self->retired) {
-    g_mutex_unlock(&self->mutex);
-    g_set_error(error, g_quark_from_static_string("TextureRgbaRenderer"), -1,
-                "texture is retired");
-    return FALSE;
   }
   if (self->prior_buffer != nullptr) {
     *out_buffer = self->prior_buffer;

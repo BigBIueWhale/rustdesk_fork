@@ -2798,6 +2798,94 @@ device, host configuration, host firewall, or privileged process is used by this
 Consequently this row does not claim that the observed delay is fixed, that connection flow is
 fully correct or performant, or that the Ralph loop or broader hardening program is complete.
 
+**R-S11ez/R-S11e-187 pending desktop frame retirement finality — SOURCE IMPLEMENTED
+2026-07-31; LINUX NATIVE AND PORTABLE WINDOWS CALLBACK-CORE REGRESSIONS
+PASSED IN A SEALED NONROOT NETWORKLESS CONTAINER; WINDOWS/MACOS NATIVE
+ABI/ENGINE EXECUTION, ALL REAL RENDERER
+EXECUTION, FOCUS/RECONNECT REPRODUCTION, COLD RELEASE, INDEPENDENT
+REPRODUCTION, AND EXTERNAL REVIEW PENDING.** Platforms: the Windows and Linux
+outgoing desktop viewer's repository-owned software-RGBA plugin; macOS was
+audited as the already-correct comparison. Endpoint/action: native frame admission,
+registrar availability notification, pixel copy callback, and texture retirement.
+Boundary: after close begins, no queued or later frame may cross into presentation,
+while any already-presented native storage must remain alive through the registrar's
+platform-specific unregister lifetime.
+
+Read-only source review found that Linux `texture_rgba_retire()` and Windows
+`TextureRgba::Retire()` initially set only their retired flags. Linux
+`texture_rgba_copy_pixels()` and Windows `TextureRgba::CopyBuffer()` then checked
+their pending-frame markers first. A frame admitted before close could therefore be
+promoted and returned after retirement began. The focused lifecycle verifier also
+required the unsafe Linux ordering, so the existing mutation evidence could not catch
+the defect. macOS already clears `textureId`, `registry`, `data`, and `framePending`
+under its one serial queue. This is a source-proven close/replacement resource-finality
+finding. It is not evidence of use-after-free, exploitation, host modification, public
+exposure, or the reported focus-delay cause.
+
+Linux retirement now atomically marks the texture retired, detaches the pending buffer,
+zeros pending dimensions, and clears the pending marker before releasing its mutex; it
+then frees only that detached pending buffer. Its pixel callback checks retirement before
+pending promotion and returns a retirement-specific failure. Windows retirement performs
+the equivalent cancellation of the nonforeground buffer and its metadata, and its callback
+returns no pixel buffer immediately when retired. Neither platform frees its previously
+presented storage at retirement; that storage stays owned through unregister/finalization.
+New frame admission remains serialized with retirement and fails closed afterward. macOS
+needs no source change.
+
+The new Linux native regression includes the production plugin translation unit and links
+against Flutter's real Linux embedder library and GObject types. It instantiates the actual
+`FlPixelBufferTexture` subclass and routes notifications through an interface-conforming
+fake `FlTextureRegistrar`. Against the unchanged pre-fix implementation, the regression
+compiled and then failed because a pending frame crossed retirement and no retirement
+diagnostic was returned. Against the corrected implementation, its warnings-fatal native
+run passed: stride-aware row packing, latest-pending replacement, availability coalescing,
+failed-notification rollback without corrupting the prior presented frame, pending-frame
+cancellation at retirement, continued presented-frame ownership through finalization, the
+retirement-specific callback failure, and later frame rejection.
+
+A second regression compiles and executes the exact production Windows
+`texture_rgba.cpp` on Linux against a minimal test-only implementation of only the
+Flutter pixel-buffer and registrar interfaces that file consumes. It passed the same
+stride-aware latest-frame, notification-coalescing, failed-notification rollback,
+pending-retirement cancellation, presented-buffer lifetime, retired-callback null result,
+and later-admission rejection behaviors. This executes the Windows callback state machine,
+but it does not use Windows headers, ABI, compiler, Flutter engine, registrar, renderer, or
+packaged plugin and is not described as native Windows compilation or execution.
+
+Earlier isolated AddressSanitizer/UndefinedBehaviorSanitizer invocations emitted passes,
+one test per container. The sanitizer environment is nevertheless not reliable evidence:
+a combined invocation later entered an unbounded repeated `DEADLYSIGNAL` stream, and a
+fresh final-tree rerun reproduced the same failure with the Linux test alone, without a
+diagnostic stack. The exact ephemeral containers were killed and a bounded reproduction
+of the earlier combined failure exited 124. No sanitizer result is counted. The canonical
+locked Dart transaction therefore compiles and executes both warnings-fatal callback tests
+without sanitizers; sanitizer stability and a usable diagnostic remain open.
+
+That counted behavior run used the sealed local image
+`sha256:058ca8987af63df55aa0a0a8e6f2ab25904d73061f59e27a53ac9ab19acc71c9`
+as numeric UID/GID 65532:65532 with `--pull=never`, `--network=none`, a read-only
+container root and repository mount, all capabilities dropped, `no-new-privileges`,
+bounded CPU/memory/processes, an executable private tmpfs, no ports, no devices, no
+Docker socket, and no host namespace. It started no Flutter engine, compositor, window,
+RustDesk process, service, listener, peer, renderer, emulator, or device and changed no
+host RustDesk, firewall, network, or configuration state. The locked offline Dart gate
+now compiles and runs the Linux native regression from its freshly extracted Flutter SDK
+and the portable Windows callback-core regression in the same confined transaction;
+focused semantic and deliberate-mutation checks bind both gates and the corrected platform
+contracts.
+
+The evidence boundary remains important. This run executed native callback/resource logic,
+not a real renderer. The repository's currently pinned Debian-builder image is not locally
+available, so the complete canonical Dart/Rust transaction has not yet been rerun for these
+bytes. There is still no native Windows header/ABI/compiler or engine callback result, no
+native macOS compile/callback result, no real Flutter engine
+or packaged-plugin execution, Android/Windows focus/background/task-swipe/Force-Stop or
+reconnect reproduction, end-to-end frame timestamps, sustained latency budget, exact
+operational artifact identity, clean committed cold R-B2/R-B10 release, separately required
+independent reproduction, or external review. This slice therefore does not claim that the
+observed delay is fixed, that the broader connection flow is proven correct and performant,
+or that the release or Ralph loop is complete.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -17277,7 +17365,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-5d48ebf70d4cbfaadb437300ccafc8e832dd894374a0f43c9be970fa61158915  requirements.html
+3a099334b3a6449143d79b0da3f2f3f0633fb5cef7d47508ecff8ade814a06ab  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -17301,3 +17389,4 @@ The same identity additionally binds R-S11ev and Appendix C #304.
 The same identity additionally binds R-S11ew and Appendix C #305.
 The same identity additionally binds R-S11ex and Appendix C #306.
 The same identity additionally binds R-S11ey and Appendix C #307.
+The same identity additionally binds R-S11ez and Appendix C #308.

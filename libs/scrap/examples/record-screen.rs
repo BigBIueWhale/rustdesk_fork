@@ -102,6 +102,8 @@ fn main() -> io::Result<()> {
         EncoderCfg::VPX(vpx_encode::VpxEncoderConfig {
             width,
             height,
+            #[cfg(target_os = "android")]
+            android_scale: 1,
             quality,
             codec: vpx_codec,
             keyframe_interval: None,

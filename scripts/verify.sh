@@ -10910,13 +10910,13 @@ else
   echo "  FAIL R-S11el/R-S11e-172: Android exact-generation listener rebuild authority regressed"
   rc=1
 fi
-echo "== Android exact-generation raw-video authority (R-S11em/R-S11e-174) =="
+echo "== Android exact-generation raw-video and video-worker authority (R-S11em/R-S11eu/R-S11e-174/R-S11e-182) =="
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config \
   android_frame_raw_generation_tests::tests:: -- --test-threads=1
 if /usr/bin/python3 -I -S scripts/verify-android-frame-raw-generation.py --repo . --self-test; then
-  echo "  ok  R-S11em/R-S11e-174 Android exact-generation raw-video authority"
+  echo "  ok  R-S11em/R-S11eu/R-S11e-174/R-S11e-182 Android exact-generation raw-video producer, consumer, screen-state, and video-worker authority"
 else
-  echo "  FAIL R-S11em/R-S11e-174: Android exact-generation raw-video authority regressed"
+  echo "  FAIL R-S11em/R-S11eu/R-S11e-174/R-S11e-182: Android exact-generation raw-video or video-worker authority regressed"
   rc=1
 fi
 echo "== Android exact-generation service status and explicit-stop authority (R-S11en/R-S11e-175) =="
@@ -13476,7 +13476,7 @@ fi
 # replacement MainService or stop its listener. Process-wide controlled voice and playback
 # ownership retains that exact generation too, so obsolete service teardown cannot clear a
 # replacement service's same-number owner or projection.
-echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4) =="
+echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="
 r_s14_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
 r_s14_activity_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainActivity.kt
 r_s14_status_kt=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainServiceStatusOwner.kt
@@ -13516,7 +13516,7 @@ add_connection_block=$(sed -n '/"add_connection" -> {/,/"remove_connection" -> {
 remove_connection_kt_block=$(sed -n '/"remove_connection" -> {/,/"update_voice_call_state" -> {/p' "$r_s14_kt")
 resource_release_block=$(sed -n '/private fun releaseControlledConnectionResources()/,/fun checkMediaPermission()/p' "$r_s14_kt")
 on_create_block=$(sed -n '/override fun onCreate()/,/override fun onDestroy()/p' "$r_s14_kt")
-update_voice_block=$(sed -n '/"update_voice_call_state" -> {/,/"half_scale" -> {/p' "$r_s14_kt")
+update_voice_block=$(sed -n '/"update_voice_call_state" -> {/,/            else -> {/p' "$r_s14_kt")
 activity_destroy_block=$(sed -n '/override fun onDestroy()/,/private fun bindMainService/p' "$r_s14_activity_kt")
 activity_stop_block=$(sed -n '/"stop_service" -> {/,/"check_permission" -> {/p' "$r_s14_activity_kt")
 printf '%s\n' "$on_destroy_block" | grep -qF 'releaseControlledConnectionResources()' || r_s14_missing="$r_s14_missing onDestroy-no-exact-owner-teardown"
@@ -13663,6 +13663,7 @@ grep -qF '"(I[B)Z"' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing key-jni-con
 grep -qF 'R-S11ei/R-S11e-153' HARDENING_STATUS.md || r_s14_missing="$r_s14_missing exact-input-ledger"
 grep -qF 'R-S11ek/R-S11e-169' HARDENING_STATUS.md || r_s14_missing="$r_s14_missing exact-controlled-audio-generation-ledger"
 grep -qF 'R-S11em/R-S11e-174' HARDENING_STATUS.md || r_s14_missing="$r_s14_missing exact-raw-video-generation-ledger"
+grep -qF 'R-S11eu/R-S11e-182' HARDENING_STATUS.md || r_s14_missing="$r_s14_missing exact-video-worker-generation-ledger"
 grep -qF 'R-S11en/R-S11e-175' HARDENING_STATUS.md || r_s14_missing="$r_s14_missing exact-service-status-generation-ledger"
 grep -qF 'internal class MainServiceStatusOwner' "$r_s14_status_kt" || r_s14_missing="$r_s14_missing exact-service-status-owner"
 grep -qF 'fun setMediaProjectionReady(generation: Long, ready: Boolean): Boolean' "$r_s14_status_kt" || r_s14_missing="$r_s14_missing exact-service-status-readiness-operation"
@@ -13673,9 +13674,9 @@ grep -qF 'static ANDROID_LISTENER_LIFECYCLE: Mutex<AndroidListenerLifecycle>' "$
 grep -qF 'fn stop_generation(&mut self, expected_generation: u64) -> bool' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing no-exact-generation-deactivation-transition"
 grep -qF 'lifecycle.stop_generation(expected_generation)' "$r_s14_direct_service" || r_s14_missing="$r_s14_missing stale-service-stop-not-rejected"
 if [ -n "$r_s14_missing" ]; then
-  echo "  FAIL R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4: Android capture/input/audio/status owner invariant is incomplete:$r_s14_missing"; rc=1
+  echo "  FAIL R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4: Android capture/input/audio/status/video-worker owner invariant is incomplete:$r_s14_missing"; rc=1
 else
-  echo "  ok  R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4 Android capture/input/audio/status commits only for exact service-generation-owned state; explicit Stop drops the started state and Activity binding, delayed input is bounded, and stale owners, callbacks, raw frames, status, global stops, and server generations are rejected"
+  echo "  ok  R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4 Android capture/input/audio/status/video-worker state commits and consumes only for the exact service generation; explicit Stop drops the started state and Activity binding, delayed input is bounded, and stale owners, callbacks, producers, consumers, screen state, global stops, and server generations are rejected"
 fi
 # R-X7a / R-G1 (no inert pinned-policy SELECTOR survives — removed, not greyed): verification-method +
 # approve-mode are R-S16-pinned (use-permanent-password / password), so a UI that PRESENTS+WRITES them

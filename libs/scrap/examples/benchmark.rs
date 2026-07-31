@@ -90,6 +90,8 @@ fn test_vpx(
     let config = EncoderCfg::VPX(VpxEncoderConfig {
         width: width as _,
         height: height as _,
+        #[cfg(target_os = "android")]
+        android_scale: 1,
         quality,
         codec: codec_id,
         keyframe_interval: None,

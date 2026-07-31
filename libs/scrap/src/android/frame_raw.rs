@@ -133,7 +133,19 @@ impl GenerationOwnedFrameRaw {
         self.frame.update_from_jni_buffer(data, len, max_len);
     }
 
-    pub(crate) fn take(&mut self, dst: &mut Vec<u8>, last: &mut Vec<u8>) -> Option<()> {
+    pub(crate) fn is_enabled(&self, generation: u64) -> bool {
+        self.owner.admits(generation) && self.frame.enable
+    }
+
+    pub(crate) fn take(
+        &mut self,
+        generation: u64,
+        dst: &mut Vec<u8>,
+        last: &mut Vec<u8>,
+    ) -> Option<()> {
+        if !self.owner.admits(generation) {
+            return None;
+        }
         self.frame.take(dst, last)
     }
 }

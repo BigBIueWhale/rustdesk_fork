@@ -36,6 +36,8 @@ pub struct VpxEncoder {
     ctx: vpx_codec_ctx_t,
     width: usize,
     height: usize,
+    #[cfg(target_os = "android")]
+    android_scale: u16,
     id: VpxVideoCodecId,
     i444: bool,
     yuvfmt: EncodeYuvFormat,
@@ -52,6 +54,10 @@ impl EncoderApi for VpxEncoder {
     {
         match cfg {
             crate::codec::EncoderCfg::VPX(config) => {
+                #[cfg(target_os = "android")]
+                if !matches!(config.android_scale, 1 | 2) {
+                    return Err(anyhow!("invalid Android screen scale"));
+                }
                 let i = match config.codec {
                     VpxVideoCodecId::VP8 => call_vpx_ptr!(vpx_codec_vp8_cx()),
                     VpxVideoCodecId::VP9 => call_vpx_ptr!(vpx_codec_vp9_cx()),
@@ -86,8 +92,13 @@ impl EncoderApi for VpxEncoder {
                 let (q_min, q_max) = Self::calc_q_values(config.quality);
                 c.rc_min_quantizer = q_min;
                 c.rc_max_quantizer = q_max;
-                c.rc_target_bitrate =
-                    Self::bitrate(config.width as _, config.height as _, config.quality);
+                c.rc_target_bitrate = Self::bitrate(
+                    config.width as _,
+                    config.height as _,
+                    config.quality,
+                    #[cfg(target_os = "android")]
+                    config.android_scale,
+                );
                 // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp9/common/vp9_enums.h#29
                 // https://chromium.googlesource.com/webm/libvpx/+/refs/heads/main/vp8/vp8_cx_iface.c#282
                 c.g_profile = if i444 && config.codec == VpxVideoCodecId::VP9 {
@@ -162,6 +173,8 @@ impl EncoderApi for VpxEncoder {
                     ctx,
                     width: config.width as _,
                     height: config.height as _,
+                    #[cfg(target_os = "android")]
+                    android_scale: config.android_scale,
                     id: config.codec,
                     i444,
                     yuvfmt: Self::get_yuvfmt(config.width, config.height, i444),
@@ -205,7 +218,13 @@ impl EncoderApi for VpxEncoder {
         let (q_min, q_max) = Self::calc_q_values(ratio);
         c.rc_min_quantizer = q_min;
         c.rc_max_quantizer = q_max;
-        c.rc_target_bitrate = Self::bitrate(self.width as _, self.height as _, ratio);
+        c.rc_target_bitrate = Self::bitrate(
+            self.width as _,
+            self.height as _,
+            ratio,
+            #[cfg(target_os = "android")]
+            self.android_scale,
+        );
         call_vpx!(vpx_codec_enc_config_set(&mut self.ctx, &c));
         Ok(())
     }
@@ -311,8 +330,16 @@ impl VpxEncoder {
         }
     }
 
-    fn bitrate(width: u32, height: u32, ratio: f32) -> u32 {
-        let bitrate = base_bitrate(width, height) as f32;
+    fn bitrate(
+        width: u32,
+        height: u32,
+        ratio: f32,
+        #[cfg(target_os = "android")] android_scale: u16,
+    ) -> u32 {
+        let bitrate = base_bitrate(width, height);
+        #[cfg(target_os = "android")]
+        let bitrate = bitrate.saturating_mul(u32::from(android_scale).pow(2));
+        let bitrate = bitrate as f32;
         (bitrate * ratio) as u32
     }
 
@@ -392,6 +419,9 @@ pub struct VpxEncoderConfig {
     pub width: c_uint,
     /// The height (in pixels).
     pub height: c_uint,
+    /// The exact captured Android display scale used to derive the encoded dimensions.
+    #[cfg(target_os = "android")]
+    pub android_scale: u16,
     /// The bitrate ratio
     pub quality: f32,
     /// The codec

@@ -491,6 +491,48 @@ is current; a stale successful start drops its peer and drains its worker owner 
 Final owner close remains terminal and cannot be reversed by a queued reconnect. This is the common outgoing
 viewer core used by Android, desktop, iOS, and future macOS builds; only the generation/UUID layer and persistent
 foreground-service amplification are Android-specific.
+
+Observation and explicit user mandate (2026-07-30),
+**OPEN — cross-platform focus-loss display latency and end-to-end connection correctness/performance audit.**
+The user now reports the same broad display symptom from a Windows outgoing viewer: after the client goes out
+of focus, display operations can lag by up to roughly ten seconds; remote control/input remains responsive, and
+only reconnecting clears the display delay. This is therefore not Android-only and does not point specifically
+to Android's persistent controlled-side `MainService`. The observed Windows desktop client and Debian
+controlled-side server predate the entire approximately nineteen-day continuous Ralph/Codex hardening loop, not
+merely its latest few slices. They therefore omit every change made during that loop. The observation is evidence
+about that older operational snapshot only: it does not establish that current `master` contains the identical
+behavior, that work performed during the loop introduced it, that an intervening correction failed, or that any
+particular present-source mechanism is causal. The split between responsive control and delayed display is
+evidence only that the control and media/display planes can diverge; viewer
+focus/visibility throttling, capture cadence, encoder scheduling, transport backpressure, decoder queueing,
+frame publication, and renderer scheduling remain hypotheses until measured. Reconnect is a state-reset clue,
+not an acceptable recovery design or proof of which state was stale.
+
+The user's explicit direction is broader than these complaints: the complete connection flow must be correct
+and performant in general, across supported viewer and controlled platforms, rather than patched only for the
+reported Android/Windows manifestations. Future work must audit connection admission, exact-round ownership,
+initial establishment, focus/visibility and foreground/background transitions, display-topology changes,
+capture/encode/send/receive/decode/render scheduling, bounded queues and frame-drop/backpressure policy,
+control/media independence, reconnect/replacement, network transitions, error publication, and final worker
+drain. A reconnect must neither be required to recover timely display nor hide leaked/stale state. Correctness
+includes exact authority and resource finality; performance includes explicit queue/latency bounds, prompt
+supersession of obsolete frames, no unbounded wait or polling cadence, and no focus-driven starvation after the
+viewer becomes active again.
+
+Closure requires first identifying the exact older client/server commits or artifact manifests used for the
+observation, reproducing with timestamped current and older builds, and instrumenting monotonic timestamps and
+queue depths at every media boundary so capture, encoding, network transit, decode, frame publication, and
+render delay can be separated from control-message latency. Source/history review must compare all platform
+focus/visibility hooks and every timeout, debounce, sleep, polling loop, bounded channel, frame coalescer, and
+decoder/render reset path; it must not assume that a ten-second observation corresponds to a similarly named
+constant. Regression evidence must cover sustained focus loss and recovery without reconnect, repeated
+focus/unfocus, simultaneous responsive input with delayed/healthy video, congestion/backpressure, reconnect,
+and teardown on at least the relevant Windows-viewer/Debian-controlled and Android-viewer paths, with shared-core
+tests extended to other platforms where the same code compiles. Measurable latency/queue budgets, current
+artifact identity, separately repeatable reproduction, and external review remain open. R-S11eb and the
+outgoing-worker entries above provide lifecycle foundations but are not claimed to close this newly observed
+display-performance problem.
+
 Follow-up correction (2026-07-27), **mobile Activity owner versus exact connection identity**: the prior
 Activity/isolate generation closure still inherited a subtler identity collapse. The isolate-wide UUID registered
 with `MainActivity` was also the `SessionID` reused by every successive outgoing route. Flutter does not await an
@@ -1248,7 +1290,7 @@ exact network-change rebuild assignment. These were fail-closed verifier integra
 not product lifecycle failures.
 
 The desktop focused verifier now requires the exact
-`if android_listener_lifecycle_snapshot(my_generation).is_none()` teardown condition and forbids the obsolete
+`if android_listener_lifecycle_snapshot(my_generation.get()).is_none()` teardown condition and forbids the obsolete
 predicate. The shared R-T13 proof names the exact adjacent `listener = None;` plus `continue;` transition, so
 listener initialization cannot satisfy or precede the rebuild proof. The dedicated Android listener verifier
 owns both cross-verifier assertions. Its mutations and the independent workspace catalog reject weakening either
@@ -1983,6 +2025,155 @@ No native Windows compilation/execution, product/host runtime action, installed-
 release evidence is inferred. Native Windows execution, the exact clean committed cold R-B2/R-B10
 transaction, separately required independent reproduction, and external review remain open; this
 slice does not complete the broader Ralph loop.
+
+Follow-up correction (2026-07-31),
+**R-S11eu/R-S11e-182 exact-generation Android video-worker and screen-state ownership — SOURCE
+IMPLEMENTED; PINNED ANDROID RUST/KOTLIN AND LINUX COMPILATION PLUS CONFINED
+BEHAVIOR/SEMANTIC/MUTATION GATES GREEN; APK/DEVICE, WINDOWS NATIVE, COLD RELEASE,
+INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW OPEN.**
+Platform: Android controlled-side foreground-service/native server. Endpoint/action: raw-frame
+consumption, capture-active and screen-geometry reads, display/capturer construction, and half-scale
+mutation. Boundary: an obsolete native server/video worker ↔ a same-process replacement
+`MainService` generation's raw frames and capture/screen resources.
+
+Source and history review found a narrow omission in the prior raw-video closure. Upstream import
+`c2abd3b` supplied generationless screen/capture getters and the generic half-scale setter. Commit
+`5c645234` introduced the monotonic producer owner that R-S11em later completed, but
+`GenerationOwnedFrameRaw::take` still drained the process-global buffer without checking the
+consumer generation. `VideoService`, Android `Display`, and `Capturer` carried no generation, and
+VPX bitrate calculation reloaded ambient current screen scale instead of retaining the scale that
+produced the worker's encoded dimensions.
+`FFI.init` can install the replacement service context and raw owner before all predecessor
+server/video threads have joined, so an obsolete worker could drain replacement frames, read
+replacement screen or capture state, invoke half-scale on the replacement service, or calculate
+quality from replacement scale state. The
+half-scale caller discarded JNI failure with `.ok()`. File transfer is a separate service/data path
+and can remain functional while the video path fails or starves. Android's started service lifetime
+is independent of its Activity/task, while Force Stop destroys the process and masks retained native
+and service state.
+
+The positive generation returned by `startServer` is now validated before native `Server`
+construction and passed by value into the server, display service, every static or dynamic video
+service, connection-time display enumeration, Android `Display`, and `Capturer`. No worker reloads
+an ambient current generation. The separate Android outgoing `CLIENT_SERVER` owns voice-call audio
+only, records no controlled generation, and cannot construct a display/video worker.
+`GenerationOwnedFrameRaw` now gates enabled-state reads and
+`take` under the same serialized owner that gates enablement and producer writes; a stale consumer
+returns no frame and cannot drain replacement state. Observation-only UI display enumeration can
+read current geometry, but it constructs generation-zero displays and `Capturer::new` rejects them.
+The validated scale is captured in the generation-bound `Display`, copied into `CapturerInfo`, and
+retained by every VPX configuration and by the live encoder for subsequent quality changes.
+`base_bitrate` is again a pure function of encoded dimensions; no codec path reloads ambient
+Android screen state.
+
+`GenerationOwnedScreenSize` reuses the same monotonic/exact generation transition model, clears on
+new ownership and exact retirement, and admits only nonzero dimensions and scale one or two.
+Binding/replacing/releasing the exact retained service begins or retires raw and screen owners
+together. Kotlin pushes the complete width/height/scale tuple through typed
+`updateScreenInfo(generation, ...)` after every width, height, scale, or DPI change and before
+controlled admission. Half-scale now uses `rustSetHalfScale(Boolean)` through an exact-generation
+JNI context check, and native video code propagates rejection. The ambient MainService getter,
+generationless setter, generic half-scale selector, ambient encoder-scale accessor, and
+native/Kotlin screen-refresh bridge are deleted.
+
+Pure screen-owner behavior regressions and the existing raw-owner regressions cover stale update,
+stale read, replacement reset, exact retirement, retired-generation reactivation, invalid geometry,
+and current-generation idempotence. The focused verifier independently binds producer and consumer
+admission, native/Kotlin screen publication, typed half-scale failure propagation, display-scale
+retention through VPX bitrate updates, the complete generation handoff topology, the shared gate,
+R-S11eu, Appendix C #303, this ledger, and independent verifier integration, with deliberate
+mutations for those edges. The independent semantic
+validator separately inspects the product sources rather than trusting the focused verifier.
+
+Confined verification on the frozen prepublication source used no root, privileged container,
+network, port, device, Docker socket, host namespace, or writable live-source mount:
+
+- The repository's pinned Android Rust transaction compiled the real
+  `aarch64-linux-android` release library and JNI boundary and reported
+  `ANDROID-RUST-CHECK: aarch64 Android Rust library is GREEN`. It reverified the
+  exact offline closure
+  `a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`
+  and the writable snapshot against the read-only authored source before and after compilation.
+- The real production
+  `:app:compileReleaseKotlin -x :app:compileFlutterBuildRelease` graph completed
+  `BUILD SUCCESSFUL in 27s`, with 228 actionable tasks (227 executed and one
+  up-to-date), in immutable Android image
+  `sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2`.
+  Its sealed private Gradle seed projected to exact digest
+  `522efa37b4b1da33d05369bea4ba7f2fd17ecd08b1afbd01bf3999d9a34299fe`;
+  a complete tracked-file manifest proved the disposable build source remained byte-identical
+  to the read-only authored source. No APK was linked, signed, installed, or executed.
+- The pinned Rust 1.75 Linux `cargo check --features linux-pkg-config` completed
+  for the whole main crate in immutable dev image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`.
+  This is shared/non-Android type coverage, not native Windows, macOS, or iOS evidence.
+- All five pure raw/screen generation-owner tests passed. The dedicated verifier rejected
+  all 68 raw-frame/screen/video-worker mutations. Adjacent exact-generation suites rejected
+  all 39 listener, 35 MainService-status, 438 broader Android ownership, and 26 desktop-IPC
+  lifecycle mutations. The independent workspace baseline and its complete unsliced
+  in-memory source-mutation catalog passed from mutation one after the fixture repairs recorded
+  below.
+- Pinned Rust 1.75 `rustfmt` was installed only into Android-builder tmpfs. Its first check
+  identified both current-hunk formatting and unrelated pre-existing drift in large shared
+  modules; only this slice's hunks were corrected. The final scoped formatting review,
+  Python/Bash syntax, requirements HTML/hash binding, native-codec normal/adversarial checks,
+  and `git diff --check` passed.
+
+Pre-Gradle diagnostics are not relabeled as product failures or successful compilation. One
+disposable harness stopped on an incorrectly quoted strict-shell field expression; the next
+correctly rejected the writable-mode live Gradle cache instead of treating it as a sealed seed;
+and the next proved the sealed projection digest but omitted the ignored generated Gradle wrapper
+from its tracked-only snapshot. The successful transaction explicitly copied and hashed only that
+wrapper and JAR into private scratch, sealed a private cache seed without changing the live cache,
+required the exact known projection digest, and then reached the production Kotlin task. The
+devcheck image's missing `rustfmt` component likewise caused the initial formatting probe to stop
+before checking source; the pinned offline Rust archive supplied the final formatter entirely in
+container tmpfs. The first complete final independent source-mutation catalog also stopped instead
+of claiming success: removal of `@Synchronized` from `rustSetByName` made an older controlled-input
+extraction boundary disappear before the validator reached that mutation's expected serialization
+diagnostic. The boundary was initially changed to close on the following typed `rustSetHalfScale`
+callback, which that mutation did not alter, so the serialization check itself had to reject the
+regression; the complete catalog then restarted from mutation one. That restart passed the
+repaired boundary and later
+stopped on a second stale meta-mutation target which still named the retired
+`generation.is_some()` helper comparison. The catalog now mutates the direct
+`generation == 0 || context.generation != Some(generation)` comparison enforced by the current
+callback and again restarts from mutation one. That next complete run showed the direct comparison
+correctly has two production targets: generic controlled-resource dispatch and typed half-scale
+dispatch. Only the first had an independent function-scoped comparison assertion, so the second
+mutation was accepted. The independent validator now extracts and binds both functions under the
+same exact-generation rejection contract; the complete catalog restarted from mutation one. That
+restart passed both callback targets and later stopped on a stale listener-lifecycle meta-mutation
+which still named `android_listener_lifecycle_snapshot(my_generation)` after `my_generation`
+became `NonZeroU64`. It now targets `android_listener_lifecycle_snapshot(my_generation.get())`;
+the complete catalog restarted from mutation one. That restart reached the new Android screen-state
+mutations, then stopped because the exact-generation screen-read meta-mutation expected a stale
+diagnostic label rather than the independent validator's canonical
+`independent Android screen owner exact-generation screen read`. The expectation now binds that
+exact diagnostic. The first disposable full-slice preflight launcher omitted stdin attachment,
+emitted no required verdict, and counted as no test. The correctly attached preflight then exposed
+20 ineffective new-slice expectations: 19 diagnostic, extraction-boundary, or mutation-isolation
+defects, plus one accepted constant-generation screen-state update which revealed missing
+independent coverage. The independent checker now binds the exact screen-update generation, the
+controlled-input extraction boundary no longer depends on the half-scale method being mutated, the
+retired refresh-JNI mutation preserves the required start JNI, and every expectation names its
+canonical diagnostic. The rerun rejected all 32 new-slice mutations across 33 runtime targets. The
+complete catalog then restarted from mutation one and passed. Because recording that result changes
+this ledger, which is itself a catalog input, a final complete run against the exact resulting
+tracked snapshot gates publication.
+
+This is Android controlled-side source-proven process-persistent video-resource, availability, and
+frame/screen ownership debt. It is not a causal reproduction of the reported outgoing Android
+viewer-to-desktop screen-control hang, proof that this interleaving occurred on a device, an
+authorization bypass, exploitation, privilege escalation, compromise, public exposure, container
+escape, or a host RustDesk/service/firewall/listener/network change. R-S11eb separately owns
+outgoing viewer worker replacement and final drain. Compilation and mutation rejection do not
+qualify display timeliness, frame freshness, focus/background recovery, reconnect behavior, queue
+depth, or end-to-end resource finality. A current APK install and physical-device controlled-service
+replacement/task-swipe/Force-Stop/video-consumption reproduction, the Windows-viewer focus-loss and
+Debian-controlled latency matrix required by the open cross-platform performance mandate, exact
+clean committed cold R-B2/R-B10 artifacts, separately required independent reproduction, and
+external review remain open; this slice does not complete the broader Ralph loop.
 
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
@@ -16463,7 +16654,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-bf704ac9bf2f5a70a33c96dc170f9872a9e440f27279c79358e778b2f79548f1  requirements.html
+85f5ce17e2b748b310b163653a037b1b2c76a8aa5c56fda9be36d1c195dda3df  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -16482,3 +16673,4 @@ The same identity additionally binds R-S11ej and Appendix C #289.
 The same identity additionally binds R-S11ek and Appendix C #290.
 The same identity additionally binds R-S11em and Appendix C #295.
 The same identity additionally binds R-S11et and Appendix C #302.
+The same identity additionally binds R-S11eu and Appendix C #303.

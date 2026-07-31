@@ -1,14 +1,6 @@
 use crate::android::ffi::*;
 use crate::{Frame, Pixfmt};
-use lazy_static::lazy_static;
-use serde_json::Value;
-use std::collections::HashMap;
-use std::sync::Mutex;
 use std::{io, time::Duration};
-
-lazy_static! {
-   pub(crate)  static ref SCREEN_SIZE: Mutex<(u16, u16, u16)> = Mutex::new((0, 0, 0)); // (width, height, scale)
-}
 
 pub struct Capturer {
     display: Display,
@@ -18,6 +10,12 @@ pub struct Capturer {
 
 impl Capturer {
     pub fn new(display: Display) -> io::Result<Capturer> {
+        if display.service_generation == 0 {
+            return Err(io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "Android capture requires an exact MainService generation",
+            ));
+        }
         Ok(Capturer {
             display,
             rgba: Vec::new(),
@@ -36,7 +34,13 @@ impl Capturer {
 
 impl crate::TraitCapturer for Capturer {
     fn frame<'a>(&'a mut self, _timeout: Duration) -> io::Result<Frame<'a>> {
-        if get_video_raw(&mut self.rgba, &mut self.saved_raw_data).is_some() {
+        if get_video_raw(
+            self.display.service_generation,
+            &mut self.rgba,
+            &mut self.saved_raw_data,
+        )
+        .is_some()
+        {
             Ok(Frame::PixelBuffer(PixelBuffer::new(
                 &self.rgba,
                 self.width(),
@@ -94,6 +98,8 @@ impl<'a> crate::TraitPixelBuffer for PixelBuffer<'a> {
 pub struct Display {
     default: bool,
     rect: Rect,
+    service_generation: u64,
+    scale: u16,
 }
 
 #[derive(Copy, Clone, Debug, Hash, Eq, PartialEq)]
@@ -105,12 +111,8 @@ struct Rect {
 }
 
 impl Display {
-    pub fn primary() -> io::Result<Display> {
-        let mut size = SCREEN_SIZE.lock().unwrap();
-        if size.0 == 0 || size.1 == 0 {
-            *size = get_size().unwrap_or_default();
-        }
-        Ok(Display {
+    fn from_size(size: (u16, u16, u16), service_generation: u64) -> Display {
+        Display {
             default: true,
             rect: Rect {
                 x: 0,
@@ -118,7 +120,33 @@ impl Display {
                 w: size.0,
                 h: size.1,
             },
-        })
+            service_generation,
+            scale: size.2,
+        }
+    }
+
+    pub fn primary() -> io::Result<Display> {
+        let size = current_screen_size().ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::NotConnected,
+                "Android MainService screen information is unavailable",
+            )
+        })?;
+        Ok(Self::from_size(size, 0))
+    }
+
+    pub fn primary_for_generation(generation: u64) -> io::Result<Display> {
+        let size = screen_size_for_generation(generation).ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::PermissionDenied,
+                "Android MainService screen generation is inactive",
+            )
+        })?;
+        Ok(Self::from_size(size, generation))
+    }
+
+    pub fn all_for_generation(generation: u64) -> io::Result<Vec<Display>> {
+        Ok(vec![Display::primary_for_generation(generation)?])
     }
 
     pub fn all() -> io::Result<Vec<Display>> {
@@ -150,40 +178,7 @@ impl Display {
         "Android".into()
     }
 
-    pub fn refresh_size() {
-        let mut size = SCREEN_SIZE.lock().unwrap();
-        *size = get_size().unwrap_or_default();
+    pub fn scale(&self) -> u16 {
+        self.scale
     }
-
-    // Big android screen size will be shrinked, to improve performance when screen-capturing and encoding
-    // e.g 2280x1080 size will be set to 1140x540, and `scale` is 2
-    // need to multiply by `4` (2*2) when compute the bitrate
-    pub fn fix_quality() -> u16 {
-        let scale = SCREEN_SIZE.lock().unwrap().2;
-        if scale <= 0 {
-            1
-        } else {
-            scale * scale
-        }
-    }
-}
-
-fn get_size() -> Option<(u16, u16, u16)> {
-    let res = call_main_service_get_by_name("screen_size").ok()?;
-    if let Ok(json) = serde_json::from_str::<HashMap<String, Value>>(&res) {
-        if let (Some(Value::Number(w)), Some(Value::Number(h)), Some(Value::Number(scale))) =
-            (json.get("width"), json.get("height"), json.get("scale"))
-        {
-            let w = w.as_i64()? as _;
-            let h = h.as_i64()? as _;
-            let scale = scale.as_i64()? as _;
-            return Some((w, h, scale));
-        }
-    }
-    None
-}
-
-pub fn is_start() -> Option<bool> {
-    let res = call_main_service_get_by_name("is_start").ok()?;
-    Some(res == "true")
 }

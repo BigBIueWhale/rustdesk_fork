@@ -269,7 +269,7 @@ def validate(sources: Dict[str, str]) -> None:
         desktop_ipc,
         '    require(\n'
         '        start,\n'
-        '        "if android_listener_lifecycle_snapshot(my_generation).is_none() {",\n'
+        '        "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {",\n'
         '        "Android exact active-generation teardown",\n'
         '    )',
         "exact active-generation desktop lifecycle assertion",
@@ -479,10 +479,8 @@ MUTATIONS = (
     ),
     Mutation(
         "main_service",
-        "releaseControlledConnectionResources()\n"
-        "        // Deactivate this exact listener generation before draining Android callbacks.",
-        "// Controlled resources retained through callback drain.\n"
-        "        // Deactivate this exact listener generation before draining Android callbacks.",
+        "        releaseControlledConnectionResources()\n",
+        "        // Controlled resources retained through callback drain.\n",
         "capture-before-listener teardown",
     ),
     Mutation(
@@ -641,7 +639,7 @@ MUTATIONS = (
         "desktop_ipc",
         '    require(\n'
         '        start,\n'
-        '        "if android_listener_lifecycle_snapshot(my_generation).is_none() {",\n'
+        '        "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {",\n'
         '        "Android exact active-generation teardown",\n'
         '    )',
         '    require(\n'

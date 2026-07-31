@@ -27,7 +27,7 @@ object FFI {
     external fun onVideoFrameUpdate(generation: Long, buf: ByteBuffer)
     external fun onAudioFrameUpdate(buf: ByteBuffer)
     external fun translateLocale(localeName: String, input: String): String
-    external fun refreshScreen()
+    external fun updateScreenInfo(generation: Long, width: Int, height: Int, scale: Int): Boolean
     external fun setVideoFrameRawEnable(generation: Long, value: Boolean): Boolean
     external fun setAudioFrameRawEnable(value: Boolean)
     external fun getLocalOption(key: String): String

@@ -448,7 +448,7 @@ def validate(sources: Dict[str, str]) -> None:
             "shared focused verdict",
         ),
         (
-            "R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4",
+            "R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4",
             "shared lifecycle integration label",
         ),
     ):

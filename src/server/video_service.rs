@@ -492,6 +492,8 @@ pub struct VideoService {
     sp: GenericService,
     idx: usize,
     source: VideoSource,
+    #[cfg(target_os = "android")]
+    android_generation: u64,
 }
 
 impl Deref for VideoService {
@@ -512,11 +514,17 @@ pub fn get_service_name(source: VideoSource, idx: usize) -> String {
     format!("{}{}", source.service_name_prefix(), idx)
 }
 
-pub fn new(source: VideoSource, idx: usize) -> GenericService {
+pub fn new(
+    source: VideoSource,
+    idx: usize,
+    #[cfg(target_os = "android")] android_generation: u64,
+) -> GenericService {
     let vs = VideoService {
         sp: GenericService::new(get_service_name(source, idx), true),
         idx,
         source,
+        #[cfg(target_os = "android")]
+        android_generation,
     };
     GenericService::run(&vs, run);
     vs.sp
@@ -616,6 +624,8 @@ pub(super) struct CapturerInfo {
     pub origin: (i32, i32),
     pub width: usize,
     pub height: usize,
+    #[cfg(target_os = "android")]
+    pub android_scale: u16,
     pub ndisplay: usize,
     pub current: usize,
     pub privacy_mode_id: i32,
@@ -637,7 +647,10 @@ impl DerefMut for CapturerInfo {
     }
 }
 
-fn get_capturer_monitor(current: usize) -> ResultType<CapturerInfo> {
+fn get_capturer_monitor(
+    current: usize,
+    #[cfg(target_os = "android")] android_generation: u64,
+) -> ResultType<CapturerInfo> {
     #[cfg(target_os = "linux")]
     {
         if !is_x11() {
@@ -645,6 +658,9 @@ fn get_capturer_monitor(current: usize) -> ResultType<CapturerInfo> {
         }
     }
 
+    #[cfg(target_os = "android")]
+    let mut displays = Display::all_for_generation(android_generation)?;
+    #[cfg(not(target_os = "android"))]
     let mut displays = Display::all()?;
     let ndisplay = displays.len();
     if ndisplay <= current {
@@ -668,6 +684,8 @@ fn get_capturer_monitor(current: usize) -> ResultType<CapturerInfo> {
     }
 
     let (origin, width, height) = (display.origin(), display.width(), display.height());
+    #[cfg(target_os = "android")]
+    let android_scale = display.scale();
     let name = display.name();
     log::debug!(
         "#displays={}, current={}, origin: {:?}, width={}, height={}, cpus={}/{}, name:{}",
@@ -715,6 +733,8 @@ fn get_capturer_monitor(current: usize) -> ResultType<CapturerInfo> {
         origin,
         width,
         height,
+        #[cfg(target_os = "android")]
+        android_scale,
         ndisplay,
         current,
         privacy_mode_id,
@@ -756,6 +776,8 @@ fn get_capturer_camera(current: usize) -> ResultType<CapturerInfo> {
         origin,
         width,
         height,
+        #[cfg(target_os = "android")]
+        android_scale: 1,
         ndisplay: ncamera,
         current,
         privacy_mode_id,
@@ -763,9 +785,17 @@ fn get_capturer_camera(current: usize) -> ResultType<CapturerInfo> {
         capturer,
     });
 }
-fn get_capturer(source: VideoSource, current: usize) -> ResultType<CapturerInfo> {
+fn get_capturer(
+    source: VideoSource,
+    current: usize,
+    #[cfg(target_os = "android")] android_generation: u64,
+) -> ResultType<CapturerInfo> {
     match source {
-        VideoSource::Monitor => get_capturer_monitor(current),
+        VideoSource::Monitor => get_capturer_monitor(
+            current,
+            #[cfg(target_os = "android")]
+            android_generation,
+        ),
         VideoSource::Camera => get_capturer_camera(current),
     }
 }
@@ -799,7 +829,12 @@ fn run(vs: VideoService) -> ResultType<()> {
     let display_idx = vs.idx;
     let source = vs.source; // R-S19: screenshot requests are keyed by (source, display_idx)
     let sp = vs.sp;
-    let mut c = get_capturer(source, display_idx)?;
+    let mut c = get_capturer(
+        source,
+        display_idx,
+        #[cfg(target_os = "android")]
+        vs.android_generation,
+    )?;
     #[cfg(windows)]
     if !scrap::codec::enable_directx_capture() && !c.is_gdi() {
         log::info!("disable dxgi with option, fall back to gdi");
@@ -829,6 +864,8 @@ fn run(vs: VideoService) -> ResultType<()> {
             Encoder::set_fallback(&EncoderCfg::VPX(VpxEncoderConfig {
                 width: c.width as _,
                 height: c.height as _,
+                #[cfg(target_os = "android")]
+                android_scale: c.android_scale,
                 quality,
                 codec: VpxVideoCodecId::VP9,
                 keyframe_interval: None,
@@ -848,8 +885,8 @@ fn run(vs: VideoService) -> ResultType<()> {
     c.set_output_texture(encoder.input_texture());
     #[cfg(target_os = "android")]
     if vs.source.is_monitor() {
-        if let Err(e) = check_change_scale(encoder.is_hardware()) {
-            try_broadcast_display_changed(&sp, display_idx, &c, true).ok();
+        if let Err(e) = check_change_scale(vs.android_generation, encoder.is_hardware()) {
+            try_broadcast_display_changed(&sp, display_idx, &c, true, vs.android_generation).ok();
             bail!(e);
         }
     }
@@ -901,7 +938,14 @@ fn run(vs: VideoService) -> ResultType<()> {
         )?;
         if sp.is_option_true(OPTION_REFRESH) {
             if vs.source.is_monitor() {
-                let _ = try_broadcast_display_changed(&sp, display_idx, &c, true);
+                let _ = try_broadcast_display_changed(
+                    &sp,
+                    display_idx,
+                    &c,
+                    true,
+                    #[cfg(target_os = "android")]
+                    vs.android_generation,
+                );
             }
             log::info!("switch to refresh");
             bail!("SWITCH");
@@ -928,7 +972,13 @@ fn run(vs: VideoService) -> ResultType<()> {
             bail!("SWITCH");
         }
         if vs.source.is_monitor() {
-            check_privacy_mode_changed(&sp, display_idx, &c)?;
+            check_privacy_mode_changed(
+                &sp,
+                display_idx,
+                &c,
+                #[cfg(target_os = "android")]
+                vs.android_generation,
+            )?;
         }
         #[cfg(windows)]
         {
@@ -944,7 +994,14 @@ fn run(vs: VideoService) -> ResultType<()> {
             last_check_displays = now;
             // This check may be redundant, but it is better to be safe.
             // The previous check in `sp.is_option_true(OPTION_REFRESH)` block may be enough.
-            try_broadcast_display_changed(&sp, display_idx, &c, false)?;
+            try_broadcast_display_changed(
+                &sp,
+                display_idx,
+                &c,
+                false,
+                #[cfg(target_os = "android")]
+                vs.android_generation,
+            )?;
         }
 
         frame_controller.reset();
@@ -1117,7 +1174,14 @@ fn run(vs: VideoService) -> ResultType<()> {
                 // This check may be redundant, but it is better to be safe.
                 // The previous check in `sp.is_option_true(OPTION_REFRESH)` block may be enough.
                 if vs.source.is_monitor() {
-                    try_broadcast_display_changed(&sp, display_idx, &c, true)?;
+                    try_broadcast_display_changed(
+                        &sp,
+                        display_idx,
+                        &c,
+                        true,
+                        #[cfg(target_os = "android")]
+                        vs.android_generation,
+                    )?;
                 }
 
                 #[cfg(windows)]
@@ -1140,7 +1204,13 @@ fn run(vs: VideoService) -> ResultType<()> {
         let wait_begin = Instant::now();
         while wait_begin.elapsed().as_millis() < timeout_millis as _ {
             if vs.source.is_monitor() {
-                check_privacy_mode_changed(&sp, display_idx, &c)?;
+                check_privacy_mode_changed(
+                    &sp,
+                    display_idx,
+                    &c,
+                    #[cfg(target_os = "android")]
+                    vs.android_generation,
+                )?;
             }
             if frame_controller.wait_for_all(Duration::from_millis(300)) {
                 break;
@@ -1268,6 +1338,8 @@ fn get_encoder_config(
             EncoderCfg::VPX(VpxEncoderConfig {
                 width: c.width as _,
                 height: c.height as _,
+                #[cfg(target_os = "android")]
+                android_scale: c.android_scale,
                 quality,
                 codec: VpxVideoCodecId::VP9,
                 keyframe_interval,
@@ -1276,6 +1348,8 @@ fn get_encoder_config(
         format @ (CodecFormat::VP8 | CodecFormat::VP9) => EncoderCfg::VPX(VpxEncoderConfig {
             width: c.width as _,
             height: c.height as _,
+            #[cfg(target_os = "android")]
+            android_scale: c.android_scale,
             quality,
             codec: if format == CodecFormat::VP8 {
                 VpxVideoCodecId::VP8
@@ -1287,6 +1361,8 @@ fn get_encoder_config(
         CodecFormat::AV1 => EncoderCfg::VPX(VpxEncoderConfig {
             width: c.width as _,
             height: c.height as _,
+            #[cfg(target_os = "android")]
+            android_scale: c.android_scale,
             quality,
             codec: VpxVideoCodecId::VP9,
             keyframe_interval,
@@ -1294,6 +1370,8 @@ fn get_encoder_config(
         _ => EncoderCfg::VPX(VpxEncoderConfig {
             width: c.width as _,
             height: c.height as _,
+            #[cfg(target_os = "android")]
+            android_scale: c.android_scale,
             quality,
             codec: VpxVideoCodecId::VP9,
             keyframe_interval,
@@ -1332,34 +1410,35 @@ fn get_recorder(
 }
 
 #[cfg(target_os = "android")]
-fn check_change_scale(hardware: bool) -> ResultType<()> {
+fn check_change_scale(android_generation: u64, hardware: bool) -> ResultType<()> {
     use hbb_common::config::keys::OPTION_ENABLE_ANDROID_SOFTWARE_ENCODING_HALF_SCALE as SCALE_SOFT;
 
-    // isStart flag is set at the end of startCapture() in Android, wait it to be set.
+    // Raw-video admission is committed at the end of startCapture() in Android.
     let n = 60; // 3s
     for i in 0..n {
-        if scrap::is_start() == Some(true) {
-            log::info!("start flag is set");
+        if scrap::android::is_video_raw_enabled_for_generation(android_generation) {
+            log::info!("raw-video generation is enabled");
             break;
         }
         log::info!("wait for start, {i}");
         std::thread::sleep(Duration::from_millis(50));
         if i == n - 1 {
-            log::error!("wait for start timeout");
+            bail!("Android raw-video generation did not become active");
         }
     }
-    let screen_size = scrap::screen_size();
+    let screen_size = scrap::android::screen_size_for_generation(android_generation)
+        .ok_or_else(|| anyhow!("Android screen generation is inactive"))?;
     let scale_soft = hbb_common::config::option2bool(SCALE_SOFT, &Config::get_option(SCALE_SOFT));
     let half_scale = !hardware && scale_soft;
     log::info!("hardware: {hardware}, scale_soft: {scale_soft}, screen_size: {screen_size:?}",);
-    scrap::android::call_main_service_set_by_name(
-        "half_scale",
-        Some(half_scale.to_string().as_str()),
-        None,
-    )
-    .ok();
+    scrap::android::call_main_service_set_half_scale_for_generation(
+        android_generation,
+        half_scale,
+    )?;
     let old_scale = screen_size.2;
-    let new_scale = scrap::screen_size().2;
+    let new_scale = scrap::android::screen_size_for_generation(android_generation)
+        .ok_or_else(|| anyhow!("Android screen generation was retired during scale update"))?
+        .2;
     log::info!("old_scale: {old_scale}, new_scale: {new_scale}");
     if old_scale != new_scale {
         log::info!("switch due to scale changed, {old_scale} -> {new_scale}");
@@ -1373,6 +1452,7 @@ fn check_privacy_mode_changed(
     sp: &GenericService,
     display_idx: usize,
     ci: &CapturerInfo,
+    #[cfg(target_os = "android")] android_generation: u64,
 ) -> ResultType<()> {
     let privacy_mode_id_2 = get_privacy_mode_conn_id().unwrap_or(INVALID_PRIVACY_MODE_CONN_ID);
     if ci.privacy_mode_id != privacy_mode_id_2 {
@@ -1384,7 +1464,15 @@ fn check_privacy_mode_changed(
             sp.send_to_others(msg_out, privacy_mode_id_2);
         }
         log::info!("switch due to privacy mode changed");
-        try_broadcast_display_changed(&sp, display_idx, ci, true).ok();
+        try_broadcast_display_changed(
+            &sp,
+            display_idx,
+            ci,
+            true,
+            #[cfg(target_os = "android")]
+            android_generation,
+        )
+        .ok();
         bail!("SWITCH");
     }
     Ok(())
@@ -1464,12 +1552,6 @@ fn handle_one_frame(
     Ok(())
 }
 
-#[inline]
-pub fn refresh() {
-    #[cfg(target_os = "android")]
-    Display::refresh_size();
-}
-
 #[cfg(windows)]
 fn start_uac_elevation_check() {
     static START: Once = Once::new();
@@ -1496,10 +1578,15 @@ fn try_broadcast_display_changed(
     display_idx: usize,
     cap: &CapturerInfo,
     refresh: bool,
+    #[cfg(target_os = "android")] android_generation: u64,
 ) -> ResultType<()> {
     if refresh {
         // Get display information immediately.
-        crate::display_service::check_displays_changed().ok();
+        crate::display_service::check_displays_changed(
+            #[cfg(target_os = "android")]
+            android_generation,
+        )
+        .ok();
     }
     if let Some(display) = check_display_changed(
         cap.ndisplay,

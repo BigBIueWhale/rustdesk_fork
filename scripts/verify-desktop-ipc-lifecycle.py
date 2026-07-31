@@ -358,7 +358,7 @@ def validate(sources: Dict[str, str]) -> None:
     require(server, "start_direct_only(Some(generation)).await;", "Android generation transfer")
     require(
         start,
-        "if android_listener_lifecycle_snapshot(my_generation).is_none() {",
+        "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {",
         "Android exact active-generation teardown",
     )
     absent(
@@ -408,7 +408,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", "<tr><td>167</td>", "<tr><td>9167</td>", "Appendix C #167"),
     ("hardening", "R-S11e-59 — desktop local-IPC readiness and retained native-worker ownership", "R-S11e-59 — detached desktop IPC", "R-S11e-59 ledger"),
     ("server", "start_direct_only(Some(generation)).await;", "start_direct_only(None).await;", "Android generation boundary"),
-    ("direct", "if android_listener_lifecycle_snapshot(my_generation).is_none() {", "if android_listener_lifecycle_snapshot(0).is_none() {", "Android exact active-generation teardown"),
+    ("direct", "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {", "if android_listener_lifecycle_snapshot(0).is_none() {", "Android exact active-generation teardown"),
     ("ipc", "    protected_service_ipc_result(listener_error)\n}", "    crate::server::finish_graceful_shutdown().await;\n    protected_service_ipc_result(listener_error)\n}", "protected service finalizer absence"),
 )
 

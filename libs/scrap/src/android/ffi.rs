@@ -1,7 +1,6 @@
-use jni::objects::JString;
 use jni::objects::JValue;
 use jni::objects::{JByteArray, JByteBuffer};
-use jni::sys::jboolean;
+use jni::sys::{jboolean, jint, jlong};
 use jni::JNIEnv;
 use jni::{
     objects::{GlobalRef, JClass, JObject},
@@ -19,6 +18,7 @@ use std::sync::{Mutex, RwLock};
 use std::time::Duration;
 
 use super::frame_raw::{FrameRaw, GenerationOwnedFrameRaw};
+use super::frame_raw_generation::GenerationOwnedScreenSize;
 
 lazy_static! {
     static ref JVM: RwLock<Option<JavaVM>> = RwLock::new(None);
@@ -26,6 +26,8 @@ lazy_static! {
     static ref APPLICATION_CONTEXT: RwLock<Option<GlobalRef>> = RwLock::new(None);
     static ref VIDEO_RAW: Mutex<GenerationOwnedFrameRaw> =
         Mutex::new(GenerationOwnedFrameRaw::new("video", MAX_VIDEO_FRAME_TIMEOUT));
+    static ref SCREEN_SIZE: Mutex<GenerationOwnedScreenSize> =
+        Mutex::new(GenerationOwnedScreenSize::default());
     static ref AUDIO_RAW: Mutex<FrameRaw> = Mutex::new(FrameRaw::new("audio", MAX_AUDIO_FRAME_TIMEOUT));
     static ref NDK_CONTEXT_INITED: Mutex<bool> = Default::default();
     static ref MEDIA_CODEC_INFOS: RwLock<Option<MediaCodecInfos>> = RwLock::new(None);
@@ -48,8 +50,23 @@ struct MainServiceContext {
     owner: GlobalRef,
 }
 
-pub fn get_video_raw<'a>(dst: &mut Vec<u8>, last: &mut Vec<u8>) -> Option<()> {
-    VIDEO_RAW.lock().ok()?.take(dst, last)
+pub fn get_video_raw(generation: u64, dst: &mut Vec<u8>, last: &mut Vec<u8>) -> Option<()> {
+    VIDEO_RAW.lock().ok()?.take(generation, dst, last)
+}
+
+pub fn is_video_raw_enabled_for_generation(generation: u64) -> bool {
+    VIDEO_RAW
+        .lock()
+        .map(|raw| raw.is_enabled(generation))
+        .unwrap_or(false)
+}
+
+pub fn screen_size_for_generation(generation: u64) -> Option<(u16, u16, u16)> {
+    SCREEN_SIZE.lock().ok()?.get(generation)
+}
+
+pub fn current_screen_size() -> Option<(u16, u16, u16)> {
+    SCREEN_SIZE.lock().ok()?.current()
 }
 
 pub fn get_audio_raw<'a>(dst: &mut Vec<u8>, last: &mut Vec<u8>) -> Option<()> {
@@ -164,6 +181,31 @@ pub extern "system" fn Java_ffi_FFI_setVideoFrameRawEnable(
 }
 
 #[no_mangle]
+pub extern "system" fn Java_ffi_FFI_updateScreenInfo(
+    _env: JNIEnv,
+    _class: JClass,
+    generation: jlong,
+    width: jint,
+    height: jint,
+    scale: jint,
+) -> jboolean {
+    let (Ok(generation), Ok(width), Ok(height), Ok(scale)) = (
+        u64::try_from(generation),
+        u16::try_from(width),
+        u16::try_from(height),
+        u16::try_from(scale),
+    ) else {
+        return jboolean::from(false);
+    };
+    jboolean::from(
+        SCREEN_SIZE
+            .lock()
+            .unwrap()
+            .update(generation, (width, height, scale)),
+    )
+}
+
+#[no_mangle]
 pub extern "system" fn Java_ffi_FFI_setAudioFrameRawEnable(
     _env: JNIEnv,
     _class: JClass,
@@ -221,6 +263,11 @@ pub extern "system" fn Java_ffi_FFI_init(
                 "failed to retire Android raw-video generation {generation} during MainService replacement"
             );
         }
+        if !SCREEN_SIZE.lock().unwrap().retire_generation(generation) {
+            log::warn!(
+                "failed to retire Android screen-size generation {generation} during MainService replacement"
+            );
+        }
     }
     *current = Some(MainServiceContext {
         generation: None,
@@ -249,6 +296,15 @@ pub fn bind_main_service_generation(env: &JNIEnv, service: &JObject, generation:
     }
     if !VIDEO_RAW.lock().unwrap().begin_generation(generation) {
         log::error!("failed to begin Android raw-video generation {generation}");
+        return false;
+    }
+    if !SCREEN_SIZE.lock().unwrap().begin_generation(generation) {
+        log::error!("failed to begin Android screen-size generation {generation}");
+        if !VIDEO_RAW.lock().unwrap().retire_generation(generation) {
+            log::error!(
+                "failed to roll back Android raw-video generation {generation} after screen-size admission failure"
+            );
+        }
         return false;
     }
     current.generation = Some(generation);
@@ -282,6 +338,11 @@ pub extern "system" fn Java_ffi_FFI_releaseService(
             if !VIDEO_RAW.lock().unwrap().retire_generation(generation) {
                 log::warn!(
                     "failed to retire Android raw-video generation {generation} during MainService release"
+                );
+            }
+            if !SCREEN_SIZE.lock().unwrap().retire_generation(generation) {
+                log::warn!(
+                    "failed to retire Android screen-size generation {generation} during MainService release"
                 );
             }
         }
@@ -479,62 +540,18 @@ pub fn call_clipboard_manager_enable_client_clipboard(enable: bool) -> JniResult
     )
 }
 
-pub fn call_main_service_get_by_name(name: &str) -> JniResult<String> {
-    let jvm = JVM.read().unwrap();
-    let context = MAIN_SERVICE_CTX.read().unwrap();
-    let (Some(jvm), Some(context)) = (jvm.as_ref(), context.as_ref()) else {
-        return Err(JniError::ThrowFailed(-1));
-    };
-    let mut env = jvm.attach_current_thread_as_daemon()?;
-    env.with_local_frame(10, |env| -> JniResult<String> {
-        let name = env.new_string(name)?;
-        let res = env
-            .call_method(
-                &context.owner,
-                "rustGetByName",
-                "(Ljava/lang/String;)Ljava/lang/String;",
-                &[JValue::Object(&JObject::from(name))],
-            )?
-            .l()?;
-        let res = JString::from(res);
-        let res = env.get_string(&res)?;
-        let res = res.to_string_lossy().to_string();
-        Ok(res)
-    })
-}
-
-pub fn call_main_service_set_by_name(
-    name: &str,
-    arg1: Option<&str>,
-    arg2: Option<&str>,
-) -> JniResult<()> {
-    call_main_service_set_by_name_inner(None, name, arg1, arg2)
-}
-
 pub fn call_main_service_set_by_name_for_generation(
     generation: u64,
     name: &str,
     arg1: Option<&str>,
     arg2: Option<&str>,
 ) -> JniResult<()> {
-    if generation == 0 {
-        return Err(JniError::ThrowFailed(-1));
-    }
-    call_main_service_set_by_name_inner(Some(generation), name, arg1, arg2)
-}
-
-fn call_main_service_set_by_name_inner(
-    generation: Option<u64>,
-    name: &str,
-    arg1: Option<&str>,
-    arg2: Option<&str>,
-) -> JniResult<()> {
     let jvm = JVM.read().unwrap();
     let context = MAIN_SERVICE_CTX.read().unwrap();
     let (Some(jvm), Some(context)) = (jvm.as_ref(), context.as_ref()) else {
         return Err(JniError::ThrowFailed(-1));
     };
-    if generation.is_some() && context.generation != generation {
+    if generation == 0 || context.generation != Some(generation) {
         return Err(JniError::ThrowFailed(-1));
     }
     let mut env = jvm.attach_current_thread_as_daemon()?;
@@ -557,10 +574,32 @@ fn call_main_service_set_by_name_inner(
     })
 }
 
+pub fn call_main_service_set_half_scale_for_generation(
+    generation: u64,
+    half_scale: bool,
+) -> JniResult<()> {
+    let jvm = JVM.read().unwrap();
+    let context = MAIN_SERVICE_CTX.read().unwrap();
+    let (Some(jvm), Some(context)) = (jvm.as_ref(), context.as_ref()) else {
+        return Err(JniError::ThrowFailed(-1));
+    };
+    if generation == 0 || context.generation != Some(generation) {
+        return Err(JniError::ThrowFailed(-1));
+    }
+    let mut env = jvm.attach_current_thread_as_daemon()?;
+    env.call_method(
+        &context.owner,
+        "rustSetHalfScale",
+        "(Z)V",
+        &[JValue::Bool(jboolean::from(half_scale))],
+    )?;
+    Ok(())
+}
+
 // Difference between MainService, MainActivity, JNI_OnLoad:
 //  jvm is the same, ctx is differen and ctx of JNI_OnLoad is null.
 //  cpal: all three works
-//  Service(GetByName, ...): only ctx from MainService works, so use 2 init context functions
+//  Service callbacks: only ctx from MainService works, so use 2 init context functions
 // On app start: retain the process application context for NDK consumers
 // On service start: replace only the exact MainService callback owner
 

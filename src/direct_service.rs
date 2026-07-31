@@ -757,7 +757,17 @@ pub async fn start_direct_only(
         // MainService start/stop cycle. The direct listener's own teardown is the generation edge above.
         #[cfg(not(target_os = "android"))]
         check_zombie();
-        let server = new_server();
+        #[cfg(target_os = "android")]
+        let Some(my_generation) = android_generation.and_then(std::num::NonZeroU64::new) else {
+            log::error!(
+                "R-D7a: start_direct_only reached on Android with no service generation — fail closed (no listener)"
+            );
+            return;
+        };
+        let server = new_server(
+            #[cfg(target_os = "android")]
+            my_generation,
+        );
         let server_cloned = server.clone();
         let direct_listener = tokio::spawn(async move {
             direct_server(server_cloned, android_generation).await;
@@ -787,17 +797,8 @@ pub async fn start_direct_only(
             // from a concurrent `stopServer`/`startServer` and so keep this (stopped) service's
             // thread alive. On the legitimate Android path this is always `Some`
             // (the JNI `startServer` supplies it); a `None` here means a misrouted start — fail closed.
-            let my_generation = match android_generation {
-                Some(g) => g,
-                None => {
-                    log::error!(
-                        "R-D7a: start_direct_only reached on Android with no service generation — fail closed (no listener)"
-                    );
-                    return;
-                }
-            };
             loop {
-                if android_listener_lifecycle_snapshot(my_generation).is_none() {
+                if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {
                     log::info!(
                         "R-D7a: Android service stopped — start_direct_only returns so the server thread + tokio runtime unwind (listener socket closed)"
                     );

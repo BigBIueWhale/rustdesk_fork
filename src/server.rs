@@ -314,7 +314,7 @@ lazy_static::lazy_static! {
     // ugly
     // Now we use this [`CLIENT_SERVER`] to do following operations:
     // - record local audio, and send to remote
-    pub static ref CLIENT_SERVER: ServerPtr = new();
+    pub static ref CLIENT_SERVER: ServerPtr = new_client_server();
 }
 
 // ── R-T1 / R-T0 / R-T12: DMZ connection-flood bound + flood-safe observability ────────────
@@ -608,21 +608,47 @@ pub struct Server {
     connections: ConnMap,
     services: HashMap<String, Box<dyn Service>>,
     id_count: i32,
+    #[cfg(target_os = "android")]
+    android_generation: Option<std::num::NonZeroU64>,
 }
 
 pub type ServerPtr = Arc<RwLock<Server>>;
 pub type ServerPtrWeak = Weak<RwLock<Server>>;
 
-pub fn new() -> ServerPtr {
+#[cfg(target_os = "android")]
+fn new_client_server() -> ServerPtr {
+    let mut server = Server {
+        connections: HashMap::new(),
+        services: HashMap::new(),
+        id_count: hbb_common::rand::random::<i32>() % 1000 + 1000,
+        android_generation: None,
+    };
+    // The Android client-side server owns outgoing voice-call audio only. It has no
+    // controlled MainService generation and therefore must not construct display/video workers.
+    server.add_service(Box::new(audio_service::new()));
+    Arc::new(RwLock::new(server))
+}
+
+#[cfg(not(target_os = "android"))]
+fn new_client_server() -> ServerPtr {
+    new()
+}
+
+pub fn new(#[cfg(target_os = "android")] android_generation: std::num::NonZeroU64) -> ServerPtr {
     let mut server = Server {
         connections: HashMap::new(),
         services: HashMap::new(),
         id_count: hbb_common::rand::random::<i32>() % 1000 + 1000, // ensure positive
+        #[cfg(target_os = "android")]
+        android_generation: Some(android_generation),
     };
     server.add_service(Box::new(audio_service::new()));
     #[cfg(not(target_os = "ios"))]
     {
-        server.add_service(Box::new(display_service::new()));
+        server.add_service(Box::new(display_service::new(
+            #[cfg(target_os = "android")]
+            android_generation.get(),
+        )));
         server.add_service(Box::new(clipboard_service::new(
             clipboard_service::NAME.to_owned(),
         )));
@@ -786,31 +812,36 @@ impl Server {
             || name.starts_with(VideoSource::Camera.service_name_prefix())
     }
 
+    fn ensure_video_service(&mut self, source: VideoSource, display: usize) {
+        let service_name = video_service::get_service_name(source, display);
+        if self.contains(&service_name) {
+            return;
+        }
+        #[cfg(target_os = "android")]
+        let Some(android_generation) = self.android_generation
+        else {
+            log::error!(
+                "refusing to construct an Android video service without controlled MainService authority"
+            );
+            return;
+        };
+        self.add_service(Box::new(video_service::new(
+            source,
+            display,
+            #[cfg(target_os = "android")]
+            android_generation.get(),
+        )));
+    }
+
     pub fn try_add_primary_camera_service(&mut self) {
         if !camera::primary_camera_exists() {
             return;
         }
-        let primary_camera_name =
-            video_service::get_service_name(VideoSource::Camera, camera::PRIMARY_CAMERA_IDX);
-        if !self.contains(&primary_camera_name) {
-            self.add_service(Box::new(video_service::new(
-                VideoSource::Camera,
-                camera::PRIMARY_CAMERA_IDX,
-            )));
-        }
+        self.ensure_video_service(VideoSource::Camera, camera::PRIMARY_CAMERA_IDX);
     }
 
     pub fn try_add_primay_video_service(&mut self) {
-        let primary_video_service_name = video_service::get_service_name(
-            VideoSource::Monitor,
-            *display_service::PRIMARY_DISPLAY_IDX,
-        );
-        if !self.contains(&primary_video_service_name) {
-            self.add_service(Box::new(video_service::new(
-                VideoSource::Monitor,
-                *display_service::PRIMARY_DISPLAY_IDX,
-            )));
-        }
+        self.ensure_video_service(VideoSource::Monitor, *display_service::PRIMARY_DISPLAY_IDX);
     }
 
     pub fn add_camera_connection(&mut self, conn: ConnInner) {

@@ -2326,21 +2326,8 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         generation_dispatch,
         (
-            "if generation == 0",
-            "call_main_service_set_by_name_inner(Some(generation)",
-        ),
-        "positive generation-bound controlled callback entry",
-    )
-    generation_dispatch_inner = extract_item(
-        android_ffi,
-        "fn call_main_service_set_by_name_inner",
-        "controlled callback generation comparison",
-    )
-    require_order(
-        generation_dispatch_inner,
-        (
             "let context = MAIN_SERVICE_CTX.read().unwrap()",
-            "if generation.is_some() && context.generation != generation",
+            "if generation == 0 || context.generation != Some(generation)",
             "env.call_method(",
             "&context.owner",
         ),
@@ -4738,7 +4725,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["verify"],
-        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4) =="',
+        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="',
         "shared Android controlled-input/audio/status generation ownership gate label",
     )
     require(
@@ -4844,7 +4831,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("android_ffi", "init_ndk_context(java_vm, context_jobject)", "init_ndk_context(java_vm, service.as_obj().as_raw() as *mut c_void)", "application-context native lifetime"),
     ("android_ffi", "env.is_same_object(current.owner.as_obj(), service)", "true", "exact service generation-owner identity"),
     ("android_ffi", "if current.generation.is_some()", "if false", "single service generation binding"),
-    ("android_ffi", "if generation.is_some() && context.generation != generation", "if false", "controlled callback generation comparison"),
+    ("android_ffi", "if generation == 0 || context.generation != Some(generation)", "if false", "controlled callback generation comparison"),
     ("server_connection", "android_server_generation: u64", "android_server_generation: i64", "connection service-generation ownership"),
     ("server_connection", "call_main_service_pointer_input_for_generation", "call_main_service_pointer_input", "generation-bound controlled pointer dispatch"),
     ("server_connection", "call_main_service_key_event_for_generation", "call_main_service_key_event", "generation-bound controlled key dispatch"),
@@ -5104,7 +5091,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<span class="id">R-S11ei</span>', '<span class="id">R-S11ei-disabled</span>', "controlled-input ownership requirement"),
     ("requirements", "<tr><td>288</td>", "<tr><td>288-disabled</td>", "controlled-input ownership disposition"),
     ("hardening", "R-S11ei/R-S11e-153", "R-S11ei-disabled/R-S11e-153", "controlled-input ownership hardening ledger"),
-    ("verify", 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4) =="', 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4) =="', "shared controlled-input/audio/status generation ownership gate"),
+    ("verify", 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="', 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="', "shared controlled-input/audio/status generation ownership gate"),
     ("verify", "android-controlled-input-owner-test.kt", "android-controlled-input-owner-test-disabled.kt", "shared controlled-input behavior fixture gate"),
     ("verify", "grep -qF 'take_previous_android_mobile_client_sessions(client_owner_id, session_id)?' src/flutter.rs", "true # replacement-drain shared gate disabled", "shared mobile replacement-drain gate"),
     ("verify", "if [ \"$(grep -cF 'check_remove_unused_displays(None, None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then", "if false; then # post-drain display gate disabled", "shared post-drain display-reconciliation gate"),

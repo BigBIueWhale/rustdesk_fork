@@ -4060,7 +4060,12 @@ impl Connection {
 
             try_activate_screen();
 
-            match super::display_service::update_get_sync_displays_on_login().await {
+            match super::display_service::update_get_sync_displays_on_login(
+                #[cfg(target_os = "android")]
+                self.android_server_generation,
+            )
+            .await
+            {
                 Err(err) => {
                     res.set_error(format!("{}", err));
                 }
@@ -6306,7 +6311,6 @@ impl Connection {
     // the bounded, decaying, per-v4-source GUESS_FAILURES in cpace.rs (R-P14c).
 
     fn refresh_video_display(&self, display: Option<usize>) {
-        video_service::refresh();
         self.server.upgrade().map(|s| {
             s.read().unwrap().set_video_service_opt(
                 display.map(|d| (self.video_source(), d)),
@@ -6340,7 +6344,12 @@ impl Connection {
         if self.view_camera {
             Some(camera::Cameras::get_sync_cameras().len())
         } else {
-            match display_service::try_get_displays() {
+            #[cfg(target_os = "android")]
+            let displays =
+                display_service::try_get_displays_for_generation(self.android_server_generation);
+            #[cfg(not(target_os = "android"))]
+            let displays = display_service::try_get_displays();
+            match displays {
                 Ok(displays) => Some(displays.len()),
                 Err(err) => {
                     self.note_display_control_reject(format_args!(
@@ -6545,12 +6554,7 @@ impl Connection {
             video_service::get_service_name(self.video_source(), self.display_idx);
         let mut lock = server.write().unwrap();
         if display_idx != *display_service::PRIMARY_DISPLAY_IDX {
-            if !lock.contains(&new_service_name) {
-                lock.add_service(Box::new(video_service::new(
-                    self.video_source(),
-                    display_idx,
-                )));
-            }
+            lock.ensure_video_service(self.video_source(), display_idx);
         }
         // For versions greater than 1.2.4, a `CaptureDisplays` message will be sent immediately.
         // Unnecessary capturers will be removed then.
@@ -6566,16 +6570,10 @@ impl Connection {
         if let Some(sever) = self.server.upgrade() {
             let mut lock = sever.write().unwrap();
             for display in add.iter() {
-                let service_name = video_service::get_service_name(video_source, *display);
-                if !lock.contains(&service_name) {
-                    lock.add_service(Box::new(video_service::new(video_source, *display)));
-                }
+                lock.ensure_video_service(video_source, *display);
             }
             for display in set.iter() {
-                let service_name = video_service::get_service_name(video_source, *display);
-                if !lock.contains(&service_name) {
-                    lock.add_service(Box::new(video_service::new(video_source, *display)));
-                }
+                lock.ensure_video_service(video_source, *display);
             }
             if !add.is_empty() {
                 lock.capture_displays(self.inner.clone(), video_source, add, true, false);

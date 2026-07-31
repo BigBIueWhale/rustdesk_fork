@@ -2552,11 +2552,6 @@ pub mod server_side {
     }
 
     #[no_mangle]
-    pub unsafe extern "system" fn Java_ffi_FFI_refreshScreen(_env: JNIEnv, _class: JClass) {
-        crate::server::video_service::refresh()
-    }
-
-    #[no_mangle]
     pub unsafe extern "system" fn Java_ffi_FFI_getLocalOption(
         env: JNIEnv,
         _class: JClass,

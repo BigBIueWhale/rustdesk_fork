@@ -10304,7 +10304,7 @@ def validate_controlled_server_lifecycle_contract(sources):
     )
     require_text(
         start,
-        "android_listener_lifecycle_snapshot(my_generation)",
+        "android_listener_lifecycle_snapshot(my_generation.get())",
         "Android service-generation listener ownership",
     )
 
@@ -10836,7 +10836,7 @@ def validate_desktop_ipc_retained_owner_contract(sources):
     require_text(server_source, "start_direct_only(Some(generation)).await;", "Android generation transfer")
     require_text(
         direct_service,
-        "if android_listener_lifecycle_snapshot(my_generation).is_none() {",
+        "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {",
         "Android exact active-generation ownership",
     )
     require_absent(
@@ -10848,7 +10848,7 @@ def validate_desktop_ipc_retained_owner_contract(sources):
         validator,
         '    require(\n'
         '        start,\n'
-        '        "if android_listener_lifecycle_snapshot(my_generation).is_none() {",\n'
+        '        "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {",\n'
         '        "Android exact active-generation teardown",\n'
         '    )',
         "focused Android exact active-generation ownership",
@@ -18616,7 +18616,7 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
-        '("android_ffi", "if generation.is_some() && context.generation != generation", "if false", "controlled callback generation comparison"),',
+        '("android_ffi", "if generation == 0 || context.generation != Some(generation)", "if false", "controlled callback generation comparison"),',
         "Android controlled callback generation mutation",
     )
     require_text(
@@ -19712,7 +19712,7 @@ def validate_android_voice_call_ownership_contract(sources):
     input_authority = extract_between(
         android_service,
         "    private fun controlledInputOwner(",
-        "\n\n    @Keep\n    fun rustGetByName(",
+        "\n\n    private var serviceLooper:",
         "independent Android controlled-input authority source",
     )
     require_order(
@@ -19889,7 +19889,7 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         sources["verify"],
-        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4) =="',
+        'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="',
         "independent shared controlled-input/audio generation gate label source",
     )
 
@@ -20335,7 +20335,7 @@ def validate_android_listener_generation_contract(sources):
         require_text(focused, text, f"Android listener generation {label}")
     require_exact_count(
         focused,
-        "android_listener_lifecycle_snapshot(my_generation).is_none() {",
+        "android_listener_lifecycle_snapshot(my_generation.get()).is_none() {",
         2,
         "Android listener focused desktop-lifecycle assertion and mutation",
     )
@@ -20511,7 +20511,7 @@ def validate_android_listener_generation_contract(sources):
         desktop_ipc,
         '    require(\n'
         '        start,\n'
-        '        "if android_listener_lifecycle_snapshot(my_generation).is_none() {",\n'
+        '        "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {",\n'
         '        "Android exact active-generation teardown",\n'
         '    )',
         "independent exact active-generation desktop lifecycle assertion",
@@ -20587,7 +20587,7 @@ def validate_android_frame_raw_generation_contract(sources):
         ) from error
     for text, label in (
         (
-            "Validate exact MainService-generation ownership of Android raw video.",
+            "Validate exact MainService-generation ownership of Android video state and workers.",
             "focused verifier purpose",
         ),
         ("checked monotonic raw-video begin", "focused monotonic-state binding"),
@@ -20602,6 +20602,26 @@ def validate_android_frame_raw_generation_contract(sources):
         (
             "exact raw disable before local pipeline retirement",
             "focused teardown-order binding",
+        ),
+        (
+            "exact-generation raw enable/read admission",
+            "focused raw-video consumer binding",
+        ),
+        (
+            "exact-generation video display construction",
+            "focused worker-to-display generation binding",
+        ),
+        (
+            "propagated exact-generation half-scale mutation",
+            "focused screen mutation error binding",
+        ),
+        (
+            "display-owned scale bitrate adjustment",
+            "focused exact-display-scale bitrate binding",
+        ),
+        (
+            "generation-bound display scale capture",
+            "focused worker-to-codec scale binding",
         ),
         ("run_mutations(sources)", "focused mutation dispatch"),
     ):
@@ -20644,6 +20664,25 @@ def validate_android_frame_raw_generation_contract(sources):
         ),
     ):
         require_text(owner, text, f"independent raw-video owner {label}")
+    for text, label in (
+        (
+            "pub(crate) struct GenerationOwnedScreenSize",
+            "generation-owned screen state",
+        ),
+        (
+            "self.owner.admits(generation).then_some(self.size).flatten()",
+            "exact-generation screen read",
+        ),
+        (
+            "screen_size_is_visible_only_to_its_exact_active_generation",
+            "stale screen-state behavior regression",
+        ),
+        (
+            "screen_size_retirement_and_reactivation_fail_closed",
+            "retired screen-state behavior regression",
+        ),
+    ):
+        require_text(owner, text, f"independent Android screen owner {label}")
 
     frame = sources["android_frame_raw"]
     require_exact_count(
@@ -20669,8 +20708,42 @@ def validate_android_frame_raw_generation_contract(sources):
             "self.frame.set_enable(false)",
             "replacement/retirement buffer clear",
         ),
+        (
+            "pub(crate) fn is_enabled(&self, generation: u64) -> bool",
+            "exact-generation capture-active read",
+        ),
+        (
+            "pub(crate) fn take(\n"
+            "        &mut self,\n"
+            "        generation: u64,",
+            "generation-bearing frame consumer",
+        ),
+        (
+            "return None;\n"
+            "        }\n"
+            "        self.frame.take(dst, last)",
+            "stale frame-consumer refusal",
+        ),
     ):
         require_text(frame, text, f"independent raw-video frame {label}")
+    consumer = extract_between(
+        frame,
+        "    pub(crate) fn is_enabled(&self, generation: u64) -> bool {",
+        "\n}\n",
+        "independent Android video-worker consumer",
+    )
+    require_order(
+        consumer,
+        (
+            "self.owner.admits(generation) && self.frame.enable",
+            "pub(crate) fn take(",
+            "generation: u64",
+            "if !self.owner.admits(generation)",
+            "return None",
+            "self.frame.take(dst, last)",
+        ),
+        "exact-generation Android video-worker consumer ownership",
+    )
     require_text(
         sources["scrap_lib"],
         '#[path = "android/frame_raw_generation.rs"]\n'
@@ -20683,6 +20756,10 @@ def validate_android_frame_raw_generation_contract(sources):
         (
             "static ref VIDEO_RAW: Mutex<GenerationOwnedFrameRaw>",
             "generation-owned process buffer",
+        ),
+        (
+            "static ref SCREEN_SIZE: Mutex<GenerationOwnedScreenSize>",
+            "generation-owned process screen state",
         ),
         (
             'pub extern "system" fn Java_ffi_FFI_onVideoFrameUpdate(',
@@ -20704,6 +20781,34 @@ def validate_android_frame_raw_generation_contract(sources):
             "VIDEO_RAW.lock().unwrap().retire_generation(generation)",
             "raw owner retirement",
         ),
+        (
+            "VIDEO_RAW.lock().ok()?.take(generation, dst, last)",
+            "exact-generation frame consumption",
+        ),
+        (
+            ".update(generation, (width, height, scale))",
+            "exact-generation screen-state update",
+        ),
+        (
+            "SCREEN_SIZE.lock().ok()?.get(generation)",
+            "exact-generation screen-state read",
+        ),
+        (
+            'pub extern "system" fn Java_ffi_FFI_updateScreenInfo(',
+            "typed screen-state JNI",
+        ),
+        (
+            "SCREEN_SIZE.lock().unwrap().begin_generation(generation)",
+            "screen owner begin at service bind",
+        ),
+        (
+            "SCREEN_SIZE.lock().unwrap().retire_generation(generation)",
+            "screen owner retirement",
+        ),
+        (
+            "pub fn call_main_service_set_half_scale_for_generation(",
+            "typed exact-generation half-scale operation",
+        ),
     ):
         require_text(rust_ffi, text, f"independent raw-video JNI {label}")
     require_absent(
@@ -20711,6 +20816,12 @@ def validate_android_frame_raw_generation_contract(sources):
         "Java_ffi_FFI_setFrameRawEnable",
         "independent ambient video/audio JNI selector",
     )
+    for text, label in (
+        ("call_main_service_get_by_name", "ambient capture-state getter"),
+        ("pub fn call_main_service_set_by_name(", "generationless service setter"),
+        ("call_main_service_set_by_name_inner", "optional-generation setter core"),
+    ):
+        require_absent(rust_ffi, text, f"independent {label}")
     bind = extract_between(
         rust_ffi,
         "pub fn bind_main_service_generation(",
@@ -20723,6 +20834,7 @@ def validate_android_frame_raw_generation_contract(sources):
             "env.is_same_object(current.owner.as_obj(), service)",
             "if current.generation.is_some()",
             "VIDEO_RAW.lock().unwrap().begin_generation(generation)",
+            "SCREEN_SIZE.lock().unwrap().begin_generation(generation)",
             "current.generation = Some(generation)",
         ),
         "independent raw generation before callback publication",
@@ -20742,12 +20854,21 @@ def validate_android_frame_raw_generation_contract(sources):
             "external fun setAudioFrameRawEnable(value: Boolean)",
             "Kotlin typed audio operation",
         ),
+        (
+            "external fun updateScreenInfo(generation: Long, width: Int, height: Int, scale: Int): Boolean",
+            "Kotlin exact-generation screen publication",
+        ),
     ):
         require_text(ffi_kt, text, f"independent raw-video {label}")
     require_absent(
         ffi_kt,
         "setFrameRawEnable",
         "independent ambient Kotlin raw selector",
+    )
+    require_absent(
+        ffi_kt,
+        "external fun refreshScreen()",
+        "independent generationless Kotlin screen refresh",
     )
 
     main_service = sources["android_main_service"]
@@ -20767,6 +20888,21 @@ def validate_android_frame_raw_generation_contract(sources):
         (
             "if (!FFI.setVideoFrameRawEnable(nativeServerGeneration, false))",
             "exact-generation capture stop",
+        ),
+        (
+            "fun rustSetHalfScale(halfScale: Boolean)",
+            "typed half-scale callback",
+        ),
+        (
+            "return generation > 0L && FFI.updateScreenInfo(",
+            "positive exact-generation screen publication",
+        ),
+        (
+            "SCREEN_INFO.width != w ||\n"
+            "                SCREEN_INFO.height != h ||\n"
+            "                SCREEN_INFO.scale != scale ||\n"
+            "                SCREEN_INFO.dpi != dpi",
+            "complete screen-geometry change detection",
         ),
     ):
         require_text(main_service, text, f"independent raw-video {label}")
@@ -20803,6 +20939,12 @@ def validate_android_frame_raw_generation_contract(sources):
         "setCaptureStarted",
         "independent dead clipboard capture publication",
     )
+    for text, label in (
+        ("fun rustGetByName(", "ambient Java capture getter"),
+        ('"half_scale" ->', "generic Java half-scale selector"),
+        ("FFI.refreshScreen()", "generationless Java screen refresh"),
+    ):
+        require_absent(main_service, text, f"independent {label}")
     require_absent(
         sources["android_clipboard_manager"],
         "isCaptureStarted",
@@ -20812,6 +20954,219 @@ def validate_android_frame_raw_generation_contract(sources):
         sources["android_clipboard_manager"],
         "setCaptureStarted",
         "independent dead clipboard capture status writer",
+    )
+
+    common_android = sources["android_scrap_common"]
+    for text, label in (
+        ("service_generation: u64", "generation-bearing display"),
+        ("scale: u16", "captured display scale"),
+        (
+            "if display.service_generation == 0",
+            "generationless capturer refusal",
+        ),
+        (
+            "get_video_raw(\n            self.display.service_generation,",
+            "exact-generation frame consumption",
+        ),
+        (
+            "pub fn all_for_generation(generation: u64)",
+            "exact-generation display construction",
+        ),
+        ("scale: size.2", "screen-state scale captured with display generation"),
+        ("pub fn scale(&self) -> u16", "display-owned scale accessor"),
+    ):
+        require_text(common_android, text, f"independent Android scrap {label}")
+    for text, label in (
+        ("call_main_service_get_by_name", "ambient screen pull"),
+        ("pub fn refresh_size(", "ambient screen refresh"),
+        ("pub fn is_start(", "ambient capture-active pull"),
+        ("pub fn fix_quality(", "ambient encoder scale accessor"),
+    ):
+        require_absent(common_android, text, f"independent Android scrap {label}")
+
+    codec = sources["scrap_codec"]
+    base_bitrate = extract_between(
+        codec,
+        "pub fn base_bitrate(width: u32, height: u32) -> u32 {",
+        "\n}\n\npub fn codec_thread_num(",
+        "independent pure base-bitrate calculation",
+    )
+    for text, label in (
+        ("Display::fix_quality()", "ambient Android bitrate scale"),
+        ("current_screen_size()", "ambient Android bitrate screen state"),
+        ('target_os = "android"', "platform-global bitrate branch"),
+    ):
+        require_absent(base_bitrate, text, f"independent {label}")
+
+    vpxcodec = sources["scrap_vpxcodec"]
+    for text, label in (
+        (
+            '#[cfg(target_os = "android")]\n    android_scale: u16,',
+            "encoder-owned Android display scale",
+        ),
+        (
+            "if !matches!(config.android_scale, 1 | 2)",
+            "validated Android encoder scale",
+        ),
+        (
+            "android_scale: config.android_scale,",
+            "captured scale retained by encoder",
+        ),
+        (
+            "bitrate.saturating_mul(u32::from(android_scale).pow(2))",
+            "display-owned bitrate adjustment",
+        ),
+        (
+            '#[cfg(target_os = "android")]\n    pub android_scale: u16,',
+            "generation-derived VPX configuration scale",
+        ),
+    ):
+        require_text(vpxcodec, text, f"independent Android VPX {label}")
+    require_order(
+        vpxcodec,
+        (
+            "fn set_quality(&mut self, ratio: f32)",
+            "Self::bitrate(",
+            "self.android_scale",
+        ),
+        "independent VPX quality retains exact Android display scale",
+    )
+
+    video_service = sources["video_service_source"]
+    video_owner = extract_between(
+        video_service,
+        "pub struct VideoService {",
+        "\n}\n\nimpl Deref for VideoService",
+        "independent generation-bearing Android video service",
+    )
+    require_text(
+        video_owner,
+        "\n    android_generation: u64,",
+        "independent Android video-service generation owner field",
+    )
+    for text, label in (
+        (
+            "Display::all_for_generation(android_generation)",
+            "generation-bound capturer display",
+        ),
+        (
+            "is_video_raw_enabled_for_generation(android_generation)",
+            "generation-bound capture-active read",
+        ),
+        (
+            "screen_size_for_generation(android_generation)",
+            "generation-bound screen-state read",
+        ),
+        (
+            "call_main_service_set_half_scale_for_generation(\n"
+            "        android_generation,\n"
+            "        half_scale,\n"
+            "    )?;",
+            "generation-bound fallible half-scale mutation",
+        ),
+        (
+            "let android_scale = display.scale();",
+            "generation-bound display scale capture",
+        ),
+        (
+            "android_scale: 1,",
+            "camera scale independence",
+        ),
+    ):
+        require_text(video_service, text, f"independent Android video {label}")
+    require_exact_count(
+        video_service,
+        "android_scale: c.android_scale,",
+        5,
+        "independent all Android VPX paths retain captured display scale",
+    )
+    for text, label in (
+        ("scrap::is_start()", "generationless capture-active read"),
+        ("scrap::screen_size()", "generationless screen-state read"),
+        ("call_main_service_set_by_name(", "generationless service mutation"),
+        ("pub fn refresh()", "generationless screen refresh"),
+    ):
+        require_absent(video_service, text, f"independent Android video {label}")
+
+    display_service = sources["display_service_source"]
+    for text, label in (
+        ("struct DisplayService {", "generation-bearing display service"),
+        (
+            "try_get_displays_for_generation(android_generation)",
+            "generation-bound display-service enumeration",
+        ),
+        (
+            "Display::all_for_generation(android_generation)",
+            "generation-bound scrap enumeration",
+        ),
+    ):
+        require_text(display_service, text, f"independent Android display {label}")
+
+    server = sources["server_source"]
+    server_owner = extract_between(
+        server,
+        "pub struct Server {",
+        "\n}\n\npub type ServerPtr",
+        "independent generation-bearing Android native server",
+    )
+    require_text(
+        server_owner,
+        "\n    android_generation: Option<std::num::NonZeroU64>,",
+        "independent Android server generation owner field",
+    )
+    for text, label in (
+        (
+            "fn ensure_video_service(&mut self",
+            "central generation-bearing video constructor",
+        ),
+        (
+            "let Some(android_generation) = self.android_generation",
+            "server video-authority admission",
+        ),
+        (
+            "android_generation.get()",
+            "server-to-video positive generation forwarding",
+        ),
+        (
+            "fn new_client_server() -> ServerPtr",
+            "separate outgoing audio-only server constructor",
+        ),
+        (
+            "android_generation: None",
+            "outgoing server has no controlled generation",
+        ),
+    ):
+        require_text(server, text, f"independent Android server {label}")
+    require_order(
+        sources["direct_service"],
+        (
+            "let Some(my_generation) =",
+            "android_generation.and_then(std::num::NonZeroU64::new)",
+            "let server = new_server(",
+            "my_generation",
+            "let server_cloned = server.clone()",
+        ),
+        "independent Android generation admission before server creation",
+    )
+    connection = sources["connection_source"]
+    for text, label in (
+        (
+            "try_get_displays_for_generation(self.android_server_generation)",
+            "connection display enumeration",
+        ),
+        (
+            "update_get_sync_displays_on_login(\n"
+            '                #[cfg(target_os = "android")]\n'
+            "                self.android_server_generation,",
+            "login display snapshot",
+        ),
+        ("lock.ensure_video_service(", "dynamic video construction"),
+    ):
+        require_text(connection, text, f"independent exact-generation {label}")
+    require_absent(
+        sources["flutter_ffi_source"],
+        "Java_ffi_FFI_refreshScreen",
+        "independent generationless Rust screen-refresh JNI",
     )
 
     for source, text, label in (
@@ -20827,7 +21182,7 @@ def validate_android_frame_raw_generation_contract(sources):
         ),
         (
             sources["verify"],
-            "R-S11em/R-S11e-174 Android exact-generation raw-video authority",
+            "R-S11em/R-S11eu/R-S11e-174/R-S11e-182 Android exact-generation raw-video producer, consumer, screen-state, and video-worker authority",
             "shared verdict",
         ),
         (
@@ -20837,9 +21192,24 @@ def validate_android_frame_raw_generation_contract(sources):
         ),
         (sources["requirements"], "<tr><td>295</td>", "Appendix C row"),
         (
+            sources["requirements"],
+            '<span class="id">R-S11eu</span>',
+            "video-worker normative requirement",
+        ),
+        (
+            sources["requirements"],
+            "<tr><td>303</td>",
+            "video-worker Appendix C row",
+        ),
+        (
             sources["hardening"],
             "R-S11em/R-S11e-174 exact MainService-generation Android raw-video ownership",
             "hardening ledger",
+        ),
+        (
+            sources["hardening"],
+            "R-S11eu/R-S11e-182 exact-generation Android video-worker and screen-state ownership",
+            "video-worker hardening ledger",
         ),
     ):
         require_text(source, text, f"independent Android raw-video {label}")
@@ -28228,7 +28598,7 @@ def validate_android_media_projection_finality_contract(sources):
     shared_gate = extract_between(
         verify,
         'echo "== Android MediaProjection/input lifecycle finality '
-        '(R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4) =="',
+        '(R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="',
         "# R-X7a / R-G1",
         "shared Android MediaProjection/input lifecycle gate",
     )
@@ -28457,7 +28827,7 @@ def validate_android_media_projection_finality_contract(sources):
     update_voice = extract_between(
         android,
         '            "update_voice_call_state" -> {',
-        '            "half_scale" -> {',
+        "            else -> {",
         "Android controlled voice update",
     )
     require_order(
@@ -29079,17 +29449,34 @@ def validate_android_media_projection_finality_contract(sources):
     )
     generation_dispatch = extract_between(
         android_ffi,
-        "fn call_main_service_set_by_name_inner",
-        "// Difference between MainService",
+        "pub fn call_main_service_set_by_name_for_generation(",
+        "\npub fn call_main_service_set_half_scale_for_generation(",
         "Android controlled callback generation gate",
     )
     require_order(
         generation_dispatch,
         (
             "let context = MAIN_SERVICE_CTX.read().unwrap()",
-            "if generation.is_some() && context.generation != generation",
+            "if generation == 0 || context.generation != Some(generation)",
             "env.call_method(",
             "&context.owner",
+        ),
+        "Android generation comparison before controlled Java dispatch",
+    )
+    half_scale_dispatch = extract_between(
+        android_ffi,
+        "pub fn call_main_service_set_half_scale_for_generation(",
+        "\n// Difference between MainService, MainActivity, JNI_OnLoad:",
+        "Android typed half-scale callback generation gate",
+    )
+    require_order(
+        half_scale_dispatch,
+        (
+            "let context = MAIN_SERVICE_CTX.read().unwrap()",
+            "if generation == 0 || context.generation != Some(generation)",
+            "env.call_method(",
+            "&context.owner",
+            '"rustSetHalfScale"',
         ),
         "Android generation comparison before controlled Java dispatch",
     )
@@ -29290,7 +29677,7 @@ def validate_android_media_projection_finality_contract(sources):
     )
     require_text(
         sources["verify"],
-        "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4)",
+        "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4)",
         "Android MediaProjection shared source gate",
     )
     require_text(
@@ -29300,7 +29687,7 @@ def validate_android_media_projection_finality_contract(sources):
     )
     require_text(
         sources["verify"],
-        "explicit Stop drops the started state and Activity binding, delayed input is bounded, and stale owners, callbacks, raw frames, status, global stops, and server generations are rejected",
+        "explicit Stop drops the started state and Activity binding, delayed input is bounded, and stale owners, callbacks, producers, consumers, screen state, global stops, and server generations are rejected",
         "Android service-generation-owned capture/audio/status shared gate",
     )
 
@@ -50479,8 +50866,8 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4) =="',
-            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4) =="',
+            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="',
+            'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="',
             "independent shared controlled-input/audio generation gate label source",
         ),
         (
@@ -57310,7 +57697,7 @@ def run_source_mutations(sources):
         ),
         (
             "android_scrap_ffi",
-            "if generation.is_some() && context.generation != generation",
+            "if generation == 0 || context.generation != Some(generation)",
             "if false",
             "Android generation comparison before controlled Java dispatch",
         ),
@@ -57362,7 +57749,7 @@ def run_source_mutations(sources):
         ),
         (
             "android_listener_generation_verifier",
-            "android_listener_lifecycle_snapshot(my_generation).is_none() {",
+            "android_listener_lifecycle_snapshot(my_generation.get()).is_none() {",
             "android_listener_lifecycle_snapshot(0).is_none() {",
             "Android listener focused desktop-lifecycle assertion and mutation",
         ),
@@ -57380,13 +57767,13 @@ def run_source_mutations(sources):
         ),
         (
             "direct_service",
-            "if android_listener_lifecycle_snapshot(my_generation).is_none() {",
+            "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {",
             "if android_listener_lifecycle_snapshot(0).is_none() {",
             "Android service-generation listener ownership",
         ),
         (
             "desktop_ipc_validator",
-            '        "if android_listener_lifecycle_snapshot(my_generation).is_none() {",\n'
+            '        "if android_listener_lifecycle_snapshot(my_generation.get()).is_none() {",\n'
             '        "Android exact active-generation teardown",',
             '        "if android_listener_lifecycle_snapshot(0).is_none() {",\n'
             '        "Android exact active-generation teardown",',
@@ -57480,8 +57867,8 @@ def run_source_mutations(sources):
         ),
         (
             "android_frame_raw_generation_verifier",
-            "Validate exact MainService-generation ownership of Android raw video.",
-            "Validate ambient ownership of Android raw video.",
+            "Validate exact MainService-generation ownership of Android video state and workers.",
+            "Validate ambient ownership of Android video state and workers.",
             "Android raw-video generation focused verifier purpose",
         ),
         (
@@ -57491,16 +57878,154 @@ def run_source_mutations(sources):
             "stale raw-video generation retirement",
         ),
         (
+            "android_frame_raw_generation",
+            "self.owner.admits(generation).then_some(self.size).flatten()",
+            "self.size",
+            "independent Android screen owner exact-generation screen read",
+        ),
+        (
             "android_frame_raw",
             "owner: FrameRawGenerationOwner",
             "owner: ()",
             "independent raw-video frame generation/frame state composition",
         ),
         (
+            "android_frame_raw",
+            "        if !self.owner.admits(generation) {\n"
+            "            return None;\n"
+            "        }\n"
+            "        self.frame.take(dst, last)",
+            "        self.frame.take(dst, last)",
+            "independent raw-video frame stale frame-consumer refusal",
+        ),
+        (
             "android_scrap_ffi",
             "VIDEO_RAW.lock().unwrap().begin_generation(generation)",
             "VIDEO_RAW.lock().unwrap().begin_generation(1)",
             "independent raw-video JNI raw owner begin at service bind",
+        ),
+        (
+            "android_scrap_ffi",
+            "VIDEO_RAW.lock().ok()?.take(generation, dst, last)",
+            "VIDEO_RAW.lock().ok()?.take(1, dst, last)",
+            "independent raw-video JNI exact-generation frame consumption",
+        ),
+        (
+            "android_scrap_ffi",
+            ".update(generation, (width, height, scale))",
+            ".update(1, (width, height, scale))",
+            "independent raw-video JNI exact-generation screen-state update",
+        ),
+        (
+            "android_ffi_kt",
+            "external fun updateScreenInfo(generation: Long, width: Int, height: Int, scale: Int): Boolean",
+            "external fun refreshScreen()",
+            "independent raw-video Kotlin exact-generation screen publication",
+        ),
+        (
+            "android_main_service",
+            "fun rustSetHalfScale(halfScale: Boolean)",
+            "fun rustSetByName(name: String, arg1: String, arg2: String)",
+            "independent raw-video typed half-scale callback",
+        ),
+        (
+            "android_scrap_common",
+            "        if display.service_generation == 0 {",
+            "        if false {",
+            "independent Android scrap generationless capturer refusal",
+        ),
+        (
+            "android_scrap_common",
+            "pub fn all_for_generation(generation: u64)",
+            "pub fn all_for_current_generation(generation: u64)",
+            "independent Android scrap exact-generation display construction",
+        ),
+        (
+            "android_scrap_common",
+            "            scale: size.2,",
+            "            scale: current_screen_size().unwrap_or(size).2,",
+            "independent Android scrap screen-state scale captured with display generation",
+        ),
+        (
+            "scrap_codec",
+            "    bitrate\n}\n\npub fn codec_thread_num",
+            "    bitrate * crate::Display::fix_quality() as u32\n}\n\npub fn codec_thread_num",
+            "independent ambient Android bitrate scale",
+        ),
+        (
+            "scrap_vpxcodec",
+            "let bitrate = bitrate.saturating_mul(u32::from(android_scale).pow(2));",
+            "let bitrate = bitrate;",
+            "independent Android VPX display-owned bitrate adjustment",
+        ),
+        (
+            "video_service_source",
+            "let android_scale = display.scale();",
+            "let android_scale = 1;",
+            "independent Android video generation-bound display scale capture",
+        ),
+        (
+            "video_service_source",
+            '    #[cfg(target_os = "android")]\n'
+            "    android_generation: u64,\n"
+            "}",
+            '    #[cfg(target_os = "android")]\n'
+            "    _android_generation: u64,\n"
+            "}",
+            "independent Android video-service generation owner field",
+        ),
+        (
+            "video_service_source",
+            "call_main_service_set_half_scale_for_generation(\n"
+            "        android_generation,\n"
+            "        half_scale,\n"
+            "    )?;",
+            "call_main_service_set_half_scale_for_generation(\n"
+            "        android_generation,\n"
+            "        half_scale,\n"
+            "    )\n"
+            "    .ok();",
+            "independent Android video generation-bound fallible half-scale mutation",
+        ),
+        (
+            "display_service_source",
+            "Display::all_for_generation(android_generation)",
+            "Display::all()",
+            "independent Android display generation-bound scrap enumeration",
+        ),
+        (
+            "server_source",
+            '    #[cfg(target_os = "android")]\n'
+            "    android_generation: Option<std::num::NonZeroU64>,\n"
+            "}",
+            '    #[cfg(target_os = "android")]\n'
+            "    _android_generation: Option<std::num::NonZeroU64>,\n"
+            "}",
+            "independent Android server generation owner field",
+        ),
+        (
+            "server_source",
+            "    fn ensure_video_service(&mut self, source: VideoSource, display: usize) {",
+            "    fn add_video_service(&mut self, source: VideoSource, display: usize) {",
+            "independent Android server central generation-bearing video constructor",
+        ),
+        (
+            "direct_service",
+            "android_generation.and_then(std::num::NonZeroU64::new)",
+            "android_generation.map(std::num::NonZeroU64::new)",
+            "independent Android generation admission before server creation",
+        ),
+        (
+            "connection_source",
+            "try_get_displays_for_generation(self.android_server_generation)",
+            "try_get_displays()",
+            "independent exact-generation connection display enumeration",
+        ),
+        (
+            "flutter_ffi_source",
+            "Java_ffi_FFI_startServer(",
+            "Java_ffi_FFI_refreshScreen(\nJava_ffi_FFI_startServer(",
+            "independent generationless Rust screen-refresh JNI",
         ),
         (
             "verify",
@@ -57527,10 +58052,28 @@ def run_source_mutations(sources):
             "independent Android raw-video Appendix C row",
         ),
         (
+            "requirements",
+            '<span class="id">R-S11eu</span>',
+            '<span class="id">R-S11eu-disabled</span>',
+            "independent Android raw-video video-worker normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>303</td>",
+            "<tr><td>303-disabled</td>",
+            "independent Android raw-video video-worker Appendix C row",
+        ),
+        (
             "hardening",
             "R-S11em/R-S11e-174 exact MainService-generation Android raw-video ownership",
             "R-S11em/R-S11e-174 ambient Android raw-video ownership",
             "independent Android raw-video hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11eu/R-S11e-182 exact-generation Android video-worker and screen-state ownership",
+            "R-S11eu/R-S11e-182 ambient Android video-worker and screen-state ownership",
+            "independent Android raw-video video-worker hardening ledger",
         ),
         (
             "android_main_service_status_verifier",
@@ -57607,8 +58150,8 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4)",
-            "Android MediaProjection/input lifecycle compatibility (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-T4)",
+            "Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4)",
+            "Android MediaProjection/input lifecycle compatibility (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4)",
             "independent shared controlled-input/audio generation gate label source",
         ),
         (
@@ -59750,6 +60293,21 @@ def main():
             ).read_text(encoding="utf-8"),
             "android_frame_raw_generation": (
                 repo / "libs/scrap/src/android/frame_raw_generation.rs"
+            ).read_text(encoding="utf-8"),
+            "android_scrap_common": (
+                repo / "libs/scrap/src/common/android.rs"
+            ).read_text(encoding="utf-8"),
+            "scrap_codec": (
+                repo / "libs/scrap/src/common/codec.rs"
+            ).read_text(encoding="utf-8"),
+            "scrap_vpxcodec": (
+                repo / "libs/scrap/src/common/vpxcodec.rs"
+            ).read_text(encoding="utf-8"),
+            "video_service_source": (
+                repo / "src/server/video_service.rs"
+            ).read_text(encoding="utf-8"),
+            "display_service_source": (
+                repo / "src/server/display_service.rs"
             ).read_text(encoding="utf-8"),
             "android_main_activity": (
                 repo

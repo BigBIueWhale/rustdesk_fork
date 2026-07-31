@@ -115,23 +115,6 @@ class MainService : Service() {
     }
 
     @Keep
-    fun rustGetByName(name: String): String {
-        return when (name) {
-            "screen_size" -> {
-                JSONObject().apply {
-                    put("width",SCREEN_INFO.width)
-                    put("height",SCREEN_INFO.height)
-                    put("scale",SCREEN_INFO.scale)
-                }.toString()
-            }
-            "is_start" -> {
-                captureActive.toString()
-            }
-            else -> ""
-        }
-    }
-
-    @Keep
     @Synchronized
     fun rustSetByName(name: String, arg1: String, arg2: String) {
         when (name) {
@@ -238,16 +221,17 @@ class MainService : Service() {
                     e.printStackTrace()
                 }
             }
-            "half_scale" -> {
-                val halfScale = arg1.toBoolean()
-                if (isHalfScale != halfScale) {
-                    isHalfScale = halfScale
-                    updateScreenInfo(resources.configuration.orientation)
-                }
-                
-            }
             else -> {
             }
+        }
+    }
+
+    @Keep
+    @Synchronized
+    fun rustSetHalfScale(halfScale: Boolean) {
+        if (isHalfScale != halfScale) {
+            isHalfScale = halfScale
+            updateScreenInfo(resources.configuration.orientation)
         }
     }
 
@@ -387,6 +371,8 @@ class MainService : Service() {
         nativeServerGeneration = FFI.startServer(this, configPath, "")
         if (nativeServerGeneration <= 0L) {
             Log.e(logTag, "Failed to bind the native server to this MainService generation")
+        } else if (!publishScreenInfo()) {
+            Log.e(logTag, "Failed to publish screen information for this MainService generation")
         } else if (!statusOwner.begin(nativeServerGeneration)) {
             Log.e(logTag, "Failed to bind process-wide status to this MainService generation")
         } else if (!VoiceCallAudioCoordinator.beginControlledServiceGeneration(
@@ -451,6 +437,17 @@ class MainService : Service() {
     }
 
     private var isHalfScale: Boolean? = null;
+
+    private fun publishScreenInfo(): Boolean {
+        val generation = nativeServerGeneration
+        return generation > 0L && FFI.updateScreenInfo(
+            generation,
+            SCREEN_INFO.width,
+            SCREEN_INFO.height,
+            SCREEN_INFO.scale,
+        )
+    }
+
     @Synchronized
     private fun updateScreenInfo(orientation: Int) {
         var w: Int
@@ -490,19 +487,23 @@ class MainService : Service() {
                 h /= scale
                 dpi /= scale
             }
-            if (SCREEN_INFO.width != w) {
+            if (SCREEN_INFO.width != w ||
+                SCREEN_INFO.height != h ||
+                SCREEN_INFO.scale != scale ||
+                SCREEN_INFO.dpi != dpi
+            ) {
                 SCREEN_INFO.width = w
                 SCREEN_INFO.height = h
                 SCREEN_INFO.scale = scale
                 SCREEN_INFO.dpi = dpi
+                if (nativeServerGeneration > 0L && !publishScreenInfo()) {
+                    Log.d(logTag, "Ignored screen update from stale MainService generation")
+                }
                 if (captureActive) {
                     stopCapturePipeline()
-                    FFI.refreshScreen()
                     if (captureRequested) {
                         startCapture()
                     }
-                } else {
-                    FFI.refreshScreen()
                 }
             }
 

@@ -8,6 +8,7 @@ use crate::virtual_display_manager;
 use hbb_common::get_version_number;
 use hbb_common::protobuf::MessageField;
 use scrap::Display;
+use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 // https://github.com/rustdesk/rustdesk/discussions/6042, avoiding dbus call
@@ -171,8 +172,33 @@ pub fn is_privacy_mode_mag_supported() -> bool {
         && get_version_number(&crate::VERSION) > get_version_number("1.1.9");
 }
 
-pub fn new() -> GenericService {
-    let svc = EmptyExtraFieldService::new(NAME.to_owned(), true);
+#[derive(Clone)]
+struct DisplayService {
+    sp: GenericService,
+    #[cfg(target_os = "android")]
+    android_generation: u64,
+}
+
+impl Deref for DisplayService {
+    type Target = GenericService;
+
+    fn deref(&self) -> &Self::Target {
+        &self.sp
+    }
+}
+
+impl DerefMut for DisplayService {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.sp
+    }
+}
+
+pub fn new(#[cfg(target_os = "android")] android_generation: u64) -> GenericService {
+    let svc = DisplayService {
+        sp: GenericService::new(NAME.to_owned(), true),
+        #[cfg(target_os = "android")]
+        android_generation,
+    };
     GenericService::run(&svc.clone(), run);
     svc.sp
 }
@@ -197,18 +223,26 @@ fn displays_to_msg(displays: Vec<DisplayInfo>) -> Message {
     msg_out
 }
 
-fn check_get_displays_changed_msg() -> Option<Message> {
+fn check_get_displays_changed_msg(
+    #[cfg(target_os = "android")] android_generation: u64,
+) -> Option<Message> {
     #[cfg(target_os = "linux")]
     {
         if !is_x11() {
             return get_displays_msg();
         }
     }
-    check_update_displays(&try_get_displays().ok()?);
+    #[cfg(target_os = "android")]
+    let displays = try_get_displays_for_generation(android_generation).ok()?;
+    #[cfg(not(target_os = "android"))]
+    let displays = try_get_displays().ok()?;
+    check_update_displays(&displays);
     get_displays_msg()
 }
 
-pub fn check_displays_changed() -> ResultType<()> {
+pub fn check_displays_changed(
+    #[cfg(target_os = "android")] android_generation: u64,
+) -> ResultType<()> {
     #[cfg(target_os = "linux")]
     {
         // Currently, wayland need to call wayland::clear() before call Display::all(), otherwise it will cause
@@ -217,7 +251,11 @@ pub fn check_displays_changed() -> ResultType<()> {
             return Ok(());
         }
     }
-    check_update_displays(&try_get_displays()?);
+    #[cfg(target_os = "android")]
+    let displays = try_get_displays_for_generation(android_generation)?;
+    #[cfg(not(target_os = "android"))]
+    let displays = try_get_displays()?;
+    check_update_displays(&displays);
     Ok(())
 }
 
@@ -226,7 +264,7 @@ fn get_displays_msg() -> Option<Message> {
     Some(displays_to_msg(displays))
 }
 
-fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
+fn run(sp: DisplayService) -> ResultType<()> {
     while sp.ok() {
         sp.snapshot(|sps| {
             if !TEMP_IGNORE_DISPLAYS_CHANGED.load(Ordering::Relaxed) {
@@ -238,7 +276,10 @@ fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
             Ok(())
         })?;
 
-        if let Some(msg_out) = check_get_displays_changed_msg() {
+        if let Some(msg_out) = check_get_displays_changed_msg(
+            #[cfg(target_os = "android")]
+            sp.android_generation,
+        ) {
             sp.send(msg_out);
             log::info!("Displays changed");
         }
@@ -346,14 +387,18 @@ pub fn is_inited_msg() -> Option<Message> {
     None
 }
 
-pub async fn update_get_sync_displays_on_login() -> ResultType<Vec<DisplayInfo>> {
+pub async fn update_get_sync_displays_on_login(
+    #[cfg(target_os = "android")] android_generation: u64,
+) -> ResultType<Vec<DisplayInfo>> {
     #[cfg(target_os = "linux")]
     {
         if !is_x11() {
             return super::wayland::get_displays().await;
         }
     }
-    #[cfg(not(windows))]
+    #[cfg(target_os = "android")]
+    let displays = try_get_displays_for_generation(android_generation);
+    #[cfg(all(not(windows), not(target_os = "android")))]
     let displays = display_service::try_get_displays();
     #[cfg(windows)]
     let displays = display_service::try_get_displays_add_amyuni_headless();
@@ -410,6 +455,12 @@ fn no_displays(displays: &Vec<Display>) -> bool {
 #[cfg(not(windows))]
 pub fn try_get_displays() -> ResultType<Vec<Display>> {
     Ok(Display::all()?)
+}
+
+#[inline]
+#[cfg(target_os = "android")]
+pub fn try_get_displays_for_generation(android_generation: u64) -> ResultType<Vec<Display>> {
+    Ok(Display::all_for_generation(android_generation)?)
 }
 
 #[inline]

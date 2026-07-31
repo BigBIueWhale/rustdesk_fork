@@ -101,12 +101,20 @@ class PlatformFFI {
   void nextRgba(SessionID sessionId, int display, int publication) =>
       _ffiBind.sessionNextRgba(
           sessionId: sessionId, display: display, publication: publication);
-  void registerPixelbufferTexture(SessionID sessionId, int display, int ptr) =>
+  void registerPixelbufferTexture(
+          SessionID sessionId, SessionID clientOwnerId, int display, int ptr) =>
       _ffiBind.sessionRegisterPixelbufferTexture(
-          sessionId: sessionId, display: display, ptr: ptr);
-  void registerGpuTexture(SessionID sessionId, int display, int ptr) =>
+          sessionId: sessionId,
+          clientOwnerId: clientOwnerId,
+          display: display,
+          ptr: ptr);
+  void registerGpuTexture(
+          SessionID sessionId, SessionID clientOwnerId, int display, int ptr) =>
       _ffiBind.sessionRegisterGpuTexture(
-          sessionId: sessionId, display: display, ptr: ptr);
+          sessionId: sessionId,
+          clientOwnerId: clientOwnerId,
+          display: display,
+          ptr: ptr);
 
   Future<void> init(String appType) async {
     Completer completer = Completer();

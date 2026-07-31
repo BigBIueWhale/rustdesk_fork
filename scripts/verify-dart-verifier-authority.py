@@ -207,6 +207,7 @@ def validate_contract(sources: Dict[str, str]) -> None:
             'if [ "$analyze_status" -ne 0 ] || [ "$errs" != "0" ]; then',
             'flutter test --no-pub test/address_validator_test.dart',
             'flutter test --no-pub test/mobile_file_session_lifecycle_test.dart',
+            'flutter test --no-pub test/desktop_texture_lifecycle_test.dart',
             '--env "RUSTDESK_RUST_VERSION=$RUST_VERSION"',
             'tar -C "$toolchain" -xf "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz"',
             '--components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview',
@@ -658,6 +659,12 @@ MUTATIONS = (
         "flutter test --no-pub test/mobile_file_session_lifecycle_test.dart",
         "true # mobile file-session lifecycle test disabled",
         "mobile file-session lifecycle regression",
+    ),
+    Mutation(
+        "dart",
+        "flutter test --no-pub test/desktop_texture_lifecycle_test.dart",
+        "true # desktop texture lifecycle test disabled",
+        "desktop texture lifecycle regression",
     ),
     Mutation(
         "dart",

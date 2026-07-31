@@ -8968,6 +8968,13 @@ else
   echo "  FAIL R-S11ew/R-S11e-184: Flutter software RGBA publication regained stale, cross-session, cross-stream, unbounded, or borrowed-pointer state"
   rc=1
 fi
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ex_ --color never
+if python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test; then
+  echo "  ok  R-S11ex/R-S11e-185 desktop Flutter texture creation, publication, replacement, and teardown have one exact asynchronous owner"
+else
+  echo "  FAIL R-S11ex/R-S11e-185: desktop Flutter texture lifecycle regained detached creation, stale UI-owner registration, overlapping replacement, or unordered teardown"
+  rc=1
+fi
 grep -qF 'native_video_format_locally_unsupported(&lc.mark_unsupported, format)' src/client.rs ||
   { echo "  FAIL Appendix C #2b/R-T0: video receive loop must drop locally-unsupported peer codecs before recreating a native decoder worker"; rc=1; }
 grep -qF 'local decoder is marked unsupported' src/client.rs ||

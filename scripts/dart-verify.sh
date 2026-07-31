@@ -173,11 +173,14 @@ local_docker run --rm --pull=never --network=none --read-only \
     fi
     dart format --output=none --set-exit-if-changed \
       lib/models/model.dart \
+      lib/models/desktop_render_texture.dart \
+      lib/models/desktop_texture_lifecycle.dart \
       lib/models/mobile_session_start_queue.dart \
       lib/models/session_stream_finality.dart \
       lib/mobile/pages/remote_page.dart \
       lib/mobile/pages/view_camera_page.dart \
       lib/web/bridge.dart \
+      test/desktop_texture_lifecycle_test.dart \
       test/mobile_session_start_queue_test.dart \
       test/session_stream_finality_test.dart
     set +e
@@ -207,6 +210,8 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/mobile_session_start_queue_test.dart
     echo "  == R-S11eo flutter test: expected close and unexpected stream failure stay distinct =="
     flutter test --no-pub test/session_stream_finality_test.dart
+    echo "  == R-S11ex flutter test: desktop texture lifecycle exact finality =="
+    flutter test --no-pub test/desktop_texture_lifecycle_test.dart
     cd /src
     rustfmt --edition 2021 --check src/flutter.rs src/flutter_ffi.rs
     echo "  == shipped Debian Rust library check: flutter,unix-file-copy-paste =="

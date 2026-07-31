@@ -2412,6 +2412,156 @@ artifact identity; a clean committed cold R-B2/R-B10 release transaction; separa
 independent reproduction; and external review. This software handoff correction does not complete
 the broader cross-platform connection correctness/performance mandate or the Ralph loop.
 
+**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration —
+SOURCE IMPLEMENTED 2026-07-31; EXACT-FINAL-SOURCE FRESH PRODUCTION BRIDGE, DART
+FORMAT/ANALYSIS/BEHAVIOR, SHIPPED LINUX RUST CHECK/REGRESSIONS, PINNED AARCH64 ANDROID
+RUST CHECK, FOCUSED 42-MUTATION GATE, 92-MUTATION DART-VERIFIER AUTHORITY, AND
+INDEPENDENT BASELINE PLUS COMPLETE 3,312-ENTRY SOURCE-MUTATION CATALOG GREEN;
+NATIVE WINDOWS/LINUX/macOS RENDERER, REAL FOCUS/WINDOW-TRANSFER REPRODUCTION, COLD
+RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW PENDING.** Platforms: the
+Windows, Linux, and macOS outgoing-viewer
+Flutter texture path. Endpoint/action: pixelbuffer and optional GPU plugin creation,
+publication to `VideoRenderer`, display replacement, tab-to-window transfer, and page/session
+teardown. Boundary: asynchronous plugin work can outlive one Flutter view while the connection
+UUID is deliberately reused by its replacement.
+
+The inherited `desktop_render_texture.dart` launched both plugin creations through detached
+`Future.then` continuations. Teardown inspected only IDs/pointers populated by those continuations,
+so a destroy requested before initialization completed could return without owning the work; the
+late continuation could then publish into a closing UI session. Display switching removed the old
+object from its map immediately and permitted a same-display replacement while the predecessor
+waited an arbitrary 100 milliseconds before teardown. Page disposal did not await texture
+finality before native close.
+
+Tab-to-window transfer exposed a second exact-owner defect. The replacement `FFI` intentionally
+reuses the connection `SessionID`, and native insertion replaces the `SessionHandler` stored under
+that UUID. Desktop `clientOwnerId` was also that same UUID. A late creation or unregistration from
+the old view therefore carried no identity by which native code could distinguish it from the
+replacement view; old work could register into or clear the replacement renderer. Reconnect,
+window closure, or process exit destroyed enough state to mask the race. This is source proof of
+desktop renderer-registration and resource-finality debt. It is not proof that this mechanism
+caused the reported focus-loss display delay, that the pinned pixelbuffer/GPU plugins are correct,
+or that any native platform has executed the correction.
+
+Each desktop `FFI` now receives a fresh UI-owner UUID independent of the possibly reused
+connection UUID. Pixelbuffer and GPU registration carry both values through the Dart interface,
+fresh generated bridge, Rust FFI wrapper, and native renderer admission. Native mutation occurs
+only while the current handler for that connection has the exact owner. A same-session regression
+replaces an old handler with a new owner and requires both late old registration and late old
+unregistration to be rejected without changing the new texture pointer.
+
+One explicit Dart lifecycle owns initialization, publication, matching unpublication, and release.
+Retirement becomes visible before its first await, drains the exact initialization future,
+suppresses late publication, and shares one finality future across repeated retirement. Failed
+initialization releases any partial allocation immediately; a possibly-partial throwing
+publication is unpublished and released; unpublication failure cannot prevent the one release;
+all failures are reported rather than silently ignored. Pixelbuffer and GPU owners are both
+constructed before either begins allocation, so a synchronous sibling-constructor failure cannot
+strand already-started plugin work. Matching unpublication attempts native unregister first but
+clears the Dart UI texture ID in `finally`, and clears it only when that exact ID is still installed;
+a retired owner therefore cannot blank a replacement's UI state, while a native-unregister
+exception cannot leave the retired ID displayed.
+
+One serialized slot per display reconciles desired state. If demand returns while the predecessor
+is retiring, it waits for that exact retirement before constructing the replacement. A
+synchronous constructor failure is reported once and settles that demand transition rather than
+spinning; a later display-demand transition may retry. Display replacement has no sleep or
+fixed-delay ownership heuristic. Both desktop page disposers initiate invalidation synchronously,
+then await the complete texture drain before native UI/session close. Flutter's framework still
+does not await `State.dispose`; the async continuation itself therefore owns this internal order.
+
+Seven deterministic Dart behaviors cover late initialization after retirement, one exact
+publish/unpublish/release sequence, failed initialization cleanup, failed publication cleanup,
+unpublication/release error visibility with release finality, bounded synchronous-constructor
+failure and later retry, and replacement blocked on exact predecessor retirement. The native
+same-session owner-replacement regression covers the cross-window boundary. The focused verifier,
+shared verifier, Dart verifier, Apple source gate, Dart-verifier authority checker, and independent
+workspace catalog have been extended to bind those behaviors, bridge arguments, page order,
+exact-ID UI clearing, requirements, ledger, and gate wiring.
+
+The exact final source completed the full `scripts/dart-verify.sh` transaction in the audited
+Debian builder
+`sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`.
+It independently reverified the canonical 145,629-file, 42,831-directory, 41-symlink,
+30,669,039,776-content-byte offline closure at
+`a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`, and the pinned
+Rust 1.75, Flutter 3.24.5, LLVM 15.0.6, and FRB 1.80.1 archives, before making and
+reverifying a private read-only snapshot. Fresh production bridge generation, `build_runner`,
+formatting, and atomic output publication succeeded. The generator's existing Dart C-header
+`_Dart_Handle` typedef diagnostic remained visible and nonfatal.
+
+Against those fresh bridge outputs, all eleven selected authored Dart files were already
+formatter-clean; `flutter analyze lib/` reported zero errors; and the existing address,
+saved-peer, role-swap, mobile-file-session, mobile-start-queue, and stream-finality suites plus
+all seven new desktop-texture lifecycle tests passed. The locked/offline shipped
+`flutter,unix-file-copy-paste` Rust library check passed. The 16-test mobile-session lifecycle
+module passed, including the R-S11ex same-connection old-owner registration/unregistration
+rejection, followed by the exact clipboard, delayed OS-password input, screenshot,
+video-acknowledgement, and audio-egress regressions. The Dart dead-surface audit was clean.
+The transaction reverified the private offline closure at the end and proved the source
+worktree archive unchanged.
+
+The focused verifier passed its complete 42-mutation catalog. The independent
+Dart-verifier-authority checker rejected all 92 mutations, the independent workspace
+baseline passed, and its complete 3,312-entry repository source-mutation catalog passed.
+That catalog initially refused three imprecise fixtures rather than overstating coverage:
+five desktop focused-verifier needles were made context-unique and their exact rejection
+labels were bound; the Android add/attach/start owner-count mutation was split into five
+operation-specific fixtures so the two legitimate new desktop texture-owner arguments were
+not falsely treated as Android targets. Every complete catalog restart began again at
+mutation one. A pinned release-mode aarch64 Android Rust check had already passed against
+the exact current Rust/FFI source in
+`sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2`;
+the only later production adjustment was the desktop-Dart exact-ID `finally` clearing above,
+which the fresh final Dart analysis/tests cover. This distinction is intentional: Android Rust
+cross-compilation does not execute a desktop texture plugin.
+
+Read-only review of the exact pinned native plugin sources also prevents a broader false
+claim here. The macOS RGBA plugin's `closeTexture` unregisters a texture but appears not to
+erase its retained renderer-map entry, while the Windows RGBA close path explicitly
+unregisters and then erases an object whose destructor also unregisters. Those dependency
+paths require dedicated native ownership review, correction as appropriate, compilation,
+and runtime instrumentation. This app-side slice invokes one exact awaited close; it does
+not establish that the pinned plugin implements one exact native release on every desktop.
+
+Preliminary non-passes remain explicit. An attempt to use the live repository `online/` tree was
+refused before Docker because that tree was writable; a private canonical read-only snapshot was
+created instead. The first private invocation stopped before Docker because the standalone helper
+had not been given both immutable-image variables. One later invocation stopped in argument
+parsing because obsolete option names were supplied. Two formatter preparations likewise stopped
+before Docker—first because broad cleanup text was rejected by command policy, then because the
+repository pin loader had not yet been invoked. None is counted as product evidence. The corrected
+formatter invocation used the pinned builder under confinement and completed. A later
+read-only formatter check initially stopped before formatting because the Dart analytics client
+had no writable `HOME`; the corrected invocation supplied a private tmpfs home and found all
+three newly touched Dart files unchanged. The first post-exact-ID focused verifier invocation
+failed because its braced-item parser began at the named-argument brace rather than the method
+body; the fixture was corrected to name the complete method signature, after which validation
+and all 42 mutations passed. A first combined final-static wrapper completed Python/HTML parsing
+but then expanded an unset nested-shell positional parameter while extracting the digest; the
+corrected wrapper used a non-positional extraction and reran the complete static set. None of
+these preliminary stops is counted as behavior or compile evidence.
+
+Counted generation and formatting used numeric UID/GID 1000:1000, no pull/network, a read-only
+container root, dropped capabilities, no-new-privileges, bounded resources, a private source
+snapshot or formatting copy, and a read-only private offline-input snapshot. No host port, listener,
+device, Docker socket mount, host namespace, RustDesk process, service manager, firewall, network
+configuration, host RustDesk configuration, peer connection, renderer, or product executable was
+started or modified. Final changed-shell parsing, changed-Python compilation, requirements HTML
+parsing, both requirements-digest bindings, native-codec normal/adversarial checks, focused
+42-mutation validation, 92-mutation Dart-verifier authority, independent semantic baseline,
+`git diff --check`, and line-by-line diff review passed. To avoid recursively changing the
+evidence target, the terminal complete 3,312-entry source-mutation run is performed after this
+ledger paragraph and its exact result is reported in the commit handoff; no later repository
+edit may be covered by that result. Even after those confined checks pass,
+native renderer/plugin execution,
+timestamped current and older Windows-viewer/Debian-controlled focus/unfocus, real
+tab-to-window/reconnect/display-switch stress, Android/iOS lifecycle work, complete
+capture-through-presentation instrumentation and budgets, exact artifact identity, the clean
+committed cold R-B2/R-B10 release transaction, separately required independent reproduction, and
+external review remain open. This source correction does not complete the broader connection-flow
+correctness/performance mandate or the Ralph loop.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -16891,7 +17041,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-e59c90341543b2edd0be20a7a6ec37f47711df03f7bc9ac97eb6feb93d119448  requirements.html
+7fb97a9a25806111dd5a80da58c9a21ae86c5510cbd4148ac82447978e55b2ce  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -16911,3 +17061,6 @@ The same identity additionally binds R-S11ek and Appendix C #290.
 The same identity additionally binds R-S11em and Appendix C #295.
 The same identity additionally binds R-S11et and Appendix C #302.
 The same identity additionally binds R-S11eu and Appendix C #303.
+The same identity additionally binds R-S11ev and Appendix C #304.
+The same identity additionally binds R-S11ew and Appendix C #305.
+The same identity additionally binds R-S11ex and Appendix C #306.

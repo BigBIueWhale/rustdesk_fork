@@ -16508,6 +16508,135 @@ def validate_viewer_rgba_mailbox_contract(sources):
     )
 
 
+def validate_desktop_texture_lifecycle_contract(sources):
+    focused = sources["desktop_texture_lifecycle_verifier"]
+    validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "desktop texture lifecycle focused validation",
+    )
+    for text, label in (
+        ("def extract_braced_item(", "desktop texture braced-item parser"),
+        ("def validate(sources", "desktop texture semantic entry"),
+        (
+            '"if (!ready)"',
+            "desktop texture failed-initialization cleanup contract",
+        ),
+        (
+            '"if (_retireRequested)"',
+            "desktop texture late-publication exclusion contract",
+        ),
+        (
+            '"return _retireFuture ??= _retire();"',
+            "desktop texture exact finality contract",
+        ),
+        (
+            '"_releaseFuture ??= _releaseAndReportFailure()"',
+            "desktop texture exact release contract",
+        ),
+        (
+            '"await retiring.retire();"',
+            "desktop texture predecessor-finality contract",
+        ),
+        (
+            '"_wanted ? _current != null || _creationFailed : _current == null"',
+            "desktop texture failed-creation bound",
+        ),
+        (
+            '"clientOwnerId = isMobile ? _mobileClientOwnerId : Uuid().v4obj();"',
+            "fresh desktop UI-owner contract",
+        ),
+        (
+            '"if handler.client_owner_id.as_ref() != Some(client_owner_id)"',
+            "native exact desktop UI-owner admission",
+        ),
+        (
+            '"final textureDisposal = _ffi.textureModel.dispose();"',
+            "desktop page synchronous texture invalidation",
+        ),
+        (
+            '"fn r_s11ex_retired_desktop_ui_owner_cannot_replace_or_clear_texture()"',
+            "desktop native retired-owner regression",
+        ),
+        ("MUTATIONS: Tuple[Mutation, ...]", "desktop texture mutation inventory"),
+        ("run_self_test(sources)", "desktop texture mutation dispatch"),
+    ):
+        source = (
+            focused
+            if text
+            in {
+                "def extract_braced_item(",
+                "def validate(sources",
+                "MUTATIONS: Tuple[Mutation, ...]",
+                "run_self_test(sources)",
+            }
+            else validation
+        )
+        require_text(source, text, label)
+
+    for text, label in (
+        (
+            '("lifecycle", "return _retireFuture ??= _retire();", '
+            '"return _retire();", "exact retirement finality"),',
+            "desktop texture exact-finality mutation",
+        ),
+        (
+            '("lifecycle", "_releaseFuture ??= _releaseAndReportFailure()", '
+            '"_releaseAndReportFailure()", "exact release future"),',
+            "desktop texture exact-release mutation",
+        ),
+        (
+            '("lifecycle", "await retiring.retire();", '
+            '"retiring.retire();", "predecessor finality"),',
+            "desktop texture predecessor-finality mutation",
+        ),
+        (
+            '("model", "clientOwnerId = isMobile ? _mobileClientOwnerId : Uuid().v4obj();", '
+            '"clientOwnerId = isMobile ? _mobileClientOwnerId : sessionId;", '
+            '"fresh desktop UI owner"),',
+            "desktop UI-owner mutation",
+        ),
+        (
+            '("flutter", "if handler.client_owner_id.as_ref() != Some(client_owner_id)", '
+            '"if false", "native exact owner admission"),',
+            "native exact-owner mutation",
+        ),
+    ):
+        require_text(focused, text, label)
+
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test",
+        "desktop texture shared focused-verifier wiring",
+    )
+    require_text(
+        sources["apple"],
+        "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test",
+        "desktop texture Apple focused-verifier wiring",
+    )
+    require_text(
+        sources["dart_verify"],
+        "flutter test --no-pub test/desktop_texture_lifecycle_test.dart",
+        "desktop texture confined Dart behavior gate",
+    )
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11ex</span>',
+        "desktop texture lifecycle requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>306</td>",
+        "desktop texture lifecycle Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
+        "desktop texture lifecycle hardening ledger",
+    )
+
+
 def validate_android_voice_call_ownership_contract(sources):
     focused = sources["android_voice_call_ownership_verifier"]
     validation = extract_between(
@@ -17705,8 +17834,14 @@ def validate_android_voice_call_ownership_contract(sources):
         "Future<void> sessionAddMobile(",
         "Android web bridge mobile-add interface parity source",
     )
-    require_exact_count(
+    authored_session_bridge = extract_between(
         sources["flutter_ffi_source"],
+        "pub fn session_add_existed_sync(",
+        "\npub fn session_get_remember(",
+        "Android authored add/attach/start bridge source",
+    )
+    require_exact_count(
+        authored_session_bridge,
         "client_owner_id: SessionID,",
         5,
         "Android authored add/attach/start dual-identity bridge source",
@@ -35092,6 +35227,7 @@ def validate_sources(sources):
     validate_viewer_voice_call_worker_contract(sources)
     validate_viewer_video_mailbox_contract(sources)
     validate_viewer_rgba_mailbox_contract(sources)
+    validate_desktop_texture_lifecycle_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
     validate_android_client_lifecycle_drain_contract(sources)
     validate_android_listener_generation_contract(sources)
@@ -50901,6 +51037,84 @@ def run_source_mutations(sources):
             "viewer RGBA exhaustion regression",
         ),
         (
+            "desktop_texture_lifecycle_verifier",
+            '"return _retireFuture ??= _retire();",\n'
+            '        ),\n'
+            '        "invalidate-before-wait and exact finality",',
+            '"return _retire();",\n'
+            '        ),\n'
+            '        "invalidate-before-wait and exact finality",',
+            "desktop texture exact finality contract",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '"_releaseFuture ??= _releaseAndReportFailure()",\n'
+            '        "at-most-once release future",',
+            '"_releaseAndReportFailure()",\n'
+            '        "at-most-once release future",',
+            "desktop texture exact release contract",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '"await retiring.retire();",\n'
+            '            "if (identical(_current, retiring))",',
+            '"retiring.retire();",\n'
+            '            "if (identical(_current, retiring))",',
+            "desktop texture predecessor-finality contract",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '"clientOwnerId = isMobile ? _mobileClientOwnerId : Uuid().v4obj();",\n'
+            '        "fresh desktop UI owner independent of connection UUID",',
+            '"clientOwnerId = isMobile ? _mobileClientOwnerId : sessionId;",\n'
+            '        "fresh desktop UI owner independent of connection UUID",',
+            "fresh desktop UI-owner contract",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '"if handler.client_owner_id.as_ref() != Some(client_owner_id)",\n'
+            '            "return Some(false);",',
+            '"if false",\n'
+            '            "return Some(false);",',
+            "native exact desktop UI-owner admission",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test",
+            "true # desktop texture lifecycle verifier removed",
+            "desktop texture shared focused-verifier wiring",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test",
+            "true # desktop texture lifecycle verifier removed",
+            "desktop texture Apple focused-verifier wiring",
+        ),
+        (
+            "dart_verify",
+            "flutter test --no-pub test/desktop_texture_lifecycle_test.dart",
+            "true # desktop texture lifecycle test removed",
+            "desktop texture confined Dart behavior gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11ex</span>',
+            '<div class="req"><span class="id">R-S11ex-disabled</span>',
+            "desktop texture lifecycle requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>306</td>",
+            "<tr><td>306-disabled</td>",
+            "desktop texture lifecycle Appendix C row",
+        ),
+        (
+            "hardening",
+            "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
+            "**R-S11ex-disabled/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
+            "desktop texture lifecycle hardening ledger",
+        ),
+        (
             "verify",
             "python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test",
             "true # viewer RGBA mailbox verifier removed",
@@ -51870,8 +52084,58 @@ def run_source_mutations(sources):
         ),
         (
             "flutter_ffi_source",
-            "client_owner_id: SessionID,",
-            "client_owner_id: String,",
+            "pub fn session_add_existed_sync(\n"
+            "    id: String,\n"
+            "    session_id: SessionID,\n"
+            "    client_owner_id: SessionID,",
+            "pub fn session_add_existed_sync(\n"
+            "    id: String,\n"
+            "    session_id: SessionID,\n"
+            "    client_owner_id: String,",
+            "Android authored add/attach/start dual-identity bridge source",
+        ),
+        (
+            "flutter_ffi_source",
+            "pub fn session_add_sync(\n"
+            "    session_id: SessionID,\n"
+            "    client_owner_id: SessionID,",
+            "pub fn session_add_sync(\n"
+            "    session_id: SessionID,\n"
+            "    client_owner_id: String,",
+            "Android authored add/attach/start dual-identity bridge source",
+        ),
+        (
+            "flutter_ffi_source",
+            "pub fn session_add_mobile(\n"
+            "    session_id: SessionID,\n"
+            "    client_owner_id: SessionID,",
+            "pub fn session_add_mobile(\n"
+            "    session_id: SessionID,\n"
+            "    client_owner_id: String,",
+            "Android authored add/attach/start dual-identity bridge source",
+        ),
+        (
+            "flutter_ffi_source",
+            "pub fn session_start(\n"
+            "    events2ui: StreamSink<EventToUI>,\n"
+            "    session_id: SessionID,\n"
+            "    client_owner_id: SessionID,",
+            "pub fn session_start(\n"
+            "    events2ui: StreamSink<EventToUI>,\n"
+            "    session_id: SessionID,\n"
+            "    client_owner_id: String,",
+            "Android authored add/attach/start dual-identity bridge source",
+        ),
+        (
+            "flutter_ffi_source",
+            "pub fn session_start_with_displays(\n"
+            "    events2ui: StreamSink<EventToUI>,\n"
+            "    session_id: SessionID,\n"
+            "    client_owner_id: SessionID,",
+            "pub fn session_start_with_displays(\n"
+            "    events2ui: StreamSink<EventToUI>,\n"
+            "    session_id: SessionID,\n"
+            "    client_owner_id: String,",
             "Android authored add/attach/start dual-identity bridge source",
         ),
         (
@@ -60504,6 +60768,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "viewer_rgba_mailbox_verifier": (
                 repo / "scripts/verify-viewer-rgba-mailbox.py"
+            ).read_text(encoding="utf-8"),
+            "desktop_texture_lifecycle_verifier": (
+                repo / "scripts/verify-desktop-texture-lifecycle.py"
             ).read_text(encoding="utf-8"),
             "android_voice_call_ownership_verifier": (
                 repo / "scripts/verify-android-voice-call-ownership.py"

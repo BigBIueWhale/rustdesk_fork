@@ -218,7 +218,10 @@ class _ViewCameraPageState extends State<ViewCameraPage>
     // https://github.com/flutter/flutter/issues/64935
     super.dispose();
     debugPrint("VIEW CAMERA PAGE dispose session $sessionId ${widget.id}");
-    _ffi.textureModel.onViewCameraPageDispose(closeSession);
+    // Invalidate texture publication before any asynchronous page cleanup.
+    // The framework does not await State.dispose(), so keep the ordering inside
+    // this continuation: exact textures retire before the native UI session.
+    final textureDisposal = _ffi.textureModel.dispose();
     if (closeSession) {
       // ensure we leave this session, this is a double check
       _ffi.inputModel.enterOrLeave(false);
@@ -228,6 +231,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
     _ffi.imageModel.disposeImage();
     _ffi.cursorModel.disposeImages();
     _rawKeyFocusNode.dispose();
+    await textureDisposal;
     await _ffi.close(closeSession: closeSession);
     _timer?.cancel();
     _ffi.dialogManager.dismissAll();

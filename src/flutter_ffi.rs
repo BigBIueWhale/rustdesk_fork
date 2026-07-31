@@ -2004,21 +2004,29 @@ pub fn session_next_rgba(
 
 pub fn session_register_pixelbuffer_texture(
     session_id: SessionID,
+    client_owner_id: SessionID,
     display: usize,
     ptr: usize,
 ) -> SyncReturn<()> {
     SyncReturn(super::flutter::session_register_pixelbuffer_texture(
-        session_id, display, ptr,
+        session_id,
+        client_owner_id,
+        display,
+        ptr,
     ))
 }
 
 pub fn session_register_gpu_texture(
     session_id: SessionID,
+    client_owner_id: SessionID,
     display: usize,
     ptr: usize,
 ) -> SyncReturn<()> {
     SyncReturn(super::flutter::session_register_gpu_texture(
-        session_id, display, ptr,
+        session_id,
+        client_owner_id,
+        display,
+        ptr,
     ))
 }
 

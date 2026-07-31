@@ -763,6 +763,51 @@ impl VideoRenderer {
     }
 }
 
+impl FlutterHandler {
+    fn with_exact_ui_owner_renderer<F>(
+        &self,
+        session_id: &SessionID,
+        client_owner_id: &SessionID,
+        operation: F,
+    ) -> Option<bool>
+    where
+        F: FnOnce(&VideoRenderer),
+    {
+        let handlers = self.session_handlers.read().unwrap();
+        let handler = handlers.get(session_id)?;
+        if handler.client_owner_id.as_ref() != Some(client_owner_id) {
+            return Some(false);
+        }
+        operation(&handler.renderer);
+        Some(true)
+    }
+
+    fn register_pixelbuffer_texture(
+        &self,
+        session_id: &SessionID,
+        client_owner_id: &SessionID,
+        display: usize,
+        ptr: usize,
+    ) -> Option<bool> {
+        self.with_exact_ui_owner_renderer(session_id, client_owner_id, |renderer| {
+            renderer.register_pixelbuffer_texture(display, ptr);
+        })
+    }
+
+    #[cfg(feature = "vram")]
+    fn register_gpu_texture(
+        &self,
+        session_id: &SessionID,
+        client_owner_id: &SessionID,
+        display: usize,
+        output_ptr: usize,
+    ) -> Option<bool> {
+        self.with_exact_ui_owner_renderer(session_id, client_owner_id, |renderer| {
+            renderer.register_gpu_output(display, output_ptr);
+        })
+    }
+}
+
 impl SessionHandler {
     pub fn on_waiting_for_image_dialog_show(&self) {
         self.renderer.reset_all_display_render_type();
@@ -2168,33 +2213,47 @@ pub fn session_set_size(session_id: SessionID, display: usize, width: usize, hei
 }
 
 #[inline]
-pub fn session_register_pixelbuffer_texture(session_id: SessionID, display: usize, ptr: usize) {
+pub fn session_register_pixelbuffer_texture(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+    display: usize,
+    ptr: usize,
+) {
     for s in sessions::get_sessions() {
-        if let Some(h) = s
-            .ui_handler
-            .session_handlers
-            .read()
-            .unwrap()
-            .get(&session_id)
+        if let Some(admitted) =
+            s.ui_handler
+                .register_pixelbuffer_texture(&session_id, &client_owner_id, display, ptr)
         {
-            h.renderer.register_pixelbuffer_texture(display, ptr);
+            if !admitted {
+                log::debug!(
+                    "Ignoring pixelbuffer texture operation from a retired UI owner for session {session_id}"
+                );
+            }
             break;
         }
     }
 }
 
 #[inline]
-pub fn session_register_gpu_texture(_session_id: SessionID, _display: usize, _output_ptr: usize) {
+pub fn session_register_gpu_texture(
+    _session_id: SessionID,
+    _client_owner_id: SessionID,
+    _display: usize,
+    _output_ptr: usize,
+) {
     #[cfg(feature = "vram")]
     for s in sessions::get_sessions() {
-        if let Some(h) = s
-            .ui_handler
-            .session_handlers
-            .read()
-            .unwrap()
-            .get(&_session_id)
-        {
-            h.renderer.register_gpu_output(_display, _output_ptr);
+        if let Some(admitted) = s.ui_handler.register_gpu_texture(
+            &_session_id,
+            &_client_owner_id,
+            _display,
+            _output_ptr,
+        ) {
+            if !admitted {
+                log::debug!(
+                    "Ignoring GPU texture operation from a retired UI owner for session {_session_id}"
+                );
+            }
             break;
         }
     }
@@ -3288,6 +3347,60 @@ mod mobile_session_lifecycle_tests {
         assert!(!mailboxes.contains_key(&(current, 0)));
         assert!(mailboxes.contains_key(&(current, 1)));
         assert!(mailboxes.contains_key(&(other, 0)));
+    }
+
+    #[test]
+    fn r_s11ex_retired_desktop_ui_owner_cannot_replace_or_clear_texture() {
+        let handler = FlutterHandler::default();
+        let session_id = SessionID::new_v4();
+        let old_owner = SessionID::new_v4();
+        let replacement_owner = SessionID::new_v4();
+        {
+            let mut handlers = handler.session_handlers.write().unwrap();
+            handlers.insert(
+                session_id,
+                SessionHandler {
+                    client_owner_id: Some(old_owner),
+                    ..Default::default()
+                },
+            );
+        }
+        assert_eq!(
+            handler.register_pixelbuffer_texture(&session_id, &old_owner, 0, 41),
+            Some(true)
+        );
+
+        // Tab-to-window transfer reuses the connection UUID but replaces the
+        // exact UI owner and its renderer.
+        {
+            let mut handlers = handler.session_handlers.write().unwrap();
+            handlers.insert(
+                session_id,
+                SessionHandler {
+                    client_owner_id: Some(replacement_owner),
+                    ..Default::default()
+                },
+            );
+        }
+        assert_eq!(
+            handler.register_pixelbuffer_texture(&session_id, &replacement_owner, 0, 84),
+            Some(true)
+        );
+        assert_eq!(
+            handler.register_pixelbuffer_texture(&session_id, &old_owner, 0, 99),
+            Some(false),
+            "a late old create must not replace the new texture"
+        );
+        assert_eq!(
+            handler.register_pixelbuffer_texture(&session_id, &old_owner, 0, 0),
+            Some(false),
+            "a late old teardown must not clear the new texture"
+        );
+
+        let handlers = handler.session_handlers.read().unwrap();
+        let current = handlers.get(&session_id).unwrap();
+        let displays = current.renderer.map_display_sessions.read().unwrap();
+        assert_eq!(displays.get(&0).unwrap().texture_rgba_ptr, 84);
     }
 
     #[test]

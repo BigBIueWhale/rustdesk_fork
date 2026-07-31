@@ -312,7 +312,10 @@ class _RemotePageState extends State<RemotePage>
     // Clear callback reference to prevent memory leaks and stale references
     _ffi.inputModel.onRelativeMouseModeDisabled = null;
     // Relative mouse mode cleanup is centralized in FFI.close(closeSession: ...).
-    _ffi.textureModel.onRemotePageDispose(closeSession);
+    // Invalidate texture publication before any asynchronous page cleanup.
+    // The framework does not await State.dispose(), so keep the ordering inside
+    // this continuation: exact textures retire before the native UI session.
+    final textureDisposal = _ffi.textureModel.dispose();
     if (closeSession) {
       // ensure we leave this session, this is a double check
       _ffi.inputModel.enterOrLeave(false);
@@ -322,6 +325,7 @@ class _RemotePageState extends State<RemotePage>
     _ffi.imageModel.disposeImage();
     _ffi.cursorModel.disposeImages();
     _rawKeyFocusNode.dispose();
+    await textureDisposal;
     await _ffi.close(closeSession: closeSession);
     _timer?.cancel();
     _ffi.dialogManager.dismissAll();

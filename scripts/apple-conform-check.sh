@@ -3467,6 +3467,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c3) R-S11ex desktop Flutter texture lifecycle =="
+if python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test; then
+  note "ok  R-S11ex Apple/shared desktop Flutter texture lifecycle is exact-UI-owner-bound and final"
+else
+  echo "  FAIL R-S11ex Apple/shared desktop Flutter texture lifecycle regained detached creation, stale UI-owner registration, overlapping replacement, or unordered teardown"
+  rc=1
+fi
+
 echo "== (3) cross-compile coherence matrix (Rust 1.81, actual Apple features) =="
 echo "  targets: ${SELECTED_APPLE_TARGETS[*]}"
 [ ! -e "$REPO/src/version.rs" ] || {

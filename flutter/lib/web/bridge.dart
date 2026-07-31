@@ -1228,12 +1228,14 @@ class RustdeskImpl {
 
   void sessionRegisterPixelbufferTexture(
       {required UuidValue sessionId,
+      required UuidValue clientOwnerId,
       required int display,
       required int ptr,
       dynamic hint}) {}
 
   void sessionRegisterGpuTexture(
       {required UuidValue sessionId,
+      required UuidValue clientOwnerId,
       required int display,
       required int ptr,
       dynamic hint}) {}

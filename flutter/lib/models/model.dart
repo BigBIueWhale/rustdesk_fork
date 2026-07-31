@@ -3454,7 +3454,10 @@ class FFI {
 
   FFI(SessionID? sId) {
     sessionId = sId ?? Uuid().v4obj();
-    clientOwnerId = isMobile ? _mobileClientOwnerId : sessionId;
+    // A desktop tab-to-window transfer intentionally reuses the connection
+    // UUID. The UI owner must still change so delayed work from the old view
+    // cannot mutate the replacement handler.
+    clientOwnerId = isMobile ? _mobileClientOwnerId : Uuid().v4obj();
     imageModel = ImageModel(WeakReference(this));
     ffiModel = FfiModel(WeakReference(this));
     cursorModel = CursorModel(WeakReference(this));

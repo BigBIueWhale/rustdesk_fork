@@ -10,7 +10,7 @@ use crate::{
 use crate::{
     client::{
         self, new_voice_call_request, Client, Data, Interface, MediaData, OwnedMediaThread,
-        QualityStatus, MILLI1, SEC30,
+        OwnedVideoThread, QualityStatus, VideoControl, VideoFrameAdmission, MILLI1, SEC30,
     },
     common::get_default_sound_input,
     ui_session_interface::{InvokeUiSession, Session},
@@ -22,7 +22,6 @@ use crate::{clipboard::try_empty_clipboard_files, clipboard_file::unix_file_clip
     all(target_os = "macos", feature = "unix-file-copy-paste")
 ))]
 use clipboard::ContextSend;
-use crossbeam_queue::ArrayQueue;
 use hbb_common::{
     allow_err,
     config::{self, Config, LocalConfig, PeerConfig, TransferSerde},
@@ -75,6 +74,20 @@ fn native_video_frame_runtime_supported(vf: &VideoFrame) -> bool {
         false
     } else {
         true
+    }
+}
+
+fn starts_video_sequence(vf: &VideoFrame) -> bool {
+    use video_frame::Union::*;
+    match &vf.union {
+        Some(vf) => match vf {
+            Vp8s(f) | Vp9s(f) | Av1s(f) | H264s(f) | H265s(f) => {
+                f.frames.first().map_or(false, |frame| frame.key)
+            }
+            Rgb(_) | Yuv(_) => true,
+            _ => false,
+        },
+        None => false,
     }
 }
 
@@ -918,7 +931,6 @@ impl<T: InvokeUiSession> Remote<T> {
             voice_call_audio.stop();
         }
         for (_, mut video_thread) in self.video_threads.drain() {
-            *video_thread.discard_queue.write().unwrap() = true;
             if let Some(worker) = video_thread.media_thread.close() {
                 workers.push(worker);
             }
@@ -1010,12 +1022,12 @@ impl<T: InvokeUiSession> Remote<T> {
                     Some(message::Union::Misc(misc)) => match misc.union {
                         Some(misc::Union::RefreshVideo(_)) => {
                             self.video_threads.iter().for_each(|(_, v)| {
-                                *v.discard_queue.write().unwrap() = true;
+                                v.media_thread.begin_refresh();
                             });
                         }
                         Some(misc::Union::RefreshVideoDisplay(display)) => {
                             if let Some(v) = self.video_threads.get_mut(&(display as usize)) {
-                                *v.discard_queue.write().unwrap() = true;
+                                v.media_thread.begin_refresh();
                             }
                         }
                         _ => {}
@@ -1400,14 +1412,14 @@ impl<T: InvokeUiSession> Remote<T> {
             Data::ResetDecoder(display) => match display {
                 Some(display) => {
                     if let Some(v) = self.video_threads.get_mut(&display) {
-                        if let Err(err) = v.media_thread.try_send(MediaData::Reset) {
+                        if let Err(err) = v.media_thread.try_send_control(VideoControl::Reset) {
                             log::warn!("viewer video decode queue full; dropping reset: {err}");
                         }
                     }
                 }
                 None => {
                     for (_, v) in self.video_threads.iter_mut() {
-                        if let Err(err) = v.media_thread.try_send(MediaData::Reset) {
+                        if let Err(err) = v.media_thread.try_send_control(VideoControl::Reset) {
                             log::warn!("viewer video decode queue full; dropping reset: {err}");
                         }
                     }
@@ -1630,17 +1642,6 @@ impl<T: InvokeUiSession> Remote<T> {
         admission
     }
 
-    fn contains_key_frame(vf: &VideoFrame) -> bool {
-        use video_frame::Union::*;
-        match &vf.union {
-            Some(vf) => match vf {
-                Vp8s(f) | Vp9s(f) | Av1s(f) | H264s(f) | H265s(f) => f.frames.iter().any(|e| e.key),
-                _ => false,
-            },
-            None => false,
-        }
-    }
-
     fn native_video_frame_within_limit(vf: &VideoFrame) -> bool {
         use video_frame::Union::*;
         let result = match &vf.union {
@@ -1681,7 +1682,7 @@ impl<T: InvokeUiSession> Remote<T> {
         let max_queue_len = self
             .video_threads
             .iter()
-            .map(|v| v.1.video_queue.read().unwrap().len())
+            .map(|v| v.1.media_thread.pending_frames())
             .max()
             .unwrap_or_default();
         let min_decode_fps = self
@@ -1703,7 +1704,7 @@ impl<T: InvokeUiSession> Remote<T> {
         let mut fps_trending = |display: usize| {
             let thread = self.video_threads.get_mut(&display)?;
             let ctl = &mut thread.fps_control;
-            let len = thread.video_queue.read().unwrap().len();
+            let len = thread.media_thread.pending_frames();
             let decode_fps = thread.decode_fps.read().unwrap().clone()?;
             let last_auto_fps = last_auto_fps.clone().unwrap_or(custom_fps as _);
             if ctl.inactive_counter > inactive_threshold {
@@ -1749,21 +1750,16 @@ impl<T: InvokeUiSession> Remote<T> {
                 self.handler.lc.write().unwrap().last_auto_fps = Some(auto_fps);
             }
         }
-        // send refresh
+        // A real-time frame backlog must not remain delayed merely because the producer and
+        // decoder later run at the same rate. Supersede the obsolete GOP immediately; the
+        // mailbox admits no further deltas until the requested keyframe arrives.
         for (display, thread) in self.video_threads.iter_mut() {
-            let ctl = &mut thread.fps_control;
-            let video_queue = thread.video_queue.read().unwrap();
-            let tolerable = std::cmp::min(min_decode_fps, video_queue.capacity() / 2);
-            if ctl.refresh_times < 20 // enough
-                    && (video_queue.len() > tolerable
-                            && (ctl.refresh_times == 0 || ctl.last_refresh_instant.map(|t|t.elapsed().as_secs() > 10).unwrap_or(false)))
+            let tolerable = std::cmp::min(min_decode_fps, client::VIDEO_FRAME_QUEUE_CAPACITY / 2);
+            if thread.media_thread.pending_frames() > tolerable
+                && thread.media_thread.begin_refresh()
             {
-                // Refresh causes client set_display, left frames cause flickering.
-                drop(video_queue);
                 self.handler.refresh_video(*display as _);
-                log::info!("Refresh display {} to reduce delay", display);
-                ctl.refresh_times += 1;
-                ctl.last_refresh_instant = Some(Instant::now());
+                log::info!("Refresh display {} to supersede queued video", display);
             }
         }
     }
@@ -1856,25 +1852,22 @@ impl<T: InvokeUiSession> Remote<T> {
                     let Some(thread) = self.video_threads.get_mut(&display) else {
                         return true;
                     };
-                    if Self::contains_key_frame(&vf) {
-                        if let Err(err) = thread
-                            .media_thread
-                            .try_send(MediaData::VideoFrame(Box::new(vf)))
-                        {
-                            log::warn!(
-                                "viewer video decode queue full; dropping peer keyframe: {err}"
+                    let is_keyframe = starts_video_sequence(&vf);
+                    match thread.media_thread.admit_frame(vf, is_keyframe) {
+                        VideoFrameAdmission::Queued => {}
+                        VideoFrameAdmission::AwaitingKeyframe => {
+                            log::debug!(
+                                "dropping peer delta frame while awaiting a fresh keyframe"
                             );
                         }
-                    } else {
-                        let video_queue = thread.video_queue.read().unwrap();
-                        if video_queue.force_push(vf).is_some() {
-                            drop(video_queue);
-                            self.handler.refresh_video(display as _);
-                        } else if let Err(err) = thread.media_thread.try_send(MediaData::VideoQueue)
-                        {
+                        VideoFrameAdmission::RefreshRequired => {
                             log::warn!(
-                                "viewer video decode queue full; dropping peer video queue signal: {err}"
+                                "viewer video backlog lost freshness; requesting a fresh keyframe"
                             );
+                            self.handler.refresh_video(display as _);
+                        }
+                        VideoFrameAdmission::Closed => {
+                            log::debug!("dropping peer video frame after decoder mailbox closure");
                         }
                     }
                 }
@@ -2315,7 +2308,9 @@ impl<T: InvokeUiSession> Remote<T> {
                     Some(misc::Union::SwitchDisplay(s)) => {
                         self.handler.handle_peer_switch_display(&s);
                         if let Some(thread) = self.video_threads.get_mut(&(s.display as usize)) {
-                            if let Err(err) = thread.media_thread.try_send(MediaData::Reset) {
+                            if let Err(err) =
+                                thread.media_thread.try_send_control(VideoControl::Reset)
+                            {
                                 log::warn!("viewer video decode queue full; dropping reset: {err}");
                             }
                         }
@@ -2933,22 +2928,17 @@ impl<T: InvokeUiSession> Remote<T> {
     }
 
     fn new_video_thread(&mut self, display: usize) {
-        let video_queue = Arc::new(RwLock::new(ArrayQueue::new(client::VIDEO_QUEUE_SIZE)));
-        let (video_sender, video_receiver) =
-            std::sync::mpsc::sync_channel::<MediaData>(client::MEDIA_DATA_QUEUE_CAPACITY);
+        let (video_sender, video_receiver) = client::video_mailbox();
         let decode_fps = Arc::new(RwLock::new(None));
         let frame_count = Arc::new(RwLock::new(0));
-        let discard_queue = Arc::new(RwLock::new(false));
         let handler = self.handler.ui_handler.clone();
         let decoder_frame_count = frame_count.clone();
         let thread = crate::client::start_video_thread(
             self.handler.clone(),
             display,
             video_receiver,
-            video_queue.clone(),
             decode_fps.clone(),
             self.chroma.clone(),
-            discard_queue.clone(),
             move |display: usize,
                   data: &mut scrap::ImageRgb,
                   _texture: *mut c_void,
@@ -2963,12 +2953,10 @@ impl<T: InvokeUiSession> Remote<T> {
             },
         );
         let video_thread = VideoThread {
-            video_queue,
-            media_thread: OwnedMediaThread::new("video decoder", video_sender, thread),
+            media_thread: OwnedVideoThread::new("video decoder", video_sender, thread),
             decode_fps,
             frame_count,
             fps_control: Default::default(),
-            discard_queue,
         };
         self.video_threads.insert(display, video_thread);
         if self.video_threads.len() == 1 {
@@ -2994,7 +2982,10 @@ impl<T: InvokeUiSession> Remote<T> {
         log::info!("record screen start: {start}");
         // update local
         for (_, v) in self.video_threads.iter_mut() {
-            if let Err(err) = v.media_thread.try_send(MediaData::RecordScreen(start)) {
+            if let Err(err) = v
+                .media_thread
+                .try_send_control(VideoControl::RecordScreen(start))
+            {
                 log::warn!("viewer video decode queue full; dropping record-state update: {err}");
             }
         }
@@ -3409,6 +3400,39 @@ mod tests {
         assert!(!request.on);
         assert_eq!(request.impl_key, "");
     }
+
+    fn encoded_video_frame(keys: &[bool]) -> VideoFrame {
+        let mut frames = EncodedVideoFrames::new();
+        for key in keys {
+            let mut frame = EncodedVideoFrame::new();
+            frame.key = *key;
+            frames.frames.push(frame);
+        }
+        let mut video = VideoFrame::new();
+        video.set_vp8s(frames);
+        video
+    }
+
+    #[test]
+    fn r_s11ev_only_a_leading_keyframe_starts_an_encoded_sequence() {
+        assert!(starts_video_sequence(&encoded_video_frame(&[true, false])));
+        assert!(
+            !starts_video_sequence(&encoded_video_frame(&[false, true])),
+            "a later keyframe cannot recover when an earlier dependent frame fails first"
+        );
+        assert!(!starts_video_sequence(&encoded_video_frame(&[])));
+    }
+
+    #[test]
+    fn r_s11ev_raw_video_frames_are_independent_sequences() {
+        let mut rgb = VideoFrame::new();
+        rgb.set_rgb(RGB::new());
+        assert!(starts_video_sequence(&rgb));
+
+        let mut yuv = VideoFrame::new();
+        yuv.set_yuv(YUV::new());
+        assert!(starts_video_sequence(&yuv));
+    }
 }
 
 struct RemoveJob {
@@ -3443,24 +3467,13 @@ impl RemoveJob {
 
 #[derive(Debug, Default)]
 struct FpsControl {
-    refresh_times: usize,
-    last_refresh_instant: Option<Instant>,
     idle_counter: usize,
     inactive_counter: usize,
 }
 
 struct VideoThread {
-    video_queue: Arc<RwLock<ArrayQueue<VideoFrame>>>,
-    media_thread: OwnedMediaThread,
+    media_thread: OwnedVideoThread,
     decode_fps: Arc<RwLock<Option<usize>>>,
     frame_count: Arc<RwLock<usize>>,
-    discard_queue: Arc<RwLock<bool>>,
     fps_control: FpsControl,
-}
-
-impl Drop for VideoThread {
-    fn drop(&mut self) {
-        // since channels are buffered, messages sent before the disconnect will still be properly received.
-        *self.discard_queue.write().unwrap() = true;
-    }
 }

@@ -10,19 +10,18 @@ use cpal::{
     traits::{DeviceTrait, HostTrait, StreamTrait},
     Device, Host, StreamConfig,
 };
-use crossbeam_queue::ArrayQueue;
 use magnum_opus::{Channels::*, Decoder as AudioDecoder};
 #[cfg(not(target_os = "linux"))]
 use ringbuf::{ring_buffer::RbBase, Rb};
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     ffi::c_void,
     ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering},
         mpsc::{self, RecvTimeoutError},
-        Arc, Mutex, RwLock,
+        Arc, Condvar, Mutex, RwLock,
     },
 };
 use uuid::Uuid;
@@ -94,8 +93,10 @@ pub mod screenshot;
 
 pub const MILLI1: Duration = Duration::from_millis(1);
 pub const SEC30: Duration = Duration::from_secs(30);
-pub const VIDEO_QUEUE_SIZE: usize = 120;
 pub const MEDIA_DATA_QUEUE_CAPACITY: usize = 8;
+pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 8;
+pub const VIDEO_CONTROL_QUEUE_CAPACITY: usize = 8;
+pub const MAX_VIDEO_FRAME_QUEUE_AGE: Duration = Duration::from_secs(1);
 const MAX_DECODE_FAIL_COUNTER: usize = 3;
 
 #[cfg(target_os = "linux")]
@@ -2489,15 +2490,335 @@ impl LoginConfigHandler {
 
 /// Media data.
 pub enum MediaData {
-    VideoQueue,
-    VideoFrame(Box<VideoFrame>),
     AudioFrame(Box<AudioFrame>),
     AudioFormat(AudioFormat),
+}
+
+pub type MediaSender = mpsc::SyncSender<MediaData>;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum VideoControl {
     Reset,
     RecordScreen(bool),
 }
 
-pub type MediaSender = mpsc::SyncSender<MediaData>;
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum VideoFrameAdmission {
+    Queued,
+    AwaitingKeyframe,
+    RefreshRequired,
+    Closed,
+}
+
+struct QueuedVideoFrame {
+    generation: u64,
+    queued_at: std::time::Instant,
+    is_keyframe: bool,
+    frame: VideoFrame,
+}
+
+enum VideoWork {
+    Frame(QueuedVideoFrame),
+    Control(VideoControl),
+}
+
+struct VideoMailboxState {
+    work: VecDeque<VideoWork>,
+    frame_count: usize,
+    control_count: usize,
+    generation: u64,
+    awaiting_keyframe: bool,
+    refresh_requested: bool,
+    closed: bool,
+}
+
+impl Default for VideoMailboxState {
+    fn default() -> Self {
+        Self {
+            work: VecDeque::new(),
+            frame_count: 0,
+            control_count: 0,
+            generation: 0,
+            awaiting_keyframe: true,
+            refresh_requested: false,
+            closed: false,
+        }
+    }
+}
+
+impl VideoMailboxState {
+    fn clear_frames(&mut self) {
+        self.work
+            .retain(|work| matches!(work, VideoWork::Control(_)));
+        self.frame_count = 0;
+    }
+
+    fn advance_generation(&mut self) -> bool {
+        let Some(generation) = self.generation.checked_add(1) else {
+            log::error!("viewer video mailbox generation exhausted");
+            self.closed = true;
+            self.work.clear();
+            self.frame_count = 0;
+            self.control_count = 0;
+            return false;
+        };
+        self.generation = generation;
+        true
+    }
+
+    fn invalidate_frames(&mut self) -> bool {
+        if !self.advance_generation() {
+            return false;
+        }
+        self.clear_frames();
+        self.awaiting_keyframe = true;
+        self.refresh_requested = true;
+        true
+    }
+}
+
+struct VideoMailboxShared {
+    state: Mutex<VideoMailboxState>,
+    ready: Condvar,
+}
+
+impl VideoMailboxShared {
+    fn close(&self) {
+        let mut state = self.state.lock().unwrap();
+        state.closed = true;
+        state.work.clear();
+        state.frame_count = 0;
+        state.control_count = 0;
+        drop(state);
+        self.ready.notify_all();
+    }
+}
+
+pub(crate) struct VideoMailboxSender {
+    shared: Arc<VideoMailboxShared>,
+}
+
+pub(crate) struct VideoMailboxReceiver {
+    shared: Arc<VideoMailboxShared>,
+}
+
+enum VideoMailboxItem {
+    Frame(QueuedVideoFrame),
+    Control(VideoControl),
+    RefreshRequired,
+}
+
+fn video_frame_is_fresh(queued_at: std::time::Instant, now: std::time::Instant) -> bool {
+    now.checked_duration_since(queued_at).unwrap_or_default() <= MAX_VIDEO_FRAME_QUEUE_AGE
+}
+
+pub(crate) fn video_mailbox() -> (VideoMailboxSender, VideoMailboxReceiver) {
+    let shared = Arc::new(VideoMailboxShared {
+        state: Mutex::new(VideoMailboxState::default()),
+        ready: Condvar::new(),
+    });
+    (
+        VideoMailboxSender {
+            shared: Arc::clone(&shared),
+        },
+        VideoMailboxReceiver { shared },
+    )
+}
+
+impl VideoMailboxSender {
+    fn admit_frame_at(
+        &self,
+        frame: VideoFrame,
+        is_keyframe: bool,
+        queued_at: std::time::Instant,
+    ) -> VideoFrameAdmission {
+        let mut state = self.shared.state.lock().unwrap();
+        if state.closed {
+            return VideoFrameAdmission::Closed;
+        }
+
+        if is_keyframe {
+            if !state.advance_generation() {
+                drop(state);
+                self.shared.ready.notify_all();
+                return VideoFrameAdmission::Closed;
+            }
+            state.clear_frames();
+            state.awaiting_keyframe = false;
+            state.refresh_requested = false;
+            let generation = state.generation;
+            state.work.push_back(VideoWork::Frame(QueuedVideoFrame {
+                generation,
+                queued_at,
+                is_keyframe: true,
+                frame,
+            }));
+            state.frame_count = 1;
+            drop(state);
+            self.shared.ready.notify_one();
+            return VideoFrameAdmission::Queued;
+        }
+
+        if state.awaiting_keyframe {
+            if state.refresh_requested {
+                return VideoFrameAdmission::AwaitingKeyframe;
+            }
+            state.refresh_requested = true;
+            return VideoFrameAdmission::RefreshRequired;
+        }
+
+        if state.frame_count >= VIDEO_FRAME_QUEUE_CAPACITY {
+            let open = state.invalidate_frames();
+            drop(state);
+            if !open {
+                self.shared.ready.notify_all();
+                return VideoFrameAdmission::Closed;
+            }
+            return VideoFrameAdmission::RefreshRequired;
+        }
+
+        let generation = state.generation;
+        state.work.push_back(VideoWork::Frame(QueuedVideoFrame {
+            generation,
+            queued_at,
+            is_keyframe: false,
+            frame,
+        }));
+        state.frame_count += 1;
+        drop(state);
+        self.shared.ready.notify_one();
+        VideoFrameAdmission::Queued
+    }
+
+    pub(crate) fn admit_frame(&self, frame: VideoFrame, is_keyframe: bool) -> VideoFrameAdmission {
+        self.admit_frame_at(frame, is_keyframe, std::time::Instant::now())
+    }
+
+    pub(crate) fn begin_refresh(&self) -> bool {
+        let mut state = self.shared.state.lock().unwrap();
+        if state.closed {
+            return false;
+        }
+        if state.awaiting_keyframe {
+            state.clear_frames();
+            state.refresh_requested = true;
+            return true;
+        }
+        let open = state.invalidate_frames();
+        drop(state);
+        if !open {
+            self.shared.ready.notify_all();
+        }
+        open
+    }
+
+    pub(crate) fn try_send_control(
+        &self,
+        control: VideoControl,
+    ) -> Result<(), mpsc::TrySendError<VideoControl>> {
+        let mut state = self.shared.state.lock().unwrap();
+        if state.closed {
+            return Err(mpsc::TrySendError::Disconnected(control));
+        }
+        if state.control_count >= VIDEO_CONTROL_QUEUE_CAPACITY {
+            return Err(mpsc::TrySendError::Full(control));
+        }
+        state.work.push_back(VideoWork::Control(control));
+        state.control_count += 1;
+        drop(state);
+        self.shared.ready.notify_one();
+        Ok(())
+    }
+
+    pub(crate) fn pending_frames(&self) -> usize {
+        self.shared.state.lock().unwrap().frame_count
+    }
+
+    pub(crate) fn close(&self) {
+        self.shared.close();
+    }
+}
+
+impl Drop for VideoMailboxSender {
+    fn drop(&mut self) {
+        self.shared.close();
+    }
+}
+
+impl VideoMailboxReceiver {
+    fn recv(&self) -> Option<VideoMailboxItem> {
+        loop {
+            let mut state = self.shared.state.lock().unwrap();
+            while state.work.is_empty() && !state.closed {
+                state = self.shared.ready.wait(state).unwrap();
+            }
+            if state.closed {
+                return None;
+            }
+            let Some(work) = state.work.pop_front() else {
+                continue;
+            };
+            match work {
+                VideoWork::Control(control) => {
+                    let Some(control_count) = state.control_count.checked_sub(1) else {
+                        log::error!("viewer video mailbox control count invariant failed");
+                        drop(state);
+                        self.shared.close();
+                        return None;
+                    };
+                    state.control_count = control_count;
+                    return Some(VideoMailboxItem::Control(control));
+                }
+                VideoWork::Frame(frame) => {
+                    let Some(frame_count) = state.frame_count.checked_sub(1) else {
+                        log::error!("viewer video mailbox frame count invariant failed");
+                        drop(state);
+                        self.shared.close();
+                        return None;
+                    };
+                    state.frame_count = frame_count;
+                    if state.awaiting_keyframe || frame.generation != state.generation {
+                        continue;
+                    }
+                    if !video_frame_is_fresh(frame.queued_at, std::time::Instant::now()) {
+                        let open = state.invalidate_frames();
+                        drop(state);
+                        if !open {
+                            self.shared.ready.notify_all();
+                            return None;
+                        }
+                        return Some(VideoMailboxItem::RefreshRequired);
+                    }
+                    return Some(VideoMailboxItem::Frame(frame));
+                }
+            }
+        }
+    }
+
+    fn generation_is_current(&self, generation: u64) -> bool {
+        let state = self.shared.state.lock().unwrap();
+        !state.closed && !state.awaiting_keyframe && state.generation == generation
+    }
+
+    fn invalidate_generation(&self, generation: u64) -> bool {
+        let mut state = self.shared.state.lock().unwrap();
+        if state.closed || state.awaiting_keyframe || state.generation != generation {
+            return false;
+        }
+        let open = state.invalidate_frames();
+        drop(state);
+        if !open {
+            self.shared.ready.notify_all();
+        }
+        open
+    }
+}
+
+impl Drop for VideoMailboxReceiver {
+    fn drop(&mut self) {
+        self.shared.close();
+    }
+}
 
 const MEDIA_WORKER_REAPER_THREADS: usize = 4;
 const MEDIA_WORKER_REAPER_CAPACITY: usize = 256;
@@ -2661,19 +2982,85 @@ impl Drop for OwnedMediaThread {
     }
 }
 
+/// Owns one video mailbox and the only join authority for its decoder worker.
+/// Closing the mailbox rejects new work, releases pending frames and controls,
+/// and wakes the exact worker before its join is handed off.
+pub(crate) struct OwnedVideoThread {
+    role: &'static str,
+    mailbox: Option<VideoMailboxSender>,
+    thread: Option<std::thread::JoinHandle<()>>,
+}
+
+impl OwnedVideoThread {
+    pub(crate) fn new(
+        role: &'static str,
+        mailbox: VideoMailboxSender,
+        thread: std::thread::JoinHandle<()>,
+    ) -> Self {
+        lazy_static::initialize(&MEDIA_WORKER_REAPER);
+        Self {
+            role,
+            mailbox: Some(mailbox),
+            thread: Some(thread),
+        }
+    }
+
+    pub(crate) fn admit_frame(&self, frame: VideoFrame, is_keyframe: bool) -> VideoFrameAdmission {
+        match self.mailbox.as_ref() {
+            Some(mailbox) => mailbox.admit_frame(frame, is_keyframe),
+            None => VideoFrameAdmission::Closed,
+        }
+    }
+
+    pub(crate) fn begin_refresh(&self) -> bool {
+        self.mailbox
+            .as_ref()
+            .map_or(false, VideoMailboxSender::begin_refresh)
+    }
+
+    pub(crate) fn try_send_control(
+        &self,
+        control: VideoControl,
+    ) -> Result<(), mpsc::TrySendError<VideoControl>> {
+        match self.mailbox.as_ref() {
+            Some(mailbox) => mailbox.try_send_control(control),
+            None => Err(mpsc::TrySendError::Disconnected(control)),
+        }
+    }
+
+    pub(crate) fn pending_frames(&self) -> usize {
+        self.mailbox
+            .as_ref()
+            .map_or(0, VideoMailboxSender::pending_frames)
+    }
+
+    pub(crate) fn close(&mut self) -> Option<(&'static str, std::thread::JoinHandle<()>)> {
+        if let Some(mailbox) = self.mailbox.take() {
+            mailbox.close();
+        }
+        self.thread.take().map(|thread| (self.role, thread))
+    }
+}
+
+impl Drop for OwnedVideoThread {
+    fn drop(&mut self) {
+        if let Some((role, worker)) = self.close() {
+            reap_media_worker(role, worker);
+        }
+    }
+}
+
 /// Start video thread.
 ///
 /// # Arguments
 ///
 /// * `video_callback` - The callback for video frame. Being called when a video frame is ready.
-pub fn start_video_thread<F, T>(
+pub(crate) fn start_video_thread<F, T>(
     session: Session<T>,
     display: usize,
-    video_receiver: mpsc::Receiver<MediaData>,
-    video_queue: Arc<RwLock<ArrayQueue<VideoFrame>>>,
+    video_receiver: VideoMailboxReceiver,
     fps: Arc<RwLock<Option<usize>>>,
     chroma: Arc<RwLock<Option<Chroma>>>,
-    discard_queue: Arc<RwLock<bool>>,
     video_callback: F,
 ) -> std::thread::JoinHandle<()>
 where
@@ -2691,30 +3078,27 @@ where
         let mut count = 0;
         let mut duration = std::time::Duration::ZERO;
         let mut skip_beginning = 0;
+        let mut decoder_generation = None;
         loop {
-            if let Ok(data) = video_receiver.recv() {
+            if let Some(data) = video_receiver.recv() {
                 match data {
-                    MediaData::VideoFrame(_) | MediaData::VideoQueue => {
-                        let vf = match data {
-                            MediaData::VideoFrame(vf) => {
-                                *discard_queue.write().unwrap() = false;
-                                *vf
+                    VideoMailboxItem::RefreshRequired => {
+                        decoder_generation = None;
+                        session.refresh_video(display as _);
+                    }
+                    VideoMailboxItem::Frame(queued) => {
+                        if queued.is_keyframe {
+                            decoder_generation = Some(queued.generation);
+                        } else if decoder_generation != Some(queued.generation) {
+                            if video_receiver.invalidate_generation(queued.generation) {
+                                session.refresh_video(display as _);
                             }
-                            MediaData::VideoQueue => {
-                                if let Some(vf) = video_queue.read().unwrap().pop() {
-                                    if discard_queue.read().unwrap().clone() {
-                                        continue;
-                                    }
-                                    vf
-                                } else {
-                                    continue;
-                                }
-                            }
-                            _ => {
-                                // unreachable!();
-                                continue;
-                            }
-                        };
+                            decoder_generation = None;
+                            continue;
+                        }
+                        let generation = queued.generation;
+                        let queued_at = queued.queued_at;
+                        let vf = queued.frame;
                         let display = vf.display as usize;
                         let start = std::time::Instant::now();
                         let format = CodecFormat::from(&vf);
@@ -2743,29 +3127,41 @@ where
                             let mut tmp_chroma = None;
                             let format_changed = handler.decoder.format() != format;
                             match handler.handle_frame(vf, &mut pixelbuffer, &mut tmp_chroma) {
-                                Ok(true) => {
-                                    video_callback(
-                                        display,
-                                        &mut handler.rgb,
-                                        handler.texture.texture,
-                                        pixelbuffer,
-                                    );
-
-                                    // chroma
-                                    if tmp_chroma.is_some() && last_chroma != tmp_chroma {
-                                        last_chroma = tmp_chroma;
-                                        *chroma.write().unwrap() = tmp_chroma;
+                                Ok(rendered) => {
+                                    if !video_frame_is_fresh(queued_at, std::time::Instant::now()) {
+                                        if video_receiver.invalidate_generation(generation) {
+                                            session.refresh_video(display as _);
+                                        }
+                                        decoder_generation = None;
+                                        continue;
                                     }
+                                    if !video_receiver.generation_is_current(generation) {
+                                        continue;
+                                    }
+                                    if rendered {
+                                        video_callback(
+                                            display,
+                                            &mut handler.rgb,
+                                            handler.texture.texture,
+                                            pixelbuffer,
+                                        );
 
-                                    // fps calculation
-                                    fps_calculate(
-                                        &mut skip_beginning,
-                                        &fps,
-                                        format_changed,
-                                        start.elapsed(),
-                                        &mut count,
-                                        &mut duration,
-                                    );
+                                        // chroma
+                                        if tmp_chroma.is_some() && last_chroma != tmp_chroma {
+                                            last_chroma = tmp_chroma;
+                                            *chroma.write().unwrap() = tmp_chroma;
+                                        }
+
+                                        // fps calculation
+                                        fps_calculate(
+                                            &mut skip_beginning,
+                                            &fps,
+                                            format_changed,
+                                            start.elapsed(),
+                                            &mut count,
+                                            &mut duration,
+                                        );
+                                    }
                                 }
                                 Err(e) => {
                                     // This is a simple workaround.
@@ -2780,9 +3176,11 @@ where
                                     //
                                     // to-do: fix the error
                                     log::error!("handle video frame error, {}", e);
-                                    session.refresh_video(display as _);
+                                    if video_receiver.invalidate_generation(generation) {
+                                        session.refresh_video(display as _);
+                                    }
+                                    decoder_generation = None;
                                 }
-                                _ => {}
                             }
                         }
 
@@ -2807,18 +3205,18 @@ where
                             ));
                         }
                     }
-                    MediaData::Reset => {
+                    VideoMailboxItem::Control(VideoControl::Reset) => {
+                        decoder_generation = None;
                         if let Some(handler) = video_handler.as_mut() {
                             handler.reset(None);
                         }
                     }
-                    MediaData::RecordScreen(start) => {
+                    VideoMailboxItem::Control(VideoControl::RecordScreen(start)) => {
                         let id = session.lc.read().unwrap().id.clone();
                         if let Some(handler) = video_handler.as_mut() {
                             handler.record_screen(start, id, display, is_view_camera);
                         }
                     }
-                    _ => {}
                 }
             } else {
                 break;
@@ -2842,7 +3240,6 @@ fn new_audio_thread() -> (MediaSender, std::thread::JoinHandle<()>) {
                         log::debug!("recved audio format, sample rate={}", f.sample_rate);
                         audio_handler.handle_format(f);
                     }
-                    _ => {}
                 }
             } else {
                 break;
@@ -3829,12 +4226,337 @@ mod tests {
     fn media_data_queue_is_bounded() {
         let (sender, _receiver) = mpsc::sync_channel::<MediaData>(MEDIA_DATA_QUEUE_CAPACITY);
         for _ in 0..MEDIA_DATA_QUEUE_CAPACITY {
-            sender.try_send(MediaData::VideoQueue).unwrap();
+            sender
+                .try_send(MediaData::AudioFormat(AudioFormat::new()))
+                .unwrap();
         }
         assert!(matches!(
-            sender.try_send(MediaData::VideoQueue),
+            sender.try_send(MediaData::AudioFormat(AudioFormat::new())),
             Err(mpsc::TrySendError::Full(_))
         ));
+    }
+
+    fn video_frame(display: i32) -> VideoFrame {
+        let mut frame = VideoFrame::new();
+        frame.display = display;
+        frame
+    }
+
+    fn queued_video_frame(item: VideoMailboxItem) -> QueuedVideoFrame {
+        match item {
+            VideoMailboxItem::Frame(frame) => frame,
+            VideoMailboxItem::Control(_) => panic!("expected a queued video frame, got control"),
+            VideoMailboxItem::RefreshRequired => {
+                panic!("expected a queued video frame, got refresh")
+            }
+        }
+    }
+
+    #[test]
+    fn r_s11ev_video_mailbox_requires_a_keyframe_before_deltas() {
+        let (sender, _receiver) = video_mailbox();
+
+        assert_eq!(
+            sender.admit_frame(video_frame(1), false),
+            VideoFrameAdmission::RefreshRequired
+        );
+        assert_eq!(
+            sender.admit_frame(video_frame(2), false),
+            VideoFrameAdmission::AwaitingKeyframe
+        );
+        assert_eq!(sender.pending_frames(), 0);
+    }
+
+    #[test]
+    fn r_s11ev_video_mailbox_overflow_discards_the_gop_and_recovers_in_order() {
+        let (sender, receiver) = video_mailbox();
+        assert_eq!(
+            sender.admit_frame(video_frame(10), true),
+            VideoFrameAdmission::Queued
+        );
+        for display in 11..(10 + VIDEO_FRAME_QUEUE_CAPACITY as i32) {
+            assert_eq!(
+                sender.admit_frame(video_frame(display), false),
+                VideoFrameAdmission::Queued
+            );
+        }
+        assert_eq!(sender.pending_frames(), VIDEO_FRAME_QUEUE_CAPACITY);
+
+        assert_eq!(
+            sender.admit_frame(video_frame(99), false),
+            VideoFrameAdmission::RefreshRequired
+        );
+        assert_eq!(sender.pending_frames(), 0);
+        assert_eq!(
+            sender.admit_frame(video_frame(100), false),
+            VideoFrameAdmission::AwaitingKeyframe
+        );
+        assert_eq!(
+            sender.admit_frame(video_frame(200), true),
+            VideoFrameAdmission::Queued
+        );
+        assert_eq!(sender.pending_frames(), 1);
+
+        let recovered = queued_video_frame(
+            receiver
+                .recv()
+                .expect("the replacement keyframe must remain reachable"),
+        );
+        assert!(recovered.is_keyframe);
+        assert_eq!(recovered.frame.display, 200);
+        assert!(receiver.generation_is_current(recovered.generation));
+    }
+
+    #[test]
+    fn r_s11ev_keyframe_supersession_preserves_control_order() {
+        let (sender, receiver) = video_mailbox();
+        assert_eq!(
+            sender.admit_frame(video_frame(1), true),
+            VideoFrameAdmission::Queued
+        );
+        assert_eq!(
+            sender.admit_frame(video_frame(2), false),
+            VideoFrameAdmission::Queued
+        );
+        sender
+            .try_send_control(VideoControl::Reset)
+            .expect("control capacity");
+        assert_eq!(
+            sender.admit_frame(video_frame(3), false),
+            VideoFrameAdmission::Queued
+        );
+        assert_eq!(
+            sender.admit_frame(video_frame(4), true),
+            VideoFrameAdmission::Queued
+        );
+
+        assert!(matches!(
+            receiver.recv(),
+            Some(VideoMailboxItem::Control(VideoControl::Reset))
+        ));
+        let current = queued_video_frame(
+            receiver
+                .recv()
+                .expect("the superseding keyframe must follow the retained control"),
+        );
+        assert!(current.is_keyframe);
+        assert_eq!(current.frame.display, 4);
+        assert_eq!(sender.pending_frames(), 0);
+    }
+
+    #[test]
+    fn r_s11ev_superseded_generation_is_rejected_before_publication() {
+        let (sender, receiver) = video_mailbox();
+        assert_eq!(
+            sender.admit_frame(video_frame(1), true),
+            VideoFrameAdmission::Queued
+        );
+        let old = queued_video_frame(
+            receiver
+                .recv()
+                .expect("the first generation must be available"),
+        );
+        assert!(receiver.generation_is_current(old.generation));
+
+        assert_eq!(
+            sender.admit_frame(video_frame(2), true),
+            VideoFrameAdmission::Queued
+        );
+        assert!(
+            !receiver.generation_is_current(old.generation),
+            "the publication check must reject a generation already superseded by admission"
+        );
+        let replacement = queued_video_frame(
+            receiver
+                .recv()
+                .expect("the replacement generation must be available"),
+        );
+        assert_ne!(old.generation, replacement.generation);
+        assert!(receiver.generation_is_current(replacement.generation));
+    }
+
+    #[test]
+    fn r_s11ev_equal_rate_recovery_leaves_no_unreachable_frame_backlog() {
+        let (sender, receiver) = video_mailbox();
+        assert_eq!(
+            sender.admit_frame(video_frame(0), true),
+            VideoFrameAdmission::Queued
+        );
+        for display in 1..VIDEO_FRAME_QUEUE_CAPACITY as i32 {
+            assert_eq!(
+                sender.admit_frame(video_frame(display), false),
+                VideoFrameAdmission::Queued
+            );
+        }
+
+        for expected in 0..64 {
+            let queued = queued_video_frame(
+                receiver
+                    .recv()
+                    .expect("every retained frame must be directly reachable"),
+            );
+            assert_eq!(queued.frame.display, expected);
+            assert_eq!(
+                sender.admit_frame(
+                    video_frame(expected + VIDEO_FRAME_QUEUE_CAPACITY as i32),
+                    false,
+                ),
+                VideoFrameAdmission::Queued
+            );
+            assert_eq!(sender.pending_frames(), VIDEO_FRAME_QUEUE_CAPACITY);
+        }
+
+        for expected in 64..(64 + VIDEO_FRAME_QUEUE_CAPACITY as i32) {
+            let queued = queued_video_frame(
+                receiver
+                    .recv()
+                    .expect("the final retained frame must remain directly reachable"),
+            );
+            assert_eq!(queued.frame.display, expected);
+        }
+        assert_eq!(sender.pending_frames(), 0);
+    }
+
+    #[test]
+    fn r_s11ev_stale_frame_retires_the_gop_instead_of_displaying_backlog() {
+        let (sender, receiver) = video_mailbox();
+        let stale_at = std::time::Instant::now()
+            .checked_sub(MAX_VIDEO_FRAME_QUEUE_AGE + Duration::from_millis(1))
+            .expect("test instant");
+        assert_eq!(
+            sender.admit_frame_at(video_frame(1), true, stale_at),
+            VideoFrameAdmission::Queued
+        );
+
+        assert!(matches!(
+            receiver.recv(),
+            Some(VideoMailboxItem::RefreshRequired)
+        ));
+        assert_eq!(sender.pending_frames(), 0);
+        assert_eq!(
+            sender.admit_frame(video_frame(2), false),
+            VideoFrameAdmission::AwaitingKeyframe
+        );
+    }
+
+    #[test]
+    fn r_s11ev_video_freshness_budget_includes_decode_time() {
+        let queued_at = std::time::Instant::now();
+        assert!(video_frame_is_fresh(
+            queued_at,
+            queued_at + MAX_VIDEO_FRAME_QUEUE_AGE
+        ));
+        assert!(!video_frame_is_fresh(
+            queued_at,
+            queued_at + MAX_VIDEO_FRAME_QUEUE_AGE + Duration::from_nanos(1)
+        ));
+    }
+
+    #[test]
+    fn r_s11ev_explicit_refresh_clears_frames_but_preserves_controls() {
+        let (sender, receiver) = video_mailbox();
+        assert_eq!(
+            sender.admit_frame(video_frame(1), true),
+            VideoFrameAdmission::Queued
+        );
+        sender
+            .try_send_control(VideoControl::RecordScreen(true))
+            .expect("control capacity");
+        assert_eq!(
+            sender.admit_frame(video_frame(2), false),
+            VideoFrameAdmission::Queued
+        );
+
+        assert!(sender.begin_refresh());
+        assert_eq!(sender.pending_frames(), 0);
+        assert!(matches!(
+            receiver.recv(),
+            Some(VideoMailboxItem::Control(VideoControl::RecordScreen(true)))
+        ));
+        assert_eq!(
+            sender.admit_frame(video_frame(3), false),
+            VideoFrameAdmission::AwaitingKeyframe
+        );
+    }
+
+    #[test]
+    fn r_s11ev_video_controls_are_independently_bounded() {
+        let (sender, _receiver) = video_mailbox();
+        for _ in 0..VIDEO_CONTROL_QUEUE_CAPACITY {
+            sender
+                .try_send_control(VideoControl::Reset)
+                .expect("control capacity");
+        }
+        assert!(matches!(
+            sender.try_send_control(VideoControl::Reset),
+            Err(mpsc::TrySendError::Full(VideoControl::Reset))
+        ));
+    }
+
+    #[test]
+    fn r_s11ev_close_releases_pending_work_and_wakes_the_worker() {
+        let (sender, receiver) = video_mailbox();
+        let (started_sender, started_receiver) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            started_sender.send(()).expect("start notification");
+            receiver.recv()
+        });
+        started_receiver.recv().expect("worker start");
+
+        sender.close();
+        assert!(worker.join().expect("worker completion").is_none());
+        assert_eq!(
+            sender.admit_frame(video_frame(1), true),
+            VideoFrameAdmission::Closed
+        );
+        assert!(matches!(
+            sender.try_send_control(VideoControl::Reset),
+            Err(mpsc::TrySendError::Disconnected(VideoControl::Reset))
+        ));
+    }
+
+    #[test]
+    fn r_s11ev_sender_drop_wakes_a_waiting_receiver() {
+        let (sender, receiver) = video_mailbox();
+        let (started_sender, started_receiver) = mpsc::channel();
+        let worker = std::thread::spawn(move || {
+            started_sender.send(()).expect("start notification");
+            receiver.recv()
+        });
+        started_receiver.recv().expect("worker start");
+
+        drop(sender);
+        assert!(worker.join().expect("worker completion").is_none());
+    }
+
+    #[test]
+    fn r_s11ev_receiver_drop_rejects_new_work() {
+        let (sender, receiver) = video_mailbox();
+        drop(receiver);
+
+        assert_eq!(
+            sender.admit_frame(video_frame(1), true),
+            VideoFrameAdmission::Closed
+        );
+        assert!(matches!(
+            sender.try_send_control(VideoControl::Reset),
+            Err(mpsc::TrySendError::Disconnected(VideoControl::Reset))
+        ));
+    }
+
+    #[test]
+    fn r_s11ev_generation_exhaustion_fails_closed() {
+        let (sender, receiver) = video_mailbox();
+        {
+            let mut state = sender.shared.state.lock().unwrap();
+            state.generation = u64::MAX;
+            state.awaiting_keyframe = false;
+        }
+        assert_eq!(
+            sender.admit_frame(video_frame(1), true),
+            VideoFrameAdmission::Closed
+        );
+        assert!(receiver.recv().is_none());
     }
 
     #[cfg(not(target_os = "ios"))]

@@ -533,6 +533,26 @@ artifact identity, separately repeatable reproduction, and external review remai
 outgoing-worker entries above provide lifecycle foundations but are not claimed to close this newly observed
 display-performance problem.
 
+Source/history result (2026-07-31), **one shared viewer-video defect is proven, but the end-to-end mandate
+remains OPEN.** Commit `edc8a3b` changed the decoder channel from unbounded to capacity eight while retaining
+non-key frames in a separate 120-frame `ArrayQueue`. A producer retained each frame before it attempted a
+nonblocking `VideoQueue` wake-token send. When that channel was full, the token was dropped but the frame
+remained; the decoder popped exactly one frame per surviving token. After a stall, equal producer/consumer
+rates could therefore leave a stable tokenless backlog. At one frame per second, the eight-channel-entry
+offset is directly consistent with roughly eight seconds of delayed display. Keyframes bypassed the frame
+queue through the same bounded channel, control/input used another plane, and reconnect destroyed both
+structures. This is a source-proven shared viewer-core defect and a strong causal candidate, not proof that
+the unidentified operational Windows/Android builds contain it or that it caused either observed incident.
+
+R-S11ev/R-S11e-183 replaces that split store/token protocol with one directly consumable bounded video
+mailbox, explicit GOP generations, leading-keyframe recovery, a one-second receive-through-decode freshness
+budget, and symmetric endpoint/worker finality. Confined Linux and Android Rust compilation and deterministic
+state-machine tests can establish those source invariants without touching a host service or listener. They
+cannot establish Windows focus recovery, Android task-swipe/Force-Stop behavior, renderer scheduling, or
+end-to-end latency. The exact artifact identity, timestamped Windows-viewer/Debian-controlled and
+Android-viewer device matrix, media-boundary instrumentation, native Windows build, cold release,
+independent reproduction, and external review below remain release blockers.
+
 Follow-up correction (2026-07-27), **mobile Activity owner versus exact connection identity**: the prior
 Activity/isolate generation closure still inherited a subtler identity collapse. The isolate-wide UUID registered
 with `MainActivity` was also the `SessionID` reused by every successive outgoing route. Flutter does not await an
@@ -2174,6 +2194,111 @@ replacement/task-swipe/Force-Stop/video-consumption reproduction, the Windows-vi
 Debian-controlled latency matrix required by the open cross-platform performance mandate, exact
 clean committed cold R-B2/R-B10 artifacts, separately required independent reproduction, and
 external review remain open; this slice does not complete the broader Ralph loop.
+
+Follow-up correction (2026-07-31),
+**R-S11ev/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox — SOURCE
+IMPLEMENTED; PINNED RUST 1.75 LINUX AND AARCH64 ANDROID COMPILATION PLUS 15 CONFINED
+BEHAVIOR REGRESSIONS AND FOCUSED/INDEPENDENT SEMANTIC/MUTATION GATES GREEN; NATIVE
+WINDOWS, APK/DEVICE, COLD RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW OPEN.**
+Platform: shared outgoing viewer core on Android, Windows, Linux, macOS, and iOS. Endpoint/action:
+post-key peer `VideoFrame` admission, decoder scheduling, independent-frame/GOP recovery, decoded
+frame publication, reset/record controls, queue feedback, and final worker drain. Boundary: an
+adversarial or merely bursty peer/network producer and a decoder/renderer which can stop or slow
+independently while control traffic remains live.
+
+History review proved that commit `edc8a3b` bounded the former unbounded `MediaData` channel to
+eight entries without unifying the separate 120-frame `ArrayQueue`. For every non-key frame,
+`io_loop` first `force_push`ed the frame and then `try_send`ed a `MediaData::VideoQueue` token.
+Channel-full dropped only the token. The decoder popped exactly one queued frame per surviving
+token, so eight successful tokens followed by one dropped token left one retained frame with no
+decoder authority. Once producer and decoder resumed at the same rate, that offset could remain
+stable instead of draining. Repeating the stall could grow it toward the larger frame bound.
+Keyframes bypassed the frame queue through the same channel. The ten-second refresh debounce and
+queue-depth heuristic did not restore the one-to-one reachability invariant and could leave a
+sub-threshold stable backlog untouched. Reconnect destroyed the channel, queue, and decoder, which
+explains why it is a recovery clue.
+
+The reported responsive input with delayed display is directly consistent with this split because
+input/control does not wait on the video decoder. At one displayed frame per second, an eight-frame
+offset is directly consistent with roughly eight seconds of lag. This is source and history proof
+of a real shared viewer defect and a strong candidate mechanism. It is not proof that the older
+operational Windows or Android artifact contains commit `edc8a3b`, that this exact interleaving was
+observed, or that renderer/focus scheduling has no additional defect. Current upstream RustDesk
+still has the split unbounded-token/`ArrayQueue` shape, but upstream is context rather than a
+correctness oracle.
+
+The audio-only `MediaData` channel remains capacity eight. Video now has one `VideoMailboxState`
+under one `Mutex`/`Condvar`: its ordered `VecDeque` contains each retained frame or control
+directly. Frames and controls have independent capacity-eight counters; there is no secondary
+frame store, lossy wake token, retry loop, polling sleep, unbounded channel, or nested runtime.
+Checked counter underflow and generation exhaustion close the mailbox instead of repairing state
+silently. Sender or receiver close/Drop atomically rejects new work, clears retained frames and
+controls, wakes a waiting decoder, and hands the exact worker to the existing bounded join/reaper
+owner.
+
+The mailbox starts awaiting an independently decodable frame. Only the first encoded frame being a
+keyframe starts VP8/VP9/AV1/H.264/H.265 sequence admission; a later key cannot repair an earlier
+dependent frame which `VideoHandler` processes first. Raw RGB/YUV frames are independent.
+Independent-frame admission advances a checked generation, clears older queued frames while
+preserving ordered controls, and installs the new GOP atomically. Capacity overflow, explicit
+refresh, stale dequeue, or decoder error advances generation, retires the whole pending GOP, and
+refuses deltas until a fresh independent frame arrives. Reset clears the decoder's local generation
+before another delta is decoded. A popped/decoded frame is published only if its generation is
+current at the publication check. That check is deliberately not held across the renderer callback:
+holding the producer mutex through Flutter/native rendering would couple network receive and
+control progress to a potentially blocked renderer. The check is the linearization boundary; this
+slice does not claim a renderer callback itself is cancellable after it begins.
+
+Every frame records viewer receipt time. Freshness is checked before decode and immediately after
+decode against one explicit one-second receipt-through-decode budget. An expired frame retires its
+GOP and requests a fresh keyframe rather than displaying delayed backlog. Queue feedback reads the
+same mailbox frame count and proactively supersedes excessive work without the former ten-second
+refresh debounce. This does not measure capture, encode, network, Flutter event delivery, Windows
+texture scheduling, or actual presentation latency; the open instrumentation matrix must measure
+those separately.
+
+Fifteen deterministic Rust regressions cover initial delta refusal, leading-key and raw independent
+classification, capacity overflow and ordered keyframe recovery, control preservation, rejection
+of an already-superseded generation at publication check, equal-rate consumption after a full
+mailbox with no unreachable retained frame, dequeue and post-decode freshness boundaries, explicit
+refresh, independent control capacity, close wake, sender-drop wake, receiver-drop producer
+rejection, and generation exhaustion. In immutable dev image
+`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`,
+numeric UID:GID 1000:1000, read-only root/source, no network, no capabilities, no-new-privileges,
+bounded resources, and no ports/devices/sockets/host namespaces, all 15 passed and the complete
+Linux `cargo check --locked --features linux-pkg-config` passed. The exact Rust 1.75 archive
+formatter found only one unrelated pre-existing `LoginConfigHandler::initialize` layout
+difference after this slice's hunks were corrected.
+
+The same frozen working source was projected from Git's tracked list into container tmpfs and
+compiled as the release-mode `aarch64-linux-android` library in immutable Android image
+`sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2`,
+again as UID:GID 1000:1000 with no network, capabilities, host-write mount, listener, device, or
+service. The production bridge generation and `cargo ndk --platform 21 --target
+aarch64-linux-android check --locked --release --features flutter --lib` completed. Its known FRB
+header typedef diagnostic remained nonfatal and bridge generation completed before Cargo; it is
+not relabeled as a mailbox test or clean device result. No APK was packaged, signed, installed, or
+executed.
+
+The focused semantic verifier binds direct frame reachability, bounds, GOP generations, leading
+keyframes, both freshness checks, reset/publication ordering, symmetric endpoint finality, all 15
+behaviors, direct-dependency removal, shared/Apple gate wiring, R-S11ev, Appendix C #304, this
+ledger, the exact requirements digest, and independent verifier integration. Its deliberate
+25-mutation self-test passed. The independent workspace semantic baseline and its complete,
+unsliced source-mutation catalog also passed. The first full catalog attempt exposed that a
+production anchor duplicated in the focused verifier's own mutation inventory was not independently
+bound; after the inventory edges were bound, the next attempt exposed mismatched diagnostic
+identity for those two effective locations. Both verifier defects were corrected without weakening
+the production contract, and the complete catalog was restarted from mutation one after each
+change. These are verifier-integrity results, not a Windows/Android runtime reproduction.
+
+This source slice does not close the open cross-platform end-to-end connection correctness and
+performance mandate. Native Windows compilation/execution; identification of the exact operational
+client/server artifacts; timestamped current and older Windows-viewer/Debian-controlled
+focus/unfocus and Android task-swipe/Force-Stop/reconnect reproductions; capture-through-presentation
+instrumentation and budgets; renderer/texture lifecycle review; the exact clean committed cold
+R-B2/R-B10 release transaction; separately required independent reproduction; and external review
+remain open. Compilation and deterministic mailbox tests are not real-device validation.
 
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
@@ -16654,7 +16779,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-85f5ce17e2b748b310b163653a037b1b2c76a8aa5c56fda9be36d1c195dda3df  requirements.html
+61dbaf1c5baa9fb7e7d2c2490843824692592bc2cb4786e9e655a8ae7cb1873e  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

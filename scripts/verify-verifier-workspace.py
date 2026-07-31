@@ -16214,6 +16214,155 @@ def validate_viewer_voice_call_worker_contract(sources):
     )
 
 
+def validate_viewer_video_mailbox_contract(sources):
+    focused = sources["viewer_video_mailbox_verifier"]
+    validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "viewer video mailbox focused runtime validation",
+    )
+    for text, label in (
+        ("def extract_rust_item(", "viewer video mailbox Rust item parser"),
+        ("def validate(sources", "viewer video mailbox semantic entry"),
+        (
+            '"pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 8;"',
+            "viewer video frame-capacity contract",
+        ),
+        (
+            '"pub const VIDEO_CONTROL_QUEUE_CAPACITY: usize = 8;"',
+            "viewer video control-capacity contract",
+        ),
+        (
+            '"pub const MAX_VIDEO_FRAME_QUEUE_AGE: Duration = Duration::from_secs(1);"',
+            "viewer video freshness contract",
+        ),
+        (
+            '"work: VecDeque<VideoWork>"',
+            "viewer video unified work-queue contract",
+        ),
+        (
+            '"impl Drop for VideoMailboxSender"',
+            "viewer video sender-drop finality contract",
+        ),
+        (
+            '"impl Drop for VideoMailboxReceiver"',
+            "viewer video receiver-drop finality contract",
+        ),
+        (
+            '"state.frame_count.checked_sub(1)"',
+            "viewer video checked frame-count contract",
+        ),
+        (
+            '"if !video_receiver.generation_is_current(generation)"',
+            "viewer video publication-generation contract",
+        ),
+        (
+            '"f.frames.first().map_or(false, |frame| frame.key)"',
+            "viewer video leading-keyframe contract",
+        ),
+        (
+            '"r_s11ev_equal_rate_recovery_leaves_no_unreachable_frame_backlog"',
+            "viewer video equal-rate reachability regression",
+        ),
+        (
+            'forbid(sources["cargo"], \'crossbeam-queue = "\'',
+            "viewer video retired direct dependency contract",
+        ),
+        ("MUTATIONS: Tuple[Mutation, ...]", "viewer video mutation inventory"),
+        ("run_self_test(sources)", "viewer video mutation dispatch"),
+    ):
+        source = (
+            focused
+            if text
+            in {
+                "def extract_rust_item(",
+                "def validate(sources",
+                "MUTATIONS: Tuple[Mutation, ...]",
+                "run_self_test(sources)",
+            }
+            else validation
+        )
+        require_text(source, text, label)
+
+    # Bind the focused verifier's mutation fixtures as exact semantic edges, not
+    # merely as a generic MUTATIONS inventory. Several production anchors also
+    # appear in validate(), so the independent source-mutation catalog exercises
+    # each occurrence. A weakened fixture must therefore fail independently of
+    # the still-intact runtime check.
+    for text, label in (
+        (
+            '("client", "pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 8;", '
+            '"pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 120;", "frame bound"),',
+            "viewer video frame-capacity contract",
+        ),
+        (
+            '("client", "work: VecDeque<VideoWork>", '
+            '"frames: VecDeque<VideoWork>", "unified work queue"),',
+            "viewer video unified work-queue contract",
+        ),
+        (
+            '("client", "impl Drop for VideoMailboxSender", '
+            '"impl VideoMailboxSender", "sender-drop finality"),',
+            "viewer video sender-drop finality contract",
+        ),
+        (
+            '("client", "impl Drop for VideoMailboxReceiver", '
+            '"impl VideoMailboxReceiver", "receiver-drop finality"),',
+            "viewer video receiver-drop finality contract",
+        ),
+        (
+            '("client", "state.frame_count.checked_sub(1)", '
+            '"state.frame_count.saturating_sub(1)", "frame counter invariant"),',
+            "viewer video checked frame-count contract",
+        ),
+        (
+            '("client", "if !video_receiver.generation_is_current(generation)", '
+            '"if false", "publication generation check"),',
+            "viewer video publication-generation contract",
+        ),
+        (
+            '("client", '
+            '"fn r_s11ev_equal_rate_recovery_leaves_no_unreachable_frame_backlog()", '
+            '"fn equal_rate_recovery_leaves_no_unreachable_frame_backlog()", '
+            '"equal-rate regression"),',
+            "viewer video equal-rate reachability regression",
+        ),
+        (
+            '("io_loop", "f.frames.first().map_or(false, |frame| frame.key)", '
+            '"f.frames.iter().any(|frame| frame.key)", "leading keyframe"),',
+            "viewer video leading-keyframe contract",
+        ),
+    ):
+        require_text(focused, text, label)
+
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-viewer-video-mailbox.py --repo . --self-test",
+        "viewer video shared focused-verifier wiring",
+    )
+    require_text(
+        sources["apple"],
+        "python3 scripts/verify-viewer-video-mailbox.py --repo . --self-test",
+        "viewer video Apple focused-verifier wiring",
+    )
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11ev</span>',
+        "viewer video mailbox requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>304</td>",
+        "viewer video mailbox Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11ev/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox",
+        "viewer video mailbox hardening ledger",
+    )
+
+
 def validate_android_voice_call_ownership_contract(sources):
     focused = sources["android_voice_call_ownership_verifier"]
     validation = extract_between(
@@ -34796,6 +34945,7 @@ def validate_sources(sources):
     validate_whiteboard_ipc_protocol_contract(sources)
     validate_unix_listener_incumbent_contract(sources)
     validate_viewer_voice_call_worker_contract(sources)
+    validate_viewer_video_mailbox_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
     validate_android_client_lifecycle_drain_contract(sources)
     validate_android_listener_generation_contract(sources)
@@ -50461,6 +50611,90 @@ def run_source_mutations(sources):
             "generated-bridge bounded audio behavior gate",
         ),
         (
+            "viewer_video_mailbox_verifier",
+            '"pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 8;"',
+            '"pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 120;"',
+            "viewer video frame-capacity contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"work: VecDeque<VideoWork>"',
+            '"frames: VecDeque<VideoWork>"',
+            "viewer video unified work-queue contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"impl Drop for VideoMailboxSender"',
+            '"impl VideoMailboxSender"',
+            "viewer video sender-drop finality contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"impl Drop for VideoMailboxReceiver"',
+            '"impl VideoMailboxReceiver"',
+            "viewer video receiver-drop finality contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"state.frame_count.checked_sub(1)"',
+            '"state.frame_count.saturating_sub(1)"',
+            "viewer video checked frame-count contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"if !video_receiver.generation_is_current(generation)"',
+            '"if false"',
+            "viewer video publication-generation contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"f.frames.first().map_or(false, |frame| frame.key)"',
+            '"f.frames.iter().any(|frame| frame.key)"',
+            "viewer video leading-keyframe contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"r_s11ev_equal_rate_recovery_leaves_no_unreachable_frame_backlog"',
+            '"equal_rate_recovery_leaves_no_unreachable_frame_backlog"',
+            "viewer video equal-rate reachability regression",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            'forbid(sources["cargo"], \'crossbeam-queue = "\'',
+            'forbid(sources["cargo"], \'crossbeam-queue-disabled = "\'',
+            "viewer video retired direct dependency contract",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-viewer-video-mailbox.py --repo . --self-test",
+            "true # viewer video mailbox verifier removed",
+            "viewer video shared focused-verifier wiring",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-viewer-video-mailbox.py --repo . --self-test",
+            "true # viewer video mailbox verifier removed",
+            "viewer video Apple focused-verifier wiring",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11ev</span>',
+            '<div class="req"><span class="id">R-S11ev-disabled</span>',
+            "viewer video mailbox requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>304</td>",
+            "<tr><td>304-disabled</td>",
+            "viewer video mailbox Appendix C row",
+        ),
+        (
+            "hardening",
+            "**R-S11ev/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox",
+            "**R-S11ev-disabled/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox",
+            "viewer video mailbox hardening ledger",
+        ),
+        (
             "android_voice_call_ownership_verifier",
             '"get() = activeControlledConnections.isNotEmpty() || outgoingVoiceCallActive"',
             '"get() = outgoingVoiceCallActive"',
@@ -60026,6 +60260,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "viewer_voice_call_worker_verifier": (
                 repo / "scripts/verify-viewer-voice-call-worker.py"
+            ).read_text(encoding="utf-8"),
+            "viewer_video_mailbox_verifier": (
+                repo / "scripts/verify-viewer-video-mailbox.py"
             ).read_text(encoding="utf-8"),
             "android_voice_call_ownership_verifier": (
                 repo / "scripts/verify-android-voice-call-ownership.py"

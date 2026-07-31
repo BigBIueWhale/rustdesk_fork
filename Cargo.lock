@@ -6207,7 +6207,6 @@ dependencies = [
  "core-foundation 0.9.4",
  "core-graphics 0.22.3",
  "cpal",
- "crossbeam-queue",
  "ctrlc",
  "dasp",
  "dbus",

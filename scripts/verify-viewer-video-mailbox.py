@@ -1,0 +1,410 @@
+#!/usr/bin/env python3
+"""Verify bounded, generation-aware outgoing-viewer video mailbox semantics."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+from pathlib import Path
+from typing import Dict, Tuple
+
+
+class VerificationError(RuntimeError):
+    pass
+
+
+def require(source: str, needle: str, label: str) -> None:
+    if needle not in source:
+        raise VerificationError(f"missing {label}: {needle!r}")
+
+
+def forbid(source: str, needle: str, label: str) -> None:
+    if needle in source:
+        raise VerificationError(f"forbidden {label} remains: {needle!r}")
+
+
+def require_order(source: str, needles: Tuple[str, ...], label: str) -> None:
+    position = -1
+    for needle in needles:
+        position = source.find(needle, position + 1)
+        if position < 0:
+            raise VerificationError(f"{label}: missing or misordered {needle!r}")
+
+
+def extract_rust_item(source: str, signature: str, label: str) -> str:
+    start = source.find(signature)
+    if start < 0:
+        raise VerificationError(f"missing {label}")
+    open_brace = source.find("{", start + len(signature))
+    if open_brace < 0:
+        raise VerificationError(f"missing body for {label}")
+    depth = 0
+    for offset in range(open_brace, len(source)):
+        character = source[offset]
+        if character == "{":
+            depth += 1
+        elif character == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start : offset + 1]
+    raise VerificationError(f"unterminated body for {label}")
+
+
+def load_sources(repo: Path) -> Dict[str, str]:
+    return {
+        "client": (repo / "src/client.rs").read_text(encoding="utf-8"),
+        "io_loop": (repo / "src/client/io_loop.rs").read_text(encoding="utf-8"),
+        "cargo": (repo / "Cargo.toml").read_text(encoding="utf-8"),
+        "lock": (repo / "Cargo.lock").read_text(encoding="utf-8"),
+        "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
+        "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),
+        "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
+        "apple": (repo / "scripts/apple-conform-check.sh").read_text(encoding="utf-8"),
+        "workspace": (repo / "scripts/verify-verifier-workspace.py").read_text(
+            encoding="utf-8"
+        ),
+    }
+
+
+def validate(sources: Dict[str, str]) -> None:
+    client = sources["client"]
+    io_loop = sources["io_loop"]
+
+    for needle, label in (
+        (
+            "pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 8;",
+            "eight-frame mailbox bound",
+        ),
+        (
+            "pub const VIDEO_CONTROL_QUEUE_CAPACITY: usize = 8;",
+            "independent eight-control mailbox bound",
+        ),
+        (
+            "pub const MAX_VIDEO_FRAME_QUEUE_AGE: Duration = Duration::from_secs(1);",
+            "one-second receive-through-decode freshness budget",
+        ),
+    ):
+        require(client, needle, label)
+
+    media_data = extract_rust_item(client, "pub enum MediaData", "audio media enum")
+    require(media_data, "AudioFrame(Box<AudioFrame>)", "audio-frame variant")
+    require(media_data, "AudioFormat(AudioFormat)", "audio-format variant")
+    for forbidden in ("VideoQueue", "VideoFrame", "Reset", "RecordScreen"):
+        forbid(media_data, forbidden, "video/control variant in audio channel")
+
+    state = extract_rust_item(
+        client, "struct VideoMailboxState", "viewer video mailbox state"
+    )
+    require_order(
+        state,
+        (
+            "work: VecDeque<VideoWork>",
+            "frame_count: usize",
+            "control_count: usize",
+            "generation: u64",
+            "awaiting_keyframe: bool",
+            "refresh_requested: bool",
+            "closed: bool",
+        ),
+        "single ordered mailbox state",
+    )
+
+    invalidate = extract_rust_item(
+        client, "fn invalidate_frames(&mut self)", "GOP invalidation"
+    )
+    require_order(
+        invalidate,
+        (
+            "if !self.advance_generation()",
+            "self.clear_frames();",
+            "self.awaiting_keyframe = true;",
+            "self.refresh_requested = true;",
+        ),
+        "generation retirement before fresh-keyframe wait",
+    )
+
+    admission = extract_rust_item(
+        client, "fn admit_frame_at(", "viewer video frame admission"
+    )
+    require_order(
+        admission,
+        (
+            "if state.closed",
+            "if is_keyframe",
+            "if !state.advance_generation()",
+            "state.clear_frames();",
+            "state.awaiting_keyframe = false;",
+            "state.refresh_requested = false;",
+            "state.work.push_back(VideoWork::Frame",
+            "if state.awaiting_keyframe",
+            "VideoFrameAdmission::AwaitingKeyframe",
+            "VideoFrameAdmission::RefreshRequired",
+            "if state.frame_count >= VIDEO_FRAME_QUEUE_CAPACITY",
+            "let open = state.invalidate_frames();",
+            "state.work.push_back(VideoWork::Frame",
+            "self.shared.ready.notify_one();",
+            "VideoFrameAdmission::Queued",
+        ),
+        "keyframe replacement, overflow retirement, and direct work reachability",
+    )
+    for forbidden in (
+        "force_push",
+        "ArrayQueue",
+        "try_send",
+        "VideoQueue",
+        "thread::sleep",
+        "Runtime::new",
+        "block_on",
+    ):
+        forbid(admission, forbidden, "split/polling frame admission")
+
+    shared_close = extract_rust_item(
+        client, "impl VideoMailboxShared", "shared mailbox closure"
+    )
+    require_order(
+        shared_close,
+        (
+            "state.closed = true;",
+            "state.work.clear();",
+            "state.frame_count = 0;",
+            "state.control_count = 0;",
+            "self.ready.notify_all();",
+        ),
+        "terminal close releases retained work before wake",
+    )
+    require(
+        extract_rust_item(
+            client, "impl Drop for VideoMailboxSender", "sender Drop closure"
+        ),
+        "self.shared.close();",
+        "sender-drop receiver wake",
+    )
+    require(
+        extract_rust_item(
+            client, "impl Drop for VideoMailboxReceiver", "receiver Drop closure"
+        ),
+        "self.shared.close();",
+        "receiver-drop producer rejection",
+    )
+
+    receive = extract_rust_item(
+        client, "fn recv(&self) -> Option<VideoMailboxItem>", "mailbox receive"
+    )
+    require_order(
+        receive,
+        (
+            "while state.work.is_empty() && !state.closed",
+            "state = self.shared.ready.wait(state).unwrap();",
+            "let Some(work) = state.work.pop_front()",
+            "state.control_count.checked_sub(1)",
+            "state.frame_count.checked_sub(1)",
+            "frame.generation != state.generation",
+            "if !video_frame_is_fresh",
+            "let open = state.invalidate_frames();",
+            "return Some(VideoMailboxItem::RefreshRequired);",
+            "return Some(VideoMailboxItem::Frame(frame));",
+        ),
+        "event-driven direct receive and stale-GOP retirement",
+    )
+    forbid(receive, "saturating_sub", "silent mailbox-count repair")
+
+    worker = extract_rust_item(
+        client, "pub(crate) fn start_video_thread", "viewer video decoder worker"
+    )
+    require_order(
+        worker,
+        (
+            "let mut decoder_generation = None;",
+            "VideoMailboxItem::RefreshRequired",
+            "decoder_generation = None;",
+            "VideoMailboxItem::Frame(queued)",
+            "if queued.is_keyframe",
+            "decoder_generation = Some(queued.generation);",
+            "decoder_generation != Some(queued.generation)",
+            "video_receiver.invalidate_generation(queued.generation)",
+            "handler.handle_frame",
+            "if !video_frame_is_fresh(queued_at, std::time::Instant::now())",
+            "if !video_receiver.generation_is_current(generation)",
+            "if rendered",
+            "video_callback(",
+            "VideoMailboxItem::Control(VideoControl::Reset)",
+            "decoder_generation = None;",
+        ),
+        "decode freshness, generation check, publication, and reset ordering",
+    )
+    for forbidden in (
+        "MediaData::VideoQueue",
+        "MediaData::VideoFrame",
+        "discard_queue",
+        "ArrayQueue",
+        "thread::sleep",
+    ):
+        forbid(worker, forbidden, "retired split/polling decoder path")
+
+    sequence = extract_rust_item(
+        io_loop, "fn starts_video_sequence(", "independent-frame classifier"
+    )
+    require(
+        sequence,
+        "f.frames.first().map_or(false, |frame| frame.key)",
+        "leading-keyframe classification",
+    )
+    require(sequence, "Rgb(_) | Yuv(_) => true", "raw independent-frame admission")
+    require(sequence, "_ => false", "unknown wire variant refusal")
+    forbid(sequence, ".iter().any(", "later-keyframe sequence admission")
+
+    peer_admission = io_loop[
+        io_loop.index("Some(message::Union::VideoFrame(vf))") :
+        io_loop.index("Some(message::Union::LoginResponse", io_loop.index("Some(message::Union::VideoFrame(vf))"))
+    ]
+    require_order(
+        peer_admission,
+        (
+            "let is_keyframe = starts_video_sequence(&vf);",
+            "thread.media_thread.admit_frame(vf, is_keyframe)",
+            "VideoFrameAdmission::AwaitingKeyframe",
+            "VideoFrameAdmission::RefreshRequired",
+            "self.handler.refresh_video(display as _);",
+        ),
+        "peer frame to direct mailbox admission and recovery",
+    )
+    for forbidden in ("force_push", "MediaData::VideoQueue", "try_send(MediaData::VideoFrame"):
+        forbid(peer_admission, forbidden, "split frame/token peer admission")
+
+    for test in (
+        "r_s11ev_video_mailbox_requires_a_keyframe_before_deltas",
+        "r_s11ev_video_mailbox_overflow_discards_the_gop_and_recovers_in_order",
+        "r_s11ev_keyframe_supersession_preserves_control_order",
+        "r_s11ev_superseded_generation_is_rejected_before_publication",
+        "r_s11ev_equal_rate_recovery_leaves_no_unreachable_frame_backlog",
+        "r_s11ev_stale_frame_retires_the_gop_instead_of_displaying_backlog",
+        "r_s11ev_video_freshness_budget_includes_decode_time",
+        "r_s11ev_explicit_refresh_clears_frames_but_preserves_controls",
+        "r_s11ev_video_controls_are_independently_bounded",
+        "r_s11ev_close_releases_pending_work_and_wakes_the_worker",
+        "r_s11ev_sender_drop_wakes_a_waiting_receiver",
+        "r_s11ev_receiver_drop_rejects_new_work",
+        "r_s11ev_generation_exhaustion_fails_closed",
+        "r_s11ev_only_a_leading_keyframe_starts_an_encoded_sequence",
+        "r_s11ev_raw_video_frames_are_independent_sequences",
+    ):
+        require(client + io_loop, f"fn {test}()", f"{test} behavior regression")
+
+    forbid(sources["cargo"], 'crossbeam-queue = "', "direct crossbeam-queue dependency")
+    require(sources["lock"], 'name = "crossbeam-queue"', "transitive queue lock record")
+
+    for key, needle, label in (
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11ev</span>',
+            "R-S11ev requirement",
+        ),
+        ("requirements", "<tr><td>304</td>", "Appendix C #304"),
+        (
+            "hardening",
+            "**R-S11ev/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox",
+            "viewer video mailbox hardening ledger",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config client::tests::r_s11ev_ --color never",
+            "shared behavior-test wiring",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-viewer-video-mailbox.py --repo . --self-test",
+            "shared focused-verifier wiring",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-viewer-video-mailbox.py --repo . --self-test",
+            "Apple/shared focused-verifier wiring",
+        ),
+        (
+            "workspace",
+            '"viewer_video_mailbox_verifier": (',
+            "independent verifier source binding",
+        ),
+        (
+            "workspace",
+            "validate_viewer_video_mailbox_contract(sources)",
+            "independent verifier dispatch",
+        ),
+    ):
+        require(sources[key], needle, label)
+
+    requirements_digest = hashlib.sha256(
+        sources["requirements"].encode("utf-8")
+    ).hexdigest()
+    require(
+        sources["hardening"],
+        f"{requirements_digest}  requirements.html",
+        "exact requirements digest binding",
+    )
+
+
+Mutation = Tuple[str, str, str, str]
+
+MUTATIONS: Tuple[Mutation, ...] = (
+    ("client", "pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 8;", "pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 120;", "frame bound"),
+    ("client", "pub const VIDEO_CONTROL_QUEUE_CAPACITY: usize = 8;", "pub const VIDEO_CONTROL_QUEUE_CAPACITY: usize = 120;", "control bound"),
+    ("client", "Duration::from_secs(1)", "Duration::from_secs(10)", "freshness bound"),
+    ("client", "work: VecDeque<VideoWork>", "frames: VecDeque<VideoWork>", "unified work queue"),
+    ("client", "state.clear_frames();\n            state.awaiting_keyframe = false;", "state.awaiting_keyframe = false;", "keyframe supersession"),
+    ("client", "if state.frame_count >= VIDEO_FRAME_QUEUE_CAPACITY", "if false", "overflow recovery"),
+    ("client", "self.shared.ready.notify_one();\n        VideoFrameAdmission::Queued", "VideoFrameAdmission::Queued", "direct frame wake"),
+    ("client", "impl Drop for VideoMailboxSender", "impl VideoMailboxSender", "sender-drop finality"),
+    ("client", "impl Drop for VideoMailboxReceiver", "impl VideoMailboxReceiver", "receiver-drop finality"),
+    ("client", "state.frame_count.checked_sub(1)", "state.frame_count.saturating_sub(1)", "frame counter invariant"),
+    ("client", "if !video_frame_is_fresh(frame.queued_at", "if false && !video_frame_is_fresh(frame.queued_at", "dequeue freshness"),
+    ("client", "if !video_frame_is_fresh(queued_at, std::time::Instant::now())", "if false", "post-decode freshness"),
+    ("client", "if !video_receiver.generation_is_current(generation)", "if false", "publication generation check"),
+    ("client", "decoder_generation = None;\n                        if let Some(handler)", "if let Some(handler)", "decoder reset generation"),
+    ("client", "fn r_s11ev_equal_rate_recovery_leaves_no_unreachable_frame_backlog()", "fn equal_rate_recovery_leaves_no_unreachable_frame_backlog()", "equal-rate regression"),
+    ("io_loop", "f.frames.first().map_or(false, |frame| frame.key)", "f.frames.iter().any(|frame| frame.key)", "leading keyframe"),
+    ("io_loop", "thread.media_thread.admit_frame(vf, is_keyframe)", "thread.media_thread.try_send(vf)", "direct mailbox admission"),
+    ("cargo", 'async-trait = "0.1"', 'async-trait = "0.1"\ncrossbeam-queue = "0.3"', "retired direct dependency"),
+    ("requirements", '<div class="req"><span class="id">R-S11ev</span>', '<div class="req"><span class="id">R-S11ev-disabled</span>', "normative requirement"),
+    ("requirements", "<tr><td>304</td>", "<tr><td>304-disabled</td>", "Appendix disposition"),
+    ("hardening", "**R-S11ev/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox", "**R-S11ev-disabled/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox", "hardening ledger"),
+    ("verify", "cargo test --lib --features linux-pkg-config client::tests::r_s11ev_ --color never", "cargo test --lib --features linux-pkg-config client::tests::disabled_ --color never", "shared behavior gate"),
+    ("verify", "python3 scripts/verify-viewer-video-mailbox.py --repo . --self-test", "python3 scripts/verify-viewer-video-mailbox.py --repo .", "shared mutation gate"),
+    ("apple", "python3 scripts/verify-viewer-video-mailbox.py --repo . --self-test", "python3 scripts/verify-viewer-video-mailbox.py --repo .", "Apple mutation gate"),
+    ("workspace", '"viewer_video_mailbox_verifier": (', '"viewer_video_mailbox_verifier_disabled": (', "independent source binding"),
+)
+
+
+def run_self_test(sources: Dict[str, str]) -> None:
+    for key, old, new, label in MUTATIONS:
+        if old not in sources[key]:
+            raise VerificationError(f"self-test fixture missing for {label}")
+        mutated = dict(sources)
+        mutated[key] = sources[key].replace(old, new, 1)
+        try:
+            validate(mutated)
+        except VerificationError:
+            continue
+        raise VerificationError(f"self-test mutation survived: {label}")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--repo", type=Path, default=Path("."))
+    parser.add_argument("--self-test", action="store_true")
+    args = parser.parse_args()
+    sources = load_sources(args.repo.resolve())
+    validate(sources)
+    if args.self_test:
+        run_self_test(sources)
+        print(f"viewer video mailbox verifier self-test passed ({len(MUTATIONS)} mutations)")
+    else:
+        print("viewer video mailbox verifier passed")
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        raise SystemExit(main())
+    except VerificationError as error:
+        print(f"viewer video mailbox verifier failed: {error}")
+        raise SystemExit(1)

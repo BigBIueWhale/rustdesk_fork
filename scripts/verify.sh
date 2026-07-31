@@ -8943,6 +8943,8 @@ grep -Fq '<tr><td>236</td>' requirements.html ||
 # viewer must cap display-thread creation and use bounded media queues.
 echo "== (3c-ii-a) viewer peer media display/thread + queue bounds (Appendix C #2b/R-T0) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::media_data_queue_is_bounded --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::r_s11ev_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config client::io_loop::tests::r_s11ev_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::owned_media_thread_closes_admission_before_join --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::native_opus_format_admission_pins_first_format --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::native_video_unsupported_guard_blocks_marked_format --color never
@@ -8953,6 +8955,12 @@ echo "== (3c-ii-a) viewer peer media display/thread + queue bounds (Appendix C #
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config common::codec::tests::encoder_negotiation --color never
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config common::codec::tests::av1_policy_is_not_advertised_or_negotiated --color never
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config common::codec::tests::av1_decoder_is_policy_disabled --color never
+if python3 scripts/verify-viewer-video-mailbox.py --repo . --self-test; then
+  echo "  ok  R-S11ev/R-S11e-183 viewer video frames have one bounded, fresh, generation-aware mailbox with exact teardown"
+else
+  echo "  FAIL R-S11ev/R-S11e-183: viewer video mailbox regained split frame/token reachability, stale-GOP, or teardown debt"
+  rc=1
+fi
 grep -qF 'native_video_format_locally_unsupported(&lc.mark_unsupported, format)' src/client.rs ||
   { echo "  FAIL Appendix C #2b/R-T0: video receive loop must drop locally-unsupported peer codecs before recreating a native decoder worker"; rc=1; }
 grep -qF 'local decoder is marked unsupported' src/client.rs ||

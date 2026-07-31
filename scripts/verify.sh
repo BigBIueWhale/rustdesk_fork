@@ -8970,9 +8970,9 @@ else
 fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ex_ --color never
 if python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test; then
-  echo "  ok  R-S11ex/R-S11e-185 desktop Flutter texture creation, publication, replacement, and teardown have one exact asynchronous owner"
+  echo "  ok  R-S11ex/R-S11fa desktop Flutter texture finality and cross-platform presentation resumption have exact bounded owners"
 else
-  echo "  FAIL R-S11ex/R-S11e-185: desktop Flutter texture lifecycle regained detached creation, stale UI-owner registration, overlapping replacement, or unordered teardown"
+  echo "  FAIL R-S11ex/R-S11fa: Flutter texture lifecycle or exact presentation-resume recovery regressed"
   rc=1
 fi
 grep -qF 'native_video_format_locally_unsupported(&lc.mark_unsupported, format)' src/client.rs ||

@@ -66,6 +66,17 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
     if (peerId != null) {
       ConnectionTypeState.init(peerId!);
       tabController.onSelected = (id) {
+        final state = tabController.state.value;
+        final selected = state.selected;
+        final selectedKey = selected >= 0 && selected < state.tabs.length
+            ? state.tabs[selected].key
+            : null;
+        for (final tab in state.tabs) {
+          final page = tab.page;
+          if (page is ViewCameraPage) {
+            page.setPresentationSelected(tab.key == selectedKey);
+          }
+        }
         final viewCameraPage = tabController.widget(id);
         if (viewCameraPage is ViewCameraPage) {
           final ffi = viewCameraPage.ffi;

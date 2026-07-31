@@ -183,12 +183,14 @@ local_docker run --rm --pull=never --network=none --read-only \
       third_party/texture_rgba_renderer/lib/texture_rgba_renderer.dart \
       lib/models/mobile_session_start_queue.dart \
       lib/models/session_stream_finality.dart \
+      lib/models/presentation_recovery.dart \
       lib/mobile/pages/remote_page.dart \
       lib/mobile/pages/view_camera_page.dart \
       lib/web/bridge.dart \
       test/desktop_texture_lifecycle_test.dart \
       test/mobile_session_start_queue_test.dart \
-      test/session_stream_finality_test.dart
+      test/session_stream_finality_test.dart \
+      test/presentation_recovery_test.dart
     set +e
     out="$(flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/ 2>&1)"
     analyze_status=$?
@@ -220,6 +222,8 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/session_stream_finality_test.dart
     echo "  == R-S11ex flutter test: desktop texture lifecycle exact finality =="
     flutter test --no-pub test/desktop_texture_lifecycle_test.dart
+    echo "  == viewer presentation recovery coalesces background and focus transitions =="
+    flutter test --no-pub test/presentation_recovery_test.dart
     echo "  == R-S11ez Linux native texture callback retirement finality =="
     engine="${flutter_roots[0]}/bin/cache/artifacts/engine/linux-x64"
     plugin=/src/flutter/third_party/texture_rgba_renderer/linux

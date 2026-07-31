@@ -21,6 +21,7 @@ import '../../common/widgets/remote_input.dart';
 import '../../models/input_model.dart';
 import '../../models/model.dart';
 import '../../models/platform_model.dart';
+import '../../models/presentation_recovery.dart';
 import '../../utils/image.dart';
 import '../widgets/dialog.dart';
 import '../widgets/custom_scale_widget.dart';
@@ -60,6 +61,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   Orientation? _currentOrientation;
   final _uniqueKey = UniqueKey();
   Timer? _iosKeyboardWorkaroundTimer;
+  final _presentationRecovery = PresentationRecovery();
 
   final _blockableOverlayState = BlockableOverlayState();
 
@@ -122,6 +124,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   @override
   Future<void> dispose() async {
     WidgetsBinding.instance.removeObserver(this);
+    _presentationRecovery.retire();
     // Start exact route cleanup immediately. State persistence may await before native close, but
     // the Activity owner transition and the next mobile start also synchronously retire/join this
     // old native connection. Its captured UUID cannot select a replacement route.
@@ -162,8 +165,24 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
     if (state == AppLifecycleState.resumed) {
+      _resumePresentation();
       trySyncClipboard();
+    } else {
+      _presentationRecovery.suspend();
     }
+  }
+
+  void _resumePresentation() {
+    unawaited(_presentationRecovery.resume(
+      selected: true,
+      refresh: () async {
+        if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
+        await sessionRefreshVideo(sessionId, gFFI.ffiModel.pi);
+      },
+      onError: (error, stackTrace) {
+        debugPrint('Mobile presentation refresh failed: ${error.runtimeType}');
+      },
+    ));
   }
 
   // For client side

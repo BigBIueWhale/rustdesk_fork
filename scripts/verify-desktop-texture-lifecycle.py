@@ -63,10 +63,15 @@ def extract_between(source: str, start: str, end: str, label: str) -> str:
 def load_sources(repo: Path) -> Dict[str, str]:
     paths = {
         "lifecycle": "flutter/lib/models/desktop_texture_lifecycle.dart",
+        "presentation_recovery": "flutter/lib/models/presentation_recovery.dart",
         "render": "flutter/lib/models/desktop_render_texture.dart",
         "model": "flutter/lib/models/model.dart",
         "remote": "flutter/lib/desktop/pages/remote_page.dart",
+        "remote_tab": "flutter/lib/desktop/pages/remote_tab_page.dart",
         "camera": "flutter/lib/desktop/pages/view_camera_page.dart",
+        "camera_tab": "flutter/lib/desktop/pages/view_camera_tab_page.dart",
+        "mobile_remote": "flutter/lib/mobile/pages/remote_page.dart",
+        "mobile_camera": "flutter/lib/mobile/pages/view_camera_page.dart",
         "flutter": "src/flutter.rs",
         "ffi": "src/flutter_ffi.rs",
         "client": "src/client.rs",
@@ -79,6 +84,7 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "windows_runner": "flutter/windows/runner/flutter_window.cpp",
         "desktop_settings": "flutter/lib/desktop/pages/desktop_setting_page.dart",
         "tests": "flutter/test/desktop_texture_lifecycle_test.dart",
+        "presentation_tests": "flutter/test/presentation_recovery_test.dart",
         "pubspec": "flutter/pubspec.yaml",
         "pub_lock": "flutter/pubspec.lock",
         "online_fetch": "scripts/online-fetch.sh",
@@ -158,6 +164,236 @@ def load_sources(repo: Path) -> Dict[str, str]:
 
 
 def validate(sources: Dict[str, str]) -> None:
+    recovery = extract_braced_item(
+        sources["presentation_recovery"],
+        "class PresentationRecovery",
+        "presentation recovery owner",
+    )
+    require_order(
+        recovery,
+        (
+            "bool _refreshPending = false;",
+            "bool _resumeDemanded = false;",
+            "bool _refreshInFlight = false;",
+            "bool _retired = false;",
+        ),
+        "explicit presentation-recovery state",
+    )
+    suspension = extract_braced_item(
+        recovery, "void suspend()", "presentation suspension"
+    )
+    require_order(
+        suspension,
+        (
+            "if (_retired) return;",
+            "_refreshPending = true;",
+            "_resumeDemanded = false;",
+        ),
+        "retirement-safe one-shot suspension",
+    )
+    resumption = extract_braced_item(
+        recovery, "Future<void> resume({", "presentation resumption"
+    )
+    require_order(
+        resumption,
+        (
+            "if (_retired || !selected) return;",
+            "_resumeDemanded = true;",
+            "if (_refreshInFlight) return;",
+            "_refreshInFlight = true;",
+            "while (!_retired && _refreshPending && _resumeDemanded)",
+            "_refreshPending = false;",
+            "_resumeDemanded = false;",
+            "await refresh();",
+            "final followUpDemanded = _refreshPending && _resumeDemanded;",
+            "_refreshPending = true;",
+            "_resumeDemanded = followUpDemanded;",
+            "onError(error, stackTrace);",
+            "if (!followUpDemanded) return;",
+            "_refreshInFlight = false;",
+        ),
+        "selected, coalesced, failure-visible presentation recovery",
+    )
+    retirement = extract_braced_item(
+        recovery, "void retire()", "presentation recovery retirement"
+    )
+    require_order(
+        retirement,
+        (
+            "_retired = true;",
+            "_refreshPending = false;",
+            "_resumeDemanded = false;",
+        ),
+        "synchronous presentation recovery retirement",
+    )
+
+    for key, label in (
+        ("mobile_remote", "mobile remote viewer"),
+        ("mobile_camera", "mobile camera viewer"),
+    ):
+        lifecycle_callback = extract_braced_item(
+            sources[key],
+            "void didChangeAppLifecycleState(AppLifecycleState state)",
+            f"{label} application lifecycle callback",
+        )
+        require_order(
+            lifecycle_callback,
+            (
+                "if (!mounted || !gFFI.isCurrentSession(sessionId)) return;",
+                "if (state == AppLifecycleState.resumed)",
+                (
+                    "_resumePresentation();"
+                    if key == "mobile_remote"
+                    else "_presentationRecovery.resume("
+                ),
+                "_presentationRecovery.suspend();",
+            ),
+            f"{label} exact-session suspend/resume recovery",
+        )
+        refresh_source = (
+            extract_braced_item(
+                sources[key],
+                "void _resumePresentation()",
+                f"{label} presentation refresh",
+            )
+            if key == "mobile_remote"
+            else lifecycle_callback
+        )
+        require_order(
+            refresh_source,
+            (
+                "selected: true,",
+                "if (!mounted || !gFFI.isCurrentSession(sessionId)) return;",
+                "await sessionRefreshVideo(sessionId, gFFI.ffiModel.pi);",
+            ),
+            f"{label} exact-session presentation refresh",
+        )
+        dispose = extract_braced_item(
+            sources[key], "Future<void> dispose()", f"{label} disposal"
+        )
+        require_order(
+            dispose,
+            (
+                "WidgetsBinding.instance.removeObserver(this);",
+                "_presentationRecovery.retire();",
+                "final closeFuture = gFFI.close(expectedSessionId: sessionId);",
+            ),
+            f"{label} recovery retirement before native close",
+        )
+
+    for key, label in (
+        ("remote", "desktop remote viewer"),
+        ("camera", "desktop camera viewer"),
+    ):
+        page = sources[key]
+        for signature, action, transition in (
+            ("void onWindowBlur()", "_presentationRecovery.suspend();", "blur"),
+            ("void onWindowMinimize()", "_presentationRecovery.suspend();", "minimize"),
+            ("void onWindowFocus()", "_resumePresentationIfNeeded();", "focus"),
+            ("void onWindowRestore()", "_resumePresentationIfNeeded();", "restore"),
+            ("void onWindowMaximize()", "_resumePresentationIfNeeded();", "maximize"),
+        ):
+            callback = extract_braced_item(
+                page, signature, f"{label} {transition} callback"
+            )
+            require(callback, action, f"{label} {transition} recovery transition")
+        selection = extract_braced_item(
+            page,
+            "void _setPresentationSelected(bool selected)",
+            f"{label} tab-selection transition",
+        )
+        require_order(
+            selection,
+            (
+                "if (selected)",
+                "_resumePresentationIfNeeded();",
+                "_presentationRecovery.suspend();",
+            ),
+            f"{label} selected/deselected recovery",
+        )
+        resume = extract_braced_item(
+            page,
+            "void _resumePresentationIfNeeded()",
+            f"{label} presentation resumption",
+        )
+        require_order(
+            resume,
+            (
+                "_presentationRecovery.resume(",
+                "selected: _isPresentationSelected,",
+                "if (!mounted || !_ffi.isCurrentSession(sessionId)) return;",
+                "await sessionRefreshVideo(sessionId, _ffi.ffiModel.pi);",
+            ),
+            f"{label} selected exact-session refresh",
+        )
+        dispose = extract_braced_item(
+            page, "Future<void> dispose()", f"{label} disposal"
+        )
+        require_order(
+            dispose,
+            (
+                "_presentationRecovery.retire();",
+                "super.dispose();",
+                "final textureDisposal = _ffi.textureModel.dispose();",
+                "await textureDisposal;",
+                "await _ffi.close(closeSession: closeSession);",
+            ),
+            f"{label} recovery/texture/session retirement order",
+        )
+
+    for key, page_type, label in (
+        ("remote_tab", "RemotePage", "desktop remote tabs"),
+        ("camera_tab", "ViewCameraPage", "desktop camera tabs"),
+    ):
+        tab_selection = extract_between(
+            sources[key],
+            "tabController.onSelected = (id) {",
+            "        final " + ("remotePage" if key == "remote_tab" else "viewCameraPage"),
+            f"{label} selection propagation",
+        )
+        require_order(
+            tab_selection,
+            (
+                "final selectedKey = selected >= 0 && selected < state.tabs.length",
+                "for (final tab in state.tabs)",
+                f"if (page is {page_type})",
+                "page.setPresentationSelected(tab.key == selectedKey);",
+            ),
+            f"{label} exact selected-page propagation",
+        )
+
+    presentation_tests = sources["presentation_tests"]
+    for test in (
+        "initial and duplicate resume notifications do not request a refresh",
+        "one suspended presentation produces one refresh",
+        "a hidden desktop tab retains recovery until it is selected",
+        "a failed refresh is rearmed for a later resume transition",
+        "suspend and resume during a request preserve one follow-up refresh",
+        "retirement cancels pending and in-flight follow-up recovery",
+        "retirement still reports an in-flight refresh failure",
+    ):
+        require(
+            presentation_tests,
+            f"test('{test}'",
+            f"{test} behavior regression",
+        )
+    require(
+        sources["dart_verify"],
+        "flutter test --no-pub test/presentation_recovery_test.dart",
+        "confined presentation recovery behavior gate",
+    )
+    for path in (
+        "lib/models/presentation_recovery.dart",
+        "lib/mobile/pages/remote_page.dart",
+        "lib/mobile/pages/view_camera_page.dart",
+        "test/presentation_recovery_test.dart",
+    ):
+        require(
+            sources["dart_verify"],
+            path,
+            f"confined presentation source formatting gate for {path}",
+        )
+
     lifecycle = sources["lifecycle"]
     owner = extract_braced_item(
         lifecycle,
@@ -1182,9 +1418,15 @@ def validate(sources: Dict[str, str]) -> None:
             '<div class="req"><span class="id">R-S11ez</span>',
             "R-S11ez native retirement-finality requirement",
         ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fa</span>',
+            "R-S11fa presentation-resume requirement",
+        ),
         ("requirements", "<tr><td>306</td>", "Appendix C #306"),
         ("requirements", "<tr><td>307</td>", "Appendix C #307"),
         ("requirements", "<tr><td>308</td>", "Appendix C #308"),
+        ("requirements", "<tr><td>309</td>", "Appendix C #309"),
         (
             "hardening",
             "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
@@ -1199,6 +1441,11 @@ def validate(sources: Dict[str, str]) -> None:
             "hardening",
             "**R-S11ez/R-S11e-187 pending desktop frame retirement finality",
             "native retirement-finality hardening ledger",
+        ),
+        (
+            "hardening",
+            "**R-S11fa/R-S11e-188 exact viewer presentation-resume recovery",
+            "presentation-resume hardening ledger",
         ),
         (
             "verify",
@@ -1256,6 +1503,84 @@ def validate(sources: Dict[str, str]) -> None:
 Mutation = Tuple[str, str, str, str]
 
 MUTATIONS: Tuple[Mutation, ...] = (
+    (
+        "presentation_recovery",
+        "if (_retired || !selected) return;",
+        "if (_retired) return;",
+        "hidden presentation selection guard",
+    ),
+    (
+        "presentation_recovery",
+        "if (_refreshInFlight) return;",
+        "if (false) return;",
+        "duplicate refresh coalescing",
+    ),
+    (
+        "presentation_recovery",
+        "final followUpDemanded = _refreshPending && _resumeDemanded;",
+        "final followUpDemanded = false;",
+        "in-flight suspend/resume preservation",
+    ),
+    (
+        "presentation_recovery",
+        "onError(error, stackTrace);",
+        "// refresh failure hidden",
+        "presentation refresh failure visibility",
+    ),
+    (
+        "presentation_recovery",
+        "_retired = true;",
+        "_retired = false;",
+        "presentation recovery retirement",
+    ),
+    (
+        "mobile_remote",
+        "      _resumePresentation();\n      trySyncClipboard();",
+        "      trySyncClipboard();",
+        "mobile remote foreground recovery",
+    ),
+    (
+        "mobile_camera",
+        "          await sessionRefreshVideo(sessionId, gFFI.ffiModel.pi);",
+        "          return;",
+        "mobile camera exact-session refresh",
+    ),
+    (
+        "remote",
+        "  void onWindowBlur() {\n    super.onWindowBlur();\n    _presentationRecovery.suspend();",
+        "  void onWindowBlur() {\n    super.onWindowBlur();",
+        "desktop remote blur suspension",
+    ),
+    (
+        "camera",
+        "  void onWindowFocus() {\n    super.onWindowFocus();\n    _resumePresentationIfNeeded();",
+        "  void onWindowFocus() {\n    super.onWindowFocus();",
+        "desktop camera focus recovery",
+    ),
+    (
+        "remote_tab",
+        "            page.setPresentationSelected(tab.key == selectedKey);",
+        "            page.setPresentationSelected(true);",
+        "desktop remote exact selected-tab propagation",
+    ),
+    (
+        "camera_tab",
+        "            page.setPresentationSelected(tab.key == selectedKey);",
+        "            page.setPresentationSelected(true);",
+        "desktop camera exact selected-tab propagation",
+    ),
+    (
+        "presentation_tests",
+        "retirement still reports an in-flight refresh failure",
+        "retirement hides an in-flight refresh failure",
+        "retired in-flight failure regression",
+    ),
+    (
+        "dart_verify",
+        "flutter test --no-pub test/presentation_recovery_test.dart",
+        "true # presentation recovery test disabled",
+        "presentation recovery behavior gate",
+    ),
     ("lifecycle", "_retireRequested = true;", "_retireRequested = false;", "synchronous retirement invalidation"),
     ("lifecycle", "if (!ready)", "if (false)", "failed-initialization cleanup"),
     ("lifecycle", "if (_retireRequested)", "if (false)", "late-publication exclusion"),
@@ -1619,12 +1944,15 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<div class="req"><span class="id">R-S11ex</span>', '<div class="req"><span class="id">R-S11ex-disabled</span>', "normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11ey</span>', '<div class="req"><span class="id">R-S11ey-disabled</span>', "software-only normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11ez</span>', '<div class="req"><span class="id">R-S11ez-disabled</span>', "native retirement normative requirement"),
+    ("requirements", '<div class="req"><span class="id">R-S11fa</span>', '<div class="req"><span class="id">R-S11fa-disabled</span>', "presentation-resume normative requirement"),
     ("requirements", "<tr><td>306</td>", "<tr><td>306-disabled</td>", "Appendix disposition"),
     ("requirements", "<tr><td>307</td>", "<tr><td>307-disabled</td>", "software-only Appendix disposition"),
     ("requirements", "<tr><td>308</td>", "<tr><td>308-disabled</td>", "native retirement Appendix disposition"),
+    ("requirements", "<tr><td>309</td>", "<tr><td>309-disabled</td>", "presentation-resume Appendix disposition"),
     ("hardening", "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "**R-S11ex-disabled/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "hardening ledger"),
     ("hardening", "**R-S11ey/R-S11e-186 software-RGBA-only desktop presentation", "**R-S11ey-disabled/R-S11e-186 software-RGBA-only desktop presentation", "software-only hardening ledger"),
     ("hardening", "**R-S11ez/R-S11e-187 pending desktop frame retirement finality", "**R-S11ez-disabled/R-S11e-187 pending desktop frame retirement finality", "native retirement hardening ledger"),
+    ("hardening", "**R-S11fa/R-S11e-188 exact viewer presentation-resume recovery", "**R-S11fa-disabled/R-S11e-188 exact viewer presentation-resume recovery", "presentation-resume hardening ledger"),
     ("dart_verify", "flutter test --no-pub test/desktop_texture_lifecycle_test.dart", "true # desktop texture lifecycle test disabled", "Dart behavior gate"),
     ("dart_verify", "\n    /tmp/texture_rgba_renderer_plugin_test\n", "\n    true # Linux native callback behavior gate disabled\n", "Linux native callback behavior gate"),
     ("dart_verify", "\n    /tmp/texture_rgba_windows_core_test\n", "\n    true # portable Windows callback-core gate disabled\n", "portable Windows callback-core behavior gate"),

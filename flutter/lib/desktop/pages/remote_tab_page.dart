@@ -66,6 +66,17 @@ class _ConnectionTabPageState extends State<ConnectionTabPage> {
     if (peerId != null) {
       ConnectionTypeState.init(peerId!);
       tabController.onSelected = (id) {
+        final state = tabController.state.value;
+        final selected = state.selected;
+        final selectedKey = selected >= 0 && selected < state.tabs.length
+            ? state.tabs[selected].key
+            : null;
+        for (final tab in state.tabs) {
+          final page = tab.page;
+          if (page is RemotePage) {
+            page.setPresentationSelected(tab.key == selectedKey);
+          }
+        }
         final remotePage = tabController.widget(id);
         if (remotePage is RemotePage) {
           final ffi = remotePage.ffi;

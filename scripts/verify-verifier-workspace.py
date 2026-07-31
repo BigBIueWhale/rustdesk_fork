@@ -16544,6 +16544,22 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "desktop texture failed-creation bound",
         ),
         (
+            '"if (_retired || !selected) return;"',
+            "presentation selected-page admission contract",
+        ),
+        (
+            '"if (_refreshInFlight) return;"',
+            "presentation duplicate-refresh coalescing contract",
+        ),
+        (
+            '"final followUpDemanded = _refreshPending && _resumeDemanded;"',
+            "presentation in-flight follow-up contract",
+        ),
+        (
+            '"onError(error, stackTrace);"',
+            "presentation refresh failure-visibility contract",
+        ),
+        (
             '"clientOwnerId = isMobile ? _mobileClientOwnerId : Uuid().v4obj();"',
             "fresh desktop UI-owner contract",
         ),
@@ -16632,6 +16648,14 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "retired GPU capability absence contract",
         ),
         (
+            '"await sessionRefreshVideo(sessionId, gFFI.ffiModel.pi);"',
+            "mobile exact-session presentation refresh contract",
+        ),
+        (
+            '"page.setPresentationSelected(tab.key == selectedKey);"',
+            "desktop exact selected-tab propagation contract",
+        ),
+        (
             '"dependencies_entries": 57',
             "software-only Flutter dependency-count contract",
         ),
@@ -16670,6 +16694,38 @@ def validate_desktop_texture_lifecycle_contract(sources):
             '("lifecycle", "await retiring.retire();", '
             '"retiring.retire();", "predecessor finality"),',
             "desktop texture predecessor-finality mutation",
+        ),
+        (
+            '"hidden presentation selection guard"',
+            "presentation selected-page mutation",
+        ),
+        (
+            '"duplicate refresh coalescing"',
+            "presentation duplicate-refresh mutation",
+        ),
+        (
+            '"in-flight suspend/resume preservation"',
+            "presentation in-flight follow-up mutation",
+        ),
+        (
+            '"presentation refresh failure visibility"',
+            "presentation failure-visibility mutation",
+        ),
+        (
+            '"mobile remote foreground recovery"',
+            "mobile remote resume mutation",
+        ),
+        (
+            '"mobile camera exact-session refresh"',
+            "mobile camera resume mutation",
+        ),
+        (
+            '"desktop remote exact selected-tab propagation"',
+            "desktop remote selection mutation",
+        ),
+        (
+            '"desktop camera exact selected-tab propagation"',
+            "desktop camera selection mutation",
         ),
         (
             '("model", "clientOwnerId = isMobile ? _mobileClientOwnerId : Uuid().v4obj();", '
@@ -16804,6 +16860,177 @@ def validate_desktop_texture_lifecycle_contract(sources):
         ),
     ):
         require_text(focused, text, label)
+
+    require_order(
+        sources["presentation_recovery_dart"],
+        (
+            "bool _refreshPending = false;",
+            "bool _resumeDemanded = false;",
+            "bool _refreshInFlight = false;",
+            "bool _retired = false;",
+            "if (_retired) return;",
+            "_refreshPending = true;",
+            "_resumeDemanded = false;",
+            "if (_retired || !selected) return;",
+            "_resumeDemanded = true;",
+            "if (_refreshInFlight) return;",
+            "while (!_retired && _refreshPending && _resumeDemanded)",
+            "await refresh();",
+            "final followUpDemanded = _refreshPending && _resumeDemanded;",
+            "onError(error, stackTrace);",
+            "if (!followUpDemanded) return;",
+            "_refreshInFlight = false;",
+            "_retired = true;",
+            "_refreshPending = false;",
+            "_resumeDemanded = false;",
+        ),
+        "independent coalesced presentation-recovery owner",
+    )
+    require_order(
+        sources["mobile_remote_page_dart"],
+        (
+            "void didChangeAppLifecycleState(AppLifecycleState state)",
+            "if (!mounted || !gFFI.isCurrentSession(sessionId)) return;",
+            "if (state == AppLifecycleState.resumed)",
+            "_resumePresentation();",
+            "trySyncClipboard();",
+            "_presentationRecovery.suspend();",
+            "void _resumePresentation()",
+            "selected: true,",
+            "if (!mounted || !gFFI.isCurrentSession(sessionId)) return;",
+            "await sessionRefreshVideo(sessionId, gFFI.ffiModel.pi);",
+        ),
+        "independent mobile remote exact-session presentation recovery",
+    )
+    require_order(
+        sources["mobile_camera_page_dart"],
+        (
+            "void didChangeAppLifecycleState(AppLifecycleState state)",
+            "if (!mounted || !gFFI.isCurrentSession(sessionId)) return;",
+            "if (state == AppLifecycleState.resumed)",
+            "_presentationRecovery.resume(",
+            "selected: true,",
+            "if (!mounted || !gFFI.isCurrentSession(sessionId)) return;",
+            "await sessionRefreshVideo(sessionId, gFFI.ffiModel.pi);",
+            "_presentationRecovery.suspend();",
+        ),
+        "independent mobile camera exact-session presentation recovery",
+    )
+    for key, label in (
+        ("desktop_remote_page_dart", "desktop remote viewer"),
+        ("desktop_camera_page_dart", "desktop camera viewer"),
+    ):
+        page = sources[key]
+        for text, transition in (
+            (
+                "void onWindowBlur() {\n    super.onWindowBlur();\n"
+                "    _presentationRecovery.suspend();",
+                "blur suspension",
+            ),
+            (
+                "void onWindowMinimize() {\n    super.onWindowMinimize();\n"
+                "    _presentationRecovery.suspend();",
+                "minimize suspension",
+            ),
+            (
+                "void onWindowFocus() {\n    super.onWindowFocus();\n"
+                "    _resumePresentationIfNeeded();",
+                "focus recovery",
+            ),
+            (
+                "void onWindowRestore() {\n    super.onWindowRestore();\n"
+                "    _resumePresentationIfNeeded();",
+                "restore recovery",
+            ),
+            (
+                "void onWindowMaximize() {\n    super.onWindowMaximize();\n"
+                "    _resumePresentationIfNeeded();",
+                "maximize recovery",
+            ),
+            (
+                "selected: _isPresentationSelected,",
+                "selected-tab admission",
+            ),
+            (
+                "if (!mounted || !_ffi.isCurrentSession(sessionId)) return;",
+                "exact-current session admission",
+            ),
+            (
+                "await sessionRefreshVideo(sessionId, _ffi.ffiModel.pi);",
+                "exact-session refresh sink",
+            ),
+        ):
+            require_text(page, text, f"independent {label} {transition}")
+        require_order(
+            page,
+            (
+                "_presentationRecovery.retire();",
+                "super.dispose();",
+                "final textureDisposal = _ffi.textureModel.dispose();",
+                "await textureDisposal;",
+                "await _ffi.close(closeSession: closeSession);",
+            ),
+            f"independent {label} recovery/texture/session retirement",
+        )
+    for key, page_type, label in (
+        ("desktop_remote_tab_dart", "RemotePage", "desktop remote tabs"),
+        ("desktop_camera_tab_dart", "ViewCameraPage", "desktop camera tabs"),
+    ):
+        require_order(
+            sources[key],
+            (
+                "final selectedKey = selected >= 0 && selected < state.tabs.length",
+                "for (final tab in state.tabs)",
+                f"if (page is {page_type})",
+                "page.setPresentationSelected(tab.key == selectedKey);",
+            ),
+            f"independent {label} exact selection propagation",
+        )
+    for test in (
+        "initial and duplicate resume notifications do not request a refresh",
+        "one suspended presentation produces one refresh",
+        "a hidden desktop tab retains recovery until it is selected",
+        "a failed refresh is rearmed for a later resume transition",
+        "suspend and resume during a request preserve one follow-up refresh",
+        "retirement cancels pending and in-flight follow-up recovery",
+        "retirement still reports an in-flight refresh failure",
+    ):
+        require_text(
+            sources["presentation_recovery_test"],
+            f"test('{test}'",
+            f"independent presentation recovery regression: {test}",
+        )
+    require_order(
+        sources["client_io_loop"],
+        (
+            "Some(misc::Union::RefreshVideo(_))",
+            "v.media_thread.begin_refresh();",
+            "Some(misc::Union::RefreshVideoDisplay(display))",
+            "v.media_thread.begin_refresh();",
+            "peer.send(&msg).await",
+        ),
+        "independent local-generation invalidation before peer refresh",
+    )
+    require_text(
+        sources["dart_verify"],
+        "flutter test --no-pub test/presentation_recovery_test.dart",
+        "independent confined presentation recovery behavior gate",
+    )
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11fa</span>',
+        "presentation-resume normative requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>309</td>",
+        "presentation-resume Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11fa/R-S11e-188 exact viewer presentation-resume recovery",
+        "presentation-resume hardening ledger",
+    )
 
     retired_gpu_tokens = (
         "flutter_gpu_texture_renderer",
@@ -51675,6 +51902,68 @@ def run_source_mutations(sources):
             "macOS latest-wins native pending-frame contract",
         ),
         (
+            "presentation_recovery_dart",
+            "if (_retired || !selected) return;",
+            "if (_retired) return;",
+            "independent coalesced presentation-recovery owner",
+        ),
+        (
+            "presentation_recovery_dart",
+            "if (_refreshInFlight) return;",
+            "if (false) return;",
+            "independent coalesced presentation-recovery owner",
+        ),
+        (
+            "presentation_recovery_dart",
+            "onError(error, stackTrace);",
+            "// refresh failure hidden",
+            "independent coalesced presentation-recovery owner",
+        ),
+        (
+            "mobile_remote_page_dart",
+            "      _resumePresentation();\n      trySyncClipboard();",
+            "      trySyncClipboard();",
+            "independent mobile remote exact-session presentation recovery",
+        ),
+        (
+            "mobile_camera_page_dart",
+            "          await sessionRefreshVideo(sessionId, gFFI.ffiModel.pi);",
+            "          return;",
+            "independent mobile camera exact-session presentation recovery",
+        ),
+        (
+            "desktop_remote_page_dart",
+            "  void onWindowBlur() {\n    super.onWindowBlur();\n"
+            "    _presentationRecovery.suspend();",
+            "  void onWindowBlur() {\n    super.onWindowBlur();",
+            "independent desktop remote viewer blur suspension",
+        ),
+        (
+            "desktop_camera_page_dart",
+            "  void onWindowFocus() {\n    super.onWindowFocus();\n"
+            "    _resumePresentationIfNeeded();",
+            "  void onWindowFocus() {\n    super.onWindowFocus();",
+            "independent desktop camera viewer focus recovery",
+        ),
+        (
+            "desktop_remote_tab_dart",
+            "            page.setPresentationSelected(tab.key == selectedKey);",
+            "            page.setPresentationSelected(true);",
+            "independent desktop remote tabs exact selection propagation",
+        ),
+        (
+            "desktop_camera_tab_dart",
+            "            page.setPresentationSelected(tab.key == selectedKey);",
+            "            page.setPresentationSelected(true);",
+            "independent desktop camera tabs exact selection propagation",
+        ),
+        (
+            "presentation_recovery_test",
+            "retirement still reports an in-flight refresh failure",
+            "retirement hides an in-flight refresh failure",
+            "independent presentation recovery regression: retirement still reports an in-flight refresh failure",
+        ),
+        (
             "verify",
             "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test",
             "true # desktop texture lifecycle verifier removed",
@@ -51691,6 +51980,12 @@ def run_source_mutations(sources):
             "flutter test --no-pub test/desktop_texture_lifecycle_test.dart",
             "true # desktop texture lifecycle test removed",
             "desktop texture confined Dart behavior gate",
+        ),
+        (
+            "dart_verify",
+            "flutter test --no-pub test/presentation_recovery_test.dart",
+            "true # presentation recovery test removed",
+            "independent confined presentation recovery behavior gate",
         ),
         (
             "dart_verify",
@@ -51781,6 +52076,24 @@ def run_source_mutations(sources):
             "**R-S11ez/R-S11e-187 pending desktop frame retirement finality",
             "**R-S11ez-disabled/R-S11e-187 pending desktop frame retirement finality",
             "native retirement-finality hardening ledger",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fa</span>',
+            '<div class="req"><span class="id">R-S11fa-disabled</span>',
+            "presentation-resume normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>309</td>",
+            "<tr><td>309-disabled</td>",
+            "presentation-resume Appendix C row",
+        ),
+        (
+            "hardening",
+            "**R-S11fa/R-S11e-188 exact viewer presentation-resume recovery",
+            "**R-S11fa-disabled/R-S11e-188 exact viewer presentation-resume recovery",
+            "presentation-resume hardening ledger",
         ),
         (
             "texture_rgba_pubspec",
@@ -61459,6 +61772,9 @@ def main():
             "session_stream_finality_dart": (
                 repo / "flutter/lib/models/session_stream_finality.dart"
             ).read_text(encoding="utf-8"),
+            "presentation_recovery_dart": (
+                repo / "flutter/lib/models/presentation_recovery.dart"
+            ).read_text(encoding="utf-8"),
             "file_model_dart": (
                 repo / "flutter/lib/models/file_model.dart"
             ).read_text(encoding="utf-8"),
@@ -61491,6 +61807,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "session_stream_finality_test": (
                 repo / "flutter/test/session_stream_finality_test.dart"
+            ).read_text(encoding="utf-8"),
+            "presentation_recovery_test": (
+                repo / "flutter/test/presentation_recovery_test.dart"
             ).read_text(encoding="utf-8"),
             "peer_model_dart": (repo / "flutter/lib/models/peer_model.dart").read_text(
                 encoding="utf-8"
@@ -61536,8 +61855,14 @@ def main():
             "desktop_remote_page_dart": (
                 repo / "flutter/lib/desktop/pages/remote_page.dart"
             ).read_text(encoding="utf-8"),
+            "desktop_remote_tab_dart": (
+                repo / "flutter/lib/desktop/pages/remote_tab_page.dart"
+            ).read_text(encoding="utf-8"),
             "desktop_camera_page_dart": (
                 repo / "flutter/lib/desktop/pages/view_camera_page.dart"
+            ).read_text(encoding="utf-8"),
+            "desktop_camera_tab_dart": (
+                repo / "flutter/lib/desktop/pages/view_camera_tab_page.dart"
             ).read_text(encoding="utf-8"),
             "main_dart": (repo / "flutter/lib/main.dart").read_text(encoding="utf-8"),
             "web_bridge_dart": (repo / "flutter/lib/web/bridge.dart").read_text(encoding="utf-8"),

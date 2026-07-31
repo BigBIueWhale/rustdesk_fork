@@ -2886,6 +2886,96 @@ independent reproduction, or external review. This slice therefore does not clai
 observed delay is fixed, that the broader connection flow is proven correct and performant,
 or that the release or Ralph loop is complete.
 
+**R-S11fa/R-S11e-188 exact viewer presentation-resume recovery — SOURCE IMPLEMENTED
+2026-08-01; SEALED NONROOT NETWORKLESS SEVEN-BEHAVIOR DART TEST, FULL
+FLUTTER `lib/` ANALYSIS, AND COMPLETE SOURCE-MUTATION CATALOG PASSED; REAL
+ANDROID/WINDOWS LIFECYCLE REPRODUCTION, NATIVE
+RENDERER EXECUTION, EXACT ARTIFACTS, COLD RELEASE, INDEPENDENT REPRODUCTION,
+AND EXTERNAL REVIEW PENDING.** Platforms: the shared outgoing Flutter viewer on
+Android/iOS and Windows/Linux/macOS, for both RemoteDesktop and ViewCamera.
+Endpoint/action: application background/resume, desktop blur/focus,
+minimize/restore/maximize, retained-tab deselection/selection, and the existing
+exact-session video-refresh sink. Boundary: an intentionally live peer connection
+and intentionally persistent Android controlled-side foreground service do not make
+an invisible or throttled outgoing presentation surface current.
+
+Read-only source tracing found no presentation recovery edge in any of the four
+viewer pages. Mobile RemoteDesktop synchronized only clipboard state on resume;
+mobile ViewCamera's application-lifecycle callback was empty. Desktop RemoteDesktop
+and ViewCamera restored input, focus, pointer-lock, or wakelock state on window
+events without invalidating delayed video work or requesting a fresh independently
+decodable frame. Retained desktop tabs all receive window events, but their shared
+tab owner did not propagate selected versus hidden presentation authority. A display
+plane could therefore retain stale work while the independent file-transfer and
+input/control planes remained healthy. Reconnect or Force Stop destroys the retained
+process/session state and can mask the omission. This is a source finding consistent
+with the reported cross-platform display-only delay, not a reproduction or causal
+claim about an unidentified older operational artifact.
+
+Each viewer page now owns one small `PresentationRecovery` state machine. Android/iOS
+non-resumed lifecycle states, desktop blur/minimize, and desktop deselection mark one
+refresh pending. Initial resume and duplicate callbacks do nothing. The desktop tab
+owner propagates its actual selected key to every retained page; a hidden page cannot
+consume recovery and remains pending until selected. The first valid resume requires
+a mounted exact-current session and calls `sessionRefreshVideo`. The existing native
+sink first invokes `OwnedVideoThread::begin_refresh()`, invalidating queued frames and
+the current GOP and admitting no deltas until a keyframe, before sending the peer's
+display-specific or legacy refresh request. It does not reconnect, replace a session,
+start or stop Android `MainService`, touch listener ownership, or couple the healthy
+file/control planes to presentation.
+
+The recovery owner admits at most one refresh at a time. Repeated suspension
+coalesces; one distinct suspend/resume transition during an in-flight request is
+preserved as one follow-up; a duplicate resume without suspension is not. Failure is
+reported through the page's existing diagnostic channel and rearms a later transition
+without an immediate retry loop. Page disposal retires pending and follow-up admission
+before the already-required texture/native-session finality; an in-flight failure is
+still reported rather than swallowed. The implementation adds no timer, background
+poll, queue, listener, dependency, service, or reconnect compatibility path.
+
+Seven deterministic Flutter tests execute initial/duplicate resume, one-shot recovery,
+hidden-tab deferral, failure rearm, in-flight follow-up preservation, retirement
+cancellation, and retired in-flight error visibility. They passed against the exact
+current sources in a disposable copy under sealed image
+`sha256:058ca8987af63df55aa0a0a8e6f2ab25904d73061f59e27a53ac9ab19acc71c9`
+as numeric UID/GID 1000:1000 with `--pull=never`, `--network=none`, a read-only
+container root and source mount, all capabilities dropped, `no-new-privileges`,
+bounded CPU/memory/processes, an executable private tmpfs, no ports, no devices, no
+Docker socket, and no host namespace. Full `flutter analyze lib/` completed with zero
+errors; an earlier targeted pass over the recovery owner, test, four viewer pages, and
+two tab owners surfaced 16 pre-existing deprecation/unused diagnostics in the
+surrounding pages. None was introduced or hidden, and unrelated cleanup is not mixed
+into this slice.
+The expanded focused presentation/texture verifier rejects 106 deliberate mutations
+across the combined lifecycle surface. The locked canonical Dart gate now formats and
+executes the new behavior test; its complete pinned Debian-builder transaction remains
+separately pending because the exact pinned image is not locally available.
+
+The first complete `--source-mutations-only` catalog attempt was deliberately not
+counted: the new selected-page mutation was correctly rejected, but its catalog entry
+expected a narrower diagnostic label and refused to count that rejection. All new
+expectations were aligned with the independent validator's actual failure labels; the
+focused 106-mutation verifier and independent baseline were restarted and passed. A
+fresh complete unsliced catalog then exited zero with `verify-verifier-workspace: ok`.
+After this evidence paragraph was frozen, that complete catalog was run once more from
+the first mutation against the exact final ledger/source bytes and again exited zero;
+only the two terminal corrected runs are counted, never the stopped attempt. The
+process-management fixture portion of verifier `--self-test` remains intentionally
+unrun because this source-only slice did not mount the host user's systemd bus.
+
+No product, listener, peer, Flutter engine renderer, emulator, device, or host RustDesk
+process was started. No port was published, no root or sudo authority was acquired,
+and no host service, firewall, network, Docker image, installed binary, or RustDesk
+configuration was changed. Still open are physical Android background/task-swipe/
+Force-Stop/reopen and current Windows focus/minimize/tab-switch reproduction against
+exact current artifacts; native renderer execution; capture-through-presentation
+timestamps and sustained latency budgets; identity of the older operational builds;
+clean committed cold R-B2/R-B10 artifacts; separately required independent
+reproduction; and external review. This closes one source recovery edge only. It does
+not prove the reported symptom fixed, does not make the current release operationally
+validated, and does not complete the broader user-mandated correct and performant
+connection flow or the Ralph loop.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -17365,7 +17455,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-3a099334b3a6449143d79b0da3f2f3f0633fb5cef7d47508ecff8ade814a06ab  requirements.html
+868507477093759062f493e3bd7cce4740268ae227f2f0152d4f2cbda68a311e  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -17390,3 +17480,4 @@ The same identity additionally binds R-S11ew and Appendix C #305.
 The same identity additionally binds R-S11ex and Appendix C #306.
 The same identity additionally binds R-S11ey and Appendix C #307.
 The same identity additionally binds R-S11ez and Appendix C #308.
+The same identity additionally binds R-S11fa and Appendix C #309.

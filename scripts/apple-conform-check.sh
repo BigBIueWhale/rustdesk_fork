@@ -3469,9 +3469,9 @@ fi
 
 echo "== (2g-c3) R-S11ex desktop Flutter texture lifecycle =="
 if python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test; then
-  note "ok  R-S11ex Apple/shared desktop Flutter texture lifecycle is exact-UI-owner-bound and final"
+  note "ok  R-S11ex/R-S11fa Apple/shared Flutter texture finality and presentation resumption have exact bounded owners"
 else
-  echo "  FAIL R-S11ex Apple/shared desktop Flutter texture lifecycle regained detached creation, stale UI-owner registration, overlapping replacement, or unordered teardown"
+  echo "  FAIL R-S11ex/R-S11fa Apple/shared Flutter texture lifecycle or exact presentation-resume recovery regressed"
   rc=1
 fi
 

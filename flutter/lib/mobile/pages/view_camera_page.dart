@@ -19,6 +19,7 @@ import '../../common/widgets/remote_input.dart';
 import '../../models/input_model.dart';
 import '../../models/model.dart';
 import '../../models/platform_model.dart';
+import '../../models/presentation_recovery.dart';
 import '../../utils/image.dart';
 
 final initText = '1' * 1024;
@@ -58,6 +59,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   double _viewInsetsBottom = 0;
   final _uniqueKey = UniqueKey();
   Timer? _timerDidChangeMetrics;
+  final _presentationRecovery = PresentationRecovery();
 
   final _blockableOverlayState = BlockableOverlayState();
 
@@ -116,6 +118,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   @override
   Future<void> dispose() async {
     WidgetsBinding.instance.removeObserver(this);
+    _presentationRecovery.retire();
     final closeFuture = gFFI.close(expectedSessionId: sessionId);
     // https://github.com/flutter/flutter/issues/64935
     super.dispose();
@@ -146,7 +149,24 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   }
 
   @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {}
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_presentationRecovery.resume(
+        selected: true,
+        refresh: () async {
+          if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
+          await sessionRefreshVideo(sessionId, gFFI.ffiModel.pi);
+        },
+        onError: (error, stackTrace) {
+          debugPrint(
+              'Mobile camera presentation refresh failed: ${error.runtimeType}');
+        },
+      ));
+    } else {
+      _presentationRecovery.suspend();
+    }
+  }
 
   @override
   void didChangeMetrics() {

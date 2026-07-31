@@ -17,6 +17,7 @@ import '../../common/widgets/toolbar.dart';
 import '../../models/model.dart';
 import '../../models/input_model.dart';
 import '../../models/platform_model.dart';
+import '../../models/presentation_recovery.dart';
 import '../../common/shared_state.dart';
 import '../../utils/image.dart';
 import '../widgets/remote_toolbar.dart';
@@ -60,6 +61,13 @@ class RemotePage extends StatefulWidget {
 
   FFI get ffi => (_lastState.value! as _RemotePageState)._ffi;
 
+  void setPresentationSelected(bool selected) {
+    final state = _lastState.value;
+    if (state is _RemotePageState) {
+      state._setPresentationSelected(selected);
+    }
+  }
+
   @override
   State<RemotePage> createState() {
     final state = _RemotePageState(id);
@@ -76,6 +84,7 @@ class _RemotePageState extends State<RemotePage>
   Timer? _timer;
   String keyboardMode = "legacy";
   bool _isWindowBlur = false;
+  final _presentationRecovery = PresentationRecovery();
   final _cursorOverImage = false.obs;
   late RxBool _showRemoteCursor;
   late RxBool _zoomCursor;
@@ -184,6 +193,7 @@ class _RemotePageState extends State<RemotePage>
   @override
   void onWindowBlur() {
     super.onWindowBlur();
+    _presentationRecovery.suspend();
     // On windows, we use `focus` way to handle keyboard better.
     // Now on Linux, there's some rdev issues which will break the input.
     // We disable the `focus` way for non-Windows temporarily.
@@ -206,6 +216,7 @@ class _RemotePageState extends State<RemotePage>
   @override
   void onWindowFocus() {
     super.onWindowFocus();
+    _resumePresentationIfNeeded();
     // See [onWindowBlur].
     if (isWindows) {
       _isWindowBlur = false;
@@ -222,6 +233,7 @@ class _RemotePageState extends State<RemotePage>
   @override
   void onWindowRestore() {
     super.onWindowRestore();
+    _resumePresentationIfNeeded();
     // On windows, we use `onWindowRestore` way to handle window restore from
     // a minimized state.
     if (isWindows) {
@@ -236,6 +248,7 @@ class _RemotePageState extends State<RemotePage>
   @override
   void onWindowMaximize() {
     super.onWindowMaximize();
+    _resumePresentationIfNeeded();
     WakelockManager.enable(_uniqueKey);
     // Update pointer lock center when window is maximized
     _updatePointerLockCenterIfNeeded();
@@ -276,6 +289,7 @@ class _RemotePageState extends State<RemotePage>
   @override
   void onWindowMinimize() {
     super.onWindowMinimize();
+    _presentationRecovery.suspend();
     WakelockManager.disable(_uniqueKey);
     // Release cursor constraints when minimized
     if (_ffi.inputModel.relativeMouseMode.value) {
@@ -302,6 +316,7 @@ class _RemotePageState extends State<RemotePage>
   @override
   Future<void> dispose() async {
     final closeSession = closeSessionOnDispose.remove(widget.id) ?? true;
+    _presentationRecovery.retire();
 
     // https://github.com/flutter/flutter/issues/64935
     super.dispose();
@@ -336,6 +351,37 @@ class _RemotePageState extends State<RemotePage>
     WakelockManager.disable(_uniqueKey);
     await Get.delete<FFI>(tag: widget.id);
     removeSharedStates(widget.id);
+  }
+
+  void _setPresentationSelected(bool selected) {
+    if (selected) {
+      _resumePresentationIfNeeded();
+    } else {
+      _presentationRecovery.suspend();
+    }
+  }
+
+  bool get _isPresentationSelected {
+    final controller = widget.tabController;
+    if (controller == null) return true;
+    final state = controller.state.value;
+    final selected = state.selected;
+    return selected >= 0 &&
+        selected < state.tabs.length &&
+        state.tabs[selected].key == widget.id;
+  }
+
+  void _resumePresentationIfNeeded() {
+    unawaited(_presentationRecovery.resume(
+      selected: _isPresentationSelected,
+      refresh: () async {
+        if (!mounted || !_ffi.isCurrentSession(sessionId)) return;
+        await sessionRefreshVideo(sessionId, _ffi.ffiModel.pi);
+      },
+      onError: (error, stackTrace) {
+        debugPrint('Desktop presentation refresh failed: ${error.runtimeType}');
+      },
+    ));
   }
 
   Widget emptyOverlay() => BlockableOverlay(

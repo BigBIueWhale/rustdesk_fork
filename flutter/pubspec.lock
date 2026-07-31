@@ -1222,12 +1222,10 @@ packages:
   texture_rgba_renderer:
     dependency: "direct main"
     description:
-      path: "."
-      ref: "42797e0f03141dc2b585f76c64a13974508058b4"
-      resolved-ref: "42797e0f03141dc2b585f76c64a13974508058b4"
-      url: "https://github.com/rustdesk-org/flutter_texture_rgba_renderer"
-    source: git
-    version: "0.0.16"
+      path: "third_party/texture_rgba_renderer"
+      relative: true
+    source: path
+    version: "0.0.16+rustdesk.1"
   timing:
     dependency: transitive
     description:

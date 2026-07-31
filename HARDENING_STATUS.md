@@ -2415,10 +2415,12 @@ the broader cross-platform connection correctness/performance mandate or the Ral
 **R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration —
 SOURCE IMPLEMENTED 2026-07-31; EXACT-FINAL-SOURCE FRESH PRODUCTION BRIDGE, DART
 FORMAT/ANALYSIS/BEHAVIOR, SHIPPED LINUX RUST CHECK/REGRESSIONS, PINNED AARCH64 ANDROID
-RUST CHECK, FOCUSED 42-MUTATION GATE, 92-MUTATION DART-VERIFIER AUTHORITY, AND
-INDEPENDENT BASELINE PLUS COMPLETE 3,312-ENTRY SOURCE-MUTATION CATALOG GREEN;
-NATIVE WINDOWS/LINUX/macOS RENDERER, REAL FOCUS/WINDOW-TRANSFER REPRODUCTION, COLD
-RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW PENDING.** Platforms: the
+RUST CHECK, EXACT FLUTTER 3.24.5 LINUX RGBA PLUGIN COMPILE/LINK, FOCUSED
+62-MUTATION GATE, 93-MUTATION DART-VERIFIER AUTHORITY, AND INDEPENDENT BASELINE
+PLUS COMPLETE 3,326-ENTRY SOURCE-MUTATION CATALOG GREEN; WINDOWS/macOS NATIVE
+PLUGIN COMPILATION, ALL NATIVE RENDERER EXECUTION, REAL FOCUS/WINDOW-TRANSFER
+REPRODUCTION, COLD RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW
+PENDING.** Platforms: the
 Windows, Linux, and macOS outgoing-viewer
 Flutter texture path. Endpoint/action: pixelbuffer and optional GPU plugin creation,
 publication to `VideoRenderer`, display replacement, tab-to-window transfer, and page/session
@@ -2490,10 +2492,11 @@ reverifying a private read-only snapshot. Fresh production bridge generation, `b
 formatting, and atomic output publication succeeded. The generator's existing Dart C-header
 `_Dart_Handle` typedef diagnostic remained visible and nonfatal.
 
-Against those fresh bridge outputs, all eleven selected authored Dart files were already
-formatter-clean; `flutter analyze lib/` reported zero errors; and the existing address,
-saved-peer, role-swap, mobile-file-session, mobile-start-queue, and stream-finality suites plus
-all seven new desktop-texture lifecycle tests passed. The locked/offline shipped
+Against those fresh bridge outputs, all twelve selected authored Dart files were already
+formatter-clean; `flutter analyze lib/` reported zero errors; the separately invoked strict
+analyzer for the in-tree RGBA package reported no issues; and the existing address, saved-peer,
+role-swap, mobile-file-session, mobile-start-queue, and stream-finality suites plus all seven new
+desktop-texture lifecycle tests passed. The locked/offline shipped
 `flutter,unix-file-copy-paste` Rust library check passed. The 16-test mobile-session lifecycle
 module passed, including the R-S11ex same-connection old-owner registration/unregistration
 rejection, followed by the exact clipboard, delayed OS-password input, screenshot,
@@ -2501,9 +2504,12 @@ video-acknowledgement, and audio-egress regressions. The Dart dead-surface audit
 The transaction reverified the private offline closure at the end and proved the source
 worktree archive unchanged.
 
-The focused verifier passed its complete 42-mutation catalog. The independent
-Dart-verifier-authority checker rejected all 92 mutations, the independent workspace
-baseline passed, and its complete 3,312-entry repository source-mutation catalog passed.
+The focused verifier passed its complete 62-mutation catalog. The independent
+Dart-verifier-authority checker rejected all 93 mutations and the independent workspace
+baseline passed. The expanded complete 3,324-entry draft repository source-mutation catalog passed
+from mutation one after the fail-closed fixture corrections recorded below. A final frozen-byte
+rerun is deliberately performed after this complete ledger entry and reported in the commit
+handoff, so no later edit can borrow that terminal result.
 That catalog initially refused three imprecise fixtures rather than overstating coverage:
 five desktop focused-verifier needles were made context-unique and their exact rejection
 labels were bound; the Android add/attach/start owner-count mutation was split into five
@@ -2516,13 +2522,62 @@ the only later production adjustment was the desktop-Dart exact-ID `finally` cle
 which the fresh final Dart analysis/tests cover. This distinction is intentional: Android Rust
 cross-compilation does not execute a desktop texture plugin.
 
-Read-only review of the exact pinned native plugin sources also prevents a broader false
-claim here. The macOS RGBA plugin's `closeTexture` unregisters a texture but appears not to
-erase its retained renderer-map entry, while the Windows RGBA close path explicitly
-unregisters and then erases an object whose destructor also unregisters. Those dependency
-paths require dedicated native ownership review, correction as appropriate, compilation,
-and runtime instrumentation. This app-side slice invokes one exact awaited close; it does
-not establish that the pinned plugin implements one exact native release on every desktop.
+The follow-on native audit confirmed that the exact pinned RGBA dependency was itself unsafe.
+At upstream revision `42797e0f03141dc2b585f76c64a13974508058b4`, Windows used Flutter's
+deprecated asynchronous unregister overload, erased its owning map entry immediately, and
+unregistered again from the texture destructor; macOS unregistered but never removed the
+renderer-map entry; Linux used process-global raw-pointer state, retained an unreleased plugin
+`GObject` reference, and had no buffer/mutex finalizer. Windows and Linux also retained the oldest
+unconsumed native frame while dropping every newer producer frame; macOS replaced its one buffer
+but submitted redundant availability notifications. Read-only comparison with the current upstream
+branch found those shapes unchanged. Exact Flutter 3.24.5 engine source establishes that Windows
+unregister completion occurs asynchronously after raster ownership is retired, Linux registrar
+removal is synchronous and holds its own `GObject` reference, and macOS registrar removal drops the
+external-texture wrapper on the platform path.
+
+The shipped RGBA package is therefore now a provenance-bound, non-publishable in-tree derivative
+under `flutter/third_party/texture_rgba_renderer`, with the exact upstream Apache-2.0 license and
+an unchanged macOS podspec/checksum. `flutter/pubspec.yaml` and its lock select that local path;
+future online Pub-cache production expects seven Git dependencies rather than retaining the unsafe
+upstream checkout as executable dependency authority. Windows reserves the exact empty map owner
+before registering a callback, then retires and extracts that exact node on close, uses the callback
+unregister API, retains both texture and Dart result through completion, and restores the retired
+node if callback setup throws; its texture destructor has no unregister side effect and exceptions
+cannot cross the Rust C ABI. Linux owns a map per plugin, removes and
+retires before synchronous unregister, releases the exact plugin-owned reference, drains on plugin
+dispose, and finalizes both frame buffers and the mutex. macOS removes the exact dictionary entry,
+serializes retirement against frame publication, clears the registry/frame state, then unregisters.
+All three validate arguments and source layout, copy rows into plugin-owned storage, and coalesce
+publication to one latest-wins pending native frame, so focus throttling cannot preserve an older
+unconsumed buffer while discarding newer frames or accumulate duplicate availability notices.
+Windows and Linux roll back the pending frame when their registrar reports notification failure;
+Linux also keeps pending dimensions separate from the last presented frame's dimensions, so a
+failed notification cannot corrupt the still-valid presented buffer's metadata. macOS's registrar
+method has no failure result. The separately pinned GPU plugin has not been
+corrected by this slice and remains an explicit next native-ownership audit boundary.
+
+The pre-existing canonical `online/pub-cache` was produced for the former eight-Git lock and still
+contains the now-unselected upstream RGBA checkout. Offline Pub resolution ignores that extra
+checkout and the confined source/native checks below can consume the new path lock, but this slice
+does not rewrite or bless the old cache as an exact seven-Git release input. A future checked
+networked Pub-cache production transaction must create and publish the exact seven-checkout/seven-bare
+closure before a cold release verdict; no manual deletion from the canonical cache is treated as a
+substitute for that transaction.
+
+An exact Flutter 3.24.5 Linux probe placed the local path package under a fresh minimal Flutter
+project root, resolved it with `flutter pub get --offline`, ran Dart formatting and the strict
+package analyzer, and compiled and linked a fresh debug
+`libtexture_rgba_renderer_plugin.so`. ELF symbol inspection found both the plugin-registration
+entry point and the Rust-facing `FlutterRgbaRendererPluginOnRgba` C ABI as global exported
+functions. It used a nonroot, networkless, capability-free disposable
+container and no renderer, texture registrar callback, window, display server, product, peer, or
+device was executed. This is Linux native compiler/linker evidence for the local plugin sources,
+not Linux renderer-runtime evidence and not evidence about Windows or macOS compilation.
+Windows-helper-image inspection found no Windows compiler toolchain, and this Linux host has no
+macOS SDK or native Apple compiler, so those two native compile results remain explicitly absent.
+The exact sealed Linux builder and the other locally inventoried builder/check images contain no
+`Xvfb`, `xvfb-run`, or Weston compositor, so a disposable real-engine texture creation/update/close
+test was not fabricated from unavailable display infrastructure.
 
 Preliminary non-passes remain explicit. An attempt to use the live repository `online/` tree was
 refused before Docker because that tree was writable; a private canonical read-only snapshot was
@@ -2537,10 +2592,101 @@ had no writable `HOME`; the corrected invocation supplied a private tmpfs home a
 three newly touched Dart files unchanged. The first post-exact-ID focused verifier invocation
 failed because its braced-item parser began at the named-argument brace rather than the method
 body; the fixture was corrected to name the complete method signature, after which validation
-and all 42 mutations passed. A first combined final-static wrapper completed Python/HTML parsing
+and all 60 mutations passed. A first combined final-static wrapper completed Python/HTML parsing
 but then expanded an unset nested-shell positional parameter while extracting the digest; the
 corrected wrapper used a non-positional extraction and reran the complete static set. None of
 these preliminary stops is counted as behavior or compile evidence.
+
+This follow-on native slice also retained every harness-only stop. The first targeted package
+format check found one newly authored Dart file requiring formatting; after correction, the first
+strict analyzer reported one unnecessary import, which was removed before its zero-issue rerun.
+Early native-probe scaffolds either attempted an offline package not present in the cache, selected
+an unavailable `flutter_lints` version, placed the plugin outside the project root and therefore
+produced false URI/type diagnostics, or used `dart pub get` and therefore did not generate
+Flutter's native-plugin CMake registration. The corrected probe used only the locked offline
+closure, kept the package below the project root, and invoked `flutter pub get --offline`.
+After the latest-wins correction invalidated the earlier compile evidence, the first fresh rerun
+omitted Flutter's `CI=true`/offline tool bootstrap and was correctly stopped when `flutter create`
+attempted a Git tag fetch under `--network=none`. The next rerun resolved entirely offline but
+stopped because its disposable two-line `main.dart` fixture was not formatter-clean. A
+formatter-clean retry compiled and linked the application and plugin, then its wrapper exited 127
+only because the minimal builder image lacks the optional `file` utility. The final identical
+compile/link retry replaced that nonessential inspection with nonempty-file assertions and
+completed at exit zero. No stopped probe is counted as native compile evidence.
+Extracting the pinned LLVM formatter into a 3-GiB tmpfs was killed for space; a 10-GiB retry
+completed. A default-style formatter check had no repository `.clang-format`; the explicit
+LLVM-15 Google style found legitimate layout differences, the confined formatter applied them,
+and the final dry run passed. One containerized Python gate first selected the Debian builder's
+Python 3.6 and stopped on modern annotation syntax; the exact pinned development-check image was
+then used for every counted Python gate.
+
+After the manual Linux metadata-ownership correction, the first formatter retry named a
+nonexistent immutable image digest and Docker refused it before container creation. The next
+retry extracted the exact LLVM formatter but mounted its tmpfs non-executable, so the kernel
+refused to start that binary; the corrected executable-tmpfs retry reported LLVM 15.0.6 and a
+clean dry run. The fresh native rebuild's first two scaffolds let `flutter create` perform its
+own resolution before disposable dependency cleanup, and network isolation rejected the absent
+`flutter_lints`; the third used `--no-pub` but retained the likewise absent sample-only
+`cupertino_icons`. The final scaffold used `--no-pub`, removed only those two disposable sample
+dependencies before one offline resolution, formatted/analyzed the local package, compiled and
+linked the Linux app/plugin, asserted the nonempty plugin, and found both required exported
+symbols. None of the pre-start, permission, or dependency-resolution stops is counted as format,
+compile, link, ABI, or runtime evidence.
+
+Four Python verifier files were also mistakenly syntax-compiled once with host Python, contrary
+to the user's all-project-code-in-containers rule. That invocation used no root, network, listener,
+service, firewall, Docker container, or product runtime, but it created four ignored current-user
+`__pycache__` files. Their exact paths, ownership, and timestamps were inventoried; only those four
+files were unlinked, and a follow-up inventory found no run-created bytecode. The host invocation
+is a process-boundary violation and is not counted as verification evidence. All corrected Python,
+Dart, Flutter, Rust, C/C++/Objective-C++, and formatting evidence ran inside the confined
+containers described here.
+
+A later argument-interface check repeated the boundary mistake by invoking `--help` on three
+project Python entry points with host Python. Argument parsing printed help and exited before any
+verifier body, product, network, Docker, or privileged operation ran. A complete repository
+bytecode inventory immediately afterward found no file with a new timestamp; the pre-existing
+ignored bytecode files were left untouched. This second host-Python boundary violation is also
+not counted as evidence; the actual syntax, semantic, and mutation runs used the pinned
+networkless nonroot development-check container.
+
+The first complete 3,324-entry workspace mutation run also failed closed rather than overstating
+coverage: each newly added latest-wins meta-verifier target appeared both in the focused semantic
+assertion and in the focused mutation inventory, so the independent fixture had two textual
+candidates with different enforcing diagnostics. The three platform fixtures were scoped to the
+semantic assertion plus its exact label, the independent baseline was rerun, and the complete
+catalog was restarted at mutation one. That restart later failed closed because the intended
+scoped target omitted the focused verifier source's literal quote characters and was therefore
+absent. The first containerized AST/cardinality preflight then exposed that the attempted
+correction had modeled nested quote characters that the focused source did not contain. Each
+target was instead scoped by its actual neighboring semantic assertion; a repeated preflight
+required all three to occur exactly once before the complete catalog restarted again at mutation
+one. That third run later rejected the independent Windows failed-mark mutation correctly, but
+the attribution layer refused to count it because the strengthened validator now reported
+`independent Windows latest-wins and failed-mark rollback contract` while the older fixture still
+expected the pre-latest-wins label. The one expected label was aligned, the baseline rerun, and the
+complete catalog restarted from mutation one again. These are mutation-fixture failures, not
+product-code or native-compile failures, and no stopped catalog is counted as complete evidence.
+
+The first frozen-byte 3,324-entry terminal catalog and full Dart/Rust gate then passed, but manual
+line-by-line review correctly invalidated both results before commit. Linux's failed-notification
+rollback deleted its new pending buffer and reset shared width/height fields even when a previously
+presented buffer remained valid; a later callback could therefore return that old pointer with
+zero dimensions. Pending and presented dimensions now have separate exact ownership, promotion
+moves both together, and failed pending publication clears only pending metadata. A dedicated
+mutation rejects substituting pending dimensions in the prior-frame callback. No earlier gate is
+claimed for those changed bytes.
+
+Continued Windows review then invalidated the corrected draft before its terminal gates. Native
+callback registration preceded allocation of the `unordered_map` node that was supposed to own
+that callback; if node allocation failed, the no-side-effect texture destructor would free the
+callback object while Flutter retained its registration. Creation now allocates an empty exact-key
+owner slot first, performs registration only after that durable slot exists, erases the still-empty
+slot on construction failure, and installs the returned `shared_ptr` with a no-throw move before
+responding. A focused and independent mutation each reject restoring post-registration owner-node
+allocation. No earlier compile, Dart/Rust, focused, or complete-catalog result is claimed for these
+changed bytes; the final focused catalog is now 62 mutations and the complete source catalog is
+now 3,326 entries.
 
 Counted generation and formatting used numeric UID/GID 1000:1000, no pull/network, a read-only
 container root, dropped capabilities, no-new-privileges, bounded resources, a private source
@@ -2549,11 +2695,11 @@ device, Docker socket mount, host namespace, RustDesk process, service manager, 
 configuration, host RustDesk configuration, peer connection, renderer, or product executable was
 started or modified. Final changed-shell parsing, changed-Python compilation, requirements HTML
 parsing, both requirements-digest bindings, native-codec normal/adversarial checks, focused
-42-mutation validation, 92-mutation Dart-verifier authority, independent semantic baseline,
+62-mutation validation, 93-mutation Dart-verifier authority, independent semantic baseline,
 `git diff --check`, and line-by-line diff review passed. To avoid recursively changing the
-evidence target, the terminal complete 3,312-entry source-mutation run is performed after this
+evidence target, the terminal complete 3,326-entry source-mutation run is performed after this
 ledger paragraph and its exact result is reported in the commit handoff; no later repository
-edit may be covered by that result. Even after those confined checks pass,
+edit may be covered by that result. Even after that confined run passes,
 native renderer/plugin execution,
 timestamped current and older Windows-viewer/Debian-controlled focus/unfocus, real
 tab-to-window/reconnect/display-switch stress, Android/iOS lifecycle work, complete
@@ -17041,7 +17187,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-7fb97a9a25806111dd5a80da58c9a21ae86c5510cbd4148ac82447978e55b2ce  requirements.html
+b61493962b3cfa484c88b47c8780422c6ad4afc265ca807e4226fa3753d8c551  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

@@ -16559,6 +16559,38 @@ def validate_desktop_texture_lifecycle_contract(sources):
             '"fn r_s11ex_retired_desktop_ui_owner_cannot_replace_or_clear_texture()"',
             "desktop native retired-owner regression",
         ),
+        (
+            '"auto texture_node = textures_.extract(found);"',
+            "Windows exact native texture owner extraction",
+        ),
+        (
+            '"auto [slot, inserted] = textures_.try_emplace(key);"',
+            "Windows pre-registration native owner slot",
+        ),
+        (
+            '"static void texture_rgba_renderer_plugin_dispose("',
+            "Linux native plugin disposal contract",
+        ),
+        (
+            '"renderers.removeValue(forKey: key)"',
+            "macOS renderer-map release contract",
+        ),
+        (
+            '"CFGetTypeID(number) != CFBooleanGetTypeID()"',
+            "macOS integer-type rejection contract",
+        ),
+        (
+            '"const bool notification_needed = !buffer_ready_;"',
+            "Windows latest-wins native pending-frame contract",
+        ),
+        (
+            '"const gboolean notification_needed = !self->buffer_ready;"',
+            "Linux latest-wins native pending-frame contract",
+        ),
+        (
+            '"let notificationNeeded = !framePending"',
+            "macOS latest-wins native pending-frame contract",
+        ),
         ("MUTATIONS: Tuple[Mutation, ...]", "desktop texture mutation inventory"),
         ("run_self_test(sources)", "desktop texture mutation dispatch"),
     ):
@@ -16602,8 +16634,179 @@ def validate_desktop_texture_lifecycle_contract(sources):
             '"if false", "native exact owner admission"),',
             "native exact-owner mutation",
         ),
+        (
+            '"plugin_windows",\n'
+            '        "auto texture_node = textures_.extract(found);",\n'
+            '        "textures_.erase(found);",\n'
+            '        "Windows exact close owner extraction",',
+            "Windows native exact-owner mutation",
+        ),
+        (
+            '"plugin_windows",\n'
+            '        "auto [slot, inserted] = textures_.try_emplace(key);",\n'
+            '        "auto slot = textures_.find(key);\\n"',
+            "Windows pre-registration owner-slot mutation",
+        ),
+        (
+            '"plugin_linux",\n'
+            '        "  if (!marked) {\\n"\n'
+            '        "    delete[] self->buffer;",\n'
+            '        "  if (false) {\\n"\n'
+            '        "    delete[] self->buffer;",\n'
+            '        "Linux failed-mark rollback",',
+            "Linux failed-mark rollback mutation",
+        ),
+        (
+            '"plugin_windows_texture",\n'
+            '        "const bool notification_needed = !buffer_ready_;",\n'
+            '        "const bool notification_needed = true;",\n'
+            '        "Windows latest-wins pending-frame coalescing",',
+            "Windows latest-wins native pending-frame mutation",
+        ),
+        (
+            '"plugin_linux",\n'
+            '        "const gboolean notification_needed = !self->buffer_ready;",\n'
+            '        "const gboolean notification_needed = TRUE;",\n'
+            '        "Linux latest-wins pending-frame coalescing",',
+            "Linux latest-wins native pending-frame mutation",
+        ),
+        (
+            '"plugin_linux",\n'
+            '        "    *width = self->prior_width;\\n"\n'
+            '        "    *height = self->prior_height;\\n"',
+            "Linux prior-frame metadata rollback mutation",
+        ),
+        (
+            '"plugin_macos_texture",\n'
+            '        "let notificationNeeded = !framePending",\n'
+            '        "let notificationNeeded = true",\n'
+            '        "macOS latest-wins pending-frame coalescing",',
+            "macOS latest-wins native pending-frame mutation",
+        ),
+        (
+            '"plugin_macos",\n'
+            '        "renderers.removeValue(forKey: key)",\n'
+            '        "renderers[key]",\n'
+            '        "macOS renderer-map release",',
+            "macOS renderer-map release mutation",
+        ),
     ):
         require_text(focused, text, label)
+
+    require_order(
+        sources["texture_rgba_windows"],
+        (
+            "auto [slot, inserted] = textures_.try_emplace(key);",
+            "if (!inserted)",
+            "std::shared_ptr<TextureRgba> texture;",
+            "std::make_shared<TextureRgba>(texture_registrar_);",
+            "} catch (...) {",
+            "textures_.erase(slot);",
+            "throw;",
+            "if (texture->texture_id() <= 0)",
+            "textures_.erase(slot);",
+            "slot->second = std::move(texture);",
+            "auto texture_node = textures_.extract(found);",
+            "texture->Retire();",
+            "texture_registrar_->UnregisterTexture(",
+            "[texture, async_result]()",
+            "async_result->Success(flutter::EncodableValue(true));",
+        ),
+        "independent Windows native texture create/close contract",
+    )
+    require_absent(
+        sources["texture_rgba_windows_texture"],
+        "UnregisterTexture",
+        "independent Windows texture-object unregister",
+    )
+    require_order(
+        sources["texture_rgba_windows_texture"],
+        (
+            "const bool notification_needed = !buffer_ready_;",
+            "if (!notification_needed)",
+            "if (texture_registrar_->MarkTextureFrameAvailable(texture_id_))",
+            "buffer_ready_ = false;",
+            "buffers_[background_index].clear();",
+        ),
+        "independent Windows latest-wins and failed-mark rollback contract",
+    )
+    require_order(
+        sources["texture_rgba_linux"],
+        (
+            "const gboolean notification_needed = !self->buffer_ready;",
+            "delete[] superseded;",
+            "if (!notification_needed)",
+            "fl_texture_registrar_mark_texture_frame_available(",
+            "if (!marked)",
+            "delete[] self->buffer;",
+        ),
+        "independent Linux latest-wins and failed-mark rollback contract",
+    )
+    require_order(
+        sources["texture_rgba_linux"],
+        (
+            "self->prior_width = self->buffer_width;",
+            "self->prior_height = self->buffer_height;",
+            "self->buffer_width = 0;",
+            "self->buffer_height = 0;",
+            "*width = self->prior_width;",
+            "*height = self->prior_height;",
+            "if (self->retired)",
+            "if (self->prior_buffer != nullptr)",
+            "*width = self->prior_width;",
+            "*height = self->prior_height;",
+        ),
+        "independent Linux pending/presented frame metadata ownership",
+    )
+    require_order(
+        sources["texture_rgba_linux"],
+        (
+            "self->renderers->erase(found);",
+            "texture_rgba_retire(texture);",
+            "fl_texture_registrar_unregister_texture(",
+            "g_object_unref(texture);",
+        ),
+        "independent Linux native texture close contract",
+    )
+    require_order(
+        sources["texture_rgba_macos"],
+        (
+            "renderers.removeValue(forKey: key)",
+            "let textureId = texture.retire()",
+            "textureRegistry.unregisterTexture(textureId)",
+            "result(true)",
+        ),
+        "independent macOS native texture close contract",
+    )
+    require_order(
+        sources["texture_rgba_macos_texture"],
+        (
+            "let notificationNeeded = !framePending",
+            "framePending = true",
+            "if notificationNeeded",
+            "registry.textureFrameAvailable(textureId)",
+        ),
+        "independent macOS latest-wins pending-frame contract",
+    )
+    require_order(
+        sources["texture_rgba_macos_texture"],
+        (
+            "textureId = 0",
+            "registry = nil",
+            "data = nil",
+        ),
+        "independent macOS frame-admission retirement contract",
+    )
+    require_order(
+        sources["texture_rgba_pubspec"],
+        (
+            "publish_to: none",
+            "pluginClass: TextureRgbaRendererPlugin",
+            "pluginClass: TextureRgbaRendererPlugin",
+            "pluginClass: TextureRgbaRendererPluginCApi",
+        ),
+        "independent repository-owned RGBA package contract",
+    )
 
     require_text(
         sources["verify"],
@@ -26747,7 +26950,7 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
          "Pub-cache networked project lock preimage"),
         ('[ "$project_lock" = "$(sha256sum /tmp/project/pubspec.lock',
          "Pub-cache networked project lock postcondition"),
-        ('[ "${#git_specs[@]}" -eq 8 ]', "Pub-cache exact Git dependency count"),
+        ('[ "${#git_specs[@]}" -eq 7 ]', "Pub-cache exact Git dependency count"),
         ("fsck --full --no-dangling --no-reflogs", "Pub-cache Git object closure"),
         (
             '[[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then\n'
@@ -26843,7 +27046,7 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
          "Pub-cache bounded transaction record"),
         ("TREE_LIMITS = (100_000, 30_000, 4 * 1024**3, 256 * 1024**2, 32)",
          "Pub-cache output bounds"),
-        ("EXPECTED_GIT_DEPENDENCIES = 8", "Pub-cache Git inventory bound"),
+        ("EXPECTED_GIT_DEPENDENCIES = 7", "Pub-cache Git inventory bound"),
         ('required = {"hosted", "hosted-hashes", "git"}',
          "Pub-cache exact top-level inventory"),
         ("reject_descendant_mounts(canonical)", "Pub-cache mount closure"),
@@ -33694,6 +33897,11 @@ def validate_dart_verifier_authority_contract(sources):
         (
             'flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/',
             "Dart verifier generated-source analysis",
+        ),
+        (
+            'flutter analyze --no-pub \\\n'
+            '      third_party/texture_rgba_renderer/lib/',
+            "Dart verifier in-tree RGBA wrapper analysis",
         ),
         (
             'if [ "$analyze_status" -ne 0 ] || [ "$errs" != "0" ]; then',
@@ -51079,6 +51287,30 @@ def run_source_mutations(sources):
             "native exact desktop UI-owner admission",
         ),
         (
+            "desktop_texture_lifecycle_verifier",
+            '"const bool notification_needed = !buffer_ready_;",\n'
+            '            "buffer_ready_ = true;",',
+            '"const bool notification_needed = true;",\n'
+            '            "buffer_ready_ = true;",',
+            "Windows latest-wins native pending-frame contract",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '"const gboolean notification_needed = !self->buffer_ready;",\n'
+            '            "self->buffer_ready = TRUE;",',
+            '"const gboolean notification_needed = TRUE;",\n'
+            '            "self->buffer_ready = TRUE;",',
+            "Linux latest-wins native pending-frame contract",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '"let notificationNeeded = !framePending",\n'
+            '            "framePending = true",',
+            '"let notificationNeeded = true",\n'
+            '            "framePending = true",',
+            "macOS latest-wins native pending-frame contract",
+        ),
+        (
             "verify",
             "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test",
             "true # desktop texture lifecycle verifier removed",
@@ -51113,6 +51345,81 @@ def run_source_mutations(sources):
             "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
             "**R-S11ex-disabled/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
             "desktop texture lifecycle hardening ledger",
+        ),
+        (
+            "texture_rgba_pubspec",
+            "publish_to: none",
+            "publish_to: https://pub.dev",
+            "independent repository-owned RGBA package contract",
+        ),
+        (
+            "texture_rgba_windows",
+            "auto texture_node = textures_.extract(found);",
+            "textures_.erase(found);",
+            "independent Windows native texture create/close contract",
+        ),
+        (
+            "texture_rgba_windows",
+            "auto [slot, inserted] = textures_.try_emplace(key);",
+            "auto slot = textures_.find(key);\n"
+            "      const bool inserted = slot == textures_.end();",
+            "independent Windows native texture create/close contract",
+        ),
+        (
+            "texture_rgba_windows_texture",
+            "  buffer_ready_ = false;\n"
+            "  width_[background_index] = 0;",
+            "  buffer_ready_ = true;\n"
+            "  width_[background_index] = 0;",
+            "independent Windows latest-wins and failed-mark rollback contract",
+        ),
+        (
+            "texture_rgba_windows_texture",
+            "const bool notification_needed = !buffer_ready_;",
+            "const bool notification_needed = true;",
+            "independent Windows latest-wins and failed-mark rollback contract",
+        ),
+        (
+            "texture_rgba_linux",
+            "self->renderers->erase(found);",
+            "self->renderers->clear();",
+            "independent Linux native texture close contract",
+        ),
+        (
+            "texture_rgba_linux",
+            "const gboolean notification_needed = !self->buffer_ready;",
+            "const gboolean notification_needed = TRUE;",
+            "independent Linux latest-wins and failed-mark rollback contract",
+        ),
+        (
+            "texture_rgba_linux",
+            "    *width = self->prior_width;\n"
+            "    *height = self->prior_height;\n"
+            "    g_mutex_unlock(&self->mutex);\n"
+            "    return TRUE;",
+            "    *width = self->buffer_width;\n"
+            "    *height = self->buffer_height;\n"
+            "    g_mutex_unlock(&self->mutex);\n"
+            "    return TRUE;",
+            "independent Linux pending/presented frame metadata ownership",
+        ),
+        (
+            "texture_rgba_macos",
+            "renderers.removeValue(forKey: key)",
+            "renderers[key]",
+            "independent macOS native texture close contract",
+        ),
+        (
+            "texture_rgba_macos_texture",
+            "            registry = nil\n",
+            "            registry = registry\n",
+            "independent macOS frame-admission retirement contract",
+        ),
+        (
+            "texture_rgba_macos_texture",
+            "let notificationNeeded = !framePending",
+            "let notificationNeeded = true",
+            "independent macOS latest-wins pending-frame contract",
         ),
         (
             "verify",
@@ -60771,6 +61078,34 @@ def main():
             ).read_text(encoding="utf-8"),
             "desktop_texture_lifecycle_verifier": (
                 repo / "scripts/verify-desktop-texture-lifecycle.py"
+            ).read_text(encoding="utf-8"),
+            "texture_rgba_pubspec": (
+                repo / "flutter/third_party/texture_rgba_renderer/pubspec.yaml"
+            ).read_text(encoding="utf-8"),
+            "texture_rgba_windows": (
+                repo
+                / "flutter/third_party/texture_rgba_renderer/windows/"
+                "texture_rgba_renderer_plugin.cpp"
+            ).read_text(encoding="utf-8"),
+            "texture_rgba_windows_texture": (
+                repo
+                / "flutter/third_party/texture_rgba_renderer/windows/"
+                "texture_rgba.cpp"
+            ).read_text(encoding="utf-8"),
+            "texture_rgba_linux": (
+                repo
+                / "flutter/third_party/texture_rgba_renderer/linux/"
+                "texture_rgba_renderer_plugin.cc"
+            ).read_text(encoding="utf-8"),
+            "texture_rgba_macos": (
+                repo
+                / "flutter/third_party/texture_rgba_renderer/macos/Classes/"
+                "TextureRgbaRendererPlugin.swift"
+            ).read_text(encoding="utf-8"),
+            "texture_rgba_macos_texture": (
+                repo
+                / "flutter/third_party/texture_rgba_renderer/macos/Classes/"
+                "TextRgba.swift"
             ).read_text(encoding="utf-8"),
             "android_voice_call_ownership_verifier": (
                 repo / "scripts/verify-android-voice-call-ownership.py"

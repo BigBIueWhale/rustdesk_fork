@@ -203,6 +203,8 @@ def validate_contract(sources: Dict[str, str]) -> None:
             '    dart pub get --offline --enforce-lockfile >/dev/null',
             'if [ "$lock_before" != "$lock_after" ]; then',
             'flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/',
+            'flutter analyze --no-pub \\\n'
+            '      third_party/texture_rgba_renderer/lib/',
             'analyze_status=$?',
             'if [ "$analyze_status" -ne 0 ] || [ "$errs" != "0" ]; then',
             'flutter test --no-pub test/address_validator_test.dart',
@@ -665,6 +667,13 @@ MUTATIONS = (
         "flutter test --no-pub test/desktop_texture_lifecycle_test.dart",
         "true # desktop texture lifecycle test disabled",
         "desktop texture lifecycle regression",
+    ),
+    Mutation(
+        "dart",
+        'flutter analyze --no-pub \\\n'
+        '      third_party/texture_rgba_renderer/lib/',
+        "true # in-tree native RGBA Dart wrapper analysis disabled",
+        "in-tree native RGBA Dart wrapper analysis",
     ),
     Mutation(
         "dart",

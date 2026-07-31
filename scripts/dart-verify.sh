@@ -175,6 +175,7 @@ local_docker run --rm --pull=never --network=none --read-only \
       lib/models/model.dart \
       lib/models/desktop_render_texture.dart \
       lib/models/desktop_texture_lifecycle.dart \
+      third_party/texture_rgba_renderer/lib/texture_rgba_renderer.dart \
       lib/models/mobile_session_start_queue.dart \
       lib/models/session_stream_finality.dart \
       lib/mobile/pages/remote_page.dart \
@@ -198,6 +199,8 @@ local_docker run --rm --pull=never --network=none --read-only \
       echo "DART-VERIFY: FAILED — flutter analyze exited $analyze_status with $errs error diagnostic(s) in lib/" >&2
       exit 1
     fi
+    flutter analyze --no-pub \
+      third_party/texture_rgba_renderer/lib/
     echo "  == R-SV10 flutter test: address_validator (bare-ID rejection) =="
     flutter test --no-pub test/address_validator_test.dart
     echo "  == R-G9 flutter test: saved-peer serialization contract =="

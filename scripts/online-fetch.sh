@@ -3110,12 +3110,11 @@ verify_pub_cache_resolution() {
           "desktop_multi_window|b47e8385e5a75d38319ad706a64b0ead3108b093|.|https://github.com/rustdesk-org/rustdesk_desktop_multi_window"
           "dynamic_layouts|24cb88413fa5181d949ddacbb30a65d5c459e7d9|.|https://github.com/rustdesk-org/dynamic_layouts.git"
           "flutter_gpu_texture_renderer|08a471bb8ceccdd50483c81cdfa8b81b07b14b87|.|https://github.com/rustdesk-org/flutter_gpu_texture_renderer"
-          "texture_rgba_renderer|42797e0f03141dc2b585f76c64a13974508058b4|.|https://github.com/rustdesk-org/flutter_texture_rgba_renderer"
           "uni_links|f416118d843a7e9ed117c7bb7bdc2deda5a9e86f|uni_links|https://github.com/rustdesk-org/uni_links"
           "window_manager|85789bfe6e4cfaf4ecc00c52857467fdb7f26879|.|https://github.com/rustdesk-org/window_manager"
           "window_size|eb3964990cf19629c89ff8cb4a37640c7b3d5601|plugins/window_size|https://github.com/google/flutter-desktop-embedding.git"
         )
-        [ "${#git_specs[@]}" -eq 8 ]
+        [ "${#git_specs[@]}" -eq 7 ]
         for spec in "${git_specs[@]}"; do
             IFS="|" read -r package resolved package_path url <<<"$spec"
             checkouts=(/online/pub-cache/git/*-"$resolved")

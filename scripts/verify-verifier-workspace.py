@@ -19759,8 +19759,13 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         os_password_activation,
-        "sender: &hbb_common::tokio::sync::mpsc::UnboundedSender<Data>",
-        "OS-password activation exact sender source",
+        "sender: &ViewerCommandSender",
+        "OS-password activation bounded exact sender source",
+    )
+    require_absent(
+        os_password_activation,
+        "UnboundedSender<Data>",
+        "OS-password unbounded activation sender source",
     )
     require_absent(
         os_password_activation,
@@ -19785,11 +19790,16 @@ def validate_android_voice_call_ownership_contract(sources):
         "\n}\n\n#[derive(Copy, Clone)]",
         "OS-password exact-round sequence source",
     )
+    require_absent(
+        os_password_sequence,
+        "UnboundedSender<Data>",
+        "OS-password unbounded delayed sender source",
+    )
     require_order(
         os_password_sequence,
         (
             "sequence: InputOsPasswordSequence",
-            "sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>",
+            "sender: ViewerCommandSender",
             "if let Some(activation) = sequence.activation",
             "activate_os(activation, &sender).await",
             "hbb_common::tokio::time::sleep(Duration::from_millis(1200)).await;",
@@ -19924,6 +19934,70 @@ def validate_android_voice_call_ownership_contract(sources):
         sources["dart_verify"],
         "client::io_loop::tests::r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement",
         "OS-password generated-bridge behavior gate source",
+    )
+    for text, label in (
+        (
+            "const VIEWER_COMMAND_QUEUE_CAPACITY: usize = 256;",
+            "viewer command finite count budget source",
+        ),
+        (
+            "hbb_common::cpace::MAX_SESSION_PACKET * 2",
+            "viewer command aggregate byte budget source",
+        ),
+        (
+            "try_acquire_many_owned(permit_count)",
+            "viewer command nonblocking byte admission source",
+        ),
+        (
+            "if matches!(&data, Data::Close) {\n            return self.close();\n        }",
+            "viewer command out-of-band close source",
+        ),
+        (
+            "fn viewer_command_plane_has_no_unbounded_data_channel()",
+            "viewer command negative source regression",
+        ),
+    ):
+        require_text(client, text, label)
+    require_text(
+        client_io_loop,
+        "receiver: ViewerCommandReceiver,\n    sender: ViewerCommandSender,",
+        "viewer network round bounded command owner source",
+    )
+    require_text(
+        sources["ui_session_source"],
+        "Option<ViewerCommandSender>",
+        "viewer UI session bounded command publication source",
+    )
+    require_text(
+        sources["cli_source"],
+        "sender: ViewerCommandSender,",
+        "viewer CLI bounded command producer source",
+    )
+    for source_key in (
+        "client_source",
+        "client_io_loop",
+        "ui_session_source",
+        "cli_source",
+    ):
+        for old_type in (
+            "UnboundedSender<Data>",
+            "UnboundedReceiver<Data>",
+            "unbounded_channel::<Data>",
+        ):
+            require_absent(
+                sources[source_key],
+                old_type,
+                f"viewer unbounded command plane {old_type} in {source_key}",
+            )
+    require_text(
+        sources["verify"],
+        "client::tests::viewer_command_",
+        "viewer command shared behavior gate source",
+    )
+    require_text(
+        sources["hardening"],
+        "Outgoing viewer generic command admission — SOURCE IMPLEMENTED 2026-08-01",
+        "viewer command evidence boundary ledger source",
     )
     screenshot_source = sources["client_screenshot_source"]
     require_absent(
@@ -20981,12 +21055,12 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
-        '("client", "sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,", "sender: (),", "OS-password captured exact-round sender"),',
-        "OS-password exact-sender focused mutation",
+        '("client", "sender: ViewerCommandSender,", "sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,", "OS-password bounded captured exact-round sender"),',
+        "OS-password bounded exact-sender focused mutation",
     )
     require_text(
         focused,
-        '("client", "sequence: InputOsPasswordSequence,\\n    sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,", "sequence: InputOsPasswordSequence,\\n    interface: impl Interface,\\n    sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,", "OS-password delayed task excludes mutable Session capability"),',
+        '("client", "sequence: InputOsPasswordSequence,\\n    sender: ViewerCommandSender,", "sequence: InputOsPasswordSequence,\\n    interface: impl Interface,\\n    sender: ViewerCommandSender,", "OS-password delayed task excludes mutable Session capability"),',
         "OS-password Session-capability-exclusion focused mutation",
     )
     require_text(
@@ -55386,14 +55460,14 @@ def run_source_mutations(sources):
         ),
         (
             "client_source",
+            "sender: ViewerCommandSender,",
             "sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,",
-            "sender: (),",
-            "OS-password delayed events remain on the captured exact sender source",
+            "OS-password unbounded delayed sender source",
         ),
         (
             "client_source",
-            "sequence: InputOsPasswordSequence,\n    sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,",
-            "sequence: InputOsPasswordSequence,\n    interface: impl Interface,\n    sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,",
+            "sequence: InputOsPasswordSequence,\n    sender: ViewerCommandSender,",
+            "sequence: InputOsPasswordSequence,\n    interface: impl Interface,\n    sender: ViewerCommandSender,",
             "OS-password mutable Session capability retention source",
         ),
         (
@@ -55401,6 +55475,66 @@ def run_source_mutations(sources):
             "if !send_os_password_input(&sender, password)",
             "if !send_os_password_input(&replacement_sender, password)",
             "OS-password delayed events remain on the captured exact sender source",
+        ),
+        (
+            "client_source",
+            "const VIEWER_COMMAND_QUEUE_CAPACITY: usize = 256;",
+            "const VIEWER_COMMAND_QUEUE_CAPACITY: usize = usize::MAX;",
+            "viewer command finite count budget source",
+        ),
+        (
+            "client_source",
+            "hbb_common::cpace::MAX_SESSION_PACKET * 2",
+            "usize::MAX / 2",
+            "viewer command aggregate byte budget source",
+        ),
+        (
+            "client_source",
+            "try_acquire_many_owned(permit_count)",
+            "acquire_many_owned(permit_count)",
+            "viewer command nonblocking byte admission source",
+        ),
+        (
+            "client_source",
+            "if matches!(&data, Data::Close) {\n            return self.close();\n        }",
+            "if false {\n            return self.close();\n        }",
+            "viewer command out-of-band close source",
+        ),
+        (
+            "client_source",
+            "fn viewer_command_plane_has_no_unbounded_data_channel()",
+            "fn viewer_command_plane_allows_unbounded_data_channel()",
+            "viewer command negative source regression",
+        ),
+        (
+            "client_io_loop",
+            "receiver: ViewerCommandReceiver,\n    sender: ViewerCommandSender,",
+            "receiver: hbb_common::tokio::sync::mpsc::UnboundedReceiver<Data>,\n    sender: ViewerCommandSender,",
+            "viewer network round bounded command owner source",
+        ),
+        (
+            "ui_session_source",
+            "Option<ViewerCommandSender>",
+            "Option<hbb_common::tokio::sync::mpsc::UnboundedSender<Data>>",
+            "viewer UI session bounded command publication source",
+        ),
+        (
+            "cli_source",
+            "sender: ViewerCommandSender,",
+            "sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,",
+            "viewer CLI bounded command producer source",
+        ),
+        (
+            "verify",
+            "client::tests::viewer_command_",
+            "client::tests::bounded_command_gate_disabled",
+            "viewer command shared behavior gate source",
+        ),
+        (
+            "hardening",
+            "Outgoing viewer generic command admission — SOURCE IMPLEMENTED 2026-08-01",
+            "Outgoing viewer generic command admission — DEFERRED",
+            "viewer command evidence boundary ledger source",
         ),
         (
             "client_source",

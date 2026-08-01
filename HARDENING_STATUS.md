@@ -3519,6 +3519,65 @@ connection-flow debt, not closed by this mailbox slice. These are explicit user-
 release blockers. Source, mutation, and in-memory behavior evidence must never be described
 as real operational validation.
 
+**Outgoing viewer generic command admission — SOURCE IMPLEMENTED 2026-08-01; CONFINED
+LINUX COMPILE/BEHAVIOR EVIDENCE RECORDED; ANDROID/iOS/WINDOWS/macOS NATIVE, REAL-PEER,
+FOCUS/RENDERER, AND EXACT-ARTIFACT EVIDENCE OPEN.** Platforms: the shared outgoing viewer
+core used by Android, iOS, Windows, Linux, and macOS, plus its CLI and desktop port-forward
+managers. Endpoint/action: UI, clipboard, delayed OS-password input, automatic FPS/recording,
+and file-operation producers to the exact viewer network round. Boundary: concurrent local
+producers ↔ one exact round's sole `Stream` writer owner.
+
+Read-only tracing proved that the remaining generic command plane was one
+`mpsc::UnboundedSender<Data>`/`UnboundedReceiver<Data>` pair. `Session::send` and the CLI
+discarded send results, non-Flutter clipboard and several round-owned background producers
+held clones, and `Remote` did not terminate if `recv()` returned `None`. Interactive input,
+control, file operations, and lifecycle close shared the same unlimited allocation path. A
+count-only bounded-channel substitution would still permit up to the post-key 32 MiB frame
+ceiling in each queued `Message`; dropping an individual command on overflow would be
+semantically unsafe because ordered key/button and multi-step file state could be left
+incoherent. This is a source-proven local resource/finality defect. It is not evidence that
+the queue filled on an operational system, caused the reported focus-loss display latency,
+or affected the media frame plane.
+
+Every round now owns `ViewerCommandSender`/`ViewerCommandReceiver`. A capacity-256 Tokio
+FIFO provides the count bound; a shared semaphore independently accounts fixed command size
+plus dynamic string or serialized protobuf payload bytes, with an aggregate budget of two
+post-key session packets plus fixed capacity overhead. A single command's dynamic payload is
+limited to the post-key frame ceiling minus the secretbox MAC. All sender clones share those
+same budgets. A mutex linearizes producer admission against one out-of-band terminal state,
+and a watch notification wakes the receiver without polling. Clean close supersedes and
+drains queued work even when the FIFO is full. Oversize, count exhaustion, byte exhaustion,
+or accounting failure retires the whole round and reaches the network loop as an explicit
+error; later sends fail. Receiver loss rejects stale exact-round clones, and loss of all
+producers is an explicit terminal receive outcome. No lock is held across an await, no
+blocking send was introduced, and there is no new task, thread, runtime, timer, dependency,
+listener, or fallback.
+
+The GUI session slot, non-Flutter clipboard context, delayed exact-round OS-password input,
+automatic FPS/recording updates, chained file deletion, initial clipboard publication, CLI,
+port-forward managers, and `Remote` now use the bounded type. The network loop reports
+overload, sends a bounded close reason, and terminates instead of silently losing ordered
+work. A generic protobuf command send failure likewise terminates the poisoned connection.
+The CLI now actually consumes and sends its queued protobuf commands instead of retaining an
+unused unbounded receiver. A source regression rejects restoration of an unbounded `Data`
+sender, receiver, or factory in the four command-plane source files, and the shared verifier
+runs the focused behavior group.
+
+Deterministic Rust behavior tests cover FIFO ordering and recovered capacity, protobuf-byte
+permit recovery, exact count overload and whole-round failure, aggregate-byte overload,
+exact/plus-one payload admission, clean close superseding a full queue, clone-shared budgets,
+explicit receiver/producer loss, and the negative unbounded-source inventory. The counted
+confined result and any superseded attempts are recorded in the external audit ledger rather
+than recursively edited here.
+
+This later slice closes only the generic-unbounded-`Data` residual named in R-S11ff. The
+larger explicit connection-flow mandate remains open: file-operation-specific peer-send
+finality, current native Android/Windows/macOS compilation, real focus/background and
+task-swipe/Force-Stop behavior, real controlled peer and renderer execution, capture-through-
+presentation timestamps, queue/latency budgets, exact older/current artifact identity,
+current cold artifacts, independent reproduction, and external review are not established by
+these Linux unit behaviors. No reconnect-dependent display recovery claim is made.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and

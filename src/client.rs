@@ -35,9 +35,6 @@ use crate::{
 #[cfg(feature = "unix-file-copy-paste")]
 use crate::{clipboard::check_clipboard_files, clipboard_file::unix_file_clip};
 pub use file_trait::FileManager;
-#[cfg(not(feature = "flutter"))]
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
-use hbb_common::tokio::sync::mpsc::UnboundedSender;
 // `anyhow!` now survives only in the non-linux cpal audio path (the rendezvous health-check,
 // its sole linux user, was removed) — keep the macro import there, cfg-gated.
 #[cfg(not(target_os = "linux"))]
@@ -51,7 +48,7 @@ use hbb_common::{
     fs::JobType,
     get_version_number, log,
     message_proto::{option_message::BoolOption, *},
-    protobuf::MessageField,
+    protobuf::{Message as _, MessageField},
     rand,
     rendezvous_proto::*,
     sha2::{Digest, Sha256},
@@ -134,7 +131,7 @@ pub(crate) struct ClientClipboardContext;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) struct ClientClipboardContext {
     pub cfg: SessionPermissionConfig,
-    pub tx: UnboundedSender<Data>,
+    pub tx: ViewerCommandSender,
     #[cfg(feature = "unix-file-copy-paste")]
     pub is_file_supported: bool,
 }
@@ -823,7 +820,9 @@ impl ClientClipboardHandler {
             #[cfg(feature = "unix-file-copy-paste")]
             if _is_file {
                 if ctx.is_file_supported {
-                    let _ = ctx.tx.send(Data::Message(msg));
+                    if let Err(err) = ctx.tx.send(Data::Message(msg)) {
+                        log::debug!("clipboard file update outlived its viewer round: {err}");
+                    }
                 }
                 return;
             }
@@ -836,12 +835,16 @@ impl ClientClipboardHandler {
                         &pi.platform,
                         multi_clipboards,
                     ) {
-                        let _ = ctx.tx.send(Data::Message(msg_out));
+                        if let Err(err) = ctx.tx.send(Data::Message(msg_out)) {
+                            log::debug!("clipboard update outlived its viewer round: {err}");
+                        }
                         return;
                     }
                 }
             }
-            let _ = ctx.tx.send(Data::Message(msg));
+            if let Err(err) = ctx.tx.send(Data::Message(msg)) {
+                log::debug!("clipboard update outlived its viewer round: {err}");
+            }
         }
     }
 }
@@ -3449,10 +3452,7 @@ pub fn send_pointer_device_event(
     interface.send(Data::Message(msg_out));
 }
 
-fn send_os_password_input(
-    sender: &hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,
-    message: Message,
-) -> bool {
+fn send_os_password_input(sender: &ViewerCommandSender, message: Message) -> bool {
     if sender.send(Data::Message(message)).is_ok() {
         true
     } else {
@@ -3519,10 +3519,7 @@ pub(crate) fn prepare_input_os_password_sequence(
 }
 
 /// Activate the remote OS through one exact outgoing connection round.
-async fn activate_os(
-    sequence: OsPasswordActivationSequence,
-    sender: &hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,
-) -> bool {
+async fn activate_os(sequence: OsPasswordActivationSequence, sender: &ViewerCommandSender) -> bool {
     if !send_os_password_input(sender, sequence.release_left) {
         return false;
     }
@@ -3545,7 +3542,7 @@ async fn activate_os(
 /// outgoing connection round that admitted it.
 pub(crate) async fn run_input_os_password_sequence(
     sequence: InputOsPasswordSequence,
-    sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,
+    sender: ViewerCommandSender,
 ) {
     if let Some(activation) = sequence.activation {
         // Click event is used to bring up the password input box.
@@ -3831,6 +3828,386 @@ pub enum Data {
     TakeScreenshot((i32, String)),
 }
 
+// One outgoing connection round owns this local command plane. A command is admitted only while
+// that exact receiver is live and while both its shared count and dynamic-payload budgets have
+// room. Overflow is terminal for the round: discarding one ordered input/file/control command and
+// continuing could strand remote input state or corrupt a multi-step operation. Clean close uses
+// the same out-of-band terminal plane, so it cannot wait behind a full command queue.
+const VIEWER_COMMAND_QUEUE_CAPACITY: usize = 256;
+const VIEWER_COMMAND_MAX_PAYLOAD_BYTES: usize =
+    hbb_common::cpace::MAX_SESSION_PACKET - hbb_common::sodiumoxide::crypto::secretbox::MACBYTES;
+const VIEWER_COMMAND_QUEUE_MAX_BYTES: usize = hbb_common::cpace::MAX_SESSION_PACKET * 2
+    + std::mem::size_of::<Data>() * VIEWER_COMMAND_QUEUE_CAPACITY;
+
+#[derive(Clone, Copy)]
+struct ViewerCommandLimits {
+    capacity: usize,
+    max_payload_bytes: usize,
+    max_queued_bytes: usize,
+}
+
+const VIEWER_COMMAND_LIMITS: ViewerCommandLimits = ViewerCommandLimits {
+    capacity: VIEWER_COMMAND_QUEUE_CAPACITY,
+    max_payload_bytes: VIEWER_COMMAND_MAX_PAYLOAD_BYTES,
+    max_queued_bytes: VIEWER_COMMAND_QUEUE_MAX_BYTES,
+};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ViewerCommandFailure {
+    CommandTooLarge {
+        payload_bytes: usize,
+        limit: usize,
+    },
+    CommandCapacity {
+        queued: usize,
+        limit: usize,
+    },
+    ByteCapacity {
+        queued_bytes: usize,
+        command_bytes: usize,
+        limit: usize,
+    },
+    AccountingOverflow,
+    ProducersGone,
+}
+
+impl std::fmt::Display for ViewerCommandFailure {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::CommandTooLarge {
+                payload_bytes,
+                limit,
+            } => write!(
+                f,
+                "viewer command payload is too large ({payload_bytes} bytes; limit {limit})"
+            ),
+            Self::CommandCapacity { queued, limit } => write!(
+                f,
+                "viewer command count capacity reached ({queued} queued; limit {limit})"
+            ),
+            Self::ByteCapacity {
+                queued_bytes,
+                command_bytes,
+                limit,
+            } => write!(
+                f,
+                "viewer command byte capacity reached ({queued_bytes} queued + {command_bytes} command bytes; limit {limit})"
+            ),
+            Self::AccountingOverflow => {
+                write!(f, "viewer command size accounting overflowed")
+            }
+            Self::ProducersGone => write!(f, "all viewer command producers retired"),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ViewerCommandAdmissionError {
+    Failed(ViewerCommandFailure),
+    Closed,
+    ReceiverGone,
+}
+
+impl std::fmt::Display for ViewerCommandAdmissionError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Failed(err) => write!(f, "{err}"),
+            Self::Closed => write!(f, "viewer command round is closed"),
+            Self::ReceiverGone => write!(f, "viewer command receiver is gone"),
+        }
+    }
+}
+
+struct QueuedViewerCommand {
+    data: Data,
+    _bytes: hbb_common::tokio::sync::OwnedSemaphorePermit,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ViewerCommandTerminal {
+    Open,
+    Close,
+    Failed(ViewerCommandFailure),
+    ReceiverGone,
+}
+
+struct ViewerCommandControl {
+    terminal: Mutex<ViewerCommandTerminal>,
+    changed: hbb_common::tokio::sync::watch::Sender<ViewerCommandTerminal>,
+}
+
+#[derive(Clone)]
+pub(crate) struct ViewerCommandSender {
+    commands: hbb_common::tokio::sync::mpsc::Sender<QueuedViewerCommand>,
+    bytes: Arc<hbb_common::tokio::sync::Semaphore>,
+    control: Arc<ViewerCommandControl>,
+    limits: ViewerCommandLimits,
+}
+
+pub(crate) struct ViewerCommandReceiver {
+    commands: hbb_common::tokio::sync::mpsc::Receiver<QueuedViewerCommand>,
+    control: Arc<ViewerCommandControl>,
+    changed: hbb_common::tokio::sync::watch::Receiver<ViewerCommandTerminal>,
+    terminal_delivered: bool,
+}
+
+pub(crate) fn viewer_command_channel() -> (ViewerCommandSender, ViewerCommandReceiver) {
+    viewer_command_channel_with_limits(VIEWER_COMMAND_LIMITS)
+}
+
+fn viewer_command_channel_with_limits(
+    limits: ViewerCommandLimits,
+) -> (ViewerCommandSender, ViewerCommandReceiver) {
+    let (commands, receiver) = hbb_common::tokio::sync::mpsc::channel(limits.capacity);
+    let (changed, changed_receiver) =
+        hbb_common::tokio::sync::watch::channel(ViewerCommandTerminal::Open);
+    let control = Arc::new(ViewerCommandControl {
+        terminal: Mutex::new(ViewerCommandTerminal::Open),
+        changed,
+    });
+    (
+        ViewerCommandSender {
+            commands,
+            bytes: Arc::new(hbb_common::tokio::sync::Semaphore::new(
+                limits.max_queued_bytes,
+            )),
+            control: Arc::clone(&control),
+            limits,
+        },
+        ViewerCommandReceiver {
+            commands: receiver,
+            control,
+            changed: changed_receiver,
+            terminal_delivered: false,
+        },
+    )
+}
+
+fn checked_string_bytes(values: &[&str]) -> Option<usize> {
+    values
+        .iter()
+        .try_fold(0usize, |total, value| total.checked_add(value.len()))
+}
+
+impl Data {
+    fn viewer_command_payload_bytes(&self) -> Option<usize> {
+        match self {
+            Self::Close
+            | Self::ConfirmDeleteFiles(_)
+            | Self::SetNoConfirm(_)
+            | Self::CancelJob(_)
+            | Self::SetConfirmOverrideFile(_)
+            | Self::ResumeJob(_)
+            | Self::RecordScreen(_)
+            | Self::NewVoiceCall
+            | Self::CloseVoiceCall
+            | Self::ResetDecoder(_) => Some(0),
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            Self::RemovePortForward(_) | Self::NewRDP => Some(0),
+            #[cfg(all(target_os = "windows", not(feature = "flutter")))]
+            Self::ToggleClipboardFile => Some(0),
+            Self::Login((password, _)) => checked_string_bytes(&[password]),
+            Self::InputOsPassword { password, .. } => checked_string_bytes(&[password]),
+            Self::Message(message) => usize::try_from(message.compute_size()).ok(),
+            Self::SendFiles((_, _, path, to, _, _, _))
+            | Self::AddJob((_, _, path, to, _, _, _)) => checked_string_bytes(&[path, to]),
+            Self::RemoveDirAll((_, path, _, _))
+            | Self::RemoveDir((_, path))
+            | Self::RemoveFile((_, path, _, _))
+            | Self::CreateDir((_, path, _))
+            | Self::TakeScreenshot((_, path)) => checked_string_bytes(&[path]),
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            Self::AddPortForward((_, host, _)) => checked_string_bytes(&[host]),
+            Self::RenameFile((_, path, new_name, _)) => checked_string_bytes(&[path, new_name]),
+        }
+    }
+}
+
+impl ViewerCommandSender {
+    fn set_terminal_locked(
+        &self,
+        terminal: &mut ViewerCommandTerminal,
+        next: ViewerCommandTerminal,
+    ) {
+        *terminal = next;
+        self.control.changed.send_replace(next);
+    }
+
+    fn existing_terminal_error(terminal: ViewerCommandTerminal) -> ViewerCommandAdmissionError {
+        match terminal {
+            ViewerCommandTerminal::ReceiverGone => ViewerCommandAdmissionError::ReceiverGone,
+            ViewerCommandTerminal::Open => unreachable!("open is not a terminal state"),
+            ViewerCommandTerminal::Close | ViewerCommandTerminal::Failed(_) => {
+                ViewerCommandAdmissionError::Closed
+            }
+        }
+    }
+
+    pub(crate) fn send(&self, data: Data) -> Result<(), ViewerCommandAdmissionError> {
+        if matches!(&data, Data::Close) {
+            return self.close();
+        }
+
+        let mut terminal = self.control.terminal.lock().unwrap();
+        if *terminal != ViewerCommandTerminal::Open {
+            return Err(Self::existing_terminal_error(*terminal));
+        }
+
+        let payload_bytes = data.viewer_command_payload_bytes();
+        let accounted_bytes =
+            payload_bytes.and_then(|bytes| std::mem::size_of::<Data>().checked_add(bytes));
+        let failure = match (payload_bytes, accounted_bytes) {
+            (Some(payload_bytes), Some(_)) if payload_bytes > self.limits.max_payload_bytes => {
+                Some(ViewerCommandFailure::CommandTooLarge {
+                    payload_bytes,
+                    limit: self.limits.max_payload_bytes,
+                })
+            }
+            (Some(_), Some(_)) => None,
+            _ => Some(ViewerCommandFailure::AccountingOverflow),
+        };
+        if let Some(failure) = failure {
+            self.set_terminal_locked(&mut terminal, ViewerCommandTerminal::Failed(failure));
+            return Err(ViewerCommandAdmissionError::Failed(failure));
+        }
+
+        if self.commands.capacity() == 0 {
+            let failure = ViewerCommandFailure::CommandCapacity {
+                queued: self.limits.capacity,
+                limit: self.limits.capacity,
+            };
+            self.set_terminal_locked(&mut terminal, ViewerCommandTerminal::Failed(failure));
+            return Err(ViewerCommandAdmissionError::Failed(failure));
+        }
+
+        let accounted_bytes = accounted_bytes.unwrap_or_default();
+        let permit_count = match u32::try_from(accounted_bytes) {
+            Ok(count) => count,
+            Err(_) => {
+                let failure = ViewerCommandFailure::AccountingOverflow;
+                self.set_terminal_locked(&mut terminal, ViewerCommandTerminal::Failed(failure));
+                return Err(ViewerCommandAdmissionError::Failed(failure));
+            }
+        };
+        let bytes = match Arc::clone(&self.bytes).try_acquire_many_owned(permit_count) {
+            Ok(permit) => permit,
+            Err(_) => {
+                let failure = ViewerCommandFailure::ByteCapacity {
+                    queued_bytes: self
+                        .limits
+                        .max_queued_bytes
+                        .saturating_sub(self.bytes.available_permits()),
+                    command_bytes: accounted_bytes,
+                    limit: self.limits.max_queued_bytes,
+                };
+                self.set_terminal_locked(&mut terminal, ViewerCommandTerminal::Failed(failure));
+                return Err(ViewerCommandAdmissionError::Failed(failure));
+            }
+        };
+
+        match self.commands.try_send(QueuedViewerCommand {
+            data,
+            _bytes: bytes,
+        }) {
+            Ok(()) => Ok(()),
+            Err(hbb_common::tokio::sync::mpsc::error::TrySendError::Full(_)) => {
+                let failure = ViewerCommandFailure::CommandCapacity {
+                    queued: self.limits.capacity,
+                    limit: self.limits.capacity,
+                };
+                self.set_terminal_locked(&mut terminal, ViewerCommandTerminal::Failed(failure));
+                Err(ViewerCommandAdmissionError::Failed(failure))
+            }
+            Err(hbb_common::tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
+                self.set_terminal_locked(&mut terminal, ViewerCommandTerminal::ReceiverGone);
+                Err(ViewerCommandAdmissionError::ReceiverGone)
+            }
+        }
+    }
+
+    pub(crate) fn close(&self) -> Result<(), ViewerCommandAdmissionError> {
+        let mut terminal = self.control.terminal.lock().unwrap();
+        match *terminal {
+            ViewerCommandTerminal::Open => {
+                self.set_terminal_locked(&mut terminal, ViewerCommandTerminal::Close);
+                Ok(())
+            }
+            ViewerCommandTerminal::Close => Ok(()),
+            other => Err(Self::existing_terminal_error(other)),
+        }
+    }
+}
+
+impl ViewerCommandReceiver {
+    fn mark_producers_gone(&self) {
+        let mut terminal = self.control.terminal.lock().unwrap();
+        if *terminal == ViewerCommandTerminal::Open {
+            *terminal = ViewerCommandTerminal::Failed(ViewerCommandFailure::ProducersGone);
+            self.control.changed.send_replace(*terminal);
+        }
+    }
+
+    fn terminal_event(&mut self) -> Option<Option<Result<Data, ViewerCommandFailure>>> {
+        let terminal = *self.control.terminal.lock().unwrap();
+        if terminal == ViewerCommandTerminal::Open {
+            return None;
+        }
+        if self.terminal_delivered {
+            return Some(None);
+        }
+        self.terminal_delivered = true;
+        self.commands.close();
+        while self.commands.try_recv().is_ok() {}
+        let event = match terminal {
+            ViewerCommandTerminal::Close => Some(Ok(Data::Close)),
+            ViewerCommandTerminal::Failed(failure) => Some(Err(failure)),
+            ViewerCommandTerminal::Open | ViewerCommandTerminal::ReceiverGone => None,
+        };
+        Some(event)
+    }
+
+    pub(crate) async fn recv(&mut self) -> Option<Result<Data, ViewerCommandFailure>> {
+        loop {
+            if let Some(event) = self.terminal_event() {
+                return event;
+            }
+
+            hbb_common::tokio::select! {
+                biased;
+                _ = self.changed.changed() => {}
+                command = self.commands.recv() => match command {
+                    Some(command) => return Some(Ok(command.data)),
+                    None => self.mark_producers_gone(),
+                }
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn try_recv(&mut self) -> Option<Result<Data, ViewerCommandFailure>> {
+        if let Some(event) = self.terminal_event() {
+            return event;
+        }
+        match self.commands.try_recv() {
+            Ok(command) => Some(Ok(command.data)),
+            Err(hbb_common::tokio::sync::mpsc::error::TryRecvError::Empty) => None,
+            Err(hbb_common::tokio::sync::mpsc::error::TryRecvError::Disconnected) => {
+                self.mark_producers_gone();
+                self.terminal_event().flatten()
+            }
+        }
+    }
+}
+
+impl Drop for ViewerCommandReceiver {
+    fn drop(&mut self) {
+        let mut terminal = self.control.terminal.lock().unwrap();
+        *terminal = ViewerCommandTerminal::ReceiverGone;
+        self.control.changed.send_replace(*terminal);
+        self.commands.close();
+    }
+}
+
 /// Keycode for key events.
 #[derive(Clone, Debug)]
 pub enum Key {
@@ -4029,6 +4406,237 @@ mod tests {
         h.id = id.to_string();
         h.remember = true;
         h
+    }
+
+    fn viewer_command_test_limits(
+        capacity: usize,
+        max_payload_bytes: usize,
+        max_queued_bytes: usize,
+    ) -> ViewerCommandLimits {
+        ViewerCommandLimits {
+            capacity,
+            max_payload_bytes,
+            max_queued_bytes,
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn viewer_command_mailbox_preserves_fifo_and_recovers_capacity() {
+        let base = std::mem::size_of::<Data>();
+        let (sender, mut receiver) =
+            viewer_command_channel_with_limits(viewer_command_test_limits(2, 32, base * 2 + 32));
+        sender.send(Data::CancelJob(11)).unwrap();
+        sender.send(Data::CancelJob(12)).unwrap();
+
+        assert!(matches!(
+            receiver.recv().await,
+            Some(Ok(Data::CancelJob(11)))
+        ));
+        sender.send(Data::CancelJob(13)).unwrap();
+        assert!(matches!(
+            receiver.recv().await,
+            Some(Ok(Data::CancelJob(12)))
+        ));
+        assert!(matches!(
+            receiver.recv().await,
+            Some(Ok(Data::CancelJob(13)))
+        ));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn viewer_command_message_bytes_are_bounded_and_released_after_receive() {
+        let mut key_event = KeyEvent::new();
+        key_event.set_seq("bounded-message".repeat(64));
+        let mut message = Message::new();
+        message.set_key_event(key_event);
+        let payload_bytes = usize::try_from(message.compute_size()).unwrap();
+        let command_bytes = std::mem::size_of::<Data>() + payload_bytes;
+        let (sender, mut receiver) = viewer_command_channel_with_limits(
+            viewer_command_test_limits(1, payload_bytes, command_bytes),
+        );
+
+        sender.send(Data::Message(message.clone())).unwrap();
+        assert!(matches!(receiver.recv().await, Some(Ok(Data::Message(_)))));
+        sender.send(Data::Message(message)).unwrap();
+        assert!(matches!(receiver.recv().await, Some(Ok(Data::Message(_)))));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn viewer_command_count_overload_retires_the_entire_round() {
+        let base = std::mem::size_of::<Data>();
+        let (sender, mut receiver) =
+            viewer_command_channel_with_limits(viewer_command_test_limits(2, 32, base * 2 + 32));
+        sender.send(Data::CancelJob(1)).unwrap();
+        sender.send(Data::CancelJob(2)).unwrap();
+        assert_eq!(
+            sender.send(Data::CancelJob(3)),
+            Err(ViewerCommandAdmissionError::Failed(
+                ViewerCommandFailure::CommandCapacity {
+                    queued: 2,
+                    limit: 2,
+                }
+            ))
+        );
+        assert!(matches!(
+            receiver.recv().await,
+            Some(Err(ViewerCommandFailure::CommandCapacity {
+                queued: 2,
+                limit: 2
+            }))
+        ));
+        assert!(receiver.recv().await.is_none());
+        assert_eq!(
+            sender.send(Data::CancelJob(4)),
+            Err(ViewerCommandAdmissionError::Closed)
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn viewer_command_byte_overload_is_terminal_and_visible() {
+        let base = std::mem::size_of::<Data>();
+        let limit = base + 3;
+        let (sender, mut receiver) =
+            viewer_command_channel_with_limits(viewer_command_test_limits(4, 32, limit));
+        sender.send(Data::Login(("ab".to_owned(), false))).unwrap();
+        assert!(matches!(
+            sender.send(Data::Login(("cd".to_owned(), false))),
+            Err(ViewerCommandAdmissionError::Failed(
+                ViewerCommandFailure::ByteCapacity {
+                    queued_bytes,
+                    command_bytes,
+                    limit: failed_limit,
+                }
+            )) if queued_bytes == base + 2 && command_bytes == base + 2 && failed_limit == limit
+        ));
+        assert!(matches!(
+            receiver.recv().await,
+            Some(Err(ViewerCommandFailure::ByteCapacity { limit: failed_limit, .. }))
+                if failed_limit == limit
+        ));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn viewer_command_payload_limit_accepts_exact_and_rejects_plus_one() {
+        let base = std::mem::size_of::<Data>();
+        let (sender, mut receiver) =
+            viewer_command_channel_with_limits(viewer_command_test_limits(2, 3, base * 2 + 16));
+        sender.send(Data::Login(("abc".to_owned(), false))).unwrap();
+        assert!(
+            matches!(receiver.recv().await, Some(Ok(Data::Login((value, false)))) if value == "abc")
+        );
+
+        assert_eq!(
+            sender.send(Data::Login(("abcd".to_owned(), false))),
+            Err(ViewerCommandAdmissionError::Failed(
+                ViewerCommandFailure::CommandTooLarge {
+                    payload_bytes: 4,
+                    limit: 3,
+                }
+            ))
+        );
+        assert!(matches!(
+            receiver.recv().await,
+            Some(Err(ViewerCommandFailure::CommandTooLarge {
+                payload_bytes: 4,
+                limit: 3
+            }))
+        ));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn viewer_command_close_supersedes_a_full_queue() {
+        let base = std::mem::size_of::<Data>();
+        let (sender, mut receiver) =
+            viewer_command_channel_with_limits(viewer_command_test_limits(1, 32, base + 32));
+        sender.send(Data::CancelJob(1)).unwrap();
+        sender.send(Data::Close).unwrap();
+
+        assert!(matches!(receiver.recv().await, Some(Ok(Data::Close))));
+        assert!(receiver.recv().await.is_none());
+        assert_eq!(
+            sender.send(Data::CancelJob(2)),
+            Err(ViewerCommandAdmissionError::Closed)
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn viewer_command_clones_share_one_count_and_byte_budget() {
+        let base = std::mem::size_of::<Data>();
+        let (sender, mut receiver) =
+            viewer_command_channel_with_limits(viewer_command_test_limits(2, 32, base * 2 + 4));
+        let clone = sender.clone();
+        sender.send(Data::Login(("a".to_owned(), false))).unwrap();
+        clone.send(Data::Login(("b".to_owned(), false))).unwrap();
+        assert!(matches!(
+            clone.send(Data::CancelJob(3)),
+            Err(ViewerCommandAdmissionError::Failed(
+                ViewerCommandFailure::CommandCapacity { .. }
+            ))
+        ));
+        assert!(matches!(
+            receiver.recv().await,
+            Some(Err(ViewerCommandFailure::CommandCapacity { .. }))
+        ));
+
+        let (sender, mut receiver) =
+            viewer_command_channel_with_limits(viewer_command_test_limits(3, 32, base * 2 + 2));
+        let clone = sender.clone();
+        sender.send(Data::Login(("a".to_owned(), false))).unwrap();
+        clone.send(Data::Login(("b".to_owned(), false))).unwrap();
+        assert!(matches!(
+            clone.send(Data::CancelJob(3)),
+            Err(ViewerCommandAdmissionError::Failed(
+                ViewerCommandFailure::ByteCapacity { .. }
+            ))
+        ));
+        assert!(matches!(
+            receiver.recv().await,
+            Some(Err(ViewerCommandFailure::ByteCapacity { .. }))
+        ));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn viewer_command_receiver_and_producer_loss_are_explicit() {
+        let (sender, receiver) = viewer_command_channel();
+        drop(receiver);
+        assert_eq!(
+            sender.send(Data::CancelJob(1)),
+            Err(ViewerCommandAdmissionError::ReceiverGone)
+        );
+
+        let (sender, mut receiver) = viewer_command_channel();
+        drop(sender);
+        assert!(matches!(
+            receiver.recv().await,
+            Some(Err(ViewerCommandFailure::ProducersGone))
+        ));
+        assert!(receiver.recv().await.is_none());
+    }
+
+    #[test]
+    fn viewer_command_plane_has_no_unbounded_data_channel() {
+        let old_sender = concat!("Unbounded", "Sender<Data>");
+        let old_receiver = concat!("Unbounded", "Receiver<Data>");
+        let old_factory = concat!("unbounded_channel::<", "Data>");
+        for (path, source) in [
+            ("src/client.rs", include_str!("client.rs")),
+            ("src/client/io_loop.rs", include_str!("client/io_loop.rs")),
+            (
+                "src/ui_session_interface.rs",
+                include_str!("ui_session_interface.rs"),
+            ),
+            ("src/cli.rs", include_str!("cli.rs")),
+        ] {
+            assert!(!source.contains(old_sender), "{path} restored {old_sender}");
+            assert!(
+                !source.contains(old_receiver),
+                "{path} restored {old_receiver}"
+            );
+            assert!(
+                !source.contains(old_factory),
+                "{path} restored {old_factory}"
+            );
+        }
     }
 
     #[test]

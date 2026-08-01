@@ -8988,6 +8988,7 @@ grep -Fq '<tr><td>236</td>' requirements.html ||
 # viewer must cap display-thread creation and use bounded media queues.
 echo "== (3c-ii-a) viewer peer media display/thread + queue bounds (Appendix C #2b/R-T0) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::media_data_queue_is_bounded --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::viewer_command_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::r_s11ev_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::io_loop::tests::r_s11ev_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::owned_media_thread_closes_admission_before_join --color never

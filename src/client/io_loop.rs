@@ -11,7 +11,7 @@ use crate::{
     client::{
         self, new_voice_call_request, Client, Data, Interface, LoginConfigHandler, MediaData,
         OwnedMediaThread, OwnedVideoThread, QualityStatus, VideoControl, VideoFrameAdmission,
-        MILLI1, SEC30,
+        ViewerCommandReceiver, ViewerCommandSender, MILLI1, SEC30,
     },
     common::get_default_sound_input,
     ui_session_interface::{InvokeUiSession, Session},
@@ -334,8 +334,8 @@ impl Drop for OwnedInputOsPasswordTask {
 pub struct Remote<T: InvokeUiSession> {
     handler: Session<T>,
     audio_thread: OwnedMediaThread,
-    receiver: mpsc::UnboundedReceiver<Data>,
-    sender: mpsc::UnboundedSender<Data>,
+    receiver: ViewerCommandReceiver,
+    sender: ViewerCommandSender,
     video_refresh: ViewerVideoRefreshReceiver,
     input_os_password_task: OwnedInputOsPasswordTask,
     // Stop sending local audio to remote client.
@@ -712,8 +712,8 @@ fn sanitize_peer_platform_additions(raw: &str) -> String {
 impl<T: InvokeUiSession> Remote<T> {
     pub(crate) fn new(
         handler: Session<T>,
-        receiver: mpsc::UnboundedReceiver<Data>,
-        sender: mpsc::UnboundedSender<Data>,
+        receiver: ViewerCommandReceiver,
+        sender: ViewerCommandSender,
         video_refresh: ViewerVideoRefreshReceiver,
     ) -> Self {
         Self {
@@ -878,8 +878,21 @@ impl<T: InvokeUiSession> Remote<T> {
                             }
                         }
                         d = self.receiver.recv() => {
-                            if let Some(d) = d {
-                                if !self.handle_msg_from_ui(d, &mut peer).await {
+                            match d {
+                                Some(Ok(d)) => {
+                                    if !self.handle_msg_from_ui(d, &mut peer).await {
+                                        break;
+                                    }
+                                }
+                                Some(Err(err)) => {
+                                    let err = format!("viewer command channel failed: {err}");
+                                    log::error!("{err}");
+                                    self.handler.on_error(&err);
+                                    self.send_close_reason(&mut peer, &err).await;
+                                    break;
+                                }
+                                None => {
+                                    log::error!("viewer command channel ended without a terminal event");
                                     break;
                                 }
                             }
@@ -1047,9 +1060,20 @@ impl<T: InvokeUiSession> Remote<T> {
                 let file_num = (file_num + 1) as usize;
                 if file_num < job.files.len() {
                     let path = format!("{}{}{}", job.path, job.sep, job.files[file_num].name);
-                    self.sender
-                        .send(Data::RemoveFile((id, path, file_num as i32, job.is_remote)))
-                        .ok();
+                    if let Err(err) = self.sender.send(Data::RemoveFile((
+                        id,
+                        path,
+                        file_num as i32,
+                        job.is_remote,
+                    ))) {
+                        self.handler.job_error(
+                            id,
+                            format!("failed to continue delete operation: {err}"),
+                            file_num as i32,
+                        );
+                        self.remove_jobs.remove(&id);
+                        return;
+                    }
                     let elapsed = job.last_update_job_status.elapsed().as_millis() as i32;
                     if elapsed >= 1000 {
                         job.last_update_job_status = Instant::now();
@@ -1207,7 +1231,10 @@ impl<T: InvokeUiSession> Remote<T> {
                 }
                 match peer.send(&msg).await {
                     Ok(()) => self.record_pending_privacy_mode_request(&msg),
-                    Err(err) => log::error!("Failed to send message to peer: {}", err),
+                    Err(err) => {
+                        log::error!("failed to send viewer command to peer: {err}");
+                        return false;
+                    }
                 }
             }
             Data::SendFiles((id, r#type, path, to, file_num, include_hidden, is_remote)) => {
@@ -1916,7 +1943,10 @@ impl<T: InvokeUiSession> Remote<T> {
                 });
                 let mut msg = Message::new();
                 msg.set_misc(misc);
-                self.sender.send(Data::Message(msg)).ok();
+                if let Err(err) = self.sender.send(Data::Message(msg)) {
+                    log::error!("failed to admit automatic FPS update: {err}");
+                    return false;
+                }
                 log::info!("Set fps to {}", auto_fps);
                 self.handler.lc.write().unwrap().last_auto_fps = Some(auto_fps);
             }
@@ -2120,7 +2150,11 @@ impl<T: InvokeUiSession> Remote<T> {
                                     let permission_config = self.handler.get_permission_config();
                                     tokio::spawn(async move {
                                         if permission_config.is_text_clipboard_required() {
-                                            sender.send(Data::Message(msg_out)).ok();
+                                            if let Err(err) = sender.send(Data::Message(msg_out)) {
+                                                log::debug!(
+                                                    "initial clipboard update outlived its viewer round: {err}"
+                                                );
+                                            }
                                         }
                                     });
                                 }
@@ -3174,7 +3208,9 @@ impl<T: InvokeUiSession> Remote<T> {
         misc.set_client_record_status(start);
         let mut msg = Message::new();
         msg.set_misc(misc);
-        self.sender.send(Data::Message(msg)).ok();
+        if let Err(err) = self.sender.send(Data::Message(msg)) {
+            log::error!("failed to admit remote recording-state update: {err}");
+        }
     }
 }
 
@@ -3319,8 +3355,8 @@ mod tests {
     #[tokio::test(flavor = "current_thread")]
     async fn r_s11e148_os_password_input_is_cancelled_and_joined_before_round_replacement() {
         let mut owner = OwnedInputOsPasswordTask::default();
-        let (old_sender, mut old_receiver) = mpsc::unbounded_channel();
-        let (replacement_sender, mut replacement_receiver) = mpsc::unbounded_channel();
+        let (old_sender, mut old_receiver) = client::viewer_command_channel();
+        let (replacement_sender, mut replacement_receiver) = client::viewer_command_channel();
 
         owner
             .replace(client::run_input_os_password_sequence(
@@ -3336,7 +3372,8 @@ mod tests {
         let first = time::timeout(Duration::from_secs(1), old_receiver.recv())
             .await
             .expect("the admitted round must receive the sequence's first event")
-            .expect("the exact old-round sender must be live");
+            .expect("the exact old-round sender must be live")
+            .expect("the exact old-round command must be admitted");
         assert!(
             matches!(first, Data::Message(_)),
             "the first activation event must stay on the admitted round"
@@ -3353,12 +3390,12 @@ mod tests {
         assert!(
             matches!(
                 old_receiver.try_recv(),
-                Err(mpsc::error::TryRecvError::Disconnected)
+                Some(Err(client::ViewerCommandFailure::ProducersGone))
             ),
             "replacement must abort, await, and drop the old exact-round sender before it starts"
         );
         assert!(
-            matches!(replacement_receiver.recv().await, Some(Data::Close)),
+            matches!(replacement_receiver.recv().await, Some(Ok(Data::Close))),
             "the replacement task must retain only its replacement-round sender"
         );
         assert!(

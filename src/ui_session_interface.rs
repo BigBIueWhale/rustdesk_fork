@@ -46,7 +46,8 @@ use crate::client::io_loop::{
 use crate::client::PortForwardTarget;
 use crate::client::{
     check_if_retry, handle_login_error, handle_login_from_ui, handle_test_delay, send_mouse,
-    send_pointer_device_event, FileManager, Key, LoginConfigHandler, QualityStatus, KEY_MAP,
+    send_pointer_device_event, viewer_command_channel, FileManager, Key, LoginConfigHandler,
+    QualityStatus, ViewerCommandAdmissionError, ViewerCommandSender, KEY_MAP,
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::common::GrabState;
@@ -69,7 +70,7 @@ pub struct Session<T: InvokeUiSession> {
     pub password: String,
     pub args: Vec<String>,
     pub lc: Arc<RwLock<LoginConfigHandler>>,
-    pub sender: Arc<RwLock<Option<mpsc::UnboundedSender<Data>>>>,
+    pub(crate) sender: Arc<RwLock<Option<ViewerCommandSender>>>,
     pub(crate) video_refresh_sender: Arc<RwLock<Option<ViewerVideoRefreshSender>>>,
     pub thread: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
     pub ui_handler: T,
@@ -1927,8 +1928,19 @@ impl<T: InvokeUiSession> Interface for Session<T> {
     }
 
     fn send(&self, data: Data) {
-        if let Some(sender) = self.sender.read().unwrap().as_ref() {
-            sender.send(data).ok();
+        let Some(sender) = self.sender.read().unwrap().as_ref().cloned() else {
+            log::debug!("viewer command rejected because no connection round is published");
+            return;
+        };
+        if let Err(err) = sender.send(data) {
+            match err {
+                ViewerCommandAdmissionError::Failed(_) => {
+                    log::error!("viewer command admission failed and retired its round: {err}")
+                }
+                ViewerCommandAdmissionError::Closed | ViewerCommandAdmissionError::ReceiverGone => {
+                    log::debug!("viewer command rejected after its connection round retired: {err}")
+                }
+            }
         }
     }
 
@@ -2100,10 +2112,7 @@ pub(crate) async fn io_loop<T: InvokeUiSession>(
     round: u64,
     video_refresh_receiver: ViewerVideoRefreshReceiver,
 ) {
-    #[cfg(any(target_os = "android", target_os = "ios"))]
-    let (sender, receiver) = mpsc::unbounded_channel::<Data>();
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    let (sender, mut receiver) = mpsc::unbounded_channel::<Data>();
+    let (sender, mut receiver) = viewer_command_channel();
     *handler.sender.write().unwrap() = Some(sender.clone());
     let token = LocalConfig::get_option("access_token");
     let key = crate::get_key(false).await;
@@ -2148,12 +2157,18 @@ pub(crate) async fn io_loop<T: InvokeUiSession>(
             } else {
                 loop {
                     match receiver.recv().await {
-                        Some(Data::NewRDP) => match supervisor.launch_rdp(0).await {
+                        Some(Ok(Data::NewRDP)) => match supervisor.launch_rdp(0).await {
                             Ok(RdpLaunchRequest::Queued | RdpLaunchRequest::Coalesced) => {}
                             Err(err) => handler.on_error(&err),
                         },
-                        Some(Data::Close) | None => break,
-                        Some(_) => {}
+                        Some(Ok(Data::Close)) | None => break,
+                        Some(Ok(_)) => {}
+                        Some(Err(err)) => {
+                            let err = format!("viewer command channel failed: {err}");
+                            log::error!("{err}");
+                            handler.on_error(&err);
+                            break;
+                        }
                     }
                 }
             }
@@ -2167,21 +2182,27 @@ pub(crate) async fn io_loop<T: InvokeUiSession>(
             }
             loop {
                 match receiver.recv().await {
-                    Some(Data::AddPortForward(mapping)) => {
+                    Some(Ok(Data::AddPortForward(mapping))) => {
                         if let Err(err) = supervisor.add(mapping.into()).await {
                             handler.on_error(&err);
                         }
                     }
-                    Some(Data::RemovePortForward(port)) => {
+                    Some(Ok(Data::RemovePortForward(port))) => {
                         if let Err(err) = supervisor.remove(port).await {
                             handler.on_error(&err);
                         }
                     }
-                    Some(Data::Close) | None => {
+                    Some(Ok(Data::Close)) | None => {
                         break;
                     }
-                    Some(_) => {
+                    Some(Ok(_)) => {
                         log::warn!("ignoring non-lifecycle command in port-forward manager");
+                    }
+                    Some(Err(err)) => {
+                        let err = format!("viewer command channel failed: {err}");
+                        log::error!("{err}");
+                        handler.on_error(&err);
+                        break;
                     }
                 }
             }
@@ -2199,9 +2220,16 @@ pub(crate) async fn io_loop<T: InvokeUiSession>(
             {
                 handler.on_error(&err);
             } else {
-                while let Some(command) = receiver.recv().await {
-                    if matches!(command, Data::Close) {
-                        break;
+                loop {
+                    match receiver.recv().await {
+                        Some(Ok(Data::Close)) | None => break,
+                        Some(Ok(_)) => {}
+                        Some(Err(err)) => {
+                            let err = format!("viewer command channel failed: {err}");
+                            log::error!("{err}");
+                            handler.on_error(&err);
+                            break;
+                        }
                     }
                 }
             }

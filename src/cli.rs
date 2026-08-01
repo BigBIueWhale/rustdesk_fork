@@ -8,8 +8,7 @@ use hbb_common::{
     message_proto::*,
     protobuf::Message as _,
     rendezvous_proto::ConnType,
-    tokio::{self, sync::mpsc},
-    Stream,
+    tokio, Stream,
 };
 use std::sync::{Arc, RwLock};
 
@@ -17,12 +16,12 @@ use std::sync::{Arc, RwLock};
 pub struct Session {
     id: String,
     lc: Arc<RwLock<LoginConfigHandler>>,
-    sender: mpsc::UnboundedSender<Data>,
+    sender: ViewerCommandSender,
     password: String,
 }
 
 impl Session {
-    pub fn new(id: &str, conn_type: ConnType, sender: mpsc::UnboundedSender<Data>) -> Self {
+    fn new(id: &str, conn_type: ConnType, sender: ViewerCommandSender) -> Self {
         let mut password = "".to_owned();
         if PeerConfig::load(id).password.is_empty() {
             match rpassword::prompt_password("Enter password: ") {
@@ -102,13 +101,15 @@ impl Interface for Session {
     }
 
     fn send(&self, data: Data) {
-        self.sender.send(data).ok();
+        if let Err(err) = self.sender.send(data) {
+            log::error!("CLI viewer command admission failed: {err}");
+        }
     }
 }
 
 #[tokio::main(flavor = "current_thread")]
 pub async fn connect_test(id: &str, key: String, token: String) {
-    let (sender, mut receiver) = mpsc::unbounded_channel::<Data>();
+    let (sender, mut receiver) = viewer_command_channel();
     let handler = Session::new(&id, ConnType::DEFAULT_CONN, sender);
     match crate::client::Client::start(id, &key, &token, ConnType::DEFAULT_CONN, handler).await {
         Err(err) => {
@@ -119,6 +120,20 @@ pub async fn connect_test(id: &str, key: String, token: String) {
             // rpassword::prompt_password("Input anything to exit").ok();
             loop {
                 tokio::select! {
+                    command = receiver.recv() => match command {
+                        Some(Ok(Data::Message(message))) => {
+                            if let Err(err) = stream.send(&message).await {
+                                log::error!("Failed to send CLI viewer command: {err}");
+                                break;
+                            }
+                        }
+                        Some(Ok(Data::Close)) | None => break,
+                        Some(Ok(_)) => {}
+                        Some(Err(err)) => {
+                            log::error!("CLI viewer command channel failed: {err}");
+                            break;
+                        }
+                    },
                     res = hbb_common::timeout(READ_TIMEOUT, stream.next()) => match res {
                         Err(_) => {
                             log::error!("Timeout");
@@ -148,7 +163,7 @@ pub async fn start_one_port_forward(
     key: String,
     token: String,
 ) {
-    let (sender, _receiver) = mpsc::unbounded_channel::<Data>();
+    let (sender, _receiver) = viewer_command_channel();
     let handler = Session::new(&id, ConnType::PORT_FORWARD, sender);
     let (_control, receiver) = crate::port_forward::port_forward_control();
     if let Err(err) = crate::port_forward::listen(
@@ -173,7 +188,7 @@ mod tests {
     use super::*;
 
     fn session_with_password(password: &str) -> Session {
-        let (sender, _receiver) = mpsc::unbounded_channel();
+        let (sender, _receiver) = viewer_command_channel();
         Session {
             id: "127.0.0.1".to_owned(),
             lc: Default::default(),

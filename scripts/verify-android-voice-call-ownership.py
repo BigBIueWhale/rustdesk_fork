@@ -1212,8 +1212,8 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(
         flutter_ffi,
         "client_owner_id: SessionID,",
-        6,
-        "all authored Rust add/attach/start/test dual-identity entries",
+        7,
+        "all authored Rust add/attach/start/refresh/test dual-identity entries",
     )
     require(
         flutter_ffi,
@@ -3018,8 +3018,13 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         activate_os,
-        "sender: &hbb_common::tokio::sync::mpsc::UnboundedSender<Data>",
-        "activation exact-round sender",
+        "sender: &ViewerCommandSender",
+        "activation bounded exact-round sender",
+    )
+    forbid(
+        activate_os,
+        "UnboundedSender<Data>",
+        "unbounded OS-password activation sender",
     )
     forbid(
         activate_os,
@@ -3043,11 +3048,16 @@ def validate(sources: Dict[str, str]) -> None:
         "pub(crate) async fn run_input_os_password_sequence(",
         "exact-round OS-password sequence",
     )
+    forbid(
+        input_sequence,
+        "UnboundedSender<Data>",
+        "unbounded delayed OS-password sender",
+    )
     require_order(
         input_sequence,
         (
             "sequence: InputOsPasswordSequence",
-            "sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>",
+            "sender: ViewerCommandSender",
             "if let Some(activation) = sequence.activation",
             "activate_os(activation, &sender).await",
             "hbb_common::tokio::time::sleep(Duration::from_millis(1200)).await;",
@@ -5195,8 +5205,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("ui_session", "self.send(Data::InputOsPassword {\n            password: pass,\n            activate,\n        });", "let session = self.clone();\n        std::thread::spawn(move || {\n            session.send(Data::InputOsPassword {\n                password: pass,\n                activate,\n            });\n        });", "OS-password current-round typed admission"),
     ("client", "InputOsPassword {\n        password: String,\n        activate: bool,\n    },", "InputOsPasswordDisabled {\n        password: String,\n        activate: bool,\n    },", "OS-password typed in-process command"),
     ("client", "hbb_common::tokio::time::sleep(Duration::from_millis(50)).await;", "std::thread::sleep(Duration::from_millis(50));", "OS-password asynchronous activation delay"),
-    ("client", "sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,", "sender: (),", "OS-password captured exact-round sender"),
-    ("client", "sequence: InputOsPasswordSequence,\n    sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,", "sequence: InputOsPasswordSequence,\n    interface: impl Interface,\n    sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,", "OS-password delayed task excludes mutable Session capability"),
+    ("client", "sender: ViewerCommandSender,", "sender: hbb_common::tokio::sync::mpsc::UnboundedSender<Data>,", "OS-password bounded captured exact-round sender"),
+    ("client", "sequence: InputOsPasswordSequence,\n    sender: ViewerCommandSender,", "sequence: InputOsPasswordSequence,\n    interface: impl Interface,\n    sender: ViewerCommandSender,", "OS-password delayed task excludes mutable Session capability"),
     ("client", "if !send_os_password_input(&sender, password)", "if !send_os_password_input(&replacement_sender, password)", "OS-password exact event sender"),
     ("client", "pub(crate) async fn run_input_os_password_sequence(", "fn _input_os_password(", "detached-helper absence"),
     ("io_loop", "task: Option<tokio::task::JoinHandle<()>>,", "task: Option<()>,", "OS-password sole JoinHandle owner"),

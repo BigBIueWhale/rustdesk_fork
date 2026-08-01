@@ -54,7 +54,7 @@ const MAX_CPACE_PACKET: usize = 4096;
 /// realistic video keyframe. Leaving the cap at 4 KiB would reject every legit
 /// session frame; not raising it at all (the inherited `usize::MAX`) would
 /// re-open the ~1 GiB/connection pre-auth amplification this control closes.
-const MAX_SESSION_PACKET: usize = 32 * 1024 * 1024;
+pub const MAX_SESSION_PACKET: usize = 32 * 1024 * 1024;
 
 /// A fail-closed handshake abort. Per **R-P14c**, only [`HandshakeError::Confirmation`]
 /// is an online password guess and may feed the per-source limiter (R-S10); every

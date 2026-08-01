@@ -7056,11 +7056,12 @@ def validate_macos_descriptor_contract(sources):
         ),
         (
             sources["ipc_source"],
-            "fn macos_launch_agent_owns_service_owned_server_pid(peer_uid: u32, peer_pid: u32) -> bool {",
-            "\n#[cfg(not(target_os = \"macos\"))]",
+            "fn macos_launch_agent_owns_service_owned_server_pid(",
+            '\n#[cfg(target_os = "macos")]\n'
+            "async fn permanent_password_is_set_for_current_process",
             "macOS service snapshot launchctl descriptor policy",
             "configure_command_close_nonstdio_on_exec(&mut command)",
-            "command.output()",
+            "run_macos_bounded_child_stdout(",
         ),
         (
             sources["common_source"],
@@ -14990,6 +14991,42 @@ def validate_service_ipc_protocol_authority_contract(sources):
         "get_local_permanent_password_storage_and_salt()",
         "persistent credential envelope crossing IPC",
     )
+    exact_launch_agent_peer = extract_between(
+        ipc,
+        "async fn macos_peer_is_service_owned_server<T>(",
+        "\n}\n\n#[cfg(any(target_os = \"macos\", test))]\n"
+        "fn macos_service_owned_server_live_argv_is_expected",
+        "macOS exact LaunchAgent peer admission",
+    )
+    require_order(
+        exact_launch_agent_peer,
+        (
+            "macos_peer_process_identity_from_stream(",
+            "try_acquire_macos_service_credential_ipc_authorization_slot()",
+            "let proof_deadline = deadline.into_std();",
+            'run_bounded_macos_security_proof(deadline, "macos-credential-snapshot-proof"',
+            "macos_peer_is_service_owned_server_blocking(",
+            "identity,\n            proof_deadline,",
+        ),
+        "macOS exact LaunchAgent proof deadline transfer",
+    )
+    blocking_launch_agent_peer = extract_between(
+        ipc,
+        "fn macos_peer_is_service_owned_server_blocking(",
+        "\n}\n\n#[cfg(target_os = \"macos\")]\n"
+        "fn macos_service_owned_server_launch_agent_label",
+        "macOS exact LaunchAgent blocking peer proof",
+    )
+    require_order(
+        blocking_launch_agent_peer,
+        (
+            "macos_peer_is_trusted_installed_app(&identity)",
+            "macos_service_owned_server_live_argv_is_expected(process.cmd())",
+            "macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid, proof_deadline)",
+            "ipc_auth::macos_peer_is_trusted_installed_app(&identity)",
+        ),
+        "macOS exact LaunchAgent bounded corroboration chain",
+    )
     peer_snapshot = extract_between(
         auth,
         "pub(crate) fn macos_peer_process_identity_from_stream",
@@ -15009,8 +15046,8 @@ def validate_service_ipc_protocol_authority_contract(sources):
     launchctl_parser = extract_between(
         ipc,
         "fn macos_launchctl_service_identity<'a>(",
-        '\n}\n\n#[cfg(target_os = "macos")]\n'
-        "fn macos_launch_agent_owns_service_owned_server_pid",
+        '\n}\n\n#[cfg(any(target_os = "macos", all(target_os = "linux", test)))]\n'
+        "#[derive(Debug)]\nstruct MacosBoundedChildOutput",
         "macOS launchctl service identity parser",
     )
     require_order(
@@ -15031,6 +15068,68 @@ def validate_service_ipc_protocol_authority_contract(sources):
         ),
         "strict top-level launchctl service identity",
     )
+    bounded_launchctl_child = extract_between(
+        ipc,
+        "fn run_macos_bounded_child_stdout(",
+        '\n}\n\n#[cfg(target_os = "macos")]\n'
+        "fn macos_launch_agent_owns_service_owned_server_pid",
+        "bounded macOS launchctl child owner",
+    )
+    require_order(
+        bounded_launchctl_child,
+        (
+            "if stdout_limit == 0",
+            "std::time::Instant::now() >= deadline",
+            ".stdin(std::process::Stdio::null())",
+            ".stdout(std::process::Stdio::piped())",
+            ".stderr(std::process::Stdio::null())",
+            ".spawn()",
+            "child.stdout.take()",
+            "set_macos_bounded_child_stdout_nonblocking(&stdout)",
+            "let mut captured = Vec::with_capacity(stdout_limit.min(16 * 1024));",
+            "let mut buffer = [0u8; 8 * 1024];",
+            "stdout.read(&mut buffer)",
+            "count > stdout_limit.saturating_sub(captured.len())",
+            "captured.extend_from_slice(&buffer[..count]);",
+            "child.try_wait()",
+            "if stdout_closed",
+            "if let Some(status) = status.take()",
+            "if now >= deadline",
+            "std::thread::sleep(",
+        ),
+        "bounded macOS launchctl child capture",
+    )
+    for text, label in (
+        (
+            "const MACOS_LAUNCHCTL_STDOUT_MAX_BYTES: usize = 256 * 1024;",
+            "macOS launchctl stdout ceiling",
+        ),
+        (
+            "const MACOS_LAUNCHCTL_REAP_RESERVE: std::time::Duration =",
+            "macOS launchctl cleanup reserve",
+        ),
+        (
+            "std::time::Duration::from_millis(50);",
+            "macOS launchctl cleanup reserve value",
+        ),
+        (
+            "flags | hbb_common::libc::O_NONBLOCK",
+            "macOS launchctl nonblocking stdout",
+        ),
+        (
+            "fn terminate_and_reap_macos_bounded_child(",
+            "macOS launchctl child cleanup owner",
+        ),
+        ("child.kill().err()", "macOS launchctl child kill"),
+        ("child.wait()", "macOS launchctl child reap"),
+    ):
+        require_text(ipc, text, label)
+    require_exact_count(
+        bounded_launchctl_child,
+        "macos_bounded_child_failure(",
+        6,
+        "bounded macOS launchctl cleanup failure edges",
+    )
     launchctl_owner = extract_between(
         ipc,
         "fn macos_launch_agent_owns_service_owned_server_pid(",
@@ -15041,12 +15140,16 @@ def validate_service_ipc_protocol_authority_contract(sources):
     require_order(
         launchctl_owner,
         (
+            "proof_deadline.checked_sub(MACOS_LAUNCHCTL_REAP_RESERVE)",
             'format!("gui/{peer_uid}/{label}")',
             "std::process::Command::new(MACOS_LAUNCHCTL)",
             '.current_dir("/")',
             ".env_clear()",
             '.env("LC_ALL", "C")',
             "configure_command_close_nonstdio_on_exec(&mut command)",
+            "run_macos_bounded_child_stdout(",
+            "child_deadline",
+            "MACOS_LAUNCHCTL_STDOUT_MAX_BYTES",
             "macos_launchctl_service_identity(&output.stdout, &target)",
             "reported_identity != Some((peer_pid, expected_plist.as_str()))",
         ),
@@ -15062,14 +15165,22 @@ def validate_service_ipc_protocol_authority_contract(sources):
         "from_utf8_lossy",
         "lossy launchctl authority decoding",
     )
+    require_absent(
+        launchctl_owner,
+        "command.output()",
+        "unbounded launchctl whole-output capture",
+    )
     for test_name in (
         "macos_launchctl_service_identity_accepts_exact_top_level_record",
         "macos_launchctl_service_identity_rejects_nested_substitution",
         "macos_launchctl_service_identity_rejects_duplicate_top_level_authority",
         "macos_launchctl_service_identity_rejects_wrong_target_or_trailing_record",
         "macos_launchctl_service_identity_rejects_non_utf8_or_noncanonical_pid",
+        "macos_bounded_child_stdout_accepts_exact_output",
+        "macos_bounded_child_stdout_terminates_on_overflow",
+        "macos_bounded_child_stdout_terminates_on_deadline",
     ):
-        require_text(ipc, test_name, f"macOS launchctl parser regression: {test_name}")
+        require_text(ipc, test_name, f"macOS launchctl regression: {test_name}")
 
     readiness_client = extract_between(
         ipc,
@@ -15305,8 +15416,51 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "closed-environment exact launchctl ownership query",
             "macOS launchctl command contract",
         ),
+        (
+            "byte- and deadline-bounded launchctl capture",
+            "macOS bounded launchctl child contract",
+        ),
+        (
+            "bounded child cleanup failure edges",
+            "macOS launchctl cleanup-edge contract",
+        ),
     ):
         require_text(focused, text, label)
+    for text, label in (
+        (
+            "def scoped_mutation(name, file_name, scope_anchor, old, new, group, expected):",
+            "Apple scoped credential mutation helper",
+        ),
+        (
+            "scope = item(original[file_name], scope_anchor)",
+            "Apple scoped credential mutation extraction",
+        ),
+        (
+            "if scope.count(old) != 1:",
+            "Apple scoped credential mutation target uniqueness",
+        ),
+        (
+            'scoped_mutation("credential-peer-proof", "ipc", "async fn run_service_ipc",',
+            "Apple scoped credential peer-proof mutation",
+        ),
+        (
+            'scoped_mutation("credential-raw-response", "ipc", '
+            '"async fn handle_macos_service_credential_snapshot_transaction",',
+            "Apple scoped credential response mutation",
+        ),
+    ):
+        require_text(sources["apple"], text, label)
+    for text, label in (
+        (
+            '\nmutation("credential-peer-proof", "ipc",',
+            "Apple global credential peer-proof mutation",
+        ),
+        (
+            '\nmutation("credential-raw-response", "ipc",',
+            "Apple global credential response mutation",
+        ),
+    ):
+        require_absent(sources["apple"], text, label)
     for gate, label in (
         (sources["verify"], "shared macOS raw credential gate"),
         (sources["apple"], "Apple macOS raw credential gate"),
@@ -15317,6 +15471,8 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "R-S11e-177",
             "R-S11fd",
             "R-S11e-191",
+            "R-S11fe",
+            "R-S11e-192",
         ):
             require_text(gate, text, f"{label}: {text}")
     require_text(
@@ -15348,6 +15504,27 @@ def validate_service_ipc_protocol_authority_contract(sources):
         sources["hardening"],
         "R-S11fd/R-S11e-191 exact macOS launchd service-record authority",
         "exact macOS launchd service-record hardening ledger",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11fe</span>',
+        "bounded macOS launchd proof-child requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>313</td>",
+        "bounded macOS launchd proof-child Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11fe/R-S11e-192 bounded macOS launchd proof-child resources",
+        "bounded macOS launchd proof-child hardening ledger",
+    )
+    require_text(
+        sources["verify"],
+        '"${RUN[@]}" cargo test --lib --features linux-pkg-config '
+        "ipc::test::macos_bounded_child_stdout --color never",
+        "shared bounded macOS launchctl behavior gate",
     )
 
 
@@ -51645,10 +51822,76 @@ def run_source_mutations(sources):
             "exact macOS launchd service-record Appendix C row",
         ),
         (
+            "ipc_source",
+            "const MACOS_LAUNCHCTL_STDOUT_MAX_BYTES: usize = 256 * 1024;",
+            "const MACOS_LAUNCHCTL_STDOUT_MAX_BYTES: usize = usize::MAX;",
+            "macOS launchctl stdout ceiling",
+        ),
+        (
+            "ipc_source",
+            "let output = match run_macos_bounded_child_stdout(\n"
+            "        &mut command,\n"
+            "        child_deadline,\n"
+            "        MACOS_LAUNCHCTL_STDOUT_MAX_BYTES,\n"
+            "    ) {",
+            "let output = match command.output() {",
+            "macOS service snapshot launchctl descriptor policy",
+        ),
+        (
+            "macos_service_credential_ipc_verifier",
+            "byte- and deadline-bounded launchctl capture",
+            "unbounded launchctl capture",
+            "macOS bounded launchctl child contract",
+        ),
+        (
+            "verify",
+            "ipc::test::macos_bounded_child_stdout --color never",
+            "ipc::test::macos_bounded_child_stdout_disabled --color never",
+            "shared bounded macOS launchctl behavior gate",
+        ),
+        (
+            "apple",
+            "if scope.count(old) != 1:",
+            "if old not in scope:",
+            "Apple scoped credential mutation target uniqueness",
+        ),
+        (
+            "apple",
+            'scoped_mutation("credential-peer-proof", "ipc", "async fn run_service_ipc",',
+            'mutation("credential-peer-proof", "ipc", "async fn run_service_ipc",',
+            "Apple scoped credential peer-proof mutation",
+        ),
+        (
+            "apple",
+            'scoped_mutation("credential-raw-response", "ipc", '
+            '"async fn handle_macos_service_credential_snapshot_transaction",',
+            'mutation("credential-raw-response", "ipc", '
+            '"async fn handle_macos_service_credential_snapshot_transaction",',
+            "Apple scoped credential response mutation",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11fe</span>',
+            '<span class="id">R-S11fe-disabled</span>',
+            "bounded macOS launchd proof-child requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>313</td>",
+            "<tr><td>313-disabled</td>",
+            "bounded macOS launchd proof-child Appendix C row",
+        ),
+        (
             "hardening",
             "R-S11fd/R-S11e-191 exact macOS launchd service-record authority",
             "R-S11fd/R-S11e-191 depthless macOS launchd service-record authority",
             "exact macOS launchd service-record hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11fe/R-S11e-192 bounded macOS launchd proof-child resources",
+            "R-S11fe/R-S11e-192 unbounded macOS launchd proof-child resources",
+            "bounded macOS launchd proof-child hardening ledger",
         ),
         (
             "ipc_source",

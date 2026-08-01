@@ -1144,6 +1144,8 @@ def analyze(sources):
         snapshot_path = item(ipc, "fn macos_root_wheel_path_is_trusted")
         snapshot_plist = item(ipc, "fn macos_service_owned_server_launch_agent_plist_value_is_expected")
         snapshot_launchd = item(ipc, "fn macos_launch_agent_owns_service_owned_server_pid")
+        snapshot_bounded_child = item(ipc, "fn run_macos_bounded_child_stdout")
+        snapshot_child_cleanup = item(ipc, "fn terminate_and_reap_macos_bounded_child")
         snapshot_handler = item(ipc, "async fn handle_macos_service_credential_snapshot_transaction")
         client = item(ipc, "async fn set_service_owned_unattended_password_with_ack")
         connect_sensitive = item(ipc, "async fn connect_sensitive_unix")
@@ -1279,8 +1281,10 @@ def analyze(sources):
         ]) and ordered(snapshot_peer, [
             "macos_peer_process_identity_from_stream(",
             "try_acquire_macos_service_credential_ipc_authorization_slot()",
+            "let proof_deadline = deadline.into_std();",
             "run_bounded_macos_security_proof(deadline",
-            "macos_peer_is_service_owned_server_blocking(identity)",
+            "macos_peer_is_service_owned_server_blocking(",
+            "proof_deadline",
         ]))
 
         server_snapshot = item(auth, "pub(crate) fn macos_service_server_authorization_snapshot")
@@ -1374,7 +1378,7 @@ def analyze(sources):
             "cmd.len() == 3", 'Some("--server")', "Some(crate::common::SERVICE_OWNED_SERVER_ARG)",
         ]) and "macos_service_owned_server_live_argv_is_expected(process.cmd())" in snapshot_identity)
         need("b2", "snapshot-requester-not-installed-launchd-plist-proven", all(token in snapshot_identity for token in [
-            "macos_peer_is_trusted_installed_app(&identity)", "macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid)",
+            "macos_peer_is_trusted_installed_app(&identity)", "macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid, proof_deadline)",
         ]) and all(token in snapshot_path for token in [
             "std::fs::symlink_metadata(path)", "!metadata.file_type().is_symlink()", "metadata.uid() == 0",
             "metadata.gid() == 0", "mode() & 0o022 == 0", "macos_path_has_no_extended_acl(path)",
@@ -1384,8 +1388,10 @@ def analyze(sources):
             "keep_alive.len() != 2", 'get("SuccessfulExit")', 'get("AfterInitialDemand")',
         ]) and ordered(snapshot_launchd, [
             "macos_service_owned_server_launch_agent_plist_is_trusted", "macos_service_owned_server_launch_agent_plist_content_is_expected",
-            'format!("gui/{peer_uid}/{label}")', "Command::new(MACOS_LAUNCHCTL)", "reported_pid != Some(peer_pid)",
-            "reported_path != Some(expected_plist.as_str())",
+            "proof_deadline.checked_sub(MACOS_LAUNCHCTL_REAP_RESERVE)", 'format!("gui/{peer_uid}/{label}")',
+            "Command::new(MACOS_LAUNCHCTL)", "run_macos_bounded_child_stdout(",
+            "macos_launchctl_service_identity(&output.stdout, &target)",
+            "reported_identity != Some((peer_pid, expected_plist.as_str()))",
         ]) and 'const MACOS_LAUNCHCTL: &str = "/bin/launchctl";' in ipc and ordered(snapshot_handler, [
             "let deadline = tokio::time::Instant::now()",
             "receive_credential_snapshot_request_unix(&mut stream, deadline)",
@@ -1397,6 +1403,23 @@ def analyze(sources):
             "send_service_response_timeout", "ServiceIpcResponse",
             "storage", "salt",
         ]))
+        need("b2", "snapshot-launchctl-child-not-resource-bounded", all(token in ipc for token in [
+            "const MACOS_LAUNCHCTL_STDOUT_MAX_BYTES: usize = 256 * 1024;",
+            "const MACOS_LAUNCHCTL_REAP_RESERVE: std::time::Duration =",
+            "std::time::Duration::from_millis(50);",
+            "flags | hbb_common::libc::O_NONBLOCK",
+            "macos_bounded_child_stdout_accepts_exact_output",
+            "macos_bounded_child_stdout_terminates_on_overflow",
+            "macos_bounded_child_stdout_terminates_on_deadline",
+        ]) and ordered(snapshot_bounded_child, [
+            ".stdin(std::process::Stdio::null())", ".stdout(std::process::Stdio::piped())",
+            ".stderr(std::process::Stdio::null())", ".spawn()", "child.stdout.take()",
+            "set_macos_bounded_child_stdout_nonblocking(&stdout)",
+            "count > stdout_limit.saturating_sub(captured.len())", "child.try_wait()",
+            "if now >= deadline", "MACOS_LAUNCHCTL_POLL_INTERVAL.min(deadline.saturating_duration_since(now))",
+        ]) and all(token in snapshot_child_cleanup for token in [
+            "child.try_wait()", "child.kill().err()", "child.wait()",
+        ]) and "command.output()" not in snapshot_launchd)
         need("b2", "service-password-ordinary-fallback-present", not any(token in service_setter + service_client_wrapper for token in [
             "set_user_owned_permanent_password", "Config::set_permanent_password", "main_ipc_request(",
             "connect_service(", "send_json_timeout(", "RequestMacosServiceOwnedUnattendedPasswordChange",
@@ -1485,6 +1508,22 @@ def mutation(name, file_name, old, new, group, expected):
         findings[group].append(f"mutation-self-test-{name}-not-detected")
 
 
+def scoped_mutation(name, file_name, scope_anchor, old, new, group, expected):
+    try:
+        scope = item(original[file_name], scope_anchor)
+    except ValueError:
+        findings[group].append(f"mutation-self-test-{name}-scope-missing")
+        return
+    if scope.count(old) != 1:
+        findings[group].append(f"mutation-self-test-{name}-fixture-not-unique")
+        return
+    changed = dict(original)
+    changed[file_name] = original[file_name].replace(scope, scope.replace(old, new, 1), 1)
+    observed = analyze(changed)[group]
+    if expected not in observed:
+        findings[group].append(f"mutation-self-test-{name}-not-detected")
+
+
 mutation("service-request-shape", "ipc", "    LivenessProbe {},", "    LivenessProbe { nonce: String },", "b1", "service-request-not-exact")
 mutation("service-response-shape", "ipc", "    Liveness {},", "    Liveness { nonce: String },", "b1", "service-response-not-exact")
 mutation("service-unknown-fields", "ipc", '#[serde(tag = "t", deny_unknown_fields)]\npub(crate) enum ServiceIpcRequest', '#[serde(tag = "t")]\npub(crate) enum ServiceIpcRequest', "b1", "service-envelope-allows-unknown-fields")
@@ -1502,8 +1541,8 @@ mutation("service-directional-wire-regression", "ipc", 'assert_eq!(request, br#"
 mutation("service-data-residue", "ipc", "    ClickTime(i64),\n    Close,", "    ClickTime(i64),\n    Test,\n    Close,", "b1", "service-variant-remains-in-data-union")
 mutation("generic-transport", "ipc", 'bail!("sensitive password endpoints require the raw transport");', 'return connect_with_path(ms_timeout, "", postfix).await;', "b1", "generic-connect-allows-password-endpoint")
 mutation("endpoint-kind", "ipc", "password::SensitivePayloadKind::PasswordWithAuthorization,\n        deadline,", "password::SensitivePayloadKind::Password,\n        deadline,", "b2", "macos-peer-auth-not-before-secret-read")
-mutation("credential-peer-proof", "ipc", "authorize_macos_service_scoped_credential_stream_for_task(", "authorize_macos_service_scoped_password_stream_for_task(", "b2", "macos-credential-peer-auth-not-before-request")
-mutation("credential-raw-response", "ipc", "password::send_credential_replica_unix(&mut stream, operation_id, &replica, deadline)", "stream.send_service_response_timeout(&ServiceIpcResponse::Liveness {}, SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
+scoped_mutation("credential-peer-proof", "ipc", "async fn run_service_ipc", "authorize_macos_service_scoped_credential_stream_for_task(", "authorize_macos_service_scoped_password_stream_for_task(", "b2", "macos-credential-peer-auth-not-before-request")
+scoped_mutation("credential-raw-response", "ipc", "async fn handle_macos_service_credential_snapshot_transaction", "password::send_credential_replica_unix(&mut stream, operation_id, &replica, deadline)", "stream.send_service_response_timeout(&ServiceIpcResponse::Liveness {}, SERVICE_IPC_REQUEST_TIMEOUT_MS)", "b2", "snapshot-requester-not-installed-launchd-plist-proven")
 mutation("absolute-proof-deadline", "ipc", "tokio::time::timeout_at(deadline, result_rx)", "tokio::time::timeout(std::time::Duration::from_secs(1), result_rx)", "b2", "macos-proof-worker-ownership-not-exact")
 mutation("proof-worker-owner", "ipc", "let worker = std::thread::Builder::new()", "let worker = tokio::task::spawn_blocking", "b2", "macos-proof-worker-ownership-not-exact")
 mutation("native-capability-wipe", "macos_mm", "explicit_bzero(&externalForm, sizeof(externalForm));", "memset(&externalForm, 0, sizeof(externalForm));", "b2", "macos-native-authorization-not-explicitly-wiped")
@@ -1550,12 +1589,12 @@ else
   note "ok  R-S11b-1/R-S11c-1f/R-S11dx _service is a closed directional liveness/readiness protocol outside Data; password and credential secrets remain raw-only"
 fi
 
-echo "== (2b-i-a) R-S11ep/R-S11e-177 and R-S11fd/R-S11e-191 macOS runtime PRS launchd authority =="
+echo "== (2b-i-a) R-S11ep/R-S11e-177, R-S11fd/R-S11e-191, and R-S11fe/R-S11e-192 macOS runtime PRS launchd authority =="
 if /usr/bin/python3 -I -S "$REPO/scripts/verify-macos-service-credential-ipc.py" \
     --repo "$REPO" --self-test; then
-  note "ok  R-S11ep/R-S11e-177 and R-S11fd/R-S11e-191 macOS proves both peers plus one exact top-level launchd service record before a canonical raw _service_credential PRS exchange"
+  note "ok  R-S11ep/R-S11e-177, R-S11fd/R-S11e-191, and R-S11fe/R-S11e-192 macOS proves both peers plus one bounded exact top-level launchd service record before a canonical raw _service_credential PRS exchange"
 else
-  echo "  FAIL R-S11ep/R-S11e-177 or R-S11fd/R-S11e-191 macOS runtime PRS escaped its raw proof-before-secret launchd authority"
+  echo "  FAIL R-S11ep/R-S11e-177, R-S11fd/R-S11e-191, or R-S11fe/R-S11e-192 macOS runtime PRS escaped its raw proof-before-secret launchd authority"
   rc=1
 fi
 
@@ -2723,7 +2762,7 @@ check_apple_r_s11e34_helper_contract "$macos_checked_command" 'configure_command
 check_apple_r_s11e34_helper_contract "$macos_launchctl_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.status()'
 check_apple_r_s11e34_helper_contract "$macos_uninstall" 'configure_command_close_nonstdio_on_exec(' 'command.spawn()'
 check_apple_r_s11e34_helper_contract "$macos_lock_query" 'configure_command_close_nonstdio_on_exec(' 'command.output()'
-check_apple_r_s11e34_helper_contract "$macos_service_snapshot_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.output()'
+check_apple_r_s11e34_helper_contract "$macos_service_snapshot_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'run_macos_bounded_child_stdout('
 check_apple_r_s11e34_helper_contract "$macos_run_me" 'platform::macos::configure_command_close_nonstdio_on_exec(&mut cmd)' 'let result = cmd.args(&args).spawn();'
 check_apple_r_s11e34_helper_contract "$macos_hwcodec_check" 'platform::macos::configure_command_close_nonstdio_on_exec(' 'command.spawn()'
 [ "$(grep -cF 'command.status()' <<<"$macos_platform_source")" = 2 ] \

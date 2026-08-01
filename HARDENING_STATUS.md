@@ -3272,19 +3272,122 @@ rejected a new mutation but refused to count it because its expected diagnostic 
 differed from the independent validator's actual label. After correcting only those
 catalog labels and re-auditing every new label, a fresh complete run exited zero.
 
-One related resource residual remains explicitly open: the fixed `/bin/launchctl`
-child still uses `Command::output()`, which buffers its stdout and stderr without an
-explicit byte ceiling. The existing absolute proof deadline aborts the service rather
-than detaching an overrun worker, and neither child image nor argv is caller-selected,
-so this does not reintroduce an authority fallback; nevertheless native output size,
-duration, and a bounded-capture replacement require a later service-child resource
-slice and are not silently treated as closed here. The full `scripts/verify.sh` and
+The related unbounded `Command::output()` resource residual is closed at source by
+R-S11fe/R-S11e-192 below. Native output size/duration and signed macOS behavior remain
+open and are not inferred from the portable bounded-child tests. The full `scripts/verify.sh` and
 `scripts/apple-conform-check.sh` drivers were not run in this slice. No native
 `launchctl`, Security.framework, signed LaunchAgent/LaunchDaemon, credential exchange,
 product, listener, peer, renderer, device, host service, or privileged operation has
 executed. Native signed macOS behavior, exact packaged artifacts, the clean
 exact-commit cold R-B2/R-B10 release, independent reproduction, and external review
 remain open.
+
+**R-S11fe/R-S11e-192 bounded macOS launchd proof-child resources — SOURCE IMPLEMENTED
+2026-08-01; LOCKED/OFFLINE LINUX-HOST REAL-SUBPROCESS BEHAVIORS PASS; FOCUSED AND
+INDEPENDENT SEMANTIC BASELINES PASS; COMPLETE 3,429-ENTRY INDEPENDENT MUTATION CATALOG
+PASS; FULL SHARED/APPLE DRIVERS UNRUN.** Platform: the macOS root
+LaunchDaemon's raw `_service_credential` runtime-PRS receiver. Endpoint/action: the
+fixed `/bin/launchctl print gui/<uid>/<label>` corroboration after audit-token
+code-signing proof, exact live argv, and trusted parsed root LaunchAgent plist proof.
+Boundary: fixed OS diagnostic child output and lifetime ↔ the root receiver's bounded
+authorization worker. This is resource/finality closure, not new command authority:
+the image, argv, target derivation, root working directory, empty environment plus
+`LC_ALL=C`, descriptor policy, exact R-S11fd record decision, and every independent
+peer/plist proof remain unchanged and mandatory.
+
+`Command::output()` is absent from this path. The child receives null stdin and stderr
+and a nonblocking stdout pipe. One synchronous owner in the existing exactly joined
+blocking proof thread reads through an 8 KiB stack buffer into at most 256 KiB,
+polls the same child, and enforces an absolute child deadline 50 ms inside the outer
+proof deadline. Zero limit, elapsed deadline, missing pipe, nonblocking setup failure,
+read/poll failure, overflow, or timeout kills and reaps before failure; only EOF plus a
+successful status reaches the strict parser. If cleanup itself cannot finish, the
+outer proof's existing process-fatal exact-worker-ownership backstop remains. No
+reader thread, task, runtime, queue, fallback parser, detached child, or credential
+fallback is added.
+
+The first confined Cargo attempt never compiled because Rustup tried to write channel
+sync state under the read-only toolchain; the explicit installed toolchain rerun then
+stopped before compilation because that diagnostic command had not mounted the
+vendored Cargo closure. Neither is counted. The first correctly vendored compile
+reached the current library and failed on five mis-scoped `anyhow!` macro calls plus
+the test-only success type's missing `Debug`; those exact compile errors were fixed
+and that run is not counted. A fresh locked/offline restart compiled the full library
+test target and passed all three new subprocess behaviors: `/usr/bin/printf` output
+accepted exactly at its 12-byte test ceiling, a `/usr/bin/yes` overflow stopped under
+a 4 KiB test ceiling before its one-second deadline, and a
+five-second `/bin/sleep` stopped at a 50 ms deadline. That equality-at-limit edit was
+followed by another fresh full library-test compilation and the same three tests passed
+again: 3 passed, 410 filtered, in 0.05 seconds.
+
+The focused semantic verifier passed and rejected all 53 deliberate mutations. The
+independent workspace semantic baseline passed. Confined Bash parsing of the changed
+shared/Apple/native-watch scripts, in-memory Python compilation of both changed Python
+verifiers, and native-codec-watch normal/adversarial checks also passed. Two complete
+independent-catalog attempts are explicitly not counted. The first proved the new stdout
+ceiling mutation was rejected but expected a longer diagnostic label; the second passed
+that correction, then proved the bounded-runner mutation was rejected by an earlier
+descriptor-policy validator while expecting a later validator's label. A targeted
+seven-mutation audit then aligned every first-rejection label and exposed one genuine
+meta-verifier gap: the shared behavior invocation was checked as a prefix, so a
+`macos_bounded_child_stdout_disabled` filter was accepted. The independent validator now
+requires the exact Cargo invocation, and the targeted audit proves all seven new mutations
+are rejected. A complete 3,426-entry diagnostic catalog then restarted at mutation one and
+exited zero, but it is not final evidence because the Rustfmt and Apple-verifier corrections
+below changed tracked bytes afterward.
+
+The checker image's Rustup installation does not include Rustfmt, so that direct attempt
+stopped without formatting and is not counted. A SHA-256 check of the existing pinned Rust
+1.75 archive passed; only its Rustfmt binary and four matching Rust shared libraries were
+extracted into disposable container tmpfs. Rustfmt 1.75 initially found two wrapped duration
+constants and one wrapped `format_args!` in the modified regions. Those three formatting-only
+deltas and the focused reserve-mutation anchor were corrected; a fresh Rustfmt 1.75 run then
+reported no delta in every modified R-S11fe Rust region. The focused 53-mutation verifier and
+independent semantic baseline passed again afterward.
+
+The exact embedded Apple structural analyzer initially remained red on two older global
+first-occurrence mutation selectors. A disposable `git archive HEAD` comparison proved the
+credential-peer selector was already ineffective at the committed parent; the credential-
+response selector selected the earlier Linux response once the current launchctl semantic
+check passed. Both mutations now extract their named owning Rust function and require exactly
+one target before replacement. The current embedded Apple analyzer passes. The independent
+workspace validator binds the scoped helper and both calls, forbids both old global forms, and
+a targeted ten-mutation audit rejects all seven R-S11fe integration corruptions plus all three
+Apple scoping corruptions. A complete final-candidate catalog restarted at mutation one,
+rejected all 3,429 registered corruptions, and exited zero. This verdict-only ledger edit is
+the sole tracked change afterward. Publication additionally requires one entire post-verdict
+3,429-entry rerun against these exact bytes; no commit or push is permitted unless that rerun
+also exits zero. Its terminal result belongs in the external audit/publication record so the
+tracked ledger does not require a recursive post-result edit. The full `scripts/verify.sh` and
+`scripts/apple-conform-check.sh` drivers remain unrun.
+
+Every confined Cargo, subprocess, and verifier attempt counted above used immutable image
+`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+as numeric UID/GID 1000:1000 with no pull or network, a read-only root and source/vendor
+inputs, all capabilities dropped, `no-new-privileges`, bounded CPU/memory/PIDs/files,
+private executable tmpfs, and no port, device, Docker socket, or host namespace. No
+RustDesk product, listener, peer, service, native `launchctl`, Security.framework,
+signed LaunchAgent/LaunchDaemon, credential exchange, renderer, emulator, or device
+ran, and no host RustDesk, firewall/network state, installed binary, configuration, or
+Docker image changed.
+
+One procedural confinement violation is explicitly not counted: during syntax diagnostics I
+mistakenly ran `bash -n scripts/verify.sh scripts/apple-conform-check.sh` and
+`python3 -m py_compile scripts/verify-verifier-workspace.py
+scripts/verify-macos-service-credential-ipc.py` directly on the host instead of inside Docker.
+Neither command used root, network, a product binary, a service, or a listener, but
+`py_compile` created exactly
+`scripts/__pycache__/verify-verifier-workspace.cpython-312.pyc` and
+`scripts/__pycache__/verify-macos-service-credential-ipc.cpython-312.pyc`. Only those two
+files were removed, using a non-root, networkless container with no source write access other
+than that exact `__pycache__` directory. This violated the required execution boundary even
+though the transient files are gone; final syntax evidence must therefore be rerun and counted
+only inside the confined container.
+
+Native macOS output-size/duration evidence, macOS compile and
+signed behavior, exact artifacts, full gates, clean cold R-B2/R-B10, independent
+reproduction, and external review remain open. This source/portable-child result does
+not operationally validate macOS or the broader release.
 
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
@@ -3384,6 +3487,13 @@ unreachable and a source/test/AST gate prevents reintroduction.
   one top-level canonical peer PID and trusted plist path; nested, duplicate, lossy, incomplete, or trailing text
   cannot become authority. The helper environment is closed. Pure parser and semantic/mutation gates bind source;
   native signed macOS and exact-artifact evidence remain with R-R2/R-B2.
+- **R-S11fe/R-S11e-192 — macOS launchd proof-child resource ownership — SOURCE IMPLEMENTED.** The
+  final fixed `launchctl print` corroboration no longer captures unbounded stdout/stderr through
+  `Command::output()`. Its sole blocking-thread owner gives the child null stdin/stderr, captures at most 256 KiB
+  from one nonblocking stdout pipe, and reserves 50 ms inside the outer absolute proof deadline. Setup, read,
+  poll, overflow, or deadline failure kills and reaps before returning; only successful status plus EOF reaches
+  the strict R-S11fd parser. Three real Linux-host subprocess behaviors pass. Native macOS execution, exact
+  artifacts, and final cold release evidence remain with R-R2/R-B2.
 - **R-S11b-3a — service-marked server rejects ordinary options IPC — CLOSED 2026-07-08; narrowed 2026-07-24.** Platforms:
   Windows installed service-launched `--server`, Linux root-service-launched root or active-user `--server`,
   and macOS LaunchAgent `--server` source path. Endpoint/action: main IPC `MainIpcRequest::SetOption`.
@@ -17772,7 +17882,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-938bdc371dced60ba7cef30664256f7cc5c5166ec960ffbcf7ade84ff7d8db15  requirements.html
+aa40c8bb0b53df0b882c0f57e7c64659e7a3bc2bd85a7c8b490afc6a55906a88  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

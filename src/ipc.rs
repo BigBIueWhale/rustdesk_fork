@@ -130,6 +130,12 @@ use std::{
 
 #[cfg(target_os = "macos")]
 const MACOS_LAUNCHCTL: &str = "/bin/launchctl";
+#[cfg(any(target_os = "macos", all(target_os = "linux", test)))]
+const MACOS_LAUNCHCTL_STDOUT_MAX_BYTES: usize = 256 * 1024;
+#[cfg(any(target_os = "macos", all(target_os = "linux", test)))]
+const MACOS_LAUNCHCTL_POLL_INTERVAL: std::time::Duration = std::time::Duration::from_millis(2);
+#[cfg(target_os = "macos")]
+const MACOS_LAUNCHCTL_REAP_RESERVE: std::time::Duration = std::time::Duration::from_millis(50);
 pub(crate) const SERVICE_IPC_MAX_FRAME_BYTES: usize = 32 * 1024;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) const MAIN_IPC_MAX_FRAME_BYTES: usize = 256 * 1024;
@@ -5247,8 +5253,12 @@ where
     else {
         return false;
     };
+    let proof_deadline = deadline.into_std();
     match run_bounded_macos_security_proof(deadline, "macos-credential-snapshot-proof", move || {
-        Ok(macos_peer_is_service_owned_server_blocking(identity))
+        Ok(macos_peer_is_service_owned_server_blocking(
+            identity,
+            proof_deadline,
+        ))
     })
     .await
     {
@@ -5272,6 +5282,7 @@ fn macos_service_owned_server_live_argv_is_expected(cmd: &[String]) -> bool {
 #[cfg(target_os = "macos")]
 fn macos_peer_is_service_owned_server_blocking(
     identity: ipc_auth::MacosPeerProcessIdentity,
+    proof_deadline: std::time::Instant,
 ) -> bool {
     if !ipc_auth::macos_peer_is_trusted_installed_app(&identity) {
         log::warn!(
@@ -5306,7 +5317,7 @@ fn macos_peer_is_service_owned_server_blocking(
         );
         return false;
     }
-    macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid)
+    macos_launch_agent_owns_service_owned_server_pid(peer_uid, peer_pid, proof_deadline)
         && ipc_auth::macos_peer_is_trusted_installed_app(&identity)
 }
 
@@ -5532,8 +5543,179 @@ fn macos_launchctl_service_identity<'a>(
     Some((pid?, path?))
 }
 
+#[cfg(any(target_os = "macos", all(target_os = "linux", test)))]
+#[derive(Debug)]
+struct MacosBoundedChildOutput {
+    status: std::process::ExitStatus,
+    stdout: Vec<u8>,
+}
+
+#[cfg(any(target_os = "macos", all(target_os = "linux", test)))]
+fn set_macos_bounded_child_stdout_nonblocking(
+    stdout: &std::process::ChildStdout,
+) -> ResultType<()> {
+    use std::os::fd::AsRawFd;
+
+    let fd = stdout.as_raw_fd();
+    let flags = unsafe { hbb_common::libc::fcntl(fd, hbb_common::libc::F_GETFL) };
+    if flags < 0 {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    if unsafe {
+        hbb_common::libc::fcntl(
+            fd,
+            hbb_common::libc::F_SETFL,
+            flags | hbb_common::libc::O_NONBLOCK,
+        )
+    } < 0
+    {
+        return Err(std::io::Error::last_os_error().into());
+    }
+    Ok(())
+}
+
+#[cfg(any(target_os = "macos", all(target_os = "linux", test)))]
+fn terminate_and_reap_macos_bounded_child(child: &mut std::process::Child) -> ResultType<()> {
+    match child.try_wait() {
+        Ok(Some(_)) => return Ok(()),
+        Ok(None) | Err(_) => {}
+    }
+    let kill_error = child.kill().err();
+    match child.wait() {
+        Ok(_) => Ok(()),
+        Err(wait_error) => match kill_error {
+            Some(kill_error) => Err(anyhow::anyhow!(
+                "child termination failed ({kill_error}) and reap failed ({wait_error})"
+            )),
+            None => Err(anyhow::anyhow!(
+                "child reap failed after termination: {wait_error}"
+            )),
+        },
+    }
+}
+
+#[cfg(any(target_os = "macos", all(target_os = "linux", test)))]
+fn macos_bounded_child_failure(
+    child: &mut std::process::Child,
+    reason: impl std::fmt::Display,
+) -> hbb_common::anyhow::Error {
+    match terminate_and_reap_macos_bounded_child(child) {
+        Ok(()) => anyhow::anyhow!("{reason}"),
+        Err(cleanup_error) => {
+            anyhow::anyhow!("{reason}; child cleanup failed: {cleanup_error}")
+        }
+    }
+}
+
+/// Run only from the exactly owned blocking macOS proof worker. The nonblocking pipe keeps
+/// capture, child status, and the caller's absolute deadline under one synchronous owner.
+#[cfg(any(target_os = "macos", all(target_os = "linux", test)))]
+fn run_macos_bounded_child_stdout(
+    command: &mut std::process::Command,
+    deadline: std::time::Instant,
+    stdout_limit: usize,
+) -> ResultType<MacosBoundedChildOutput> {
+    use std::io::Read;
+
+    if stdout_limit == 0 {
+        bail!("bounded child stdout limit must be nonzero");
+    }
+    if std::time::Instant::now() >= deadline {
+        bail!("bounded child deadline elapsed before spawn");
+    }
+    command
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null());
+    let mut child = command
+        .spawn()
+        .map_err(|err| anyhow::anyhow!("failed to spawn bounded child: {err}"))?;
+    let mut stdout = match child.stdout.take() {
+        Some(stdout) => stdout,
+        None => {
+            return Err(macos_bounded_child_failure(
+                &mut child,
+                "bounded child stdout pipe is unavailable",
+            ));
+        }
+    };
+    if let Err(err) = set_macos_bounded_child_stdout_nonblocking(&stdout) {
+        return Err(macos_bounded_child_failure(
+            &mut child,
+            format_args!("failed to make bounded child stdout nonblocking: {err}"),
+        ));
+    }
+
+    let mut captured = Vec::with_capacity(stdout_limit.min(16 * 1024));
+    let mut buffer = [0u8; 8 * 1024];
+    let mut status = None;
+    let mut stdout_closed = false;
+    loop {
+        while !stdout_closed {
+            match stdout.read(&mut buffer) {
+                Ok(0) => {
+                    stdout_closed = true;
+                }
+                Ok(count) => {
+                    if count > stdout_limit.saturating_sub(captured.len()) {
+                        return Err(macos_bounded_child_failure(
+                            &mut child,
+                            format_args!("bounded child stdout exceeded {stdout_limit} bytes"),
+                        ));
+                    }
+                    captured.extend_from_slice(&buffer[..count]);
+                }
+                Err(err) if err.kind() == std::io::ErrorKind::Interrupted => continue,
+                Err(err) if err.kind() == std::io::ErrorKind::WouldBlock => break,
+                Err(err) => {
+                    return Err(macos_bounded_child_failure(
+                        &mut child,
+                        format_args!("failed to read bounded child stdout: {err}"),
+                    ));
+                }
+            }
+        }
+
+        if status.is_none() {
+            match child.try_wait() {
+                Ok(Some(child_status)) => status = Some(child_status),
+                Ok(None) => {}
+                Err(err) => {
+                    return Err(macos_bounded_child_failure(
+                        &mut child,
+                        format_args!("failed to poll bounded child: {err}"),
+                    ));
+                }
+            }
+        }
+        if stdout_closed {
+            if let Some(status) = status.take() {
+                return Ok(MacosBoundedChildOutput {
+                    status,
+                    stdout: captured,
+                });
+            }
+        }
+
+        let now = std::time::Instant::now();
+        if now >= deadline {
+            return Err(macos_bounded_child_failure(
+                &mut child,
+                "bounded child exceeded its absolute deadline",
+            ));
+        }
+        std::thread::sleep(
+            MACOS_LAUNCHCTL_POLL_INTERVAL.min(deadline.saturating_duration_since(now)),
+        );
+    }
+}
+
 #[cfg(target_os = "macos")]
-fn macos_launch_agent_owns_service_owned_server_pid(peer_uid: u32, peer_pid: u32) -> bool {
+fn macos_launch_agent_owns_service_owned_server_pid(
+    peer_uid: u32,
+    peer_pid: u32,
+    proof_deadline: std::time::Instant,
+) -> bool {
     let label = macos_service_owned_server_launch_agent_label();
     let expected_plist = macos_service_owned_server_launch_agent_plist();
     let expected_plist_path = std::path::Path::new(&expected_plist);
@@ -5544,6 +5726,18 @@ fn macos_launch_agent_owns_service_owned_server_pid(peer_uid: u32, peer_pid: u32
         return false;
     }
     if !macos_service_owned_server_launch_agent_plist_content_is_expected(expected_plist_path) {
+        return false;
+    }
+    let Some(child_deadline) = proof_deadline.checked_sub(MACOS_LAUNCHCTL_REAP_RESERVE) else {
+        log::warn!(
+            "Rejected macOS service-owned credential snapshot request: launchctl proof deadline is unavailable"
+        );
+        return false;
+    };
+    if std::time::Instant::now() >= child_deadline {
+        log::warn!(
+            "Rejected macOS service-owned credential snapshot request: launchctl proof deadline elapsed"
+        );
         return false;
     }
 
@@ -5563,7 +5757,11 @@ fn macos_launch_agent_owns_service_owned_server_pid(peer_uid: u32, peer_pid: u32
         );
         return false;
     }
-    let output = match command.output() {
+    let output = match run_macos_bounded_child_stdout(
+        &mut command,
+        child_deadline,
+        MACOS_LAUNCHCTL_STDOUT_MAX_BYTES,
+    ) {
         Ok(output) if output.status.success() => output,
         Ok(output) => {
             log::warn!(
@@ -5574,7 +5772,7 @@ fn macos_launch_agent_owns_service_owned_server_pid(peer_uid: u32, peer_pid: u32
         }
         Err(err) => {
             log::warn!(
-                "Rejected macOS service-owned credential snapshot request: failed to run launchctl print {target}: {err}"
+                "Rejected macOS service-owned credential snapshot request: bounded launchctl print {target} failed: {err}"
             );
             return false;
         }
@@ -8541,6 +8739,52 @@ mod test {
 
         let output = b"gui/501/com.carriez.RustDesk_server = {\npath = /Library/LaunchAgents/com.carriez.RustDesk_server.plist\npid = 04242\n}\n";
         assert_eq!(macos_launchctl_service_identity(output, target), None);
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn macos_bounded_child_stdout_accepts_exact_output() {
+        let mut command = std::process::Command::new("/usr/bin/printf");
+        command.args(["%s", "exact-output"]);
+        let output = run_macos_bounded_child_stdout(
+            &mut command,
+            std::time::Instant::now() + std::time::Duration::from_secs(1),
+            b"exact-output".len(),
+        )
+        .unwrap();
+        assert!(output.status.success());
+        assert_eq!(output.stdout, b"exact-output");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn macos_bounded_child_stdout_terminates_on_overflow() {
+        let mut command = std::process::Command::new("/usr/bin/yes");
+        let started = std::time::Instant::now();
+        let error = run_macos_bounded_child_stdout(
+            &mut command,
+            started + std::time::Duration::from_secs(1),
+            4 * 1024,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("stdout exceeded 4096 bytes"));
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
+    }
+
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn macos_bounded_child_stdout_terminates_on_deadline() {
+        let mut command = std::process::Command::new("/bin/sleep");
+        command.arg("5");
+        let started = std::time::Instant::now();
+        let error = run_macos_bounded_child_stdout(
+            &mut command,
+            started + std::time::Duration::from_millis(50),
+            MACOS_LAUNCHCTL_STDOUT_MAX_BYTES,
+        )
+        .unwrap_err();
+        assert!(error.to_string().contains("absolute deadline"));
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
     }
 
     #[test]

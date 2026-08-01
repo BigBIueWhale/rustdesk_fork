@@ -2632,6 +2632,7 @@ echo "== (3b-iii-b) privileged service IPC is closed and directionally typed (R-
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::privileged_and_main_connections_use_bounded_frame_codecs --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::service_owned_password_value_limit_is_common --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::macos_service_owned_launch_agent_plist_validation --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::test::macos_bounded_child_stdout --color never
 r_s11b=
 service_request_enum=$(awk '/pub\(crate\) enum ServiceIpcRequest {/,/^}/' src/ipc.rs)
 service_response_enum=$(awk '/pub\(crate\) enum ServiceIpcResponse {/,/^}/' src/ipc.rs)
@@ -2743,6 +2744,9 @@ grep -Fq 'R-S11ep/R-S11e-177 macOS runtime PRS raw credential authority' HARDENI
 grep -Fq '<span class="id">R-S11fd</span>' requirements.html || r_s11b2="$r_s11b2 macos-launchctl-record-requirement-missing"
 grep -Fq '<tr><td>312</td>' requirements.html || r_s11b2="$r_s11b2 macos-launchctl-record-appendix-missing"
 grep -Fq 'R-S11fd/R-S11e-191 exact macOS launchd service-record authority' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-launchctl-record-ledger-missing"
+grep -Fq '<span class="id">R-S11fe</span>' requirements.html || r_s11b2="$r_s11b2 macos-launchctl-resource-requirement-missing"
+grep -Fq '<tr><td>313</td>' requirements.html || r_s11b2="$r_s11b2 macos-launchctl-resource-appendix-missing"
+grep -Fq 'R-S11fe/R-S11e-192 bounded macOS launchd proof-child resources' HARDENING_STATUS.md || r_s11b2="$r_s11b2 macos-launchctl-resource-ledger-missing"
 if ! python3 scripts/verify-polkit-policy.py --repo . >"$VERIFY_TMP/rd_verify_polkit_policy" 2>&1; then
   cat "$VERIFY_TMP/rd_verify_polkit_policy"
   r_s11b2="$r_s11b2 linux-polkit-policy-package-assurance-failed"

@@ -101,6 +101,10 @@ impl SensitivePassword {
         self.as_str().as_bytes()
     }
 
+    pub(crate) fn constant_time_eq(&self, other: &Self) -> bool {
+        hbb_common::sodiumoxide::utils::memcmp(self.as_bytes(), other.as_bytes())
+    }
+
     pub(crate) fn zeroize(&mut self) -> bool {
         let Some(value) = Arc::get_mut(&mut self.0) else {
             return false;
@@ -123,14 +127,6 @@ impl Clone for SensitivePassword {
         Self(Arc::clone(&self.0))
     }
 }
-
-impl PartialEq for SensitivePassword {
-    fn eq(&self, other: &Self) -> bool {
-        self.as_bytes() == other.as_bytes()
-    }
-}
-
-impl Eq for SensitivePassword {}
 
 impl fmt::Debug for SensitivePassword {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -968,6 +964,16 @@ mod tests {
         let retry = password.clone();
         assert_eq!(retry.allocation_identity(), identity);
         assert_eq!(password.as_str(), retry.as_str());
+    }
+
+    #[test]
+    fn sensitive_password_constant_time_comparison_matches_equal_bytes_only() {
+        let password = SensitivePassword::new("same-secret".to_owned());
+        assert!(password.constant_time_eq(&SensitivePassword::new("same-secret".to_owned())));
+        assert!(!password.constant_time_eq(&SensitivePassword::new("same-secreu".to_owned())));
+        assert!(
+            !password.constant_time_eq(&SensitivePassword::new("same-secret-longer".to_owned()))
+        );
     }
 
     #[test]

@@ -32981,6 +32981,182 @@ def validate_account_control_plane_excision_contract(sources):
         require_text(mutation_matrix, text, label)
 
 
+def validate_password_confirmation_comparison_contract(sources):
+    password = sources["ipc_password_source"]
+    core = sources["core_main"]
+
+    sensitive_password = extract_between(
+        password,
+        "impl SensitivePassword {",
+        "\n}\n\nimpl Clone for SensitivePassword",
+        "sensitive password value API",
+    )
+    require_text(
+        sensitive_password,
+        "pub(crate) fn constant_time_eq(&self, other: &Self) -> bool",
+        "purpose-named constant-time password comparison",
+    )
+    require_text(
+        sensitive_password,
+        "hbb_common::sodiumoxide::utils::memcmp(self.as_bytes(), other.as_bytes())",
+        "libsodium constant-time password comparison primitive",
+    )
+    require_absent(
+        password,
+        "impl PartialEq for SensitivePassword",
+        "generic password equality trait",
+    )
+    require_absent(
+        password,
+        "impl Eq for SensitivePassword",
+        "generic password equality marker",
+    )
+
+    confirmation = extract_between(
+        core,
+        "fn prompt_unattended_password()",
+        "\n}\n\n#[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\nfn set_cli_permanent_password(",
+        "hidden permanent-password confirmation",
+    )
+    require_order(
+        confirmation,
+        (
+            'prompt_password("Confirm permanent password: ")',
+            "validate_unattended_password(confirmation.as_str())",
+            "let matches = password.constant_time_eq(&confirmation)",
+            "confirmation.zeroize()",
+            "if !matches",
+        ),
+        "purpose-named constant-time password confirmation",
+    )
+    require_absent(
+        confirmation,
+        "password == confirmation",
+        "generic password confirmation equality",
+    )
+    require_text(
+        password,
+        "fn sensitive_password_constant_time_comparison_matches_equal_bytes_only()",
+        "constant-time password comparison behavior regression",
+    )
+
+    shared_gate = extract_between(
+        sources["verify"],
+        'echo "== (3b-v) R-S11e-16 permanent-password CLI never accepts a secret in argv =="',
+        "\n# (3c) File-transfer write-path safety",
+        "shared constant-time password source gate",
+    )
+    for text in (
+        "password-confirmation-constant-time-call-missing",
+        "password-confirmation-constant-time-primitive-missing",
+        "sensitive-password-partialeq-present",
+        "sensitive-password-eq-present",
+        "constant-time-password-comparison-test-missing",
+    ):
+        require_text(shared_gate, text, "shared constant-time password source gate")
+
+    apple_gate = extract_between(
+        sources["apple"],
+        '        cli_parse = item(core, "fn password_cli_input")',
+        '\n    except ValueError as error:\n        findings["cli"].append',
+        "Apple constant-time password source gate",
+    )
+    require_text(
+        apple_gate,
+        'need("cli", "cli-password-equality-not-constant-time", "hbb_common::sodiumoxide::utils::memcmp(self.as_bytes(), other.as_bytes())" in sensitive_password',
+        "Apple constant-time password source gate",
+    )
+    for text in (
+        'mutation("cli-constant-time-call"',
+        'mutation("cli-constant-time-primitive"',
+        'mutation("cli-generic-secret-equality"',
+    ):
+        require_text(
+            sources["apple"],
+            text,
+            "Apple constant-time password mutation self-test",
+        )
+
+    r_s10 = extract_html_requirement(
+        sources["requirements"], "R-S10", "R-S10 constant-time password comparison requirement"
+    )
+    for text in (
+        'Every secret-touching comparison <span class="kw">MUST</span> be constant-time',
+        "<code>constant_time_eq</code>",
+        "<code>==</code>",
+    ):
+        require_text(r_s10, text, "R-S10 constant-time password comparison requirement")
+    for text in (
+        "<code>SensitivePassword::constant_time_eq</code>",
+        "<code>sodiumoxide::utils::memcmp</code>",
+        "implements neither <code>PartialEq</code> nor <code>Eq</code>",
+    ):
+        require_text(
+            sources["requirements"],
+            text,
+            "constant-time password provisioning Appendix C disposition",
+        )
+    require_text(
+        sources["hardening"],
+        "R-S11e-16 — permanent-password provisioning ingress — CLOSED 2026-07-12; CONSTANT-TIME",
+        "constant-time password hardening ledger",
+    )
+
+    workspace = sources["workspace_verifier"]
+    try:
+        workspace_module = ast.parse(workspace)
+    except SyntaxError as exc:
+        raise VerificationError(
+            f"constant-time password contract dispatch: workspace verifier does not parse: {exc}"
+        ) from exc
+    definitions = [
+        node
+        for node in workspace_module.body
+        if isinstance(node, ast.FunctionDef)
+        and node.name == "validate_password_confirmation_comparison_contract"
+    ]
+    source_validators = [
+        node
+        for node in workspace_module.body
+        if isinstance(node, ast.FunctionDef) and node.name == "validate_sources"
+    ]
+    dispatches = (
+        [
+            node
+            for node in ast.walk(source_validators[0])
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "validate_password_confirmation_comparison_contract"
+        ]
+        if len(source_validators) == 1
+        else []
+    )
+    if len(definitions) != 1 or len(dispatches) != 1:
+        raise VerificationError(
+            "constant-time password contract dispatch: expected one definition and one validate_sources call"
+        )
+
+    mutation_matrix = extract_between(
+        workspace,
+        "def run_source_mutations(sources):\n    mutations = (",
+        "\n    )\n    for key, old, new, expected in mutations:",
+        "constant-time password deliberate-mutation matrix",
+    )
+    for text, label in (
+        ("purpose-named constant-time password confirmation", "confirmation-call mutation"),
+        ("libsodium constant-time password comparison primitive", "comparison-primitive mutation"),
+        ("generic password equality trait", "generic-equality mutation"),
+        ("constant-time password comparison behavior regression", "behavior-regression mutation"),
+        ("shared constant-time password source gate", "shared-gate mutation"),
+        ("Apple constant-time password source gate", "Apple-gate mutation"),
+        ("R-S10 constant-time password comparison requirement", "R-S10 requirement mutation"),
+        ("constant-time password provisioning Appendix C disposition", "Appendix disposition mutation"),
+        ("constant-time password hardening ledger", "hardening-ledger mutation"),
+        ("constant-time password contract dispatch", "workspace-dispatch mutation"),
+    ):
+        require_text(mutation_matrix, text, label)
+
+
 def validate_temporary_password_generator_excision_contract(sources):
     config = sources["config_source"]
     require_absent(
@@ -37087,6 +37263,7 @@ def validate_sources(sources):
     validate_direct_address_cli_contract(sources)
     validate_direct_address_ui_contract(sources)
     validate_account_control_plane_excision_contract(sources)
+    validate_password_confirmation_comparison_contract(sources)
     validate_temporary_password_generator_excision_contract(sources)
     validate_permanent_password_salt_reader_excision_contract(sources)
     validate_preset_password_excision_contract(sources)
@@ -48582,6 +48759,66 @@ def run_source_mutations(sources):
             "R-SV6a-1 — logout and API-server presentation residue",
             "R-SV6a-1 — account compatibility cleanup deferred",
             "account logout presentation hardening ledger",
+        ),
+        (
+            "core_main",
+            "let matches = password.constant_time_eq(&confirmation);",
+            "let matches = password == confirmation;",
+            "purpose-named constant-time password confirmation",
+        ),
+        (
+            "ipc_password_source",
+            "hbb_common::sodiumoxide::utils::memcmp(self.as_bytes(), other.as_bytes())",
+            "self.as_bytes() == other.as_bytes()",
+            "libsodium constant-time password comparison primitive",
+        ),
+        (
+            "ipc_password_source",
+            "impl fmt::Debug for SensitivePassword",
+            "impl PartialEq for SensitivePassword {\n    fn eq(&self, other: &Self) -> bool { self.as_bytes() == other.as_bytes() }\n}\n\nimpl fmt::Debug for SensitivePassword",
+            "generic password equality trait",
+        ),
+        (
+            "ipc_password_source",
+            "fn sensitive_password_constant_time_comparison_matches_equal_bytes_only()",
+            "fn sensitive_password_comparison_regression_disabled()",
+            "constant-time password comparison behavior regression",
+        ),
+        (
+            "verify",
+            'echo "$pw_cli_prompt" | grep -Fq \'let matches = password.constant_time_eq(&confirmation)\' || r_s11e16="$r_s11e16 password-confirmation-constant-time-call-missing"',
+            'echo "$pw_cli_prompt" | grep -Fq \'let matches = password.constant_time_eq(&confirmation)\' || r_s11e16="$r_s11e16 password-confirmation-constant-time-call-disabled"',
+            "shared constant-time password source gate",
+        ),
+        (
+            "apple",
+            'need("cli", "cli-password-equality-not-constant-time", "hbb_common::sodiumoxide::utils::memcmp(self.as_bytes(), other.as_bytes())" in sensitive_password',
+            'need("cli", "cli-password-equality-check-disabled", "hbb_common::sodiumoxide::utils::memcmp(self.as_bytes(), other.as_bytes())" in sensitive_password',
+            "Apple constant-time password source gate",
+        ),
+        (
+            "requirements",
+            'Every secret-touching comparison <span class="kw">MUST</span> be constant-time',
+            'Every secret-touching comparison <span class="kw">SHOULD</span> be constant-time',
+            "R-S10 constant-time password comparison requirement",
+        ),
+        (
+            "requirements",
+            "<code>SensitivePassword::constant_time_eq</code>",
+            "<code>SensitivePassword::ordinary_eq</code>",
+            "constant-time password provisioning Appendix C disposition",
+        ),
+        (
+            "hardening",
+            "R-S11e-16 — permanent-password provisioning ingress — CLOSED 2026-07-12; CONSTANT-TIME",
+            "R-S11e-16 — permanent-password provisioning ingress — CLOSED 2026-07-12; ORDINARY",
+            "constant-time password hardening ledger",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_password_confirmation_comparison_contract(sources)",
+            "    validate_password_confirmation_comparison_contract_disabled(sources)",
+            "constant-time password contract dispatch",
         ),
         (
             "client_source",

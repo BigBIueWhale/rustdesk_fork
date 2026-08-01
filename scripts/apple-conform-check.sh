@@ -1445,6 +1445,7 @@ def analyze(sources):
         cli_set = item(core, "fn set_cli_permanent_password")
         core_main = item(core, "pub fn core_main()")
         cli_scope = item(core, "fn is_user_main_ipc_scope_cli_command")
+        sensitive_password = item(password, "impl SensitivePassword {")
         password_arm_start = core_main.find('matches!(args[0].as_str(), "--password" | "--password-stdin")')
         password_arm_end = core_main.find('args[0] == "--option"', password_arm_start)
         password_arm = core_main[password_arm_start:password_arm_end]
@@ -1456,8 +1457,13 @@ def analyze(sources):
         need("cli", "cli-hidden-confirmed-prompt-not-wiping", "Result<crate::ipc::SensitivePassword, String>" in cli_prompt and cli_prompt.count("rpassword::prompt_password") == 2 and ordered(cli_prompt, [
             'prompt_password("New permanent password: ")', "validate_unattended_password(password.as_str())",
             'prompt_password("Confirm permanent password: ")', "validate_unattended_password(confirmation.as_str())",
-            "let matches = password == confirmation", "confirmation.zeroize()", "if !matches", "Ok(password)",
+            "let matches = password.constant_time_eq(&confirmation)", "confirmation.zeroize()", "if !matches", "Ok(password)",
         ]))
+        need("cli", "cli-password-equality-not-constant-time", "hbb_common::sodiumoxide::utils::memcmp(self.as_bytes(), other.as_bytes())" in sensitive_password
+            and "password == confirmation" not in cli_prompt
+            and "impl PartialEq for SensitivePassword" not in password
+            and "impl Eq for SensitivePassword" not in password
+            and "fn sensitive_password_constant_time_comparison_matches_equal_bytes_only" in password)
         need("cli", "cli-stdin-not-terminal-refused", ordered(cli_stdin, ["std::io::stdin()", "stdin.is_terminal()", "return Err(", "read_unattended_password_line(&mut stdin.lock())"]))
         need("cli", "cli-stdin-not-bounded-utf8-zeroized", all(token in core for token in [
             "struct SensitivePasswordInput(Vec<u8>)", "impl Drop for SensitivePasswordInput",
@@ -1552,6 +1558,9 @@ mutation("snapshot-exact-argv", "ipc", "cmd.len() == 3", "cmd.len() >= 3", "b2",
 mutation("cli-exact-arity", "core", 'Some("--password") if args.len() == 1', 'Some("--password") if !args.is_empty()', "cli", "cli-password-command-not-exact")
 mutation("cli-stdin-bound", "core", "reader.take((crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES + 2) as u64)", "reader.take(u64::MAX)", "cli", "cli-stdin-not-bounded-utf8-zeroized")
 mutation("cli-confirmation-wipe", "core", "if !confirmation.zeroize()", "if confirmation.as_str().is_empty()", "cli", "cli-hidden-confirmed-prompt-not-wiping")
+mutation("cli-constant-time-call", "core", "password.constant_time_eq(&confirmation)", "password == confirmation", "cli", "cli-password-equality-not-constant-time")
+mutation("cli-constant-time-primitive", "password", "hbb_common::sodiumoxide::utils::memcmp(self.as_bytes(), other.as_bytes())", "self.as_bytes() == other.as_bytes()", "cli", "cli-password-equality-not-constant-time")
+mutation("cli-generic-secret-equality", "password", "impl fmt::Debug for SensitivePassword", "impl PartialEq for SensitivePassword {\n    fn eq(&self, other: &Self) -> bool { self.as_bytes() == other.as_bytes() }\n}\n\nimpl fmt::Debug for SensitivePassword", "cli", "cli-password-equality-not-constant-time")
 mutation("obsolete-get-id-handler", "core", '} else if args[0] == "--option" {', '} else if args[0] == "--get-id" {\n            println!("{}", crate::ipc::get_id());\n            return None;\n        } else if args[0] == "--option" {', "cli", "obsolete-get-id-command-present")
 mutation("obsolete-get-id-scope", "core", 'Some("--option")', 'Some("--get-id") | Some("--option")', "cli", "obsolete-get-id-command-present")
 mutation("account-assignment-handler", "core", '} else if args[0] == "--option" {', '} else if args[0] == "--assign" {\n            let header = "Authorization: Bearer ";\n            return None;\n        } else if args[0] == "--option" {', "cli", "account-assignment-command-present")
@@ -1771,7 +1780,7 @@ if [ -n "$r_s11e16" ]; then
   echo "  FAIL R-S11e-16 macOS password provisioning ingress:$r_s11e16"
   rc=1
 else
-  note "ok  R-S11e-16 accepts only exact --password/--password-stdin commands, uses a confirmed hidden TTY prompt or bounded non-TTY UTF-8 stdin, keeps secrets out of argv/environment, and carries them in self-zeroizing values"
+  note "ok  R-S11e-16 accepts only exact --password/--password-stdin commands, uses a confirmed hidden TTY prompt with explicit libsodium constant-time comparison or bounded non-TTY UTF-8 stdin, keeps secrets out of argv/environment, rejects generic password equality, and carries secrets in self-zeroizing values"
 fi
 
 echo "== (2b-iii) R-S11c-4a macOS CM pre-login filesystem IPC rejected =="

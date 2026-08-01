@@ -5036,7 +5036,8 @@ unreachable and a source/test/AST gate prevents reintroduction.
   same-executable accept proof, trusted fixed `pkcheck`, `auth_admin` policy, and service-owned receiver commit proof.
   Verification closure: `scripts/verify.sh` gates the live peer-identity subject, the start-time accessor, the
   requirements/ledger disposition, and absence of the old direct `linux_proc_start_time(peer_pid)` subject assembly.
-- **R-S11e-16 — permanent-password provisioning ingress — CLOSED 2026-07-12.** Platforms: Linux, macOS,
+- **R-S11e-16 — permanent-password provisioning ingress — CLOSED 2026-07-12; CONSTANT-TIME
+  CONFIRMATION TIGHTENED 2026-08-01.** Platforms: Linux, macOS,
   and Windows desktop CLI, including installed-service and user-owned headless operation. Endpoint/action:
   `rustdesk --password` and the value passed into owner-aware raw password routing. Boundary:
   operator-entered CPace owner credential ↔ OS process metadata, shell history, and local process observers.
@@ -5045,13 +5046,22 @@ unreachable and a source/test/AST gate prevents reintroduction.
   `--password-stdin` is the only noninteractive ingress, refuses a terminal stdin, and reads one bounded UTF-8
   line. Both command forms require exact command shape, preserve an explicit empty value as credential removal,
   and enforce the common 4096-byte unattended-password ceiling before the password reaches IPC or Argon2id.
+  The hidden confirmation now calls a purpose-named `SensitivePassword::constant_time_eq` method backed by
+  libsodium `sodium_memcmp`; the secret wrapper implements neither `PartialEq` nor `Eq`, so ordinary `==` cannot
+  silently regain password-body comparison authority. The earlier generic Rust slice equality was not a
+  demonstrated privilege escalation, but its content-dependent comparison contract violated R-S10 and was the
+  wrong API surface for this privileged credential-provisioning path.
   A positional value on either command is a nonzero usage failure and never reaches
   `ipc::set_permanent_password`; no argv, environment-variable, compatibility, or local-persistence fallback
   remains. The user-owned/service-owned routing and receiver-side authorization model is unchanged. Verification
   closure: `core_main::tests` covers exact command parsing, positional-secret rejection, empty/CRLF/no-newline
-  stdin handling, UTF-8 rejection, and the byte ceiling; `scripts/verify.sh` gates the prompt/confirmation,
+  stdin handling, UTF-8 rejection, and the byte ceiling; `ipc::password::tests` covers equal, unequal, and
+  unequal-length behavior of the explicit secret comparison; `scripts/verify.sh` gates the prompt/confirmation,
   noninteractive TTY refusal, bounded reader, no positional extraction, safe deployment/smoke commands, and
-  Appendix C #121; `scripts/apple-conform-check.sh` mirrors the desktop CLI source and documentation gates.
+  Appendix C #121 plus the exact libsodium primitive and absence of generic password equality;
+  `scripts/apple-conform-check.sh` mirrors the desktop CLI source and documentation gates with deliberate
+  constant-time-call, primitive, and generic-trait mutations. This is source and confined Linux test evidence;
+  native macOS/Windows CLI execution and final clean cold release artifacts remain pending.
 - **R-S11e-17 — typed connection-manager file response authority — CLOSED 2026-07-12.** Platforms:
   Linux, Windows, macOS, and Android controlled-side file operations; retained iOS source types. Endpoint/action:
   CM file results crossing back into an authenticated `Connection` and then onto the keyed peer stream. Boundary:
@@ -18012,7 +18022,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-95be2ed315c83db08d77f64c74a8a6b509a5ba28898f5dbf13273f38e983da06  requirements.html
+c4d4b802d3821b27fc73020c888983c7f0e189e06c65b9b0d00603047d4700f8  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

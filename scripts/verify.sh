@@ -8803,6 +8803,7 @@ echo "== (3b-v) R-S11e-16 permanent-password CLI never accepts a secret in argv 
 r_s11e16=
 pw_cli_helpers=$(awk '/const PASSWORD_CLI_USAGE/,/pub fn core_main\(\)/' src/core_main.rs)
 pw_cli_prompt=$(awk '/fn prompt_unattended_password\(\)/,/fn set_cli_permanent_password/' src/core_main.rs)
+pw_sensitive_value=$(awk '/impl SensitivePassword \{/,/impl Clone for SensitivePassword/' src/ipc/password.rs)
 grep -Fq 'usage: rustdesk --password | rustdesk --password-stdin' src/core_main.rs || r_s11e16="$r_s11e16 exact-safe-command-usage-missing"
 echo "$pw_cli_helpers" | grep -Fq 'Some("--password") if args.len() == 1 => Ok(PasswordCliInput::Terminal)' || r_s11e16="$r_s11e16 terminal-command-not-exact"
 echo "$pw_cli_helpers" | grep -Fq 'Some("--password-stdin") if args.len() == 1 => Ok(PasswordCliInput::Stdin)' || r_s11e16="$r_s11e16 stdin-command-not-exact"
@@ -8812,6 +8813,11 @@ echo "$pw_cli_helpers" | grep -Fq 'if stdin.is_terminal()' || r_s11e16="$r_s11e1
 echo "$pw_cli_helpers" | grep -Fq 'reader.take((crate::ipc::UNATTENDED_PASSWORD_MAX_BYTES + 2) as u64)' || r_s11e16="$r_s11e16 password-stdin-bounded-read-missing"
 echo "$pw_cli_helpers" | grep -Fq 'String::from_utf8(std::mem::take(&mut bytes.0))' || r_s11e16="$r_s11e16 password-stdin-utf8-validation-missing"
 echo "$pw_cli_helpers" | grep -Fq 'struct SensitivePasswordInput(Vec<u8>)' || r_s11e16="$r_s11e16 password-stdin-wiping-buffer-missing"
+echo "$pw_cli_prompt" | grep -Fq 'let matches = password.constant_time_eq(&confirmation)' || r_s11e16="$r_s11e16 password-confirmation-constant-time-call-missing"
+echo "$pw_cli_prompt" | grep -Fq 'password == confirmation' && r_s11e16="$r_s11e16 password-confirmation-generic-equality-present"
+echo "$pw_sensitive_value" | grep -Fq 'hbb_common::sodiumoxide::utils::memcmp(self.as_bytes(), other.as_bytes())' || r_s11e16="$r_s11e16 password-confirmation-constant-time-primitive-missing"
+grep -Fq 'impl PartialEq for SensitivePassword' src/ipc/password.rs && r_s11e16="$r_s11e16 sensitive-password-partialeq-present"
+grep -Fq 'impl Eq for SensitivePassword' src/ipc/password.rs && r_s11e16="$r_s11e16 sensitive-password-eq-present"
 echo "$pw_cli_helpers" | grep -Fq 'confirmation.zeroize()' || r_s11e16="$r_s11e16 password-confirmation-erasure-missing"
 echo "$pw_cli_helpers" | grep -Eq 'std::env|var_os|var\(' && r_s11e16="$r_s11e16 password-environment-input-present"
 echo "$pw_arm" | grep -Fq 'PasswordCliInput::Terminal => prompt_unattended_password()' || r_s11e16="$r_s11e16 terminal-input-not-dispatched"
@@ -8819,6 +8825,7 @@ echo "$pw_arm" | grep -Fq 'PasswordCliInput::Stdin => read_unattended_password_f
 echo "$pw_arm" | grep -Eq 'args\[[[:space:]]*1[[:space:]]*\]' && r_s11e16="$r_s11e16 positional-password-read-present"
 grep -q 'fn password_cli_rejects_positional_secrets' src/core_main.rs || r_s11e16="$r_s11e16 positional-secret-test-missing"
 grep -q 'fn password_stdin_reader_is_line_bounded_and_utf8_only' src/core_main.rs || r_s11e16="$r_s11e16 bounded-stdin-test-missing"
+grep -q 'fn sensitive_password_constant_time_comparison_matches_equal_bytes_only' src/ipc/password.rs || r_s11e16="$r_s11e16 constant-time-password-comparison-test-missing"
 grep -Fq 'sudo rustdesk --password' docs/DEPLOYMENT.md || r_s11e16="$r_s11e16 safe-deployment-command-missing"
 grep -Eq -- 'sudo rustdesk --password[[:space:]]+[^`[:space:]]' docs/DEPLOYMENT.md && r_s11e16="$r_s11e16 password-valued-deployment-command-present"
 [ "$(awk '/--password-stdin/{count++} END{print count+0}' scripts/smoke-server.sh scripts/smoke-server-stage.sh)" -ge 4 ] || r_s11e16="$r_s11e16 safe-headless-smoke-input-missing"
@@ -8841,7 +8848,7 @@ grep -Fq 'R-S11e-16 — permanent-password provisioning ingress' HARDENING_STATU
 if [ -n "$r_s11e16" ]; then
   echo "  FAIL R-S11e-16 password provisioning ingress:$r_s11e16"; rc=1
 else
-  echo "  ok  R-S11e-16 password provisioning uses hidden TTY confirmation or bounded redirected stdin; positional secrets are rejected"
+  echo "  ok  R-S11e-16 password provisioning uses hidden TTY confirmation with explicit libsodium constant-time comparison or bounded redirected stdin; positional secrets and generic password equality are rejected"
 fi
 
 # (3c) File-transfer write-path safety (R-S8/R-A5): the receive-write opens are NO-FOLLOW

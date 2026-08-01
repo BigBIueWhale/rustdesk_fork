@@ -103,7 +103,7 @@ fn prompt_unattended_password() -> Result<crate::ipc::SensitivePassword, String>
         })?,
     );
     validate_unattended_password(confirmation.as_str())?;
-    let matches = password == confirmation;
+    let matches = password.constant_time_eq(&confirmation);
     if !confirmation.zeroize() {
         return Err("password confirmation could not be erased".to_owned());
     }

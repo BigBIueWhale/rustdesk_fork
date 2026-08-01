@@ -182,8 +182,8 @@ class _FileManagerPageState extends State<FileManagerPage>
 
   Widget dropArea(FileManagerView fileView) {
     return DropTarget(
-        onDragDone: (detail) =>
-            handleDragDone(detail, fileView.controller.isLocal),
+        onDragDone: (detail) async =>
+            await handleDragDone(detail, fileView.controller.isLocal),
         onDragEntered: (enter) {
           _dropMaskVisible.value = true;
         },
@@ -293,8 +293,8 @@ class _FileManagerPageState extends State<FileManagerPage>
                               offstage: item.state != JobState.paused,
                               child: MenuButton(
                                 tooltip: translate("Resume"),
-                                onPressed: () {
-                                  jobController.resumeJob(item.id);
+                                onPressed: () async {
+                                  await jobController.resumeJob(item.id);
                                 },
                                 child: SvgPicture.asset(
                                   "assets/refresh.svg",
@@ -310,9 +310,9 @@ class _FileManagerPageState extends State<FileManagerPage>
                                 "assets/close.svg",
                                 colorFilter: svgColor(Colors.white),
                               ),
-                              onPressed: () {
+                              onPressed: () async {
+                                await jobController.cancelJob(item.id);
                                 jobController.jobTable.removeAt(index);
-                                jobController.cancelJob(item.id);
                               },
                               color: MyTheme.accent,
                               hoverColor: MyTheme.accent80,
@@ -364,7 +364,7 @@ class _FileManagerPageState extends State<FileManagerPage>
     );
   }
 
-  void handleDragDone(DropDoneDetails details, bool isLocal) {
+  Future<void> handleDragDone(DropDoneDetails details, bool isLocal) async {
     if (isLocal) {
       // ignore local
       return;
@@ -378,7 +378,7 @@ class _FileManagerPageState extends State<FileManagerPage>
         ..size = FileSystemEntity.isDirectorySync(f.path) ? 0 : f.lengthSync());
     }
     final otherSideData = model.localController.directoryData();
-    model.remoteController.sendFiles(items, otherSideData);
+    await model.remoteController.sendFiles(items, otherSideData);
   }
 }
 
@@ -737,7 +737,7 @@ class _FileManagerViewState extends State<FileManagerView> {
                               });
                             }
                           });
-                          submit() {
+                          submit() async {
                             if (name.value.text.isNotEmpty) {
                               if (!PathUtil.validName(name.value.text,
                                   controller.options.value.isWindows)) {
@@ -746,11 +746,18 @@ class _FileManagerViewState extends State<FileManagerView> {
                                 });
                                 return;
                               }
-                              controller.createDir(PathUtil.join(
-                                controller.directory.value.path,
-                                name.value.text,
-                                controller.options.value.isWindows,
-                              ));
+                              try {
+                                await controller.createDir(PathUtil.join(
+                                  controller.directory.value.path,
+                                  name.value.text,
+                                  controller.options.value.isWindows,
+                                ));
+                              } catch (e) {
+                                setState(() {
+                                  errorText = e.toString();
+                                });
+                                return;
+                              }
                               close();
                             }
                           }
@@ -904,10 +911,11 @@ class _FileManagerViewState extends State<FileManagerView> {
                       ),
                     ),
                     onPressed: SelectedItems.valid(selectedItems.items)
-                        ? () {
+                        ? () async {
                             final otherSideData =
                                 controller.getOtherSideDirectoryData();
-                            controller.sendFiles(selectedItems, otherSideData);
+                            await controller.sendFiles(
+                                selectedItems, otherSideData);
                             selectedItems.clear();
                           }
                         : null,
@@ -1116,8 +1124,8 @@ class _FileManagerViewState extends State<FileManagerView> {
                 mod_menu.PopupMenuItem(
                   child: Text(translate("Rename")),
                   height: CustomPopupMenuTheme.height,
-                  onTap: () {
-                    controller.renameAction(entry, isLocal);
+                  onTap: () async {
+                    await controller.renameAction(entry, isLocal);
                   },
                 )
             ];

@@ -16696,6 +16696,176 @@ def validate_viewer_video_mailbox_contract(sources):
     )
 
 
+def validate_viewer_file_finality_contract(sources):
+    focused = sources["viewer_file_finality_verifier"]
+    validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "viewer file finality focused runtime validation",
+    )
+    for text, label in (
+        ("def extract_rust_item(", "viewer file finality Rust item parser"),
+        ("def validate(sources", "viewer file finality semantic entry"),
+        ('"FileMessage(Message)"', "viewer file typed-command contract"),
+        (
+            '"const MAX_PENDING_VIEWER_FILE_WRITES: usize = 256;"',
+            "viewer file receipt count-bound contract",
+        ),
+        (
+            '"const MAX_PENDING_VIEWER_FILE_WRITE_BYTES: usize = hbb_common::cpace::MAX_SESSION_PACKET * 2;"',
+            "viewer file receipt byte-bound contract",
+        ),
+        (
+            '"const VIEWER_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(30);"',
+            "viewer file receipt deadline contract",
+        ),
+        (
+            '"Self::file_message_context(message)"',
+            "viewer file central-context contract",
+        ),
+        (
+            '"peer.send_with_receipt(message).await"',
+            "viewer file exact control-frame contract",
+        ),
+        (
+            '"completion = self.file_writes.next(), if !self.file_writes.is_empty()"',
+            "event-driven receipt ownership contract",
+        ),
+        (
+            '"_ = self.timer.tick(), if !self.file_writes.has_transfer_data()"',
+            "viewer file transfer pacing contract",
+        ),
+        (
+            '"ResultType<(String, Option<crate::tcp::WriterReceipt>)>"',
+            "viewer file common-producer receipt contract",
+        ),
+        (
+            '"r_s11fg_read_step_returns_the_exact_file_frame_receipt"',
+            "viewer file exact-frame regression contract",
+        ),
+        ("MUTATIONS: Tuple[Mutation, ...]", "viewer file mutation inventory"),
+        ("run_self_test(sources)", "viewer file mutation dispatch"),
+    ):
+        source = (
+            focused
+            if text
+            in {
+                "def extract_rust_item(",
+                "def validate(sources",
+                "MUTATIONS: Tuple[Mutation, ...]",
+                "run_self_test(sources)",
+            }
+            else validation
+        )
+        require_text(source, text, label)
+
+    for text, label in (
+        (
+            '("client", "FileMessage(Message)", '
+            '"FileMessageDisabled(Message)", "typed file command"),',
+            "viewer file typed-command contract",
+        ),
+        (
+            '("io_loop", "const MAX_PENDING_VIEWER_FILE_WRITES: usize = 256;", '
+            '"const MAX_PENDING_VIEWER_FILE_WRITES: usize = 4096;", '
+            '"receipt count bound"),',
+            "viewer file receipt count-bound contract",
+        ),
+        (
+            '("io_loop", "const MAX_PENDING_VIEWER_FILE_WRITE_BYTES: usize = hbb_common::cpace::MAX_SESSION_PACKET * 2;", '
+            '"const MAX_PENDING_VIEWER_FILE_WRITE_BYTES: usize = usize::MAX;", '
+            '"receipt byte bound"),',
+            "viewer file receipt byte-bound contract",
+        ),
+        (
+            '("io_loop", "const VIEWER_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(30);", '
+            '"const VIEWER_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(300);", '
+            '"receipt deadline"),',
+            "viewer file receipt deadline contract",
+        ),
+        (
+            '("io_loop", "Self::file_message_context(message)", '
+            '"Some(ViewerFileWriteContext::control(None, -1, \\"caller\\"))", '
+            '"central context derivation"),',
+            "viewer file central-context contract",
+        ),
+        (
+            '("io_loop", "peer.send_with_receipt(message).await", '
+            '"peer.send(message).await", "exact control-frame receipt"),',
+            "viewer file exact control-frame contract",
+        ),
+        (
+            '("io_loop", "self.contexts\\n            .drain()", '
+            '"std::iter::empty()", "pending context retirement"),',
+            "pending file-context retirement mutation",
+        ),
+        (
+            '("io_loop", "_ = self.timer.tick(), if !self.file_writes.has_transfer_data()", '
+            '"_ = self.timer.tick()", "transfer pacing"),',
+            "viewer file transfer pacing contract",
+        ),
+        (
+            '("fs", "ResultType<(String, Option<crate::tcp::WriterReceipt>)>", '
+            '"ResultType<String>", "common producer receipt"),',
+            "viewer file common-producer receipt contract",
+        ),
+        (
+            '("fs", "fn r_s11fg_read_step_returns_the_exact_file_frame_receipt()", '
+            '"fn read_step_returns_the_exact_file_frame_receipt()", '
+            '"exact frame regression"),',
+            "viewer file exact-frame regression contract",
+        ),
+        (
+            '("fs", "send_with_receipt(&new_block(block))", '
+            '"send(&new_block(block))", "exact block receipt"),',
+            "exact file-block receipt mutation",
+        ),
+        (
+            '("dart_model", "unawaited(future.catchError((Object error) {", '
+            '"future.catchError((Object error) {", "owned event future"),',
+            "owned Dart event-future mutation",
+        ),
+        (
+            '("requirements", "<tr><td>315</td>", '
+            '"<tr><td>315-disabled</td>", "Appendix disposition"),',
+            "file finality Appendix mutation",
+        ),
+    ):
+        require_text(focused, text, label)
+
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-viewer-file-finality.py --repo . --self-test",
+        "viewer file shared focused-verifier wiring",
+    )
+    require_text(
+        sources["apple"],
+        "python3 scripts/verify-viewer-file-finality.py --repo . --self-test",
+        "viewer file Apple focused-verifier wiring",
+    )
+    require_text(
+        sources["dart_verify"],
+        "client::io_loop::tests::r_s11fg_",
+        "viewer file generated-bridge tracker gate",
+    )
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11fg</span>',
+        "viewer file finality requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>315</td>",
+        "viewer file finality Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11fg/R-S11e-194 outgoing viewer file-command admission",
+        "viewer file finality hardening ledger",
+    )
+
+
 def validate_viewer_rgba_mailbox_contract(sources):
     focused = sources["viewer_rgba_mailbox_verifier"]
     validation = extract_between(
@@ -37364,6 +37534,7 @@ def validate_sources(sources):
     validate_unix_listener_incumbent_contract(sources)
     validate_viewer_voice_call_worker_contract(sources)
     validate_viewer_video_mailbox_contract(sources)
+    validate_viewer_file_finality_contract(sources)
     validate_viewer_rgba_mailbox_contract(sources)
     validate_desktop_texture_lifecycle_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
@@ -53351,6 +53522,90 @@ def run_source_mutations(sources):
             "viewer video mailbox hardening ledger",
         ),
         (
+            "viewer_file_finality_verifier",
+            '"FileMessage(Message)"',
+            '"FileMessageDisabled(Message)"',
+            "viewer file typed-command contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '"const MAX_PENDING_VIEWER_FILE_WRITES: usize = 256;"',
+            '"const MAX_PENDING_VIEWER_FILE_WRITES: usize = 4096;"',
+            "viewer file receipt count-bound contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '"const MAX_PENDING_VIEWER_FILE_WRITE_BYTES: usize = hbb_common::cpace::MAX_SESSION_PACKET * 2;"',
+            '"const MAX_PENDING_VIEWER_FILE_WRITE_BYTES: usize = usize::MAX;"',
+            "viewer file receipt byte-bound contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '"const VIEWER_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(30);"',
+            '"const VIEWER_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(300);"',
+            "viewer file receipt deadline contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '"Self::file_message_context(message)"',
+            '"None"',
+            "viewer file central-context contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '"peer.send_with_receipt(message).await"',
+            '"peer.send(message).await"',
+            "viewer file exact control-frame contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '"_ = self.timer.tick(), if !self.file_writes.has_transfer_data()"',
+            '"_ = self.timer.tick()"',
+            "viewer file transfer pacing contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '"ResultType<(String, Option<crate::tcp::WriterReceipt>)>"',
+            '"ResultType<String>"',
+            "viewer file common-producer receipt contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '"r_s11fg_read_step_returns_the_exact_file_frame_receipt"',
+            '"read_step_returns_the_exact_file_frame_receipt"',
+            "viewer file exact-frame regression contract",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-viewer-file-finality.py --repo . --self-test",
+            "true # viewer file finality verifier removed",
+            "viewer file shared focused-verifier wiring",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-viewer-file-finality.py --repo . --self-test",
+            "true # viewer file finality verifier removed",
+            "viewer file Apple focused-verifier wiring",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fg</span>',
+            '<div class="req"><span class="id">R-S11fg-disabled</span>',
+            "viewer file finality requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>315</td>",
+            "<tr><td>315-disabled</td>",
+            "viewer file finality Appendix C row",
+        ),
+        (
+            "hardening",
+            "**R-S11fg/R-S11e-194 outgoing viewer file-command admission",
+            "**R-S11fg-disabled/R-S11e-194 outgoing viewer file-command admission",
+            "viewer file finality hardening ledger",
+        ),
+        (
             "viewer_rgba_mailbox_verifier",
             '"HashMap<(SessionID, usize), RgbaData>"',
             '"HashMap<usize, RgbaData>"',
@@ -64005,6 +64260,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "viewer_video_mailbox_verifier": (
                 repo / "scripts/verify-viewer-video-mailbox.py"
+            ).read_text(encoding="utf-8"),
+            "viewer_file_finality_verifier": (
+                repo / "scripts/verify-viewer-file-finality.py"
             ).read_text(encoding="utf-8"),
             "viewer_rgba_mailbox_verifier": (
                 repo / "scripts/verify-viewer-rgba-mailbox.py"

@@ -9017,10 +9017,18 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ex_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ff_ --color never
+"${RUN[@]}" cargo test -p hbb_common --lib fs::tests::r_s11fg_read_step_returns_the_exact_file_frame_receipt --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::io_loop::tests::r_s11fg_ --color never
 if python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test; then
   echo "  ok  R-S11ex/R-S11fa/R-S11fc/R-S11ff desktop Flutter texture finality, presentation resumption, first-image admission, and viewer refresh have exact bounded owners"
 else
   echo "  FAIL R-S11ex/R-S11fa/R-S11fc/R-S11ff: Flutter texture lifecycle, exact presentation-resume recovery, first-image admission, or viewer refresh admission regressed"
+  rc=1
+fi
+if python3 scripts/verify-viewer-file-finality.py --repo . --self-test; then
+  echo "  ok  R-S11fg/R-S11e-194 viewer file commands are fallible and bounded through exact local writer completion"
+else
+  echo "  FAIL R-S11fg/R-S11e-194: viewer file commands regained silent admission, ambiguous send completion, or unbounded writer ownership"
   rc=1
 fi
 grep -qF 'native_video_format_locally_unsupported(&lc.mark_unsupported, format)' src/client.rs ||

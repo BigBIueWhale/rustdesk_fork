@@ -178,6 +178,9 @@ local_docker run --rm --pull=never --network=none --read-only \
     fi
     dart format --output=none --set-exit-if-changed \
       lib/models/model.dart \
+      lib/models/file_model.dart \
+      lib/desktop/pages/file_manager_page.dart \
+      lib/mobile/pages/file_manager_page.dart \
       lib/models/desktop_render_texture.dart \
       lib/models/desktop_texture_lifecycle.dart \
       third_party/texture_rgba_renderer/lib/texture_rgba_renderer.dart \
@@ -253,6 +256,11 @@ local_docker run --rm --pull=never --network=none --read-only \
     echo "  == R-S11ff generated-bridge exact-owner viewer refresh regression =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       flutter::mobile_session_lifecycle_tests::r_s11ff_video_refresh_requires_the_current_exact_ui_owner -- --test-threads=1
+    echo "  == R-S11fg generated-bridge viewer file writer finality regressions =="
+    cargo test --offline --locked -p hbb_common --lib \
+      fs::tests::r_s11fg_read_step_returns_the_exact_file_frame_receipt -- --test-threads=1
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      client::io_loop::tests::r_s11fg_ -- --test-threads=1
     echo "  == R-S11ec outgoing clipboard exact-round lifecycle regression =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop -- --test-threads=1

@@ -787,10 +787,14 @@ pub fn session_input_os_password(session_id: SessionID, value: String) {
 }
 
 // File Action
-pub fn session_read_remote_dir(session_id: SessionID, path: String, include_hidden: bool) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.read_remote_dir(path, include_hidden);
-    }
+pub fn session_read_remote_dir(
+    session_id: SessionID,
+    path: String,
+    include_hidden: bool,
+) -> Result<()> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("viewer session is not available"))?;
+    session.read_remote_dir(path, include_hidden)
 }
 
 pub fn session_send_files(
@@ -802,18 +806,18 @@ pub fn session_send_files(
     include_hidden: bool,
     is_remote: bool,
     _is_dir: bool,
-) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.send_files(
-            act_id,
-            fs::JobType::Generic.into(),
-            path,
-            to,
-            file_num,
-            include_hidden,
-            is_remote,
-        );
-    }
+) -> Result<()> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("viewer session is not available"))?;
+    session.send_files(
+        act_id,
+        fs::JobType::Generic.into(),
+        path,
+        to,
+        file_num,
+        include_hidden,
+        is_remote,
+    )
 }
 
 pub fn session_set_confirm_override_file(
@@ -823,10 +827,10 @@ pub fn session_set_confirm_override_file(
     need_override: bool,
     remember: bool,
     is_upload: bool,
-) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.set_confirm_override_file(act_id, file_num, need_override, remember, is_upload);
-    }
+) -> Result<()> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("viewer session is not available"))?;
+    session.set_confirm_override_file(act_id, file_num, need_override, remember, is_upload)
 }
 
 pub fn session_remove_file(
@@ -835,10 +839,10 @@ pub fn session_remove_file(
     path: String,
     file_num: i32,
     is_remote: bool,
-) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.remove_file(act_id, path, file_num, is_remote);
-    }
+) -> Result<()> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("viewer session is not available"))?;
+    session.remove_file(act_id, path, file_num, is_remote)
 }
 
 pub fn session_read_dir_to_remove_recursive(
@@ -847,10 +851,10 @@ pub fn session_read_dir_to_remove_recursive(
     path: String,
     is_remote: bool,
     show_hidden: bool,
-) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.remove_dir_all(act_id, path, is_remote, show_hidden);
-    }
+) -> Result<()> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("viewer session is not available"))?;
+    session.remove_dir_all(act_id, path, is_remote, show_hidden)
 }
 
 pub fn session_remove_all_empty_dirs(
@@ -858,22 +862,27 @@ pub fn session_remove_all_empty_dirs(
     act_id: i32,
     path: String,
     is_remote: bool,
-) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.remove_dir(act_id, path, is_remote);
-    }
+) -> Result<()> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("viewer session is not available"))?;
+    session.remove_dir(act_id, path, is_remote)
 }
 
-pub fn session_cancel_job(session_id: SessionID, act_id: i32) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.cancel_job(act_id);
-    }
+pub fn session_cancel_job(session_id: SessionID, act_id: i32) -> Result<()> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("viewer session is not available"))?;
+    session.cancel_job(act_id)
 }
 
-pub fn session_create_dir(session_id: SessionID, act_id: i32, path: String, is_remote: bool) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.create_dir(act_id, path, is_remote);
-    }
+pub fn session_create_dir(
+    session_id: SessionID,
+    act_id: i32,
+    path: String,
+    is_remote: bool,
+) -> Result<()> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("viewer session is not available"))?;
+    session.create_dir(act_id, path, is_remote)
 }
 
 pub fn session_read_local_dir_sync(
@@ -902,10 +911,10 @@ pub fn session_read_remote_empty_dirs_recursive_sync(
     session_id: SessionID,
     path: String,
     include_hidden: bool,
-) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.read_empty_dirs(path, include_hidden);
-    }
+) -> Result<()> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("viewer session is not available"))?;
+    session.read_empty_dirs(path, include_hidden)
 }
 
 pub fn session_get_platform(session_id: SessionID, is_remote: bool) -> String {
@@ -935,24 +944,24 @@ pub fn session_add_job(
     file_num: i32,
     include_hidden: bool,
     is_remote: bool,
-) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.add_job(
-            act_id,
-            fs::JobType::Generic.into(),
-            path,
-            to,
-            file_num,
-            include_hidden,
-            is_remote,
-        );
-    }
+) -> Result<()> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("viewer session is not available"))?;
+    session.add_job(
+        act_id,
+        fs::JobType::Generic.into(),
+        path,
+        to,
+        file_num,
+        include_hidden,
+        is_remote,
+    )
 }
 
-pub fn session_resume_job(session_id: SessionID, act_id: i32, is_remote: bool) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.resume_job(act_id, is_remote);
-    }
+pub fn session_resume_job(session_id: SessionID, act_id: i32, is_remote: bool) -> Result<()> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("viewer session is not available"))?;
+    session.resume_job(act_id, is_remote)
 }
 
 pub fn session_rename_file(
@@ -961,10 +970,10 @@ pub fn session_rename_file(
     path: String,
     new_name: String,
     is_remote: bool,
-) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.rename_file(act_id, path, new_name, is_remote);
-    }
+) -> Result<()> {
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("viewer session is not available"))?;
+    session.rename_file(act_id, path, new_name, is_remote)
 }
 
 // R-S18 / R-X9 (R-A6 §18): session_elevate_with_logon (peer OS creds -> CreateProcessWithLogonW)

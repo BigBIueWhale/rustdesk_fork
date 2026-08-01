@@ -330,12 +330,13 @@ class FileModel {
     }
   }
 
-  void sendEmptyDirs(dynamic obj) {
+  Future<void> sendEmptyDirs(dynamic obj) async {
     late final List<dynamic> emptyDirs;
     try {
       emptyDirs = jsonDecode(obj['dirs'] as String);
     } catch (e) {
       debugPrint("Failed to decode sendEmptyDirs: $e");
+      return;
     }
     final otherSideData = remoteController.directoryData();
     final toPath = otherSideData.directory.path;
@@ -347,7 +348,7 @@ class FileModel {
         dir = PathUtil.convert(dir, isLocalWindows, isPeerWindows);
       }
       var peerPath = PathUtil.join(toPath, dir, isPeerWindows);
-      remoteController.createDirWithRemote(peerPath, true);
+      await remoteController.createDirWithRemote(peerPath, true);
     }
   }
 }
@@ -633,15 +634,21 @@ class FileController {
     final showHidden = otherSideData.options.showHidden;
     for (var from in items.items) {
       final jobID = jobController.addTransferJob(from, isRemoteToLocal);
-      bind.sessionSendFiles(
-          sessionId: sessionId,
-          actId: jobID,
-          path: from.path,
-          to: PathUtil.join(toPath, from.name, isWindows),
-          fileNum: 0,
-          includeHidden: showHidden,
-          isRemote: isRemoteToLocal,
-          isDir: from.isDirectory);
+      try {
+        await bind.sessionSendFiles(
+            sessionId: sessionId,
+            actId: jobID,
+            path: from.path,
+            to: PathUtil.join(toPath, from.name, isWindows),
+            fileNum: 0,
+            includeHidden: showHidden,
+            isRemote: isRemoteToLocal,
+            isDir: from.isDirectory);
+      } catch (e) {
+        jobController.updateJobStatus(jobID,
+            error: e.toString(), state: JobState.error);
+        rethrow;
+      }
       debugPrint(
           "path: ${from.path}, toPath: $toPath, to: ${PathUtil.join(toPath, from.name, isWindows)}");
     }
@@ -679,7 +686,7 @@ class FileController {
       });
 
       for (var dir in dirs) {
-        createDirWithRemote(dir, isRemote);
+        await createDirWithRemote(dir, isRemote);
       }
     });
   }
@@ -769,7 +776,7 @@ class FileController {
         );
         try {
           if (confirm == true) {
-            sendRemoveFile(entries[i].path, i, deleteJobId);
+            await sendRemoveFile(entries[i].path, i, deleteJobId);
             final res = await jobController.jobResultListener.start();
             // handle remove res;
             if (item.isDirectory &&
@@ -783,7 +790,7 @@ class FileController {
           if (_removeCheckboxRemember) {
             if (confirm == true) {
               for (var j = i + 1; j < entries.length; j++) {
-                sendRemoveFile(entries[j].path, j, deleteJobId);
+                await sendRemoveFile(entries[j].path, j, deleteJobId);
                 final res = await jobController.jobResultListener.start();
                 if (item.isDirectory &&
                     res['file_num'] == (entries.length - 1).toString()) {
@@ -799,7 +806,9 @@ class FileController {
             break;
           }
         } catch (e) {
-          print("remove error: $e");
+          jobController.updateJobStatus(deleteJobId,
+              file_num: i, error: e.toString(), state: JobState.error);
+          rethrow;
         }
       }
     });
@@ -873,8 +882,8 @@ class FileController {
     }, useAnimation: false);
   }
 
-  void sendRemoveFile(String path, int fileNum, int actId) {
-    bind.sessionRemoveFile(
+  Future<void> sendRemoveFile(String path, int fileNum, int actId) async {
+    await bind.sessionRemoveFile(
         sessionId: sessionId,
         actId: actId,
         path: path,
@@ -889,7 +898,7 @@ class FileController {
   }
 
   Future<void> createDirWithRemote(String path, bool isRemote) async {
-    bind.sessionCreateDir(
+    await bind.sessionCreateDir(
         sessionId: sessionId,
         actId: JobController.jobID.next(),
         path: path,
@@ -903,7 +912,7 @@ class FileController {
   Future<void> renameAction(Entry item, bool isLocal) async {
     final textEditingController = TextEditingController(text: item.name);
     String? errorText;
-    dialogManager?.show((setState, close, context) {
+    await dialogManager?.show((setState, close, context) {
       textEditingController.addListener(() {
         if (errorText != null) {
           setState(() {
@@ -933,12 +942,19 @@ class FileController {
           });
           return;
         }
-        await bind.sessionRenameFile(
-            sessionId: sessionId,
-            actId: JobController.jobID.next(),
-            path: item.path,
-            newName: newName,
-            isRemote: !isLocal);
+        try {
+          await bind.sessionRenameFile(
+              sessionId: sessionId,
+              actId: JobController.jobID.next(),
+              path: item.path,
+              newName: newName,
+              isRemote: !isLocal);
+        } catch (e) {
+          setState(() {
+            errorText = e.toString();
+          });
+          return;
+        }
         close();
       }
 
@@ -1223,11 +1239,11 @@ class JobController {
     }
   }
 
-  void resumeJob(int jobId) {
+  Future<void> resumeJob(int jobId) async {
     final jobIndex = getJob(jobId);
     if (jobIndex != -1) {
       final job = jobTable[jobIndex];
-      bind.sessionResumeJob(
+      await bind.sessionResumeJob(
           sessionId: sessionId, actId: job.id, isRemote: job.isRemoteToLocal);
       job.state = JobState.inProgress;
       jobTable.refresh();

@@ -1,4 +1,4 @@
-use hbb_common::{fs, log, message_proto::*};
+use hbb_common::{fs, log, message_proto::*, ResultType};
 
 use super::{Data, Interface};
 
@@ -38,11 +38,11 @@ pub trait FileManager: Interface {
     // `sciter-rs` fork (via `sciter::Value` + `crate::ui::remote::make_fd`). The Flutter file manager
     // uses its own directory-listing path (flutter_ffi), not this trait method.
 
-    fn cancel_job(&self, id: i32) {
-        self.send(Data::CancelJob(id));
+    fn cancel_job(&self, id: i32) -> ResultType<()> {
+        self.try_send(Data::CancelJob(id))
     }
 
-    fn read_empty_dirs(&self, path: String, include_hidden: bool) {
+    fn read_empty_dirs(&self, path: String, include_hidden: bool) -> ResultType<()> {
         let mut msg_out = Message::new();
         let mut file_action = FileAction::new();
         file_action.set_read_empty_dirs(ReadEmptyDirs {
@@ -51,10 +51,10 @@ pub trait FileManager: Interface {
             ..Default::default()
         });
         msg_out.set_file_action(file_action);
-        self.send(Data::Message(msg_out));
+        self.try_send(Data::FileMessage(msg_out))
     }
 
-    fn read_remote_dir(&self, path: String, include_hidden: bool) {
+    fn read_remote_dir(&self, path: String, include_hidden: bool) -> ResultType<()> {
         let mut msg_out = Message::new();
         let mut file_action = FileAction::new();
         file_action.set_read_dir(ReadDir {
@@ -63,25 +63,21 @@ pub trait FileManager: Interface {
             ..Default::default()
         });
         msg_out.set_file_action(file_action);
-        self.send(Data::Message(msg_out));
+        self.try_send(Data::FileMessage(msg_out))
     }
 
-    fn remove_file(&self, id: i32, path: String, file_num: i32, is_remote: bool) {
-        self.send(Data::RemoveFile((id, path, file_num, is_remote)));
+    fn remove_file(&self, id: i32, path: String, file_num: i32, is_remote: bool) -> ResultType<()> {
+        self.try_send(Data::RemoveFile((id, path, file_num, is_remote)))
     }
 
-    fn remove_dir_all(&self, id: i32, path: String, is_remote: bool, include_hidden: bool) {
-        self.send(Data::RemoveDirAll((id, path, is_remote, include_hidden)));
-    }
-
-    #[cfg(not(any(
-        target_os = "android",
-        target_os = "ios",
-        feature = "cli",
-        feature = "flutter"
-    )))]
-    fn confirm_delete_files(&self, id: i32, file_num: i32) {
-        self.send(Data::ConfirmDeleteFiles((id, file_num)));
+    fn remove_dir_all(
+        &self,
+        id: i32,
+        path: String,
+        is_remote: bool,
+        include_hidden: bool,
+    ) -> ResultType<()> {
+        self.try_send(Data::RemoveDirAll((id, path, is_remote, include_hidden)))
     }
 
     #[cfg(not(any(
@@ -90,20 +86,30 @@ pub trait FileManager: Interface {
         feature = "cli",
         feature = "flutter"
     )))]
-    fn set_no_confirm(&self, id: i32) {
-        self.send(Data::SetNoConfirm(id));
+    fn confirm_delete_files(&self, id: i32, file_num: i32) -> ResultType<()> {
+        self.try_send(Data::ConfirmDeleteFiles((id, file_num)))
     }
 
-    fn remove_dir(&self, id: i32, path: String, is_remote: bool) {
+    #[cfg(not(any(
+        target_os = "android",
+        target_os = "ios",
+        feature = "cli",
+        feature = "flutter"
+    )))]
+    fn set_no_confirm(&self, id: i32) -> ResultType<()> {
+        self.try_send(Data::SetNoConfirm(id))
+    }
+
+    fn remove_dir(&self, id: i32, path: String, is_remote: bool) -> ResultType<()> {
         if is_remote {
-            self.send(Data::RemoveDir((id, path)));
+            self.try_send(Data::RemoveDir((id, path)))
         } else {
-            fs::remove_all_empty_dir(&fs::get_path(&path)).ok();
+            fs::remove_all_empty_dir(&fs::get_path(&path))
         }
     }
 
-    fn create_dir(&self, id: i32, path: String, is_remote: bool) {
-        self.send(Data::CreateDir((id, path, is_remote)));
+    fn create_dir(&self, id: i32, path: String, is_remote: bool) -> ResultType<()> {
+        self.try_send(Data::CreateDir((id, path, is_remote)))
     }
 
     fn send_files(
@@ -115,8 +121,8 @@ pub trait FileManager: Interface {
         file_num: i32,
         include_hidden: bool,
         is_remote: bool,
-    ) {
-        self.send(Data::SendFiles((
+    ) -> ResultType<()> {
+        self.try_send(Data::SendFiles((
             id,
             r#type.into(),
             path,
@@ -124,7 +130,7 @@ pub trait FileManager: Interface {
             file_num,
             include_hidden,
             is_remote,
-        )));
+        )))
     }
 
     fn add_job(
@@ -136,8 +142,8 @@ pub trait FileManager: Interface {
         file_num: i32,
         include_hidden: bool,
         is_remote: bool,
-    ) {
-        self.send(Data::AddJob((
+    ) -> ResultType<()> {
+        self.try_send(Data::AddJob((
             id,
             r#type.into(),
             path,
@@ -145,11 +151,11 @@ pub trait FileManager: Interface {
             file_num,
             include_hidden,
             is_remote,
-        )));
+        )))
     }
 
-    fn resume_job(&self, id: i32, is_remote: bool) {
-        self.send(Data::ResumeJob((id, is_remote)));
+    fn resume_job(&self, id: i32, is_remote: bool) -> ResultType<()> {
+        self.try_send(Data::ResumeJob((id, is_remote)))
     }
 
     fn set_confirm_override_file(
@@ -159,22 +165,28 @@ pub trait FileManager: Interface {
         need_override: bool,
         remember: bool,
         is_upload: bool,
-    ) {
+    ) -> ResultType<()> {
         log::info!(
             "confirm file transfer, job: {}, need_override: {}",
             id,
             need_override
         );
-        self.send(Data::SetConfirmOverrideFile((
+        self.try_send(Data::SetConfirmOverrideFile((
             id,
             file_num,
             need_override,
             remember,
             is_upload,
-        )));
+        )))
     }
 
-    fn rename_file(&self, act_id: i32, path: String, new_name: String, is_remote: bool) {
-        self.send(Data::RenameFile((act_id, path, new_name, is_remote)));
+    fn rename_file(
+        &self,
+        act_id: i32,
+        path: String,
+        new_name: String,
+        is_remote: bool,
+    ) -> ResultType<()> {
+        self.try_send(Data::RenameFile((act_id, path, new_name, is_remote)))
     }
 }

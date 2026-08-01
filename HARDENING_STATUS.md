@@ -3578,6 +3578,135 @@ presentation timestamps, queue/latency budgets, exact older/current artifact ide
 current cold artifacts, independent reproduction, and external review are not established by
 these Linux unit behaviors. No reconnect-dependent display recovery claim is made.
 
+**R-S11fg/R-S11e-194 outgoing viewer file-command admission and exact local writer
+finality — SOURCE IMPLEMENTED 2026-08-01; CURRENT FRESH GENERATED-BRIDGE/FLUTTER/
+SHIPPED-FEATURE TRANSACTION, ANDROID RUST TARGET, FIVE DETERMINISTIC LINUX BEHAVIORS,
+FOCUSED 34-MUTATION GATE, AND INDEPENDENT VERIFIER/SOURCE-MUTATION MATRIX GREEN;
+FULL SHARED/APPLE GATE EXECUTION, NATIVE DEVICE/PEER/ARTIFACT EXECUTION, PERFORMANCE,
+AND EXTERNAL REVIEW OPEN.** Platforms: the
+shared outgoing viewer on Android, iOS, Windows, Linux, and macOS. Endpoint/action:
+Flutter file-manager read/send/create/remove/rename/cancel/resume/confirm operations,
+the exact viewer command round, its network-loop file actions and common digest/block/
+done/error producer, and the post-key sole transport writer. Boundary: local UI
+intent → exact-round command admission → exact encrypted-frame socket-writer completion
+→ authenticated peer `FileResponse` operation semantics.
+
+Read-only tracing separated three states the inherited code conflated. First, many
+`flutter_ffi` file functions returned void and silently accepted an absent session;
+the shared `FileManager` methods called a void `send`, so a retired/full exact-round
+mailbox was also invisible. Authored Dart often cleared selection, closed a dialog,
+removed a job row, or marked a job running without awaiting native admission. Second,
+network-loop file sends used ordinary `Stream::send` or `allow_err!`. On the keyed
+transport, ordinary send proves bounded nonblocking admission to the dedicated writer
+queue, not completion of that exact sink write. Third, `fs::handle_read_jobs` sent
+digest/block/done/error internally and returned only a log string, so its caller could
+not own the exact write. A low-volume final writer failure could remain invisible while
+inbound or unrelated traffic kept the select loop alive. This is source-proven shared
+finality/status debt. It is not evidence that an operational writer failed, that file
+transfer caused the reported display-only delay, or that any host service, listener,
+firewall, network, container, or machine state changed.
+
+Every affected Flutter file FFI now returns `Result<()>`; a missing session and bounded
+command-mailbox admission failure propagate through the freshly generated API. The
+shared `FileManager` methods use `try_send`, and direct read-directory commands use the
+typed `Data::FileMessage` path. Authored Dart awaits each affected operation. Create and
+rename dialogs close only after admission and retain an error on failure; selected files
+clear only afterward; cancel removes its visible row only afterward; resume changes the
+job state only afterward; and a transfer whose start command is rejected marks that exact
+new job failed before rethrowing. This future is deliberately only local exact-round
+command admission. It is neither a transport receipt nor peer operation completion.
+
+The network loop rejects every `FileAction` that arrives on generic `Data::Message`.
+One central decoder proves that a typed message contains a recognized `FileAction` and
+derives its operation, job ID, and file number from that protobuf; production callers no
+longer supply a parallel label or identity. Every control action uses the existing
+`send_with_receipt`. The common producer now selects only the first runnable job and
+admits at most one digest, block, done, or error per invocation, returning that exact
+frame receipt. The viewer reserves a conservative maximum-packet budget before calling
+the producer and suppresses its one-millisecond transfer tick while that transfer receipt
+is pending. Receipt completion wakes the existing select directly. The initial review
+prototype added a separate writer barrier after each frame; source review removed it in
+favor of the actual frame receipt, eliminating the extra command and flush from the hot
+path.
+
+One per-round `ViewerFileWriteTracker` owns exact receipt futures in a
+`FuturesUnordered`. Fixed capacity is 256 receipts and two maximum post-key session
+packets. Reservation uses checked byte addition, a fixed byte ceiling, a checked
+monotonic `u64` identity, and collision refusal. Completion uses checked subtraction.
+Each receipt has a 30-second deadline. Full count/bytes, identity exhaustion, writer
+admission failure, writer error, receipt cancellation, timeout, lost completion identity,
+or accounting failure is terminal for the round. Final explicit failure reports the
+identified and other active read/write/remove jobs once; an ordinary disconnect without
+an explicit tracked writer failure preserves existing resume semantics. There is no new
+task, thread, runtime, lock-held await, blocking producer send, busy poll, unbounded queue,
+dependency, reconnect, writer barrier, protocol field, or acknowledgement.
+
+The common controlled-side caller explicitly discards the returned receipt and therefore
+retains its prior behavior; server-side file-egress finality remains open rather than
+being silently claimed. Exact writer completion means the encrypted frame reached the
+local socket sink. It does not prove the remote peer received, decoded, accepted, or
+completed the operation. Existing authenticated `FileResponse` variants remain the sole
+peer semantic completion path. This slice adds no cosmetic ACK. Peer-response deadlines,
+incoming `job.write` error propagation, digest/check failure reporting, controlled-side
+egress receipts, and full operation-level completion ownership remain the next file-flow
+audit work.
+
+Current counted evidence remains narrower than device execution. A real keyed in-memory
+duplex test forces the exact file block to remain back-pressured, proves that its returned
+receipt cannot complete, decodes the received peer frame as the first job's
+`FileResponse::Block`, proves that a second queued job remains unopened with zero transferred
+bytes, and then observes exact receipt success: 1 passed, 0 failed, 127 filtered. Four tracker
+behaviors cover exact count/byte release, count/byte/sequence refusal, writer error plus
+receipt cancellation plus retirement, and deadline expiry: 4 passed, 0 failed, 447 filtered
+under the final generated-bridge/shipped-feature transaction. An additional non-Flutter
+Linux `linux-pkg-config` execution passed the same four tests with 428 filtered. That build
+emitted the repository's broad existing warning set (190 warnings); no warning-free claim is
+made.
+
+The final exact-current-source canonical transaction used the pinned offline closure and
+immutable Debian builder, generated and atomically published a fresh FRB bridge in a private
+snapshot, left all 17 formatted Dart files unchanged, reported zero authored-library Flutter
+analysis errors and no renderer-package issues, and exited zero with its source-integrity
+check. Eight Flutter suites passed (address validation 9, peer model 1, server model 1, mobile
+file-session lifecycle 1, mobile start queue 4, stream finality 2, desktop texture lifecycle
+7, and presentation recovery 7). The Linux native texture test and portable Windows texture
+core test passed. The shipped Debian Rust library compiled with
+`flutter,unix-file-copy-paste`; the mobile lifecycle suite passed 18, the exact refresh test
+passed 1, the two file-finality targets passed 1 and 4, and the remaining clipboard,
+OS-password, screenshot, video acknowledgement/egress/receipt, and audio-egress targets all
+passed. FRB generation still emitted its known non-fatal `Dart_Handle` typedef-redefinition
+diagnostic before succeeding, and Rust emitted broad warnings; neither is hidden as clean.
+
+The pinned Android aarch64 release Rust-library check passed against the final production
+source; the later changes were test-only and are excluded from Android release compilation.
+It proves target compilation, not APK packaging, installation, service lifecycle, UI, network,
+peer, renderer, or device behavior. The focused semantic gate and all 34 deliberate mutations
+passed. Independent normal workspace validation and the complete source-mutation matrix passed;
+the latter was rerun after its own ambiguous fixture binding was corrected. Python in-memory
+compilation, changed-shell `bash -n`, HTML parsing and exact requirements-hash binding, pinned
+Rust 1.75 formatting, pinned Dart formatting, and whitespace checks passed. The new focused
+gate is wired into the shared and Apple catalogs, but the complete `scripts/verify.sh` and
+`scripts/apple-conform-check.sh` transactions were not executed for this slice and remain
+open rather than being inferred from wiring.
+
+Excluded attempts are recorded rather than reclassified: one intentionally stopped canonical
+run ended with status 130 during private input copying; one new test assertion initially failed
+to compile because its pattern moved a guarded protobuf value and was corrected to borrow it;
+and one ad-hoc non-Flutter container lacked the required `libyuv` pkg-config path before the
+same suite passed in the pinned devcheck image. None is counted as a product failure or a pass.
+A pre-final canonical transaction passed before the test-only second-job/cancellation
+strengthening, but it is superseded by the exact-current-source zero exit above.
+
+Even after those source gates, release evidence remains open: real Android and Windows
+file-manager execution against exact artifacts; cross-version peer behavior; task-swipe,
+focus, reconnect, interruption, resume, remote refusal, disk-full/write-error, and cancel
+interleavings; native Windows/macOS/iOS compilation; sustained throughput, UI latency,
+writer-depth, memory, and operation-deadline budgets; older operational-artifact identity;
+clean committed cold R-B2/R-B10 artifacts; separately required independent reproduction;
+and external review. These are explicit release blockers. Source compilation, formatter,
+mutation, and in-memory transport evidence must never be described as operational or
+end-to-end validation.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -18102,7 +18231,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-c4d4b802d3821b27fc73020c888983c7f0e189e06c65b9b0d00603047d4700f8  requirements.html
+522a9072cf0186ec653968ed153e600145a1b19aa5acdc0851c66a0ede468f42  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -18130,3 +18259,4 @@ The same identity additionally binds R-S11ez and Appendix C #308.
 The same identity additionally binds R-S11fa and Appendix C #309.
 The same identity additionally binds R-S11fb and Appendix C #310.
 The same identity additionally binds R-S11ff and Appendix C #314.
+The same identity additionally binds R-S11fg and Appendix C #315.

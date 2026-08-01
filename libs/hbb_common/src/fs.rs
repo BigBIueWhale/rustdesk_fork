@@ -1908,19 +1908,23 @@ impl TransferJob {
         Ok((last_modified, meta.len()))
     }
 
-    async fn init_data_stream(&mut self, stream: &mut crate::Stream) -> ResultType<()> {
+    async fn init_data_stream(
+        &mut self,
+        stream: &mut crate::Stream,
+    ) -> ResultType<Option<crate::tcp::WriterReceipt>> {
         if self.open_data_stream().await? {
-            return Ok(());
+            return Ok(None);
         }
         if self.r#type == JobType::Generic
             && self.enable_overwrite_detection
             && !self.file_confirmed()
             && !self.file_is_waiting()
         {
-            self.send_current_digest(stream).await?;
+            let receipt = self.send_current_digest(stream).await?;
             self.set_file_is_waiting(true);
+            return Ok(Some(receipt));
         }
-        Ok(())
+        Ok(None)
     }
 
     /// Initialize data stream for CM (Connection Manager) scenario.
@@ -2026,7 +2030,10 @@ impl TransferJob {
     }
 
     // Only for generic job and file stream
-    async fn send_current_digest(&mut self, stream: &mut Stream) -> ResultType<()> {
+    async fn send_current_digest(
+        &mut self,
+        stream: &mut Stream,
+    ) -> ResultType<crate::tcp::WriterReceipt> {
         let (last_modified, file_size) = self.get_current_digest().await?;
         let mut msg = Message::new();
         let mut resp = FileResponse::new();
@@ -2039,14 +2046,14 @@ impl TransferJob {
             ..Default::default()
         });
         msg.set_file_response(resp);
-        stream.send(&msg).await?;
+        let receipt = stream.send_with_receipt(&msg).await?;
         log::info!(
-            "id: {}, file_num: {}, digest message is sent. waiting for confirm. msg: {:?}",
+            "id: {}, file_num: {}, digest message is admitted. waiting for confirm. msg: {:?}",
             self.id,
             self.file_num,
             msg
         );
-        Ok(())
+        Ok(receipt)
     }
 
     pub fn set_overwrite_strategy(&mut self, overwrite_strategy: Option<bool>) {
@@ -2341,40 +2348,51 @@ pub fn get_job_immutable(id: i32, jobs: &[TransferJob]) -> Option<&TransferJob> 
     jobs.iter().find(|x| x.id() == id)
 }
 
-async fn init_jobs(jobs: &mut Vec<TransferJob>, stream: &mut crate::Stream) -> ResultType<()> {
-    for job in jobs.iter_mut() {
-        if job.is_last_job {
-            continue;
-        }
-        if let Err(err) = job.init_data_stream(stream).await {
-            stream
-                .send(&new_error(job.id(), err, job.file_num()))
+async fn init_jobs(
+    jobs: &mut Vec<TransferJob>,
+    stream: &mut crate::Stream,
+) -> ResultType<Option<crate::tcp::WriterReceipt>> {
+    let Some(job) = jobs.iter_mut().find(|job| !job.is_last_job) else {
+        return Ok(None);
+    };
+    match job.init_data_stream(stream).await {
+        Ok(receipt) => Ok(receipt),
+        Err(err) => {
+            let receipt = stream
+                .send_with_receipt(&new_error(job.id(), err, job.file_num()))
                 .await?;
+            Ok(Some(receipt))
         }
     }
-    Ok(())
 }
 
 pub async fn handle_read_jobs(
     jobs: &mut Vec<TransferJob>,
     stream: &mut crate::Stream,
-) -> ResultType<String> {
-    init_jobs(jobs, stream).await?;
+) -> ResultType<(String, Option<crate::tcp::WriterReceipt>)> {
+    // Preserve the one-job-at-a-time contract below all the way through initialization. Every call
+    // returns ownership of at most one exact writer completion to the connection loop.
+    if let Some(receipt) = init_jobs(jobs, stream).await? {
+        return Ok((String::new(), Some(receipt)));
+    }
 
     let mut job_log = Default::default();
     let mut finished = Vec::new();
+    let mut receipt = None;
     for job in jobs.iter_mut() {
         if job.is_last_job {
             continue;
         }
         match job.read().await {
             Err(err) => {
-                stream
-                    .send(&new_error(job.id(), err, job.file_num()))
-                    .await?;
+                receipt = Some(
+                    stream
+                        .send_with_receipt(&new_error(job.id(), err, job.file_num()))
+                        .await?,
+                );
             }
             Ok(Some(block)) => {
-                stream.send(&new_block(block)).await?;
+                receipt = Some(stream.send_with_receipt(&new_block(block)).await?);
             }
             Ok(None) => {
                 if job.job_completed() {
@@ -2383,11 +2401,19 @@ pub async fn handle_read_jobs(
                     match job.job_error() {
                         Some(err) => {
                             job_log = serialize_transfer_job(job, false, false, &err);
-                            stream
-                                .send(&new_error(job.id(), err, job.file_num()))
-                                .await?
+                            receipt = Some(
+                                stream
+                                    .send_with_receipt(&new_error(job.id(), err, job.file_num()))
+                                    .await?,
+                            );
                         }
-                        None => stream.send(&new_done(job.id(), job.file_num())).await?,
+                        None => {
+                            receipt = Some(
+                                stream
+                                    .send_with_receipt(&new_done(job.id(), job.file_num()))
+                                    .await?,
+                            );
+                        }
                     }
                 } else {
                     // waiting confirmation.
@@ -2400,7 +2426,7 @@ pub async fn handle_read_jobs(
     for id in finished {
         let _ = remove_job(id, jobs);
     }
-    Ok(job_log)
+    Ok((job_log, receipt))
 }
 
 pub fn remove_all_empty_dir(path: &Path) -> ResultType<()> {
@@ -2551,6 +2577,84 @@ pub fn serialize_transfer_job(job: &TransferJob, done: bool, cancel: bool, error
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::protobuf::Message as _;
+
+    #[tokio::test]
+    async fn r_s11fg_read_step_returns_the_exact_file_frame_receipt() {
+        let (sender_side, receiver_side) = tokio::io::duplex(64);
+        let local_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 0));
+        let mut sender_tcp = crate::tcp::FramedStream::from(sender_side, local_addr);
+        let mut receiver_tcp = crate::tcp::FramedStream::from(receiver_side, local_addr);
+        sender_tcp.set_max_packet_length(8 * 1024);
+        receiver_tcp.set_max_packet_length(8 * 1024);
+        sender_tcp.set_session_keys(crate::cpace::DirectionalKeys {
+            send: [0x51; 32],
+            recv: [0x62; 32],
+        });
+        receiver_tcp.set_session_keys(crate::cpace::DirectionalKeys {
+            send: [0x62; 32],
+            recv: [0x51; 32],
+        });
+        let mut sender = crate::Stream::Tcp(sender_tcp);
+        let mut receiver = crate::Stream::Tcp(receiver_tcp);
+        let mut jobs = vec![
+            TransferJob::new_read(
+                41,
+                JobType::Generic,
+                "remote.bin".to_owned(),
+                DataSource::MemoryCursor(Cursor::new(vec![0x7a; 4_096])),
+                3,
+                false,
+                false,
+                false,
+            )
+            .expect("the first in-memory transfer job must be valid"),
+            TransferJob::new_read(
+                42,
+                JobType::Generic,
+                "later.bin".to_owned(),
+                DataSource::MemoryCursor(Cursor::new(vec![0x6b; 4_096])),
+                4,
+                false,
+                false,
+                false,
+            )
+            .expect("the second in-memory transfer job must be valid"),
+        ];
+
+        let (_log, receipt) = handle_read_jobs(&mut jobs, &mut sender)
+            .await
+            .expect("one read step must admit its file frame");
+        let mut receipt = receipt.expect("the data-producing step must return exact ownership");
+        assert!(
+            tokio::time::timeout(Duration::from_millis(20), &mut receipt)
+                .await
+                .is_err(),
+            "the receipt must not complete while its exact file frame is back-pressured"
+        );
+
+        let encoded = receiver
+            .next()
+            .await
+            .expect("the exact file frame must arrive")
+            .expect("the exact file frame must authenticate");
+        let message =
+            Message::parse_from_bytes(encoded.as_ref()).expect("the exact file frame must decode");
+        assert!(matches!(
+            message.union,
+            Some(message::Union::FileResponse(response))
+                if matches!(
+                    &response.union,
+                    Some(file_response::Union::Block(block)) if block.id == 41
+                )
+        ));
+        assert_eq!(jobs[1].transferred, 0);
+        assert!(jobs[1].data_stream.is_none());
+        receipt
+            .await
+            .expect("the writer must retain exact completion ownership")
+            .expect("the exact file frame write must succeed");
+    }
 
     struct TestTempDir {
         path: PathBuf,

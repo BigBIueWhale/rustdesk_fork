@@ -105,6 +105,12 @@ impl Interface for Session {
             log::error!("CLI viewer command admission failed: {err}");
         }
     }
+
+    fn try_send(&self, data: Data) -> hbb_common::ResultType<()> {
+        self.sender
+            .send(data)
+            .map_err(|err| hbb_common::anyhow::anyhow!(err.to_string()))
+    }
 }
 
 #[tokio::main(flavor = "current_thread")]

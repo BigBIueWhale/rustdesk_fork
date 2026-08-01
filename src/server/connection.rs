@@ -3901,7 +3901,7 @@ impl Connection {
                     if !conn.read_jobs.is_empty() {
                         conn.send_to_cm(ipc::Data::FileTransferLog(("transfer".to_string(), fs::serialize_transfer_jobs(&conn.read_jobs))));
                         match fs::handle_read_jobs(&mut conn.read_jobs, &mut conn.stream).await {
-                            Ok(log) => {
+                            Ok((log, _receipt)) => {
                                 if !log.is_empty() {
                                     conn.send_to_cm(ipc::Data::FileTransferLog(("transfer".to_string(), log)));
                                 }

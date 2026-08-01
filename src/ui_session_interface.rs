@@ -7,6 +7,7 @@ use crate::{
     ui_interface::use_texture_render,
 };
 use async_trait::async_trait;
+use hbb_common::anyhow::anyhow;
 #[cfg(all(target_os = "windows", not(feature = "flutter")))]
 use hbb_common::config::keys;
 #[cfg(not(feature = "flutter"))]
@@ -1798,7 +1799,11 @@ impl<T: InvokeUiSession> Session<T> {
                                 let remote_dir = self.get_option("remote_dir".to_string());
                                 let show_hidden =
                                     !self.get_option("remote_show_hidden".to_string()).is_empty();
-                                self.read_remote_dir(remote_dir, show_hidden);
+                                if let Err(err) = self.read_remote_dir(remote_dir, show_hidden) {
+                                    self.on_error(&format!(
+                                        "failed to request the remote directory: {err}"
+                                    ));
+                                }
                             }
                         }
                     } else if !self.is_terminal() {
@@ -1942,6 +1947,17 @@ impl<T: InvokeUiSession> Interface for Session<T> {
                 }
             }
         }
+    }
+
+    fn try_send(&self, data: Data) -> ResultType<()> {
+        let sender = self
+            .sender
+            .read()
+            .unwrap()
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| anyhow!("no active viewer connection round"))?;
+        sender.send(data).map_err(|err| anyhow!(err.to_string()))
     }
 
     fn msgbox(&self, msgtype: &str, title: &str, text: &str, link: &str) {

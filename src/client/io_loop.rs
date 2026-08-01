@@ -23,6 +23,14 @@ use crate::{clipboard::try_empty_clipboard_files, clipboard_file::unix_file_clip
     all(target_os = "macos", feature = "unix-file-copy-paste")
 ))]
 use clipboard::ContextSend;
+use hbb_common::futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
+#[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
+use hbb_common::tokio::sync::Mutex as TokioMutex;
+#[cfg(any(
+    target_os = "windows",
+    all(target_os = "macos", feature = "unix-file-copy-paste")
+))]
+use hbb_common::ResultType;
 use hbb_common::{
     allow_err,
     config::{self, Config, LocalConfig, PeerConfig, TransferSerde},
@@ -42,11 +50,9 @@ use hbb_common::{
     },
     Stream,
 };
-#[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
-use hbb_common::{tokio::sync::Mutex as TokioMutex, ResultType};
 use scrap::CodecFormat;
 use std::{
-    collections::{HashMap, VecDeque},
+    collections::{HashMap, HashSet, VecDeque},
     ffi::c_void,
     num::NonZeroI64,
     path::PathBuf,
@@ -67,6 +73,9 @@ const MAX_PEER_DISPLAY_DIMENSION: i32 = 32_768;
 const MAX_PEER_DISPLAY_ORIGIN_ABS: i32 = 1_000_000;
 const MAX_PEER_DISPLAY_SCALE: f64 = 16.0;
 const PRIVACY_MODE_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
+const MAX_PENDING_VIEWER_FILE_WRITES: usize = 256;
+const MAX_PENDING_VIEWER_FILE_WRITE_BYTES: usize = hbb_common::cpace::MAX_SESSION_PACKET * 2;
+const VIEWER_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ViewerVideoRefreshRequest {
@@ -331,6 +340,202 @@ impl Drop for OwnedInputOsPasswordTask {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ViewerFileWriteKind {
+    Control,
+    TransferData,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ViewerFileWriteContext {
+    job_id: Option<i32>,
+    file_num: i32,
+    operation: &'static str,
+    kind: ViewerFileWriteKind,
+}
+
+impl ViewerFileWriteContext {
+    fn control(job_id: Option<i32>, file_num: i32, operation: &'static str) -> Self {
+        Self {
+            job_id,
+            file_num,
+            operation,
+            kind: ViewerFileWriteKind::Control,
+        }
+    }
+
+    fn transfer_data(job_id: Option<i32>, file_num: i32) -> Self {
+        Self {
+            job_id,
+            file_num,
+            operation: "file transfer data",
+            kind: ViewerFileWriteKind::TransferData,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ViewerFileWriteLimits {
+    count: usize,
+    bytes: usize,
+    timeout: Duration,
+}
+
+const VIEWER_FILE_WRITE_LIMITS: ViewerFileWriteLimits = ViewerFileWriteLimits {
+    count: MAX_PENDING_VIEWER_FILE_WRITES,
+    bytes: MAX_PENDING_VIEWER_FILE_WRITE_BYTES,
+    timeout: VIEWER_FILE_WRITE_TIMEOUT,
+};
+
+#[derive(Debug)]
+struct ViewerFileWriteReservation {
+    id: u64,
+}
+
+struct ViewerFileWriteCompletion {
+    context: Option<ViewerFileWriteContext>,
+    result: Result<(), String>,
+}
+
+struct ViewerFileWriteTracker {
+    next_id: u64,
+    pending_bytes: usize,
+    limits: ViewerFileWriteLimits,
+    contexts: HashMap<u64, (ViewerFileWriteContext, usize)>,
+    completions: FuturesUnordered<BoxFuture<'static, (u64, Result<(), String>)>>,
+}
+
+impl ViewerFileWriteTracker {
+    fn new() -> Self {
+        Self::with_limits(VIEWER_FILE_WRITE_LIMITS)
+    }
+
+    fn with_limits(limits: ViewerFileWriteLimits) -> Self {
+        Self {
+            next_id: 0,
+            pending_bytes: 0,
+            limits,
+            contexts: HashMap::new(),
+            completions: FuturesUnordered::new(),
+        }
+    }
+
+    fn reserve(
+        &mut self,
+        context: ViewerFileWriteContext,
+        bytes: usize,
+    ) -> Result<ViewerFileWriteReservation, String> {
+        if self.contexts.len() >= self.limits.count {
+            return Err(format!(
+                "viewer file writer completion capacity reached (limit {})",
+                self.limits.count
+            ));
+        }
+        let pending_bytes = self
+            .pending_bytes
+            .checked_add(bytes)
+            .ok_or_else(|| "viewer file writer byte accounting overflowed".to_owned())?;
+        if pending_bytes > self.limits.bytes {
+            return Err(format!(
+                "viewer file writer byte capacity reached ({} pending + {} bytes; limit {})",
+                self.pending_bytes, bytes, self.limits.bytes
+            ));
+        }
+        let id = self
+            .next_id
+            .checked_add(1)
+            .ok_or_else(|| "viewer file writer completion sequence exhausted".to_owned())?;
+        if self.contexts.contains_key(&id) {
+            return Err("viewer file writer completion identity was reused".to_owned());
+        }
+        self.next_id = id;
+        self.pending_bytes = pending_bytes;
+        self.contexts.insert(id, (context, bytes));
+        Ok(ViewerFileWriteReservation { id })
+    }
+
+    fn attach(
+        &mut self,
+        reservation: ViewerFileWriteReservation,
+        receipt: hbb_common::tcp::WriterReceipt,
+    ) -> Result<(), String> {
+        if !self.contexts.contains_key(&reservation.id) {
+            return Err("viewer file writer reservation was lost before attachment".to_owned());
+        }
+        let id = reservation.id;
+        let timeout = self.limits.timeout;
+        self.completions.push(
+            async move {
+                let result = match time::timeout(timeout, receipt).await {
+                    Ok(Ok(Ok(()))) => Ok(()),
+                    Ok(Ok(Err(err))) => Err(format!("transport writer failed: {err}")),
+                    Ok(Err(_)) => {
+                        Err("transport writer retired before exact completion".to_owned())
+                    }
+                    Err(_) => Err("transport writer completion timed out".to_owned()),
+                };
+                (id, result)
+            }
+            .boxed(),
+        );
+        Ok(())
+    }
+
+    fn cancel(
+        &mut self,
+        reservation: ViewerFileWriteReservation,
+    ) -> Result<Option<ViewerFileWriteContext>, String> {
+        let Some((context, bytes)) = self.contexts.remove(&reservation.id) else {
+            return Ok(None);
+        };
+        self.pending_bytes = self
+            .pending_bytes
+            .checked_sub(bytes)
+            .ok_or_else(|| "viewer file writer byte accounting underflowed".to_owned())?;
+        Ok(Some(context))
+    }
+
+    fn is_empty(&self) -> bool {
+        self.contexts.is_empty()
+    }
+
+    fn has_transfer_data(&self) -> bool {
+        self.contexts
+            .values()
+            .any(|(context, _)| context.kind == ViewerFileWriteKind::TransferData)
+    }
+
+    async fn next(&mut self) -> Option<ViewerFileWriteCompletion> {
+        let (id, mut result) = self.completions.next().await?;
+        let context = match self.contexts.remove(&id) {
+            Some((context, bytes)) => {
+                match self.pending_bytes.checked_sub(bytes) {
+                    Some(pending_bytes) => self.pending_bytes = pending_bytes,
+                    None => {
+                        self.pending_bytes = 0;
+                        result = Err("viewer file writer byte accounting underflowed".to_owned());
+                    }
+                }
+                Some(context)
+            }
+            None => {
+                result = Err("viewer file writer completion identity was not pending".to_owned());
+                None
+            }
+        };
+        Some(ViewerFileWriteCompletion { context, result })
+    }
+
+    fn retire(&mut self) -> Vec<ViewerFileWriteContext> {
+        self.completions = FuturesUnordered::new();
+        self.pending_bytes = 0;
+        self.contexts
+            .drain()
+            .map(|(_, (context, _))| context)
+            .collect()
+    }
+}
+
 pub struct Remote<T: InvokeUiSession> {
     handler: Session<T>,
     audio_thread: OwnedMediaThread,
@@ -360,6 +565,8 @@ pub struct Remote<T: InvokeUiSession> {
     peer_text_gate: crate::peer_text::PeerTextGate,
     pending_screenshot_requests: PendingScreenshotRequests,
     pending_privacy_mode_request: Option<PendingPrivacyModeRequest>,
+    file_writes: ViewerFileWriteTracker,
+    file_flow_failure: Option<(ViewerFileWriteContext, String)>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -744,6 +951,183 @@ impl<T: InvokeUiSession> Remote<T> {
             peer_text_gate: Default::default(),
             pending_screenshot_requests: Default::default(),
             pending_privacy_mode_request: None,
+            file_writes: ViewerFileWriteTracker::new(),
+            file_flow_failure: None,
+        }
+    }
+
+    async fn enqueue_file_message(
+        file_writes: &mut ViewerFileWriteTracker,
+        peer: &mut Stream,
+        message: &Message,
+        context: ViewerFileWriteContext,
+    ) -> Result<(), String> {
+        let payload_bytes = usize::try_from(message.compute_size())
+            .map_err(|_| "viewer file message size does not fit usize".to_owned())?;
+        let retained_bytes = payload_bytes
+            .checked_add(hbb_common::sodiumoxide::crypto::secretbox::MACBYTES)
+            .ok_or_else(|| "viewer file message size accounting overflowed".to_owned())?;
+        let reservation = file_writes.reserve(context, retained_bytes)?;
+        let receipt = match peer.send_with_receipt(message).await {
+            Ok(receipt) => receipt,
+            Err(err) => {
+                let cancel_result = file_writes.cancel(reservation);
+                return match cancel_result {
+                    Ok(_) => Err(format!(
+                        "failed to admit file message to transport writer: {err}"
+                    )),
+                    Err(cancel_err) => Err(format!(
+                        "failed to admit file message to transport writer: {err}; {cancel_err}"
+                    )),
+                };
+            }
+        };
+        file_writes.attach(reservation, receipt)
+    }
+
+    fn file_message_context(message: &Message) -> Option<ViewerFileWriteContext> {
+        let Some(message::Union::FileAction(action)) = message.union.as_ref() else {
+            return None;
+        };
+        Some(match action.union.as_ref() {
+            Some(file_action::Union::Send(value)) => {
+                ViewerFileWriteContext::control(Some(value.id), value.file_num, "send files")
+            }
+            Some(file_action::Union::Receive(value)) => {
+                ViewerFileWriteContext::control(Some(value.id), value.file_num, "receive files")
+            }
+            Some(file_action::Union::RemoveDir(value)) => {
+                ViewerFileWriteContext::control(Some(value.id), -1, "remove remote directory")
+            }
+            Some(file_action::Union::RemoveFile(value)) => ViewerFileWriteContext::control(
+                Some(value.id),
+                value.file_num,
+                "remove remote file",
+            ),
+            Some(file_action::Union::Create(value)) => {
+                ViewerFileWriteContext::control(Some(value.id), -1, "create remote directory")
+            }
+            Some(file_action::Union::Cancel(value)) => {
+                ViewerFileWriteContext::control(Some(value.id), -1, "cancel file transfer")
+            }
+            Some(file_action::Union::SendConfirm(value)) => ViewerFileWriteContext::control(
+                Some(value.id),
+                value.file_num,
+                "confirm file transfer",
+            ),
+            Some(file_action::Union::Rename(value)) => {
+                ViewerFileWriteContext::control(Some(value.id), -1, "rename remote file")
+            }
+            Some(file_action::Union::AllFiles(value)) => {
+                ViewerFileWriteContext::control(Some(value.id), -1, "enumerate remote files")
+            }
+            Some(file_action::Union::ReadDir(_)) => {
+                ViewerFileWriteContext::control(None, -1, "read remote directory")
+            }
+            Some(file_action::Union::ReadEmptyDirs(_)) => {
+                ViewerFileWriteContext::control(None, -1, "read remote empty directories")
+            }
+            _ => return None,
+        })
+    }
+
+    async fn send_tracked_file_action(&mut self, peer: &mut Stream, message: &Message) -> bool {
+        let Some(context) = Self::file_message_context(message) else {
+            let context = ViewerFileWriteContext::control(None, -1, "typed file command");
+            return self.record_file_flow_failure(
+                context,
+                "tracked file command did not contain a recognized FileAction",
+            );
+        };
+        match Self::enqueue_file_message(&mut self.file_writes, peer, message, context.clone())
+            .await
+        {
+            Ok(()) => true,
+            Err(err) => self.record_file_flow_failure(context, err),
+        }
+    }
+
+    async fn enqueue_file_transfer_step(
+        file_writes: &mut ViewerFileWriteTracker,
+        read_jobs: &mut Vec<fs::TransferJob>,
+        peer: &mut Stream,
+        context: ViewerFileWriteContext,
+    ) -> Result<(), String> {
+        // Reserve before the common producer admits its one possible maximum-size session packet.
+        let reservation = file_writes.reserve(context, hbb_common::cpace::MAX_SESSION_PACKET)?;
+        let receipt = match fs::handle_read_jobs(read_jobs, peer).await {
+            Ok((_log, Some(receipt))) => receipt,
+            Ok((_log, None)) => {
+                return match file_writes.cancel(reservation) {
+                    Ok(Some(_)) => Ok(()),
+                    Ok(None) => Err(
+                        "file transfer writer reservation disappeared before cancellation"
+                            .to_owned(),
+                    ),
+                    Err(err) => Err(err),
+                };
+            }
+            Err(err) => {
+                let cancel_result = file_writes.cancel(reservation);
+                return match cancel_result {
+                    Ok(_) => Err(err.to_string()),
+                    Err(cancel_err) => Err(format!(
+                        "file transfer producer failed: {err}; {cancel_err}"
+                    )),
+                };
+            }
+        };
+        file_writes.attach(reservation, receipt)
+    }
+
+    fn record_file_flow_failure(
+        &mut self,
+        context: ViewerFileWriteContext,
+        error: impl Into<String>,
+    ) -> bool {
+        let error = error.into();
+        log::error!(
+            "viewer {} failed before peer operation completion: {}",
+            context.operation,
+            error
+        );
+        if self.file_flow_failure.is_none() {
+            self.file_flow_failure = Some((context, error));
+        }
+        false
+    }
+
+    fn finish_file_flow(&mut self) {
+        let pending = self.file_writes.retire();
+        let Some((failed, error)) = self.file_flow_failure.take() else {
+            return;
+        };
+        let message = format!(
+            "{} failed before peer operation completion: {}",
+            failed.operation, error
+        );
+        self.handler.on_error(&message);
+
+        let mut jobs = HashSet::new();
+        if let Some(id) = failed.job_id {
+            jobs.insert((id, failed.file_num));
+        }
+        for context in pending {
+            if let Some(id) = context.job_id {
+                jobs.insert((id, context.file_num));
+            }
+        }
+        for job in &self.read_jobs {
+            jobs.insert((job.id(), job.file_num()));
+        }
+        for job in &self.write_jobs {
+            jobs.insert((job.id(), job.file_num()));
+        }
+        for id in self.remove_jobs.keys() {
+            jobs.insert((*id, -1));
+        }
+        for (id, file_num) in jobs {
+            self.handler.job_error(id, message.clone(), file_num);
         }
     }
 
@@ -897,6 +1281,31 @@ impl<T: InvokeUiSession> Remote<T> {
                                 }
                             }
                         }
+                        completion = self.file_writes.next(), if !self.file_writes.is_empty() => {
+                            let Some(completion) = completion else {
+                                let context = ViewerFileWriteContext::control(
+                                    None,
+                                    -1,
+                                    "file writer completion",
+                                );
+                                self.record_file_flow_failure(
+                                    context,
+                                    "file writer completion set ended while ownership was pending",
+                                );
+                                break;
+                            };
+                            if let Err(err) = completion.result {
+                                let context = completion.context.unwrap_or_else(|| {
+                                    ViewerFileWriteContext::control(
+                                        None,
+                                        -1,
+                                        "file writer completion",
+                                    )
+                                });
+                                self.record_file_flow_failure(context, err);
+                                break;
+                            }
+                        }
                         refresh = self.video_refresh.recv() => {
                             let Some(refresh) = refresh else {
                                 log::error!("viewer video refresh mailbox closed before its network round");
@@ -923,15 +1332,39 @@ impl<T: InvokeUiSession> Remote<T> {
                             #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
                             self.handle_local_clipboard_msg(&mut peer, _msg).await;
                         }
-                        _ = self.timer.tick() => {
+                        _ = self.timer.tick(), if !self.file_writes.has_transfer_data() => {
                             if last_recv_time.elapsed() >= SEC30 {
                                 self.handler.msgbox("error", "Connection Error", "Timeout", "");
                                 break;
                             }
                             if !self.read_jobs.is_empty() {
-                                if let Err(err) = fs::handle_read_jobs(&mut self.read_jobs, &mut peer).await {
-                                    self.handler.msgbox("error", "Connection Error", &err.to_string(), "");
-                                    break;
+                                let context = self
+                                    .read_jobs
+                                    .iter()
+                                    .find(|job| !job.is_last_job)
+                                    .or_else(|| self.read_jobs.first())
+                                    .map(|job| {
+                                        ViewerFileWriteContext::transfer_data(
+                                            Some(job.id()),
+                                            job.file_num(),
+                                        )
+                                    })
+                                    .unwrap_or_else(|| {
+                                        ViewerFileWriteContext::transfer_data(None, -1)
+                                    });
+                                match Self::enqueue_file_transfer_step(
+                                    &mut self.file_writes,
+                                    &mut self.read_jobs,
+                                    &mut peer,
+                                    context.clone(),
+                                )
+                                .await
+                                {
+                                    Ok(()) => {}
+                                    Err(err) => {
+                                        self.record_file_flow_failure(context, err);
+                                        break;
+                                    }
                                 }
                                 self.update_jobs_status();
                             } else {
@@ -988,6 +1421,7 @@ impl<T: InvokeUiSession> Remote<T> {
                 });
             }
         }
+        self.finish_file_flow();
         self.shutdown_workers().await;
         // set_disconnected_ok is used to check if new connection round is started.
         let _set_disconnected_ok = self.handler.connection_round_owner.finish(round);
@@ -1229,6 +1663,14 @@ impl<T: InvokeUiSession> Remote<T> {
                     log::error!("refusing viewer video refresh on the generic command queue");
                     return false;
                 }
+                if matches!(msg.union.as_ref(), Some(message::Union::FileAction(_))) {
+                    let context =
+                        ViewerFileWriteContext::control(None, -1, "generic-queue file command");
+                    return self.record_file_flow_failure(
+                        context,
+                        "file action bypassed the tracked file command path",
+                    );
+                }
                 match peer.send(&msg).await {
                     Ok(()) => self.record_pending_privacy_mode_request(&msg),
                     Err(err) => {
@@ -1237,13 +1679,18 @@ impl<T: InvokeUiSession> Remote<T> {
                     }
                 }
             }
+            Data::FileMessage(msg) => {
+                if !self.send_tracked_file_action(peer, &msg).await {
+                    return false;
+                }
+            }
             Data::SendFiles((id, r#type, path, to, file_num, include_hidden, is_remote)) => {
                 log::info!("send files, is remote {}", is_remote);
                 let od = can_enable_overwrite_detection(self.handler.lc.read().unwrap().version);
                 if is_remote {
                     log::debug!("New job {}, write to {} from remote {}", id, to, path);
                     let to = fs::DataSource::FilePath(PathBuf::from(&to));
-                    self.write_jobs.push(fs::TransferJob::new_write(
+                    let job = fs::TransferJob::new_write(
                         id,
                         r#type,
                         path.clone(),
@@ -1252,11 +1699,12 @@ impl<T: InvokeUiSession> Remote<T> {
                         include_hidden,
                         is_remote,
                         od,
-                    ));
-                    allow_err!(
-                        peer.send(&fs::new_send(id, r#type, path, file_num, include_hidden))
-                            .await
                     );
+                    let message = fs::new_send(id, r#type, path, file_num, include_hidden);
+                    if !self.send_tracked_file_action(peer, &message).await {
+                        return false;
+                    }
+                    self.write_jobs.push(job);
                 } else {
                     match fs::TransferJob::new_read(
                         id,
@@ -1296,12 +1744,12 @@ impl<T: InvokeUiSession> Remote<T> {
                                 fs::transform_windows_path(&mut files);
                             }
                             let total_size = job.total_size();
+                            let message = fs::new_receive(id, to, file_num, files, total_size);
+                            if !self.send_tracked_file_action(peer, &message).await {
+                                return false;
+                            }
                             self.read_jobs.push(job);
                             self.timer = crate::rustdesk_interval(time::interval(MILLI1));
-                            allow_err!(
-                                peer.send(&fs::new_receive(id, to, file_num, files, total_size))
-                                    .await
-                            );
                         }
                     }
                 }
@@ -1368,16 +1816,17 @@ impl<T: InvokeUiSession> Remote<T> {
                     if let Some(job) = get_job(id, &mut self.write_jobs) {
                         job.is_last_job = false;
                         job.is_resume = true;
-                        allow_err!(
-                            peer.send(&fs::new_send(
-                                id,
-                                fs::JobType::Generic,
-                                job.remote.clone(),
-                                job.file_num,
-                                job.show_hidden
-                            ))
-                            .await
+                        let file_num = job.file_num;
+                        let message = fs::new_send(
+                            id,
+                            fs::JobType::Generic,
+                            job.remote.clone(),
+                            file_num,
+                            job.show_hidden,
                         );
+                        if !self.send_tracked_file_action(peer, &message).await {
+                            return false;
+                        }
                     }
                 } else {
                     if let Some(job) = get_job(id, &mut self.read_jobs) {
@@ -1395,16 +1844,17 @@ impl<T: InvokeUiSession> Remote<T> {
                                     // peer is not windows, need transform \ to /
                                     fs::transform_windows_path(&mut files);
                                 }
-                                allow_err!(
-                                    peer.send(&fs::new_receive(
-                                        id,
-                                        job.remote.clone(),
-                                        job.file_num,
-                                        files,
-                                        job.total_size(),
-                                    ))
-                                    .await
+                                let file_num = job.file_num;
+                                let message = fs::new_receive(
+                                    id,
+                                    job.remote.clone(),
+                                    file_num,
+                                    files,
+                                    job.total_size(),
                                 );
+                                if !self.send_tracked_file_action(peer, &message).await {
+                                    return false;
+                                }
                             }
                             fs::DataSource::MemoryCursor(_) => {
                                 // unreachable!()
@@ -1469,7 +1919,9 @@ impl<T: InvokeUiSession> Remote<T> {
                         job.confirm(&req).await;
                         file_action.set_send_confirm(req);
                         msg.set_file_action(file_action);
-                        allow_err!(peer.send(&msg).await);
+                        if !self.send_tracked_file_action(peer, &msg).await {
+                            return false;
+                        }
                     }
                 }
             }
@@ -1485,7 +1937,9 @@ impl<T: InvokeUiSession> Remote<T> {
                         ..Default::default()
                     });
                     msg_out.set_file_action(file_action);
-                    allow_err!(peer.send(&msg_out).await);
+                    if !self.send_tracked_file_action(peer, &msg_out).await {
+                        return false;
+                    }
                     self.remove_jobs
                         .insert(id, RemoveJob::new(Vec::new(), path, sep, is_remote));
                 } else {
@@ -1508,7 +1962,9 @@ impl<T: InvokeUiSession> Remote<T> {
                 }
             }
             Data::CancelJob(id) => {
-                self.cancel_transfer_job(id, peer).await;
+                if !self.cancel_transfer_job(id, peer).await {
+                    return false;
+                }
             }
             Data::RemoveDir((id, path)) => {
                 let mut msg_out = Message::new();
@@ -1520,7 +1976,9 @@ impl<T: InvokeUiSession> Remote<T> {
                     ..Default::default()
                 });
                 msg_out.set_file_action(file_action);
-                allow_err!(peer.send(&msg_out).await);
+                if !self.send_tracked_file_action(peer, &msg_out).await {
+                    return false;
+                }
             }
             Data::RemoveFile((id, path, file_num, is_remote)) => {
                 if is_remote {
@@ -1533,7 +1991,9 @@ impl<T: InvokeUiSession> Remote<T> {
                         ..Default::default()
                     });
                     msg_out.set_file_action(file_action);
-                    allow_err!(peer.send(&msg_out).await);
+                    if !self.send_tracked_file_action(peer, &msg_out).await {
+                        return false;
+                    }
                 } else {
                     match fs::remove_file(&path) {
                         Err(err) => {
@@ -1555,7 +2015,9 @@ impl<T: InvokeUiSession> Remote<T> {
                         ..Default::default()
                     });
                     msg_out.set_file_action(file_action);
-                    allow_err!(peer.send(&msg_out).await);
+                    if !self.send_tracked_file_action(peer, &msg_out).await {
+                        return false;
+                    }
                 } else {
                     match fs::create_dir(&path) {
                         Err(err) => {
@@ -1578,7 +2040,9 @@ impl<T: InvokeUiSession> Remote<T> {
                         ..Default::default()
                     });
                     msg_out.set_file_action(file_action);
-                    allow_err!(peer.send(&msg_out).await);
+                    if !self.send_tracked_file_action(peer, &msg_out).await {
+                        return false;
+                    }
                 } else {
                     let err = fs::rename_file(&path, &new_name)
                         .err()
@@ -1721,7 +2185,7 @@ impl<T: InvokeUiSession> Remote<T> {
         }
     }
 
-    async fn cancel_transfer_job(&mut self, id: i32, peer: &mut Stream) {
+    async fn cancel_transfer_job(&mut self, id: i32, peer: &mut Stream) -> bool {
         let mut msg_out = Message::new();
         let mut file_action = FileAction::new();
         file_action.set_cancel(FileTransferCancel {
@@ -1729,12 +2193,13 @@ impl<T: InvokeUiSession> Remote<T> {
             ..Default::default()
         });
         msg_out.set_file_action(file_action);
-        allow_err!(peer.send(&msg_out).await);
+        let sent = self.send_tracked_file_action(peer, &msg_out).await;
         if let Some(job) = fs::remove_job(id, &mut self.write_jobs) {
             job.remove_download_file();
         }
         let _ = fs::remove_job(id, &mut self.read_jobs);
         self.remove_jobs.remove(&id);
+        sent
     }
 
     pub async fn sync_jobs_status_to_local(&mut self) -> bool {
@@ -2281,7 +2746,9 @@ impl<T: InvokeUiSession> Remote<T> {
                                     fd.id,
                                     err
                                 );
-                                self.cancel_transfer_job(fd.id, peer).await;
+                                if !self.cancel_transfer_job(fd.id, peer).await {
+                                    return false;
+                                }
                                 self.handle_job_status(fd.id, -1, Some(err));
                             }
                         }
@@ -2316,7 +2783,10 @@ impl<T: InvokeUiSession> Remote<T> {
                                                 };
                                                 job.confirm(&req).await;
                                                 let msg = new_send_confirm(req);
-                                                allow_err!(peer.send(&msg).await);
+                                                if !self.send_tracked_file_action(peer, &msg).await
+                                                {
+                                                    return false;
+                                                }
                                             } else {
                                                 self.handler.override_file_confirm(
                                                     digest.id,
@@ -2356,7 +2826,12 @@ impl<T: InvokeUiSession> Remote<T> {
                                                         };
                                                         job.confirm(&req).await;
                                                         let msg = new_send_confirm(req);
-                                                        allow_err!(peer.send(&msg).await);
+                                                        if !self
+                                                            .send_tracked_file_action(peer, &msg)
+                                                            .await
+                                                        {
+                                                            return false;
+                                                        }
                                                     }
                                                     DigestCheckResult::NeedConfirm(digest) => {
                                                         let mut overwrite_strategy =
@@ -2384,7 +2859,14 @@ impl<T: InvokeUiSession> Remote<T> {
                                                                 };
                                                             job.confirm(&req).await;
                                                             let msg = new_send_confirm(req);
-                                                            allow_err!(peer.send(&msg).await);
+                                                            if !self
+                                                                .send_tracked_file_action(
+                                                                    peer, &msg,
+                                                                )
+                                                                .await
+                                                            {
+                                                                return false;
+                                                            }
                                                         } else {
                                                             self.handler.override_file_confirm(
                                                                 digest.id,
@@ -2401,10 +2883,15 @@ impl<T: InvokeUiSession> Remote<T> {
                                                         file_num: digest.file_num,
                                                         union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(0)),
                                                         ..Default::default()
-                                                    };
+                                                        };
                                                         job.confirm(&req).await;
                                                         let msg = new_send_confirm(req);
-                                                        allow_err!(peer.send(&msg).await);
+                                                        if !self
+                                                            .send_tracked_file_action(peer, &msg)
+                                                            .await
+                                                        {
+                                                            return false;
+                                                        }
                                                     }
                                                 },
                                                 Err(err) => {
@@ -3219,6 +3706,133 @@ mod tests {
     use super::*;
     use async_trait::async_trait;
 
+    fn file_write_test_limits(count: usize, bytes: usize) -> ViewerFileWriteLimits {
+        ViewerFileWriteLimits {
+            count,
+            bytes,
+            timeout: Duration::from_millis(25),
+        }
+    }
+
+    #[hbb_common::tokio::test]
+    async fn r_s11fg_file_writer_success_releases_exact_count_and_bytes() {
+        let mut tracker = ViewerFileWriteTracker::with_limits(file_write_test_limits(2, 16));
+        let context = ViewerFileWriteContext::control(Some(7), 3, "test file request");
+        let reservation = tracker.reserve(context.clone(), 16).unwrap();
+        let (completion, receipt) = hbb_common::tokio::sync::oneshot::channel();
+        tracker.attach(reservation, receipt).unwrap();
+        assert!(!tracker.is_empty());
+        completion.send(Ok(())).unwrap();
+
+        let completed = tracker.next().await.unwrap();
+        assert_eq!(completed.context, Some(context));
+        assert_eq!(completed.result, Ok(()));
+        assert!(tracker.is_empty());
+        assert_eq!(tracker.pending_bytes, 0);
+
+        let replacement = tracker
+            .reserve(
+                ViewerFileWriteContext::control(Some(8), 4, "replacement request"),
+                16,
+            )
+            .unwrap();
+        assert!(tracker.cancel(replacement).unwrap().is_some());
+        assert_eq!(tracker.pending_bytes, 0);
+    }
+
+    #[test]
+    fn r_s11fg_file_writer_count_byte_and_sequence_limits_fail_closed() {
+        let mut tracker = ViewerFileWriteTracker::with_limits(file_write_test_limits(1, 8));
+        let first = tracker
+            .reserve(
+                ViewerFileWriteContext::control(Some(1), 0, "first request"),
+                8,
+            )
+            .unwrap();
+        assert!(tracker
+            .reserve(
+                ViewerFileWriteContext::control(Some(2), 0, "count overflow"),
+                0,
+            )
+            .unwrap_err()
+            .contains("completion capacity"));
+        tracker.cancel(first).unwrap();
+        assert!(tracker
+            .reserve(
+                ViewerFileWriteContext::control(Some(3), 0, "byte overflow"),
+                9,
+            )
+            .unwrap_err()
+            .contains("byte capacity"));
+
+        tracker.next_id = u64::MAX;
+        assert!(tracker
+            .reserve(
+                ViewerFileWriteContext::control(Some(4), 0, "sequence overflow"),
+                1,
+            )
+            .unwrap_err()
+            .contains("sequence exhausted"));
+        assert!(tracker.is_empty());
+        assert_eq!(tracker.pending_bytes, 0);
+    }
+
+    #[hbb_common::tokio::test]
+    async fn r_s11fg_file_writer_failure_and_retirement_are_explicit() {
+        let mut tracker = ViewerFileWriteTracker::with_limits(file_write_test_limits(2, 16));
+        let failed_context = ViewerFileWriteContext::control(Some(5), 2, "failed request");
+        let reservation = tracker.reserve(failed_context.clone(), 4).unwrap();
+        let (completion, receipt) = hbb_common::tokio::sync::oneshot::channel();
+        tracker.attach(reservation, receipt).unwrap();
+        completion
+            .send(Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "test writer failure",
+            )))
+            .unwrap();
+        let completed = tracker.next().await.unwrap();
+        assert_eq!(completed.context, Some(failed_context));
+        assert!(completed
+            .result
+            .unwrap_err()
+            .contains("test writer failure"));
+
+        let canceled_context = ViewerFileWriteContext::control(Some(11), 4, "canceled receipt");
+        let reservation = tracker.reserve(canceled_context.clone(), 4).unwrap();
+        let (completion, receipt) = hbb_common::tokio::sync::oneshot::channel();
+        tracker.attach(reservation, receipt).unwrap();
+        drop(completion);
+        let completed = tracker.next().await.unwrap();
+        assert_eq!(completed.context, Some(canceled_context));
+        assert!(completed
+            .result
+            .unwrap_err()
+            .contains("retired before exact completion"));
+
+        let retained_context = ViewerFileWriteContext::transfer_data(Some(6), 9);
+        let reservation = tracker.reserve(retained_context.clone(), 4).unwrap();
+        let (_completion, receipt) = hbb_common::tokio::sync::oneshot::channel();
+        tracker.attach(reservation, receipt).unwrap();
+        assert!(tracker.has_transfer_data());
+        assert_eq!(tracker.retire(), vec![retained_context]);
+        assert!(tracker.is_empty());
+        assert_eq!(tracker.pending_bytes, 0);
+    }
+
+    #[hbb_common::tokio::test]
+    async fn r_s11fg_file_writer_timeout_is_terminal_and_bounded() {
+        let mut tracker = ViewerFileWriteTracker::with_limits(file_write_test_limits(1, 8));
+        let context = ViewerFileWriteContext::control(Some(10), 0, "timed request");
+        let reservation = tracker.reserve(context.clone(), 1).unwrap();
+        let (_completion, receipt) = hbb_common::tokio::sync::oneshot::channel();
+        tracker.attach(reservation, receipt).unwrap();
+
+        let completed = tracker.next().await.unwrap();
+        assert_eq!(completed.context, Some(context));
+        assert!(completed.result.unwrap_err().contains("timed out"));
+        assert!(tracker.is_empty());
+    }
+
     #[test]
     fn r_s11ff_refresh_mailbox_coalesces_duplicates_and_preserves_distinct_order() {
         let (sender, receiver) = viewer_video_refresh_channel();
@@ -3324,6 +3938,10 @@ mod tests {
     #[async_trait]
     impl Interface for InputSequenceTestInterface {
         fn send(&self, _data: Data) {
+            panic!("the exact-round input sequence must not use the mutable interface sender");
+        }
+
+        fn try_send(&self, _data: Data) -> hbb_common::ResultType<()> {
             panic!("the exact-round input sequence must not use the mutable interface sender");
         }
 

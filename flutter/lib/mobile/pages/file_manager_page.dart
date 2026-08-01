@@ -250,7 +250,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                           actions: [
                             dialogButton("Cancel",
                                 onPressed: () => close(false), isOutline: true),
-                            dialogButton("OK", onPressed: () {
+                            dialogButton("OK", onPressed: () async {
                               if (name.value.text.isNotEmpty) {
                                 if (!PathUtil.validName(
                                     name.value.text,
@@ -262,10 +262,18 @@ class _FileManagerPageState extends State<FileManagerPage> {
                                   });
                                   return;
                                 }
-                                currentFileController.createDir(PathUtil.join(
-                                    currentDir.path,
-                                    name.value.text,
-                                    currentOptions.isWindows));
+                                try {
+                                  await currentFileController.createDir(
+                                      PathUtil.join(
+                                          currentDir.path,
+                                          name.value.text,
+                                          currentOptions.isWindows));
+                                } catch (e) {
+                                  setState(() {
+                                    errorText = e.toString();
+                                  });
+                                  return;
+                                }
                                 close();
                               }
                             })
@@ -348,14 +356,14 @@ class _FileManagerPageState extends State<FileManagerPage> {
                 ),
                 IconButton(
                   icon: Icon(Icons.paste),
-                  onPressed: () {
+                  onPressed: () async {
                     selectMode.value = SelectMode.none;
                     final otherSide = showLocal
                         ? model.remoteController
                         : model.localController;
                     final thisSideData =
                         DirectoryData(currentDir, currentOptions);
-                    otherSide.sendFiles(selectedItems, thisSideData);
+                    await otherSide.sendFiles(selectedItems, thisSideData);
                     selectedItems.items.clear();
                     selectMode.value = SelectMode.none;
                   },
@@ -381,8 +389,8 @@ class _FileManagerPageState extends State<FileManagerPage> {
             title: translate("Waiting"),
             text:
                 "${translate("Speed")}:  ${readableFileSize(activeJob.speed)}/s",
-            onCanceled: () {
-              model.jobController.cancelJob(activeJob.id);
+            onCanceled: () async {
+              await model.jobController.cancelJob(activeJob.id);
               jobTable.clear();
             },
           );
@@ -564,17 +572,17 @@ class _FileManagerViewState extends State<FileManagerView> {
                                   )
                               ];
                             },
-                            onSelected: (v) {
+                            onSelected: (v) async {
                               if (v == "delete") {
                                 final items = SelectedItems(isLocal: isLocal);
                                 items.add(entries[index]);
-                                controller.removeAction(items);
+                                await controller.removeAction(items);
                               } else if (v == "multi_select") {
                                 _selectedItems.clear();
                                 widget.selectMode.toggle(isLocal);
                                 setState(() {});
                               } else if (v == "rename") {
-                                controller.renameAction(
+                                await controller.renameAction(
                                     entries[index], isLocal);
                               }
                             }),

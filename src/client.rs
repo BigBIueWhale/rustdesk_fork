@@ -3721,6 +3721,9 @@ pub async fn handle_login_from_ui(
 pub trait Interface: Send + Clone + 'static + Sized {
     /// Send message data to remote peer.
     fn send(&self, data: Data);
+    /// Admit one command to the exact current viewer round and expose rejection to callers whose
+    /// own operation would otherwise wait for a peer response that can never arrive.
+    fn try_send(&self, data: Data) -> ResultType<()>;
     fn msgbox(&self, msgtype: &str, title: &str, text: &str, link: &str);
     fn handle_login_error(&self, err: &str) -> bool;
     fn handle_peer_info(&self, pi: PeerInfo);
@@ -3800,6 +3803,7 @@ pub enum Data {
         activate: bool,
     },
     Message(Message),
+    FileMessage(Message),
     SendFiles((i32, JobType, String, String, i32, bool, bool)),
     RemoveDirAll((i32, String, bool, bool)),
     ConfirmDeleteFiles((i32, i32)),
@@ -4008,7 +4012,9 @@ impl Data {
             Self::ToggleClipboardFile => Some(0),
             Self::Login((password, _)) => checked_string_bytes(&[password]),
             Self::InputOsPassword { password, .. } => checked_string_bytes(&[password]),
-            Self::Message(message) => usize::try_from(message.compute_size()).ok(),
+            Self::Message(message) | Self::FileMessage(message) => {
+                usize::try_from(message.compute_size()).ok()
+            }
             Self::SendFiles((_, _, path, to, _, _, _))
             | Self::AddJob((_, _, path, to, _, _, _)) => checked_string_bytes(&[path, to]),
             Self::RemoveDirAll((_, path, _, _))

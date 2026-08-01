@@ -485,7 +485,12 @@ class FfiModel with ChangeNotifier {
         }
       } else if (name == "send_emptry_dirs") {
         if (isWeb) {
-          parent.target?.fileModel.sendEmptyDirs(evt);
+          final future = parent.target?.fileModel.sendEmptyDirs(evt);
+          if (future != null) {
+            unawaited(future.catchError((Object error) {
+              debugPrint('Failed to create remote empty directories: $error');
+            }));
+          }
         }
       } else if (name == "record_status") {
         if (desktopType == DesktopType.remote ||

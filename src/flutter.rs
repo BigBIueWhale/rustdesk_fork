@@ -2503,7 +2503,10 @@ pub mod sessions {
                     );
                     if is_support_multi_ui_session {
                         for display in displays_refresh.iter() {
-                            s.refresh_video(*display);
+                            if let Err(err) = s.refresh_video(*display) {
+                                log::error!("failed to refresh switched display {display}: {err}");
+                                break;
+                            }
                         }
                     }
                 }
@@ -2584,6 +2587,27 @@ pub mod sessions {
                 .and_then(|handler| handler.client_owner_id.as_ref())
                 == Some(client_owner_id)
         })
+    }
+
+    pub fn request_video_refresh_for_exact_ui_owner(
+        session_id: &SessionID,
+        client_owner_id: &SessionID,
+        display: i32,
+    ) -> ResultType<()> {
+        let sessions = SESSIONS.read().unwrap();
+        for session in sessions.values() {
+            let handlers = session.ui_handler.session_handlers.read().unwrap();
+            if let Some(handler) = handlers.get(session_id) {
+                if handler.client_owner_id.as_ref() != Some(client_owner_id) {
+                    bail!("viewer video refresh is not owned by this UI client");
+                }
+                // Keep the exact UI-owner read guard until nonblocking admission has
+                // linearized. Concurrent replacement therefore wins wholly before or after
+                // this request; a stale owner cannot select its successor.
+                return session.refresh_video(display);
+            }
+        }
+        bail!("viewer video refresh session is no longer active")
     }
 
     #[inline]
@@ -3023,10 +3047,57 @@ pub fn retire_android_client_owner(generation: u64, session_id: &SessionID) -> (
 #[cfg(test)]
 mod mobile_session_lifecycle_tests {
     use super::*;
+    use crate::client::io_loop::{viewer_video_refresh_channel, ViewerVideoRefreshRequest};
     use std::sync::{atomic::AtomicBool, Arc};
     use std::time::Duration;
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn r_s11ff_video_refresh_requires_the_current_exact_ui_owner() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        sessions::clear_for_test();
+
+        let session_id = SessionID::new_v4();
+        let current_owner = SessionID::new_v4();
+        let stale_owner = SessionID::new_v4();
+        let session = sessions::insert_test_session_for_owner(
+            session_id,
+            current_owner,
+            "refresh-host",
+            ConnType::DEFAULT_CONN,
+        );
+        {
+            let mut peer_info = PeerInfo::new();
+            peer_info.displays = (0..5).map(|_| DisplayInfo::new()).collect();
+            let mut lc = session.lc.write().unwrap();
+            lc.version = hbb_common::get_version_number("1.4.7");
+            lc.peer_info = Some(peer_info);
+        }
+        let (sender, receiver) = viewer_video_refresh_channel();
+        *session.video_refresh_sender.write().unwrap() = Some(sender);
+
+        assert!(
+            sessions::request_video_refresh_for_exact_ui_owner(&session_id, &stale_owner, 4,)
+                .is_err()
+        );
+        assert_eq!(receiver.try_recv(), None);
+
+        assert!(
+            sessions::request_video_refresh_for_exact_ui_owner(&session_id, &current_owner, 5,)
+                .is_err()
+        );
+        assert_eq!(receiver.try_recv(), None);
+
+        sessions::request_video_refresh_for_exact_ui_owner(&session_id, &current_owner, 4)
+            .expect("the current exact UI owner may admit a refresh");
+        assert_eq!(
+            receiver.try_recv(),
+            Some(ViewerVideoRefreshRequest::Display(4))
+        );
+
+        sessions::clear_for_test();
+    }
 
     #[test]
     fn r_s11fc_texture_notification_commits_only_after_native_and_ui_admission() {

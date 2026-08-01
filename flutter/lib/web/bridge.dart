@@ -173,7 +173,10 @@ class RustdeskImpl {
   }
 
   Future<void> sessionRefresh(
-      {required UuidValue sessionId, required int display, dynamic hint}) {
+      {required UuidValue sessionId,
+      required UuidValue clientOwnerId,
+      required int display,
+      dynamic hint}) {
     return Future(() => js.context.callMethod('setByName', ['refresh']));
   }
 

@@ -9,8 +9,9 @@ use crate::{
 };
 use crate::{
     client::{
-        self, new_voice_call_request, Client, Data, Interface, MediaData, OwnedMediaThread,
-        OwnedVideoThread, QualityStatus, VideoControl, VideoFrameAdmission, MILLI1, SEC30,
+        self, new_voice_call_request, Client, Data, Interface, LoginConfigHandler, MediaData,
+        OwnedMediaThread, OwnedVideoThread, QualityStatus, VideoControl, VideoFrameAdmission,
+        MILLI1, SEC30,
     },
     common::get_default_sound_input,
     ui_session_interface::{InvokeUiSession, Session},
@@ -45,7 +46,7 @@ use hbb_common::{
 use hbb_common::{tokio::sync::Mutex as TokioMutex, ResultType};
 use scrap::CodecFormat;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
     ffi::c_void,
     num::NonZeroI64,
     path::PathBuf,
@@ -66,6 +67,146 @@ const MAX_PEER_DISPLAY_DIMENSION: i32 = 32_768;
 const MAX_PEER_DISPLAY_ORIGIN_ABS: i32 = 1_000_000;
 const MAX_PEER_DISPLAY_SCALE: f64 = 16.0;
 const PRIVACY_MODE_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ViewerVideoRefreshRequest {
+    All,
+    Display(usize),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ViewerVideoRefreshAdmissionError {
+    Capacity,
+    Closed,
+}
+
+#[derive(Default)]
+struct ViewerVideoRefreshState {
+    all: bool,
+    displays: VecDeque<usize>,
+    closed: bool,
+}
+
+#[derive(Clone)]
+pub(crate) struct ViewerVideoRefreshSender {
+    state: Arc<std::sync::Mutex<ViewerVideoRefreshState>>,
+    wake: mpsc::Sender<()>,
+}
+
+pub(crate) struct ViewerVideoRefreshReceiver {
+    state: Arc<std::sync::Mutex<ViewerVideoRefreshState>>,
+    wake: mpsc::Receiver<()>,
+}
+
+pub(crate) fn viewer_video_refresh_channel(
+) -> (ViewerVideoRefreshSender, ViewerVideoRefreshReceiver) {
+    let state = Arc::new(std::sync::Mutex::new(ViewerVideoRefreshState::default()));
+    let (wake, receiver) = mpsc::channel(1);
+    (
+        ViewerVideoRefreshSender {
+            state: Arc::clone(&state),
+            wake,
+        },
+        ViewerVideoRefreshReceiver {
+            state,
+            wake: receiver,
+        },
+    )
+}
+
+impl ViewerVideoRefreshSender {
+    pub(crate) fn request(
+        &self,
+        request: ViewerVideoRefreshRequest,
+    ) -> Result<(), ViewerVideoRefreshAdmissionError> {
+        {
+            let mut state = self.state.lock().unwrap();
+            if state.closed {
+                return Err(ViewerVideoRefreshAdmissionError::Closed);
+            }
+            match request {
+                ViewerVideoRefreshRequest::All => {
+                    state.all = true;
+                    state.displays.clear();
+                }
+                ViewerVideoRefreshRequest::Display(display) => {
+                    if !state.all && !state.displays.contains(&display) {
+                        if state.displays.len() >= MAX_PEER_VIDEO_DISPLAYS {
+                            return Err(ViewerVideoRefreshAdmissionError::Capacity);
+                        }
+                        state.displays.push_back(display);
+                    }
+                }
+            }
+        }
+
+        match self.wake.try_send(()) {
+            Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => Ok(()),
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                let mut state = self.state.lock().unwrap();
+                state.closed = true;
+                state.all = false;
+                state.displays.clear();
+                Err(ViewerVideoRefreshAdmissionError::Closed)
+            }
+        }
+    }
+}
+
+impl ViewerVideoRefreshReceiver {
+    fn take_next(&self) -> Option<ViewerVideoRefreshRequest> {
+        let mut state = self.state.lock().unwrap();
+        if state.all {
+            state.all = false;
+            Some(ViewerVideoRefreshRequest::All)
+        } else {
+            state
+                .displays
+                .pop_front()
+                .map(ViewerVideoRefreshRequest::Display)
+        }
+    }
+
+    async fn recv(&mut self) -> Option<ViewerVideoRefreshRequest> {
+        loop {
+            if let Some(request) = self.take_next() {
+                return Some(request);
+            }
+            self.wake.recv().await?;
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn try_recv(&self) -> Option<ViewerVideoRefreshRequest> {
+        self.take_next()
+    }
+}
+
+impl Drop for ViewerVideoRefreshReceiver {
+    fn drop(&mut self) {
+        {
+            let mut state = self.state.lock().unwrap();
+            state.closed = true;
+            state.all = false;
+            state.displays.clear();
+        }
+        self.wake.close();
+    }
+}
+
+fn is_video_refresh_message(message: &Message) -> bool {
+    matches!(
+        &message.union,
+        Some(message::Union::Misc(misc))
+            if matches!(
+                &misc.union,
+                Some(
+                    misc::Union::RefreshVideo(_)
+                        | misc::Union::RefreshVideoDisplay(_)
+                )
+            )
+    )
+}
 
 fn native_video_frame_runtime_supported(vf: &VideoFrame) -> bool {
     let format = CodecFormat::from(vf);
@@ -195,6 +336,7 @@ pub struct Remote<T: InvokeUiSession> {
     audio_thread: OwnedMediaThread,
     receiver: mpsc::UnboundedReceiver<Data>,
     sender: mpsc::UnboundedSender<Data>,
+    video_refresh: ViewerVideoRefreshReceiver,
     input_os_password_task: OwnedInputOsPasswordTask,
     // Stop sending local audio to remote client.
     voice_call_audio: Option<VoiceCallAudio>,
@@ -568,16 +710,18 @@ fn sanitize_peer_platform_additions(raw: &str) -> String {
 }
 
 impl<T: InvokeUiSession> Remote<T> {
-    pub fn new(
+    pub(crate) fn new(
         handler: Session<T>,
         receiver: mpsc::UnboundedReceiver<Data>,
         sender: mpsc::UnboundedSender<Data>,
+        video_refresh: ViewerVideoRefreshReceiver,
     ) -> Self {
         Self {
             handler,
             audio_thread: crate::client::start_audio_thread(),
             receiver,
             sender,
+            video_refresh,
             input_os_password_task: Default::default(),
             read_jobs: Vec::new(),
             write_jobs: Vec::new(),
@@ -740,6 +884,15 @@ impl<T: InvokeUiSession> Remote<T> {
                                 }
                             }
                         }
+                        refresh = self.video_refresh.recv() => {
+                            let Some(refresh) = refresh else {
+                                log::error!("viewer video refresh mailbox closed before its network round");
+                                break;
+                            };
+                            if !self.handle_video_refresh(refresh, &mut peer).await {
+                                break;
+                            }
+                        }
                         voice_call_audio = recv_voice_call_audio(&mut self.voice_call_audio) => {
                             let Some(message) = voice_call_audio else {
                                 self.stop_voice_call().await;
@@ -789,7 +942,9 @@ impl<T: InvokeUiSession> Remote<T> {
                             self.video_threads.iter().for_each(|(_, v)| {
                                 *v.frame_count.write().unwrap() = 0;
                             });
-                            self.fps_control(fps.clone());
+                            if !self.fps_control(fps.clone()) {
+                                break;
+                            }
                             let chroma = self.chroma.read().unwrap().clone();
                             let chroma = match chroma {
                                 Some(Chroma::I444) => "4:4:4",
@@ -994,6 +1149,34 @@ impl<T: InvokeUiSession> Remote<T> {
         self.sent_close_reason = true;
     }
 
+    async fn handle_video_refresh(
+        &mut self,
+        request: ViewerVideoRefreshRequest,
+        peer: &mut Stream,
+    ) -> bool {
+        let message = match request {
+            ViewerVideoRefreshRequest::All => {
+                self.video_threads.iter().for_each(|(_, thread)| {
+                    thread.media_thread.begin_refresh();
+                });
+                LoginConfigHandler::refresh()
+            }
+            ViewerVideoRefreshRequest::Display(display) => {
+                if let Some(thread) = self.video_threads.get(&display) {
+                    thread.media_thread.begin_refresh();
+                }
+                LoginConfigHandler::refresh_display(display)
+            }
+        };
+        match peer.send(&message).await {
+            Ok(()) => true,
+            Err(err) => {
+                log::error!("failed to send viewer video refresh: {err}");
+                false
+            }
+        }
+    }
+
     async fn handle_msg_from_ui(&mut self, data: Data, peer: &mut Stream) -> bool {
         match data {
             Data::Close => {
@@ -1018,21 +1201,9 @@ impl<T: InvokeUiSession> Remote<T> {
                 self.check_clipboard_file_context();
             }
             Data::Message(msg) => {
-                match &msg.union {
-                    Some(message::Union::Misc(misc)) => match misc.union {
-                        Some(misc::Union::RefreshVideo(_)) => {
-                            self.video_threads.iter().for_each(|(_, v)| {
-                                v.media_thread.begin_refresh();
-                            });
-                        }
-                        Some(misc::Union::RefreshVideoDisplay(display)) => {
-                            if let Some(v) = self.video_threads.get_mut(&(display as usize)) {
-                                v.media_thread.begin_refresh();
-                            }
-                        }
-                        _ => {}
-                    },
-                    _ => {}
+                if is_video_refresh_message(&msg) {
+                    log::error!("refusing viewer video refresh on the generic command queue");
+                    return false;
                 }
                 match peer.send(&msg).await {
                     Ok(()) => self.record_pending_privacy_mode_request(&msg),
@@ -1663,7 +1834,7 @@ impl<T: InvokeUiSession> Remote<T> {
     // Currently, this function only considers decoding speed and queue length, not network delay.
     // The controlled end can consider auto fps as the maximum decoding fps.
     #[inline]
-    fn fps_control(&mut self, real_fps_map: HashMap<usize, i32>) {
+    fn fps_control(&mut self, real_fps_map: HashMap<usize, i32>) -> bool {
         self.video_threads.iter_mut().for_each(|(k, v)| {
             let real_fps = real_fps_map.get(k).cloned().unwrap_or_default();
             if real_fps == 0 {
@@ -1693,7 +1864,7 @@ impl<T: InvokeUiSession> Remote<T> {
             .min()
             .flatten();
         let Some(min_decode_fps) = min_decode_fps else {
-            return;
+            return true;
         };
         let mut limited_fps = min_decode_fps * 9 / 10; // 30 got 27
         if limited_fps > custom_fps {
@@ -1758,10 +1929,16 @@ impl<T: InvokeUiSession> Remote<T> {
             if thread.media_thread.pending_frames() > tolerable
                 && thread.media_thread.begin_refresh()
             {
-                self.handler.refresh_video(*display as _);
+                if let Err(err) = self.handler.refresh_video(*display as _) {
+                    log::error!(
+                        "failed to admit viewer backlog refresh for display {display}: {err}"
+                    );
+                    return false;
+                }
                 log::info!("Refresh display {} to supersede queued video", display);
             }
         }
+        true
     }
 
     fn check_view_camera_support(&self, peer_version: &str, peer_platform: &str) -> bool {
@@ -1864,7 +2041,12 @@ impl<T: InvokeUiSession> Remote<T> {
                             log::warn!(
                                 "viewer video backlog lost freshness; requesting a fresh keyframe"
                             );
-                            self.handler.refresh_video(display as _);
+                            if let Err(err) = self.handler.refresh_video(display as _) {
+                                log::error!(
+                                    "failed to admit viewer video recovery for display {display}: {err}"
+                                );
+                                return false;
+                            }
                         }
                         VideoFrameAdmission::Closed => {
                             log::debug!("dropping peer video frame after decoder mailbox closure");
@@ -3000,6 +3182,103 @@ impl<T: InvokeUiSession> Remote<T> {
 mod tests {
     use super::*;
     use async_trait::async_trait;
+
+    #[test]
+    fn r_s11ff_refresh_mailbox_coalesces_duplicates_and_preserves_distinct_order() {
+        let (sender, receiver) = viewer_video_refresh_channel();
+        assert_eq!(
+            sender.request(ViewerVideoRefreshRequest::Display(3)),
+            Ok(())
+        );
+        assert_eq!(
+            sender.request(ViewerVideoRefreshRequest::Display(3)),
+            Ok(())
+        );
+        assert_eq!(
+            sender.request(ViewerVideoRefreshRequest::Display(7)),
+            Ok(())
+        );
+
+        assert_eq!(
+            receiver.try_recv(),
+            Some(ViewerVideoRefreshRequest::Display(3))
+        );
+        assert_eq!(
+            receiver.try_recv(),
+            Some(ViewerVideoRefreshRequest::Display(7))
+        );
+        assert_eq!(receiver.try_recv(), None);
+    }
+
+    #[test]
+    fn r_s11ff_all_displays_supersedes_pending_display_refreshes() {
+        let (sender, receiver) = viewer_video_refresh_channel();
+        assert_eq!(
+            sender.request(ViewerVideoRefreshRequest::Display(1)),
+            Ok(())
+        );
+        assert_eq!(
+            sender.request(ViewerVideoRefreshRequest::Display(2)),
+            Ok(())
+        );
+        assert_eq!(sender.request(ViewerVideoRefreshRequest::All), Ok(()));
+        assert_eq!(
+            sender.request(ViewerVideoRefreshRequest::Display(3)),
+            Ok(())
+        );
+
+        assert_eq!(receiver.try_recv(), Some(ViewerVideoRefreshRequest::All));
+        assert_eq!(receiver.try_recv(), None);
+    }
+
+    #[test]
+    fn r_s11ff_refresh_mailbox_has_a_fixed_display_identity_cap() {
+        let (sender, receiver) = viewer_video_refresh_channel();
+        for display in 0..MAX_PEER_VIDEO_DISPLAYS {
+            assert_eq!(
+                sender.request(ViewerVideoRefreshRequest::Display(display)),
+                Ok(())
+            );
+        }
+        assert_eq!(
+            sender.request(ViewerVideoRefreshRequest::Display(MAX_PEER_VIDEO_DISPLAYS)),
+            Err(ViewerVideoRefreshAdmissionError::Capacity)
+        );
+        assert_eq!(
+            receiver.try_recv(),
+            Some(ViewerVideoRefreshRequest::Display(0))
+        );
+        assert_eq!(
+            sender.request(ViewerVideoRefreshRequest::Display(MAX_PEER_VIDEO_DISPLAYS)),
+            Ok(())
+        );
+    }
+
+    #[test]
+    fn r_s11ff_refresh_mailbox_fails_after_its_exact_round_receiver_drops() {
+        let (sender, receiver) = viewer_video_refresh_channel();
+        assert_eq!(
+            sender.request(ViewerVideoRefreshRequest::Display(2)),
+            Ok(())
+        );
+        drop(receiver);
+        assert_eq!(
+            sender.request(ViewerVideoRefreshRequest::Display(2)),
+            Err(ViewerVideoRefreshAdmissionError::Closed)
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11ff_refresh_mailbox_wakes_without_polling() {
+        let (sender, mut receiver) = viewer_video_refresh_channel();
+        sender
+            .request(ViewerVideoRefreshRequest::Display(5))
+            .expect("the exact round is live");
+        assert_eq!(
+            receiver.recv().await,
+            Some(ViewerVideoRefreshRequest::Display(5))
+        );
+    }
 
     #[derive(Clone, Default)]
     struct InputSequenceTestInterface {

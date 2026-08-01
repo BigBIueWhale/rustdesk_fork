@@ -258,11 +258,11 @@ pub fn session_start_with_displays(
 ) -> ResultType<()> {
     session_start_(&session_id, &client_owner_id, &id, events2ui)?;
 
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.capture_displays(displays.clone(), vec![], vec![]);
-        for display in displays {
-            session.refresh_video(display as _);
-        }
+    let session = sessions::get_session_by_session_id(&session_id)
+        .ok_or_else(|| hbb_common::anyhow::anyhow!("new viewer session is no longer active"))?;
+    session.capture_displays(displays.clone(), vec![], vec![]);
+    for display in displays {
+        sessions::request_video_refresh_for_exact_ui_owner(&session_id, &client_owner_id, display)?;
     }
     Ok(())
 }
@@ -317,10 +317,15 @@ pub fn session_close(session_id: SessionID) {
     }
 }
 
-pub fn session_refresh(session_id: SessionID, display: usize) {
-    if let Some(session) = sessions::get_session_by_session_id(&session_id) {
-        session.refresh_video(display as _);
-    }
+pub fn session_refresh(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+    display: usize,
+) -> Result<()> {
+    let display = i32::try_from(display).map_err(|_| {
+        hbb_common::anyhow::anyhow!("viewer video refresh display does not fit the protocol")
+    })?;
+    sessions::request_video_refresh_for_exact_ui_owner(&session_id, &client_owner_id, display)
 }
 
 pub fn session_take_screenshot(session_id: SessionID, display: usize) {

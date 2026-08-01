@@ -66,6 +66,8 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "presentation_recovery": "flutter/lib/models/presentation_recovery.dart",
         "render": "flutter/lib/models/desktop_render_texture.dart",
         "model": "flutter/lib/models/model.dart",
+        "common": "flutter/lib/common.dart",
+        "toolbar": "flutter/lib/common/widgets/toolbar.dart",
         "remote": "flutter/lib/desktop/pages/remote_page.dart",
         "remote_tab": "flutter/lib/desktop/pages/remote_tab_page.dart",
         "camera": "flutter/lib/desktop/pages/view_camera_page.dart",
@@ -272,7 +274,7 @@ def validate(sources: Dict[str, str]) -> None:
             (
                 "selected: true,",
                 "if (!mounted || !gFFI.isCurrentSession(sessionId)) return;",
-                "await sessionRefreshVideo(sessionId, gFFI.ffiModel.pi);",
+                "sessionId, gFFI.clientOwnerId, gFFI.ffiModel.pi);",
             ),
             f"{label} exact-session presentation refresh",
         )
@@ -330,7 +332,7 @@ def validate(sources: Dict[str, str]) -> None:
                 "_presentationRecovery.resume(",
                 "selected: _isPresentationSelected,",
                 "if (!mounted || !_ffi.isCurrentSession(sessionId)) return;",
-                "await sessionRefreshVideo(sessionId, _ffi.ffiModel.pi);",
+                "sessionId, _ffi.clientOwnerId, _ffi.ffiModel.pi);",
             ),
             f"{label} selected exact-session refresh",
         )
@@ -401,6 +403,315 @@ def validate(sources: Dict[str, str]) -> None:
             path,
             f"confined presentation source formatting gate for {path}",
         )
+
+    refresh_helper = extract_braced_item(
+        sources["common"], "sessionRefreshVideo(", "viewer video refresh Dart helper"
+    )
+    require_order(
+        refresh_helper,
+        (
+            "SessionID sessionId, SessionID clientOwnerId, PeerInfo pi",
+            "if (pi.displays.isEmpty)",
+            "throw StateError('Viewer display inventory is empty');",
+            "bind.sessionRefresh(",
+            "sessionId: sessionId, clientOwnerId: clientOwnerId, display: i",
+            "bind.sessionRefresh(",
+            "clientOwnerId: clientOwnerId,",
+            "display: pi.currentDisplay",
+        ),
+        "result-bearing exact-owner Dart refresh bridge",
+    )
+    require(
+        sources["toolbar"],
+        "sessionRefreshVideo(sessionId, ffi.clientOwnerId, pi)",
+        "manual refresh exact UI owner",
+    )
+    for needle, label in (
+        (
+            "sessionRefreshVideo(sessionId, ffi.clientOwnerId, pi)",
+            "recording refresh exact UI owner",
+        ),
+        (
+            "activeSessionId, clientOwnerId, ffiModel.pi",
+            "transferred-session refresh exact UI owner",
+        ),
+    ):
+        require(sources["model"], needle, label)
+    web_refresh = extract_braced_item(
+        sources["web_bridge"],
+        "Future<void> sessionRefresh(",
+        "web refresh compatibility bridge",
+    )
+    require(
+        web_refresh,
+        "required UuidValue clientOwnerId",
+        "web refresh exact-owner API shape",
+    )
+
+    refresh_state = extract_braced_item(
+        sources["io_loop"],
+        "struct ViewerVideoRefreshState",
+        "viewer video refresh bounded state",
+    )
+    require_order(
+        refresh_state,
+        ("all: bool", "displays: VecDeque<usize>", "closed: bool"),
+        "fixed refresh state",
+    )
+    require(
+        sources["io_loop"],
+        "let (wake, receiver) = mpsc::channel(1);",
+        "capacity-one refresh wake",
+    )
+    refresh_admission = extract_braced_item(
+        sources["io_loop"],
+        "pub(crate) fn request(",
+        "viewer video refresh admission",
+    )
+    require_order(
+        refresh_admission,
+        (
+            "if state.closed",
+            "ViewerVideoRefreshRequest::All =>",
+            "state.displays.clear();",
+            "if !state.all && !state.displays.contains(&display)",
+            "state.displays.len() >= MAX_PEER_VIDEO_DISPLAYS",
+            "ViewerVideoRefreshAdmissionError::Capacity",
+            "state.displays.push_back(display);",
+            "self.wake.try_send(())",
+            "TrySendError::Full(_)",
+            "TrySendError::Closed(_)",
+        ),
+        "nonblocking bounded/coalescing refresh admission",
+    )
+    forbid(
+        refresh_admission,
+        "return Ok(())",
+        "duplicate refresh bypass of exact receiver-closure observation",
+    )
+    refresh_receive = extract_braced_item(
+        sources["io_loop"],
+        "async fn recv(&mut self)",
+        "viewer video refresh receive",
+    )
+    require_order(
+        refresh_receive,
+        ("self.take_next()", "self.wake.recv().await?"),
+        "event-driven refresh receive",
+    )
+    refresh_drop = extract_braced_item(
+        sources["io_loop"],
+        "impl Drop for ViewerVideoRefreshReceiver",
+        "viewer refresh receiver teardown",
+    )
+    require_order(
+        refresh_drop,
+        ("state.closed = true;", "self.wake.close();"),
+        "refresh state closure before wake closure",
+    )
+    refresh_dispatch = extract_braced_item(
+        sources["io_loop"],
+        "async fn handle_video_refresh(",
+        "viewer video refresh dispatch",
+    )
+    require_order(
+        refresh_dispatch,
+        (
+            "ViewerVideoRefreshRequest::All =>",
+            "thread.media_thread.begin_refresh();",
+            "LoginConfigHandler::refresh()",
+            "ViewerVideoRefreshRequest::Display(display) =>",
+            "thread.media_thread.begin_refresh();",
+            "LoginConfigHandler::refresh_display(display)",
+            "peer.send(&message).await",
+        ),
+        "invalidate-before-peer-request refresh dispatch",
+    )
+    require(
+        sources["io_loop"],
+        "if is_video_refresh_message(&msg)",
+        "generic command-queue refresh refusal",
+    )
+    forbid(
+        sources["ui_session"],
+        "self.send(Data::Message(LoginConfigHandler::refresh",
+        "refresh on generic unbounded command queue",
+    )
+    request_sink = extract_braced_item(
+        sources["ui_session"],
+        "fn request_video_refresh(&self",
+        "result-bearing viewer refresh sink",
+    )
+    require_order(
+        request_sink,
+        (
+            "let sender = self.video_refresh_sender.read().unwrap();",
+            "sender.as_ref().ok_or_else",
+            "sender.request(request)",
+            "ViewerVideoRefreshAdmissionError::Capacity",
+            "ViewerVideoRefreshAdmissionError::Closed",
+        ),
+        "failure-visible round-locked refresh admission",
+    )
+    refresh_api = extract_braced_item(
+        sources["ui_session"],
+        "pub fn refresh_video(&self",
+        "range-checked viewer refresh API",
+    )
+    require_order(
+        refresh_api,
+        (
+            "ConnType::DEFAULT_CONN | ConnType::VIEW_CAMERA",
+            ".peer_info",
+            "viewer video refresh peer display inventory is unavailable",
+            "if display >= display_count",
+            "ViewerVideoRefreshRequest::Display(display)",
+            "self.request_video_refresh(request)",
+        ),
+        "viewer-kind and live-display refresh admission",
+    )
+    forbid(
+        refresh_api,
+        "drop(lc);",
+        "peer inventory unlocked before exact-round refresh admission",
+    )
+    activation = extract_braced_item(
+        sources["ui_session"],
+        "fn activate_video_refresh_round(",
+        "viewer refresh round activation",
+    )
+    require_order(
+        activation,
+        (
+            "let mut slot = self.video_refresh_sender.write().unwrap();",
+            "self.close_requested.load(Ordering::Acquire)",
+            "*slot = Some(sender);",
+            "start.send(receiver)",
+            "*slot = None;",
+        ),
+        "spawn-owned refresh publication before worker release",
+    )
+    close_round = extract_braced_item(
+        sources["ui_session"], "pub fn close(&self)", "viewer owner retirement"
+    )
+    require_order(
+        close_round,
+        (
+            "let mut video_refresh_sender = self.video_refresh_sender.write().unwrap();",
+            "self.connection_round_owner.retire();",
+            "self.close_requested.store(true, Ordering::Release);",
+            "*video_refresh_sender = None;",
+            "drop(video_refresh_sender);",
+            "self.send(Data::Close);",
+        ),
+        "refresh publication/retirement serialization",
+    )
+    worker_start = extract_braced_item(
+        sources["ui_session"], "fn spawn_io_thread(", "gated viewer I/O spawn"
+    )
+    require_order(
+        worker_start,
+        (
+            "std::sync::mpsc::sync_channel(1)",
+            "wait_for_start.recv()",
+            "io_loop(session, round, video_refresh);",
+        ),
+        "capacity-one viewer worker start gate",
+    )
+    start_round = extract_braced_item(
+        sources["ui_session"],
+        "pub fn start_io_thread(&self)",
+        "viewer I/O round start",
+    )
+    require_order(
+        start_round,
+        (
+            "let (video_refresh_sender, video_refresh_receiver) = viewer_video_refresh_channel();",
+            "Self::spawn_io_thread(self.clone(), round)",
+            "self.activate_video_refresh_round(",
+        ),
+        "spawn-owned refresh sender activation before worker release",
+    )
+    reconnect_round = extract_braced_item(
+        sources["ui_session"], "pub fn reconnect(&self)", "viewer I/O reconnect"
+    )
+    require_order(
+        reconnect_round,
+        (
+            "*self.video_refresh_sender.write().unwrap() = None;",
+            "let (video_refresh_sender, video_refresh_receiver) = viewer_video_refresh_channel();",
+            "Self::spawn_io_thread(self.clone(), round)",
+            "self.activate_video_refresh_round(",
+        ),
+        "predecessor refresh closure before replacement-round publication",
+    )
+    exact_owner = extract_braced_item(
+        sources["flutter"],
+        "pub fn request_video_refresh_for_exact_ui_owner(",
+        "exact UI-owner refresh admission",
+    )
+    require_order(
+        exact_owner,
+        (
+            "let sessions = SESSIONS.read().unwrap();",
+            "let handlers = session.ui_handler.session_handlers.read().unwrap();",
+            "handler.client_owner_id.as_ref() != Some(client_owner_id)",
+            "return session.refresh_video(display);",
+        ),
+        "UI-owner lock held through synchronous refresh admission",
+    )
+    ffi_refresh = extract_braced_item(
+        sources["ffi"], "pub fn session_refresh(", "result-bearing refresh FFI"
+    )
+    require_order(
+        ffi_refresh,
+        (
+            "client_owner_id: SessionID",
+            ") -> Result<()>",
+            "i32::try_from(display)",
+            "sessions::request_video_refresh_for_exact_ui_owner",
+            "&session_id, &client_owner_id, display",
+        ),
+        "typed exact-owner refresh FFI",
+    )
+    for key, test, label in (
+        (
+            "io_loop",
+            "r_s11ff_refresh_mailbox_coalesces_duplicates_and_preserves_distinct_order",
+            "refresh duplicate/coalescing regression",
+        ),
+        (
+            "io_loop",
+            "r_s11ff_all_displays_supersedes_pending_display_refreshes",
+            "all-display supersession regression",
+        ),
+        (
+            "io_loop",
+            "r_s11ff_refresh_mailbox_has_a_fixed_display_identity_cap",
+            "refresh capacity regression",
+        ),
+        (
+            "io_loop",
+            "r_s11ff_refresh_mailbox_fails_after_its_exact_round_receiver_drops",
+            "refresh closure regression",
+        ),
+        (
+            "io_loop",
+            "r_s11ff_refresh_mailbox_wakes_without_polling",
+            "refresh wake regression",
+        ),
+        (
+            "flutter",
+            "r_s11ff_video_refresh_requires_the_current_exact_ui_owner",
+            "refresh UI-owner regression",
+        ),
+        (
+            "ui_session",
+            "r_s11ff_retired_owner_never_releases_the_refresh_worker_start_gate",
+            "retired-owner refresh worker start-gate regression",
+        ),
+    ):
+        require(sources[key], test, label)
 
     lifecycle = sources["lifecycle"]
     owner = extract_braced_item(
@@ -1577,11 +1888,17 @@ def validate(sources: Dict[str, str]) -> None:
             '<div class="req"><span class="id">R-S11fc</span>',
             "R-S11fc exact first-image admission requirement",
         ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11ff</span>',
+            "R-S11ff exact viewer refresh admission requirement",
+        ),
         ("requirements", "<tr><td>306</td>", "Appendix C #306"),
         ("requirements", "<tr><td>307</td>", "Appendix C #307"),
         ("requirements", "<tr><td>308</td>", "Appendix C #308"),
         ("requirements", "<tr><td>309</td>", "Appendix C #309"),
         ("requirements", "<tr><td>311</td>", "Appendix C #311"),
+        ("requirements", "<tr><td>314</td>", "Appendix C #314"),
         (
             "hardening",
             "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
@@ -1608,6 +1925,11 @@ def validate(sources: Dict[str, str]) -> None:
             "first-image admission hardening ledger",
         ),
         (
+            "hardening",
+            "**R-S11ff/R-S11e-193 exact viewer refresh admission",
+            "viewer refresh admission hardening ledger",
+        ),
+        (
             "verify",
             "cargo test --lib --features linux-pkg-config,flutter r_s11ex_ --color never",
             "shared native behavior gate",
@@ -1616,6 +1938,16 @@ def validate(sources: Dict[str, str]) -> None:
             "verify",
             "cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never",
             "shared first-image admission behavior gate",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11ff_ --color never",
+            "shared viewer refresh admission behavior gate",
+        ),
+        (
+            "dart_verify",
+            "flutter::mobile_session_lifecycle_tests::r_s11ff_video_refresh_requires_the_current_exact_ui_owner",
+            "fresh-bridge exact UI-owner refresh behavior gate",
         ),
         (
             "dart_verify",
@@ -1706,7 +2038,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "mobile_camera",
-        "          await sessionRefreshVideo(sessionId, gFFI.ffiModel.pi);",
+        "          await sessionRefreshVideo(\n"
+        "              sessionId, gFFI.clientOwnerId, gFFI.ffiModel.pi);",
         "          return;",
         "mobile camera exact-session refresh",
     ),
@@ -1745,6 +2078,122 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "flutter test --no-pub test/presentation_recovery_test.dart",
         "true # presentation recovery test disabled",
         "presentation recovery behavior gate",
+    ),
+    (
+        "common",
+        "SessionID sessionId, SessionID clientOwnerId, PeerInfo pi",
+        "SessionID sessionId, PeerInfo pi",
+        "Dart refresh exact UI owner",
+    ),
+    (
+        "toolbar",
+        "sessionRefreshVideo(sessionId, ffi.clientOwnerId, pi)",
+        "sessionRefreshVideo(sessionId, sessionId, pi)",
+        "manual refresh exact UI owner",
+    ),
+    (
+        "io_loop",
+        "    displays: VecDeque<usize>,",
+        "    displays: Vec<usize>,",
+        "bounded refresh display state",
+    ),
+    (
+        "io_loop",
+        "let (wake, receiver) = mpsc::channel(1);",
+        "let (wake, receiver) = mpsc::unbounded_channel();",
+        "capacity-one refresh wake",
+    ),
+    (
+        "io_loop",
+        "state.displays.len() >= MAX_PEER_VIDEO_DISPLAYS",
+        "state.displays.len() == usize::MAX",
+        "fixed refresh identity cap",
+    ),
+    (
+        "io_loop",
+        "if !state.all && !state.displays.contains(&display)",
+        "if state.all || state.displays.contains(&display) { return Ok(()); }\n                    if true",
+        "duplicate refresh observes receiver closure",
+    ),
+    (
+        "io_loop",
+        "if is_video_refresh_message(&msg)",
+        "if false && is_video_refresh_message(&msg)",
+        "generic command-queue refresh refusal",
+    ),
+    (
+        "ui_session",
+        "let sender = self.video_refresh_sender.read().unwrap();",
+        "let sender = self.video_refresh_sender.read().unwrap().clone();",
+        "round lock held through refresh admission",
+    ),
+    (
+        "ui_session",
+        "std::sync::mpsc::sync_channel(1)",
+        "std::sync::mpsc::channel()",
+        "capacity-one viewer worker start gate",
+    ),
+    (
+        "ui_session",
+        "if display >= display_count",
+        "if false",
+        "live peer-display refresh range",
+    ),
+    (
+        "ui_session",
+        "        self.request_video_refresh(request)\n    }\n\n    fn refresh_all_video",
+        "        drop(lc);\n        self.request_video_refresh(request)\n    }\n\n    fn refresh_all_video",
+        "peer inventory lock held through exact-round admission",
+    ),
+    (
+        "ui_session",
+        "if start.send(receiver).is_err()",
+        "if false",
+        "refresh publication before worker release",
+    ),
+    (
+        "ui_session",
+        "        let mut video_refresh_sender = self.video_refresh_sender.write().unwrap();\n"
+        "        self.connection_round_owner.retire();",
+        "        self.connection_round_owner.retire();\n"
+        "        let mut video_refresh_sender = self.video_refresh_sender.write().unwrap();",
+        "refresh publication/retirement serialization",
+    ),
+    (
+        "common",
+        "if (pi.displays.isEmpty)",
+        "if (false)",
+        "empty viewer display inventory rejection",
+    ),
+    (
+        "flutter",
+        "if handler.client_owner_id.as_ref() != Some(client_owner_id)",
+        "if false",
+        "refresh exact UI-owner admission",
+    ),
+    (
+        "ffi",
+        "    client_owner_id: SessionID,\n    display: usize,\n) -> Result<()>",
+        "    display: usize,\n) -> Result<()>",
+        "result-bearing exact-owner refresh FFI",
+    ),
+    (
+        "io_loop",
+        "r_s11ff_refresh_mailbox_has_a_fixed_display_identity_cap",
+        "refresh_mailbox_has_no_display_identity_cap",
+        "refresh capacity behavior regression",
+    ),
+    (
+        "flutter",
+        "r_s11ff_video_refresh_requires_the_current_exact_ui_owner",
+        "video_refresh_accepts_a_stale_ui_owner",
+        "refresh exact-owner behavior regression",
+    ),
+    (
+        "ui_session",
+        "r_s11ff_retired_owner_never_releases_the_refresh_worker_start_gate",
+        "viewer_refresh_worker_start_gate_test_disabled",
+        "retired-owner refresh worker start-gate behavior regression",
     ),
     ("lifecycle", "_retireRequested = true;", "_retireRequested = false;", "synchronous retirement invalidation"),
     ("lifecycle", "if (!ready)", "if (false)", "failed-initialization cleanup"),
@@ -2179,17 +2628,22 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<div class="req"><span class="id">R-S11ez</span>', '<div class="req"><span class="id">R-S11ez-disabled</span>', "native retirement normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11fa</span>', '<div class="req"><span class="id">R-S11fa-disabled</span>', "presentation-resume normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11fc</span>', '<div class="req"><span class="id">R-S11fc-disabled</span>', "first-image admission normative requirement"),
+    ("requirements", '<div class="req"><span class="id">R-S11ff</span>', '<div class="req"><span class="id">R-S11ff-disabled</span>', "viewer refresh admission normative requirement"),
     ("requirements", "<tr><td>306</td>", "<tr><td>306-disabled</td>", "Appendix disposition"),
     ("requirements", "<tr><td>307</td>", "<tr><td>307-disabled</td>", "software-only Appendix disposition"),
     ("requirements", "<tr><td>308</td>", "<tr><td>308-disabled</td>", "native retirement Appendix disposition"),
     ("requirements", "<tr><td>309</td>", "<tr><td>309-disabled</td>", "presentation-resume Appendix disposition"),
     ("requirements", "<tr><td>311</td>", "<tr><td>311-disabled</td>", "first-image admission Appendix disposition"),
+    ("requirements", "<tr><td>314</td>", "<tr><td>314-disabled</td>", "viewer refresh admission Appendix disposition"),
     ("hardening", "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "**R-S11ex-disabled/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "hardening ledger"),
     ("hardening", "**R-S11ey/R-S11e-186 software-RGBA-only desktop presentation", "**R-S11ey-disabled/R-S11e-186 software-RGBA-only desktop presentation", "software-only hardening ledger"),
     ("hardening", "**R-S11ez/R-S11e-187 pending desktop frame retirement finality", "**R-S11ez-disabled/R-S11e-187 pending desktop frame retirement finality", "native retirement hardening ledger"),
     ("hardening", "**R-S11fa/R-S11e-188 exact viewer presentation-resume recovery", "**R-S11fa-disabled/R-S11e-188 exact viewer presentation-resume recovery", "presentation-resume hardening ledger"),
     ("hardening", "**R-S11fc/R-S11e-190 exact desktop first-image admission", "**R-S11fc-disabled/R-S11e-190 exact desktop first-image admission", "first-image admission hardening ledger"),
+    ("hardening", "**R-S11ff/R-S11e-193 exact viewer refresh admission", "**R-S11ff-disabled/R-S11e-193 exact viewer refresh admission", "viewer refresh admission hardening ledger"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never", "true # first-image admission behavior gate disabled", "shared first-image admission behavior gate"),
+    ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11ff_ --color never", "true # viewer refresh admission behavior gate disabled", "shared viewer refresh admission behavior gate"),
+    ("dart_verify", "flutter::mobile_session_lifecycle_tests::r_s11ff_video_refresh_requires_the_current_exact_ui_owner", "flutter::mobile_session_lifecycle_tests::viewer_refresh_disabled", "fresh-bridge viewer refresh behavior gate"),
     ("dart_verify", "flutter test --no-pub test/desktop_texture_lifecycle_test.dart", "true # desktop texture lifecycle test disabled", "Dart behavior gate"),
     ("dart_verify", "\n    /tmp/texture_rgba_renderer_plugin_test\n", "\n    true # Linux native callback behavior gate disabled\n", "Linux native callback behavior gate"),
     ("dart_verify", "\n    /tmp/texture_rgba_windows_core_test\n", "\n    true # portable Windows callback-core gate disabled\n", "portable Windows callback-core behavior gate"),

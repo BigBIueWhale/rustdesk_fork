@@ -282,7 +282,8 @@ class _ViewCameraPageState extends State<ViewCameraPage>
       selected: _isPresentationSelected,
       refresh: () async {
         if (!mounted || !_ffi.isCurrentSession(sessionId)) return;
-        await sessionRefreshVideo(sessionId, _ffi.ffiModel.pi);
+        await sessionRefreshVideo(
+            sessionId, _ffi.clientOwnerId, _ffi.ffiModel.pi);
       },
       onError: (error, stackTrace) {
         debugPrint(

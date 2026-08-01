@@ -177,7 +177,8 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       selected: true,
       refresh: () async {
         if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
-        await sessionRefreshVideo(sessionId, gFFI.ffiModel.pi);
+        await sessionRefreshVideo(
+            sessionId, gFFI.clientOwnerId, gFFI.ffiModel.pi);
       },
       onError: (error, stackTrace) {
         debugPrint('Mobile presentation refresh failed: ${error.runtimeType}');

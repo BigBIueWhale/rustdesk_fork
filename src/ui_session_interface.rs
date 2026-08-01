@@ -11,10 +11,9 @@ use async_trait::async_trait;
 use hbb_common::config::keys;
 #[cfg(not(feature = "flutter"))]
 use hbb_common::fs;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::ResultType;
 use hbb_common::{
-    allow_err,
+    allow_err, bail,
     config::{Config, LocalConfig, PeerConfig},
     get_version_number, log,
     message_proto::*,
@@ -39,7 +38,10 @@ use std::{
 };
 use uuid::Uuid;
 
-use crate::client::io_loop::Remote;
+use crate::client::io_loop::{
+    viewer_video_refresh_channel, Remote, ViewerVideoRefreshAdmissionError,
+    ViewerVideoRefreshReceiver, ViewerVideoRefreshRequest, ViewerVideoRefreshSender,
+};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::client::PortForwardTarget;
 use crate::client::{
@@ -68,6 +70,7 @@ pub struct Session<T: InvokeUiSession> {
     pub args: Vec<String>,
     pub lc: Arc<RwLock<LoginConfigHandler>>,
     pub sender: Arc<RwLock<Option<mpsc::UnboundedSender<Data>>>>,
+    pub(crate) video_refresh_sender: Arc<RwLock<Option<ViewerVideoRefreshSender>>>,
     pub thread: Arc<Mutex<Option<std::thread::JoinHandle<()>>>>,
     pub ui_handler: T,
     pub server_keyboard_enabled: Arc<RwLock<bool>>,
@@ -497,15 +500,66 @@ impl<T: InvokeUiSession> Session<T> {
             && self.lc.read().unwrap().enable_file_copy_paste.v
     }
 
-    #[cfg(feature = "flutter")]
-    pub fn refresh_video(&self, display: i32) {
-        if crate::common::is_support_multi_ui_session_num(self.lc.read().unwrap().version) {
-            self.send(Data::Message(LoginConfigHandler::refresh_display(
-                display as _,
-            )));
-        } else {
-            self.send(Data::Message(LoginConfigHandler::refresh()));
+    fn request_video_refresh(&self, request: ViewerVideoRefreshRequest) -> ResultType<()> {
+        let sender = self.video_refresh_sender.read().unwrap();
+        let sender = sender.as_ref().ok_or_else(|| {
+            hbb_common::anyhow::anyhow!("viewer video refresh mailbox is unavailable")
+        })?;
+        sender.request(request).map_err(|error| match error {
+            ViewerVideoRefreshAdmissionError::Capacity => {
+                hbb_common::anyhow::anyhow!("viewer video refresh mailbox reached its display cap")
+            }
+            ViewerVideoRefreshAdmissionError::Closed => {
+                hbb_common::anyhow::anyhow!("viewer video refresh network round is closed")
+            }
+        })
+    }
+
+    pub fn refresh_video(&self, display: i32) -> ResultType<()> {
+        let lc = self.lc.read().unwrap();
+        if !matches!(lc.conn_type, ConnType::DEFAULT_CONN | ConnType::VIEW_CAMERA) {
+            bail!("viewer video refresh requires a remote-desktop or camera session");
         }
+        #[cfg(feature = "flutter")]
+        let request = {
+            let display = usize::try_from(display).map_err(|_| {
+                hbb_common::anyhow::anyhow!("viewer video refresh display is negative")
+            })?;
+            let display_count = lc
+                .peer_info
+                .as_ref()
+                .ok_or_else(|| {
+                    hbb_common::anyhow::anyhow!(
+                        "viewer video refresh peer display inventory is unavailable"
+                    )
+                })?
+                .displays
+                .len();
+            if display >= display_count {
+                bail!(
+                    "viewer video refresh display {display} is outside the peer inventory of {display_count}"
+                );
+            }
+            if crate::common::is_support_multi_ui_session_num(lc.version) {
+                ViewerVideoRefreshRequest::Display(display)
+            } else {
+                ViewerVideoRefreshRequest::All
+            }
+        };
+        #[cfg(not(feature = "flutter"))]
+        let request = {
+            let _ = display;
+            ViewerVideoRefreshRequest::All
+        };
+        self.request_video_refresh(request)
+    }
+
+    fn refresh_all_video(&self) -> ResultType<()> {
+        let conn_type = self.lc.read().unwrap().conn_type;
+        if !matches!(conn_type, ConnType::DEFAULT_CONN | ConnType::VIEW_CAMERA) {
+            bail!("viewer video refresh requires a remote-desktop or camera session");
+        }
+        self.request_video_refresh(ViewerVideoRefreshRequest::All)
     }
 
     pub fn toggle_virtual_display(&self, index: i32, on: bool) {
@@ -518,11 +572,6 @@ impl<T: InvokeUiSession> Session<T> {
         let mut msg_out = Message::new();
         msg_out.set_misc(misc);
         self.send(Data::Message(msg_out));
-    }
-
-    #[cfg(not(feature = "flutter"))]
-    pub fn refresh_video(&self, _display: i32) {
-        self.send(Data::Message(LoginConfigHandler::refresh()));
     }
 
     pub fn record_screen(&self, start: bool) {
@@ -623,7 +672,9 @@ impl<T: InvokeUiSession> Session<T> {
     pub fn use_texture_render_changed(&self) {
         self.send(Data::ResetDecoder(None));
         self.update_supported_decodings();
-        self.send(Data::Message(LoginConfigHandler::refresh()));
+        if let Err(err) = self.refresh_all_video() {
+            log::error!("failed to refresh video after changing renderer: {err}");
+        }
     }
 
     pub fn restart_remote_device(&self) {
@@ -1346,6 +1397,7 @@ impl<T: InvokeUiSession> Session<T> {
             return;
         };
         if thread_lock.is_some() {
+            *self.video_refresh_sender.write().unwrap() = None;
             match previous_state {
                 ConnectionState::Connecting => {
                     self.connection_round_owner.cancel_connecting_start()
@@ -1366,8 +1418,24 @@ impl<T: InvokeUiSession> Session<T> {
         }
         self.lc.write().unwrap().peer_info = None;
         self.reconnect_count.fetch_add(1, Ordering::SeqCst);
+        let (video_refresh_sender, video_refresh_receiver) = viewer_video_refresh_channel();
         match Self::spawn_io_thread(self.clone(), round) {
-            Ok(thread) => *thread_lock = Some(thread),
+            Ok((thread, start)) => match self.activate_video_refresh_round(
+                video_refresh_sender,
+                video_refresh_receiver,
+                start,
+            ) {
+                Ok(()) => *thread_lock = Some(thread),
+                Err(err) => {
+                    if thread.join().is_err() {
+                        log::error!(
+                            "outgoing viewer I/O worker terminated by panic before reconnect publication"
+                        );
+                    }
+                    self.connection_round_owner.finish(round);
+                    log::error!("failed to publish outgoing viewer reconnect round: {err}");
+                }
+            },
             Err(err) => {
                 self.connection_round_owner.finish(round);
                 log::error!("failed to start outgoing viewer I/O worker: {err}");
@@ -1375,10 +1443,47 @@ impl<T: InvokeUiSession> Session<T> {
         }
     }
 
-    fn spawn_io_thread(session: Self, round: u64) -> std::io::Result<std::thread::JoinHandle<()>> {
-        std::thread::Builder::new()
+    fn activate_video_refresh_round(
+        &self,
+        sender: ViewerVideoRefreshSender,
+        receiver: ViewerVideoRefreshReceiver,
+        start: std::sync::mpsc::SyncSender<ViewerVideoRefreshReceiver>,
+    ) -> std::io::Result<()> {
+        let mut slot = self.video_refresh_sender.write().unwrap();
+        if self.close_requested.load(Ordering::Acquire) {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::Interrupted,
+                "viewer owner retired before refresh-round publication",
+            ));
+        }
+        *slot = Some(sender);
+        if start.send(receiver).is_err() {
+            *slot = None;
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "viewer I/O worker closed its refresh start gate",
+            ));
+        }
+        Ok(())
+    }
+
+    fn spawn_io_thread(
+        session: Self,
+        round: u64,
+    ) -> std::io::Result<(
+        std::thread::JoinHandle<()>,
+        std::sync::mpsc::SyncSender<ViewerVideoRefreshReceiver>,
+    )> {
+        let (start, wait_for_start) = std::sync::mpsc::sync_channel(1);
+        let thread = std::thread::Builder::new()
             .name("rustdesk-viewer-io".to_owned())
-            .spawn(move || io_loop(session, round))
+            .spawn(move || {
+                let Ok(video_refresh) = wait_for_start.recv() else {
+                    return;
+                };
+                io_loop(session, round, video_refresh);
+            })?;
+        Ok((thread, start))
     }
 
     pub fn start_io_thread(&self) -> std::io::Result<bool> {
@@ -1392,11 +1497,27 @@ impl<T: InvokeUiSession> Session<T> {
                 "viewer owner retired or connection round counter exhausted",
             ));
         };
+        let (video_refresh_sender, video_refresh_receiver) = viewer_video_refresh_channel();
         match Self::spawn_io_thread(self.clone(), round) {
-            Ok(thread) => {
-                *thread_lock = Some(thread);
-                Ok(true)
-            }
+            Ok((thread, start)) => match self.activate_video_refresh_round(
+                video_refresh_sender,
+                video_refresh_receiver,
+                start,
+            ) {
+                Ok(()) => {
+                    *thread_lock = Some(thread);
+                    Ok(true)
+                }
+                Err(err) => {
+                    if thread.join().is_err() {
+                        log::error!(
+                            "outgoing viewer I/O worker terminated by panic before initial publication"
+                        );
+                    }
+                    self.connection_round_owner.finish(round);
+                    Err(err)
+                }
+            },
             Err(err) => {
                 self.connection_round_owner.finish(round);
                 Err(err)
@@ -1479,9 +1600,15 @@ impl<T: InvokeUiSession> Session<T> {
     }
 
     pub fn close(&self) {
+        // Serialize retirement with sender publication and worker-gate release. Activation
+        // therefore completes wholly before retirement or observes the retired flag and never
+        // releases its worker.
+        let mut video_refresh_sender = self.video_refresh_sender.write().unwrap();
         self.connection_round_owner.retire();
         self.close_requested.store(true, Ordering::Release);
         self.close_notify.notify_waiters();
+        *video_refresh_sender = None;
+        drop(video_refresh_sender);
         self.send(Data::Close);
     }
 
@@ -1968,7 +2095,11 @@ impl<T: InvokeUiSession> Session<T> {
 }
 
 #[tokio::main(flavor = "current_thread")]
-pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u64) {
+pub(crate) async fn io_loop<T: InvokeUiSession>(
+    handler: Session<T>,
+    round: u64,
+    video_refresh_receiver: ViewerVideoRefreshReceiver,
+) {
     #[cfg(any(target_os = "android", target_os = "ios"))]
     let (sender, receiver) = mpsc::unbounded_channel::<Data>();
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -2080,7 +2211,7 @@ pub async fn io_loop<T: InvokeUiSession>(handler: Session<T>, round: u64) {
         }
         return;
     }
-    let mut remote = Remote::new(handler, receiver, sender);
+    let mut remote = Remote::new(handler, receiver, sender, video_refresh_receiver);
     remote.io_loop(&key, &token, round).await;
     let _ = remote.sync_jobs_status_to_local().await;
 }
@@ -2532,6 +2663,30 @@ async fn start_admitted_port_forward<T: InvokeUiSession>(
 #[cfg(test)]
 mod connection_round_ownership_tests {
     use super::*;
+
+    #[cfg(feature = "flutter")]
+    #[test]
+    fn r_s11ff_retired_owner_never_releases_the_refresh_worker_start_gate() {
+        let session = Session::<crate::flutter::FlutterHandler>::default();
+        session.close_requested.store(true, Ordering::Release);
+        let (sender, receiver) = viewer_video_refresh_channel();
+        let closed_round_probe = sender.clone();
+        let (thread, start) =
+            Session::spawn_io_thread(session.clone(), 1).expect("the gated test worker must spawn");
+
+        let error = session
+            .activate_video_refresh_round(sender, receiver, start)
+            .expect_err("a retired owner cannot publish a refresh round");
+        assert_eq!(error.kind(), std::io::ErrorKind::Interrupted);
+        assert!(session.video_refresh_sender.read().unwrap().is_none());
+        assert_eq!(
+            closed_round_probe.request(ViewerVideoRefreshRequest::All),
+            Err(ViewerVideoRefreshAdmissionError::Closed)
+        );
+        thread
+            .join()
+            .expect("the unreleased gated worker must exit without entering the I/O loop");
+    }
 
     #[tokio::test]
     async fn explicit_reconnect_cancels_an_exact_connecting_round() {

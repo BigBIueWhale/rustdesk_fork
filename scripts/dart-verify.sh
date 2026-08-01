@@ -250,6 +250,9 @@ local_docker run --rm --pull=never --network=none --read-only \
     echo "  == R-S11eb generated-bridge mobile session lifecycle regressions =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       flutter::mobile_session_lifecycle_tests:: -- --test-threads=1
+    echo "  == R-S11ff generated-bridge exact-owner viewer refresh regression =="
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      flutter::mobile_session_lifecycle_tests::r_s11ff_video_refresh_requires_the_current_exact_ui_owner -- --test-threads=1
     echo "  == R-S11ec outgoing clipboard exact-round lifecycle regression =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop -- --test-threads=1

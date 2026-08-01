@@ -8977,10 +8977,11 @@ else
 fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ex_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ff_ --color never
 if python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test; then
-  echo "  ok  R-S11ex/R-S11fa/R-S11fc desktop Flutter texture finality, presentation resumption, and first-image admission have exact bounded owners"
+  echo "  ok  R-S11ex/R-S11fa/R-S11fc/R-S11ff desktop Flutter texture finality, presentation resumption, first-image admission, and viewer refresh have exact bounded owners"
 else
-  echo "  FAIL R-S11ex/R-S11fa/R-S11fc: Flutter texture lifecycle, exact presentation-resume recovery, or first-image admission regressed"
+  echo "  FAIL R-S11ex/R-S11fa/R-S11fc/R-S11ff: Flutter texture lifecycle, exact presentation-resume recovery, first-image admission, or viewer refresh admission regressed"
   rc=1
 fi
 grep -qF 'native_video_format_locally_unsupported(&lc.mark_unsupported, format)' src/client.rs ||

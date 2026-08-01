@@ -3389,6 +3389,136 @@ signed behavior, exact artifacts, full gates, clean cold R-B2/R-B10, independent
 reproduction, and external review remain open. This source/portable-child result does
 not operationally validate macOS or the broader release.
 
+**R-S11ff/R-S11e-193 exact viewer refresh admission — SOURCE IMPLEMENTED
+2026-08-01; FRESH GENERATED-BRIDGE/FLUTTER/RUST TRANSACTION AND SEVEN BEHAVIORS
+GREEN BEFORE THE FINAL RETIREMENT-ORDER CORRECTION; FOCUSED 145-MUTATION VERIFIER,
+INDEPENDENT BASELINE, FINAL 3,451-ENTRY CATALOG, AND FINAL SYNTAX/BEHAVIOR RERUNS
+REQUIRE AN EXTERNAL RECORD; THE PRE-REVIEW 3,450-ENTRY PASS IS SUPERSEDED; REAL DEVICE/NATIVE
+RENDERER, PEER-ACKNOWLEDGEMENT, AND EXACT-ARTIFACT EVIDENCE OPEN.** Platforms:
+the shared outgoing viewer on Android, iOS, Windows, Linux, and macOS. Endpoint/action:
+Flutter lifecycle/manual/recording refresh plus native decoder/backlog recovery through
+the viewer network loop's peer keyframe request. Boundary: one exact current UI owner and
+one exact connection round ↔ local decoder-generation invalidation and the sole network
+writer's refresh message.
+
+Read-only tracing established that R-S11fa's recovery owner ended at the inherited
+`Session::refresh_video` sink, which sent `RefreshVideo`/`RefreshVideoDisplay` through the
+same unbounded generic `Data` channel as unrelated UI work. The local mailbox generation
+was invalidated only after the network loop eventually dequeued that generic message.
+Flutter's `session_refresh` returned void, silently did nothing for a missing session, and
+carried no `clientOwnerId`; native decoder/backlog call sites likewise ignored whether a
+request was admitted. A stale view, closed round, or unavailable sink could therefore
+appear to consume one presentation recovery transition while no usable refresh reached
+the exact round. This is current-source control-path evidence only. It does not identify
+the exact older Android/Windows/Debian artifacts, reproduce the up-to-ten-second display
+delay, prove causation, or prove a release fixed.
+
+Each ordinary viewer round now owns one receiver. The existing I/O worker is first spawned
+behind a capacity-one start gate; only successful thread ownership may publish the round
+sender, and only then is the worker released into `io_loop`. Spawn failure or owner retirement
+before publication drops the receiver, joins the gated worker, and cannot report refresh
+admission. Reconnect and final close remove refresh admission before predecessor finality.
+Pending state is constant-space: either one all-display request or at most 16 distinct display
+identities, with a capacity-one Tokio wake. Duplicate displays coalesce without bypassing
+receiver-closure observation; receiver teardown marks the shared round closed before closing
+its wake. All-display supersedes pending display work; admission is synchronous and
+nonblocking; capacity and closed-round outcomes are explicit errors. There is no new timer,
+polling loop, long-lived thread, task, runtime, or dependency. The one start gate belongs only
+to construction of the already-owned worker.
+
+The receiver runs in the existing network-loop `select!`, invalidates the exact display or all
+current video mailboxes before the sole writer sends the peer request, and closes the round on
+send failure. A refresh found on the generic UI queue is now a fail-closed contract violation.
+The broader generic unbounded `Data` channel is deliberately not claimed fixed by this slice
+and remains open connection-flow debt.
+
+The authored Flutter helper and every current lifecycle, toolbar, recording, and
+transferred-session caller now carry the captured `clientOwnerId`; an empty Dart display
+inventory fails instead of returning without a request. The result-bearing concrete
+`Result<()>` FFI holds the session registry and exact UI-owner guard through the nonblocking
+enqueue, so a stale owner cannot select its replacement. Native display-specific admission
+also requires a desktop/camera session and a display within the live bounded peer inventory.
+That inventory read guard is retained through selection of the round sender, so reconnect
+linearizes as predecessor admission, explicit replacement-time failure, or successor
+inventory plus successor admission—never predecessor inventory plus a successor sender.
+Missing session, wrong owner, unavailable inventory, protocol/display range, capacity, and
+closed-round cases are visible failures. Internal decoder and backlog recovery remains
+session-owned and treats failed admission as terminal rather than waiting indefinitely for
+an unrequested keyframe.
+
+Seven deterministic Rust regressions cover duplicate coalescing/distinct FIFO order,
+all-display supersession, the fixed identity cap and recovered capacity, queued-duplicate
+failure after exact receiver closure, wake-driven delivery without polling, stale/current
+UI-owner plus display-range admission, and retired-owner refusal before the worker start gate
+is released. The terminal fresh transaction regenerated all four FRB outputs with pinned
+1.80.1, proved generated `sessionRefresh` has result-bearing `Future<void>` plus exact
+`sessionId`, `clientOwnerId`, and `display` arguments, reported zero Flutter `lib/` analyzer
+errors, passed all seven presentation-recovery Dart tests, accepted the maintained clean Dart
+formatter inputs and exact Rust 1.75 formatting, compiled the locked
+`flutter,unix-file-copy-paste` library-test target from an empty target, and passed all seven
+R-S11ff Rust tests: 7 passed, 0 failed, 430 filtered. It used exact Debian builder
+`sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`.
+
+Failed and superseded attempts are not counted. The first default-feature compile found a
+missing `LoginConfigHandler` import. Fresh FRB then rejected the exported alias
+`ResultType<()>`; the boundary now uses generator-supported concrete `Result<()>`. The next
+transaction stopped on one formatter delta in this slice and exposed three unrelated parent
+file formatter deltas which were not swept into the change. A 12 GiB clean compile was killed
+with exit 137 and was replaced by the bounded 24 GiB run. Manual review after an earlier
+six-test green run found and corrected false admission across spawn failure, old-inventory to
+successor-round selection, invalid display inventory, and duplicate/receiver-close races, so
+that earlier result is superseded. The first strengthened clean compile then found the missing
+`bail!` import. A cache-assisted diagnostic later failed inside a pre-existing `zstd-sys`
+cache entry with `PermissionDenied` before reaching this crate and is not evidence. The final
+empty-target transaction above restarted after those corrections. The focused semantic baseline
+passed and rejected all 144 then-current deliberate mutations; the independent workspace
+baseline passed.
+The first complete independent-catalog attempt correctly rejected the capacity-one-wake
+corruption but stopped because its expected diagnostic contained one extra word. A targeted
+audit of all 22 affected entries then exposed four more diagnostic-label mismatches and two
+over-broad mutation anchors that also selected unrelated pre-existing synchronization and UI-
+owner checks. The labels were aligned to the validator's actual fail-closed diagnostics, the
+two anchors were narrowed to the exact refresh-worker and refresh-owner paths, and all 22
+targeted mutations passed. One complete unsliced 3,450-entry catalog then restarted from
+mutation one and exited zero.
+
+Final manual review correctly superseded that catalog and the earlier behavior transaction:
+activation held the refresh-sender lock only through sender publication, released it, and then
+released the worker gate, while final close marked the owner retired before acquiring that same
+lock. A close in that interval could therefore retire the owner and still allow the gated worker
+to start before the existing connection-round cancellation stopped it. Activation now holds the
+sender lock through gate release, and close acquires that lock before publishing retirement, so
+the two operations linearize wholly in one order. The focused and independent models bind that
+order with one new mutation. No accepted mutation, superseded pass, or bookkeeping failure is
+represented as final evidence.
+
+Before publication, the exact final tree must rerun the seven focused Rust behaviors, fresh
+bridge/Flutter checks required by the changed product bytes, the 145-mutation focused self-test,
+independent baseline, final syntax/hash gates, and the complete unsliced 3,451-entry catalog from
+mutation one. Their terminal results belong in the external audit/publication record rather
+than in another recursive tracked-ledger edit.
+
+All counted execution for this slice must remain numeric UID/GID 1000:1000 inside exact
+pre-existing immutable images with `--pull=never`, `--network=none`, read-only root and
+source/vendor inputs, dropped capabilities, `no-new-privileges`, bounded resources,
+private tmpfs, and no port, device, Docker socket, or host namespace. No RustDesk product,
+capture source, listener, peer, renderer, emulator, device, or host process may run; no
+root/sudo or host service/firewall/network/configuration/installed-binary change is
+authorized.
+
+Still open are exact older/current artifact identity; timestamped Android and Windows
+focus/background/task-swipe/Force-Stop/reopen/reconnect reproduction against the Debian
+controlled endpoint; native Windows/macOS and physical-device renderer execution;
+capture-through-presentation timestamps and sustained queue/latency budgets; clean
+committed cold R-B2/R-B10 release artifacts; separately required independent reproduction;
+and external review. Refresh FFI success currently proves local exact-round admission, not
+completion of `peer.send` or a controlled-peer acknowledgement. The protocol has no refresh
+ACK, so a topology change after the last inventory can still make the peer reject a display
+request without completing the same UI future with that rejection. That is explicit broader
+connection-flow debt, not closed by this mailbox slice. These are explicit user-requested
+release blockers. Source, mutation, and in-memory behavior evidence must never be described
+as real operational validation.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -17882,7 +18012,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-aa40c8bb0b53df0b882c0f57e7c64659e7a3bc2bd85a7c8b490afc6a55906a88  requirements.html
+95be2ed315c83db08d77f64c74a8a6b509a5ba28898f5dbf13273f38e983da06  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -17909,3 +18039,4 @@ The same identity additionally binds R-S11ey and Appendix C #307.
 The same identity additionally binds R-S11ez and Appendix C #308.
 The same identity additionally binds R-S11fa and Appendix C #309.
 The same identity additionally binds R-S11fb and Appendix C #310.
+The same identity additionally binds R-S11ff and Appendix C #314.

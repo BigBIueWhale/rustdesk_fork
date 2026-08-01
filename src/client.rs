@@ -3069,14 +3069,24 @@ where
                 match data {
                     VideoMailboxItem::RefreshRequired => {
                         decoder_generation = None;
-                        session.refresh_video(display as _);
+                        if let Err(err) = session.refresh_video(display as _) {
+                            log::error!(
+                                "failed to admit decoder recovery for display {display}: {err}"
+                            );
+                            break;
+                        }
                     }
                     VideoMailboxItem::Frame(queued) => {
                         if queued.is_keyframe {
                             decoder_generation = Some(queued.generation);
                         } else if decoder_generation != Some(queued.generation) {
                             if video_receiver.invalidate_generation(queued.generation) {
-                                session.refresh_video(display as _);
+                                if let Err(err) = session.refresh_video(display as _) {
+                                    log::error!(
+                                        "failed to admit decoder generation recovery for display {display}: {err}"
+                                    );
+                                    break;
+                                }
                             }
                             decoder_generation = None;
                             continue;
@@ -3115,7 +3125,12 @@ where
                                 Ok(rendered) => {
                                     if !video_frame_is_fresh(queued_at, std::time::Instant::now()) {
                                         if video_receiver.invalidate_generation(generation) {
-                                            session.refresh_video(display as _);
+                                            if let Err(err) = session.refresh_video(display as _) {
+                                                log::error!(
+                                                    "failed to admit stale-frame recovery for display {display}: {err}"
+                                                );
+                                                break;
+                                            }
                                         }
                                         decoder_generation = None;
                                         continue;
@@ -3162,7 +3177,12 @@ where
                                     // to-do: fix the error
                                     log::error!("handle video frame error, {}", e);
                                     if video_receiver.invalidate_generation(generation) {
-                                        session.refresh_video(display as _);
+                                        if let Err(err) = session.refresh_video(display as _) {
+                                            log::error!(
+                                                "failed to admit decoder-error recovery for display {display}: {err}"
+                                            );
+                                            break;
+                                        }
                                     }
                                     decoder_generation = None;
                                 }

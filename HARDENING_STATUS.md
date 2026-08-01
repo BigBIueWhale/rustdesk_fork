@@ -2980,9 +2980,9 @@ validated, and does not complete the broader user-mandated correct and performan
 connection flow or the Ralph loop.
 
 **R-S11fb/R-S11e-189 controlled video exact-writer egress — SOURCE IMPLEMENTED
-2026-08-01; LOCKED RUST 1.75 ROOT TYPE-CHECK, 18 FOCUSED IN-MEMORY REGRESSIONS,
-AND FOCUSED/INDEPENDENT SEMANTIC/MUTATION GATES GREEN; CANONICAL FLUTTER-FEATURE
-TYPE-CHECK BLOCKED BY PRE-EXISTING GENERATED-BRIDGE DRIFT; NATIVE
+2026-08-01; PINNED FRB 1.80.1 FRESH GENERATION, FLUTTER ANALYSIS/TESTS, NATIVE
+CALLBACK-CORE TESTS, SHIPPED-FEATURE RUST CHECK, 18 FOCUSED IN-MEMORY
+REGRESSIONS, AND FOCUSED/INDEPENDENT SEMANTIC/MUTATION GATES GREEN; NATIVE
 CURRENT-ARTIFACT REPRODUCTION, TIMESTAMPS/BUDGETS, COLD RELEASE, INDEPENDENT
 REPRODUCTION, AND EXTERNAL REVIEW PENDING.** Platforms: the controlled-side video service shared by Android and desktop
 servers, the per-connection transport writer, and all outgoing viewer platforms that
@@ -3071,15 +3071,35 @@ before the order assertion in both semantic validators made both runtime targets
 independently effective; focused baseline/self-test and independent baseline passed, and
 the final complete catalog then passed from mutation one.
 
-The canonical `cargo check --features flutter,unix-file-copy-paste --lib` did not reach
-this slice in the immutable Linux checker because `magnum-opus` required an unavailable
-`VCPKG_ROOT`. A separate diagnostic check adding the repository's Linux pkg-config feature
-passed that dependency boundary but failed on five generated-bridge mismatches in untouched
-`src/bridge_generated.rs`/`src/flutter_ffi.rs`: three missing GPU entry points, a missing
-GPU-render capability entry point, and a generated two-field `Texture` pattern against the
-current one-field enum. That diagnostic substitute is not counted as a Flutter or Android
-pass, the unrelated bridge drift is not repaired in this slice, and current Flutter-
-feature source type-checkability remains an explicit release blocker.
+The initial canonical `cargo check --features flutter,unix-file-copy-paste --lib` did not
+reach this slice in its immutable Linux checker because `magnum-opus` required an unavailable
+`VCPKG_ROOT`. A separate diagnostic that added the repository's Linux pkg-config feature
+crossed that boundary but compiled the checkout's ignored generated files. Those stale files
+still called three deleted GPU entry points plus the deleted GPU-render capability query and
+matched a two-field `Texture` against the authored one-field enum. They are not tracked source
+or release inputs: every supported Debian, Android, and Dart verification path deletes all
+four generated outputs and regenerates them from `src/flutter_ffi.rs` with pinned FRB 1.80.1.
+
+Follow-up on exact pushed source commit `b2b6af1151814b451da83a4a6d1ded6d5b4bf84f`
+completed the maintained `scripts/dart-verify.sh` transaction. It authenticated offline-input
+closure `a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`
+and exact Debian-builder image
+`sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`,
+generated all four bridge outputs in a disposable immutable-source snapshot, atomically
+published them only inside that private transaction, and compiled and tested those fresh
+outputs. Fresh generated Rust uses the one-field `EventToUI::Texture`; fresh generated
+Rust/Dart contains none of the retired GPU registration/capability ABI. Full Flutter analysis
+reported zero errors, both warnings-fatal native callback-core tests passed, the locked
+`flutter,unix-file-copy-paste` Rust library check passed, all 16 generated-bridge mobile
+session-lifecycle tests passed, and the maintained clipboard, password-input, screenshot,
+video-acknowledgement, 18 R-S11fb egress/receipt, and six audio-egress regressions passed.
+The generator emitted a typedef-redefinition diagnostic from its inherited ffigen header
+pass but returned success; the resulting Dart and Rust outputs then passed analysis,
+compilation, and tests, so that diagnostic was not hidden or treated as the result itself.
+The final online-closure recheck, source digest comparison, private cleanup, and source-
+worktree-unchanged postcondition passed. This closes the generated-bridge source-validation
+blocker; it is not Android/Windows runtime, renderer, artifact, or latency evidence. The stale
+ignored checkout outputs were neither adopted as evidence nor modified or removed.
 
 Every attempted code/build/test action ran as numeric UID/GID 1000 in pre-existing
 immutable local images with `--pull=never`, `--network=none`, a read-only container root
@@ -3089,9 +3109,11 @@ Only disposable container tmpfs and the existing ordinary-user `/tmp` target cac
 writable. No RustDesk product, capture source, listener, peer, renderer, emulator,
 device, or host process was started; no root/sudo was acquired; and no host RustDesk
 service/configuration, firewall, network, Docker image, or installed binary was changed.
-Still open are repair and canonical validation of the generated Flutter bridge; real
-Android task-swipe/background/Force-Stop/reopen and Windows focus/minimize/tab-switch
-testing against exact current artifacts; native renderer execution; capture-through-
+The fresh-bridge follow-up used the exact Debian-builder image above under the same nonroot,
+no-pull, networkless, read-only-root/source/input, capability-free, no-new-privileges,
+bounded-resource, no-port/device/Docker-socket/host-namespace boundary. Still open are real
+Android task-swipe/background/Force-Stop/reopen and Windows focus/minimize/tab-switch testing
+against exact current artifacts; native renderer execution; capture-through-
 presentation timestamps and queue/latency budgets; identity of the older operational
 artifacts; clean committed cold R-B2/R-B10 releases; independent reproduction; and
 external review. This closes one source egress contract only and does not prove the

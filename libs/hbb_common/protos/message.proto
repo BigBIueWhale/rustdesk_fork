@@ -66,7 +66,7 @@ message LoginRequest {
   // parsed), so the LoginRequest carries NO second password credential on the wire. The viewer always sent
   // it empty and the responder's non-empty branch was dead code; tag 2 is reserved (not reused), with
   // os_login's 12 and hwid's 14 — so neither side can speak a second credential (R-A6 greps it absent).
-  reserved 2, 12, 14;
+  reserved 2, 9, 12, 14;
   string my_id = 4;
   string my_name = 5;
   OptionMessage option = 6;
@@ -76,7 +76,6 @@ message LoginRequest {
     ViewCamera view_camera = 15;
     Terminal terminal = 16;
   }
-  bool video_ack_required = 9;
   uint64 session_id = 10;
   string version = 11;
   // R-S18 / Appendix C: the peer-supplied OS-login credential (OSLogin os_login = 12) is DELETED.
@@ -826,6 +825,7 @@ message MessageQuery {
 }
 
 message Misc {
+  reserved 12; // retired displayless video acknowledgement; local exact writer receipts own pacing
   oneof union {
     ChatMessage chat_message = 4;
     SwitchDisplay switch_display = 5;
@@ -834,7 +834,6 @@ message Misc {
     AudioFormat audio_format = 8;
     string close_reason = 9;
     bool refresh_video = 10;
-    bool video_received = 12;
     BackNotification back_notification = 13;
     bool restart_remote_device = 14;
     bool uac = 15;

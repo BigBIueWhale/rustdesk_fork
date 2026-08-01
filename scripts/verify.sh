@@ -10206,6 +10206,11 @@ flutter_event_loop=flutter/lib/utils/event_loop.dart
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
   server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
+  server::video_service::video_frame_ack_tests::r_s11fb_ -- --test-threads=1
+"${RUN[@]}" cargo test --lib --features linux-pkg-config \
+  server::connection::video_egress_tests::r_s11fb_ -- --test-threads=1
+"${RUN[@]}" cargo test -p hbb_common writer_receipt_tests::r_s11fb_ -- --test-threads=1
+"${RUN[@]}" cargo test --lib --features linux-pkg-config \
   server::connection::audio_egress_tests::r_s11eh_ -- --test-threads=1
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
   ui_session_interface::connection_round_ownership_tests:: -- --test-threads=1
@@ -10470,18 +10475,44 @@ grep -qF 'static ref VIDEO_FRAME_ACK_CONTROLLERS: Mutex<HashMap<VideoFrameStream
   || android_client_owner_bad="$android_client_owner_bad video-ack-exact-stream-registry-missing"
 grep -qF 'round.pending.clone_from(connection_ids);' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad video-ack-exact-round-targets-missing"
-grep -qF 'if !round.pending.contains(&connection_id) || !round.acknowledged.insert(connection_id)' src/server/video_service.rs \
+grep -qF '.checked_add(1)' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-monotonic-round-missing"
+grep -qF 'round.generation != generation' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad video-ack-pending-id-gate-missing"
 grep -qF '.wait_timeout_while(round, timeout, |round| !round.complete())' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad video-ack-condition-wait-missing"
-grep -qF 'sp.send_video_frame_with_targets(msg, |connection_ids|' src/server/video_service.rs \
+grep -qF 'sp.send_video_frame_with_targets(' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad video-ack-prepare-before-send-wiring-missing"
-grep -qF 'prepare(&conn_ids);' src/server/service.rs \
+grep -qF 'let round = prepare(&conn_ids)?;' src/server/service.rs \
   || android_client_owner_bad="$android_client_owner_bad video-ack-service-prepare-before-send-missing"
-grep -qF 'conn.video_source(),' src/server/connection.rs \
-  || android_client_owner_bad="$android_client_owner_bad video-ack-dequeue-source-missing"
-grep -qF 'notify_video_frame_fetched_by_conn_id(self.video_source(), id, None);' src/server/connection.rs \
-  || android_client_owner_bad="$android_client_owner_bad video-ack-disconnect-source-missing"
+grep -qF 'send_with_receipt(frame.message.as_ref())' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-writer-receipt-missing"
+grep -qF 'source: frame.identity.source,' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-enqueue-source-ownership-missing"
+grep -qF 'retire_video_frame_connection(id);' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-disconnect-retirement-missing"
+grep -qF 'const VIDEO_EGRESS_WAKE_CAPACITY: usize = 1;' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-egress-bounded-wake-missing"
+grep -qF 'const VIDEO_EGRESS_MAX_DISPLAYS: usize = 32;' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-egress-display-cap-missing"
+grep -qF 'slot.pending = Some(PendingVideoEgress::RefreshRequired);' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-egress-gop-refresh-missing"
+grep -qF 'awaiting_independent: true,' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-egress-fresh-gop-gate-missing"
+grep -qF 'if !self.wake_receiver() && !retired.contains(&identity)' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-egress-closed-receiver-retirement-missing"
+grep -qF 'let mut rx_video = rx_video.with_connection_owner(id);' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-egress-receiver-owner-missing"
+grep -qF 'completion: Option<oneshot::Sender<io::Result<()>>>' libs/hbb_common/src/tcp.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-egress-exact-writer-receipt-missing"
+grep -qF 'pub async fn send_with_receipt' libs/hbb_common/src/tcp.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-egress-tracked-send-missing"
+grep -qF 'reserved 12; // retired displayless video acknowledgement' libs/hbb_common/protos/message.proto \
+  || android_client_owner_bad="$android_client_owner_bad video-egress-peer-ack-tag-not-reserved"
+if grep -qF 'video_ack_required = 9' libs/hbb_common/protos/message.proto \
+  || grep -qF 'VideoReceived' src/server/connection.rs; then
+  android_client_owner_bad="$android_client_owner_bad video-egress-ambiguous-peer-ack-present"
+fi
 if grep -qF 'FRAME_FETCHED_NOTIFIERS' src/server/video_service.rs \
   || grep -qF 'DISPLAY_CONN_IDS' src/server/video_service.rs \
   || grep -qF '#[tokio::main' src/server/video_service.rs; then
@@ -10491,12 +10522,28 @@ grep -qF 'r_s11eg_monitor_and_camera_acknowledgements_are_source_exact' src/serv
   || android_client_owner_bad="$android_client_owner_bad video-ack-source-exact-regression-missing"
 grep -qF 'r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad video-ack-prepare-order-regression-missing"
+grep -qF 'r_s11fb_late_completion_cannot_satisfy_a_new_round' src/server/video_service.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-ack-stale-round-regression-missing"
+grep -qF 'r_s11fb_dependent_replacement_requests_an_independent_sequence' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-egress-gop-regression-missing"
+grep -qF 'r_s11fb_fresh_display_rejects_dependent_until_independent' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-egress-fresh-gop-regression-missing"
+grep -qF 'r_s11fb_closed_receiver_retires_a_stale_subscriber_enqueue' src/server/connection.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-egress-closed-receiver-regression-missing"
+grep -qF 'r_s11fb_receipt_waits_for_the_exact_sink_send' libs/hbb_common/src/tcp.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-egress-writer-receipt-regression-missing"
 grep -qF '<span class="id">R-S11eg</span>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad video-ack-requirement-missing"
 grep -qF '<tr><td>286</td>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad video-ack-disposition-missing"
 grep -qF 'R-S11eg/R-S11e-151' HARDENING_STATUS.md \
   || android_client_owner_bad="$android_client_owner_bad video-ack-ledger-missing"
+grep -qF '<span class="id">R-S11fb</span>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad controlled-video-egress-requirement-missing"
+grep -qF '<tr><td>310</td>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad controlled-video-egress-disposition-missing"
+grep -qF 'R-S11fb/R-S11e-189' HARDENING_STATUS.md \
+  || android_client_owner_bad="$android_client_owner_bad controlled-video-egress-ledger-missing"
 grep -qF 'const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;' src/server/connection.rs \
   || android_client_owner_bad="$android_client_owner_bad bounded-audio-wake-cap-missing"
 grep -qF 'state.format.take().or_else(|| state.frame.take())' src/server/connection.rs \
@@ -10527,6 +10574,10 @@ grep -qF 'server::video_service::screenshot_ownership_tests::r_s11ef_' scripts/d
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-controlled-screenshot-test-filter-missing"
 grep -qF 'server::video_service::video_frame_ack_tests::r_s11eg_' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-video-ack-test-filter-missing"
+grep -qF 'server::connection::video_egress_tests::r_s11fb_' scripts/dart-verify.sh \
+  || android_client_owner_bad="$android_client_owner_bad generated-bridge-video-egress-test-filter-missing"
+grep -qF 'writer_receipt_tests::r_s11fb_' scripts/dart-verify.sh \
+  || android_client_owner_bad="$android_client_owner_bad generated-bridge-writer-receipt-test-filter-missing"
 grep -qF 'server::connection::audio_egress_tests::r_s11eh_' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-bounded-audio-test-filter-missing"
 grep -qF 'test/mobile_session_start_queue_test.dart' scripts/dart-verify.sh \

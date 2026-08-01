@@ -19616,15 +19616,21 @@ def validate_android_voice_call_ownership_contract(sources):
             "fn reset(&self)",
             "round.pending.clear();",
             "round.acknowledged.clear();",
-            "fn prepare(&self, connection_ids: &HashSet<i32>)",
+            "fn prepare(&self, connection_ids: &HashSet<i32>) -> ResultType<u64>",
+            ".checked_add(1)",
             "round.pending.clone_from(connection_ids);",
-            "fn acknowledge(&self, connection_id: i32)",
+            "fn acknowledge(&self, generation: u64, connection_id: i32)",
+            "round.generation != generation",
             "!round.pending.contains(&connection_id)",
             "!round.acknowledged.insert(connection_id)",
+            "fn retire_connection(&self, connection_id: i32)",
+            "fn retire(&self, generation: u64, connection_id: i32)",
+            "round.generation != generation",
+            "!round.pending.remove(&connection_id)",
             "fn wait_for_all(&self, timeout: Duration)",
             ".wait_timeout_while(round, timeout, |round| !round.complete())",
         ),
-        "bounded exact pending/acknowledged video round source",
+        "bounded generation-exact pending/acknowledged video round source",
     )
     video_ack_controller = extract_between(
         controlled_screenshots,
@@ -19667,13 +19673,26 @@ def validate_android_voice_call_ownership_contract(sources):
             "pub fn notify_video_frame_fetched(",
             "source: VideoSource,",
             "display_idx: usize,",
-            "state.acknowledge(conn_id)",
-            "pub fn notify_video_frame_fetched_by_conn_id(",
-            "(key.source == source)",
-            "state.acknowledge(conn_id)",
+            "round: u64,",
+            "conn_id: i32,",
+            "state.acknowledge(round, conn_id)",
+            "pub fn retire_video_frame_round(",
+            "state.retire(round, conn_id);",
+            "pub fn retire_video_frame_connection(conn_id: i32)",
+            ".filter_map(|(_, state)| state.upgrade())",
+            "state.retire_connection(conn_id);",
         ),
-        "source-exact controlled video acknowledgement callbacks source",
+        "generation-exact controlled video completion/retirement callbacks source",
     )
+    for retired_callback in (
+        "notify_video_frame_fetched_by_conn_id",
+        "Some(misc::Union::VideoReceived(_))",
+    ):
+        require_absent(
+            controlled_screenshots + sources["connection_source"],
+            retired_callback,
+            f"retired ambiguous video acknowledgement callback source {retired_callback}",
+        )
     video_run = extract_between(
         controlled_screenshots,
         "fn run(vs: VideoService)",
@@ -19698,10 +19717,12 @@ def validate_android_voice_call_ownership_contract(sources):
     require_order(
         video_handle_one_frame,
         (
-            "sp.send_video_frame_with_targets(msg, |connection_ids|",
-            "frame_controller.prepare(connection_ids);",
+            "sp.send_video_frame_with_targets(",
+            "frame_controller.key.source,",
+            "frame_controller.key.display_idx,",
+            "|connection_ids| frame_controller.prepare(connection_ids)",
         ),
-        "source-exact controlled video acknowledgement frame send source",
+        "generation/source/display-exact controlled video frame send source",
     )
     for retired in (
         "FRAME_FETCHED_NOTIFIERS",
@@ -19718,48 +19739,216 @@ def validate_android_voice_call_ownership_contract(sources):
     video_service_send = extract_between(
         sources["server_service_source"],
         "pub fn send_video_frame_with_targets<F>",
-        "\n    pub fn send_without",
+        "\n}\n\nimpl<T: Subscriber + From<ConnInner>> ServiceSwap<T>",
         "prepare-before-enqueue video service source",
     )
     require_order(
         video_service_send,
         (
             "let conn_ids = lock.subscribes.keys().copied().collect::<HashSet<_>>();",
-            "prepare(&conn_ids);",
-            "for s in lock.subscribes.values_mut()",
-            "s.send(msg.clone());",
+            "let round = prepare(&conn_ids)?;",
+            "for subscriber in lock.subscribes.values_mut()",
+            "subscriber.send_video_frame(Arc::clone(&msg), source, display, round);",
         ),
-        "video acknowledgement ownership before frame enqueue source",
+        "video acknowledgement ownership before exact mailbox enqueue source",
+    )
+
+    connection = sources["connection_source"]
+    require_text(connection, "const VIDEO_EGRESS_WAKE_CAPACITY: usize = 1;", "video egress wake capacity source")
+    require_text(connection, "const VIDEO_EGRESS_MAX_DISPLAYS: usize = 32;", "video egress display capacity source")
+    video_egress_state = extract_between(
+        connection,
+        "struct VideoEgressState {",
+        "\n#[derive(Clone)]\npub(crate) struct VideoEgressSender",
+        "bounded video egress state source",
     )
     require_order(
-        sources["connection_source"],
+        video_egress_state,
         (
-            "video_service::notify_video_frame_fetched(",
-            "conn.video_source(),",
-            "vf.display as usize,",
-            "Some(misc::Union::VideoReceived(_))",
-            "video_service::notify_video_frame_fetched_by_conn_id(",
-            "self.video_source(),",
+            "switch_display: Option<(Instant, Arc<Message>)>",
+            "displays: HashMap<usize, VideoDisplayEgress>",
+            "ready_displays: VecDeque<usize>",
         ),
-        "connection video acknowledgement source preservation source",
+        "bounded per-display video egress state source",
     )
+    video_display_default = extract_between(
+        connection,
+        "impl Default for VideoDisplayEgress {",
+        "\n}\n\n#[derive(Default)]\nstruct VideoEgressState",
+        "fresh video display state source",
+    )
+    require_order(
+        video_display_default,
+        (
+            "pending: None",
+            "awaiting_independent: true",
+            "ready: false",
+        ),
+        "fresh display waits for an independently decodable frame source",
+    )
+    video_egress_sender = extract_between(
+        connection,
+        "impl VideoEgressSender {",
+        "\nimpl VideoEgressReceiver",
+        "GOP-aware video egress sender source",
+    )
+    require_count(
+        video_egress_sender,
+        "slot.pending = Some(PendingVideoEgress::RefreshRequired);",
+        2,
+        "both dependent video suppression paths source",
+    )
+    require_order(
+        video_egress_sender,
+        (
+            "self.wake.try_send(())",
+            "fn mark_ready(state: &mut VideoEgressState, display: usize)",
+            "fn send_video_frame(",
+            "source: VideoSource,",
+            "display: usize,",
+            "round: u64,",
+            "starts_video_sequence(frame)",
+            "state.displays.len() >= VIDEO_EGRESS_MAX_DISPLAYS",
+            "let previous = slot.pending.take();",
+            "retired.push(previous.identity());",
+            "if independent",
+            "slot.awaiting_independent = false;",
+            "slot.awaiting_independent = true;",
+            "slot.pending = Some(PendingVideoEgress::RefreshRequired);",
+            "Self::mark_ready(&mut state, display);",
+            "!self.wake_receiver()",
+            "retired.push(identity);",
+            "fn send_switch_display(&self, message: Arc<Message>)",
+            "state.switch_display = Some((Instant::now(), message));",
+            "state.displays.clear();",
+        ),
+        "bounded GOP-aware video egress sender source",
+    )
+    video_egress_receiver = extract_between(
+        connection,
+        "impl VideoEgressReceiver {",
+        "\nimpl Drop for VideoEgressReceiver",
+        "event-driven video egress receiver source",
+    )
+    require_order(
+        video_egress_receiver,
+        (
+            "fn with_connection_owner(mut self, connection_id: i32)",
+            "self.connection_id = Some(connection_id);",
+            "state.switch_display.take()",
+            "state.ready_displays.pop_front()",
+            "slot.pending.take()",
+            "pub(crate) async fn recv(&mut self)",
+            "self.wake.recv().await?",
+        ),
+        "switch-first fair video egress receiver source",
+    )
+    video_egress_drop = extract_between(
+        connection,
+        "impl Drop for VideoEgressReceiver {",
+        "\n}\n\n#[derive(Clone, Default)]\npub struct ConnInner",
+        "video receiver retirement source",
+    )
+    require_order(
+        video_egress_drop,
+        (
+            "self.wake.close();",
+            "state.displays.clear();",
+            "drop(state);",
+            "video_service::retire_video_frame_connection(connection_id);",
+        ),
+        "receiver closes admission before exact connection retirement source",
+    )
+    require_order(
+        connection,
+        (
+            "let mut rx_video = rx_video.with_connection_owner(id);",
+            "completion = wait_for_video_write(&mut pending_video_write)",
+            "let Some(pending) = pending_video_write.take()",
+            "Ok(Ok(()))",
+            "video_service::notify_video_frame_fetched(",
+            "pending.source,",
+            "pending.display,",
+            "pending.round,",
+            "item = rx_video.recv(), if pending_video_write.is_none()",
+            "conn.stream.send_with_receipt(frame.message.as_ref()).await",
+            "source: frame.identity.source,",
+            "display: frame.identity.display,",
+            "round: frame.identity.round,",
+            "video_service::retire_video_frame_connection(id);",
+        ),
+        "exact sole-writer completion before generation acknowledgement source",
+    )
+
+    transport_tcp = sources["tcp_source"]
+    writer_command = extract_between(
+        transport_tcp,
+        "enum WriterCommand {",
+        "\n}\n\n/// Exact completion",
+        "tracked sole-writer command source",
+    )
+    require_order(
+        writer_command,
+        (
+            "Frame {",
+            "bytes: Bytes,",
+            "completion: Option<oneshot::Sender<io::Result<()>>>",
+            "Drain(oneshot::Sender<io::Result<()>>)",
+        ),
+        "exact receipt on existing writer FIFO source",
+    )
+    require_order(
+        transport_tcp,
+        (
+            "pub async fn send_with_receipt",
+            "self.send_bytes_raw_with_receipt(bytes).await",
+            "async fn writer_task(",
+            "WriterCommand::Frame { bytes, completion }",
+            "let result = sink.send(bytes).await;",
+            "completion.send(result)",
+        ),
+        "tracked send reaches exact sole-writer result source",
+    )
+    require_text(sources["stream_source"], "pub async fn send_with_receipt(", "stream tracked-send wrapper source")
+    require_text(sources["message_proto"], "reserved 2, 9, 12, 14;", "login video-ack tag reservation source")
     require_text(
-        sources["connection_source"],
-        "notify_video_frame_fetched_by_conn_id(self.video_source(), id, None);",
-        "source-exact disconnect video acknowledgement source",
+        sources["message_proto"],
+        "reserved 12; // retired displayless video acknowledgement; local exact writer receipts own pacing",
+        "displayless video-ack tag reservation source",
     )
+    require_absent(sources["message_proto"], "video_ack_required = 9", "peer video-ack negotiation source")
+    require_absent(sources["message_proto"], "video_received = 12", "displayless peer video-ack source")
     for behavior_test in (
         "r_s11eg_monitor_and_camera_acknowledgements_are_source_exact",
         "r_s11eg_only_pending_exact_connection_ids_complete_a_round",
-        "r_s11eg_displayless_acknowledgement_reaches_only_its_source",
         "r_s11eg_controller_registration_is_bounded_and_exactly_retired",
         "r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue",
+        "r_s11fb_late_completion_cannot_satisfy_a_new_round",
+        "r_s11fb_local_disconnect_retires_all_exact_pending_sources",
+        "r_s11fb_superseded_frame_retires_only_its_exact_round",
     ):
         require_text(
             controlled_screenshots,
             behavior_test,
             f"controlled video acknowledgement behavior proof source {behavior_test}",
         )
+    for behavior_test in (
+        "r_s11fb_latest_independent_frame_replaces_only_the_same_display",
+        "r_s11fb_fresh_display_rejects_dependent_until_independent",
+        "r_s11fb_dependent_replacement_requests_an_independent_sequence",
+        "r_s11fb_displays_are_isolated_and_round_robin_ready",
+        "r_s11fb_switch_display_precedes_new_video_and_retires_old_video",
+        "r_s11fb_display_ownership_is_fixed_capacity",
+        "r_s11fb_async_video_egress_waits_without_polling_and_closes",
+        "r_s11fb_closed_receiver_retires_a_stale_subscriber_enqueue",
+    ):
+        require_text(connection, behavior_test, f"video egress behavior proof source {behavior_test}")
+    for behavior_test in (
+        "r_s11fb_receipt_waits_for_the_exact_sink_send",
+        "r_s11fb_receipt_reports_the_exact_sink_failure",
+        "r_s11fb_tracked_keyed_send_round_trips_the_exact_frame",
+    ):
+        require_text(transport_tcp, behavior_test, f"writer receipt behavior proof source {behavior_test}")
     require_text(
         sources["requirements"],
         '<span class="id">R-S11eg</span>',
@@ -19775,6 +19964,13 @@ def validate_android_voice_call_ownership_contract(sources):
         "R-S11eg/R-S11e-151",
         "controlled video acknowledgement hardening ledger source",
     )
+    require_text(sources["requirements"], '<span class="id">R-S11fb</span>', "controlled video egress requirement source")
+    require_text(sources["requirements"], "<tr><td>310</td>", "controlled video egress Appendix C row source")
+    require_text(
+        sources["hardening"],
+        "**R-S11fb/R-S11e-189 controlled video exact-writer egress",
+        "controlled video egress hardening ledger source",
+    )
     require_text(
         sources["verify"],
         '"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\n'
@@ -19782,10 +19978,23 @@ def validate_android_voice_call_ownership_contract(sources):
         "controlled video acknowledgement shared behavior gate source",
     )
     require_text(
+        sources["verify"],
+        '"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\n'
+        "  server::connection::video_egress_tests::r_s11fb_ -- --test-threads=1",
+        "controlled video egress shared behavior gate source",
+    )
+    require_text(
+        sources["verify"],
+        '"${RUN[@]}" cargo test -p hbb_common writer_receipt_tests::r_s11fb_ -- --test-threads=1',
+        "writer receipt shared behavior gate source",
+    )
+    require_text(
         sources["dart_verify"],
         "server::video_service::video_frame_ack_tests::r_s11eg_",
         "controlled video acknowledgement generated-bridge behavior gate source",
     )
+    require_text(sources["dart_verify"], "server::connection::video_egress_tests::r_s11fb_", "video egress generated-bridge behavior gate source")
+    require_text(sources["dart_verify"], "writer_receipt_tests::r_s11fb_", "writer receipt generated-bridge behavior gate source")
     require_text(
         sources["verify"],
         'and session_add.index("take_previous_android_mobile_client_sessions(client_owner_id, session_id)?")',
@@ -20230,11 +20439,25 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
-        'sources["server_connection"],\n'
-        "        (\n"
-        '            "video_service::notify_video_frame_fetched(",\n'
-        '            "conn.video_source(),",',
-        "focused video acknowledgement callback-source assertion",
+        '"transport_tcp": (repo / "libs/hbb_common/src/tcp.rs").read_text(',
+        "focused transport-writer source loading",
+    )
+    require_text(
+        focused,
+        '"message_proto": (repo / "libs/hbb_common/protos/message.proto").read_text(',
+        "focused peer-protocol source loading",
+    )
+    require_text(
+        focused,
+        'video_egress_sender = extract_item(\n'
+        "        server_connection,\n"
+        '        "impl VideoEgressSender",',
+        "focused bounded video egress extraction",
+    )
+    require_text(
+        focused,
+        'writer_task = extract_item(transport_tcp, "async fn writer_task", "sole writer task")',
+        "focused exact sole-writer completion extraction",
     )
     require_text(
         focused,
@@ -20251,6 +20474,18 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
+        'sources["verify"],\n'
+        '        \'"${RUN[@]}" cargo test -p hbb_common writer_receipt_tests::r_s11fb_ -- --test-threads=1\',',
+        "focused shared writer-receipt behavior-gate assertion",
+    )
+    require_text(
+        focused,
+        'sources["dart_verify"],\n'
+        '        "server::connection::video_egress_tests::r_s11fb_",',
+        "focused generated-bridge video-egress behavior-gate assertion",
+    )
+    require_text(
+        focused,
         '("video_service", "round.pending.clone_from(connection_ids);", "round.pending.clear();", "exact video acknowledgement round targets"),',
         "video acknowledgement exact-target focused mutation",
     )
@@ -20261,18 +20496,48 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
-        '("video_service", "(key.source == source).then(|| state.upgrade()).flatten()", "state.upgrade()", "source-scoped displayless video acknowledgement"),',
-        "video acknowledgement source-scope focused mutation",
+        '("video_service", ".checked_add(1)", ".wrapping_add(1)", "checked monotonic video acknowledgement generation"),',
+        "video acknowledgement generation focused mutation",
     )
     require_text(
         focused,
-        '("server_service", "prepare(&conn_ids);\\n        for s in lock.subscribes.values_mut() {", "for s in lock.subscribes.values_mut() {\\n            // acknowledgement ownership prepared too late", "prepare-before-enqueue video round"),',
+        '("server_service", "let round = prepare(&conn_ids)?;\\n        for subscriber in lock.subscribes.values_mut() {", "for subscriber in lock.subscribes.values_mut() {\\n            let round = prepare(&conn_ids)?;", "prepare-before-enqueue video round"),',
         "video acknowledgement prepare-order focused mutation",
     )
     require_text(
         focused,
-        '("server_connection", "notify_video_frame_fetched_by_conn_id(self.video_source(), id, None);", "notify_video_frame_fetched_by_conn_id(VideoSource::Monitor, id, None);", "source-exact video disconnect wake"),',
-        "video acknowledgement disconnect-source focused mutation",
+        '("server_connection", "conn.stream.send_with_receipt(frame.message.as_ref()).await", "conn.stream.send(frame.message.as_ref()).await.map(|_| unreachable!())", "tracked exact video send"),',
+        "tracked exact video send focused mutation",
+    )
+    require_text(
+        focused,
+        '("server_connection", "awaiting_independent: true,", "awaiting_independent: false,", "fresh display awaits an independent video sequence"),',
+        "fresh-display independent-sequence focused mutation",
+    )
+    require_text(
+        focused,
+        '("server_connection", "if !self.wake_receiver() && !retired.contains(&identity) {", "if false {", "closed video receiver retires stale-subscriber enqueue"),',
+        "closed-receiver enqueue-retirement focused mutation",
+    )
+    require_text(
+        focused,
+        '("server_connection", "video_service::retire_video_frame_connection(connection_id);", "video_service::retire_video_frame_connection(connection_id + 1);", "video receiver exact-owner retirement"),',
+        "video receiver exact-owner focused mutation",
+    )
+    require_text(
+        focused,
+        '("transport_tcp", "let result = sink.send(bytes).await;", "let result = Ok(());", "writer receipt follows exact sink send"),',
+        "exact writer completion focused mutation",
+    )
+    require_text(
+        focused,
+        '("transport_tcp", "r_s11fb_tracked_keyed_send_round_trips_the_exact_frame", "writer_receipt_keyed_round_trip_test_disabled", "writer receipt keyed round-trip behavior proof"),',
+        "writer receipt keyed round-trip focused mutation",
+    )
+    require_text(
+        focused,
+        '("message_proto", "reserved 12; // retired displayless video acknowledgement; local exact writer receipts own pacing", "VideoReceived video_received = 12;", "retired displayless peer acknowledgement tag"),',
+        "retired peer acknowledgement focused mutation",
     )
     require_text(
         focused,
@@ -20283,6 +20548,16 @@ def validate_android_voice_call_ownership_contract(sources):
         focused,
         '("hardening", "R-S11eg/R-S11e-151", "R-S11eg-disabled/R-S11e-151", "controlled video acknowledgement hardening ledger"),',
         "controlled video acknowledgement ledger focused mutation",
+    )
+    require_text(
+        focused,
+        '("requirements", \'<span class="id">R-S11fb</span>\', \'<span class="id">R-S11fb-disabled</span>\', "controlled video egress requirement"),',
+        "controlled video egress requirement focused mutation",
+    )
+    require_text(
+        focused,
+        '("hardening", "**R-S11fb/R-S11e-189 controlled video exact-writer egress", "**R-S11fb-disabled/R-S11e-189 controlled video exact-writer egress", "controlled video egress hardening ledger"),',
+        "controlled video egress ledger focused mutation",
     )
     require_text(
         focused,
@@ -20501,7 +20776,7 @@ def validate_android_voice_call_ownership_contract(sources):
     audio_mailbox = extract_between(
         connection,
         "pub static CLICK_TIME: AtomicI64 = AtomicI64::new(0);",
-        "#[derive(Clone, Default)]\npub struct ConnInner",
+        "#[derive(Clone, Copy, Debug, PartialEq, Eq)]\nstruct VideoFrameIdentity",
         "shared bounded audio mailbox source",
     )
     require_order(
@@ -20609,7 +20884,11 @@ def validate_android_voice_call_ownership_contract(sources):
             "self.tx_audio.as_ref()",
             "tx.send(msg);",
             "return;",
-            "let tx_by_video = match &msg.union",
+            "match &msg.union",
+            "Some(message::Union::VideoFrame(_))",
+            "video frame bypassed exact acknowledgement-round enqueue",
+            "Some(misc::Union::SwitchDisplay(_))",
+            "tx.send_switch_display(msg)",
         ),
         "shared audio route precedes general and video routes",
     )
@@ -20624,6 +20903,7 @@ def validate_android_voice_call_ownership_contract(sources):
         connection_start,
         (
             "let (tx, mut rx) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();",
+            "let (tx_video, rx_video) = video_egress_channel();",
             "let (tx_audio, mut rx_audio) = audio_egress_channel();",
             "ConnInner::with_audio(id, Some(tx), Some(tx_video), Some(tx_audio))",
             "Some((instant, value)) = rx_audio.recv()",
@@ -52988,11 +53268,9 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
-            '"video_service::notify_video_frame_fetched(",\n'
-            '            "conn.video_source(),",',
-            '"video_service::notify_video_frame_fetched(",\n'
-            '            "vf.display as usize,",',
-            "focused video acknowledgement callback-source assertion",
+            '"transport_tcp": (repo / "libs/hbb_common/src/tcp.rs").read_text(',
+            '"transport_tcp_disabled": (repo / "libs/hbb_common/src/tcp.rs").read_text(',
+            "focused transport-writer source loading",
         ),
         (
             "android_voice_call_ownership_verifier",
@@ -53013,6 +53291,18 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
+            '        \'"${RUN[@]}" cargo test -p hbb_common writer_receipt_tests::r_s11fb_ -- --test-threads=1\',',
+            '        \'"${RUN[@]}" cargo test -p hbb_common writer_receipt_tests::disabled_ -- --test-threads=1\',',
+            "focused shared writer-receipt behavior-gate assertion",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '        "server::connection::video_egress_tests::r_s11fb_",',
+            '        "server::connection::video_egress_tests::disabled_",',
+            "focused generated-bridge video-egress behavior-gate assertion",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
             '"exact video acknowledgement round targets"),',
             '"exact video acknowledgement round targets disabled"),',
             "video acknowledgement exact-target focused mutation",
@@ -53025,9 +53315,9 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
-            '"source-scoped displayless video acknowledgement"),',
-            '"source-scoped displayless video acknowledgement disabled"),',
-            "video acknowledgement source-scope focused mutation",
+            '"checked monotonic video acknowledgement generation"),',
+            '"checked monotonic video acknowledgement generation disabled"),',
+            "video acknowledgement generation focused mutation",
         ),
         (
             "android_voice_call_ownership_verifier",
@@ -53037,9 +53327,45 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
-            '"source-exact video disconnect wake"),',
-            '"source-exact video disconnect wake disabled"),',
-            "video acknowledgement disconnect-source focused mutation",
+            '"tracked exact video send"),',
+            '"tracked exact video send disabled"),',
+            "tracked exact video send focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"fresh display awaits an independent video sequence"),',
+            '"fresh display awaits an independent video sequence disabled"),',
+            "fresh-display independent-sequence focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"closed video receiver retires stale-subscriber enqueue"),',
+            '"closed video receiver retires stale-subscriber enqueue disabled"),',
+            "closed-receiver enqueue-retirement focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"video receiver exact-owner retirement"),',
+            '"video receiver exact-owner retirement disabled"),',
+            "video receiver exact-owner focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"writer receipt follows exact sink send"),',
+            '"writer receipt follows exact sink send disabled"),',
+            "exact writer completion focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"writer receipt keyed round-trip behavior proof"),',
+            '"writer receipt keyed round-trip behavior proof disabled"),',
+            "writer receipt keyed round-trip focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"retired displayless peer acknowledgement tag"),',
+            '"retired displayless peer acknowledgement tag disabled"),',
+            "retired peer acknowledgement focused mutation",
         ),
         (
             "android_voice_call_ownership_verifier",
@@ -53052,6 +53378,18 @@ def run_source_mutations(sources):
             '"controlled video acknowledgement hardening ledger"),',
             '"controlled video acknowledgement hardening ledger disabled"),',
             "controlled video acknowledgement ledger focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"controlled video egress requirement"),',
+            '"controlled video egress requirement disabled"),',
+            "controlled video egress requirement focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"controlled video egress hardening ledger"),',
+            '"controlled video egress hardening ledger disabled"),',
+            "controlled video egress ledger focused mutation",
         ),
         (
             "android_voice_call_owner_state",
@@ -54348,19 +54686,31 @@ def run_source_mutations(sources):
             "video_service_source",
             "round.pending.clone_from(connection_ids);",
             "round.pending.clear();",
-            "bounded exact pending/acknowledged video round source",
+            "bounded generation-exact pending/acknowledged video round source",
         ),
         (
             "video_service_source",
-            "if !round.pending.contains(&connection_id) || !round.acknowledged.insert(connection_id) {",
-            "if !round.acknowledged.insert(connection_id) {",
-            "bounded exact pending/acknowledged video round source",
+            ".checked_add(1)",
+            ".wrapping_add(1)",
+            "bounded generation-exact pending/acknowledged video round source",
+        ),
+        (
+            "video_service_source",
+            "if round.generation != generation\n            || !round.pending.contains(&connection_id)",
+            "if !round.pending.contains(&connection_id)",
+            "bounded generation-exact pending/acknowledged video round source",
+        ),
+        (
+            "video_service_source",
+            "if round.generation != generation || !round.pending.remove(&connection_id) {",
+            "if !round.pending.remove(&connection_id) {",
+            "bounded generation-exact pending/acknowledged video round source",
         ),
         (
             "video_service_source",
             ".wait_timeout_while(round, timeout, |round| !round.complete())",
             ".wait_timeout_while(round, timeout, |_| false)",
-            "bounded exact pending/acknowledged video round source",
+            "bounded generation-exact pending/acknowledged video round source",
         ),
         (
             "video_service_source",
@@ -54392,9 +54742,9 @@ def run_source_mutations(sources):
         ),
         (
             "video_service_source",
-            "(key.source == source).then(|| state.upgrade()).flatten()",
-            "state.upgrade()",
-            "source-exact controlled video acknowledgement callbacks source",
+            ".filter_map(|(_, state)| state.upgrade())",
+            ".filter_map(|(key, state)| (key.source == VideoSource::Monitor).then(|| state.upgrade()).flatten())",
+            "generation-exact controlled video completion/retirement callbacks source",
         ),
         (
             "video_service_source",
@@ -54404,21 +54754,153 @@ def run_source_mutations(sources):
         ),
         (
             "server_service_source",
-            "prepare(&conn_ids);\n        for s in lock.subscribes.values_mut() {",
-            "for s in lock.subscribes.values_mut() {\n            // acknowledgement ownership prepared too late",
-            "video acknowledgement ownership before frame enqueue source",
+            "let round = prepare(&conn_ids)?;\n        for subscriber in lock.subscribes.values_mut() {",
+            "for subscriber in lock.subscribes.values_mut() {\n            let round = prepare(&conn_ids)?;",
+            "video acknowledgement ownership before exact mailbox enqueue source",
+        ),
+        (
+            "server_service_source",
+            "subscriber.send_video_frame(Arc::clone(&msg), source, display, round);",
+            "subscriber.send(Arc::clone(&msg));",
+            "video acknowledgement ownership before exact mailbox enqueue source",
         ),
         (
             "connection_source",
-            "video_service::notify_video_frame_fetched(\n                                conn.video_source(),",
-            "video_service::notify_video_frame_fetched(\n                                VideoSource::Monitor,",
-            "connection video acknowledgement source preservation source",
+            "const VIDEO_EGRESS_WAKE_CAPACITY: usize = 1;",
+            "const VIDEO_EGRESS_WAKE_CAPACITY: usize = 1024;",
+            "video egress wake capacity source",
         ),
         (
             "connection_source",
-            "notify_video_frame_fetched_by_conn_id(self.video_source(), id, None);",
-            "notify_video_frame_fetched_by_conn_id(VideoSource::Monitor, id, None);",
-            "source-exact disconnect video acknowledgement source",
+            "const VIDEO_EGRESS_MAX_DISPLAYS: usize = 32;",
+            "const VIDEO_EGRESS_MAX_DISPLAYS: usize = usize::MAX;",
+            "video egress display capacity source",
+        ),
+        (
+            "connection_source",
+            "switch_display: Option<(Instant, Arc<Message>)>,",
+            "switch_display: Vec<(Instant, Arc<Message>)>,",
+            "bounded per-display video egress state source",
+        ),
+        (
+            "connection_source",
+            "displays: HashMap<usize, VideoDisplayEgress>,",
+            "displays: Vec<VideoDisplayEgress>,",
+            "bounded per-display video egress state source",
+        ),
+        (
+            "connection_source",
+            "awaiting_independent: true,",
+            "awaiting_independent: false,",
+            "fresh display waits for an independently decodable frame source",
+        ),
+        (
+            "connection_source",
+            "let independent = crate::client::io_loop::starts_video_sequence(frame);",
+            "let independent = true;",
+            "bounded GOP-aware video egress sender source",
+        ),
+        (
+            "connection_source",
+            "slot.awaiting_independent = true;",
+            "slot.awaiting_independent = false;",
+            "bounded GOP-aware video egress sender source",
+        ),
+        (
+            "connection_source",
+            "slot.pending = Some(PendingVideoEgress::RefreshRequired);",
+            "slot.pending = Some(PendingVideoEgress::Frame(queued));",
+            "both dependent video suppression paths source",
+        ),
+        (
+            "connection_source",
+            "if !self.wake_receiver() && !retired.contains(&identity) {",
+            "if false {",
+            "bounded GOP-aware video egress sender source",
+        ),
+        (
+            "connection_source",
+            "state.switch_display.take()",
+            "state.ready_displays.pop_front().map(|_| unreachable!())",
+            "switch-first fair video egress receiver source",
+        ),
+        (
+            "connection_source",
+            "fn with_connection_owner(mut self, connection_id: i32) -> Self",
+            "fn with_connection_owner(mut self, _connection_id: i32) -> Self",
+            "switch-first fair video egress receiver source",
+        ),
+        (
+            "connection_source",
+            "video_service::retire_video_frame_connection(connection_id);",
+            "video_service::retire_video_frame_connection(connection_id + 1);",
+            "receiver closes admission before exact connection retirement source",
+        ),
+        (
+            "connection_source",
+            "let mut rx_video = rx_video.with_connection_owner(id);",
+            "let mut rx_video = rx_video;",
+            "exact sole-writer completion before generation acknowledgement source",
+        ),
+        (
+            "connection_source",
+            "completion = wait_for_video_write(&mut pending_video_write)",
+            "completion = std::future::ready(Ok(Ok(())))",
+            "exact sole-writer completion before generation acknowledgement source",
+        ),
+        (
+            "connection_source",
+            "conn.stream.send_with_receipt(frame.message.as_ref()).await",
+            "conn.stream.send(frame.message.as_ref()).await.map(|_| unreachable!())",
+            "exact sole-writer completion before generation acknowledgement source",
+        ),
+        (
+            "connection_source",
+            "source: frame.identity.source,",
+            "source: conn.video_source(),",
+            "exact sole-writer completion before generation acknowledgement source",
+        ),
+        (
+            "connection_source",
+            "video_service::retire_video_frame_connection(id);",
+            "video_service::retire_video_frame_connection(id + 1);",
+            "exact sole-writer completion before generation acknowledgement source",
+        ),
+        (
+            "tcp_source",
+            "completion: Option<oneshot::Sender<io::Result<()>>>,",
+            "completion: Option<oneshot::Sender<()>> ,",
+            "exact receipt on existing writer FIFO source",
+        ),
+        (
+            "tcp_source",
+            "let result = sink.send(bytes).await;",
+            "let result = Ok(());",
+            "tracked send reaches exact sole-writer result source",
+        ),
+        (
+            "tcp_source",
+            "let _ = completion.send(result);",
+            "drop(completion);",
+            "tracked send reaches exact sole-writer result source",
+        ),
+        (
+            "stream_source",
+            "pub async fn send_with_receipt(",
+            "pub async fn tracked_send_disabled(",
+            "stream tracked-send wrapper source",
+        ),
+        (
+            "message_proto",
+            "reserved 2, 9, 12, 14;",
+            "reserved 2, 12, 14;\n  bool video_ack_required = 9;",
+            "login video-ack tag reservation source",
+        ),
+        (
+            "message_proto",
+            "reserved 12; // retired displayless video acknowledgement; local exact writer receipts own pacing",
+            "VideoReceived video_received = 12;",
+            "displayless video-ack tag reservation source",
         ),
         (
             "video_service_source",
@@ -54434,9 +54916,9 @@ def run_source_mutations(sources):
         ),
         (
             "video_service_source",
-            "r_s11eg_displayless_acknowledgement_reaches_only_its_source",
-            "video_ack_displayless_test_disabled",
-            "controlled video acknowledgement behavior proof source r_s11eg_displayless_acknowledgement_reaches_only_its_source",
+            "r_s11fb_late_completion_cannot_satisfy_a_new_round",
+            "video_ack_stale_round_test_disabled",
+            "controlled video acknowledgement behavior proof source r_s11fb_late_completion_cannot_satisfy_a_new_round",
         ),
         (
             "video_service_source",
@@ -54449,6 +54931,36 @@ def run_source_mutations(sources):
             "r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue",
             "video_ack_prepare_order_test_disabled",
             "controlled video acknowledgement behavior proof source r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue",
+        ),
+        (
+            "connection_source",
+            "r_s11fb_dependent_replacement_requests_an_independent_sequence",
+            "video_egress_gop_test_disabled",
+            "video egress behavior proof source r_s11fb_dependent_replacement_requests_an_independent_sequence",
+        ),
+        (
+            "connection_source",
+            "r_s11fb_fresh_display_rejects_dependent_until_independent",
+            "video_egress_fresh_gop_test_disabled",
+            "video egress behavior proof source r_s11fb_fresh_display_rejects_dependent_until_independent",
+        ),
+        (
+            "connection_source",
+            "r_s11fb_closed_receiver_retires_a_stale_subscriber_enqueue",
+            "video_egress_closed_receiver_test_disabled",
+            "video egress behavior proof source r_s11fb_closed_receiver_retires_a_stale_subscriber_enqueue",
+        ),
+        (
+            "tcp_source",
+            "r_s11fb_receipt_waits_for_the_exact_sink_send",
+            "writer_receipt_backpressure_test_disabled",
+            "writer receipt behavior proof source r_s11fb_receipt_waits_for_the_exact_sink_send",
+        ),
+        (
+            "tcp_source",
+            "r_s11fb_tracked_keyed_send_round_trips_the_exact_frame",
+            "writer_receipt_keyed_round_trip_test_disabled",
+            "writer receipt behavior proof source r_s11fb_tracked_keyed_send_round_trips_the_exact_frame",
         ),
         (
             "requirements",
@@ -54469,6 +54981,24 @@ def run_source_mutations(sources):
             "controlled video acknowledgement hardening ledger source",
         ),
         (
+            "requirements",
+            '<span class="id">R-S11fb</span>',
+            '<span class="id">R-S11fb-disabled</span>',
+            "controlled video egress requirement source",
+        ),
+        (
+            "requirements",
+            "<tr><td>310</td>",
+            "<tr><td>310-disabled</td>",
+            "controlled video egress Appendix C row source",
+        ),
+        (
+            "hardening",
+            "**R-S11fb/R-S11e-189 controlled video exact-writer egress",
+            "**R-S11fb-disabled/R-S11e-189 controlled video exact-writer egress",
+            "controlled video egress hardening ledger source",
+        ),
+        (
             "verify",
             '"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\n'
             "  server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1",
@@ -54480,6 +55010,31 @@ def run_source_mutations(sources):
             "server::video_service::video_frame_ack_tests::r_s11eg_",
             "server::video_service::video_frame_ack_tests::disabled_",
             "controlled video acknowledgement generated-bridge behavior gate source",
+        ),
+        (
+            "verify",
+            '"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\n'
+            "  server::connection::video_egress_tests::r_s11fb_ -- --test-threads=1",
+            "true # shared controlled video egress behavior gate disabled",
+            "controlled video egress shared behavior gate source",
+        ),
+        (
+            "verify",
+            '"${RUN[@]}" cargo test -p hbb_common writer_receipt_tests::r_s11fb_ -- --test-threads=1',
+            "true # shared writer receipt behavior gate disabled",
+            "writer receipt shared behavior gate source",
+        ),
+        (
+            "dart_verify",
+            "server::connection::video_egress_tests::r_s11fb_",
+            "server::connection::video_egress_tests::disabled_",
+            "video egress generated-bridge behavior gate source",
+        ),
+        (
+            "dart_verify",
+            "writer_receipt_tests::r_s11fb_",
+            "writer_receipt_tests::disabled_",
+            "writer receipt generated-bridge behavior gate source",
         ),
         (
             "main_dart",
@@ -61689,6 +62244,9 @@ def main():
                 encoding="utf-8"
             ),
             "tcp_source": (repo / "libs/hbb_common/src/tcp.rs").read_text(encoding="utf-8"),
+            "stream_source": (repo / "libs/hbb_common/src/stream.rs").read_text(
+                encoding="utf-8"
+            ),
             "proxy_module_state": (
                 "proxy-module-present"
                 if (repo / "libs/hbb_common/src/proxy.rs").exists()

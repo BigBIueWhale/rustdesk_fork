@@ -708,21 +708,24 @@ controlled desktop builds and Android's controlled service path. It is not proof
 screen-control hang, a screen/camera authorization bypass, exploitation, root acquisition, public exposure,
 container escape, or a host RustDesk/service/firewall/network modification.
 
-Every live controller is now keyed by exact `(VideoSource, display_idx)` and owns one current pending/acknowledged
-set behind a standard condition variable. The weak process index admits at most 64 live controller generations,
-rejects an already-live key, and removes only the dropping controller's exact `Arc`. The generic service snapshots
-current subscribers and installs that round under its service lock before enqueueing the encoded frame, so a fast
-local dequeue cannot precede ownership. Explicit dequeue acknowledgement carries source/display/connection;
-displayless peer acknowledgement and disconnect carry the connection's source and visit only that source's live
-controllers. Only an ID pending in the exact round inserts once; unrelated and duplicate IDs do nothing. The
-capture thread retains its 300-ms cancellation/privacy wake and three-second pacing bound through the condition
-variable, without a channel, async mutex, retained stopped-loop notifier, or per-wait runtime.
+Every live controller is now keyed by exact `(VideoSource, display_idx)` and owns one checked monotonic generation
+plus current pending/acknowledged set behind a standard condition variable. The weak process index admits at most
+64 live controller generations, rejects an already-live key, and removes only the dropping controller's exact
+`Arc`. The generic service snapshots current subscribers and installs that round under its service lock before
+enqueueing the encoded frame. Completion and intentional supersession carry source, display, generation, and
+connection ID; late predecessor completion, unrelated IDs, and duplicates do nothing. Trusted local connection
+destruction retires the ID from every live exact controller, while the peer has no displayless or generationless
+completion path. The capture thread retains its 300-ms cancellation/privacy wake and three-second pacing bound
+through the condition variable, without a channel, async mutex, retained stopped-loop notifier, or per-wait
+runtime. R-S11fb/R-S11e-189 supersedes the interim connection-task-dequeue completion with exact sole-writer
+completion and binds the current egress behavior.
 
-Five behavior regressions cover same-index monitor/camera separation, exact pending-ID and duplicate handling,
-source-scoped displayless wake, 64-controller capacity plus exact retirement, and preparation before frame
-enqueue. Focused/shared/independent source and deliberate-mutation gates bind R-S11eg, Appendix C #286, and
-R-S11e-151. Installed native behavior, current APK/device reproduction, exact cold R-B2/R-B10 artifacts,
-separately required independent reproduction, and external review remain open.
+Behavior regressions cover same-index monitor/camera separation, exact pending-ID and duplicate handling, stale
+generation rejection, local disconnect and exact-round retirement, 64-controller capacity plus exact
+registration retirement, and preparation before frame enqueue. Focused/shared/independent source and
+deliberate-mutation gates bind R-S11eg, Appendix C #286, and R-S11e-151. Installed native behavior, current
+APK/device reproduction, exact cold R-B2/R-B10 artifacts, separately required independent reproduction, and
+external review remain open.
 
 Follow-up correction (2026-07-27), **R-S11eh/R-S11e-152 bounded exact-subscriber real-time audio
 egress**: every controlled connection sent locally captured `AudioFrame` and `AudioFormat` messages through the
@@ -2975,6 +2978,125 @@ reproduction; and external review. This closes one source recovery edge only. It
 not prove the reported symptom fixed, does not make the current release operationally
 validated, and does not complete the broader user-mandated correct and performant
 connection flow or the Ralph loop.
+
+**R-S11fb/R-S11e-189 controlled video exact-writer egress — SOURCE IMPLEMENTED
+2026-08-01; LOCKED RUST 1.75 ROOT TYPE-CHECK, 18 FOCUSED IN-MEMORY REGRESSIONS,
+AND FOCUSED/INDEPENDENT SEMANTIC/MUTATION GATES GREEN; CANONICAL FLUTTER-FEATURE
+TYPE-CHECK BLOCKED BY PRE-EXISTING GENERATED-BRIDGE DRIFT; NATIVE
+CURRENT-ARTIFACT REPRODUCTION, TIMESTAMPS/BUDGETS, COLD RELEASE, INDEPENDENT
+REPRODUCTION, AND EXTERNAL REVIEW PENDING.** Platforms: the controlled-side video service shared by Android and desktop
+servers, the per-connection transport writer, and all outgoing viewer platforms that
+consume those frames. Endpoint/action: encoded monitor/camera frame enqueue, keyed
+transport FIFO, exact sink completion, frame-pacing acknowledgement, GOP supersession,
+display switch, and connection retirement. Boundary: a healthy authenticated control
+plane does not make a slow, suspended, or non-reading display plane current.
+
+Read-only source tracing found that the capture controller treated connection-task
+dequeue as frame progress. The connection then called the normal nonblocking keyed send,
+which sealed the frame and placed it into a separate 512-command FIFO owned by the sole
+sink writer. Capture could therefore continue producing after the connection task moved
+frames into transport, even though no sink write had completed. That FIFO is correctly
+bounded and required for single-writer/nonce ordering, but up to hundreds of obsolete
+already-sealed video frames are inappropriate real-time backlog. Reconnect destroyed the
+queue and could mask it. The inherited `LoginRequest.video_ack_required` and
+`Misc.VideoReceived` fields were not an alternative receipt: whole-tree tracing found no
+sender in this fork, and the displayless peer message carried neither display nor
+generation. A late completion also had no monotonic round number and could satisfy a
+successor after reset. This is source-proven shared controlled-video queueing,
+frame-pacing, and stale-round debt consistent with a display-only delay. It is not proof
+that an unidentified older Android/Windows/Debian artifact exhibited this exact cause,
+that the current source fixes the reported symptom, or that a peer, listener, service,
+firewall, container, host, or machine was modified.
+
+Each controlled connection now owns one constant-space video mailbox: one coalesced wake
+token, one latest display-switch value, and one pending outcome for each of at most 32
+display identities. Each frame retains immutable source, display, and checked monotonic
+acknowledgement generation out of band; completion no longer re-derives source from
+mutable `view_camera` state. A fresh or display-switch-cleared slot begins awaiting an
+independently decodable key/raw frame and refuses an initial delta. A newer independent
+frame may replace an older pending frame. If a dependent frame would be replaced or
+arrives while recovery is required, both affected exact rounds are retired, subsequent
+deltas remain suppressed, and the connection requests an independent sequence for that
+exact display. Displays are isolated and recurring ready work is round-robin. Display
+switch retires pending old-display video and is emitted before successor frames. Enqueue
+is synchronous and nonblocking; the mailbox holds no lock across a wait and creates no
+per-frame runtime/task/thread. Receiver teardown closes admission and retires its trusted
+exact connection ID; a stale service subscriber racing or following closure retires its
+newly prepared exact generation rather than retaining work with no consumer.
+
+The R-T3/R-T8 transport structure remains one bounded FIFO and one sink writer. Normal
+traffic is unchanged. A tracked video send seals on the same single-producer side and
+places the exact already-sealed bytes in the same FIFO with one non-cloneable Tokio
+one-shot. Only that writer command's `SinkExt::send` result completes its receipt. The
+connection permits at most one tracked video write in flight and acknowledges the exact
+source/display/generation/connection round only after `Ok(())`; writer failure, receipt
+owner loss, channel saturation, and connection retirement close or retire ownership
+rather than report progress. The service installs targets and generation under its lock
+before any mailbox enqueue. Intentional mailbox supersession retires only the matching
+generation. Local connection destruction visits all exact controller sources because it
+is trusted teardown, not peer-supplied acknowledgement. The unused peer fields are
+deleted and protobuf tags 9 and 12 are reserved. This receipt proves completion of the
+sole writer's `SinkExt::send`; it does not prove peer receipt, decode, frame publication,
+or presentation, and it does not by itself measure or eliminate kernel/TCP buffering.
+
+Deterministic source regressions cover exact sink backpressure versus enqueue, sink
+failure, and the public keyed tracked-send path through sealing/authentication;
+independent latest-wins; fresh-display delta rejection; dependent replacement, delta
+suppression, and keyframe recovery; source/display isolation and recurring ready ordering;
+fixed display capacity; switch ordering and retirement; async wake and close;
+closed-receiver stale-subscriber retirement; monitor/camera exactness; stale-round
+rejection; exact supersession and disconnect retirement; controller capacity; and
+prepare-before-enqueue. The pinned Rust 1.75 formatter/parser accepts every edited Rust
+source. Against the repository's authenticated, read-only vendor closure, locked/offline
+`cargo check --lib --tests --features linux-pkg-config` completed successfully. Eighteen
+focused in-memory regressions executed and passed: three transport-writer receipt tests,
+eight per-connection video-mailbox tests, and seven exact acknowledgement/generation
+tests. They use Tokio duplex streams/channels only; no listener, peer, capture source,
+product process, renderer, emulator, or device runs. Existing repository warning volume
+remains; two warnings introduced during this slice were removed before the counted
+type-check, so this is not a warning-free claim.
+
+The focused semantic baseline passed and rejected all 477 deliberate mutations. The
+independent workspace baseline passed, and its complete unsliced
+`--source-mutations-only` catalog restarted from mutation one and exited zero with
+`verify-verifier-workspace: ok`. Preliminary failures are retained rather than hidden.
+A manually reviewed earlier mutation attempt was stopped and not counted after it exposed
+two production defects: fresh displays admitted a dependent frame, and receiver closure
+could race a stale subscriber enqueue without retiring the new exact round. Both paths
+were corrected and gained behavior/mutation coverage. The first subsequent complete
+catalog was also not counted: it failed near completion because a dedicated two-site
+mutation assertion ran after a generic order assertion, so one of its two occurrence-
+specific mutations produced the wrong diagnostic owner. Moving the exact-count assertion
+before the order assertion in both semantic validators made both runtime targets
+independently effective; focused baseline/self-test and independent baseline passed, and
+the final complete catalog then passed from mutation one.
+
+The canonical `cargo check --features flutter,unix-file-copy-paste --lib` did not reach
+this slice in the immutable Linux checker because `magnum-opus` required an unavailable
+`VCPKG_ROOT`. A separate diagnostic check adding the repository's Linux pkg-config feature
+passed that dependency boundary but failed on five generated-bridge mismatches in untouched
+`src/bridge_generated.rs`/`src/flutter_ffi.rs`: three missing GPU entry points, a missing
+GPU-render capability entry point, and a generated two-field `Texture` pattern against the
+current one-field enum. That diagnostic substitute is not counted as a Flutter or Android
+pass, the unrelated bridge drift is not repaired in this slice, and current Flutter-
+feature source type-checkability remains an explicit release blocker.
+
+Every attempted code/build/test action ran as numeric UID/GID 1000 in pre-existing
+immutable local images with `--pull=never`, `--network=none`, a read-only container root
+and source/dependency inputs, all capabilities dropped, `no-new-privileges`, bounded
+resources, no port publication, no device, no Docker socket, and no host namespace.
+Only disposable container tmpfs and the existing ordinary-user `/tmp` target cache were
+writable. No RustDesk product, capture source, listener, peer, renderer, emulator,
+device, or host process was started; no root/sudo was acquired; and no host RustDesk
+service/configuration, firewall, network, Docker image, or installed binary was changed.
+Still open are repair and canonical validation of the generated Flutter bridge; real
+Android task-swipe/background/Force-Stop/reopen and Windows focus/minimize/tab-switch
+testing against exact current artifacts; native renderer execution; capture-through-
+presentation timestamps and queue/latency budgets; identity of the older operational
+artifacts; clean committed cold R-B2/R-B10 releases; independent reproduction; and
+external review. This closes one source egress contract only and does not prove the
+reported delay fixed, make the current release operationally validated, or complete the
+broader connection-flow correctness/performance mandate or the Ralph loop.
 
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
@@ -17455,7 +17577,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-868507477093759062f493e3bd7cce4740268ae227f2f0152d4f2cbda68a311e  requirements.html
+3a23afa7a87b75052e3283bf513690709c4d565ee1f3907f56aab72e1aaa42ff  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -17481,3 +17603,4 @@ The same identity additionally binds R-S11ex and Appendix C #306.
 The same identity additionally binds R-S11ey and Appendix C #307.
 The same identity additionally binds R-S11ez and Appendix C #308.
 The same identity additionally binds R-S11fa and Appendix C #309.
+The same identity additionally binds R-S11fb and Appendix C #310.

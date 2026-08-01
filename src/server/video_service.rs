@@ -293,6 +293,7 @@ struct VideoFrameStreamKey {
 
 #[derive(Default)]
 struct VideoFrameAckRound {
+    generation: u64,
     pending: HashSet<i32>,
     acknowledged: HashSet<i32>,
 }
@@ -319,18 +320,47 @@ impl VideoFrameAckState {
         self.changed.notify_all();
     }
 
-    fn prepare(&self, connection_ids: &HashSet<i32>) {
+    fn prepare(&self, connection_ids: &HashSet<i32>) -> ResultType<u64> {
         let mut round = self.round.lock().unwrap();
+        round.generation = round
+            .generation
+            .checked_add(1)
+            .ok_or_else(|| anyhow!("video acknowledgement round exhausted"))?;
         round.pending.clone_from(connection_ids);
         round.acknowledged.clear();
+        let generation = round.generation;
         self.changed.notify_all();
+        Ok(generation)
     }
 
-    fn acknowledge(&self, connection_id: i32) -> bool {
+    fn acknowledge(&self, generation: u64, connection_id: i32) -> bool {
         let mut round = self.round.lock().unwrap();
-        if !round.pending.contains(&connection_id) || !round.acknowledged.insert(connection_id) {
+        if round.generation != generation
+            || !round.pending.contains(&connection_id)
+            || !round.acknowledged.insert(connection_id)
+        {
             return false;
         }
+        self.changed.notify_all();
+        true
+    }
+
+    fn retire_connection(&self, connection_id: i32) -> bool {
+        let mut round = self.round.lock().unwrap();
+        let removed = round.pending.remove(&connection_id);
+        round.acknowledged.remove(&connection_id);
+        if removed {
+            self.changed.notify_all();
+        }
+        removed
+    }
+
+    fn retire(&self, generation: u64, connection_id: i32) -> bool {
+        let mut round = self.round.lock().unwrap();
+        if round.generation != generation || !round.pending.remove(&connection_id) {
+            return false;
+        }
+        round.acknowledged.remove(&connection_id);
         self.changed.notify_all();
         true
     }
@@ -384,8 +414,8 @@ impl VideoFrameController {
         self.state.reset();
     }
 
-    fn prepare(&self, connection_ids: &HashSet<i32>) {
-        self.state.prepare(connection_ids);
+    fn prepare(&self, connection_ids: &HashSet<i32>) -> ResultType<u64> {
+        self.state.prepare(connection_ids)
     }
 
     fn wait_for_all(&self, timeout: Duration) -> bool {
@@ -422,6 +452,7 @@ fn video_frame_ack_state(key: VideoFrameStreamKey) -> Option<Arc<VideoFrameAckSt
 pub fn notify_video_frame_fetched(
     source: VideoSource,
     display_idx: usize,
+    round: u64,
     conn_id: i32,
     frame_tm: Option<Instant>,
 ) {
@@ -430,7 +461,7 @@ pub fn notify_video_frame_fetched(
         display_idx,
     };
     if video_frame_ack_state(key)
-        .map(|state| state.acknowledge(conn_id))
+        .map(|state| state.acknowledge(round, conn_id))
         .unwrap_or(false)
     {
         if let Some(tm) = frame_tm {
@@ -440,27 +471,28 @@ pub fn notify_video_frame_fetched(
 }
 
 #[inline]
-pub fn notify_video_frame_fetched_by_conn_id(
-    source: VideoSource,
-    conn_id: i32,
-    frame_tm: Option<Instant>,
-) {
+pub fn retire_video_frame_round(source: VideoSource, display_idx: usize, round: u64, conn_id: i32) {
+    let key = VideoFrameStreamKey {
+        source,
+        display_idx,
+    };
+    if let Some(state) = video_frame_ack_state(key) {
+        state.retire(round, conn_id);
+    }
+}
+
+#[inline]
+pub fn retire_video_frame_connection(conn_id: i32) {
     let states = {
         let mut controllers = VIDEO_FRAME_ACK_CONTROLLERS.lock().unwrap();
         controllers.retain(|_, state| state.strong_count() != 0);
         controllers
             .iter()
-            .filter_map(|(key, state)| (key.source == source).then(|| state.upgrade()).flatten())
+            .filter_map(|(_, state)| state.upgrade())
             .collect::<Vec<_>>()
     };
-    let mut acknowledged = false;
     for state in states {
-        acknowledged |= state.acknowledge(conn_id);
-    }
-    if acknowledged {
-        if let Some(tm) = frame_tm {
-            log::trace!("Channel recv latency: {}", tm.elapsed().as_secs_f32());
-        }
+        state.retire_connection(conn_id);
     }
 }
 
@@ -1514,9 +1546,12 @@ fn handle_one_frame(
                 .unwrap()
                 .as_mut()
                 .map(|r| r.write_message(&msg, width, height));
-            sp.send_video_frame_with_targets(msg, |connection_ids| {
-                frame_controller.prepare(connection_ids);
-            });
+            sp.send_video_frame_with_targets(
+                msg,
+                frame_controller.key.source,
+                frame_controller.key.display_idx,
+                |connection_ids| frame_controller.prepare(connection_ids),
+            )?;
         }
         Err(e) => {
             *encode_fail_counter += 1;
@@ -1918,14 +1953,14 @@ mod video_frame_ack_tests {
         let _test = ACK_TEST_LOCK.lock().unwrap();
         let monitor = VideoFrameController::new(VideoSource::Monitor, 10_001).unwrap();
         let camera = VideoFrameController::new(VideoSource::Camera, 10_001).unwrap();
-        monitor.prepare(&ids(&[11]));
-        camera.prepare(&ids(&[12]));
+        let monitor_round = monitor.prepare(&ids(&[11])).unwrap();
+        let camera_round = camera.prepare(&ids(&[12])).unwrap();
 
-        notify_video_frame_fetched(VideoSource::Monitor, 10_001, 11, None);
+        notify_video_frame_fetched(VideoSource::Monitor, 10_001, monitor_round, 11, None);
         assert!(monitor.wait_for_all(Duration::ZERO));
         assert!(!camera.wait_for_all(Duration::ZERO));
 
-        notify_video_frame_fetched(VideoSource::Camera, 10_001, 12, None);
+        notify_video_frame_fetched(VideoSource::Camera, 10_001, camera_round, 12, None);
         assert!(camera.wait_for_all(Duration::ZERO));
     }
 
@@ -1933,31 +1968,54 @@ mod video_frame_ack_tests {
     fn r_s11eg_only_pending_exact_connection_ids_complete_a_round() {
         let _test = ACK_TEST_LOCK.lock().unwrap();
         let controller = VideoFrameController::new(VideoSource::Monitor, 10_002).unwrap();
-        controller.prepare(&ids(&[21, 22]));
+        let round = controller.prepare(&ids(&[21, 22])).unwrap();
 
-        notify_video_frame_fetched(VideoSource::Monitor, 10_002, 99, None);
-        notify_video_frame_fetched(VideoSource::Monitor, 10_002, 21, None);
-        notify_video_frame_fetched(VideoSource::Monitor, 10_002, 21, None);
+        notify_video_frame_fetched(VideoSource::Monitor, 10_002, round, 99, None);
+        notify_video_frame_fetched(VideoSource::Monitor, 10_002, round, 21, None);
+        notify_video_frame_fetched(VideoSource::Monitor, 10_002, round, 21, None);
         assert!(!controller.wait_for_all(Duration::ZERO));
 
-        notify_video_frame_fetched(VideoSource::Monitor, 10_002, 22, None);
+        notify_video_frame_fetched(VideoSource::Monitor, 10_002, round, 22, None);
         assert!(controller.wait_for_all(Duration::ZERO));
     }
 
     #[test]
-    fn r_s11eg_displayless_acknowledgement_reaches_only_its_source() {
+    fn r_s11fb_late_completion_cannot_satisfy_a_new_round() {
         let _test = ACK_TEST_LOCK.lock().unwrap();
-        let first_monitor = VideoFrameController::new(VideoSource::Monitor, 10_003).unwrap();
-        let second_monitor = VideoFrameController::new(VideoSource::Monitor, 10_004).unwrap();
-        let camera = VideoFrameController::new(VideoSource::Camera, 10_003).unwrap();
-        for controller in [&first_monitor, &second_monitor, &camera] {
-            controller.prepare(&ids(&[31]));
-        }
+        let controller = VideoFrameController::new(VideoSource::Monitor, 10_003).unwrap();
+        let old_round = controller.prepare(&ids(&[31])).unwrap();
+        let current_round = controller.prepare(&ids(&[31])).unwrap();
 
-        notify_video_frame_fetched_by_conn_id(VideoSource::Monitor, 31, None);
-        assert!(first_monitor.wait_for_all(Duration::ZERO));
-        assert!(second_monitor.wait_for_all(Duration::ZERO));
-        assert!(!camera.wait_for_all(Duration::ZERO));
+        notify_video_frame_fetched(VideoSource::Monitor, 10_003, old_round, 31, None);
+        assert!(!controller.wait_for_all(Duration::ZERO));
+        notify_video_frame_fetched(VideoSource::Monitor, 10_003, current_round, 31, None);
+        assert!(controller.wait_for_all(Duration::ZERO));
+    }
+
+    #[test]
+    fn r_s11fb_local_disconnect_retires_all_exact_pending_sources() {
+        let _test = ACK_TEST_LOCK.lock().unwrap();
+        let monitor = VideoFrameController::new(VideoSource::Monitor, 10_004).unwrap();
+        let camera = VideoFrameController::new(VideoSource::Camera, 10_004).unwrap();
+        monitor.prepare(&ids(&[31])).unwrap();
+        camera.prepare(&ids(&[31])).unwrap();
+
+        retire_video_frame_connection(31);
+        assert!(monitor.wait_for_all(Duration::ZERO));
+        assert!(camera.wait_for_all(Duration::ZERO));
+    }
+
+    #[test]
+    fn r_s11fb_superseded_frame_retires_only_its_exact_round() {
+        let _test = ACK_TEST_LOCK.lock().unwrap();
+        let controller = VideoFrameController::new(VideoSource::Monitor, 10_005).unwrap();
+        let old_round = controller.prepare(&ids(&[32])).unwrap();
+        let current_round = controller.prepare(&ids(&[32])).unwrap();
+
+        retire_video_frame_round(VideoSource::Monitor, 10_005, old_round, 32);
+        assert!(!controller.wait_for_all(Duration::ZERO));
+        retire_video_frame_round(VideoSource::Monitor, 10_005, current_round, 32);
+        assert!(controller.wait_for_all(Duration::ZERO));
     }
 
     #[test]
@@ -1983,18 +2041,29 @@ mod video_frame_ack_tests {
     fn r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue() {
         let _test = ACK_TEST_LOCK.lock().unwrap();
         let service = GenericService::new("ack-order-test".to_owned(), false);
-        let (sender, mut receiver) = hbb_common::tokio::sync::mpsc::unbounded_channel();
-        service.on_subscribe(ConnInner::new(41, Some(sender), None));
+        let (sender, mut receiver) = crate::server::connection::video_egress_channel();
+        service.on_subscribe(ConnInner::new(41, None, Some(sender)));
+        let mut video = VideoFrame::new();
+        video.display = 0;
+        video.set_rgb(RGB::new());
+        let mut message = Message::new();
+        message.set_video_frame(video);
 
-        service.send_video_frame_with_targets(Message::new(), |connection_ids| {
-            assert_eq!(connection_ids, &ids(&[41]));
-            assert!(
-                receiver.try_recv().is_err(),
-                "the frame must not be enqueued before acknowledgement ownership exists"
-            );
-        });
+        service
+            .send_video_frame_with_targets(message, VideoSource::Monitor, 0, |connection_ids| {
+                assert_eq!(connection_ids, &ids(&[41]));
+                assert!(
+                    receiver.try_recv().is_none(),
+                    "the frame must not be enqueued before acknowledgement ownership exists"
+                );
+                Ok(77)
+            })
+            .unwrap();
         assert!(
-            receiver.try_recv().is_ok(),
+            matches!(
+                receiver.try_recv(),
+                Some(crate::server::connection::VideoEgressItem::Frame(_))
+            ),
             "the frame must be enqueued after exact targets are prepared"
         );
     }

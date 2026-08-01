@@ -265,6 +265,13 @@ local_docker run --rm --pull=never --network=none --read-only \
     echo "  == R-S11eg controlled video acknowledgement exact-round regressions =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1
+    echo "  == R-S11fb controlled video egress/receipt regressions =="
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      server::video_service::video_frame_ack_tests::r_s11fb_ -- --test-threads=1
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      server::connection::video_egress_tests::r_s11fb_ -- --test-threads=1
+    cargo test --offline --locked -p hbb_common \
+      writer_receipt_tests::r_s11fb_ -- --test-threads=1
     echo "  == R-S11eh bounded exact-subscriber audio egress regressions =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       server::connection::audio_egress_tests::r_s11eh_ -- --test-threads=1

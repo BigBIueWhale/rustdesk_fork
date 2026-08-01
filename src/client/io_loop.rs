@@ -77,7 +77,7 @@ fn native_video_frame_runtime_supported(vf: &VideoFrame) -> bool {
     }
 }
 
-fn starts_video_sequence(vf: &VideoFrame) -> bool {
+pub(crate) fn starts_video_sequence(vf: &VideoFrame) -> bool {
     use video_frame::Union::*;
     match &vf.union {
         Some(vf) => match vf {

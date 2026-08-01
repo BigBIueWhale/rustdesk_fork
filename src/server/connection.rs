@@ -29,7 +29,6 @@ use crate::{
 use crate::{common::DEVICE_NAME, flutter::connection_manager::start_channel};
 #[cfg(target_os = "android")]
 use hbb_common::protobuf::EnumOrUnknown;
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
 use hbb_common::tokio::sync::oneshot;
 use hbb_common::{
     config::{self, keys, Config},
@@ -53,13 +52,16 @@ use scrap::camera;
 use serde_derive::Serialize;
 use serde_json::{json, value::Value};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use std::sync::{atomic::AtomicUsize, mpsc as std_mpsc, Condvar, Mutex as StdMutex};
+use std::sync::{atomic::AtomicUsize, mpsc as std_mpsc, Condvar};
 use std::{
-    collections::{HashMap, HashSet},
+    collections::{HashMap, HashSet, VecDeque},
     fmt,
     num::NonZeroI64,
     path::PathBuf,
-    sync::atomic::{AtomicI64, Ordering},
+    sync::{
+        atomic::{AtomicI64, Ordering},
+        Mutex as StdMutex,
+    },
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use system_shutdown;
@@ -390,6 +392,8 @@ lazy_static::lazy_static! {
 pub static CLICK_TIME: AtomicI64 = AtomicI64::new(0);
 
 const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;
+const VIDEO_EGRESS_WAKE_CAPACITY: usize = 1;
+const VIDEO_EGRESS_MAX_DISPLAYS: usize = 32;
 
 #[derive(Default)]
 struct AudioEgressState {
@@ -507,11 +511,300 @@ impl Drop for AudioEgressReceiver {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+struct VideoFrameIdentity {
+    source: VideoSource,
+    display: usize,
+    round: u64,
+}
+
+pub(crate) struct VideoEgressFrame {
+    queued_at: Instant,
+    message: Arc<Message>,
+    identity: VideoFrameIdentity,
+}
+
+impl VideoEgressFrame {
+    fn identity(&self) -> VideoFrameIdentity {
+        self.identity
+    }
+}
+
+struct PendingVideoWrite {
+    receipt: hbb_common::tcp::WriterReceipt,
+    source: VideoSource,
+    display: usize,
+    round: u64,
+    queued_at: Instant,
+}
+
+async fn wait_for_video_write(
+    pending: &mut Option<PendingVideoWrite>,
+) -> Result<std::io::Result<()>, oneshot::error::RecvError> {
+    if let Some(pending) = pending.as_mut() {
+        (&mut pending.receipt).await
+    } else {
+        std::future::pending().await
+    }
+}
+
+pub(crate) enum VideoEgressItem {
+    SwitchDisplay((Instant, Arc<Message>)),
+    Frame(VideoEgressFrame),
+    RefreshRequired { display: usize },
+}
+
+enum PendingVideoEgress {
+    Frame(VideoEgressFrame),
+    RefreshRequired,
+}
+
+struct VideoDisplayEgress {
+    pending: Option<PendingVideoEgress>,
+    awaiting_independent: bool,
+    ready: bool,
+}
+
+impl Default for VideoDisplayEgress {
+    fn default() -> Self {
+        Self {
+            pending: None,
+            // A fresh or switched decoder has no GOP history. It must not receive a delta before
+            // this mailbox has admitted an independently decodable key/raw frame.
+            awaiting_independent: true,
+            ready: false,
+        }
+    }
+}
+
+#[derive(Default)]
+struct VideoEgressState {
+    switch_display: Option<(Instant, Arc<Message>)>,
+    displays: HashMap<usize, VideoDisplayEgress>,
+    ready_displays: VecDeque<usize>,
+}
+
+#[derive(Clone)]
+pub(crate) struct VideoEgressSender {
+    state: Arc<StdMutex<VideoEgressState>>,
+    wake: mpsc::Sender<()>,
+}
+
+pub(crate) struct VideoEgressReceiver {
+    state: Arc<StdMutex<VideoEgressState>>,
+    wake: mpsc::Receiver<()>,
+    connection_id: Option<i32>,
+}
+
+pub(crate) fn video_egress_channel() -> (VideoEgressSender, VideoEgressReceiver) {
+    let state = Arc::new(StdMutex::new(VideoEgressState::default()));
+    let (wake, receiver) = mpsc::channel(VIDEO_EGRESS_WAKE_CAPACITY);
+    (
+        VideoEgressSender {
+            state: Arc::clone(&state),
+            wake,
+        },
+        VideoEgressReceiver {
+            state,
+            wake: receiver,
+            connection_id: None,
+        },
+    )
+}
+
+fn lock_video_egress_state(
+    state: &StdMutex<VideoEgressState>,
+) -> std::sync::MutexGuard<'_, VideoEgressState> {
+    match state.lock() {
+        Ok(state) => state,
+        Err(poisoned) => {
+            log::error!("video egress state was poisoned");
+            poisoned.into_inner()
+        }
+    }
+}
+
+impl VideoEgressSender {
+    fn wake_receiver(&self) -> bool {
+        match self.wake.try_send(()) {
+            Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => true,
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                let mut state = lock_video_egress_state(&self.state);
+                state.switch_display = None;
+                state.displays.clear();
+                state.ready_displays.clear();
+                false
+            }
+        }
+    }
+
+    fn mark_ready(state: &mut VideoEgressState, display: usize) {
+        let Some(slot) = state.displays.get_mut(&display) else {
+            return;
+        };
+        if !slot.ready {
+            slot.ready = true;
+            state.ready_displays.push_back(display);
+        }
+    }
+
+    fn send_video_frame(
+        &self,
+        message: Arc<Message>,
+        source: VideoSource,
+        display: usize,
+        round: u64,
+    ) -> Vec<VideoFrameIdentity> {
+        let identity = VideoFrameIdentity {
+            source,
+            display,
+            round,
+        };
+        let Some(message::Union::VideoFrame(frame)) = &message.union else {
+            log::error!("refusing a non-video-frame message on the video egress mailbox");
+            return vec![identity];
+        };
+        if usize::try_from(frame.display).ok() != Some(display) {
+            log::error!("refusing a controlled video frame whose display ownership mismatches");
+            return vec![identity];
+        }
+        let independent = crate::client::io_loop::starts_video_sequence(frame);
+        let queued = VideoEgressFrame {
+            queued_at: Instant::now(),
+            message,
+            identity,
+        };
+        let mut retired = Vec::new();
+        {
+            let mut state = lock_video_egress_state(&self.state);
+            if !state.displays.contains_key(&display)
+                && state.displays.len() >= VIDEO_EGRESS_MAX_DISPLAYS
+            {
+                log::error!(
+                    "controlled video egress display capacity {} reached",
+                    VIDEO_EGRESS_MAX_DISPLAYS
+                );
+                return vec![identity];
+            }
+            let slot = state.displays.entry(display).or_default();
+            let previous = slot.pending.take();
+            if let Some(PendingVideoEgress::Frame(previous)) = &previous {
+                retired.push(previous.identity());
+            }
+            if independent {
+                slot.awaiting_independent = false;
+                slot.pending = Some(PendingVideoEgress::Frame(queued));
+            } else if slot.awaiting_independent {
+                retired.push(identity);
+                slot.pending = Some(PendingVideoEgress::RefreshRequired);
+            } else if previous.is_some() {
+                // Replacing a dependent frame would make the replacement undecodable. Retire the
+                // pending GOP and ask the encoder for a new independently decodable sequence.
+                retired.push(identity);
+                slot.awaiting_independent = true;
+                slot.pending = Some(PendingVideoEgress::RefreshRequired);
+            } else {
+                slot.pending = Some(PendingVideoEgress::Frame(queued));
+            }
+            Self::mark_ready(&mut state, display);
+        }
+        if !self.wake_receiver() && !retired.contains(&identity) {
+            // A stale service subscriber can race exact connection teardown. Once the receiver is
+            // closed, this frame has no consumer and its newly prepared round must be retired by
+            // the sender that still owns the connection ID.
+            retired.push(identity);
+        }
+        retired
+    }
+
+    fn send_switch_display(&self, message: Arc<Message>) -> Vec<VideoFrameIdentity> {
+        let mut retired = Vec::new();
+        {
+            let mut state = lock_video_egress_state(&self.state);
+            state.switch_display = Some((Instant::now(), message));
+            retired.extend(
+                state
+                    .displays
+                    .values()
+                    .filter_map(|slot| match &slot.pending {
+                        Some(PendingVideoEgress::Frame(frame)) => Some(frame.identity()),
+                        _ => None,
+                    }),
+            );
+            state.displays.clear();
+            state.ready_displays.clear();
+        }
+        self.wake_receiver();
+        retired
+    }
+}
+
+impl VideoEgressReceiver {
+    fn with_connection_owner(mut self, connection_id: i32) -> Self {
+        self.connection_id = Some(connection_id);
+        self
+    }
+
+    fn take_next(&mut self) -> Option<VideoEgressItem> {
+        let mut state = lock_video_egress_state(&self.state);
+        if let Some(switch) = state.switch_display.take() {
+            return Some(VideoEgressItem::SwitchDisplay(switch));
+        }
+        while let Some(display) = state.ready_displays.pop_front() {
+            let Some(slot) = state.displays.get_mut(&display) else {
+                continue;
+            };
+            slot.ready = false;
+            match slot.pending.take() {
+                Some(PendingVideoEgress::Frame(frame)) => {
+                    return Some(VideoEgressItem::Frame(frame));
+                }
+                Some(PendingVideoEgress::RefreshRequired) => {
+                    return Some(VideoEgressItem::RefreshRequired { display });
+                }
+                None => {}
+            }
+        }
+        None
+    }
+
+    pub(crate) async fn recv(&mut self) -> Option<VideoEgressItem> {
+        loop {
+            if let Some(item) = self.take_next() {
+                return Some(item);
+            }
+            self.wake.recv().await?;
+        }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn try_recv(&mut self) -> Option<VideoEgressItem> {
+        self.take_next()
+    }
+}
+
+impl Drop for VideoEgressReceiver {
+    fn drop(&mut self) {
+        self.wake.close();
+        let mut state = lock_video_egress_state(&self.state);
+        state.switch_display = None;
+        state.displays.clear();
+        state.ready_displays.clear();
+        drop(state);
+        if let Some(connection_id) = self.connection_id {
+            // This receiver is local connection-lifetime authority. Retire after closing admission
+            // so a concurrent or later stale subscriber either lands in this retirement or sees
+            // the closed wake and retires its exact newly prepared generation itself.
+            video_service::retire_video_frame_connection(connection_id);
+        }
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct ConnInner {
     id: i32,
     tx: Option<Sender>,
-    tx_video: Option<Sender>,
+    tx_video: Option<VideoEgressSender>,
     tx_audio: Option<AudioEgressSender>,
     #[cfg(target_os = "windows")]
     cm_clipboard_authority: Option<ipc::CmClipboardAuthority>,
@@ -2642,8 +2935,6 @@ pub struct Connection {
     rx_input: Option<std_mpsc::Receiver<QueuedInput>>,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     input_worker: Option<InputWorker>,
-    // handle input messages
-    video_ack_required: bool,
     lr: LoginRequest,
     peer_argb: u32,
     chat_unanswered: bool,
@@ -2688,14 +2979,14 @@ pub struct Connection {
 }
 
 impl ConnInner {
-    pub fn new(id: i32, tx: Option<Sender>, tx_video: Option<Sender>) -> Self {
+    pub(crate) fn new(id: i32, tx: Option<Sender>, tx_video: Option<VideoEgressSender>) -> Self {
         Self::with_audio(id, tx, tx_video, None)
     }
 
     pub(crate) fn with_audio(
         id: i32,
         tx: Option<Sender>,
-        tx_video: Option<Sender>,
+        tx_video: Option<VideoEgressSender>,
         tx_audio: Option<AudioEgressSender>,
     ) -> Self {
         Self {
@@ -2705,6 +2996,31 @@ impl ConnInner {
             tx_audio,
             #[cfg(target_os = "windows")]
             cm_clipboard_authority: None,
+        }
+    }
+
+    fn retire_video_frames(&self, retired: Vec<VideoFrameIdentity>) {
+        for frame in retired {
+            video_service::retire_video_frame_round(
+                frame.source,
+                frame.display,
+                frame.round,
+                self.id,
+            );
+        }
+    }
+
+    pub(crate) fn send_video_frame(
+        &self,
+        msg: Arc<Message>,
+        source: VideoSource,
+        display: usize,
+        round: u64,
+    ) {
+        if let Some(tx) = self.tx_video.as_ref() {
+            self.retire_video_frames(tx.send_video_frame(msg, source, display, round));
+        } else {
+            video_service::retire_video_frame_round(source, display, round, self.id);
         }
     }
 
@@ -2749,23 +3065,23 @@ impl Subscriber for ConnInner {
             return;
         }
 
-        // Send SwitchDisplay on the same channel as VideoFrame to avoid send order problems.
-        let tx_by_video = match &msg.union {
-            Some(message::Union::VideoFrame(_)) => true,
-            Some(message::Union::Misc(misc)) => match &misc.union {
-                Some(misc::Union::SwitchDisplay(_)) => true,
-                _ => false,
-            },
-            _ => false,
-        };
-        let tx = if tx_by_video {
-            self.tx_video.as_mut()
-        } else {
-            self.tx.as_mut()
-        };
-        tx.map(|tx| {
-            allow_err!(tx.send((Instant::now(), msg)));
-        });
+        match &msg.union {
+            Some(message::Union::VideoFrame(_)) => {
+                log::error!("video frame bypassed exact acknowledgement-round enqueue");
+            }
+            Some(message::Union::Misc(misc))
+                if matches!(&misc.union, Some(misc::Union::SwitchDisplay(_))) =>
+            {
+                if let Some(tx) = self.tx_video.as_ref() {
+                    self.retire_video_frames(tx.send_switch_display(msg));
+                }
+            }
+            _ => {
+                if let Some(tx) = self.tx.as_mut() {
+                    allow_err!(tx.send((Instant::now(), msg)));
+                }
+            }
+        }
     }
 }
 
@@ -2865,7 +3181,7 @@ mod audio_egress_tests {
     #[test]
     fn r_s11eh_conn_inner_routes_audio_away_from_control_and_video() {
         let (control_sender, mut control_receiver) = mpsc::unbounded_channel();
-        let (video_sender, mut video_receiver) = mpsc::unbounded_channel();
+        let (video_sender, mut video_receiver) = video_egress_channel();
         let (audio_sender, mut audio_receiver) = audio_egress_channel();
         let mut subscriber = ConnInner::with_audio(
             41,
@@ -2879,16 +3195,23 @@ mod audio_egress_tests {
         let control = Arc::new(Message::new());
         subscriber.send(Arc::clone(&control));
         let mut video = Message::new();
-        video.set_video_frame(VideoFrame::new());
-        subscriber.send(Arc::new(video));
+        video.set_video_frame(VideoFrame {
+            display: 0,
+            union: Some(video_frame::Union::Rgb(RGB::new())),
+            ..Default::default()
+        });
+        subscriber.send_video_frame(Arc::new(video), VideoSource::Monitor, 0, 1);
 
         let (_, actual_control) = control_receiver
             .try_recv()
             .expect("control traffic must retain its existing channel");
         assert!(Arc::ptr_eq(&actual_control, &control));
         assert!(control_receiver.try_recv().is_err());
-        assert!(video_receiver.try_recv().is_ok());
-        assert!(video_receiver.try_recv().is_err());
+        assert!(matches!(
+            video_receiver.take_next(),
+            Some(VideoEgressItem::Frame(_))
+        ));
+        assert!(video_receiver.take_next().is_none());
 
         let (_, actual_format) = audio_receiver
             .blocking_recv()
@@ -2944,6 +3267,267 @@ mod audio_egress_tests {
     }
 }
 
+#[cfg(test)]
+mod video_egress_tests {
+    use super::*;
+
+    fn encoded_video(display: usize, key: bool, data: &[u8]) -> Arc<Message> {
+        let mut video = VideoFrame::new();
+        video.display = i32::try_from(display).expect("test display must fit i32");
+        video.set_vp9s(EncodedVideoFrames {
+            frames: vec![EncodedVideoFrame {
+                data: data.to_vec().into(),
+                key,
+                ..Default::default()
+            }],
+            ..Default::default()
+        });
+        let mut message = Message::new();
+        message.set_video_frame(video);
+        Arc::new(message)
+    }
+
+    fn switch_display(display: usize) -> Arc<Message> {
+        let mut misc = Misc::new();
+        misc.set_switch_display(SwitchDisplay {
+            display: i32::try_from(display).expect("test display must fit i32"),
+            ..Default::default()
+        });
+        let mut message = Message::new();
+        message.set_misc(misc);
+        Arc::new(message)
+    }
+
+    fn identity(source: VideoSource, display: usize, round: u64) -> VideoFrameIdentity {
+        VideoFrameIdentity {
+            source,
+            display,
+            round,
+        }
+    }
+
+    #[test]
+    fn r_s11fb_latest_independent_frame_replaces_only_the_same_display() {
+        let (sender, mut receiver) = video_egress_channel();
+        assert!(sender
+            .send_video_frame(encoded_video(0, true, b"old"), VideoSource::Monitor, 0, 1)
+            .is_empty());
+        assert_eq!(
+            sender.send_video_frame(
+                encoded_video(0, true, b"latest"),
+                VideoSource::Monitor,
+                0,
+                2,
+            ),
+            vec![identity(VideoSource::Monitor, 0, 1)]
+        );
+
+        let Some(VideoEgressItem::Frame(frame)) = receiver.take_next() else {
+            panic!("the latest independent frame must remain ready");
+        };
+        assert_eq!(frame.identity(), identity(VideoSource::Monitor, 0, 2));
+        assert!(receiver.take_next().is_none());
+    }
+
+    #[test]
+    fn r_s11fb_fresh_display_rejects_dependent_until_independent() {
+        let (sender, mut receiver) = video_egress_channel();
+        assert_eq!(
+            sender.send_video_frame(
+                encoded_video(0, false, b"delta"),
+                VideoSource::Monitor,
+                0,
+                9,
+            ),
+            vec![identity(VideoSource::Monitor, 0, 9)]
+        );
+        assert!(matches!(
+            receiver.take_next(),
+            Some(VideoEgressItem::RefreshRequired { display: 0 })
+        ));
+
+        assert!(sender
+            .send_video_frame(encoded_video(0, true, b"key"), VideoSource::Monitor, 0, 10)
+            .is_empty());
+        let Some(VideoEgressItem::Frame(frame)) = receiver.take_next() else {
+            panic!("an independent frame must open a fresh display");
+        };
+        assert_eq!(frame.identity(), identity(VideoSource::Monitor, 0, 10));
+    }
+
+    #[test]
+    fn r_s11fb_dependent_replacement_requests_an_independent_sequence() {
+        let (sender, mut receiver) = video_egress_channel();
+        assert!(sender
+            .send_video_frame(encoded_video(0, true, b"key"), VideoSource::Monitor, 0, 10)
+            .is_empty());
+        assert!(matches!(
+            receiver.take_next(),
+            Some(VideoEgressItem::Frame(_))
+        ));
+        assert!(sender
+            .send_video_frame(encoded_video(0, false, b"one"), VideoSource::Monitor, 0, 11)
+            .is_empty());
+        assert_eq!(
+            sender.send_video_frame(encoded_video(0, false, b"two"), VideoSource::Monitor, 0, 12,),
+            vec![
+                identity(VideoSource::Monitor, 0, 11),
+                identity(VideoSource::Monitor, 0, 12),
+            ]
+        );
+        assert!(matches!(
+            receiver.take_next(),
+            Some(VideoEgressItem::RefreshRequired { display: 0 })
+        ));
+
+        assert_eq!(
+            sender.send_video_frame(
+                encoded_video(0, false, b"three"),
+                VideoSource::Monitor,
+                0,
+                13,
+            ),
+            vec![identity(VideoSource::Monitor, 0, 13)]
+        );
+        assert!(matches!(
+            receiver.take_next(),
+            Some(VideoEgressItem::RefreshRequired { display: 0 })
+        ));
+
+        assert!(sender
+            .send_video_frame(encoded_video(0, true, b"key"), VideoSource::Monitor, 0, 14)
+            .is_empty());
+        let Some(VideoEgressItem::Frame(frame)) = receiver.take_next() else {
+            panic!("an independent frame must reopen the display");
+        };
+        assert_eq!(frame.identity(), identity(VideoSource::Monitor, 0, 14));
+    }
+
+    #[test]
+    fn r_s11fb_displays_are_isolated_and_round_robin_ready() {
+        let (sender, mut receiver) = video_egress_channel();
+        assert!(sender
+            .send_video_frame(encoded_video(2, true, b"two"), VideoSource::Monitor, 2, 20)
+            .is_empty());
+        assert!(sender
+            .send_video_frame(encoded_video(7, true, b"seven"), VideoSource::Camera, 7, 21)
+            .is_empty());
+
+        let Some(VideoEgressItem::Frame(first)) = receiver.take_next() else {
+            panic!("first display must be ready");
+        };
+        assert!(sender
+            .send_video_frame(
+                encoded_video(2, true, b"two-again"),
+                VideoSource::Monitor,
+                2,
+                22,
+            )
+            .is_empty());
+        let Some(VideoEgressItem::Frame(second)) = receiver.take_next() else {
+            panic!("second display must be ready");
+        };
+        let Some(VideoEgressItem::Frame(third)) = receiver.take_next() else {
+            panic!("requeued first display must follow already-ready second display");
+        };
+        assert_eq!(first.identity(), identity(VideoSource::Monitor, 2, 20));
+        assert_eq!(second.identity(), identity(VideoSource::Camera, 7, 21));
+        assert_eq!(third.identity(), identity(VideoSource::Monitor, 2, 22));
+        assert!(receiver.take_next().is_none());
+    }
+
+    #[test]
+    fn r_s11fb_switch_display_precedes_new_video_and_retires_old_video() {
+        let (sender, mut receiver) = video_egress_channel();
+        assert!(sender
+            .send_video_frame(encoded_video(0, true, b"old"), VideoSource::Monitor, 0, 30)
+            .is_empty());
+        assert_eq!(
+            sender.send_switch_display(switch_display(1)),
+            vec![identity(VideoSource::Monitor, 0, 30)]
+        );
+        assert!(sender
+            .send_video_frame(encoded_video(1, true, b"new"), VideoSource::Monitor, 1, 31)
+            .is_empty());
+
+        assert!(matches!(
+            receiver.take_next(),
+            Some(VideoEgressItem::SwitchDisplay(_))
+        ));
+        let Some(VideoEgressItem::Frame(frame)) = receiver.take_next() else {
+            panic!("new-display video must follow the switch");
+        };
+        assert_eq!(frame.identity(), identity(VideoSource::Monitor, 1, 31));
+    }
+
+    #[test]
+    fn r_s11fb_display_ownership_is_fixed_capacity() {
+        let (sender, _receiver) = video_egress_channel();
+        for display in 0..VIDEO_EGRESS_MAX_DISPLAYS {
+            assert!(sender
+                .send_video_frame(
+                    encoded_video(display, true, b"bounded"),
+                    VideoSource::Monitor,
+                    display,
+                    display as u64 + 1,
+                )
+                .is_empty());
+        }
+        let rejected = VIDEO_EGRESS_MAX_DISPLAYS;
+        assert_eq!(
+            sender.send_video_frame(
+                encoded_video(rejected, true, b"overflow"),
+                VideoSource::Monitor,
+                rejected,
+                999,
+            ),
+            vec![identity(VideoSource::Monitor, rejected, 999)]
+        );
+    }
+
+    #[tokio::test]
+    async fn r_s11fb_async_video_egress_waits_without_polling_and_closes() {
+        let (sender, mut receiver) = video_egress_channel();
+        assert!(time::timeout(Duration::from_millis(20), receiver.recv())
+            .await
+            .is_err());
+
+        sender.send_video_frame(
+            encoded_video(0, true, b"async"),
+            VideoSource::Monitor,
+            0,
+            40,
+        );
+        assert!(matches!(
+            time::timeout(Duration::from_secs(1), receiver.recv())
+                .await
+                .expect("video wake must be bounded"),
+            Some(VideoEgressItem::Frame(_))
+        ));
+        drop(sender);
+        assert!(time::timeout(Duration::from_secs(1), receiver.recv())
+            .await
+            .expect("sender retirement must wake the receiver")
+            .is_none());
+    }
+
+    #[test]
+    fn r_s11fb_closed_receiver_retires_a_stale_subscriber_enqueue() {
+        let (sender, receiver) = video_egress_channel();
+        drop(receiver);
+
+        assert_eq!(
+            sender.send_video_frame(
+                encoded_video(0, true, b"closed"),
+                VideoSource::Monitor,
+                0,
+                50,
+            ),
+            vec![identity(VideoSource::Monitor, 0, 50)]
+        );
+    }
+}
+
 const TEST_DELAY_TIMEOUT: Duration = Duration::from_secs(1);
 const SEC30: Duration = Duration::from_secs(30);
 const MILLI1: Duration = Duration::from_millis(1);
@@ -2970,7 +3554,7 @@ impl Connection {
         let tx_from_cm = tx_from_cm_holder.clone();
         let (tx_to_cm, rx_to_cm) = mpsc::unbounded_channel::<ipc::Data>();
         let (tx, mut rx) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();
-        let (tx_video, mut rx_video) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();
+        let (tx_video, rx_video) = video_egress_channel();
         let (tx_audio, mut rx_audio) = audio_egress_channel();
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let (tx_input, rx_input) = std_mpsc::sync_channel(INPUT_QUEUE_CAPACITY);
@@ -3041,7 +3625,6 @@ impl Connection {
             rx_input: Some(rx_input),
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             input_worker: None,
-            video_ack_required: false,
             lr: Default::default(),
             peer_argb: 0u32,
             chat_unanswered: false,
@@ -3090,6 +3673,7 @@ impl Connection {
             terminal_service_lease: None,
             display_control_reject_log: Default::default(),
         };
+        let mut rx_video = rx_video.with_connection_owner(id);
         let addr = hbb_common::try_into_v4(addr);
         if !conn.on_open(addr).await {
             conn.closed = true;
@@ -3132,6 +3716,7 @@ impl Connection {
         let mut last_recv_time = Instant::now();
 
         let mut second_timer = crate::rustdesk_interval(time::interval(Duration::from_secs(1)));
+        let mut pending_video_write: Option<PendingVideoWrite> = None;
 
         #[cfg(feature = "unix-file-copy-paste")]
         let rx_clip_holder;
@@ -3330,20 +3915,64 @@ impl Connection {
                         conn.file_timer = crate::rustdesk_interval(time::interval_at(Instant::now() + SEC30, SEC30));
                     }
                 }
-                Some((instant, value)) = rx_video.recv() => {
-                    if !conn.video_ack_required {
-                        if let Some(message::Union::VideoFrame(vf)) = &value.union {
+                completion = wait_for_video_write(&mut pending_video_write), if pending_video_write.is_some() => {
+                    let Some(pending) = pending_video_write.take() else {
+                        log::error!("video writer completion fired without exact pending ownership");
+                        conn.on_close("video writer completion ownership failed", false).await;
+                        break;
+                    };
+                    match completion {
+                        Ok(Ok(())) => {
                             video_service::notify_video_frame_fetched(
-                                conn.video_source(),
-                                vf.display as usize,
+                                pending.source,
+                                pending.display,
+                                pending.round,
                                 id,
-                                Some(instant.into()),
+                                Some(pending.queued_at.into()),
                             );
                         }
+                        Ok(Err(err)) => {
+                            conn.on_close(&err.to_string(), false).await;
+                            break;
+                        }
+                        Err(_) => {
+                            conn.on_close("video writer retired before exact completion", false).await;
+                            break;
+                        }
                     }
-                    if let Err(err) = conn.stream.send(&value as &Message).await {
-                        conn.on_close(&err.to_string(), false).await;
+                },
+                item = rx_video.recv(), if pending_video_write.is_none() => {
+                    let Some(item) = item else {
+                        conn.on_close("video egress mailbox retired", false).await;
                         break;
+                    };
+                    match item {
+                        VideoEgressItem::SwitchDisplay((_queued_at, value)) => {
+                            if let Err(err) = conn.stream.send(&value as &Message).await {
+                                conn.on_close(&err.to_string(), false).await;
+                                break;
+                            }
+                        }
+                        VideoEgressItem::Frame(frame) => {
+                            match conn.stream.send_with_receipt(frame.message.as_ref()).await {
+                                Ok(receipt) => {
+                                    pending_video_write = Some(PendingVideoWrite {
+                                        receipt,
+                                        source: frame.identity.source,
+                                        display: frame.identity.display,
+                                        round: frame.identity.round,
+                                        queued_at: frame.queued_at,
+                                    });
+                                }
+                                Err(err) => {
+                                    conn.on_close(&err.to_string(), false).await;
+                                    break;
+                                }
+                            }
+                        }
+                        VideoEgressItem::RefreshRequired { display } => {
+                            conn.refresh_video_display(Some(display));
+                        }
                     }
                 },
                 Some((instant, value)) = rx_audio.recv() => {
@@ -4617,7 +5246,6 @@ impl Connection {
         if let Some(o) = lr.option.as_ref() {
             self.options_in_login = Some(o.clone());
         }
-        self.video_ack_required = lr.video_ack_required;
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -5977,13 +6605,6 @@ impl Connection {
                             self.refresh_video_display(Some(display));
                         }
                         self.update_auto_disconnect_timer();
-                    }
-                    Some(misc::Union::VideoReceived(_)) => {
-                        video_service::notify_video_frame_fetched_by_conn_id(
-                            self.video_source(),
-                            self.inner.id,
-                            Some(Instant::now().into()),
-                        );
                     }
                     Some(misc::Union::RestartRemoteDevice(_)) => {
                         #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -9437,7 +10058,7 @@ impl Drop for Connection {
                 let _ = Self::turn_off_privacy_to_msg(id, String::new());
             }
         }
-        video_service::notify_video_frame_fetched_by_conn_id(self.video_source(), id, None);
+        video_service::retire_video_frame_connection(id);
         if let Some(s) = self.server.upgrade() {
             if let Ok(mut s) = s.write() {
                 s.remove_connection(&self.inner);

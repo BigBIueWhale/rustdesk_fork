@@ -78,6 +78,17 @@ impl Stream {
         }
     }
 
+    /// Enqueue one message and return exact completion from the sole transport writer.
+    #[inline]
+    pub async fn send_with_receipt(
+        &mut self,
+        msg: &impl protobuf::Message,
+    ) -> ResultType<tcp::WriterReceipt> {
+        match self {
+            Self::Tcp(tcp) => tcp.send_with_receipt(msg).await,
+        }
+    }
+
     /// R-T9: wait until the TCP writer task has flushed all frames queued before
     /// this call. Used by graceful/session close after sending `CloseReason`.
     #[inline]

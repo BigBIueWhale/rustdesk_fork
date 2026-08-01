@@ -241,21 +241,6 @@ impl<T: Subscriber + From<ConnInner>> ServiceTmpl<T> {
         }
     }
 
-    pub fn send_video_frame_with_targets<F>(&self, msg: Message, prepare: F)
-    where
-        F: FnOnce(&HashSet<i32>),
-    {
-        let msg = Arc::new(msg);
-        let mut lock = self.0.write().unwrap();
-        let conn_ids = lock.subscribes.keys().copied().collect::<HashSet<_>>();
-        // Install the exact acknowledgement round before any connection can dequeue this frame.
-        // Preparing after send would lose a fast local dequeue and wait for the full timeout.
-        prepare(&conn_ids);
-        for s in lock.subscribes.values_mut() {
-            s.send(msg.clone());
-        }
-    }
-
     pub fn send_without(&self, msg: Message, sub: i32) {
         let mut lock = self.0.write().unwrap();
         let msg = Arc::new(msg);
@@ -361,6 +346,31 @@ impl ServiceTmpl<ConnInner> {
         authorities.sort_by_key(|authority| authority.id);
         authorities.dedup_by_key(|authority| authority.id);
         authorities
+    }
+}
+
+impl ServiceTmpl<ConnInner> {
+    pub fn send_video_frame_with_targets<F>(
+        &self,
+        msg: Message,
+        source: video_service::VideoSource,
+        display: usize,
+        prepare: F,
+    ) -> ResultType<u64>
+    where
+        F: FnOnce(&HashSet<i32>) -> ResultType<u64>,
+    {
+        let msg = Arc::new(msg);
+        let mut lock = self.0.write().unwrap();
+        let conn_ids = lock.subscribes.keys().copied().collect::<HashSet<_>>();
+        // Install the exact monotonic acknowledgement round before any connection can dequeue the
+        // frame. The round is carried out-of-band to the exact transport-write receipt; peer data
+        // cannot forge, omit, or replay it.
+        let round = prepare(&conn_ids)?;
+        for subscriber in lock.subscribes.values_mut() {
+            subscriber.send_video_frame(Arc::clone(&msg), source, display, round);
+        }
+        Ok(round)
     }
 }
 

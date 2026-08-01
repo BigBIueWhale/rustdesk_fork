@@ -244,9 +244,19 @@ struct KeyedStream {
 /// FIFO order has been handed to the sink and flushed, so the caller knows a
 /// queued `CloseReason` was not immediately lost to `FramedStream::Drop`.
 enum WriterCommand {
-    Frame(Bytes),
+    Frame {
+        bytes: Bytes,
+        completion: Option<oneshot::Sender<io::Result<()>>>,
+    },
     Drain(oneshot::Sender<io::Result<()>>),
 }
+
+/// Exact completion of one frame handed to the sole post-key transport sink.
+///
+/// This is intentionally a one-shot receipt rather than a cloneable status channel: one caller
+/// owns the decision that depends on this exact write. Cancellation means the writer retired
+/// before it could report a result and must be treated as a failed connection, never as success.
+pub type WriterReceipt = oneshot::Receiver<io::Result<()>>;
 
 impl Deref for DynTcpStream {
     type Target = Box<dyn TcpStreamTrait + Send + Sync>;
@@ -462,6 +472,26 @@ impl FramedStream {
         r
     }
 
+    /// Enqueue one frame and return exact writer completion ownership.
+    ///
+    /// Normal traffic needs only fail-fast bounded enqueue and uses [`Self::send_bytes`]. A
+    /// real-time producer additionally needs to know when its exact frame has left the bounded
+    /// writer queue so it does not mistake enqueue for downstream progress. The frame is still
+    /// sealed on this single-producer side and remains in the same FIFO as every other frame; the
+    /// receipt changes no nonce or ordering rule.
+    #[inline]
+    pub async fn send_with_receipt(&mut self, msg: &impl Message) -> ResultType<WriterReceipt> {
+        let bytes = Bytes::from(msg.write_to_bytes()?);
+        if self.poison {
+            bail!("R-T2: refusing to send on a poisoned stream (a prior send/recv error)");
+        }
+        let result = self.send_bytes_raw_with_receipt(bytes).await;
+        if result.is_err() {
+            self.poison = true;
+        }
+        result
+    }
+
     #[inline]
     async fn send_bytes_raw(&mut self, bytes: Bytes) -> ResultType<()> {
         match &mut self.state {
@@ -480,7 +510,10 @@ impl FramedStream {
                 // `send_bytes` poisons) rather than the run-loop blocking inside a `select!` branch.
                 let sealed = Bytes::from(k.seal.seal(&bytes));
                 k.writer_tx
-                    .try_send(WriterCommand::Frame(sealed))
+                    .try_send(WriterCommand::Frame {
+                        bytes: sealed,
+                        completion: None,
+                    })
                     .map_err(|e| match e {
                         mpsc::error::TrySendError::Full(_) => {
                             anyhow::anyhow!("R-T3: writer channel full — dropping the back-pressured connection")
@@ -493,6 +526,35 @@ impl FramedStream {
             StreamState::Keying => unreachable!("send_bytes observed a mid-keying stream"),
         }
         Ok(())
+    }
+
+    async fn send_bytes_raw_with_receipt(&mut self, bytes: Bytes) -> ResultType<WriterReceipt> {
+        let (completion, receipt) = oneshot::channel();
+        match &mut self.state {
+            StreamState::Unkeyed(_) => {
+                bail!("tracked writer completion requires a keyed stream");
+            }
+            StreamState::Keyed(k) => {
+                let sealed = Bytes::from(k.seal.seal(&bytes));
+                k.writer_tx
+                    .try_send(WriterCommand::Frame {
+                        bytes: sealed,
+                        completion: Some(completion),
+                    })
+                    .map_err(|e| match e {
+                        mpsc::error::TrySendError::Full(_) => {
+                            anyhow::anyhow!("R-T3: writer channel full — dropping the back-pressured connection")
+                        }
+                        mpsc::error::TrySendError::Closed(_) => {
+                            anyhow::anyhow!("R-T3: writer task gone — connection is dead")
+                        }
+                    })?;
+            }
+            StreamState::Keying => {
+                unreachable!("send_bytes_raw_with_receipt observed a mid-keying stream")
+            }
+        }
+        Ok(receipt)
     }
 
     /// R-T9 (§20): wait until the dedicated writer task has flushed all frames
@@ -653,8 +715,13 @@ async fn writer_task(
 ) {
     while let Some(cmd) = writer_rx.recv().await {
         match cmd {
-            WriterCommand::Frame(frame) => {
-                if sink.send(frame).await.is_err() {
+            WriterCommand::Frame { bytes, completion } => {
+                let result = sink.send(bytes).await;
+                let failed = result.is_err();
+                if let Some(completion) = completion {
+                    let _ = completion.send(result);
+                }
+                if failed {
                     break;
                 }
             }
@@ -793,6 +860,135 @@ impl AsyncWrite for DynTcpStream {
 }
 
 impl<R: AsyncRead + AsyncWrite + Unpin> TcpStreamTrait for R {}
+
+#[cfg(test)]
+mod writer_receipt_tests {
+    use super::*;
+    use tokio::io::duplex;
+
+    fn framed<T>(stream: T) -> Framed<DynTcpStream, SecretboxCodec>
+    where
+        T: TcpStreamTrait + Send + Sync + 'static,
+    {
+        Framed::new(DynTcpStream(Box::new(stream)), SecretboxCodec::new())
+    }
+
+    #[tokio::test]
+    async fn r_s11fb_receipt_waits_for_the_exact_sink_send() {
+        let (writer_side, reader_side) = duplex(64);
+        let (sink, _) = framed(writer_side).split();
+        let mut peer = framed(reader_side);
+        let (writer_tx, writer_rx) = mpsc::channel(1);
+        let writer = tokio::spawn(writer_task(sink, writer_rx));
+        let (completion, mut receipt) = oneshot::channel();
+        let expected = Bytes::from(vec![0x5a; 4_096]);
+
+        writer_tx
+            .send(WriterCommand::Frame {
+                bytes: expected.clone(),
+                completion: Some(completion),
+            })
+            .await
+            .expect("writer command must be admitted");
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(20), &mut receipt)
+                .await
+                .is_err(),
+            "bounded enqueue alone must not complete a tracked frame"
+        );
+
+        let actual = peer
+            .next()
+            .await
+            .expect("peer frame must arrive")
+            .expect("peer frame must decode");
+        assert_eq!(actual.as_ref(), expected.as_ref());
+        receipt
+            .await
+            .expect("the exact writer must retain completion ownership")
+            .expect("the exact sink send must succeed");
+
+        drop(writer_tx);
+        writer.await.expect("writer task must retire cleanly");
+    }
+
+    #[tokio::test]
+    async fn r_s11fb_receipt_reports_the_exact_sink_failure() {
+        let (writer_side, reader_side) = duplex(64);
+        drop(reader_side);
+        let (sink, _) = framed(writer_side).split();
+        let (writer_tx, writer_rx) = mpsc::channel(1);
+        let writer = tokio::spawn(writer_task(sink, writer_rx));
+        let (completion, receipt) = oneshot::channel();
+
+        writer_tx
+            .send(WriterCommand::Frame {
+                bytes: Bytes::from_static(b"failure"),
+                completion: Some(completion),
+            })
+            .await
+            .expect("writer command must be admitted");
+        assert!(
+            receipt
+                .await
+                .expect("writer must report its exact result")
+                .is_err(),
+            "a sink failure must never be reported as completion"
+        );
+
+        drop(writer_tx);
+        writer.await.expect("writer task must retire after failure");
+    }
+
+    #[tokio::test]
+    async fn r_s11fb_tracked_keyed_send_round_trips_the_exact_frame() {
+        let (sender_side, receiver_side) = duplex(64);
+        let local_addr = SocketAddr::from(([127, 0, 0, 1], 0));
+        let mut sender = FramedStream::from(sender_side, local_addr);
+        let mut receiver = FramedStream::from(receiver_side, local_addr);
+        sender.set_max_packet_length(8 * 1024);
+        receiver.set_max_packet_length(8 * 1024);
+        sender.set_session_keys(DirectionalKeys {
+            send: [0x11; 32],
+            recv: [0x22; 32],
+        });
+        receiver.set_session_keys(DirectionalKeys {
+            send: [0x22; 32],
+            recv: [0x11; 32],
+        });
+
+        let mut response = crate::message_proto::ScreenshotResponse::new();
+        response.sid = "writer-receipt".to_owned();
+        response.data = vec![0x6b; 4_096].into();
+        let mut message = crate::message_proto::Message::new();
+        message.set_screenshot_response(response);
+        let expected = message
+            .write_to_bytes()
+            .expect("test message must serialize");
+
+        let mut receipt = sender
+            .send_with_receipt(&message)
+            .await
+            .expect("tracked keyed send must be admitted");
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(20), &mut receipt)
+                .await
+                .is_err(),
+            "tracked keyed enqueue must not report completion while its sink is back-pressured"
+        );
+
+        let actual = receiver
+            .next()
+            .await
+            .expect("the exact keyed frame must arrive")
+            .expect("the exact keyed frame must authenticate");
+        assert_eq!(actual.as_ref(), expected.as_slice());
+        receipt
+            .await
+            .expect("the keyed writer must retain exact completion ownership")
+            .expect("the exact keyed sink send must succeed");
+    }
+}
 
 #[cfg(all(
     test,

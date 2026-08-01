@@ -15006,6 +15006,70 @@ def validate_service_ipc_protocol_authority_contract(sources):
         ),
         "macOS raw-stream kernel peer snapshot",
     )
+    launchctl_parser = extract_between(
+        ipc,
+        "fn macos_launchctl_service_identity<'a>(",
+        '\n}\n\n#[cfg(target_os = "macos")]\n'
+        "fn macos_launch_agent_owns_service_owned_server_pid",
+        "macOS launchctl service identity parser",
+    )
+    require_order(
+        launchctl_parser,
+        (
+            "std::str::from_utf8(output).ok()?",
+            'format!("{expected_target} = {{")',
+            "lines.next()?.trim() != expected_header",
+            "let mut depth = 1usize;",
+            "depth = depth.checked_sub(1)?;",
+            "depth = depth.checked_add(1)?;",
+            "if depth != 1",
+            "if pid.is_some()",
+            "parsed.to_string() != value",
+            "if path.is_some()",
+            "if !closed || lines.any(|line| !line.trim().is_empty())",
+            "Some((pid?, path?))",
+        ),
+        "strict top-level launchctl service identity",
+    )
+    launchctl_owner = extract_between(
+        ipc,
+        "fn macos_launch_agent_owns_service_owned_server_pid(",
+        '\n}\n\n#[cfg(target_os = "macos")]\n'
+        "async fn permanent_password_is_set_for_current_process",
+        "macOS launchctl ownership query",
+    )
+    require_order(
+        launchctl_owner,
+        (
+            'format!("gui/{peer_uid}/{label}")',
+            "std::process::Command::new(MACOS_LAUNCHCTL)",
+            '.current_dir("/")',
+            ".env_clear()",
+            '.env("LC_ALL", "C")',
+            "configure_command_close_nonstdio_on_exec(&mut command)",
+            "macos_launchctl_service_identity(&output.stdout, &target)",
+            "reported_identity != Some((peer_pid, expected_plist.as_str()))",
+        ),
+        "closed-environment exact launchctl ownership query",
+    )
+    require_absent(
+        ipc,
+        "macos_launchctl_print_value",
+        "depthless launchctl first-match parser",
+    )
+    require_absent(
+        launchctl_owner,
+        "from_utf8_lossy",
+        "lossy launchctl authority decoding",
+    )
+    for test_name in (
+        "macos_launchctl_service_identity_accepts_exact_top_level_record",
+        "macos_launchctl_service_identity_rejects_nested_substitution",
+        "macos_launchctl_service_identity_rejects_duplicate_top_level_authority",
+        "macos_launchctl_service_identity_rejects_wrong_target_or_trailing_record",
+        "macos_launchctl_service_identity_rejects_non_utf8_or_noncanonical_pid",
+    ):
+        require_text(ipc, test_name, f"macOS launchctl parser regression: {test_name}")
 
     readiness_client = extract_between(
         ipc,
@@ -15233,6 +15297,14 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "bodyless request, exact LaunchAgent proof, and secret response",
             "macOS raw credential server proof contract",
         ),
+        (
+            "strict top-level launchctl identity parsing",
+            "macOS launchctl parser contract",
+        ),
+        (
+            "closed-environment exact launchctl ownership query",
+            "macOS launchctl command contract",
+        ),
     ):
         require_text(focused, text, label)
     for gate, label in (
@@ -15243,6 +15315,8 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "verify-macos-service-credential-ipc.py",
             "R-S11ep",
             "R-S11e-177",
+            "R-S11fd",
+            "R-S11e-191",
         ):
             require_text(gate, text, f"{label}: {text}")
     require_text(
@@ -15259,6 +15333,21 @@ def validate_service_ipc_protocol_authority_contract(sources):
         sources["hardening"],
         "R-S11ep/R-S11e-177 macOS runtime PRS raw credential authority",
         "macOS raw credential authority hardening ledger",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11fd</span>',
+        "exact macOS launchd service-record requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>312</td>",
+        "exact macOS launchd service-record Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11fd/R-S11e-191 exact macOS launchd service-record authority",
+        "exact macOS launchd service-record hardening ledger",
     )
 
 
@@ -51489,6 +51578,31 @@ def run_source_mutations(sources):
             "macOS raw credential client proof contract",
         ),
         (
+            "ipc_source",
+            "let output = std::str::from_utf8(output).ok()?;",
+            "let output = String::from_utf8_lossy(output);\n"
+            "    let output = output.as_ref();",
+            "strict top-level launchctl service identity",
+        ),
+        (
+            "ipc_source",
+            "        if depth != 1 {\n            continue;\n        }",
+            "        if false {\n            continue;\n        }",
+            "strict top-level launchctl service identity",
+        ),
+        (
+            "ipc_source",
+            "reported_identity != Some((peer_pid, expected_plist.as_str()))",
+            "reported_identity.map(|identity| identity.0) != Some(peer_pid)",
+            "closed-environment exact launchctl ownership query",
+        ),
+        (
+            "macos_service_credential_ipc_verifier",
+            "strict top-level launchctl identity parsing",
+            "depthless launchctl identity parsing",
+            "macOS launchctl parser contract",
+        ),
+        (
             "verify",
             "verify-macos-service-credential-ipc.py",
             "verify-macos-service-credential-ipc-disabled.py",
@@ -51517,6 +51631,24 @@ def run_source_mutations(sources):
             "R-S11ep/R-S11e-177 macOS runtime PRS raw credential authority",
             "R-S11ep/R-S11e-177 macOS runtime PRS generic serde authority",
             "macOS raw credential authority hardening ledger",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11fd</span>',
+            '<span class="id">R-S11fd-disabled</span>',
+            "exact macOS launchd service-record requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>312</td>",
+            "<tr><td>312-disabled</td>",
+            "exact macOS launchd service-record Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11fd/R-S11e-191 exact macOS launchd service-record authority",
+            "R-S11fd/R-S11e-191 depthless macOS launchd service-record authority",
+            "exact macOS launchd service-record hardening ledger",
         ),
         (
             "ipc_source",

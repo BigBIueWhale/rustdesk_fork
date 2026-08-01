@@ -5454,14 +5454,82 @@ fn macos_service_owned_server_launch_agent_plist_content_is_expected(
     }
 }
 
-#[cfg(target_os = "macos")]
-fn macos_launchctl_print_value<'a>(output: &'a str, name: &str) -> Option<&'a str> {
-    output.lines().find_map(|line| {
+#[cfg(any(target_os = "macos", test))]
+fn macos_launchctl_scalar_value(value: &str) -> Option<&str> {
+    let value = value.trim();
+    let value = value.strip_suffix(';').unwrap_or(value).trim();
+    match (value.strip_prefix('"'), value.strip_suffix('"')) {
+        (Some(_), None) | (None, Some(_)) => None,
+        (Some(value), Some(_)) => value.strip_suffix('"'),
+        (None, None) => Some(value),
+    }
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_launchctl_service_identity<'a>(
+    output: &'a [u8],
+    expected_target: &str,
+) -> Option<(u32, &'a str)> {
+    let output = std::str::from_utf8(output).ok()?;
+    let mut lines = output.lines();
+    let expected_header = format!("{expected_target} = {{");
+    if lines.next()?.trim() != expected_header {
+        return None;
+    }
+
+    let mut depth = 1usize;
+    let mut pid = None;
+    let mut path = None;
+    let mut closed = false;
+    while let Some(line) = lines.next() {
         let line = line.trim();
-        let (key, value) = line.split_once('=')?;
-        let value = value.trim().trim_end_matches(';').trim().trim_matches('"');
-        (key.trim().eq_ignore_ascii_case(name)).then_some(value)
-    })
+        if line.is_empty() {
+            continue;
+        }
+        if line == "}" {
+            depth = depth.checked_sub(1)?;
+            if depth == 0 {
+                closed = true;
+                break;
+            }
+            continue;
+        }
+        if line.ends_with(" = {") || line.ends_with(" => {") {
+            depth = depth.checked_add(1)?;
+            continue;
+        }
+        if depth != 1 {
+            continue;
+        }
+
+        let Some((key, value)) = line.split_once(" = ") else {
+            continue;
+        };
+        match key {
+            "pid" => {
+                if pid.is_some() {
+                    return None;
+                }
+                let value = macos_launchctl_scalar_value(value)?;
+                let parsed = value.parse::<u32>().ok().filter(|pid| *pid != 0)?;
+                if parsed.to_string() != value {
+                    return None;
+                }
+                pid = Some(parsed);
+            }
+            "path" => {
+                if path.is_some() {
+                    return None;
+                }
+                path = Some(macos_launchctl_scalar_value(value)?);
+            }
+            _ => {}
+        }
+    }
+    if !closed || lines.any(|line| !line.trim().is_empty()) {
+        return None;
+    }
+    Some((pid?, path?))
 }
 
 #[cfg(target_os = "macos")]
@@ -5481,7 +5549,12 @@ fn macos_launch_agent_owns_service_owned_server_pid(peer_uid: u32, peer_pid: u32
 
     let target = format!("gui/{peer_uid}/{label}");
     let mut command = std::process::Command::new(MACOS_LAUNCHCTL);
-    command.arg("print").arg(&target);
+    command
+        .arg("print")
+        .arg(&target)
+        .current_dir("/")
+        .env_clear()
+        .env("LC_ALL", "C");
     if let Err(err) =
         hbb_common::platform::macos::configure_command_close_nonstdio_on_exec(&mut command)
     {
@@ -5506,13 +5579,10 @@ fn macos_launch_agent_owns_service_owned_server_pid(peer_uid: u32, peer_pid: u32
             return false;
         }
     };
-    let output = String::from_utf8_lossy(&output.stdout);
-    let reported_pid =
-        macos_launchctl_print_value(&output, "pid").and_then(|pid| pid.parse::<u32>().ok());
-    let reported_path = macos_launchctl_print_value(&output, "path");
-    if reported_pid != Some(peer_pid) || reported_path != Some(expected_plist.as_str()) {
+    let reported_identity = macos_launchctl_service_identity(&output.stdout, &target);
+    if reported_identity != Some((peer_pid, expected_plist.as_str())) {
         log::warn!(
-            "Rejected macOS service-owned credential snapshot request: LaunchAgent target={target} reported pid={reported_pid:?} path={reported_path:?}"
+            "Rejected macOS service-owned credential snapshot request: LaunchAgent target={target} did not report the exact top-level pid and plist path"
         );
         return false;
     }
@@ -8386,6 +8456,91 @@ mod test {
 "#
         );
         plist::Value::from_reader_xml(xml.as_bytes()).unwrap()
+    }
+
+    #[test]
+    fn macos_launchctl_service_identity_accepts_exact_top_level_record() {
+        let target = "gui/501/com.carriez.RustDesk_server";
+        let path = "/Library/LaunchAgents/com.carriez.RustDesk_server.plist";
+        let output = format!(
+            r#"{target} = {{
+    active count = 1
+    path = "{path}";
+    environment = {{
+        pid = 7
+        path = /tmp/untrusted.plist
+    }}
+    pid = 4242
+}}
+"#
+        );
+
+        assert_eq!(
+            macos_launchctl_service_identity(output.as_bytes(), target),
+            Some((4242, path))
+        );
+    }
+
+    #[test]
+    fn macos_launchctl_service_identity_rejects_nested_substitution() {
+        let target = "gui/501/com.carriez.RustDesk_server";
+        let path = "/Library/LaunchAgents/com.carriez.RustDesk_server.plist";
+        let output = format!(
+            r#"{target} = {{
+    environment = {{
+        pid = 4242
+        path = {path}
+    }}
+    pid = 7
+    path = /tmp/untrusted.plist
+}}
+"#
+        );
+
+        assert_ne!(
+            macos_launchctl_service_identity(output.as_bytes(), target),
+            Some((4242, path))
+        );
+    }
+
+    #[test]
+    fn macos_launchctl_service_identity_rejects_duplicate_top_level_authority() {
+        let target = "gui/501/com.carriez.RustDesk_server";
+        let path = "/Library/LaunchAgents/com.carriez.RustDesk_server.plist";
+        for duplicate in ["pid = 4242".to_owned(), format!("path = {path}")] {
+            let output = format!(
+                r#"{target} = {{
+    path = {path}
+    pid = 4242
+    {duplicate}
+}}
+"#
+            );
+            assert_eq!(
+                macos_launchctl_service_identity(output.as_bytes(), target),
+                None,
+                "duplicate authority field was accepted: {duplicate}"
+            );
+        }
+    }
+
+    #[test]
+    fn macos_launchctl_service_identity_rejects_wrong_target_or_trailing_record() {
+        let target = "gui/501/com.carriez.RustDesk_server";
+        let record = b"gui/502/com.carriez.RustDesk_server = {\npath = /Library/LaunchAgents/com.carriez.RustDesk_server.plist\npid = 4242\n}\n";
+        assert_eq!(macos_launchctl_service_identity(record, target), None);
+
+        let trailing = b"gui/501/com.carriez.RustDesk_server = {\npath = /Library/LaunchAgents/com.carriez.RustDesk_server.plist\npid = 4242\n}\nunrelated = {\n}\n";
+        assert_eq!(macos_launchctl_service_identity(trailing, target), None);
+    }
+
+    #[test]
+    fn macos_launchctl_service_identity_rejects_non_utf8_or_noncanonical_pid() {
+        let target = "gui/501/com.carriez.RustDesk_server";
+        assert_eq!(macos_launchctl_service_identity(&[0xff], target), None);
+
+        let output = b"gui/501/com.carriez.RustDesk_server = {\npath = /Library/LaunchAgents/com.carriez.RustDesk_server.plist\npid = 04242\n}\n";
+        assert_eq!(macos_launchctl_service_identity(output, target), None);
     }
 
     #[test]

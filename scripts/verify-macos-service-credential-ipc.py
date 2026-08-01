@@ -353,6 +353,74 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "installed-app, exact argv, exact launchd, and final code proof",
     )
+    launchctl_parser = extract(
+        ipc,
+        "fn macos_launchctl_service_identity<'a>(",
+        '\n}\n\n#[cfg(target_os = "macos")]\n'
+        "fn macos_launch_agent_owns_service_owned_server_pid",
+        "macOS launchctl service identity parser",
+    )
+    require_order(
+        launchctl_parser,
+        (
+            "std::str::from_utf8(output).ok()?",
+            'let expected_header = format!("{expected_target} = {{");',
+            "lines.next()?.trim() != expected_header",
+            "let mut depth = 1usize;",
+            'if line == "}"',
+            "depth = depth.checked_sub(1)?;",
+            'line.ends_with(" = {") || line.ends_with(" => {")',
+            "depth = depth.checked_add(1)?;",
+            "if depth != 1",
+            'match key {\n            "pid" => {',
+            "if pid.is_some()",
+            "parsed.to_string() != value",
+            '            "path" => {',
+            "if path.is_some()",
+            "if !closed || lines.any(|line| !line.trim().is_empty())",
+            "Some((pid?, path?))",
+        ),
+        "strict top-level launchctl identity parsing",
+    )
+    launchctl_owner = extract(
+        ipc,
+        "fn macos_launch_agent_owns_service_owned_server_pid(",
+        '\n}\n\n#[cfg(target_os = "macos")]\n'
+        "async fn permanent_password_is_set_for_current_process",
+        "macOS launchctl ownership query",
+    )
+    require_order(
+        launchctl_owner,
+        (
+            'format!("gui/{peer_uid}/{label}")',
+            "std::process::Command::new(MACOS_LAUNCHCTL)",
+            '.current_dir("/")',
+            ".env_clear()",
+            '.env("LC_ALL", "C")',
+            "configure_command_close_nonstdio_on_exec(&mut command)",
+            "macos_launchctl_service_identity(&output.stdout, &target)",
+            "reported_identity != Some((peer_pid, expected_plist.as_str()))",
+        ),
+        "closed-environment exact launchctl ownership query",
+    )
+    forbid(
+        ipc,
+        "macos_launchctl_print_value",
+        "depthless first-match launchctl parser",
+    )
+    forbid(
+        launchctl_owner,
+        "from_utf8_lossy",
+        "lossy launchctl authority decoding",
+    )
+    for test_name in (
+        "macos_launchctl_service_identity_accepts_exact_top_level_record",
+        "macos_launchctl_service_identity_rejects_nested_substitution",
+        "macos_launchctl_service_identity_rejects_duplicate_top_level_authority",
+        "macos_launchctl_service_identity_rejects_wrong_target_or_trailing_record",
+        "macos_launchctl_service_identity_rejects_non_utf8_or_noncanonical_pid",
+    ):
+        require(ipc, test_name, "launchctl parser regression {}".format(test_name))
 
     peer_snapshot = extract(
         auth,
@@ -469,18 +537,25 @@ def validate(sources: Dict[str, str]) -> None:
             "verify-macos-service-credential-ipc.py",
             "{} focused verifier wiring".format(label),
         )
-        for token in ("R-S11ep", "R-S11e-177"):
+        for token in ("R-S11ep", "R-S11e-177", "R-S11fd", "R-S11e-191"):
             require(gate, token, "{} documentation binding".format(label))
     for token, label in (
         ('<span class="id">R-S11ep</span>', "R-S11ep requirement"),
         ("<tr><td>298</td>", "Appendix C #298"),
         ("raw <code>_service_credential</code>", "raw macOS endpoint contract"),
+        ('<span class="id">R-S11fd</span>', "R-S11fd requirement"),
+        ("<tr><td>312</td>", "Appendix C #312"),
     ):
         require(requirements, token, label)
     require(
         hardening,
         "R-S11ep/R-S11e-177 macOS runtime PRS raw credential authority",
         "hardening ledger",
+    )
+    require(
+        hardening,
+        "R-S11fd/R-S11e-191 exact macOS launchd service-record authority",
+        "launchctl parser hardening ledger",
     )
     for token, label in (
         (
@@ -496,6 +571,16 @@ def validate(sources: Dict[str, str]) -> None:
             '"    c.send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000)",\n'
             '            "raw macOS credential request writer",',
             "independent raw-client mutation",
+        ),
+        (
+            '"let output = std::str::from_utf8(output).ok()?;",\n'
+            '            "let output = String::from_utf8_lossy(output);\\n"',
+            "independent strict launchctl UTF-8 mutation",
+        ),
+        (
+            '"R-S11fd/R-S11e-191 exact macOS launchd service-record authority",\n'
+            '            "R-S11fd/R-S11e-191 depthless macOS launchd service-record authority",',
+            "independent launchctl ledger mutation",
         ),
     ):
         require(workspace, token, label)
@@ -611,6 +696,55 @@ MUTATIONS = (
         "exact launchd ownership proof",
     ),
     Mutation(
+        "ipc",
+        "let output = std::str::from_utf8(output).ok()?;",
+        "let output = String::from_utf8_lossy(output);\n"
+        "    let output = output.as_ref();",
+        "strict launchctl UTF-8 authority",
+    ),
+    Mutation(
+        "ipc",
+        "if lines.next()?.trim() != expected_header {",
+        "if false {",
+        "exact launchctl target header",
+    ),
+    Mutation(
+        "ipc",
+        "        if depth != 1 {\n            continue;\n        }",
+        "        if false {\n            continue;\n        }",
+        "top-level-only launchctl authority fields",
+    ),
+    Mutation(
+        "ipc",
+        "                if pid.is_some() {\n                    return None;\n                }",
+        "                if false {\n                    return None;\n                }",
+        "duplicate launchctl pid rejection",
+    ),
+    Mutation(
+        "ipc",
+        "                if path.is_some() {\n                    return None;\n                }",
+        "                if false {\n                    return None;\n                }",
+        "duplicate launchctl path rejection",
+    ),
+    Mutation(
+        "ipc",
+        "if !closed || lines.any(|line| !line.trim().is_empty()) {",
+        "if false {",
+        "complete launchctl record finality",
+    ),
+    Mutation(
+        "ipc",
+        '.current_dir("/")\n        .env_clear()\n        .env("LC_ALL", "C");',
+        '.current_dir("/");',
+        "closed launchctl query environment",
+    ),
+    Mutation(
+        "ipc",
+        "reported_identity != Some((peer_pid, expected_plist.as_str()))",
+        "reported_identity.map(|identity| identity.0) != Some(peer_pid)",
+        "exact launchctl pid and plist decision",
+    ),
+    Mutation(
         "auth",
         "audit_token: peer_audit_token_from_fd(fd)\n"
         "            .ok_or_else(|| anyhow::anyhow!(\"Failed to resolve {description} audit token\"))?,",
@@ -684,10 +818,28 @@ MUTATIONS = (
         "Appendix C raw macOS credential disposition",
     ),
     Mutation(
+        "requirements",
+        '<span class="id">R-S11fd</span>',
+        '<span class="id">R-S11fd-disabled</span>',
+        "normative launchctl record authority requirement",
+    ),
+    Mutation(
+        "requirements",
+        "<tr><td>312</td>",
+        "<tr><td>312-disabled</td>",
+        "Appendix C launchctl record authority disposition",
+    ),
+    Mutation(
         "hardening",
         "R-S11ep/R-S11e-177 macOS runtime PRS raw credential authority",
         "R-S11ep/R-S11e-177 macOS runtime PRS generic serde authority",
         "hardening ledger",
+    ),
+    Mutation(
+        "hardening",
+        "R-S11fd/R-S11e-191 exact macOS launchd service-record authority",
+        "R-S11fd/R-S11e-191 depthless macOS launchd service-record authority",
+        "launchctl parser hardening ledger",
     ),
     Mutation(
         "workspace",
@@ -696,6 +848,22 @@ MUTATIONS = (
         '"    c.send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000)",\n'
         '            "generic macOS credential request writer",',
         "independent raw-client mutation binding",
+    ),
+    Mutation(
+        "workspace",
+        '"let output = std::str::from_utf8(output).ok()?;",\n'
+        '            "let output = String::from_utf8_lossy(output);\\n"',
+        '"let output = String::from_utf8_lossy(output);",\n'
+        '            "let output = String::from_utf8_lossy(output);\\n"',
+        "independent strict launchctl UTF-8 mutation binding",
+    ),
+    Mutation(
+        "workspace",
+        '"R-S11fd/R-S11e-191 exact macOS launchd service-record authority",\n'
+        '            "R-S11fd/R-S11e-191 depthless macOS launchd service-record authority",',
+        '"R-S11fd/R-S11e-191 depthless macOS launchd service-record authority",\n'
+        '            "R-S11fd/R-S11e-191 depthless macOS launchd service-record authority",',
+        "independent launchctl ledger mutation binding",
     ),
 )
 

@@ -1550,12 +1550,12 @@ else
   note "ok  R-S11b-1/R-S11c-1f/R-S11dx _service is a closed directional liveness/readiness protocol outside Data; password and credential secrets remain raw-only"
 fi
 
-echo "== (2b-i-a) R-S11ep/R-S11e-177 macOS runtime PRS raw credential authority =="
+echo "== (2b-i-a) R-S11ep/R-S11e-177 and R-S11fd/R-S11e-191 macOS runtime PRS launchd authority =="
 if /usr/bin/python3 -I -S "$REPO/scripts/verify-macos-service-credential-ipc.py" \
     --repo "$REPO" --self-test; then
-  note "ok  R-S11ep/R-S11e-177 macOS proves both peers before a canonical raw _service_credential PRS exchange"
+  note "ok  R-S11ep/R-S11e-177 and R-S11fd/R-S11e-191 macOS proves both peers plus one exact top-level launchd service record before a canonical raw _service_credential PRS exchange"
 else
-  echo "  FAIL R-S11ep/R-S11e-177 macOS runtime PRS escaped its raw proof-before-secret authority"
+  echo "  FAIL R-S11ep/R-S11e-177 or R-S11fd/R-S11e-191 macOS runtime PRS escaped its raw proof-before-secret launchd authority"
   rc=1
 fi
 

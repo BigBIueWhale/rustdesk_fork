@@ -3220,6 +3220,72 @@ required independent reproduction, and external review. This source correction d
 validate the upcoming release, prove the reported delay fixed, close the broader
 connection-flow correctness/performance request, or complete the Ralph loop.
 
+**R-S11fd/R-S11e-191 exact macOS launchd service-record authority — SOURCE IMPLEMENTED
+2026-08-01; FIVE LINUX-HOST PARSER TESTS, FOCUSED BASELINE/39 MUTATIONS,
+INDEPENDENT BASELINE/COMPLETE SOURCE-MUTATION CATALOG, SHELL, FORMAT-SLICE,
+AND LEDGER GATES GREEN; FULL SHARED/APPLE DRIVERS, NATIVE SIGNED MACOS, AND
+EXACT-ARTIFACT EVIDENCE REMAIN OPEN.** Platform: macOS installed LaunchDaemon plus its per-user
+service-owned LaunchAgent. Endpoint/action: the final `launchctl print
+gui/<uid>/<label>` ownership corroboration before raw `_service_credential`
+returns a root-owned runtime PRS replica. Boundary: nested diagnostic text from
+the current GUI launchd domain ↔ the LaunchDaemon's decision that the
+audit-token-authenticated installed-app peer is the exact process owned by the
+trusted root LaunchAgent job.
+
+Read-only tracing found that `macos_launchctl_print_value` flattened the command's
+entire nested diagnostic output by trimming every line, splitting the first `=`,
+and matching `pid` or `path` case-insensitively. It accepted the first matching
+line at any depth, discarded duplicate/conflicting authority fields, tolerated
+trailing structure, and consumed `String::from_utf8_lossy`. Those two values were
+then the final launchd PID/plist decision. The accepted socket's audit-token code
+identity, exact live argv, and exact parsed root-owned non-writable ACL-free plist
+remained independently load-bearing, so this is recorded as a conceptual
+privileged service-record ambiguity and deterministic correctness defect, not a
+demonstrated promptless local-to-root primitive or evidence of exploitation.
+
+`macos_launchctl_service_identity` now accepts strict UTF-8 only, requires the
+exact requested service-target header, tracks the one outer launchd dictionary,
+and recognizes `pid` and `path` only at depth one. Each must occur exactly once;
+the PID must be nonzero canonical decimal and the final tuple must equal the
+socket peer PID plus the already trusted exact root plist path. Nested same-name
+fields are ignored, while duplicate top-level fields, imbalance, a wrong target,
+trailing records, invalid UTF-8, and noncanonical PID text fail closed. The old
+flat parser and lossy decoding are absent. The fixed `/bin/launchctl` query also
+uses `/` as its working directory and clears inherited environment before adding
+only fixed `LC_ALL=C`; the existing non-stdio descriptor policy remains mandatory.
+No alternate query, PID-only/path-only branch, compatibility parser, or credential
+fallback is added.
+
+Five pure parser regressions cover exact top-level acceptance, nested substitution,
+duplicate top-level PID/path, wrong target and trailing record, invalid UTF-8, and
+noncanonical PID. `scripts/verify-macos-service-credential-ipc.py` binds the parser,
+exact caller decision, closed command environment, all behaviors,
+R-S11fd/R-S11e-191, and Appendix C #312 with deliberate mutations; the shared,
+Apple, and independent gates bind that focused verifier. Counted confined evidence
+is the five-test locked/offline Linux-host Rust run; focused baseline and all 39
+deliberate mutations; independent baseline and a complete fresh source-mutation
+catalog; Bash syntax; native-codec ledger plus self-test; synchronized requirements
+hash; `git diff --check`; and Rust 1.75 formatting with no formatter delta in either
+modified `src/ipc.rs` region (the large file retains unrelated pre-existing formatter
+drift). The first two independent catalog attempts are not counted: both correctly
+rejected a new mutation but refused to count it because its expected diagnostic label
+differed from the independent validator's actual label. After correcting only those
+catalog labels and re-auditing every new label, a fresh complete run exited zero.
+
+One related resource residual remains explicitly open: the fixed `/bin/launchctl`
+child still uses `Command::output()`, which buffers its stdout and stderr without an
+explicit byte ceiling. The existing absolute proof deadline aborts the service rather
+than detaching an overrun worker, and neither child image nor argv is caller-selected,
+so this does not reintroduce an authority fallback; nevertheless native output size,
+duration, and a bounded-capture replacement require a later service-child resource
+slice and are not silently treated as closed here. The full `scripts/verify.sh` and
+`scripts/apple-conform-check.sh` drivers were not run in this slice. No native
+`launchctl`, Security.framework, signed LaunchAgent/LaunchDaemon, credential exchange,
+product, listener, peer, renderer, device, host service, or privileged operation has
+executed. Native signed macOS behavior, exact packaged artifacts, the clean
+exact-commit cold R-B2/R-B10 release, independent reproduction, and external review
+remain open.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -3311,6 +3377,13 @@ unreachable and a source/test/AST gate prevents reintroduction.
   plist proof for exact `Label`, `ProgramArguments`, `RunAtLoad`, and `KeepAlive`. Password mutation has no JSON
   request and no ordinary-main fallback. Shutdown closes admission, drains accepted tasks and mutations, then
   clears entries, HMAC key, and tags.
+- **R-S11fd/R-S11e-191 — macOS launchd service-record authority — SOURCE IMPLEMENTED.** Before the
+  LaunchDaemon returns the raw service-owned runtime PRS replica, the existing audit-token installed-app proof,
+  exact live argv, and exact trusted root LaunchAgent plist proof are followed by a strict diagnostic-record
+  corroboration. `launchctl print` must report the exact target header, one balanced outer dictionary, and exactly
+  one top-level canonical peer PID and trusted plist path; nested, duplicate, lossy, incomplete, or trailing text
+  cannot become authority. The helper environment is closed. Pure parser and semantic/mutation gates bind source;
+  native signed macOS and exact-artifact evidence remain with R-R2/R-B2.
 - **R-S11b-3a — service-marked server rejects ordinary options IPC — CLOSED 2026-07-08; narrowed 2026-07-24.** Platforms:
   Windows installed service-launched `--server`, Linux root-service-launched root or active-user `--server`,
   and macOS LaunchAgent `--server` source path. Endpoint/action: main IPC `MainIpcRequest::SetOption`.
@@ -17699,7 +17772,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-46d36d9c40f15aec2c19e85eec123328fa1ba6c079da36cc552657bdef1afb9f  requirements.html
+938bdc371dced60ba7cef30664256f7cc5c5166ec960ffbcf7ade84ff7d8db15  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

@@ -7564,14 +7564,29 @@ unreachable and a source/test/AST gate prevents reintroduction.
   launcher now constructs one non-inherited block for every selected token before merging launcher-owned variables;
   service-child proof variables replace same-name token entries, while ambient supervisor state is never inherited.
   R-S11ay's user-helper rule remains intact and the broader service-child correction follows R-S11b's exact runtime
-  replica boundary. The focused and shared semantic gates reject reintroduction of an `as_user`-conditional
-  construction site. R-S11ay and Appendix C #173 make the original user-helper authority model normative. The shared
+  replica boundary. A second direct-launch audit on 2026-08-01 found the privacy-mode topmost-window broker outside
+  that shared launcher: it selected the served-session user token correctly but passed a null environment pointer to
+  `CreateProcessAsUserW`, so Windows inherited the LocalSystem service-owned server environment into the
+  lower-authority broker. The direct broker launch now owns its selected token and one non-inherited exact-token
+  environment with RAII, rejects construction failure or a nominally successful null block before process creation,
+  passes that exact block with `CREATE_UNICODE_ENVIRONMENT`, and still disables handle inheritance. This closes the
+  ambient service-environment edge without changing the verified broker executable, served-session selection,
+  explicit current directory, suspended launch, retained kill-on-close job, DLL provenance, or exact-PID window
+  binding. It is not evidence that service secrets were present, exploitation occurred, the display-delay report was
+  caused by this path, or any current Windows artifact has been exercised.
+
+  The focused and shared semantic gates reject reintroduction of an `as_user`-conditional shared construction site
+  and direct privacy-broker caller-environment fallback. R-S11ay and Appendix C #173 make the original user-helper
+  authority model normative and the same token-switched-user-helper principle governs the direct broker. The shared
   semantic validator binds the single construction site, failure/null finality, non-inheritance, merge/launch order, and
-  requirement/ledger/gate presence; its deliberate mutations cover inherited construction, ignored/inverted status,
-  lost error preservation, continued failure, null acceptance, launch-time environment replacement, and document
-  removal. The focused source gate independently rejects inherited construction and missing finality markers. Native
-  Windows multi-session execution and exact signed-artifact proof remain R-R2/R-B2; external expert review remains
-  R-V3.
+  requirement/ledger/gate presence in the shared launcher, plus direct-broker binding availability, token/environment
+  RAII ownership, non-inherited construction, failure/null finality, Unicode launch use, and exact environment-pointer
+  use. Its deliberate mutations cover inherited construction, ignored/inverted status, lost error preservation,
+  continued failure, null acceptance, launch-time environment replacement, broker binding removal, leaked broker
+  token/environment ownership, missing broker Unicode semantics, broker null fallback, and document removal. The
+  focused source gate independently rejects inherited construction and missing finality markers in both launch paths.
+  Native Windows compilation and multi-session broker/helper execution, privacy-mode behavior, and exact signed-
+  artifact proof remain R-R2/R-B2; external expert review remains R-V3.
 - **R-S11e-66 — macOS administrator-script environment finality — SOURCE IMPLEMENTED; NATIVE macOS AND
   EXACT-ARTIFACT EVIDENCE REMAIN R-R2/R-B2.** Platform: macOS desktop service install and uninstall. Surfaces:
   `run_service_install` and `uninstall_service` → embedded `install.scpt`/`uninstall.scpt` →

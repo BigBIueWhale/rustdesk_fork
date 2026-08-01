@@ -8193,6 +8193,11 @@ def validate_cross_platform_user_helper_contract(sources):
 
 def validate_windows_privacy_broker_contract(sources):
     privacy = sources["privacy_broker_source"]
+    require_text(
+        sources["root_cargo"],
+        '"userenv",',
+        "Windows privacy-broker userenv binding",
+    )
     for source_key, token in (
         ("server_source", "try_kill_broker"),
         ("windows_source", "terminate_processes_by_exact_process_name"),
@@ -8219,6 +8224,52 @@ def validate_windows_privacy_broker_contract(sources):
             "SetInformationJobObject(",
         ),
         "Windows privacy-broker kill-on-close job configuration",
+    )
+
+    token_owner = extract_between(
+        privacy,
+        "struct PrivacyBrokerLaunchToken(HANDLE);",
+        "\nstruct PrivacyBrokerEnvironment",
+        "Windows privacy-broker launch-token owner",
+    )
+    require_order(
+        token_owner,
+        (
+            "impl Drop for PrivacyBrokerLaunchToken",
+            "CloseHandle(self.0)",
+        ),
+        "Windows privacy-broker launch-token RAII release",
+    )
+    environment = extract_between(
+        privacy,
+        "struct PrivacyBrokerEnvironment(*mut c_void);",
+        "\nstruct WindowHandlers",
+        "Windows privacy-broker environment owner",
+    )
+    require_exact_count(
+        environment,
+        "CreateEnvironmentBlock(",
+        1,
+        "Windows privacy-broker exact-token environment has one construction site",
+    )
+    require_order(
+        environment,
+        (
+            "CreateEnvironmentBlock(&mut environment, token, FALSE)",
+            "== FALSE",
+            "Failed to create environment for privacy broker session {session_id}",
+            "if environment.is_null()",
+            "Created null environment for privacy broker session {session_id}",
+            "Ok(Self(environment))",
+            "impl Drop for PrivacyBrokerEnvironment",
+            "DestroyEnvironmentBlock(self.0)",
+        ),
+        "Windows privacy-broker environment creation, null finality, and RAII release",
+    )
+    require_absent(
+        environment,
+        "CreateEnvironmentBlock(&mut environment, token, TRUE)",
+        "Windows privacy-broker inherited caller environment",
     )
 
     handlers = extract_between(
@@ -8273,6 +8324,10 @@ def validate_windows_privacy_broker_contract(sources):
         start,
         (
             "let mut pending = WindowHandlers {",
+            "let session_id = privacy_broker_session_id()?;",
+            "let token = get_user_token(session_id, true);",
+            "let token = PrivacyBrokerLaunchToken(token);",
+            "PrivacyBrokerEnvironment::for_token(token.as_raw(), session_id)?;",
             "CreateProcessAsUserW(",
             "pending.hprocess = proc_info.hProcess as _;",
             "pending.process_id = proc_info.dwProcessId;",
@@ -8291,21 +8346,29 @@ def validate_windows_privacy_broker_contract(sources):
         "cb: mem::size_of::<STARTUPINFOW>() as u32",
         "privacy broker initializes STARTUPINFO size",
     )
-    require_text(start, "CREATE_SUSPENDED | DETACHED_PROCESS", "privacy broker starts suspended")
+    require_text(
+        start,
+        "CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | DETACHED_PROCESS",
+        "privacy broker starts suspended with an exact Unicode environment",
+    )
     launch = extract_between(
         start,
         "let create_res = CreateProcessAsUserW(",
-        "\n            let create_error",
+        "\n                (create_res == FALSE).then(Error::last_os_error)",
         "Windows privacy-broker suspended process creation",
     )
     require_order(
         launch,
         (
-            "NULL as _,\n                FALSE,\n                CREATE_SUSPENDED | DETACHED_PROCESS",
+            "token.as_raw()",
+            "NULL as _",
+            "FALSE",
+            "CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | DETACHED_PROCESS",
+            "environment.as_ptr()",
             "&mut start_info",
             "&mut proc_info",
         ),
-        "Windows privacy-broker launch disables inheritance and captures exact handles",
+        "Windows privacy-broker launch disables handle inheritance, uses the exact-token environment, and captures exact handles",
     )
 
     window = extract_between(
@@ -46748,9 +46811,69 @@ def run_source_mutations(sources):
         ),
         (
             "privacy_broker_source",
-            "NULL as _,\n                FALSE,\n                CREATE_SUSPENDED | DETACHED_PROCESS",
-            "NULL as _,\n                TRUE,\n                CREATE_SUSPENDED | DETACHED_PROCESS",
-            "Windows privacy-broker launch disables inheritance and captures exact handles",
+            "NULL as _,\n                    FALSE,\n                    CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | DETACHED_PROCESS",
+            "NULL as _,\n                    TRUE,\n                    CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | DETACHED_PROCESS",
+            "Windows privacy-broker launch disables handle inheritance, uses the exact-token environment, and captures exact handles",
+        ),
+        (
+            "root_cargo",
+            '"userenv",',
+            '"userenv-disabled",',
+            "Windows privacy-broker userenv binding",
+        ),
+        (
+            "privacy_broker_source",
+            "CloseHandle(self.0)",
+            "CloseHandle(NULL)",
+            "Windows privacy-broker launch-token RAII release",
+        ),
+        (
+            "privacy_broker_source",
+            "CreateEnvironmentBlock(&mut environment, token, FALSE)",
+            "CreateEnvironmentBlock(&mut environment, token, TRUE)",
+            "Windows privacy-broker environment creation, null finality, and RAII release",
+        ),
+        (
+            "privacy_broker_source",
+            "if unsafe { CreateEnvironmentBlock(&mut environment, token, FALSE) } == FALSE {",
+            "if unsafe { CreateEnvironmentBlock(&mut environment, token, FALSE) } != FALSE {",
+            "Windows privacy-broker environment creation, null finality, and RAII release",
+        ),
+        (
+            "privacy_broker_source",
+            "if environment.is_null() {",
+            "if false {",
+            "Windows privacy-broker environment creation, null finality, and RAII release",
+        ),
+        (
+            "privacy_broker_source",
+            "DestroyEnvironmentBlock(self.0)",
+            "DestroyEnvironmentBlock(NULL)",
+            "Windows privacy-broker environment creation, null finality, and RAII release",
+        ),
+        (
+            "privacy_broker_source",
+            "let token = PrivacyBrokerLaunchToken(token);",
+            "let token = PrivacyBrokerLaunchToken::leak(token);",
+            "Windows privacy-broker pending ownership before injection/resume and final commit",
+        ),
+        (
+            "privacy_broker_source",
+            "PrivacyBrokerEnvironment::for_token(token.as_raw(), session_id)?;",
+            "PrivacyBrokerEnvironment::inherit_caller(token.as_raw(), session_id)?;",
+            "Windows privacy-broker pending ownership before injection/resume and final commit",
+        ),
+        (
+            "privacy_broker_source",
+            "CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | DETACHED_PROCESS",
+            "CREATE_SUSPENDED | DETACHED_PROCESS",
+            "privacy broker starts suspended with an exact Unicode environment",
+        ),
+        (
+            "privacy_broker_source",
+            "                    environment.as_ptr(),",
+            "                    NULL,",
+            "Windows privacy-broker launch disables handle inheritance, uses the exact-token environment, and captures exact handles",
         ),
         (
             "privacy_broker_source",

@@ -5679,12 +5679,39 @@ windows_native_launch=$(awk '/HANDLE LaunchProcessWin\(/,/^    }/' src/platform/
 if grep -qF 'if (as_user)' <<<"$windows_native_launch"; then
   r_s11e65="$r_s11e65 conditional-token-environment-present"
 fi
+privacy_broker_source=src/privacy_mode/win_topmost_window.rs
+privacy_broker_token=$(awk '/struct PrivacyBrokerLaunchToken/,/struct PrivacyBrokerEnvironment/' "$privacy_broker_source")
+privacy_broker_environment=$(awk '/struct PrivacyBrokerEnvironment/,/struct WindowHandlers/' "$privacy_broker_source")
+privacy_broker_launch=$(awk '/let create_error = \{/,/if let Some\(err\) = create_error/' "$privacy_broker_source")
+grep -qF '"userenv",' Cargo.toml \
+  || r_s11e65="$r_s11e65 privacy-broker-userenv-binding-missing"
+grep -qF 'CloseHandle(self.0)' <<<"$privacy_broker_token" \
+  || r_s11e65="$r_s11e65 privacy-broker-token-raii-release-missing"
+[ "$(grep -Fc 'CreateEnvironmentBlock(' <<<"$privacy_broker_environment")" -eq 1 ] \
+  || r_s11e65="$r_s11e65 privacy-broker-token-environment-not-exactly-once"
+grep -qF 'CreateEnvironmentBlock(&mut environment, token, FALSE)' <<<"$privacy_broker_environment" \
+  || r_s11e65="$r_s11e65 privacy-broker-noninherited-environment-missing"
+grep -qF 'if environment.is_null()' <<<"$privacy_broker_environment" \
+  || r_s11e65="$r_s11e65 privacy-broker-null-environment-rejection-missing"
+grep -qF 'DestroyEnvironmentBlock(self.0)' <<<"$privacy_broker_environment" \
+  || r_s11e65="$r_s11e65 privacy-broker-environment-raii-release-missing"
+grep -qF 'let token = PrivacyBrokerLaunchToken(token);' <<<"$privacy_broker_launch" \
+  || r_s11e65="$r_s11e65 privacy-broker-launch-token-owner-missing"
+grep -qF 'PrivacyBrokerEnvironment::for_token(token.as_raw(), session_id)?' <<<"$privacy_broker_launch" \
+  || r_s11e65="$r_s11e65 privacy-broker-exact-token-environment-use-missing"
+grep -qF 'CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | DETACHED_PROCESS' <<<"$privacy_broker_launch" \
+  || r_s11e65="$r_s11e65 privacy-broker-unicode-environment-flag-missing"
+grep -qF 'environment.as_ptr(),' <<<"$privacy_broker_launch" \
+  || r_s11e65="$r_s11e65 privacy-broker-environment-launch-use-missing"
+if grep -Eq 'CreateEnvironmentBlock\([^;]*TRUE\)' <<<"$(tr '\n' ' ' < "$privacy_broker_source")"; then
+  r_s11e65="$r_s11e65 privacy-broker-inherited-caller-environment-present"
+fi
 grep -qF '<span class="id">R-S11ay</span>' requirements.html || r_s11e65="$r_s11e65 normative-requirement-missing"
 grep -qF '<tr><td>173</td>' requirements.html || r_s11e65="$r_s11e65 appendix-row-missing"
 grep -qF 'R-S11e-65 — Windows token-switched helper environment finality' HARDENING_STATUS.md \
   || r_s11e65="$r_s11e65 hardening-ledger-missing"
 if [ -n "$r_s11e65" ]; then echo "  FAIL R-S11e-65 Windows token-switched helper environment finality:$r_s11e65"; rc=1; else
-  echo "  ok  R-S11e-65 token-switched children require a non-inherited exact-token environment and abort before launch if its construction fails"; fi
+  echo "  ok  R-S11e-65 token-switched helpers and the privacy broker require a non-inherited exact-token environment and abort before launch if its construction fails"; fi
 
 # (3b-iii-d9cp) R-S11az/R-S11e-66: the only two macOS service
 # lifecycle scripts that request administrator privileges use one closed

@@ -30,7 +30,10 @@ use winapi::{
             PROCESS_INFORMATION, STARTUPINFOW,
         },
         synchapi::WaitForSingleObject,
-        winbase::{CREATE_SUSPENDED, DETACHED_PROCESS, WAIT_OBJECT_0},
+        userenv::{CreateEnvironmentBlock, DestroyEnvironmentBlock},
+        winbase::{
+            CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT, DETACHED_PROCESS, WAIT_OBJECT_0,
+        },
         winnt::{
             JobObjectExtendedLimitInformation, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
             JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, MEM_COMMIT, PAGE_READWRITE,
@@ -43,6 +46,62 @@ pub(super) const PRIVACY_MODE_IMPL: &str = "privacy_mode_impl_mag";
 
 pub const INJECTED_PROCESS_EXE: &'static str = "RuntimeBroker_rustdesk.exe";
 pub(super) const PRIVACY_WINDOW_NAME: &'static str = "RustDeskPrivacyWindow";
+
+struct PrivacyBrokerLaunchToken(HANDLE);
+
+impl PrivacyBrokerLaunchToken {
+    fn as_raw(&self) -> HANDLE {
+        self.0
+    }
+}
+
+impl Drop for PrivacyBrokerLaunchToken {
+    fn drop(&mut self) {
+        unsafe {
+            if CloseHandle(self.0) == FALSE {
+                log::warn!(
+                    "Failed to close privacy broker launch token: {}",
+                    Error::last_os_error()
+                );
+            }
+        }
+    }
+}
+
+struct PrivacyBrokerEnvironment(*mut c_void);
+
+impl PrivacyBrokerEnvironment {
+    fn for_token(token: HANDLE, session_id: u32) -> ResultType<Self> {
+        let mut environment = null_mut();
+        if unsafe { CreateEnvironmentBlock(&mut environment, token, FALSE) } == FALSE {
+            bail!(
+                "Failed to create environment for privacy broker session {session_id}: {}",
+                Error::last_os_error()
+            );
+        }
+        if environment.is_null() {
+            bail!("Created null environment for privacy broker session {session_id}");
+        }
+        Ok(Self(environment))
+    }
+
+    fn as_ptr(&self) -> *mut c_void {
+        self.0
+    }
+}
+
+impl Drop for PrivacyBrokerEnvironment {
+    fn drop(&mut self) {
+        unsafe {
+            if DestroyEnvironmentBlock(self.0) == FALSE {
+                log::warn!(
+                    "Failed to destroy privacy broker environment: {}",
+                    Error::last_os_error()
+                );
+            }
+        }
+    }
+}
 
 struct WindowHandlers {
     hjob: u64,
@@ -336,31 +395,29 @@ impl PrivacyModeImpl {
             };
 
             let session_id = privacy_broker_session_id()?;
-            let token = get_user_token(session_id, true);
-            if token.is_null() {
-                bail!("Failed to get token of privacy broker session {session_id}");
-            }
-
-            let create_res = CreateProcessAsUserW(
-                token,
-                broker_path_utf16.as_ptr() as _,
-                NULL as _,
-                NULL as _,
-                NULL as _,
-                FALSE,
-                CREATE_SUSPENDED | DETACHED_PROCESS,
-                NULL,
-                current_dir_utf16.as_ptr() as _,
-                &mut start_info,
-                &mut proc_info,
-            );
-            let create_error = (create_res == FALSE).then(Error::last_os_error);
-            if CloseHandle(token) == FALSE {
-                log::warn!(
-                    "Failed to close privacy broker launch token: {}",
-                    Error::last_os_error()
+            let create_error = {
+                let token = get_user_token(session_id, true);
+                if token.is_null() {
+                    bail!("Failed to get token of privacy broker session {session_id}");
+                }
+                let token = PrivacyBrokerLaunchToken(token);
+                let environment =
+                    PrivacyBrokerEnvironment::for_token(token.as_raw(), session_id)?;
+                let create_res = CreateProcessAsUserW(
+                    token.as_raw(),
+                    broker_path_utf16.as_ptr() as _,
+                    NULL as _,
+                    NULL as _,
+                    NULL as _,
+                    FALSE,
+                    CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | DETACHED_PROCESS,
+                    environment.as_ptr(),
+                    current_dir_utf16.as_ptr() as _,
+                    &mut start_info,
+                    &mut proc_info,
                 );
-            }
+                (create_res == FALSE).then(Error::last_os_error)
+            };
             if let Some(err) = create_error {
                 bail!(
                     "Failed to create privacy window process {}, error {}",

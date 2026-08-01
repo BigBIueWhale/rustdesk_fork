@@ -26,6 +26,10 @@ FLUTTER_PLUGIN_EXPORT void FlutterRgbaRendererPluginOnRgba(
     void* texture_rgba, const uint8_t* buffer, int len, int width, int height,
     int stride_align);
 
+FLUTTER_PLUGIN_EXPORT int FlutterRgbaRendererPluginTryOnRgba(
+    void* texture_rgba, const uint8_t* buffer, int len, int width, int height,
+    int stride_align);
+
 G_END_DECLS
 
 #endif  // FLUTTER_PLUGIN_TEXTURE_RGBA_RENDERER_PLUGIN_H_

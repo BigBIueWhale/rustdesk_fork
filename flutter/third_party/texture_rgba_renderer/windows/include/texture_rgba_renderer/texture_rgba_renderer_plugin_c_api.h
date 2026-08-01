@@ -21,6 +21,10 @@ FLUTTER_PLUGIN_EXPORT void FlutterRgbaRendererPluginOnRgba(
     void* texture_rgba, const uint8_t* buffer, int len, int width, int height,
     int stride_align);
 
+FLUTTER_PLUGIN_EXPORT int FlutterRgbaRendererPluginTryOnRgba(
+    void* texture_rgba, const uint8_t* buffer, int len, int width, int height,
+    int stride_align);
+
 #if defined(__cplusplus)
 }  // extern "C"
 #endif

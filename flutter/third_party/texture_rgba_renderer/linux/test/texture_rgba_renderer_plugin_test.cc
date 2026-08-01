@@ -96,8 +96,9 @@ int main() {
 
   bool passed = true;
   passed &= check(
-      texture_rgba_mark_frame(texture, frame_a, sizeof(frame_a), 2, 2, 16),
-      "first frame was rejected");
+      FlutterRgbaRendererPluginTryOnRgba(texture, frame_a, sizeof(frame_a), 2,
+                                         2, 16) == 1,
+      "C-ABI first frame was rejected");
   passed &= check(
       texture_rgba_mark_frame(texture, frame_b, sizeof(frame_b), 2, 2, 16),
       "latest pending frame was rejected");
@@ -119,8 +120,9 @@ int main() {
 
   registrar->mark_result = FALSE;
   passed &= check(
-      !texture_rgba_mark_frame(texture, frame_a, sizeof(frame_a), 2, 2, 16),
-      "failed registrar notification was accepted");
+      FlutterRgbaRendererPluginTryOnRgba(texture, frame_a, sizeof(frame_a), 2,
+                                         2, 16) == 0,
+      "C-ABI failed registrar notification was accepted");
   copied = nullptr;
   width = 0;
   height = 0;

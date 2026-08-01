@@ -3120,6 +3120,106 @@ external review. This closes one source egress contract only and does not prove 
 reported delay fixed, make the current release operationally validated, or complete the
 broader connection-flow correctness/performance mandate or the Ralph loop.
 
+**R-S11fc/R-S11e-190 exact desktop first-image admission — SOURCE IMPLEMENTED
+2026-08-01; SEALED CANONICAL DART/RUST TRANSACTION, LINUX EXPORTED-ABI TEST,
+PORTABLE WINDOWS PRODUCTION-CORE TEST, AND 121-MUTATION FOCUSED VERIFIER GREEN;
+COMPLETE 3,412-MUTATION INDEPENDENT SOURCE CATALOG GREEN;
+NATIVE Windows/macOS ABI EXECUTION, REAL RENDERER REPRODUCTION, EXACT ARTIFACTS,
+COLD RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW PENDING.** Platforms: the desktop
+Windows/Linux/macOS outgoing Flutter viewer's repository-owned RGBA plugin and the
+shared Rust texture-event bridge. Endpoint/action: native RGBA frame publication and
+the one-time `EventToUI::Texture(display)` notification. Boundary: accepting a decoded
+frame into a platform texture and accepting its UI event are prerequisites for
+announcing a first image; neither is evidence that the Flutter rasterizer, compositor,
+display, or user observed that image.
+
+Read-only tracing found that Rust's dynamic function type returned void. If the symbol
+was missing, Rust skipped the call and still set `render_notified`. If the symbol
+existed, Windows and Linux production texture cores returned Boolean admission but their
+exported C wrappers discarded it; the macOS Swift owner likewise returned a `Bool` which
+Objective-C discarded. Rust then set the notification bit before the caller attempted
+`StreamSink::add`, whose Boolean result was ignored. A missing or mismatched plugin,
+invalid frame, retired texture, registrar refusal, allocation failure, caught native
+exception, or closed UI event stream could therefore be reported to Dart as the first
+texture and suppress a retry until an explicit waiting-dialog reset, lifecycle
+replacement, or reconnect. This is a present-source state error, not an operational
+reproduction or proof that it caused the older Windows/Android report. Android and iOS
+use the separate software-RGBA path and are not changed by this slice.
+
+The plugin now exports `FlutterRgbaRendererPluginTryOnRgba` with a canonical C `int`
+result. Rust loads only this new symbol and treats absence as rejection. The old void
+symbol remains and delegates to the new entry while discarding its result, so a new
+executable never interprets the indeterminate return of an old void ABI. Windows
+converts the exact production `MarkVideoFrameAvailable` result to one or zero and maps
+validation or caught exception to zero. Linux returns the production
+`texture_rgba_mark_frame` result. macOS returns its serialized Swift native acceptance
+result; the macOS registry availability method itself is void, so this is not misstated
+as an engine acknowledgement.
+
+The Rust renderer now commits `render_notified` only after the versioned native entry
+returns nonzero and the exact session's UI stream accepts the texture event. Native
+rejection does not invoke the UI notifier. UI rejection leaves the bit pending. A later
+frame retries, and the first dual acceptance commits once until the existing explicit
+reset. A session with no event stream does not consume the native or UI transaction. The
+change adds no timer, queue, task, thread, dependency, listener, reconnect path, service
+operation, or control/file/input coupling.
+
+The evidence boundary is intentionally strict. The deterministic Rust regression covers
+native rejection, UI rejection, later dual acceptance, and duplicate suppression; the
+existing listener-free Linux native callback test now enters through the versioned C ABI
+and checks both accepted and rejected registrar outcomes. The first canonical attempt
+passed Flutter analysis, all Dart behavior suites, the Linux exported-ABI test,
+and the portable Windows production-core test, then stopped because Rust 1.75
+`rustfmt --check` required one call-chain layout. That attempt is not counted as a complete
+pass. The exact formatter-only correction was independently checked in the pinned Rust
+container; the focused 121-mutation verifier and independent workspace baseline passed;
+and the complete canonical transaction was restarted from authenticated input snapshot
+creation rather than reusing the partial workspace.
+
+The terminal canonical rerun authenticated offline closure
+`a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918` and exact
+Debian-builder image
+`sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`,
+freshly generated all four FRB outputs with pinned FRB 1.80.1 in a disposable snapshot,
+and exited zero. Full Flutter `lib/` analysis reported zero errors; the maintained Dart
+suites passed; the warnings-fatal Linux native test compiled the exact production plugin
+translation unit and observed one from accepted publication and zero from registrar
+rejection through `FlutterRgbaRendererPluginTryOnRgba`; and the portable Windows test
+compiled and executed the exact production callback core. Rust 1.75 formatting and the
+locked `flutter,unix-file-copy-paste` library check passed. The generated-bridge lifecycle
+suite ran 17 tests, including
+`r_s11fc_texture_notification_commits_only_after_native_and_ui_admission`, with zero
+failures; all remaining maintained clipboard, password-input, screenshot, controlled
+video, writer-receipt, and audio-egress regressions passed. The inherited ffigen
+typedef-redefinition diagnostic remained visible while generation returned success; the
+fresh outputs then passed formatting, analysis, compilation, and tests. Final online-
+closure verification and the real-source-worktree-unchanged postcondition passed.
+
+The first independent `--source-mutations-only` catalog attempt is also not counted:
+the new R-S11fc requirement mutation was correctly rejected, but its catalog entry
+expected a label with an extra `source` suffix and refused to count the rejection. The
+expected label was aligned to the independent validator's actual failure; the independent
+baseline passed; and a fresh complete catalog restarted from mutation one. That terminal
+run rejected all 3,412 deliberate source mutations and exited zero. No partial or failed
+catalog is presented as passing evidence.
+
+All compilation and behavior execution used numeric UID/GID 1000:1000 in the exact
+pre-existing immutable images with no pull or network, read-only container roots and
+source/online inputs, all capabilities dropped, `no-new-privileges`, bounded CPU/memory/
+processes, private tmpfs, no published port, no device, no Docker socket, and no host
+namespace. No RustDesk product, capture source, listener, peer, Flutter engine, renderer,
+emulator, device, or host service ran; no root/sudo was acquired; and no host RustDesk,
+firewall, network, configuration, installed binary, or Docker image was changed.
+
+Still open are native Windows compiler/header/DLL loading and engine callbacks, native
+macOS compilation/loading/callbacks, real Flutter engine and renderer execution, exact
+packaged-plugin inventory, current-artifact Windows focus and Android lifecycle
+reproduction, capture-through-presentation timestamps and sustained latency budgets,
+exact older artifact identity, clean committed cold R-B2/R-B10 artifacts, separately
+required independent reproduction, and external review. This source correction does not
+validate the upcoming release, prove the reported delay fixed, close the broader
+connection-flow correctness/performance request, or complete the Ralph loop.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -17599,7 +17699,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-3a23afa7a87b75052e3283bf513690709c4d565ee1f3907f56aab72e1aaa42ff  requirements.html
+46d36d9c40f15aec2c19e85eec123328fa1ba6c079da36cc552657bdef1afb9f  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

@@ -125,6 +125,14 @@ def load_sources(repo: Path) -> Dict[str, str]:
             "flutter/third_party/texture_rgba_renderer/windows/"
             "texture_rgba_renderer_plugin_c_api.cpp"
         ),
+        "plugin_windows_c_api_h": (
+            "flutter/third_party/texture_rgba_renderer/windows/include/"
+            "texture_rgba_renderer/texture_rgba_renderer_plugin_c_api.h"
+        ),
+        "plugin_linux_h": (
+            "flutter/third_party/texture_rgba_renderer/linux/include/"
+            "texture_rgba_renderer/texture_rgba_renderer_plugin.h"
+        ),
         "plugin_linux": (
             "flutter/third_party/texture_rgba_renderer/linux/"
             "texture_rgba_renderer_plugin.cc"
@@ -675,6 +683,71 @@ def validate(sources: Dict[str, str]) -> None:
         "fn r_s11ex_retired_desktop_ui_owner_cannot_replace_or_clear_texture()",
         "native same-session owner-replacement regression",
     )
+    notification_commit = extract_braced_item(
+        flutter,
+        "fn commit_first_texture_notification",
+        "native and UI texture-notification admission",
+    )
+    require_order(
+        notification_commit,
+        (
+            "if !frame_admitted || *render_notified || !notify()",
+            "return false;",
+            "*render_notified = true;",
+            "true",
+        ),
+        "texture notification commits only after native and UI admission",
+    )
+    renderer_loader = extract_braced_item(
+        flutter,
+        "impl Default for VideoRenderer",
+        "desktop native admission-symbol loader",
+    )
+    require_order(
+        renderer_loader,
+        (
+            "lib.symbol::<FlutterRgbaRendererPluginTryOnRgba>(",
+            '"FlutterRgbaRendererPluginTryOnRgba",',
+            "Ok(sym) => Some(sym)",
+            "Err(e) =>",
+            "None",
+        ),
+        "versioned native admission symbol loads fail closed",
+    )
+    renderer_admission = extract_braced_item(
+        flutter,
+        "pub fn on_rgba<F>",
+        "desktop native frame admission",
+    )
+    require_order(
+        renderer_admission,
+        (
+            "let Some(func) = &self.on_rgba_func else",
+            "let frame_admitted = unsafe",
+            ") != 0",
+            "commit_first_texture_notification(",
+        ),
+        "versioned native admission result reaches first-image notification",
+    )
+    texture_dispatch = extract_braced_item(
+        flutter,
+        "fn on_rgba_flutter_texture_render(",
+        "desktop texture event dispatch",
+    )
+    require_order(
+        texture_dispatch,
+        (
+            "let Some(stream) = &session.event_stream else",
+            ".renderer",
+            ".on_rgba(display, rgba, || stream.add(EventToUI::Texture(display)))",
+        ),
+        "UI stream admission is inside the one-time notification transaction",
+    )
+    require(
+        flutter,
+        "r_s11fc_texture_notification_commits_only_after_native_and_ui_admission",
+        "native/UI rejection and retry behavior regression",
+    )
 
     ffi = sources["ffi"]
     wrapper = extract_braced_item(
@@ -773,7 +846,7 @@ def validate(sources: Dict[str, str]) -> None:
     require(ffi, "Texture(usize),   // display", "one-field software texture event")
     require(
         flutter,
-        "stream.add(EventToUI::Texture(display));",
+        "stream.add(EventToUI::Texture(display))",
         "software texture-ready publication",
     )
     require_order(
@@ -899,6 +972,17 @@ def validate(sources: Dict[str, str]) -> None:
     windows_texture = sources["plugin_windows_texture"]
     windows_plugin = sources["plugin_windows"]
     windows_c_api = sources["plugin_windows_c_api"]
+    windows_c_api_h = sources["plugin_windows_c_api_h"]
+    require(
+        windows_c_api_h,
+        "FLUTTER_PLUGIN_EXPORT int FlutterRgbaRendererPluginTryOnRgba(",
+        "Windows versioned frame-admission export declaration",
+    )
+    require(
+        windows_c_api_h,
+        "FLUTTER_PLUGIN_EXPORT void FlutterRgbaRendererPluginOnRgba(",
+        "Windows legacy frame export compatibility declaration",
+    )
     require(
         windows_texture_h,
         "~TextureRgba() = default;",
@@ -1073,20 +1157,48 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         extract_braced_item(
             windows_c_api,
-            "void FlutterRgbaRendererPluginOnRgba(",
-            "Windows Rust C-ABI frame entry",
+            "int FlutterRgbaRendererPluginTryOnRgba(",
+            "Windows Rust C-ABI frame-admission entry",
         ),
         (
             "if (texture_rgba == nullptr",
+            "return 0;",
             "try {",
+            "return static_cast<TextureRgba*>(texture_rgba)",
             "->MarkVideoFrameAvailable(",
+            "? 1",
+            ": 0;",
             "} catch (...) {",
             "Exceptions must never cross the C ABI used by Rust.",
+            "return 0;",
         ),
-        "Windows C-ABI validation and exception containment",
+        "Windows C-ABI validation, admission result, and exception containment",
+    )
+    require_order(
+        extract_braced_item(
+            windows_c_api,
+            "void FlutterRgbaRendererPluginOnRgba(",
+            "Windows legacy C-ABI frame entry",
+        ),
+        (
+            "FlutterRgbaRendererPluginTryOnRgba(",
+            "height, stride_align);",
+        ),
+        "Windows legacy frame entry delegates to versioned admission",
     )
 
     linux = sources["plugin_linux"]
+    linux_h = sources["plugin_linux_h"]
+    require(
+        linux_h,
+        "FLUTTER_PLUGIN_EXPORT int FlutterRgbaRendererPluginTryOnRgba(",
+        "Linux versioned frame-admission export declaration",
+    )
+    require(
+        linux_h,
+        "FLUTTER_PLUGIN_EXPORT void FlutterRgbaRendererPluginOnRgba(",
+        "Linux legacy frame export compatibility declaration",
+    )
     require(
         linux,
         "std::unordered_map<int64_t, TextureRgba*>* renderers;",
@@ -1237,6 +1349,14 @@ def validate(sources: Dict[str, str]) -> None:
             "native retired-callback diagnostic regression",
         ),
         (
+            '"C-ABI first frame was rejected"',
+            "native exported admission-success regression",
+        ),
+        (
+            '"C-ABI failed registrar notification was accepted"',
+            "native exported admission-failure regression",
+        ),
+        (
             '"a retired texture accepted a new frame"',
             "native post-retirement admission regression",
         ),
@@ -1264,15 +1384,29 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         extract_braced_item(
             linux,
-            "void FlutterRgbaRendererPluginOnRgba(",
-            "Linux Rust C-ABI frame entry",
+            "int FlutterRgbaRendererPluginTryOnRgba(",
+            "Linux Rust C-ABI frame-admission entry",
         ),
         (
             "int stride_align)",
-            "texture_rgba_mark_frame(",
+            "return texture_rgba_mark_frame(",
             "len, width, height, stride_align",
+            "? 1",
+            ": 0;",
         ),
-        "Linux C declaration/definition stride contract",
+        "Linux C frame-admission result and stride contract",
+    )
+    require_order(
+        extract_braced_item(
+            linux,
+            "void FlutterRgbaRendererPluginOnRgba(",
+            "Linux legacy C-ABI frame entry",
+        ),
+        (
+            "FlutterRgbaRendererPluginTryOnRgba(",
+            "height, stride_align);",
+        ),
+        "Linux legacy frame entry delegates to versioned admission",
     )
 
     macos_texture = sources["plugin_macos_texture"]
@@ -1358,8 +1492,8 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         extract_braced_item(
             macos_c_api,
-            "void FlutterRgbaRendererPluginOnRgba(",
-            "macOS Rust C-ABI frame entry",
+            "int FlutterRgbaRendererPluginTryOnRgba(",
+            "macOS Rust C-ABI frame-admission entry",
         ),
         (
             "texture_rgba_ptr == NULL",
@@ -1368,8 +1502,23 @@ def validate(sources: Dict[str, str]) -> None:
             "width <= 0",
             "height <= 0",
             "stride_align < 0",
+            "return 0;",
+            "return [texture_rgba markFrameAvaliableRawWithBuffer:",
+            "? 1 : 0;",
         ),
-        "macOS C-ABI pointer and dimension validation",
+        "macOS C-ABI validation and native frame-admission result",
+    )
+    require_order(
+        extract_braced_item(
+            macos_c_api,
+            "void FlutterRgbaRendererPluginOnRgba(",
+            "macOS legacy C-ABI frame entry",
+        ),
+        (
+            "FlutterRgbaRendererPluginTryOnRgba(",
+            "stride_align);",
+        ),
+        "macOS legacy frame entry delegates to versioned admission",
     )
     if (
         hashlib.sha256(
@@ -1423,10 +1572,16 @@ def validate(sources: Dict[str, str]) -> None:
             '<div class="req"><span class="id">R-S11fa</span>',
             "R-S11fa presentation-resume requirement",
         ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fc</span>',
+            "R-S11fc exact first-image admission requirement",
+        ),
         ("requirements", "<tr><td>306</td>", "Appendix C #306"),
         ("requirements", "<tr><td>307</td>", "Appendix C #307"),
         ("requirements", "<tr><td>308</td>", "Appendix C #308"),
         ("requirements", "<tr><td>309</td>", "Appendix C #309"),
+        ("requirements", "<tr><td>311</td>", "Appendix C #311"),
         (
             "hardening",
             "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
@@ -1448,9 +1603,19 @@ def validate(sources: Dict[str, str]) -> None:
             "presentation-resume hardening ledger",
         ),
         (
+            "hardening",
+            "**R-S11fc/R-S11e-190 exact desktop first-image admission",
+            "first-image admission hardening ledger",
+        ),
+        (
             "verify",
             "cargo test --lib --features linux-pkg-config,flutter r_s11ex_ --color never",
             "shared native behavior gate",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never",
+            "shared first-image admission behavior gate",
         ),
         (
             "dart_verify",
@@ -1685,6 +1850,36 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "if handler.client_owner_id.as_ref() != Some(client_owner_id)", "if false", "native exact owner admission"),
     ("flutter", "&client_owner_id,", "&session_id,", "native owner propagation"),
     (
+        "flutter",
+        "if !frame_admitted || *render_notified || !notify()",
+        "if *render_notified || !notify()",
+        "native frame rejection cannot consume first-image notification",
+    ),
+    (
+        "flutter",
+        "if !frame_admitted || *render_notified || !notify()",
+        "if !frame_admitted || *render_notified",
+        "UI stream rejection cannot consume first-image notification",
+    ),
+    (
+        "flutter",
+        "*render_notified = true;",
+        "*render_notified = false;",
+        "successful notification commit",
+    ),
+    (
+        "flutter",
+        '"FlutterRgbaRendererPluginTryOnRgba",',
+        '"FlutterRgbaRendererPluginOnRgba",',
+        "versioned native admission symbol",
+    ),
+    (
+        "flutter",
+        "r_s11fc_texture_notification_commits_only_after_native_and_ui_admission",
+        "texture_notification_behavior_test_disabled",
+        "native and UI notification retry behavior proof",
+    ),
+    (
         "ffi",
         "pub fn session_register_pixelbuffer_texture(\n"
         "    session_id: SessionID,\n"
@@ -1843,9 +2038,23 @@ MUTATIONS: Tuple[Mutation, ...] = (
     (
         "plugin_windows_c_api",
         "  try {\n"
-        "    static_cast<TextureRgba*>(texture_rgba)",
-        "  static_cast<TextureRgba*>(texture_rgba)",
+        "    return static_cast<TextureRgba*>(texture_rgba)",
+        "  return static_cast<TextureRgba*>(texture_rgba)",
         "Windows C-ABI exception containment",
+    ),
+    (
+        "plugin_windows_c_api",
+        "               ? 1\n"
+        "               : 0;",
+        "               ? 0\n"
+        "               : 0;",
+        "Windows C-ABI native admission propagation",
+    ),
+    (
+        "plugin_windows_c_api_h",
+        "FLUTTER_PLUGIN_EXPORT int FlutterRgbaRendererPluginTryOnRgba(",
+        "FLUTTER_PLUGIN_EXPORT void FlutterRgbaRendererPluginTryOnRgba(",
+        "Windows versioned admission declaration result",
     ),
     (
         "plugin_linux",
@@ -1906,6 +2115,24 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "Linux native presented-storage regression",
     ),
     (
+        "plugin_linux_test",
+        '"C-ABI failed registrar notification was accepted"',
+        '"C-ABI admission result was not checked"',
+        "Linux exported admission-result regression",
+    ),
+    (
+        "plugin_linux",
+        "return texture_rgba_mark_frame(reinterpret_cast<TextureRgba*>(texture_rgba),",
+        "texture_rgba_mark_frame(reinterpret_cast<TextureRgba*>(texture_rgba),",
+        "Linux C-ABI native admission propagation",
+    ),
+    (
+        "plugin_linux_h",
+        "FLUTTER_PLUGIN_EXPORT int FlutterRgbaRendererPluginTryOnRgba(",
+        "FLUTTER_PLUGIN_EXPORT void FlutterRgbaRendererPluginTryOnRgba(",
+        "Linux versioned admission declaration result",
+    ),
+    (
         "plugin_linux",
         "    *width = self->prior_width;\n"
         "    *height = self->prior_height;\n"
@@ -1941,18 +2168,28 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "let notificationNeeded = true",
         "macOS latest-wins pending-frame coalescing",
     ),
+    (
+        "plugin_macos_c_api",
+        "return [texture_rgba markFrameAvaliableRawWithBuffer:buffer",
+        "[texture_rgba markFrameAvaliableRawWithBuffer:buffer",
+        "macOS C-ABI native admission propagation",
+    ),
     ("requirements", '<div class="req"><span class="id">R-S11ex</span>', '<div class="req"><span class="id">R-S11ex-disabled</span>', "normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11ey</span>', '<div class="req"><span class="id">R-S11ey-disabled</span>', "software-only normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11ez</span>', '<div class="req"><span class="id">R-S11ez-disabled</span>', "native retirement normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11fa</span>', '<div class="req"><span class="id">R-S11fa-disabled</span>', "presentation-resume normative requirement"),
+    ("requirements", '<div class="req"><span class="id">R-S11fc</span>', '<div class="req"><span class="id">R-S11fc-disabled</span>', "first-image admission normative requirement"),
     ("requirements", "<tr><td>306</td>", "<tr><td>306-disabled</td>", "Appendix disposition"),
     ("requirements", "<tr><td>307</td>", "<tr><td>307-disabled</td>", "software-only Appendix disposition"),
     ("requirements", "<tr><td>308</td>", "<tr><td>308-disabled</td>", "native retirement Appendix disposition"),
     ("requirements", "<tr><td>309</td>", "<tr><td>309-disabled</td>", "presentation-resume Appendix disposition"),
+    ("requirements", "<tr><td>311</td>", "<tr><td>311-disabled</td>", "first-image admission Appendix disposition"),
     ("hardening", "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "**R-S11ex-disabled/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "hardening ledger"),
     ("hardening", "**R-S11ey/R-S11e-186 software-RGBA-only desktop presentation", "**R-S11ey-disabled/R-S11e-186 software-RGBA-only desktop presentation", "software-only hardening ledger"),
     ("hardening", "**R-S11ez/R-S11e-187 pending desktop frame retirement finality", "**R-S11ez-disabled/R-S11e-187 pending desktop frame retirement finality", "native retirement hardening ledger"),
     ("hardening", "**R-S11fa/R-S11e-188 exact viewer presentation-resume recovery", "**R-S11fa-disabled/R-S11e-188 exact viewer presentation-resume recovery", "presentation-resume hardening ledger"),
+    ("hardening", "**R-S11fc/R-S11e-190 exact desktop first-image admission", "**R-S11fc-disabled/R-S11e-190 exact desktop first-image admission", "first-image admission hardening ledger"),
+    ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never", "true # first-image admission behavior gate disabled", "shared first-image admission behavior gate"),
     ("dart_verify", "flutter test --no-pub test/desktop_texture_lifecycle_test.dart", "true # desktop texture lifecycle test disabled", "Dart behavior gate"),
     ("dart_verify", "\n    /tmp/texture_rgba_renderer_plugin_test\n", "\n    true # Linux native callback behavior gate disabled\n", "Linux native callback behavior gate"),
     ("dart_verify", "\n    /tmp/texture_rgba_windows_core_test\n", "\n    true # portable Windows callback-core gate disabled\n", "portable Windows callback-core behavior gate"),

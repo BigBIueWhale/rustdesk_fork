@@ -472,14 +472,29 @@ impl RgbaData {
     }
 }
 
-pub type FlutterRgbaRendererPluginOnRgba = unsafe extern "C" fn(
+pub type FlutterRgbaRendererPluginTryOnRgba = unsafe extern "C" fn(
     texture_rgba: *mut c_void,
     buffer: *const u8,
     len: c_int,
     width: c_int,
     height: c_int,
     dst_rgba_stride: c_int,
-);
+) -> c_int;
+
+fn commit_first_texture_notification<F>(
+    render_notified: &mut bool,
+    frame_admitted: bool,
+    notify: F,
+) -> bool
+where
+    F: FnOnce() -> bool,
+{
+    if !frame_admitted || *render_notified || !notify() {
+        return false;
+    }
+    *render_notified = true;
+    true
+}
 
 pub(super) type TextureRgbaPtr = usize;
 
@@ -496,7 +511,7 @@ struct VideoRenderer {
     is_support_multi_ui_session: bool,
     map_display_sessions: Arc<RwLock<HashMap<usize, DisplaySessionInfo>>>,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    on_rgba_func: Option<Symbol<'static, FlutterRgbaRendererPluginOnRgba>>,
+    on_rgba_func: Option<Symbol<'static, FlutterRgbaRendererPluginTryOnRgba>>,
 }
 
 impl Default for VideoRenderer {
@@ -505,12 +520,16 @@ impl Default for VideoRenderer {
         let on_rgba_func = match &*TEXTURE_RGBA_RENDERER_PLUGIN {
             Ok(lib) => {
                 let find_sym_res = unsafe {
-                    lib.symbol::<FlutterRgbaRendererPluginOnRgba>("FlutterRgbaRendererPluginOnRgba")
+                    lib.symbol::<FlutterRgbaRendererPluginTryOnRgba>(
+                        "FlutterRgbaRendererPluginTryOnRgba",
+                    )
                 };
                 match find_sym_res {
                     Ok(sym) => Some(sym),
                     Err(e) => {
-                        log::error!("Failed to find symbol FlutterRgbaRendererPluginOnRgba, {e}");
+                        log::error!(
+                            "Failed to find symbol FlutterRgbaRendererPluginTryOnRgba, {e}"
+                        );
                         None
                     }
                 }
@@ -586,7 +605,10 @@ impl VideoRenderer {
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
-    pub fn on_rgba(&self, display: usize, rgba: &scrap::ImageRgb) -> bool {
+    pub fn on_rgba<F>(&self, display: usize, rgba: &scrap::ImageRgb, notify: F) -> bool
+    where
+        F: FnOnce() -> bool,
+    {
         let mut write_lock = self.map_display_sessions.write().unwrap();
         let opt_info = if !self.is_support_multi_ui_session {
             write_lock.values_mut().next()
@@ -614,24 +636,20 @@ impl VideoRenderer {
                 return false;
             }
         }
-        if let Some(func) = &self.on_rgba_func {
-            unsafe {
-                func(
-                    info.texture_rgba_ptr as _,
-                    rgba.raw.as_ptr() as _,
-                    rgba.raw.len() as _,
-                    rgba.w as _,
-                    rgba.h as _,
-                    rgba.align() as _,
-                )
-            };
-        }
-        if !info.render_notified {
-            info.render_notified = true;
-            true
-        } else {
-            false
-        }
+        let Some(func) = &self.on_rgba_func else {
+            return false;
+        };
+        let frame_admitted = unsafe {
+            func(
+                info.texture_rgba_ptr as _,
+                rgba.raw.as_ptr() as _,
+                rgba.raw.len() as _,
+                rgba.w as _,
+                rgba.h as _,
+                rgba.align() as _,
+            ) != 0
+        };
+        commit_first_texture_notification(&mut info.render_notified, frame_admitted, notify)
     }
 
     pub fn reset_all_display_notification(&self) {
@@ -1504,11 +1522,12 @@ impl FlutterHandler {
     ) {
         for (_, session) in self.session_handlers.read().unwrap().iter() {
             if use_texture_render || session.displays.len() > 1 {
-                if session.renderer.on_rgba(display, rgba) {
-                    if let Some(stream) = &session.event_stream {
-                        stream.add(EventToUI::Texture(display));
-                    }
-                }
+                let Some(stream) = &session.event_stream else {
+                    continue;
+                };
+                session
+                    .renderer
+                    .on_rgba(display, rgba, || stream.add(EventToUI::Texture(display)));
             }
         }
     }
@@ -3008,6 +3027,55 @@ mod mobile_session_lifecycle_tests {
     use std::time::Duration;
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[test]
+    fn r_s11fc_texture_notification_commits_only_after_native_and_ui_admission() {
+        let mut render_notified = false;
+        let mut notification_attempts = 0;
+
+        assert!(!commit_first_texture_notification(
+            &mut render_notified,
+            false,
+            || {
+                notification_attempts += 1;
+                true
+            },
+        ));
+        assert!(!render_notified);
+        assert_eq!(notification_attempts, 0);
+
+        assert!(!commit_first_texture_notification(
+            &mut render_notified,
+            true,
+            || {
+                notification_attempts += 1;
+                false
+            },
+        ));
+        assert!(!render_notified);
+        assert_eq!(notification_attempts, 1);
+
+        assert!(commit_first_texture_notification(
+            &mut render_notified,
+            true,
+            || {
+                notification_attempts += 1;
+                true
+            },
+        ));
+        assert!(render_notified);
+        assert_eq!(notification_attempts, 2);
+
+        assert!(!commit_first_texture_notification(
+            &mut render_notified,
+            true,
+            || {
+                notification_attempts += 1;
+                true
+            },
+        ));
+        assert_eq!(notification_attempts, 2);
+    }
 
     #[test]
     fn r_s11ew_rgba_mailbox_keeps_published_frame_stable_and_promotes_only_latest() {

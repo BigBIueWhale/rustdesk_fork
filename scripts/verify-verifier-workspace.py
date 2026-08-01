@@ -16636,6 +16636,30 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "macOS latest-wins native pending-frame contract",
         ),
         (
+            '"native and UI texture-notification admission"',
+            "native and UI first-image admission contract",
+        ),
+        (
+            '"versioned native admission symbol loads fail closed"',
+            "versioned native admission loader contract",
+        ),
+        (
+            '"Windows C-ABI validation, admission result, and exception containment"',
+            "Windows admission-result C-ABI contract",
+        ),
+        (
+            '"Linux C frame-admission result and stride contract"',
+            "Linux admission-result C-ABI contract",
+        ),
+        (
+            '"macOS C-ABI validation and native frame-admission result"',
+            "macOS admission-result C-ABI contract",
+        ),
+        (
+            '"native/UI rejection and retry behavior regression"',
+            "native and UI retry behavior contract",
+        ),
+        (
             '"flutter_gpu_texture_renderer",',
             "retired GPU dependency absence contract",
         ),
@@ -16706,6 +16730,30 @@ def validate_desktop_texture_lifecycle_contract(sources):
         (
             '"in-flight suspend/resume preservation"',
             "presentation in-flight follow-up mutation",
+        ),
+        (
+            '"native frame rejection cannot consume first-image notification"',
+            "native rejection retry mutation",
+        ),
+        (
+            '"UI stream rejection cannot consume first-image notification"',
+            "UI rejection retry mutation",
+        ),
+        (
+            '"versioned native admission symbol"',
+            "versioned native symbol mutation",
+        ),
+        (
+            '"Windows C-ABI native admission propagation"',
+            "Windows native admission-result mutation",
+        ),
+        (
+            '"Linux exported admission-result regression"',
+            "Linux exported admission behavior mutation",
+        ),
+        (
+            '"macOS C-ABI native admission propagation"',
+            "macOS native admission-result mutation",
         ),
         (
             '"presentation refresh failure visibility"',
@@ -16858,8 +16906,41 @@ def validate_desktop_texture_lifecycle_contract(sources):
             '"hardening", "**R-S11ez/R-S11e-187 pending desktop frame retirement finality"',
             "native retirement hardening-ledger mutation",
         ),
+        (
+            "\"requirements\", '<div class=\"req\"><span class=\"id\">R-S11fc</span>'",
+            "first-image admission requirement mutation",
+        ),
+        (
+            '"requirements", "<tr><td>311</td>"',
+            "first-image admission Appendix C mutation",
+        ),
+        (
+            '"hardening", "**R-S11fc/R-S11e-190 exact desktop first-image admission"',
+            "first-image admission hardening-ledger mutation",
+        ),
     ):
         require_text(focused, text, label)
+
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11fc</span>',
+        "exact first-image admission requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>311</td>",
+        "exact first-image admission Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11fc/R-S11e-190 exact desktop first-image admission",
+        "exact first-image admission hardening ledger",
+    )
+    require_text(
+        sources["verify"],
+        "cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never",
+        "exact first-image admission shared behavior gate",
+    )
 
     require_order(
         sources["presentation_recovery_dart"],
@@ -17080,7 +17161,7 @@ def validate_desktop_texture_lifecycle_contract(sources):
     )
     require_text(
         sources["flutter_source"],
-        "stream.add(EventToUI::Texture(display));",
+        "stream.add(EventToUI::Texture(display))",
         "independent software texture-ready event",
     )
     for text, label in (
@@ -54997,6 +55078,30 @@ def run_source_mutations(sources):
             "**R-S11fb/R-S11e-189 controlled video exact-writer egress",
             "**R-S11fb-disabled/R-S11e-189 controlled video exact-writer egress",
             "controlled video egress hardening ledger source",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fc</span>',
+            '<div class="req"><span class="id">R-S11fc-disabled</span>',
+            "exact first-image admission requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>311</td>",
+            "<tr><td>311-disabled</td>",
+            "exact first-image admission Appendix C row",
+        ),
+        (
+            "hardening",
+            "**R-S11fc/R-S11e-190 exact desktop first-image admission",
+            "**R-S11fc-disabled/R-S11e-190 exact desktop first-image admission",
+            "exact first-image admission hardening ledger",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never",
+            "true # exact first-image admission behavior gate disabled",
+            "exact first-image admission shared behavior gate",
         ),
         (
             "verify",

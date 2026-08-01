@@ -418,9 +418,19 @@ void texture_rgba_renderer_plugin_register_with_registrar(
   g_object_unref(plugin);
 }
 
+int FlutterRgbaRendererPluginTryOnRgba(void* texture_rgba,
+                                       const uint8_t* buffer, int len,
+                                       int width, int height,
+                                       int stride_align) {
+  return texture_rgba_mark_frame(reinterpret_cast<TextureRgba*>(texture_rgba),
+                                 buffer, len, width, height, stride_align)
+             ? 1
+             : 0;
+}
+
 void FlutterRgbaRendererPluginOnRgba(void* texture_rgba, const uint8_t* buffer,
                                      int len, int width, int height,
                                      int stride_align) {
-  texture_rgba_mark_frame(reinterpret_cast<TextureRgba*>(texture_rgba), buffer,
-                          len, width, height, stride_align);
+  (void)FlutterRgbaRendererPluginTryOnRgba(texture_rgba, buffer, len, width,
+                                          height, stride_align);
 }

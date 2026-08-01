@@ -5656,31 +5656,35 @@ grep -qF 'R-S11dd/R-S11e-122 — runtime-smoke host, Docker-client, build-user, 
 if [ -n "$r_s11e64" ]; then echo "  FAIL R-S11e-64/R-S11e-122 smoke container/host-build authority:$r_s11e64"; rc=1; else
   echo "  ok  R-S11e-64/R-S11e-122 smoke uses one fixed local Docker authority, no host process scan, one non-root private-target build, immutable image ID, network none, and no publication"; fi
 
-# (3b-iii-d9co) R-S11ay/R-S11e-65: a LocalSystem-to-user helper
-# launch must receive a successfully created environment for the exact
-# target-user token and may never inherit or fall back to the service environment.
+# (3b-iii-d9co) R-S11ay/R-S11e-65: every token-switched child launch
+# must receive a successfully created environment for the exact selected
+# token and may never inherit or fall back to the service environment.
 echo "== (3b-iii-d9co) Windows token-switched helper environment finality (R-S11ay/R-S11e-65) =="
 r_s11e65=
 grep -qF 'if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))' src/platform/windows.cc \
-  || r_s11e65="$r_s11e65 non-inherited-user-environment-missing"
+  || r_s11e65="$r_s11e65 non-inherited-token-environment-missing"
 grep -qF 'if (lpEnvironment == NULL)' src/platform/windows.cc \
   || r_s11e65="$r_s11e65 null-user-environment-rejection-missing"
 grep -qF 'SetLastError(ERROR_INVALID_DATA);' src/platform/windows.cc \
   || r_s11e65="$r_s11e65 null-user-environment-error-missing"
 grep -qF 'LPVOID processEnvironment = lpEnvironment;' src/platform/windows.cc \
-  || r_s11e65="$r_s11e65 exact-user-environment-selection-missing"
+  || r_s11e65="$r_s11e65 exact-token-environment-selection-missing"
 grep -qF 'dwCreationFlags, processEnvironment, currentDirectory,' src/platform/windows.cc \
-  || r_s11e65="$r_s11e65 exact-user-environment-launch-use-missing"
+  || r_s11e65="$r_s11e65 exact-token-environment-launch-use-missing"
 windows_native_flat=$(tr '\n' ' ' < src/platform/windows.cc)
 if grep -Eq 'CreateEnvironmentBlock\([^;]*TRUE\)' <<<"$windows_native_flat"; then
   r_s11e65="$r_s11e65 inherited-caller-environment-present"
+fi
+windows_native_launch=$(awk '/HANDLE LaunchProcessWin\(/,/^    }/' src/platform/windows.cc)
+if grep -qF 'if (as_user)' <<<"$windows_native_launch"; then
+  r_s11e65="$r_s11e65 conditional-token-environment-present"
 fi
 grep -qF '<span class="id">R-S11ay</span>' requirements.html || r_s11e65="$r_s11e65 normative-requirement-missing"
 grep -qF '<tr><td>173</td>' requirements.html || r_s11e65="$r_s11e65 appendix-row-missing"
 grep -qF 'R-S11e-65 — Windows token-switched helper environment finality' HARDENING_STATUS.md \
   || r_s11e65="$r_s11e65 hardening-ledger-missing"
 if [ -n "$r_s11e65" ]; then echo "  FAIL R-S11e-65 Windows token-switched helper environment finality:$r_s11e65"; rc=1; else
-  echo "  ok  R-S11e-65 token-switched helpers require a non-inherited target-user environment and abort before launch if its construction fails"; fi
+  echo "  ok  R-S11e-65 token-switched children require a non-inherited exact-token environment and abort before launch if its construction fails"; fi
 
 # (3b-iii-d9cp) R-S11az/R-S11e-66: the only two macOS service
 # lifecycle scripts that request administrator privileges use one closed

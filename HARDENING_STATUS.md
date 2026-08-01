@@ -7557,10 +7557,16 @@ unreachable and a source/test/AST gate prevents reintroduction.
   or process creation. A nominally successful null result closes the token and fails as `ERROR_INVALID_DATA` at the
   same boundary. Only the successfully constructed target-user block reaches the existing case-insensitive merge;
   CM/whiteboard launcher proof variables still replace same-name profile variables, and the exact Unicode block is
-  passed to `CreateProcessAsUserW`. Null/caller/LocalSystem fallback is therefore absent for user helpers. The
-  distinct `as_user=FALSE` service-owned child remains unchanged and receives only its explicit supervisor PID and
-  creation-time variables. R-S11ay and Appendix C #173 make the authority model normative. The shared semantic
-  validator binds the single construction site, failure/null finality, non-inheritance, merge/launch order, and
+  passed to `CreateProcessAsUserW`. Null/caller/LocalSystem fallback is therefore absent for user helpers.
+  Follow-up audit on 2026-08-01 found that the shared `as_user=FALSE` service-child path had remained outside that
+  construction: because its supervisor PID and creation-time proof variables made the environment pointer non-null,
+  it received a near-empty two-entry block rather than the environment for its selected LocalSystem token. The shared
+  launcher now constructs one non-inherited block for every selected token before merging launcher-owned variables;
+  service-child proof variables replace same-name token entries, while ambient supervisor state is never inherited.
+  R-S11ay's user-helper rule remains intact and the broader service-child correction follows R-S11b's exact runtime
+  replica boundary. The focused and shared semantic gates reject reintroduction of an `as_user`-conditional
+  construction site. R-S11ay and Appendix C #173 make the original user-helper authority model normative. The shared
+  semantic validator binds the single construction site, failure/null finality, non-inheritance, merge/launch order, and
   requirement/ledger/gate presence; its deliberate mutations cover inherited construction, ignored/inverted status,
   lost error preservation, continued failure, null acceptance, launch-time environment replacement, and document
   removal. The focused source gate independently rejects inherited construction and missing finality markers. Native

@@ -8008,12 +8008,11 @@ def validate_windows_helper_launch_contract(sources):
         native_launch,
         "CreateEnvironmentBlock(",
         1,
-        "Windows target-user environment has one construction site",
+        "Windows exact-token environment has one construction site",
     )
     require_order(
         native_launch,
         (
-            "if (as_user)",
             "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))",
             "DWORD error = GetLastError();",
             "CloseHandle(hToken);",
@@ -8027,7 +8026,12 @@ def validate_windows_helper_launch_contract(sources):
             "merge_environment_blocks(lpEnvironment, extraEnvironment)",
             "dwCreationFlags, processEnvironment, currentDirectory,",
         ),
-        "Windows target-user environment creation, validation, merge, and launch order",
+        "Windows exact-token environment creation, validation, merge, and launch order",
+    )
+    require_absent(
+        native_launch,
+        "if (as_user)",
+        "Windows exact-token environment construction is unconditional",
     )
     require_absent(
         native_launch,
@@ -43412,38 +43416,44 @@ def run_source_mutations(sources):
         (
             "windows_native",
             "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))",
+            "if (as_user)\n            if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))",
+            "Windows exact-token environment construction is unconditional",
+        ),
+        (
+            "windows_native",
+            "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))",
             "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, TRUE))",
-            "Windows target-user environment creation, validation, merge, and launch order",
+            "Windows exact-token environment creation, validation, merge, and launch order",
         ),
         (
             "windows_native",
             "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))",
             "if (CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))",
-            "Windows target-user environment creation, validation, merge, and launch order",
+            "Windows exact-token environment creation, validation, merge, and launch order",
         ),
         (
             "windows_native",
-            "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))\n                {\n                    DWORD error = GetLastError();",
-            "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))\n                {\n                    DWORD error = ERROR_SUCCESS;",
-            "Windows target-user environment creation, validation, merge, and launch order",
+            "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))\n            {\n                DWORD error = GetLastError();",
+            "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))\n            {\n                DWORD error = ERROR_SUCCESS;",
+            "Windows exact-token environment creation, validation, merge, and launch order",
         ),
         (
             "windows_native",
-            "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))\n                {\n                    DWORD error = GetLastError();\n                    CloseHandle(hToken);\n                    SetLastError(error);\n                    return hProcess;",
-            "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))\n                {\n                    DWORD error = GetLastError();\n                    CloseHandle(hToken);\n                    SetLastError(error);",
-            "Windows target-user environment creation, validation, merge, and launch order",
+            "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))\n            {\n                DWORD error = GetLastError();\n                CloseHandle(hToken);\n                SetLastError(error);\n                return hProcess;",
+            "if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))\n            {\n                DWORD error = GetLastError();\n                CloseHandle(hToken);\n                SetLastError(error);",
+            "Windows exact-token environment creation, validation, merge, and launch order",
         ),
         (
             "windows_native",
             "if (lpEnvironment == NULL)",
             "if (lpEnvironment != NULL)",
-            "Windows target-user environment creation, validation, merge, and launch order",
+            "Windows exact-token environment creation, validation, merge, and launch order",
         ),
         (
             "windows_native",
             "dwCreationFlags, processEnvironment, currentDirectory,",
             "dwCreationFlags, NULL, currentDirectory,",
-            "Windows target-user environment creation, validation, merge, and launch order",
+            "Windows exact-token environment creation, validation, merge, and launch order",
         ),
         (
             "windows_source",

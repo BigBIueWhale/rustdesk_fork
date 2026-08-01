@@ -350,21 +350,18 @@ extern "C"
             LPVOID lpEnvironment = NULL;
             DWORD dwCreationFlags = DETACHED_PROCESS;
             std::vector<wchar_t> mergedEnvironment;
-            if (as_user)
+            if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))
             {
-                if (!CreateEnvironmentBlock(&lpEnvironment, hToken, FALSE))
-                {
-                    DWORD error = GetLastError();
-                    CloseHandle(hToken);
-                    SetLastError(error);
-                    return hProcess;
-                }
-                if (lpEnvironment == NULL)
-                {
-                    CloseHandle(hToken);
-                    SetLastError(ERROR_INVALID_DATA);
-                    return hProcess;
-                }
+                DWORD error = GetLastError();
+                CloseHandle(hToken);
+                SetLastError(error);
+                return hProcess;
+            }
+            if (lpEnvironment == NULL)
+            {
+                CloseHandle(hToken);
+                SetLastError(ERROR_INVALID_DATA);
+                return hProcess;
             }
             LPVOID processEnvironment = lpEnvironment;
             if (has_extra_environment(extraEnvironment))

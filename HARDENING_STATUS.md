@@ -3987,6 +3987,98 @@ capability-free containers with no published ports, host namespaces/devices, Doc
 service/configuration access. The confined checks can establish source shape, compilation, and
 deterministic local behavior only; they cannot establish operational correctness or performance.
 
+**R-S11fk/R-S11e-198 controlled-video exact peer receipt — OPEN / RELEASE-BLOCKING;
+REAL KERNEL-TCP LOCAL-RECEIPT BOUNDARY PROVEN 2026-08-02; PRODUCTION WIRE PROTOCOL,
+CURRENT ANDROID/WINDOWS/DEBIAN ARTIFACT MATRIX, FOCUS/BACKGROUND RECOVERY,
+TIMESTAMPS/LATENCY BUDGETS, COLD RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL
+REVIEW PENDING.** Platforms: controlled-side monitor/camera egress shared by Android and desktop
+servers, the keyed TCP writer, and every outgoing viewer platform. Endpoint/action: exact encoded
+frame → sole writer → local kernel TCP buffering → authenticated peer read/parse → viewer mailbox,
+decode, publication, and presentation. Boundary: successful local async write is not evidence that
+the peer consumed any byte, while reverse-direction input/control can remain healthy.
+
+This entry corrects an over-strong interpretation in R-S11fb without discarding that slice's real
+local benefit. R-S11fb removed the separate 512-command application backlog for controlled video,
+gave each connection a constant-space GOP-aware mailbox, and retained at most one tracked writer
+send. The connection nevertheless calls `notify_video_frame_fetched` immediately after the tracked
+writer's `Ok(())`. `libs/hbb_common/src/tcp.rs::writer_task` produces that result from
+`SinkExt::send`. The exact pinned Tokio 1.44.2 source in
+`online/cargo-vendor/tokio-1.44.2/src/net/tcp/stream.rs` implements TCP `poll_flush` as an immediate
+successful no-op. The receipt therefore proves only that the framed ciphertext was accepted by the
+local TCP socket/kernel; it proves neither peer read/authentication nor decode/publication/render.
+Once the local kernel accepts a frame, capture may advance and enqueue another, so a suspended or
+non-reading viewer can still accumulate obsolete video below the bounded application mailbox.
+Reconnect destroys that socket backlog. This mechanism is source-proven and fits the reported
+display-only-delay/control-still-responsive shape, but it is not proof that it caused either
+unidentified older operational build or that current artifacts reproduce the symptom.
+
+A new characterization regression enters the production keyed `FramedStream` over a real
+kernel TCP connection, not Tokio's in-memory `duplex`. It binds a dynamically assigned listener only
+to the executing container network namespace's `127.0.0.1:0`, sends one tracked encrypted frame,
+waits for the local writer receipt before ever polling the peer, and proves the peer's authenticated
+receive counter is still zero. Only afterward does it poll, authenticate, and byte-compare the exact
+frame. The exact current test reported `1 passed`, `0 failed`, `128 filtered`. It ran under pinned
+Rust 1.75.0 in immutable image
+`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric
+UID/GID 1000:1000 with `--network=none`, no published port, a read-only root/source/vendor tree,
+all capabilities dropped, `no-new-privileges`, bounded memory/CPU/PIDs, private tmpfs build output,
+and no device, Docker socket, or host namespace. The container had only its own loopback and no
+route to or shared namespace with the host RustDesk listener.
+
+The complete exact transport-receipt prefix was then rebuilt from the read-only vendor closure and
+ran all four sibling behaviors: in-memory sink backpressure, exact sink failure, keyed in-memory
+round trip, and real kernel-TCP local-receipt-before-peer-read (`4 passed`, `0 failed`, `125
+filtered`). Pinned Rustfmt 1.7.0-stable accepted the edited transport source. The focused semantic
+verifier baseline passed and rejected all 483 deliberate mutations, including removal of the real
+TCP behavior, R-S11fk/#319, ledger, and both maintained test wirings. The independent normal
+workspace verifier also passed; its final complete source-mutation result is recorded separately
+after the exact ledger bytes are frozen.
+
+Failed or non-evidence attempts are explicit. The first container invocation used the `cargo`
+rustup shim, which tried to synchronize the pinned shorthand channel and stopped on the immutable
+rustup root before compilation. The next exact-toolchain compile succeeded, but an over-specific
+test filter selected zero tests (`0 passed`, `129 filtered`) and is not counted. The passing retry
+used the unique function filter and executed exactly one regression. A still earlier wrapper was
+rejected before execution because it contained a prohibited temporary cleanup command; no container
+or test started. None of those attempts is represented as product failure or passing evidence.
+One later read-only inventory command mistakenly included direct host `python3 -c` execution which
+printed only the fixed string `host-python-not-counted`. It read no project input, created no
+bytecode/file, used no network/root/service/listener authority, and changed no state, but it violated
+the user's all-code-in-Docker boundary and is explicitly uncounted. All subsequent syntax,
+formatter, test, and verifier execution remained inside the confined containers described above.
+
+The required production model is now explicit but intentionally unimplemented in this
+characterization slice. Remote/ViewCamera capability negotiation and every transmitted video frame
+must carry a checked exact wire generation. After keyed reassembly/authentication/decryption/parse
+and exact identity validation—but before decode or presentation—the viewer returns the matching
+display/generation. The controlled connection retains at most one unreceipted transmitted frame and
+reports capture progress only after both its exact local writer result and exact peer receipt,
+regardless of event order. Source kind derives from the authenticated session type. Zero, stale,
+duplicate, wrong-display, wrong-type, pre-login, and retired receipts cannot satisfy any round.
+While the viewer is not reading, later video remains only as a bounded latest GOP-safe candidate;
+receipt recovery sends current independently decodable work rather than requiring reconnect to
+discard obsolete bytes. The retired displayless/generationless protobuf tags remain reserved. An
+unnegotiated peer cannot silently restore local-writer completion as capture progress; any retained
+legacy video behavior needs a separately specified measurable bound and release gate, otherwise the
+video session fails visibly with an upgrade requirement. Receipt is deliberately network-parse
+receipt, not presentation receipt: focus/background rendering must not gate transport liveness.
+
+This is not a production correction, current release validation, or a claim that the accumulated
+branch is safe to deploy. At the inspected parent `9fbe5dc`, the continuous July/August hardening
+period contained 296 commits and touched 468 files; much of its line volume is generated output,
+ledger, and verifier material, but the cumulative integration risk is real. The current smoke does
+execute the real Linux server, CPace login, file-transfer admission, and port-forward traffic over
+container loopback, yet its headless Remote session stops at display-backend refusal and exercises
+no screen-video receive/decode/render/focus path. Android ARM64 compilation, deterministic source
+tests, and mutation gates are not Android device behavior; earlier native Windows evidence is not
+an exact-current Windows viewer focus test. No production peer-receipt edit may be called complete
+without both deterministic protocol-state tests and the timestamped exact-current native matrix in
+the open cross-platform connection-performance mandate.
+
+No host RustDesk process/service/binary/configuration, host listener, firewall/UFW/nftables/iptables
+state, Docker image, or host network setting was inspected or changed. No root, sudo, privileged
+container, installed product, capture source, renderer, emulator, VM, or physical device ran.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -18591,7 +18683,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-d68ddcbb58e5058efdf8cc8ea21436df18ebc5d094a90cbda0629a01e446e2d1  requirements.html
+b3e5a6bfc196e20231910c3526e3da9cb40773cd0f843acc780eea714752ccd5  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -18623,3 +18715,4 @@ The same identity additionally binds R-S11fg and Appendix C #315.
 The same identity additionally binds R-S11fh and Appendix C #316.
 The same identity additionally binds R-S11fi and Appendix C #317.
 The same identity additionally binds R-S11fj and Appendix C #318.
+The same identity additionally binds R-S11fk and Appendix C #319.

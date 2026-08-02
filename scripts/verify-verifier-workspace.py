@@ -21258,6 +21258,7 @@ def validate_android_voice_call_ownership_contract(sources):
         "r_s11fb_receipt_waits_for_the_exact_sink_send",
         "r_s11fb_receipt_reports_the_exact_sink_failure",
         "r_s11fb_tracked_keyed_send_round_trips_the_exact_frame",
+        "r_s11fk_real_tcp_receipt_can_precede_peer_read",
     ):
         require_text(transport_tcp, behavior_test, f"writer receipt behavior proof source {behavior_test}")
     require_text(
@@ -21283,6 +21284,21 @@ def validate_android_voice_call_ownership_contract(sources):
         "controlled video egress hardening ledger source",
     )
     require_text(
+        sources["requirements"],
+        '<span class="id">R-S11fk</span>',
+        "controlled video exact peer receipt requirement source",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>319</td>",
+        "controlled video exact peer receipt Appendix C row source",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11fk/R-S11e-198 controlled-video exact peer receipt",
+        "controlled video exact peer receipt hardening ledger source",
+    )
+    require_text(
         sources["verify"],
         '"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\n'
         "  server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1",
@@ -21300,12 +21316,22 @@ def validate_android_voice_call_ownership_contract(sources):
         "writer receipt shared behavior gate source",
     )
     require_text(
+        sources["verify"],
+        '"${RUN[@]}" cargo test -p hbb_common writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read -- --test-threads=1',
+        "real TCP local-receipt boundary shared behavior gate source",
+    )
+    require_text(
         sources["dart_verify"],
         "server::video_service::video_frame_ack_tests::r_s11eg_",
         "controlled video acknowledgement generated-bridge behavior gate source",
     )
     require_text(sources["dart_verify"], "server::connection::video_egress_tests::r_s11fb_", "video egress generated-bridge behavior gate source")
     require_text(sources["dart_verify"], "writer_receipt_tests::r_s11fb_", "writer receipt generated-bridge behavior gate source")
+    require_text(
+        sources["dart_verify"],
+        "writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read",
+        "real TCP local-receipt boundary generated-bridge behavior gate source",
+    )
     require_text(
         sources["verify"],
         'and session_add.index("take_previous_android_mobile_client_sessions(client_owner_id, session_id)?")',
@@ -21847,6 +21873,11 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
+        '("transport_tcp", "r_s11fk_real_tcp_receipt_can_precede_peer_read", "writer_receipt_real_tcp_boundary_test_disabled", "real TCP local-receipt boundary behavior proof"),',
+        "real TCP local-receipt boundary focused mutation",
+    )
+    require_text(
+        focused,
         '("message_proto", "reserved 12; // retired displayless video acknowledgement; local exact writer receipts own pacing", "VideoReceived video_received = 12;", "retired displayless peer acknowledgement tag"),',
         "retired peer acknowledgement focused mutation",
     )
@@ -21869,6 +21900,21 @@ def validate_android_voice_call_ownership_contract(sources):
         focused,
         '("hardening", "**R-S11fb/R-S11e-189 controlled video exact-writer egress", "**R-S11fb-disabled/R-S11e-189 controlled video exact-writer egress", "controlled video egress hardening ledger"),',
         "controlled video egress ledger focused mutation",
+    )
+    require_text(
+        focused,
+        '("requirements", \'<span class="id">R-S11fk</span>\', \'<span class="id">R-S11fk-disabled</span>\', "controlled video exact peer receipt requirement"),',
+        "controlled video exact peer receipt requirement focused mutation",
+    )
+    require_text(
+        focused,
+        '("requirements", "<tr><td>319</td>", "<tr><td>319-disabled</td>", "controlled video exact peer receipt disposition"),',
+        "controlled video exact peer receipt disposition focused mutation",
+    )
+    require_text(
+        focused,
+        '("hardening", "R-S11fk/R-S11e-198 controlled-video exact peer receipt", "R-S11fk-disabled/R-S11e-198 controlled-video exact peer receipt", "controlled video exact peer receipt hardening ledger"),',
+        "controlled video exact peer receipt ledger focused mutation",
     )
     require_text(
         focused,
@@ -57306,6 +57352,12 @@ def run_source_mutations(sources):
             "writer receipt behavior proof source r_s11fb_tracked_keyed_send_round_trips_the_exact_frame",
         ),
         (
+            "tcp_source",
+            "r_s11fk_real_tcp_receipt_can_precede_peer_read",
+            "writer_receipt_real_tcp_boundary_test_disabled",
+            "writer receipt behavior proof source r_s11fk_real_tcp_receipt_can_precede_peer_read",
+        ),
+        (
             "requirements",
             '<span class="id">R-S11eg</span>',
             '<span class="id">R-S11eg-disabled</span>',
@@ -57340,6 +57392,24 @@ def run_source_mutations(sources):
             "**R-S11fb/R-S11e-189 controlled video exact-writer egress",
             "**R-S11fb-disabled/R-S11e-189 controlled video exact-writer egress",
             "controlled video egress hardening ledger source",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11fk</span>',
+            '<span class="id">R-S11fk-disabled</span>',
+            "controlled video exact peer receipt requirement source",
+        ),
+        (
+            "requirements",
+            "<tr><td>319</td>",
+            "<tr><td>319-disabled</td>",
+            "controlled video exact peer receipt Appendix C row source",
+        ),
+        (
+            "hardening",
+            "R-S11fk/R-S11e-198 controlled-video exact peer receipt",
+            "R-S11fk-disabled/R-S11e-198 controlled-video exact peer receipt",
+            "controlled video exact peer receipt hardening ledger source",
         ),
         (
             "requirements",
@@ -57392,6 +57462,12 @@ def run_source_mutations(sources):
             "writer receipt shared behavior gate source",
         ),
         (
+            "verify",
+            '"${RUN[@]}" cargo test -p hbb_common writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read -- --test-threads=1',
+            "true # shared real TCP boundary behavior gate disabled",
+            "real TCP local-receipt boundary shared behavior gate source",
+        ),
+        (
             "dart_verify",
             "server::connection::video_egress_tests::r_s11fb_",
             "server::connection::video_egress_tests::disabled_",
@@ -57402,6 +57478,12 @@ def run_source_mutations(sources):
             "writer_receipt_tests::r_s11fb_",
             "writer_receipt_tests::disabled_",
             "writer receipt generated-bridge behavior gate source",
+        ),
+        (
+            "dart_verify",
+            "writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read",
+            "writer_receipt_tests::disabled_real_tcp_receipt_can_precede_peer_read",
+            "real TCP local-receipt boundary generated-bridge behavior gate source",
         ),
         (
             "main_dart",

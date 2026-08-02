@@ -988,6 +988,68 @@ mod writer_receipt_tests {
             .expect("the keyed writer must retain exact completion ownership")
             .expect("the exact keyed sink send must succeed");
     }
+
+    #[tokio::test]
+    async fn r_s11fk_real_tcp_receipt_can_precede_peer_read() {
+        // Characterize the exact boundary of WriterReceipt on a real kernel TCP socket. Unlike
+        // `duplex(64)` above, successful `SinkExt::send` may hand the complete frame to the local
+        // TCP stack before the peer polls its read half. This is intentionally not accepted as
+        // controlled-video progress: an exact peer receipt is required above this transport layer.
+        let listener = new_exclusive_listener("127.0.0.1:0")
+            .await
+            .expect("loopback listener must bind");
+        let addr = listener
+            .local_addr()
+            .expect("loopback listener must have an address");
+        let (connected, accepted) =
+            tokio::join!(tokio::net::TcpStream::connect(addr), listener.accept());
+        let receiver_side = connected.expect("loopback peer must connect");
+        let (sender_side, peer_addr) = accepted.expect("loopback sender must accept the peer");
+
+        let mut sender = FramedStream::from(sender_side, peer_addr);
+        let mut receiver = FramedStream::from(receiver_side, addr);
+        sender.set_max_packet_length(8 * 1024);
+        receiver.set_max_packet_length(8 * 1024);
+        sender.set_session_keys(DirectionalKeys {
+            send: [0x31; 32],
+            recv: [0x42; 32],
+        });
+        receiver.set_session_keys(DirectionalKeys {
+            send: [0x42; 32],
+            recv: [0x31; 32],
+        });
+
+        let mut response = crate::message_proto::ScreenshotResponse::new();
+        response.sid = "real-tcp-local-receipt".to_owned();
+        response.data = vec![0x7c; 4_096].into();
+        let mut message = crate::message_proto::Message::new();
+        message.set_screenshot_response(response);
+        let expected = message
+            .write_to_bytes()
+            .expect("test message must serialize");
+
+        let receipt = sender
+            .send_with_receipt(&message)
+            .await
+            .expect("tracked real-TCP send must be admitted");
+        tokio::time::timeout(std::time::Duration::from_secs(1), receipt)
+            .await
+            .expect("local TCP writer receipt must complete without a peer read")
+            .expect("the exact writer must retain completion ownership")
+            .expect("the local TCP sink send must succeed");
+        assert_eq!(
+            receiver.recv_counter(),
+            0,
+            "writer completion must be observable before the peer authenticates or reads the frame"
+        );
+
+        let actual = tokio::time::timeout(std::time::Duration::from_secs(1), receiver.next())
+            .await
+            .expect("the peer read must complete after it is explicitly polled")
+            .expect("the exact keyed frame must arrive")
+            .expect("the exact keyed frame must authenticate");
+        assert_eq!(actual.as_ref(), expected.as_slice());
+    }
 }
 
 #[cfg(all(

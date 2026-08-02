@@ -3990,6 +3990,7 @@ def validate(sources: Dict[str, str]) -> None:
         "r_s11fb_receipt_waits_for_the_exact_sink_send",
         "r_s11fb_receipt_reports_the_exact_sink_failure",
         "r_s11fb_tracked_keyed_send_round_trips_the_exact_frame",
+        "r_s11fk_real_tcp_receipt_can_precede_peer_read",
     ):
         require(transport_tcp, behavior_test, f"writer receipt behavior proof {behavior_test}")
     require(
@@ -4023,6 +4024,21 @@ def validate(sources: Dict[str, str]) -> None:
         "controlled video egress hardening ledger",
     )
     require(
+        sources["requirements"],
+        '<span class="id">R-S11fk</span>',
+        "controlled video exact peer receipt normative requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>319</td>",
+        "controlled video exact peer receipt Appendix C disposition",
+    )
+    require(
+        sources["hardening"],
+        "R-S11fk/R-S11e-198 controlled-video exact peer receipt",
+        "controlled video exact peer receipt hardening ledger",
+    )
+    require(
         sources["verify"],
         '"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\n'
         "  server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1",
@@ -4040,6 +4056,11 @@ def validate(sources: Dict[str, str]) -> None:
         "shared exact writer receipt behavior gate wiring",
     )
     require(
+        sources["verify"],
+        '"${RUN[@]}" cargo test -p hbb_common writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read -- --test-threads=1',
+        "shared real TCP local-receipt boundary behavior gate wiring",
+    )
+    require(
         sources["dart_verify"],
         "server::video_service::video_frame_ack_tests::r_s11eg_",
         "generated-bridge controlled video acknowledgement behavior gate wiring",
@@ -4053,6 +4074,11 @@ def validate(sources: Dict[str, str]) -> None:
         sources["dart_verify"],
         "writer_receipt_tests::r_s11fb_",
         "generated-bridge exact writer receipt behavior gate wiring",
+    )
+    require(
+        sources["dart_verify"],
+        "writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read",
+        "generated-bridge real TCP local-receipt boundary behavior gate wiring",
     )
 
     require(
@@ -5334,18 +5360,24 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("server_connection", "r_s11fb_closed_receiver_retires_a_stale_subscriber_enqueue", "video_egress_closed_receiver_test_disabled", "closed-receiver video retirement behavior proof"),
     ("transport_tcp", "r_s11fb_receipt_waits_for_the_exact_sink_send", "writer_receipt_backpressure_test_disabled", "writer receipt backpressure behavior proof"),
     ("transport_tcp", "r_s11fb_tracked_keyed_send_round_trips_the_exact_frame", "writer_receipt_keyed_round_trip_test_disabled", "writer receipt keyed round-trip behavior proof"),
+    ("transport_tcp", "r_s11fk_real_tcp_receipt_can_precede_peer_read", "writer_receipt_real_tcp_boundary_test_disabled", "real TCP local-receipt boundary behavior proof"),
     ("requirements", '<span class="id">R-S11eg</span>', '<span class="id">R-S11eg-disabled</span>', "controlled video acknowledgement requirement"),
     ("requirements", "<tr><td>286</td>", "<tr><td>286-disabled</td>", "controlled video acknowledgement disposition"),
     ("hardening", "R-S11eg/R-S11e-151", "R-S11eg-disabled/R-S11e-151", "controlled video acknowledgement hardening ledger"),
     ("requirements", '<span class="id">R-S11fb</span>', '<span class="id">R-S11fb-disabled</span>', "controlled video egress requirement"),
     ("requirements", "<tr><td>310</td>", "<tr><td>310-disabled</td>", "controlled video egress disposition"),
     ("hardening", "**R-S11fb/R-S11e-189 controlled video exact-writer egress", "**R-S11fb-disabled/R-S11e-189 controlled video exact-writer egress", "controlled video egress hardening ledger"),
+    ("requirements", '<span class="id">R-S11fk</span>', '<span class="id">R-S11fk-disabled</span>', "controlled video exact peer receipt requirement"),
+    ("requirements", "<tr><td>319</td>", "<tr><td>319-disabled</td>", "controlled video exact peer receipt disposition"),
+    ("hardening", "R-S11fk/R-S11e-198 controlled-video exact peer receipt", "R-S11fk-disabled/R-S11e-198 controlled-video exact peer receipt", "controlled video exact peer receipt hardening ledger"),
     ("verify", "\"${RUN[@]}\" cargo test --lib --features linux-pkg-config \\\n  server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1", "true # shared video acknowledgement behavior gate disabled", "shared controlled video acknowledgement behavior gate"),
     ("verify", "\"${RUN[@]}\" cargo test --lib --features linux-pkg-config \\\n  server::connection::video_egress_tests::r_s11fb_ -- --test-threads=1", "true # shared video egress behavior gate disabled", "shared controlled video egress behavior gate"),
     ("verify", "\"${RUN[@]}\" cargo test -p hbb_common writer_receipt_tests::r_s11fb_ -- --test-threads=1", "true # shared writer receipt behavior gate disabled", "shared writer receipt behavior gate"),
+    ("verify", "\"${RUN[@]}\" cargo test -p hbb_common writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read -- --test-threads=1", "true # shared real TCP boundary behavior gate disabled", "shared real TCP local-receipt boundary behavior gate"),
     ("dart_verify", "server::video_service::video_frame_ack_tests::r_s11eg_", "server::video_service::video_frame_ack_tests::disabled_", "generated-bridge controlled video acknowledgement behavior gate"),
     ("dart_verify", "server::connection::video_egress_tests::r_s11fb_", "server::connection::video_egress_tests::disabled_", "generated-bridge controlled video egress behavior gate"),
     ("dart_verify", "writer_receipt_tests::r_s11fb_", "writer_receipt_tests::disabled_", "generated-bridge writer receipt behavior gate"),
+    ("dart_verify", "writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read", "writer_receipt_tests::disabled_real_tcp_receipt_can_precede_peer_read", "generated-bridge real TCP local-receipt boundary behavior gate"),
     ("server_connection", "const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;", "const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1024;", "audio wake capacity"),
     ("server_connection", "format: Option<(Instant, Arc<Message>)>,", "format: Vec<(Instant, Arc<Message>)>,", "one pending audio format"),
     ("server_connection", "frame: Option<(Instant, Arc<Message>)>,", "frame: Vec<(Instant, Arc<Message>)>,", "one pending audio frame"),

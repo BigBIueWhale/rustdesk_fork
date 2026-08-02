@@ -10269,6 +10269,7 @@ flutter_event_loop=flutter/lib/utils/event_loop.dart
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
   server::connection::video_egress_tests::r_s11fb_ -- --test-threads=1
 "${RUN[@]}" cargo test -p hbb_common writer_receipt_tests::r_s11fb_ -- --test-threads=1
+"${RUN[@]}" cargo test -p hbb_common writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read -- --test-threads=1
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
   server::connection::audio_egress_tests::r_s11eh_ -- --test-threads=1
 "${RUN[@]}" cargo test --lib --features linux-pkg-config \
@@ -10591,6 +10592,8 @@ grep -qF 'r_s11fb_closed_receiver_retires_a_stale_subscriber_enqueue' src/server
   || android_client_owner_bad="$android_client_owner_bad video-egress-closed-receiver-regression-missing"
 grep -qF 'r_s11fb_receipt_waits_for_the_exact_sink_send' libs/hbb_common/src/tcp.rs \
   || android_client_owner_bad="$android_client_owner_bad video-egress-writer-receipt-regression-missing"
+grep -qF 'r_s11fk_real_tcp_receipt_can_precede_peer_read' libs/hbb_common/src/tcp.rs \
+  || android_client_owner_bad="$android_client_owner_bad video-egress-real-tcp-boundary-regression-missing"
 grep -qF '<span class="id">R-S11eg</span>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad video-ack-requirement-missing"
 grep -qF '<tr><td>286</td>' requirements.html \
@@ -10603,6 +10606,12 @@ grep -qF '<tr><td>310</td>' requirements.html \
   || android_client_owner_bad="$android_client_owner_bad controlled-video-egress-disposition-missing"
 grep -qF 'R-S11fb/R-S11e-189' HARDENING_STATUS.md \
   || android_client_owner_bad="$android_client_owner_bad controlled-video-egress-ledger-missing"
+grep -qF '<span class="id">R-S11fk</span>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad controlled-video-peer-receipt-requirement-missing"
+grep -qF '<tr><td>319</td>' requirements.html \
+  || android_client_owner_bad="$android_client_owner_bad controlled-video-peer-receipt-disposition-missing"
+grep -qF 'R-S11fk/R-S11e-198 controlled-video exact peer receipt' HARDENING_STATUS.md \
+  || android_client_owner_bad="$android_client_owner_bad controlled-video-peer-receipt-ledger-missing"
 grep -qF 'const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;' src/server/connection.rs \
   || android_client_owner_bad="$android_client_owner_bad bounded-audio-wake-cap-missing"
 grep -qF 'state.format.take().or_else(|| state.frame.take())' src/server/connection.rs \
@@ -10637,6 +10646,8 @@ grep -qF 'server::connection::video_egress_tests::r_s11fb_' scripts/dart-verify.
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-video-egress-test-filter-missing"
 grep -qF 'writer_receipt_tests::r_s11fb_' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-writer-receipt-test-filter-missing"
+grep -qF 'writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read' scripts/dart-verify.sh \
+  || android_client_owner_bad="$android_client_owner_bad generated-bridge-real-tcp-boundary-test-filter-missing"
 grep -qF 'server::connection::audio_egress_tests::r_s11eh_' scripts/dart-verify.sh \
   || android_client_owner_bad="$android_client_owner_bad generated-bridge-bounded-audio-test-filter-missing"
 grep -qF 'test/mobile_session_start_queue_test.dart' scripts/dart-verify.sh \

@@ -3887,14 +3887,105 @@ their R-S11fi wiring is source-bound but is not represented as execution. The wo
 source-mutation mode passed; its full behavioral self-test was not counted because that path expects
 a live per-user systemd bus, and no host bus was mounted into the container.
 
-This slice closes incoming viewer block-write error propagation only. Peer-response deadlines,
-digest/check failure reporting, complete operation-level completion ownership, real disk-full/
+This slice closes incoming viewer block-write error propagation only. R-S11fj closes the inherited
+viewer download-digest inspection error discard. Peer-response deadlines, complete operation-level
+completion ownership, real disk-full/
 partial-write and cross-version peer reproduction, native Android/Windows/macOS/iOS execution,
 sustained throughput/latency/memory/deadline budgets, exact older/current artifact identity, clean
 cold R-B2/R-B10 artifacts, separately repeated reproduction, and external review remain explicit
 release blockers. No RustDesk process, listener, real socket, peer, renderer, installed app,
 emulator, VM, device, host service, host firewall, or host network state was used or changed by the
 source edit and deterministic no-listener regression.
+
+**R-S11fj/R-S11e-197 viewer download digest inspection failure — SOURCE IMPLEMENTED
+2026-08-02; PINNED CONFINED RUST 1.75 FRESH-BRIDGE SHIPPED-FEATURE COMPILE/TWO-TEST
+PASS, FOCUSED 76-MUTATION GATE, AND COMPLETE INDEPENDENT SOURCE-MUTATION MATRIX PASS;
+FULL CANONICAL DART/SHARED/APPLE GATES, REAL DEVICE/PEER/ARTIFACT EXECUTION,
+CROSS-VERSION RESUME/INTERRUPTION BEHAVIOR, PERFORMANCE, COLD RELEASE, INDEPENDENT
+REPRODUCTION, AND EXTERNAL REVIEW OPEN.**
+Platforms: the shared outgoing viewer on Android, iOS, Windows, Linux, and macOS. Endpoint/action:
+authenticated controlled-peer `FileResponse::Digest` → exact viewer receive job/current file →
+local overwrite/resume inspection → confirmation response. Boundary: peer-declared file identity
+and metadata → exact local job authority and filesystem observation → file-operation progress.
+
+Read-only source tracing proved a concrete inherited finality defect. The download branch selected a
+write job by digest ID, cast the signed file number directly to `usize`, looked up the file, mutated
+the job digest, and called `is_write_need_confirmation`. A filesystem metadata or pre-epoch
+`SystemTime` conversion error was only printed as `error receiving digest` and discarded. The peer
+therefore remained waiting for a confirmation that could never arrive while unrelated connection
+traffic remained viable. A digest inconsistent with the active file was silently ignored. `git
+blame` and `git log -S` trace the discarded-error branch to the initial upstream import `c2abd3b`,
+not to the recent hardening slices. The controlled-side sibling already returned a typed digest
+inspection error to its round owner. This is shared file-flow/state debt, not reproduction of an
+operational transfer failure, proof of the reported display-delay cause, or evidence of any host,
+service, listener, firewall, network, container, or machine-state change.
+
+One synchronous `inspect_viewer_download_digest` helper now validates the exact job ID and exact
+current file number, performs a checked nonnegative conversion and bounds lookup, requires a
+filesystem destination, derives the destination, and runs the existing overwrite/resume inspection
+before mutating the job digest. A stale digest with no active job remains inert because the round
+owns no matching operation. Any identity/index/destination inconsistency or local inspection error
+for an active job enters the existing `file_flow_failure` owner with the peer-derived job/file
+identity and terminates that connection round. Existing resume sidecars are not destructively
+removed merely because this read-only inspection failed; the established fresh-connection explicit
+resume path remains authoritative. The old print-and-continue branch is absent. No task, thread,
+runtime, lock-held await, timer, fallback, retry, reconnect workaround, cleanup policy, protocol
+field, dependency, or acknowledgement was added.
+
+Two regressions bind the production helper. The Unix regression creates a real destination with a
+pre-epoch timestamp so the production metadata inspection returns an error, then proves the exact
+job and current file did not advance. The platform-independent regression supplies the correct job ID but a
+non-current file number and proves explicit rejection without advancing the job. The focused verifier
+binds exact identity/index/destination validation, inspection-before-mutation ordering, terminal
+receiver dispatch, old discard absence, both tests, R-S11fj, Appendix C #318, and this ledger with
+deliberate mutations.
+
+Exact-current confined source evidence is green. The focused verifier passed all 76 deliberate
+mutations. Normal independent workspace validation passed, and its complete repository-wide
+in-memory source-mutation catalog then passed from mutation one through exit zero. One earlier
+complete matrix attempt correctly rejected removal of the new focused digest validator, but its
+outer fixture expected a descriptive label rather than the validator's precise rejection label;
+that fixture expectation was corrected before the uninterrupted passing rerun. The full workspace
+behavioral self-test was not run because that path expects a live per-user systemd bus, which was not
+mounted.
+
+A clean, exit-zero fresh-generated-bridge transaction ran entirely as the invoking numeric non-root
+UID/GID in immutable Debian builder
+`sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`. The live source and
+offline cache were read-only mounts; the transaction archived tracked/unignored source into a
+private mode-700 bind workspace, proved all four ignored bridge outputs absent, and generated fresh
+Rust/Dart bridge outputs with Flutter 3.24.5, LLVM 15.0.6, and the pinned FRB 1.80.1 generator. Their
+SHA-256 identities were respectively `82ebed437713d0a2b38c050d1cb79f77f63329f2614147d4913b4f9231bd7748`,
+`7302fe244056b62a2ead2b5d35e8ba074489b62ff95c98ac90a4fc849d6ccc46`,
+`3ac0e91676bbf9b2eeaa5e9cb32434eee7a7535f544cb875099a83380104ddde`, and
+`41539d81d38a666607244aa2403ac19d53e7f2c666cecb1799b97ecddf46ec71`.
+Pinned `rustfmt 1.7.0-stable` accepted `src/client/io_loop.rs`; `cargo check --offline --locked
+--features flutter,unix-file-copy-paste --lib` completed; and both R-S11fj tests passed (2 passed,
+0 failed, 458 filtered). The compile retained the broad existing 66-warning library set and 36
+test warnings; fresh bridge generation emitted the known non-fatal `Dart_Handle` diagnostic. No
+warning-free claim is made.
+
+Setup failures are excluded from evidence. A first direct compile used the stale ignored bridge and
+caught the test-only `expect_err`/non-`Debug` mismatch before also reporting the known bridge drift;
+the assertions were corrected before any counted pass. An initial toolchain archive name used
+`1.75.0` instead of the pinned `1.75` and stopped before extraction. A rustfmt attempt in a 1.5-GiB
+tmpfs stopped with `ENOSPC`; the passing format used 5 GiB. The first custom fresh-bridge staging
+attempt stopped before toolchain extraction because it incorrectly expected ignored bridge outputs
+in the git archive. A later transaction compiled and passed both tests but appended the focused
+Python verifier to the older Debian-builder Python, which rejected `from __future__ import
+annotations` after the Rust passes; the final clean transaction omitted that incompatible post-step
+and exited zero, while the focused verifier passed separately in the pinned dev image. The full
+canonical `scripts/dart-verify.sh`, full shared `scripts/verify.sh`, and full
+`scripts/apple-conform-check.sh` transactions were not run; their R-S11fj wiring is source-bound,
+not execution evidence.
+
+No real client, peer, installed artifact, renderer, emulator, VM, device, service, socket, or listener
+has been used for this slice. In particular, it has not exercised Android task swipe/Force Stop,
+Windows focus loss, a live transfer, cross-version resume, metadata failure on a shipped artifact, or
+capture-to-presentation latency. All code execution is required to remain in non-root, networkless,
+capability-free containers with no published ports, host namespaces/devices, Docker socket, or host
+service/configuration access. The confined checks can establish source shape, compilation, and
+deterministic local behavior only; they cannot establish operational correctness or performance.
 
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
@@ -18420,7 +18511,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-855fc6fe45e399bf60606c2554a271da3ef758f940ec45646a6e9230224dfb99  requirements.html
+d68ddcbb58e5058efdf8cc8ea21436df18ebc5d094a90cbda0629a01e446e2d1  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -18451,3 +18542,4 @@ The same identity additionally binds R-S11ff and Appendix C #314.
 The same identity additionally binds R-S11fg and Appendix C #315.
 The same identity additionally binds R-S11fh and Appendix C #316.
 The same identity additionally binds R-S11fi and Appendix C #317.
+The same identity additionally binds R-S11fj and Appendix C #318.

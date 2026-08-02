@@ -16765,6 +16765,26 @@ def validate_viewer_file_finality_contract(sources):
             "incoming viewer no-follow open-failure regression contract",
         ),
         (
+            '"fn inspect_viewer_download_digest"',
+            "viewer download digest inspection contract",
+        ),
+        (
+            '"if digest.file_num != job.file_num()"',
+            "viewer download digest exact-file contract",
+        ),
+        (
+            '"local download digest check failed: {error}"',
+            "viewer download digest terminal-failure contract",
+        ),
+        (
+            '"r_s11fj_download_digest_metadata_failure_is_explicit"',
+            "viewer download digest metadata-failure regression contract",
+        ),
+        (
+            '"r_s11fj_download_digest_requires_the_exact_active_file"',
+            "viewer download digest exact-file regression contract",
+        ),
+        (
             '"const MAX_PENDING_CONTROLLED_FILE_WRITES: usize = 256;"',
             "controlled file receipt count-bound contract",
         ),
@@ -16913,6 +16933,23 @@ def validate_viewer_file_finality_contract(sources):
             "incoming no-follow open-failure regression mutation",
         ),
         (
+            '("io_loop", "fn inspect_viewer_download_digest(", '
+            '"fn disabled_inspect_viewer_download_digest(", '
+            '"download digest inspection owner"),',
+            "download digest inspection-owner mutation",
+        ),
+        (
+            '("io_loop", "if digest.file_num != job.file_num() {", '
+            '"if false {", "exact download digest file identity"),',
+            "download digest exact-file mutation",
+        ),
+        (
+            '("io_loop", "fn r_s11fj_download_digest_metadata_failure_is_explicit()", '
+            '"fn download_digest_metadata_failure_is_explicit()", '
+            '"download digest metadata regression"),',
+            "download digest metadata-regression mutation",
+        ),
+        (
             '("dart_model", "unawaited(future.catchError((Object error) {", '
             '"future.catchError((Object error) {", "owned event future"),',
             "owned Dart event-future mutation",
@@ -16994,6 +17031,16 @@ def validate_viewer_file_finality_contract(sources):
         "incoming viewer write-failure generated-bridge behavior gate",
     )
     require_text(
+        sources["verify"],
+        "client::io_loop::tests::r_s11fj_",
+        "viewer download digest shared behavior gate",
+    )
+    require_text(
+        sources["dart_verify"],
+        "client::io_loop::tests::r_s11fj_",
+        "viewer download digest generated-bridge behavior gate",
+    )
+    require_text(
         sources["requirements"],
         '<div class="req"><span class="id">R-S11fg</span>',
         "viewer file finality requirement",
@@ -17022,6 +17069,42 @@ def validate_viewer_file_finality_contract(sources):
         sources["hardening"],
         "**R-S11fi/R-S11e-196 incoming viewer file-block persistence failure",
         "incoming viewer write-failure hardening ledger",
+    )
+    for text, label in (
+        ("fn inspect_viewer_download_digest(", "viewer download digest helper"),
+        ("if digest.id != job.id() {", "viewer download digest exact job"),
+        (
+            "if digest.file_num != job.file_num() {",
+            "viewer download digest exact current file",
+        ),
+        (
+            'format!("local download digest check failed: {error}")',
+            "viewer download digest terminal dispatch",
+        ),
+        (
+            "fn r_s11fj_download_digest_metadata_failure_is_explicit()",
+            "viewer download digest metadata regression",
+        ),
+        (
+            "fn r_s11fj_download_digest_requires_the_exact_active_file()",
+            "viewer download digest exact-file regression",
+        ),
+    ):
+        require_text(sources["client_io_loop"], text, label)
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11fj</span>',
+        "viewer download digest requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>318</td>",
+        "viewer download digest Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11fj/R-S11e-197 viewer download digest inspection failure",
+        "viewer download digest hardening ledger",
     )
     require_text(
         sources["requirements"],
@@ -54020,6 +54103,84 @@ def run_source_mutations(sources):
             "**R-S11fi/R-S11e-196 incoming viewer file-block persistence failure",
             "**R-S11fi-disabled/R-S11e-196 incoming viewer file-block persistence failure",
             "incoming viewer write-failure hardening ledger",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '        "fn inspect_viewer_download_digest",\n'
+            '        "viewer download digest inspection",',
+            '        "fn disabled_inspect_viewer_download_digest",\n'
+            '        "viewer download digest inspection",',
+            "viewer download digest inspection contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '("io_loop", "fn inspect_viewer_download_digest(", '
+            '"fn disabled_inspect_viewer_download_digest(", '
+            '"download digest inspection owner"),',
+            '("io_loop", "fn inspect_viewer_download_digest(", '
+            '"fn bypassed_inspect_viewer_download_digest(", '
+            '"download digest inspection owner"),',
+            "download digest inspection-owner mutation",
+        ),
+        (
+            "client_io_loop",
+            "fn inspect_viewer_download_digest(",
+            "fn disabled_inspect_viewer_download_digest(",
+            "viewer download digest helper",
+        ),
+        (
+            "client_io_loop",
+            "if digest.file_num != job.file_num() {",
+            "if false {",
+            "viewer download digest exact current file",
+        ),
+        (
+            "client_io_loop",
+            'format!("local download digest check failed: {error}")',
+            'format!("ignored download digest failure: {error}")',
+            "viewer download digest terminal dispatch",
+        ),
+        (
+            "client_io_loop",
+            "fn r_s11fj_download_digest_metadata_failure_is_explicit()",
+            "fn disabled_download_digest_metadata_failure_is_explicit()",
+            "viewer download digest metadata regression",
+        ),
+        (
+            "client_io_loop",
+            "fn r_s11fj_download_digest_requires_the_exact_active_file()",
+            "fn disabled_download_digest_requires_the_exact_active_file()",
+            "viewer download digest exact-file regression",
+        ),
+        (
+            "verify",
+            "client::io_loop::tests::r_s11fj_",
+            "client::io_loop::tests::disabled_",
+            "viewer download digest shared behavior gate",
+        ),
+        (
+            "dart_verify",
+            "client::io_loop::tests::r_s11fj_",
+            "client::io_loop::tests::disabled_",
+            "viewer download digest generated-bridge behavior gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fj</span>',
+            '<div class="req"><span class="id">R-S11fj-disabled</span>',
+            "viewer download digest requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>318</td>",
+            "<tr><td>318-disabled</td>",
+            "viewer download digest Appendix C row",
+        ),
+        (
+            "hardening",
+            "**R-S11fj/R-S11e-197 viewer download digest inspection failure",
+            "**R-S11fj-disabled/R-S11e-197 viewer download digest inspection failure",
+            "viewer download digest hardening ledger",
         ),
         (
             "viewer_rgba_mailbox_verifier",

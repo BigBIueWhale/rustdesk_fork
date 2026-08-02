@@ -435,6 +435,42 @@ async fn write_viewer_file_block(
     Ok(ViewerFileBlockWrite::Written { update_status })
 }
 
+fn inspect_viewer_download_digest(
+    job: &mut fs::TransferJob,
+    digest: &FileTransferDigest,
+    peer_supports_resume: bool,
+) -> Result<(DigestCheckResult, String), String> {
+    if digest.id != job.id() {
+        return Err(format!(
+            "digest job id {} does not match active job {}",
+            digest.id,
+            job.id()
+        ));
+    }
+    if digest.file_num != job.file_num() {
+        return Err(format!(
+            "digest file number {} does not match active file {}",
+            digest.file_num,
+            job.file_num()
+        ));
+    }
+    let file_num = usize::try_from(digest.file_num)
+        .map_err(|_| format!("digest file number {} is negative", digest.file_num))?;
+    let file = job
+        .files()
+        .get(file_num)
+        .ok_or_else(|| format!("digest file number {} is out of range", digest.file_num))?;
+    let fs::DataSource::FilePath(base) = &job.data_source else {
+        return Err("download digest has no filesystem destination".to_owned());
+    };
+    let write_path = get_string(&fs::TransferJob::join(base, &file.name));
+    let result =
+        fs::is_write_need_confirmation(peer_supports_resume && job.is_resume, &write_path, digest)
+            .map_err(|error| error.to_string())?;
+    job.set_digest(digest.file_size, digest.last_modified);
+    Ok((result, write_path))
+}
+
 struct ViewerFileWriteTracker {
     next_id: u64,
     pending_bytes: usize,
@@ -2838,104 +2874,117 @@ impl<T: InvokeUiSession> Remote<T> {
                                     }
                                 }
                             } else {
-                                if let Some(job) = fs::get_job(digest.id, &mut self.write_jobs) {
-                                    if let Some(file) = job.files().get(digest.file_num as usize) {
-                                        if let fs::DataSource::FilePath(p) = &job.data_source {
-                                            let write_path =
-                                                get_string(&fs::TransferJob::join(p, &file.name));
-                                            job.set_digest(digest.file_size, digest.last_modified);
-                                            let peer_ver = self.handler.lc.read().unwrap().version;
-                                            let is_support_resume =
-                                                crate::is_support_file_transfer_resume_num(
-                                                    peer_ver,
-                                                );
-                                            match fs::is_write_need_confirmation(
-                                                is_support_resume && job.is_resume,
-                                                &write_path,
-                                                &digest,
-                                            ) {
-                                                Ok(res) => match res {
-                                                    DigestCheckResult::IsSame => {
-                                                        let req = FileTransferSendConfirmRequest {
-                                                            id: digest.id,
-                                                            file_num: digest.file_num,
-                                                            union: Some(file_transfer_send_confirm_request::Union::Skip(true)),
-                                                            ..Default::default()
-                                                        };
-                                                        job.confirm(&req).await;
-                                                        let msg = new_send_confirm(req);
-                                                        if !self
-                                                            .send_tracked_file_action(peer, &msg)
-                                                            .await
-                                                        {
-                                                            return false;
-                                                        }
-                                                    }
-                                                    DigestCheckResult::NeedConfirm(digest) => {
-                                                        let mut overwrite_strategy =
-                                                            job.default_overwrite_strategy();
-                                                        let mut offset = 0;
-                                                        if digest.is_identical
-                                                            && job.is_resume
-                                                            && digest.transferred_size > 0
-                                                        {
-                                                            overwrite_strategy = Some(true);
-                                                            offset = digest.transferred_size as _;
-                                                        }
-                                                        if let Some(overwrite) = overwrite_strategy
-                                                        {
-                                                            let req =
-                                                                FileTransferSendConfirmRequest {
-                                                                    id: digest.id,
-                                                                    file_num: digest.file_num,
-                                                                    union: Some(if overwrite {
-                                                                        file_transfer_send_confirm_request::Union::OffsetBlk(offset)
-                                                                    } else {
-                                                                        file_transfer_send_confirm_request::Union::Skip(true)
-                                                                    }),
-                                                                    ..Default::default()
-                                                                };
-                                                            job.confirm(&req).await;
-                                                            let msg = new_send_confirm(req);
-                                                            if !self
-                                                                .send_tracked_file_action(
-                                                                    peer, &msg,
-                                                                )
-                                                                .await
-                                                            {
-                                                                return false;
-                                                            }
-                                                        } else {
-                                                            self.handler.override_file_confirm(
-                                                                digest.id,
-                                                                digest.file_num,
-                                                                write_path,
-                                                                false,
-                                                                digest.is_identical,
-                                                            );
-                                                        }
-                                                    }
-                                                    DigestCheckResult::NoSuchFile => {
-                                                        let req = FileTransferSendConfirmRequest {
-                                                        id: digest.id,
-                                                        file_num: digest.file_num,
-                                                        union: Some(file_transfer_send_confirm_request::Union::OffsetBlk(0)),
-                                                        ..Default::default()
-                                                        };
-                                                        job.confirm(&req).await;
-                                                        let msg = new_send_confirm(req);
-                                                        if !self
-                                                            .send_tracked_file_action(peer, &msg)
-                                                            .await
-                                                        {
-                                                            return false;
-                                                        }
-                                                    }
-                                                },
-                                                Err(err) => {
-                                                    println!("error receiving digest: {}", err);
-                                                }
+                                let peer_ver = self.handler.lc.read().unwrap().version;
+                                let peer_supports_resume =
+                                    crate::is_support_file_transfer_resume_num(peer_ver);
+                                let inspected = {
+                                    let Some(job) = fs::get_job(digest.id, &mut self.write_jobs)
+                                    else {
+                                        return true;
+                                    };
+                                    inspect_viewer_download_digest(
+                                        job,
+                                        &digest,
+                                        peer_supports_resume,
+                                    )
+                                };
+                                let (result, write_path) = match inspected {
+                                    Ok(inspected) => inspected,
+                                    Err(error) => {
+                                        let context = ViewerFileWriteContext::control(
+                                            Some(digest.id),
+                                            digest.file_num,
+                                            "inspect download digest",
+                                        );
+                                        return self.record_file_flow_failure(
+                                            context,
+                                            format!("local download digest check failed: {error}"),
+                                        );
+                                    }
+                                };
+                                let Some(job) = fs::get_job(digest.id, &mut self.write_jobs) else {
+                                    let context = ViewerFileWriteContext::control(
+                                        Some(digest.id),
+                                        digest.file_num,
+                                        "inspect download digest",
+                                    );
+                                    return self.record_file_flow_failure(
+                                        context,
+                                        "download job disappeared after digest inspection",
+                                    );
+                                };
+                                match result {
+                                    DigestCheckResult::IsSame => {
+                                        let req = FileTransferSendConfirmRequest {
+                                            id: digest.id,
+                                            file_num: digest.file_num,
+                                            union: Some(
+                                                file_transfer_send_confirm_request::Union::Skip(
+                                                    true,
+                                                ),
+                                            ),
+                                            ..Default::default()
+                                        };
+                                        job.confirm(&req).await;
+                                        let msg = new_send_confirm(req);
+                                        if !self.send_tracked_file_action(peer, &msg).await {
+                                            return false;
+                                        }
+                                    }
+                                    DigestCheckResult::NeedConfirm(digest) => {
+                                        let mut overwrite_strategy =
+                                            job.default_overwrite_strategy();
+                                        let mut offset = 0;
+                                        if digest.is_identical
+                                            && job.is_resume
+                                            && digest.transferred_size > 0
+                                        {
+                                            overwrite_strategy = Some(true);
+                                            offset = digest.transferred_size as _;
+                                        }
+                                        if let Some(overwrite) = overwrite_strategy {
+                                            let req = FileTransferSendConfirmRequest {
+                                                id: digest.id,
+                                                file_num: digest.file_num,
+                                                union: Some(if overwrite {
+                                                    file_transfer_send_confirm_request::Union::OffsetBlk(offset)
+                                                } else {
+                                                    file_transfer_send_confirm_request::Union::Skip(
+                                                        true,
+                                                    )
+                                                }),
+                                                ..Default::default()
+                                            };
+                                            job.confirm(&req).await;
+                                            let msg = new_send_confirm(req);
+                                            if !self.send_tracked_file_action(peer, &msg).await {
+                                                return false;
                                             }
+                                        } else {
+                                            self.handler.override_file_confirm(
+                                                digest.id,
+                                                digest.file_num,
+                                                write_path,
+                                                false,
+                                                digest.is_identical,
+                                            );
+                                        }
+                                    }
+                                    DigestCheckResult::NoSuchFile => {
+                                        let req = FileTransferSendConfirmRequest {
+                                            id: digest.id,
+                                            file_num: digest.file_num,
+                                            union: Some(
+                                                file_transfer_send_confirm_request::Union::OffsetBlk(
+                                                    0,
+                                                ),
+                                            ),
+                                            ..Default::default()
+                                        };
+                                        job.confirm(&req).await;
+                                        let msg = new_send_confirm(req);
+                                        if !self.send_tracked_file_action(peer, &msg).await {
+                                            return false;
                                         }
                                     }
                                 }
@@ -4020,6 +4069,95 @@ mod tests {
             !temp.path.join("forbidden-target").exists(),
             "cleanup must not follow the rejected target"
         );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn r_s11fj_download_digest_metadata_failure_is_explicit() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let temp = ViewerFileTestDir::new();
+        let destination = temp.path.join("existing.bin");
+        std::fs::write(&destination, b"existing").expect("stage existing destination");
+        let destination_c = std::ffi::CString::new(destination.as_os_str().as_bytes())
+            .expect("test destination contains no NUL");
+        let timestamp = hbb_common::libc::timespec {
+            tv_sec: -1,
+            tv_nsec: 0,
+        };
+        let timestamps = [timestamp, timestamp];
+        let result = unsafe {
+            hbb_common::libc::utimensat(
+                hbb_common::libc::AT_FDCWD,
+                destination_c.as_ptr(),
+                timestamps.as_ptr(),
+                0,
+            )
+        };
+        assert_eq!(result, 0, "stage a pre-epoch destination timestamp");
+
+        let mut entry = FileEntry::new();
+        entry.name = "existing.bin".to_owned();
+        let mut job = fs::TransferJob::new_write(
+            75,
+            fs::JobType::Generic,
+            "remote.bin".to_owned(),
+            fs::DataSource::FilePath(temp.path.clone()),
+            0,
+            false,
+            true,
+            true,
+        )
+        .with_files(vec![entry])
+        .expect("create exact viewer download job");
+        let digest = FileTransferDigest {
+            id: 75,
+            file_num: 0,
+            file_size: 8,
+            last_modified: 1,
+            ..Default::default()
+        };
+
+        let error = match inspect_viewer_download_digest(&mut job, &digest, false) {
+            Ok(_) => panic!("an unrepresentable local timestamp must not disappear"),
+            Err(error) => error,
+        };
+        assert!(!error.is_empty());
+        assert_eq!(job.id(), 75);
+        assert_eq!(job.file_num(), 0);
+    }
+
+    #[test]
+    fn r_s11fj_download_digest_requires_the_exact_active_file() {
+        let temp = ViewerFileTestDir::new();
+        let mut entry = FileEntry::new();
+        entry.name = "incoming.bin".to_owned();
+        let mut job = fs::TransferJob::new_write(
+            76,
+            fs::JobType::Generic,
+            "remote.bin".to_owned(),
+            fs::DataSource::FilePath(temp.path.clone()),
+            0,
+            false,
+            true,
+            true,
+        )
+        .with_files(vec![entry])
+        .expect("create exact viewer download job");
+        let wrong_file = FileTransferDigest {
+            id: 76,
+            file_num: 1,
+            file_size: 1,
+            last_modified: 1,
+            ..Default::default()
+        };
+
+        let error = match inspect_viewer_download_digest(&mut job, &wrong_file, false) {
+            Ok(_) => panic!("a digest for another file cannot advance the active job"),
+            Err(error) => error,
+        };
+        assert!(error.contains("does not match active file"));
+        assert_eq!(job.file_num(), 0);
     }
 
     #[test]

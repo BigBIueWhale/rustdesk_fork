@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify viewer/controlled file admission, exact writes, and receive failure finality."""
+"""Verify viewer/controlled file admission, exact writes, and receive/digest failure finality."""
 
 from __future__ import annotations
 
@@ -397,6 +397,44 @@ def validate(sources: Dict[str, str]) -> None:
     forbid(io_loop, "if let Err(_err) = job.write(block).await", "discarded viewer write error")
     forbid(io_loop, '// to-do: add "skip" for writing job', "obsolete viewer write-error to-do")
 
+    digest_inspection = extract_rust_item(
+        io_loop,
+        "fn inspect_viewer_download_digest",
+        "viewer download digest inspection",
+    )
+    require_order(
+        digest_inspection,
+        (
+            "if digest.id != job.id()",
+            "if digest.file_num != job.file_num()",
+            "usize::try_from(digest.file_num)",
+            ".files()",
+            ".get(file_num)",
+            "fs::DataSource::FilePath(base)",
+            "fs::is_write_need_confirmation(",
+            ".map_err(|error| error.to_string())?",
+            "job.set_digest(digest.file_size, digest.last_modified)",
+            "Ok((result, write_path))",
+        ),
+        "exact digest authority and local inspection precede job mutation",
+    )
+    require_order(
+        peer_dispatch,
+        (
+            "inspect_viewer_download_digest(",
+            '"inspect download digest"',
+            "return self.record_file_flow_failure(",
+            'format!("local download digest check failed: {error}")',
+        ),
+        "active download digest inspection failure is exact-round terminal and visible",
+    )
+    forbid(
+        peer_dispatch,
+        "match fs::is_write_need_confirmation(",
+        "inline digest inspection without explicit error ownership",
+    )
+    forbid(io_loop, 'println!("error receiving digest:', "discarded digest inspection error")
+
     init_jobs = extract_rust_item(fs, "async fn init_jobs", "common file job init")
     require(
         init_jobs,
@@ -597,6 +635,8 @@ def validate(sources: Dict[str, str]) -> None:
         "r_s11fh_controlled_file_frame_retains_its_exact_keyed_writer_receipt",
         "r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts",
         "r_s11fi_incoming_nofollow_open_failure_retires_job_and_sidecars",
+        "r_s11fj_download_digest_metadata_failure_is_explicit",
+        "r_s11fj_download_digest_requires_the_exact_active_file",
     ):
         require(fs + io_loop + server, f"fn {test}()", f"{test} regression")
 
@@ -620,6 +660,12 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         ("requirements", "<tr><td>317</td>", "Appendix C #317"),
         (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fj</span>',
+            "R-S11fj normative requirement",
+        ),
+        ("requirements", "<tr><td>318</td>", "Appendix C #318"),
+        (
             "hardening",
             "**R-S11fg/R-S11e-194 outgoing viewer file-command admission",
             "R-S11e-194 hardening ledger",
@@ -635,6 +681,11 @@ def validate(sources: Dict[str, str]) -> None:
             "R-S11e-196 hardening ledger",
         ),
         (
+            "hardening",
+            "**R-S11fj/R-S11e-197 viewer download digest inspection failure",
+            "R-S11e-197 hardening ledger",
+        ),
+        (
             "verify",
             "python3 scripts/verify-viewer-file-finality.py --repo . --self-test",
             "shared focused verifier gate",
@@ -648,6 +699,11 @@ def validate(sources: Dict[str, str]) -> None:
             "verify",
             "client::io_loop::tests::r_s11fi_",
             "shared incoming file-write failure gate",
+        ),
+        (
+            "verify",
+            "client::io_loop::tests::r_s11fj_",
+            "shared download digest failure gate",
         ),
         (
             "apple",
@@ -673,6 +729,11 @@ def validate(sources: Dict[str, str]) -> None:
             "dart_verify",
             "client::io_loop::tests::r_s11fi_",
             "generated-bridge incoming file-write failure gate",
+        ),
+        (
+            "dart_verify",
+            "client::io_loop::tests::r_s11fj_",
+            "generated-bridge download digest failure gate",
         ),
         (
             "workspace",
@@ -748,19 +809,30 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("io_loop", "write_viewer_file_block(&mut self.write_jobs, block).await", "bypassed_incoming_block_writer(&mut self.write_jobs, block).await", "incoming block dispatch"),
     ("io_loop", "fn r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts()", "fn incoming_write_failure_retires_exact_job_and_partial_artifacts()", "incoming write failure regression"),
     ("io_loop", "fn r_s11fi_incoming_nofollow_open_failure_retires_job_and_sidecars()", "fn incoming_nofollow_open_failure_retires_job_and_sidecars()", "incoming no-follow open failure regression"),
+    ("io_loop", "fn inspect_viewer_download_digest(", "fn disabled_inspect_viewer_download_digest(", "download digest inspection owner"),
+    ("io_loop", "if digest.id != job.id() {", "if false {", "exact download digest job identity"),
+    ("io_loop", "if digest.file_num != job.file_num() {", "if false {", "exact download digest file identity"),
+    ("io_loop", 'format!("local download digest check failed: {error}")', 'format!("ignored download digest failure: {error}")', "download digest failure visibility"),
+    ("io_loop", "fn r_s11fj_download_digest_metadata_failure_is_explicit()", "fn download_digest_metadata_failure_is_explicit()", "download digest metadata regression"),
+    ("io_loop", "fn r_s11fj_download_digest_requires_the_exact_active_file()", "fn download_digest_requires_the_exact_active_file()", "download digest exact-file regression"),
     ("requirements", '<div class="req"><span class="id">R-S11fg</span>', '<div class="req"><span class="id">R-S11fg-disabled</span>', "normative requirement"),
     ("requirements", "<tr><td>315</td>", "<tr><td>315-disabled</td>", "Appendix disposition"),
     ("requirements", '<div class="req"><span class="id">R-S11fh</span>', '<div class="req"><span class="id">R-S11fh-disabled</span>', "controlled normative requirement"),
     ("requirements", "<tr><td>316</td>", "<tr><td>316-disabled</td>", "controlled Appendix disposition"),
     ("requirements", '<div class="req"><span class="id">R-S11fi</span>', '<div class="req"><span class="id">R-S11fi-disabled</span>', "incoming write normative requirement"),
     ("requirements", "<tr><td>317</td>", "<tr><td>317-disabled</td>", "incoming write Appendix disposition"),
+    ("requirements", '<div class="req"><span class="id">R-S11fj</span>', '<div class="req"><span class="id">R-S11fj-disabled</span>', "download digest normative requirement"),
+    ("requirements", "<tr><td>318</td>", "<tr><td>318-disabled</td>", "download digest Appendix disposition"),
     ("hardening", "**R-S11fg/R-S11e-194 outgoing viewer file-command admission", "**R-S11fg-disabled/R-S11e-194 outgoing viewer file-command admission", "hardening ledger"),
     ("hardening", "**R-S11fh/R-S11e-195 controlled-side file-response exact local writer finality", "**R-S11fh-disabled/R-S11e-195 controlled-side file-response exact local writer finality", "controlled hardening ledger"),
     ("hardening", "**R-S11fi/R-S11e-196 incoming viewer file-block persistence failure", "**R-S11fi-disabled/R-S11e-196 incoming viewer file-block persistence failure", "incoming write hardening ledger"),
+    ("hardening", "**R-S11fj/R-S11e-197 viewer download digest inspection failure", "**R-S11fj-disabled/R-S11e-197 viewer download digest inspection failure", "download digest hardening ledger"),
     ("verify", "server::connection::controlled_file_write_tests::r_s11fh_", "server::connection::controlled_file_write_tests::disabled_", "shared controlled behavior gate"),
     ("dart_verify", "server::connection::controlled_file_write_tests::r_s11fh_", "server::connection::controlled_file_write_tests::disabled_", "generated-bridge controlled behavior gate"),
     ("verify", "client::io_loop::tests::r_s11fi_", "client::io_loop::tests::disabled_", "shared incoming write behavior gate"),
     ("dart_verify", "client::io_loop::tests::r_s11fi_", "client::io_loop::tests::disabled_", "generated-bridge incoming write behavior gate"),
+    ("verify", "client::io_loop::tests::r_s11fj_", "client::io_loop::tests::disabled_", "shared download digest behavior gate"),
+    ("dart_verify", "client::io_loop::tests::r_s11fj_", "client::io_loop::tests::disabled_", "generated-bridge download digest behavior gate"),
     ("verify", "python3 scripts/verify-viewer-file-finality.py --repo . --self-test", "python3 scripts/verify-viewer-file-finality.py --repo .", "shared mutation gate"),
     ("apple", "python3 scripts/verify-viewer-file-finality.py --repo . --self-test", "python3 scripts/verify-viewer-file-finality.py --repo .", "Apple mutation gate"),
     ("dart_verify", "client::io_loop::tests::r_s11fg_", "client::io_loop::tests::disabled_", "generated-bridge tracker gate"),

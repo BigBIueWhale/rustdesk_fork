@@ -247,7 +247,7 @@ local_docker run --rm --pull=never --network=none --read-only \
       -o /tmp/texture_rgba_windows_core_test
     /tmp/texture_rgba_windows_core_test
     cd /src
-    rustfmt --edition 2021 --check src/flutter.rs src/flutter_ffi.rs
+    rustfmt --edition 2021 --check src/flutter.rs src/flutter_ffi.rs src/client/io_loop.rs
     echo "  == shipped Debian Rust library check: flutter,unix-file-copy-paste =="
     cargo check --offline --locked --features flutter,unix-file-copy-paste --lib --color never
     echo "  == R-S11eb generated-bridge mobile session lifecycle regressions =="
@@ -256,7 +256,7 @@ local_docker run --rm --pull=never --network=none --read-only \
     echo "  == R-S11ff generated-bridge exact-owner viewer refresh regression =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       flutter::mobile_session_lifecycle_tests::r_s11ff_video_refresh_requires_the_current_exact_ui_owner -- --test-threads=1
-    echo "  == R-S11fg/R-S11fh/R-S11fi generated-bridge file writer and receive-persistence finality regressions =="
+    echo "  == R-S11fg/R-S11fh/R-S11fi/R-S11fj generated-bridge file writer, receive-persistence, and digest-inspection finality regressions =="
     cargo test --offline --locked -p hbb_common --lib \
       fs::tests::r_s11fg_read_step_returns_the_exact_file_frame_receipt -- --test-threads=1
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
@@ -265,6 +265,8 @@ local_docker run --rm --pull=never --network=none --read-only \
       server::connection::controlled_file_write_tests::r_s11fh_ -- --test-threads=1
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       client::io_loop::tests::r_s11fi_ -- --test-threads=1
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      client::io_loop::tests::r_s11fj_ -- --test-threads=1
     echo "  == R-S11ec outgoing clipboard exact-round lifecycle regression =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop -- --test-threads=1

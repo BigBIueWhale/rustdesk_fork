@@ -9,7 +9,10 @@
 //! 4th arg modes (after keying):
 //!   - `read`   : engage the session keys and read the post-key keyed session flow;
 //!   - `login`  : also send a minimal `LoginRequest` (CPace already authenticated, so the password
-//!                proof is collapsed — empty `password`) to drive the post-key login flow. Its
+//!                proof is collapsed — empty `password`) with the exact current video-receipt
+//!                capability to drive the post-key Remote login flow. It succeeds only after an
+//!                exact receipt-version PeerInfo or the pinned headless image's post-authorization
+//!                `connection refused` display error. Its
 //!                `my_id` is the ASCII canary `PLAINTEXT-CANARY-DEADBEEF` so the R-A9 wire-capture
 //!                test can assert it NEVER appears on the wire (the post-key frame is AEAD-sealed);
 //!   - `inject` : R-A8/R-T7 — after keying, corrupt the engaged SEND key, then send a frame
@@ -24,9 +27,23 @@
 //!
 //! Usage: `probe_client <addr> <password> <ok|fail> [read|login|inject|portforward|filetransfer] [local_addr]`  (exit 0 = matched)
 use hbb_common::cpace::run_initiator;
-use hbb_common::message_proto::Message;
+use hbb_common::message_proto::{login_response, message, Message};
 use hbb_common::protobuf::Message as _; // parse_from_bytes / write_to_bytes
 use hbb_common::tcp::FramedStream;
+
+fn remote_login_admission(response: &login_response::Union) -> Option<&'static str> {
+    match response {
+        login_response::Union::PeerInfo(peer)
+            if peer.video_frame_receipt_version == hbb_common::VIDEO_FRAME_RECEIPT_VERSION =>
+        {
+            Some("peer-info")
+        }
+        login_response::Union::Error(error) if error == "connection refused" => {
+            Some("headless-display-error")
+        }
+        _ => None,
+    }
+}
 
 fn main() {
     let a: Vec<String> = std::env::args().collect();
@@ -56,7 +73,7 @@ fn main() {
     let prs = hbb_common::config::derive_cpace_prs(&pw).unwrap_or_default();
 
     let rt = hbb_common::tokio::runtime::Runtime::new().expect("tokio runtime");
-    let (keyed, postkey, file_transfer_ok) = rt.block_on(async {
+    let (keyed, postkey, file_transfer_ok, remote_login_ok) = rt.block_on(async {
         let mut stream = match FramedStream::new(&addr, local, 5000).await {
             Ok(s) => s,
             Err(e) => {
@@ -67,6 +84,7 @@ fn main() {
         match run_initiator(&mut stream, &prs).await {
             Ok(keys) => {
                 let mut pk = String::new();
+                let mut remote_login_ok = mode != "login";
                 if do_read {
                     stream.set_session_keys(keys); // engage the two-key cipher
                     if mode == "portforward" {
@@ -76,7 +94,7 @@ fn main() {
                         // authorized + dialed the target + switched to try_port_forward_loop), then send
                         // a canary THROUGH the tunnel and expect it echoed back — proving the restored
                         // relay shuttles sealed bytes both ways (login-grant + dial + break + relay).
-                        use hbb_common::message_proto::{login_response, message, LoginRequest, PortForward};
+                        use hbb_common::message_proto::{LoginRequest, PortForward};
                         let target = std::env::var("PF_TARGET").unwrap_or_default();
                         let (thost, tport) = target
                             .rsplit_once(':')
@@ -159,9 +177,21 @@ fn main() {
                         lr.my_name = "probe".to_string();
                         lr.version = "1.4.0".to_string();
                         lr.my_platform = "Linux".to_string();
+                        lr.video_frame_receipt_version =
+                            hbb_common::VIDEO_FRAME_RECEIPT_VERSION;
                         let mut msg = Message::new();
                         msg.set_login_request(lr);
-                        let _ = stream.send_raw(msg.write_to_bytes().unwrap_or_default()).await;
+                        let remote_login_bytes = match msg.write_to_bytes() {
+                            Ok(bytes) => bytes,
+                            Err(err) => {
+                                pk.push_str(&format!("[REMOTE-LOGIN-SERIALIZE-ERROR {err}] "));
+                                return (true, pk, true, false);
+                            }
+                        };
+                        if let Err(err) = stream.send_raw(remote_login_bytes).await {
+                            pk.push_str(&format!("[REMOTE-LOGIN-SEND-ERROR {err}] "));
+                            return (true, pk, true, false);
+                        }
                     }
                     if mode == "filetransfer" {
                         // R-F1/R-F2 END-TO-END against a headless unix --server. Before the fix this box
@@ -171,7 +201,7 @@ fn main() {
                         // yield a PeerInfo whose username is NON-EMPTY — never that refusal. A ReadDir("")
                         // then drives the file path (served in the CM process at service privilege; its
                         // dir FileResponse is reported if the CM round-trips).
-                        use hbb_common::message_proto::{file_response, login_response, message, FileAction, FileTransfer, LoginRequest, ReadDir};
+                        use hbb_common::message_proto::{file_response, FileAction, FileTransfer, LoginRequest, ReadDir};
                         let mut lr = LoginRequest::new();
                         lr.username = addr.clone();
                         lr.my_id = "ft-probe".to_string();
@@ -189,12 +219,12 @@ fn main() {
                             Ok(bytes) => bytes,
                             Err(err) => {
                                 pk.push_str(&format!("[FT-LOGIN-SERIALIZE-ERROR {err}] "));
-                                return (true, pk, false);
+                                return (true, pk, false, true);
                             }
                         };
                         if let Err(err) = stream.send_raw(login_bytes).await {
                             pk.push_str(&format!("[FT-LOGIN-SEND-ERROR {err}] "));
-                            return (true, pk, false);
+                            return (true, pk, false, true);
                         }
                         let mut sent_readdir = false;
                         let mut peer_username_nonempty = false;
@@ -267,7 +297,7 @@ fn main() {
                             }
                         }
                         if !peer_username_nonempty || !readdir_send_ok {
-                            return (true, pk, false);
+                            return (true, pk, false, true);
                         }
                     }
                     // The generic post-key frame dump is for read/login/inject only; a port-forward
@@ -279,8 +309,39 @@ fn main() {
                         }
                         match stream.next_timeout(3000).await {
                             Some(Ok(bytes)) => {
-                                let u = match Message::parse_from_bytes(&bytes) {
-                                    Ok(m) => format!("{:?}", m.union).chars().take(140).collect::<String>(),
+                                let parsed = Message::parse_from_bytes(&bytes);
+                                if mode == "login" {
+                                    if let Ok(parsed_message) = &parsed {
+                                        if let Some(message::Union::LoginResponse(response)) =
+                                            &parsed_message.union
+                                        {
+                                            match response.union.as_ref() {
+                                                Some(response) => {
+                                                    if let Some(outcome) =
+                                                        remote_login_admission(response)
+                                                    {
+                                                        remote_login_ok = true;
+                                                        pk.push_str(&format!(
+                                                            "[REMOTE-LOGIN-ADMITTED {outcome}] "
+                                                        ));
+                                                    } else {
+                                                        pk.push_str(&format!(
+                                                            "[REMOTE-LOGIN-REJECTED {response:?}] "
+                                                        ));
+                                                    }
+                                                }
+                                                None => pk.push_str(
+                                                    "[REMOTE-LOGIN-REJECTED empty-response] ",
+                                                ),
+                                            }
+                                        }
+                                    }
+                                }
+                                let u = match parsed {
+                                    Ok(m) => format!("{:?}", m.union)
+                                        .chars()
+                                        .take(140)
+                                        .collect::<String>(),
                                     Err(e) => format!("PARSE_ERR {e}"),
                                 };
                                 pk.push_str(&format!("[{i} len={} {u}] ", bytes.len()));
@@ -294,6 +355,9 @@ fn main() {
                                 break;
                             }
                         }
+                    }
+                    if mode == "login" && !remote_login_ok {
+                        pk.push_str("[REMOTE-LOGIN-NOT-ADMITTED] ");
                     }
                     if mode == "inject" {
                         // R-A8 / R-T7: POST-KEY injection. Garble the engaged SEND key (the recv
@@ -311,9 +375,9 @@ fn main() {
                         let _ = stream.next_timeout(2500).await;
                     }
                 }
-                (true, pk, true)
+                (true, pk, true, remote_login_ok)
             }
-            Err(_) => (false, String::new(), false),
+            Err(_) => (false, String::new(), false, false),
         }
     });
 
@@ -327,11 +391,47 @@ fn main() {
         "fail" => !keyed,
         _ => false,
     };
-    let pass = keying_matches && (mode != "filetransfer" || file_transfer_ok);
+    let pass = keying_matches
+        && (mode != "filetransfer" || file_transfer_ok)
+        && (mode != "login" || remote_login_ok);
     if pass {
         println!("probe_client: PASS");
     } else {
         println!("probe_client: FAIL");
         std::process::exit(1);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hbb_common::message_proto::PeerInfo;
+
+    #[test]
+    fn remote_login_admission_requires_current_protocol_or_exact_headless_error() {
+        let mut peer = PeerInfo::new();
+        peer.video_frame_receipt_version = hbb_common::VIDEO_FRAME_RECEIPT_VERSION;
+        assert_eq!(
+            remote_login_admission(&login_response::Union::PeerInfo(peer.clone())),
+            Some("peer-info")
+        );
+
+        peer.video_frame_receipt_version = 0;
+        assert_eq!(
+            remote_login_admission(&login_response::Union::PeerInfo(peer)),
+            None
+        );
+        assert_eq!(
+            remote_login_admission(&login_response::Union::Error(
+                "connection refused".to_owned()
+            )),
+            Some("headless-display-error")
+        );
+        assert_eq!(
+            remote_login_admission(&login_response::Union::Error(
+                "Incompatible remote video protocol. Upgrade both RustDesk peers.".to_owned()
+            )),
+            None
+        );
     }
 }

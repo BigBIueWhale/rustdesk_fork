@@ -4250,8 +4250,8 @@ Tracking rule for this block: every remediation item must name the platform(s), 
 privilege boundary, exact attack surface, and closure condition. A fix is not complete until the old path is
 unreachable and a source/test/AST gate prevents reintroduction.
 
-**R-S11b/R-B4 exact-owner rootless controlled-runtime smoke — HARNESS CORRECTED AND CURRENT
-PRODUCTION-BINARY EXECUTION RECORDED 2026-08-02; INSTALLED-SERVICE, EXACT RELEASE-ARTIFACT,
+**R-S11b/R-B4 exact-owner rootless controlled-runtime smoke — HARNESS CORRECTED, REMOTE-LOGIN
+FALSE PASS CLOSED, AND CURRENT PRODUCTION-BINARY EXECUTION RECORDED 2026-08-02; INSTALLED-SERVICE, EXACT RELEASE-ARTIFACT,
 ANDROID/WINDOWS/macOS/iOS, RENDERER, DISPLAY-LATENCY, COLD-RELEASE, INDEPENDENT
 REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE REMAINS OPEN.** Platform: the Linux portable
 user-owned direct server and its mounted runtime smoke fixture. Endpoint/action: empty-credential parked
@@ -4308,6 +4308,64 @@ again afterward. The readiness self-test passed, and the real VP9 encoder initia
 under Linux `MemoryDenyWriteExecute`. Shell syntax and the independent semantic workspace validator passed against
 the corrected tree. The complete unsliced independent source-mutation catalog then passed from mutation one
 through exit zero against these exact source, verifier, and ledger bytes.
+
+A later exact-current rerun at parent `8c930125d149fc82357bcef1121ae576b3863c8f` found a distinct
+red-first evidence defect after the production server added mandatory video-frame-receipt negotiation. The stale
+Remote smoke probe omitted `LoginRequest.video_frame_receipt_version`; the actual server correctly returned
+`Incompatible remote video protocol. Upgrade both RustDesk peers.`, but the direct probe still printed
+`probe_client: PASS` and exited zero after any successful CPace exchange. The aggregate smoke script would have
+rejected that transcript because it lacked its expected PeerInfo/headless outcome, but an isolated
+`smoke-server-stage.sh full-session` invocation could be falsely counted. This was a smoke-result integrity defect,
+not a product compatibility bypass or evidence that the server accepted an incompatible viewer.
+
+The probe now advertises the shared exact `VIDEO_FRAME_RECEIPT_VERSION` and fails closed unless it parses either a
+PeerInfo echoing that exact version or, only for this pinned headless Linux fixture after keyed login, the exact
+display-backend error `connection refused`. Serialization failure, send failure, missing response, malformed or
+empty LoginResponse, incompatible PeerInfo, and every other error remain non-admitted. The probe's own exit status
+depends on that semantic admission; the aggregate script separately requires its admission marker and explicitly
+rejects the incompatible-protocol transcript. A focused Rust test admits the current version and exact headless
+outcome while rejecting version zero and the incompatible-protocol error. The semantic verifier requires the
+fail-closed initialization, checked classifier call, exact classifier ordering and fallback, serialization result,
+semantic pass condition, and aggregate admission check. Its mutation matrix independently changes each of those
+bypass points.
+
+The current full executable was built and linked offline in dev profile from that exact product parent; the final
+candidate changes no product Rust, protocol definition, dependency, or compatibility path and differs only in the
+example probe, smoke assertion, semantic verifier, and this ledger. The executable SHA-256 is
+`f710ee208653472ea263ea593dbdd6cdf959449c8ae03df924286bb74ef543a6`; the final repaired probe SHA-256 is
+`35cde8e718da64273663e83d7bd21a678d2dec8e035511a9b2b1d9b6862dc15d`. The build reported 334
+Rust library warnings, so neither a warning-free nor release-artifact claim is made. Every counted execution used
+immutable image `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric UID/GID
+1000:1000 with `--network=none`, a read-only root/source/vendor authority, all capabilities dropped,
+`no-new-privileges`, bounded CPU/memory/PIDs, private disposable writable target or `/tmp`, no published port,
+device, Docker socket, or host namespace. The exact Rust 1.75 formatter installed on the host filesystem was only
+mounted read-only and executed inside that confined container; it was never executed on the host or installed into
+an image.
+
+The exact product executable passed separately disposable rootless stages for parked/no-socket startup; exactly
+one shim-confined `127.0.0.1:21118` TCP listener and zero UDP; same-UID production `--password-stdin` mutation with
+new-key success and old-key failure; correct/wrong CPace behavior; capacity `shed=1`; VP9 initialization and five
+encodes under `MemoryDenyWriteExecute`; sealed port-forward echo; nonempty FileTransfer PeerInfo username
+`unknown` on Linux without claiming the absent display-backed directory response; forged-frame `decryption error`;
+different-source owner admission while the flooding source remained blocked; and exact-process expiry of the real
+60-second guess window. After the repair, every probe-dependent keying, port-forward, file-transfer, injection,
+limiter, and Remote full-session stage reran successfully. The Remote transcript contained
+`REMOTE-LOGIN-ADMITTED headless-display-error` followed by `probe_client: PASS`; the focused Rust test, pinned
+Rustfmt check, shell/Python syntax checks, and normal semantic validator passed. A first complete mutation run was
+deliberately interrupted and uncounted when review found that success-by-default initialization and a success-valued
+classifier catch-all were not yet independently guarded. The next complete run correctly failed because the new
+Remote serialization variable duplicated the FileTransfer fixture's supposedly unique mutation target. After
+making both targets distinct and self-protecting them, the complete unsliced catalog restarted from mutation one,
+emitted `verify-verifier-workspace: ok`, and exited zero.
+
+This exact-current evidence remains portable Linux protocol/runtime evidence, not release safety. It did not run an
+installed service, privileged password authority, exact `.deb` or other release artifact, Android APK/app/service,
+Windows client/service, macOS/iOS app, real capture source, decoder, renderer, compositor, focus/minimize/task-swipe/
+Force-Stop transition, real peer display/control session, cross-version matrix, sustained performance soak, clean
+cold R-B2/R-B10 release, independent reproduction, or external review. It does not reproduce or close the reported
+display-only delay. No root, sudo, privileged container, host RustDesk process/service/binary/configuration, host
+listener, firewall/UFW/nftables/iptables state, Docker image, or host network setting was inspected, started,
+stopped, upgraded, or changed; no image was built, pulled, tagged, or modified.
 
 Excluded attempts remain visible. The first build never compiled because Rustup interpreted `1.75` as a channel
 sync and could not write its immutable root; using the exact installed `1.75.0-x86_64-unknown-linux-gnu`

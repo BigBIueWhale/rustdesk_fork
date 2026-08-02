@@ -678,18 +678,20 @@ echo "$out6"
 record_stage_status R-S6/R-S18
 # R-S6/R-S18: the keyed edge IS the authorization — the credential-free LoginRequest (no second
 # credential; the password proof is collapsed into the PAKE) is ADMITTED because CPace already
-# authenticated (there is no source-IP ACL). Proven POSITIVELY under the full-access policy: RustDesk
+# authenticated (there is no source-IP ACL). The probe advertises the exact current video-receipt
+# capability and accepts only a matching PeerInfo or the pinned headless image's exact
+# post-authorization `connection refused` display error. Proven POSITIVELY under the full-access policy: RustDesk
 # NOTIFIES the viewer only of DENIED permissions, so an authorized FULL-ACCESS session emits ZERO
 # `enabled: false` PermissionInfo. The pinned headless image has no display server: after authorization
 # it returns the display backend's exact `connection refused` error instead of PeerInfo.
 s6_ok=1
-if grep -qE 'blocked by the peer|Some\(Error\("Offline"|Some\(Error\("Wrong Password' <<<"$out6"; then
+if grep -qE 'blocked by the peer|Some\(Error\("Offline"|Some\(Error\("Wrong Password|Incompatible remote video protocol' <<<"$out6"; then
   echo "  FAIL R-S6/R-S18: the keyed credential-free LoginRequest was REJECTED (must be ADMITTED — CPace authenticated it)"; rc=1; s6_ok=0
 fi
 if grep -q 'enabled: false' <<<"$out6"; then
   echo "  FAIL R-D8/R-X8: a capability was DENIED (PermissionInfo enabled:false) — the full-access policy must deny nothing"; rc=1; s6_ok=0
 fi
-if ! grep -qE 'Some\(PeerInfo|Some\(Error\("connection refused"' <<<"$out6"; then
+if ! grep -q 'REMOTE-LOGIN-ADMITTED' <<<"$out6"; then
   echo "  FAIL R-S6/R-S18: no authorized remote-session outcome was observed"; rc=1; s6_ok=0
 fi
 [ "$s6_ok" = 1 ] && echo "  ok  R-S6/R-S18 credential-free LoginRequest reached the authorized remote session + R-D8/R-X8 full access denied no capability"

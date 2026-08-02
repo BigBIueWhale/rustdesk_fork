@@ -6028,6 +6028,38 @@ def validate_smoke_contract(
     ):
         require_text(ipc_source, text, label)
     for text, label in (
+        (
+            "lr.video_frame_receipt_version =\n                            hbb_common::VIDEO_FRAME_RECEIPT_VERSION;",
+            "remote-login exact video protocol negotiation",
+        ),
+        (
+            "peer.video_frame_receipt_version == hbb_common::VIDEO_FRAME_RECEIPT_VERSION",
+            "remote-login exact PeerInfo protocol echo",
+        ),
+        ('error == "connection refused"', "exact post-authorization headless outcome"),
+        ("REMOTE-LOGIN-SERIALIZE-ERROR", "remote-login serialization failure propagation"),
+        ("REMOTE-LOGIN-SEND-ERROR", "remote-login send failure propagation"),
+        (
+            "let remote_login_bytes = match msg.write_to_bytes()",
+            "remote-login serialization result",
+        ),
+        ("REMOTE-LOGIN-ADMITTED", "remote-login semantic admission marker"),
+        (
+            'let mut remote_login_ok = mode != "login";',
+            "remote-login fail-closed admission initialization",
+        ),
+        (
+            "remote_login_admission(response)",
+            "remote-login checked admission classifier call",
+        ),
+        (
+            "_ => None,",
+            "remote-login fail-closed admission classifier fallback",
+        ),
+        (
+            'mode != "login" || remote_login_ok',
+            "remote-login semantic pass condition",
+        ),
         ("peer_username_nonempty = !peer.username.is_empty();", "file-transfer PeerInfo semantic proof"),
         ("FT-LOGIN-SEND-ERROR", "file-transfer login send-error propagation"),
         ("FT-READDIR-SEND-ERROR", "file-transfer ReadDir send-error propagation"),
@@ -6039,6 +6071,39 @@ def validate_smoke_contract(
         ("if !peer_username_nonempty || !readdir_send_ok", "missing/empty PeerInfo failure"),
     ):
         require_text(session_probe, text, label)
+    require_order(
+        session_probe,
+        (
+            "fn remote_login_admission(",
+            "login_response::Union::PeerInfo(peer)",
+            "peer.video_frame_receipt_version == hbb_common::VIDEO_FRAME_RECEIPT_VERSION",
+            'Some("peer-info")',
+            'login_response::Union::Error(error) if error == "connection refused"',
+            'Some("headless-display-error")',
+            "_ => None,",
+        ),
+        "remote-login exact fail-closed admission classifier",
+    )
+    require_order(
+        session_probe,
+        (
+            'let mut remote_login_ok = mode != "login";',
+            "if let Some(outcome) =",
+            "remote_login_admission(response)",
+            "remote_login_ok = true;",
+            '"[REMOTE-LOGIN-ADMITTED {outcome}] "',
+            'if mode == "login" && !remote_login_ok',
+        ),
+        "remote-login fail-closed admission flow",
+    )
+    for text, label in (
+        (
+            "Incompatible remote video protocol",
+            "full-session incompatible-protocol rejection",
+        ),
+        ("REMOTE-LOGIN-ADMITTED", "full-session semantic admission requirement"),
+    ):
+        require_text(smoke, text, label)
 
 
 def validate_faillo_contract(source):
@@ -48656,6 +48721,54 @@ def run_source_mutations(sources):
             "if actual_values.0 != expected_values.0",
             "if true",
             "individual readiness fact comparison",
+        ),
+        (
+            "session_probe",
+            "lr.video_frame_receipt_version =\n                            hbb_common::VIDEO_FRAME_RECEIPT_VERSION;",
+            "lr.video_frame_receipt_version = 0;",
+            "remote-login exact video protocol negotiation",
+        ),
+        (
+            "session_probe",
+            "let remote_login_bytes = match msg.write_to_bytes()",
+            "let remote_login_bytes = msg.write_to_bytes().unwrap_or_default(); // serialization result discarded",
+            "remote-login serialization result",
+        ),
+        (
+            "session_probe",
+            'let mut remote_login_ok = mode != "login";',
+            "let mut remote_login_ok = true;",
+            "remote-login fail-closed admission initialization",
+        ),
+        (
+            "session_probe",
+            "remote_login_admission(response)",
+            'Some("unchecked")',
+            "remote-login checked admission classifier call",
+        ),
+        (
+            "session_probe",
+            "_ => None,",
+            '_ => Some("peer-info"),',
+            "remote-login fail-closed admission classifier fallback",
+        ),
+        (
+            "session_probe",
+            'mode != "login" || remote_login_ok',
+            'mode != "login" || true',
+            "remote-login semantic pass condition",
+        ),
+        (
+            "session_probe",
+            'error == "connection refused"',
+            'error.starts_with("connection")',
+            "exact post-authorization headless outcome",
+        ),
+        (
+            "smoke",
+            "if ! grep -q 'REMOTE-LOGIN-ADMITTED' <<<\"$out6\"; then",
+            "if true; then",
+            "full-session semantic admission requirement",
         ),
         (
             "session_probe",

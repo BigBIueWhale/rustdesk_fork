@@ -291,18 +291,25 @@ struct VideoFrameStreamKey {
     display_idx: usize,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum VideoFrameTargetState {
+    Pending,
+    Retired,
+    Acknowledged,
+}
+
 #[derive(Default)]
 struct VideoFrameAckRound {
     generation: u64,
-    pending: HashSet<i32>,
-    acknowledged: HashSet<i32>,
+    targets: HashMap<i32, VideoFrameTargetState>,
+    // Peer progress is historical for the round: disconnecting the peer that
+    // acknowledged must not restore the shared capture barrier.
+    progressed: bool,
 }
 
 impl VideoFrameAckRound {
-    fn complete(&self) -> bool {
-        self.pending
-            .iter()
-            .all(|connection_id| self.acknowledged.contains(connection_id))
+    fn capture_may_advance(&self) -> bool {
+        self.targets.is_empty() || self.progressed
     }
 }
 
@@ -315,8 +322,8 @@ struct VideoFrameAckState {
 impl VideoFrameAckState {
     fn reset(&self) {
         let mut round = self.round.lock().unwrap();
-        round.pending.clear();
-        round.acknowledged.clear();
+        round.targets.clear();
+        round.progressed = false;
         self.changed.notify_all();
     }
 
@@ -326,28 +333,38 @@ impl VideoFrameAckState {
             bail!("video acknowledgement generation is not strictly monotonic");
         }
         round.generation = generation;
-        round.pending.clone_from(connection_ids);
-        round.acknowledged.clear();
+        round.targets.clear();
+        round.targets.extend(
+            connection_ids
+                .iter()
+                .copied()
+                .map(|connection_id| (connection_id, VideoFrameTargetState::Pending)),
+        );
+        round.progressed = false;
         self.changed.notify_all();
         Ok(())
     }
 
     fn acknowledge(&self, generation: u64, connection_id: i32) -> bool {
         let mut round = self.round.lock().unwrap();
-        if round.generation != generation
-            || !round.pending.contains(&connection_id)
-            || !round.acknowledged.insert(connection_id)
-        {
+        if round.generation != generation {
             return false;
         }
+        let Some(state) = round.targets.get_mut(&connection_id) else {
+            return false;
+        };
+        if *state != VideoFrameTargetState::Pending {
+            return false;
+        }
+        *state = VideoFrameTargetState::Acknowledged;
+        round.progressed = true;
         self.changed.notify_all();
         true
     }
 
     fn retire_connection(&self, connection_id: i32) -> bool {
         let mut round = self.round.lock().unwrap();
-        let removed = round.pending.remove(&connection_id);
-        round.acknowledged.remove(&connection_id);
+        let removed = round.targets.remove(&connection_id).is_some();
         if removed {
             self.changed.notify_all();
         }
@@ -356,24 +373,32 @@ impl VideoFrameAckState {
 
     fn retire(&self, generation: u64, connection_id: i32) -> bool {
         let mut round = self.round.lock().unwrap();
-        if round.generation != generation || !round.pending.remove(&connection_id) {
+        if round.generation != generation {
             return false;
         }
-        round.acknowledged.remove(&connection_id);
+        let Some(state) = round.targets.get_mut(&connection_id) else {
+            return false;
+        };
+        if *state != VideoFrameTargetState::Pending {
+            return false;
+        }
+        // Supersession bounds this connection's candidate ownership, but it is
+        // not evidence that any peer consumed the shared frame.
+        *state = VideoFrameTargetState::Retired;
         self.changed.notify_all();
         true
     }
 
-    fn wait_for_all(&self, timeout: Duration) -> bool {
+    fn wait_for_progress(&self, timeout: Duration) -> bool {
         let round = self.round.lock().unwrap();
-        if round.complete() {
+        if round.capture_may_advance() {
             return true;
         }
         let (round, _) = self
             .changed
-            .wait_timeout_while(round, timeout, |round| !round.complete())
+            .wait_timeout_while(round, timeout, |round| !round.capture_may_advance())
             .unwrap();
-        round.complete()
+        round.capture_may_advance()
     }
 }
 
@@ -417,9 +442,17 @@ impl VideoFrameController {
         self.state.prepare(connection_ids, generation)
     }
 
-    fn wait_for_all(&self, timeout: Duration) -> bool {
-        self.state.wait_for_all(timeout)
+    fn wait_for_progress(&self, timeout: Duration) -> bool {
+        self.state.wait_for_progress(timeout)
     }
+}
+
+fn frame_wait_can_finish(
+    sp: &GenericService,
+    frame_controller: &VideoFrameController,
+    timeout: Duration,
+) -> bool {
+    sp.is_option_true(OPTION_REFRESH) || frame_controller.wait_for_progress(timeout)
 }
 
 impl Drop for VideoFrameController {
@@ -1243,7 +1276,7 @@ fn run(vs: VideoService) -> ResultType<()> {
                     vs.android_generation,
                 )?;
             }
-            if frame_controller.wait_for_all(Duration::from_millis(300)) {
+            if frame_wait_can_finish(&sp, &frame_controller, Duration::from_millis(300)) {
                 break;
             }
         }
@@ -1967,26 +2000,26 @@ mod video_frame_ack_tests {
         let camera_round = prepare(&camera, &ids(&[12]), 1);
 
         notify_video_frame_fetched(VideoSource::Monitor, 10_001, monitor_round, 11, None);
-        assert!(monitor.wait_for_all(Duration::ZERO));
-        assert!(!camera.wait_for_all(Duration::ZERO));
+        assert!(monitor.wait_for_progress(Duration::ZERO));
+        assert!(!camera.wait_for_progress(Duration::ZERO));
 
         notify_video_frame_fetched(VideoSource::Camera, 10_001, camera_round, 12, None);
-        assert!(camera.wait_for_all(Duration::ZERO));
+        assert!(camera.wait_for_progress(Duration::ZERO));
     }
 
     #[test]
-    fn r_s11eg_only_pending_exact_connection_ids_complete_a_round() {
+    fn r_s11fl_one_exact_peer_receipt_paces_shared_capture_without_the_slow_peer() {
         let _test = ACK_TEST_LOCK.lock().unwrap();
         let controller = VideoFrameController::new(VideoSource::Monitor, 10_002).unwrap();
         let round = prepare(&controller, &ids(&[21, 22]), 1);
 
         notify_video_frame_fetched(VideoSource::Monitor, 10_002, round, 99, None);
-        notify_video_frame_fetched(VideoSource::Monitor, 10_002, round, 21, None);
-        notify_video_frame_fetched(VideoSource::Monitor, 10_002, round, 21, None);
-        assert!(!controller.wait_for_all(Duration::ZERO));
+        assert!(!controller.wait_for_progress(Duration::ZERO));
 
-        notify_video_frame_fetched(VideoSource::Monitor, 10_002, round, 22, None);
-        assert!(controller.wait_for_all(Duration::ZERO));
+        notify_video_frame_fetched(VideoSource::Monitor, 10_002, round, 21, None);
+        assert!(controller.wait_for_progress(Duration::ZERO));
+        retire_video_frame_connection(21);
+        assert!(controller.wait_for_progress(Duration::ZERO));
     }
 
     #[test]
@@ -1997,9 +2030,9 @@ mod video_frame_ack_tests {
         let current_round = prepare(&controller, &ids(&[31]), 2);
 
         notify_video_frame_fetched(VideoSource::Monitor, 10_003, old_round, 31, None);
-        assert!(!controller.wait_for_all(Duration::ZERO));
+        assert!(!controller.wait_for_progress(Duration::ZERO));
         notify_video_frame_fetched(VideoSource::Monitor, 10_003, current_round, 31, None);
-        assert!(controller.wait_for_all(Duration::ZERO));
+        assert!(controller.wait_for_progress(Duration::ZERO));
     }
 
     #[test]
@@ -2011,21 +2044,52 @@ mod video_frame_ack_tests {
         prepare(&camera, &ids(&[31]), 1);
 
         retire_video_frame_connection(31);
-        assert!(monitor.wait_for_all(Duration::ZERO));
-        assert!(camera.wait_for_all(Duration::ZERO));
+        assert!(monitor.wait_for_progress(Duration::ZERO));
+        assert!(camera.wait_for_progress(Duration::ZERO));
     }
 
     #[test]
-    fn r_s11fb_superseded_frame_retires_only_its_exact_round() {
+    fn r_s11fl_superseded_frame_is_not_peer_progress_for_its_exact_round() {
         let _test = ACK_TEST_LOCK.lock().unwrap();
         let controller = VideoFrameController::new(VideoSource::Monitor, 10_005).unwrap();
         let old_round = prepare(&controller, &ids(&[32]), 1);
         let current_round = prepare(&controller, &ids(&[32]), 2);
 
         retire_video_frame_round(VideoSource::Monitor, 10_005, old_round, 32);
-        assert!(!controller.wait_for_all(Duration::ZERO));
+        assert!(!controller.wait_for_progress(Duration::ZERO));
         retire_video_frame_round(VideoSource::Monitor, 10_005, current_round, 32);
-        assert!(controller.wait_for_all(Duration::ZERO));
+        assert!(!controller.wait_for_progress(Duration::ZERO));
+    }
+
+    #[test]
+    fn r_s11fl_empty_or_fully_disconnected_round_does_not_delay_capture() {
+        let _test = ACK_TEST_LOCK.lock().unwrap();
+        let controller = VideoFrameController::new(VideoSource::Monitor, 10_006).unwrap();
+
+        prepare(&controller, &HashSet::new(), 1);
+        assert!(controller.wait_for_progress(Duration::ZERO));
+
+        prepare(&controller, &ids(&[33, 34]), 2);
+        retire_video_frame_connection(33);
+        assert!(!controller.wait_for_progress(Duration::ZERO));
+        retire_video_frame_connection(34);
+        assert!(controller.wait_for_progress(Duration::ZERO));
+    }
+
+    #[test]
+    fn r_s11fl_refresh_interrupts_an_obsolete_capture_wait() {
+        let _test = ACK_TEST_LOCK.lock().unwrap();
+        let controller = VideoFrameController::new(VideoSource::Monitor, 10_007).unwrap();
+        let service = GenericService::new("video-refresh-wait-test".to_owned(), false);
+        prepare(&controller, &ids(&[35]), 1);
+
+        assert!(!frame_wait_can_finish(
+            &service,
+            &controller,
+            Duration::ZERO
+        ));
+        service.set_option_bool(OPTION_REFRESH, true);
+        assert!(frame_wait_can_finish(&service, &controller, Duration::ZERO));
     }
 
     #[test]

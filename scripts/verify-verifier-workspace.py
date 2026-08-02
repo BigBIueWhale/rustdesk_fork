@@ -20922,27 +20922,48 @@ def validate_android_voice_call_ownership_contract(sources):
         "controlled video acknowledgement round source",
     )
     require_order(
+        controlled_screenshots,
+        (
+            "enum VideoFrameTargetState {",
+            "Pending,",
+            "Retired,",
+            "Acknowledged,",
+            "targets: HashMap<i32, VideoFrameTargetState>,",
+            "progressed: bool,",
+            "fn capture_may_advance(&self) -> bool",
+            "self.targets.is_empty() || self.progressed",
+        ),
+        "bounded per-target shared capture progress model source",
+    )
+    require_order(
         video_ack_state,
         (
             "fn reset(&self)",
-            "round.pending.clear();",
-            "round.acknowledged.clear();",
+            "round.targets.clear();",
+            "round.progressed = false;",
             "fn prepare(&self, connection_ids: &HashSet<i32>, generation: u64) -> ResultType<()>",
             "generation == 0 || generation <= round.generation",
             "round.generation = generation;",
-            "round.pending.clone_from(connection_ids);",
+            "round.targets.clear();",
+            "round.targets.extend(",
+            "VideoFrameTargetState::Pending",
+            "round.progressed = false;",
             "fn acknowledge(&self, generation: u64, connection_id: i32)",
             "round.generation != generation",
-            "!round.pending.contains(&connection_id)",
-            "!round.acknowledged.insert(connection_id)",
+            "round.targets.get_mut(&connection_id)",
+            "*state != VideoFrameTargetState::Pending",
+            "*state = VideoFrameTargetState::Acknowledged;",
+            "round.progressed = true;",
             "fn retire_connection(&self, connection_id: i32)",
+            "round.targets.remove(&connection_id).is_some()",
             "fn retire(&self, generation: u64, connection_id: i32)",
             "round.generation != generation",
-            "!round.pending.remove(&connection_id)",
-            "fn wait_for_all(&self, timeout: Duration)",
-            ".wait_timeout_while(round, timeout, |round| !round.complete())",
+            "round.targets.get_mut(&connection_id)",
+            "*state = VideoFrameTargetState::Retired;",
+            "fn wait_for_progress(&self, timeout: Duration)",
+            ".wait_timeout_while(round, timeout, |round| !round.capture_may_advance())",
         ),
-        "bounded generation-exact pending/acknowledged video round source",
+        "bounded generation-exact shared capture progress round source",
     )
     video_ack_controller = extract_between(
         controlled_screenshots,
@@ -20959,9 +20980,18 @@ def validate_android_voice_call_ownership_contract(sources):
             "controllers.len() >= MAX_VIDEO_FRAME_ACK_CONTROLLERS",
             "controllers.insert(key, Arc::downgrade(&state));",
             "fn prepare(&self, connection_ids: &HashSet<i32>, generation: u64)",
-            "fn wait_for_all(&self, timeout: Duration)",
+            "fn wait_for_progress(&self, timeout: Duration)",
         ),
         "bounded exact source/display video controller source",
+    )
+    require_order(
+        controlled_screenshots,
+        (
+            "fn frame_wait_can_finish(",
+            "sp.is_option_true(OPTION_REFRESH)",
+            "frame_controller.wait_for_progress(timeout)",
+        ),
+        "refresh-interruptible shared video capture wait source",
     )
     video_ack_drop = extract_between(
         controlled_screenshots,
@@ -21016,9 +21046,9 @@ def validate_android_voice_call_ownership_contract(sources):
         (
             "let frame_controller = VideoFrameController::new(source, display_idx)?;",
             "frame_controller.reset();",
-            "frame_controller.wait_for_all(Duration::from_millis(300))",
+            "frame_wait_can_finish(&sp, &frame_controller, Duration::from_millis(300))",
         ),
-        "source-exact controlled video acknowledgement capture loop source",
+        "source-exact progress-paced controlled video capture loop source",
     )
     video_handle_one_frame = extract_between(
         controlled_screenshots,
@@ -21368,13 +21398,15 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     for behavior_test in (
         "r_s11eg_monitor_and_camera_acknowledgements_are_source_exact",
-        "r_s11eg_only_pending_exact_connection_ids_complete_a_round",
         "r_s11eg_controller_registration_is_bounded_and_exactly_retired",
         "r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue",
         "r_s11fb_late_completion_cannot_satisfy_a_new_round",
         "r_s11fb_local_disconnect_retires_all_exact_pending_sources",
-        "r_s11fb_superseded_frame_retires_only_its_exact_round",
         "r_s11fk_controller_rejects_zero_and_reused_wire_generations",
+        "r_s11fl_one_exact_peer_receipt_paces_shared_capture_without_the_slow_peer",
+        "r_s11fl_superseded_frame_is_not_peer_progress_for_its_exact_round",
+        "r_s11fl_empty_or_fully_disconnected_round_does_not_delay_capture",
+        "r_s11fl_refresh_interrupts_an_obsolete_capture_wait",
     ):
         require_text(
             controlled_screenshots,
@@ -21455,10 +21487,31 @@ def validate_android_voice_call_ownership_contract(sources):
         "controlled video exact peer receipt hardening ledger source",
     )
     require_text(
+        sources["requirements"],
+        '<span class="id">R-S11fl</span>',
+        "controlled video shared capture pacing requirement source",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>320</td>",
+        "controlled video shared capture pacing Appendix C row source",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11fl/R-S11e-199 controlled-video shared capture pacing",
+        "controlled video shared capture pacing hardening ledger source",
+    )
+    require_text(
         sources["verify"],
         '"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\n'
         "  server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1",
         "controlled video acknowledgement shared behavior gate source",
+    )
+    require_text(
+        sources["verify"],
+        '"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\n'
+        "  server::video_service::video_frame_ack_tests::r_s11fl_ -- --test-threads=1",
+        "controlled video pacing shared behavior gate source",
     )
     require_text(
         sources["verify"],
@@ -21490,6 +21543,11 @@ def validate_android_voice_call_ownership_contract(sources):
         sources["dart_verify"],
         "server::video_service::video_frame_ack_tests::r_s11eg_",
         "controlled video acknowledgement generated-bridge behavior gate source",
+    )
+    require_text(
+        sources["dart_verify"],
+        "server::video_service::video_frame_ack_tests::r_s11fl_",
+        "controlled video pacing generated-bridge behavior gate source",
     )
     require_text(sources["dart_verify"], "server::connection::video_egress_tests::r_s11fb_", "video egress generated-bridge behavior gate source")
     require_text(sources["dart_verify"], "writer_receipt_tests::r_s11fb_", "writer receipt generated-bridge behavior gate source")
@@ -21986,9 +22044,22 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
+        'sources["verify"],\n'
+        '        \'"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\\\\n\'\n'
+        '        "  server::video_service::video_frame_ack_tests::r_s11fl_ -- --test-threads=1",',
+        "focused shared video pacing behavior-gate assertion",
+    )
+    require_text(
+        focused,
         'sources["dart_verify"],\n'
         '        "server::video_service::video_frame_ack_tests::r_s11eg_",',
         "focused generated-bridge video acknowledgement behavior-gate assertion",
+    )
+    require_text(
+        focused,
+        'sources["dart_verify"],\n'
+        '        "server::video_service::video_frame_ack_tests::r_s11fl_",',
+        "focused generated-bridge video pacing behavior-gate assertion",
     )
     require_text(
         focused,
@@ -22004,8 +22075,23 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
-        '("video_service", "round.pending.clone_from(connection_ids);", "round.pending.clear();", "exact video acknowledgement round targets"),',
-        "video acknowledgement exact-target focused mutation",
+        '("video_service", "self.targets.is_empty() || self.progressed", "self.targets.is_empty() && self.progressed", "one-peer-or-disconnected shared capture progress"),',
+        "one-peer shared capture progress focused mutation",
+    )
+    require_text(
+        focused,
+        '("video_service", "*state = VideoFrameTargetState::Acknowledged;\\n        round.progressed = true;", "*state = VideoFrameTargetState::Acknowledged;\\n        round.progressed = false;", "monotonic exact peer progress publication"),',
+        "historical shared capture progress focused mutation",
+    )
+    require_text(
+        focused,
+        '("video_service", "*state = VideoFrameTargetState::Retired;", "round.targets.remove(&connection_id);", "supersession is not peer progress"),',
+        "supersession non-progress focused mutation",
+    )
+    require_text(
+        focused,
+        '("video_service", "sp.is_option_true(OPTION_REFRESH) || frame_controller.wait_for_progress(timeout)", "frame_controller.wait_for_progress(timeout)", "refresh-interruptible shared video wait"),',
+        "refresh-interruptible shared video wait focused mutation",
     )
     require_text(
         focused,
@@ -22111,6 +22197,21 @@ def validate_android_voice_call_ownership_contract(sources):
         focused,
         '("hardening", "R-S11fk/R-S11e-198 controlled-video exact peer receipt", "R-S11fk-disabled/R-S11e-198 controlled-video exact peer receipt", "controlled video exact peer receipt hardening ledger"),',
         "controlled video exact peer receipt ledger focused mutation",
+    )
+    require_text(
+        focused,
+        '("requirements", \'<span class="id">R-S11fl</span>\', \'<span class="id">R-S11fl-disabled</span>\', "controlled video shared capture pacing requirement"),',
+        "controlled video shared capture pacing requirement focused mutation",
+    )
+    require_text(
+        focused,
+        '("requirements", "<tr><td>320</td>", "<tr><td>320-disabled</td>", "controlled video shared capture pacing disposition"),',
+        "controlled video shared capture pacing disposition focused mutation",
+    )
+    require_text(
+        focused,
+        '("hardening", "R-S11fl/R-S11e-199 controlled-video shared capture pacing", "R-S11fl-disabled/R-S11e-199 controlled-video shared capture pacing", "controlled video shared capture pacing hardening ledger"),',
+        "controlled video shared capture pacing ledger focused mutation",
     )
     require_text(
         focused,
@@ -55834,9 +55935,27 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
-            '"exact video acknowledgement round targets"),',
-            '"exact video acknowledgement round targets disabled"),',
-            "video acknowledgement exact-target focused mutation",
+            '"one-peer-or-disconnected shared capture progress"),',
+            '"one-peer-or-disconnected shared capture progress disabled"),',
+            "one-peer shared capture progress focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"monotonic exact peer progress publication"),',
+            '"monotonic exact peer progress publication disabled"),',
+            "historical shared capture progress focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"supersession is not peer progress"),',
+            '"supersession is not peer progress disabled"),',
+            "supersession non-progress focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"refresh-interruptible shared video wait"),',
+            '"refresh-interruptible shared video wait disabled"),',
+            "refresh-interruptible shared video wait focused mutation",
         ),
         (
             "android_voice_call_ownership_verifier",
@@ -55939,6 +56058,24 @@ def run_source_mutations(sources):
             '"controlled video egress hardening ledger"),',
             '"controlled video egress hardening ledger disabled"),',
             "controlled video egress ledger focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"controlled video shared capture pacing requirement"),',
+            '"controlled video shared capture pacing requirement disabled"),',
+            "controlled video shared capture pacing requirement focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"controlled video shared capture pacing disposition"),',
+            '"controlled video shared capture pacing disposition disabled"),',
+            "controlled video shared capture pacing disposition focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"controlled video shared capture pacing hardening ledger"),',
+            '"controlled video shared capture pacing hardening ledger disabled"),',
+            "controlled video shared capture pacing ledger focused mutation",
         ),
         (
             "android_voice_call_owner_state",
@@ -57293,33 +57430,63 @@ def run_source_mutations(sources):
         ),
         (
             "video_service_source",
-            "round.pending.clone_from(connection_ids);",
-            "round.pending.clear();",
-            "bounded generation-exact pending/acknowledged video round source",
+            "targets: HashMap<i32, VideoFrameTargetState>,",
+            "targets: HashMap<i32, bool>,",
+            "bounded per-target shared capture progress model source",
+        ),
+        (
+            "video_service_source",
+            "self.targets.is_empty() || self.progressed",
+            "self.targets.is_empty() && self.progressed",
+            "bounded per-target shared capture progress model source",
+        ),
+        (
+            "video_service_source",
+            "round.targets.extend(",
+            "round.targets.extend_disabled(",
+            "bounded generation-exact shared capture progress round source",
         ),
         (
             "video_service_source",
             "generation == 0 || generation <= round.generation",
             "generation < round.generation",
-            "bounded generation-exact pending/acknowledged video round source",
+            "bounded generation-exact shared capture progress round source",
         ),
         (
             "video_service_source",
-            "if round.generation != generation\n            || !round.pending.contains(&connection_id)",
-            "if !round.pending.contains(&connection_id)",
-            "bounded generation-exact pending/acknowledged video round source",
+            "if round.generation != generation {\n            return false;\n        }\n        let Some(state) = round.targets.get_mut(&connection_id)",
+            "let Some(state) = round.targets.get_mut(&connection_id)",
+            "bounded generation-exact shared capture progress round source",
         ),
         (
             "video_service_source",
-            "if round.generation != generation || !round.pending.remove(&connection_id) {",
-            "if !round.pending.remove(&connection_id) {",
-            "bounded generation-exact pending/acknowledged video round source",
+            "*state = VideoFrameTargetState::Acknowledged;\n        round.progressed = true;",
+            "*state = VideoFrameTargetState::Acknowledged;\n        round.progressed = false;",
+            "bounded generation-exact shared capture progress round source",
         ),
         (
             "video_service_source",
-            ".wait_timeout_while(round, timeout, |round| !round.complete())",
+            "let removed = round.targets.remove(&connection_id).is_some();",
+            "let removed = false;",
+            "bounded generation-exact shared capture progress round source",
+        ),
+        (
+            "video_service_source",
+            "*state = VideoFrameTargetState::Retired;",
+            "round.targets.remove(&connection_id);",
+            "bounded generation-exact shared capture progress round source",
+        ),
+        (
+            "video_service_source",
+            ".wait_timeout_while(round, timeout, |round| !round.capture_may_advance())",
             ".wait_timeout_while(round, timeout, |_| false)",
-            "bounded generation-exact pending/acknowledged video round source",
+            "bounded generation-exact shared capture progress round source",
+        ),
+        (
+            "video_service_source",
+            "sp.is_option_true(OPTION_REFRESH) || frame_controller.wait_for_progress(timeout)",
+            "frame_controller.wait_for_progress(timeout)",
+            "refresh-interruptible shared video capture wait source",
         ),
         (
             "video_service_source",
@@ -57359,7 +57526,7 @@ def run_source_mutations(sources):
             "video_service_source",
             "let frame_controller = VideoFrameController::new(source, display_idx)?;",
             "let frame_controller = VideoFrameController::new(VideoSource::Monitor, display_idx)?;",
-            "source-exact controlled video acknowledgement capture loop source",
+            "source-exact progress-paced controlled video capture loop source",
         ),
         (
             "server_service_source",
@@ -57609,9 +57776,27 @@ def run_source_mutations(sources):
         ),
         (
             "video_service_source",
-            "r_s11eg_only_pending_exact_connection_ids_complete_a_round",
-            "video_ack_pending_test_disabled",
-            "controlled video acknowledgement behavior proof source r_s11eg_only_pending_exact_connection_ids_complete_a_round",
+            "r_s11fl_one_exact_peer_receipt_paces_shared_capture_without_the_slow_peer",
+            "video_shared_progress_test_disabled",
+            "controlled video acknowledgement behavior proof source r_s11fl_one_exact_peer_receipt_paces_shared_capture_without_the_slow_peer",
+        ),
+        (
+            "video_service_source",
+            "r_s11fl_superseded_frame_is_not_peer_progress_for_its_exact_round",
+            "video_supersession_progress_test_disabled",
+            "controlled video acknowledgement behavior proof source r_s11fl_superseded_frame_is_not_peer_progress_for_its_exact_round",
+        ),
+        (
+            "video_service_source",
+            "r_s11fl_empty_or_fully_disconnected_round_does_not_delay_capture",
+            "video_disconnected_release_test_disabled",
+            "controlled video acknowledgement behavior proof source r_s11fl_empty_or_fully_disconnected_round_does_not_delay_capture",
+        ),
+        (
+            "video_service_source",
+            "r_s11fl_refresh_interrupts_an_obsolete_capture_wait",
+            "video_refresh_wait_test_disabled",
+            "controlled video acknowledgement behavior proof source r_s11fl_refresh_interrupts_an_obsolete_capture_wait",
         ),
         (
             "video_service_source",
@@ -57753,6 +57938,24 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
+            '<span class="id">R-S11fl</span>',
+            '<span class="id">R-S11fl-disabled</span>',
+            "controlled video shared capture pacing requirement source",
+        ),
+        (
+            "requirements",
+            "<tr><td>320</td>",
+            "<tr><td>320-disabled</td>",
+            "controlled video shared capture pacing Appendix C row source",
+        ),
+        (
+            "hardening",
+            "R-S11fl/R-S11e-199 controlled-video shared capture pacing",
+            "R-S11fl-disabled/R-S11e-199 controlled-video shared capture pacing",
+            "controlled video shared capture pacing hardening ledger source",
+        ),
+        (
+            "requirements",
             '<div class="req"><span class="id">R-S11fc</span>',
             '<div class="req"><span class="id">R-S11fc-disabled</span>',
             "exact first-image admission requirement",
@@ -57783,10 +57986,23 @@ def run_source_mutations(sources):
             "controlled video acknowledgement shared behavior gate source",
         ),
         (
+            "verify",
+            '"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\n'
+            "  server::video_service::video_frame_ack_tests::r_s11fl_ -- --test-threads=1",
+            "true # shared controlled video pacing behavior gate disabled",
+            "controlled video pacing shared behavior gate source",
+        ),
+        (
             "dart_verify",
             "server::video_service::video_frame_ack_tests::r_s11eg_",
             "server::video_service::video_frame_ack_tests::disabled_",
             "controlled video acknowledgement generated-bridge behavior gate source",
+        ),
+        (
+            "dart_verify",
+            "server::video_service::video_frame_ack_tests::r_s11fl_",
+            "server::video_service::video_frame_ack_tests::disabled_fl_",
+            "controlled video pacing generated-bridge behavior gate source",
         ),
         (
             "verify",

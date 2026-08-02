@@ -4176,6 +4176,69 @@ No host RustDesk process/service/binary/configuration, host listener, firewall/U
 state, Docker image, or host network setting was inspected or changed. No root, sudo, privileged
 container, installed product, capture source, renderer, emulator, VM, or physical device ran.
 
+**R-S11fl/R-S11e-199 controlled-video shared capture pacing — PARTIAL / RELEASE-BLOCKING;
+SOURCE STATE MACHINE AND FOCUSED COMPILED REGRESSIONS IMPLEMENTED 2026-08-02; EXACT-CURRENT
+ANDROID/WINDOWS/DEBIAN TWO-VIEWER FOCUS/BACKGROUND EXECUTION, CAPTURE-THROUGH-RENDER
+TIMESTAMPS, LATENCY/QUEUE BUDGETS, COLD RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW
+PENDING.** Platforms: shared controlled-side monitor/camera capture on Android and desktop servers,
+affecting every outgoing viewer platform. Endpoint/action: one source/display capture generation →
+per-connection bounded delivery → exact authenticated peer receipt → next shared capture generation.
+Boundary: one connection's suspension or non-reading state must remain local to that connection and
+must not pace unrelated healthy viewers.
+
+Source tracing found a second, independent head-of-line defect after the R-S11fk exact peer receipt
+correction. The inherited `VideoFrameController` represented each generation as pending and
+acknowledged connection-ID sets, considered the round complete only when every pending target was
+acknowledged, and made the one shared source/display capture loop wait in 300-millisecond slices for
+up to three seconds. The current upstream RustDesk `src/server/video_service.rs` retains that
+all-viewer barrier. With two viewers, one suspended/non-reading peer could therefore hold a healthy
+peer behind repeated shared waits even after the healthy peer returned exact authenticated receipts.
+This is source-proven cross-connection head-of-line blocking and is consistent with display-only
+delay while reverse-direction control remains responsive. It is not evidence that this exact path
+caused either unidentified older operational artifact or that current native artifacts reproduce
+the report.
+
+The smallest state correction keeps one bounded map per captured generation with exact
+`Pending`, `Retired`, or `Acknowledged` state for each targeted connection and one monotonic
+historical `progressed` bit. The first valid exact peer receipt permits the shared source/display
+capture loop to advance. Disconnecting that acknowledging peer cannot erase the historical event;
+disconnecting every target releases an obsolete wait; and a single-viewer round still waits for its
+one peer. Local candidate supersession changes only that target from pending to retired and does not
+constitute peer progress, so a set of connected but entirely stalled viewers cannot turn candidate
+retirement into an unpaced capture/encode spin. The existing per-connection one-unreceipted-frame
+and constant-space GOP-aware successor bounds are unchanged. A pending explicit refresh now exits
+the obsolete wait on the existing 300-millisecond polling boundary. No protocol field, queue, task,
+thread, runtime, recurring timer, dependency, local-writer fallback, presentation acknowledgement,
+or reconnect workaround was added.
+
+Regression development was deliberately red-first. After a container tmpfs ownership setup error
+stopped before compilation, the corrected confined command compiled the old production behavior:
+the new multi-viewer test failed because one healthy exact receipt did not release the all-target
+barrier. The first post-change full module run then exposed a real race in the initial implementation:
+removing the acknowledging connection also removed the only evidence of progress. The state was
+changed to retain the round's historical progress monotonically. Pinned Rustfmt 1.75.0 accepted the
+source, and the next complete focused module run reported `10 passed`, `0 failed`, `441 filtered`,
+covering source separation, exact receipt, acknowledging-peer disconnect, stale generation,
+all-disconnected release, local-supersession non-progress, refresh interruption, bounded controller
+registration, and prepare-before-enqueue. It ran in immutable image
+`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric
+UID/GID 1000:1000 with `--network=none`, no published port, a read-only root/source/vendor tree,
+all capabilities dropped, `no-new-privileges`, bounded resources, and private tmpfs build output.
+
+That evidence proves the compiled Linux state machine only. It did not start RustDesk, capture a
+screen, create a peer session, exercise a decoder/renderer, background Android, unfocus Windows,
+install an artifact, or touch the running host service. It does not establish a current release's
+latency or deployment safety. The required exact-current matrix must use at least two real viewers,
+hold one backgrounded/suspended while the other remains active, and measure monotonic
+capture/encode/write/peer-receive/decode/publication/render timestamps plus queue depth and recovery
+without reconnect. Android task-swipe/reopen and Windows focus/minimize/tab behavior remain explicit
+release blockers, along with current Debian controlled-side execution, cross-version disposition,
+clean cold artifacts, independent reproduction, and external review.
+
+No host RustDesk process/service/binary/configuration, host listener, firewall/UFW/nftables/iptables
+state, Docker image, or host network setting was inspected or changed. No root, sudo, privileged
+container, installed product, capture source, renderer, emulator, VM, or physical device ran.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -18780,7 +18843,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-13d795b6e09e83343cb145319734d39b965cf32127c3369ca38cee41d4a00a0e  requirements.html
+a86e80c8eee00658841927e5d7ef5770d8b80d30510e0911291d409ab834b90b  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -18813,3 +18876,4 @@ The same identity additionally binds R-S11fh and Appendix C #316.
 The same identity additionally binds R-S11fi and Appendix C #317.
 The same identity additionally binds R-S11fj and Appendix C #318.
 The same identity additionally binds R-S11fk and Appendix C #319.
+The same identity additionally binds R-S11fl and Appendix C #320.

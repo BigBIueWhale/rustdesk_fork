@@ -3631,28 +3631,48 @@ def validate(sources: Dict[str, str]) -> None:
         "controlled video acknowledgement round state",
     )
     require_order(
+        video_service,
+        (
+            "enum VideoFrameTargetState {",
+            "Pending,",
+            "Retired,",
+            "Acknowledged,",
+            "targets: HashMap<i32, VideoFrameTargetState>,",
+            "progressed: bool,",
+            "fn capture_may_advance(&self) -> bool",
+            "self.targets.is_empty() || self.progressed",
+        ),
+        "bounded per-target shared capture progress model",
+    )
+    require_order(
         video_ack_state,
         (
             "fn reset(&self)",
-            "round.pending.clear();",
-            "round.acknowledged.clear();",
+            "round.targets.clear();",
+            "round.progressed = false;",
             "fn prepare(&self, connection_ids: &HashSet<i32>, generation: u64) -> ResultType<()>",
             "generation == 0 || generation <= round.generation",
             "round.generation = generation;",
-            "round.pending.clone_from(connection_ids);",
-            "round.acknowledged.clear();",
+            "round.targets.clear();",
+            "round.targets.extend(",
+            "VideoFrameTargetState::Pending",
+            "round.progressed = false;",
             "fn acknowledge(&self, generation: u64, connection_id: i32)",
             "round.generation != generation",
-            "!round.pending.contains(&connection_id)",
-            "!round.acknowledged.insert(connection_id)",
+            "round.targets.get_mut(&connection_id)",
+            "*state != VideoFrameTargetState::Pending",
+            "*state = VideoFrameTargetState::Acknowledged;",
+            "round.progressed = true;",
             "fn retire_connection(&self, connection_id: i32)",
+            "round.targets.remove(&connection_id).is_some()",
             "fn retire(&self, generation: u64, connection_id: i32)",
             "round.generation != generation",
-            "!round.pending.remove(&connection_id)",
-            "fn wait_for_all(&self, timeout: Duration)",
-            ".wait_timeout_while(round, timeout, |round| !round.complete())",
+            "round.targets.get_mut(&connection_id)",
+            "*state = VideoFrameTargetState::Retired;",
+            "fn wait_for_progress(&self, timeout: Duration)",
+            ".wait_timeout_while(round, timeout, |round| !round.capture_may_advance())",
         ),
-        "bounded generation-exact pending/acknowledged video round",
+        "bounded generation-exact shared capture progress round",
     )
     video_ack_controller = extract_item(
         video_service,
@@ -3668,9 +3688,18 @@ def validate(sources: Dict[str, str]) -> None:
             "controllers.len() >= MAX_VIDEO_FRAME_ACK_CONTROLLERS",
             "controllers.insert(key, Arc::downgrade(&state));",
             "fn prepare(&self, connection_ids: &HashSet<i32>, generation: u64)",
-            "fn wait_for_all(&self, timeout: Duration)",
+            "fn wait_for_progress(&self, timeout: Duration)",
         ),
         "bounded exact source/display video controller registration",
+    )
+    require_order(
+        video_service,
+        (
+            "fn frame_wait_can_finish(",
+            "sp.is_option_true(OPTION_REFRESH)",
+            "frame_controller.wait_for_progress(timeout)",
+        ),
+        "refresh-interruptible shared video capture wait",
     )
     video_ack_drop = extract_item(
         video_service,
@@ -3724,9 +3753,9 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "let frame_controller = VideoFrameController::new(source, display_idx)?;",
             "frame_controller.reset();",
-            "frame_controller.wait_for_all(Duration::from_millis(300))",
+            "frame_wait_can_finish(&sp, &frame_controller, Duration::from_millis(300))",
         ),
-        "source-exact controlled video acknowledgement capture loop",
+        "source-exact progress-paced controlled video capture loop",
     )
     video_handle_one_frame = extract_item(
         video_service,
@@ -4104,13 +4133,15 @@ def validate(sources: Dict[str, str]) -> None:
     )
     for behavior_test in (
         "r_s11eg_monitor_and_camera_acknowledgements_are_source_exact",
-        "r_s11eg_only_pending_exact_connection_ids_complete_a_round",
         "r_s11eg_controller_registration_is_bounded_and_exactly_retired",
         "r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue",
         "r_s11fb_late_completion_cannot_satisfy_a_new_round",
         "r_s11fb_local_disconnect_retires_all_exact_pending_sources",
-        "r_s11fb_superseded_frame_retires_only_its_exact_round",
         "r_s11fk_controller_rejects_zero_and_reused_wire_generations",
+        "r_s11fl_one_exact_peer_receipt_paces_shared_capture_without_the_slow_peer",
+        "r_s11fl_superseded_frame_is_not_peer_progress_for_its_exact_round",
+        "r_s11fl_empty_or_fully_disconnected_round_does_not_delay_capture",
+        "r_s11fl_refresh_interrupts_an_obsolete_capture_wait",
     ):
         require(video_service, behavior_test, f"video acknowledgement behavior proof {behavior_test}")
     for behavior_test in (
@@ -4191,10 +4222,31 @@ def validate(sources: Dict[str, str]) -> None:
         "controlled video exact peer receipt hardening ledger",
     )
     require(
+        sources["requirements"],
+        '<span class="id">R-S11fl</span>',
+        "controlled video shared capture pacing normative requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>320</td>",
+        "controlled video shared capture pacing Appendix C disposition",
+    )
+    require(
+        sources["hardening"],
+        "R-S11fl/R-S11e-199 controlled-video shared capture pacing",
+        "controlled video shared capture pacing hardening ledger",
+    )
+    require(
         sources["verify"],
         '"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\n'
         "  server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1",
         "shared controlled video acknowledgement behavior gate wiring",
+    )
+    require(
+        sources["verify"],
+        '"${RUN[@]}" cargo test --lib --features linux-pkg-config \\\n'
+        "  server::video_service::video_frame_ack_tests::r_s11fl_ -- --test-threads=1",
+        "shared controlled video pacing behavior gate wiring",
     )
     require(
         sources["verify"],
@@ -4226,6 +4278,11 @@ def validate(sources: Dict[str, str]) -> None:
         sources["dart_verify"],
         "server::video_service::video_frame_ack_tests::r_s11eg_",
         "generated-bridge controlled video acknowledgement behavior gate wiring",
+    )
+    require(
+        sources["dart_verify"],
+        "server::video_service::video_frame_ack_tests::r_s11fl_",
+        "generated-bridge controlled video pacing behavior gate wiring",
     )
     require(
         sources["dart_verify"],
@@ -5486,11 +5543,16 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("dart_verify", "server::video_service::screenshot_ownership_tests::r_s11ef_", "server::video_service::screenshot_ownership_tests::disabled_", "generated-bridge controlled screenshot behavior gate"),
     ("video_service", "const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = 64;", "const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = usize::MAX;", "video acknowledgement controller capacity"),
     ("video_service", "static ref VIDEO_FRAME_ACK_CONTROLLERS: Mutex<HashMap<VideoFrameStreamKey, Weak<VideoFrameAckState>>> = Default::default();", "static ref VIDEO_FRAME_ACK_CONTROLLERS: Mutex<HashMap<usize, Arc<VideoFrameAckState>>> = Default::default();", "exact source/display video acknowledgement registry"),
-    ("video_service", "round.pending.clone_from(connection_ids);", "round.pending.clear();", "exact video acknowledgement round targets"),
+    ("video_service", "targets: HashMap<i32, VideoFrameTargetState>,", "targets: HashMap<i32, bool>,", "per-target shared video capture state"),
+    ("video_service", "self.targets.is_empty() || self.progressed", "self.targets.is_empty() && self.progressed", "one-peer-or-disconnected shared capture progress"),
+    ("video_service", "round.targets.extend(", "round.targets.extend_disabled(", "exact shared video capture round targets"),
     ("video_service", "generation == 0 || generation <= round.generation", "generation < round.generation", "nonzero strictly monotonic video acknowledgement generation"),
-    ("video_service", "if round.generation != generation\n            || !round.pending.contains(&connection_id)", "if !round.pending.contains(&connection_id)", "generation-exact video acknowledgement"),
-    ("video_service", "if round.generation != generation || !round.pending.remove(&connection_id) {", "if !round.pending.remove(&connection_id) {", "generation-exact intentional frame retirement"),
-    ("video_service", ".wait_timeout_while(round, timeout, |round| !round.complete())", ".wait_timeout_while(round, timeout, |_| false)", "condition-driven video acknowledgement wait"),
+    ("video_service", "if round.generation != generation {\n            return false;\n        }\n        let Some(state) = round.targets.get_mut(&connection_id)", "let Some(state) = round.targets.get_mut(&connection_id)", "generation-exact video acknowledgement"),
+    ("video_service", "*state = VideoFrameTargetState::Acknowledged;\n        round.progressed = true;", "*state = VideoFrameTargetState::Acknowledged;\n        round.progressed = false;", "monotonic exact peer progress publication"),
+    ("video_service", "let removed = round.targets.remove(&connection_id).is_some();", "let removed = false;", "all-disconnected shared capture release"),
+    ("video_service", "*state = VideoFrameTargetState::Retired;", "round.targets.remove(&connection_id);", "supersession is not peer progress"),
+    ("video_service", ".wait_timeout_while(round, timeout, |round| !round.capture_may_advance())", ".wait_timeout_while(round, timeout, |_| false)", "condition-driven video progress wait"),
+    ("video_service", "sp.is_option_true(OPTION_REFRESH) || frame_controller.wait_for_progress(timeout)", "frame_controller.wait_for_progress(timeout)", "refresh-interruptible shared video wait"),
     ("video_service", "controllers.retain(|_, state| state.strong_count() != 0);", "controllers.clear();", "live weak video controller retention"),
     ("video_service", "controllers.len() >= MAX_VIDEO_FRAME_ACK_CONTROLLERS", "false", "bounded video controller admission"),
     ("video_service", "controllers.insert(key, Arc::downgrade(&state));", "controllers.clear();", "weak video controller registration"),
@@ -5545,6 +5607,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("video_service", "r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue", "video_ack_prepare_order_test_disabled", "video acknowledgement prepare-order behavior proof"),
     ("video_service", "r_s11fb_late_completion_cannot_satisfy_a_new_round", "video_ack_stale_round_test_disabled", "video acknowledgement stale-round behavior proof"),
     ("video_service", "r_s11fk_controller_rejects_zero_and_reused_wire_generations", "video_wire_generation_test_disabled", "video wire generation behavior proof"),
+    ("video_service", "r_s11fl_one_exact_peer_receipt_paces_shared_capture_without_the_slow_peer", "video_shared_progress_test_disabled", "one-peer shared capture progress behavior proof"),
+    ("video_service", "r_s11fl_superseded_frame_is_not_peer_progress_for_its_exact_round", "video_supersession_progress_test_disabled", "supersession non-progress behavior proof"),
+    ("video_service", "r_s11fl_empty_or_fully_disconnected_round_does_not_delay_capture", "video_disconnected_release_test_disabled", "disconnected shared capture release behavior proof"),
+    ("video_service", "r_s11fl_refresh_interrupts_an_obsolete_capture_wait", "video_refresh_wait_test_disabled", "refresh-interruptible capture wait behavior proof"),
     ("server_connection", "r_s11fb_dependent_replacement_requests_an_independent_sequence", "video_egress_gop_test_disabled", "video egress GOP behavior proof"),
     ("server_connection", "r_s11fb_fresh_display_rejects_dependent_until_independent", "video_egress_fresh_gop_test_disabled", "fresh-display GOP behavior proof"),
     ("server_connection", "r_s11fb_closed_receiver_retires_a_stale_subscriber_enqueue", "video_egress_closed_receiver_test_disabled", "closed-receiver video retirement behavior proof"),
@@ -5564,13 +5630,18 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<span class="id">R-S11fk</span>', '<span class="id">R-S11fk-disabled</span>', "controlled video exact peer receipt requirement"),
     ("requirements", "<tr><td>319</td>", "<tr><td>319-disabled</td>", "controlled video exact peer receipt disposition"),
     ("hardening", "R-S11fk/R-S11e-198 controlled-video exact peer receipt", "R-S11fk-disabled/R-S11e-198 controlled-video exact peer receipt", "controlled video exact peer receipt hardening ledger"),
+    ("requirements", '<span class="id">R-S11fl</span>', '<span class="id">R-S11fl-disabled</span>', "controlled video shared capture pacing requirement"),
+    ("requirements", "<tr><td>320</td>", "<tr><td>320-disabled</td>", "controlled video shared capture pacing disposition"),
+    ("hardening", "R-S11fl/R-S11e-199 controlled-video shared capture pacing", "R-S11fl-disabled/R-S11e-199 controlled-video shared capture pacing", "controlled video shared capture pacing hardening ledger"),
     ("verify", "\"${RUN[@]}\" cargo test --lib --features linux-pkg-config \\\n  server::video_service::video_frame_ack_tests::r_s11eg_ -- --test-threads=1", "true # shared video acknowledgement behavior gate disabled", "shared controlled video acknowledgement behavior gate"),
+    ("verify", "\"${RUN[@]}\" cargo test --lib --features linux-pkg-config \\\n  server::video_service::video_frame_ack_tests::r_s11fl_ -- --test-threads=1", "true # shared video pacing behavior gate disabled", "shared controlled video pacing behavior gate"),
     ("verify", "\"${RUN[@]}\" cargo test --lib --features linux-pkg-config \\\n  server::connection::video_egress_tests::r_s11fb_ -- --test-threads=1", "true # shared video egress behavior gate disabled", "shared controlled video egress behavior gate"),
     ("verify", "\"${RUN[@]}\" cargo test -p hbb_common writer_receipt_tests::r_s11fb_ -- --test-threads=1", "true # shared writer receipt behavior gate disabled", "shared writer receipt behavior gate"),
     ("verify", "\"${RUN[@]}\" cargo test -p hbb_common writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read -- --test-threads=1", "true # shared real TCP boundary behavior gate disabled", "shared real TCP local-receipt boundary behavior gate"),
     ("verify", "\"${RUN[@]}\" cargo test --lib --features linux-pkg-config r_s11fk_ -- --test-threads=1", "true # shared exact peer receipt behavior gate disabled", "shared exact peer video receipt behavior gate"),
     ("verify", "\"${RUN[@]}\" cargo test -p hbb_common exact_video_receipt_wire_tests::r_s11fk_ -- --test-threads=1", "true # shared exact video wire behavior gate disabled", "shared exact video protocol wire behavior gate"),
     ("dart_verify", "server::video_service::video_frame_ack_tests::r_s11eg_", "server::video_service::video_frame_ack_tests::disabled_", "generated-bridge controlled video acknowledgement behavior gate"),
+    ("dart_verify", "server::video_service::video_frame_ack_tests::r_s11fl_", "server::video_service::video_frame_ack_tests::disabled_fl_", "generated-bridge controlled video pacing behavior gate"),
     ("dart_verify", "server::connection::video_egress_tests::r_s11fb_", "server::connection::video_egress_tests::disabled_", "generated-bridge controlled video egress behavior gate"),
     ("dart_verify", "writer_receipt_tests::r_s11fb_", "writer_receipt_tests::disabled_", "generated-bridge writer receipt behavior gate"),
     ("dart_verify", "writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read", "writer_receipt_tests::disabled_real_tcp_receipt_can_precede_peer_read", "generated-bridge real TCP local-receipt boundary behavior gate"),

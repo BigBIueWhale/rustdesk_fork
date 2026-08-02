@@ -1753,7 +1753,10 @@ impl TransferJob {
         }
     }
 
-    pub fn remove_download_file(&self) {
+    pub fn remove_download_file(&mut self) {
+        // Close the receive handle before unlinking. Unix permits unlinking an open file, but
+        // Windows does not generally permit deletion while this job still owns the handle.
+        drop(self.data_stream.take());
         if let DataSource::FilePath(p) = &self.data_source {
             let file_num = self.file_num as usize;
             if file_num < self.files.len() {

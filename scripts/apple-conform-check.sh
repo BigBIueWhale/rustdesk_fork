@@ -3523,11 +3523,11 @@ else
   rc=1
 fi
 
-echo "== (2g-c4) R-S11fg/R-S11fh shared viewer/controlled file-command finality =="
+echo "== (2g-c4) R-S11fg/R-S11fh/R-S11fi shared file-command and receive-persistence finality =="
 if python3 scripts/verify-viewer-file-finality.py --repo . --self-test; then
-  note "ok  R-S11fg/R-S11fh Apple/shared viewer and controlled-side file frames retain bounded exact local writer completion"
+  note "ok  R-S11fg/R-S11fh/R-S11fi Apple/shared file frames retain exact writer completion and local persistence failure is terminal"
 else
-  echo "  FAIL R-S11fg/R-S11fh Apple/shared file commands regained silent admission, discarded completion, ambiguous send progress, or unbounded writer ownership"
+  echo "  FAIL R-S11fg/R-S11fh/R-S11fi Apple/shared file commands regained silent admission, discarded completion, ambiguous send progress, unbounded ownership, or ignored local persistence failure"
   rc=1
 fi
 

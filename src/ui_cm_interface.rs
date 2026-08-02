@@ -1281,7 +1281,7 @@ async fn handle_fs(
             conn_id,
             generation,
         } => {
-            if let Some(job) =
+            if let Some(mut job) =
                 remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)
             {
                 job.job.remove_download_file();
@@ -1378,7 +1378,7 @@ async fn handle_fs(
                 ))
             };
             if let Err(error) = write_result {
-                if let Some(job) =
+                if let Some(mut job) =
                     remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)
                 {
                     job.job.remove_download_file();

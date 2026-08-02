@@ -397,6 +397,44 @@ struct ViewerFileWriteCompletion {
     result: Result<(), String>,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum ViewerFileBlockWrite {
+    NoActiveJob,
+    Written { update_status: bool },
+}
+
+#[derive(Debug, Eq, PartialEq)]
+struct ViewerFileBlockWriteFailure {
+    id: i32,
+    file_num: i32,
+    error: String,
+}
+
+async fn write_viewer_file_block(
+    write_jobs: &mut Vec<fs::TransferJob>,
+    block: FileTransferBlock,
+) -> Result<ViewerFileBlockWrite, ViewerFileBlockWriteFailure> {
+    let id = block.id;
+    let file_num = block.file_num;
+    let Some(job) = fs::get_job(id, write_jobs) else {
+        return Ok(ViewerFileBlockWrite::NoActiveJob);
+    };
+    let update_status = job.r#type == fs::JobType::Generic;
+    if let Err(error) = job.write(block).await {
+        let mut error = error.to_string();
+        match fs::remove_job(id, write_jobs) {
+            Some(mut job) => job.remove_download_file(),
+            None => error.push_str("; exact receive job disappeared before failure cleanup"),
+        }
+        return Err(ViewerFileBlockWriteFailure {
+            id,
+            file_num,
+            error,
+        });
+    }
+    Ok(ViewerFileBlockWrite::Written { update_status })
+}
+
 struct ViewerFileWriteTracker {
     next_id: u64,
     pending_bytes: usize,
@@ -2194,7 +2232,7 @@ impl<T: InvokeUiSession> Remote<T> {
         });
         msg_out.set_file_action(file_action);
         let sent = self.send_tracked_file_action(peer, &msg_out).await;
-        if let Some(job) = fs::remove_job(id, &mut self.write_jobs) {
+        if let Some(mut job) = fs::remove_job(id, &mut self.write_jobs) {
             job.remove_download_file();
         }
         let _ = fs::remove_job(id, &mut self.read_jobs);
@@ -2904,12 +2942,23 @@ impl<T: InvokeUiSession> Remote<T> {
                             }
                         }
                         Some(file_response::Union::Block(block)) => {
-                            if let Some(job) = fs::get_job(block.id, &mut self.write_jobs) {
-                                if let Err(_err) = job.write(block).await {
-                                    // to-do: add "skip" for writing job
+                            match write_viewer_file_block(&mut self.write_jobs, block).await {
+                                Ok(ViewerFileBlockWrite::NoActiveJob) => {}
+                                Ok(ViewerFileBlockWrite::Written { update_status }) => {
+                                    if update_status {
+                                        self.update_jobs_status();
+                                    }
                                 }
-                                if job.r#type == fs::JobType::Generic {
-                                    self.update_jobs_status();
+                                Err(failure) => {
+                                    let context = ViewerFileWriteContext::control(
+                                        Some(failure.id),
+                                        failure.file_num,
+                                        "receive file data",
+                                    );
+                                    return self.record_file_flow_failure(
+                                        context,
+                                        format!("local file write failed: {}", failure.error),
+                                    );
                                 }
                             }
                         }
@@ -3831,6 +3880,146 @@ mod tests {
         assert_eq!(completed.context, Some(context));
         assert!(completed.result.unwrap_err().contains("timed out"));
         assert!(tracker.is_empty());
+    }
+
+    struct ViewerFileTestDir {
+        path: PathBuf,
+    }
+
+    impl ViewerFileTestDir {
+        fn new() -> Self {
+            let nonce = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_nanos();
+            let path = std::env::temp_dir().join(format!(
+                "rustdesk_viewer_file_failure_{}_{}",
+                std::process::id(),
+                nonce
+            ));
+            std::fs::create_dir(&path).expect("create viewer file test directory");
+            Self { path }
+        }
+    }
+
+    impl Drop for ViewerFileTestDir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.path);
+        }
+    }
+
+    #[hbb_common::tokio::test]
+    async fn r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts() {
+        let temp = ViewerFileTestDir::new();
+        let mut entry = FileEntry::new();
+        entry.name = "incoming.bin".to_owned();
+        let job = fs::TransferJob::new_write(
+            73,
+            fs::JobType::Generic,
+            "remote.bin".to_owned(),
+            fs::DataSource::FilePath(temp.path.clone()),
+            0,
+            false,
+            true,
+            false,
+        )
+        .with_files(vec![entry])
+        .expect("create exact viewer receive job");
+        let download = temp.path.join("incoming.bin.download");
+        let digest = temp.path.join("incoming.bin.digest");
+        std::fs::write(&download, b"partial").expect("stage partial download");
+        std::fs::write(&digest, b"{}").expect("stage partial digest");
+        let mut jobs = vec![job];
+
+        let written = write_viewer_file_block(
+            &mut jobs,
+            FileTransferBlock {
+                id: 73,
+                file_num: 0,
+                data: vec![0x40].into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect("open the exact receive stream before the terminal failure");
+        assert_eq!(
+            written,
+            ViewerFileBlockWrite::Written {
+                update_status: true
+            }
+        );
+        assert_eq!(jobs.len(), 1);
+
+        let failure = write_viewer_file_block(
+            &mut jobs,
+            FileTransferBlock {
+                id: 73,
+                file_num: 1,
+                data: vec![0x41].into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect_err("an out-of-range peer file number must fail the exact receive job");
+
+        assert_eq!(failure.id, 73);
+        assert_eq!(failure.file_num, 1);
+        assert!(failure.error.contains("Wrong file number"));
+        assert!(jobs.is_empty(), "the failed exact receive job must retire");
+        assert!(!download.exists(), "the partial download must be removed");
+        assert!(!digest.exists(), "the partial digest must be removed");
+    }
+
+    #[cfg(unix)]
+    #[hbb_common::tokio::test]
+    async fn r_s11fi_incoming_nofollow_open_failure_retires_job_and_sidecars() {
+        let temp = ViewerFileTestDir::new();
+        let mut entry = FileEntry::new();
+        entry.name = "incoming.bin".to_owned();
+        let job = fs::TransferJob::new_write(
+            74,
+            fs::JobType::Generic,
+            "remote.bin".to_owned(),
+            fs::DataSource::FilePath(temp.path.clone()),
+            0,
+            false,
+            true,
+            false,
+        )
+        .with_files(vec![entry])
+        .expect("create exact viewer receive job");
+        let download = temp.path.join("incoming.bin.download");
+        let digest = temp.path.join("incoming.bin.digest");
+        std::os::unix::fs::symlink("forbidden-target", &download)
+            .expect("stage a no-follow receive target");
+        std::fs::write(&digest, b"{}").expect("stage partial digest");
+        let mut jobs = vec![job];
+
+        let failure = write_viewer_file_block(
+            &mut jobs,
+            FileTransferBlock {
+                id: 74,
+                file_num: 0,
+                data: vec![0x41].into(),
+                ..Default::default()
+            },
+        )
+        .await
+        .expect_err("a no-follow local receive-target failure must fail the exact job");
+
+        assert_eq!(failure.id, 74);
+        assert_eq!(failure.file_num, 0);
+        assert!(!failure.error.is_empty());
+        assert!(jobs.is_empty(), "the failed exact receive job must retire");
+        assert!(
+            std::fs::symlink_metadata(&download).is_err(),
+            "the rejected receive-target symlink must be removed"
+        );
+        assert!(!digest.exists(), "the partial digest must be removed");
+        assert!(
+            !temp.path.join("forbidden-target").exists(),
+            "cleanup must not follow the rejected target"
+        );
     }
 
     #[test]

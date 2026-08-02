@@ -9020,6 +9020,7 @@ fi
 "${RUN[@]}" cargo test -p hbb_common --lib fs::tests::r_s11fg_read_step_returns_the_exact_file_frame_receipt --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::io_loop::tests::r_s11fg_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config server::connection::controlled_file_write_tests::r_s11fh_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::io_loop::tests::r_s11fi_ --color never
 if python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test; then
   echo "  ok  R-S11ex/R-S11fa/R-S11fc/R-S11ff desktop Flutter texture finality, presentation resumption, first-image admission, and viewer refresh have exact bounded owners"
 else
@@ -9027,9 +9028,9 @@ else
   rc=1
 fi
 if python3 scripts/verify-viewer-file-finality.py --repo . --self-test; then
-  echo "  ok  R-S11fg/R-S11fh viewer and controlled-side file frames retain bounded exact local writer completion"
+  echo "  ok  R-S11fg/R-S11fh/R-S11fi file frames retain exact writer completion and local persistence failure is terminal"
 else
-  echo "  FAIL R-S11fg/R-S11fh: file commands regained silent admission, discarded completion, ambiguous send progress, or unbounded writer ownership"
+  echo "  FAIL R-S11fg/R-S11fh/R-S11fi: file commands regained silent admission, discarded completion, ambiguous send progress, unbounded ownership, or ignored local persistence failure"
   rc=1
 fi
 grep -qF 'native_video_format_locally_unsupported(&lc.mark_unsupported, format)' src/client.rs ||

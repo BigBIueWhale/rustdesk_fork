@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify viewer and controlled-side file admission and exact writer finality."""
+"""Verify viewer/controlled file admission, exact writes, and receive failure finality."""
 
 from __future__ import annotations
 
@@ -354,6 +354,49 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(io_loop, "self.finish_file_flow();", "file flow final retirement")
 
+    receive_block = extract_rust_item(
+        io_loop, "async fn write_viewer_file_block", "incoming viewer file-block writer"
+    )
+    require_order(
+        receive_block,
+        (
+            "fs::get_job(id, write_jobs)",
+            "job.write(block).await",
+            "fs::remove_job(id, write_jobs)",
+            "job.remove_download_file()",
+            "Err(ViewerFileBlockWriteFailure",
+        ),
+        "exact receive job and partial artifacts retire before write failure returns",
+    )
+    receive_cleanup = extract_rust_item(
+        fs, "pub fn remove_download_file", "receive partial-artifact cleanup"
+    )
+    require_order(
+        receive_cleanup,
+        (
+            "drop(self.data_stream.take())",
+            "if let DataSource::FilePath(p) = &self.data_source",
+            "remove_recv_write_artifacts_no_follow(&path)",
+        ),
+        "receive handle closes before cross-platform partial-artifact removal",
+    )
+    peer_dispatch = extract_rust_item(
+        io_loop, "async fn handle_msg_from_peer", "viewer peer-message dispatch"
+    )
+    require_order(
+        peer_dispatch,
+        (
+            "write_viewer_file_block(&mut self.write_jobs, block).await",
+            "ViewerFileWriteContext::control(",
+            '"receive file data"',
+            "return self.record_file_flow_failure(",
+            'format!("local file write failed: {}", failure.error)',
+        ),
+        "incoming viewer write failure is exact-round terminal and visible",
+    )
+    forbid(io_loop, "if let Err(_err) = job.write(block).await", "discarded viewer write error")
+    forbid(io_loop, '// to-do: add "skip" for writing job', "obsolete viewer write-error to-do")
+
     init_jobs = extract_rust_item(fs, "async fn init_jobs", "common file job init")
     require(
         init_jobs,
@@ -552,6 +595,8 @@ def validate(sources: Dict[str, str]) -> None:
         "r_s11fh_controlled_file_writer_failure_and_retirement_are_explicit",
         "r_s11fh_controlled_file_writer_timeout_is_terminal_and_bounded",
         "r_s11fh_controlled_file_frame_retains_its_exact_keyed_writer_receipt",
+        "r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts",
+        "r_s11fi_incoming_nofollow_open_failure_retires_job_and_sidecars",
     ):
         require(fs + io_loop + server, f"fn {test}()", f"{test} regression")
 
@@ -569,6 +614,12 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         ("requirements", "<tr><td>316</td>", "Appendix C #316"),
         (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fi</span>',
+            "R-S11fi normative requirement",
+        ),
+        ("requirements", "<tr><td>317</td>", "Appendix C #317"),
+        (
             "hardening",
             "**R-S11fg/R-S11e-194 outgoing viewer file-command admission",
             "R-S11e-194 hardening ledger",
@@ -579,6 +630,11 @@ def validate(sources: Dict[str, str]) -> None:
             "R-S11e-195 hardening ledger",
         ),
         (
+            "hardening",
+            "**R-S11fi/R-S11e-196 incoming viewer file-block persistence failure",
+            "R-S11e-196 hardening ledger",
+        ),
+        (
             "verify",
             "python3 scripts/verify-viewer-file-finality.py --repo . --self-test",
             "shared focused verifier gate",
@@ -587,6 +643,11 @@ def validate(sources: Dict[str, str]) -> None:
             "verify",
             "server::connection::controlled_file_write_tests::r_s11fh_",
             "shared controlled file behavior gate",
+        ),
+        (
+            "verify",
+            "client::io_loop::tests::r_s11fi_",
+            "shared incoming file-write failure gate",
         ),
         (
             "apple",
@@ -607,6 +668,11 @@ def validate(sources: Dict[str, str]) -> None:
             "dart_verify",
             "server::connection::controlled_file_write_tests::r_s11fh_",
             "generated-bridge controlled file behavior gate",
+        ),
+        (
+            "dart_verify",
+            "client::io_loop::tests::r_s11fi_",
+            "generated-bridge incoming file-write failure gate",
         ),
         (
             "workspace",
@@ -675,14 +741,26 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("server", "controlled_file_response_context(&msg)", "None::<ControlledFileWriteContext>", "controlled send funnel classification"),
     ("server", "let retired_file_writes = conn.file_writes.retire();", "let retired_file_writes = Vec::new();", "controlled round receipt retirement"),
     ("server", "fn r_s11fh_controlled_file_frame_retains_its_exact_keyed_writer_receipt()", "fn controlled_file_frame_retains_its_exact_keyed_writer_receipt()", "controlled exact frame regression"),
+    ("io_loop", "async fn write_viewer_file_block", "async fn disabled_write_viewer_file_block", "incoming file-block writer"),
+    ("io_loop", "fs::remove_job(id, write_jobs)", "None", "failed receive-job retirement"),
+    ("io_loop", "Some(mut job) => job.remove_download_file()", "Some(_job) => {}", "failed receive-artifact cleanup"),
+    ("fs", "drop(self.data_stream.take())", "let _open_receive_handle = self.data_stream.as_ref()", "receive handle retirement before artifact cleanup"),
+    ("io_loop", "write_viewer_file_block(&mut self.write_jobs, block).await", "bypassed_incoming_block_writer(&mut self.write_jobs, block).await", "incoming block dispatch"),
+    ("io_loop", "fn r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts()", "fn incoming_write_failure_retires_exact_job_and_partial_artifacts()", "incoming write failure regression"),
+    ("io_loop", "fn r_s11fi_incoming_nofollow_open_failure_retires_job_and_sidecars()", "fn incoming_nofollow_open_failure_retires_job_and_sidecars()", "incoming no-follow open failure regression"),
     ("requirements", '<div class="req"><span class="id">R-S11fg</span>', '<div class="req"><span class="id">R-S11fg-disabled</span>', "normative requirement"),
     ("requirements", "<tr><td>315</td>", "<tr><td>315-disabled</td>", "Appendix disposition"),
     ("requirements", '<div class="req"><span class="id">R-S11fh</span>', '<div class="req"><span class="id">R-S11fh-disabled</span>', "controlled normative requirement"),
     ("requirements", "<tr><td>316</td>", "<tr><td>316-disabled</td>", "controlled Appendix disposition"),
+    ("requirements", '<div class="req"><span class="id">R-S11fi</span>', '<div class="req"><span class="id">R-S11fi-disabled</span>', "incoming write normative requirement"),
+    ("requirements", "<tr><td>317</td>", "<tr><td>317-disabled</td>", "incoming write Appendix disposition"),
     ("hardening", "**R-S11fg/R-S11e-194 outgoing viewer file-command admission", "**R-S11fg-disabled/R-S11e-194 outgoing viewer file-command admission", "hardening ledger"),
     ("hardening", "**R-S11fh/R-S11e-195 controlled-side file-response exact local writer finality", "**R-S11fh-disabled/R-S11e-195 controlled-side file-response exact local writer finality", "controlled hardening ledger"),
+    ("hardening", "**R-S11fi/R-S11e-196 incoming viewer file-block persistence failure", "**R-S11fi-disabled/R-S11e-196 incoming viewer file-block persistence failure", "incoming write hardening ledger"),
     ("verify", "server::connection::controlled_file_write_tests::r_s11fh_", "server::connection::controlled_file_write_tests::disabled_", "shared controlled behavior gate"),
     ("dart_verify", "server::connection::controlled_file_write_tests::r_s11fh_", "server::connection::controlled_file_write_tests::disabled_", "generated-bridge controlled behavior gate"),
+    ("verify", "client::io_loop::tests::r_s11fi_", "client::io_loop::tests::disabled_", "shared incoming write behavior gate"),
+    ("dart_verify", "client::io_loop::tests::r_s11fi_", "client::io_loop::tests::disabled_", "generated-bridge incoming write behavior gate"),
     ("verify", "python3 scripts/verify-viewer-file-finality.py --repo . --self-test", "python3 scripts/verify-viewer-file-finality.py --repo .", "shared mutation gate"),
     ("apple", "python3 scripts/verify-viewer-file-finality.py --repo . --self-test", "python3 scripts/verify-viewer-file-finality.py --repo .", "Apple mutation gate"),
     ("dart_verify", "client::io_loop::tests::r_s11fg_", "client::io_loop::tests::disabled_", "generated-bridge tracker gate"),

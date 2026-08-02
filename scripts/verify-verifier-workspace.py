@@ -16745,6 +16745,26 @@ def validate_viewer_file_finality_contract(sources):
             "viewer file exact-frame regression contract",
         ),
         (
+            '"async fn write_viewer_file_block"',
+            "incoming viewer file-block writer contract",
+        ),
+        (
+            '"drop(self.data_stream.take())"',
+            "incoming receive handle closes before cleanup contract",
+        ),
+        (
+            '"write_viewer_file_block(&mut self.write_jobs, block).await"',
+            "incoming viewer block-dispatch contract",
+        ),
+        (
+            '"r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts"',
+            "incoming viewer write-failure regression contract",
+        ),
+        (
+            '"r_s11fi_incoming_nofollow_open_failure_retires_job_and_sidecars"',
+            "incoming viewer no-follow open-failure regression contract",
+        ),
+        (
             '"const MAX_PENDING_CONTROLLED_FILE_WRITES: usize = 256;"',
             "controlled file receipt count-bound contract",
         ),
@@ -16858,6 +16878,41 @@ def validate_viewer_file_finality_contract(sources):
             "exact file-block receipt mutation",
         ),
         (
+            '("io_loop", "async fn write_viewer_file_block", '
+            '"async fn disabled_write_viewer_file_block", '
+            '"incoming file-block writer"),',
+            "incoming file-block writer mutation",
+        ),
+        (
+            '("io_loop", "Some(mut job) => job.remove_download_file()", '
+            '"Some(_job) => {}", "failed receive-artifact cleanup"),',
+            "incoming file artifact-cleanup mutation",
+        ),
+        (
+            '("fs", "drop(self.data_stream.take())", '
+            '"let _open_receive_handle = self.data_stream.as_ref()", '
+            '"receive handle retirement before artifact cleanup"),',
+            "incoming receive-handle retirement mutation",
+        ),
+        (
+            '("io_loop", "write_viewer_file_block(&mut self.write_jobs, block).await", '
+            '"bypassed_incoming_block_writer(&mut self.write_jobs, block).await", '
+            '"incoming block dispatch"),',
+            "incoming block dispatch mutation",
+        ),
+        (
+            '("io_loop", "fn r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts()", '
+            '"fn incoming_write_failure_retires_exact_job_and_partial_artifacts()", '
+            '"incoming write failure regression"),',
+            "incoming write-failure regression mutation",
+        ),
+        (
+            '("io_loop", "fn r_s11fi_incoming_nofollow_open_failure_retires_job_and_sidecars()", '
+            '"fn incoming_nofollow_open_failure_retires_job_and_sidecars()", '
+            '"incoming no-follow open failure regression"),',
+            "incoming no-follow open-failure regression mutation",
+        ),
+        (
             '("dart_model", "unawaited(future.catchError((Object error) {", '
             '"future.catchError((Object error) {", "owned event future"),',
             "owned Dart event-future mutation",
@@ -16929,6 +16984,16 @@ def validate_viewer_file_finality_contract(sources):
         "controlled file generated-bridge behavior gate",
     )
     require_text(
+        sources["verify"],
+        "client::io_loop::tests::r_s11fi_",
+        "incoming viewer write-failure shared behavior gate",
+    )
+    require_text(
+        sources["dart_verify"],
+        "client::io_loop::tests::r_s11fi_",
+        "incoming viewer write-failure generated-bridge behavior gate",
+    )
+    require_text(
         sources["requirements"],
         '<div class="req"><span class="id">R-S11fg</span>',
         "viewer file finality requirement",
@@ -16942,6 +17007,21 @@ def validate_viewer_file_finality_contract(sources):
         sources["hardening"],
         "**R-S11fg/R-S11e-194 outgoing viewer file-command admission",
         "viewer file finality hardening ledger",
+    )
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11fi</span>',
+        "incoming viewer write-failure requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>317</td>",
+        "incoming viewer write-failure Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11fi/R-S11e-196 incoming viewer file-block persistence failure",
+        "incoming viewer write-failure hardening ledger",
     )
     require_text(
         sources["requirements"],
@@ -53812,6 +53892,134 @@ def run_source_mutations(sources):
             "**R-S11fh/R-S11e-195 controlled-side file-response exact local writer finality",
             "**R-S11fh-disabled/R-S11e-195 controlled-side file-response exact local writer finality",
             "controlled file finality hardening ledger",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '    receive_block = extract_rust_item(\n'
+            '        io_loop, "async fn write_viewer_file_block", "incoming viewer file-block writer"\n'
+            '    )',
+            '    receive_block = extract_rust_item(\n'
+            '        io_loop, "async fn disabled_write_viewer_file_block", "incoming viewer file-block writer"\n'
+            '    )',
+            "incoming viewer file-block writer contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '("io_loop", "async fn write_viewer_file_block", '
+            '"async fn disabled_write_viewer_file_block", '
+            '"incoming file-block writer"),',
+            '("io_loop", "async fn write_viewer_file_block", '
+            '"async fn bypassed_write_viewer_file_block", '
+            '"incoming file-block writer"),',
+            "incoming file-block writer mutation",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '"Some(mut job) => job.remove_download_file()"',
+            '"Some(_job) => {}"',
+            "incoming file artifact-cleanup mutation",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '            "drop(self.data_stream.take())",\n'
+            '            "if let DataSource::FilePath(p) = &self.data_source",',
+            '            "let _open_receive_handle = self.data_stream.as_ref()",\n'
+            '            "if let DataSource::FilePath(p) = &self.data_source",',
+            "incoming receive handle closes before cleanup contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '("fs", "drop(self.data_stream.take())", '
+            '"let _open_receive_handle = self.data_stream.as_ref()", '
+            '"receive handle retirement before artifact cleanup"),',
+            '("fs", "drop(self.data_stream.take())", '
+            '"let _open_receive_handle = self.data_stream.take()", '
+            '"receive handle retirement before artifact cleanup"),',
+            "incoming receive-handle retirement mutation",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '            "write_viewer_file_block(&mut self.write_jobs, block).await",\n'
+            '            "ViewerFileWriteContext::control(",',
+            '            "bypassed_incoming_block_writer(&mut self.write_jobs, block).await",\n'
+            '            "ViewerFileWriteContext::control(",',
+            "incoming viewer block-dispatch contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '("io_loop", "write_viewer_file_block(&mut self.write_jobs, block).await", '
+            '"bypassed_incoming_block_writer(&mut self.write_jobs, block).await", '
+            '"incoming block dispatch"),',
+            '("io_loop", "write_viewer_file_block(&mut self.write_jobs, block).await", '
+            '"bypassed_incoming_block_writer_without_proof(&mut self.write_jobs, block).await", '
+            '"incoming block dispatch"),',
+            "incoming block dispatch mutation",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '        "r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts",\n'
+            '        "r_s11fi_incoming_nofollow_open_failure_retires_job_and_sidecars",',
+            '        "incoming_write_failure_retires_exact_job_and_partial_artifacts",\n'
+            '        "r_s11fi_incoming_nofollow_open_failure_retires_job_and_sidecars",',
+            "incoming viewer write-failure regression contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '        "r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts",\n'
+            '        "r_s11fi_incoming_nofollow_open_failure_retires_job_and_sidecars",',
+            '        "r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts",\n'
+            '        "incoming_nofollow_open_failure_retires_job_and_sidecars",',
+            "incoming viewer no-follow open-failure regression contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '("io_loop", "fn r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts()", '
+            '"fn incoming_write_failure_retires_exact_job_and_partial_artifacts()", '
+            '"incoming write failure regression"),',
+            '("io_loop", "fn r_s11fi_incoming_write_failure_retires_exact_job_and_partial_artifacts()", '
+            '"fn bypassed_incoming_write_failure_retires_exact_job_and_partial_artifacts()", '
+            '"incoming write failure regression"),',
+            "incoming write-failure regression mutation",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '("io_loop", "fn r_s11fi_incoming_nofollow_open_failure_retires_job_and_sidecars()", '
+            '"fn incoming_nofollow_open_failure_retires_job_and_sidecars()", '
+            '"incoming no-follow open failure regression"),',
+            '("io_loop", "fn r_s11fi_incoming_nofollow_open_failure_retires_job_and_sidecars()", '
+            '"fn bypassed_incoming_nofollow_open_failure_retires_job_and_sidecars()", '
+            '"incoming no-follow open failure regression"),',
+            "incoming no-follow open-failure regression mutation",
+        ),
+        (
+            "verify",
+            "client::io_loop::tests::r_s11fi_",
+            "client::io_loop::tests::disabled_",
+            "incoming viewer write-failure shared behavior gate",
+        ),
+        (
+            "dart_verify",
+            "client::io_loop::tests::r_s11fi_",
+            "client::io_loop::tests::disabled_",
+            "incoming viewer write-failure generated-bridge behavior gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fi</span>',
+            '<div class="req"><span class="id">R-S11fi-disabled</span>',
+            "incoming viewer write-failure requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>317</td>",
+            "<tr><td>317-disabled</td>",
+            "incoming viewer write-failure Appendix C row",
+        ),
+        (
+            "hardening",
+            "**R-S11fi/R-S11e-196 incoming viewer file-block persistence failure",
+            "**R-S11fi-disabled/R-S11e-196 incoming viewer file-block persistence failure",
+            "incoming viewer write-failure hardening ledger",
         ),
         (
             "viewer_rgba_mailbox_verifier",

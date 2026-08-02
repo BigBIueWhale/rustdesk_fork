@@ -3647,8 +3647,9 @@ later slice is separate from this viewer result. Exact writer completion means t
 frame reached the local socket sink. It does not prove the remote peer received, decoded,
 accepted, or completed the operation. Existing authenticated `FileResponse` variants remain
 the sole peer semantic completion path. Neither slice adds a cosmetic ACK. Peer-response
-deadlines, incoming `job.write` error propagation, digest/check failure reporting, and full
-operation-level completion ownership remain subsequent file-flow audit work.
+deadlines, digest/check failure reporting, and full operation-level completion ownership remain
+subsequent file-flow audit work. Incoming viewer `job.write` failure is closed separately by
+R-S11fi.
 
 Current counted evidence remains narrower than device execution. A real keyed in-memory
 duplex test forces the exact file block to remain back-pressured, proves that its returned
@@ -3808,6 +3809,92 @@ full shared `scripts/verify.sh` and full `scripts/apple-conform-check.sh` transa
 their R-S11fh wiring is source-bound but is not represented as execution. The source mutation
 gates and generated-bridge shipped-feature transaction described above are exact-current-source
 evidence, not operational evidence.
+
+**R-S11fi/R-S11e-196 incoming viewer file-block persistence failure — SOURCE IMPLEMENTED
+2026-08-02; PINNED CONFINED RUST 1.75 SHIPPED-FEATURE COMPILE/TWO-TEST EXECUTION,
+FRESH GENERATED-BRIDGE TRANSACTION, FOCUSED 65-MUTATION GATE, AND COMPLETE INDEPENDENT
+SOURCE-MUTATION MATRIX PASS; FULL SHARED/APPLE GATES, NATIVE DEVICE/PEER/ARTIFACT
+EXECUTION, REAL DISK-FULL/PARTIAL-WRITE REPRODUCTION, PERFORMANCE, COLD RELEASE,
+INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW OPEN.** Platforms: the shared outgoing viewer
+on Android, iOS, Windows, Linux, and macOS. Endpoint/action: authenticated controlled-peer
+`FileResponse::Block` → exact viewer receive job → local no-follow receive writer. Boundary:
+peer-declared block progress → actual local filesystem persistence → viewer job/UI status.
+
+Read-only tracing proved a concrete present-source state error. The block handler awaited
+`TransferJob::write` but discarded every returned error behind a `to-do`. Failed no-follow open,
+decompression, seek, or asynchronous write could therefore leave the exact receive job and its
+partial `.download`/`.digest` state active. Later blocks continued and a peer `Done` could be
+presented as completion despite the earlier local persistence failure. Tokio's `write_all` loops
+over partial writes, so an eventual error does not authorize treating the destination as untouched.
+This is shared file-state/finality debt. It is not evidence of an operational disk failure, a
+reported display-delay cause, a listener, a host-service change, or compromise.
+
+One result-bearing `write_viewer_file_block` helper now owns the complete transition. A block for
+no active exact job remains inert. A successful write preserves the existing progress update.
+Any write error removes the exact job and calls its existing handle-relative/no-follow partial
+artifact cleanup before returning the peer-derived job/file identity and local error. Final source
+review found and closed a cross-platform ownership defect in that first implementation: the job
+could still own an open receive handle when cleanup ran, which Unix tolerates but Windows normally
+rejects. `TransferJob::remove_download_file` now takes mutable access to the job state and drops
+the exact `data_stream` before its no-follow cleanup; the existing viewer-cancel and controlled-
+manager error/cancel callers use that same order. The receiver
+records that result in the existing per-round `file_flow_failure` owner and terminates the exact
+round. Final file-flow retirement reports the identified failure plus other active jobs, while
+connection teardown makes later block/`Done` traffic unreachable on the poisoned state and retains
+the existing fresh-connection resume model. The discarded-error branch and `to-do` are deleted.
+No per-job cancel, tombstone cache, compatibility state, task, thread, runtime, timer, dependency,
+fallback, reconnect workaround, protocol field, or acknowledgement was added.
+
+The deterministic regressions first stage real `incoming.bin.download` and `incoming.bin.digest`
+artifacts for job 73, send a valid block through the production helper to open and retain the exact
+receive stream, then feed it an out-of-range authenticated block shape and prove the exact error
+identity, empty job set, and removal of both sidecars. A Unix regression then
+places a rejected symlink at the real `.download` target for job 74, exercises the production
+no-follow open failure, and proves exact job retirement, sidecar removal, and that cleanup never
+follows the rejected target. This is a real filesystem-open failure but not disk-full, partial-write,
+device, peer, or installed-artifact evidence. The focused verifier binds helper ordering, receiver
+terminal dispatch, receive-handle-close-before-cleanup ordering, old discard absence, both tests,
+R-S11fi, Appendix C #317, and this ledger with deliberate mutations.
+
+Exact-current counted evidence is confined and source-level. The focused verifier passed all 65
+deliberate mutations. Normal independent workspace validation and its complete source-mutation
+matrix passed after two uncounted fixture-quality attempts: the first proved that an outer
+meta-mutation could damage the focused handle-retirement validator while matching the same token
+in its mutation inventory, and the second correctly rejected that damage but exposed a stale
+expected rejection label. The outer verifier now inspects the focused validation function itself
+and expects its precise rejection. Pinned Rust 1.75 `rustfmt 1.7.0-stable` passed all three changed
+Rust files. Two earlier formatter setup attempts stopped before formatting—first because a 1-GiB
+private tmpfs could not hold the extracted toolchain, then because a rustfmt-only install omitted
+its matching `rustc_driver`; neither is counted.
+
+The exact-current canonical `scripts/dart-verify.sh` transaction exited zero. It reverified offline
+closure `a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`, generated and
+atomically published a fresh bridge in its private snapshot, formatted 17 authored Dart files with
+zero changes, reported zero Flutter analysis issues, passed all selected Flutter and native/
+portable texture suites, compiled the shipped Rust library with
+`flutter,unix-file-copy-paste`, and passed both R-S11fi tests (2 passed, 0 failed, 456 filtered).
+The first test opened and retained the production receive stream before the terminal invalid-block
+failure. The run emitted the known non-fatal FRB `Dart_Handle` diagnostic and the broad existing
+66-warning shipped-feature Rust set; no warning-free claim is made. Its final closure and source-
+worktree integrity checks passed. A separate earlier confined lean-feature execution passed the two
+pre-handle-order versions of these regressions with 437 filtered; it is superseded and not used as
+exact-current evidence. The compiler first caught test-only protobuf payload type mismatches, which
+were corrected before any counted pass. The focused verifier likewise first exposed a mutation
+replacement that retained the checked substring; that attempt is not counted.
+
+Full shared `scripts/verify.sh` and full `scripts/apple-conform-check.sh` transactions were not run;
+their R-S11fi wiring is source-bound but is not represented as execution. The workspace verifier's
+source-mutation mode passed; its full behavioral self-test was not counted because that path expects
+a live per-user systemd bus, and no host bus was mounted into the container.
+
+This slice closes incoming viewer block-write error propagation only. Peer-response deadlines,
+digest/check failure reporting, complete operation-level completion ownership, real disk-full/
+partial-write and cross-version peer reproduction, native Android/Windows/macOS/iOS execution,
+sustained throughput/latency/memory/deadline budgets, exact older/current artifact identity, clean
+cold R-B2/R-B10 artifacts, separately repeated reproduction, and external review remain explicit
+release blockers. No RustDesk process, listener, real socket, peer, renderer, installed app,
+emulator, VM, device, host service, host firewall, or host network state was used or changed by the
+source edit and deterministic no-listener regression.
 
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
@@ -18333,7 +18420,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-b4495dfe358d01b9b52730605db808d03d9d430e4a2cff94f4f4aa0c3c1291d9  requirements.html
+855fc6fe45e399bf60606c2554a271da3ef758f940ec45646a6e9230224dfb99  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -18362,3 +18449,5 @@ The same identity additionally binds R-S11fa and Appendix C #309.
 The same identity additionally binds R-S11fb and Appendix C #310.
 The same identity additionally binds R-S11ff and Appendix C #314.
 The same identity additionally binds R-S11fg and Appendix C #315.
+The same identity additionally binds R-S11fh and Appendix C #316.
+The same identity additionally binds R-S11fi and Appendix C #317.

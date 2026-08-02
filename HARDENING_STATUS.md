@@ -4364,8 +4364,9 @@ Windows client/service, macOS/iOS app, real capture source, decoder, renderer, c
 Force-Stop transition, real peer display/control session, cross-version matrix, sustained performance soak, clean
 cold R-B2/R-B10 release, independent reproduction, or external review. It does not reproduce or close the reported
 display-only delay. No root, sudo, privileged container, host RustDesk process/service/binary/configuration, host
-listener, firewall/UFW/nftables/iptables state, Docker image, or host network setting was inspected, started,
-stopped, upgraded, or changed; no image was built, pulled, tagged, or modified.
+listener, firewall/UFW/nftables/iptables state, or host network setting was inspected, started, stopped, upgraded,
+or changed. The pre-existing immutable image metadata/inventory was inspected read-only and the image ran only
+under the confinement described above; no image was built, pulled, tagged, or modified.
 
 Excluded attempts remain visible. The first build never compiled because Rustup interpreted `1.75` as a channel
 sync and could not write its immutable root; using the exact installed `1.75.0-x86_64-unknown-linux-gnu`

@@ -13,6 +13,9 @@ use std::{
 };
 pub use tokio;
 pub use tokio_util;
+/// Exact controlled-video receipt contract: keyed parse of a nonzero display/generation frame,
+/// acknowledged before decode or presentation.
+pub const VIDEO_FRAME_RECEIPT_VERSION: u32 = 1;
 pub mod address;
 pub mod cpace;
 pub mod socket_client;
@@ -65,6 +68,62 @@ pub type SessionID = uuid::Uuid;
 #[inline]
 pub async fn sleep(sec: f32) {
     tokio::time::sleep(time::Duration::from_secs_f32(sec)).await;
+}
+
+#[cfg(test)]
+mod exact_video_receipt_wire_tests {
+    use crate::{
+        message_proto::{message, LoginRequest, Message, PeerInfo, VideoFrame, VideoFrameReceipt},
+        protobuf::Message as _,
+        VIDEO_FRAME_RECEIPT_VERSION,
+    };
+
+    #[test]
+    fn r_s11fk_wire_round_trips_exact_video_identity_and_capability() {
+        let mut video_message = Message::new();
+        video_message.set_video_frame(VideoFrame {
+            display: 3,
+            generation: 91,
+            ..Default::default()
+        });
+        let parsed = Message::parse_from_bytes(&video_message.write_to_bytes().unwrap()).unwrap();
+        let Some(message::Union::VideoFrame(frame)) = parsed.union else {
+            panic!("video frame must retain its top-level wire type");
+        };
+        assert_eq!((frame.display, frame.generation), (3, 91));
+
+        let mut receipt_message = Message::new();
+        receipt_message.set_video_frame_receipt(VideoFrameReceipt {
+            display: 3,
+            generation: 91,
+            ..Default::default()
+        });
+        let parsed = Message::parse_from_bytes(&receipt_message.write_to_bytes().unwrap()).unwrap();
+        let Some(message::Union::VideoFrameReceipt(receipt)) = parsed.union else {
+            panic!("video receipt must retain its top-level wire type");
+        };
+        assert_eq!((receipt.display, receipt.generation), (3, 91));
+
+        let login = LoginRequest {
+            video_frame_receipt_version: VIDEO_FRAME_RECEIPT_VERSION,
+            ..Default::default()
+        };
+        let parsed = LoginRequest::parse_from_bytes(&login.write_to_bytes().unwrap()).unwrap();
+        assert_eq!(
+            parsed.video_frame_receipt_version,
+            VIDEO_FRAME_RECEIPT_VERSION
+        );
+
+        let peer_info = PeerInfo {
+            video_frame_receipt_version: VIDEO_FRAME_RECEIPT_VERSION,
+            ..Default::default()
+        };
+        let parsed = PeerInfo::parse_from_bytes(&peer_info.write_to_bytes().unwrap()).unwrap();
+        assert_eq!(
+            parsed.video_frame_receipt_version,
+            VIDEO_FRAME_RECEIPT_VERSION
+        );
+    }
 }
 
 #[macro_export]

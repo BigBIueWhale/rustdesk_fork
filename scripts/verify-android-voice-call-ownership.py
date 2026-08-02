@@ -98,6 +98,9 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "transport_stream": (repo / "libs/hbb_common/src/stream.rs").read_text(
             encoding="utf-8"
         ),
+        "hbb_common_lib": (repo / "libs/hbb_common/src/lib.rs").read_text(
+            encoding="utf-8"
+        ),
         "message_proto": (repo / "libs/hbb_common/protos/message.proto").read_text(
             encoding="utf-8"
         ),
@@ -3633,8 +3636,9 @@ def validate(sources: Dict[str, str]) -> None:
             "fn reset(&self)",
             "round.pending.clear();",
             "round.acknowledged.clear();",
-            "fn prepare(&self, connection_ids: &HashSet<i32>) -> ResultType<u64>",
-            ".checked_add(1)",
+            "fn prepare(&self, connection_ids: &HashSet<i32>, generation: u64) -> ResultType<()>",
+            "generation == 0 || generation <= round.generation",
+            "round.generation = generation;",
             "round.pending.clone_from(connection_ids);",
             "round.acknowledged.clear();",
             "fn acknowledge(&self, generation: u64, connection_id: i32)",
@@ -3663,7 +3667,7 @@ def validate(sources: Dict[str, str]) -> None:
             ".and_then(Weak::upgrade)",
             "controllers.len() >= MAX_VIDEO_FRAME_ACK_CONTROLLERS",
             "controllers.insert(key, Arc::downgrade(&state));",
-            "fn prepare(&self, connection_ids: &HashSet<i32>)",
+            "fn prepare(&self, connection_ids: &HashSet<i32>, generation: u64)",
             "fn wait_for_all(&self, timeout: Duration)",
         ),
         "bounded exact source/display video controller registration",
@@ -3735,7 +3739,7 @@ def validate(sources: Dict[str, str]) -> None:
             "sp.send_video_frame_with_targets(",
             "frame_controller.key.source,",
             "frame_controller.key.display_idx,",
-            "|connection_ids| frame_controller.prepare(connection_ids)",
+            "|connection_ids, generation| frame_controller.prepare(connection_ids, generation)",
         ),
         "generation/source/display-exact video acknowledgement frame send",
     )
@@ -3759,12 +3763,17 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         service_video_send,
         (
+            "frame.generation != 0",
             "let conn_ids = lock.subscribes.keys().copied().collect::<HashSet<_>>();",
-            "let round = prepare(&conn_ids)?;",
+            "lock.video_frame_generation.checked_add(1)",
+            "lock.video_frame_generation = generation;",
+            "prepare(&conn_ids, generation)?;",
+            "frame.generation = generation;",
+            "let msg = Arc::new(msg);",
             "for subscriber in lock.subscribes.values_mut()",
-            "subscriber.send_video_frame(Arc::clone(&msg), source, display, round);",
+            "subscriber.send_video_frame(Arc::clone(&msg), source, display, generation);",
         ),
-        "video acknowledgement ownership precedes exact mailbox enqueue",
+        "service-lifetime wire generation and acknowledgement ownership precede mailbox enqueue",
     )
 
     server_connection = sources["server_connection"]
@@ -3825,7 +3834,8 @@ def validate(sources: Dict[str, str]) -> None:
             "fn send_video_frame(",
             "source: VideoSource,",
             "display: usize,",
-            "round: u64,",
+            "generation: u64,",
+            "frame.generation != generation",
             "starts_video_sequence(frame)",
             "state.displays.len() >= VIDEO_EGRESS_MAX_DISPLAYS",
             "let previous = slot.pending.take();",
@@ -3876,25 +3886,134 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "receiver closes admission before retiring exact connection ownership",
     )
+    pending_video_delivery = extract_item(
+        server_connection,
+        "impl PendingVideoDelivery",
+        "two-event exact peer video delivery",
+    )
+    require_order(
+        pending_video_delivery,
+        (
+            "writer_receipt: Some(writer_receipt)",
+            "writer_complete: false",
+            "peer_received: false",
+            "fn mark_writer_complete(&mut self)",
+            "self.writer_complete = true;",
+            "fn observe_peer_receipt(",
+            "authenticated_source != Some(self.identity.source)",
+            "usize::try_from(receipt.display).ok() != Some(self.identity.display)",
+            "receipt.generation == 0",
+            "receipt.generation != self.identity.generation",
+            "self.peer_received = true;",
+            "fn is_complete(&self)",
+            "self.writer_complete && self.peer_received",
+        ),
+        "exact writer and authenticated peer receipt conjunction",
+    )
+    complete_video_delivery = extract_item(
+        server_connection,
+        "fn complete_video_delivery",
+        "exact video delivery completion",
+    )
+    require_order(
+        complete_video_delivery,
+        (
+            "PendingVideoDelivery::is_complete",
+            "let Some(pending) = pending.take()",
+            "video_service::notify_video_frame_fetched(",
+            "pending.identity.source,",
+            "pending.identity.display,",
+            "pending.identity.generation,",
+        ),
+        "capture progress only after the two-event conjunction",
+    )
     require_order(
         server_connection,
         (
             "let mut rx_video = rx_video.with_connection_owner(id);",
-            "completion = wait_for_video_write(&mut pending_video_write)",
-            "let Some(pending) = pending_video_write.take()",
+            "Some(message::Union::VideoFrameReceipt(receipt))",
+            "conn.authenticated_video_source()",
+            "complete_video_delivery(&mut pending_video_delivery, id);",
+            "completion = wait_for_video_write(&mut pending_video_delivery)",
             "Ok(Ok(()))",
-            "video_service::notify_video_frame_fetched(",
-            "pending.source,",
-            "pending.display,",
-            "pending.round,",
-            "item = rx_video.recv(), if pending_video_write.is_none()",
+            "pending.mark_writer_complete();",
+            "complete_video_delivery(&mut pending_video_delivery, id);",
+            "item = rx_video.recv(), if pending_video_delivery.is_none()",
             "conn.stream.send_with_receipt(frame.message.as_ref()).await",
-            "source: frame.identity.source,",
-            "display: frame.identity.display,",
-            "round: frame.identity.round,",
+            "Some(PendingVideoDelivery::new(receipt, &frame))",
             "video_service::retire_video_frame_connection(id);",
         ),
-        "exact sole-writer completion before generation acknowledgement",
+        "either-order writer and exact peer receipt ownership before generation acknowledgement",
+    )
+    require_order(
+        server_connection,
+        (
+            "fn login_video_frame_receipt_version_is_compatible",
+            "login.video_frame_receipt_version == VIDEO_FRAME_RECEIPT_VERSION",
+            "if !login_video_frame_receipt_version_is_compatible(&lr)",
+            '"Incompatible remote video protocol. Upgrade both RustDesk peers."',
+            "fn authenticated_video_source(&self) -> Option<VideoSource>",
+            "Some(VideoSource::Monitor)",
+            "Some(VideoSource::Camera)",
+        ),
+        "video capability refusal and authenticated source derivation",
+    )
+
+    viewer_receipts = extract_item(
+        sources["io_loop"],
+        "impl VideoFrameReceiptTracker",
+        "viewer exact video receipt tracker",
+    )
+    require_order(
+        viewer_receipts,
+        (
+            "display >= MAX_PEER_VIDEO_DISPLAYS",
+            "generation == 0",
+            "generation <= *last",
+            "self.last_generation.insert(display, generation);",
+            "VideoFrameReceipt {",
+            "display: i32::try_from(display)",
+            "generation,",
+        ),
+        "bounded nonzero monotonic per-display viewer receipt identity",
+    )
+    require_order(
+        sources["io_loop"],
+        (
+            "self.video_frame_receipts_negotiated = false;",
+            "self.video_frame_receipt_tracker.reset();",
+            "Some(message::Union::VideoFrame(vf))",
+            "if !self.video_frame_receipts_negotiated",
+            "native_video_frame_runtime_supported(&vf)",
+            "Self::native_video_frame_within_limit(&vf)",
+            "let Ok(display) = usize::try_from(vf.display)",
+            "self.accept_peer_video_display(display)",
+            ".admit(display, vf.generation)",
+            "receipt_message.set_video_frame_receipt(receipt);",
+            "peer.send(&receipt_message).await",
+            "if !self.first_frame",
+            "self.new_video_thread(display);",
+            "thread.media_thread.admit_frame(vf, is_keyframe)",
+        ),
+        "viewer receipt after keyed parse/identity validation and before decode publication",
+    )
+    require_order(
+        sources["io_loop"],
+        (
+            "pi.video_frame_receipt_version != VIDEO_FRAME_RECEIPT_VERSION",
+            '"Incompatible remote video protocol"',
+            "self.video_frame_receipts_negotiated =",
+        ),
+        "viewer requires the echoed exact receipt capability",
+    )
+    require_order(
+        sources["client"],
+        (
+            "video_frame_receipt_version: if matches!(",
+            "ConnType::DEFAULT_CONN | ConnType::VIEW_CAMERA",
+            "VIDEO_FRAME_RECEIPT_VERSION",
+        ),
+        "viewer advertises exact receipts only for video sessions",
     )
 
     transport_tcp = sources["transport_tcp"]
@@ -3952,7 +4071,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["message_proto"],
-        "reserved 12; // retired displayless video acknowledgement; local exact writer receipts own pacing",
+        "reserved 12; // retired displayless acknowledgement; versioned top-level exact receipts own peer progress",
         "retired displayless video acknowledgement tag reservation",
     )
     forbid(
@@ -3965,6 +4084,24 @@ def validate(sources: Dict[str, str]) -> None:
         "video_received = 12",
         "unused displayless peer video acknowledgement",
     )
+    for exact_wire_field, label in (
+        ("uint64 generation = 15;", "nonzero video wire generation"),
+        ("message VideoFrameReceipt {", "typed exact video receipt"),
+        ("uint32 video_frame_receipt_version = 18;", "viewer receipt capability"),
+        ("uint32 video_frame_receipt_version = 14;", "controlled receipt capability echo"),
+        ("VideoFrameReceipt video_frame_receipt = 33;", "top-level exact video receipt"),
+    ):
+        require(sources["message_proto"], exact_wire_field, label)
+    require(
+        sources["hbb_common_lib"],
+        "pub const VIDEO_FRAME_RECEIPT_VERSION: u32 = 1;",
+        "shared exact video receipt protocol version",
+    )
+    require(
+        sources["hbb_common_lib"],
+        "r_s11fk_wire_round_trips_exact_video_identity_and_capability",
+        "exact video protocol wire round-trip behavior proof",
+    )
     for behavior_test in (
         "r_s11eg_monitor_and_camera_acknowledgements_are_source_exact",
         "r_s11eg_only_pending_exact_connection_ids_complete_a_round",
@@ -3973,6 +4110,7 @@ def validate(sources: Dict[str, str]) -> None:
         "r_s11fb_late_completion_cannot_satisfy_a_new_round",
         "r_s11fb_local_disconnect_retires_all_exact_pending_sources",
         "r_s11fb_superseded_frame_retires_only_its_exact_round",
+        "r_s11fk_controller_rejects_zero_and_reused_wire_generations",
     ):
         require(video_service, behavior_test, f"video acknowledgement behavior proof {behavior_test}")
     for behavior_test in (
@@ -3984,8 +4122,22 @@ def validate(sources: Dict[str, str]) -> None:
         "r_s11fb_display_ownership_is_fixed_capacity",
         "r_s11fb_async_video_egress_waits_without_polling_and_closes",
         "r_s11fb_closed_receiver_retires_a_stale_subscriber_enqueue",
+        "r_s11fk_local_write_then_exact_peer_receipt_completes_once",
+        "r_s11fk_exact_peer_receipt_then_local_write_completes",
+        "r_s11fk_wrong_scope_zero_stale_and_mismatched_receipts_are_inert",
+        "r_s11fk_video_login_requires_exact_version_without_affecting_nonvideo_sessions",
     ):
         require(server_connection, behavior_test, f"video egress behavior proof {behavior_test}")
+    for behavior_test in (
+        "r_s11fk_viewer_receipts_are_nonzero_display_exact_and_monotonic",
+        "r_s11fk_viewer_receipt_tracker_resets_only_at_connection_replacement",
+    ):
+        require(sources["io_loop"], behavior_test, f"viewer exact receipt behavior proof {behavior_test}")
+    require(
+        sources["client"],
+        "r_s11fk_login_negotiates_exact_receipts_only_for_video_sessions",
+        "viewer login capability behavior proof",
+    )
     for behavior_test in (
         "r_s11fb_receipt_waits_for_the_exact_sink_send",
         "r_s11fb_receipt_reports_the_exact_sink_failure",
@@ -4057,6 +4209,16 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["verify"],
+        '"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11fk_ -- --test-threads=1',
+        "shared exact peer video receipt behavior gate wiring",
+    )
+    require(
+        sources["verify"],
+        '"${RUN[@]}" cargo test -p hbb_common exact_video_receipt_wire_tests::r_s11fk_ -- --test-threads=1',
+        "shared exact video protocol wire behavior gate wiring",
+    )
+    require(
+        sources["verify"],
         '"${RUN[@]}" cargo test -p hbb_common writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read -- --test-threads=1',
         "shared real TCP local-receipt boundary behavior gate wiring",
     )
@@ -4074,6 +4236,16 @@ def validate(sources: Dict[str, str]) -> None:
         sources["dart_verify"],
         "writer_receipt_tests::r_s11fb_",
         "generated-bridge exact writer receipt behavior gate wiring",
+    )
+    require(
+        sources["dart_verify"],
+        "      r_s11fk_ -- --test-threads=1",
+        "generated-bridge exact peer video receipt behavior gate wiring",
+    )
+    require(
+        sources["dart_verify"],
+        "exact_video_receipt_wire_tests::r_s11fk_",
+        "generated-bridge exact video protocol wire behavior gate wiring",
     )
     require(
         sources["dart_verify"],
@@ -5315,7 +5487,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("video_service", "const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = 64;", "const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = usize::MAX;", "video acknowledgement controller capacity"),
     ("video_service", "static ref VIDEO_FRAME_ACK_CONTROLLERS: Mutex<HashMap<VideoFrameStreamKey, Weak<VideoFrameAckState>>> = Default::default();", "static ref VIDEO_FRAME_ACK_CONTROLLERS: Mutex<HashMap<usize, Arc<VideoFrameAckState>>> = Default::default();", "exact source/display video acknowledgement registry"),
     ("video_service", "round.pending.clone_from(connection_ids);", "round.pending.clear();", "exact video acknowledgement round targets"),
-    ("video_service", ".checked_add(1)", ".wrapping_add(1)", "checked monotonic video acknowledgement generation"),
+    ("video_service", "generation == 0 || generation <= round.generation", "generation < round.generation", "nonzero strictly monotonic video acknowledgement generation"),
     ("video_service", "if round.generation != generation\n            || !round.pending.contains(&connection_id)", "if !round.pending.contains(&connection_id)", "generation-exact video acknowledgement"),
     ("video_service", "if round.generation != generation || !round.pending.remove(&connection_id) {", "if !round.pending.remove(&connection_id) {", "generation-exact intentional frame retirement"),
     ("video_service", ".wait_timeout_while(round, timeout, |round| !round.complete())", ".wait_timeout_while(round, timeout, |_| false)", "condition-driven video acknowledgement wait"),
@@ -5325,8 +5497,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("video_service", "Arc::ptr_eq(&state, &self.state)", "true", "exact-generation video controller retirement"),
     ("video_service", ".filter_map(|(_, state)| state.upgrade())", ".filter_map(|(key, state)| (key.source == VideoSource::Monitor).then(|| state.upgrade()).flatten())", "trusted disconnect retires all exact sources"),
     ("video_service", "let frame_controller = VideoFrameController::new(source, display_idx)?;", "let frame_controller = VideoFrameController::new(VideoSource::Monitor, display_idx)?;", "capture-source-bound video controller"),
-    ("server_service", "let round = prepare(&conn_ids)?;\n        for subscriber in lock.subscribes.values_mut() {", "for subscriber in lock.subscribes.values_mut() {\n            let round = prepare(&conn_ids)?;", "prepare-before-enqueue video round"),
-    ("server_service", "subscriber.send_video_frame(Arc::clone(&msg), source, display, round);", "subscriber.send(Arc::clone(&msg));", "source/display/generation exact video mailbox enqueue"),
+    ("server_service", "lock.video_frame_generation.checked_add(1)", "lock.video_frame_generation.wrapping_add(1)", "checked service-lifetime video generation"),
+    ("server_service", "prepare(&conn_ids, generation)?;\n        frame.generation = generation;", "frame.generation = generation;\n        prepare(&conn_ids, generation)?;", "prepare-before-wire video generation ownership"),
+    ("server_service", "subscriber.send_video_frame(Arc::clone(&msg), source, display, generation);", "subscriber.send(Arc::clone(&msg));", "source/display/generation exact video mailbox enqueue"),
     ("server_connection", "const VIDEO_EGRESS_WAKE_CAPACITY: usize = 1;", "const VIDEO_EGRESS_WAKE_CAPACITY: usize = 1024;", "video egress wake capacity"),
     ("server_connection", "const VIDEO_EGRESS_MAX_DISPLAYS: usize = 32;", "const VIDEO_EGRESS_MAX_DISPLAYS: usize = usize::MAX;", "video egress display capacity"),
     ("server_connection", "switch_display: Option<(Instant, Arc<Message>)>,", "switch_display: Vec<(Instant, Arc<Message>)>,", "one pending display switch"),
@@ -5342,22 +5515,43 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("server_connection", "fn with_connection_owner(mut self, connection_id: i32) -> Self", "fn with_connection_owner(mut self, _connection_id: i32) -> Self", "exact video receiver connection owner"),
     ("server_connection", "video_service::retire_video_frame_connection(connection_id);", "video_service::retire_video_frame_connection(connection_id + 1);", "video receiver exact-owner retirement"),
     ("server_connection", "let mut rx_video = rx_video.with_connection_owner(id);", "let mut rx_video = rx_video;", "video receiver connection-owner installation"),
-    ("server_connection", "completion = wait_for_video_write(&mut pending_video_write)", "completion = std::future::ready(Ok(Ok(())))", "writer completion ownership"),
+    ("server_connection", "completion = wait_for_video_write(&mut pending_video_delivery)", "completion = std::future::ready(Ok(Ok(())))", "writer completion ownership"),
     ("server_connection", "conn.stream.send_with_receipt(frame.message.as_ref()).await", "conn.stream.send(frame.message.as_ref()).await.map(|_| unreachable!())", "tracked exact video send"),
-    ("server_connection", "source: frame.identity.source,", "source: conn.video_source(),", "immutable enqueued video source ownership"),
+    ("server_connection", "authenticated_source != Some(self.identity.source)", "authenticated_source.is_none()", "authenticated-session video source ownership"),
+    ("server_connection", "receipt.generation != self.identity.generation", "receipt.generation < self.identity.generation", "exact peer video generation ownership"),
+    ("server_connection", "self.writer_complete && self.peer_received", "self.writer_complete || self.peer_received", "writer and peer receipt conjunction"),
+    ("server_connection", "pending.mark_writer_complete();\n                            complete_video_delivery(&mut pending_video_delivery, id);", "pending.mark_writer_complete();\n                            video_service::notify_video_frame_fetched(pending.identity.source, pending.identity.display, pending.identity.generation, id, None);", "local writer cannot directly complete capture progress"),
+    ("server_connection", "item = rx_video.recv(), if pending_video_delivery.is_none()", "item = rx_video.recv()", "one unreceipted transmitted video frame"),
+    ("server_connection", "login.video_frame_receipt_version == VIDEO_FRAME_RECEIPT_VERSION", "true", "video login exact receipt compatibility"),
+    ("server_connection", "Some(message::Union::VideoFrameReceipt(receipt))", "Some(message::Union::VideoFrame(_))", "typed peer video receipt dispatch"),
+    ("io_loop", "generation == 0", "generation == u64::MAX", "viewer rejects zero video generation"),
+    ("io_loop", "generation <= *last", "generation < *last", "viewer rejects duplicate video generation"),
+    ("io_loop", "receipt_message.set_video_frame_receipt(receipt);", "receipt_message.set_misc(Misc::new());", "viewer emits typed exact video receipt"),
+    ("io_loop", "peer.send(&receipt_message).await", "peer.send(&receipt_message);", "viewer receipt exact send result"),
+    ("io_loop", "pi.video_frame_receipt_version != VIDEO_FRAME_RECEIPT_VERSION", "false", "viewer requires controlled receipt capability echo"),
+    ("client", "ConnType::DEFAULT_CONN | ConnType::VIEW_CAMERA", "ConnType::FILE_TRANSFER | ConnType::TERMINAL", "video-only receipt capability advertisement"),
     ("server_connection", "video_service::retire_video_frame_connection(id);", "video_service::retire_video_frame_connection(id + 1);", "exact local disconnect retirement"),
     ("transport_tcp", "completion: Option<oneshot::Sender<io::Result<()>>>,", "completion: Option<oneshot::Sender<()>>,", "writer command exact result receipt"),
     ("transport_tcp", "let result = sink.send(bytes).await;", "let result = Ok(());", "writer receipt follows exact sink send"),
     ("transport_tcp", "let _ = completion.send(result);", "drop(completion);", "writer reports exact completion"),
     ("transport_stream", "pub async fn send_with_receipt(", "pub async fn tracked_send_disabled(", "stream exact writer receipt wrapper"),
     ("message_proto", "reserved 2, 9, 12, 14;", "reserved 2, 12, 14;\n  bool video_ack_required = 9;", "retired video acknowledgement negotiation tag"),
-    ("message_proto", "reserved 12; // retired displayless video acknowledgement; local exact writer receipts own pacing", "VideoReceived video_received = 12;", "retired displayless peer acknowledgement tag"),
+    ("message_proto", "reserved 12; // retired displayless acknowledgement; versioned top-level exact receipts own peer progress", "VideoReceived video_received = 12;", "retired displayless peer acknowledgement tag"),
+    ("message_proto", "uint64 generation = 15;", "uint64 generation = 12;", "video wire generation tag"),
+    ("message_proto", "VideoFrameReceipt video_frame_receipt = 33;", "VideoFrameReceipt video_frame_receipt = 12;", "top-level exact video receipt tag"),
+    ("hbb_common_lib", "pub const VIDEO_FRAME_RECEIPT_VERSION: u32 = 1;", "pub const VIDEO_FRAME_RECEIPT_VERSION: u32 = 0;", "exact video receipt protocol version"),
+    ("hbb_common_lib", "r_s11fk_wire_round_trips_exact_video_identity_and_capability", "video_wire_round_trip_test_disabled", "exact video protocol wire behavior proof"),
     ("video_service", "r_s11eg_monitor_and_camera_acknowledgements_are_source_exact", "video_ack_source_test_disabled", "video acknowledgement source behavior proof"),
     ("video_service", "r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue", "video_ack_prepare_order_test_disabled", "video acknowledgement prepare-order behavior proof"),
     ("video_service", "r_s11fb_late_completion_cannot_satisfy_a_new_round", "video_ack_stale_round_test_disabled", "video acknowledgement stale-round behavior proof"),
+    ("video_service", "r_s11fk_controller_rejects_zero_and_reused_wire_generations", "video_wire_generation_test_disabled", "video wire generation behavior proof"),
     ("server_connection", "r_s11fb_dependent_replacement_requests_an_independent_sequence", "video_egress_gop_test_disabled", "video egress GOP behavior proof"),
     ("server_connection", "r_s11fb_fresh_display_rejects_dependent_until_independent", "video_egress_fresh_gop_test_disabled", "fresh-display GOP behavior proof"),
     ("server_connection", "r_s11fb_closed_receiver_retires_a_stale_subscriber_enqueue", "video_egress_closed_receiver_test_disabled", "closed-receiver video retirement behavior proof"),
+    ("server_connection", "r_s11fk_local_write_then_exact_peer_receipt_completes_once", "video_peer_receipt_order_test_disabled", "writer-first peer receipt behavior proof"),
+    ("server_connection", "r_s11fk_exact_peer_receipt_then_local_write_completes", "video_writer_receipt_order_test_disabled", "peer-first writer receipt behavior proof"),
+    ("io_loop", "r_s11fk_viewer_receipts_are_nonzero_display_exact_and_monotonic", "viewer_video_receipt_test_disabled", "viewer exact video receipt behavior proof"),
+    ("client", "r_s11fk_login_negotiates_exact_receipts_only_for_video_sessions", "video_receipt_login_test_disabled", "video capability behavior proof"),
     ("transport_tcp", "r_s11fb_receipt_waits_for_the_exact_sink_send", "writer_receipt_backpressure_test_disabled", "writer receipt backpressure behavior proof"),
     ("transport_tcp", "r_s11fb_tracked_keyed_send_round_trips_the_exact_frame", "writer_receipt_keyed_round_trip_test_disabled", "writer receipt keyed round-trip behavior proof"),
     ("transport_tcp", "r_s11fk_real_tcp_receipt_can_precede_peer_read", "writer_receipt_real_tcp_boundary_test_disabled", "real TCP local-receipt boundary behavior proof"),
@@ -5374,10 +5568,14 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("verify", "\"${RUN[@]}\" cargo test --lib --features linux-pkg-config \\\n  server::connection::video_egress_tests::r_s11fb_ -- --test-threads=1", "true # shared video egress behavior gate disabled", "shared controlled video egress behavior gate"),
     ("verify", "\"${RUN[@]}\" cargo test -p hbb_common writer_receipt_tests::r_s11fb_ -- --test-threads=1", "true # shared writer receipt behavior gate disabled", "shared writer receipt behavior gate"),
     ("verify", "\"${RUN[@]}\" cargo test -p hbb_common writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read -- --test-threads=1", "true # shared real TCP boundary behavior gate disabled", "shared real TCP local-receipt boundary behavior gate"),
+    ("verify", "\"${RUN[@]}\" cargo test --lib --features linux-pkg-config r_s11fk_ -- --test-threads=1", "true # shared exact peer receipt behavior gate disabled", "shared exact peer video receipt behavior gate"),
+    ("verify", "\"${RUN[@]}\" cargo test -p hbb_common exact_video_receipt_wire_tests::r_s11fk_ -- --test-threads=1", "true # shared exact video wire behavior gate disabled", "shared exact video protocol wire behavior gate"),
     ("dart_verify", "server::video_service::video_frame_ack_tests::r_s11eg_", "server::video_service::video_frame_ack_tests::disabled_", "generated-bridge controlled video acknowledgement behavior gate"),
     ("dart_verify", "server::connection::video_egress_tests::r_s11fb_", "server::connection::video_egress_tests::disabled_", "generated-bridge controlled video egress behavior gate"),
     ("dart_verify", "writer_receipt_tests::r_s11fb_", "writer_receipt_tests::disabled_", "generated-bridge writer receipt behavior gate"),
     ("dart_verify", "writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read", "writer_receipt_tests::disabled_real_tcp_receipt_can_precede_peer_read", "generated-bridge real TCP local-receipt boundary behavior gate"),
+    ("dart_verify", "      r_s11fk_ -- --test-threads=1", "      peer_receipt_gate_disabled", "generated-bridge exact peer video receipt behavior gate"),
+    ("dart_verify", "exact_video_receipt_wire_tests::r_s11fk_", "video_wire_gate_disabled", "generated-bridge exact video protocol wire behavior gate"),
     ("server_connection", "const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;", "const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1024;", "audio wake capacity"),
     ("server_connection", "format: Option<(Instant, Arc<Message>)>,", "format: Vec<(Instant, Arc<Message>)>,", "one pending audio format"),
     ("server_connection", "frame: Option<(Instant, Arc<Message>)>,", "frame: Vec<(Instant, Arc<Message>)>,", "one pending audio frame"),

@@ -33,6 +33,14 @@ message VideoFrame {
     EncodedVideoFrames av1s = 13;
   }
   int32 display = 14;
+  // Exact controlled-video delivery identity. Zero means the sender did not negotiate the
+  // versioned receipt contract and is never accepted by a supporting viewer.
+  uint64 generation = 15;
+}
+
+message VideoFrameReceipt {
+  int32 display = 1;
+  uint64 generation = 2;
 }
 
 message DisplayInfo {
@@ -87,6 +95,9 @@ message LoginRequest {
   // no longer auto-sends it (a credential-harvest vector for a malicious/substituted peer) and
   // nothing reads it. Field number 14 is left retired (not reused) to avoid wire-tag confusion.
   string avatar = 17;
+  // Version 1 acknowledges an exact {display, generation} after keyed parse and before decode.
+  // The retired displayless acknowledgement tag 9 remains reserved above.
+  uint32 video_frame_receipt_version = 18;
 }
 
 message Terminal {
@@ -131,6 +142,8 @@ message PeerInfo {
   // NOTE: Only support one-level dictionaries (for peer to update), and the key is of type string.
   string platform_additions = 12;
   WindowsSessions windows_sessions = 13;
+  // The controlled side echoes the exact receipt contract selected for this video session.
+  uint32 video_frame_receipt_version = 14;
 }
 
 message WindowsSession {  
@@ -825,7 +838,7 @@ message MessageQuery {
 }
 
 message Misc {
-  reserved 12; // retired displayless video acknowledgement; local exact writer receipts own pacing
+  reserved 12; // retired displayless acknowledgement; versioned top-level exact receipts own peer progress
   oneof union {
     ChatMessage chat_message = 4;
     SwitchDisplay switch_display = 5;
@@ -977,5 +990,6 @@ message Message {
     ScreenshotResponse screenshot_response= 30;
     TerminalAction terminal_action = 31;
     TerminalResponse terminal_response = 32;
+    VideoFrameReceipt video_frame_receipt = 33;
   }
 }

@@ -31,6 +31,9 @@ pub struct ServiceInner<T: Subscriber + From<ConnInner>> {
     active: bool,
     need_snapshot: bool,
     options: HashMap<String, String>,
+    // Video services survive encoder/capture-loop restarts. Keeping the wire generation here
+    // prevents a restarted controller from reusing a generation on a live authenticated session.
+    video_frame_generation: u64,
 }
 
 pub trait Reset {
@@ -352,25 +355,38 @@ impl ServiceTmpl<ConnInner> {
 impl ServiceTmpl<ConnInner> {
     pub fn send_video_frame_with_targets<F>(
         &self,
-        msg: Message,
+        mut msg: Message,
         source: video_service::VideoSource,
         display: usize,
         prepare: F,
     ) -> ResultType<u64>
     where
-        F: FnOnce(&HashSet<i32>) -> ResultType<u64>,
+        F: FnOnce(&HashSet<i32>, u64) -> ResultType<()>,
     {
-        let msg = Arc::new(msg);
+        let Some(message::Union::VideoFrame(frame)) = msg.union.as_mut() else {
+            bail!("controlled video service received a non-video frame");
+        };
+        if usize::try_from(frame.display).ok() != Some(display) {
+            bail!("controlled video service received a mismatched display");
+        }
+        if frame.generation != 0 {
+            bail!("controlled video frame arrived with caller-supplied generation");
+        }
         let mut lock = self.0.write().unwrap();
         let conn_ids = lock.subscribes.keys().copied().collect::<HashSet<_>>();
-        // Install the exact monotonic acknowledgement round before any connection can dequeue the
-        // frame. The round is carried out-of-band to the exact transport-write receipt; peer data
-        // cannot forge, omit, or replay it.
-        let round = prepare(&conn_ids)?;
+        let generation = lock.video_frame_generation.checked_add(1).ok_or_else(|| {
+            hbb_common::anyhow::anyhow!("controlled video frame generation exhausted")
+        })?;
+        lock.video_frame_generation = generation;
+        // Install the exact controller round and wire identity before any connection can dequeue
+        // the shared frame. The authenticated connection supplies the connection/source scope.
+        prepare(&conn_ids, generation)?;
+        frame.generation = generation;
+        let msg = Arc::new(msg);
         for subscriber in lock.subscribes.values_mut() {
-            subscriber.send_video_frame(Arc::clone(&msg), source, display, round);
+            subscriber.send_video_frame(Arc::clone(&msg), source, display, generation);
         }
-        Ok(round)
+        Ok(generation)
     }
 }
 

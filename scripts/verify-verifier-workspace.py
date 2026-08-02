@@ -20927,8 +20927,9 @@ def validate_android_voice_call_ownership_contract(sources):
             "fn reset(&self)",
             "round.pending.clear();",
             "round.acknowledged.clear();",
-            "fn prepare(&self, connection_ids: &HashSet<i32>) -> ResultType<u64>",
-            ".checked_add(1)",
+            "fn prepare(&self, connection_ids: &HashSet<i32>, generation: u64) -> ResultType<()>",
+            "generation == 0 || generation <= round.generation",
+            "round.generation = generation;",
             "round.pending.clone_from(connection_ids);",
             "fn acknowledge(&self, generation: u64, connection_id: i32)",
             "round.generation != generation",
@@ -20957,7 +20958,7 @@ def validate_android_voice_call_ownership_contract(sources):
             ".and_then(Weak::upgrade)",
             "controllers.len() >= MAX_VIDEO_FRAME_ACK_CONTROLLERS",
             "controllers.insert(key, Arc::downgrade(&state));",
-            "fn prepare(&self, connection_ids: &HashSet<i32>)",
+            "fn prepare(&self, connection_ids: &HashSet<i32>, generation: u64)",
             "fn wait_for_all(&self, timeout: Duration)",
         ),
         "bounded exact source/display video controller source",
@@ -21031,7 +21032,7 @@ def validate_android_voice_call_ownership_contract(sources):
             "sp.send_video_frame_with_targets(",
             "frame_controller.key.source,",
             "frame_controller.key.display_idx,",
-            "|connection_ids| frame_controller.prepare(connection_ids)",
+            "|connection_ids, generation| frame_controller.prepare(connection_ids, generation)",
         ),
         "generation/source/display-exact controlled video frame send source",
     )
@@ -21056,12 +21057,17 @@ def validate_android_voice_call_ownership_contract(sources):
     require_order(
         video_service_send,
         (
+            "frame.generation != 0",
             "let conn_ids = lock.subscribes.keys().copied().collect::<HashSet<_>>();",
-            "let round = prepare(&conn_ids)?;",
+            "lock.video_frame_generation.checked_add(1)",
+            "lock.video_frame_generation = generation;",
+            "prepare(&conn_ids, generation)?;",
+            "frame.generation = generation;",
+            "let msg = Arc::new(msg);",
             "for subscriber in lock.subscribes.values_mut()",
-            "subscriber.send_video_frame(Arc::clone(&msg), source, display, round);",
+            "subscriber.send_video_frame(Arc::clone(&msg), source, display, generation);",
         ),
-        "video acknowledgement ownership before exact mailbox enqueue source",
+        "service-lifetime wire generation and acknowledgement ownership before mailbox enqueue source",
     )
 
     connection = sources["connection_source"]
@@ -21117,7 +21123,8 @@ def validate_android_voice_call_ownership_contract(sources):
             "fn send_video_frame(",
             "source: VideoSource,",
             "display: usize,",
-            "round: u64,",
+            "generation: u64,",
+            "frame.generation != generation",
             "starts_video_sequence(frame)",
             "state.displays.len() >= VIDEO_EGRESS_MAX_DISPLAYS",
             "let previous = slot.pending.take();",
@@ -21170,25 +21177,137 @@ def validate_android_voice_call_ownership_contract(sources):
         ),
         "receiver closes admission before exact connection retirement source",
     )
+    pending_video_delivery = extract_between(
+        connection,
+        "impl PendingVideoDelivery {",
+        "\n}\n\nasync fn wait_for_video_write",
+        "two-event exact peer video delivery source",
+    )
+    require_order(
+        pending_video_delivery,
+        (
+            "writer_receipt: Some(writer_receipt)",
+            "writer_complete: false",
+            "peer_received: false",
+            "fn mark_writer_complete(&mut self)",
+            "self.writer_complete = true;",
+            "fn observe_peer_receipt(",
+            "authenticated_source != Some(self.identity.source)",
+            "usize::try_from(receipt.display).ok() != Some(self.identity.display)",
+            "receipt.generation == 0",
+            "receipt.generation != self.identity.generation",
+            "self.peer_received = true;",
+            "fn is_complete(&self)",
+            "self.writer_complete && self.peer_received",
+        ),
+        "writer and authenticated peer receipt conjunction source",
+    )
+    complete_video_delivery = extract_between(
+        connection,
+        "fn complete_video_delivery(",
+        "\n}\n\npub(crate) enum VideoEgressItem",
+        "exact video delivery completion source",
+    )
+    require_order(
+        complete_video_delivery,
+        (
+            "PendingVideoDelivery::is_complete",
+            "let Some(pending) = pending.take()",
+            "video_service::notify_video_frame_fetched(",
+            "pending.identity.source,",
+            "pending.identity.display,",
+            "pending.identity.generation,",
+        ),
+        "capture progress after the exact two-event conjunction source",
+    )
     require_order(
         connection,
         (
             "let mut rx_video = rx_video.with_connection_owner(id);",
-            "completion = wait_for_video_write(&mut pending_video_write)",
-            "let Some(pending) = pending_video_write.take()",
+            "Some(message::Union::VideoFrameReceipt(receipt))",
+            "conn.authenticated_video_source()",
+            "complete_video_delivery(&mut pending_video_delivery, id);",
+            "completion = wait_for_video_write(&mut pending_video_delivery)",
             "Ok(Ok(()))",
-            "video_service::notify_video_frame_fetched(",
-            "pending.source,",
-            "pending.display,",
-            "pending.round,",
-            "item = rx_video.recv(), if pending_video_write.is_none()",
+            "pending.mark_writer_complete();",
+            "complete_video_delivery(&mut pending_video_delivery, id);",
+            "item = rx_video.recv(), if pending_video_delivery.is_none()",
             "conn.stream.send_with_receipt(frame.message.as_ref()).await",
-            "source: frame.identity.source,",
-            "display: frame.identity.display,",
-            "round: frame.identity.round,",
+            "Some(PendingVideoDelivery::new(receipt, &frame))",
             "video_service::retire_video_frame_connection(id);",
         ),
-        "exact sole-writer completion before generation acknowledgement source",
+        "either-order writer and exact peer receipt before acknowledgement source",
+    )
+    require_order(
+        connection,
+        (
+            "fn login_video_frame_receipt_version_is_compatible",
+            "login.video_frame_receipt_version == VIDEO_FRAME_RECEIPT_VERSION",
+            "if !login_video_frame_receipt_version_is_compatible(&lr)",
+            '"Incompatible remote video protocol. Upgrade both RustDesk peers."',
+            "fn authenticated_video_source(&self) -> Option<VideoSource>",
+            "Some(VideoSource::Monitor)",
+            "Some(VideoSource::Camera)",
+        ),
+        "video compatibility refusal and authenticated source source",
+    )
+
+    viewer_receipts = extract_between(
+        sources["client_io_loop"],
+        "impl VideoFrameReceiptTracker {",
+        "\n}\n\n#[derive(Clone, Copy, Debug, Eq, PartialEq)]",
+        "viewer exact receipt tracker source",
+    )
+    require_order(
+        viewer_receipts,
+        (
+            "display >= MAX_PEER_VIDEO_DISPLAYS",
+            "generation == 0",
+            "generation <= *last",
+            "self.last_generation.insert(display, generation);",
+            "VideoFrameReceipt {",
+            "display: i32::try_from(display)",
+            "generation,",
+        ),
+        "bounded nonzero monotonic viewer receipt identity source",
+    )
+    require_order(
+        sources["client_io_loop"],
+        (
+            "self.video_frame_receipts_negotiated = false;",
+            "self.video_frame_receipt_tracker.reset();",
+            "Some(message::Union::VideoFrame(vf))",
+            "if !self.video_frame_receipts_negotiated",
+            "native_video_frame_runtime_supported(&vf)",
+            "Self::native_video_frame_within_limit(&vf)",
+            "let Ok(display) = usize::try_from(vf.display)",
+            "self.accept_peer_video_display(display)",
+            ".admit(display, vf.generation)",
+            "receipt_message.set_video_frame_receipt(receipt);",
+            "peer.send(&receipt_message).await",
+            "if !self.first_frame",
+            "self.new_video_thread(display);",
+            "thread.media_thread.admit_frame(vf, is_keyframe)",
+        ),
+        "viewer receipt before decode/publication source",
+    )
+    require_order(
+        sources["client_io_loop"],
+        (
+            "pi.video_frame_receipt_version != VIDEO_FRAME_RECEIPT_VERSION",
+            '"Incompatible remote video protocol"',
+            "self.video_frame_receipts_negotiated =",
+        ),
+        "viewer capability echo refusal source",
+    )
+    require_order(
+        sources["client_source"],
+        (
+            "video_frame_receipt_version: if matches!(",
+            "ConnType::DEFAULT_CONN | ConnType::VIEW_CAMERA",
+            "VIDEO_FRAME_RECEIPT_VERSION",
+        ),
+        "video-only viewer capability advertisement source",
     )
 
     transport_tcp = sources["tcp_source"]
@@ -21224,11 +21343,29 @@ def validate_android_voice_call_ownership_contract(sources):
     require_text(sources["message_proto"], "reserved 2, 9, 12, 14;", "login video-ack tag reservation source")
     require_text(
         sources["message_proto"],
-        "reserved 12; // retired displayless video acknowledgement; local exact writer receipts own pacing",
+        "reserved 12; // retired displayless acknowledgement; versioned top-level exact receipts own peer progress",
         "displayless video-ack tag reservation source",
     )
     require_absent(sources["message_proto"], "video_ack_required = 9", "peer video-ack negotiation source")
     require_absent(sources["message_proto"], "video_received = 12", "displayless peer video-ack source")
+    for exact_wire_field, label in (
+        ("uint64 generation = 15;", "video wire generation source"),
+        ("message VideoFrameReceipt {", "typed exact video receipt source"),
+        ("uint32 video_frame_receipt_version = 18;", "viewer receipt capability source"),
+        ("uint32 video_frame_receipt_version = 14;", "controlled receipt capability echo source"),
+        ("VideoFrameReceipt video_frame_receipt = 33;", "top-level exact receipt source"),
+    ):
+        require_text(sources["message_proto"], exact_wire_field, label)
+    require_text(
+        sources["hbb_common_lib"],
+        "pub const VIDEO_FRAME_RECEIPT_VERSION: u32 = 1;",
+        "shared exact receipt protocol version source",
+    )
+    require_text(
+        sources["hbb_common_lib"],
+        "r_s11fk_wire_round_trips_exact_video_identity_and_capability",
+        "exact video protocol wire behavior proof source",
+    )
     for behavior_test in (
         "r_s11eg_monitor_and_camera_acknowledgements_are_source_exact",
         "r_s11eg_only_pending_exact_connection_ids_complete_a_round",
@@ -21237,6 +21374,7 @@ def validate_android_voice_call_ownership_contract(sources):
         "r_s11fb_late_completion_cannot_satisfy_a_new_round",
         "r_s11fb_local_disconnect_retires_all_exact_pending_sources",
         "r_s11fb_superseded_frame_retires_only_its_exact_round",
+        "r_s11fk_controller_rejects_zero_and_reused_wire_generations",
     ):
         require_text(
             controlled_screenshots,
@@ -21252,8 +21390,26 @@ def validate_android_voice_call_ownership_contract(sources):
         "r_s11fb_display_ownership_is_fixed_capacity",
         "r_s11fb_async_video_egress_waits_without_polling_and_closes",
         "r_s11fb_closed_receiver_retires_a_stale_subscriber_enqueue",
+        "r_s11fk_local_write_then_exact_peer_receipt_completes_once",
+        "r_s11fk_exact_peer_receipt_then_local_write_completes",
+        "r_s11fk_wrong_scope_zero_stale_and_mismatched_receipts_are_inert",
+        "r_s11fk_video_login_requires_exact_version_without_affecting_nonvideo_sessions",
     ):
         require_text(connection, behavior_test, f"video egress behavior proof source {behavior_test}")
+    for behavior_test in (
+        "r_s11fk_viewer_receipts_are_nonzero_display_exact_and_monotonic",
+        "r_s11fk_viewer_receipt_tracker_resets_only_at_connection_replacement",
+    ):
+        require_text(
+            sources["client_io_loop"],
+            behavior_test,
+            f"viewer exact receipt behavior proof source {behavior_test}",
+        )
+    require_text(
+        sources["client_source"],
+        "r_s11fk_login_negotiates_exact_receipts_only_for_video_sessions",
+        "viewer login receipt capability behavior proof source",
+    )
     for behavior_test in (
         "r_s11fb_receipt_waits_for_the_exact_sink_send",
         "r_s11fb_receipt_reports_the_exact_sink_failure",
@@ -21317,6 +21473,16 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         sources["verify"],
+        '"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11fk_ -- --test-threads=1',
+        "exact peer video receipt shared behavior gate source",
+    )
+    require_text(
+        sources["verify"],
+        '"${RUN[@]}" cargo test -p hbb_common exact_video_receipt_wire_tests::r_s11fk_ -- --test-threads=1',
+        "exact video protocol wire shared behavior gate source",
+    )
+    require_text(
+        sources["verify"],
         '"${RUN[@]}" cargo test -p hbb_common writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read -- --test-threads=1',
         "real TCP local-receipt boundary shared behavior gate source",
     )
@@ -21327,6 +21493,16 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(sources["dart_verify"], "server::connection::video_egress_tests::r_s11fb_", "video egress generated-bridge behavior gate source")
     require_text(sources["dart_verify"], "writer_receipt_tests::r_s11fb_", "writer receipt generated-bridge behavior gate source")
+    require_text(
+        sources["dart_verify"],
+        "      r_s11fk_ -- --test-threads=1",
+        "exact peer video receipt generated-bridge behavior gate source",
+    )
+    require_text(
+        sources["dart_verify"],
+        "exact_video_receipt_wire_tests::r_s11fk_",
+        "exact video protocol wire generated-bridge behavior gate source",
+    )
     require_text(
         sources["dart_verify"],
         "writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read",
@@ -21786,6 +21962,11 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
+        '"hbb_common_lib": (repo / "libs/hbb_common/src/lib.rs").read_text(',
+        "focused exact video receipt version source loading",
+    )
+    require_text(
+        focused,
         'video_egress_sender = extract_item(\n'
         "        server_connection,\n"
         '        "impl VideoEgressSender",',
@@ -21833,13 +22014,13 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
-        '("video_service", ".checked_add(1)", ".wrapping_add(1)", "checked monotonic video acknowledgement generation"),',
+        '("video_service", "generation == 0 || generation <= round.generation", "generation < round.generation", "nonzero strictly monotonic video acknowledgement generation"),',
         "video acknowledgement generation focused mutation",
     )
     require_text(
         focused,
-        '("server_service", "let round = prepare(&conn_ids)?;\\n        for subscriber in lock.subscribes.values_mut() {", "for subscriber in lock.subscribes.values_mut() {\\n            let round = prepare(&conn_ids)?;", "prepare-before-enqueue video round"),',
-        "video acknowledgement prepare-order focused mutation",
+        '("server_service", "prepare(&conn_ids, generation)?;\\n        frame.generation = generation;", "frame.generation = generation;\\n        prepare(&conn_ids, generation)?;", "prepare-before-wire video generation ownership"),',
+        "video generation prepare-order focused mutation",
     )
     require_text(
         focused,
@@ -21878,8 +22059,23 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         focused,
-        '("message_proto", "reserved 12; // retired displayless video acknowledgement; local exact writer receipts own pacing", "VideoReceived video_received = 12;", "retired displayless peer acknowledgement tag"),',
+        '("message_proto", "reserved 12; // retired displayless acknowledgement; versioned top-level exact receipts own peer progress", "VideoReceived video_received = 12;", "retired displayless peer acknowledgement tag"),',
         "retired peer acknowledgement focused mutation",
+    )
+    require_text(
+        focused,
+        '("server_connection", "self.writer_complete && self.peer_received", "self.writer_complete || self.peer_received", "writer and peer receipt conjunction"),',
+        "exact peer receipt conjunction focused mutation",
+    )
+    require_text(
+        focused,
+        '("io_loop", "generation <= *last", "generation < *last", "viewer rejects duplicate video generation"),',
+        "viewer duplicate receipt focused mutation",
+    )
+    require_text(
+        focused,
+        '("hbb_common_lib", "pub const VIDEO_FRAME_RECEIPT_VERSION: u32 = 1;", "pub const VIDEO_FRAME_RECEIPT_VERSION: u32 = 0;", "exact video receipt protocol version"),',
+        "exact receipt protocol version focused mutation",
     )
     require_text(
         focused,
@@ -55560,6 +55756,12 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
+            '"hbb_common_lib": (repo / "libs/hbb_common/src/lib.rs").read_text(',
+            '"hbb_common_lib_disabled": (repo / "libs/hbb_common/src/lib.rs").read_text(',
+            "focused exact video receipt version source loading",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
             'video_ack_state = extract_item(\n'
             "        video_service,\n"
             '        "impl VideoFrameAckState",',
@@ -55644,15 +55846,15 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
-            '"checked monotonic video acknowledgement generation"),',
-            '"checked monotonic video acknowledgement generation disabled"),',
+            '"nonzero strictly monotonic video acknowledgement generation"),',
+            '"nonzero strictly monotonic video acknowledgement generation disabled"),',
             "video acknowledgement generation focused mutation",
         ),
         (
             "android_voice_call_ownership_verifier",
-            '"prepare-before-enqueue video round"),',
-            '"prepare-before-enqueue video round disabled"),',
-            "video acknowledgement prepare-order focused mutation",
+            '"prepare-before-wire video generation ownership"),',
+            '"prepare-before-wire video generation ownership disabled"),',
+            "video generation prepare-order focused mutation",
         ),
         (
             "android_voice_call_ownership_verifier",
@@ -55695,6 +55897,24 @@ def run_source_mutations(sources):
             '"retired displayless peer acknowledgement tag"),',
             '"retired displayless peer acknowledgement tag disabled"),',
             "retired peer acknowledgement focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"writer and peer receipt conjunction"),',
+            '"writer and peer receipt conjunction disabled"),',
+            "exact peer receipt conjunction focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"viewer rejects duplicate video generation"),',
+            '"viewer rejects duplicate video generation disabled"),',
+            "viewer duplicate receipt focused mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"exact video receipt protocol version"),',
+            '"exact video receipt protocol version disabled"),',
+            "exact receipt protocol version focused mutation",
         ),
         (
             "android_voice_call_ownership_verifier",
@@ -57079,8 +57299,8 @@ def run_source_mutations(sources):
         ),
         (
             "video_service_source",
-            ".checked_add(1)",
-            ".wrapping_add(1)",
+            "generation == 0 || generation <= round.generation",
+            "generation < round.generation",
             "bounded generation-exact pending/acknowledged video round source",
         ),
         (
@@ -57143,15 +57363,21 @@ def run_source_mutations(sources):
         ),
         (
             "server_service_source",
-            "let round = prepare(&conn_ids)?;\n        for subscriber in lock.subscribes.values_mut() {",
-            "for subscriber in lock.subscribes.values_mut() {\n            let round = prepare(&conn_ids)?;",
-            "video acknowledgement ownership before exact mailbox enqueue source",
+            "lock.video_frame_generation.checked_add(1)",
+            "lock.video_frame_generation.wrapping_add(1)",
+            "service-lifetime wire generation and acknowledgement ownership before mailbox enqueue source",
         ),
         (
             "server_service_source",
-            "subscriber.send_video_frame(Arc::clone(&msg), source, display, round);",
+            "prepare(&conn_ids, generation)?;\n        frame.generation = generation;",
+            "frame.generation = generation;\n        prepare(&conn_ids, generation)?;",
+            "service-lifetime wire generation and acknowledgement ownership before mailbox enqueue source",
+        ),
+        (
+            "server_service_source",
+            "subscriber.send_video_frame(Arc::clone(&msg), source, display, generation);",
             "subscriber.send(Arc::clone(&msg));",
-            "video acknowledgement ownership before exact mailbox enqueue source",
+            "service-lifetime wire generation and acknowledgement ownership before mailbox enqueue source",
         ),
         (
             "connection_source",
@@ -57229,31 +57455,91 @@ def run_source_mutations(sources):
             "connection_source",
             "let mut rx_video = rx_video.with_connection_owner(id);",
             "let mut rx_video = rx_video;",
-            "exact sole-writer completion before generation acknowledgement source",
+            "either-order writer and exact peer receipt before acknowledgement source",
         ),
         (
             "connection_source",
-            "completion = wait_for_video_write(&mut pending_video_write)",
+            "completion = wait_for_video_write(&mut pending_video_delivery)",
             "completion = std::future::ready(Ok(Ok(())))",
-            "exact sole-writer completion before generation acknowledgement source",
+            "either-order writer and exact peer receipt before acknowledgement source",
         ),
         (
             "connection_source",
             "conn.stream.send_with_receipt(frame.message.as_ref()).await",
             "conn.stream.send(frame.message.as_ref()).await.map(|_| unreachable!())",
-            "exact sole-writer completion before generation acknowledgement source",
+            "either-order writer and exact peer receipt before acknowledgement source",
         ),
         (
             "connection_source",
-            "source: frame.identity.source,",
-            "source: conn.video_source(),",
-            "exact sole-writer completion before generation acknowledgement source",
+            "authenticated_source != Some(self.identity.source)",
+            "authenticated_source.is_none()",
+            "writer and authenticated peer receipt conjunction source",
+        ),
+        (
+            "connection_source",
+            "receipt.generation != self.identity.generation",
+            "receipt.generation < self.identity.generation",
+            "writer and authenticated peer receipt conjunction source",
+        ),
+        (
+            "connection_source",
+            "self.writer_complete && self.peer_received",
+            "self.writer_complete || self.peer_received",
+            "writer and authenticated peer receipt conjunction source",
+        ),
+        (
+            "connection_source",
+            "item = rx_video.recv(), if pending_video_delivery.is_none()",
+            "item = rx_video.recv()",
+            "either-order writer and exact peer receipt before acknowledgement source",
+        ),
+        (
+            "connection_source",
+            "login.video_frame_receipt_version == VIDEO_FRAME_RECEIPT_VERSION",
+            "true",
+            "video compatibility refusal and authenticated source source",
+        ),
+        (
+            "connection_source",
+            "Some(message::Union::VideoFrameReceipt(receipt))",
+            "Some(message::Union::VideoFrame(_))",
+            "either-order writer and exact peer receipt before acknowledgement source",
+        ),
+        (
+            "client_io_loop",
+            "generation == 0",
+            "generation == u64::MAX",
+            "bounded nonzero monotonic viewer receipt identity source",
+        ),
+        (
+            "client_io_loop",
+            "generation <= *last",
+            "generation < *last",
+            "bounded nonzero monotonic viewer receipt identity source",
+        ),
+        (
+            "client_io_loop",
+            "receipt_message.set_video_frame_receipt(receipt);",
+            "receipt_message.set_misc(Misc::new());",
+            "viewer receipt before decode/publication source",
+        ),
+        (
+            "client_io_loop",
+            "pi.video_frame_receipt_version != VIDEO_FRAME_RECEIPT_VERSION",
+            "false",
+            "viewer capability echo refusal source",
+        ),
+        (
+            "client_source",
+            "ConnType::DEFAULT_CONN | ConnType::VIEW_CAMERA",
+            "ConnType::FILE_TRANSFER | ConnType::TERMINAL",
+            "video-only viewer capability advertisement source",
         ),
         (
             "connection_source",
             "video_service::retire_video_frame_connection(id);",
             "video_service::retire_video_frame_connection(id + 1);",
-            "exact sole-writer completion before generation acknowledgement source",
+            "either-order writer and exact peer receipt before acknowledgement source",
         ),
         (
             "tcp_source",
@@ -57287,9 +57573,33 @@ def run_source_mutations(sources):
         ),
         (
             "message_proto",
-            "reserved 12; // retired displayless video acknowledgement; local exact writer receipts own pacing",
+            "reserved 12; // retired displayless acknowledgement; versioned top-level exact receipts own peer progress",
             "VideoReceived video_received = 12;",
             "displayless video-ack tag reservation source",
+        ),
+        (
+            "message_proto",
+            "uint64 generation = 15;",
+            "uint64 generation = 12;",
+            "video wire generation source",
+        ),
+        (
+            "message_proto",
+            "VideoFrameReceipt video_frame_receipt = 33;",
+            "VideoFrameReceipt video_frame_receipt = 12;",
+            "top-level exact receipt source",
+        ),
+        (
+            "hbb_common_lib",
+            "pub const VIDEO_FRAME_RECEIPT_VERSION: u32 = 1;",
+            "pub const VIDEO_FRAME_RECEIPT_VERSION: u32 = 0;",
+            "shared exact receipt protocol version source",
+        ),
+        (
+            "hbb_common_lib",
+            "r_s11fk_wire_round_trips_exact_video_identity_and_capability",
+            "video_wire_round_trip_test_disabled",
+            "exact video protocol wire behavior proof source",
         ),
         (
             "video_service_source",
@@ -57322,6 +57632,12 @@ def run_source_mutations(sources):
             "controlled video acknowledgement behavior proof source r_s11eg_acknowledgement_round_is_installed_before_frame_enqueue",
         ),
         (
+            "video_service_source",
+            "r_s11fk_controller_rejects_zero_and_reused_wire_generations",
+            "video_wire_generation_test_disabled",
+            "controlled video acknowledgement behavior proof source r_s11fk_controller_rejects_zero_and_reused_wire_generations",
+        ),
+        (
             "connection_source",
             "r_s11fb_dependent_replacement_requests_an_independent_sequence",
             "video_egress_gop_test_disabled",
@@ -57338,6 +57654,30 @@ def run_source_mutations(sources):
             "r_s11fb_closed_receiver_retires_a_stale_subscriber_enqueue",
             "video_egress_closed_receiver_test_disabled",
             "video egress behavior proof source r_s11fb_closed_receiver_retires_a_stale_subscriber_enqueue",
+        ),
+        (
+            "connection_source",
+            "r_s11fk_local_write_then_exact_peer_receipt_completes_once",
+            "video_peer_receipt_order_test_disabled",
+            "video egress behavior proof source r_s11fk_local_write_then_exact_peer_receipt_completes_once",
+        ),
+        (
+            "connection_source",
+            "r_s11fk_exact_peer_receipt_then_local_write_completes",
+            "video_writer_receipt_order_test_disabled",
+            "video egress behavior proof source r_s11fk_exact_peer_receipt_then_local_write_completes",
+        ),
+        (
+            "client_io_loop",
+            "r_s11fk_viewer_receipts_are_nonzero_display_exact_and_monotonic",
+            "viewer_video_receipt_test_disabled",
+            "viewer exact receipt behavior proof source",
+        ),
+        (
+            "client_source",
+            "r_s11fk_login_negotiates_exact_receipts_only_for_video_sessions",
+            "video_receipt_login_test_disabled",
+            "viewer login receipt capability behavior proof source",
         ),
         (
             "tcp_source",
@@ -57468,6 +57808,18 @@ def run_source_mutations(sources):
             "real TCP local-receipt boundary shared behavior gate source",
         ),
         (
+            "verify",
+            '"${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11fk_ -- --test-threads=1',
+            "true # shared exact peer receipt behavior gate disabled",
+            "exact peer video receipt shared behavior gate source",
+        ),
+        (
+            "verify",
+            '"${RUN[@]}" cargo test -p hbb_common exact_video_receipt_wire_tests::r_s11fk_ -- --test-threads=1',
+            "true # shared exact video wire behavior gate disabled",
+            "exact video protocol wire shared behavior gate source",
+        ),
+        (
             "dart_verify",
             "server::connection::video_egress_tests::r_s11fb_",
             "server::connection::video_egress_tests::disabled_",
@@ -57484,6 +57836,18 @@ def run_source_mutations(sources):
             "writer_receipt_tests::r_s11fk_real_tcp_receipt_can_precede_peer_read",
             "writer_receipt_tests::disabled_real_tcp_receipt_can_precede_peer_read",
             "real TCP local-receipt boundary generated-bridge behavior gate source",
+        ),
+        (
+            "dart_verify",
+            "      r_s11fk_ -- --test-threads=1",
+            "      peer_receipt_gate_disabled",
+            "exact peer video receipt generated-bridge behavior gate source",
+        ),
+        (
+            "dart_verify",
+            "exact_video_receipt_wire_tests::r_s11fk_",
+            "video_wire_gate_disabled",
+            "exact video protocol wire generated-bridge behavior gate source",
         ),
         (
             "main_dart",

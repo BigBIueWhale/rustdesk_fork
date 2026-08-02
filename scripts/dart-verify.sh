@@ -287,6 +287,10 @@ local_docker run --rm --pull=never --network=none --read-only \
       server::video_service::video_frame_ack_tests::r_s11fb_ -- --test-threads=1
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       server::connection::video_egress_tests::r_s11fb_ -- --test-threads=1
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      r_s11fk_ -- --test-threads=1
+    cargo test --offline --locked -p hbb_common \
+      exact_video_receipt_wire_tests::r_s11fk_ -- --test-threads=1
     cargo test --offline --locked -p hbb_common \
       writer_receipt_tests::r_s11fb_ -- --test-threads=1
     cargo test --offline --locked -p hbb_common \

@@ -3987,11 +3987,12 @@ capability-free containers with no published ports, host namespaces/devices, Doc
 service/configuration access. The confined checks can establish source shape, compilation, and
 deterministic local behavior only; they cannot establish operational correctness or performance.
 
-**R-S11fk/R-S11e-198 controlled-video exact peer receipt — OPEN / RELEASE-BLOCKING;
-REAL KERNEL-TCP LOCAL-RECEIPT BOUNDARY PROVEN 2026-08-02; PRODUCTION WIRE PROTOCOL,
-CURRENT ANDROID/WINDOWS/DEBIAN ARTIFACT MATRIX, FOCUS/BACKGROUND RECOVERY,
-TIMESTAMPS/LATENCY BUDGETS, COLD RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL
-REVIEW PENDING.** Platforms: controlled-side monitor/camera egress shared by Android and desktop
+**R-S11fk/R-S11e-198 controlled-video exact peer receipt — PARTIAL / RELEASE-BLOCKING;
+PRODUCTION SOURCE, DETERMINISTIC PROTOCOL TESTS, AND ANDROID/LINUX CROSS-COMPILE CHECKS IMPLEMENTED
+2026-08-02; REAL KERNEL-TCP LOCAL-RECEIPT BOUNDARY PROVEN; CURRENT ANDROID/WINDOWS/DEBIAN
+ARTIFACT MATRIX, FOCUS/BACKGROUND RECOVERY, TIMESTAMPS/LATENCY BUDGETS, COLD RELEASE,
+INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW PENDING.** Platforms: controlled-side
+monitor/camera egress shared by Android and desktop
 servers, the keyed TCP writer, and every outgoing viewer platform. Endpoint/action: exact encoded
 frame → sole writer → local kernel TCP buffering → authenticated peer read/parse → viewer mailbox,
 decode, publication, and presentation. Boundary: successful local async write is not evidence that
@@ -4047,24 +4048,120 @@ bytecode/file, used no network/root/service/listener authority, and changed no s
 the user's all-code-in-Docker boundary and is explicitly uncounted. All subsequent syntax,
 formatter, test, and verifier execution remained inside the confined containers described above.
 
-The required production model is now explicit but intentionally unimplemented in this
-characterization slice. Remote/ViewCamera capability negotiation and every transmitted video frame
-must carry a checked exact wire generation. After keyed reassembly/authentication/decryption/parse
-and exact identity validation—but before decode or presentation—the viewer returns the matching
-display/generation. The controlled connection retains at most one unreceipted transmitted frame and
-reports capture progress only after both its exact local writer result and exact peer receipt,
-regardless of event order. Source kind derives from the authenticated session type. Zero, stale,
-duplicate, wrong-display, wrong-type, pre-login, and retired receipts cannot satisfy any round.
-While the viewer is not reading, later video remains only as a bounded latest GOP-safe candidate;
-receipt recovery sends current independently decodable work rather than requiring reconnect to
-discard obsolete bytes. The retired displayless/generationless protobuf tags remain reserved. An
-unnegotiated peer cannot silently restore local-writer completion as capture progress; any retained
-legacy video behavior needs a separately specified measurable bound and release gate, otherwise the
-video session fails visibly with an upgrade requirement. Receipt is deliberately network-parse
-receipt, not presentation receipt: focus/background rendering must not gate transport liveness.
+The production source now follows that model. `message.proto` adds version 1 capability fields to
+`LoginRequest` and `PeerInfo`, a nonzero `VideoFrame.generation`, and a typed top-level
+`VideoFrameReceipt { display, generation }`; retired tags 9 and 12 remain reserved. The generic
+video service owns a checked generation for its full service lifetime, installs the exact
+controller targets under the service lock, then stamps and enqueues the frame. Remote/ViewCamera
+login fails visibly unless both sides select version 1, while FileTransfer, PortForward, Terminal,
+and other non-video sessions do not negotiate or require the capability. There is no local-writer
+or silent legacy-video fallback.
 
-This is not a production correction, current release validation, or a claim that the accumulated
-branch is safe to deploy. At the inspected parent `9fbe5dc`, the continuous July/August hardening
+After keyed reassembly/authentication/decryption/parse, codec/size/display/generation validation,
+the viewer returns the exact display/generation before first-frame UI work, decoder admission,
+publication, renderer scheduling, focus, or presentation. Its bounded per-display tracker rejects
+zero and non-monotonic identities and resets only when the network connection is replaced. The
+controlled connection derives Monitor versus Camera solely from authenticated `AuthConnType`,
+retains at most one transmitted unreceipted frame, and completes the capture-controller generation
+only after both the sole-writer result and matching peer receipt, in either observation order. A
+duplicate, zero, stale, future, wrong-display, wrong-source/session, pre-login, or post-retirement
+receipt is inert. While receipt is pending, later video remains only in the existing constant-space
+latest GOP-aware mailbox; its independent-frame suppression and exact connection retirement remain
+in force. Receipt is deliberately network-parse receipt, not presentation receipt:
+focus/background rendering does not gate transport liveness.
+
+The pinned confined Rust 1.75.0 focused run executed eight new deterministic behaviors (`8 passed`,
+`0 failed`, `441 filtered`): viewer monotonic/reset, video-only negotiation, both completion orders,
+invalid receipt classes, non-video compatibility, and zero/reused controller generation rejection.
+The shared protobuf package separately serialized and parsed the exact frame identity, typed receipt,
+login capability, and controlled-side echo (`1 passed`, `0 failed`, `129 filtered`).
+The related existing controller/source retirement, GOP-aware mailbox, exact writer, and real-kernel
+TCP boundary suites also passed sequentially. Those executions used immutable image
+`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`, numeric UID/GID
+1000:1000, `--network=none`, no published port, read-only source/root/vendor inputs, all capabilities
+dropped, and `no-new-privileges`. They are deterministic Linux source/unit/loopback evidence only.
+
+The production source and a freshly generated real Flutter bridge then passed locked release-mode
+`cargo ndk check --platform 21 --target aarch64-linux-android --release --features flutter --lib`
+for aarch64 Android in 1m02s. The writable disposable build copy retained every tracked source byte
+and canonical mode; only allowed generated/build extras changed. Android builder image
+`sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2` ran as UID/GID
+1000:1000 with networking disabled, no published ports, a read-only root and online closure, all
+capabilities dropped, `no-new-privileges`, bounded resources, and no device or host namespace. The
+same fresh bridge and production source passed a locked/offline Linux
+`cargo check --features flutter,unix-file-copy-paste --lib` in 2m52s under the pinned Rust 1.75.0
+development image. These are cross-compiler/type-check results, not APK/desktop artifacts or native
+lifecycle/decode/render evidence.
+
+The final confined focused semantic verifier passed and rejected all 509 deliberate mutations,
+including the service-lifetime wire generation, both halves and both orders of delivery completion,
+authenticated source derivation, viewer receipt ordering, capability refusal, protobuf fields and
+wire round trip, and both shared/generated-bridge test commands. Its first implementation-slice
+self-test rejected the run because the generated-bridge behavior command was asserted by an
+ambiguous substring that also occurred in the wire-test filter; the assertion and mutation were
+tightened to the exact standalone command before the counted 509-mutation pass. The independent
+normal workspace verifier also passed. The complete unsliced independent source-mutation matrix is
+run only after the tracked source, gate, and ledger bytes are frozen and is recorded in the external
+audit rather than retroactively changing the bytes it validated. Full aggregate `scripts/verify.sh`,
+`scripts/dart-verify.sh`, Apple conformance, and clean cold release transactions were not run; their
+new test wiring is source-bound only.
+
+The first five full independent source-mutation attempts were not passes. The first two progressed
+through the catalog and then failed on verifier-of-verifier targets whose focused-mutation labels
+had been renamed during this slice: first the strict-monotonic-generation label, then the
+prepare-before-wire-generation label. Both exact target self-references were corrected. A confined
+read-only preflight through the verifier's normal source loader then proved all 3,571 mutation
+targets were present. The third complete attempt passed that target-presence boundary but failed
+because the prepare-order fixture's expected rejection still said `acknowledgement` while the
+independent validator emitted its renamed `generation` diagnostic; that expected diagnostic was
+aligned before the final unsliced catalog was restarted from mutation one. A final self-contract
+audit then found four new focused-verifier assertions without independent mutation fixtures; exact
+source loading, two-event conjunction, duplicate-generation rejection, and protocol-version
+fixtures were added, bringing the final catalog to 3,575 mutations. The fourth complete attempt
+correctly rejected the checked service-lifetime-generation mutation but its fixture expected a
+narrower diagnostic than the encompassing ordered-generation contract emitted. Rather than
+discovering such metadata mismatches serially, a confined disposable audit exercised all 36
+new or changed mutation fixtures directly against the independent validator. It found 19 stale
+expected labels, while every affected mutation was rejected by its intended contract; those labels
+were aligned and the same audit then passed all 36 runtime targets before the final complete restart.
+The fifth complete attempt progressed past those fixtures but exposed an unchanged legacy
+video-receiver mutation whose expected diagnostic still named the retired sole-writer contract.
+A second confined audit therefore exercised every mutation aimed at any source, gate, ledger, or
+verifier changed in this slice, including unchanged tuples whose enclosing diagnostic could have
+shifted. Across 1,476 runtime targets it found exactly three stale labels, all for legacy
+`connection.rs` mutations correctly rejected by the new either-order writer-plus-peer-receipt
+contract; those three expectations were aligned before that entire affected-surface audit and the
+complete catalog were rerun. The earlier presence diagnostic is not a substitute for any mutation's
+semantic rejection.
+
+Implementation-slice failed and excluded attempts are explicit. An initial complete Rust test
+compile type-checked the source but its final test link was killed at the memory boundary. A retry
+used a read-only Rustup shim, and another reused target cache containing mode-0400 copied native
+outputs; both stopped without a test result. No ownership, mode, or privilege was changed: a fresh
+UID-1000 target produced the counted passes. A later login-shell launch replaced the explicitly
+mounted toolchain path and stopped before compilation. A direct Flutter-feature test against the
+live ignored `src/bridge_generated.rs` correctly exposed that stale bridge's older FFI signatures;
+the counted Android and Linux checks instead generated a bridge from current tracked source in a
+disposable snapshot. The first Linux fresh-bridge check mounted the vendor tree at the wrong path
+and stopped before dependency resolution; the exact-path retry passed.
+
+The first formatter probe mounted only the `rustfmt` executable and stopped on its missing dynamic
+toolchain context; mounting the full pinned toolchain passed. Invoking rustfmt on
+`hbb_common/src/lib.rs` also recursively reformatted three unrelated child modules. Those three
+format-only deltas were detected before Android compilation and explicitly reverted; the first
+snapshot containing them is uncounted, and the counted snapshot was created afterward. The first
+Android source-postcondition comparison omitted the verifier's required read-only reference modes;
+normalizing only that disposable authority copy as UID 1000 made the exact comparison pass. None of
+these failed attempts is represented as product failure or passing evidence.
+
+One direct host execution of the two Python verifier programs with `--help` exercised only argument
+parsing, made no write, opened no socket, and used no elevated/service/configuration authority. It
+nevertheless violated the user's all-project-code-in-Docker rule and is explicitly uncounted. Every
+substantive syntax, formatter, generator, compiler, test, and verifier execution for this
+implementation slice ran inside the confined containers described above.
+
+This is a production source correction, but it is not current release validation or a claim that
+the accumulated branch is safe to deploy. At the inspected parent `9fbe5dc`, the continuous July/August hardening
 period contained 296 commits and touched 468 files; much of its line volume is generated output,
 ledger, and verifier material, but the cumulative integration risk is real. The current smoke does
 execute the real Linux server, CPace login, file-transfer admission, and port-forward traffic over
@@ -18683,7 +18780,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-b3e5a6bfc196e20231910c3526e3da9cb40773cd0f843acc780eea714752ccd5  requirements.html
+13d795b6e09e83343cb145319734d39b965cf32127c3369ca38cee41d4a00a0e  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

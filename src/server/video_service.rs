@@ -320,17 +320,16 @@ impl VideoFrameAckState {
         self.changed.notify_all();
     }
 
-    fn prepare(&self, connection_ids: &HashSet<i32>) -> ResultType<u64> {
+    fn prepare(&self, connection_ids: &HashSet<i32>, generation: u64) -> ResultType<()> {
         let mut round = self.round.lock().unwrap();
-        round.generation = round
-            .generation
-            .checked_add(1)
-            .ok_or_else(|| anyhow!("video acknowledgement round exhausted"))?;
+        if generation == 0 || generation <= round.generation {
+            bail!("video acknowledgement generation is not strictly monotonic");
+        }
+        round.generation = generation;
         round.pending.clone_from(connection_ids);
         round.acknowledged.clear();
-        let generation = round.generation;
         self.changed.notify_all();
-        Ok(generation)
+        Ok(())
     }
 
     fn acknowledge(&self, generation: u64, connection_id: i32) -> bool {
@@ -414,8 +413,8 @@ impl VideoFrameController {
         self.state.reset();
     }
 
-    fn prepare(&self, connection_ids: &HashSet<i32>) -> ResultType<u64> {
-        self.state.prepare(connection_ids)
+    fn prepare(&self, connection_ids: &HashSet<i32>, generation: u64) -> ResultType<()> {
+        self.state.prepare(connection_ids, generation)
     }
 
     fn wait_for_all(&self, timeout: Duration) -> bool {
@@ -1550,7 +1549,7 @@ fn handle_one_frame(
                 msg,
                 frame_controller.key.source,
                 frame_controller.key.display_idx,
-                |connection_ids| frame_controller.prepare(connection_ids),
+                |connection_ids, generation| frame_controller.prepare(connection_ids, generation),
             )?;
         }
         Err(e) => {
@@ -1948,13 +1947,24 @@ mod video_frame_ack_tests {
         values.iter().copied().collect()
     }
 
+    fn prepare(
+        controller: &VideoFrameController,
+        connection_ids: &HashSet<i32>,
+        generation: u64,
+    ) -> u64 {
+        controller
+            .prepare(connection_ids, generation)
+            .expect("test acknowledgement generation must be valid");
+        generation
+    }
+
     #[test]
     fn r_s11eg_monitor_and_camera_acknowledgements_are_source_exact() {
         let _test = ACK_TEST_LOCK.lock().unwrap();
         let monitor = VideoFrameController::new(VideoSource::Monitor, 10_001).unwrap();
         let camera = VideoFrameController::new(VideoSource::Camera, 10_001).unwrap();
-        let monitor_round = monitor.prepare(&ids(&[11])).unwrap();
-        let camera_round = camera.prepare(&ids(&[12])).unwrap();
+        let monitor_round = prepare(&monitor, &ids(&[11]), 1);
+        let camera_round = prepare(&camera, &ids(&[12]), 1);
 
         notify_video_frame_fetched(VideoSource::Monitor, 10_001, monitor_round, 11, None);
         assert!(monitor.wait_for_all(Duration::ZERO));
@@ -1968,7 +1978,7 @@ mod video_frame_ack_tests {
     fn r_s11eg_only_pending_exact_connection_ids_complete_a_round() {
         let _test = ACK_TEST_LOCK.lock().unwrap();
         let controller = VideoFrameController::new(VideoSource::Monitor, 10_002).unwrap();
-        let round = controller.prepare(&ids(&[21, 22])).unwrap();
+        let round = prepare(&controller, &ids(&[21, 22]), 1);
 
         notify_video_frame_fetched(VideoSource::Monitor, 10_002, round, 99, None);
         notify_video_frame_fetched(VideoSource::Monitor, 10_002, round, 21, None);
@@ -1983,8 +1993,8 @@ mod video_frame_ack_tests {
     fn r_s11fb_late_completion_cannot_satisfy_a_new_round() {
         let _test = ACK_TEST_LOCK.lock().unwrap();
         let controller = VideoFrameController::new(VideoSource::Monitor, 10_003).unwrap();
-        let old_round = controller.prepare(&ids(&[31])).unwrap();
-        let current_round = controller.prepare(&ids(&[31])).unwrap();
+        let old_round = prepare(&controller, &ids(&[31]), 1);
+        let current_round = prepare(&controller, &ids(&[31]), 2);
 
         notify_video_frame_fetched(VideoSource::Monitor, 10_003, old_round, 31, None);
         assert!(!controller.wait_for_all(Duration::ZERO));
@@ -1997,8 +2007,8 @@ mod video_frame_ack_tests {
         let _test = ACK_TEST_LOCK.lock().unwrap();
         let monitor = VideoFrameController::new(VideoSource::Monitor, 10_004).unwrap();
         let camera = VideoFrameController::new(VideoSource::Camera, 10_004).unwrap();
-        monitor.prepare(&ids(&[31])).unwrap();
-        camera.prepare(&ids(&[31])).unwrap();
+        prepare(&monitor, &ids(&[31]), 1);
+        prepare(&camera, &ids(&[31]), 1);
 
         retire_video_frame_connection(31);
         assert!(monitor.wait_for_all(Duration::ZERO));
@@ -2009,8 +2019,8 @@ mod video_frame_ack_tests {
     fn r_s11fb_superseded_frame_retires_only_its_exact_round() {
         let _test = ACK_TEST_LOCK.lock().unwrap();
         let controller = VideoFrameController::new(VideoSource::Monitor, 10_005).unwrap();
-        let old_round = controller.prepare(&ids(&[32])).unwrap();
-        let current_round = controller.prepare(&ids(&[32])).unwrap();
+        let old_round = prepare(&controller, &ids(&[32]), 1);
+        let current_round = prepare(&controller, &ids(&[32]), 2);
 
         retire_video_frame_round(VideoSource::Monitor, 10_005, old_round, 32);
         assert!(!controller.wait_for_all(Duration::ZERO));
@@ -2050,22 +2060,63 @@ mod video_frame_ack_tests {
         message.set_video_frame(video);
 
         service
-            .send_video_frame_with_targets(message, VideoSource::Monitor, 0, |connection_ids| {
-                assert_eq!(connection_ids, &ids(&[41]));
-                assert!(
-                    receiver.try_recv().is_none(),
-                    "the frame must not be enqueued before acknowledgement ownership exists"
-                );
-                Ok(77)
-            })
+            .send_video_frame_with_targets(
+                message,
+                VideoSource::Monitor,
+                0,
+                |connection_ids, generation| {
+                    assert_eq!(connection_ids, &ids(&[41]));
+                    assert_eq!(generation, 1);
+                    assert!(
+                        receiver.try_recv().is_none(),
+                        "the frame must not be enqueued before acknowledgement ownership exists"
+                    );
+                    Ok(())
+                },
+            )
             .unwrap();
-        assert!(
-            matches!(
-                receiver.try_recv(),
-                Some(crate::server::connection::VideoEgressItem::Frame(_))
-            ),
-            "the frame must be enqueued after exact targets are prepared"
-        );
+        let Some(crate::server::connection::VideoEgressItem::Frame(frame)) = receiver.try_recv()
+        else {
+            panic!("the frame must be enqueued after exact targets are prepared");
+        };
+        assert_eq!(frame.test_identity_generation(), 1);
+        assert_eq!(frame.test_wire_generation(), Some(1));
+
+        let mut second_video = VideoFrame::new();
+        second_video.display = 0;
+        second_video.set_rgb(RGB::new());
+        let mut second_message = Message::new();
+        second_message.set_video_frame(second_video);
+        service
+            .send_video_frame_with_targets(
+                second_message,
+                VideoSource::Monitor,
+                0,
+                |connection_ids, generation| {
+                    assert_eq!(connection_ids, &ids(&[41]));
+                    assert_eq!(generation, 2);
+                    Ok(())
+                },
+            )
+            .unwrap();
+        let Some(crate::server::connection::VideoEgressItem::Frame(frame)) = receiver.try_recv()
+        else {
+            panic!("the restarted producer must retain service-lifetime generation ownership");
+        };
+        assert_eq!(frame.test_identity_generation(), 2);
+        assert_eq!(frame.test_wire_generation(), Some(2));
+    }
+
+    #[test]
+    fn r_s11fk_controller_rejects_zero_and_reused_wire_generations() {
+        let state = VideoFrameAckState::default();
+        let connection_ids = ids(&[51]);
+        assert!(state.prepare(&connection_ids, 0).is_err());
+        state.prepare(&connection_ids, 9).unwrap();
+        state.reset();
+        assert!(state.prepare(&connection_ids, 9).is_err());
+        assert!(state.prepare(&connection_ids, 8).is_err());
+        state.prepare(&connection_ids, 10).unwrap();
     }
 }
 

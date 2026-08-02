@@ -59,7 +59,7 @@ use hbb_common::{
         sync::mpsc::{unbounded_channel, UnboundedReceiver},
         time::Duration,
     },
-    ResultType, Stream,
+    ResultType, Stream, VIDEO_FRAME_RECEIPT_VERSION,
 };
 // do_sync_cpu_usage (cfg-win) carries #[tokio::main], whose expansion names the
 // `tokio` crate; the rustdesk crate reaches tokio only via hbb_common, so bind the
@@ -2400,6 +2400,14 @@ impl LoginConfigHandler {
             // (message.proto) entirely, so neither can be encoded on the wire. R-S18's symmetric
             // removal is complete.
             avatar,
+            video_frame_receipt_version: if matches!(
+                self.conn_type,
+                ConnType::DEFAULT_CONN | ConnType::VIEW_CAMERA
+            ) {
+                VIDEO_FRAME_RECEIPT_VERSION
+            } else {
+                0
+            },
             ..Default::default()
         };
         match self.conn_type {
@@ -4681,6 +4689,25 @@ mod tests {
             _ => panic!("expected login request"),
         };
         assert_eq!(login.username, address);
+    }
+
+    #[test]
+    fn r_s11fk_login_negotiates_exact_receipts_only_for_video_sessions() {
+        isolate();
+        for (conn_type, expected) in [
+            (ConnType::DEFAULT_CONN, VIDEO_FRAME_RECEIPT_VERSION),
+            (ConnType::VIEW_CAMERA, VIDEO_FRAME_RECEIPT_VERSION),
+            (ConnType::FILE_TRANSFER, 0),
+            (ConnType::TERMINAL, 0),
+        ] {
+            let mut handler = LoginConfigHandler::default();
+            handler.initialize("127.0.0.1".to_owned(), conn_type, None, None);
+            let message = handler.create_login_msg(None).unwrap();
+            let Some(message::Union::LoginRequest(login)) = message.union else {
+                panic!("login builder must produce a LoginRequest");
+            };
+            assert_eq!(login.video_frame_receipt_version, expected);
+        }
     }
 
     #[test]

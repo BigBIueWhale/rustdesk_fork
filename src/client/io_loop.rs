@@ -48,7 +48,7 @@ use hbb_common::{
         sync::mpsc,
         time::{self, Duration, Instant},
     },
-    Stream,
+    Stream, VIDEO_FRAME_RECEIPT_VERSION,
 };
 use scrap::CodecFormat;
 use std::{
@@ -76,6 +76,44 @@ const PRIVACY_MODE_RESPONSE_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_PENDING_VIEWER_FILE_WRITES: usize = 256;
 const MAX_PENDING_VIEWER_FILE_WRITE_BYTES: usize = hbb_common::cpace::MAX_SESSION_PACKET * 2;
 const VIEWER_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
+
+#[derive(Default)]
+struct VideoFrameReceiptTracker {
+    last_generation: HashMap<usize, u64>,
+}
+
+impl VideoFrameReceiptTracker {
+    fn reset(&mut self) {
+        self.last_generation.clear();
+    }
+
+    fn admit(
+        &mut self,
+        display: usize,
+        generation: u64,
+    ) -> Result<VideoFrameReceipt, &'static str> {
+        if display >= MAX_PEER_VIDEO_DISPLAYS {
+            return Err("video frame receipt display is outside the bounded peer display set");
+        }
+        if generation == 0 {
+            return Err("video frame receipt generation is zero");
+        }
+        if self
+            .last_generation
+            .get(&display)
+            .map_or(false, |last| generation <= *last)
+        {
+            return Err("video frame receipt generation is not strictly monotonic");
+        }
+        self.last_generation.insert(display, generation);
+        Ok(VideoFrameReceipt {
+            display: i32::try_from(display)
+                .map_err(|_| "video frame receipt display is not representable")?,
+            generation,
+            ..Default::default()
+        })
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum ViewerVideoRefreshRequest {
@@ -633,6 +671,8 @@ pub struct Remote<T: InvokeUiSession> {
     video_format: CodecFormat,
     peer_info: ParsedPeerInfo,
     video_threads: HashMap<usize, VideoThread>,
+    video_frame_receipts_negotiated: bool,
+    video_frame_receipt_tracker: VideoFrameReceiptTracker,
     chroma: Arc<RwLock<Option<Chroma>>>,
     last_record_state: bool,
     sent_close_reason: bool,
@@ -1019,6 +1059,8 @@ impl<T: InvokeUiSession> Remote<T> {
             voice_call_request_timestamp: None,
             peer_info: Default::default(),
             video_threads: Default::default(),
+            video_frame_receipts_negotiated: false,
+            video_frame_receipt_tracker: Default::default(),
             chroma: Default::default(),
             last_record_state: false,
             sent_close_reason: false,
@@ -1206,6 +1248,10 @@ impl<T: InvokeUiSession> Remote<T> {
     }
 
     pub async fn io_loop(&mut self, key: &str, token: &str, round: u64) {
+        // One UI object may own multiple network rounds. Exact video identity is scoped to one
+        // authenticated connection and must never be inherited by a reconnect.
+        self.video_frame_receipts_negotiated = false;
+        self.video_frame_receipt_tracker.reset();
         #[cfg(not(target_os = "ios"))]
         let mut clipboard_session = self
             .handler
@@ -2573,12 +2619,53 @@ impl<T: InvokeUiSession> Remote<T> {
         {
             match msg_in.union {
                 Some(message::Union::VideoFrame(vf)) => {
+                    if !self.video_frame_receipts_negotiated {
+                        self.handler
+                            .on_error("Remote video arrived before exact receipt negotiation");
+                        return false;
+                    }
                     if !native_video_frame_runtime_supported(&vf) {
-                        return true;
+                        self.handler
+                            .on_error("Remote sent an unsupported video codec");
+                        return false;
                     }
                     if !Self::native_video_frame_within_limit(&vf) {
-                        return true;
+                        self.handler
+                            .on_error("Remote sent an oversized video frame");
+                        return false;
                     }
+                    let Ok(display) = usize::try_from(vf.display) else {
+                        self.handler
+                            .on_error("Remote sent an invalid video display");
+                        return false;
+                    };
+                    if !self.accept_peer_video_display(display) {
+                        self.handler
+                            .on_error("Remote sent an out-of-range video display");
+                        return false;
+                    }
+                    let receipt = match self
+                        .video_frame_receipt_tracker
+                        .admit(display, vf.generation)
+                    {
+                        Ok(receipt) => receipt,
+                        Err(err) => {
+                            log::warn!("rejecting remote video identity: {err}");
+                            self.handler
+                                .on_error("Remote sent an invalid video generation");
+                            return false;
+                        }
+                    };
+                    let mut receipt_message = Message::new();
+                    receipt_message.set_video_frame_receipt(receipt);
+                    if let Err(err) = peer.send(&receipt_message).await {
+                        log::warn!("failed to send exact video frame receipt: {err}");
+                        self.handler
+                            .on_error("Failed to acknowledge remote video frame");
+                        return false;
+                    }
+                    // Receipt is intentionally before decode/mailbox/publication/presentation. A
+                    // backgrounded or unfocused renderer must not stall network freshness.
                     if !self.first_frame {
                         self.first_frame = true;
                         self.handler.close_success();
@@ -2587,11 +2674,6 @@ impl<T: InvokeUiSession> Remote<T> {
                         self.send_toggle_privacy_mode_msg(peer).await;
                     }
                     self.video_format = CodecFormat::from(&vf);
-
-                    let display = vf.display as usize;
-                    if !self.accept_peer_video_display(display) {
-                        return true;
-                    }
                     if !self.video_threads.contains_key(&display) {
                         self.new_video_thread(display);
                     }
@@ -2633,6 +2715,19 @@ impl<T: InvokeUiSession> Remote<T> {
                     }
                     Some(login_response::Union::PeerInfo(pi)) => {
                         let pi = bound_peer_info(pi);
+                        if (self.handler.is_default() || self.handler.is_view_camera())
+                            && pi.video_frame_receipt_version != VIDEO_FRAME_RECEIPT_VERSION
+                        {
+                            self.handler.msgbox(
+                                "error",
+                                "Incompatible remote video protocol",
+                                "Upgrade both RustDesk peers to a version with exact video receipt support.",
+                                "",
+                            );
+                            return false;
+                        }
+                        self.video_frame_receipts_negotiated =
+                            self.handler.is_default() || self.handler.is_view_camera();
                         let peer_version = pi.version.clone();
                         let peer_platform = pi.platform.clone();
                         self.set_peer_info(&pi);
@@ -4398,6 +4493,35 @@ mod tests {
         };
         assert!(info.video_display_allowed(MAX_PEER_VIDEO_DISPLAYS - 1));
         assert!(!info.video_display_allowed(MAX_PEER_VIDEO_DISPLAYS));
+    }
+
+    #[test]
+    fn r_s11fk_viewer_receipts_are_nonzero_display_exact_and_monotonic() {
+        let mut tracker = VideoFrameReceiptTracker::default();
+        let first = tracker.admit(2, 7).expect("first exact generation");
+        assert_eq!((first.display, first.generation), (2, 7));
+        assert!(tracker.admit(2, 7).is_err());
+        assert!(tracker.admit(2, 6).is_err());
+        assert!(tracker.admit(2, 0).is_err());
+
+        let other_display = tracker
+            .admit(3, 1)
+            .expect("display generations are isolated");
+        assert_eq!((other_display.display, other_display.generation), (3, 1));
+        let next = tracker
+            .admit(2, 9)
+            .expect("a later generation may skip values");
+        assert_eq!((next.display, next.generation), (2, 9));
+        assert!(tracker.admit(MAX_PEER_VIDEO_DISPLAYS, 10).is_err());
+    }
+
+    #[test]
+    fn r_s11fk_viewer_receipt_tracker_resets_only_at_connection_replacement() {
+        let mut tracker = VideoFrameReceiptTracker::default();
+        tracker.admit(0, 50).expect("first network round");
+        assert!(tracker.admit(0, 1).is_err());
+        tracker.reset();
+        assert_eq!(tracker.admit(0, 1).unwrap().generation, 1);
     }
 
     #[test]

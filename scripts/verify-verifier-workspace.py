@@ -4291,6 +4291,11 @@ def validate_smoke_contract(
         "R-S11e-32 — Linux external-helper descriptor allowlist authority",
         "external-helper descriptor hardening ledger",
     )
+    require_text(
+        hardening,
+        "R-S11b/R-B4 exact-owner rootless controlled-runtime smoke",
+        "exact-owner rootless runtime-smoke ledger",
+    )
     for text, label in (
         ('readonly DOCKER_BIN=/usr/bin/docker', "fixed root-owned Docker client"),
         ('readonly SMOKE_DOCKER_HOST=unix:///var/run/docker.sock', "fixed local Docker endpoint"),
@@ -4448,8 +4453,8 @@ def validate_smoke_contract(
         ('install -o root -g "$gid" -m 0550 scripts/smoke-process-guard.py "$fixture/bin/smoke-process-guard.py"', "process proof fixture"),
         ('su -s /bin/bash -c /tmp/rd-smoke-nonroot/run.sh rduser', "non-root runner dispatch"),
         ('echo SOURCE_BIND_UNCHANGED=yes', "source-bind postcondition"),
-        ('$READY --wait-parked "$SRV" "$SRV_START" /tmp/srv1.log /work/target/debug/examples/smoke_readiness 0', "parked-server readiness proof"),
-        ('$READY --wait-user-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0', "root user-owned IPC readiness proof"),
+        ('$READY --wait-parked "$SRV" "$SRV_START" /tmp/srv1.log /work/target/debug/examples/smoke_readiness "$(id -u)"', "parked-server actual-owner readiness proof"),
+        ('$READY --wait-user-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness "$(id -u)"', "root user-owned IPC actual-owner readiness proof"),
         ('"$bin/smoke-ready.sh" --wait-user-server "$SRV" "$SRV_START" "$HOME/srv2c.log" "$bin/smoke_readiness" 4000', "non-root user-owned IPC readiness proof"),
         ('$READY --wait-key-failure', "key-failure observation proof"),
         ('$READY --wait-capacity-shed', "capacity-shed observation proof"),
@@ -4681,6 +4686,8 @@ def validate_smoke_contract(
         raise VerificationError("non-root smoke fixture must stage exactly eight root-owned runtime files")
     if stage.count('$READY --wait-server') < 10:
         raise VerificationError("runtime smoke does not readiness-gate every ordinary server startup")
+    if stage.count('/work/target/debug/examples/smoke_readiness "$(id -u)"') != 14:
+        raise VerificationError("runtime smoke readiness is not bound to each actual server owner")
     if stage.count('$READY --terminate-server') < 10:
         raise VerificationError("runtime smoke does not bound and prove ordinary server shutdown")
     if stage.count('start_server /work/target/debug/rustdesk') != 12:
@@ -43230,9 +43237,21 @@ def run_source_mutations(sources):
         ),
         (
             "smoke_stage",
-            '$READY --wait-user-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0',
+            '$READY --wait-parked "$SRV" "$SRV_START" /tmp/srv1.log /work/target/debug/examples/smoke_readiness "$(id -u)"',
+            '$READY --wait-parked "$SRV" "$SRV_START" /tmp/srv1.log /work/target/debug/examples/smoke_readiness 0',
+            "parked-server actual-owner readiness proof",
+        ),
+        (
+            "hardening",
+            "R-S11b/R-B4 exact-owner rootless controlled-runtime smoke",
+            "R-S11b/R-B4 root-assuming controlled-runtime smoke",
+            "exact-owner rootless runtime-smoke ledger",
+        ),
+        (
+            "smoke_stage",
+            '$READY --wait-user-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness "$(id -u)"',
             'true # root IPC readiness proof removed',
-            "root user-owned IPC readiness proof",
+            "root user-owned IPC actual-owner readiness proof",
         ),
         (
             "smoke_stage",

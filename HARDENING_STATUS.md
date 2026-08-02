@@ -3998,6 +3998,86 @@ Tracking rule for this block: every remediation item must name the platform(s), 
 privilege boundary, exact attack surface, and closure condition. A fix is not complete until the old path is
 unreachable and a source/test/AST gate prevents reintroduction.
 
+**R-S11b/R-B4 exact-owner rootless controlled-runtime smoke — HARNESS CORRECTED AND CURRENT
+PRODUCTION-BINARY EXECUTION RECORDED 2026-08-02; INSTALLED-SERVICE, EXACT RELEASE-ARTIFACT,
+ANDROID/WINDOWS/macOS/iOS, RENDERER, DISPLAY-LATENCY, COLD-RELEASE, INDEPENDENT
+REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE REMAINS OPEN.** Platform: the Linux portable
+user-owned direct server and its mounted runtime smoke fixture. Endpoint/action: empty-credential parked
+startup, direct-listener admission, per-UID IPC/password mutation, CPace keying, authenticated session admission,
+port-forward and file-transfer login, forged-frame rejection, connection-capacity shedding, online-guess
+isolation/decay, and exact process shutdown. Boundary: the actual non-root server owner and its per-UID IPC/config
+objects ↔ a test observer which must prove that same owner; separately, the container loopback listener ↔ the host,
+which receives no published port or shared network namespace.
+
+Read-only source and history review found that every mounted smoke-stage readiness call supplied literal UID `0`.
+The original parked/listen calls came from `515c811`; later stages copied the same assumption. The top-level full
+smoke currently runs those ordinary runtime stages in a root container because other stages install service
+fixtures or capture packets, so the bad expectation was normally self-confirming. A deliberately rootless direct
+run exposed the defect: the real server logged the required parked state, `/proc` showed no TCP or UDP listener,
+and the typed IPC probe returned `SMOKE_TYPED_IPC_READY state=parked`, but `smoke-ready.sh` correctly refused to
+call that a pass because the live process and its mode-0700/mode-0600 IPC objects belonged to UID 1000 rather than
+the asserted UID 0. This was evidence-authority and test-portability debt, not a product authorization bypass,
+privilege escalation, listener exposure, service mutation, or proof of an operational RustDesk failure.
+
+All 14 mounted server-readiness calls now pass the stage's exact `id -u`; no readiness assertion confuses root
+with server ownership. Privileged service, installed-layout, packet-capture, and PID-reuse stages still establish
+their required privilege through their own setup and process/object proofs. The independent semantic verifier
+requires the exact 14-site actual-owner shape, retains the separate fixed UID-4000 nested non-root fixture proof,
+and deliberately mutates the parked call back to UID 0. No product Rust, protocol, IPC authorization, password
+semantics, listener policy, dependency, or compatibility branch changed.
+
+Counted executable evidence used the exact Rust production source at parent commit
+`2ffefb96ca0323919a8845ecfac628b4993df84b`; the final commit differs only in the mounted smoke fixture,
+semantic verifier, and this evidence ledger. The authenticated read-only Cargo vendor subtree reverified as
+`fb63f7daefc2c26fb73c04a7d77e9cb8a7658e3c899352e851bb1ebbacdc8c04`. Immutable dev image
+`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` ran pinned Rust
+1.75.0 as numeric UID/GID 1000:1000 with no network, a read-only root/source/vendor tree, all capabilities
+dropped, `no-new-privileges`, bounded resources, no ports, devices, Docker socket, or host namespace, and a
+private external build target. The full `rustdesk` binary plus the real seeder, CPace/session probe, readiness
+probe, bind shim, and descriptor launcher built and linked in dev mode. The binary SHA-256 was
+`afe245784b7aef9bc02cf6a0c17c0b2c636a59b6754d5586d2cac6f49540a10b`; the build retained 332
+existing Rust library warnings, so no warning-free claim is made. A synthetic read-only passwd/group fixture
+gave UID 1000 the isolated identity `rdsmoke`; no host account database was mounted.
+
+The actual product process then passed the following separately disposable rootless, network-none runs. With no
+permanent password it stayed alive, published typed `parked`, and had no TCP or UDP listener. With a seeded
+password, the existing audited preload shim changed only the test bind from wildcard port 21118 to
+`127.0.0.1:21118`; `/proc/net/tcp*` showed exactly `0100007F:527E`, UDP count was zero, the product's own socket
+surface assertion passed, and SIGTERM drained to exit zero. The production `--password-stdin` CLI changed the
+same-UID credential and exited `Done!`; the new password keyed and the old password failed. Correct and incorrect
+CPace probes matched their expected outcomes and the key-failure security summary advanced. A credential-free
+post-key Remote login crossed authorization and then returned the expected headless display `connection refused`
+error. The sealed port-forward round-tripped its canary. FileTransfer login returned nonempty process owner
+`rdsmoke` without the inactive-console refusal; the absent display-backed CM produced no directory response, which
+is not claimed as transfer execution. A forged keyed frame closed with `decryption error`. A 300-connection flood
+advanced capacity `shed=1`. After eleven wrong guesses, another loopback source keyed while the flooding source
+remained blocked; a separate exact-identity run held the real 60-second window and proved the blocked source keyed
+again afterward. The readiness self-test passed, and the real VP9 encoder initialized and completed five encodes
+under Linux `MemoryDenyWriteExecute`. Shell syntax and the independent semantic workspace validator passed against
+the corrected tree. The complete unsliced independent source-mutation catalog then passed from mutation one
+through exit zero against these exact source, verifier, and ledger bytes.
+
+Excluded attempts remain visible. The first build never compiled because Rustup interpreted `1.75` as a channel
+sync and could not write its immutable root; using the exact installed `1.75.0-x86_64-unknown-linux-gnu`
+toolchain removed that ambiguity. The next pre-build resolution stopped because an old named Cargo cache lacked
+the lockfile's `crossbeam-epoch 0.9.20`; network remained disabled, and the counted build used the independently
+verified vendor closure instead. The first rootless parked run correctly failed its literal-root readiness
+assertion and motivated this correction; its product-side parked/no-socket observations are diagnostic, not a
+counted stage pass. One later invocation misspelled the immutable image ID and Docker rejected it before creating
+a container. One direct host `python3 -c` count was read-only and changed no file, service, network, or
+configuration, but violated the all-code-in-Docker rule and is explicitly uncounted; subsequent semantic execution
+remained confined.
+
+This is materially stronger executable evidence than compilation or an in-memory unit test, but it is still not
+a release or operational-platform claim. No installed root service, polkit action, `_service_password` privileged
+commit, service-owned child, `.deb`, systemd/OpenRC/runit/SysV guest, packet capture, shipped artifact, real peer,
+capture source, Flutter engine, renderer, compositor, Android app/service, Windows client/service, macOS/iOS app,
+focus/minimize/task-swipe/Force-Stop transition, cross-version transfer, or capture-to-presentation timestamp ran.
+It does not reproduce or close the reported display delay, validate service-owned password provisioning, prove
+end-to-end screen control, or satisfy R-B2/R-B10. No root/sudo/privileged container was used for the counted run;
+no host RustDesk process, service, binary, configuration, listener, firewall/UFW/nftables/iptables state, or host
+network configuration was inspected or changed.
+
 **Completed source slices:**
 - **R-S11b-1 — Linux/macOS generic `_service` boundary — SOURCE IMPLEMENTED.** `_service` is a narrow,
   frame/deadline/capacity-bounded control protocol. It carries no password body, whole `Config`/`Config2`, generic

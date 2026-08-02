@@ -102,7 +102,7 @@ case "$1" in
     SRV_START=$($READY --identity "$SRV")
     "$PROCESS_GUARD" wait-service-server "$SRV" "$SRV_START" "$installed_server" \
       "$$" "$service_generation"
-    "$READY" --wait-parked "$SRV" "$SRV_START" /tmp/sibling-docker.log /work/target/debug/examples/smoke_readiness 0
+    "$READY" --wait-parked "$SRV" "$SRV_START" /tmp/sibling-docker.log /work/target/debug/examples/smoke_readiness "$(id -u)"
     printf 'SIBLING_DOCKER_READY pid=%s start=%s\n' "$SRV" "$SRV_START"
     printf 'SIBLING_CONTAINER_IDENTITY_READY pid=%s start=%s path=/usr/bin/rustdesk exe=%s source=%s sha256=%s mnt=%s pidns=%s generation=%s\n' \
       "$SRV" "$SRV_START" "$installed_identity" "$source_identity" "$source_sha256" \
@@ -126,7 +126,7 @@ case "$1" in
     export HOME=/tmp/rd1
     mkdir -p "$HOME"
     start_server /work/target/debug/rustdesk /tmp/srv1.log
-    $READY --wait-parked "$SRV" "$SRV_START" /tmp/srv1.log /work/target/debug/examples/smoke_readiness 0
+    $READY --wait-parked "$SRV" "$SRV_START" /tmp/srv1.log /work/target/debug/examples/smoke_readiness "$(id -u)"
     echo "ALIVE=$($READY --is-running "$SRV" "$SRV_START" && echo yes || echo no)"
     echo "TCP_LISTEN=[$(awk '$4=="0A"{print $2}' /proc/net/tcp /proc/net/tcp6 2>/dev/null | tr '\n' ' ')]"
     grep -m1 "the direct listener is PARKED" /tmp/srv1.log || true
@@ -139,7 +139,7 @@ case "$1" in
     mkdir -p "$HOME"
     ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
     start_server /work/target/debug/rustdesk /tmp/srv.log
-    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0
+    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness "$(id -u)"
     echo "TCP_LISTEN=[$(awk '$4=="0A"{print $2}' /proc/net/tcp /proc/net/tcp6 2>/dev/null | tr '\n' ' ')]"
     echo "UDP_COUNT=$(( $(tail -n +2 /proc/net/udp 2>/dev/null | wc -l) + $(tail -n +2 /proc/net/udp6 2>/dev/null | wc -l) ))"
     grep -m1 "Direct server listening" /tmp/srv.log || true
@@ -153,7 +153,7 @@ case "$1" in
     mkdir -p "$HOME"
     ./target/debug/examples/seed_password "Initial-Seed-Pw-000" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
     start_server /work/target/debug/rustdesk /tmp/srv.log
-    $READY --wait-user-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0
+    $READY --wait-user-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness "$(id -u)"
     RECOVERY_SECONDS=$(./target/debug/examples/smoke_readiness password-recovery-seconds)
     [ "$RECOVERY_SECONDS" = 600 ]
     if PW_OUT=$(timeout --signal=TERM --kill-after=5s "$((RECOVERY_SECONDS + 60))" ./target/debug/rustdesk --password-stdin <<<"Changed-Via-Ipc-Pw-9" 2>&1); then
@@ -261,7 +261,7 @@ EOS
     install -D ./target/debug/rustdesk /usr/share/rustdesk/rustdesk
     ./target/debug/examples/seed_password "Installed-Initial-Pw-0" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
     start_server /usr/share/rustdesk/rustdesk /tmp/srv2d.log
-    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv2d.log /work/target/debug/examples/smoke_readiness 0
+    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv2d.log /work/target/debug/examples/smoke_readiness "$(id -u)"
     RECOVERY_SECONDS=$(./target/debug/examples/smoke_readiness password-recovery-seconds)
     [ "$RECOVERY_SECONDS" = 600 ]
     if timeout --signal=TERM --kill-after=5s "$((RECOVERY_SECONDS + 60))" /usr/share/rustdesk/rustdesk --password-stdin <<<"Installed-Fallback-Must-Fail-9" >/tmp/pw2d.out 2>&1; then
@@ -286,7 +286,7 @@ EOS
     mkdir -p "$HOME"
     ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
     start_server /work/target/debug/rustdesk /tmp/srv.log
-    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0
+    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness "$(id -u)"
     echo "CORRECT: $(./target/debug/examples/probe_client '127.0.0.1:21118' 'Str0ng-Test-Pw-123' ok)"
     echo "WRONG:   $(./target/debug/examples/probe_client '127.0.0.1:21118' 'WRONG-Password-xyz' fail)"
     $READY --wait-key-failure "$SRV" "$SRV_START" /tmp/srv.log
@@ -299,7 +299,7 @@ EOS
     mkdir -p "$HOME"
     ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
     start_server /work/target/debug/rustdesk /tmp/srv.log
-    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0
+    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness "$(id -u)"
     ./target/debug/examples/flood_probe "127.0.0.1:21118" 300 >/dev/null 2>&1 & FLOOD=$!
     FLOOD_START=$($READY --identity "$FLOOD")
     $READY --wait-capacity-shed "$SRV" "$SRV_START" /tmp/srv.log
@@ -316,7 +316,7 @@ EOS
     mkdir -p "$HOME"
     ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
     start_server /work/target/debug/rustdesk /tmp/srv.log
-    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0
+    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness "$(id -u)"
     ./target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok login 2>&1
     $READY --terminate-server "$SRV" "$SRV_START" /tmp/srv.log
     wait "$SRV"
@@ -326,7 +326,7 @@ EOS
     mkdir -p "$HOME"
     ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
     start_server /work/target/debug/rustdesk /tmp/srv.log
-    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0
+    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness "$(id -u)"
     ./target/debug/examples/pf_echo 5555 >/tmp/pf_echo.log 2>&1 & ECHO=$!
     ECHO_START=$($READY --identity "$ECHO")
     $READY --wait-tcp-listener "$ECHO" "$ECHO_START" /tmp/pf_echo.log 0100007F:15B3 "port-forward echo listener"
@@ -341,7 +341,7 @@ EOS
     mkdir -p "$HOME"
     ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
     start_server /work/target/debug/rustdesk /tmp/srv.log
-    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0
+    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness "$(id -u)"
     ./target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok filetransfer 2>&1
     $READY --terminate-server "$SRV" "$SRV_START" /tmp/srv.log
     wait "$SRV"
@@ -351,7 +351,7 @@ EOS
     mkdir -p "$HOME"
     ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
     start_server /work/target/debug/rustdesk /tmp/srv.log
-    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0
+    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness "$(id -u)"
     INJECT_OUT=$(./target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok inject 2>&1)
     printf '%s\n' "$INJECT_OUT"
     $READY --wait-log "$SRV" "$SRV_START" /tmp/srv.log "Connection closed: decryption error" "forged-frame rejection"
@@ -364,7 +364,7 @@ EOS
     mkdir -p "$HOME"
     ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
     start_server /work/target/debug/rustdesk /tmp/srv.log
-    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0
+    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness "$(id -u)"
     for i in $(seq 11); do ./target/debug/examples/probe_client "127.0.0.1:21118" "WRONG-PW-$i-zz" fail >/dev/null 2>&1; done
     OWNER_OUT=$(./target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok "" "127.0.0.2:0" 2>&1)
     printf '%s\n' "$OWNER_OUT"
@@ -385,7 +385,7 @@ EOS
     mkdir -p "$HOME"
     ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
     start_server /work/target/debug/rustdesk /tmp/srv.log
-    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0
+    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness "$(id -u)"
     tcpdump -U -i lo -w /tmp/cap.pcap "tcp port 21118" >/tmp/tcpdump.log 2>&1 & TCPD=$!
     TCPD_START=$($READY --identity "$TCPD")
     $READY --wait-log "$TCPD" "$TCPD_START" /tmp/tcpdump.log "listening on lo" "tcpdump capture readiness"
@@ -404,7 +404,7 @@ EOS
     mkdir -p "$HOME"
     ./target/debug/examples/seed_password "Str0ng-Test-Pw-123" >/dev/null 2>&1 || { echo SEED_FAIL; exit 1; }
     start_server /work/target/debug/rustdesk /tmp/srv.log
-    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness 0
+    $READY --wait-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness "$(id -u)"
     for i in $(seq 11); do ./target/debug/examples/probe_client "127.0.0.1:21118" "WRONG-PW-$i-zz" fail >/dev/null 2>&1; done
     BLOCKED_OUT=$(./target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" fail 2>&1)
     printf '%s\n' "$BLOCKED_OUT"

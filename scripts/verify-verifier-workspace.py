@@ -16635,8 +16635,16 @@ def validate_viewer_video_mailbox_contract(sources):
             "viewer video frame-capacity contract",
         ),
         (
-            '"pub const VIDEO_CONTROL_QUEUE_CAPACITY: usize = 8;"',
-            "viewer video control-capacity contract",
+            '"pub(crate) enum VideoControlAdmission"',
+            "viewer video control-admission contract",
+        ),
+        (
+            '"let refresh_required = !state.refresh_requested;"',
+            "viewer video reset-refresh contract",
+        ),
+        (
+            '"state.work.retain"',
+            "viewer video semantic-control bound contract",
         ),
         (
             '"pub const MAX_VIDEO_FRAME_QUEUE_AGE: Duration = Duration::from_secs(1);"',
@@ -16671,6 +16679,26 @@ def validate_viewer_video_mailbox_contract(sources):
             "viewer video equal-rate reachability regression",
         ),
         (
+            '"r_s11fn_repeated_decoder_resets_coalesce_without_dropping_the_barrier"',
+            "viewer video reset-finality regression",
+        ),
+        (
+            '"r_s11fn_recording_control_is_latest_wins_at_its_exact_queue_position"',
+            "viewer video record-state regression",
+        ),
+        (
+            '"r_s11fn_mixed_controls_retain_exactly_two_semantic_items"',
+            "viewer video mixed-control bound regression",
+        ),
+        (
+            '"fn admit_decoder_reset(&self"',
+            "viewer video reset-caller finality contract",
+        ),
+        (
+            '"fn update_record_state(&mut self) -> bool"',
+            "viewer video record-state caller finality contract",
+        ),
+        (
             'forbid(sources["cargo"], \'crossbeam-queue = "\'',
             "viewer video retired direct dependency contract",
         ),
@@ -16700,6 +16728,22 @@ def validate_viewer_video_mailbox_contract(sources):
             '("client", "pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 8;", '
             '"pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 120;", "frame bound"),',
             "viewer video frame-capacity contract",
+        ),
+        (
+            '("client", "    Accepted,\\n    RefreshRequired,\\n    Closed,", '
+            '"    AcceptedDisabled,\\n    RefreshRequired,\\n    Closed,", '
+            '"control admission outcomes"),',
+            "viewer video control-admission contract",
+        ),
+        (
+            '("client", "let refresh_required = !state.refresh_requested;", '
+            '"let refresh_required = false;", "reset refresh ownership"),',
+            "viewer video reset-refresh contract",
+        ),
+        (
+            '("client", "state.work.retain(|work|", '
+            '"state.work.iter().all(|work|", "semantic control coalescing"),',
+            "viewer video semantic-control bound contract",
         ),
         (
             '("client", "work: VecDeque<VideoWork>", '
@@ -16734,6 +16778,37 @@ def validate_viewer_video_mailbox_contract(sources):
             "viewer video equal-rate reachability regression",
         ),
         (
+            '("client", '
+            '"fn r_s11fn_repeated_decoder_resets_coalesce_without_dropping_the_barrier()", '
+            '"fn repeated_decoder_resets_coalesce_without_dropping_the_barrier()", '
+            '"reset coalescing regression"),',
+            "viewer video reset-finality regression",
+        ),
+        (
+            '("client", '
+            '"fn r_s11fn_recording_control_is_latest_wins_at_its_exact_queue_position()", '
+            '"fn recording_control_is_latest_wins_at_its_exact_queue_position()", '
+            '"record-state regression"),',
+            "viewer video record-state regression",
+        ),
+        (
+            '("client", '
+            '"fn r_s11fn_mixed_controls_retain_exactly_two_semantic_items()", '
+            '"fn mixed_controls_retain_exactly_two_semantic_items()", '
+            '"mixed-control bound regression"),',
+            "viewer video mixed-control bound regression",
+        ),
+        (
+            '("io_loop", "fn admit_decoder_reset(&self", '
+            '"fn ignore_decoder_reset(&self", "reset caller finality"),',
+            "viewer video reset-caller finality contract",
+        ),
+        (
+            '("io_loop", "fn update_record_state(&mut self) -> bool", '
+            '"fn update_record_state(&mut self)", "record-state caller finality"),',
+            "viewer video record-state caller finality contract",
+        ),
+        (
             '("io_loop", "f.frames.first().map_or(false, |frame| frame.key)", '
             '"f.frames.iter().any(|frame| frame.key)", "leading keyframe"),',
             "viewer video leading-keyframe contract",
@@ -16758,13 +16833,33 @@ def validate_viewer_video_mailbox_contract(sources):
     )
     require_text(
         sources["requirements"],
+        '<div class="req"><span class="id">R-S11fn</span>',
+        "viewer video control-finality requirement",
+    )
+    require_text(
+        sources["requirements"],
         "<tr><td>304</td>",
         "viewer video mailbox Appendix C row",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>322</td>",
+        "viewer video control-finality Appendix C row",
     )
     require_text(
         sources["hardening"],
         "**R-S11ev/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox",
         "viewer video mailbox hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11fn/R-S11e-201 semantic, non-dropping viewer decoder-control finality",
+        "viewer video control-finality hardening ledger",
+    )
+    require_text(
+        sources["verify"],
+        "cargo test --lib --features linux-pkg-config client::tests::r_s11fn_ --color never",
+        "viewer video control-finality shared behavior gate",
     )
 
 
@@ -21513,7 +21608,7 @@ def validate_android_voice_call_ownership_contract(sources):
             "receipt_message.set_video_frame_receipt(receipt);",
             "peer.send(&receipt_message).await",
             "if !self.first_frame",
-            "self.new_video_thread(display);",
+            "!self.new_video_thread(display)",
             "thread.media_thread.admit_frame(vf, is_keyframe)",
         ),
         "viewer receipt before decode/publication source",
@@ -54336,6 +54431,24 @@ def run_source_mutations(sources):
         ),
         (
             "viewer_video_mailbox_verifier",
+            '"pub(crate) enum VideoControlAdmission"',
+            '"pub(crate) enum VideoControlAdmissionDisabled"',
+            "viewer video control-admission contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"let refresh_required = !state.refresh_requested;"',
+            '"let refresh_required = false;"',
+            "viewer video reset-refresh contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"state.work.retain"',
+            '"state.work.iter"',
+            "viewer video semantic-control bound contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
             '"work: VecDeque<VideoWork>"',
             '"frames: VecDeque<VideoWork>"',
             "viewer video unified work-queue contract",
@@ -54378,6 +54491,36 @@ def run_source_mutations(sources):
         ),
         (
             "viewer_video_mailbox_verifier",
+            '"r_s11fn_repeated_decoder_resets_coalesce_without_dropping_the_barrier"',
+            '"repeated_decoder_resets_coalesce_without_dropping_the_barrier"',
+            "viewer video reset-finality regression",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"r_s11fn_recording_control_is_latest_wins_at_its_exact_queue_position"',
+            '"recording_control_is_latest_wins_at_its_exact_queue_position"',
+            "viewer video record-state regression",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"r_s11fn_mixed_controls_retain_exactly_two_semantic_items"',
+            '"mixed_controls_retain_exactly_two_semantic_items"',
+            "viewer video mixed-control bound regression",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"fn admit_decoder_reset(&self"',
+            '"fn ignore_decoder_reset(&self"',
+            "viewer video reset-caller finality contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"fn update_record_state(&mut self) -> bool"',
+            '"fn update_record_state(&mut self)"',
+            "viewer video record-state caller finality contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
             'forbid(sources["cargo"], \'crossbeam-queue = "\'',
             'forbid(sources["cargo"], \'crossbeam-queue-disabled = "\'',
             "viewer video retired direct dependency contract",
@@ -54402,15 +54545,39 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
+            '<div class="req"><span class="id">R-S11fn</span>',
+            '<div class="req"><span class="id">R-S11fn-disabled</span>',
+            "viewer video control-finality requirement",
+        ),
+        (
+            "requirements",
             "<tr><td>304</td>",
             "<tr><td>304-disabled</td>",
             "viewer video mailbox Appendix C row",
+        ),
+        (
+            "requirements",
+            "<tr><td>322</td>",
+            "<tr><td>322-disabled</td>",
+            "viewer video control-finality Appendix C row",
         ),
         (
             "hardening",
             "**R-S11ev/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox",
             "**R-S11ev-disabled/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox",
             "viewer video mailbox hardening ledger",
+        ),
+        (
+            "hardening",
+            "**R-S11fn/R-S11e-201 semantic, non-dropping viewer decoder-control finality",
+            "**R-S11fn-disabled/R-S11e-201 semantic, non-dropping viewer decoder-control finality",
+            "viewer video control-finality hardening ledger",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config client::tests::r_s11fn_ --color never",
+            "cargo test --lib --features linux-pkg-config client::tests::disabled_fn_ --color never",
+            "viewer video control-finality shared behavior gate",
         ),
         (
             "viewer_file_finality_verifier",

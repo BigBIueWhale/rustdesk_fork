@@ -92,7 +92,6 @@ pub const MILLI1: Duration = Duration::from_millis(1);
 pub const SEC30: Duration = Duration::from_secs(30);
 pub const MEDIA_DATA_QUEUE_CAPACITY: usize = 8;
 pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 8;
-pub const VIDEO_CONTROL_QUEUE_CAPACITY: usize = 8;
 pub const MAX_VIDEO_FRAME_QUEUE_AGE: Duration = Duration::from_secs(1);
 const MAX_DECODE_FAIL_COUNTER: usize = 3;
 
@@ -2506,6 +2505,13 @@ pub(crate) enum VideoFrameAdmission {
     Closed,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum VideoControlAdmission {
+    Accepted,
+    RefreshRequired,
+    Closed,
+}
+
 struct QueuedVideoFrame {
     generation: u64,
     queued_at: std::time::Instant,
@@ -2521,7 +2527,6 @@ enum VideoWork {
 struct VideoMailboxState {
     work: VecDeque<VideoWork>,
     frame_count: usize,
-    control_count: usize,
     generation: u64,
     awaiting_keyframe: bool,
     refresh_requested: bool,
@@ -2533,7 +2538,6 @@ impl Default for VideoMailboxState {
         Self {
             work: VecDeque::new(),
             frame_count: 0,
-            control_count: 0,
             generation: 0,
             awaiting_keyframe: true,
             refresh_requested: false,
@@ -2555,7 +2559,6 @@ impl VideoMailboxState {
             self.closed = true;
             self.work.clear();
             self.frame_count = 0;
-            self.control_count = 0;
             return false;
         };
         self.generation = generation;
@@ -2584,7 +2587,6 @@ impl VideoMailboxShared {
         state.closed = true;
         state.work.clear();
         state.frame_count = 0;
-        state.control_count = 0;
         drop(state);
         self.ready.notify_all();
     }
@@ -2708,22 +2710,42 @@ impl VideoMailboxSender {
         open
     }
 
-    pub(crate) fn try_send_control(
-        &self,
-        control: VideoControl,
-    ) -> Result<(), mpsc::TrySendError<VideoControl>> {
+    pub(crate) fn admit_control(&self, control: VideoControl) -> VideoControlAdmission {
         let mut state = self.shared.state.lock().unwrap();
         if state.closed {
-            return Err(mpsc::TrySendError::Disconnected(control));
+            return VideoControlAdmission::Closed;
         }
-        if state.control_count >= VIDEO_CONTROL_QUEUE_CAPACITY {
-            return Err(mpsc::TrySendError::Full(control));
-        }
+
+        let refresh_required = match control {
+            VideoControl::Reset => {
+                let refresh_required = !state.refresh_requested;
+                if !state.invalidate_frames() {
+                    drop(state);
+                    self.shared.ready.notify_all();
+                    return VideoControlAdmission::Closed;
+                }
+                refresh_required
+            }
+            VideoControl::RecordScreen(_) => false,
+        };
+        state.work.retain(|work| {
+            !matches!(
+                (control, work),
+                (VideoControl::Reset, VideoWork::Control(VideoControl::Reset))
+                    | (
+                        VideoControl::RecordScreen(_),
+                        VideoWork::Control(VideoControl::RecordScreen(_))
+                    )
+            )
+        });
         state.work.push_back(VideoWork::Control(control));
-        state.control_count += 1;
         drop(state);
         self.shared.ready.notify_one();
-        Ok(())
+        if refresh_required {
+            VideoControlAdmission::RefreshRequired
+        } else {
+            VideoControlAdmission::Accepted
+        }
     }
 
     pub(crate) fn pending_frames(&self) -> usize {
@@ -2755,16 +2777,7 @@ impl VideoMailboxReceiver {
                 continue;
             };
             match work {
-                VideoWork::Control(control) => {
-                    let Some(control_count) = state.control_count.checked_sub(1) else {
-                        log::error!("viewer video mailbox control count invariant failed");
-                        drop(state);
-                        self.shared.close();
-                        return None;
-                    };
-                    state.control_count = control_count;
-                    return Some(VideoMailboxItem::Control(control));
-                }
+                VideoWork::Control(control) => return Some(VideoMailboxItem::Control(control)),
                 VideoWork::Frame(frame) => {
                     let Some(frame_count) = state.frame_count.checked_sub(1) else {
                         log::error!("viewer video mailbox frame count invariant failed");
@@ -3014,13 +3027,10 @@ impl OwnedVideoThread {
             .map_or(false, VideoMailboxSender::begin_refresh)
     }
 
-    pub(crate) fn try_send_control(
-        &self,
-        control: VideoControl,
-    ) -> Result<(), mpsc::TrySendError<VideoControl>> {
+    pub(crate) fn admit_control(&self, control: VideoControl) -> VideoControlAdmission {
         match self.mailbox.as_ref() {
-            Some(mailbox) => mailbox.try_send_control(control),
-            None => Err(mpsc::TrySendError::Disconnected(control)),
+            Some(mailbox) => mailbox.admit_control(control),
+            None => VideoControlAdmission::Closed,
         }
     }
 
@@ -4958,12 +4968,13 @@ mod tests {
             sender.admit_frame(video_frame(2), false),
             VideoFrameAdmission::Queued
         );
-        sender
-            .try_send_control(VideoControl::Reset)
-            .expect("control capacity");
+        assert_eq!(
+            sender.admit_control(VideoControl::Reset),
+            VideoControlAdmission::RefreshRequired
+        );
         assert_eq!(
             sender.admit_frame(video_frame(3), false),
-            VideoFrameAdmission::Queued
+            VideoFrameAdmission::AwaitingKeyframe
         );
         assert_eq!(
             sender.admit_frame(video_frame(4), true),
@@ -5099,9 +5110,10 @@ mod tests {
             sender.admit_frame(video_frame(1), true),
             VideoFrameAdmission::Queued
         );
-        sender
-            .try_send_control(VideoControl::RecordScreen(true))
-            .expect("control capacity");
+        assert_eq!(
+            sender.admit_control(VideoControl::RecordScreen(true)),
+            VideoControlAdmission::Accepted
+        );
         assert_eq!(
             sender.admit_frame(video_frame(2), false),
             VideoFrameAdmission::Queued
@@ -5120,17 +5132,129 @@ mod tests {
     }
 
     #[test]
-    fn r_s11ev_video_controls_are_independently_bounded() {
-        let (sender, _receiver) = video_mailbox();
-        for _ in 0..VIDEO_CONTROL_QUEUE_CAPACITY {
-            sender
-                .try_send_control(VideoControl::Reset)
-                .expect("control capacity");
+    fn r_s11fn_repeated_decoder_resets_coalesce_without_dropping_the_barrier() {
+        let (sender, receiver) = video_mailbox();
+        assert_eq!(
+            sender.admit_frame(video_frame(1), true),
+            VideoFrameAdmission::Queued
+        );
+        for index in 0..64 {
+            let expected = if index == 0 {
+                VideoControlAdmission::RefreshRequired
+            } else {
+                VideoControlAdmission::Accepted
+            };
+            assert_eq!(sender.admit_control(VideoControl::Reset), expected);
+            let state = sender.shared.state.lock().unwrap();
+            assert_eq!(state.work.len(), 1);
+            assert_eq!(state.frame_count, 0);
         }
+        assert_eq!(sender.pending_frames(), 0);
+        assert_eq!(
+            sender.admit_frame(video_frame(2), false),
+            VideoFrameAdmission::AwaitingKeyframe
+        );
+        assert_eq!(
+            sender.admit_frame(video_frame(3), true),
+            VideoFrameAdmission::Queued
+        );
+
         assert!(matches!(
-            sender.try_send_control(VideoControl::Reset),
-            Err(mpsc::TrySendError::Full(VideoControl::Reset))
+            receiver.recv(),
+            Some(VideoMailboxItem::Control(VideoControl::Reset))
         ));
+        let recovered = queued_video_frame(
+            receiver
+                .recv()
+                .expect("the post-reset keyframe must remain reachable"),
+        );
+        assert!(recovered.is_keyframe);
+        assert_eq!(recovered.frame.display, 3);
+    }
+
+    #[test]
+    fn r_s11fn_recording_control_is_latest_wins_at_its_exact_queue_position() {
+        let (sender, receiver) = video_mailbox();
+        assert_eq!(
+            sender.admit_frame(video_frame(1), true),
+            VideoFrameAdmission::Queued
+        );
+        assert_eq!(
+            sender.admit_control(VideoControl::RecordScreen(true)),
+            VideoControlAdmission::Accepted
+        );
+        assert_eq!(
+            sender.admit_frame(video_frame(2), false),
+            VideoFrameAdmission::Queued
+        );
+        for index in 0..64 {
+            assert_eq!(
+                sender.admit_control(VideoControl::RecordScreen(index % 2 == 0)),
+                VideoControlAdmission::Accepted
+            );
+        }
+        {
+            let state = sender.shared.state.lock().unwrap();
+            assert_eq!(state.work.len(), 3);
+            assert_eq!(state.frame_count, 2);
+        }
+
+        assert_eq!(
+            queued_video_frame(receiver.recv().expect("first frame"))
+                .frame
+                .display,
+            1
+        );
+        assert_eq!(
+            queued_video_frame(receiver.recv().expect("second frame"))
+                .frame
+                .display,
+            2
+        );
+        assert!(matches!(
+            receiver.recv(),
+            Some(VideoMailboxItem::Control(VideoControl::RecordScreen(false)))
+        ));
+    }
+
+    #[test]
+    fn r_s11fn_mixed_controls_retain_exactly_two_semantic_items() {
+        let (sender, receiver) = video_mailbox();
+        for index in 0..64 {
+            let reset_admission = if index == 0 {
+                VideoControlAdmission::RefreshRequired
+            } else {
+                VideoControlAdmission::Accepted
+            };
+            assert_eq!(sender.admit_control(VideoControl::Reset), reset_admission);
+            assert_eq!(
+                sender.admit_control(VideoControl::RecordScreen(index % 2 == 0)),
+                VideoControlAdmission::Accepted
+            );
+            let state = sender.shared.state.lock().unwrap();
+            assert_eq!(state.work.len(), 2);
+            assert_eq!(state.frame_count, 0);
+        }
+        assert_eq!(
+            sender.admit_frame(video_frame(7), true),
+            VideoFrameAdmission::Queued
+        );
+
+        assert!(matches!(
+            receiver.recv(),
+            Some(VideoMailboxItem::Control(VideoControl::Reset))
+        ));
+        assert!(matches!(
+            receiver.recv(),
+            Some(VideoMailboxItem::Control(VideoControl::RecordScreen(false)))
+        ));
+        let recovered = queued_video_frame(
+            receiver
+                .recv()
+                .expect("the independent frame must follow both semantic controls"),
+        );
+        assert!(recovered.is_keyframe);
+        assert_eq!(recovered.frame.display, 7);
     }
 
     #[test]
@@ -5149,10 +5273,10 @@ mod tests {
             sender.admit_frame(video_frame(1), true),
             VideoFrameAdmission::Closed
         );
-        assert!(matches!(
-            sender.try_send_control(VideoControl::Reset),
-            Err(mpsc::TrySendError::Disconnected(VideoControl::Reset))
-        ));
+        assert_eq!(
+            sender.admit_control(VideoControl::Reset),
+            VideoControlAdmission::Closed
+        );
     }
 
     #[test]
@@ -5178,10 +5302,10 @@ mod tests {
             sender.admit_frame(video_frame(1), true),
             VideoFrameAdmission::Closed
         );
-        assert!(matches!(
-            sender.try_send_control(VideoControl::Reset),
-            Err(mpsc::TrySendError::Disconnected(VideoControl::Reset))
-        ));
+        assert_eq!(
+            sender.admit_control(VideoControl::Reset),
+            VideoControlAdmission::Closed
+        );
     }
 
     #[test]

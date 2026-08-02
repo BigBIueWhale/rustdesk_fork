@@ -10,8 +10,8 @@ use crate::{
 use crate::{
     client::{
         self, new_voice_call_request, Client, Data, Interface, LoginConfigHandler, MediaData,
-        OwnedMediaThread, OwnedVideoThread, QualityStatus, VideoControl, VideoFrameAdmission,
-        ViewerCommandReceiver, ViewerCommandSender, MILLI1, SEC30,
+        OwnedMediaThread, OwnedVideoThread, QualityStatus, VideoControl, VideoControlAdmission,
+        VideoFrameAdmission, ViewerCommandReceiver, ViewerCommandSender, MILLI1, SEC30,
     },
     common::get_default_sound_input,
     ui_session_interface::{InvokeUiSession, Session},
@@ -2172,7 +2172,9 @@ impl<T: InvokeUiSession> Remote<T> {
             }
             Data::RecordScreen(start) => {
                 self.handler.lc.write().unwrap().record_state = start;
-                self.update_record_state();
+                if !self.update_record_state() {
+                    return false;
+                }
             }
             Data::NewVoiceCall => {
                 let msg = new_voice_call_request(true);
@@ -2193,16 +2195,15 @@ impl<T: InvokeUiSession> Remote<T> {
             }
             Data::ResetDecoder(display) => match display {
                 Some(display) => {
-                    if let Some(v) = self.video_threads.get_mut(&display) {
-                        if let Err(err) = v.media_thread.try_send_control(VideoControl::Reset) {
-                            log::warn!("viewer video decode queue full; dropping reset: {err}");
-                        }
+                    if !self.admit_decoder_reset(display) {
+                        return false;
                     }
                 }
                 None => {
-                    for (_, v) in self.video_threads.iter_mut() {
-                        if let Err(err) = v.media_thread.try_send_control(VideoControl::Reset) {
-                            log::warn!("viewer video decode queue full; dropping reset: {err}");
+                    let displays: Vec<_> = self.video_threads.keys().copied().collect();
+                    for display in displays {
+                        if !self.admit_decoder_reset(display) {
+                            return false;
                         }
                     }
                 }
@@ -2674,8 +2675,9 @@ impl<T: InvokeUiSession> Remote<T> {
                         self.send_toggle_privacy_mode_msg(peer).await;
                     }
                     self.video_format = CodecFormat::from(&vf);
-                    if !self.video_threads.contains_key(&display) {
-                        self.new_video_thread(display);
+                    if !self.video_threads.contains_key(&display) && !self.new_video_thread(display)
+                    {
+                        return false;
                     }
                     let Some(thread) = self.video_threads.get_mut(&display) else {
                         return true;
@@ -3189,7 +3191,9 @@ impl<T: InvokeUiSession> Remote<T> {
                             }
                             Ok(Permission::Recording) => {
                                 self.handler.lc.write().unwrap().record_permission = p.enabled;
-                                self.update_record_state();
+                                if !self.update_record_state() {
+                                    return false;
+                                }
                                 self.handler.set_permission("recording", p.enabled);
                             }
                             Ok(Permission::BlockInput) => {
@@ -3203,12 +3207,8 @@ impl<T: InvokeUiSession> Remote<T> {
                     }
                     Some(misc::Union::SwitchDisplay(s)) => {
                         self.handler.handle_peer_switch_display(&s);
-                        if let Some(thread) = self.video_threads.get_mut(&(s.display as usize)) {
-                            if let Err(err) =
-                                thread.media_thread.try_send_control(VideoControl::Reset)
-                            {
-                                log::warn!("viewer video decode queue full; dropping reset: {err}");
-                            }
+                        if !self.admit_decoder_reset(s.display as usize) {
+                            return false;
                         }
 
                         let mut scale = 1.0;
@@ -3823,7 +3823,32 @@ impl<T: InvokeUiSession> Remote<T> {
         true
     }
 
-    fn new_video_thread(&mut self, display: usize) {
+    fn admit_decoder_reset(&self, display: usize) -> bool {
+        let Some(thread) = self.video_threads.get(&display) else {
+            return true;
+        };
+        match thread.media_thread.admit_control(VideoControl::Reset) {
+            VideoControlAdmission::Accepted => true,
+            VideoControlAdmission::RefreshRequired => {
+                if let Err(err) = self.handler.refresh_video(display as _) {
+                    log::error!(
+                        "failed to admit post-reset video refresh for display {display}: {err}"
+                    );
+                    false
+                } else {
+                    true
+                }
+            }
+            VideoControlAdmission::Closed => {
+                log::error!(
+                    "video decoder mailbox closed while admitting reset for display {display}"
+                );
+                false
+            }
+        }
+    }
+
+    fn new_video_thread(&mut self, display: usize) -> bool {
         let (video_sender, video_receiver) = client::video_mailbox();
         let decode_fps = Arc::new(RwLock::new(None));
         let frame_count = Arc::new(RwLock::new(0));
@@ -3856,11 +3881,14 @@ impl<T: InvokeUiSession> Remote<T> {
             let auto_record =
                 LocalConfig::get_bool_option(config::keys::OPTION_ALLOW_AUTO_RECORD_OUTGOING);
             self.handler.lc.write().unwrap().record_state = auto_record;
-            self.update_record_state();
+            if !self.update_record_state() {
+                return false;
+            }
         }
+        true
     }
 
-    fn update_record_state(&mut self) {
+    fn update_record_state(&mut self) -> bool {
         // state
         let permission = self.handler.lc.read().unwrap().record_permission;
         if !permission {
@@ -3869,17 +3897,18 @@ impl<T: InvokeUiSession> Remote<T> {
         let state = self.handler.lc.read().unwrap().record_state;
         let start = state && permission;
         if self.last_record_state == start {
-            return;
+            return true;
         }
         self.last_record_state = start;
         log::info!("record screen start: {start}");
         // update local
         for (_, v) in self.video_threads.iter_mut() {
-            if let Err(err) = v
-                .media_thread
-                .try_send_control(VideoControl::RecordScreen(start))
+            if v.media_thread
+                .admit_control(VideoControl::RecordScreen(start))
+                == VideoControlAdmission::Closed
             {
-                log::warn!("viewer video decode queue full; dropping record-state update: {err}");
+                log::error!("video decoder mailbox closed while admitting record-state update");
+                return false;
             }
         }
         self.handler.update_record_status(start);
@@ -3890,7 +3919,9 @@ impl<T: InvokeUiSession> Remote<T> {
         msg.set_misc(misc);
         if let Err(err) = self.sender.send(Data::Message(msg)) {
             log::error!("failed to admit remote recording-state update: {err}");
+            return false;
         }
+        true
     }
 }
 

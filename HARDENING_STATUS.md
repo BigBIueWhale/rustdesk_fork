@@ -2232,12 +2232,13 @@ correctness oracle.
 
 The audio-only `MediaData` channel remains capacity eight. Video now has one `VideoMailboxState`
 under one `Mutex`/`Condvar`: its ordered `VecDeque` contains each retained frame or control
-directly. Frames and controls have independent capacity-eight counters; there is no secondary
-frame store, lossy wake token, retry loop, polling sleep, unbounded channel, or nested runtime.
-Checked counter underflow and generation exhaustion close the mailbox instead of repairing state
-silently. Sender or receiver close/Drop atomically rejects new work, clears retained frames and
-controls, wakes a waiting decoder, and hands the exact worker to the existing bounded join/reaper
-owner.
+directly. Frames use a checked capacity-eight counter. R-S11fn subsequently replaces the generic
+eight-control allowance with the tighter semantic bound of one reset barrier plus one latest
+recording-state intent, without capacity drops. There is no secondary frame store, lossy wake token,
+retry loop, polling sleep, unbounded channel, or nested runtime. Checked frame-counter underflow and
+generation exhaustion close the mailbox instead of repairing state silently. Sender or receiver
+close/Drop atomically rejects new work, clears retained frames and controls, wakes a waiting decoder,
+and hands the exact worker to the existing bounded join/reaper owner.
 
 The mailbox starts awaiting an independently decodable frame. Only the first encoded frame being a
 keyframe starts VP8/VP9/AV1/H.264/H.265 sequence admission; a later key cannot repair an earlier
@@ -2260,12 +2261,14 @@ refresh debounce. This does not measure capture, encode, network, Flutter event 
 texture scheduling, or actual presentation latency; the open instrumentation matrix must measure
 those separately.
 
-Fifteen deterministic Rust regressions cover initial delta refusal, leading-key and raw independent
-classification, capacity overflow and ordered keyframe recovery, control preservation, rejection
-of an already-superseded generation at publication check, equal-rate consumption after a full
-mailbox with no unreachable retained frame, dequeue and post-decode freshness boundaries, explicit
-refresh, independent control capacity, close wake, sender-drop wake, receiver-drop producer
-rejection, and generation exhaustion. In immutable dev image
+The original fifteen deterministic Rust regressions covered initial delta refusal, leading-key and
+raw independent classification, capacity overflow and ordered keyframe recovery, control
+preservation, rejection of an already-superseded generation at publication check, equal-rate
+consumption after a full mailbox with no unreachable retained frame, dequeue and post-decode
+freshness boundaries, explicit refresh, the then-current generic control capacity, close wake,
+sender-drop wake, receiver-drop producer rejection, and generation exhaustion. R-S11fn replaces
+that generic-capacity case with two semantic control-finality stress regressions while preserving
+the other fourteen current R-S11ev cases. In immutable dev image
 `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`,
 numeric UID:GID 1000:1000, read-only root/source, no network, no capabilities, no-new-privileges,
 bounded resources, and no ports/devices/sockets/host namespaces, all 15 passed and the complete
@@ -4379,6 +4382,97 @@ clean cold R-B2/R-B10 artifacts, independent reproduction, and external review r
 blockers. No root, sudo, privileged container, host RustDesk process/service/binary/configuration,
 host listener, firewall/UFW/nftables/iptables state, or host network configuration was inspected or
 changed.
+
+**R-S11fn/R-S11e-201 semantic, non-dropping viewer decoder-control finality — SOURCE
+IMPLEMENTED 2026-08-03; PINNED RUST 1.75 LINUX COMPILATION, 3/3 NEW CONTROL STRESS
+REGRESSIONS, AND 12/12 EXISTING CLIENT-MAILBOX REGRESSIONS GREEN; FOCUSED 36-MUTATION
+AND INDEPENDENT SEMANTIC BASELINES PLUS COMPLETE UNSLICED SOURCE-MUTATION CATALOG GREEN;
+FINAL FROZEN-BYTE CATALOG REPETITION IS A PUBLICATION PRECONDITION;
+NATIVE WINDOWS/macOS/iOS/ANDROID EXECUTION, DEVICE/FOCUS
+REPRODUCTION, COLD RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW PENDING.** Platform:
+shared outgoing viewer core on Android, iOS, Windows, Linux, and macOS. Endpoint/action: UI
+single/all-display decoder reset, authenticated peer display-switch reset, local and permission-driven
+recording-state transition, per-display decoder mailbox admission, and connection-round failure
+propagation. Boundary: an already-admitted outer viewer command and its exact decoder worker/mailbox,
+which may be independently stalled while the network and input/control planes remain live.
+
+Read-only tracing found a concrete finality defect left by the otherwise-correct R-S11ev mailbox.
+`VideoMailboxSender::try_send_control` retained a generic eight-control counter and returned
+`TrySendError::Full`. All three production reset paths and `update_record_state` explicitly logged
+and discarded that result while returning success to the surrounding connection round. Repeated
+work during a stalled decoder could therefore lose a reset barrier and preserve stale local
+decoder/GOP state, or lose the recording transition needed to converge the handler. Reconnect
+destroyed the mailbox and worker and could mask that retained state. This is current-source proof of
+a shared command-finality/resource-state defect. It is not proof that an unidentified operational
+Android or Windows artifact reached this queue state, not causal proof for the reported focus or
+background delay, and not evidence of exploitation, privilege escalation, host compromise, public
+exposure, or any host RustDesk/service/listener/firewall/network change.
+
+The existing one-mutex/one-condition-variable mailbox now owns semantic control bounds. Reset
+admission advances the checked generation, clears queued frames, enters fresh-keyframe wait, latches
+refresh, removes an older queued reset, and retains one current reset at the work tail. Only the first
+reset without an already-pending recovery returns `RefreshRequired`; repeated reset demand coalesces.
+The UI single/all-display and peer-switch callers either admit that exact refresh through the
+existing bounded refresh owner or terminate the connection round, and a closed mailbox is terminal.
+A fresh independent frame follows the retained reset in queue order; deltas remain refused while
+recovery is pending.
+
+`RecordScreen(bool)` is a desired-state transition rather than an event log. Admission removes any
+older queued recording control and retains only the newest state at the current tail. The existing
+session configuration remains construction-time truth if the decoder handler does not yet exist.
+Every UI, peer-permission, and first-worker auto-record caller now propagates a closed decoder mailbox;
+the existing remote-status command sender failing also terminates that round rather than being logged
+as success. The complete work deque therefore retains no more than eight frames, one reset, and one
+recording intent. The obsolete control counter, generic `Full` result, caller-side drop warnings, and
+`try_send_control` API are absent. No timer, reconnect workaround, polling loop, task, thread, runtime,
+queue, dependency, protocol field, service, or platform renderer changed.
+
+The change was developed red-first. The new tests initially failed compilation because production
+had no `VideoControlAdmission` or semantic `admit_control` API. After the production correction, a
+direct locked/offline pinned-Rust diagnostic compiled the exact Linux library test target. Two new
+tests then passed: 64 repeated resets retained exactly one control and zero predecessor frames,
+refused a delta, and delivered the barrier before the fresh keyframe; 64 alternating recording
+states retained exactly two frames plus one newest recording control and delivered that latest state
+at the work tail. A third test alternates both command kinds for 64 rounds and proves that their
+combined retained-control bound is exactly two before both controls precede the recovery keyframe.
+All 12 existing `client::tests::r_s11ev_` mailbox regressions also passed, covering
+initial keyframe wait, overflow, equal-rate reachability, freshness, explicit refresh, generation
+supersession/exhaustion, and endpoint closure. These direct Cargo runs are counted as focused behavior
+diagnostics, not as the repository script layer's full build proof or a release result.
+
+Every counted run used immutable dev image
+`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`,
+numeric UID/GID 1000:1000, `--pull=never`, `--network=none`, no published ports, a read-only
+image/source/vendor input, private executable tmpfs for build output, all capabilities dropped,
+`no-new-privileges`, bounded CPU/memory/PIDs/descriptors, and no Docker socket, device, or host
+namespace. No image was built, pulled, tagged, or modified. Two initial compile setup attempts used an
+incorrect direct Cargo path or allowed the rustup proxy to seek its read-only update scratch and one
+used the wrong vendor mount; they exited before project compilation and are uncounted diagnostics.
+The correct pinned direct-toolchain invocation then compiled and ran the tests above.
+
+The focused verifier binds the explicit control outcomes, reset generation and refresh ownership,
+same-kind coalescing, production caller failure propagation, absence of generic capacity/drop paths,
+all three stress regressions, shared gate wiring, R-S11fn, Appendix C #322, this ledger, the exact
+requirements digest, and independent verifier integration. Its semantic baseline passed and it
+rejected all 36 deliberate mutations. The independent workspace semantic baseline also passed after
+its pre-existing viewer-receipt ordering assertion was updated to require the new fallible
+`new_video_thread` admission rather than the obsolete infallible statement. The complete unsliced
+independent source-mutation catalog then exited zero against the stable read-only candidate bytes
+after roughly 24 minutes. Because recording that result changes this tracked ledger, publication
+requires one additional complete from-mutation-one repetition against the final staged bytes. That
+final repetition is reported in the commit handoff rather than causing another self-referential
+ledger edit.
+
+This source slice does not close the user's binding cross-platform end-to-end connection correctness
+and performance mandate. Native Windows/macOS/iOS and Android compilation; exact-current Android
+task-swipe/reopen/Force-Stop and Windows focus/minimize/tab execution; deliberate real decoder and
+renderer stalls; monotonic capture/encode/write/receive/decode/publication/render timestamps; explicit
+latency, recovery, queue, CPU, and memory budgets; cross-version behavior; identification of exact
+operational artifacts; clean committed cold R-B2/R-B10 artifacts; separately required independent
+reproduction; and external review remain release blockers. No RustDesk executable, peer, listener,
+decoder, renderer, emulator, VM, physical device, installed app, host service, root/sudo, privileged
+container, host RustDesk process/configuration, or firewall/UFW/nftables/iptables state was run,
+inspected, or changed.
 
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
@@ -19043,7 +19137,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-fb5cae2cef63c5005857468d5da00234afece764c89777ea39984c90e57170b6  requirements.html
+183bbf6984f05a37334e4b6eb4a3e3287f3142b5e6f0b7b688559d119e6b1ede  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -19077,3 +19171,4 @@ The same identity additionally binds R-S11fi and Appendix C #317.
 The same identity additionally binds R-S11fj and Appendix C #318.
 The same identity additionally binds R-S11fk and Appendix C #319.
 The same identity additionally binds R-S11fl and Appendix C #320.
+The same identity additionally binds R-S11fn and Appendix C #322.

@@ -76,10 +76,6 @@ def validate(sources: Dict[str, str]) -> None:
             "eight-frame mailbox bound",
         ),
         (
-            "pub const VIDEO_CONTROL_QUEUE_CAPACITY: usize = 8;",
-            "independent eight-control mailbox bound",
-        ),
-        (
             "pub const MAX_VIDEO_FRAME_QUEUE_AGE: Duration = Duration::from_secs(1);",
             "one-second receive-through-decode freshness budget",
         ),
@@ -100,13 +96,22 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "work: VecDeque<VideoWork>",
             "frame_count: usize",
-            "control_count: usize",
             "generation: u64",
             "awaiting_keyframe: bool",
             "refresh_requested: bool",
             "closed: bool",
         ),
         "single ordered mailbox state",
+    )
+    forbid(state, "control_count", "lossy control-count capacity")
+
+    control_admission = extract_rust_item(
+        client, "pub(crate) enum VideoControlAdmission", "video control admission result"
+    )
+    require_order(
+        control_admission,
+        ("Accepted,", "RefreshRequired,", "Closed,"),
+        "explicit control admission outcomes",
     )
 
     invalidate = extract_rust_item(
@@ -158,6 +163,34 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         forbid(admission, forbidden, "split/polling frame admission")
 
+    control = extract_rust_item(
+        client, "pub(crate) fn admit_control", "viewer video control admission"
+    )
+    require_order(
+        control,
+        (
+            "if state.closed",
+            "VideoControl::Reset",
+            "let refresh_required = !state.refresh_requested;",
+            "if !state.invalidate_frames()",
+            "VideoControl::RecordScreen(_) => false",
+            "state.work.retain",
+            "VideoWork::Control(VideoControl::Reset)",
+            "VideoWork::Control(VideoControl::RecordScreen(_))",
+            "state.work.push_back(VideoWork::Control(control));",
+            "VideoControlAdmission::RefreshRequired",
+            "VideoControlAdmission::Accepted",
+        ),
+        "semantic control coalescing, reset barrier, and explicit refresh ownership",
+    )
+    for forbidden in (
+        "VIDEO_CONTROL_QUEUE_CAPACITY",
+        "control_count",
+        "try_send_control",
+    ):
+        forbid(client + io_loop, forbidden, "lossy viewer control admission")
+    forbid(control, "TrySendError::Full", "generic control-capacity rejection")
+
     shared_close = extract_rust_item(
         client, "impl VideoMailboxShared", "shared mailbox closure"
     )
@@ -167,7 +200,6 @@ def validate(sources: Dict[str, str]) -> None:
             "state.closed = true;",
             "state.work.clear();",
             "state.frame_count = 0;",
-            "state.control_count = 0;",
             "self.ready.notify_all();",
         ),
         "terminal close releases retained work before wake",
@@ -196,7 +228,6 @@ def validate(sources: Dict[str, str]) -> None:
             "while state.work.is_empty() && !state.closed",
             "state = self.shared.ready.wait(state).unwrap();",
             "let Some(work) = state.work.pop_front()",
-            "state.control_count.checked_sub(1)",
             "state.frame_count.checked_sub(1)",
             "frame.generation != state.generation",
             "if !video_frame_is_fresh",
@@ -264,12 +295,50 @@ def validate(sources: Dict[str, str]) -> None:
             "thread.media_thread.admit_frame(vf, is_keyframe)",
             "VideoFrameAdmission::AwaitingKeyframe",
             "VideoFrameAdmission::RefreshRequired",
-            "self.handler.refresh_video(display as _);",
+            "self.handler.refresh_video(display as _)",
         ),
         "peer frame to direct mailbox admission and recovery",
     )
     for forbidden in ("force_push", "MediaData::VideoQueue", "try_send(MediaData::VideoFrame"):
         forbid(peer_admission, forbidden, "split frame/token peer admission")
+
+    reset_admission = extract_rust_item(
+        io_loop, "fn admit_decoder_reset(&self", "decoder reset admission"
+    )
+    require_order(
+        reset_admission,
+        (
+            "thread.media_thread.admit_control(VideoControl::Reset)",
+            "VideoControlAdmission::Accepted",
+            "VideoControlAdmission::RefreshRequired",
+            "self.handler.refresh_video(display as _)",
+            "VideoControlAdmission::Closed",
+            "false",
+        ),
+        "reset barrier refresh and terminal closure propagation",
+    )
+    recording_admission = extract_rust_item(
+        io_loop, "fn update_record_state(&mut self) -> bool", "record-state admission"
+    )
+    require_order(
+        recording_admission,
+        (
+            "admit_control(VideoControl::RecordScreen(start))",
+            "== VideoControlAdmission::Closed",
+            "return false;",
+            "self.handler.update_record_status(start);",
+            "self.sender.send(Data::Message(msg))",
+            "return false;",
+            "true",
+        ),
+        "record-state convergence and terminal admission failure",
+    )
+    for forbidden in (
+        "dropping reset",
+        "dropping record-state update",
+        "viewer video decode queue full",
+    ):
+        forbid(io_loop, forbidden, "silent admitted-control discard")
 
     for test in (
         "r_s11ev_video_mailbox_requires_a_keyframe_before_deltas",
@@ -280,7 +349,9 @@ def validate(sources: Dict[str, str]) -> None:
         "r_s11ev_stale_frame_retires_the_gop_instead_of_displaying_backlog",
         "r_s11ev_video_freshness_budget_includes_decode_time",
         "r_s11ev_explicit_refresh_clears_frames_but_preserves_controls",
-        "r_s11ev_video_controls_are_independently_bounded",
+        "r_s11fn_repeated_decoder_resets_coalesce_without_dropping_the_barrier",
+        "r_s11fn_recording_control_is_latest_wins_at_its_exact_queue_position",
+        "r_s11fn_mixed_controls_retain_exactly_two_semantic_items",
         "r_s11ev_close_releases_pending_work_and_wakes_the_worker",
         "r_s11ev_sender_drop_wakes_a_waiting_receiver",
         "r_s11ev_receiver_drop_rejects_new_work",
@@ -299,16 +370,32 @@ def validate(sources: Dict[str, str]) -> None:
             '<div class="req"><span class="id">R-S11ev</span>',
             "R-S11ev requirement",
         ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fn</span>',
+            "R-S11fn control-finality requirement",
+        ),
         ("requirements", "<tr><td>304</td>", "Appendix C #304"),
+        ("requirements", "<tr><td>322</td>", "Appendix C #322"),
         (
             "hardening",
             "**R-S11ev/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox",
             "viewer video mailbox hardening ledger",
         ),
         (
+            "hardening",
+            "**R-S11fn/R-S11e-201 semantic, non-dropping viewer decoder-control finality",
+            "viewer video control-finality hardening ledger",
+        ),
+        (
             "verify",
             "cargo test --lib --features linux-pkg-config client::tests::r_s11ev_ --color never",
             "shared behavior-test wiring",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config client::tests::r_s11fn_ --color never",
+            "shared control-finality behavior-test wiring",
         ),
         (
             "verify",
@@ -347,7 +434,7 @@ Mutation = Tuple[str, str, str, str]
 
 MUTATIONS: Tuple[Mutation, ...] = (
     ("client", "pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 8;", "pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 120;", "frame bound"),
-    ("client", "pub const VIDEO_CONTROL_QUEUE_CAPACITY: usize = 8;", "pub const VIDEO_CONTROL_QUEUE_CAPACITY: usize = 120;", "control bound"),
+    ("client", "    Accepted,\n    RefreshRequired,\n    Closed,", "    AcceptedDisabled,\n    RefreshRequired,\n    Closed,", "control admission outcomes"),
     ("client", "Duration::from_secs(1)", "Duration::from_secs(10)", "freshness bound"),
     ("client", "work: VecDeque<VideoWork>", "frames: VecDeque<VideoWork>", "unified work queue"),
     ("client", "state.clear_frames();\n            state.awaiting_keyframe = false;", "state.awaiting_keyframe = false;", "keyframe supersession"),
@@ -361,13 +448,24 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("client", "if !video_receiver.generation_is_current(generation)", "if false", "publication generation check"),
     ("client", "decoder_generation = None;\n                        if let Some(handler)", "if let Some(handler)", "decoder reset generation"),
     ("client", "fn r_s11ev_equal_rate_recovery_leaves_no_unreachable_frame_backlog()", "fn equal_rate_recovery_leaves_no_unreachable_frame_backlog()", "equal-rate regression"),
+    ("client", "let refresh_required = !state.refresh_requested;", "let refresh_required = false;", "reset refresh ownership"),
+    ("client", "state.work.retain(|work|", "state.work.iter().all(|work|", "semantic control coalescing"),
+    ("client", "fn r_s11fn_repeated_decoder_resets_coalesce_without_dropping_the_barrier()", "fn repeated_decoder_resets_coalesce_without_dropping_the_barrier()", "reset coalescing regression"),
+    ("client", "fn r_s11fn_recording_control_is_latest_wins_at_its_exact_queue_position()", "fn recording_control_is_latest_wins_at_its_exact_queue_position()", "record-state regression"),
+    ("client", "fn r_s11fn_mixed_controls_retain_exactly_two_semantic_items()", "fn mixed_controls_retain_exactly_two_semantic_items()", "mixed-control bound regression"),
     ("io_loop", "f.frames.first().map_or(false, |frame| frame.key)", "f.frames.iter().any(|frame| frame.key)", "leading keyframe"),
     ("io_loop", "thread.media_thread.admit_frame(vf, is_keyframe)", "thread.media_thread.try_send(vf)", "direct mailbox admission"),
+    ("io_loop", "fn admit_decoder_reset(&self", "fn ignore_decoder_reset(&self", "reset caller finality"),
+    ("io_loop", "fn update_record_state(&mut self) -> bool", "fn update_record_state(&mut self)", "record-state caller finality"),
     ("cargo", 'async-trait = "0.1"', 'async-trait = "0.1"\ncrossbeam-queue = "0.3"', "retired direct dependency"),
     ("requirements", '<div class="req"><span class="id">R-S11ev</span>', '<div class="req"><span class="id">R-S11ev-disabled</span>', "normative requirement"),
+    ("requirements", '<div class="req"><span class="id">R-S11fn</span>', '<div class="req"><span class="id">R-S11fn-disabled</span>', "control-finality requirement"),
     ("requirements", "<tr><td>304</td>", "<tr><td>304-disabled</td>", "Appendix disposition"),
+    ("requirements", "<tr><td>322</td>", "<tr><td>322-disabled</td>", "control-finality Appendix disposition"),
     ("hardening", "**R-S11ev/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox", "**R-S11ev-disabled/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox", "hardening ledger"),
+    ("hardening", "**R-S11fn/R-S11e-201 semantic, non-dropping viewer decoder-control finality", "**R-S11fn-disabled/R-S11e-201 semantic, non-dropping viewer decoder-control finality", "control-finality hardening ledger"),
     ("verify", "cargo test --lib --features linux-pkg-config client::tests::r_s11ev_ --color never", "cargo test --lib --features linux-pkg-config client::tests::disabled_ --color never", "shared behavior gate"),
+    ("verify", "cargo test --lib --features linux-pkg-config client::tests::r_s11fn_ --color never", "cargo test --lib --features linux-pkg-config client::tests::disabled_fn_ --color never", "control-finality behavior gate"),
     ("verify", "python3 scripts/verify-viewer-video-mailbox.py --repo . --self-test", "python3 scripts/verify-viewer-video-mailbox.py --repo .", "shared mutation gate"),
     ("apple", "python3 scripts/verify-viewer-video-mailbox.py --repo . --self-test", "python3 scripts/verify-viewer-video-mailbox.py --repo .", "Apple mutation gate"),
     ("workspace", '"viewer_video_mailbox_verifier": (', '"viewer_video_mailbox_verifier_disabled": (', "independent source binding"),

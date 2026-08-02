@@ -3641,15 +3641,14 @@ an explicit tracked writer failure preserves existing resume semantics. There is
 task, thread, runtime, lock-held await, blocking producer send, busy poll, unbounded queue,
 dependency, reconnect, writer barrier, protocol field, or acknowledgement.
 
-The common controlled-side caller explicitly discards the returned receipt and therefore
-retains its prior behavior; server-side file-egress finality remains open rather than
-being silently claimed. Exact writer completion means the encrypted frame reached the
-local socket sink. It does not prove the remote peer received, decoded, accepted, or
-completed the operation. Existing authenticated `FileResponse` variants remain the sole
-peer semantic completion path. This slice adds no cosmetic ACK. Peer-response deadlines,
-incoming `job.write` error propagation, digest/check failure reporting, controlled-side
-egress receipts, and full operation-level completion ownership remain the next file-flow
-audit work.
+R-S11fh subsequently removed the common controlled-side receipt discard and applied exact
+local-writer ownership at the controlled connection's complete `FileResponse` funnel. That
+later slice is separate from this viewer result. Exact writer completion means the encrypted
+frame reached the local socket sink. It does not prove the remote peer received, decoded,
+accepted, or completed the operation. Existing authenticated `FileResponse` variants remain
+the sole peer semantic completion path. Neither slice adds a cosmetic ACK. Peer-response
+deadlines, incoming `job.write` error propagation, digest/check failure reporting, and full
+operation-level completion ownership remain subsequent file-flow audit work.
 
 Current counted evidence remains narrower than device execution. A real keyed in-memory
 duplex test forces the exact file block to remain back-pressured, proves that its returned
@@ -3706,6 +3705,109 @@ clean committed cold R-B2/R-B10 artifacts; separately required independent repro
 and external review. These are explicit release blockers. Source compilation, formatter,
 mutation, and in-memory transport evidence must never be described as operational or
 end-to-end validation.
+
+**R-S11fh/R-S11e-195 controlled-side file-response exact local writer finality — SOURCE
+IMPLEMENTED 2026-08-02; FIVE DETERMINISTIC NON-FLUTTER LINUX BEHAVIORS AND EXACT RUST
+1.75 FORMATTING GREEN; FOCUSED 53-MUTATION, INDEPENDENT COMPLETE-MATRIX, FRESH-BRIDGE
+SHIPPED-FEATURE, AND ANDROID AARCH64 TARGET CHECKS GREEN; NATIVE DEVICE/PEER/ARTIFACT
+EXECUTION, PERFORMANCE, COLD RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW
+OPEN.** Platforms: the controlled side on
+Android, iOS, Windows, Linux, and macOS. Endpoint/action: every controlled connection
+`FileResponse`, including directory, empty-directory, digest, block, done, and error
+responses from both direct filesystem and connection-manager paths, plus the common
+one-step read-job producer. Boundary: exact controlled connection round → bounded post-key
+writer admission → completion of that exact encrypted frame at the local socket sink →
+separate authenticated viewer-side file protocol semantics.
+
+Read-only tracing found that R-S11fg had intentionally left this side open. The common
+producer returned an exact `WriterReceipt`, but `Connection::run` bound it as `_receipt`
+and immediately allowed its millisecond transfer tick to advance. Every other controlled
+`FileResponse` passed through `Connection::send`, whose ordinary send result was discarded
+by `allow_err!`. Ordinary keyed send proves bounded writer-queue admission only; it does
+not prove completion of that exact sink write. A low-volume file response could therefore
+lose its writer failure while unrelated incoming traffic kept the connection loop alive.
+This is source-proven controlled-side transport-finality and status-integrity debt. It is
+not proof that an operational write failed, a peer completed an operation, the reported
+display-only delay was reproduced, or any host service, listener, firewall, container,
+network, or machine state changed.
+
+The controlled connection now owns one `ControlledFileWriteTracker`. The sole send funnel
+recognizes every current `FileResponse` variant from the protobuf itself and derives its job,
+file, and operation context without trusting a parallel caller label. It reserves checked
+count and byte authority before using the existing keyed `send_with_receipt`, retains the
+exact receipt in the same round, and records admission failure for terminal handling by the
+existing connection loop. The common read-job path reserves before producer execution,
+retains the exact returned digest/block/done/error receipt, and suppresses only the transfer
+tick while one common transfer-data receipt remains pending. Other connection traffic and
+other file responses remain event-driven; no sleep or blocking producer send was introduced.
+
+The tracker follows the already-reviewed viewer-side limits: at most 256 exact receipts and
+two maximum post-key session packets, checked byte addition/subtraction, checked monotonic
+`u64` identities with collision refusal, and one 30-second absolute receipt deadline.
+`FuturesUnordered` is polled directly by the existing `tokio::select!`. Writer admission
+failure, writer error, cancellation, timeout, lost identity, or accounting failure closes
+that connection round. An admission failure is consumed before the next `select!`, so an
+unbiased scheduler cannot admit later traffic on the poisoned writer. Round exit explicitly
+retires remaining receipt owners with the
+stream. There is no new task, thread, runtime, dependency, lock-held await, unbounded queue,
+busy poll, writer barrier, flush, reconnect workaround, protocol field, fallback, or ACK.
+Ordinary non-file messages retain the pre-existing send path and are deliberately outside
+this slice.
+
+Deterministic tests cover exact success/count/byte release; count, byte, and sequence
+refusal; writer error, receipt cancellation, and round retirement; absolute timeout; and a
+real keyed in-memory duplex. The duplex enters the production controlled response enqueue,
+proves the exact receipt remains pending until the peer reads, authenticates and decodes the
+expected `FileResponse::Block`, and only then observes that receipt complete. In a numeric
+UID/GID 1000, networkless, read-only-root and read-only-source container with all capabilities
+dropped and no ports/devices/host namespaces, Rust 1.75 compiled the non-Flutter
+`linux-pkg-config` library target and all five focused behaviors passed (5 passed, 0 failed,
+432 filtered). The repository's broad existing 190-warning test configuration remained; no
+warning-free claim is made. Exact archived Rust 1.75 `rustfmt --check` then accepted the
+only edited Rust file in a separately confined immutable builder.
+
+The exact-current-source focused semantic verifier and all 53 deliberate mutations passed.
+Independent normal workspace validation and its complete source-mutation matrix passed. The
+canonical `scripts/dart-verify.sh` transaction regenerated the FRB bridge inside its private
+snapshot, reported zero changes across 17 authored Dart files and zero Flutter analysis issues,
+passed the existing Flutter and portable native suites, compiled the shipped Rust library with
+`flutter,unix-file-copy-paste`, and passed all five new controlled-writer behaviors (5 passed,
+0 failed, 451 filtered) before its final source-integrity verification and zero exit. Its broad
+existing shipped-feature Rust build emitted 66 warnings; no warning-free claim is made. The
+immutable Android builder then compiled the exact-current-source aarch64 Android Rust release
+library with a fresh generated bridge and reverified offline closure
+`a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`. This is target
+compilation only, not APK, installation, Android process/service lifecycle, UI, renderer, peer,
+network, emulator, or physical-device evidence. The generator's known non-fatal `Dart_Handle`
+typedef-redefinition diagnostic was retained in both fresh-bridge transactions.
+
+Excluded attempts are explicit. A first diagnostic compilation with the `flutter` feature
+stopped in the stale checked-in generated bridge before reaching this slice; it is neither a
+slice pass nor failure. The first non-Flutter compilation found a non-exhaustive future
+protobuf-variant match and a test guard that moved its response; both were corrected before
+the counted clean compile. The first complete independent mutation matrix exposed that placing
+the new test module before `Connection` hid production code from a pre-existing verifier scan;
+the tests were moved to the file end and the old mutation was rejected again. The second complete
+matrix rejected both new count-bound mutations, but under two different expected labels because
+the mutation target was duplicated; the production-contract and focused-catalog targets were
+made unique, and the final complete matrix passed. Formatter setup attempts that assumed the
+wrong extracted directory, executed a non-executable cached installer directly, or installed the
+toolchain on a no-exec temporary mount all stopped before formatting; explicit `bash` installation
+on an executable disposable mount produced the counted exact Rust 1.75 pass. None touched a
+listener, service, host configuration, or source outside the recorded patch.
+
+The evidence boundary is intentionally strict. Local writer completion does not prove peer
+receipt, authentication/decoding on a real connection, filesystem persistence, operation
+success, resume correctness, UI status, or end-to-end completion. This slice has not run a
+RustDesk process, real socket, installed app, Android service, renderer, emulator, device,
+Windows/macOS/iOS native build, real controlled peer, cross-version pair, focus/background/
+swipe/Force-Stop sequence, interruption/error matrix, or sustained throughput/latency/memory
+measurement. It has not produced clean committed cold R-B2/R-B10 artifacts and has not
+performed independent reproduction or external review. All are explicit release blockers;
+full shared `scripts/verify.sh` and full `scripts/apple-conform-check.sh` transactions remain open;
+their R-S11fh wiring is source-bound but is not represented as execution. The source mutation
+gates and generated-bridge shipped-feature transaction described above are exact-current-source
+evidence, not operational evidence.
 
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
@@ -18231,7 +18333,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-522a9072cf0186ec653968ed153e600145a1b19aa5acdc0851c66a0ede468f42  requirements.html
+b4495dfe358d01b9b52730605db808d03d9d430e4a2cff94f4f4aa0c3c1291d9  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

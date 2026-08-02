@@ -16744,6 +16744,42 @@ def validate_viewer_file_finality_contract(sources):
             '"r_s11fg_read_step_returns_the_exact_file_frame_receipt"',
             "viewer file exact-frame regression contract",
         ),
+        (
+            '"const MAX_PENDING_CONTROLLED_FILE_WRITES: usize = 256;"',
+            "controlled file receipt count-bound contract",
+        ),
+        (
+            '"const MAX_PENDING_CONTROLLED_FILE_WRITE_BYTES: usize = hbb_common::cpace::MAX_SESSION_PACKET * 2;"',
+            "controlled file receipt byte-bound contract",
+        ),
+        (
+            '"const CONTROLLED_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(30);"',
+            "controlled file receipt deadline contract",
+        ),
+        (
+            '"fn controlled_file_response_context"',
+            "controlled file response-context contract",
+        ),
+        (
+            '"stream.send_with_receipt(message).await"',
+            "controlled file exact response-frame contract",
+        ),
+        (
+            '"completion = conn.file_writes.next(), if !conn.file_writes.is_empty()"',
+            "controlled file event-driven receipt contract",
+        ),
+        (
+            '"if let Some((context, error)) = conn.file_flow_failure.take()"',
+            "controlled file failure-before-select contract",
+        ),
+        (
+            '"_ = conn.file_timer.tick(), if !conn.file_writes.has_transfer_data()"',
+            "controlled file transfer pacing contract",
+        ),
+        (
+            '"r_s11fh_controlled_file_frame_retains_its_exact_keyed_writer_receipt"',
+            "controlled file exact-frame regression contract",
+        ),
         ("MUTATIONS: Tuple[Mutation, ...]", "viewer file mutation inventory"),
         ("run_self_test(sources)", "viewer file mutation dispatch"),
     ):
@@ -16831,6 +16867,39 @@ def validate_viewer_file_finality_contract(sources):
             '"<tr><td>315-disabled</td>", "Appendix disposition"),',
             "file finality Appendix mutation",
         ),
+        (
+            '("server", "const MAX_PENDING_CONTROLLED_FILE_WRITES: usize = 256;", '
+            '"const MAX_PENDING_CONTROLLED_FILE_WRITES: usize = 4096;", '
+            '"controlled receipt count bound"),',
+            "controlled file receipt count mutation",
+        ),
+        (
+            '("server", "stream.send_with_receipt(message).await", '
+            '"stream.send(message).await", "controlled exact response receipt"),',
+            "controlled exact response receipt mutation",
+        ),
+        (
+            '("server", "if let Some((context, error)) = conn.file_flow_failure.take()", '
+            '"if let Some((context, error)) = conn.file_flow_failure.take_disabled()", '
+            '"controlled failure before next select"),',
+            "controlled failure-before-select mutation",
+        ),
+        (
+            '("server", "_ = conn.file_timer.tick(), if !conn.file_writes.has_transfer_data()", '
+            '"_ = conn.file_timer.tick()", "controlled transfer pacing"),',
+            "controlled file transfer pacing mutation",
+        ),
+        (
+            '("server", "fn r_s11fh_controlled_file_frame_retains_its_exact_keyed_writer_receipt()", '
+            '"fn controlled_file_frame_retains_its_exact_keyed_writer_receipt()", '
+            '"controlled exact frame regression"),',
+            "controlled exact frame regression mutation",
+        ),
+        (
+            '("requirements", "<tr><td>316</td>", '
+            '"<tr><td>316-disabled</td>", "controlled Appendix disposition"),',
+            "controlled file finality Appendix mutation",
+        ),
     ):
         require_text(focused, text, label)
 
@@ -16850,6 +16919,16 @@ def validate_viewer_file_finality_contract(sources):
         "viewer file generated-bridge tracker gate",
     )
     require_text(
+        sources["verify"],
+        "server::connection::controlled_file_write_tests::r_s11fh_",
+        "controlled file shared behavior gate",
+    )
+    require_text(
+        sources["dart_verify"],
+        "server::connection::controlled_file_write_tests::r_s11fh_",
+        "controlled file generated-bridge behavior gate",
+    )
+    require_text(
         sources["requirements"],
         '<div class="req"><span class="id">R-S11fg</span>',
         "viewer file finality requirement",
@@ -16863,6 +16942,21 @@ def validate_viewer_file_finality_contract(sources):
         sources["hardening"],
         "**R-S11fg/R-S11e-194 outgoing viewer file-command admission",
         "viewer file finality hardening ledger",
+    )
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11fh</span>',
+        "controlled file finality requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>316</td>",
+        "controlled file finality Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11fh/R-S11e-195 controlled-side file-response exact local writer finality",
+        "controlled file finality hardening ledger",
     )
 
 
@@ -53604,6 +53698,120 @@ def run_source_mutations(sources):
             "**R-S11fg/R-S11e-194 outgoing viewer file-command admission",
             "**R-S11fg-disabled/R-S11e-194 outgoing viewer file-command admission",
             "viewer file finality hardening ledger",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '            "const MAX_PENDING_CONTROLLED_FILE_WRITES: usize = 256;",\n'
+            '            "controlled file receipt count bound",',
+            '            "const MAX_PENDING_CONTROLLED_FILE_WRITES: usize = 4096;",\n'
+            '            "controlled file receipt count bound",',
+            "controlled file receipt count-bound contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '            "stream.send_with_receipt(message).await",\n'
+            '            "file_writes.cancel(reservation)",',
+            '            "stream.send(message).await",\n'
+            '            "file_writes.cancel(reservation)",',
+            "controlled file exact response-frame contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '        "if let Some((context, error)) = conn.file_flow_failure.take()",\n'
+            '        "controlled writer failure before next select",',
+            '        "if let Some((context, error)) = conn.file_flow_failure.take_disabled()",\n'
+            '        "controlled writer failure before next select",',
+            "controlled file failure-before-select contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '        "_ = conn.file_timer.tick(), if !conn.file_writes.has_transfer_data()",\n'
+            '        "controlled transfer pacing by exact receipt",',
+            '        "_ = conn.file_timer.tick()",\n'
+            '        "controlled transfer pacing by exact receipt",',
+            "controlled file transfer pacing contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '        "r_s11fh_controlled_file_writer_timeout_is_terminal_and_bounded",\n'
+            '        "r_s11fh_controlled_file_frame_retains_its_exact_keyed_writer_receipt",',
+            '        "r_s11fh_controlled_file_writer_timeout_is_terminal_and_bounded",\n'
+            '        "controlled_file_frame_retains_its_exact_keyed_writer_receipt",',
+            "controlled file exact-frame regression contract",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '("server", "const MAX_PENDING_CONTROLLED_FILE_WRITES: usize = 256;", '
+            '"const MAX_PENDING_CONTROLLED_FILE_WRITES: usize = 4096;", "controlled receipt count bound"),',
+            '("server", "const MAX_PENDING_CONTROLLED_FILE_WRITES: usize = 256;", '
+            '"const MAX_PENDING_CONTROLLED_FILE_WRITES: usize = 2048;", "controlled receipt count bound"),',
+            "controlled file receipt count mutation",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '("server", "stream.send_with_receipt(message).await", '
+            '"stream.send(message).await", "controlled exact response receipt"),',
+            '("server", "stream.send_with_receipt(message).await", '
+            '"stream.send_disabled(message).await", "controlled exact response receipt"),',
+            "controlled exact response receipt mutation",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '("server", "if let Some((context, error)) = conn.file_flow_failure.take()", '
+            '"if let Some((context, error)) = conn.file_flow_failure.take_disabled()", '
+            '"controlled failure before next select"),',
+            '("server", "if let Some((context, error)) = conn.file_flow_failure.take()", '
+            '"if let Some((context, error)) = conn.file_flow_failure.take_bypassed()", '
+            '"controlled failure before next select"),',
+            "controlled failure-before-select mutation",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '("server", "_ = conn.file_timer.tick(), if !conn.file_writes.has_transfer_data()", '
+            '"_ = conn.file_timer.tick()", "controlled transfer pacing"),',
+            '("server", "_ = conn.file_timer.tick(), if !conn.file_writes.has_transfer_data()", '
+            '"_ = conn.file_timer.disabled_tick()", "controlled transfer pacing"),',
+            "controlled file transfer pacing mutation",
+        ),
+        (
+            "viewer_file_finality_verifier",
+            '("server", "fn r_s11fh_controlled_file_frame_retains_its_exact_keyed_writer_receipt()", '
+            '"fn controlled_file_frame_retains_its_exact_keyed_writer_receipt()", '
+            '"controlled exact frame regression"),',
+            '("server", "fn r_s11fh_controlled_file_frame_retains_its_exact_keyed_writer_receipt()", '
+            '"fn disabled_controlled_file_frame_receipt()", '
+            '"controlled exact frame regression"),',
+            "controlled exact frame regression mutation",
+        ),
+        (
+            "verify",
+            "server::connection::controlled_file_write_tests::r_s11fh_",
+            "server::connection::controlled_file_write_tests::disabled_",
+            "controlled file shared behavior gate",
+        ),
+        (
+            "dart_verify",
+            "server::connection::controlled_file_write_tests::r_s11fh_",
+            "server::connection::controlled_file_write_tests::disabled_",
+            "controlled file generated-bridge behavior gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fh</span>',
+            '<div class="req"><span class="id">R-S11fh-disabled</span>',
+            "controlled file finality requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>316</td>",
+            "<tr><td>316-disabled</td>",
+            "controlled file finality Appendix C row",
+        ),
+        (
+            "hardening",
+            "**R-S11fh/R-S11e-195 controlled-side file-response exact local writer finality",
+            "**R-S11fh-disabled/R-S11e-195 controlled-side file-response exact local writer finality",
+            "controlled file finality hardening ledger",
         ),
         (
             "viewer_rgba_mailbox_verifier",

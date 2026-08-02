@@ -33,7 +33,7 @@ use hbb_common::tokio::sync::oneshot;
 use hbb_common::{
     config::{self, keys, Config},
     fs::{self, can_enable_overwrite_detection, JobType},
-    futures::{SinkExt, StreamExt},
+    futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, SinkExt, StreamExt},
     get_time, get_version_number,
     message_proto::{option_message::BoolOption, permission_info::Permission},
     sleep, timeout,
@@ -79,6 +79,9 @@ const DISPLAY_CONTROL_LOG_INTERVAL: Duration = Duration::from_secs(5);
 const MAX_CM_FILE_ERROR_BYTES: usize = 4096;
 const MAX_PENDING_CM_FILE_REQUESTS: usize = 32;
 const CM_FILE_BLOCK_READ_TIMEOUT_MS: u64 = 5_000;
+const MAX_PENDING_CONTROLLED_FILE_WRITES: usize = 256;
+const MAX_PENDING_CONTROLLED_FILE_WRITE_BYTES: usize = hbb_common::cpace::MAX_SESSION_PACKET * 2;
+const CONTROLLED_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
 const INPUT_QUEUE_CAPACITY: usize = 256;
 const INPUT_QUEUE_MAX_BYTES: usize = 256 * 1024;
 const INPUT_EVENT_MAX_BYTES: usize = 4 * 1024;
@@ -162,6 +165,301 @@ enum CmFileRequestAuthority {
         file_num: i32,
         operation: ipc::CmFileOperation,
     },
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum ControlledFileWriteKind {
+    Response,
+    TransferData,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct ControlledFileWriteContext {
+    job_id: Option<i32>,
+    file_num: i32,
+    operation: &'static str,
+    kind: ControlledFileWriteKind,
+}
+
+impl ControlledFileWriteContext {
+    fn response(job_id: Option<i32>, file_num: i32, operation: &'static str) -> Self {
+        Self {
+            job_id,
+            file_num,
+            operation,
+            kind: ControlledFileWriteKind::Response,
+        }
+    }
+
+    fn transfer_data(job_id: Option<i32>, file_num: i32) -> Self {
+        Self {
+            job_id,
+            file_num,
+            operation: "controlled file transfer data",
+            kind: ControlledFileWriteKind::TransferData,
+        }
+    }
+}
+
+#[derive(Clone, Copy)]
+struct ControlledFileWriteLimits {
+    count: usize,
+    bytes: usize,
+    timeout: Duration,
+}
+
+const CONTROLLED_FILE_WRITE_LIMITS: ControlledFileWriteLimits = ControlledFileWriteLimits {
+    count: MAX_PENDING_CONTROLLED_FILE_WRITES,
+    bytes: MAX_PENDING_CONTROLLED_FILE_WRITE_BYTES,
+    timeout: CONTROLLED_FILE_WRITE_TIMEOUT,
+};
+
+#[derive(Debug)]
+struct ControlledFileWriteReservation {
+    id: u64,
+}
+
+struct ControlledFileWriteCompletion {
+    context: Option<ControlledFileWriteContext>,
+    result: Result<(), String>,
+}
+
+struct ControlledFileWriteTracker {
+    next_id: u64,
+    pending_bytes: usize,
+    limits: ControlledFileWriteLimits,
+    contexts: HashMap<u64, (ControlledFileWriteContext, usize)>,
+    completions: FuturesUnordered<BoxFuture<'static, (u64, Result<(), String>)>>,
+}
+
+impl ControlledFileWriteTracker {
+    fn new() -> Self {
+        Self::with_limits(CONTROLLED_FILE_WRITE_LIMITS)
+    }
+
+    fn with_limits(limits: ControlledFileWriteLimits) -> Self {
+        Self {
+            next_id: 0,
+            pending_bytes: 0,
+            limits,
+            contexts: HashMap::new(),
+            completions: FuturesUnordered::new(),
+        }
+    }
+
+    fn reserve(
+        &mut self,
+        context: ControlledFileWriteContext,
+        bytes: usize,
+    ) -> Result<ControlledFileWriteReservation, String> {
+        if self.contexts.len() >= self.limits.count {
+            return Err(format!(
+                "controlled file writer completion capacity reached (limit {})",
+                self.limits.count
+            ));
+        }
+        let pending_bytes = self
+            .pending_bytes
+            .checked_add(bytes)
+            .ok_or_else(|| "controlled file writer byte accounting overflowed".to_owned())?;
+        if pending_bytes > self.limits.bytes {
+            return Err(format!(
+                "controlled file writer byte capacity reached ({} pending + {} bytes; limit {})",
+                self.pending_bytes, bytes, self.limits.bytes
+            ));
+        }
+        let id = self
+            .next_id
+            .checked_add(1)
+            .ok_or_else(|| "controlled file writer completion sequence exhausted".to_owned())?;
+        if self.contexts.contains_key(&id) {
+            return Err("controlled file writer completion identity was reused".to_owned());
+        }
+        self.next_id = id;
+        self.pending_bytes = pending_bytes;
+        self.contexts.insert(id, (context, bytes));
+        Ok(ControlledFileWriteReservation { id })
+    }
+
+    fn attach(
+        &mut self,
+        reservation: ControlledFileWriteReservation,
+        receipt: hbb_common::tcp::WriterReceipt,
+    ) -> Result<(), String> {
+        if !self.contexts.contains_key(&reservation.id) {
+            return Err("controlled file writer reservation was lost before attachment".to_owned());
+        }
+        let id = reservation.id;
+        let timeout = self.limits.timeout;
+        self.completions.push(
+            async move {
+                let result = match time::timeout(timeout, receipt).await {
+                    Ok(Ok(Ok(()))) => Ok(()),
+                    Ok(Ok(Err(err))) => Err(format!("transport writer failed: {err}")),
+                    Ok(Err(_)) => {
+                        Err("transport writer retired before exact completion".to_owned())
+                    }
+                    Err(_) => Err("transport writer completion timed out".to_owned()),
+                };
+                (id, result)
+            }
+            .boxed(),
+        );
+        Ok(())
+    }
+
+    fn cancel(
+        &mut self,
+        reservation: ControlledFileWriteReservation,
+    ) -> Result<Option<ControlledFileWriteContext>, String> {
+        let Some((context, bytes)) = self.contexts.remove(&reservation.id) else {
+            return Ok(None);
+        };
+        self.pending_bytes = self
+            .pending_bytes
+            .checked_sub(bytes)
+            .ok_or_else(|| "controlled file writer byte accounting underflowed".to_owned())?;
+        Ok(Some(context))
+    }
+
+    fn is_empty(&self) -> bool {
+        self.contexts.is_empty()
+    }
+
+    fn has_transfer_data(&self) -> bool {
+        self.contexts
+            .values()
+            .any(|(context, _)| context.kind == ControlledFileWriteKind::TransferData)
+    }
+
+    async fn next(&mut self) -> Option<ControlledFileWriteCompletion> {
+        let (id, mut result) = self.completions.next().await?;
+        let context = match self.contexts.remove(&id) {
+            Some((context, bytes)) => {
+                match self.pending_bytes.checked_sub(bytes) {
+                    Some(pending_bytes) => self.pending_bytes = pending_bytes,
+                    None => {
+                        self.pending_bytes = 0;
+                        result =
+                            Err("controlled file writer byte accounting underflowed".to_owned());
+                    }
+                }
+                Some(context)
+            }
+            None => {
+                result =
+                    Err("controlled file writer completion identity was not pending".to_owned());
+                None
+            }
+        };
+        Some(ControlledFileWriteCompletion { context, result })
+    }
+
+    fn retire(&mut self) -> Vec<ControlledFileWriteContext> {
+        self.completions = FuturesUnordered::new();
+        self.pending_bytes = 0;
+        self.contexts
+            .drain()
+            .map(|(_, (context, _))| context)
+            .collect()
+    }
+}
+
+fn controlled_file_response_context(message: &Message) -> Option<ControlledFileWriteContext> {
+    let Some(message::Union::FileResponse(response)) = message.union.as_ref() else {
+        return None;
+    };
+    Some(match response.union.as_ref() {
+        Some(file_response::Union::Dir(value)) => {
+            ControlledFileWriteContext::response(Some(value.id), -1, "file directory response")
+        }
+        Some(file_response::Union::Block(value)) => ControlledFileWriteContext::response(
+            Some(value.id),
+            value.file_num,
+            "file block response",
+        ),
+        Some(file_response::Union::Error(value)) => ControlledFileWriteContext::response(
+            Some(value.id),
+            value.file_num,
+            "file error response",
+        ),
+        Some(file_response::Union::Done(value)) => ControlledFileWriteContext::response(
+            Some(value.id),
+            value.file_num,
+            "file completion response",
+        ),
+        Some(file_response::Union::Digest(value)) => ControlledFileWriteContext::response(
+            Some(value.id),
+            value.file_num,
+            "file digest response",
+        ),
+        Some(file_response::Union::EmptyDirs(_)) => {
+            ControlledFileWriteContext::response(None, -1, "empty-directory response")
+        }
+        Some(_) => ControlledFileWriteContext::response(None, -1, "unknown file response"),
+        None => ControlledFileWriteContext::response(None, -1, "empty file response"),
+    })
+}
+
+async fn enqueue_controlled_file_message(
+    file_writes: &mut ControlledFileWriteTracker,
+    stream: &mut super::Stream,
+    message: &Message,
+    context: ControlledFileWriteContext,
+) -> Result<(), String> {
+    let payload_bytes = usize::try_from(message.compute_size())
+        .map_err(|_| "controlled file message size does not fit usize".to_owned())?;
+    let retained_bytes = payload_bytes
+        .checked_add(hbb_common::sodiumoxide::crypto::secretbox::MACBYTES)
+        .ok_or_else(|| "controlled file message size accounting overflowed".to_owned())?;
+    let reservation = file_writes.reserve(context, retained_bytes)?;
+    let receipt = match stream.send_with_receipt(message).await {
+        Ok(receipt) => receipt,
+        Err(err) => {
+            let cancel_result = file_writes.cancel(reservation);
+            return match cancel_result {
+                Ok(_) => Err(format!(
+                    "failed to admit controlled file message to transport writer: {err}"
+                )),
+                Err(cancel_err) => Err(format!(
+                    "failed to admit controlled file message to transport writer: {err}; {cancel_err}"
+                )),
+            };
+        }
+    };
+    file_writes.attach(reservation, receipt)
+}
+
+async fn enqueue_controlled_file_transfer_step(
+    file_writes: &mut ControlledFileWriteTracker,
+    read_jobs: &mut Vec<fs::TransferJob>,
+    stream: &mut super::Stream,
+    context: ControlledFileWriteContext,
+) -> Result<String, String> {
+    let reservation = file_writes.reserve(context, hbb_common::cpace::MAX_SESSION_PACKET)?;
+    let (log, receipt) = match fs::handle_read_jobs(read_jobs, stream).await {
+        Ok(result) => result,
+        Err(err) => {
+            let cancel_result = file_writes.cancel(reservation);
+            return match cancel_result {
+                Ok(_) => Err(err.to_string()),
+                Err(cancel_err) => Err(format!(
+                    "controlled file transfer producer failed: {err}; {cancel_err}"
+                )),
+            };
+        }
+    };
+    let Some(receipt) = receipt else {
+        return match file_writes.cancel(reservation) {
+            Ok(Some(_)) => Ok(log),
+            Ok(None) => {
+                Err("controlled file writer reservation disappeared before cancellation".to_owned())
+            }
+            Err(err) => Err(err),
+        };
+    };
+    file_writes.attach(reservation, receipt)?;
+    Ok(log)
 }
 
 // R-T1(a) (§20): a self-enforced hard cap on concurrent AUTHORIZED sessions — the post-key
@@ -2970,6 +3268,8 @@ pub struct Connection {
     cm_write_jobs: HashMap<i32, CmWriteAuthority>,
     cm_file_job_ids_seen: HashSet<i32>,
     cm_file_requests: HashMap<u64, CmFileRequestAuthority>,
+    file_writes: ControlledFileWriteTracker,
+    file_flow_failure: Option<(ControlledFileWriteContext, String)>,
     peer_text_gate: crate::peer_text::PeerTextGate,
     terminal_service_id: String,
     terminal_persistent: bool,
@@ -3666,6 +3966,8 @@ impl Connection {
             cm_write_jobs: HashMap::new(),
             cm_file_job_ids_seen: HashSet::new(),
             cm_file_requests: HashMap::new(),
+            file_writes: ControlledFileWriteTracker::new(),
+            file_flow_failure: None,
             peer_text_gate: Default::default(),
             terminal_service_id: "".to_owned(),
             terminal_persistent: false,
@@ -3746,8 +4048,42 @@ impl Connection {
         let shutdown = crate::server::shutdown_token();
 
         loop {
+            if let Some((context, error)) = conn.file_flow_failure.take() {
+                let reason = format!(
+                    "controlled {} failed before peer operation completion (job={:?}, file={}): {}",
+                    context.operation, context.job_id, context.file_num, error
+                );
+                conn.on_close(&reason, false).await;
+                break;
+            }
+
             tokio::select! {
                 // biased; // video has higher priority // causing test_delay_timer failed while transferring big file
+
+                completion = conn.file_writes.next(), if !conn.file_writes.is_empty() => {
+                    let Some(completion) = completion else {
+                        conn.on_close(
+                            "controlled file writer completion set ended while ownership was pending",
+                            false,
+                        ).await;
+                        break;
+                    };
+                    if let Err(error) = completion.result {
+                        let context = completion.context.unwrap_or_else(|| {
+                            ControlledFileWriteContext::response(
+                                None,
+                                -1,
+                                "file writer completion",
+                            )
+                        });
+                        let reason = format!(
+                            "controlled {} failed before peer operation completion (job={:?}, file={}): {}",
+                            context.operation, context.job_id, context.file_num, error
+                        );
+                        conn.on_close(&reason, false).await;
+                        break;
+                    }
+                }
 
                 // R-T9 (§20): graceful shutdown — drain this session cleanly instead of being
                 // SIGKILL'd mid-write (which would truncate a file block on the peer and skip the
@@ -3897,11 +4233,30 @@ impl Connection {
                         break;
                     }
                 },
-                _ = conn.file_timer.tick() => {
+                _ = conn.file_timer.tick(), if !conn.file_writes.has_transfer_data() => {
                     if !conn.read_jobs.is_empty() {
                         conn.send_to_cm(ipc::Data::FileTransferLog(("transfer".to_string(), fs::serialize_transfer_jobs(&conn.read_jobs))));
-                        match fs::handle_read_jobs(&mut conn.read_jobs, &mut conn.stream).await {
-                            Ok((log, _receipt)) => {
+                        let context = conn
+                            .read_jobs
+                            .iter()
+                            .find(|job| !job.is_last_job)
+                            .or_else(|| conn.read_jobs.first())
+                            .map(|job| {
+                                ControlledFileWriteContext::transfer_data(
+                                    Some(job.id()),
+                                    job.file_num(),
+                                )
+                            })
+                            .unwrap_or_else(|| {
+                                ControlledFileWriteContext::transfer_data(None, -1)
+                            });
+                        match enqueue_controlled_file_transfer_step(
+                            &mut conn.file_writes,
+                            &mut conn.read_jobs,
+                            &mut conn.stream,
+                            context,
+                        ).await {
+                            Ok(log) => {
                                 if !log.is_empty() {
                                     conn.send_to_cm(ipc::Data::FileTransferLog(("transfer".to_string(), log)));
                                 }
@@ -4104,6 +4459,15 @@ impl Connection {
                     }
                 },
             }
+        }
+
+        let retired_file_writes = conn.file_writes.retire();
+        if !retired_file_writes.is_empty() {
+            log::debug!(
+                "#{} retiring {} controlled file writer completions with the connection round",
+                id,
+                retired_file_writes.len()
+            );
         }
 
         // R-F1/R-D6/R-S5/R-A9: run the SEALED port-forward/RDP relay. A no-op unless this is a tunnel
@@ -8850,8 +9214,39 @@ impl Connection {
         }
     }
 
+    fn record_controlled_file_flow_failure(
+        &mut self,
+        context: ControlledFileWriteContext,
+        error: impl Into<String>,
+    ) {
+        let error = error.into();
+        log::error!(
+            "controlled {} failed before peer operation completion (job={:?}, file={}): {}",
+            context.operation,
+            context.job_id,
+            context.file_num,
+            error
+        );
+        if self.file_flow_failure.is_none() {
+            self.file_flow_failure = Some((context, error));
+        }
+    }
+
     #[inline]
     async fn send(&mut self, msg: Message) {
+        if let Some(context) = controlled_file_response_context(&msg) {
+            if let Err(error) = enqueue_controlled_file_message(
+                &mut self.file_writes,
+                &mut self.stream,
+                &msg,
+                context.clone(),
+            )
+            .await
+            {
+                self.record_controlled_file_flow_failure(context, error);
+            }
+            return;
+        }
         allow_err!(self.stream.send(&msg).await);
     }
 
@@ -10489,5 +10884,202 @@ mod test {
         let pos = msg.cursor_position();
         assert_eq!(pos.x, 510);
         assert_eq!(pos.y, 510);
+    }
+}
+
+#[cfg(test)]
+mod controlled_file_write_tests {
+    use super::*;
+
+    fn limits(count: usize, bytes: usize) -> ControlledFileWriteLimits {
+        ControlledFileWriteLimits {
+            count,
+            bytes,
+            timeout: Duration::from_millis(25),
+        }
+    }
+
+    #[hbb_common::tokio::test]
+    async fn r_s11fh_controlled_file_writer_success_releases_exact_count_and_bytes() {
+        let mut tracker = ControlledFileWriteTracker::with_limits(limits(2, 16));
+        let context = ControlledFileWriteContext::response(Some(7), 3, "test file response");
+        let reservation = tracker.reserve(context.clone(), 16).unwrap();
+        let (completion, receipt) = hbb_common::tokio::sync::oneshot::channel();
+        tracker.attach(reservation, receipt).unwrap();
+        assert!(!tracker.is_empty());
+        completion.send(Ok(())).unwrap();
+
+        let completed = tracker.next().await.unwrap();
+        assert_eq!(completed.context, Some(context));
+        assert_eq!(completed.result, Ok(()));
+        assert!(tracker.is_empty());
+        assert_eq!(tracker.pending_bytes, 0);
+
+        let replacement = tracker
+            .reserve(
+                ControlledFileWriteContext::response(Some(8), 4, "replacement response"),
+                16,
+            )
+            .unwrap();
+        assert!(tracker.cancel(replacement).unwrap().is_some());
+        assert_eq!(tracker.pending_bytes, 0);
+    }
+
+    #[test]
+    fn r_s11fh_controlled_file_writer_count_byte_and_sequence_limits_fail_closed() {
+        let mut tracker = ControlledFileWriteTracker::with_limits(limits(1, 8));
+        let first = tracker
+            .reserve(
+                ControlledFileWriteContext::response(Some(1), 0, "first response"),
+                8,
+            )
+            .unwrap();
+        assert!(tracker
+            .reserve(
+                ControlledFileWriteContext::response(Some(2), 0, "count overflow"),
+                0,
+            )
+            .unwrap_err()
+            .contains("completion capacity"));
+        tracker.cancel(first).unwrap();
+        assert!(tracker
+            .reserve(
+                ControlledFileWriteContext::response(Some(3), 0, "byte overflow"),
+                9,
+            )
+            .unwrap_err()
+            .contains("byte capacity"));
+
+        tracker.next_id = u64::MAX;
+        assert!(tracker
+            .reserve(
+                ControlledFileWriteContext::response(Some(4), 0, "sequence overflow"),
+                1,
+            )
+            .unwrap_err()
+            .contains("sequence exhausted"));
+        assert!(tracker.is_empty());
+        assert_eq!(tracker.pending_bytes, 0);
+    }
+
+    #[hbb_common::tokio::test]
+    async fn r_s11fh_controlled_file_writer_failure_and_retirement_are_explicit() {
+        let mut tracker = ControlledFileWriteTracker::with_limits(limits(2, 16));
+        let failed_context = ControlledFileWriteContext::response(Some(5), 2, "failed response");
+        let reservation = tracker.reserve(failed_context.clone(), 4).unwrap();
+        let (completion, receipt) = hbb_common::tokio::sync::oneshot::channel();
+        tracker.attach(reservation, receipt).unwrap();
+        completion
+            .send(Err(std::io::Error::new(
+                std::io::ErrorKind::BrokenPipe,
+                "test writer failure",
+            )))
+            .unwrap();
+        let completed = tracker.next().await.unwrap();
+        assert_eq!(completed.context, Some(failed_context));
+        assert!(completed
+            .result
+            .unwrap_err()
+            .contains("test writer failure"));
+
+        let canceled_context =
+            ControlledFileWriteContext::response(Some(11), 4, "canceled receipt");
+        let reservation = tracker.reserve(canceled_context.clone(), 4).unwrap();
+        let (completion, receipt) = hbb_common::tokio::sync::oneshot::channel();
+        tracker.attach(reservation, receipt).unwrap();
+        drop(completion);
+        let completed = tracker.next().await.unwrap();
+        assert_eq!(completed.context, Some(canceled_context));
+        assert!(completed
+            .result
+            .unwrap_err()
+            .contains("retired before exact completion"));
+
+        let retained_context = ControlledFileWriteContext::transfer_data(Some(6), 9);
+        let reservation = tracker.reserve(retained_context.clone(), 4).unwrap();
+        let (_completion, receipt) = hbb_common::tokio::sync::oneshot::channel();
+        tracker.attach(reservation, receipt).unwrap();
+        assert!(tracker.has_transfer_data());
+        assert_eq!(tracker.retire(), vec![retained_context]);
+        assert!(tracker.is_empty());
+        assert_eq!(tracker.pending_bytes, 0);
+    }
+
+    #[hbb_common::tokio::test]
+    async fn r_s11fh_controlled_file_writer_timeout_is_terminal_and_bounded() {
+        let mut tracker = ControlledFileWriteTracker::with_limits(limits(1, 8));
+        let context = ControlledFileWriteContext::response(Some(10), 0, "timed response");
+        let reservation = tracker.reserve(context.clone(), 1).unwrap();
+        let (_completion, receipt) = hbb_common::tokio::sync::oneshot::channel();
+        tracker.attach(reservation, receipt).unwrap();
+
+        let completed = tracker.next().await.unwrap();
+        assert_eq!(completed.context, Some(context));
+        assert!(completed.result.unwrap_err().contains("timed out"));
+        assert!(tracker.is_empty());
+    }
+
+    #[hbb_common::tokio::test]
+    async fn r_s11fh_controlled_file_frame_retains_its_exact_keyed_writer_receipt() {
+        let (sender_side, receiver_side) = hbb_common::tokio::io::duplex(64);
+        let local_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 0));
+        let mut sender_tcp = hbb_common::tcp::FramedStream::from(sender_side, local_addr);
+        let mut receiver_tcp = hbb_common::tcp::FramedStream::from(receiver_side, local_addr);
+        sender_tcp.set_max_packet_length(8 * 1024);
+        receiver_tcp.set_max_packet_length(8 * 1024);
+        sender_tcp.set_session_keys(hbb_common::cpace::DirectionalKeys {
+            send: [0x31; 32],
+            recv: [0x42; 32],
+        });
+        receiver_tcp.set_session_keys(hbb_common::cpace::DirectionalKeys {
+            send: [0x42; 32],
+            recv: [0x31; 32],
+        });
+        let mut sender = hbb_common::Stream::Tcp(sender_tcp);
+        let mut receiver = hbb_common::Stream::Tcp(receiver_tcp);
+        let message = fs::new_block(FileTransferBlock {
+            id: 73,
+            file_num: 6,
+            data: vec![0x5a; 4_096].into(),
+            ..Default::default()
+        });
+        let context = controlled_file_response_context(&message)
+            .expect("the exact file response context must derive from its protobuf");
+        let mut tracker = ControlledFileWriteTracker::with_limits(ControlledFileWriteLimits {
+            count: 2,
+            bytes: 8 * 1024,
+            timeout: Duration::from_secs(1),
+        });
+
+        enqueue_controlled_file_message(&mut tracker, &mut sender, &message, context.clone())
+            .await
+            .expect("the exact controlled file frame must enter the bounded writer");
+        assert!(
+            hbb_common::tokio::time::timeout(Duration::from_millis(20), tracker.next())
+                .await
+                .is_err()
+        );
+
+        let encoded = receiver
+            .next()
+            .await
+            .expect("the exact controlled file frame must arrive")
+            .expect("the exact controlled file frame must authenticate");
+        let decoded = Message::parse_from_bytes(encoded.as_ref())
+            .expect("the exact controlled file frame must decode");
+        assert!(matches!(
+            decoded.union,
+            Some(message::Union::FileResponse(response))
+                if matches!(
+                    &response.union,
+                    Some(file_response::Union::Block(block))
+                        if block.id == 73 && block.file_num == 6
+                )
+        ));
+
+        let completed = tracker.next().await.unwrap();
+        assert_eq!(completed.context, Some(context));
+        assert_eq!(completed.result, Ok(()));
+        assert!(tracker.is_empty());
     }
 }

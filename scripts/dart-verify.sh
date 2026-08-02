@@ -256,11 +256,13 @@ local_docker run --rm --pull=never --network=none --read-only \
     echo "  == R-S11ff generated-bridge exact-owner viewer refresh regression =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       flutter::mobile_session_lifecycle_tests::r_s11ff_video_refresh_requires_the_current_exact_ui_owner -- --test-threads=1
-    echo "  == R-S11fg generated-bridge viewer file writer finality regressions =="
+    echo "  == R-S11fg/R-S11fh generated-bridge viewer/controlled file writer finality regressions =="
     cargo test --offline --locked -p hbb_common --lib \
       fs::tests::r_s11fg_read_step_returns_the_exact_file_frame_receipt -- --test-threads=1
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       client::io_loop::tests::r_s11fg_ -- --test-threads=1
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      server::connection::controlled_file_write_tests::r_s11fh_ -- --test-threads=1
     echo "  == R-S11ec outgoing clipboard exact-round lifecycle regression =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       client::tests::clipboard_leases_track_exact_network_rounds_without_stale_stop -- --test-threads=1

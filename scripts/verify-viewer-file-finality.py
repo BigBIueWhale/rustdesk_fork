@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify outgoing-viewer file admission and exact writer finality."""
+"""Verify viewer and controlled-side file admission and exact writer finality."""
 
 from __future__ import annotations
 
@@ -382,10 +382,163 @@ def validate(sources: Dict[str, str]) -> None:
             f"exact {producer} writer receipt",
         )
     forbid(read_jobs, ".send(&new_", "ambiguous common file send")
+
+    server = sources["server"]
+    for needle, label in (
+        (
+            "const MAX_PENDING_CONTROLLED_FILE_WRITES: usize = 256;",
+            "controlled file receipt count bound",
+        ),
+        (
+            "const MAX_PENDING_CONTROLLED_FILE_WRITE_BYTES: usize = hbb_common::cpace::MAX_SESSION_PACKET * 2;",
+            "controlled file receipt byte bound",
+        ),
+        (
+            "const CONTROLLED_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(30);",
+            "controlled file receipt deadline",
+        ),
+        (
+            "file_writes: ControlledFileWriteTracker,",
+            "controlled connection receipt owner",
+        ),
+        (
+            "file_flow_failure: Option<(ControlledFileWriteContext, String)>,",
+            "controlled connection explicit file failure",
+        ),
+    ):
+        require(server, needle, label)
+
+    controlled_tracker = extract_rust_item(
+        server, "impl ControlledFileWriteTracker", "controlled file writer tracker"
+    )
+    require_order(
+        controlled_tracker,
+        (
+            "self.contexts.len() >= self.limits.count",
+            ".checked_add(bytes)",
+            "pending_bytes > self.limits.bytes",
+            ".checked_add(1)",
+            "self.contexts.contains_key(&id)",
+            "time::timeout(timeout, receipt).await",
+            ".checked_sub(bytes)",
+        ),
+        "bounded checked controlled exact-receipt ownership",
+    )
+    forbid(
+        controlled_tracker,
+        "saturating_",
+        "silent controlled tracker accounting repair",
+    )
+    controlled_retire = extract_rust_item(
+        controlled_tracker,
+        "fn retire",
+        "controlled file writer tracker retirement",
+    )
+    require_order(
+        controlled_retire,
+        (
+            "self.completions = FuturesUnordered::new();",
+            "self.pending_bytes = 0;",
+            "self.contexts",
+            ".drain()",
+        ),
+        "exact pending controlled file-writer retirement",
+    )
+
+    response_context = extract_rust_item(
+        server,
+        "fn controlled_file_response_context",
+        "controlled file response context decoder",
+    )
+    for variant in ("Dir", "Block", "Error", "Done", "Digest", "EmptyDirs"):
+        require(
+            response_context,
+            f"file_response::Union::{variant}",
+            f"controlled {variant} context",
+        )
     require(
-        sources["server"],
-        "Ok((log, _receipt))",
-        "explicit controlled-side receipt discard",
+        response_context,
+        "None => ControlledFileWriteContext::response",
+        "empty controlled response classification",
+    )
+    require(
+        response_context,
+        "Some(_) => ControlledFileWriteContext::response",
+        "future controlled response classification",
+    )
+
+    controlled_enqueue = extract_rust_item(
+        server,
+        "async fn enqueue_controlled_file_message",
+        "controlled exact file response enqueue",
+    )
+    require_order(
+        controlled_enqueue,
+        (
+            "message.compute_size()",
+            "file_writes.reserve(context, retained_bytes)?",
+            "stream.send_with_receipt(message).await",
+            "file_writes.cancel(reservation)",
+            "file_writes.attach(reservation, receipt)",
+        ),
+        "controlled reserve-before-exact-frame admission",
+    )
+
+    controlled_transfer = extract_rust_item(
+        server,
+        "async fn enqueue_controlled_file_transfer_step",
+        "controlled common-producer receipt ownership",
+    )
+    require_order(
+        controlled_transfer,
+        (
+            "file_writes.reserve(context, hbb_common::cpace::MAX_SESSION_PACKET)?",
+            "fs::handle_read_jobs(read_jobs, stream).await",
+            "let Some(receipt) = receipt else",
+            "file_writes.cancel(reservation)",
+            "file_writes.attach(reservation, receipt)?",
+        ),
+        "controlled reserve-before-one-frame producer admission",
+    )
+    forbid(server, "Ok((log, _receipt))", "controlled-side receipt discard")
+    require(
+        server,
+        "completion = conn.file_writes.next(), if !conn.file_writes.is_empty()",
+        "controlled event-driven receipt select branch",
+    )
+    require(
+        server,
+        "if let Some((context, error)) = conn.file_flow_failure.take()",
+        "controlled writer failure before next select",
+    )
+    forbid(
+        server,
+        "_ = async {}, if conn.file_flow_failure.is_some()",
+        "scheduler-dependent controlled writer failure branch",
+    )
+    require(
+        server,
+        "_ = conn.file_timer.tick(), if !conn.file_writes.has_transfer_data()",
+        "controlled transfer pacing by exact receipt",
+    )
+    controlled_send = extract_rust_item(
+        server, "async fn send(&mut self, msg: Message)", "controlled send funnel"
+    )
+    require_order(
+        controlled_send,
+        (
+            "controlled_file_response_context(&msg)",
+            "enqueue_controlled_file_message(",
+            "self.record_controlled_file_flow_failure(context, error)",
+            "return;",
+            "self.stream.send(&msg).await",
+        ),
+        "controlled file-response send funnel",
+    )
+    require(
+        server,
+        "let retired_file_writes = conn.file_writes.retire();",
+        "controlled round receipt retirement",
     )
 
     for test in (
@@ -394,8 +547,13 @@ def validate(sources: Dict[str, str]) -> None:
         "r_s11fg_file_writer_count_byte_and_sequence_limits_fail_closed",
         "r_s11fg_file_writer_failure_and_retirement_are_explicit",
         "r_s11fg_file_writer_timeout_is_terminal_and_bounded",
+        "r_s11fh_controlled_file_writer_success_releases_exact_count_and_bytes",
+        "r_s11fh_controlled_file_writer_count_byte_and_sequence_limits_fail_closed",
+        "r_s11fh_controlled_file_writer_failure_and_retirement_are_explicit",
+        "r_s11fh_controlled_file_writer_timeout_is_terminal_and_bounded",
+        "r_s11fh_controlled_file_frame_retains_its_exact_keyed_writer_receipt",
     ):
-        require(fs + io_loop, f"fn {test}()", f"{test} regression")
+        require(fs + io_loop + server, f"fn {test}()", f"{test} regression")
 
     for key, needle, label in (
         (
@@ -405,14 +563,30 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         ("requirements", "<tr><td>315</td>", "Appendix C #315"),
         (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fh</span>',
+            "R-S11fh normative requirement",
+        ),
+        ("requirements", "<tr><td>316</td>", "Appendix C #316"),
+        (
             "hardening",
             "**R-S11fg/R-S11e-194 outgoing viewer file-command admission",
             "R-S11e-194 hardening ledger",
         ),
         (
+            "hardening",
+            "**R-S11fh/R-S11e-195 controlled-side file-response exact local writer finality",
+            "R-S11e-195 hardening ledger",
+        ),
+        (
             "verify",
             "python3 scripts/verify-viewer-file-finality.py --repo . --self-test",
             "shared focused verifier gate",
+        ),
+        (
+            "verify",
+            "server::connection::controlled_file_write_tests::r_s11fh_",
+            "shared controlled file behavior gate",
         ),
         (
             "apple",
@@ -428,6 +602,11 @@ def validate(sources: Dict[str, str]) -> None:
             "dart_verify",
             "fs::tests::r_s11fg_read_step_returns_the_exact_file_frame_receipt",
             "generated-bridge exact-frame behavior gate",
+        ),
+        (
+            "dart_verify",
+            "server::connection::controlled_file_write_tests::r_s11fh_",
+            "generated-bridge controlled file behavior gate",
         ),
         (
             "workspace",
@@ -482,9 +661,28 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("fs", "send_with_receipt(&new_block(block))", "send(&new_block(block))", "exact block receipt"),
     ("fs", "fn r_s11fg_read_step_returns_the_exact_file_frame_receipt()", "fn read_step_returns_the_exact_file_frame_receipt()", "exact frame regression"),
     ("io_loop", "fn r_s11fg_file_writer_timeout_is_terminal_and_bounded()", "fn file_writer_timeout_is_terminal_and_bounded()", "timeout regression"),
+    ("server", "const MAX_PENDING_CONTROLLED_FILE_WRITES: usize = 256;", "const MAX_PENDING_CONTROLLED_FILE_WRITES: usize = 4096;", "controlled receipt count bound"),
+    ("server", "const MAX_PENDING_CONTROLLED_FILE_WRITE_BYTES: usize = hbb_common::cpace::MAX_SESSION_PACKET * 2;", "const MAX_PENDING_CONTROLLED_FILE_WRITE_BYTES: usize = usize::MAX;", "controlled receipt byte bound"),
+    ("server", "const CONTROLLED_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(30);", "const CONTROLLED_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(300);", "controlled receipt deadline"),
+    ("server", "time::timeout(timeout, receipt).await", "receipt.await", "controlled receipt deadline ownership"),
+    ("server", "fn controlled_file_response_context", "fn disabled_controlled_file_response_context", "controlled response context decoder"),
+    ("server", "Some(file_response::Union::EmptyDirs(_))", "Some(file_response::Union::DisabledEmptyDirectories(_))", "complete controlled response decoder"),
+    ("server", "stream.send_with_receipt(message).await", "stream.send(message).await", "controlled exact response receipt"),
+    ("server", "fs::handle_read_jobs(read_jobs, stream).await", "fs::handle_read_jobs_disabled(read_jobs, stream).await", "controlled common producer ownership"),
+    ("server", "if let Some((context, error)) = conn.file_flow_failure.take()", "if let Some((context, error)) = conn.file_flow_failure.take_disabled()", "controlled failure before next select"),
+    ("server", "completion = conn.file_writes.next(), if !conn.file_writes.is_empty()", "completion = conn.file_writes.next()", "controlled receipt select guard"),
+    ("server", "_ = conn.file_timer.tick(), if !conn.file_writes.has_transfer_data()", "_ = conn.file_timer.tick()", "controlled transfer pacing"),
+    ("server", "controlled_file_response_context(&msg)", "None::<ControlledFileWriteContext>", "controlled send funnel classification"),
+    ("server", "let retired_file_writes = conn.file_writes.retire();", "let retired_file_writes = Vec::new();", "controlled round receipt retirement"),
+    ("server", "fn r_s11fh_controlled_file_frame_retains_its_exact_keyed_writer_receipt()", "fn controlled_file_frame_retains_its_exact_keyed_writer_receipt()", "controlled exact frame regression"),
     ("requirements", '<div class="req"><span class="id">R-S11fg</span>', '<div class="req"><span class="id">R-S11fg-disabled</span>', "normative requirement"),
     ("requirements", "<tr><td>315</td>", "<tr><td>315-disabled</td>", "Appendix disposition"),
+    ("requirements", '<div class="req"><span class="id">R-S11fh</span>', '<div class="req"><span class="id">R-S11fh-disabled</span>', "controlled normative requirement"),
+    ("requirements", "<tr><td>316</td>", "<tr><td>316-disabled</td>", "controlled Appendix disposition"),
     ("hardening", "**R-S11fg/R-S11e-194 outgoing viewer file-command admission", "**R-S11fg-disabled/R-S11e-194 outgoing viewer file-command admission", "hardening ledger"),
+    ("hardening", "**R-S11fh/R-S11e-195 controlled-side file-response exact local writer finality", "**R-S11fh-disabled/R-S11e-195 controlled-side file-response exact local writer finality", "controlled hardening ledger"),
+    ("verify", "server::connection::controlled_file_write_tests::r_s11fh_", "server::connection::controlled_file_write_tests::disabled_", "shared controlled behavior gate"),
+    ("dart_verify", "server::connection::controlled_file_write_tests::r_s11fh_", "server::connection::controlled_file_write_tests::disabled_", "generated-bridge controlled behavior gate"),
     ("verify", "python3 scripts/verify-viewer-file-finality.py --repo . --self-test", "python3 scripts/verify-viewer-file-finality.py --repo .", "shared mutation gate"),
     ("apple", "python3 scripts/verify-viewer-file-finality.py --repo . --self-test", "python3 scripts/verify-viewer-file-finality.py --repo .", "Apple mutation gate"),
     ("dart_verify", "client::io_loop::tests::r_s11fg_", "client::io_loop::tests::disabled_", "generated-bridge tracker gate"),

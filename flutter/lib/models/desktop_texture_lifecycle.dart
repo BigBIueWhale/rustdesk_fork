@@ -2,6 +2,7 @@ typedef DesktopTextureLifecycleError = void Function(
     String operation, Object error, StackTrace stackTrace);
 
 abstract class RetirableDesktopTexture {
+  Future<bool> activate();
   Future<void> retire();
 }
 
@@ -33,33 +34,39 @@ class DesktopTextureLifecycle implements RetirableDesktopTexture {
   bool _retireRequested = false;
   bool _publicationAttempted = false;
   bool _unpublicationAttempted = false;
-  late Future<void> _startFuture;
+  late Future<bool> _activationFuture;
   Future<void>? _retireFuture;
   Future<void>? _releaseFuture;
 
-  Future<void> start() {
+  @override
+  Future<bool> activate() {
     if (!_started) {
       _started = true;
-      _startFuture = _initializeAndPublish();
+      _activationFuture = _initializeAndPublish();
     }
-    return _startFuture;
+    return _activationFuture;
   }
 
-  Future<void> _initializeAndPublish() async {
+  Future<bool> _initializeAndPublish() async {
     bool ready;
     try {
       ready = await _initialize();
     } catch (error, stackTrace) {
       _onError('initialize', error, stackTrace);
       await _releaseOnce();
-      return;
+      return false;
     }
     if (!ready) {
+      _onError(
+        'initialize',
+        StateError('Desktop texture initialization was rejected'),
+        StackTrace.current,
+      );
       await _releaseOnce();
-      return;
+      return false;
     }
     if (_retireRequested) {
-      return;
+      return false;
     }
 
     // Treat a throwing publication as potentially visible. Finalization will
@@ -67,22 +74,24 @@ class DesktopTextureLifecycle implements RetirableDesktopTexture {
     _publicationAttempted = true;
     try {
       _publish();
+      return true;
     } catch (error, stackTrace) {
       _onError('publish', error, stackTrace);
       _unpublishOnce();
       await _releaseOnce();
+      return false;
     }
   }
 
   @override
   Future<void> retire() {
     _retireRequested = true;
-    start();
+    activate();
     return _retireFuture ??= _retire();
   }
 
   Future<void> _retire() async {
-    await _startFuture;
+    await _activationFuture;
     _unpublishOnce();
     await _releaseOnce();
   }
@@ -125,6 +134,7 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
   bool _wanted = false;
   bool _disposed = false;
   bool _creationFailed = false;
+  int _demandRevision = 0;
   T? _current;
   Future<void>? _reconcileFuture;
 
@@ -140,6 +150,7 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
     }
     _wanted = wanted;
     _creationFailed = false;
+    _demandRevision += 1;
     _ensureReconcile();
   }
 
@@ -174,14 +185,37 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
   Future<void> _reconcile() async {
     while (!_isSettled) {
       if (_wanted) {
+        final demandRevision = _demandRevision;
+        late final T candidate;
         try {
-          _current = _create();
+          candidate = _create();
         } catch (error, stackTrace) {
           // One failed demand transition is terminal until demand changes.
           // This prevents an immediate retry loop while still allowing a
           // later display switch to retry.
           _creationFailed = true;
           _onError('create', error, stackTrace);
+          continue;
+        }
+
+        _current = candidate;
+        var activated = false;
+        try {
+          activated = await candidate.activate();
+        } catch (error, stackTrace) {
+          _onError('activate', error, stackTrace);
+        }
+        if (!activated) {
+          await candidate.retire();
+          if (identical(_current, candidate)) {
+            _current = null;
+          }
+          // A stable failed demand is terminal until demand changes. If the
+          // display was independently removed and wanted again while this
+          // activation was pending, that newer demand owns a fresh attempt.
+          if (_wanted && _demandRevision == demandRevision) {
+            _creationFailed = true;
+          }
         }
         continue;
       }
@@ -215,7 +249,10 @@ class LatestDesktopTextureSlot<T extends RetirableDesktopTexture> {
 
   Future<void> dispose() {
     _disposed = true;
-    _wanted = false;
+    if (_wanted) {
+      _wanted = false;
+      _demandRevision += 1;
+    }
     _creationFailed = false;
     _ensureReconcile();
     return drain();

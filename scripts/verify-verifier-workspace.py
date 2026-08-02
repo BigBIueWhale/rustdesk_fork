@@ -17575,6 +17575,34 @@ def validate_desktop_texture_lifecycle_contract(sources):
             '"package_records": 198',
             "software-only Flutter lock-count contract",
         ),
+        (
+            '"Future<bool> activate();"',
+            "result-bearing desktop texture activation contract",
+        ),
+        (
+            '"_activationFuture = _initializeAndPublish();"',
+            "shared desktop texture activation-finality contract",
+        ),
+        (
+            '"activated = await candidate.activate();"',
+            "awaited display-slot activation contract",
+        ),
+        (
+            '"if (_wanted && _demandRevision == demandRevision)"',
+            "newer display-demand preservation contract",
+        ),
+        (
+            '"failed asynchronous activation is retired and retry is bounded"',
+            "bounded failed-activation regression contract",
+        ),
+        (
+            '"new demand during failed activation receives a fresh exact attempt"',
+            "newer-demand activation regression contract",
+        ),
+        (
+            '"<tr><td>321</td>"',
+            "texture activation Appendix C contract",
+        ),
         ("MUTATIONS: Tuple[Mutation, ...]", "desktop texture mutation inventory"),
         ("run_self_test(sources)", "desktop texture mutation dispatch"),
     ):
@@ -17591,7 +17619,84 @@ def validate_desktop_texture_lifecycle_contract(sources):
         )
         require_text(source, text, label)
 
+    require_order(
+        sources["desktop_texture_lifecycle_source"],
+        (
+            "abstract class RetirableDesktopTexture",
+            "Future<bool> activate();",
+            "class DesktopTextureLifecycle implements RetirableDesktopTexture",
+            "late Future<bool> _activationFuture;",
+            "Future<bool> activate()",
+            "_activationFuture = _initializeAndPublish();",
+            "Future<bool> _initializeAndPublish() async",
+            "StateError('Desktop texture initialization was rejected')",
+            "_publish();",
+            "return true;",
+            "await _activationFuture;",
+            "class LatestDesktopTextureSlot",
+            "int _demandRevision = 0;",
+            "final demandRevision = _demandRevision;",
+            "activated = await candidate.activate();",
+            "await candidate.retire();",
+            "if (_wanted && _demandRevision == demandRevision)",
+            "await retiring.retire();",
+        ),
+        "independent result-bearing desktop texture activation finality",
+    )
+    require_absent(
+        sources["desktop_render_texture_source"],
+        "_lifecycle.start();",
+        "independent detached desktop texture constructor activation",
+    )
+    require_text(
+        sources["desktop_render_texture_source"],
+        "Future<bool> activate() => _lifecycle.activate();",
+        "independent slot-owned pixelbuffer activation",
+    )
+    for test in (
+        "rejected initialization is reported and the allocation is released",
+        "failed asynchronous activation is retired and retry is bounded",
+        "new demand during failed activation receives a fresh exact attempt",
+    ):
+        require_text(
+            sources["desktop_texture_lifecycle_test"],
+            f"test('{test}'",
+            f"independent desktop texture regression: {test}",
+        )
+
     for text, label in (
+        (
+            '"result-bearing activation API"',
+            "desktop texture result-bearing activation mutation",
+        ),
+        (
+            '"rejected initialization visibility"',
+            "desktop texture rejected-initialization mutation",
+        ),
+        (
+            '"successful activation result"',
+            "desktop texture successful-activation mutation",
+        ),
+        (
+            '"awaited candidate activation"',
+            "desktop texture awaited-activation mutation",
+        ),
+        (
+            '"failed candidate retirement finality"',
+            "desktop texture failed-candidate finality mutation",
+        ),
+        (
+            '"newer demand preservation"',
+            "desktop texture newer-demand mutation",
+        ),
+        (
+            '"failed activation behavior regression"',
+            "desktop texture failed-activation test mutation",
+        ),
+        (
+            '"newer demand behavior regression"',
+            "desktop texture newer-demand test mutation",
+        ),
         (
             '("lifecycle", "return _retireFuture ??= _retire();", '
             '"return _retire();", "exact retirement finality"),',
@@ -17877,6 +17982,18 @@ def validate_desktop_texture_lifecycle_contract(sources):
         (
             '"hardening", "**R-S11ff/R-S11e-193 exact viewer refresh admission"',
             "viewer refresh admission hardening-ledger mutation",
+        ),
+        (
+            '"requirements", \'<div class="req"><span class="id">R-S11fm</span>\'',
+            "texture activation requirement mutation",
+        ),
+        (
+            '"requirements", "<tr><td>321</td>"',
+            "texture activation Appendix C mutation",
+        ),
+        (
+            '"hardening", "**R-S11fm/R-S11e-200 desktop texture activation finality"',
+            "texture activation hardening-ledger mutation",
         ),
     ):
         require_text(focused, text, label)
@@ -18703,6 +18820,11 @@ def validate_desktop_texture_lifecycle_contract(sources):
     )
     require_text(
         sources["requirements"],
+        '<div class="req"><span class="id">R-S11fm</span>',
+        "texture activation finality requirement",
+    )
+    require_text(
+        sources["requirements"],
         "<tr><td>306</td>",
         "desktop texture lifecycle Appendix C row",
     )
@@ -18715,6 +18837,11 @@ def validate_desktop_texture_lifecycle_contract(sources):
         sources["requirements"],
         "<tr><td>308</td>",
         "native retirement-finality Appendix C row",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>321</td>",
+        "texture activation finality Appendix C row",
     )
     require_text(
         sources["hardening"],
@@ -18730,6 +18857,11 @@ def validate_desktop_texture_lifecycle_contract(sources):
         sources["hardening"],
         "**R-S11ez/R-S11e-187 pending desktop frame retirement finality",
         "native retirement-finality hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11fm/R-S11e-200 desktop texture activation finality",
+        "texture activation finality hardening ledger",
     )
 
 
@@ -54811,6 +54943,42 @@ def run_source_mutations(sources):
             "macOS latest-wins native pending-frame contract",
         ),
         (
+            "desktop_texture_lifecycle_source",
+            "activated = await candidate.activate();",
+            "activated = true;",
+            "independent result-bearing desktop texture activation finality",
+        ),
+        (
+            "desktop_texture_lifecycle_source",
+            "if (_wanted && _demandRevision == demandRevision)",
+            "if (_wanted)",
+            "independent result-bearing desktop texture activation finality",
+        ),
+        (
+            "desktop_render_texture_source",
+            "Future<bool> activate() => _lifecycle.activate();",
+            "Future<bool> activate() async => true;",
+            "independent slot-owned pixelbuffer activation",
+        ),
+        (
+            "desktop_texture_lifecycle_test",
+            "rejected initialization is reported and the allocation is released",
+            "rejected initialization is ignored",
+            "independent desktop texture regression: rejected initialization is reported and the allocation is released",
+        ),
+        (
+            "desktop_texture_lifecycle_test",
+            "failed asynchronous activation is retired and retry is bounded",
+            "failed asynchronous activation is retained",
+            "independent desktop texture regression: failed asynchronous activation is retired and retry is bounded",
+        ),
+        (
+            "desktop_texture_lifecycle_test",
+            "new demand during failed activation receives a fresh exact attempt",
+            "new demand during failed activation is discarded",
+            "independent desktop texture regression: new demand during failed activation receives a fresh exact attempt",
+        ),
+        (
             "client_io_loop",
             "let (wake, receiver) = mpsc::channel(1);",
             "let (wake, receiver) = mpsc::channel(1024);",
@@ -55032,6 +55200,24 @@ def run_source_mutations(sources):
             "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
             "**R-S11ex-disabled/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
             "desktop texture lifecycle hardening ledger",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fm</span>',
+            '<div class="req"><span class="id">R-S11fm-disabled</span>',
+            "texture activation finality requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>321</td>",
+            "<tr><td>321-disabled</td>",
+            "texture activation finality Appendix C row",
+        ),
+        (
+            "hardening",
+            "**R-S11fm/R-S11e-200 desktop texture activation finality",
+            "**R-S11fm-disabled/R-S11e-200 desktop texture activation finality",
+            "texture activation finality hardening ledger",
         ),
         (
             "desktop_render_texture_source",
@@ -65691,6 +65877,12 @@ def main():
             ).read_text(encoding="utf-8"),
             "desktop_texture_lifecycle_verifier": (
                 repo / "scripts/verify-desktop-texture-lifecycle.py"
+            ).read_text(encoding="utf-8"),
+            "desktop_texture_lifecycle_source": (
+                repo / "flutter/lib/models/desktop_texture_lifecycle.dart"
+            ).read_text(encoding="utf-8"),
+            "desktop_texture_lifecycle_test": (
+                repo / "flutter/test/desktop_texture_lifecycle_test.dart"
             ).read_text(encoding="utf-8"),
             "texture_rgba_pubspec": (
                 repo / "flutter/third_party/texture_rgba_renderer/pubspec.yaml"

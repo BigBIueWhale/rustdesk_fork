@@ -35,7 +35,6 @@ class _PixelbufferTexture implements RetirableDesktopTexture {
       onError: (operation, error, stackTrace) => _reportTextureLifecycleError(
           'pixelbuffer', _display, operation, error, stackTrace),
     );
-    _lifecycle.start();
   }
 
   final int _textureKey;
@@ -97,6 +96,9 @@ class _PixelbufferTexture implements RetirableDesktopTexture {
     debugPrint(
         "destroy pixelbuffer texture: peerId: ${_ffi.id} display:$_display, textureId:$id");
   }
+
+  @override
+  Future<bool> activate() => _lifecycle.activate();
 
   @override
   Future<void> retire() => _lifecycle.retire();

@@ -4278,6 +4278,108 @@ No host RustDesk process/service/binary/configuration, host listener, firewall/U
 state, Docker image, or host network setting was inspected or changed. No root, sudo, privileged
 container, installed product, capture source, renderer, emulator, VM, or physical device ran.
 
+**R-S11fm/R-S11e-200 desktop texture activation finality — SOURCE IMPLEMENTED 2026-08-02;
+CONFINED FORMAT, 10/10 DART BEHAVIORS, TARGETED ANALYSIS WITH ZERO ERRORS, TWO
+BEHAVIORAL NEGATIVE CONTROLS, FOCUSED 158-MUTATION GATE, AND INDEPENDENT BASELINE
+PLUS COMPLETE 3,615-ENTRY SOURCE-MUTATION CATALOG GREEN; FULL STALE-BRIDGE LIBRARY
+ANALYSIS AND ALL NATIVE EXECUTION NOT GREEN;
+NATIVE WINDOWS/LINUX/macOS RENDERER, FOCUS/MINIMIZE/WINDOW-TRANSFER, EXACT ARTIFACT,
+CAPTURE-THROUGH-RENDER TIMESTAMPS/BUDGETS, ANDROID'S SEPARATE PRESENTATION PATH, COLD
+RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW PENDING.** Platforms: Windows, Linux,
+and macOS outgoing-viewer Flutter software-texture presentation. Endpoint/action: one per-display
+texture constructor → asynchronous native create/pointer acquisition → exact UI/native publication →
+display-slot current state. Boundary: the serialized Dart slot owns one candidate while that candidate's
+native plugin lifecycle completes asynchronously.
+
+Read-only source tracing found that R-S11ex's two individually reasonable owners did not share one
+success boundary. `_PixelbufferTexture` started `DesktopTextureLifecycle` in its constructor and
+discarded completion. `LatestDesktopTextureSlot` then assigned the constructed object to `_current`
+without awaiting native creation or publication. If `createTexture` returned `-1`, `getTexturePtr`
+returned zero, initialization threw, or publication threw, the lifecycle correctly released its
+partial state but the slot still considered that released object current. Reasserting the same display
+demand is intentionally idempotent, so focus/resume refresh could not repair that slot; a separate
+off/on display transition, view replacement, or reconnect could hide it. This is present-source proof
+of a desktop presentation availability/resource-state defect. It does not prove that the exact
+interleaving occurred in an unidentified weeks-old operational artifact, caused the reported delay,
+or exists in Android's separate viewer presentation path.
+
+The smallest authority correction makes every `RetirableDesktopTexture` expose one idempotent
+`Future<bool>` activation transaction. `DesktopTextureLifecycle` returns success only after
+publication returns successfully. Explicit initialization rejection is now reported, and rejection,
+initialization exception, retirement during initialization, or publication exception returns failure
+after the existing exact partial-allocation cleanup. Retirement remains synchronous-before-await,
+idempotent, late-publication-safe, and at-most-once for unpublication/release. The pixelbuffer
+constructor no longer starts detached work.
+
+The exact display slot now constructs one candidate, retains it while activation is pending, and
+awaits that candidate's result. A failed candidate is retired to exact finality and removed only by
+identity. Failure under one unchanged demand revision latches instead of spinning native allocation;
+an independently newer false/true demand transition observed during the pending failure receives one
+fresh attempt after predecessor retirement. Successful activation remains current. Existing terminal
+disposal and predecessor-before-replacement ordering are preserved. No retry timer, polling loop,
+reconnect workaround, task, thread, runtime, queue, dependency, protocol, service, or platform-native
+plugin implementation changed.
+
+The deterministic Dart suite now covers explicit-false initialization in addition to thrown
+initialization, publication failure, retirement during initialization, exact repeated retirement,
+synchronous constructor failure, asynchronous activation failure with exact retirement and bounded
+retry, a newer demand arriving during failed activation, and replacement after blocked predecessor
+retirement. The focused semantic verifier binds the activation API/result, slot wait, stable-failure
+latch, newer-demand revision, exact retirement, regressions, R-S11fm, Appendix C #321, and this ledger
+with deliberate mutations. The independent verifier additionally reads the exact lifecycle, render,
+and test sources and mutates their load-bearing activation shapes directly.
+
+Counted Flutter 3.24.5 execution used immutable image
+`sha256:058ca8987af63df55aa0a0a8e6f2ab25904d73061f59e27a53ac9ab19acc71c9`. The
+image's missing Flutter-tool package configuration was generated only inside an automatically removed
+anonymous volume by running direct locked/offline `dart pub get` without the hanging `--example`
+bootstrap; the sealed Pub cache and exact source were copied from read-only mounts into private
+container tmpfs. The exact three Dart files were formatter-clean. All ten lifecycle tests passed,
+including the three new failure/retry cases. Targeted analysis of the two production files exited zero
+with zero errors and retained one pre-existing unused-import warning in
+`desktop_render_texture.dart`; no warning-free claim is made. A broader `flutter analyze lib/` was
+also run and is explicitly not green: it found two existing `clientOwnerId` named-parameter errors in
+`lib/common.dart` against the stale checked-in generated bridge, plus the repository's existing
+warnings/infos. The exact fresh bridge/full Dart transaction that normally resolves that mismatch was
+not run because this slice does not authorize a long full release-style transaction. The two new
+behavioral tests were then proved load-bearing in separate disposable project copies: bypassing the
+awaited candidate activation made the bounded-failure regression exit one, and collapsing the
+newer-demand revision guard made the newer-demand regression exit one.
+
+In immutable image `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`,
+in-container Python AST parsing passed, the focused verifier passed and rejected all 158 deliberate
+mutations, and the independent workspace baseline passed. Its complete unsliced 3,615-entry
+in-memory source-mutation catalog restarted from mutation one and exited zero. The first complete
+catalog attempt is uncounted: after about seventeen minutes it correctly rejected the awaited-
+activation mutation, but the new catalog fixture expected a different diagnostic label and therefore
+refused to count that rejection. All six new direct-source fixture expectations were aligned with the
+actual independent diagnostics; preflight passed, and only the from-start zero-exit restart is counted.
+A final frozen-byte complete-catalog rerun is deliberately performed after this complete ledger entry
+and reported in the commit handoff so later evidence prose cannot borrow the earlier candidate's
+result.
+
+Validation boundaries remain explicit. The first disposable Flutter container copied the SDK to a
+new path; Flutter tried to regenerate its own tool metadata and remained inside SDK bootstrap before
+project resolution. A second read-only-SDK attempt stopped on Flutter's cache lock before project
+parsing. Subsequent network-disabled scratch-volume attempts established that this pre-existing
+`rd-fluttercheck` image lacks the Flutter tool package configuration and that its offline bootstrap
+child can remain asleep before creating either SDK or project `.dart_tool` metadata. Those setup
+attempts are stopped, uncounted, and are not product passes or failures. They used numeric UID/GID
+1000, no network or published port, read-only source/image inputs, disposable tmpfs/anonymous volumes,
+all capabilities dropped, `no-new-privileges`, and bounded resources. No image was built, pulled,
+tagged, or modified.
+
+Until native evidence exists, this remains a source correction rather than deployment validation. No
+counted check starts RustDesk, captures or displays a screen, loads a native renderer, uses a real
+compositor, backgrounds Android, changes Windows focus, connects a peer, installs an artifact, or
+touches the running host service. Exact-current native Windows/Linux/macOS focus/minimize/transfer
+stress, Android task-swipe/reopen/Force-Stop coverage through its separate path, cross-version behavior,
+monotonic capture/encode/receive/decode/publication/render timestamps, queue depth and latency budgets,
+clean cold R-B2/R-B10 artifacts, independent reproduction, and external review remain release
+blockers. No root, sudo, privileged container, host RustDesk process/service/binary/configuration,
+host listener, firewall/UFW/nftables/iptables state, or host network configuration was inspected or
+changed.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -18941,7 +19043,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-a86e80c8eee00658841927e5d7ef5770d8b80d30510e0911291d409ab834b90b  requirements.html
+fb5cae2cef63c5005857468d5da00234afece764c89777ea39984c90e57170b6  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

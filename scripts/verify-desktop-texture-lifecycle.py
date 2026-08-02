@@ -719,21 +719,41 @@ def validate(sources: Dict[str, str]) -> None:
         "class DesktopTextureLifecycle",
         "desktop texture lifecycle",
     )
+    require(
+        lifecycle,
+        "Future<bool> activate();",
+        "result-bearing texture activation contract",
+    )
     require_order(
         owner,
         (
             "bool _retireRequested = false;",
             "bool _publicationAttempted = false;",
             "bool _unpublicationAttempted = false;",
-            "late Future<void> _startFuture;",
+            "late Future<bool> _activationFuture;",
             "Future<void>? _retireFuture;",
             "Future<void>? _releaseFuture;",
         ),
         "explicit lifecycle state",
     )
+    activation = extract_braced_item(
+        owner,
+        "Future<bool> activate()",
+        "shared result-bearing texture activation",
+    )
+    require_order(
+        activation,
+        (
+            "if (!_started)",
+            "_started = true;",
+            "_activationFuture = _initializeAndPublish();",
+            "return _activationFuture;",
+        ),
+        "one exact activation future",
+    )
     initialize = extract_braced_item(
         owner,
-        "Future<void> _initializeAndPublish()",
+        "Future<bool> _initializeAndPublish()",
         "initialization/publication transition",
     )
     require_order(
@@ -742,15 +762,22 @@ def validate(sources: Dict[str, str]) -> None:
             "ready = await _initialize();",
             "_onError('initialize', error, stackTrace);",
             "await _releaseOnce();",
+            "return false;",
             "if (!ready)",
+            "StateError('Desktop texture initialization was rejected')",
+            "await _releaseOnce();",
+            "return false;",
             "if (_retireRequested)",
+            "return false;",
             "_publicationAttempted = true;",
             "_publish();",
+            "return true;",
             "_onError('publish', error, stackTrace);",
             "_unpublishOnce();",
             "await _releaseOnce();",
+            "return false;",
         ),
-        "failed-allocation cleanup, late-publication exclusion, and visible errors",
+        "result-bearing cleanup, late-publication exclusion, and visible errors",
     )
     retire = extract_braced_item(
         owner, "Future<void> retire()", "synchronous retirement invalidation"
@@ -759,7 +786,7 @@ def validate(sources: Dict[str, str]) -> None:
         retire,
         (
             "_retireRequested = true;",
-            "start();",
+            "activate();",
             "return _retireFuture ??= _retire();",
         ),
         "invalidate-before-wait and exact finality",
@@ -770,7 +797,7 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         finality,
         (
-            "await _startFuture;",
+            "await _activationFuture;",
             "_unpublishOnce();",
             "await _releaseOnce();",
         ),
@@ -810,6 +837,26 @@ def validate(sources: Dict[str, str]) -> None:
         "class LatestDesktopTextureSlot",
         "serialized display texture slot",
     )
+    require_order(
+        extract_braced_item(slot, "void setWanted(bool wanted)", "display demand transition"),
+        (
+            "if (_wanted == wanted)",
+            "_wanted = wanted;",
+            "_creationFailed = false;",
+            "_demandRevision += 1;",
+            "_ensureReconcile();",
+        ),
+        "one revision per distinct display demand transition",
+    )
+    require_order(
+        slot,
+        (
+            "bool _creationFailed = false;",
+            "int _demandRevision = 0;",
+            "T? _current;",
+        ),
+        "explicit display-slot activation state",
+    )
     reconcile = extract_braced_item(
         slot, "Future<void> _reconcile()", "serialized replacement transition"
     )
@@ -817,10 +864,22 @@ def validate(sources: Dict[str, str]) -> None:
         reconcile,
         (
             "if (_wanted)",
+            "final demandRevision = _demandRevision;",
+            "late final T candidate;",
             "try {",
-            "_current = _create();",
+            "candidate = _create();",
             "_creationFailed = true;",
             "_onError('create', error, stackTrace);",
+            "_current = candidate;",
+            "var activated = false;",
+            "activated = await candidate.activate();",
+            "_onError('activate', error, stackTrace);",
+            "if (!activated)",
+            "await candidate.retire();",
+            "if (identical(_current, candidate))",
+            "_current = null;",
+            "if (_wanted && _demandRevision == demandRevision)",
+            "_creationFailed = true;",
             "final retiring = _current;",
             "await retiring.retire();",
             "if (identical(_current, retiring))",
@@ -868,7 +927,6 @@ def validate(sources: Dict[str, str]) -> None:
             "publish: _publish,",
             "unpublish: _unpublish,",
             "release: _release,",
-            "_lifecycle.start();",
             "await textureRenderer.createTexture(_textureKey);",
             "await textureRenderer.getTexturePtr(_textureKey);",
             "_ffi.textureModel.setTextureId",
@@ -877,10 +935,12 @@ def validate(sources: Dict[str, str]) -> None:
             "_sessionId, _clientOwnerId, _display, 0",
             "_ffi.textureModel.clearTextureId(display: _display, id: id);",
             "await textureRenderer.closeTexture(_textureKey);",
+            "Future<bool> activate() => _lifecycle.activate();",
             "Future<void> retire() => _lifecycle.retire();",
         ),
         "pixelbuffer lifecycle wiring",
     )
+    forbid(pixel, "_lifecycle.start();", "detached constructor activation")
     texture_model = extract_braced_item(
         render, "class TextureModel", "desktop texture model"
     )
@@ -1849,9 +1909,12 @@ def validate(sources: Dict[str, str]) -> None:
         "retirement before initialization completes prevents late publication",
         "published texture is unpublished before one exact release",
         "initialization failure is reported and the allocation is released",
+        "rejected initialization is reported and the allocation is released",
         "failed publication is unpublished and released immediately",
         "unpublication failure cannot prevent exact release",
         "failed slot creation is bounded and a later demand can retry",
+        "failed asynchronous activation is retired and retry is bounded",
+        "new demand during failed activation receives a fresh exact attempt",
         "replacement waits for exact predecessor retirement",
     ):
         require(tests, f"test('{test}'", f"{test} behavior regression")
@@ -1893,12 +1956,18 @@ def validate(sources: Dict[str, str]) -> None:
             '<div class="req"><span class="id">R-S11ff</span>',
             "R-S11ff exact viewer refresh admission requirement",
         ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fm</span>',
+            "R-S11fm texture activation finality requirement",
+        ),
         ("requirements", "<tr><td>306</td>", "Appendix C #306"),
         ("requirements", "<tr><td>307</td>", "Appendix C #307"),
         ("requirements", "<tr><td>308</td>", "Appendix C #308"),
         ("requirements", "<tr><td>309</td>", "Appendix C #309"),
         ("requirements", "<tr><td>311</td>", "Appendix C #311"),
         ("requirements", "<tr><td>314</td>", "Appendix C #314"),
+        ("requirements", "<tr><td>321</td>", "Appendix C #321"),
         (
             "hardening",
             "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
@@ -1928,6 +1997,11 @@ def validate(sources: Dict[str, str]) -> None:
             "hardening",
             "**R-S11ff/R-S11e-193 exact viewer refresh admission",
             "viewer refresh admission hardening ledger",
+        ),
+        (
+            "hardening",
+            "**R-S11fm/R-S11e-200 desktop texture activation finality",
+            "texture activation finality hardening ledger",
         ),
         (
             "verify",
@@ -2195,20 +2269,65 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "viewer_refresh_worker_start_gate_test_disabled",
         "retired-owner refresh worker start-gate behavior regression",
     ),
+    ("lifecycle", "Future<bool> activate();", "Future<void> activate();", "result-bearing activation API"),
     ("lifecycle", "_retireRequested = true;", "_retireRequested = false;", "synchronous retirement invalidation"),
     ("lifecycle", "if (!ready)", "if (false)", "failed-initialization cleanup"),
+    (
+        "lifecycle",
+        "StateError('Desktop texture initialization was rejected')",
+        "StateError('')",
+        "rejected initialization visibility",
+    ),
     ("lifecycle", "if (_retireRequested)", "if (false)", "late-publication exclusion"),
     ("lifecycle", "_publicationAttempted = true;", "_publicationAttempted = false;", "publication ownership"),
+    ("lifecycle", "return true;", "return false;", "successful activation result"),
     ("lifecycle", "return _retireFuture ??= _retire();", "return _retire();", "exact retirement finality"),
-    ("lifecycle", "await _startFuture;", "start();", "initialization drain"),
+    ("lifecycle", "await _activationFuture;", "activate();", "activation drain"),
     ("lifecycle", "_unpublicationAttempted = true;", "_unpublicationAttempted = false;", "exact unpublication"),
     ("lifecycle", "_releaseFuture ??= _releaseAndReportFailure()", "_releaseAndReportFailure()", "exact release future"),
     ("lifecycle", "await _release();", "_release();", "release finality"),
     ("lifecycle", "_creationFailed = true;", "_creationFailed = false;", "bounded creation failure"),
+    ("lifecycle", "_demandRevision += 1;", "_demandRevision += 0;", "distinct demand revision"),
+    (
+        "lifecycle",
+        "activated = await candidate.activate();",
+        "activated = true;",
+        "awaited candidate activation",
+    ),
+    ("lifecycle", "await candidate.retire();", "candidate.retire();", "failed candidate retirement finality"),
+    (
+        "lifecycle",
+        "if (_wanted && _demandRevision == demandRevision)",
+        "if (_wanted)",
+        "newer demand preservation",
+    ),
     ("lifecycle", "await retiring.retire();", "retiring.retire();", "predecessor finality"),
     ("lifecycle", "if (identical(_current, retiring))", "if (_current != null)", "exact predecessor removal"),
     ("lifecycle", "if (_disposed && wanted)", "if (false)", "post-dispose refusal"),
-    ("render", "    _lifecycle.start();", "    // lifecycle start removed", "software texture start"),
+    (
+        "render",
+        "Future<bool> activate() => _lifecycle.activate();",
+        "Future<bool> activate() async => true;",
+        "slot-owned software texture activation",
+    ),
+    (
+        "tests",
+        "rejected initialization is reported and the allocation is released",
+        "rejected initialization is ignored",
+        "rejected initialization behavior regression",
+    ),
+    (
+        "tests",
+        "failed asynchronous activation is retired and retry is bounded",
+        "failed asynchronous activation is retained",
+        "failed activation behavior regression",
+    ),
+    (
+        "tests",
+        "new demand during failed activation receives a fresh exact attempt",
+        "new demand during failed activation is discarded",
+        "newer demand behavior regression",
+    ),
     ("render", "_sessionId, _clientOwnerId, _display, ptr", "_sessionId, _sessionId, _display, ptr", "pixel owner publication"),
     ("render", "_sessionId, _clientOwnerId, _display, 0", "_sessionId, _sessionId, _display, 0", "pixel owner unpublication"),
     ("render", "control?.nativeTextureId == id", "control != null", "exact software UI-ID clearing"),
@@ -2629,18 +2748,21 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<div class="req"><span class="id">R-S11fa</span>', '<div class="req"><span class="id">R-S11fa-disabled</span>', "presentation-resume normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11fc</span>', '<div class="req"><span class="id">R-S11fc-disabled</span>', "first-image admission normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11ff</span>', '<div class="req"><span class="id">R-S11ff-disabled</span>', "viewer refresh admission normative requirement"),
+    ("requirements", '<div class="req"><span class="id">R-S11fm</span>', '<div class="req"><span class="id">R-S11fm-disabled</span>', "texture activation normative requirement"),
     ("requirements", "<tr><td>306</td>", "<tr><td>306-disabled</td>", "Appendix disposition"),
     ("requirements", "<tr><td>307</td>", "<tr><td>307-disabled</td>", "software-only Appendix disposition"),
     ("requirements", "<tr><td>308</td>", "<tr><td>308-disabled</td>", "native retirement Appendix disposition"),
     ("requirements", "<tr><td>309</td>", "<tr><td>309-disabled</td>", "presentation-resume Appendix disposition"),
     ("requirements", "<tr><td>311</td>", "<tr><td>311-disabled</td>", "first-image admission Appendix disposition"),
     ("requirements", "<tr><td>314</td>", "<tr><td>314-disabled</td>", "viewer refresh admission Appendix disposition"),
+    ("requirements", "<tr><td>321</td>", "<tr><td>321-disabled</td>", "texture activation Appendix disposition"),
     ("hardening", "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "**R-S11ex-disabled/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "hardening ledger"),
     ("hardening", "**R-S11ey/R-S11e-186 software-RGBA-only desktop presentation", "**R-S11ey-disabled/R-S11e-186 software-RGBA-only desktop presentation", "software-only hardening ledger"),
     ("hardening", "**R-S11ez/R-S11e-187 pending desktop frame retirement finality", "**R-S11ez-disabled/R-S11e-187 pending desktop frame retirement finality", "native retirement hardening ledger"),
     ("hardening", "**R-S11fa/R-S11e-188 exact viewer presentation-resume recovery", "**R-S11fa-disabled/R-S11e-188 exact viewer presentation-resume recovery", "presentation-resume hardening ledger"),
     ("hardening", "**R-S11fc/R-S11e-190 exact desktop first-image admission", "**R-S11fc-disabled/R-S11e-190 exact desktop first-image admission", "first-image admission hardening ledger"),
     ("hardening", "**R-S11ff/R-S11e-193 exact viewer refresh admission", "**R-S11ff-disabled/R-S11e-193 exact viewer refresh admission", "viewer refresh admission hardening ledger"),
+    ("hardening", "**R-S11fm/R-S11e-200 desktop texture activation finality", "**R-S11fm-disabled/R-S11e-200 desktop texture activation finality", "texture activation hardening ledger"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never", "true # first-image admission behavior gate disabled", "shared first-image admission behavior gate"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11ff_ --color never", "true # viewer refresh admission behavior gate disabled", "shared viewer refresh admission behavior gate"),
     ("dart_verify", "flutter::mobile_session_lifecycle_tests::r_s11ff_video_refresh_requires_the_current_exact_ui_owner", "flutter::mobile_session_lifecycle_tests::viewer_refresh_disabled", "fresh-bridge viewer refresh behavior gate"),

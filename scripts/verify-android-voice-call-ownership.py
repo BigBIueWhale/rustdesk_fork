@@ -4139,11 +4139,18 @@ def validate(sources: Dict[str, str]) -> None:
         "r_s11fb_local_disconnect_retires_all_exact_pending_sources",
         "r_s11fk_controller_rejects_zero_and_reused_wire_generations",
         "r_s11fl_one_exact_peer_receipt_paces_shared_capture_without_the_slow_peer",
+        "r_s11fl_blocked_capture_wait_wakes_on_one_exact_peer_receipt",
         "r_s11fl_superseded_frame_is_not_peer_progress_for_its_exact_round",
         "r_s11fl_empty_or_fully_disconnected_round_does_not_delay_capture",
         "r_s11fl_refresh_interrupts_an_obsolete_capture_wait",
     ):
         require(video_service, behavior_test, f"video acknowledgement behavior proof {behavior_test}")
+    for blocked_wait_proof, label in (
+        ("test_waiter_blocked: std::sync::atomic::AtomicBool", "test-only blocked-wait state"),
+        (".store(true, std::sync::atomic::Ordering::SeqCst)", "blocked-wait entry proof"),
+        ("while !wait_state", "blocked-wait observation before receipt"),
+    ):
+        require(video_service, blocked_wait_proof, label)
     for behavior_test in (
         "r_s11fb_latest_independent_frame_replaces_only_the_same_display",
         "r_s11fb_fresh_display_rejects_dependent_until_independent",
@@ -5608,6 +5615,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("video_service", "r_s11fb_late_completion_cannot_satisfy_a_new_round", "video_ack_stale_round_test_disabled", "video acknowledgement stale-round behavior proof"),
     ("video_service", "r_s11fk_controller_rejects_zero_and_reused_wire_generations", "video_wire_generation_test_disabled", "video wire generation behavior proof"),
     ("video_service", "r_s11fl_one_exact_peer_receipt_paces_shared_capture_without_the_slow_peer", "video_shared_progress_test_disabled", "one-peer shared capture progress behavior proof"),
+    ("video_service", "r_s11fl_blocked_capture_wait_wakes_on_one_exact_peer_receipt", "video_shared_wait_wake_test_disabled", "blocked shared capture wait wake behavior proof"),
+    ("video_service", "test_waiter_blocked: std::sync::atomic::AtomicBool", "test_waiter_blocked_disabled: std::sync::atomic::AtomicBool", "test-only blocked-wait state proof"),
+    ("video_service", ".store(true, std::sync::atomic::Ordering::SeqCst)", ".store(false, std::sync::atomic::Ordering::SeqCst)", "blocked-wait entry behavior proof"),
+    ("video_service", "while !wait_state", "while false && !wait_state", "blocked-wait observation behavior proof"),
     ("video_service", "r_s11fl_superseded_frame_is_not_peer_progress_for_its_exact_round", "video_supersession_progress_test_disabled", "supersession non-progress behavior proof"),
     ("video_service", "r_s11fl_empty_or_fully_disconnected_round_does_not_delay_capture", "video_disconnected_release_test_disabled", "disconnected shared capture release behavior proof"),
     ("video_service", "r_s11fl_refresh_interrupts_an_obsolete_capture_wait", "video_refresh_wait_test_disabled", "refresh-interruptible capture wait behavior proof"),

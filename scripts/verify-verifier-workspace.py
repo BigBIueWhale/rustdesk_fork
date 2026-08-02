@@ -21469,6 +21469,7 @@ def validate_android_voice_call_ownership_contract(sources):
         "r_s11fb_local_disconnect_retires_all_exact_pending_sources",
         "r_s11fk_controller_rejects_zero_and_reused_wire_generations",
         "r_s11fl_one_exact_peer_receipt_paces_shared_capture_without_the_slow_peer",
+        "r_s11fl_blocked_capture_wait_wakes_on_one_exact_peer_receipt",
         "r_s11fl_superseded_frame_is_not_peer_progress_for_its_exact_round",
         "r_s11fl_empty_or_fully_disconnected_round_does_not_delay_capture",
         "r_s11fl_refresh_interrupts_an_obsolete_capture_wait",
@@ -21478,6 +21479,12 @@ def validate_android_voice_call_ownership_contract(sources):
             behavior_test,
             f"controlled video acknowledgement behavior proof source {behavior_test}",
         )
+    for blocked_wait_proof, label in (
+        ("test_waiter_blocked: std::sync::atomic::AtomicBool", "test-only blocked-wait state source"),
+        (".store(true, std::sync::atomic::Ordering::SeqCst)", "blocked-wait entry proof source"),
+        ("while !wait_state", "blocked-wait observation source"),
+    ):
+        require_text(controlled_screenshots, blocked_wait_proof, label)
     for behavior_test in (
         "r_s11fb_latest_independent_frame_replaces_only_the_same_display",
         "r_s11fb_fresh_display_rejects_dependent_until_independent",
@@ -22207,6 +22214,26 @@ def validate_android_voice_call_ownership_contract(sources):
         focused,
         '("transport_tcp", "r_s11fk_real_tcp_receipt_can_precede_peer_read", "writer_receipt_real_tcp_boundary_test_disabled", "real TCP local-receipt boundary behavior proof"),',
         "real TCP local-receipt boundary focused mutation",
+    )
+    require_text(
+        focused,
+        '("video_service", "r_s11fl_blocked_capture_wait_wakes_on_one_exact_peer_receipt", "video_shared_wait_wake_test_disabled", "blocked shared capture wait wake behavior proof"),',
+        "blocked shared capture wait wake focused mutation",
+    )
+    require_text(
+        focused,
+        '("video_service", "test_waiter_blocked: std::sync::atomic::AtomicBool", "test_waiter_blocked_disabled: std::sync::atomic::AtomicBool", "test-only blocked-wait state proof"),',
+        "test-only blocked-wait state focused mutation",
+    )
+    require_text(
+        focused,
+        '("video_service", ".store(true, std::sync::atomic::Ordering::SeqCst)", ".store(false, std::sync::atomic::Ordering::SeqCst)", "blocked-wait entry behavior proof"),',
+        "blocked-wait entry focused mutation",
+    )
+    require_text(
+        focused,
+        '("video_service", "while !wait_state", "while false && !wait_state", "blocked-wait observation behavior proof"),',
+        "blocked-wait observation focused mutation",
     )
     require_text(
         focused,
@@ -57892,6 +57919,30 @@ def run_source_mutations(sources):
             "r_s11fl_one_exact_peer_receipt_paces_shared_capture_without_the_slow_peer",
             "video_shared_progress_test_disabled",
             "controlled video acknowledgement behavior proof source r_s11fl_one_exact_peer_receipt_paces_shared_capture_without_the_slow_peer",
+        ),
+        (
+            "video_service_source",
+            "r_s11fl_blocked_capture_wait_wakes_on_one_exact_peer_receipt",
+            "video_shared_wait_wake_test_disabled",
+            "controlled video acknowledgement behavior proof source r_s11fl_blocked_capture_wait_wakes_on_one_exact_peer_receipt",
+        ),
+        (
+            "video_service_source",
+            "test_waiter_blocked: std::sync::atomic::AtomicBool",
+            "test_waiter_blocked_disabled: std::sync::atomic::AtomicBool",
+            "test-only blocked-wait state source",
+        ),
+        (
+            "video_service_source",
+            ".store(true, std::sync::atomic::Ordering::SeqCst)",
+            ".store(false, std::sync::atomic::Ordering::SeqCst)",
+            "blocked-wait entry proof source",
+        ),
+        (
+            "video_service_source",
+            "while !wait_state",
+            "while false && !wait_state",
+            "blocked-wait observation source",
         ),
         (
             "video_service_source",

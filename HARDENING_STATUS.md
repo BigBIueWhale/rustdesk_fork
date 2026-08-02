@@ -4225,6 +4225,45 @@ registration, and prepare-before-enqueue. It ran in immutable image
 UID/GID 1000:1000 with `--network=none`, no published port, a read-only root/source/vendor tree,
 all capabilities dropped, `no-new-privileges`, bounded resources, and private tmpfs build output.
 
+A follow-up exact-current test-hardening slice on 2026-08-02 closed one evidence gap without
+changing production behavior. The four R-S11fl regressions above used zero-duration observation and
+therefore did not execute the condition-variable blocking/wake path used by the capture thread. The
+new `r_s11fl_blocked_capture_wait_wakes_on_one_exact_peer_receipt` regression prepares two exact
+targets, observes a test-only atomic marker set immediately before the condition-variable wait,
+proves the result remains blocked before progress, then supplies one exact peer receipt and requires
+that the real five-second condition-variable wait wake within one second while the other target
+remains pending. The complete capture-acknowledgement module now reports `11 passed`, `0
+failed`, `441 filtered`; its R-S11fl subset reports `5 passed`, `0 failed`, `447 filtered`. The
+focused semantic verifier passed normally and rejected all 527 deliberate mutations, including
+deletion of the blocked-wait test and removal or neutralization of its actual-blocking proof. The
+independent workspace verifier passed normally and its
+complete unsliced in-memory source-mutation catalog passed. Pinned Rustfmt 1.75.0, in-container
+Python AST parsing, and `git diff --check` passed. Compilation used the authenticated read-only Cargo
+vendor closure and a fresh private UID/GID-1000 target in the same immutable, networkless,
+capability-free image; the library-test build retained 190 existing warnings, so no warning-free
+claim is made.
+
+Excluded setup attempts remain explicit. One direct host `python3 -m py_compile` invocation parsed
+the two changed verifier files and created two ignored bytecode files. It had no privilege, socket,
+or RustDesk interaction, but violated the user's all-project-code-in-container boundary; it is
+uncounted, and exactly those two newly created cache files were removed while older caches were left
+untouched. The first container formatting attempt lacked rustfmt's matching shared library and
+stopped before parsing or testing. The corrected read-only full-toolchain mount passed formatting,
+AST parsing, and the focused semantic baseline, after which Cargo correctly stopped offline because
+the vendor source map had not been selected. A subsequent vendored compile stopped in `zstd-sys`
+because a reused target contained mode-0400 copied headers; the counted compile used a fresh private
+target and passed without changing source or vendor permissions. No failed setup attempt is counted
+as test evidence. During the final strengthened rerun, one container stopped before parsing because
+its root-owned mode-0700 tmpfs was inaccessible to UID 1000. The corrected UID/GID-1000 tmpfs then
+passed formatting and AST parsing but the image's Cargo Rustup shim tried to write a channel-update
+temporary file beneath the read-only image and stopped before compilation. The counted rerun invoked
+the mounted exact Cargo and Rustc 1.75.0 binaries directly and passed. A host-side read-only
+`file`/`--version` diagnostic confirmed those mounted binaries; it did not parse or build project
+code. A later host `python3 -B scripts/verify-verifier-workspace.py --help` invocation only parsed
+arguments and printed usage; it produced no bytecode and ran no validation or fixture, but it was
+repository code outside the required container and is uncounted. None of these diagnostics used
+network access, privilege, a host listener, or RustDesk.
+
 That evidence proves the compiled Linux state machine only. It did not start RustDesk, capture a
 screen, create a peer session, exercise a decoder/renderer, background Android, unfocus Windows,
 install an artifact, or touch the running host service. It does not establish a current release's

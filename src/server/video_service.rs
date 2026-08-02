@@ -317,6 +317,8 @@ impl VideoFrameAckRound {
 struct VideoFrameAckState {
     round: Mutex<VideoFrameAckRound>,
     changed: Condvar,
+    #[cfg(test)]
+    test_waiter_blocked: std::sync::atomic::AtomicBool,
 }
 
 impl VideoFrameAckState {
@@ -394,10 +396,16 @@ impl VideoFrameAckState {
         if round.capture_may_advance() {
             return true;
         }
+        #[cfg(test)]
+        self.test_waiter_blocked
+            .store(true, std::sync::atomic::Ordering::SeqCst);
         let (round, _) = self
             .changed
             .wait_timeout_while(round, timeout, |round| !round.capture_may_advance())
             .unwrap();
+        #[cfg(test)]
+        self.test_waiter_blocked
+            .store(false, std::sync::atomic::Ordering::SeqCst);
         round.capture_may_advance()
     }
 }
@@ -2020,6 +2028,43 @@ mod video_frame_ack_tests {
         assert!(controller.wait_for_progress(Duration::ZERO));
         retire_video_frame_connection(21);
         assert!(controller.wait_for_progress(Duration::ZERO));
+    }
+
+    #[test]
+    fn r_s11fl_blocked_capture_wait_wakes_on_one_exact_peer_receipt() {
+        let _test = ACK_TEST_LOCK.lock().unwrap();
+        let controller = VideoFrameController::new(VideoSource::Monitor, 10_008).unwrap();
+        let round = prepare(&controller, &ids(&[23, 24]), 1);
+        let wait_state = Arc::clone(&controller.state);
+        let (wait_result_tx, wait_result_rx) = std::sync::mpsc::sync_channel(0);
+
+        let waiter = std::thread::spawn(move || {
+            let advanced = controller.wait_for_progress(Duration::from_secs(5));
+            wait_result_tx
+                .send(advanced)
+                .expect("test wait-result receiver must remain live");
+        });
+        let waiter_deadline = Instant::now() + Duration::from_secs(1);
+        while !wait_state
+            .test_waiter_blocked
+            .load(std::sync::atomic::Ordering::SeqCst)
+        {
+            assert!(
+                Instant::now() < waiter_deadline,
+                "test capture waiter must enter the condition-variable wait"
+            );
+            std::thread::yield_now();
+        }
+        assert!(matches!(
+            wait_result_rx.recv_timeout(Duration::from_millis(100)),
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout)
+        ));
+
+        notify_video_frame_fetched(VideoSource::Monitor, 10_008, round, 23, None);
+        assert!(wait_result_rx
+            .recv_timeout(Duration::from_secs(1))
+            .expect("one exact peer receipt must wake the shared capture wait"));
+        waiter.join().expect("test capture waiter must not panic");
     }
 
     #[test]

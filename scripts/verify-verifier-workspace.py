@@ -5367,8 +5367,14 @@ def validate_smoke_contract(
     x11_environment_authority = extract_between(
         linux_source,
         "fn xauthority_from_environ_for_display",
-        "\n#[inline]\nfn get_env(",
+        "\nimpl DesktopProcessSnapshot",
         "Linux display-bound Xauthority selection",
+    )
+    x11_snapshot_authority = extract_between(
+        linux_source,
+        "impl DesktopProcessSnapshot",
+        '\n#[link(name = "gtk-3")]\n',
+        "Linux snapshot-bound Xauthority selection",
     )
     x11_desktop_authority = extract_between(
         linux_source,
@@ -5378,7 +5384,7 @@ def validate_smoke_contract(
     )
     x11_refresh_authority = extract_between(
         linux_source,
-        "pub fn refresh(&mut self)",
+        "fn refresh_selected_environment",
         "\n    #[cfg(test)]",
         "Linux retained-session X11 refresh authority",
     )
@@ -5428,13 +5434,19 @@ def validate_smoke_contract(
             "control-free Xauthority path",
         ),
         ("!Path::new(&xauthority).is_absolute()", "absolute Xauthority path"),
-        ("matching_process_cmdlines(uid, process_pattern)", "selected-UID process lookup"),
-        (
-            "xauthority_from_environ_for_display(&environ, display)",
-            "same-image credential extraction",
-        ),
     ):
         require_text(x11_environment_authority, text, label)
+    for text, label in (
+        (
+            "DesktopSessionEnvironment::from_environ(&process.environ)",
+            "same-record credential extraction",
+        ),
+        (
+            "local_x_display_names_share_server(&environment.display, display)",
+            "selected-server snapshot binding",
+        ),
+    ):
+        require_text(x11_snapshot_authority, text, label)
     for text, label in (
         (
             "self.display = get_x11_display_of_session(&self.sid).unwrap_or_default();",
@@ -5443,7 +5455,7 @@ def validate_smoke_contract(
         ("self.xauth.clear();", "stale Xauthority clearing"),
         ("if self.display.is_empty() {", "missing-display credential denial"),
         (
-            "xauthority_from_matching_process(&self.uid, process, &self.display)",
+            "snapshot.xauthority_for_display(kind, &self.display)",
             "display-bound process credential call",
         ),
         (
@@ -5454,12 +5466,16 @@ def validate_smoke_contract(
     ):
         require_text(x11_desktop_authority, text, label)
     for text, label in (
-        ("if self.is_wayland() {", "protocol-specific refresh branch"),
+        ("let is_wayland = self.is_wayland();", "protocol-specific refresh branch"),
         (
-            "                    self.get_display_x11();\n"
-            "                    self.get_xauth_x11();",
+            "self.get_display_x11();",
             "retained X11 session display requery",
         ),
+        (
+            "let snapshot = observe_desktop_processes(&self.uid)?;",
+            "single selected-UID process snapshot",
+        ),
+        ("self.get_xauth_x11(&snapshot);", "snapshot-bound Xauthority selection"),
     ):
         require_text(x11_refresh_authority, text, label)
     for text, label in (
@@ -5535,7 +5551,7 @@ def validate_smoke_contract(
     xorg_headless_authority = extract_between(
         linux_source,
         "pub fn is_headless(&self) -> bool {",
-        "\n        fn get_display_xauth_wayland",
+        "\n        fn apply_environment",
         "Linux selected-session headless authority",
     )
     if re.sub(r"\s+", "", xorg_headless_authority) != (
@@ -5853,7 +5869,7 @@ def validate_smoke_contract(
         (
             linux_source,
             "pub fn change_resolution_directly(",
-            "\n#[inline]\npub fn is_xwayland_running",
+            "\nmod desktop {",
             "xrandr mutation descriptor policy",
             "configure_command_close_nonstdio_on_exec(&mut command)?;",
             "command.spawn()?",
@@ -9018,8 +9034,8 @@ def validate_linux_current_image_lifecycle_contract(sources):
         ("if !uid.is_empty() {", "prior selected-user state"),
         ("uid.clear();", "headless state commit"),
         (
-            "is_display_changed || desktop.uid != *uid && !desktop.uid.is_empty()",
-            "selected display or UID transition",
+            "!desktop.uid.is_empty() && (desktop_identity_changed || desktop.uid != *uid)",
+            "selected desktop identity or UID transition",
         ),
         ("*uid = desktop.uid.clone();", "selected UID commit"),
     ):
@@ -9033,7 +9049,7 @@ def validate_linux_current_image_lifecycle_contract(sources):
     )
     for text, label in (
         (
-            "service_child_needs_replacement(is_display_changed, uid, desktop)",
+            "service_child_needs_replacement(desktop_identity_changed, uid, desktop)",
             "closed replacement-policy call",
         ),
         (
@@ -9995,14 +10011,14 @@ def validate_linux_service_ipc_lifecycle_contract(sources):
             "std::thread::Builder::new()",
             "crate::ipc::start_linux_service_ipc_with_readiness(ipc_startup_tx)",
             "wait_for_linux_service_ipc_startup(&ipc_startup_rx, SERVICE_IPC_STARTUP_TIMEOUT)",
-            'let (mut display, mut xauth): (String, String)',
+            "let mut desktop = Desktop::default();",
         ),
         "protected IPC readiness before child-selection state",
     )
     startup_cleanup = extract_between(
         policy,
         "if let Err(startup_err) =",
-        '\n\n    let (mut display, mut xauth): (String, String)',
+        "\n\n    let mut desktop = Desktop::default();",
         "protected IPC startup failure cleanup",
     )
     require_order(
@@ -14621,6 +14637,289 @@ def validate_linux_service_terminal_authority_contract(sources):
         sources["hardening"],
         "R-S11fq/R-S11e-204 Linux service-child terminal authority",
         "Linux service terminal authority hardening ledger",
+    )
+
+
+def validate_linux_service_session_observation_contract(sources):
+    focused = sources["linux_service_session_observation_verifier"]
+    linux = sources["linux_source"]
+    for text, label in (
+        (
+            "const PROC_SNAPSHOT_MAX_NUMERIC_ENTRIES: usize = 16_384;",
+            "independent numeric proc-entry bound",
+        ),
+        (
+            "const PROC_SNAPSHOT_MAX_SELECTED_PROCESSES: usize = 2_048;",
+            "independent selected-process bound",
+        ),
+        (
+            "const PROC_SNAPSHOT_MAX_ENVIRONMENT_CANDIDATES: usize = 64;",
+            "independent environment-candidate bound",
+        ),
+        (
+            "const PROC_SNAPSHOT_MAX_TOTAL_BYTES: usize = 4 * 1024 * 1024;",
+            "independent aggregate proc-byte bound",
+        ),
+        (
+            "const PROC_CMDLINE_MAX_BYTES: usize = 16 * 1024;",
+            "independent command-line byte bound",
+        ),
+        (
+            "const PROC_CMDLINE_MAX_ARGS: usize = 256;",
+            "independent command argument bound",
+        ),
+        (
+            "const PROC_ENVIRON_MAX_BYTES: usize = 64 * 1024;",
+            "independent environment byte bound",
+        ),
+        (
+            "const PROC_ENV_VALUE_MAX_BYTES: usize = 4 * 1024;",
+            "independent selector value bound",
+        ),
+    ):
+        require_text(linux, text, label)
+
+    reader = extract_between(
+        linux,
+        "fn read_bounded_proc_reader(",
+        "\n}\n\nfn read_bounded_proc_member(",
+        "independent bounded proc reader",
+    )
+    require_order(
+        reader,
+        (
+            "PROC_SNAPSHOT_MAX_TOTAL_BYTES.saturating_sub(budget.total_bytes)",
+            "let read_limit = per_file_limit.min(remaining);",
+            ".take((read_limit as u64).saturating_add(1))",
+            ".read_to_end(&mut bytes)",
+            "budget.charge_bytes(bytes.len())?;",
+            "if read_result.is_err()",
+            "BoundedProcFile::Unavailable",
+            "if bytes.len() > per_file_limit",
+            "BoundedProcFile::Oversized",
+        ),
+        "independent complete bounded proc read",
+    )
+    member_reader = extract_between(
+        linux,
+        "fn read_bounded_proc_member(",
+        "\n}\n\nfn read_proc_cmdline_args(",
+        "independent handle-relative proc reader",
+    )
+    for text, label in (
+        ("process_dir.as_raw_fd()", "independent process-directory descriptor"),
+        ("hbb_common::libc::openat(", "independent handle-relative member open"),
+        ("hbb_common::libc::O_RDONLY", "independent read-only member open"),
+        ("hbb_common::libc::O_CLOEXEC", "independent close-on-exec member open"),
+        ("hbb_common::libc::O_NOFOLLOW", "independent no-follow member open"),
+    ):
+        require_text(member_reader, text, label)
+
+    cmdline_parser = extract_between(
+        linux,
+        "fn parse_proc_cmdline_args(",
+        "\n}\n\nfn all_process_cmdlines(",
+        "independent complete cmdline parser",
+    )
+    for text, label in (
+        ("cmdline.last() != Some(&0)", "independent terminal cmdline delimiter"),
+        ("args.len() == PROC_CMDLINE_MAX_ARGS", "independent command argument limit"),
+        ("std::str::from_utf8(part)", "independent strict cmdline UTF-8"),
+    ):
+        require_text(cmdline_parser, text, label)
+
+    classifier = extract_between(
+        linux,
+        "fn process_is_kded(",
+        "\nfn observe_desktop_processes(",
+        "independent exact desktop process classifier",
+    )
+    require_text(
+        classifier,
+        'args.iter().skip(1).any(|arg| arg == "--tray")',
+        "independent actual tray role argument",
+    )
+    require_absent(
+        classifier,
+        'arg == "+--tray"',
+        "independent invented plus-prefixed tray argument",
+    )
+
+    observer = extract_between(
+        linux,
+        "fn observe_desktop_processes(",
+        "\n}\n\nfn process_basename(",
+        "independent selected desktop observer",
+    )
+    require_order(
+        observer,
+        (
+            '.filter(|parsed| parsed.to_string() == uid)',
+            'std::fs::read_dir("/proc")',
+            "budget.charge_numeric_entry()?;",
+            "open_proc_process_dir(&entry)",
+            "process_dir.metadata()",
+            "metadata.uid() != uid_num",
+            "budget.charge_selected_process()?;",
+            "read_proc_cmdline_args(&process_dir, &mut budget)?",
+            "classify_desktop_process(&args, &app_name)",
+            "budget.charge_environment_candidate()?;",
+            "ProcMember::Environ",
+            "process_dir.metadata()",
+            "metadata.uid() != uid_num",
+            ".push(DesktopProcessEnvironment { pid, kind, environ });",
+        ),
+        "independent UID-checked selected process transaction",
+    )
+    if observer.count('std::fs::read_dir("/proc")') != 1:
+        raise VerificationError("independent selected desktop observation is not one proc walk")
+
+    environment_parser = extract_between(
+        linux,
+        "fn proc_environ_value(",
+        "\nimpl DesktopProcessSnapshot",
+        "independent complete desktop environment parser",
+    )
+    for text, label in (
+        ("value.len() > PROC_ENV_VALUE_MAX_BYTES", "independent selector value limit"),
+        ("std::str::from_utf8(value).ok()?", "independent strict selector UTF-8"),
+        ("found.replace(value).is_some()", "independent duplicate selector refusal"),
+        (
+            "!environ.is_empty() && environ.last() != Some(&0)",
+            "independent terminal environment delimiter",
+        ),
+    ):
+        require_text(environment_parser, text, label)
+
+    service_identity = extract_between(
+        linux,
+        "struct ServiceChildDesktopIdentity",
+        "\n}\n\nimpl ServiceChildDesktopIdentity",
+        "independent service-child desktop identity",
+    )
+    for text, label in (
+        ("sid: String", "independent selected session ID"),
+        ("username: String", "independent selected username"),
+        ("uid: String", "independent selected UID"),
+        ("protocol: String", "independent selected protocol"),
+        (
+            "environment: DesktopSessionEnvironment",
+            "independent selected endpoint environment",
+        ),
+    ):
+        require_text(service_identity, text, label)
+    service_loop = extract_between(
+        linux,
+        "pub fn start_os_service(",
+        "\n}\n\n#[derive(Debug)]\nstruct ProcCommand",
+        "independent Linux service loop identity ownership",
+    )
+    for text, label in (
+        (
+            "let mut root_server_desktop = ServiceChildDesktopIdentity::default();",
+            "independent root-child identity state",
+        ),
+        (
+            "let mut user_server_desktop = ServiceChildDesktopIdentity::default();",
+            "independent user-child identity state",
+        ),
+        (
+            "update_service_child_desktop_identity(&mut root_server_desktop, &desktop)",
+            "independent root-child identity refresh",
+        ),
+        (
+            "update_service_child_desktop_identity(&mut user_server_desktop, &desktop)",
+            "independent user-child identity refresh",
+        ),
+    ):
+        require_text(service_loop, text, label)
+    if service_loop.count("update_service_child_desktop_identity(") != 2:
+        raise VerificationError("independent service loop does not own both child identities")
+
+    refresh = extract_between(
+        linux,
+        "fn refresh_selected_environment(",
+        "\n        }\n\n        fn fail_closed_observation(",
+        "independent selected-session refresh",
+    )
+    if refresh.count("observe_desktop_processes(&self.uid)?") != 1:
+        raise VerificationError("independent selected-session refresh is not one snapshot")
+    require_order(
+        refresh,
+        (
+            "let is_wayland = self.is_wayland();",
+            "if !is_wayland",
+            "self.get_display_x11();",
+            "if self.display.is_empty()",
+            "let snapshot = observe_desktop_processes(&self.uid)?;",
+            "if is_wayland",
+            "snapshot.xwayland_running",
+            "self.get_display_xauth_xwayland(&snapshot);",
+            "self.get_display_xauth_wayland(&snapshot);",
+            "self.get_xauth_x11(&snapshot);",
+        ),
+        "independent one-snapshot desktop selection",
+    )
+    desktop = extract_between(
+        linux,
+        "mod desktop {",
+        "\npub struct WakeLock",
+        "independent desktop session implementation",
+    )
+    for text, label in (
+        ("for _ in 1..=10", "retired inner desktop retry"),
+        ("sleep_millis(300)", "retired inner desktop delay"),
+        ("matching_process_cmdlines", "retired generic process matcher"),
+        ("get_envs(", "retired generic environment scanner"),
+        ("is_xwayland_running()", "retired separate Xwayland scan"),
+        ("kded[0-9]+", "retired regex process selector"),
+    ):
+        require_absent(desktop, text, label)
+
+    for text, label in (
+        ("def validate(sources", "focused session observation semantic entry"),
+        (
+            "MUTATIONS: Tuple[Mutation, ...]",
+            "focused session observation mutation inventory",
+        ),
+        ("run_mutations(sources)", "focused session observation mutation dispatch"),
+        ("limit-plus-one read", "focused bounded-read rejection"),
+        ("UID-checked handle-relative", "focused UID/descriptor rejection"),
+        ("actual tray role argument", "focused tray-argv rejection"),
+        ("root-child identity refresh", "focused child-identity rejection"),
+    ):
+        require_text(focused, text, label)
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-linux-service-session-observation.py --repo . --self-test",
+        "Linux session observation shared focused-verifier wiring",
+    )
+    require_text(
+        sources["verify"],
+        "cargo test --offline --locked --lib --features linux-pkg-config r_s11e207_",
+        "Linux session observation compiled regression wiring",
+    )
+    for test_name in (
+        "fn r_s11e207_desktop_process_classification_is_exact()",
+        "fn r_s11e207_proc_observation_rejects_oversized_or_partial_values()",
+        "fn r_s11e207_service_child_replacement_tracks_complete_selected_desktop()",
+        "fn r_s11e207_desktop_snapshot_keeps_one_validated_process_environment()",
+    ):
+        require_text(linux, test_name, f"independent session observation regression {test_name}")
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11ft</span>',
+        "Linux selected-session observation requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>328</td>",
+        "Linux selected-session observation Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ft/R-S11e-207 Linux selected-session observation authority",
+        "Linux selected-session observation hardening ledger",
     )
 
 
@@ -39313,6 +39612,7 @@ def validate_sources(sources):
     validate_macos_launchd_lifecycle_contract(sources)
     validate_installed_service_classifier_contract(sources)
     validate_linux_service_terminal_authority_contract(sources)
+    validate_linux_service_session_observation_contract(sources)
     validate_linux_nondumpable_cm_contract(sources)
     validate_unix_helper_process_role_contract(sources)
     validate_service_ipc_protocol_authority_contract(sources)
@@ -48705,20 +49005,20 @@ def run_source_mutations(sources):
         ),
         (
             "linux_source",
-            "fn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {",
-            "fn stop_headless_connection_manager_processes() {}\n\nfn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {",
+            "fn observe_desktop_processes(uid: &str) -> Result<DesktopProcessSnapshot, ProcSnapshotError> {",
+            "fn stop_headless_connection_manager_processes() {}\n\nfn observe_desktop_processes(uid: &str) -> Result<DesktopProcessSnapshot, ProcSnapshotError> {",
             "Linux headless CM global process authority remains",
         ),
         (
             "linux_source",
-            "fn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {",
-            "fn kill_xorg_processes_with_config(_: &str) {}\n\nfn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {",
+            "fn observe_desktop_processes(uid: &str) -> Result<DesktopProcessSnapshot, ProcSnapshotError> {",
+            "fn kill_xorg_processes_with_config(_: &str) {}\n\nfn observe_desktop_processes(uid: &str) -> Result<DesktopProcessSnapshot, ProcSnapshotError> {",
             "obsolete Linux Xorg process authority remains",
         ),
         (
             "linux_source",
-            "fn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {",
-            "fn stop_subprocess() {}\n\nfn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {",
+            "fn observe_desktop_processes(uid: &str) -> Result<DesktopProcessSnapshot, ProcSnapshotError> {",
+            "fn stop_subprocess() {}\n\nfn observe_desktop_processes(uid: &str) -> Result<DesktopProcessSnapshot, ProcSnapshotError> {",
             "obsolete Linux Xorg process authority remains",
         ),
         (
@@ -48765,9 +49065,9 @@ def run_source_mutations(sources):
         ),
         (
             "linux_source",
-            "                    self.get_display_x11();\n                    self.get_xauth_x11();",
-            "                    self.get_xauth_x11();",
-            "retained X11 session display requery",
+            "                self.get_display_x11();\n                if self.display.is_empty() {",
+            "                if self.display.is_empty() {",
+            "independent one-snapshot desktop selection",
         ),
         (
             "linux_source",
@@ -54300,6 +54600,114 @@ def run_source_mutations(sources):
             "R-S11fq/R-S11e-204 Linux service-child terminal authority",
             "R-S11fq-disabled/R-S11e-204 Linux service-child terminal authority",
             "Linux service terminal authority hardening ledger",
+        ),
+        (
+            "linux_service_session_observation_verifier",
+            "def validate(sources: Dict[str, str]) -> None:",
+            "def disabled_validate(sources: Dict[str, str]) -> None:",
+            "focused session observation semantic entry",
+        ),
+        (
+            "linux_source",
+            "const PROC_SNAPSHOT_MAX_TOTAL_BYTES: usize = 4 * 1024 * 1024;",
+            "const PROC_SNAPSHOT_MAX_TOTAL_BYTES: usize = usize::MAX;",
+            "independent aggregate proc-byte bound",
+        ),
+        (
+            "linux_source",
+            ".take((read_limit as u64).saturating_add(1))",
+            ".take(u64::MAX)",
+            "independent complete bounded proc read",
+        ),
+        (
+            "linux_source",
+            "budget.charge_bytes(bytes.len())?;\n    if read_result.is_err() {",
+            "if read_result.is_err() {\n        return Ok(BoundedProcFile::Unavailable);\n    }\n    budget.charge_bytes(bytes.len())?;",
+            "independent complete bounded proc read",
+        ),
+        (
+            "linux_source",
+            "if cmdline.last() != Some(&0) {",
+            "if false {",
+            "independent terminal cmdline delimiter",
+        ),
+        (
+            "linux_source",
+            '.filter(|parsed| parsed.to_string() == uid)',
+            ".filter(|_| true)",
+            "independent UID-checked selected process transaction",
+        ),
+        (
+            "linux_source",
+            "budget.charge_environment_candidate()?;",
+            "let _ = kind;",
+            "independent UID-checked selected process transaction",
+        ),
+        (
+            "linux_source",
+            'args.iter().skip(1).any(|arg| arg == "--tray")',
+            'args.iter().skip(1).any(|arg| arg == "+--tray")',
+            "independent actual tray role argument",
+        ),
+        (
+            "linux_source",
+            "if found.replace(value).is_some() {",
+            "if false {",
+            "independent duplicate selector refusal",
+        ),
+        (
+            "linux_source",
+            "if !environ.is_empty() && environ.last() != Some(&0) {",
+            "if false {",
+            "independent terminal environment delimiter",
+        ),
+        (
+            "linux_source",
+            "update_service_child_desktop_identity(&mut root_server_desktop, &desktop)",
+            "update_service_child_desktop_identity(&mut user_server_desktop, &desktop)",
+            "independent root-child identity refresh",
+        ),
+        (
+            "linux_source",
+            "let snapshot = observe_desktop_processes(&self.uid)?;",
+            "let snapshot = observe_desktop_processes(&self.uid)?;\n            let _second = observe_desktop_processes(&self.uid)?;",
+            "independent selected-session refresh is not one snapshot",
+        ),
+        (
+            "linux_source",
+            "fn r_s11e207_proc_observation_rejects_oversized_or_partial_values()",
+            "fn disabled_207_proc_observation_rejects_oversized_or_partial_values()",
+            "independent session observation regression",
+        ),
+        (
+            "linux_source",
+            "fn r_s11e207_service_child_replacement_tracks_complete_selected_desktop()",
+            "fn disabled_207_service_child_replacement_tracks_complete_selected_desktop()",
+            "independent session observation regression",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-linux-service-session-observation.py --repo . --self-test",
+            "true # selected-session observation verifier removed",
+            "Linux session observation shared focused-verifier wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ft</span>',
+            '<span class="id">R-S11ft-disabled</span>',
+            "Linux selected-session observation requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>328</td>",
+            "<tr><td>328-disabled</td>",
+            "Linux selected-session observation Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11ft/R-S11e-207 Linux selected-session observation authority",
+            "R-S11ft-disabled/R-S11e-207 Linux selected-session observation authority",
+            "Linux selected-session observation hardening ledger",
         ),
         (
             "linux_nondumpable_cm_verifier",
@@ -67300,6 +67708,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "linux_service_terminal_authority_verifier": (
                 repo / "scripts/verify-linux-service-terminal-authority.py"
+            ).read_text(encoding="utf-8"),
+            "linux_service_session_observation_verifier": (
+                repo / "scripts/verify-linux-service-session-observation.py"
             ).read_text(encoding="utf-8"),
             "linux_nondumpable_cm_verifier": (
                 repo / "scripts/verify-linux-nondumpable-cm.py"

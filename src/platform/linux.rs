@@ -60,6 +60,15 @@ const LINUX_INSTALLED_EXECUTABLE_PATHS: [&str; 2] =
 const LINUX_INSTALLED_SERVICE_CHILD_EXECUTABLE: &str = "/usr/share/rustdesk/rustdesk-service-child";
 pub const REOPEN_AFTER_SERVICE_STOP_ARG: &str = "--reopen-after-service-stop";
 
+const PROC_SNAPSHOT_MAX_NUMERIC_ENTRIES: usize = 16_384;
+const PROC_SNAPSHOT_MAX_SELECTED_PROCESSES: usize = 2_048;
+const PROC_SNAPSHOT_MAX_ENVIRONMENT_CANDIDATES: usize = 64;
+const PROC_SNAPSHOT_MAX_TOTAL_BYTES: usize = 4 * 1024 * 1024;
+const PROC_CMDLINE_MAX_BYTES: usize = 16 * 1024;
+const PROC_CMDLINE_MAX_ARGS: usize = 256;
+const PROC_ENVIRON_MAX_BYTES: usize = 64 * 1024;
+const PROC_ENV_VALUE_MAX_BYTES: usize = 4 * 1024;
+
 static SERVICE_RUNTIME_GENERATION: OnceLock<String> = OnceLock::new();
 static SERVICE_CHILD_EXECUTABLE_IDENTITY: OnceLock<std::sync::RwLock<Option<(u64, u64)>>> =
     OnceLock::new();
@@ -2412,8 +2421,47 @@ fn stop_server(server: &mut Option<OwnedServiceChild>, runtime: &ServiceRuntime)
     terminate_child(server, "--server", runtime).map(|_| ())
 }
 
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct ServiceChildDesktopIdentity {
+    sid: String,
+    username: String,
+    uid: String,
+    protocol: String,
+    environment: DesktopSessionEnvironment,
+}
+
+impl ServiceChildDesktopIdentity {
+    fn from_desktop(desktop: &Desktop) -> Self {
+        Self {
+            sid: desktop.sid.clone(),
+            username: desktop.username.clone(),
+            uid: desktop.uid.clone(),
+            protocol: desktop.protocol.clone(),
+            environment: DesktopSessionEnvironment {
+                display: desktop.display.clone(),
+                xauth: desktop.xauth.clone(),
+                wl_display: desktop.wl_display.clone(),
+                dbus: desktop.dbus.clone(),
+            },
+        }
+    }
+}
+
+fn update_service_child_desktop_identity(
+    previous: &mut ServiceChildDesktopIdentity,
+    desktop: &Desktop,
+) -> bool {
+    let selected = ServiceChildDesktopIdentity::from_desktop(desktop);
+    if *previous == selected {
+        false
+    } else {
+        *previous = selected;
+        true
+    }
+}
+
 fn service_child_needs_replacement(
-    is_display_changed: bool,
+    desktop_identity_changed: bool,
     uid: &mut String,
     desktop: &Desktop,
 ) -> bool {
@@ -2423,7 +2471,7 @@ fn service_child_needs_replacement(
             uid.clear();
             return true;
         }
-    } else if is_display_changed || desktop.uid != *uid && !desktop.uid.is_empty() {
+    } else if !desktop.uid.is_empty() && (desktop_identity_changed || desktop.uid != *uid) {
         *uid = desktop.uid.clone();
         return true;
     }
@@ -2431,14 +2479,15 @@ fn service_child_needs_replacement(
 }
 
 fn should_start_server(
-    is_display_changed: bool,
+    desktop_identity_changed: bool,
     uid: &mut String,
     desktop: &Desktop,
     server: &mut Option<OwnedServiceChild>,
     runtime: &ServiceRuntime,
 ) -> ResultType<bool> {
     let mut start_new = false;
-    let should_kill = service_child_needs_replacement(is_display_changed, uid, desktop);
+    let should_kill =
+        service_child_needs_replacement(desktop_identity_changed, uid, desktop);
 
     if should_kill {
         if server.is_some() {
@@ -2576,12 +2625,13 @@ pub fn start_os_service() -> ResultType<()> {
         return result;
     }
 
-    let (mut display, mut xauth): (String, String) = ("".to_owned(), "".to_owned());
     let mut desktop = Desktop::default();
     let mut sid = "".to_owned();
     let mut uid = "".to_owned();
     let mut server: Option<OwnedServiceChild> = None;
     let mut user_server: Option<OwnedServiceChild> = None;
+    let mut root_server_desktop = ServiceChildDesktopIdentity::default();
+    let mut user_server_desktop = ServiceChildDesktopIdentity::default();
     let mut result = (|| -> ResultType<()> {
         while running.load(Ordering::SeqCst) {
             observe_linux_service_ipc_thread(&mut ipc_thread, &running)?;
@@ -2597,8 +2647,15 @@ pub fn start_os_service() -> ResultType<()> {
                     // try kill subprocess "--server"
                     stop_server(&mut user_server, &runtime)?;
                     // try start subprocess "--server"
-                    // No need to check is_display_changed here.
-                    if should_start_server(false, &mut uid, &desktop, &mut server, &runtime)? {
+                    let desktop_identity_changed =
+                        update_service_child_desktop_identity(&mut root_server_desktop, &desktop);
+                    if should_start_server(
+                        desktop_identity_changed,
+                        &mut uid,
+                        &desktop,
+                        &mut server,
+                        &runtime,
+                    )? {
                         start_server(&desktop, &mut server, &runtime);
                     }
                 }
@@ -2606,13 +2663,12 @@ pub fn start_os_service() -> ResultType<()> {
                     // try kill subprocess "--server"
                     stop_server(&mut server, &runtime)?;
 
-                    let is_display_changed = desktop.display != display || desktop.xauth != xauth;
-                    display = desktop.display.clone();
-                    xauth = desktop.xauth.clone();
+                    let desktop_identity_changed =
+                        update_service_child_desktop_identity(&mut user_server_desktop, &desktop);
 
                     // try start subprocess "--server"
                     if should_start_server(
-                        is_display_changed,
+                        desktop_identity_changed,
                         &mut uid,
                         &desktop,
                         &mut user_server,
@@ -2943,31 +2999,96 @@ mod installed_executable_path_tests {
     }
 }
 
-/// Get multiple environment variables from a process matching the given criteria.
-/// This version reads /proc directly instead of spawning shell commands.
-///
-/// # Arguments
-/// * `uid` - User ID to filter processes
-/// * `process_pat` - Regex pattern to match process cmdline
-/// * `names` - Environment variable names to retrieve. **Must be <= 64 elements** due to
-///   the internal bitmask used for tie-breaking.
-///
-/// # Panics (debug builds)
-/// Panics if `names.len() > 64`.
-///
-/// # Implementation notes
-/// - Returns values from a *single* best-matching process_pat (for consistency).
-/// - Avoids repeated scanning by parsing `environ` once per process.
 #[derive(Debug)]
 struct ProcCommand {
     pid: u32,
     args: Vec<String>,
 }
 
-fn proc_dir_is_owned_by_uid(proc_path: &Path, uid: u32) -> bool {
-    std::fs::metadata(proc_path)
-        .map(|meta| meta.uid() == uid)
-        .unwrap_or(false)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum ProcSnapshotLimit {
+    NumericEntries,
+    SelectedProcesses,
+    EnvironmentCandidates,
+    TotalBytes,
+}
+
+impl std::fmt::Display for ProcSnapshotLimit {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            Self::NumericEntries => "numeric /proc entry",
+            Self::SelectedProcesses => "selected process",
+            Self::EnvironmentCandidates => "desktop environment candidate",
+            Self::TotalBytes => "aggregate /proc byte",
+        };
+        write!(formatter, "Linux desktop observation exceeded its {name} limit")
+    }
+}
+
+#[derive(Debug)]
+enum ProcSnapshotError {
+    ProcUnavailable(std::io::Error),
+    InvalidUid,
+    Limit(ProcSnapshotLimit),
+}
+
+impl std::fmt::Display for ProcSnapshotError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::ProcUnavailable(err) => write!(formatter, "Linux /proc is unavailable: {err}"),
+            Self::InvalidUid => formatter.write_str("selected desktop uid is not canonical"),
+            Self::Limit(limit) => limit.fmt(formatter),
+        }
+    }
+}
+
+#[derive(Default)]
+struct ProcSnapshotBudget {
+    numeric_entries: usize,
+    selected_processes: usize,
+    environment_candidates: usize,
+    total_bytes: usize,
+}
+
+impl ProcSnapshotBudget {
+    fn charge_numeric_entry(&mut self) -> Result<(), ProcSnapshotError> {
+        self.numeric_entries += 1;
+        if self.numeric_entries > PROC_SNAPSHOT_MAX_NUMERIC_ENTRIES {
+            return Err(ProcSnapshotError::Limit(
+                ProcSnapshotLimit::NumericEntries,
+            ));
+        }
+        Ok(())
+    }
+
+    fn charge_selected_process(&mut self) -> Result<(), ProcSnapshotError> {
+        self.selected_processes += 1;
+        if self.selected_processes > PROC_SNAPSHOT_MAX_SELECTED_PROCESSES {
+            return Err(ProcSnapshotError::Limit(
+                ProcSnapshotLimit::SelectedProcesses,
+            ));
+        }
+        Ok(())
+    }
+
+    fn charge_environment_candidate(&mut self) -> Result<(), ProcSnapshotError> {
+        self.environment_candidates += 1;
+        if self.environment_candidates > PROC_SNAPSHOT_MAX_ENVIRONMENT_CANDIDATES {
+            return Err(ProcSnapshotError::Limit(
+                ProcSnapshotLimit::EnvironmentCandidates,
+            ));
+        }
+        Ok(())
+    }
+
+    fn charge_bytes(&mut self, count: usize) -> Result<(), ProcSnapshotError> {
+        self.total_bytes = self
+            .total_bytes
+            .checked_add(count)
+            .filter(|total| *total <= PROC_SNAPSHOT_MAX_TOTAL_BYTES)
+            .ok_or(ProcSnapshotError::Limit(ProcSnapshotLimit::TotalBytes))?;
+        Ok(())
+    }
 }
 
 fn proc_entry_pid(entry: &std::fs::DirEntry) -> Option<u32> {
@@ -2979,13 +3100,112 @@ fn proc_entry_pid(entry: &std::fs::DirEntry) -> Option<u32> {
     pid_str.parse::<u32>().ok()
 }
 
-fn read_proc_cmdline_args(proc_path: &Path) -> Option<Vec<String>> {
-    let cmdline = std::fs::read(proc_path.join("cmdline")).ok()?;
-    let args = cmdline
-        .split(|&b| b == 0)
-        .filter(|part| !part.is_empty())
-        .map(|part| String::from_utf8_lossy(part).into_owned())
-        .collect::<Vec<_>>();
+fn open_proc_process_dir(entry: &std::fs::DirEntry) -> Option<File> {
+    fs::OpenOptions::new()
+        .read(true)
+        .custom_flags(
+            hbb_common::libc::O_CLOEXEC
+                | hbb_common::libc::O_DIRECTORY
+                | hbb_common::libc::O_NOFOLLOW,
+        )
+        .open(entry.path())
+        .ok()
+}
+
+enum BoundedProcFile {
+    Value(Vec<u8>),
+    Unavailable,
+    Oversized,
+}
+
+#[derive(Clone, Copy)]
+enum ProcMember {
+    Cmdline,
+    Environ,
+}
+
+impl ProcMember {
+    fn nul_terminated_name(self) -> &'static [u8] {
+        match self {
+            Self::Cmdline => b"cmdline\0",
+            Self::Environ => b"environ\0",
+        }
+    }
+}
+
+fn read_bounded_proc_reader(
+    reader: &mut impl std::io::Read,
+    per_file_limit: usize,
+    budget: &mut ProcSnapshotBudget,
+) -> Result<BoundedProcFile, ProcSnapshotError> {
+    let remaining = PROC_SNAPSHOT_MAX_TOTAL_BYTES.saturating_sub(budget.total_bytes);
+    if remaining == 0 {
+        return Err(ProcSnapshotError::Limit(ProcSnapshotLimit::TotalBytes));
+    }
+    let read_limit = per_file_limit.min(remaining);
+    let mut bytes = Vec::new();
+    let read_result = reader
+        .take((read_limit as u64).saturating_add(1))
+        .read_to_end(&mut bytes);
+    budget.charge_bytes(bytes.len())?;
+    if read_result.is_err() {
+        return Ok(BoundedProcFile::Unavailable);
+    }
+    if bytes.len() > per_file_limit {
+        return Ok(BoundedProcFile::Oversized);
+    }
+    Ok(BoundedProcFile::Value(bytes))
+}
+
+fn read_bounded_proc_member(
+    process_dir: &File,
+    member: ProcMember,
+    per_file_limit: usize,
+    budget: &mut ProcSnapshotBudget,
+) -> Result<BoundedProcFile, ProcSnapshotError> {
+    let member = member.nul_terminated_name().as_ptr().cast::<c_char>();
+    let fd = unsafe {
+        hbb_common::libc::openat(
+            process_dir.as_raw_fd(),
+            member,
+            hbb_common::libc::O_RDONLY
+                | hbb_common::libc::O_CLOEXEC
+                | hbb_common::libc::O_NOFOLLOW,
+        )
+    };
+    if fd < 0 {
+        return Ok(BoundedProcFile::Unavailable);
+    }
+    let mut file = unsafe { File::from_raw_fd(fd) };
+    read_bounded_proc_reader(&mut file, per_file_limit, budget)
+}
+
+fn read_proc_cmdline_args(
+    process_dir: &File,
+    budget: &mut ProcSnapshotBudget,
+) -> Result<Option<Vec<String>>, ProcSnapshotError> {
+    let BoundedProcFile::Value(cmdline) =
+        read_bounded_proc_member(process_dir, ProcMember::Cmdline, PROC_CMDLINE_MAX_BYTES, budget)?
+    else {
+        return Ok(None);
+    };
+    Ok(parse_proc_cmdline_args(&cmdline))
+}
+
+fn parse_proc_cmdline_args(cmdline: &[u8]) -> Option<Vec<String>> {
+    if cmdline.last() != Some(&0) {
+        return None;
+    }
+    let mut args = Vec::new();
+    for part in cmdline.split(|&byte| byte == 0).filter(|part| !part.is_empty()) {
+        if args.len() == PROC_CMDLINE_MAX_ARGS {
+            return None;
+        }
+        let Ok(part) = std::str::from_utf8(part) else {
+            return None;
+        };
+        args.push(part.to_owned());
+    }
     if args.is_empty() {
         None
     } else {
@@ -2993,60 +3213,151 @@ fn read_proc_cmdline_args(proc_path: &Path) -> Option<Vec<String>> {
     }
 }
 
-fn proc_cmdline_string(args: &[String]) -> String {
-    args.join(" ")
-}
+fn all_process_cmdlines() -> Result<Vec<ProcCommand>, ProcSnapshotError> {
+    let entries = std::fs::read_dir("/proc").map_err(ProcSnapshotError::ProcUnavailable)?;
 
-fn all_process_cmdlines() -> Vec<ProcCommand> {
-    let Ok(entries) = std::fs::read_dir("/proc") else {
-        return Vec::new();
-    };
-
+    let mut budget = ProcSnapshotBudget::default();
     let mut processes = Vec::new();
-    for entry in entries.flatten() {
+    for entry in entries {
+        let entry = entry.map_err(ProcSnapshotError::ProcUnavailable)?;
         let Some(pid) = proc_entry_pid(&entry) else {
             continue;
         };
-        let Some(args) = read_proc_cmdline_args(&entry.path()) else {
+        budget.charge_numeric_entry()?;
+        budget.charge_selected_process()?;
+        let Some(process_dir) = open_proc_process_dir(&entry) else {
+            continue;
+        };
+        let Some(args) = read_proc_cmdline_args(&process_dir, &mut budget)? else {
             continue;
         };
         processes.push(ProcCommand { pid, args });
     }
 
     processes.sort_by_key(|process| process.pid);
-    processes
+    Ok(processes)
 }
 
-fn matching_process_cmdlines(uid: &str, process_pat: &str) -> Vec<ProcCommand> {
-    let Ok(uid_num) = uid.parse::<u32>() else {
-        return Vec::new();
-    };
-    let Ok(re) = Regex::new(process_pat) else {
-        return Vec::new();
-    };
-    let Ok(entries) = std::fs::read_dir("/proc") else {
-        return Vec::new();
-    };
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DesktopProcessKind {
+    Portal,
+    Xwayland,
+    Ibus,
+    Goa,
+    Kded,
+    Tray,
+    XfcePanel,
+    SddmGreeter,
+}
 
-    let mut processes = Vec::new();
-    for entry in entries.flatten() {
+#[derive(Debug)]
+struct DesktopProcessEnvironment {
+    pid: u32,
+    kind: DesktopProcessKind,
+    environ: Vec<u8>,
+}
+
+#[derive(Debug, Default)]
+struct DesktopProcessSnapshot {
+    environments: Vec<DesktopProcessEnvironment>,
+    xwayland_running: bool,
+}
+
+fn process_is_kded(args: &[String]) -> bool {
+    let Some(suffix) = process_basename(args).and_then(|name| name.strip_prefix("kded")) else {
+        return false;
+    };
+    !suffix.is_empty() && suffix.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn process_is_rustdesk_tray(args: &[String], app_name: &str) -> bool {
+    process_basename(args)
+        .map(|basename| basename.eq_ignore_ascii_case(app_name))
+        .unwrap_or(false)
+        && args.iter().skip(1).any(|arg| arg == "--tray")
+}
+
+fn classify_desktop_process(args: &[String], app_name: &str) -> Option<DesktopProcessKind> {
+    if process_basename_eq(args, "xdg-desktop-portal") {
+        Some(DesktopProcessKind::Portal)
+    } else if process_is_xwayland(args) {
+        Some(DesktopProcessKind::Xwayland)
+    } else if process_basename_eq(args, "ibus-daemon") {
+        Some(DesktopProcessKind::Ibus)
+    } else if process_basename_eq(args, "goa-daemon") {
+        Some(DesktopProcessKind::Goa)
+    } else if process_is_kded(args) {
+        Some(DesktopProcessKind::Kded)
+    } else if process_is_rustdesk_tray(args, app_name) {
+        Some(DesktopProcessKind::Tray)
+    } else if process_basename_eq(args, "xfce4-panel") {
+        Some(DesktopProcessKind::XfcePanel)
+    } else if process_basename_eq(args, "sddm-greeter") {
+        Some(DesktopProcessKind::SddmGreeter)
+    } else {
+        None
+    }
+}
+
+fn observe_desktop_processes(uid: &str) -> Result<DesktopProcessSnapshot, ProcSnapshotError> {
+    let uid_num = uid
+        .parse::<u32>()
+        .ok()
+        .filter(|parsed| parsed.to_string() == uid)
+        .ok_or(ProcSnapshotError::InvalidUid)?;
+    let entries = std::fs::read_dir("/proc").map_err(ProcSnapshotError::ProcUnavailable)?;
+    let app_name = crate::get_app_name();
+    let mut budget = ProcSnapshotBudget::default();
+    let mut snapshot = DesktopProcessSnapshot::default();
+
+    for entry in entries {
+        let entry = entry.map_err(ProcSnapshotError::ProcUnavailable)?;
         let Some(pid) = proc_entry_pid(&entry) else {
             continue;
         };
-        let proc_path = entry.path();
-        if !proc_dir_is_owned_by_uid(&proc_path, uid_num) {
-            continue;
-        }
-        let Some(args) = read_proc_cmdline_args(&proc_path) else {
+        budget.charge_numeric_entry()?;
+        let Some(process_dir) = open_proc_process_dir(&entry) else {
             continue;
         };
-        if re.is_match(&proc_cmdline_string(&args)) {
-            processes.push(ProcCommand { pid, args });
+        let Ok(metadata) = process_dir.metadata() else {
+            continue;
+        };
+        if !metadata.is_dir() || metadata.uid() != uid_num {
+            continue;
         }
+        budget.charge_selected_process()?;
+        let Some(args) = read_proc_cmdline_args(&process_dir, &mut budget)? else {
+            continue;
+        };
+        let Some(kind) = classify_desktop_process(&args, &app_name) else {
+            continue;
+        };
+        if kind == DesktopProcessKind::Xwayland {
+            snapshot.xwayland_running = true;
+        }
+        budget.charge_environment_candidate()?;
+        let BoundedProcFile::Value(environ) = read_bounded_proc_member(
+            &process_dir,
+            ProcMember::Environ,
+            PROC_ENVIRON_MAX_BYTES,
+            &mut budget,
+        )?
+        else {
+            continue;
+        };
+        let Ok(metadata) = process_dir.metadata() else {
+            continue;
+        };
+        if !metadata.is_dir() || metadata.uid() != uid_num {
+            continue;
+        }
+        snapshot
+            .environments
+            .push(DesktopProcessEnvironment { pid, kind, environ });
     }
 
-    processes.sort_by_key(|process| process.pid);
-    processes
+    snapshot.environments.sort_by_key(|process| process.pid);
+    Ok(snapshot)
 }
 
 fn process_basename(args: &[String]) -> Option<&str> {
@@ -3080,7 +3391,14 @@ fn xwayland_display_arg(args: &[String]) -> Option<&str> {
 }
 
 pub(crate) fn xwayland_display_from_proc() -> Option<String> {
-    for process in all_process_cmdlines() {
+    let processes = match all_process_cmdlines() {
+        Ok(processes) => processes,
+        Err(err) => {
+            log::warn!("Failed bounded Xwayland process observation: {err}");
+            return None;
+        }
+    };
+    for process in processes {
         if let Some(display) = xwayland_display_arg(&process.args) {
             return Some(display.to_owned());
         }
@@ -3097,95 +3415,29 @@ fn proc_environ_value(environ: &[u8], name: &str) -> Option<String> {
         return None;
     }
     let name = name.as_bytes();
+    let mut found = None;
     for part in environ.split(|&b| b == 0) {
         if part.len() <= name.len() || !part.starts_with(name) || part[name.len()] != b'=' {
             continue;
         }
-        return Some(String::from_utf8_lossy(&part[name.len() + 1..]).into_owned());
+        let value = &part[name.len() + 1..];
+        if value.len() > PROC_ENV_VALUE_MAX_BYTES {
+            return None;
+        }
+        let value = std::str::from_utf8(value).ok()?;
+        if found.replace(value).is_some() {
+            return None;
+        }
     }
-    None
+    found.map(str::to_owned)
 }
 
-fn get_envs<'a>(
-    uid: &str,
-    process_pat: &str,
-    names: &[&'a str],
-) -> std::collections::HashMap<&'a str, String> {
-    // The tie-breaking logic uses a u64 bitmask, limiting us to 64 variables.
-    debug_assert!(
-        names.len() <= 64,
-        "get_envs: names.len() must be <= 64, got {}",
-        names.len()
-    );
-
-    let empty: std::collections::HashMap<&'a str, String> =
-        names.iter().map(|&n| (n, String::new())).collect();
-
-    if names.iter().any(|name| !proc_env_name_is_valid(name)) {
-        return empty;
+fn proc_session_selector_value(environ: &[u8], name: &str) -> Option<String> {
+    let value = proc_environ_value(environ, name)?;
+    if value.is_empty() || value.bytes().any(|byte| byte.is_ascii_control()) {
+        return None;
     }
-
-    // Used for stable tie-breaking when multiple processes match.
-    // Higher bits correspond to earlier entries in `names`.
-    let name_indices: std::collections::HashMap<&'a str, usize> =
-        names.iter().enumerate().map(|(i, &n)| (n, i)).collect();
-
-    let mut best = empty.clone();
-    let mut best_count = 0usize;
-    let mut best_mask: u64 = 0;
-    let mut best_pid: u32 = 0;
-
-    for process in matching_process_cmdlines(uid, process_pat) {
-        let Ok(environ) = std::fs::read(PathBuf::from(format!("/proc/{}/environ", process.pid)))
-        else {
-            continue;
-        };
-
-        let mut found = empty.clone();
-        let mut found_count = 0usize;
-        let mut found_mask: u64 = 0;
-
-        for part in environ.split(|&b| b == 0) {
-            if part.is_empty() {
-                continue;
-            }
-            let Some(eq) = part.iter().position(|&b| b == b'=') else {
-                continue;
-            };
-            let key_bytes = &part[..eq];
-            let val_bytes = &part[eq + 1..];
-
-            let Ok(key) = std::str::from_utf8(key_bytes) else {
-                continue;
-            };
-            if let Some(slot) = found.get_mut(key) {
-                if slot.is_empty() {
-                    *slot = String::from_utf8_lossy(val_bytes).into_owned();
-                    found_count += 1;
-
-                    if let Some(&idx) = name_indices.get(key) {
-                        let total = names.len();
-                        if total <= 64 {
-                            let bit = 1u64 << (total - 1 - idx);
-                            found_mask |= bit;
-                        }
-                    }
-                }
-            }
-        }
-
-        if found_count > best_count
-            || (found_count == best_count && found_mask > best_mask)
-            || (found_count == best_count && found_mask == best_mask && process.pid > best_pid)
-        {
-            best = found;
-            best_count = found_count;
-            best_mask = found_mask;
-            best_pid = process.pid;
-        }
-    }
-
-    best
+    Some(value)
 }
 
 fn xauthority_from_environ_for_display(environ: &[u8], display: &str) -> Option<String> {
@@ -3203,31 +3455,129 @@ fn xauthority_from_environ_for_display(environ: &[u8], display: &str) -> Option<
     Some(xauthority)
 }
 
-fn xauthority_from_matching_process(
-    uid: &str,
-    process_pattern: &str,
-    display: &str,
-) -> Option<String> {
-    for process in matching_process_cmdlines(uid, process_pattern)
-        .into_iter()
-        .rev()
-    {
-        let Ok(environ) = std::fs::read(PathBuf::from(format!("/proc/{}/environ", process.pid)))
-        else {
-            continue;
-        };
-        if let Some(xauthority) = xauthority_from_environ_for_display(&environ, display) {
-            return Some(xauthority);
-        }
-    }
-    None
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+struct DesktopSessionEnvironment {
+    display: String,
+    xauth: String,
+    wl_display: String,
+    dbus: String,
 }
 
-#[inline]
-fn get_env(name: &str, uid: &str, process: &str) -> String {
-    get_envs(uid, process, &[name])
-        .remove(name)
-        .unwrap_or_default()
+#[derive(Debug, Clone, Copy)]
+enum DesktopEnvironmentKey {
+    Display,
+    Xauthority,
+    WaylandDisplay,
+    Dbus,
+}
+
+impl DesktopSessionEnvironment {
+    fn from_environ(environ: &[u8]) -> Option<Self> {
+        if !environ.is_empty() && environ.last() != Some(&0) {
+            return None;
+        }
+        let display = proc_environ_value(environ, "DISPLAY")
+            .and_then(|display| normalize_local_x_display_name(&display))
+            .unwrap_or_default();
+        let xauth = if display.is_empty() {
+            String::new()
+        } else {
+            xauthority_from_environ_for_display(environ, &display).unwrap_or_default()
+        };
+        Some(Self {
+            display,
+            xauth,
+            wl_display: proc_session_selector_value(environ, "WAYLAND_DISPLAY")
+                .unwrap_or_default(),
+            dbus: proc_session_selector_value(environ, "DBUS_SESSION_BUS_ADDRESS")
+                .unwrap_or_default(),
+        })
+    }
+
+    fn value(&self, key: DesktopEnvironmentKey) -> &str {
+        match key {
+            DesktopEnvironmentKey::Display => &self.display,
+            DesktopEnvironmentKey::Xauthority => &self.xauth,
+            DesktopEnvironmentKey::WaylandDisplay => &self.wl_display,
+            DesktopEnvironmentKey::Dbus => &self.dbus,
+        }
+    }
+
+    fn priority_mask(&self, keys: &[DesktopEnvironmentKey; 4]) -> u8 {
+        keys.iter().fold(0u8, |mask, key| {
+            (mask << 1) | u8::from(!self.value(*key).is_empty())
+        })
+    }
+
+    fn populated_count(&self) -> u8 {
+        [
+            &self.display,
+            &self.xauth,
+            &self.wl_display,
+            &self.dbus,
+        ]
+        .iter()
+        .filter(|value| !value.is_empty())
+        .count() as u8
+    }
+
+    fn has_x11_pair(&self) -> bool {
+        !self.display.is_empty() && !self.xauth.is_empty()
+    }
+}
+
+impl DesktopProcessSnapshot {
+    fn best_environment(
+        &self,
+        kind: DesktopProcessKind,
+        priorities: &[DesktopEnvironmentKey; 4],
+    ) -> DesktopSessionEnvironment {
+        let mut best = DesktopSessionEnvironment::default();
+        let mut best_count = 0u8;
+        let mut best_mask = 0u8;
+        let mut best_pid = 0u32;
+        for process in self
+            .environments
+            .iter()
+            .filter(|process| process.kind == kind)
+        {
+            let Some(environment) = DesktopSessionEnvironment::from_environ(&process.environ)
+            else {
+                continue;
+            };
+            let count = environment.populated_count();
+            let mask = environment.priority_mask(priorities);
+            if count > best_count
+                || (count == best_count && mask > best_mask)
+                || (count == best_count && mask == best_mask && process.pid > best_pid)
+            {
+                best = environment;
+                best_count = count;
+                best_mask = mask;
+                best_pid = process.pid;
+            }
+        }
+        best
+    }
+
+    fn xauthority_for_display(
+        &self,
+        kind: DesktopProcessKind,
+        display: &str,
+    ) -> Option<String> {
+        self.environments
+            .iter()
+            .rev()
+            .filter(|process| process.kind == kind)
+            .find_map(|process| {
+                let environment = DesktopSessionEnvironment::from_environ(&process.environ)?;
+                if local_x_display_names_share_server(&environment.display, display) {
+                    Some(environment.xauth).filter(|xauth| !xauth.is_empty())
+                } else {
+                    None
+                }
+            })
+    }
 }
 
 #[link(name = "gtk-3")]
@@ -4251,6 +4601,200 @@ mod process_cleanup_tests {
     }
 
     #[test]
+    fn r_s11e207_desktop_process_classification_is_exact() {
+        let cases = [
+            (
+                vec!["/usr/libexec/xdg-desktop-portal".to_owned()],
+                Some(DesktopProcessKind::Portal),
+            ),
+            (
+                vec!["/usr/bin/Xwayland".to_owned(), ":7".to_owned()],
+                Some(DesktopProcessKind::Xwayland),
+            ),
+            (
+                vec!["/usr/bin/kded6".to_owned()],
+                Some(DesktopProcessKind::Kded),
+            ),
+            (
+                vec!["/usr/bin/rustdesk".to_owned(), "--tray".to_owned()],
+                Some(DesktopProcessKind::Tray),
+            ),
+        ];
+        for (args, expected) in cases {
+            assert_eq!(classify_desktop_process(&args, "RustDesk"), expected);
+        }
+        for args in [
+            vec!["/tmp/not-Xwayland".to_owned(), "Xwayland".to_owned()],
+            vec!["/tmp/kded6-suffix".to_owned()],
+            vec!["/tmp/rustdesk-helper".to_owned(), "--tray".to_owned()],
+            vec!["/usr/bin/rustdesk".to_owned(), "+--tray".to_owned()],
+            vec!["/usr/bin/rustdesk".to_owned(), "--server".to_owned()],
+        ] {
+            assert_eq!(classify_desktop_process(&args, "RustDesk"), None);
+        }
+    }
+
+    #[test]
+    fn r_s11e207_proc_observation_rejects_oversized_or_partial_values() {
+        struct BytesThenError {
+            offset: usize,
+        }
+
+        impl std::io::Read for BytesThenError {
+            fn read(&mut self, buffer: &mut [u8]) -> std::io::Result<usize> {
+                let bytes = b"abc";
+                if self.offset == bytes.len() {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "fixture read failure",
+                    ));
+                }
+                let count = (bytes.len() - self.offset).min(buffer.len());
+                buffer[..count].copy_from_slice(&bytes[self.offset..self.offset + count]);
+                self.offset += count;
+                Ok(count)
+            }
+        }
+
+        let mut budget = ProcSnapshotBudget::default();
+        let mut oversized = std::io::Cursor::new(vec![b'a'; PROC_CMDLINE_MAX_BYTES + 1]);
+        assert!(matches!(
+            read_bounded_proc_reader(&mut oversized, PROC_CMDLINE_MAX_BYTES, &mut budget),
+            Ok(BoundedProcFile::Oversized)
+        ));
+        assert_eq!(budget.total_bytes, PROC_CMDLINE_MAX_BYTES + 1);
+
+        let mut aggregate_budget = ProcSnapshotBudget {
+            total_bytes: PROC_SNAPSHOT_MAX_TOTAL_BYTES - 2,
+            ..Default::default()
+        };
+        let mut over_aggregate = std::io::Cursor::new(vec![b'b'; 3]);
+        assert!(matches!(
+            read_bounded_proc_reader(&mut over_aggregate, 8, &mut aggregate_budget),
+            Err(ProcSnapshotError::Limit(ProcSnapshotLimit::TotalBytes))
+        ));
+
+        let mut failed_read_budget = ProcSnapshotBudget::default();
+        assert!(matches!(
+            read_bounded_proc_reader(
+                &mut BytesThenError { offset: 0 },
+                PROC_CMDLINE_MAX_BYTES,
+                &mut failed_read_budget
+            ),
+            Ok(BoundedProcFile::Unavailable)
+        ));
+        assert_eq!(failed_read_budget.total_bytes, 3);
+
+        assert_eq!(parse_proc_cmdline_args(b"/usr/bin/Xwayland"), None);
+        assert_eq!(parse_proc_cmdline_args(b"/usr/bin/Xwayland\0:\xff\0"), None);
+
+        let oversized_value = format!(
+            "WAYLAND_DISPLAY={}",
+            "w".repeat(PROC_ENV_VALUE_MAX_BYTES + 1)
+        );
+        assert_eq!(
+            proc_environ_value(oversized_value.as_bytes(), "WAYLAND_DISPLAY"),
+            None
+        );
+        assert_eq!(proc_environ_value(b"DISPLAY=:\xff\0", "DISPLAY"), None);
+        assert_eq!(
+            proc_environ_value(b"DISPLAY=:7\0DISPLAY=:8\0", "DISPLAY"),
+            None
+        );
+        assert_eq!(
+            DesktopSessionEnvironment::from_environ(b"WAYLAND_DISPLAY=wayland-0"),
+            None
+        );
+    }
+
+    #[test]
+    fn r_s11e207_service_child_replacement_tracks_complete_selected_desktop() {
+        let mut selected = Desktop {
+            sid: "session-1".to_owned(),
+            username: "owner".to_owned(),
+            uid: "1000".to_owned(),
+            protocol: DISPLAY_SERVER_WAYLAND.to_owned(),
+            display: ":7".to_owned(),
+            xauth: "/run/user/1000/xauth".to_owned(),
+            wl_display: "wayland-0".to_owned(),
+            dbus: "unix:path=/run/user/1000/bus".to_owned(),
+            ..Default::default()
+        };
+        let mut previous = ServiceChildDesktopIdentity::default();
+        assert!(update_service_child_desktop_identity(
+            &mut previous,
+            &selected
+        ));
+        assert!(!update_service_child_desktop_identity(
+            &mut previous,
+            &selected
+        ));
+
+        selected.wl_display = "wayland-1".to_owned();
+        assert!(update_service_child_desktop_identity(
+            &mut previous,
+            &selected
+        ));
+        selected.dbus = "unix:path=/run/user/1000/other-bus".to_owned();
+        assert!(update_service_child_desktop_identity(
+            &mut previous,
+            &selected
+        ));
+        selected.sid = "session-2".to_owned();
+        assert!(update_service_child_desktop_identity(
+            &mut previous,
+            &selected
+        ));
+    }
+
+    #[test]
+    fn r_s11e207_desktop_snapshot_keeps_one_validated_process_environment() {
+        let snapshot = DesktopProcessSnapshot {
+            environments: vec![
+                DesktopProcessEnvironment {
+                    pid: 10,
+                    kind: DesktopProcessKind::Portal,
+                    environ: b"DISPLAY=:7\0WAYLAND_DISPLAY=wayland-0\0".to_vec(),
+                },
+                DesktopProcessEnvironment {
+                    pid: 11,
+                    kind: DesktopProcessKind::Portal,
+                    environ: b"DISPLAY=:8\0XAUTHORITY=/run/user/1000/xauth\0WAYLAND_DISPLAY=wayland-1\0DBUS_SESSION_BUS_ADDRESS=unix:path=/run/user/1000/bus\0".to_vec(),
+                },
+                DesktopProcessEnvironment {
+                    pid: 12,
+                    kind: DesktopProcessKind::Portal,
+                    environ: b"DISPLAY=remote:9\0XAUTHORITY=relative\0WAYLAND_DISPLAY=bad\nname\0DBUS_SESSION_BUS_ADDRESS=tcp:host=127.0.0.1\n\0".to_vec(),
+                },
+            ],
+            xwayland_running: false,
+        };
+        let environment = snapshot.best_environment(
+            DesktopProcessKind::Portal,
+            &[
+                DesktopEnvironmentKey::WaylandDisplay,
+                DesktopEnvironmentKey::Dbus,
+                DesktopEnvironmentKey::Display,
+                DesktopEnvironmentKey::Xauthority,
+            ],
+        );
+        assert_eq!(environment.display, ":8");
+        assert_eq!(environment.xauth, "/run/user/1000/xauth");
+        assert_eq!(environment.wl_display, "wayland-1");
+        assert_eq!(environment.dbus, "unix:path=/run/user/1000/bus");
+        assert_eq!(
+            snapshot
+                .xauthority_for_display(DesktopProcessKind::Portal, ":8")
+                .as_deref(),
+            Some("/run/user/1000/xauth")
+        );
+        assert_eq!(
+            snapshot.xauthority_for_display(DesktopProcessKind::Portal, ":7"),
+            None
+        );
+    }
+
+    #[test]
     fn r_s11e42_xauthority_is_bound_to_the_selected_display() {
         let selected = b"DISPLAY=:7.0\0XAUTHORITY=/run/user/1000/selected.auth\0";
         assert_eq!(
@@ -4484,30 +5028,38 @@ pub fn change_resolution_directly(name: &str, width: usize, height: usize) -> Re
     Ok(())
 }
 
-#[inline]
-pub fn is_xwayland_running() -> bool {
-    all_process_cmdlines()
-        .iter()
-        .any(|process| process_is_xwayland(&process.args))
-}
-
 mod desktop {
     use super::*;
 
-    pub const XFCE4_PANEL: &str = "xfce4-panel";
-    pub const SDDM_GREETER: &str = "sddm-greeter";
-
-    // xdg-desktop-portal runs on all Wayland desktops (GNOME, KDE, wlroots, etc.)
-    const XDG_DESKTOP_PORTAL: &str = "xdg-desktop-portal";
-    const XWAYLAND: &str = "Xwayland";
-    const IBUS_DAEMON: &str = "ibus-daemon";
-    const PLASMA_KDED: &str = "kded[0-9]+";
-    const GNOME_GOA_DAEMON: &str = "goa-daemon";
-
-    const ENV_KEY_DISPLAY: &str = "DISPLAY";
-    const ENV_KEY_XAUTHORITY: &str = "XAUTHORITY";
-    const ENV_KEY_WAYLAND_DISPLAY: &str = "WAYLAND_DISPLAY";
-    const ENV_KEY_DBUS_SESSION_BUS_ADDRESS: &str = "DBUS_SESSION_BUS_ADDRESS";
+    const WAYLAND_ENVIRONMENT_PRIORITY: [DesktopEnvironmentKey; 4] = [
+        DesktopEnvironmentKey::WaylandDisplay,
+        DesktopEnvironmentKey::Dbus,
+        DesktopEnvironmentKey::Display,
+        DesktopEnvironmentKey::Xauthority,
+    ];
+    const XWAYLAND_ENVIRONMENT_PRIORITY: [DesktopEnvironmentKey; 4] = [
+        DesktopEnvironmentKey::Display,
+        DesktopEnvironmentKey::Xauthority,
+        DesktopEnvironmentKey::WaylandDisplay,
+        DesktopEnvironmentKey::Dbus,
+    ];
+    const XWAYLAND_ENVIRONMENT_KINDS: [DesktopProcessKind; 6] = [
+        DesktopProcessKind::Portal,
+        DesktopProcessKind::Xwayland,
+        DesktopProcessKind::Ibus,
+        DesktopProcessKind::Goa,
+        DesktopProcessKind::Kded,
+        DesktopProcessKind::Tray,
+    ];
+    const X11_XAUTHORITY_KINDS: [DesktopProcessKind; 7] = [
+        DesktopProcessKind::Xwayland,
+        DesktopProcessKind::Ibus,
+        DesktopProcessKind::Goa,
+        DesktopProcessKind::Kded,
+        DesktopProcessKind::XfcePanel,
+        DesktopProcessKind::SddmGreeter,
+        DesktopProcessKind::Tray,
+    ];
 
     #[derive(Debug, Clone, Default)]
     pub struct Desktop {
@@ -4538,63 +5090,46 @@ mod desktop {
             self.sid.is_empty()
         }
 
-        fn get_display_xauth_wayland(&mut self) {
-            for _ in 1..=10 {
-                // Prefer Wayland-related variables first when multiple portal processes match.
-                let mut envs = get_envs(
-                    &self.uid,
-                    XDG_DESKTOP_PORTAL,
-                    &[
-                        ENV_KEY_WAYLAND_DISPLAY,
-                        ENV_KEY_DBUS_SESSION_BUS_ADDRESS,
-                        ENV_KEY_DISPLAY,
-                        ENV_KEY_XAUTHORITY,
-                    ],
-                );
-                self.display = envs.remove(ENV_KEY_DISPLAY).unwrap_or_default();
-                self.xauth = envs.remove(ENV_KEY_XAUTHORITY).unwrap_or_default();
-                self.wl_display = envs.remove(ENV_KEY_WAYLAND_DISPLAY).unwrap_or_default();
-                self.dbus = envs
-                    .remove(ENV_KEY_DBUS_SESSION_BUS_ADDRESS)
-                    .unwrap_or_default();
-                // For pure Wayland sessions, prefer `WAYLAND_DISPLAY`.
-                // NOTE: On some systems (e.g. Ubuntu 25.10), `DISPLAY`/`XAUTHORITY` may exist even when XWayland
-                // is not running, so do NOT treat them as a success condition here.
-                let has_wayland = !self.wl_display.is_empty();
-                let has_dbus = !self.dbus.is_empty();
-                if has_wayland && has_dbus {
-                    return;
-                }
-                sleep_millis(300);
-            }
+        fn apply_environment(&mut self, environment: DesktopSessionEnvironment) {
+            self.display = environment.display;
+            self.xauth = environment.xauth;
+            self.wl_display = environment.wl_display;
+            self.dbus = environment.dbus;
         }
 
-        fn get_display_xauth_xwayland(&mut self) {
-            let tray = format!("{} +--tray", crate::get_app_name().to_lowercase());
-            for _ in 1..=10 {
-                let display_proc = vec![
-                    XDG_DESKTOP_PORTAL,
-                    XWAYLAND,
-                    IBUS_DAEMON,
-                    GNOME_GOA_DAEMON,
-                    PLASMA_KDED,
-                    tray.as_str(),
-                ];
-                for proc in display_proc {
-                    self.display = get_env(ENV_KEY_DISPLAY, &self.uid, proc);
-                    self.xauth = get_env(ENV_KEY_XAUTHORITY, &self.uid, proc);
-                    self.wl_display = get_env(ENV_KEY_WAYLAND_DISPLAY, &self.uid, proc);
-                    self.dbus = get_env(ENV_KEY_DBUS_SESSION_BUS_ADDRESS, &self.uid, proc);
-                    if !self.display.is_empty() && !self.xauth.is_empty() {
-                        return;
-                    }
+        fn get_display_xauth_wayland(&mut self, snapshot: &DesktopProcessSnapshot) {
+            self.apply_environment(snapshot.best_environment(
+                DesktopProcessKind::Portal,
+                &WAYLAND_ENVIRONMENT_PRIORITY,
+            ));
+        }
+
+        fn get_display_xauth_xwayland(&mut self, snapshot: &DesktopProcessSnapshot) {
+            let mut fallback = DesktopSessionEnvironment::default();
+            let mut fallback_count = 0u8;
+            let mut fallback_mask = 0u8;
+            for kind in XWAYLAND_ENVIRONMENT_KINDS {
+                let environment =
+                    snapshot.best_environment(kind, &XWAYLAND_ENVIRONMENT_PRIORITY);
+                if environment.has_x11_pair() {
+                    self.apply_environment(environment);
+                    return;
                 }
-                sleep_millis(300);
+                let count = environment.populated_count();
+                let mask = environment.priority_mask(&WAYLAND_ENVIRONMENT_PRIORITY);
+                if count > fallback_count || (count == fallback_count && mask > fallback_mask) {
+                    fallback = environment;
+                    fallback_count = count;
+                    fallback_mask = mask;
+                }
             }
+            self.apply_environment(fallback);
         }
 
         fn get_display_x11(&mut self) {
             self.display = get_x11_display_of_session(&self.sid).unwrap_or_default();
+            self.wl_display.clear();
+            self.dbus.clear();
         }
 
         fn get_home(&mut self) {
@@ -4603,24 +5138,13 @@ mod desktop {
                 .unwrap_or_else(|| format!("/home/{}", &self.username));
         }
 
-        fn get_xauth_x11(&mut self) {
+        fn get_xauth_x11(&mut self, snapshot: &DesktopProcessSnapshot) {
             self.xauth.clear();
             if self.display.is_empty() {
                 return;
             }
-            let tray = format!("{} +--tray", crate::get_app_name().to_lowercase());
-            for process in [
-                XWAYLAND,
-                IBUS_DAEMON,
-                GNOME_GOA_DAEMON,
-                PLASMA_KDED,
-                XFCE4_PANEL,
-                SDDM_GREETER,
-                tray.as_str(),
-            ] {
-                if let Some(xauthority) =
-                    xauthority_from_matching_process(&self.uid, process, &self.display)
-                {
+            for kind in X11_XAUTHORITY_KINDS {
+                if let Some(xauthority) = snapshot.xauthority_for_display(kind, &self.display) {
                     self.xauth = xauthority;
                     return;
                 }
@@ -4632,18 +5156,48 @@ mod desktop {
             }
         }
 
+        fn clear_session_environment(&mut self) {
+            self.display.clear();
+            self.xauth.clear();
+            self.wl_display.clear();
+            self.dbus.clear();
+        }
+
+        fn refresh_selected_environment(&mut self) -> Result<(), ProcSnapshotError> {
+            if self.is_login_wayland() {
+                self.clear_session_environment();
+                return Ok(());
+            }
+            let is_wayland = self.is_wayland();
+            if !is_wayland {
+                self.get_display_x11();
+                if self.display.is_empty() {
+                    self.xauth.clear();
+                    return Ok(());
+                }
+            }
+            let snapshot = observe_desktop_processes(&self.uid)?;
+            if is_wayland {
+                if snapshot.xwayland_running {
+                    self.get_display_xauth_xwayland(&snapshot);
+                } else {
+                    self.get_display_xauth_wayland(&snapshot);
+                }
+            } else {
+                self.get_xauth_x11(&snapshot);
+            }
+            Ok(())
+        }
+
+        fn fail_closed_observation(&mut self, err: ProcSnapshotError) {
+            log::warn!("Refusing incomplete selected desktop observation: {err}");
+            *self = Self::default();
+        }
+
         pub fn refresh(&mut self) {
             if !self.sid.is_empty() && is_active_and_seat0(&self.sid) {
-                // Xwayland display and xauth may not be available in a short time after login.
-                if self.is_wayland() {
-                    if is_xwayland_running() && !self.is_login_wayland() {
-                        self.get_display_xauth_xwayland();
-                    } else {
-                        self.get_display_xauth_wayland();
-                    }
-                } else {
-                    self.get_display_x11();
-                    self.get_xauth_x11();
+                if let Err(err) = self.refresh_selected_environment() {
+                    self.fail_closed_observation(err);
                 }
                 return;
             }
@@ -4658,22 +5212,9 @@ mod desktop {
             self.uid = seat0_values[1].clone();
             self.username = seat0_values[2].clone();
             self.protocol = get_display_server_of_session(&self.sid).into();
-            if self.is_login_wayland() {
-                self.display = "".to_owned();
-                self.xauth = "".to_owned();
-                return;
-            }
-
             self.get_home();
-            if self.is_wayland() {
-                if is_xwayland_running() {
-                    self.get_display_xauth_xwayland();
-                } else {
-                    self.get_display_xauth_wayland();
-                }
-            } else {
-                self.get_display_x11();
-                self.get_xauth_x11();
+            if let Err(err) = self.refresh_selected_environment() {
+                self.fail_closed_observation(err);
             }
         }
     }

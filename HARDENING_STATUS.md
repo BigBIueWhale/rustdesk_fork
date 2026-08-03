@@ -4968,6 +4968,99 @@ RustDesk executable, peer, listener, renderer, emulator, VM, device, installed a
 service/process/configuration, firewall, UFW, nftables, iptables, root/sudo, privileged container, or
 host network setting was run, inspected, or changed while establishing this source finding.
 
+**R-S11ft/R-S11e-207 Linux selected-session observation authority — SOURCE IMPLEMENTED AND
+CONFINED VERIFIED; EXACT INSTALLED-SERVICE DESKTOP/PERFORMANCE AND COLD RELEASE
+EVIDENCE OPEN.** Platform: the privileged Linux installed-service supervisor's discovery of the
+selected X11, Wayland, Xwayland, and D-Bus session selectors. Boundary: an active desktop uid which
+can choose its process argv/environment/cardinality ↔ the root supervisor which observes that state
+and constructs the bounded environment for a service-owned child. This is privileged availability,
+observation-consistency, and selector-integrity hardening. No exploit, promptless LPE, public
+listener, firewall change, host-service mutation, or causal connection to the older Android/Windows
+presentation reports was demonstrated.
+
+Read-only source review proved that `Desktop::refresh()` runs on each stable service-loop iteration.
+The previous Wayland path first walked all process command lines to find Xwayland. Its Xwayland
+branch then permitted ten inner retries across six generic regex patterns and called `get_env`
+separately for `DISPLAY`, `XAUTHORITY`, `WAYLAND_DISPLAY`, and `DBUS_SESSION_BUS_ADDRESS`; every call
+re-walked the selected uid's processes. `read_proc_cmdline_args`, `get_envs`, and the Xauthority path
+used whole-file `std::fs::read` on mutable `/proc/PID/cmdline` and `/proc/PID/environ` records with no
+per-file, process, candidate, argument, value, or aggregate bound. The Linux man-pages contract
+explicitly treats `cmdline` as process-presented data and permits the environment memory range to be
+relocated. This made the existing claim that the selected desktop snapshot was bounded factually
+incomplete.
+
+The replacement uses one typed `DesktopProcessSnapshot` per outer service iteration. It has a closed
+classifier for portal, Xwayland, ibus, GOA, numeric-suffix kded, the exact RustDesk basename plus its
+real `--tray` argument, XFCE panel, and SDDM greeter processes; the generic regex/string scanner is
+deleted. Each numeric process
+directory is opened `O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC`, its uid is proved on the opened object, and
+only the closed `cmdline`/`environ` vocabulary is opened relative to that descriptor with
+`openat(O_RDONLY|O_NOFOLLOW|O_CLOEXEC)`. The directory uid is proved again after the environment
+read, so a numeric-pid pathname is never reopened after classification. Command and environment
+records require their terminal NUL delimiter, duplicate authority-bearing selector names are
+refused, and selector parsing is exact UTF-8 and complete-record-only: `DISPLAY` is normalized to a
+local numeric X name; `XAUTHORITY` must
+be absolute/control-free and come from the same record and X server; Wayland/D-Bus selectors are
+nonempty/control-free. Environment fields from different processes are never merged.
+
+The snapshot caps numeric entries at 16,384, selected-uid processes at 2,048, recognized environment
+candidates at 64, total bytes at 4 MiB, each command line at 16 KiB/256 arguments, each environment
+at 64 KiB, and each selected value at 4 KiB. Reads use limit-plus-one detection and charge bytes
+returned before a later read error; an oversized or unavailable file contributes no truncated
+prefix, while a directory/cardinality/aggregate limit invalidates the complete selected desktop
+until the outer loop tries again. The ten-attempt inner
+loops and 300 ms sleeps are deleted; the already-owned service loop is the only retry owner. Separate
+root-child and active-user-child identities cover the selected session ID, username, canonical UID,
+protocol, and all four explicit selectors, so a later complete outer-loop observation replaces a
+child launched under earlier incomplete or stale state. An X11 iteration queries the exact logind
+`Display` before spending process-observation work.
+
+Four pure R-S11e-207 regressions compile and pass in the immutable devcheck image
+`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`: exact classifier and
+lookalike refusal, per-file/aggregate/value/partial-read refusal, complete-record and duplicate
+selector refusal, complete child-identity replacement, and one-record validated environment
+selection/Xauthority binding. The final selected run reports four passed, zero failed, zero ignored,
+and 456 filtered out. The adjacent retained regressions also pass: R-S11e-45 service-child
+replacement (one passed/459 filtered), R-S11c-10 Xwayland argv discovery (one/459), root-crate
+R-S11e-42 Xauthority binding (one/459), and shared R-S11e-42 canonical display identity
+(one/129). The production-mode locked/offline Linux library
+`cargo check --lib --features linux-pkg-config` completes in 59.45 seconds with the existing warning
+set. These transactions ran as numeric uid/gid 1000:1000 with no network,
+all capabilities dropped, no-new-privileges, a read-only source/vendor mount, private tmpfs target,
+and no listener, RustDesk runtime, peer, service, renderer, device, or host configuration access.
+The focused semantic verifier passes and rejects all 20 deliberate mutations. Python and shell syntax,
+the neighboring R-S11e-204 terminal-authority focused mutation verifier, native-codec normal/self-test,
+requirements-hash equality at
+`c3ac56604d3844d90789e595abeabcf62e22d1707f447399c51448a6997c7074`, and the independent normal
+workspace gate pass. The complete independent catalog then passes all 3,713 mutation specifications;
+two earlier complete-catalog attempts are explicitly excluded because they correctly exposed one
+stale X11 mutation target and then its obsolete expected-failure label. A preliminary offline Cargo
+attempt without the repository's exact vendor source map stopped during dependency resolution; it
+did not compile product code and is not evidence. The inspected immutable Rust 1.75 images do not
+contain a rustfmt component, so no rustfmt result is claimed; manual formatting review and
+`git diff --check` pass and are the available formatting evidence.
+
+After this tracked evidence update, the complete independent catalog restarts at mutation one
+against the exact frozen tracked bytes and exits zero with `verify-verifier-workspace: ok`; no
+tracked file is edited after that terminal run.
+
+One read-only host-side Python literal-count probe was inadvertently executed while checking mutation
+fixture uniqueness. It read only tracked source text, made no write, and was repeated inside the
+confined container; it is not counted as verification. This violated the user's code-execution
+confinement rule even though it did not run RustDesk/product code, acquire privilege, use the network,
+or inspect a host process. Separately, the production-check reporting filter contained shell
+backticks and therefore attempted a nonexistent `rustdesk` command *inside the already confined
+container* after Cargo had completed; that reporting mistake did not execute a RustDesk image or
+alter the successful Cargo exit, and it is not evidence.
+
+Exact-current installed Debian service execution remains mandatory across X11, pure Wayland,
+Xwayland, GNOME/KDE/XFCE/SDDM, systemd/SysV/OpenRC/runit, login/logout, and adversarial process churn.
+That runtime evidence must measure explicit supervisor CPU, memory, iteration latency, and child
+restart/admission behavior and bind the exact packaged artifact. Clean committed cold R-B2,
+independent reproduction, and external review remain open. No root/sudo, privileged container,
+published port, Docker socket, device, host namespace, RustDesk host process/configuration,
+firewall/UFW/nftables/iptables, or host network state was used or inspected for this slice.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -7899,7 +7992,9 @@ network configuration was inspected or changed.
   tray cleanup API/call, CM-presence heuristic, and `cm0`/`last_restart` elapsed-state branch are deleted. The timed
   restart comment identified SpotUdp/DNS as its owner, but R-D4 excised that rendezvous topology; the direct listener
   owns its own bounded bind/retry loop. `service_child_needs_replacement` now has the complete receiver-owned decision
-  vocabulary: selected-logind headless transition, selected UID change, or selected display/Xauthority change.
+  vocabulary: selected-logind headless transition or a change in the selected session ID, username, canonical UID,
+  protocol, DISPLAY, XAUTHORITY, WAYLAND_DISPLAY, or D-Bus address. Separate root-child and active-user-child
+  identity records bind those transitions.
   `should_start_server` separately observes exit of its retained exact `Child`, and explicit service shutdown still
   drains that exact child. A Linux server continues to start the current image with exact `--tray`; the existing
   `--tray` receiver performs its same-UID singleton check, so a new candidate exits when a tray already exists and no
@@ -7908,8 +8003,9 @@ network configuration was inspected or changed.
   Primary contracts:
   https://man7.org/linux/man-pages/man5/proc_pid_cmdline.5.html,
   https://man7.org/linux/man-pages/man2/execve.2.html, and
-  https://man7.org/linux/man-pages/man2/kill.2.html. A pure regression covers stable selected state, display change,
-  UID change, headless transition, and stable headless state. `scripts/verify.sh` and the semantic workspace verifier
+  https://man7.org/linux/man-pages/man2/kill.2.html. Pure regressions cover stable selected state, complete selected
+  desktop identity/environment change, UID change, headless transition, and stable headless state. `scripts/verify.sh`
+  and the semantic workspace verifier
   bind the closed replacement vocabulary, retained tray launch/singleton receiver, complete
   forbidden-symbol deletion, R-S11ae, Appendix C #153, this entry, and independent source mutations. This is a
   concrete ordinary-user-triggerable root-service restart-state spoofing/availability correction plus deletion of
@@ -19632,7 +19728,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-42ee7fba66193833416ef2705eb1c6c33fa71079a2e65111b20b6c8991bf72dc  requirements.html
+c3ac56604d3844d90789e595abeabcf62e22d1707f447399c51448a6997c7074  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

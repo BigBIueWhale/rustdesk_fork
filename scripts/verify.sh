@@ -3731,6 +3731,10 @@ grep -qF 'R-S11fq/R-S11e-204 Linux service-child terminal authority' HARDENING_S
 if [ -n "$r_s11e26" ]; then echo "  FAIL R-S11e-26 Linux service-child environment authority:$r_s11e26"; rc=1; else
   echo "  ok  R-S11e-26/R-S11e-204 root and active-user children receive the selected desktop snapshot under a typed principal choice; hostile ambient session/audio/terminal variables and active-user TERM processes cannot re-enter after env_clear"; fi
 
+echo "== (3b-iii-d5a) Linux service selected-session observation authority (R-S11ft/R-S11e-207) =="
+"${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e207_ --color never
+python3 scripts/verify-linux-service-session-observation.py --repo . --self-test
+
 # (3b-iii-d6) R-S11m/R-S11e-27: Linux service-owned roles do not inherit pathname
 # authority from a manual/sudo/init launcher working directory. Custom-client sidecars
 # are executable-relative on every build, and both supervisor and child run from '/'.
@@ -4080,9 +4084,10 @@ echo "== (3b-iii-d9c) Linux selected X11 session display authority (R-S11ab/R-S1
 r_s11e42=
 x11_logind_authority=$(awk '/fn parse_local_x_display_name/,/pub fn get_values_of_seat0/' libs/hbb_common/src/platform/linux.rs)
 x11_loginctl_vocabulary=$(awk '/enum LoginctlProperty/,/enum LoginctlQuery/' libs/hbb_common/src/platform/linux.rs)
-x11_environment_authority=$(awk '/fn xauthority_from_environ_for_display/,/fn get_env\(/' src/platform/linux.rs)
+x11_environment_authority=$(awk '/fn xauthority_from_environ_for_display/,/impl DesktopProcessSnapshot/' src/platform/linux.rs)
+x11_snapshot_authority=$(awk '/impl DesktopProcessSnapshot/,/#\[link\(name = "gtk-3"\)\]/' src/platform/linux.rs)
 x11_desktop_authority=$(awk '/fn get_display_x11/,/pub fn refresh/' src/platform/linux.rs)
-x11_refresh_authority=$(awk '/pub fn refresh\(&mut self\)/,/    #\[cfg\(test\)\]/' src/platform/linux.rs)
+x11_refresh_authority=$(awk '/fn refresh_selected_environment/,/    #\[cfg\(test\)\]/' src/platform/linux.rs)
 x11_shared_tests=$(awk '/fn r_s11e42_x11_display_names_are_local_and_canonical/,/fn r_s11e40_session_display_fallback_is_binary_owned/' libs/hbb_common/src/platform/linux.rs)
 x11_root_tests=$(awk '/fn r_s11e42_xauthority_is_bound_to_the_selected_display/,/^}/' src/platform/linux.rs)
 for binding in \
@@ -4106,28 +4111,30 @@ for binding in \
   '!local_x_display_names_share_server(&observed_display, display)' \
   'let xauthority = proc_environ_value(environ, "XAUTHORITY")?;' \
   'xauthority.bytes().any(|byte| byte.is_ascii_control())' \
-  '!Path::new(&xauthority).is_absolute()' \
-  'matching_process_cmdlines(uid, process_pattern)' \
-  'xauthority_from_environ_for_display(&environ, display)'; do
+  '!Path::new(&xauthority).is_absolute()'; do
   grep -qF "$binding" <<<"$x11_environment_authority" || r_s11e42="$r_s11e42 display-bound-xauthority-missing"
+done
+for binding in \
+  'DesktopSessionEnvironment::from_environ(&process.environ)' \
+  'local_x_display_names_share_server(&environment.display, display)'; do
+  grep -qF "$binding" <<<"$x11_snapshot_authority" || r_s11e42="$r_s11e42 snapshot-bound-xauthority-missing"
 done
 for binding in \
   'self.display = get_x11_display_of_session(&self.sid).unwrap_or_default();' \
   'self.xauth.clear();' \
   'if self.display.is_empty() {' \
-  'xauthority_from_matching_process(&self.uid, process, &self.display)' \
+  'snapshot.xauthority_for_display(kind, &self.display)' \
   'let gdm = format!("/run/user/{}/gdm/Xauthority", self.uid);' \
   'if Path::new(&gdm).is_file()'; do
   grep -qF "$binding" <<<"$x11_desktop_authority" || r_s11e42="$r_s11e42 desktop-display-chain-missing"
 done
 for binding in \
-  'if self.is_wayland() {' \
+  'let is_wayland = self.is_wayland();' \
   'self.get_display_x11();' \
-  'self.get_xauth_x11();'; do
+  'let snapshot = observe_desktop_processes(&self.uid)?;' \
+  'self.get_xauth_x11(&snapshot);'; do
   grep -qF "$binding" <<<"$x11_refresh_authority" || r_s11e42="$r_s11e42 retained-session-refresh-missing"
 done
-grep -qF $'                    self.get_display_x11();\n                    self.get_xauth_x11();' \
-  <<<"$x11_refresh_authority" || r_s11e42="$r_s11e42 retained-session-refresh-pair-missing"
 if grep -Eq 'get_env\(ENV_KEY_DISPLAY|get_display_by_user|display_from_x11_socket|self\.display = ":0"|\.replace\("localhost"|get_xauth_from_xorg|matching_process_cmdlines\(&self\.uid, "Xorg"\)' <<<"$x11_desktop_authority"; then
   r_s11e42="$r_s11e42 heuristic-display-or-xorg-authority-present"
 fi
@@ -4165,11 +4172,11 @@ if [ -n "$r_s11e42" ]; then echo "  FAIL R-S11e-42 Linux selected X11 session di
 echo "== (3b-iii-d9c2) Linux obsolete Xorg process authority (R-S11ac/R-S11e-43) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11e43_ --color never
 r_s11e43=
-xorg_headless_authority=$(awk '/pub fn is_headless\(&self\)/,/fn get_display_xauth_wayland/' src/platform/linux.rs)
+xorg_headless_authority=$(awk '/pub fn is_headless\(&self\)/,/fn apply_environment/' src/platform/linux.rs)
 xorg_headless_test=$(awk '/fn r_s11e43_headless_state_is_derived_from_the_selected_session/,/fn test_desktop_env/' src/platform/linux.rs)
 xorg_launcher_history=$(awk '/R-X14 \/ R-S18/,/lazy_static::lazy_static/' src/platform/linux_desktop_manager.rs)
 xorg_headless_compact=$(printf '%s' "$xorg_headless_authority" | tr -d '[:space:]')
-[ "$xorg_headless_compact" = 'pubfnis_headless(&self)->bool{self.sid.is_empty()}fnget_display_xauth_wayland(&mutself){' ] \
+[ "$xorg_headless_compact" = 'pubfnis_headless(&self)->bool{self.sid.is_empty()}fnapply_environment(&mutself,environment:DesktopSessionEnvironment){' ] \
   || r_s11e43="$r_s11e43 headless-not-selected-session-only"
 for test_binding in \
   'fn r_s11e43_headless_state_is_derived_from_the_selected_session()' \
@@ -4404,12 +4411,12 @@ for binding in \
   'if desktop.is_headless() {' \
   'if !uid.is_empty() {' \
   'uid.clear();' \
-  'is_display_changed || desktop.uid != *uid && !desktop.uid.is_empty()' \
+  '!desktop.uid.is_empty() && (desktop_identity_changed || desktop.uid != *uid)' \
   '*uid = desktop.uid.clone();'; do
   grep -qF "$binding" <<<"$service_replacement_policy" || r_s11e45="$r_s11e45 owned-replacement-policy-missing"
 done
 for binding in \
-  'service_child_needs_replacement(is_display_changed, uid, desktop)' \
+  'service_child_needs_replacement(desktop_identity_changed, uid, desktop)' \
   'terminate_child(server, "--server", runtime)?;' \
   'match ps.process.try_wait()' \
   'remove_reaped_service_child_record(runtime, &ps, "--server")?;'; do
@@ -5256,12 +5263,12 @@ ordered(
     "std::thread::Builder::new()",
     "crate::ipc::start_linux_service_ipc_with_readiness(ipc_startup_tx)",
     "wait_for_linux_service_ipc_startup(&ipc_startup_rx, SERVICE_IPC_STARTUP_TIMEOUT)",
-    'let (mut display, mut xauth): (String, String)',
+    'let mut desktop = Desktop::default();',
 )
 startup_cleanup = region(
     policy,
     "if let Err(startup_err) =",
-    'let (mut display, mut xauth): (String, String)',
+    'let mut desktop = Desktop::default();',
 )
 ordered(
     startup_cleanup,
@@ -5982,7 +5989,7 @@ r_s11e32=
 shared_descriptor_policy=$(awk '/fn linux_descriptor_upper_bound/,/\/\/ Deprecated/' libs/hbb_common/src/platform/linux.rs)
 loginctl_helper=$(awk '/fn run_loginctl/,/#\[derive\(Debug, Clone\)\]/' libs/hbb_common/src/platform/linux.rs)
 xrandr_query_helper=$(awk '/fn xrandr_query\(\)/,/pub fn resolutions/' src/platform/linux.rs)
-xrandr_change_helper=$(awk '/pub fn change_resolution_directly/,/pub fn is_xwayland_running/' src/platform/linux.rs)
+xrandr_change_helper=$(awk '/pub fn change_resolution_directly/,/mod desktop/' src/platform/linux.rs)
 systemctl_helper=$(awk '/fn systemctl_service/,/pub fn uninstall_service/' src/platform/linux.rs)
 fuse_mount_helper=$(awk '/fn mount_with_fixed_fusermount/,/fn receive_fusermount_fd/' libs/clipboard/src/platform/unix/fuse/mod.rs)
 fuse_unmount_helper=$(awk '/fn fixed_fusermount_unmount/,/fn unmount_stale_fuse_mount/' libs/clipboard/src/platform/unix/fuse/mod.rs)
@@ -7187,12 +7194,12 @@ if [ -n "$r_s11c16" ]; then echo "  FAIL R-S11c-16 desktop service lifecycle com
 echo "== (3b-iii-h) Linux desktop discovery avoids root shell interpolation (R-S11c-10a) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config r_s11c10_ --color never
 r_s11c10a=
-grep -q 'fn matching_process_cmdlines' src/platform/linux.rs || r_s11c10a="$r_s11c10a no-proc-cmdline-helper"
+grep -q 'fn observe_desktop_processes' src/platform/linux.rs || r_s11c10a="$r_s11c10a no-bounded-proc-snapshot-helper"
 grep -q 'fn proc_environ_value' src/platform/linux.rs || r_s11c10a="$r_s11c10a no-proc-environ-parser"
 grep -q 'is_non_login_shell(user.shell())' src/platform/linux.rs || r_s11c10a="$r_s11c10a prelogin-not-passwd-api-backed"
 linux_discovery_blocks=$(
   awk '/pub fn is_prelogin/,/fn is_non_login_shell/' src/platform/linux.rs
-  awk '/fn get_envs/,/#\[link/' src/platform/linux.rs
+  awk '/fn observe_desktop_processes/,/#\[link/' src/platform/linux.rs
   awk '/fn get_home\(&mut self\)/,/pub fn refresh/' src/platform/linux.rs
 )
 if grep -Eq 'run_cmds|run_cmds_trim_newline|getent passwd|ps -[uef]|cat /proc|(^|[^[:alnum:]_])(grep|awk|sed|xargs)[[:space:]]|CMD_SH' <<<"$linux_discovery_blocks"; then
@@ -7208,7 +7215,7 @@ if grep -Eq 'kill_current_exe_processes_with_arg|stop_headless_connection_manage
   r_s11c10b="$r_s11c10b global-service-helper-sweep-regressed"
 fi
 linux_process_cleanup_blocks=$(
-  awk '/fn all_process_cmdlines/,/fn matching_process_cmdlines/' src/platform/linux.rs
+  awk '/fn all_process_cmdlines/,/enum DesktopProcessKind/' src/platform/linux.rs
 )
 if echo "$linux_process_cleanup_blocks" | grep -Eq 'run_cmds|ps -[ef]|grep |awk |sed |xargs|kill -9|CMD_SH'; then
   r_s11c10b="$r_s11c10b shell-shaped-process-cleanup-regressed"
@@ -8244,7 +8251,7 @@ process_discovery_blocks=$(
   awk '/fn process_is_xwayland/,/^}/' src/platform/linux.rs
   awk '/fn xwayland_display_arg/,/^}/' src/platform/linux.rs
   awk '/xwayland_display_from_proc/,/^}/' src/platform/linux.rs
-  awk '/pub fn is_xwayland_running/,/^}/' src/platform/linux.rs
+  awk '/fn all_process_cmdlines/,/enum DesktopProcessKind/' src/platform/linux.rs
   awk '/fn get_display_from_xwayland/,/^}/' src/whiteboard/linux.rs
   awk '/fn process_basename_is_kded/,/^}/' libs/hbb_common/src/platform/linux.rs
   awk '/pub fn is_kde_session/,/^}/' libs/hbb_common/src/platform/linux.rs

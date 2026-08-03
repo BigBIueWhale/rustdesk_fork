@@ -91,6 +91,29 @@ history remains the traceability record for that intermediate work.
 > release-artifact evidence were not entered or claimed. This closes the public portable-harness
 > authority discrepancy; it does not close any of those release-blocking native or graphical gaps.
 >
+> Exact-current Android integration was then checked without changing product source. At clean
+> pushed commit `f748f096cc32457cf31e470cb8197fc47b2bd6fa`, the tracked tree was archived inside
+> the already-present immutable Android builder
+> `sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2` into private
+> container tmpfs. The live source and complete `online/` closure were read-only mounts. The
+> container ran as numeric UID:GID 1000:1000 with `--pull=never`, `--network=none`, no published
+> port, a read-only root, all capabilities dropped, `no-new-privileges`, bounded PIDs/memory/no-swap/
+> CPU/descriptors/file size, private bounded `/tmp` and source workspaces, and no device, Docker
+> socket, or host namespace. It resolved the locked Flutter inputs offline, generated a fresh
+> Flutter Rust Bridge from the tracked source, and completed release-mode
+> `cargo ndk --platform 21 --target aarch64-linux-android check --locked --release --features
+> flutter --lib` in about one minute with exit zero. Bridge generation retained the known
+> non-fatal `Dart_Handle` typedef diagnostic, and the Android Rust library retained 87 warnings;
+> no diagnostic-free or warning-free claim is made. No APK was assembled, signed, retained,
+> installed, or run. No Activity, foreground service, task swipe, Force Stop, peer, capture source,
+> decoder, renderer, focus/background transition, device, emulator, or performance path executed.
+> This closes only an exact-current Android ARM64 Rust/bridge type-integration gap; all native-device,
+> graphical, lifecycle, artifact, and end-to-end release blockers above remain unchanged.
+> After this evidence was recorded, the focused Android lifecycle-drain verifier rejected all 39
+> deliberate source mutations, the independent workspace baseline exited zero, and the native-codec
+> watch remained synchronized. Those source/ledger gates do not upgrade this compile result into
+> Android runtime, native-device, presentation-latency, or release evidence.
+>
 > **Continuation rule:** prioritize exact-current evidence and test-harness/input closure over
 > additional product behavior changes. A further product change requires a separately source-proven
 > defect or must be necessary to obtain valid evidence; it does not earn release confidence merely

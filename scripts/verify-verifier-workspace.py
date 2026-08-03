@@ -16699,6 +16699,34 @@ def validate_viewer_video_mailbox_contract(sources):
             "viewer video record-state caller finality contract",
         ),
         (
+            '"pub(crate) fn pending_frames(&self) -> Option<usize>"',
+            "viewer video liveness-aware backlog contract",
+        ),
+        (
+            '"(!state.closed).then_some(state.frame_count)"',
+            "viewer video closed-mailbox observation contract",
+        ),
+        (
+            '"r_s11fo_closed_decoder_endpoint_is_not_an_empty_live_mailbox"',
+            "viewer video decoder-endpoint liveness regression",
+        ),
+        (
+            '"peer frame admission, recovery, and terminal endpoint-loss propagation"',
+            "viewer video peer-admission endpoint-finality contract",
+        ),
+        (
+            '"all-display and single-display refresh endpoint liveness"',
+            "viewer video refresh endpoint-finality contract",
+        ),
+        (
+            '"terminal queue observation and refresh-race reporting"',
+            "viewer video FPS endpoint-finality contract",
+        ),
+        (
+            '"backlog recovery refresh endpoint liveness"',
+            "viewer video backlog-refresh endpoint-finality contract",
+        ),
+        (
             'forbid(sources["cargo"], \'crossbeam-queue = "\'',
             "viewer video retired direct dependency contract",
         ),
@@ -16813,8 +16841,193 @@ def validate_viewer_video_mailbox_contract(sources):
             '"f.frames.iter().any(|frame| frame.key)", "leading keyframe"),',
             "viewer video leading-keyframe contract",
         ),
+        (
+            '("client", "(!state.closed).then_some(state.frame_count)", '
+            '"Some(state.frame_count)", "closed mailbox queue observation"),',
+            "viewer video closed-mailbox observation contract",
+        ),
+        (
+            '("client", '
+            '"fn r_s11fo_closed_decoder_endpoint_is_not_an_empty_live_mailbox()", '
+            '"fn closed_decoder_endpoint_is_not_an_empty_live_mailbox()", '
+            '"decoder-endpoint liveness regression"),',
+            "viewer video decoder-endpoint liveness regression",
+        ),
+        (
+            '("io_loop", "return false;\\n                    };\\n                    let is_keyframe", '
+            '"return true;\\n                    };\\n                    let is_keyframe", '
+            '"missing decoder owner finality"),',
+            "viewer video missing decoder owner finality contract",
+        ),
+        (
+            '("io_loop", "return false;\\n                        }\\n                    }\\n                }\\n                // R-T15c", '
+            '"return true;\\n                        }\\n                    }\\n                }\\n                // R-T15c", '
+            '"closed frame admission finality"),',
+            "viewer video closed frame-admission finality contract",
+        ),
+        (
+            '("io_loop", "if !thread.media_thread.begin_refresh()", '
+            '"if false && !thread.media_thread.begin_refresh()", '
+            '"all-display refresh endpoint finality"),',
+            "viewer video all-display refresh finality contract",
+        ),
+        (
+            '("io_loop", "if let Some(thread) = self.video_threads.get(&display) {\\n'
+            '                    if !thread.media_thread.begin_refresh()", '
+            '"if let Some(thread) = self.video_threads.get(&display) {\\n'
+            '                    if false && !thread.media_thread.begin_refresh()", '
+            '"single-display refresh endpoint finality"),',
+            "viewer video single-display refresh finality contract",
+        ),
+        (
+            '("io_loop", "let Some(pending_frames) = thread.media_thread.pending_frames() else {", '
+            '"if let Some(pending_frames) = thread.media_thread.pending_frames() {", '
+            '"queue observation endpoint finality"),',
+            "viewer video queue-observation finality contract",
+        ),
+        (
+            '("io_loop", "if pending_frames > tolerable {\\n'
+            '                if !thread.media_thread.begin_refresh()", '
+            '"if pending_frames > tolerable {\\n'
+            '                if false && !thread.media_thread.begin_refresh()", '
+            '"backlog refresh endpoint finality"),',
+            "viewer video backlog-refresh finality contract",
+        ),
     ):
         require_text(focused, text, label)
+
+    pending_frames = extract_between(
+        sources["client_source"],
+        "pub(crate) fn pending_frames(&self) -> Option<usize>",
+        "\n    pub(crate) fn close(&self)",
+        "independent viewer mailbox liveness observation",
+    )
+    require_order(
+        pending_frames,
+        (
+            "let state = self.shared.state.lock().unwrap();",
+            "(!state.closed).then_some(state.frame_count)",
+        ),
+        "independent closed mailbox cannot look empty and healthy",
+    )
+    owned_video_thread = extract_between(
+        sources["client_source"],
+        "impl OwnedVideoThread {",
+        "\n}\n\nimpl Drop for OwnedVideoThread",
+        "independent owned viewer video endpoint",
+    )
+    require_text(
+        owned_video_thread,
+        ".and_then(VideoMailboxSender::pending_frames)",
+        "independent owned endpoint preserves mailbox liveness",
+    )
+    require_absent(
+        owned_video_thread,
+        ".map_or(0, VideoMailboxSender::pending_frames)",
+        "independent closed endpoint collapsed to an empty queue",
+    )
+    require_text(
+        sources["client_source"],
+        "fn r_s11fo_closed_decoder_endpoint_is_not_an_empty_live_mailbox()",
+        "independent viewer decoder-endpoint liveness regression",
+    )
+    peer_admission = extract_between(
+        sources["client_io_loop"],
+        "Some(message::Union::VideoFrame(vf)) => {",
+        "\n                // R-T15c:",
+        "independent viewer peer-frame admission",
+    )
+    require_order(
+        peer_admission,
+        (
+            "let Some(thread) = self.video_threads.get_mut(&display) else",
+            'on_error("Video decoder state became inconsistent");',
+            "return false;",
+            "VideoFrameAdmission::Closed",
+            'on_error("Video decoder stopped unexpectedly");',
+            "return false;",
+        ),
+        "independent peer-frame endpoint-loss propagation",
+    )
+    missing_owner = extract_between(
+        peer_admission,
+        "let Some(thread) = self.video_threads.get_mut(&display) else",
+        "\n                    let is_keyframe",
+        "independent missing viewer decoder owner branch",
+    )
+    require_order(
+        missing_owner,
+        (
+            'on_error("Video decoder state became inconsistent");',
+            "return false;",
+        ),
+        "independent missing viewer decoder owner is terminal",
+    )
+    closed_admission = extract_between(
+        peer_admission,
+        "VideoFrameAdmission::Closed => {",
+        "\n                        }\n                    }",
+        "independent closed viewer decoder admission branch",
+    )
+    require_order(
+        closed_admission,
+        (
+            'on_error("Video decoder stopped unexpectedly");',
+            "return false;",
+        ),
+        "independent closed viewer decoder admission is terminal",
+    )
+    require_absent(
+        peer_admission,
+        "dropping peer video frame after decoder mailbox closure",
+        "independent continued peer round after decoder endpoint loss",
+    )
+    require_exact_count(
+        sources["client_io_loop"],
+        "if !thread.media_thread.begin_refresh()",
+        3,
+        "independent viewer decoder refresh endpoint liveness",
+    )
+    fps_control = extract_between(
+        sources["client_io_loop"],
+        "fn fps_control(&mut self, real_fps_map: HashMap<usize, i32>) -> bool {",
+        "\n    fn check_view_camera_support",
+        "independent viewer FPS control",
+    )
+    require_exact_count(
+        fps_control,
+        ".media_thread.pending_frames() else",
+        3,
+        "independent viewer queue liveness observations",
+    )
+    require_exact_count(
+        fps_control,
+        'self.handler.on_error("Video decoder stopped unexpectedly");',
+        4,
+        "independent viewer queue closure reports",
+    )
+    require_exact_count(
+        fps_control,
+        "if !thread.media_thread.begin_refresh()",
+        1,
+        "independent viewer backlog-refresh endpoint liveness",
+    )
+    require_order(
+        fps_control,
+        (
+            "if pending_frames > tolerable",
+            "if !thread.media_thread.begin_refresh()",
+            'self.handler.on_error("Video decoder stopped unexpectedly");',
+            "return false;",
+            "self.handler.refresh_video(*display as _)",
+        ),
+        "independent backlog recovery refuses a closed decoder before peer refresh",
+    )
+    require_absent(
+        fps_control,
+        ".map(|v| v.1.media_thread.pending_frames())",
+        "independent closed decoder reduced through a numeric maximum",
+    )
 
     require_text(
         sources["verify"],
@@ -16838,6 +17051,11 @@ def validate_viewer_video_mailbox_contract(sources):
     )
     require_text(
         sources["requirements"],
+        '<div class="req"><span class="id">R-S11fo</span>',
+        "viewer video decoder-endpoint requirement",
+    )
+    require_text(
+        sources["requirements"],
         "<tr><td>304</td>",
         "viewer video mailbox Appendix C row",
     )
@@ -16845,6 +17063,11 @@ def validate_viewer_video_mailbox_contract(sources):
         sources["requirements"],
         "<tr><td>322</td>",
         "viewer video control-finality Appendix C row",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>323</td>",
+        "viewer video decoder-endpoint Appendix C row",
     )
     require_text(
         sources["hardening"],
@@ -16857,9 +17080,19 @@ def validate_viewer_video_mailbox_contract(sources):
         "viewer video control-finality hardening ledger",
     )
     require_text(
+        sources["hardening"],
+        "**R-S11fo/R-S11e-202 exact viewer decoder-endpoint finality",
+        "viewer video decoder-endpoint hardening ledger",
+    )
+    require_text(
         sources["verify"],
         "cargo test --lib --features linux-pkg-config client::tests::r_s11fn_ --color never",
         "viewer video control-finality shared behavior gate",
+    )
+    require_text(
+        sources["verify"],
+        "cargo test --lib --features linux-pkg-config client::tests::r_s11fo_ --color never",
+        "viewer video decoder-endpoint shared behavior gate",
     )
 
 
@@ -18306,14 +18539,24 @@ def validate_desktop_texture_lifecycle_contract(sources):
         refresh_dispatch,
         (
             "ViewerVideoRefreshRequest::All =>",
-            "thread.media_thread.begin_refresh();",
+            "if !thread.media_thread.begin_refresh()",
+            'self.handler.on_error("Video decoder stopped unexpectedly");',
+            "return false;",
             "LoginConfigHandler::refresh()",
             "ViewerVideoRefreshRequest::Display(display) =>",
-            "thread.media_thread.begin_refresh();",
+            "if !thread.media_thread.begin_refresh()",
+            'self.handler.on_error("Video decoder stopped unexpectedly");',
+            "return false;",
             "LoginConfigHandler::refresh_display(display)",
             "peer.send(&message).await",
         ),
-        "independent local-generation invalidation before peer refresh",
+        "independent live-endpoint invalidation before peer refresh",
+    )
+    require_exact_count(
+        refresh_dispatch,
+        "if !thread.media_thread.begin_refresh()",
+        2,
+        "independent all-display and single-display refresh liveness",
     )
     require_text(
         sources["client_io_loop"],
@@ -54521,9 +54764,99 @@ def run_source_mutations(sources):
         ),
         (
             "viewer_video_mailbox_verifier",
+            '"pub(crate) fn pending_frames(&self) -> Option<usize>"',
+            '"pub(crate) fn pending_frames(&self) -> usize"',
+            "viewer video liveness-aware backlog contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"(!state.closed).then_some(state.frame_count)"',
+            '"Some(state.frame_count)"',
+            "viewer video closed-mailbox observation contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"r_s11fo_closed_decoder_endpoint_is_not_an_empty_live_mailbox"',
+            '"closed_decoder_endpoint_is_not_an_empty_live_mailbox"',
+            "viewer video decoder-endpoint liveness regression",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"peer frame admission, recovery, and terminal endpoint-loss propagation"',
+            '"peer frame admission and recovery"',
+            "viewer video peer-admission endpoint-finality contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"all-display and single-display refresh endpoint liveness"',
+            '"refresh request dispatch"',
+            "viewer video refresh endpoint-finality contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"terminal queue observation and refresh-race reporting"',
+            '"queue observation"',
+            "viewer video FPS endpoint-finality contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
+            '"backlog recovery refresh endpoint liveness"',
+            '"backlog refresh observation"',
+            "viewer video backlog-refresh endpoint-finality contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
             'forbid(sources["cargo"], \'crossbeam-queue = "\'',
             'forbid(sources["cargo"], \'crossbeam-queue-disabled = "\'',
             "viewer video retired direct dependency contract",
+        ),
+        (
+            "client_source",
+            "(!state.closed).then_some(state.frame_count)",
+            "Some(state.frame_count)",
+            "independent closed mailbox cannot look empty and healthy",
+        ),
+        (
+            "client_source",
+            ".and_then(VideoMailboxSender::pending_frames)",
+            ".map(|mailbox| mailbox.pending_frames().unwrap_or(0))",
+            "independent owned endpoint preserves mailbox liveness",
+        ),
+        (
+            "client_source",
+            "fn r_s11fo_closed_decoder_endpoint_is_not_an_empty_live_mailbox()",
+            "fn closed_decoder_endpoint_is_not_an_empty_live_mailbox()",
+            "independent viewer decoder-endpoint liveness regression",
+        ),
+        (
+            "client_io_loop",
+            'self.handler\n                            .on_error("Video decoder state became inconsistent");\n                        return false;',
+            'self.handler\n                            .on_error("Video decoder state became inconsistent");\n                        return true;',
+            "independent missing viewer decoder owner is terminal",
+        ),
+        (
+            "client_io_loop",
+            '"video decoder mailbox closed while admitting a frame for display {display}"\n                            );\n                            self.handler.on_error("Video decoder stopped unexpectedly");\n                            return false;',
+            '"video decoder mailbox closed while admitting a frame for display {display}"\n                            );\n                            self.handler.on_error("Video decoder stopped unexpectedly");\n                            return true;',
+            "independent peer-frame endpoint-loss propagation",
+        ),
+        (
+            "client_io_loop",
+            "if !thread.media_thread.begin_refresh()",
+            "if false && !thread.media_thread.begin_refresh()",
+            "independent viewer decoder refresh endpoint liveness",
+        ),
+        (
+            "client_io_loop",
+            "if let Some(thread) = self.video_threads.get(&display) {\n                    if !thread.media_thread.begin_refresh()",
+            "if let Some(thread) = self.video_threads.get(&display) {\n                    if false && !thread.media_thread.begin_refresh()",
+            "independent viewer decoder refresh endpoint liveness",
+        ),
+        (
+            "client_io_loop",
+            "let Some(pending_frames) = thread.media_thread.pending_frames() else {",
+            "if let Some(pending_frames) = thread.media_thread.pending_frames() {",
+            "independent viewer queue liveness observations",
         ),
         (
             "verify",
@@ -54551,6 +54884,12 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
+            '<div class="req"><span class="id">R-S11fo</span>',
+            '<div class="req"><span class="id">R-S11fo-disabled</span>',
+            "viewer video decoder-endpoint requirement",
+        ),
+        (
+            "requirements",
             "<tr><td>304</td>",
             "<tr><td>304-disabled</td>",
             "viewer video mailbox Appendix C row",
@@ -54560,6 +54899,12 @@ def run_source_mutations(sources):
             "<tr><td>322</td>",
             "<tr><td>322-disabled</td>",
             "viewer video control-finality Appendix C row",
+        ),
+        (
+            "requirements",
+            "<tr><td>323</td>",
+            "<tr><td>323-disabled</td>",
+            "viewer video decoder-endpoint Appendix C row",
         ),
         (
             "hardening",
@@ -54574,10 +54919,22 @@ def run_source_mutations(sources):
             "viewer video control-finality hardening ledger",
         ),
         (
+            "hardening",
+            "**R-S11fo/R-S11e-202 exact viewer decoder-endpoint finality",
+            "**R-S11fo-disabled/R-S11e-202 exact viewer decoder-endpoint finality",
+            "viewer video decoder-endpoint hardening ledger",
+        ),
+        (
             "verify",
             "cargo test --lib --features linux-pkg-config client::tests::r_s11fn_ --color never",
             "cargo test --lib --features linux-pkg-config client::tests::disabled_fn_ --color never",
             "viewer video control-finality shared behavior gate",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config client::tests::r_s11fo_ --color never",
+            "cargo test --lib --features linux-pkg-config client::tests::disabled_fo_ --color never",
+            "viewer video decoder-endpoint shared behavior gate",
         ),
         (
             "viewer_file_finality_verifier",

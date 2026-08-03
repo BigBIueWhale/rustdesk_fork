@@ -1734,14 +1734,26 @@ impl<T: InvokeUiSession> Remote<T> {
     ) -> bool {
         let message = match request {
             ViewerVideoRefreshRequest::All => {
-                self.video_threads.iter().for_each(|(_, thread)| {
-                    thread.media_thread.begin_refresh();
-                });
+                for (display, thread) in self.video_threads.iter() {
+                    if !thread.media_thread.begin_refresh() {
+                        log::error!(
+                            "video decoder mailbox closed while refreshing display {display}"
+                        );
+                        self.handler.on_error("Video decoder stopped unexpectedly");
+                        return false;
+                    }
+                }
                 LoginConfigHandler::refresh()
             }
             ViewerVideoRefreshRequest::Display(display) => {
                 if let Some(thread) = self.video_threads.get(&display) {
-                    thread.media_thread.begin_refresh();
+                    if !thread.media_thread.begin_refresh() {
+                        log::error!(
+                            "video decoder mailbox closed while refreshing display {display}"
+                        );
+                        self.handler.on_error("Video decoder stopped unexpectedly");
+                        return false;
+                    }
                 }
                 LoginConfigHandler::refresh_display(display)
             }
@@ -2463,12 +2475,17 @@ impl<T: InvokeUiSession> Remote<T> {
             custom_fps = 30;
         }
         let inactive_threshold = 15;
-        let max_queue_len = self
-            .video_threads
-            .iter()
-            .map(|v| v.1.media_thread.pending_frames())
-            .max()
-            .unwrap_or_default();
+        let mut max_queue_len = 0;
+        for (display, thread) in self.video_threads.iter() {
+            let Some(pending_frames) = thread.media_thread.pending_frames() else {
+                log::error!(
+                    "video decoder mailbox closed while observing display {display} backlog"
+                );
+                self.handler.on_error("Video decoder stopped unexpectedly");
+                return false;
+            };
+            max_queue_len = max_queue_len.max(pending_frames);
+        }
         let min_decode_fps = self
             .video_threads
             .iter()
@@ -2484,34 +2501,38 @@ impl<T: InvokeUiSession> Remote<T> {
             limited_fps = custom_fps;
         }
         let last_auto_fps = self.handler.lc.read().unwrap().last_auto_fps.clone();
-        let displays = self.video_threads.keys().cloned().collect::<Vec<_>>();
-        let mut fps_trending = |display: usize| {
-            let thread = self.video_threads.get_mut(&display)?;
+        let mut should_decrease = false;
+        let mut should_increase = false;
+        for (display, thread) in self.video_threads.iter_mut() {
             let ctl = &mut thread.fps_control;
-            let len = thread.media_thread.pending_frames();
-            let decode_fps = thread.decode_fps.read().unwrap().clone()?;
+            let Some(len) = thread.media_thread.pending_frames() else {
+                log::error!("video decoder mailbox closed while calculating display {display} FPS");
+                self.handler.on_error("Video decoder stopped unexpectedly");
+                return false;
+            };
+            let Some(decode_fps) = *thread.decode_fps.read().unwrap() else {
+                continue;
+            };
             let last_auto_fps = last_auto_fps.clone().unwrap_or(custom_fps as _);
             if ctl.inactive_counter > inactive_threshold {
-                return None;
+                continue;
             }
             if len > 1 && last_auto_fps > limited_fps || len > std::cmp::max(1, decode_fps / 2) {
                 ctl.idle_counter = 0;
-                return Some(false);
+                should_decrease = true;
+                continue;
             }
             if len <= 1 {
                 ctl.idle_counter += 1;
                 if ctl.idle_counter > 3 && last_auto_fps + 3 <= limited_fps {
-                    return Some(true);
+                    should_increase = true;
                 }
             }
             if len > 1 {
                 ctl.idle_counter = 0;
             }
-            None
-        };
-        let trendings: Vec<_> = displays.iter().map(|k| fps_trending(*k)).collect();
-        let should_decrease = trendings.iter().any(|v| *v == Some(false));
-        let should_increase = !should_decrease && trendings.iter().any(|v| *v == Some(true));
+        }
+        should_increase = !should_decrease && should_increase;
         if last_auto_fps.is_none() || should_decrease || should_increase {
             // limited_fps to ensure decoding is faster than encoding
             let mut auto_fps = limited_fps;
@@ -2542,9 +2563,21 @@ impl<T: InvokeUiSession> Remote<T> {
         // mailbox admits no further deltas until the requested keyframe arrives.
         for (display, thread) in self.video_threads.iter_mut() {
             let tolerable = std::cmp::min(min_decode_fps, client::VIDEO_FRAME_QUEUE_CAPACITY / 2);
-            if thread.media_thread.pending_frames() > tolerable
-                && thread.media_thread.begin_refresh()
-            {
+            let Some(pending_frames) = thread.media_thread.pending_frames() else {
+                log::error!(
+                    "video decoder mailbox closed while recovering display {display} backlog"
+                );
+                self.handler.on_error("Video decoder stopped unexpectedly");
+                return false;
+            };
+            if pending_frames > tolerable {
+                if !thread.media_thread.begin_refresh() {
+                    log::error!(
+                        "video decoder mailbox closed while recovering display {display} backlog"
+                    );
+                    self.handler.on_error("Video decoder stopped unexpectedly");
+                    return false;
+                }
                 if let Err(err) = self.handler.refresh_video(*display as _) {
                     log::error!(
                         "failed to admit viewer backlog refresh for display {display}: {err}"
@@ -2680,7 +2713,12 @@ impl<T: InvokeUiSession> Remote<T> {
                         return false;
                     }
                     let Some(thread) = self.video_threads.get_mut(&display) else {
-                        return true;
+                        log::error!(
+                            "video decoder ownership missing after admission for display {display}"
+                        );
+                        self.handler
+                            .on_error("Video decoder state became inconsistent");
+                        return false;
                     };
                     let is_keyframe = starts_video_sequence(&vf);
                     match thread.media_thread.admit_frame(vf, is_keyframe) {
@@ -2702,7 +2740,11 @@ impl<T: InvokeUiSession> Remote<T> {
                             }
                         }
                         VideoFrameAdmission::Closed => {
-                            log::debug!("dropping peer video frame after decoder mailbox closure");
+                            log::error!(
+                                "video decoder mailbox closed while admitting a frame for display {display}"
+                            );
+                            self.handler.on_error("Video decoder stopped unexpectedly");
+                            return false;
                         }
                     }
                 }

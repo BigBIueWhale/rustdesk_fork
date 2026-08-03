@@ -23,6 +23,14 @@ def forbid(source: str, needle: str, label: str) -> None:
         raise VerificationError(f"forbidden {label} remains: {needle!r}")
 
 
+def require_count(source: str, needle: str, expected: int, label: str) -> None:
+    actual = source.count(needle)
+    if actual != expected:
+        raise VerificationError(
+            f"{label}: expected {expected} occurrences of {needle!r}, found {actual}"
+        )
+
+
 def require_order(source: str, needles: Tuple[str, ...], label: str) -> None:
     position = -1
     for needle in needles:
@@ -219,6 +227,33 @@ def validate(sources: Dict[str, str]) -> None:
         "receiver-drop producer rejection",
     )
 
+    pending_frames = extract_rust_item(
+        client,
+        "pub(crate) fn pending_frames(&self) -> Option<usize>",
+        "mailbox liveness-aware frame count",
+    )
+    require_order(
+        pending_frames,
+        (
+            "let state = self.shared.state.lock().unwrap();",
+            "(!state.closed).then_some(state.frame_count)",
+        ),
+        "closed mailbox cannot look empty and healthy",
+    )
+    owned_video_thread = extract_rust_item(
+        client, "impl OwnedVideoThread", "owned video endpoint"
+    )
+    require(
+        owned_video_thread,
+        ".and_then(VideoMailboxSender::pending_frames)",
+        "owned endpoint preserves closed queue observation",
+    )
+    forbid(
+        owned_video_thread,
+        ".map_or(0, VideoMailboxSender::pending_frames)",
+        "closed endpoint collapsed to an empty queue",
+    )
+
     receive = extract_rust_item(
         client, "fn recv(&self) -> Option<VideoMailboxItem>", "mailbox receive"
     )
@@ -291,16 +326,90 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         peer_admission,
         (
+            "let Some(thread) = self.video_threads.get_mut(&display) else",
+            '"video decoder ownership missing after admission for display {display}"',
+            'self.handler\n                            .on_error("Video decoder state became inconsistent");',
+            "return false;",
             "let is_keyframe = starts_video_sequence(&vf);",
             "thread.media_thread.admit_frame(vf, is_keyframe)",
             "VideoFrameAdmission::AwaitingKeyframe",
             "VideoFrameAdmission::RefreshRequired",
             "self.handler.refresh_video(display as _)",
+            "VideoFrameAdmission::Closed",
+            '"video decoder mailbox closed while admitting a frame for display {display}"',
+            'self.handler.on_error("Video decoder stopped unexpectedly");',
+            "return false;",
         ),
-        "peer frame to direct mailbox admission and recovery",
+        "peer frame admission, recovery, and terminal endpoint-loss propagation",
+    )
+    forbid(
+        peer_admission,
+        "dropping peer video frame after decoder mailbox closure",
+        "continued peer round after decoder endpoint loss",
     )
     for forbidden in ("force_push", "MediaData::VideoQueue", "try_send(MediaData::VideoFrame"):
         forbid(peer_admission, forbidden, "split frame/token peer admission")
+
+    refresh_admission = extract_rust_item(
+        io_loop, "async fn handle_video_refresh(", "viewer refresh admission"
+    )
+    require_count(
+        refresh_admission,
+        "if !thread.media_thread.begin_refresh()",
+        2,
+        "all-display and single-display refresh endpoint liveness",
+    )
+    require_order(
+        refresh_admission,
+        (
+            "ViewerVideoRefreshRequest::All",
+            "if !thread.media_thread.begin_refresh()",
+            'self.handler.on_error("Video decoder stopped unexpectedly");',
+            "return false;",
+            "ViewerVideoRefreshRequest::Display(display)",
+            "if !thread.media_thread.begin_refresh()",
+            'self.handler.on_error("Video decoder stopped unexpectedly");',
+            "return false;",
+            "peer.send(&message).await",
+        ),
+        "refresh may reach the peer only while every existing decoder endpoint is live",
+    )
+
+    fps_control = extract_rust_item(io_loop, "fn fps_control(&mut self", "viewer FPS control")
+    require_count(
+        fps_control,
+        ".media_thread.pending_frames() else",
+        3,
+        "backlog observation, FPS calculation, and recovery liveness",
+    )
+    require_count(
+        fps_control,
+        'self.handler.on_error("Video decoder stopped unexpectedly");',
+        4,
+        "terminal queue observation and refresh-race reporting",
+    )
+    require_count(
+        fps_control,
+        "if !thread.media_thread.begin_refresh()",
+        1,
+        "backlog recovery refresh endpoint liveness",
+    )
+    require_order(
+        fps_control,
+        (
+            "if pending_frames > tolerable",
+            "if !thread.media_thread.begin_refresh()",
+            'self.handler.on_error("Video decoder stopped unexpectedly");',
+            "return false;",
+            "self.handler.refresh_video(*display as _)",
+        ),
+        "backlog recovery terminates before peer refresh when its decoder is closed",
+    )
+    forbid(
+        fps_control,
+        ".map(|v| v.1.media_thread.pending_frames())",
+        "closed decoder reduced through numeric maximum",
+    )
 
     reset_admission = extract_rust_item(
         io_loop, "fn admit_decoder_reset(&self", "decoder reset admission"
@@ -352,6 +461,7 @@ def validate(sources: Dict[str, str]) -> None:
         "r_s11fn_repeated_decoder_resets_coalesce_without_dropping_the_barrier",
         "r_s11fn_recording_control_is_latest_wins_at_its_exact_queue_position",
         "r_s11fn_mixed_controls_retain_exactly_two_semantic_items",
+        "r_s11fo_closed_decoder_endpoint_is_not_an_empty_live_mailbox",
         "r_s11ev_close_releases_pending_work_and_wakes_the_worker",
         "r_s11ev_sender_drop_wakes_a_waiting_receiver",
         "r_s11ev_receiver_drop_rejects_new_work",
@@ -375,8 +485,14 @@ def validate(sources: Dict[str, str]) -> None:
             '<div class="req"><span class="id">R-S11fn</span>',
             "R-S11fn control-finality requirement",
         ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fo</span>',
+            "R-S11fo decoder-endpoint finality requirement",
+        ),
         ("requirements", "<tr><td>304</td>", "Appendix C #304"),
         ("requirements", "<tr><td>322</td>", "Appendix C #322"),
+        ("requirements", "<tr><td>323</td>", "Appendix C #323"),
         (
             "hardening",
             "**R-S11ev/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox",
@@ -388,6 +504,11 @@ def validate(sources: Dict[str, str]) -> None:
             "viewer video control-finality hardening ledger",
         ),
         (
+            "hardening",
+            "**R-S11fo/R-S11e-202 exact viewer decoder-endpoint finality",
+            "viewer decoder-endpoint hardening ledger",
+        ),
+        (
             "verify",
             "cargo test --lib --features linux-pkg-config client::tests::r_s11ev_ --color never",
             "shared behavior-test wiring",
@@ -396,6 +517,11 @@ def validate(sources: Dict[str, str]) -> None:
             "verify",
             "cargo test --lib --features linux-pkg-config client::tests::r_s11fn_ --color never",
             "shared control-finality behavior-test wiring",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config client::tests::r_s11fo_ --color never",
+            "shared decoder-endpoint behavior-test wiring",
         ),
         (
             "verify",
@@ -450,22 +576,34 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("client", "fn r_s11ev_equal_rate_recovery_leaves_no_unreachable_frame_backlog()", "fn equal_rate_recovery_leaves_no_unreachable_frame_backlog()", "equal-rate regression"),
     ("client", "let refresh_required = !state.refresh_requested;", "let refresh_required = false;", "reset refresh ownership"),
     ("client", "state.work.retain(|work|", "state.work.iter().all(|work|", "semantic control coalescing"),
+    ("client", "(!state.closed).then_some(state.frame_count)", "Some(state.frame_count)", "closed mailbox queue observation"),
     ("client", "fn r_s11fn_repeated_decoder_resets_coalesce_without_dropping_the_barrier()", "fn repeated_decoder_resets_coalesce_without_dropping_the_barrier()", "reset coalescing regression"),
     ("client", "fn r_s11fn_recording_control_is_latest_wins_at_its_exact_queue_position()", "fn recording_control_is_latest_wins_at_its_exact_queue_position()", "record-state regression"),
     ("client", "fn r_s11fn_mixed_controls_retain_exactly_two_semantic_items()", "fn mixed_controls_retain_exactly_two_semantic_items()", "mixed-control bound regression"),
+    ("client", "fn r_s11fo_closed_decoder_endpoint_is_not_an_empty_live_mailbox()", "fn closed_decoder_endpoint_is_not_an_empty_live_mailbox()", "decoder-endpoint liveness regression"),
     ("io_loop", "f.frames.first().map_or(false, |frame| frame.key)", "f.frames.iter().any(|frame| frame.key)", "leading keyframe"),
     ("io_loop", "thread.media_thread.admit_frame(vf, is_keyframe)", "thread.media_thread.try_send(vf)", "direct mailbox admission"),
+    ("io_loop", "return false;\n                    };\n                    let is_keyframe", "return true;\n                    };\n                    let is_keyframe", "missing decoder owner finality"),
+    ("io_loop", "return false;\n                        }\n                    }\n                }\n                // R-T15c", "return true;\n                        }\n                    }\n                }\n                // R-T15c", "closed frame admission finality"),
+    ("io_loop", "if !thread.media_thread.begin_refresh()", "if false && !thread.media_thread.begin_refresh()", "all-display refresh endpoint finality"),
+    ("io_loop", "if let Some(thread) = self.video_threads.get(&display) {\n                    if !thread.media_thread.begin_refresh()", "if let Some(thread) = self.video_threads.get(&display) {\n                    if false && !thread.media_thread.begin_refresh()", "single-display refresh endpoint finality"),
+    ("io_loop", "let Some(pending_frames) = thread.media_thread.pending_frames() else {", "if let Some(pending_frames) = thread.media_thread.pending_frames() {", "queue observation endpoint finality"),
+    ("io_loop", "if pending_frames > tolerable {\n                if !thread.media_thread.begin_refresh()", "if pending_frames > tolerable {\n                if false && !thread.media_thread.begin_refresh()", "backlog refresh endpoint finality"),
     ("io_loop", "fn admit_decoder_reset(&self", "fn ignore_decoder_reset(&self", "reset caller finality"),
     ("io_loop", "fn update_record_state(&mut self) -> bool", "fn update_record_state(&mut self)", "record-state caller finality"),
     ("cargo", 'async-trait = "0.1"', 'async-trait = "0.1"\ncrossbeam-queue = "0.3"', "retired direct dependency"),
     ("requirements", '<div class="req"><span class="id">R-S11ev</span>', '<div class="req"><span class="id">R-S11ev-disabled</span>', "normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11fn</span>', '<div class="req"><span class="id">R-S11fn-disabled</span>', "control-finality requirement"),
+    ("requirements", '<div class="req"><span class="id">R-S11fo</span>', '<div class="req"><span class="id">R-S11fo-disabled</span>', "decoder-endpoint requirement"),
     ("requirements", "<tr><td>304</td>", "<tr><td>304-disabled</td>", "Appendix disposition"),
     ("requirements", "<tr><td>322</td>", "<tr><td>322-disabled</td>", "control-finality Appendix disposition"),
+    ("requirements", "<tr><td>323</td>", "<tr><td>323-disabled</td>", "decoder-endpoint Appendix disposition"),
     ("hardening", "**R-S11ev/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox", "**R-S11ev-disabled/R-S11e-183 directly reachable, bounded, fresh outgoing-viewer video mailbox", "hardening ledger"),
     ("hardening", "**R-S11fn/R-S11e-201 semantic, non-dropping viewer decoder-control finality", "**R-S11fn-disabled/R-S11e-201 semantic, non-dropping viewer decoder-control finality", "control-finality hardening ledger"),
+    ("hardening", "**R-S11fo/R-S11e-202 exact viewer decoder-endpoint finality", "**R-S11fo-disabled/R-S11e-202 exact viewer decoder-endpoint finality", "decoder-endpoint hardening ledger"),
     ("verify", "cargo test --lib --features linux-pkg-config client::tests::r_s11ev_ --color never", "cargo test --lib --features linux-pkg-config client::tests::disabled_ --color never", "shared behavior gate"),
     ("verify", "cargo test --lib --features linux-pkg-config client::tests::r_s11fn_ --color never", "cargo test --lib --features linux-pkg-config client::tests::disabled_fn_ --color never", "control-finality behavior gate"),
+    ("verify", "cargo test --lib --features linux-pkg-config client::tests::r_s11fo_ --color never", "cargo test --lib --features linux-pkg-config client::tests::disabled_fo_ --color never", "decoder-endpoint behavior gate"),
     ("verify", "python3 scripts/verify-viewer-video-mailbox.py --repo . --self-test", "python3 scripts/verify-viewer-video-mailbox.py --repo .", "shared mutation gate"),
     ("apple", "python3 scripts/verify-viewer-video-mailbox.py --repo . --self-test", "python3 scripts/verify-viewer-video-mailbox.py --repo .", "Apple mutation gate"),
     ("workspace", '"viewer_video_mailbox_verifier": (', '"viewer_video_mailbox_verifier_disabled": (', "independent source binding"),

@@ -2748,8 +2748,9 @@ impl VideoMailboxSender {
         }
     }
 
-    pub(crate) fn pending_frames(&self) -> usize {
-        self.shared.state.lock().unwrap().frame_count
+    pub(crate) fn pending_frames(&self) -> Option<usize> {
+        let state = self.shared.state.lock().unwrap();
+        (!state.closed).then_some(state.frame_count)
     }
 
     pub(crate) fn close(&self) {
@@ -3034,10 +3035,10 @@ impl OwnedVideoThread {
         }
     }
 
-    pub(crate) fn pending_frames(&self) -> usize {
+    pub(crate) fn pending_frames(&self) -> Option<usize> {
         self.mailbox
             .as_ref()
-            .map_or(0, VideoMailboxSender::pending_frames)
+            .and_then(VideoMailboxSender::pending_frames)
     }
 
     pub(crate) fn close(&mut self) -> Option<(&'static str, std::thread::JoinHandle<()>)> {
@@ -4914,7 +4915,7 @@ mod tests {
             sender.admit_frame(video_frame(2), false),
             VideoFrameAdmission::AwaitingKeyframe
         );
-        assert_eq!(sender.pending_frames(), 0);
+        assert_eq!(sender.pending_frames(), Some(0));
     }
 
     #[test]
@@ -4930,13 +4931,13 @@ mod tests {
                 VideoFrameAdmission::Queued
             );
         }
-        assert_eq!(sender.pending_frames(), VIDEO_FRAME_QUEUE_CAPACITY);
+        assert_eq!(sender.pending_frames(), Some(VIDEO_FRAME_QUEUE_CAPACITY));
 
         assert_eq!(
             sender.admit_frame(video_frame(99), false),
             VideoFrameAdmission::RefreshRequired
         );
-        assert_eq!(sender.pending_frames(), 0);
+        assert_eq!(sender.pending_frames(), Some(0));
         assert_eq!(
             sender.admit_frame(video_frame(100), false),
             VideoFrameAdmission::AwaitingKeyframe
@@ -4945,7 +4946,7 @@ mod tests {
             sender.admit_frame(video_frame(200), true),
             VideoFrameAdmission::Queued
         );
-        assert_eq!(sender.pending_frames(), 1);
+        assert_eq!(sender.pending_frames(), Some(1));
 
         let recovered = queued_video_frame(
             receiver
@@ -4992,7 +4993,7 @@ mod tests {
         );
         assert!(current.is_keyframe);
         assert_eq!(current.frame.display, 4);
-        assert_eq!(sender.pending_frames(), 0);
+        assert_eq!(sender.pending_frames(), Some(0));
     }
 
     #[test]
@@ -5054,7 +5055,7 @@ mod tests {
                 ),
                 VideoFrameAdmission::Queued
             );
-            assert_eq!(sender.pending_frames(), VIDEO_FRAME_QUEUE_CAPACITY);
+            assert_eq!(sender.pending_frames(), Some(VIDEO_FRAME_QUEUE_CAPACITY));
         }
 
         for expected in 64..(64 + VIDEO_FRAME_QUEUE_CAPACITY as i32) {
@@ -5065,7 +5066,7 @@ mod tests {
             );
             assert_eq!(queued.frame.display, expected);
         }
-        assert_eq!(sender.pending_frames(), 0);
+        assert_eq!(sender.pending_frames(), Some(0));
     }
 
     #[test]
@@ -5083,7 +5084,7 @@ mod tests {
             receiver.recv(),
             Some(VideoMailboxItem::RefreshRequired)
         ));
-        assert_eq!(sender.pending_frames(), 0);
+        assert_eq!(sender.pending_frames(), Some(0));
         assert_eq!(
             sender.admit_frame(video_frame(2), false),
             VideoFrameAdmission::AwaitingKeyframe
@@ -5120,7 +5121,7 @@ mod tests {
         );
 
         assert!(sender.begin_refresh());
-        assert_eq!(sender.pending_frames(), 0);
+        assert_eq!(sender.pending_frames(), Some(0));
         assert!(matches!(
             receiver.recv(),
             Some(VideoMailboxItem::Control(VideoControl::RecordScreen(true)))
@@ -5149,7 +5150,7 @@ mod tests {
             assert_eq!(state.work.len(), 1);
             assert_eq!(state.frame_count, 0);
         }
-        assert_eq!(sender.pending_frames(), 0);
+        assert_eq!(sender.pending_frames(), Some(0));
         assert_eq!(
             sender.admit_frame(video_frame(2), false),
             VideoFrameAdmission::AwaitingKeyframe
@@ -5306,6 +5307,37 @@ mod tests {
             sender.admit_control(VideoControl::Reset),
             VideoControlAdmission::Closed
         );
+    }
+
+    #[test]
+    fn r_s11fo_closed_decoder_endpoint_is_not_an_empty_live_mailbox() {
+        let (sender, receiver) = video_mailbox();
+        assert_eq!(sender.pending_frames(), Some(0));
+        assert_eq!(
+            sender.admit_frame(video_frame(1), true),
+            VideoFrameAdmission::Queued
+        );
+        assert_eq!(sender.pending_frames(), Some(1));
+
+        drop(receiver);
+
+        assert_eq!(sender.pending_frames(), None);
+        assert!(!sender.begin_refresh());
+        assert_eq!(
+            sender.admit_frame(video_frame(2), true),
+            VideoFrameAdmission::Closed
+        );
+
+        let worker = std::thread::spawn(|| {});
+        let mut owned = OwnedVideoThread::new("closed-decoder-test", sender, worker);
+        assert_eq!(owned.pending_frames(), None);
+        assert!(!owned.begin_refresh());
+        assert_eq!(
+            owned.admit_frame(video_frame(3), true),
+            VideoFrameAdmission::Closed
+        );
+        let (_, worker) = owned.close().unwrap();
+        worker.join().unwrap();
     }
 
     #[test]

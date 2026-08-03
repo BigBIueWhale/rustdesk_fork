@@ -4474,6 +4474,77 @@ decoder, renderer, emulator, VM, physical device, installed app, host service, r
 container, host RustDesk process/configuration, or firewall/UFW/nftables/iptables state was run,
 inspected, or changed.
 
+**R-S11fo/R-S11e-202 exact viewer decoder-endpoint finality — SOURCE IMPLEMENTED 2026-08-03;
+PINNED RUST 1.75 LINUX COMPILATION, 18/18 AFFECTED REGRESSIONS, 48/48 FOCUSED MUTATIONS,
+THE INDEPENDENT BASELINE, AND ONE COMPLETE INDEPENDENT SOURCE-MUTATION CATALOG GREEN;
+NATIVE/DEVICE/ARTIFACT EVIDENCE PENDING.**
+Platform: shared outgoing-viewer core on Android, iOS, Windows, Linux, and macOS. Endpoint/action:
+authenticated peer video-frame admission, UI all/single-display refresh, decoder queue-depth/FPS
+observation, backlog recovery, and exact round teardown. Boundary: one connected viewer network
+round and its exact per-display decoder receiver/worker. Closure condition: once that receiver is
+gone, no sender-side operation may describe the endpoint as empty, accept another frame/refresh, or
+leave the same network round alive.
+
+Read-only source and history tracing found that R-S11ev's symmetric mailbox closure was not carried
+through its production callers. `VideoMailboxReceiver::drop` closes the shared state when the
+decoder worker exits, including after refresh-command admission failure, panic unwind, or a fatal
+mailbox invariant. The sender correctly returned `VideoFrameAdmission::Closed`, but the peer-frame
+handler had already sent the exact ingress receipt and then logged and discarded that state while
+returning success. `handle_video_refresh` ignored `begin_refresh() == false`; `pending_frames()` and
+its owner wrapper returned numeric zero after closure, so the status/FPS path classified a dead
+worker as a healthy empty queue; and the impossible missing-owner branch after ensure/create also
+returned success. Independent input, file, and network traffic could therefore remain live around a
+permanently frozen or black display until reconnect destroyed the round. Commit `57a48ea` introduced
+the explicit closed state and these nonterminal callers together. This is a source-proven shared
+availability/finality defect consistent with reconnect masking display-only failure. It is not
+proof that an operational Android or Windows artifact reached this edge and is not causal proof for
+the reported background/focus delay.
+
+Queue observation now preserves liveness as `Option<usize>`: `Some(0)` means an open empty mailbox;
+`None` means its exact decoder receiver is closed. `OwnedVideoThread` propagates that option and no
+longer converts absent/closed state to zero. Peer-frame `Closed` and the post-create missing-owner
+invariant visibly fail the exact round. Both UI refresh shapes reject failed local invalidation for
+an existing decoder. The queue maximum, per-display FPS trend, second recovery observation, and
+refresh race each terminate on closure. Ordinary initial no-thread refresh remains valid because it
+requests the first independent frame; keyframe wait and bounded backlog recovery remain nonterminal.
+The existing `io_loop` exit path then closes admission, drains and joins every exact media worker,
+and finishes the round; a subsequent connection begins with a fresh receipt tracker, mailbox,
+decoder, and GOP. No blind worker respawn, detached owner, task, timer, polling loop, queue, runtime,
+dependency, protocol field, transport, compatibility branch, or reconnect-specific workaround was
+added.
+
+The new deterministic Rust regression proves live empty `Some(0)`, exact queued `Some(1)`, receiver-
+loss `None`, failed refresh admission, closed frame admission, and the same liveness/refusal states
+through the production `OwnedVideoThread` wrapper; it explicitly joins its inert test worker. A fresh
+locked/offline build in the immutable pinned Rust 1.75 verifier image compiled the Linux library-test
+graph and passed the exact final candidate's new test 1/1, the three R-S11fn control-finality tests
+3/3, the twelve shared-mailbox tests 12/12, and the two wire-frame classification tests 2/2. The
+compiler emitted the repository's existing 190 library-test warnings; no warning-free claim is made.
+Exact Rust 1.75 `rustfmt --check`, `git diff --check`, all 48 focused deliberate mutations, and the
+independent workspace baseline passed. An initial complete catalog attempt correctly rejected a new
+closed-mailbox mutation but refused to count it because its fixture expected the wrong independent
+diagnostic; targeted preflight then exposed and closed a separate backlog-refresh verifier gap. After
+adding an exact three-site refresh-liveness count, exact backlog branch ordering, and one dedicated
+backlog-refresh mutation, all new fixtures passed targeted preflight and a complete unsliced
+independent source-mutation catalog restart from mutation one exited zero. Because recording that
+result changes this tracked ledger, publication requires one additional complete repetition against
+the final staged bytes; that repetition is reported in the commit handoff rather than causing an
+infinite self-referential ledger edit. No broader or native-platform pass is inferred from these
+results.
+
+This slice does not close the broader connection correctness/performance or release mandate. Native
+Windows/macOS/iOS and Android compilation; deliberate decoder panic and refresh-channel failure;
+exact-current Android task-swipe/reopen/Force-Stop and Windows focus/minimize execution; real peer,
+decoder, renderer, compositor, and capture-to-presentation timestamps/budgets; exact operational
+artifact identity; cross-version behavior; clean committed cold R-B2/R-B10 artifacts; separately
+required independent reproduction; and external review remain release blockers. The counted test
+used numeric UID/GID 1000:1000, an immutable pinned image, `--pull=never`, `--network=none`, no
+published port, a read-only root/source/vendor input, private in-container tmpfs output, all
+capabilities dropped, `no-new-privileges`, bounded resources, and no Docker socket, device, or host
+namespace. No RustDesk executable, peer, listener, decoder, renderer, emulator, VM, physical device,
+installed app, host service, root/sudo, privileged container, host RustDesk process/configuration,
+or firewall/UFW/nftables/iptables/network state was run, inspected, or changed.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -19137,7 +19208,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-183bbf6984f05a37334e4b6eb4a3e3287f3142b5e6f0b7b688559d119e6b1ede  requirements.html
+625223541a7af0ee5892b7ecc1bec0e5e277d4ddef2f7aa35a16130b5bd9314a  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -19172,3 +19243,4 @@ The same identity additionally binds R-S11fj and Appendix C #318.
 The same identity additionally binds R-S11fk and Appendix C #319.
 The same identity additionally binds R-S11fl and Appendix C #320.
 The same identity additionally binds R-S11fn and Appendix C #322.
+The same identity additionally binds R-S11fo and Appendix C #323.

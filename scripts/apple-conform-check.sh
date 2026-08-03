@@ -3507,11 +3507,11 @@ else
   rc=1
 fi
 
-echo "== (2g-c2) R-S11ew Flutter software-RGBA publication mailbox =="
+echo "== (2g-c2) R-S11ew/R-S11fr Flutter software-RGBA publication and recovery mailbox =="
 if python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test; then
-  note "ok  R-S11ew Apple/shared software RGBA publication is exact-session/token-owned, bounded, latest-wins, and pointer-free"
+  note "ok  R-S11ew/R-S11fr Apple/shared software RGBA publication is exact-session/token-owned, bounded, latest-wins, recoverable, commit-ordered, and pointer-free"
 else
-  echo "  FAIL R-S11ew Apple/shared software RGBA publication regained stale, cross-session, cross-stream, unbounded, or borrowed-pointer state"
+  echo "  FAIL R-S11ew/R-S11fr Apple/shared software RGBA publication regained stale, cross-session, cross-stream, unbounded, stranded-recovery, out-of-order-commit, or borrowed-pointer state"
   rc=1
 fi
 

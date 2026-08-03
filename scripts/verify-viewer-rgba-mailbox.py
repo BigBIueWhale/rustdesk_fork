@@ -50,12 +50,34 @@ def extract_braced_item(source: str, signature: str, label: str) -> str:
     raise VerificationError(f"unterminated body for {label}")
 
 
+def extract_async_dart_item(source: str, signature: str, label: str) -> str:
+    start = source.find(signature)
+    if start < 0:
+        raise VerificationError(f"missing {label}")
+    async_body = source.find("async {", start + len(signature))
+    if async_body < 0:
+        raise VerificationError(f"missing async body for {label}")
+    open_brace = async_body + len("async ")
+    depth = 0
+    for offset in range(open_brace, len(source)):
+        character = source[offset]
+        if character == "{":
+            depth += 1
+        elif character == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start : offset + 1]
+    raise VerificationError(f"unterminated async body for {label}")
+
+
 def load_sources(repo: Path) -> Dict[str, str]:
     paths = {
         "flutter": "src/flutter.rs",
         "ffi": "src/flutter_ffi.rs",
         "ui_session": "src/ui_session_interface.rs",
         "model": "flutter/lib/models/model.dart",
+        "publication_order": "flutter/lib/models/rgba_publication_order.dart",
+        "publication_order_test": "flutter/test/rgba_publication_order_test.dart",
         "native_model": "flutter/lib/models/native_model.dart",
         "web_model": "flutter/lib/models/web_model.dart",
         "web_bridge": "flutter/lib/web/bridge.dart",
@@ -64,6 +86,7 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "hardening": "HARDENING_STATUS.md",
         "verify": "scripts/verify.sh",
         "apple": "scripts/apple-conform-check.sh",
+        "dart_verify": "scripts/dart-verify.sh",
         "workspace": "scripts/verify-verifier-workspace.py",
     }
     return {
@@ -165,6 +188,27 @@ def validate(sources: Dict[str, str]) -> None:
         "stale rejection, drain, checked promotion, and exhaustion",
     )
 
+    rearm = extract_braced_item(
+        flutter, "fn rearm<F>", "presentation recovery publication re-arm"
+    )
+    require_order(
+        rearm,
+        (
+            "if !self.valid",
+            "RgbaRearm::Idle",
+            "let Some(publication) = next_publication()",
+            "self.valid = false;",
+            "self.pending = None;",
+            "RgbaRearm::Exhausted",
+            "if let Some(mut latest) = self.pending.take()",
+            "std::mem::swap(&mut self.data, &mut latest);",
+            "self.spare = latest;",
+            "self.publication = publication;",
+            "RgbaRearm::Rearmed(publication)",
+        ),
+        "idle, checked-token, latest-pending, and fail-closed re-arm",
+    )
+
     next_publication = extract_braced_item(
         flutter, "fn next_rgba_publication", "checked publication allocation"
     )
@@ -233,6 +277,44 @@ def validate(sources: Dict[str, str]) -> None:
             "EventToUI::Rgba(display, publication)",
         ),
         "exact display/token replay",
+    )
+
+    recovery_rearm = extract_braced_item(
+        flutter,
+        "fn rearm_rgba_for_presentation_recovery(",
+        "exact software publication recovery",
+    )
+    require_order(
+        recovery_rearm,
+        (
+            ".get_mut(&(*session_id, display))",
+            "mailbox.rearm(|| self.next_rgba_publication())",
+            "RgbaRearm::Exhausted",
+            "mailboxes.remove(&(*session_id, display));",
+            "RgbaRearm::Rearmed(publication)",
+            "stream.add(EventToUI::Rgba(display, publication))",
+            ".remove(&(*session_id, display));",
+            'bail!("software RGBA presentation re-arm was rejected by its exact UI stream")',
+        ),
+        "exact re-arm notification and refused-stream retirement",
+    )
+
+    exact_refresh_owner = extract_braced_item(
+        flutter,
+        "pub fn request_video_refresh_for_exact_ui_owner(",
+        "exact UI-owner presentation recovery",
+    )
+    require_order(
+        exact_refresh_owner,
+        (
+            "handler.client_owner_id.as_ref() != Some(client_owner_id)",
+            "let display_index = usize::try_from(display)",
+            "session.ui_handler.rearm_rgba_for_presentation_recovery(",
+            "handler.event_stream.as_ref()",
+            "handler.renderer.notify_pending_frame(display_index)?;",
+            "return session.refresh_video(display);",
+        ),
+        "software publication before native pending-frame and peer refresh admission",
     )
 
     soft_render = extract_braced_item(
@@ -353,12 +435,86 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         on_rgba,
         (
-            "await decodeAndUpdate(expectedSessionId, display, rgba);",
-            "if (publication != null)",
+            "admission = _rgbaPublicationOrder.admit(",
+            "if (admission == null)",
+            "platformFFI.nextRgba(expectedSessionId, display, publication);",
+            "return;",
+            "await decodeAndUpdate(expectedSessionId, display, rgba,",
+            "expectedRgbaPublication: admission",
+            "} finally {",
             "platformFFI.nextRgba(expectedSessionId, display, publication);",
         ),
-        "decode completion before exact-token acknowledgement",
+        "stale refusal and exact acknowledgement after admitted decode finality",
     )
+    decode = extract_async_dart_item(
+        model, "Future<void> decodeAndUpdate(", "ordered RGBA decode"
+    )
+    require_order(
+        decode,
+        (
+            "_rgbaPublicationOrder.isCurrent(expectedRgbaPublication)",
+            "final image = await img.decodeImageFromPixels(",
+            "_rgbaPublicationOrder.isCurrent(expectedRgbaPublication)",
+            "image.dispose();",
+            "expectedRgbaPublication: expectedRgbaPublication",
+        ),
+        "publication admission before and after asynchronous image decode",
+    )
+    update = extract_async_dart_item(model, "Future<void> update(", "image commit")
+    require_order(
+        update,
+        (
+            "bool acceptsExpectedImage()",
+            "_rgbaPublicationOrder.isCurrent(expectedRgbaPublication)",
+            "await parent.target?.canvasModel",
+            "if (!acceptsExpectedImage())",
+            "await initializeCursorAndCanvas(",
+            "if (!acceptsExpectedImage())",
+            "if (image == null)",
+            "_rgbaPublicationOrder.retire();",
+            "_image?.dispose();",
+            "_image = image;",
+        ),
+        "exact publication checks across awaits and immediately before commit",
+    )
+    clear_image = extract_braced_item(model, "void clearImage()", "image retirement")
+    require_order(
+        clear_image,
+        (
+            "_rgbaPublicationOrder.retire();",
+            "_image?.dispose();",
+            "_image = null;",
+        ),
+        "publication and image retirement",
+    )
+
+    publication_order = sources["publication_order"]
+    order_owner = extract_braced_item(
+        publication_order,
+        "class ExactRgbaPublicationOrder<Session extends Object>",
+        "exact Dart publication order owner",
+    )
+    require_order(
+        order_owner,
+        (
+            "publication <= 0",
+            "_session == session && publication <= _publication",
+            "_session = session;",
+            "_publication = publication;",
+            "_revision += 1;",
+            "return RgbaPublicationAdmission._(",
+            "admission.revision == _revision",
+            "admission.session == _session",
+            "admission.display == _display",
+            "admission.publication == _publication",
+            "void retire()",
+            "_revision += 1;",
+            "_session = null;",
+        ),
+        "same-session monotonic admission, exact commit, and retirement",
+    )
+    for forbidden in ("Timer", "Future", "Stream", "List<", "Queue"):
+        forbid(publication_order, forbidden, "detached or queued publication owner")
     listener = model[
         model.index("} else if (message is EventToUI_Rgba)") :
         model.index("} else if (message is EventToUI_Texture)")
@@ -421,8 +577,25 @@ def validate(sources: Dict[str, str]) -> None:
         "r_s11ew_rgba_without_a_live_consumer_retains_no_frame",
         "r_s11ew_display_switch_retires_only_obsolete_exact_mailboxes",
         "r_s11ew_rgba_publication_exhaustion_fails_closed",
+        "r_s11fr_rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame",
+        "r_s11fr_rgba_rearm_is_idle_without_a_publication_and_fails_closed_on_exhaustion",
+        "r_s11fr_failed_rgba_rearm_retires_the_exact_mailbox",
     ):
         require(flutter, f"fn {test}()", f"{test} behavior regression")
+
+    for test in (
+        "a newer publication invalidates an older asynchronous completion",
+        "out-of-order asynchronous completions commit only the latest",
+        "a newer cross-display publication supersedes the old display",
+        "an exact new session may begin with a lower native publication",
+        "retirement invalidates an admitted asynchronous completion",
+        "nonpositive native publications are rejected",
+    ):
+        require(
+            sources["publication_order_test"],
+            f"test('{test}'",
+            f"{test} Dart behavior regression",
+        )
 
     for key, needle, label in (
         (
@@ -430,16 +603,37 @@ def validate(sources: Dict[str, str]) -> None:
             '<div class="req"><span class="id">R-S11ew</span>',
             "R-S11ew requirement",
         ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fr</span>',
+            "R-S11fr requirement",
+        ),
         ("requirements", "<tr><td>305</td>", "Appendix C #305"),
+        ("requirements", "<tr><td>326</td>", "Appendix C #326"),
         (
             "hardening",
             "**R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication",
             "RGBA mailbox hardening ledger",
         ),
         (
+            "hardening",
+            "**R-S11fr/R-S11e-205 exact software-RGBA presentation recovery",
+            "software RGBA recovery hardening ledger",
+        ),
+        (
             "verify",
             "cargo test --lib --features linux-pkg-config,flutter r_s11ew_ --color never",
             "shared behavior-test wiring",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11fr_ --color never",
+            "shared recovery behavior-test wiring",
+        ),
+        (
+            "dart_verify",
+            "flutter test --no-pub test/rgba_publication_order_test.dart",
+            "Dart publication-order behavior-test wiring",
         ),
         (
             "verify",
@@ -486,6 +680,11 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "self.data.clone()", "Vec::new()", "owned copy bytes"),
     ("flutter", "if !self.valid || self.publication != publication", "if !self.valid", "stale acknowledgement"),
     ("flutter", "let Some(publication) = next_publication()", "let publication = self.publication", "promotion token"),
+    ("flutter", "fn rearm<F>", "fn rearm_disabled<F>", "presentation recovery re-arm"),
+    ("flutter", "self.pending = None;", "self.pending.take();", "re-arm exhaustion retirement"),
+    ("flutter", "std::mem::swap(&mut self.data, &mut latest);", "self.data = latest;", "re-arm latest-frame promotion"),
+    ("flutter", "fn rearm_rgba_for_presentation_recovery(", "fn rearm_rgba_for_presentation_recovery_disabled(", "exact recovery notification"),
+    ("flutter", "session.ui_handler.rearm_rgba_for_presentation_recovery(", "session.ui_handler.replay_ready_rgba(", "refresh-owned software re-arm"),
     ("flutter", ".filter(|next| *next <= i64::MAX as u64)", ".filter(|_| true)", "Dart token bound"),
     ("flutter", ".entry((*session_id, display))", ".entry((SessionID::nil(), display))", "independent session copy"),
     ("flutter", ".and_then(|rgba| rgba.copy(publication))", ".map(|rgba| rgba.data.clone())", "exact public copy"),
@@ -503,13 +702,27 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("model", "final publication = message.field1;", "final publication = 0;", "Dart event token"),
     ("model", "platformFFI.copyRgba(activeSessionId, display, publication)", "platformFFI.copyRgba(activeSessionId, display, 0)", "Dart exact copy"),
     ("model", "activeSessionId, display, rgba, publication", "activeSessionId, display, rgba, 0", "Dart exact decode acknowledgement"),
+    ("model", "admission = _rgbaPublicationOrder.admit(", "admission = null; // disabled ", "Dart publication admission"),
+    ("model", "expectedRgbaPublication: admission", "expectedRgbaPublication: null", "Dart decode publication propagation"),
+    ("model", "_rgbaPublicationOrder.retire();", "// publication owner retained", "Dart image retirement"),
+    ("publication_order", "publication <= 0", "publication < 0", "positive Dart publication admission"),
+    ("publication_order", "_session == session && publication <= _publication", "_session == session && publication < _publication", "strict same-session publication order"),
+    ("publication_order", "admission.revision == _revision", "true", "exact asynchronous commit revision"),
+    ("publication_order_test", "a newer publication invalidates an older asynchronous completion", "an older completion is allowed", "Dart ordering regression"),
+    ("publication_order_test", "out-of-order asynchronous completions commit only the latest", "out-of-order asynchronous completions commit both", "Dart asynchronous ordering regression"),
     ("web_bridge", "final int f1;", "final bool f1;", "web token parity"),
     ("ios_app", "dummy_method_to_enforce_bundling();", "dummy_method_to_enforce_bundling();\n    session_get_rgba(nil, 0);", "iOS raw pointer"),
     ("flutter", "fn r_s11ew_rgba_publication_exhaustion_fails_closed()", "fn rgba_publication_exhaustion_fails_closed()", "exhaustion regression"),
+    ("flutter", "fn r_s11fr_rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame()", "fn rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame()", "re-arm behavior regression"),
     ("requirements", '<div class="req"><span class="id">R-S11ew</span>', '<div class="req"><span class="id">R-S11ew-disabled</span>', "normative requirement"),
+    ("requirements", '<div class="req"><span class="id">R-S11fr</span>', '<div class="req"><span class="id">R-S11fr-disabled</span>', "recovery normative requirement"),
     ("requirements", "<tr><td>305</td>", "<tr><td>305-disabled</td>", "Appendix disposition"),
+    ("requirements", "<tr><td>326</td>", "<tr><td>326-disabled</td>", "recovery Appendix disposition"),
     ("hardening", "**R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication", "**R-S11ew-disabled/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication", "hardening ledger"),
+    ("hardening", "**R-S11fr/R-S11e-205 exact software-RGBA presentation recovery", "**R-S11fr-disabled/R-S11e-205 exact software-RGBA presentation recovery", "recovery hardening ledger"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11ew_ --color never", "cargo test --lib --features linux-pkg-config,flutter disabled_ --color never", "shared behavior gate"),
+    ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11fr_ --color never", "cargo test --lib --features linux-pkg-config,flutter disabled_ --color never", "shared recovery behavior gate"),
+    ("dart_verify", "flutter test --no-pub test/rgba_publication_order_test.dart", "true # RGBA publication ordering test removed", "Dart behavior gate"),
     ("verify", "python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test", "python3 scripts/verify-viewer-rgba-mailbox.py --repo .", "shared mutation gate"),
     ("apple", "python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test", "python3 scripts/verify-viewer-rgba-mailbox.py --repo .", "Apple mutation gate"),
     ("workspace", '"viewer_rgba_mailbox_verifier": (', '"viewer_rgba_mailbox_verifier_disabled": (', "independent source binding"),

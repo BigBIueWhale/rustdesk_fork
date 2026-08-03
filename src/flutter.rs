@@ -399,6 +399,13 @@ enum RgbaAcknowledgement {
     Exhausted,
 }
 
+#[derive(Debug, Eq, PartialEq)]
+enum RgbaRearm {
+    Idle,
+    Rearmed(u64),
+    Exhausted,
+}
+
 impl RgbaData {
     fn offer_swap<F>(&mut self, incoming: &mut Vec<u8>, next_publication: F) -> Option<u64>
     where
@@ -469,6 +476,28 @@ impl RgbaData {
         self.spare = latest;
         self.publication = publication;
         RgbaAcknowledgement::Promoted(publication)
+    }
+
+    fn rearm<F>(&mut self, next_publication: F) -> RgbaRearm
+    where
+        F: FnOnce() -> Option<u64>,
+    {
+        if !self.valid {
+            return RgbaRearm::Idle;
+        }
+        let Some(publication) = next_publication() else {
+            self.valid = false;
+            self.publication = 0;
+            self.pending = None;
+            return RgbaRearm::Exhausted;
+        };
+        if let Some(mut latest) = self.pending.take() {
+            std::mem::swap(&mut self.data, &mut latest);
+            latest.clear();
+            self.spare = latest;
+        }
+        self.publication = publication;
+        RgbaRearm::Rearmed(publication)
     }
 }
 
@@ -992,6 +1021,42 @@ impl FlutterHandler {
         publications
             .into_iter()
             .all(|(display, publication)| stream.add(EventToUI::Rgba(display, publication)))
+    }
+
+    fn rearm_rgba_for_presentation_recovery(
+        &self,
+        session_id: &SessionID,
+        display: usize,
+        event_stream: Option<&StreamSink<EventToUI>>,
+    ) -> ResultType<()> {
+        let rearm = {
+            let mut mailboxes = self.display_rgbas.write().unwrap();
+            let Some(mailbox) = mailboxes.get_mut(&(*session_id, display)) else {
+                return Ok(());
+            };
+            let result = mailbox.rearm(|| self.next_rgba_publication());
+            if result == RgbaRearm::Exhausted {
+                mailboxes.remove(&(*session_id, display));
+            }
+            result
+        };
+        let RgbaRearm::Rearmed(publication) = rearm else {
+            if rearm == RgbaRearm::Exhausted {
+                bail!("software RGBA presentation publication is exhausted");
+            }
+            return Ok(());
+        };
+        let delivered = event_stream.map_or(false, |stream| {
+            stream.add(EventToUI::Rgba(display, publication))
+        });
+        if delivered {
+            return Ok(());
+        }
+        self.display_rgbas
+            .write()
+            .unwrap()
+            .remove(&(*session_id, display));
+        bail!("software RGBA presentation re-arm was rejected by its exact UI stream")
     }
 
     fn retire_rgba_session(&self, session_id: &SessionID) {
@@ -2654,11 +2719,15 @@ pub mod sessions {
                 // Keep the exact UI-owner read guard until nonblocking admission has
                 // linearized. Concurrent replacement therefore wins wholly before or after
                 // this request; a stale owner cannot select its successor.
-                #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                handler.renderer.notify_pending_frame(
-                    usize::try_from(display)
-                        .map_err(|_| anyhow!("viewer video refresh display is invalid"))?,
+                let display_index = usize::try_from(display)
+                    .map_err(|_| anyhow!("viewer video refresh display is invalid"))?;
+                session.ui_handler.rearm_rgba_for_presentation_recovery(
+                    session_id,
+                    display_index,
+                    handler.event_stream.as_ref(),
                 )?;
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                handler.renderer.notify_pending_frame(display_index)?;
                 return session.refresh_video(display);
             }
         }
@@ -3240,6 +3309,79 @@ mod mobile_session_lifecycle_tests {
             RgbaAcknowledgement::Drained
         );
         assert!(!mailbox.valid);
+    }
+
+    #[test]
+    fn r_s11fr_rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame() {
+        let mut mailbox = RgbaData::default();
+        let mut first = vec![1; 16];
+        assert_eq!(mailbox.offer_swap(&mut first, || Some(1)), Some(1));
+
+        assert_eq!(mailbox.rearm(|| Some(2)), RgbaRearm::Rearmed(2));
+        assert_eq!(mailbox.copy(1), None);
+        assert_eq!(mailbox.copy(2), Some(vec![1; 16]));
+
+        let mut second = vec![2; 16];
+        assert_eq!(mailbox.offer_swap(&mut second, || Some(3)), None);
+        let mut latest = vec![3; 16];
+        assert_eq!(mailbox.offer_swap(&mut latest, || Some(4)), None);
+        assert_eq!(mailbox.rearm(|| Some(3)), RgbaRearm::Rearmed(3));
+        assert_eq!(mailbox.data, vec![3; 16]);
+        assert!(mailbox.pending.is_none());
+        assert_eq!(
+            mailbox.acknowledge(2, || Some(4)),
+            RgbaAcknowledgement::Ignored
+        );
+        assert_eq!(
+            mailbox.acknowledge(3, || Some(4)),
+            RgbaAcknowledgement::Drained
+        );
+    }
+
+    #[test]
+    fn r_s11fr_rgba_rearm_is_idle_without_a_publication_and_fails_closed_on_exhaustion() {
+        let mut mailbox = RgbaData::default();
+        let mut publication_requested = false;
+        assert_eq!(
+            mailbox.rearm(|| {
+                publication_requested = true;
+                Some(1)
+            }),
+            RgbaRearm::Idle
+        );
+        assert!(!publication_requested);
+
+        let mut first = vec![1; 8];
+        assert_eq!(mailbox.offer_swap(&mut first, || Some(1)), Some(1));
+        let mut pending = vec![2; 8];
+        assert_eq!(mailbox.offer_swap(&mut pending, || Some(2)), None);
+        assert_eq!(mailbox.rearm(|| None), RgbaRearm::Exhausted);
+        assert!(!mailbox.valid);
+        assert_eq!(mailbox.publication, 0);
+        assert!(mailbox.pending.is_none());
+        assert_eq!(mailbox.copy(1), None);
+    }
+
+    #[test]
+    fn r_s11fr_failed_rgba_rearm_retires_the_exact_mailbox() {
+        let handler = FlutterHandler::default();
+        let session_id = SessionID::new_v4();
+        let mut frame = vec![1; 8];
+        assert_eq!(
+            handler
+                .offer_rgba_to_sessions(&[session_id], 4, &mut frame)
+                .len(),
+            1
+        );
+
+        assert!(handler
+            .rearm_rgba_for_presentation_recovery(&session_id, 4, None)
+            .is_err());
+        assert!(!handler
+            .display_rgbas
+            .read()
+            .unwrap()
+            .contains_key(&(session_id, 4)));
     }
 
     #[test]

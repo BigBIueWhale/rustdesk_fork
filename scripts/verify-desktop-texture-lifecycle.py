@@ -664,10 +664,13 @@ def validate(sources: Dict[str, str]) -> None:
             "let sessions = SESSIONS.read().unwrap();",
             "let handlers = session.ui_handler.session_handlers.read().unwrap();",
             "handler.client_owner_id.as_ref() != Some(client_owner_id)",
-            "handler.renderer.notify_pending_frame(",
+            "let display_index = usize::try_from(display)",
+            "session.ui_handler.rearm_rgba_for_presentation_recovery(",
+            "handler.event_stream.as_ref()",
+            "handler.renderer.notify_pending_frame(display_index)?;",
             "return session.refresh_video(display);",
         ),
-        "UI-owner lock held through pending-frame re-notification and refresh admission",
+        "UI-owner lock held through software re-arm, pending-frame re-notification, and refresh admission",
     )
     ffi_refresh = extract_braced_item(
         sources["ffi"], "pub fn session_refresh(", "result-bearing refresh FFI"
@@ -2157,6 +2160,11 @@ def validate(sources: Dict[str, str]) -> None:
             '<div class="req"><span class="id">R-S11fp</span>',
             "R-S11fp pending-texture re-notification requirement",
         ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fr</span>',
+            "R-S11fr software-RGBA recovery requirement",
+        ),
         ("requirements", "<tr><td>306</td>", "Appendix C #306"),
         ("requirements", "<tr><td>307</td>", "Appendix C #307"),
         ("requirements", "<tr><td>308</td>", "Appendix C #308"),
@@ -2165,6 +2173,7 @@ def validate(sources: Dict[str, str]) -> None:
         ("requirements", "<tr><td>314</td>", "Appendix C #314"),
         ("requirements", "<tr><td>321</td>", "Appendix C #321"),
         ("requirements", "<tr><td>324</td>", "Appendix C #324"),
+        ("requirements", "<tr><td>326</td>", "Appendix C #326"),
         (
             "hardening",
             "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
@@ -2206,6 +2215,11 @@ def validate(sources: Dict[str, str]) -> None:
             "pending-texture re-notification hardening ledger",
         ),
         (
+            "hardening",
+            "**R-S11fr/R-S11e-205 exact software-RGBA presentation recovery",
+            "software-RGBA recovery hardening ledger",
+        ),
+        (
             "verify",
             "cargo test --lib --features linux-pkg-config,flutter r_s11ex_ --color never",
             "shared native behavior gate",
@@ -2224,6 +2238,16 @@ def validate(sources: Dict[str, str]) -> None:
             "dart_verify",
             "flutter::mobile_session_lifecycle_tests::r_s11ff_video_refresh_requires_the_current_exact_ui_owner",
             "fresh-bridge exact UI-owner refresh behavior gate",
+        ),
+        (
+            "dart_verify",
+            "flutter::mobile_session_lifecycle_tests::r_s11fr_",
+            "fresh-bridge software-RGBA recovery behavior gate",
+        ),
+        (
+            "dart_verify",
+            "flutter test --no-pub test/rgba_publication_order_test.dart",
+            "Dart publication-order behavior gate",
         ),
         (
             "dart_verify",
@@ -2651,9 +2675,15 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "flutter",
-        "handler.renderer.notify_pending_frame(\n",
+        "handler.renderer.notify_pending_frame(display_index)?;",
         "// pending texture was not re-notified\n",
         "exact-owner pending-frame re-notification ordering",
+    ),
+    (
+        "flutter",
+        "session.ui_handler.rearm_rgba_for_presentation_recovery(\n",
+        "// software publication was not re-armed\n",
+        "exact-owner software publication re-arm ordering",
     ),
     (
         "io_loop",
@@ -3042,6 +3072,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<div class="req"><span class="id">R-S11ff</span>', '<div class="req"><span class="id">R-S11ff-disabled</span>', "viewer refresh admission normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11fm</span>', '<div class="req"><span class="id">R-S11fm-disabled</span>', "texture activation normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11fp</span>', '<div class="req"><span class="id">R-S11fp-disabled</span>', "pending-texture re-notification normative requirement"),
+    ("requirements", '<div class="req"><span class="id">R-S11fr</span>', '<div class="req"><span class="id">R-S11fr-disabled</span>', "software-RGBA recovery normative requirement"),
     ("requirements", "<tr><td>306</td>", "<tr><td>306-disabled</td>", "Appendix disposition"),
     ("requirements", "<tr><td>307</td>", "<tr><td>307-disabled</td>", "software-only Appendix disposition"),
     ("requirements", "<tr><td>308</td>", "<tr><td>308-disabled</td>", "native retirement Appendix disposition"),
@@ -3058,6 +3089,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("hardening", "**R-S11ff/R-S11e-193 exact viewer refresh admission", "**R-S11ff-disabled/R-S11e-193 exact viewer refresh admission", "viewer refresh admission hardening ledger"),
     ("hardening", "**R-S11fm/R-S11e-200 desktop texture activation finality", "**R-S11fm-disabled/R-S11e-200 desktop texture activation finality", "texture activation hardening ledger"),
     ("hardening", "**R-S11fp/R-S11e-203 exact desktop pending-texture re-notification", "**R-S11fp-disabled/R-S11e-203 exact desktop pending-texture re-notification", "pending-texture re-notification hardening ledger"),
+    ("hardening", "**R-S11fr/R-S11e-205 exact software-RGBA presentation recovery", "**R-S11fr-disabled/R-S11e-205 exact software-RGBA presentation recovery", "software-RGBA recovery hardening ledger"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never", "true # first-image admission behavior gate disabled", "shared first-image admission behavior gate"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11ff_ --color never", "true # viewer refresh admission behavior gate disabled", "shared viewer refresh admission behavior gate"),
     ("dart_verify", "flutter::mobile_session_lifecycle_tests::r_s11ff_video_refresh_requires_the_current_exact_ui_owner", "flutter::mobile_session_lifecycle_tests::viewer_refresh_disabled", "fresh-bridge viewer refresh behavior gate"),

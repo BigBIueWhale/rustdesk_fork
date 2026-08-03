@@ -38,6 +38,7 @@ import '../common/widgets/dialog.dart';
 import 'input_model.dart';
 import 'mobile_session_start_queue.dart';
 import 'platform_model.dart';
+import 'rgba_publication_order.dart';
 import 'session_stream_finality.dart';
 import 'package:flutter_hbb/utils/scale.dart';
 
@@ -1489,6 +1490,8 @@ class VirtualMouseMode with ChangeNotifier {
 
 class ImageModel with ChangeNotifier {
   ui.Image? _image;
+  final ExactRgbaPublicationOrder<SessionID> _rgbaPublicationOrder =
+      ExactRgbaPublicationOrder<SessionID>();
 
   ui.Image? get image => _image;
 
@@ -1508,7 +1511,11 @@ class ImageModel with ChangeNotifier {
 
   addCallbackOnFirstImage(Function(String) cb) => callbacksOnFirstImage.add(cb);
 
-  clearImage() => _image = null;
+  void clearImage() {
+    _rgbaPublicationOrder.retire();
+    _image?.dispose();
+    _image = null;
+  }
 
   bool _webDecodingRgba = false;
   final List<Uint8List> _webRgbaList = List.empty(growable: true);
@@ -1533,18 +1540,37 @@ class ImageModel with ChangeNotifier {
 
   Future<void> onRgba(SessionID expectedSessionId, int display, Uint8List rgba,
       [int? publication]) async {
+    RgbaPublicationAdmission<SessionID>? admission;
+    if (publication != null) {
+      if (parent.target?.isCurrentSession(expectedSessionId) == true) {
+        admission = _rgbaPublicationOrder.admit(
+            expectedSessionId, display, publication);
+      }
+      if (admission == null) {
+        platformFFI.nextRgba(expectedSessionId, display, publication);
+        return;
+      }
+    }
     try {
-      await decodeAndUpdate(expectedSessionId, display, rgba);
+      await decodeAndUpdate(expectedSessionId, display, rgba,
+          expectedRgbaPublication: admission);
     } catch (e) {
       debugPrint('onRgba error: $e');
-    }
-    if (publication != null) {
-      platformFFI.nextRgba(expectedSessionId, display, publication);
+    } finally {
+      if (publication != null) {
+        platformFFI.nextRgba(expectedSessionId, display, publication);
+      }
     }
   }
 
   Future<void> decodeAndUpdate(
-      SessionID expectedSessionId, int display, Uint8List rgba) async {
+      SessionID expectedSessionId, int display, Uint8List rgba,
+      {RgbaPublicationAdmission<SessionID>? expectedRgbaPublication}) async {
+    if (parent.target?.isCurrentSession(expectedSessionId) != true ||
+        (expectedRgbaPublication != null &&
+            !_rgbaPublicationOrder.isCurrent(expectedRgbaPublication))) {
+      return;
+    }
     final rect = parent.target?.ffiModel.pi.getDisplayRect(display);
     final image = await img.decodeImageFromPixels(
       rgba,
@@ -1557,22 +1583,31 @@ class ImageModel with ChangeNotifier {
     if (image == null) {
       return;
     }
-    if (parent.target?.isCurrentSession(expectedSessionId) != true) {
+    if (parent.target?.isCurrentSession(expectedSessionId) != true ||
+        (expectedRgbaPublication != null &&
+            !_rgbaPublicationOrder.isCurrent(expectedRgbaPublication))) {
       image.dispose();
       return;
     }
-    await update(image, expectedSessionId: expectedSessionId);
+    await update(image,
+        expectedSessionId: expectedSessionId,
+        expectedRgbaPublication: expectedRgbaPublication);
   }
 
   Future<void> update(ui.Image? image,
-      {SessionID? expectedSessionId, bool allowClosedSession = false}) async {
-    bool acceptsExpectedSession() =>
-        expectedSessionId == null ||
-        (allowClosedSession
-            ? parent.target?.sessionId == expectedSessionId
-            : parent.target?.isCurrentSession(expectedSessionId) == true);
+      {SessionID? expectedSessionId,
+      bool allowClosedSession = false,
+      RgbaPublicationAdmission<SessionID>? expectedRgbaPublication}) async {
+    bool acceptsExpectedImage() =>
+        (expectedSessionId == null ||
+            (allowClosedSession
+                ? parent.target?.sessionId == expectedSessionId
+                : parent.target?.isCurrentSession(expectedSessionId) ==
+                    true)) &&
+        (expectedRgbaPublication == null ||
+            _rgbaPublicationOrder.isCurrent(expectedRgbaPublication));
 
-    if (!acceptsExpectedSession()) {
+    if (!acceptsExpectedImage()) {
       image?.dispose();
       return;
     }
@@ -1580,19 +1615,19 @@ class ImageModel with ChangeNotifier {
       if (isDesktop || isWebDesktop) {
         await parent.target?.canvasModel
             .updateViewStyle(expectedSessionId: expectedSessionId);
-        if (!acceptsExpectedSession()) {
+        if (!acceptsExpectedImage()) {
           image.dispose();
           return;
         }
         await parent.target?.canvasModel
             .updateScrollStyle(expectedSessionId: expectedSessionId);
-        if (!acceptsExpectedSession()) {
+        if (!acceptsExpectedImage()) {
           image.dispose();
           return;
         }
         await parent.target?.canvasModel.initializeEdgeScrollEdgeThickness(
             expectedSessionId: expectedSessionId);
-        if (!acceptsExpectedSession()) {
+        if (!acceptsExpectedImage()) {
           image.dispose();
           return;
         }
@@ -1600,11 +1635,18 @@ class ImageModel with ChangeNotifier {
       if (parent.target != null) {
         await initializeCursorAndCanvas(parent.target!,
             expectedSessionId: expectedSessionId);
-        if (!acceptsExpectedSession()) {
+        if (!acceptsExpectedImage()) {
           image.dispose();
           return;
         }
       }
+    }
+    if (!acceptsExpectedImage()) {
+      image?.dispose();
+      return;
+    }
+    if (image == null) {
+      _rgbaPublicationOrder.retire();
     }
     _image?.dispose();
     _image = image;
@@ -1643,8 +1685,7 @@ class ImageModel with ChangeNotifier {
   }
 
   void disposeImage() {
-    _image?.dispose();
-    _image = null;
+    clearImage();
   }
 }
 

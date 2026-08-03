@@ -187,13 +187,15 @@ local_docker run --rm --pull=never --network=none --read-only \
       lib/models/mobile_session_start_queue.dart \
       lib/models/session_stream_finality.dart \
       lib/models/presentation_recovery.dart \
+      lib/models/rgba_publication_order.dart \
       lib/mobile/pages/remote_page.dart \
       lib/mobile/pages/view_camera_page.dart \
       lib/web/bridge.dart \
       test/desktop_texture_lifecycle_test.dart \
       test/mobile_session_start_queue_test.dart \
       test/session_stream_finality_test.dart \
-      test/presentation_recovery_test.dart
+      test/presentation_recovery_test.dart \
+      test/rgba_publication_order_test.dart
     set +e
     out="$(flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/ 2>&1)"
     analyze_status=$?
@@ -227,6 +229,8 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/desktop_texture_lifecycle_test.dart
     echo "  == viewer presentation recovery coalesces background and focus transitions =="
     flutter test --no-pub test/presentation_recovery_test.dart
+    echo "  == R-S11fr software RGBA decode commits only the exact newest publication =="
+    flutter test --no-pub test/rgba_publication_order_test.dart
     echo "  == R-S11ez Linux native texture callback retirement finality =="
     engine="${flutter_roots[0]}/bin/cache/artifacts/engine/linux-x64"
     plugin=/src/flutter/third_party/texture_rgba_renderer/linux
@@ -256,6 +260,9 @@ local_docker run --rm --pull=never --network=none --read-only \
     echo "  == R-S11ff generated-bridge exact-owner viewer refresh regression =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       flutter::mobile_session_lifecycle_tests::r_s11ff_video_refresh_requires_the_current_exact_ui_owner -- --test-threads=1
+    echo "  == R-S11fr generated-bridge software RGBA recovery regressions =="
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      flutter::mobile_session_lifecycle_tests::r_s11fr_ -- --test-threads=1
     echo "  == R-S11fg/R-S11fh/R-S11fi/R-S11fj generated-bridge file writer, receive-persistence, and digest-inspection finality regressions =="
     cargo test --offline --locked -p hbb_common --lib \
       fs::tests::r_s11fg_read_step_returns_the_exact_file_frame_receipt -- --test-threads=1

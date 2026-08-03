@@ -4756,6 +4756,131 @@ eight; this R-S11e-204 Rust edit adds no `unsafe` and removes only safe scanner/
 current inventory is synchronized to the measured 870/249/76 facts rather than preserving a known
 false baseline. Lexical inventory is not semantic or AST safety proof.
 
+**R-S11fr/R-S11e-205 exact software-RGBA presentation recovery and asynchronous commit order —
+SOURCE IMPLEMENTED AND COUNTED CONFINED VERIFICATION GREEN 2026-08-03; NATIVE DEVICE/ARTIFACT
+EXECUTION REMAINS OPEN.** Platforms: Android and
+iOS outgoing viewers plus Windows/Linux/macOS outgoing viewers when the single-image software-RGBA
+path is active; the desktop native-texture path remains separately covered by R-S11fp. Endpoint/action:
+the exact UI-owner focus/background recovery request, Rust's one-published/one-latest-pending
+`(SessionID, display)` mailbox, the generated owned-byte bridge, and Dart image decode/commit.
+Boundary: decoded native frame ownership and the exact Flutter event stream ↔ asynchronous Dart
+decode/canvas initialization and the currently displayed `ui.Image`. Closure condition: recovery
+rotates and re-delivers any live software publication before native re-notification and peer refresh,
+and only the exact newest still-current Dart admission may replace the image.
+
+Read-only tracing found a gap between otherwise-correct bounded owners. R-S11ew keeps one immutable
+published frame and at most one latest-wins pending frame; while the first token is outstanding,
+new decoded frames replace that pending slot without sending another `EventToUI::Rgba`. R-S11fa's
+resume path reaches `request_video_refresh_for_exact_ui_owner`, but before this slice that function
+only invoked the desktop-only native texture notifier and then requested peer video. Android/iOS
+compile out the notifier, and the desktop single-image software fallback has no native texture to
+notify. If Dart remained suspended inside an old decode, even a newly requested independently
+decodable frame could therefore stop in the one pending slot. Reconnect destroyed the exact
+mailbox, so it could mask the retained liveness token.
+
+The Dart side had a separate ordering defect. The session stream starts an unawaited asynchronous
+body for every event. `decodeImageFromPixels` awaits immutable-buffer creation, codec construction,
+and frame decode; the first image can then await multiple canvas, scroll, edge, and cursor
+initializers. The inherited checks proved only that the connection UUID was still current. Two
+publications from the same live session could finish in reverse order and let the older image
+overwrite the newer one. Flutter's official `AppLifecycleState` contract says notifications may be
+skipped and defines resumed as the visible/focused state; its pixel-decode API is an asynchronous
+buffer/descriptor/codec/frame transaction. This correction therefore does not rely on a complete
+lifecycle notification sequence or on an old decode eventually winning progress. These are
+source-proven shared software-presentation defects and plausible reconnect-masked mechanisms. They
+are not reproduction of the user's unidentified older Android/Windows/Debian artifacts and do not
+establish causality for the reported display delay.
+
+The Rust mailbox now has one closed `RgbaRearm` transition. Invalid state is an idle no-op. Valid
+state obtains a fresh checked positive Dart-compatible token; if one pending frame exists, it
+atomically promotes only that newest buffer and recycles the old allocation, otherwise it retains
+the stable current bytes under the new token. The prior token immediately becomes stale. Exhaustion
+invalidates the mailbox and drops pending ownership. The exact recovery owner emits the new
+display/token to only the handler's current event stream; missing/refused delivery retires that
+exact mailbox and fails visibly. `request_video_refresh_for_exact_ui_owner` retains its exact
+session-handler read guard while it validates the display, performs software re-arm, invokes the
+desktop native pending-frame notifier where applicable, and only then admits the existing peer
+refresh. No mailbox is a normal no-op, so native-texture sessions retain their existing behavior.
+Producer, old acknowledgement, re-arm, display/session retirement, and UI-owner replacement remain
+linearized by the existing handler/mailbox locks. No timer, poller, replay queue, task, thread,
+runtime, reconnect branch, dependency, or protocol field was added.
+
+Dart now owns one small synchronous `ExactRgbaPublicationOrder`. The exact current session is
+checked before admission. Positive publications must strictly increase within that session across
+displays; a newly authoritative session may begin with its separate native counter at a lower
+value. Admission returns a revision-bearing exact session/display/publication record. Decode checks
+that record before work and after pixel decoding; image update rechecks it after every asynchronous
+canvas/cursor initialization and once more immediately before commit. A stale completion disposes
+its `ui.Image` without repainting. Duplicate, nonpositive, old, and wrong-session events skip
+decode, while every copied publication is acknowledged through the existing exact idempotent Rust
+endpoint in a `finally` path. Image clear/close retires publication order before disposing the
+current image, preventing an in-flight decode from resurrecting retired presentation state.
+
+Three compiled Rust regressions cover token replacement with and without pending bytes,
+latest-only promotion, stale acknowledgement refusal, idle no-op, exhaustion invalidation, and
+exact-mailbox retirement when delivery has no exact stream. Six pure Dart regressions cover older
+completion rejection including an intentionally reversed asynchronous completion, cross-display
+supersession, new-session lower-counter admission, retirement, and nonpositive refusal. The focused
+verifier binds the state transitions, exact refresh ordering, Dart checkpoints, behavior tests,
+shared/Apple/Dart wiring, requirement, Appendix C #326, and this ledger, with deliberate mutations
+for each material owner. The desktop verifier and independent workspace verifier also bind software
+re-arm before native notification and peer refresh.
+
+Counted confined evidence used immutable Debian builder
+`sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`. The complete
+networkless `scripts/dart-verify.sh` transaction authenticated input digest
+`a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`, generated a fresh pinned
+Flutter-Rust bridge, formatted 19 Dart files with zero changes, reported zero `flutter analyze lib/`
+errors and no separate plugin-analysis issue, and passed 41 tests across the nine selected Flutter
+test files. That includes all six publication-order tests and their actually reversed asynchronous
+completion. The Linux native texture callback regression and portable Windows callback-core
+regression passed. The shipped Debian `flutter,unix-file-copy-paste` library check completed with
+the repository's existing warning volume; this is not a warning-free claim. The 21-test mobile
+session lifecycle module passed, including all three R-S11fr regressions and the adjacent R-S11ew
+mailbox/R-S11ff exact-owner cases; the separately selected R-S11ff and R-S11fr groups and the
+remaining selected video-receipt, writer-receipt, and audio-egress regressions also passed. Final
+source-archive equality proved that the transaction did not change the live worktree. Pinned bridge
+generation continued to print its known Clang typedef diagnostic before succeeding; it is not
+misreported as a diagnostic-free run.
+
+In immutable verifier image
+`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`, the focused RGBA
+mailbox verifier rejected all 55 deliberate mutations, the desktop texture lifecycle verifier
+rejected all 179, and the independent workspace baseline passed. A targeted diagnostic preflight
+then rejected 24 runtime targets across all 20 newly added independent mutation families. The first
+complete unsliced `--source-mutations-only` catalog to reach a valid terminal verdict after those
+corrections restarted at mutation one and exited zero with `verify-verifier-workspace: ok`. One
+terminal repetition against the final tracked-byte freeze remains the immediate pre-commit gate;
+its result is deliberately not preclaimed in this tracked paragraph because editing the paragraph
+after that run would invalidate the byte freeze.
+
+Preliminary failures are retained explicitly and are not counted. The first Dart transaction stopped
+at its formatter gate, before downstream analysis/tests, because two edited Dart files needed the
+pinned formatter's mechanical layout; the exact formatter diff was applied before the counted full
+rerun. A direct Rust test against the checked-in stale generated bridge failed on obsolete signatures
+and retired APIs; the counted transaction generated the bridge afresh before checking and testing.
+The first independent-catalog command selected the builder's Python 3.6 and never started because
+`tomllib` was unavailable. Three later complete catalog attempts correctly rejected their mutations
+but failed their expected-diagnostic accounting: the new recovery-order assertion initially claimed
+an older exact-owner mutation, two older fixtures still expected the pre-rearm owner diagnostic, and
+the re-arm fixture expected `presentation` where its extractor emitted `recovery`. Diagnostic
+ownership and labels were synchronized without changing product behavior. Two development-only
+targeted-wrapper attempts also stopped without a claim—first on namespace capture, then on an
+over-escaped derived-hash regex—before the corrected 20-family/24-target preflight passed. None of
+these attempts wrote the read-only source mount or touched a product runtime.
+
+This slice does not close the user's broader end-to-end connection correctness or performance
+mandate. Exact-current Android background/task-swipe/reopen/Force-Stop, iOS lifecycle, Windows
+focus/minimize, and Debian-controlled execution remain required, including both native-texture and
+software-RGBA desktop modes; monotonic capture/encode/write/peer-receive/decode/publication/Dart-
+commit/compositor/presentation timestamps; explicit latency, queue-depth, CPU, and memory budgets;
+cross-version behavior; exact operational artifact identity; clean committed cold R-B2/R-B10
+artifacts; separately required independent reproduction; and external review. Deterministic
+source/unit/mutation results are not real renderer or device evidence. No RustDesk executable,
+peer, listener, decoder, renderer, emulator, VM, device, installed app, host service/process, host
+RustDesk configuration, firewall, network state, root/sudo, or privileged container was run,
+inspected, or changed for this source slice.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -19420,7 +19545,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-b5105c4796857d06f59c946163dd06b97818e601dbe4be469ba268e5b5f4b3a5  requirements.html
+28ee90a8c2d279c1543179ebbf7d0b67b0dae19277ff682665c3abccfe0f4f34  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -19457,3 +19582,4 @@ The same identity additionally binds R-S11fl and Appendix C #320.
 The same identity additionally binds R-S11fn and Appendix C #322.
 The same identity additionally binds R-S11fo and Appendix C #323.
 The same identity additionally binds R-S11fp and Appendix C #324.
+The same identity additionally binds R-S11fr and Appendix C #326.

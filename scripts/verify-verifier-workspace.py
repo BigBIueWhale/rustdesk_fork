@@ -17711,6 +17711,7 @@ def validate_viewer_rgba_mailbox_contract(sources):
     )
     for text, label in (
         ("def extract_braced_item(", "viewer RGBA braced-item parser"),
+        ("def extract_async_dart_item(", "viewer RGBA async-Dart item parser"),
         ("def validate(sources", "viewer RGBA semantic entry"),
         (
             '"HashMap<(SessionID, usize), RgbaData>"',
@@ -17752,6 +17753,26 @@ def validate_viewer_rgba_mailbox_contract(sources):
             '"r_s11ew_rgba_publication_exhaustion_fails_closed"',
             "viewer RGBA exhaustion regression",
         ),
+        (
+            '"fn rearm<F>"',
+            "viewer RGBA presentation recovery re-arm contract",
+        ),
+        (
+            '"session.ui_handler.rearm_rgba_for_presentation_recovery("',
+            "viewer RGBA exact-owner recovery wiring contract",
+        ),
+        (
+            '"admission = _rgbaPublicationOrder.admit("',
+            "viewer RGBA Dart publication admission contract",
+        ),
+        (
+            '"r_s11fr_rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame"',
+            "viewer RGBA recovery regression",
+        ),
+        (
+            '"out-of-order asynchronous completions commit only the latest"',
+            "viewer RGBA asynchronous ordering regression",
+        ),
         ("MUTATIONS: Tuple[Mutation, ...]", "viewer RGBA mutation inventory"),
         ("run_self_test(sources)", "viewer RGBA mutation dispatch"),
     ):
@@ -17760,6 +17781,7 @@ def validate_viewer_rgba_mailbox_contract(sources):
             if text
             in {
                 "def extract_braced_item(",
+                "def extract_async_dart_item(",
                 "def validate(sources",
                 "MUTATIONS: Tuple[Mutation, ...]",
                 "run_self_test(sources)",
@@ -17816,8 +17838,150 @@ def validate_viewer_rgba_mailbox_contract(sources):
             '"exhaustion regression"),',
             "viewer RGBA exhaustion regression",
         ),
+        (
+            '("flutter", "fn rearm<F>", "fn rearm_disabled<F>", '
+            '"presentation recovery re-arm"),',
+            "viewer RGBA presentation recovery re-arm contract",
+        ),
+        (
+            '("flutter", "session.ui_handler.rearm_rgba_for_presentation_recovery(", '
+            '"session.ui_handler.replay_ready_rgba(", '
+            '"refresh-owned software re-arm"),',
+            "viewer RGBA exact-owner recovery wiring contract",
+        ),
+        (
+            '("model", "admission = _rgbaPublicationOrder.admit(", '
+            '"admission = null; // disabled ", "Dart publication admission"),',
+            "viewer RGBA Dart publication admission contract",
+        ),
+        (
+            '("flutter", '
+            '"fn r_s11fr_rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame()", '
+            '"fn rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame()", '
+            '"re-arm behavior regression"),',
+            "viewer RGBA recovery regression",
+        ),
+        (
+            '("publication_order_test", '
+            '"out-of-order asynchronous completions commit only the latest", '
+            '"out-of-order asynchronous completions commit both", '
+            '"Dart asynchronous ordering regression"),',
+            "viewer RGBA asynchronous ordering regression",
+        ),
     ):
         require_text(focused, text, label)
+
+    rgba_rearm = extract_between(
+        sources["flutter_source"],
+        "fn rearm<F>",
+        "\n}\n\npub type FlutterRgbaRendererPluginTryOnRgba",
+        "independent software RGBA recovery re-arm",
+    )
+    require_order(
+        rgba_rearm,
+        (
+            "if !self.valid",
+            "RgbaRearm::Idle",
+            "let Some(publication) = next_publication()",
+            "self.valid = false;",
+            "self.pending = None;",
+            "RgbaRearm::Exhausted",
+            "if let Some(mut latest) = self.pending.take()",
+            "std::mem::swap(&mut self.data, &mut latest);",
+            "self.publication = publication;",
+            "RgbaRearm::Rearmed(publication)",
+        ),
+        "independent checked latest-only software RGBA re-arm",
+    )
+    recovery_delivery = extract_between(
+        sources["flutter_source"],
+        "fn rearm_rgba_for_presentation_recovery(",
+        "\n    fn retire_rgba_session",
+        "independent exact software RGBA recovery delivery",
+    )
+    require_order(
+        recovery_delivery,
+        (
+            ".get_mut(&(*session_id, display))",
+            "mailbox.rearm(|| self.next_rgba_publication())",
+            "RgbaRearm::Exhausted",
+            "mailboxes.remove(&(*session_id, display));",
+            "RgbaRearm::Rearmed(publication)",
+            "stream.add(EventToUI::Rgba(display, publication))",
+            ".remove(&(*session_id, display));",
+            'bail!("software RGBA presentation re-arm was rejected by its exact UI stream")',
+        ),
+        "independent exact software RGBA re-arm notification finality",
+    )
+    exact_refresh = extract_between(
+        sources["flutter_source"],
+        "pub fn request_video_refresh_for_exact_ui_owner(",
+        "\n    #[inline]\n    pub(super) fn take_mobile_sessions_except",
+        "independent software and native presentation recovery ordering",
+    )
+    require_order(
+        exact_refresh,
+        (
+            "let display_index = usize::try_from(display)",
+            "session.ui_handler.rearm_rgba_for_presentation_recovery(",
+            "handler.event_stream.as_ref()",
+            "handler.renderer.notify_pending_frame(display_index)?;",
+            "return session.refresh_video(display);",
+        ),
+        "independent software re-arm before native notifier and peer refresh",
+    )
+    require_order(
+        sources["rgba_publication_order_dart"],
+        (
+            "class ExactRgbaPublicationOrder<Session extends Object>",
+            "publication <= 0",
+            "_session == session && publication <= _publication",
+            "_session = session;",
+            "_publication = publication;",
+            "_revision += 1;",
+            "admission.revision == _revision",
+            "admission.session == _session",
+            "admission.display == _display",
+            "admission.publication == _publication",
+            "void retire()",
+            "_revision += 1;",
+            "_session = null;",
+        ),
+        "independent exact Dart RGBA publication order owner",
+    )
+    require_order(
+        sources["model_dart"],
+        (
+            "admission = _rgbaPublicationOrder.admit(",
+            "if (admission == null)",
+            "platformFFI.nextRgba(expectedSessionId, display, publication);",
+            "return;",
+            "expectedRgbaPublication: admission",
+            "} finally {",
+            "platformFFI.nextRgba(expectedSessionId, display, publication);",
+            "_rgbaPublicationOrder.isCurrent(expectedRgbaPublication)",
+            "final image = await img.decodeImageFromPixels(",
+            "_rgbaPublicationOrder.isCurrent(expectedRgbaPublication)",
+            "if (!acceptsExpectedImage())",
+            "_image = image;",
+        ),
+        "independent Dart RGBA admission, acknowledgement, and commit ordering",
+    )
+    for test in (
+        "r_s11fr_rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame",
+        "r_s11fr_rgba_rearm_is_idle_without_a_publication_and_fails_closed_on_exhaustion",
+        "r_s11fr_failed_rgba_rearm_retires_the_exact_mailbox",
+    ):
+        require_text(sources["flutter_source"], test, f"independent {test} regression")
+    for test in (
+        "a newer publication invalidates an older asynchronous completion",
+        "out-of-order asynchronous completions commit only the latest",
+        "an exact new session may begin with a lower native publication",
+        "retirement invalidates an admitted asynchronous completion",
+    ):
+        require_text(
+            sources["rgba_publication_order_test"], test, f"independent {test} regression"
+        )
 
     require_text(
         sources["verify"],
@@ -17843,6 +18007,31 @@ def validate_viewer_rgba_mailbox_contract(sources):
         sources["hardening"],
         "**R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication",
         "viewer RGBA mailbox hardening ledger",
+    )
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11fr</span>',
+        "viewer RGBA recovery requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>326</td>",
+        "viewer RGBA recovery Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11fr/R-S11e-205 exact software-RGBA presentation recovery",
+        "viewer RGBA recovery hardening ledger",
+    )
+    require_text(
+        sources["verify"],
+        "cargo test --lib --features linux-pkg-config,flutter r_s11fr_ --color never",
+        "viewer RGBA recovery shared behavior gate",
+    )
+    require_text(
+        sources["dart_verify"],
+        "flutter test --no-pub test/rgba_publication_order_test.dart",
+        "viewer RGBA publication-order Dart behavior gate",
     )
 
 
@@ -18872,10 +19061,13 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "let sessions = SESSIONS.read().unwrap();",
             "let handlers = session.ui_handler.session_handlers.read().unwrap();",
             "handler.client_owner_id.as_ref() != Some(client_owner_id)",
-            "handler.renderer.notify_pending_frame(",
+            "let display_index = usize::try_from(display)",
+            "session.ui_handler.rearm_rgba_for_presentation_recovery(",
+            "handler.event_stream.as_ref()",
+            "handler.renderer.notify_pending_frame(display_index)?;",
             "return session.refresh_video(display);",
         ),
-        "independent UI-owner lock through pending-frame and refresh admission",
+        "independent UI-owner lock through software re-arm, pending-frame, and refresh admission",
     )
     require_order(
         sources["flutter_source"],
@@ -19566,6 +19758,21 @@ def validate_desktop_texture_lifecycle_contract(sources):
         sources["hardening"],
         "**R-S11fp/R-S11e-203 exact desktop pending-texture re-notification",
         "pending-texture re-notification hardening ledger",
+    )
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11fr</span>',
+        "software-RGBA recovery requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>326</td>",
+        "software-RGBA recovery Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11fr/R-S11e-205 exact software-RGBA presentation recovery",
+        "software-RGBA recovery hardening ledger",
     )
 
 
@@ -55848,6 +56055,36 @@ def run_source_mutations(sources):
             "viewer RGBA exhaustion regression",
         ),
         (
+            "viewer_rgba_mailbox_verifier",
+            '"fn rearm<F>"',
+            '"fn rearm_disabled<F>"',
+            "viewer RGBA presentation recovery re-arm contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '"session.ui_handler.rearm_rgba_for_presentation_recovery("',
+            '"session.ui_handler.replay_ready_rgba("',
+            "viewer RGBA exact-owner recovery wiring contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '"admission = _rgbaPublicationOrder.admit("',
+            '"admission = null"',
+            "viewer RGBA Dart publication admission contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '"r_s11fr_rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame"',
+            '"rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame"',
+            "viewer RGBA recovery regression",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '"out-of-order asynchronous completions commit only the latest"',
+            '"out-of-order asynchronous completions commit both"',
+            "viewer RGBA asynchronous ordering regression",
+        ),
+        (
             "desktop_texture_lifecycle_verifier",
             '"return _retireFuture ??= _retire();",\n'
             '        ),\n'
@@ -56017,7 +56254,55 @@ def run_source_mutations(sources):
             "                if handler.client_owner_id.as_ref() != Some(client_owner_id)",
             "if let Some(handler) = handlers.get(session_id) {\n"
             "                if false",
-            "independent UI-owner lock through pending-frame and refresh admission",
+            "independent UI-owner lock through software re-arm, pending-frame, and refresh admission",
+        ),
+        (
+            "flutter_source",
+            "fn rearm<F>",
+            "fn rearm_disabled<F>",
+            "independent software RGBA recovery re-arm",
+        ),
+        (
+            "flutter_source",
+            "session.ui_handler.rearm_rgba_for_presentation_recovery(\n",
+            "// software RGBA recovery re-arm removed\n",
+            "independent software re-arm before native notifier and peer refresh",
+        ),
+        (
+            "model_dart",
+            "admission = _rgbaPublicationOrder.admit(\n",
+            "admission = null; // exact publication admission removed\n",
+            "independent Dart RGBA admission, acknowledgement, and commit ordering",
+        ),
+        (
+            "model_dart",
+            "expectedRgbaPublication: admission",
+            "expectedRgbaPublication: null",
+            "independent Dart RGBA admission, acknowledgement, and commit ordering",
+        ),
+        (
+            "rgba_publication_order_dart",
+            "_session == session && publication <= _publication",
+            "_session == session && publication < _publication",
+            "independent exact Dart RGBA publication order owner",
+        ),
+        (
+            "rgba_publication_order_dart",
+            "admission.revision == _revision",
+            "true",
+            "independent exact Dart RGBA publication order owner",
+        ),
+        (
+            "rgba_publication_order_test",
+            "a newer publication invalidates an older asynchronous completion",
+            "an older completion is allowed",
+            "independent a newer publication invalidates an older asynchronous completion regression",
+        ),
+        (
+            "rgba_publication_order_test",
+            "out-of-order asynchronous completions commit only the latest",
+            "out-of-order asynchronous completions commit both",
+            "independent out-of-order asynchronous completions commit only the latest regression",
         ),
         (
             "flutter_ffi_source",
@@ -56209,10 +56494,40 @@ def run_source_mutations(sources):
             "pending-texture re-notification hardening ledger",
         ),
         (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fr</span>',
+            '<div class="req"><span class="id">R-S11fr-disabled</span>',
+            "viewer RGBA recovery requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>326</td>",
+            "<tr><td>326-disabled</td>",
+            "viewer RGBA recovery Appendix C row",
+        ),
+        (
+            "hardening",
+            "**R-S11fr/R-S11e-205 exact software-RGBA presentation recovery",
+            "**R-S11fr-disabled/R-S11e-205 exact software-RGBA presentation recovery",
+            "viewer RGBA recovery hardening ledger",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11fr_ --color never",
+            "true # software RGBA recovery tests removed",
+            "viewer RGBA recovery shared behavior gate",
+        ),
+        (
+            "dart_verify",
+            "flutter test --no-pub test/rgba_publication_order_test.dart",
+            "true # software RGBA ordering test removed",
+            "viewer RGBA publication-order Dart behavior gate",
+        ),
+        (
             "flutter_source",
-            "handler.renderer.notify_pending_frame(\n",
+            "handler.renderer.notify_pending_frame(display_index)?;",
             "// pending texture was not re-notified\n",
-            "independent UI-owner lock through pending-frame and refresh admission",
+            "independent software re-arm before native notifier and peer refresh",
         ),
         (
             "flutter_source",
@@ -66761,6 +67076,9 @@ def main():
             "presentation_recovery_dart": (
                 repo / "flutter/lib/models/presentation_recovery.dart"
             ).read_text(encoding="utf-8"),
+            "rgba_publication_order_dart": (
+                repo / "flutter/lib/models/rgba_publication_order.dart"
+            ).read_text(encoding="utf-8"),
             "file_model_dart": (
                 repo / "flutter/lib/models/file_model.dart"
             ).read_text(encoding="utf-8"),
@@ -66796,6 +67114,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "presentation_recovery_test": (
                 repo / "flutter/test/presentation_recovery_test.dart"
+            ).read_text(encoding="utf-8"),
+            "rgba_publication_order_test": (
+                repo / "flutter/test/rgba_publication_order_test.dart"
             ).read_text(encoding="utf-8"),
             "peer_model_dart": (repo / "flutter/lib/models/peer_model.dart").read_text(
                 encoding="utf-8"

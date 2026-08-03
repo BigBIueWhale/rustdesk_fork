@@ -7022,7 +7022,7 @@ def validate_macos_descriptor_contract(sources):
     )
     for text, label in (
         (
-            'with <strong>905 package records</strong>, of which <strong>36 are git-sourced records',
+            'with <strong>898 package records</strong>, of which <strong>36 are git-sourced records',
             "current Cargo package/source requirement inventory",
         ),
         (
@@ -7030,7 +7030,7 @@ def validate_macos_descriptor_contract(sources):
             "current rustdesk-org Git requirement inventory",
         ),
         (
-            "862 lexical <code>unsafe {</code> blocks across 249 tracked Rust files, with at least one match in 75 files",
+            "870 lexical <code>unsafe {</code> blocks across 249 tracked Rust files, with at least one match in 76 files",
             "current Rust unsafe requirement inventory",
         ),
         (
@@ -14474,6 +14474,153 @@ def validate_installed_service_classifier_contract(sources):
         sources["hardening"],
         "R-S11bn/R-S11e-80 — installed-service ownership uses exact executable identities",
         "installed-service classifier hardening ledger",
+    )
+
+
+def validate_linux_service_terminal_authority_contract(sources):
+    focused = sources["linux_service_terminal_authority_verifier"]
+    linux = sources["linux_source"]
+    fixed_paths = extract_between(
+        linux,
+        "const SERVICE_XTERM_256COLOR_PATHS: [&str; 6] = [",
+        "];",
+        "independent fixed service terminfo path inventory",
+    )
+    for path in (
+        "/etc/terminfo/x/xterm-256color",
+        "/etc/terminfo/78/xterm-256color",
+        "/lib/terminfo/x/xterm-256color",
+        "/lib/terminfo/78/xterm-256color",
+        "/usr/share/terminfo/x/xterm-256color",
+        "/usr/share/terminfo/78/xterm-256color",
+    ):
+        require_text(fixed_paths, f'"{path}"', f"independent fixed terminal path {path}")
+    if fixed_paths.count('xterm-256color"') != 6:
+        raise VerificationError("independent service terminal path inventory is not closed")
+
+    selector = extract_between(
+        linux,
+        "fn select_service_child_terminal_type(",
+        "\n}\n\n/// Select one service-owned terminal type",
+        "independent closed service terminal selector",
+    )
+    require_order(
+        selector,
+        (
+            "if has_xterm_256color",
+            "TERM_XTERM_256COLOR",
+            "else",
+            "TERM_XTERM",
+        ),
+        "independent closed service terminal choice",
+    )
+    terminal_owner = extract_between(
+        linux,
+        "fn service_child_terminal_type()",
+        "\n}\n\nstruct ServiceChildCredentials",
+        "independent service terminal owner",
+    )
+    require_order(
+        terminal_owner,
+        (
+            "SERVICE_XTERM_256COLOR_PATHS",
+            "fs::metadata(Path::new(path))",
+            "Ok(metadata) => metadata.is_file()",
+            "ErrorKind::NotFound => false",
+            "select_service_child_terminal_type(has_xterm_256color)",
+        ),
+        "independent fixed metadata-only terminal selection",
+    )
+    for text, label in (
+        ("std::env", "independent ambient terminal environment read"),
+        ("/proc", "independent desktop process terminal inspection"),
+        ("Database", "independent terminfo parser use"),
+        ("File::open", "independent terminal capability file open"),
+        ("read_to", "independent terminal capability content read"),
+    ):
+        require_absent(terminal_owner, text, label)
+    require_text(
+        linux,
+        'command.env("TERM", service_child_terminal_type());',
+        "independent service-owned TERM binding",
+    )
+    for text, label in (
+        ("fn get_cur_term(", "retired desktop-user TERM scanner"),
+        ("fn get_all_term_values(", "retired desktop-user environment scanner"),
+        ("fn suggest_best_term(", "retired terminal fallback"),
+        ("fn term_supports_256_colors(", "retired generic terminfo parser"),
+        ("CACHED_TERM", "retired terminal cache"),
+        ("DATABASE_XTERM_256COLOR", "retired parsed terminal database"),
+        ("SHELL_PROCESSES", "retired shell scanner inventory"),
+        ("terminfo::", "retired terminfo crate use"),
+        ("Database::from_name", "retired environment-directed parser call"),
+    ):
+        require_absent(linux, text, label)
+    require_absent(
+        sources["root_cargo"],
+        'terminfo = "0.8"',
+        "retired direct terminfo dependency",
+    )
+    require_absent(
+        sources["cargo_lock"],
+        'name = "terminfo"',
+        "retired terminfo lock package",
+    )
+    for name, version in (
+        ("dirs", "4.0.0"),
+        ("phf", "0.11.3"),
+        ("phf_codegen", "0.11.3"),
+        ("phf_generator", "0.11.3"),
+        ("phf_shared", "0.11.3"),
+        ("siphasher", "1.0.1"),
+    ):
+        require_absent(
+            sources["cargo_lock"],
+            f'name = "{name}"\nversion = "{version}"',
+            f"retired terminfo closure package {name} {version}",
+        )
+    for text, label in (
+        ("def validate(sources", "focused terminal authority semantic entry"),
+        ("MUTATIONS: Tuple[Mutation, ...]", "focused terminal authority mutation inventory"),
+        ("run_mutations(sources)", "focused terminal authority mutation dispatch"),
+        ("desktop-user TERM scanner", "focused desktop-user scanner rejection"),
+        ("root manifest retains the terminfo dependency", "focused dependency rejection"),
+    ):
+        require_text(focused, text, label)
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-linux-service-terminal-authority.py --repo . --self-test",
+        "Linux service terminal shared focused-verifier wiring",
+    )
+    require_text(
+        sources["verify"],
+        "cargo test --offline --locked --lib --features linux-pkg-config r_s11e204_",
+        "Linux service terminal compiled regression wiring",
+    )
+    require_text(
+        sources["service_lifecycle"],
+        'parsed_environment.get(b"TERM") not in {b"xterm", b"xterm-256color"}',
+        "independent root actual-child TERM allowlist",
+    )
+    require_text(
+        sources["service_lifecycle"],
+        'parsed_environment[b"TERM"] not in {b"xterm", b"xterm-256color"}',
+        "independent active-user actual-child TERM allowlist",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11fq</span>',
+        "Linux service terminal authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>325</td>",
+        "Linux service terminal authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11fq/R-S11e-204 Linux service-child terminal authority",
+        "Linux service terminal authority hardening ledger",
     )
 
 
@@ -38914,6 +39061,7 @@ def validate_sources(sources):
     validate_mobile_at_rest_fail_closed_contract(sources)
     validate_macos_launchd_lifecycle_contract(sources)
     validate_installed_service_classifier_contract(sources)
+    validate_linux_service_terminal_authority_contract(sources)
     validate_linux_nondumpable_cm_contract(sources)
     validate_unix_helper_process_role_contract(sources)
     validate_service_ipc_protocol_authority_contract(sources)
@@ -44985,8 +45133,8 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            'with <strong>905 package records</strong>, of which <strong>36 are git-sourced records',
-            'with <strong>906 package records</strong>, of which <strong>37 are git-sourced records',
+            'with <strong>898 package records</strong>, of which <strong>36 are git-sourced records',
+            'with <strong>899 package records</strong>, of which <strong>37 are git-sourced records',
             "current Cargo package/source requirement inventory",
         ),
         (
@@ -44997,7 +45145,7 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            "862 lexical <code>unsafe {</code> blocks across 249 tracked Rust files, with at least one match in 75 files",
+            "870 lexical <code>unsafe {</code> blocks across 249 tracked Rust files, with at least one match in 76 files",
             "802 lexical <code>unsafe {</code> blocks across 243 tracked Rust files, with at least one match in 67 files",
             "current Rust unsafe requirement inventory",
         ),
@@ -53833,6 +53981,74 @@ def run_source_mutations(sources):
             "R-S11bn/R-S11e-80 — installed-service ownership uses exact executable identities",
             "R-S11bn/R-S11e-80 — installed-service ownership uses path prefixes",
             "installed-service classifier hardening ledger",
+        ),
+        (
+            "linux_service_terminal_authority_verifier",
+            "def validate(sources: Dict[str, str]) -> None:",
+            "def disabled_validate(sources: Dict[str, str]) -> None:",
+            "focused terminal authority semantic entry",
+        ),
+        (
+            "linux_source",
+            '"/etc/terminfo/x/xterm-256color",',
+            '"/tmp/terminfo/x/xterm-256color",',
+            "independent fixed terminal path /etc/terminfo/x/xterm-256color",
+        ),
+        (
+            "linux_source",
+            "fn service_child_terminal_type() -> &'static str {",
+            "fn service_child_terminal_type() -> &'static str {\n    let _ = std::env::var(\"TERMINFO\");",
+            "independent ambient terminal environment read",
+        ),
+        (
+            "linux_source",
+            'command.env("TERM", service_child_terminal_type());',
+            'command.env("TERM", TERM_XTERM);',
+            "independent service-owned TERM binding",
+        ),
+        (
+            "root_cargo",
+            'termios = "0.3"\n',
+            'termios = "0.3"\nterminfo = "0.8"\n',
+            "retired direct terminfo dependency",
+        ),
+        (
+            "cargo_lock",
+            "\n[[package]]\nname = \"termios\"\nversion = \"0.2.2\"",
+            "\n[[package]]\nname = \"terminfo\"\nversion = \"0.8.0\"\n"
+            "\n[[package]]\nname = \"termios\"\nversion = \"0.2.2\"",
+            "retired terminfo lock package",
+        ),
+        (
+            "cargo_lock",
+            "\n[[package]]\nname = \"termios\"\nversion = \"0.2.2\"",
+            "\n[[package]]\nname = \"dirs\"\nversion = \"4.0.0\"\n"
+            "\n[[package]]\nname = \"termios\"\nversion = \"0.2.2\"",
+            "retired terminfo closure package dirs 4.0.0",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-linux-service-terminal-authority.py --repo . --self-test",
+            "true # Linux service terminal authority verifier removed",
+            "Linux service terminal shared focused-verifier wiring",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11fq</span>',
+            '<span class="id">R-S11fq-disabled</span>',
+            "Linux service terminal authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>325</td>",
+            "<tr><td>325-disabled</td>",
+            "Linux service terminal authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11fq/R-S11e-204 Linux service-child terminal authority",
+            "R-S11fq-disabled/R-S11e-204 Linux service-child terminal authority",
+            "Linux service terminal authority hardening ledger",
         ),
         (
             "linux_nondumpable_cm_verifier",
@@ -66686,6 +66902,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "installed_service_classifier_verifier": (
                 repo / "scripts/verify-installed-service-classifier.py"
+            ).read_text(encoding="utf-8"),
+            "linux_service_terminal_authority_verifier": (
+                repo / "scripts/verify-linux-service-terminal-authority.py"
             ).read_text(encoding="utf-8"),
             "linux_nondumpable_cm_verifier": (
                 repo / "scripts/verify-linux-nondumpable-cm.py"

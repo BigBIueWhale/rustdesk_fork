@@ -42,8 +42,8 @@ EXPECTED = {
         "git_record_identities_sha256": "5f04a0476697c3433ef5a9f5e087ff29b5dc9f9689c41d524dfd9829a82fd7e1",
         "git_source_identities_sha256": "c4502af3f4c24f3d2c536bb4d39b2e85831450a838fa890140e1238ab3a91e24",
         "git_sourced_records": 36,
-        "package_records": 905,
-        "package_records_sha256": "b3c4338e445366b70619e984aff968aaaaefae812f5bd46006b8215aa2cceb31",
+        "package_records": 898,
+        "package_records_sha256": "577e7c3acbc72e6fc37d41bb766aeeed68e1b9c72d5552f03f5d06ab23355160",
         "rustdesk_org_git_records": 26,
         "unique_git_source_urls": 26,
     },
@@ -155,9 +155,9 @@ EXPECTED = {
         "regular_files": 8,
     },
     "rust_sources": {
-        "files_with_unsafe_blocks": 75,
-        "lexical_counts_by_file_sha256": "7613f2fed6b0e54a7b20f9ebad5fe869329a3275ce5dfcba693e959270442166",
-        "lexical_unsafe_open_brace_blocks": 862,
+        "files_with_unsafe_blocks": 76,
+        "lexical_counts_by_file_sha256": "523d878efc8ce6887930a1ff025bcb9d27c7efb8d3073c4773755ace3d66e65c",
+        "lexical_unsafe_open_brace_blocks": 870,
         "tracked_rs_files": 249,
     },
 }

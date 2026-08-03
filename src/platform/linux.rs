@@ -32,7 +32,6 @@ use std::{
     sync::{mpsc, Arc, OnceLock},
     time::{Duration, Instant},
 };
-use terminfo::{capability as cap, Database};
 use wallpaper;
 
 pub const PA_SAMPLE_RATE: u32 = 48000;
@@ -44,8 +43,6 @@ struct ActiveUserLookupCache {
     username: String,
 }
 
-const INVALID_TERM_VALUES: [&str; 3] = ["", "unknown", "dumb"];
-const SHELL_PROCESSES: [&str; 4] = ["bash", "zsh", "fish", "sh"];
 const SERVICE_CHILD_GRACEFUL_STOP_TIMEOUT: Duration = Duration::from_secs(8);
 const SERVICE_CHILD_FORCED_STOP_TIMEOUT: Duration = Duration::from_secs(8);
 const SERVICE_IPC_STARTUP_TIMEOUT: Duration = Duration::from_secs(10);
@@ -70,20 +67,17 @@ static SERVICE_CHILD_EXECUTABLE_IDENTITY: OnceLock<std::sync::RwLock<Option<(u64
 // Terminal type constants
 const TERM_XTERM_256COLOR: &str = "xterm-256color";
 const TERM_XTERM: &str = "xterm";
+const SERVICE_XTERM_256COLOR_PATHS: [&str; 6] = [
+    "/etc/terminfo/x/xterm-256color",
+    "/etc/terminfo/78/xterm-256color",
+    "/lib/terminfo/x/xterm-256color",
+    "/lib/terminfo/78/xterm-256color",
+    "/usr/share/terminfo/x/xterm-256color",
+    "/usr/share/terminfo/78/xterm-256color",
+];
 
 lazy_static::lazy_static! {
     // R-X12: IS_X11 removed — is_x11() is compile-pinned `true` (no runtime detection cache).
-    // Cache for TERM value - once TERM_XTERM_256COLOR is found, reuse it directly
-    static ref CACHED_TERM: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
-    static ref DATABASE_XTERM_256COLOR: Option<Database> = {
-        match Database::from_name(TERM_XTERM_256COLOR) {
-            Ok(database) => Some(database),
-            Err(err) => {
-                log::error!("Failed to initialize {} database: {}", TERM_XTERM_256COLOR, err);
-                None
-            }
-        }
-    };
     static ref ACTIVE_USER_LOOKUP_CACHE: std::sync::Mutex<Option<ActiveUserLookupCache>> =
         std::sync::Mutex::new(None);
 }
@@ -429,155 +423,32 @@ pub fn get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
     }
 }
 
-/// Suggests a bounded terminal type without consulting the service supervisor's
-/// ambient environment.
-fn suggest_best_term() -> String {
-    if term_supports_256_colors(TERM_XTERM_256COLOR) {
-        return TERM_XTERM_256COLOR.to_string();
-    }
-    TERM_XTERM.to_string()
-}
-
-fn supports_256_colors(db: &Database) -> bool {
-    db.get::<cap::MaxColors>().map_or(false, |n| n.0 >= 256)
-}
-
-fn term_supports_256_colors(term: &str) -> bool {
-    match term {
-        TERM_XTERM_256COLOR => DATABASE_XTERM_256COLOR
-            .as_ref()
-            .map_or(false, |db| supports_256_colors(db)),
-        _ => Database::from_name(term).map_or(false, |db| supports_256_colors(&db)),
+fn select_service_child_terminal_type(has_xterm_256color: bool) -> &'static str {
+    if has_xterm_256color {
+        TERM_XTERM_256COLOR
+    } else {
+        TERM_XTERM
     }
 }
 
-fn get_cur_term(uid: &str) -> Option<String> {
-    // Check cache first - if TERM_XTERM_256COLOR was found before, reuse it
-    if let Ok(cache) = CACHED_TERM.lock() {
-        if let Some(ref cached) = *cache {
-            if cached == TERM_XTERM_256COLOR {
-                return Some(cached.clone());
-            }
-        }
-    }
-
-    if uid.is_empty() {
-        return None;
-    }
-
-    // Collect all TERM values from shell processes, looking for TERM_XTERM_256COLOR
-    let terms = get_all_term_values(uid);
-
-    // Prefer TERM_XTERM_256COLOR
-    if terms.iter().any(|t| t == TERM_XTERM_256COLOR) {
-        if let Ok(mut cache) = CACHED_TERM.lock() {
-            *cache = Some(TERM_XTERM_256COLOR.to_string());
-        }
-        return Some(TERM_XTERM_256COLOR.to_string());
-    }
-
-    // Return first valid TERM if no TERM_XTERM_256COLOR found
-    let fallback = terms.into_iter().next();
-    if let Some(ref term) = fallback {
-        log::debug!(
-            "TERM_XTERM_256COLOR not found, using fallback TERM: {}",
-            term
-        );
-    }
-    fallback
-}
-
-/// Get all TERM values from shell processes (bash, zsh, fish, sh).
-/// Returns a Vec of unique, valid TERM values.
-fn get_all_term_values(uid: &str) -> Vec<String> {
-    let Ok(uid_num) = uid.parse::<u32>() else {
-        return Vec::new();
-    };
-
-    // Build regex pattern to match shell processes using only argv[0] (the executable path)
-    // Pattern: match process name at start or after '/', followed by space or end
-    // e.g., "bash", "/bin/bash", "/usr/bin/zsh"
-    let shell_pattern = SHELL_PROCESSES
+/// Select one service-owned terminal type without reading a desktop user's
+/// process environment or parsing an environment-selected terminfo database.
+fn service_child_terminal_type() -> &'static str {
+    let has_xterm_256color = SERVICE_XTERM_256COLOR_PATHS
         .iter()
-        .map(|p| format!(r"(^|/){p}(\s|$)"))
-        .collect::<Vec<_>>()
-        .join("|");
-    let Ok(re) = Regex::new(&shell_pattern) else {
-        return Vec::new();
-    };
-
-    let Ok(entries) = std::fs::read_dir("/proc") else {
-        return Vec::new();
-    };
-
-    let mut terms = Vec::new();
-
-    for entry in entries.flatten() {
-        let file_name = entry.file_name();
-        let Some(pid_str) = file_name.to_str() else {
-            continue;
-        };
-        if !pid_str.chars().all(|c| c.is_ascii_digit()) {
-            continue;
-        }
-
-        let proc_path = entry.path();
-
-        // Check if process belongs to the specified uid
-        if let Ok(meta) = std::fs::metadata(&proc_path) {
-            if meta.uid() != uid_num {
-                continue;
+        .any(|path| match fs::metadata(Path::new(path)) {
+            Ok(metadata) => metadata.is_file(),
+            Err(err) if err.kind() == std::io::ErrorKind::NotFound => false,
+            Err(err) => {
+                log::warn!(
+                    "Unable to inspect fixed system terminal capability {}: {}",
+                    path,
+                    err
+                );
+                false
             }
-        } else {
-            continue;
-        }
-
-        // Check cmdline matches process pattern
-        // /proc/<pid>/cmdline is a sequence of null-terminated strings; the first
-        // one (argv[0]) is the executable path. Match the regex only against that
-        // to avoid false positives from arguments (e.g., "python /path/to/bash-script.py").
-        let cmdline_path = proc_path.join("cmdline");
-        let Ok(cmdline) = std::fs::read(&cmdline_path) else {
-            continue;
-        };
-        let exe_end = cmdline
-            .iter()
-            .position(|&b| b == 0)
-            .unwrap_or(cmdline.len());
-        let exe_str = String::from_utf8_lossy(&cmdline[..exe_end]);
-        if !re.is_match(&exe_str) {
-            continue;
-        }
-
-        // Read environ and extract TERM
-        let environ_path = proc_path.join("environ");
-        let Ok(environ) = std::fs::read(&environ_path) else {
-            continue;
-        };
-
-        for part in environ.split(|&b| b == 0) {
-            if part.is_empty() {
-                continue;
-            }
-            if let Some(eq) = part.iter().position(|&b| b == b'=') {
-                let key_bytes = &part[..eq];
-                if key_bytes == b"TERM" {
-                    let val_bytes = &part[eq + 1..];
-                    let term = String::from_utf8_lossy(val_bytes).into_owned();
-                    if !INVALID_TERM_VALUES.contains(&term.as_str()) && !terms.contains(&term) {
-                        // Early return if we found the preferred term
-                        if term == TERM_XTERM_256COLOR {
-                            return vec![term];
-                        }
-                        terms.push(term);
-                    }
-                    break;
-                }
-            }
-        }
-    }
-
-    terms
+        });
+    select_service_child_terminal_type(has_xterm_256color)
 }
 
 struct ServiceChildCredentials {
@@ -2270,10 +2141,7 @@ fn try_start_server_(desktop: &Desktop, runtime: &ServiceRuntime) -> ResultType<
     insert_nonempty_env(&mut command, "XAUTHORITY", &desktop.xauth);
     insert_nonempty_env(&mut command, "WAYLAND_DISPLAY", &desktop.wl_display);
     insert_nonempty_env(&mut command, "DBUS_SESSION_BUS_ADDRESS", &desktop.dbus);
-    command.env(
-        "TERM",
-        get_cur_term(&desktop.uid).unwrap_or_else(suggest_best_term),
-    );
+    command.env("TERM", service_child_terminal_type());
 
     let executable_fd = child_executable
         .as_ref()
@@ -4319,6 +4187,27 @@ mod process_cleanup_tests {
             missing_uid,
         ] {
             assert!(selected_service_child_principal(&invalid).is_err());
+        }
+    }
+
+    #[test]
+    fn r_s11e204_linux_service_term_is_service_owned_and_fixed() {
+        assert_eq!(
+            select_service_child_terminal_type(true),
+            TERM_XTERM_256COLOR
+        );
+        assert_eq!(select_service_child_terminal_type(false), TERM_XTERM);
+
+        let permitted_roots = [
+            Path::new("/etc/terminfo"),
+            Path::new("/lib/terminfo"),
+            Path::new("/usr/share/terminfo"),
+        ];
+        assert_eq!(SERVICE_XTERM_256COLOR_PATHS.len(), 6);
+        for path in SERVICE_XTERM_256COLOR_PATHS.map(Path::new) {
+            assert!(path.is_absolute());
+            assert_eq!(path.file_name(), Some(OsStr::new(TERM_XTERM_256COLOR)));
+            assert!(permitted_roots.iter().any(|root| path.starts_with(root)));
         }
     }
 

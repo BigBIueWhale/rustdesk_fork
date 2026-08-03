@@ -11,15 +11,15 @@ history remains the traceability record for that intermediate work.
 
 > **Current `.6` source verdict (2026-07-14): implementation and release-harness state are tracked here. Artifact and reproducibility proof exists only for an exact clean pushed commit whose complete `scripts/build-release.sh` transaction succeeds and emits the matching `dist/SHA256SUMS`; this source ledger makes no publication claim.** Earlier artifact hashes in this file prove only the older commits named beside them and must not be promoted as evidence for the current source tree.
 
-**Current machine inventory expectation.** `Cargo.lock` has 905 package records: 36 git-sourced records from
+**Current machine inventory expectation.** `Cargo.lock` has 898 package records: 36 git-sourced records from
 26 unique git source URLs, including 26 rustdesk-org records from 20 unique rustdesk-org URLs.
 `flutter/pubspec.lock` has 198 package records, including 6 git records and 5 rustdesk-org records;
 `flutter/pubspec.yaml` declares 57 main and 6 dev dependencies, a 63-name union. `.github/workflows/` has
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 862 lexical `unsafe {`
-blocks across 249 tracked Rust files, 75 of which contain at least one; this is explicitly not AST proof.
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 870 lexical `unsafe {`
+blocks across 249 tracked Rust files, 76 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
 place and gated.** The single mandatory CPace PAKE runs at the `create_tcp_connection`
@@ -4664,6 +4664,98 @@ renderer, emulator, VM, physical device, installed app, host service, root/sudo,
 container, host RustDesk process/configuration, or firewall/UFW/nftables/iptables/network state was
 run, inspected, or changed.
 
+**R-S11fq/R-S11e-204 Linux service-child terminal authority — SOURCE IMPLEMENTED 2026-08-03;
+PINNED RUST 1.75 REGRESSION, 13/13 FOCUSED MUTATIONS, LOCK/INVENTORY GATES, INDEPENDENT
+BASELINE, AND FIRST COMPLETE INDEPENDENT CATALOG GREEN; FINAL FROZEN-BYTE CATALOG REPETITION
+PENDING; FINAL EXACT-DEBIAN-ARTIFACT AND
+INSTALLED-SERVICE EXECUTION REMAIN WITH R-B2/R-S11c-27.** Platform: Linux service supervisor and
+its root/login-screen or active-desktop-user service children. Endpoint/action: privileged
+supervisor selection of the single `TERM` value exported after `Command::env_clear`. Boundary:
+ambient privileged-launch environment and active desktop-user process state ↔ root supervisor and
+the root or privilege-dropped child environment. Closure condition: the supervisor performs only
+fixed system-path metadata probes and exports one of two literal service-owned values; it never
+enumerates desktop-user processes, reads their environment, accepts their terminal name, or opens
+and parses an environment-selected terminfo database.
+
+Read-only tracing found that the R-S11e-26 ledger's “bounded desktop-uid observation or fixed
+terminal-capability fallback” description was incorrect. `get_all_term_values` enumerated every
+numeric `/proc` entry owned by the selected desktop uid, read each matching shell-looking process's
+complete `cmdline` and `environ`, accumulated arbitrary distinct nonempty `TERM` strings, and let
+`get_cur_term` export the first candidate when `xterm-256color` was absent. There was no value-size,
+candidate-count, process-count, or total-read budget, and the desktop user owned the processes and
+values being inspected by the privileged supervisor. The nominally fixed fallback was not ambient-
+free either: the lazy `terminfo 0.8.0` `Database::from_name("xterm-256color")` ran in the supervisor
+before child creation. The exact pinned crate source consults `TERMINFO`, otherwise `HOME/.terminfo`,
+then `TERMINFO_DIRS` and `PREFIX` before its system paths, opens the selected file, reads it wholly,
+and parses it. The ncurses terminfo contract independently documents those environment-selected
+search locations. Thus a privileged launcher admitting hostile environment could select root-
+supervisor parser input, while the active desktop user could impose process-enumeration/read/
+allocation work and choose the child terminal name. This is cross-principal ambient authority,
+parser exposure, and unbounded-work debt. No exploitation, promptless ordinary-user-to-root
+primitive, or operational incident is claimed: the ambient parser path still requires a privileged
+launcher to preserve hostile variables, and the desktop-user terminal path generally enters the
+privilege-dropped child for an active-user session.
+
+The corrected design deletes the scanner rather than attempting to sanitize attacker-selected
+terminal names. `get_cur_term`, `get_all_term_values`, `suggest_best_term`, generic capability
+parsing, the shell/invalid-value inventories, and both terminal caches are absent. The direct
+`terminfo` manifest edge and its exact seven-record lock closure are removed: `terminfo` plus the
+now-unreachable `dirs 4.0.0`, `phf 0.11.3`, `phf_codegen 0.11.3`, `phf_generator 0.11.3`,
+`phf_shared 0.11.3`, and `siphasher 1.0.1`. One closed pure selector returns
+only `xterm-256color` or `xterm`. The service-owned probe checks metadata only at the six exact
+FHS paths `/etc/terminfo/{x,78}/xterm-256color`, `/lib/terminfo/{x,78}/xterm-256color`, and
+`/usr/share/terminfo/{x,78}/xterm-256color`; a regular entry selects the first literal and absence
+or probe error selects the second. Non-not-found probe failures are logged. No file contents are
+opened or parsed, no desktop uid enters the decision, no process or ambient environment is read,
+and no cache, task, thread, runtime, IPC, wire field, compatibility parser, listener, or dependency
+is added.
+
+Counted confined proof used immutable devcheck image
+`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric
+UID:GID 1000:1000 with `--pull=never`, no network, a read-only root/source/vendor tree, all
+capabilities dropped, `no-new-privileges`, bounded PIDs/memory/CPU/tmpfs, no ports, devices,
+Docker socket, or host namespace, and disposable private Cargo home/target state. Cargo's offline
+resolver updated a private current-source copy, and a second private resolution proved the applied
+`Cargo.lock` byte-exact: the graph is 898 packages with digest
+`577e7c3acbc72e6fc37d41bb766aeeed68e1b9c72d5552f03f5d06ab23355160`, 36 Git records,
+and 26 unique Git URLs. The dependency inventory passed normally and all 103 inventory mutations
+passed.
+
+The exact pinned Rust 1.75 library graph then compiled from an empty disposable target under
+`--offline --locked --features linux-pkg-config`. The focused
+`platform::linux::process_cleanup_tests::r_s11e204_linux_service_term_is_service_owned_and_fixed`
+regression passed 1/1 with 455 other tests filtered. The complete test graph emitted its existing
+190 Rust library/test warnings, so no warning-free claim is made. The focused semantic verifier
+passed and rejected all 13 deliberate mutations, including hostile fixed-path substitution,
+ambient `TERMINFO` adoption, desktop-uid launch binding, selector weakening, metadata-probe
+bypass, wrong fallback behavior, direct-dependency return, `terminfo` or transitive-closure lock
+return, and gate/spec/ledger removal. Bash/Python syntax checks, the independent semantic baseline,
+and the first complete unsliced independent source-mutation catalog passed with explicit
+`verify-verifier-workspace: ok`. Because this evidence paragraph changes a tracked independent-
+verifier input, one final complete repetition against the exact frozen candidate bytes remains
+mandatory before commit; the first catalog is not claimed to prove this later ledger text.
+
+The devcheck image does not contain the pinned Rust 1.75 `rustfmt` component, and the already-pinned
+Debian builder contains neither Cargo nor rustfmt on its default path. No tool was installed or
+fetched and no formatting-pass claim is made; diff hygiene and the compiler's parse remain separate
+checks. The existing actual-child lifecycle fixture rejects every `TERM` except the same two
+literals for both root and active-user children, but it was not rerun for this source change and
+prior artifact results do not prove current bytes. No root/sudo, RustDesk runtime, peer, listener,
+port, host service/process, host RustDesk configuration, firewall, network state, emulator, VM,
+device, or installed artifact was run, inspected, or changed. Final exact cold Debian artifact
+execution, installed service lifecycle, clean R-B2/R-B10 release evidence, independent
+reproduction, and external review remain open.
+
+The dependency-inventory reconciliation also exposed an unrelated pre-existing clean-HEAD ledger
+drift rather than attributing it to this edit. A disposable networkless Git archive of exact parent
+commit `b6328642554ccf3a572c7bb6193286af45e802ee` independently measured 870 lexical `unsafe {`
+blocks across 249 tracked Rust files/76 nonzero files while the checked-in expectation still said
+862/75. The Rust diff from the last inventory-update commit `fa23739` to that parent contains nine
+lexical additions and one removal across later reviewed slices, exactly accounting for the net
+eight; this R-S11e-204 Rust edit adds no `unsafe` and removes only safe scanner/parser code. The
+current inventory is synchronized to the measured 870/249/76 facts rather than preserving a known
+false baseline. Lexical inventory is not semantic or AST safety proof.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -6614,8 +6706,9 @@ network configuration was inspected or changed.
   inheritance once, derives root `HOME` from the effective uid's passwd record, derives non-root identity/home/runtime
   variables from the validated credential drop, and copies only nonempty X11/Wayland/D-Bus selectors from the desktop
   snapshot. The ambient root-variable loop, Pulse/PipeWire forwarding, `set_x11_env` process-global handoff, and
-  supervisor `TERM`/`TMUX`/`STY` reads are deleted. Terminal choice is a bounded desktop-uid observation or fixed
-  terminal-capability fallback. The actual-binary, network-disabled manual lifecycle fixture launches the root service
+  supervisor `TERM`/`TMUX`/`STY` reads are deleted. The later R-S11fq/R-S11e-204 audit found that the replacement
+  desktop-uid scanner and terminfo fallback were not actually bounded; R-S11e-204 supersedes that terminal subclaim
+  by deleting both and making terminal selection entirely service-owned. The actual-binary, network-disabled manual lifecycle fixture launches the root service
   with hostile HOME/XDG, X11, Wayland, D-Bus, terminal, Pulse, and PipeWire values; it exact-checks the root allowlist,
   passwd home, and the fixture desktop's `DISPLAY=:0` plus passwd-home `.Xauthority`, rejects every hostile value, and
   retains the exact non-root environment/UID/GID/group/capability proof. The current binary passed that lifecycle in
@@ -19327,7 +19420,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-6cddcf8cc7ff8290beb82ab380e08ac08ff65d309d5a1b62d24b3c8dadf0d96d  requirements.html
+b5105c4796857d06f59c946163dd06b97818e601dbe4be469ba268e5b5f4b3a5  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

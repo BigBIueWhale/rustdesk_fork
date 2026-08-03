@@ -3660,15 +3660,17 @@ grep -qF 'R-S11e-25 — Linux service-owned config-root authority' HARDENING_STA
 if [ -n "$r_s11e25" ]; then echo "  FAIL R-S11e-25 Linux service-owned config-root authority:$r_s11e25"; rc=1; else
   echo "  ok  R-S11e-25 Linux service-owned roles bind Config home/path to the effective uid's passwd home before first config access; ambient HOME/XDG_CONFIG_HOME remains user-mode-only authority"; fi
 
-# (3b-iii-d5) R-S11l/R-S11e-26: the root service child uses the selected desktop
-# snapshot as its session environment authority. Ambient supervisor variables never
-# re-enter the child after env_clear, and privilege selection is independent of the
-# desktop snapshot passed to the launcher.
-echo "== (3b-iii-d5) Linux service-child environment authority (R-S11l/R-S11e-26) =="
+# (3b-iii-d5) R-S11l/R-S11fq/R-S11e-26/R-S11e-204: the root service child uses
+# the selected desktop snapshot as its session endpoint authority. Ambient supervisor
+# variables never re-enter the child after env_clear, and TERM is a service-owned
+# closed choice rather than active-user process state or an environment-selected parser.
+echo "== (3b-iii-d5) Linux service-child environment and terminal authority (R-S11l/R-S11fq/R-S11e-26/R-S11e-204) =="
+"${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e204_ --color never
+python3 scripts/verify-linux-service-terminal-authority.py --repo . --self-test
 r_s11e26=
 service_launch=$(awk '/fn try_start_server_\(/,/fn stop_unregistered_service_child/' src/platform/linux.rs)
 service_loop=$(awk '/pub fn start_os_service\(\)/,/^}/' src/platform/linux.rs)
-term_fallback=$(awk '/fn suggest_best_term\(\)/,/^}/' src/platform/linux.rs)
+term_owner=$(awk '/fn service_child_terminal_type\(\)/,/^}/' src/platform/linux.rs)
 grep -qF 'enum ServiceChildPrincipal {' src/platform/linux.rs                         || r_s11e26="$r_s11e26 typed-principal-selection-missing"
 grep -qF 'ServiceChildPrincipal::RootService' <<<"$service_loop"                     || r_s11e26="$r_s11e26 root-principal-call-missing"
 grep -qF 'ServiceChildPrincipal::ActiveDesktopUser' <<<"$service_loop"               || r_s11e26="$r_s11e26 active-user-principal-call-missing"
@@ -3691,8 +3693,15 @@ fi
 if grep -Eq 'PULSE_LATENCY_MSEC|PIPEWIRE_LATENCY' <<<"$service_launch"; then
   r_s11e26="$r_s11e26 ambient-audio-environment-copy-present"
 fi
-if grep -Eq 'std::env::|TMUX|STY|screen-256color' <<<"$term_fallback"; then
-  r_s11e26="$r_s11e26 terminal-fallback-uses-ambient-supervisor-state"
+if grep -Eq 'std::env::|/proc|Database|File::open|read_to' <<<"$term_owner"; then
+  r_s11e26="$r_s11e26 service-terminal-owner-uses-external-parser-input"
+fi
+grep -qF 'command.env("TERM", service_child_terminal_type());' <<<"$service_launch" || r_s11e26="$r_s11e26 service-owned-terminal-binding-missing"
+if grep -Eq 'get_cur_term|get_all_term_values|suggest_best_term|term_supports_256_colors|CACHED_TERM|DATABASE_XTERM_256COLOR|SHELL_PROCESSES|INVALID_TERM_VALUES|terminfo::|Database::from_name' src/platform/linux.rs; then
+  r_s11e26="$r_s11e26 retired-terminal-authority-surface-present"
+fi
+if grep -Eq '^[[:space:]]*terminfo[[:space:]]*=' Cargo.toml || grep -qF 'name = "terminfo"' Cargo.lock; then
+  r_s11e26="$r_s11e26 retired-terminfo-dependency-present"
 fi
 if verify_scan_capture "$VERIFY_TMP/rd_verify_r_s11e26_ambient_mutation" \
   -nE 'fn set_x11_env|std::env::set_var\("(DISPLAY|XAUTHORITY)"' src/platform/linux.rs; then
@@ -3713,11 +3722,14 @@ grep -qF 'root service child adopted a hostile ambient environment value' script
 grep -qF 'SERVICE_LIFECYCLE_ROOT_ENVIRONMENT=pass authority=desktop-snapshot ambient=excluded' scripts/smoke-service-lifecycle.sh || r_s11e26="$r_s11e26 runtime-result-marker-missing"
 grep -qF 'FAIL R-S11e-26: root service child did not reject the hostile ambient launch environment' scripts/smoke-server.sh || r_s11e26="$r_s11e26 mandatory-smoke-consumer-missing"
 grep -qF '<span class="id">R-S11l</span>' requirements.html                        || r_s11e26="$r_s11e26 normative-requirement-missing"
+grep -qF '<span class="id">R-S11fq</span>' requirements.html                       || r_s11e26="$r_s11e26 terminal-authority-requirement-missing"
 grep -qF 'Linux root service child re-imported ambient session/audio environment' requirements.html || r_s11e26="$r_s11e26 appendix-disposition-missing"
 grep -qF '<tr><td>134</td>' requirements.html                                       || r_s11e26="$r_s11e26 appendix-row-missing"
+grep -qF '<tr><td>325</td>' requirements.html                                       || r_s11e26="$r_s11e26 terminal-authority-appendix-row-missing"
 grep -qF 'R-S11e-26 — Linux service-child environment authority' HARDENING_STATUS.md || r_s11e26="$r_s11e26 hardening-ledger-missing"
+grep -qF 'R-S11fq/R-S11e-204 Linux service-child terminal authority' HARDENING_STATUS.md || r_s11e26="$r_s11e26 terminal-authority-ledger-missing"
 if [ -n "$r_s11e26" ]; then echo "  FAIL R-S11e-26 Linux service-child environment authority:$r_s11e26"; rc=1; else
-  echo "  ok  R-S11e-26 root and active-user children receive the selected desktop snapshot under a typed principal choice; hostile ambient session/audio variables cannot re-enter after env_clear"; fi
+  echo "  ok  R-S11e-26/R-S11e-204 root and active-user children receive the selected desktop snapshot under a typed principal choice; hostile ambient session/audio/terminal variables and active-user TERM processes cannot re-enter after env_clear"; fi
 
 # (3b-iii-d6) R-S11m/R-S11e-27: Linux service-owned roles do not inherit pathname
 # authority from a manual/sudo/init launcher working directory. Custom-client sidecars

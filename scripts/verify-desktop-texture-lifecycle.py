@@ -307,6 +307,22 @@ def validate(sources: Dict[str, str]) -> None:
                 page, signature, f"{label} {transition} callback"
             )
             require(callback, action, f"{label} {transition} recovery transition")
+        pointer_region = extract_braced_item(
+            page,
+            "Widget _buildRawPointerMouseRegion(",
+            f"{label} pointer region",
+        )
+        require_order(
+            pointer_region,
+            (
+                "onPointerDown: (event)",
+                "if (_isWindowBlur)",
+                "_isWindowBlur = false;",
+                "_resumePresentationIfNeeded();",
+                "if (!_rawKeyFocusNode.hasFocus)",
+            ),
+            f"{label} pointer-evidenced missing-focus recovery",
+        )
         selection = extract_braced_item(
             page,
             "void _setPresentationSelected(bool selected)",
@@ -2165,6 +2181,11 @@ def validate(sources: Dict[str, str]) -> None:
             '<div class="req"><span class="id">R-S11fr</span>',
             "R-S11fr software-RGBA recovery requirement",
         ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fs</span>',
+            "R-S11fs pointer-evidenced presentation recovery requirement",
+        ),
         ("requirements", "<tr><td>306</td>", "Appendix C #306"),
         ("requirements", "<tr><td>307</td>", "Appendix C #307"),
         ("requirements", "<tr><td>308</td>", "Appendix C #308"),
@@ -2174,6 +2195,7 @@ def validate(sources: Dict[str, str]) -> None:
         ("requirements", "<tr><td>321</td>", "Appendix C #321"),
         ("requirements", "<tr><td>324</td>", "Appendix C #324"),
         ("requirements", "<tr><td>326</td>", "Appendix C #326"),
+        ("requirements", "<tr><td>327</td>", "Appendix C #327"),
         (
             "hardening",
             "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
@@ -2218,6 +2240,11 @@ def validate(sources: Dict[str, str]) -> None:
             "hardening",
             "**R-S11fr/R-S11e-205 exact software-RGBA presentation recovery",
             "software-RGBA recovery hardening ledger",
+        ),
+        (
+            "hardening",
+            "**R-S11fs/R-S11e-206 pointer-evidenced desktop presentation recovery",
+            "pointer-evidenced presentation recovery hardening ledger",
         ),
         (
             "verify",
@@ -2354,6 +2381,18 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "  void onWindowFocus() {\n    super.onWindowFocus();\n    _resumePresentationIfNeeded();",
         "  void onWindowFocus() {\n    super.onWindowFocus();",
         "desktop camera focus recovery",
+    ),
+    (
+        "remote",
+        "          _isWindowBlur = false;\n          _resumePresentationIfNeeded();",
+        "          _isWindowBlur = false;",
+        "desktop remote pointer-evidenced missing-focus recovery",
+    ),
+    (
+        "camera",
+        "          _isWindowBlur = false;\n          _resumePresentationIfNeeded();",
+        "          _isWindowBlur = false;",
+        "desktop camera pointer-evidenced missing-focus recovery",
     ),
     (
         "remote_tab",
@@ -3073,6 +3112,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<div class="req"><span class="id">R-S11fm</span>', '<div class="req"><span class="id">R-S11fm-disabled</span>', "texture activation normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11fp</span>', '<div class="req"><span class="id">R-S11fp-disabled</span>', "pending-texture re-notification normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11fr</span>', '<div class="req"><span class="id">R-S11fr-disabled</span>', "software-RGBA recovery normative requirement"),
+    ("requirements", '<div class="req"><span class="id">R-S11fs</span>', '<div class="req"><span class="id">R-S11fs-disabled</span>', "pointer-evidenced presentation recovery normative requirement"),
     ("requirements", "<tr><td>306</td>", "<tr><td>306-disabled</td>", "Appendix disposition"),
     ("requirements", "<tr><td>307</td>", "<tr><td>307-disabled</td>", "software-only Appendix disposition"),
     ("requirements", "<tr><td>308</td>", "<tr><td>308-disabled</td>", "native retirement Appendix disposition"),
@@ -3081,6 +3121,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", "<tr><td>314</td>", "<tr><td>314-disabled</td>", "viewer refresh admission Appendix disposition"),
     ("requirements", "<tr><td>321</td>", "<tr><td>321-disabled</td>", "texture activation Appendix disposition"),
     ("requirements", "<tr><td>324</td>", "<tr><td>324-disabled</td>", "pending-texture re-notification Appendix disposition"),
+    ("requirements", "<tr><td>327</td>", "<tr><td>327-disabled</td>", "pointer-evidenced presentation recovery Appendix disposition"),
     ("hardening", "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "**R-S11ex-disabled/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "hardening ledger"),
     ("hardening", "**R-S11ey/R-S11e-186 software-RGBA-only desktop presentation", "**R-S11ey-disabled/R-S11e-186 software-RGBA-only desktop presentation", "software-only hardening ledger"),
     ("hardening", "**R-S11ez/R-S11e-187 pending desktop frame retirement finality", "**R-S11ez-disabled/R-S11e-187 pending desktop frame retirement finality", "native retirement hardening ledger"),
@@ -3090,6 +3131,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("hardening", "**R-S11fm/R-S11e-200 desktop texture activation finality", "**R-S11fm-disabled/R-S11e-200 desktop texture activation finality", "texture activation hardening ledger"),
     ("hardening", "**R-S11fp/R-S11e-203 exact desktop pending-texture re-notification", "**R-S11fp-disabled/R-S11e-203 exact desktop pending-texture re-notification", "pending-texture re-notification hardening ledger"),
     ("hardening", "**R-S11fr/R-S11e-205 exact software-RGBA presentation recovery", "**R-S11fr-disabled/R-S11e-205 exact software-RGBA presentation recovery", "software-RGBA recovery hardening ledger"),
+    ("hardening", "**R-S11fs/R-S11e-206 pointer-evidenced desktop presentation recovery", "**R-S11fs-disabled/R-S11e-206 pointer-evidenced desktop presentation recovery", "pointer-evidenced presentation recovery hardening ledger"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never", "true # first-image admission behavior gate disabled", "shared first-image admission behavior gate"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11ff_ --color never", "true # viewer refresh admission behavior gate disabled", "shared viewer refresh admission behavior gate"),
     ("dart_verify", "flutter::mobile_session_lifecycle_tests::r_s11ff_video_refresh_requires_the_current_exact_ui_owner", "flutter::mobile_session_lifecycle_tests::viewer_refresh_disabled", "fresh-bridge viewer refresh behavior gate"),

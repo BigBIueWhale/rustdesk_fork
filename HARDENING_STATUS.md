@@ -4881,6 +4881,93 @@ peer, listener, decoder, renderer, emulator, VM, device, installed app, host ser
 RustDesk configuration, firewall, network state, root/sudo, or privileged container was run,
 inspected, or changed for this source slice.
 
+**R-S11fs/R-S11e-206 pointer-evidenced desktop presentation recovery — SOURCE IMPLEMENTED;
+CONFINED SOURCE/DART GATES GREEN; NATIVE WINDOWS/ARTIFACT/PERFORMANCE EVIDENCE REMAINS OPEN.**
+Platform: Windows outgoing desktop Remote and ViewCamera pages; the shared exact-session refresh
+sink remains cross-platform. Event/action: a pointer-down delivered to the exact remote canvas while
+the page still retains `_isWindowBlur == true`. Boundary: the mounted and selected exact UI/session
+owner which has direct local evidence that its presentation is active ↔ the already suspended,
+coalesced presentation-recovery owner and exact video refresh path.
+
+Read-only source and history review found a composition defect rather than another queue hypothesis.
+Both desktop pages inherited an explicit fallback whose comment records that Flutter can omit the
+necessary focus event on Windows while still delivering a pointer-down. The fallback cleared the
+stale blur flag and restored keyboard focus. Commit `ffc1842c2f1bdee9b3afe6af2a08357ef8e9d3a8`
+later suspended presentation on blur and resumed it from focus, restore, maximize, and exact tab
+selection, but did not compose recovery into the pre-existing missing-focus fallback. The current
+source could therefore resume control/input after a pointer event while leaving presentation
+recovery pending and requesting no fresh exact video. This is source proof of current desktop
+presentation-liveness debt and is consistent with responsive control plus stale display. It is not
+native reproduction, causal proof for the user's unidentified older Windows artifact, or an Android
+controlled-service defect.
+
+Both exact canvas pointer handlers now clear the disproved blur flag and immediately invoke their
+existing `_resumePresentationIfNeeded()` owner before the ordinary keyboard-focus repair. That owner
+still checks exact tab selection, mounted/current session identity, and client-owner identity, then
+coalesces through the existing one-shot recovery path before software-mailbox re-arm, native pending-
+texture re-notification, and exact-round peer refresh. A pointer-down in coherent focus state remains
+an ordinary no-op for presentation recovery. No timer, retry loop, poller, reconnect branch, queue,
+task, thread, runtime, protocol field, listener, service transition, or dependency was added.
+
+The focused desktop lifecycle verifier binds both pointer-down callbacks, their blur check, flag
+repair, recovery call, and subsequent keyboard-focus repair, with independent removal mutations for
+Remote and ViewCamera. The independent workspace validator binds the same two source paths and the
+R-S11fs/Appendix C #327/R-S11e-206 records. In immutable verifier image
+`sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`, Python and shell syntax
+checks passed, the focused desktop lifecycle verifier rejected all 184 deliberate mutations, the
+independent semantic baseline passed, and the native-codec watch baseline and self-test passed.
+
+Immutable Debian builder
+`sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2` then ran a fresh
+candidate-specific Dart transaction wholly inside a non-root, networkless container from read-only
+source and offline-input mounts. It staged the tracked source into private container tmpfs, prepared
+Flutter 3.24.5 tooling and project dependencies offline without changing `pubspec.lock`, and proved
+that neither changed page adds formatter drift relative to exact parent `583a71d`. Analysis of the
+two changed pages completed with zero errors and eight existing nonfatal info diagnostics. All seven
+`presentation_recovery_test.dart` cases passed. This transaction did not compile or execute a native
+Windows renderer, Android lifecycle, RustDesk peer, installed artifact, or end-to-end display path.
+
+Four preliminary attempts are excluded from evidence. The repository-wide `dart-verify.sh` was
+stopped with exit 130 after its host-side provenance copier spent roughly 17 minutes in uninterruptible
+I/O falling back from unsupported `FICLONE` to `os.read`; because its outer Python/shell work ran on
+the host, it did not meet the Docker-only execution boundary and never reached its build container.
+The first candidate Dart attempt correctly stopped because whole-file formatting exposed a
+pre-existing unrelated wrap in `remote_page.dart`; a parent-versus-candidate formatter-delta check
+replaced that invalid gate without modifying the unrelated line. The next attempt reached analysis
+without first preparing Flutter's own tool package offline and stalled in an implicit package step;
+only that disposable test container was stopped, with exit 137. None of these attempts had a writable
+repository mount, network, published port, Docker socket, device, or host namespace, and none is
+represented as a product failure or pass. The first complete independent source-mutation catalog
+correctly rejected the removed Remote recovery edge, but its new fixture expected a shortened
+diagnostic label without the validator's `viewer` qualifier and therefore reported zero effective
+runtime targets. The exact Remote/ViewCamera fixture labels were synchronized without weakening the
+product validator. After that correction, a complete unsliced catalog restarted at mutation one and
+exited zero with `verify-verifier-workspace: ok`. This tracked update records that first
+post-correction green result. Its publication-validity condition is one second complete green run
+from mutation one against these exact bytes, followed by no tracked-file edit before publication.
+
+The evidence gap is material and explicit. At source parent
+`583a71d4468a0ecc22063b16920b1d0b244dfa9b`, the retained named-commit Android artifact in `dist/`
+was the 44,966,946-byte APK for `29915f0075f4d1464361f218e61dd7d7e7072b85`, SHA-256
+`20af1c99178feb02e3a584a4148dbc5ce8129261361f7f37d0c09461d3e6f02e`: 147 commits and 179
+changed product-source files behind that parent. The retained Debian artifact was the package for
+`8b31a7a062a34dc30e9cde9911ac723696c69d71`, SHA-256
+`2ee569ad71f271eb84c77bc5492e7532f132b4fb6322ec52b2b2534757274c27`: 322 commits and 269
+changed product-source files behind. The retained explicitly named Windows A/B artifact evidence at
+`bf0878d8ce6d48b915b0e82fb92e270693c09ceb` predates the parent by 720 commits and 403 changed
+product-source files. Those files are historical build evidence only. None executes this recovery
+edge, and none is represented as the user's operational artifact or current validation.
+
+Exact-current packaged Windows focus-loss, deliberately missed-focus, pointer-down recovery, repeated
+focus/unfocus, and sustained presentation behavior remain mandatory under both native-texture and
+software-RGBA modes, with simultaneous input proof and monotonic capture/encode/write/receive/decode/
+publication/Dart-commit/compositor/presentation timestamps plus explicit latency, queue-depth, CPU,
+and memory budgets. Android task-swipe/reopen/Force-Stop, exact current artifacts, cross-version
+behavior, clean cold R-B2/R-B10, independent reproduction, and external review remain open. No
+RustDesk executable, peer, listener, renderer, emulator, VM, device, installed app, host RustDesk
+service/process/configuration, firewall, UFW, nftables, iptables, root/sudo, privileged container, or
+host network setting was run, inspected, or changed while establishing this source finding.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -19545,7 +19632,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-28ee90a8c2d279c1543179ebbf7d0b67b0dae19277ff682665c3abccfe0f4f34  requirements.html
+42ee7fba66193833416ef2705eb1c6c33fa71079a2e65111b20b6c8991bf72dc  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -19583,3 +19670,4 @@ The same identity additionally binds R-S11fn and Appendix C #322.
 The same identity additionally binds R-S11fo and Appendix C #323.
 The same identity additionally binds R-S11fp and Appendix C #324.
 The same identity additionally binds R-S11fr and Appendix C #326.
+The same identity additionally binds R-S11fs and Appendix C #327.

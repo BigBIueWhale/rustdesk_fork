@@ -18714,6 +18714,18 @@ def validate_desktop_texture_lifecycle_contract(sources):
             '"hardening", "**R-S11fm/R-S11e-200 desktop texture activation finality"',
             "texture activation hardening-ledger mutation",
         ),
+        (
+            '"requirements", \'<div class="req"><span class="id">R-S11fs</span>\'',
+            "pointer-evidenced presentation recovery requirement mutation",
+        ),
+        (
+            '"requirements", "<tr><td>327</td>"',
+            "pointer-evidenced presentation recovery Appendix C mutation",
+        ),
+        (
+            '"hardening", "**R-S11fs/R-S11e-206 pointer-evidenced desktop presentation recovery"',
+            "pointer-evidenced presentation recovery hardening-ledger mutation",
+        ),
     ):
         require_text(focused, text, label)
 
@@ -18848,6 +18860,23 @@ def validate_desktop_texture_lifecycle_contract(sources):
                 "await _ffi.close(closeSession: closeSession);",
             ),
             f"independent {label} recovery/texture/session retirement",
+        )
+        pointer_region = extract_between(
+            page,
+            "  Widget _buildRawPointerMouseRegion(",
+            "\n  Widget getBodyForDesktop",
+            f"independent {label} pointer region",
+        )
+        require_order(
+            pointer_region,
+            (
+                "onPointerDown: (event)",
+                "if (_isWindowBlur)",
+                "_isWindowBlur = false;",
+                "_resumePresentationIfNeeded();",
+                "if (!_rawKeyFocusNode.hasFocus)",
+            ),
+            f"independent {label} pointer-evidenced missing-focus recovery",
         )
     for key, page_type, label in (
         ("desktop_remote_tab_dart", "RemotePage", "desktop remote tabs"),
@@ -19773,6 +19802,21 @@ def validate_desktop_texture_lifecycle_contract(sources):
         sources["hardening"],
         "**R-S11fr/R-S11e-205 exact software-RGBA presentation recovery",
         "software-RGBA recovery hardening ledger",
+    )
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11fs</span>',
+        "pointer-evidenced presentation recovery requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>327</td>",
+        "pointer-evidenced presentation recovery Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11fs/R-S11e-206 pointer-evidenced desktop presentation recovery",
+        "pointer-evidenced presentation recovery hardening ledger",
     )
 
 
@@ -56510,6 +56554,36 @@ def run_source_mutations(sources):
             "**R-S11fr/R-S11e-205 exact software-RGBA presentation recovery",
             "**R-S11fr-disabled/R-S11e-205 exact software-RGBA presentation recovery",
             "viewer RGBA recovery hardening ledger",
+        ),
+        (
+            "desktop_remote_page_dart",
+            "          _isWindowBlur = false;\n          _resumePresentationIfNeeded();",
+            "          _isWindowBlur = false;",
+            "independent desktop remote viewer pointer-evidenced missing-focus recovery",
+        ),
+        (
+            "desktop_camera_page_dart",
+            "          _isWindowBlur = false;\n          _resumePresentationIfNeeded();",
+            "          _isWindowBlur = false;",
+            "independent desktop camera viewer pointer-evidenced missing-focus recovery",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fs</span>',
+            '<div class="req"><span class="id">R-S11fs-disabled</span>',
+            "pointer-evidenced presentation recovery requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>327</td>",
+            "<tr><td>327-disabled</td>",
+            "pointer-evidenced presentation recovery Appendix C row",
+        ),
+        (
+            "hardening",
+            "**R-S11fs/R-S11e-206 pointer-evidenced desktop presentation recovery",
+            "**R-S11fs-disabled/R-S11e-206 pointer-evidenced desktop presentation recovery",
+            "pointer-evidenced presentation recovery hardening ledger",
         ),
         (
             "verify",

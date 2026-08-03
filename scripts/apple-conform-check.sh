@@ -3517,9 +3517,9 @@ fi
 
 echo "== (2g-c3) R-S11ex desktop Flutter texture lifecycle =="
 if python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test; then
-  note "ok  R-S11ex/R-S11fa Apple/shared Flutter texture finality and presentation resumption have exact bounded owners"
+  note "ok  R-S11ex/R-S11fa/R-S11fs Apple/shared Flutter texture finality and presentation resumption, including pointer-evidenced missing-focus recovery, have exact bounded owners"
 else
-  echo "  FAIL R-S11ex/R-S11fa Apple/shared Flutter texture lifecycle or exact presentation-resume recovery regressed"
+  echo "  FAIL R-S11ex/R-S11fa/R-S11fs Apple/shared Flutter texture lifecycle or exact presentation-resume recovery, including pointer-evidenced missing-focus recovery, regressed"
   rc=1
 fi
 

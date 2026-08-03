@@ -9038,9 +9038,9 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::io_loop::tests::r_s11fi_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::io_loop::tests::r_s11fj_ --color never
 if python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test; then
-  echo "  ok  R-S11ex/R-S11fa/R-S11fc/R-S11ff desktop Flutter texture finality, presentation resumption, first-image admission, and viewer refresh have exact bounded owners"
+  echo "  ok  R-S11ex/R-S11fa/R-S11fc/R-S11ff/R-S11fs desktop Flutter texture finality, presentation resumption including pointer-evidenced missing-focus recovery, first-image admission, and viewer refresh have exact bounded owners"
 else
-  echo "  FAIL R-S11ex/R-S11fa/R-S11fc/R-S11ff: Flutter texture lifecycle, exact presentation-resume recovery, first-image admission, or viewer refresh admission regressed"
+  echo "  FAIL R-S11ex/R-S11fa/R-S11fc/R-S11ff/R-S11fs: Flutter texture lifecycle, exact presentation-resume recovery including pointer-evidenced missing-focus recovery, first-image admission, or viewer refresh admission regressed"
   rc=1
 fi
 if python3 scripts/verify-viewer-file-finality.py --repo . --self-test; then

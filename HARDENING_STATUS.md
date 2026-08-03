@@ -4566,6 +4566,104 @@ catalog against the ledger-updated candidate exited zero with `verify-verifier-w
 Because recording that result changes the tracked ledger input, one final complete repetition from
 mutation one remains mandatory; no tracked byte may change after that terminal result.
 
+**R-S11fp/R-S11e-203 exact desktop pending-texture re-notification — SOURCE IMPLEMENTED
+2026-08-03; PINNED FLUTTER 3.24.5/RUST 1.75 FULL CONFINED TRANSACTION GREEN, BOTH
+PRODUCTION-NATIVE TESTS GREEN, 176/176 FOCUSED MUTATIONS, INDEPENDENT BASELINE, AND TWO
+COMPILED NEGATIVE CONTROLS GREEN; FIRST COMPLETE INDEPENDENT CATALOG GREEN; FINAL
+FROZEN-BYTE CATALOG REPETITION PENDING;
+NATIVE-DEVICE/ARTIFACT EVIDENCE PENDING.**
+Platform: outgoing-viewer desktop presentation on Windows, Linux, and macOS. Endpoint/action: the
+current exact UI owner's focus/resume/tab-reselection recovery, Rust-to-native software-texture
+bridge, native pending-pixel owner, and Flutter texture registrar. Boundary: one published in-tree
+native texture pointer selected by the same single-display compatibility or exact multi-display
+rule as decoded-frame publication. Closure condition: recovery of a live published texture either
+re-arms its already-pending frame before fresh-video admission or visibly refuses the recovery; an
+idle or not-yet-published texture remains a valid pre-first-frame state.
+
+Read-only source tracing found a concrete presentation-liveness gap shared by the three desktop
+backends. Windows `buffer_ready_`, Linux `buffer_ready`, and macOS `framePending` intentionally
+coalesced every successor decoded frame while one native frame was pending: the newest bytes
+replaced the old pending bytes, but only the first transition notified Flutter. That is a correct
+constant-space latest-wins mailbox bound during ordinary consumption, but the application treated
+the first notification as a durable receipt. The exact Flutter 3.24.5 engine commit
+`a18df97ca57a249df5d8d68cd0820600223ce262` instead marks the external texture and schedules an
+engine frame for each availability call; it does not acknowledge that RustDesk's newest pending
+pixels reached presentation. The pinned official `video_player` implementation separately
+documents the missed-frame race around on-demand texture availability and self-refreshes from a
+display callback. RustDesk's existing `PresentationRecovery` correctly coalesced blur/minimize and
+requested a fresh peer keyframe on exact selected-owner resume, but it did not re-arm the native
+texture. If the engine had not consumed the old notification, the fresh keyframe merely replaced
+pending bytes and scheduled no new engine frame. Reconnect created a new texture and first
+notification, masking precisely that retained presentation state. This is a source-proven desktop
+defect and a plausible explanation for display-only focus delay with responsive control; it is not
+exact-artifact reproduction, causal proof for the reported Windows symptom, or evidence about the
+separate Android software-RGBA path.
+
+The versioned in-tree native interface now exports
+`FlutterRgbaRendererPluginTryNotifyPending`. Windows synchronizes on the texture mutex and returns
+the exact registrar result; Linux does the same under its GLib mutex; macOS serializes the decision
+with frame copy and retirement on the texture queue. A live texture with no pending pixels succeeds
+without emitting a spurious availability call. Null, invalid, unregistered/retired, missing-
+registrar, and native-refusal states fail. Refusal leaves the pending frame intact so a later exact
+recovery can retry. The Rust renderer loads the new symbol fail-closed and selects the native pointer
+using the exact same old-peer/single-display or current multi-display rule as frame admission.
+`request_video_refresh_for_exact_ui_owner` retains its exact session-handler read guard, invokes the
+pending-frame notifier, propagates failure, and only then admits the existing peer refresh. A
+missing/unpublished texture map entry remains successful because the subsequent fresh frame owns
+the normal first-pending transition. No timer, display link, polling loop, detached task/thread,
+queue, runtime, dependency, wire field, reconnect branch, compatibility fallback, or second state
+replica was added.
+
+The confined validation is deliberately failure-sensitive rather than operational. The production
+Windows texture-core and Linux Flutter-plugin tests require one initial coalesced mark, one explicit
+pending-frame re-notification, no idle mark, exact registrar-refusal propagation with the pending
+pixels still copyable, and post-retirement refusal. The Linux test explicitly models the production
+post-registration positive texture-ID transition. The focused semantic verifier binds exact-owner
+ordering, Rust symbol/result handling, all three native implementations and C ABIs, test assertions,
+shared/Apple wiring, R-S11fp, Appendix C #324, and this ledger with deliberate mutations; the
+independent verifier directly binds the same production edges.
+
+One full fresh `scripts/dart-verify.sh` transaction used immutable Debian builder image
+`sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`, reverified the exact
+offline-input closure as
+`a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`, generated fresh Flutter
+Rust Bridge output, reported zero Flutter `lib/` analysis errors, and passed all 35 invoked Dart
+tests. The production Linux plugin test and portable Windows production texture-core test each
+compiled with `-Wall -Wextra -Werror` and passed. The exact shipped Linux Rust feature library
+graph (`flutter,unix-file-copy-paste`) compiled under pinned Rust 1.75, then the generated-bridge
+transaction passed the 18-test mobile/session group, the separately invoked exact-owner refresh
+test, and every invoked file/video-receipt/shared-pacing/audio regression group. The check emitted
+the repository's existing 65 Rust library warnings and the test graph emitted its existing 36
+warnings; no warning-free claim is made.
+
+An earlier full attempt is uncounted: it correctly rejected the Linux test's directly constructed
+texture because that fixture had not modeled production's post-registration positive `texture_id`.
+The fixture now sets that sentinel explicitly rather than weakening production's invalid/
+unregistered rejection, and both a targeted native rerun and the complete fresh transaction passed.
+The focused verifier rejected all 176 deliberate mutations and the independent semantic baseline
+passed. Two disposable compiled negative controls separately replaced the Windows and Linux pending-
+frame registrar calls with unconditional success; both binaries failed at
+`pending-frame re-notification did not reach the registrar`, proving the new behavior assertions are
+load-bearing. The complete unsliced independent source-mutation catalog remains the final source-
+evidence precondition after this tracked ledger update. Four earlier catalog attempts from mutation
+one are uncounted: each product mutation was rejected, but its catalog fixture expected an older,
+less-specific diagnostic label for the exact UI-owner guard, pending-notifier ordering, versioned
+symbol, or Linux registration sentinel. After aligning those fixture expectations to the existing
+stronger independent diagnostics, one complete uninterrupted catalog from mutation one exited zero
+with `verify-verifier-workspace: ok`. Because this paragraph changes the tracked ledger input, one
+final complete repetition against these exact frozen bytes remains mandatory.
+
+This slice does not close the user's broader end-to-end connection correctness or performance
+mandate. Exact-current Windows focus/minimize and Debian-controlled execution; native macOS
+compilation/execution; Android task-swipe/reopen/Force-Stop investigation under its different
+publication path; capture/decode/native-copy/compositor/presentation timestamps and explicit
+latency, queue, CPU, and memory budgets; cross-version behavior; exact operational artifact
+identity; clean committed cold R-B2/R-B10 artifacts; separately required independent reproduction;
+and external review remain release blockers. No RustDesk executable, peer, listener, decoder,
+renderer, emulator, VM, physical device, installed app, host service, root/sudo, privileged
+container, host RustDesk process/configuration, or firewall/UFW/nftables/iptables/network state was
+run, inspected, or changed.
+
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
@@ -19229,7 +19327,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-625223541a7af0ee5892b7ecc1bec0e5e277d4ddef2f7aa35a16130b5bd9314a  requirements.html
+6cddcf8cc7ff8290beb82ab380e08ac08ff65d309d5a1b62d24b3c8dadf0d96d  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -19265,3 +19363,4 @@ The same identity additionally binds R-S11fk and Appendix C #319.
 The same identity additionally binds R-S11fl and Appendix C #320.
 The same identity additionally binds R-S11fn and Appendix C #322.
 The same identity additionally binds R-S11fo and Appendix C #323.
+The same identity additionally binds R-S11fp and Appendix C #324.

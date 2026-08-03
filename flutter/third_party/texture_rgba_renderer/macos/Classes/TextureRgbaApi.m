@@ -20,6 +20,14 @@ int FlutterRgbaRendererPluginTryOnRgba(void* texture_rgba_ptr, const uint8_t* bu
                                           stride_align:stride_align] ? 1 : 0;
 }
 
+int FlutterRgbaRendererPluginTryNotifyPending(void* texture_rgba_ptr) {
+  if (texture_rgba_ptr == NULL) {
+    return 0;
+  }
+  TextRgba* texture_rgba = (__bridge TextRgba*)texture_rgba_ptr;
+  return [texture_rgba notifyPendingFrame] ? 1 : 0;
+}
+
 void FlutterRgbaRendererPluginOnRgba(void* texture_rgba_ptr, const uint8_t* buffer, int len,
                                      int width, int height, int stride_align) {
   (void)FlutterRgbaRendererPluginTryOnRgba(texture_rgba_ptr, buffer, len, width, height,

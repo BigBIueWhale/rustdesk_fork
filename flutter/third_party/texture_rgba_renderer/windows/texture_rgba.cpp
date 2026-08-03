@@ -96,6 +96,15 @@ bool TextureRgba::MarkVideoFrameAvailable(const uint8_t* buffer,
   return false;
 }
 
+bool TextureRgba::NotifyPendingFrame() {
+  const std::lock_guard<std::mutex> lock(mutex_);
+  if (retired_ || texture_id_ <= 0 || texture_registrar_ == nullptr) {
+    return false;
+  }
+  return !buffer_ready_ ||
+         texture_registrar_->MarkTextureFrameAvailable(texture_id_);
+}
+
 void TextureRgba::Retire() {
   const std::lock_guard<std::mutex> lock(mutex_);
   retired_ = true;

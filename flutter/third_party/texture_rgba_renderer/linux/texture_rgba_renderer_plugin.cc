@@ -135,6 +135,23 @@ static gboolean texture_rgba_mark_frame(TextureRgba* self,
   return marked;
 }
 
+static gboolean texture_rgba_notify_pending(TextureRgba* self) {
+  if (self == nullptr) {
+    return FALSE;
+  }
+  g_mutex_lock(&self->mutex);
+  if (self->retired || self->texture_registrar == nullptr ||
+      self->texture_id <= 0) {
+    g_mutex_unlock(&self->mutex);
+    return FALSE;
+  }
+  const gboolean marked =
+      !self->buffer_ready || fl_texture_registrar_mark_texture_frame_available(
+                                 self->texture_registrar, FL_TEXTURE(self));
+  g_mutex_unlock(&self->mutex);
+  return marked;
+}
+
 static void texture_rgba_retire(TextureRgba* self) {
   g_mutex_lock(&self->mutex);
   self->retired = TRUE;
@@ -424,6 +441,13 @@ int FlutterRgbaRendererPluginTryOnRgba(void* texture_rgba,
                                        int stride_align) {
   return texture_rgba_mark_frame(reinterpret_cast<TextureRgba*>(texture_rgba),
                                  buffer, len, width, height, stride_align)
+             ? 1
+             : 0;
+}
+
+int FlutterRgbaRendererPluginTryNotifyPending(void* texture_rgba) {
+  return texture_rgba_notify_pending(
+             reinterpret_cast<TextureRgba*>(texture_rgba))
              ? 1
              : 0;
 }

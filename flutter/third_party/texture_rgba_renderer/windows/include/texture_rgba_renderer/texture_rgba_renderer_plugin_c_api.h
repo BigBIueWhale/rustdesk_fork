@@ -25,6 +25,9 @@ FLUTTER_PLUGIN_EXPORT int FlutterRgbaRendererPluginTryOnRgba(
     void* texture_rgba, const uint8_t* buffer, int len, int width, int height,
     int stride_align);
 
+FLUTTER_PLUGIN_EXPORT int FlutterRgbaRendererPluginTryNotifyPending(
+    void* texture_rgba);
+
 #if defined(__cplusplus)
 }  // extern "C"
 #endif

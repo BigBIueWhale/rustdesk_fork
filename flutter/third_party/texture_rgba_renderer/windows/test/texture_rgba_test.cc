@@ -48,6 +48,9 @@ int main() {
       21, 22, 23, 24, 25, 26, 27, 28, 92, 92, 92, 92, 92, 92, 92, 92,
       29, 30, 31, 32, 33, 34, 35, 36, 93, 93, 93, 93, 93, 93, 93, 93,
   };
+  const uint8_t packed_a[] = {
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
+  };
   const uint8_t packed_b[] = {
       21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
   };
@@ -63,6 +66,10 @@ int main() {
             "latest pending frame was rejected");
   passed &= check(registrar.mark_count == 1,
                   "pending-frame notifications were not coalesced");
+  passed &= check(texture.NotifyPendingFrame(),
+                  "pending frame could not be re-notified");
+  passed &= check(registrar.mark_count == 2,
+                  "pending-frame re-notification did not reach the registrar");
 
   const FlutterDesktopPixelBuffer* copied = registrar.CopyBuffer();
   passed &= check(copied != nullptr, "latest pending frame was not copied");
@@ -73,6 +80,10 @@ int main() {
       check(copied != nullptr && copied->buffer != nullptr &&
                 std::memcmp(copied->buffer, packed_b, sizeof(packed_b)) == 0,
             "stride-packed latest frame bytes were incorrect");
+  passed &= check(texture.NotifyPendingFrame(),
+                  "idle live texture rejected re-notification");
+  passed &= check(registrar.mark_count == 2,
+                  "idle texture emitted a spurious frame notification");
 
   registrar.mark_result = false;
   passed &= check(
@@ -84,21 +95,34 @@ int main() {
                 copied->buffer != nullptr &&
                 std::memcmp(copied->buffer, packed_b, sizeof(packed_b)) == 0,
             "notification failure corrupted the presented frame");
-  const uint8_t* presented = copied == nullptr ? nullptr : copied->buffer;
-
   registrar.mark_result = true;
   passed &=
       check(texture.MarkVideoFrameAvailable(frame_a, sizeof(frame_a), 2, 2, 16),
             "pre-retirement pending frame was rejected");
+  registrar.mark_result = false;
+  passed &= check(!texture.NotifyPendingFrame(),
+                  "failed pending-frame re-notification was accepted");
+  copied = registrar.CopyBuffer();
+  passed &= check(copied != nullptr && copied->buffer != nullptr &&
+                      std::memcmp(copied->buffer, packed_a, sizeof(packed_a)) ==
+                          0,
+                  "failed re-notification consumed the pending frame");
+  const uint8_t* presented = copied == nullptr ? nullptr : copied->buffer;
+  registrar.mark_result = true;
+  passed &=
+      check(texture.MarkVideoFrameAvailable(frame_b, sizeof(frame_b), 2, 2, 16),
+            "retirement-bound pending frame was rejected");
   texture.Retire();
   passed &= check(registrar.CopyBuffer() == nullptr,
                   "a pending frame crossed the retirement boundary");
   passed &= check(presented != nullptr &&
-                      std::memcmp(presented, packed_b, sizeof(packed_b)) == 0,
+                      std::memcmp(presented, packed_a, sizeof(packed_a)) == 0,
                   "retirement released the presented frame too early");
   passed &= check(
       !texture.MarkVideoFrameAvailable(frame_b, sizeof(frame_b), 2, 2, 16),
       "a retired texture accepted a new frame");
+  passed &= check(!texture.NotifyPendingFrame(),
+                  "a retired texture accepted re-notification");
 
   if (!passed) {
     return 1;

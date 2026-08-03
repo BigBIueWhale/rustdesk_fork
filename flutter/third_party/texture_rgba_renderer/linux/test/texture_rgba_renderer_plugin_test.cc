@@ -81,6 +81,8 @@ int main() {
   auto* registrar = reinterpret_cast<TestTextureRegistrar*>(
       g_object_new(test_texture_registrar_get_type(), nullptr));
   TextureRgba* texture = texture_rgba_new(FL_TEXTURE_REGISTRAR(registrar));
+  // Production assigns this sentinel immediately after registrar registration.
+  texture->texture_id = 17;
 
   const uint8_t frame_a[] = {
       1, 2,  3,  4,  5,  6,  7,  8,  90, 90, 90, 90, 90, 90, 90, 90,
@@ -89,6 +91,9 @@ int main() {
   const uint8_t frame_b[] = {
       21, 22, 23, 24, 25, 26, 27, 28, 92, 92, 92, 92, 92, 92, 92, 92,
       29, 30, 31, 32, 33, 34, 35, 36, 93, 93, 93, 93, 93, 93, 93, 93,
+  };
+  const uint8_t packed_a[] = {
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16,
   };
   const uint8_t packed_b[] = {
       21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36,
@@ -104,6 +109,10 @@ int main() {
       "latest pending frame was rejected");
   passed &= check(registrar->mark_count == 1,
                   "pending-frame notifications were not coalesced");
+  passed &= check(FlutterRgbaRendererPluginTryNotifyPending(texture) == 1,
+                  "C-ABI pending frame could not be re-notified");
+  passed &= check(registrar->mark_count == 2,
+                  "pending-frame re-notification did not reach the registrar");
 
   const uint8_t* copied = nullptr;
   uint32_t width = 0;
@@ -117,6 +126,10 @@ int main() {
   passed &= check(
       copied != nullptr && std::memcmp(copied, packed_b, sizeof(packed_b)) == 0,
       "stride-packed latest frame bytes were incorrect");
+  passed &= check(FlutterRgbaRendererPluginTryNotifyPending(texture) == 1,
+                  "idle live texture rejected re-notification");
+  passed &= check(registrar->mark_count == 2,
+                  "idle texture emitted a spurious frame notification");
 
   registrar->mark_result = FALSE;
   passed &= check(
@@ -132,19 +145,34 @@ int main() {
   passed &= check(width == 2 && height == 2 && copied != nullptr &&
                       std::memcmp(copied, packed_b, sizeof(packed_b)) == 0,
                   "notification failure corrupted the presented frame");
-  const uint8_t* presented = copied;
-
   registrar->mark_result = TRUE;
   passed &= check(
       texture_rgba_mark_frame(texture, frame_a, sizeof(frame_a), 2, 2, 16),
       "pre-retirement pending frame was rejected");
+  registrar->mark_result = FALSE;
+  passed &= check(FlutterRgbaRendererPluginTryNotifyPending(texture) == 0,
+                  "failed pending-frame re-notification was accepted");
+  copied = nullptr;
+  width = 0;
+  height = 0;
+  passed &= check(copy_pixels(texture, &copied, &width, &height, &error),
+                  "failed re-notification consumed the pending frame");
+  passed &= check(error == nullptr, "re-notification retry copy reported an error");
+  passed &= check(width == 2 && height == 2 && copied != nullptr &&
+                      std::memcmp(copied, packed_a, sizeof(packed_a)) == 0,
+                  "re-notification retry copied the wrong pending frame");
+  const uint8_t* presented = copied;
+  registrar->mark_result = TRUE;
+  passed &= check(
+      texture_rgba_mark_frame(texture, frame_b, sizeof(frame_b), 2, 2, 16),
+      "retirement-bound pending frame was rejected");
   texture_rgba_retire(texture);
   passed &= check(texture->buffer == nullptr && !texture->buffer_ready &&
                       texture->buffer_width == 0 && texture->buffer_height == 0,
                   "retirement retained pending frame state");
   passed &= check(
       texture->prior_buffer == presented &&
-          std::memcmp(texture->prior_buffer, packed_b, sizeof(packed_b)) == 0,
+          std::memcmp(texture->prior_buffer, packed_a, sizeof(packed_a)) == 0,
       "retirement released the presented frame too early");
   copied = nullptr;
   width = 0;
@@ -158,6 +186,8 @@ int main() {
   passed &= check(
       !texture_rgba_mark_frame(texture, frame_b, sizeof(frame_b), 2, 2, 16),
       "a retired texture accepted a new frame");
+  passed &= check(FlutterRgbaRendererPluginTryNotifyPending(texture) == 0,
+                  "a retired texture accepted re-notification");
 
   g_object_unref(texture);
   g_object_unref(registrar);

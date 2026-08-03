@@ -37,6 +37,19 @@ int FlutterRgbaRendererPluginTryOnRgba(void* texture_rgba,
   }
 }
 
+int FlutterRgbaRendererPluginTryNotifyPending(void* texture_rgba) {
+  if (texture_rgba == nullptr) {
+    return 0;
+  }
+  try {
+    return static_cast<TextureRgba*>(texture_rgba)->NotifyPendingFrame() ? 1
+                                                                         : 0;
+  } catch (...) {
+    // Exceptions must never cross the C ABI used by Rust.
+    return 0;
+  }
+}
+
 void FlutterRgbaRendererPluginOnRgba(void* texture_rgba, const uint8_t* buffer,
                                      int len, int width, int height,
                                      int stride_align) {

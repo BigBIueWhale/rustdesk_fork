@@ -518,15 +518,23 @@ def validate(sources: Dict[str, str]) -> None:
         refresh_dispatch,
         (
             "ViewerVideoRefreshRequest::All =>",
-            "thread.media_thread.begin_refresh();",
+            "if !thread.media_thread.begin_refresh()",
+            'self.handler.on_error("Video decoder stopped unexpectedly");',
+            "return false;",
             "LoginConfigHandler::refresh()",
             "ViewerVideoRefreshRequest::Display(display) =>",
-            "thread.media_thread.begin_refresh();",
+            "if !thread.media_thread.begin_refresh()",
+            'self.handler.on_error("Video decoder stopped unexpectedly");',
+            "return false;",
             "LoginConfigHandler::refresh_display(display)",
             "peer.send(&message).await",
         ),
         "invalidate-before-peer-request refresh dispatch",
     )
+    if refresh_dispatch.count("if !thread.media_thread.begin_refresh()") != 2:
+        raise VerificationError(
+            "viewer refresh dispatch must preserve both endpoint-liveness checks"
+        )
     require(
         sources["io_loop"],
         "if is_video_refresh_message(&msg)",
@@ -656,9 +664,10 @@ def validate(sources: Dict[str, str]) -> None:
             "let sessions = SESSIONS.read().unwrap();",
             "let handlers = session.ui_handler.session_handlers.read().unwrap();",
             "handler.client_owner_id.as_ref() != Some(client_owner_id)",
+            "handler.renderer.notify_pending_frame(",
             "return session.refresh_video(display);",
         ),
-        "UI-owner lock held through synchronous refresh admission",
+        "UI-owner lock held through pending-frame re-notification and refresh admission",
     )
     ffi_refresh = extract_braced_item(
         sources["ffi"], "pub fn session_refresh(", "result-bearing refresh FFI"
@@ -1085,6 +1094,39 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "versioned native admission symbol loads fail closed",
     )
+    require_order(
+        renderer_loader,
+        (
+            "lib.symbol::<FlutterRgbaRendererPluginTryNotifyPending>(",
+            '"FlutterRgbaRendererPluginTryNotifyPending",',
+            "Ok(sym) => Some(sym)",
+            "Err(e) =>",
+            "None",
+        ),
+        "versioned native pending-frame notifier loads fail closed",
+    )
+    pending_notification = extract_braced_item(
+        flutter,
+        "fn notify_pending_frame(&self, display: usize)",
+        "desktop pending-frame re-notification",
+    )
+    require_order(
+        pending_notification,
+        (
+            "let sessions = self.map_display_sessions.read().unwrap();",
+            "if !self.is_support_multi_ui_session",
+            "sessions.values().next()",
+            "sessions.get(&display)",
+            "return Ok(());",
+            "if info.texture_rgba_ptr == usize::default()",
+            "let Some(func) = &self.notify_pending_func else",
+            'bail!("desktop texture pending-frame notifier is unavailable")',
+            "if unsafe { func(info.texture_rgba_ptr as _) } == 0",
+            'bail!("desktop texture pending-frame notification failed")',
+            "Ok(())",
+        ),
+        "exact display/native-owner pending-frame re-notification",
+    )
     renderer_admission = extract_braced_item(
         flutter,
         "pub fn on_rgba<F>",
@@ -1351,6 +1393,11 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         windows_c_api_h,
+        "FLUTTER_PLUGIN_EXPORT int FlutterRgbaRendererPluginTryNotifyPending(",
+        "Windows versioned pending-frame notifier declaration",
+    )
+    require(
+        windows_c_api_h,
         "FLUTTER_PLUGIN_EXPORT void FlutterRgbaRendererPluginOnRgba(",
         "Windows legacy frame export compatibility declaration",
     )
@@ -1396,6 +1443,21 @@ def validate(sources: Dict[str, str]) -> None:
             "buffers_[background_index].clear();",
         ),
         "Windows latest-wins coalescing, retirement, and failed-mark rollback",
+    )
+    require_order(
+        extract_braced_item(
+            windows_texture,
+            "bool TextureRgba::NotifyPendingFrame()",
+            "Windows pending-frame re-notification",
+        ),
+        (
+            "const std::lock_guard<std::mutex> lock(mutex_);",
+            "if (retired_ || texture_id_ <= 0 || texture_registrar_ == nullptr)",
+            "return false;",
+            "return !buffer_ready_ ||",
+            "texture_registrar_->MarkTextureFrameAvailable(texture_id_);",
+        ),
+        "Windows pending-only re-notification and native failure propagation",
     )
     require_order(
         extract_braced_item(
@@ -1462,6 +1524,26 @@ def validate(sources: Dict[str, str]) -> None:
         (
             '"a retired texture accepted a new frame"',
             "portable Windows post-retirement admission regression",
+        ),
+        (
+            '"pending-frame re-notification did not reach the registrar"',
+            "portable Windows pending-frame re-notification regression",
+        ),
+        (
+            '"idle texture emitted a spurious frame notification"',
+            "portable Windows idle re-notification regression",
+        ),
+        (
+            '"failed pending-frame re-notification was accepted"',
+            "portable Windows re-notification failure regression",
+        ),
+        (
+            '"failed re-notification consumed the pending frame"',
+            "portable Windows pending-frame preservation regression",
+        ),
+        (
+            '"a retired texture accepted re-notification"',
+            "portable Windows retired re-notification regression",
         ),
     ):
         require(windows_test, needle, label)
@@ -1548,6 +1630,24 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         extract_braced_item(
             windows_c_api,
+            "int FlutterRgbaRendererPluginTryNotifyPending(",
+            "Windows Rust C-ABI pending-frame notifier",
+        ),
+        (
+            "if (texture_rgba == nullptr)",
+            "return 0;",
+            "try {",
+            "->NotifyPendingFrame()",
+            "? 1",
+            ": 0;",
+            "} catch (...) {",
+            "return 0;",
+        ),
+        "Windows C-ABI pending-frame result and exception containment",
+    )
+    require_order(
+        extract_braced_item(
+            windows_c_api,
             "void FlutterRgbaRendererPluginOnRgba(",
             "Windows legacy C-ABI frame entry",
         ),
@@ -1564,6 +1664,11 @@ def validate(sources: Dict[str, str]) -> None:
         linux_h,
         "FLUTTER_PLUGIN_EXPORT int FlutterRgbaRendererPluginTryOnRgba(",
         "Linux versioned frame-admission export declaration",
+    )
+    require(
+        linux_h,
+        "FLUTTER_PLUGIN_EXPORT int FlutterRgbaRendererPluginTryNotifyPending(",
+        "Linux versioned pending-frame notifier declaration",
     )
     require(
         linux_h,
@@ -1655,6 +1760,25 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         extract_braced_item(
             linux,
+            "static gboolean texture_rgba_notify_pending(",
+            "Linux pending-frame re-notification",
+        ),
+        (
+            "if (self == nullptr)",
+            "g_mutex_lock(&self->mutex);",
+            "if (self->retired || self->texture_registrar == nullptr ||",
+            "self->texture_id <= 0)",
+            "g_mutex_unlock(&self->mutex);",
+            "return FALSE;",
+            "!self->buffer_ready || fl_texture_registrar_mark_texture_frame_available(",
+            "g_mutex_unlock(&self->mutex);",
+            "return marked;",
+        ),
+        "Linux pending-only re-notification and native failure propagation",
+    )
+    require_order(
+        extract_braced_item(
+            linux,
             "static void texture_rgba_retire(",
             "Linux texture retirement",
         ),
@@ -1704,6 +1828,10 @@ def validate(sources: Dict[str, str]) -> None:
             "native test uses the production Linux callback implementation",
         ),
         (
+            "texture->texture_id = 17;",
+            "native test models the production registration sentinel",
+        ),
+        (
             '"a pending frame crossed the retirement boundary"',
             "native pending-frame retirement regression",
         ),
@@ -1730,6 +1858,26 @@ def validate(sources: Dict[str, str]) -> None:
         (
             '"a retired texture accepted a new frame"',
             "native post-retirement admission regression",
+        ),
+        (
+            '"pending-frame re-notification did not reach the registrar"',
+            "native pending-frame re-notification regression",
+        ),
+        (
+            '"idle texture emitted a spurious frame notification"',
+            "native idle re-notification regression",
+        ),
+        (
+            '"failed pending-frame re-notification was accepted"',
+            "native re-notification failure regression",
+        ),
+        (
+            '"failed re-notification consumed the pending frame"',
+            "native pending-frame preservation regression",
+        ),
+        (
+            '"a retired texture accepted re-notification"',
+            "native retired re-notification regression",
         ),
     ):
         require(linux_test, needle, label)
@@ -1766,6 +1914,20 @@ def validate(sources: Dict[str, str]) -> None:
             ": 0;",
         ),
         "Linux C frame-admission result and stride contract",
+    )
+    require_order(
+        extract_braced_item(
+            linux,
+            "int FlutterRgbaRendererPluginTryNotifyPending(",
+            "Linux Rust C-ABI pending-frame notifier",
+        ),
+        (
+            "return texture_rgba_notify_pending(",
+            "reinterpret_cast<TextureRgba*>(texture_rgba)",
+            "? 1",
+            ": 0;",
+        ),
+        "Linux C pending-frame result contract",
     )
     require_order(
         extract_braced_item(
@@ -1833,6 +1995,22 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require_order(
         extract_braced_item(
+            macos_texture,
+            "public func notifyPendingFrame() -> Bool",
+            "macOS pending-frame re-notification",
+        ),
+        (
+            "queue.sync",
+            "guard textureId > 0, let registry",
+            "return false",
+            "if framePending",
+            "registry.textureFrameAvailable(textureId)",
+            "return true",
+        ),
+        "macOS serialized pending-only re-notification",
+    )
+    require_order(
+        extract_braced_item(
             macos_plugin,
             "private func integer(",
             "macOS method integer decoding",
@@ -1878,6 +2056,19 @@ def validate(sources: Dict[str, str]) -> None:
             "? 1 : 0;",
         ),
         "macOS C-ABI validation and native frame-admission result",
+    )
+    require_order(
+        extract_braced_item(
+            macos_c_api,
+            "int FlutterRgbaRendererPluginTryNotifyPending(",
+            "macOS Rust C-ABI pending-frame notifier",
+        ),
+        (
+            "if (texture_rgba_ptr == NULL)",
+            "return 0;",
+            "return [texture_rgba notifyPendingFrame] ? 1 : 0;",
+        ),
+        "macOS C-ABI pending-frame result contract",
     )
     require_order(
         extract_braced_item(
@@ -1961,6 +2152,11 @@ def validate(sources: Dict[str, str]) -> None:
             '<div class="req"><span class="id">R-S11fm</span>',
             "R-S11fm texture activation finality requirement",
         ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fp</span>',
+            "R-S11fp pending-texture re-notification requirement",
+        ),
         ("requirements", "<tr><td>306</td>", "Appendix C #306"),
         ("requirements", "<tr><td>307</td>", "Appendix C #307"),
         ("requirements", "<tr><td>308</td>", "Appendix C #308"),
@@ -1968,6 +2164,7 @@ def validate(sources: Dict[str, str]) -> None:
         ("requirements", "<tr><td>311</td>", "Appendix C #311"),
         ("requirements", "<tr><td>314</td>", "Appendix C #314"),
         ("requirements", "<tr><td>321</td>", "Appendix C #321"),
+        ("requirements", "<tr><td>324</td>", "Appendix C #324"),
         (
             "hardening",
             "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
@@ -2002,6 +2199,11 @@ def validate(sources: Dict[str, str]) -> None:
             "hardening",
             "**R-S11fm/R-S11e-200 desktop texture activation finality",
             "texture activation finality hardening ledger",
+        ),
+        (
+            "hardening",
+            "**R-S11fp/R-S11e-203 exact desktop pending-texture re-notification",
+            "pending-texture re-notification hardening ledger",
         ),
         (
             "verify",
@@ -2443,6 +2645,30 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "flutter",
+        '"FlutterRgbaRendererPluginTryNotifyPending",',
+        '"FlutterRgbaRendererPluginNotifyPending",',
+        "versioned native pending-frame notifier symbol",
+    ),
+    (
+        "flutter",
+        "handler.renderer.notify_pending_frame(\n",
+        "// pending texture was not re-notified\n",
+        "exact-owner pending-frame re-notification ordering",
+    ),
+    (
+        "io_loop",
+        "if !thread.media_thread.begin_refresh()",
+        "if false",
+        "viewer refresh endpoint-liveness checks",
+    ),
+    (
+        "flutter",
+        "if unsafe { func(info.texture_rgba_ptr as _) } == 0",
+        "if false",
+        "native pending-frame failure propagation",
+    ),
+    (
+        "flutter",
         "r_s11fc_texture_notification_commits_only_after_native_and_ui_admission",
         "texture_notification_behavior_test_disabled",
         "native and UI notification retry behavior proof",
@@ -2540,6 +2766,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "plugin_windows_texture",
+        "texture_registrar_->MarkTextureFrameAvailable(texture_id_);\n}",
+        "true;\n}",
+        "Windows pending-frame registrar re-notification",
+    ),
+    (
+        "plugin_windows_texture",
         "  if (buffer_ready_) {\n"
         "    const int background_index = foreground_index_ ^ 1;\n",
         "  if (false) {\n"
@@ -2581,6 +2813,18 @@ MUTATIONS: Tuple[Mutation, ...] = (
         '"retirement released the presented frame too early"',
         '"presented frame lifetime was not checked"',
         "portable Windows presented-storage regression",
+    ),
+    (
+        "plugin_windows_test",
+        '"pending-frame re-notification did not reach the registrar"',
+        '"pending-frame re-notification was not checked"',
+        "portable Windows pending-frame re-notification regression",
+    ),
+    (
+        "plugin_windows_test",
+        '"failed re-notification consumed the pending frame"',
+        '"pending-frame preservation was not checked"',
+        "portable Windows pending-frame preservation regression",
     ),
     (
         "plugin_windows",
@@ -2625,6 +2869,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "Windows versioned admission declaration result",
     ),
     (
+        "plugin_windows_c_api",
+        "->NotifyPendingFrame()",
+        "->NotifyPendingFrameDisabled()",
+        "Windows C-ABI pending-frame result",
+    ),
+    (
         "plugin_linux",
         "std::unordered_map<int64_t, TextureRgba*>* renderers;",
         "static std::unordered_map<int64_t, TextureRgba*> renderers;",
@@ -2651,6 +2901,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "const gboolean notification_needed = !self->buffer_ready;",
         "const gboolean notification_needed = TRUE;",
         "Linux latest-wins pending-frame coalescing",
+    ),
+    (
+        "plugin_linux",
+        "!self->buffer_ready || fl_texture_registrar_mark_texture_frame_available(",
+        "!self->buffer_ready || TRUE || fl_texture_registrar_mark_texture_frame_available(",
+        "Linux pending-frame registrar re-notification",
     ),
     (
         "plugin_linux",
@@ -2684,6 +2940,24 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "plugin_linux_test",
+        '"pending-frame re-notification did not reach the registrar"',
+        '"pending-frame re-notification was not checked"',
+        "Linux pending-frame re-notification regression",
+    ),
+    (
+        "plugin_linux_test",
+        "texture->texture_id = 17;",
+        "texture->texture_id = 0;",
+        "Linux test production registration sentinel",
+    ),
+    (
+        "plugin_linux_test",
+        '"failed re-notification consumed the pending frame"',
+        '"pending-frame preservation was not checked"',
+        "Linux pending-frame preservation regression",
+    ),
+    (
+        "plugin_linux_test",
         '"C-ABI failed registrar notification was accepted"',
         '"C-ABI admission result was not checked"',
         "Linux exported admission-result regression",
@@ -2699,6 +2973,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "FLUTTER_PLUGIN_EXPORT int FlutterRgbaRendererPluginTryOnRgba(",
         "FLUTTER_PLUGIN_EXPORT void FlutterRgbaRendererPluginTryOnRgba(",
         "Linux versioned admission declaration result",
+    ),
+    (
+        "plugin_linux",
+        "return texture_rgba_notify_pending(\n",
+        "return TRUE || texture_rgba_notify_pending(\n",
+        "Linux C-ABI pending-frame result",
     ),
     (
         "plugin_linux",
@@ -2737,10 +3017,22 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "macOS latest-wins pending-frame coalescing",
     ),
     (
+        "plugin_macos_texture",
+        "            if framePending {\n                registry.textureFrameAvailable(textureId)\n            }",
+        "            if framePending {\n                _ = registry\n            }",
+        "macOS pending-frame re-notification",
+    ),
+    (
         "plugin_macos_c_api",
         "return [texture_rgba markFrameAvaliableRawWithBuffer:buffer",
         "[texture_rgba markFrameAvaliableRawWithBuffer:buffer",
         "macOS C-ABI native admission propagation",
+    ),
+    (
+        "plugin_macos_c_api",
+        "return [texture_rgba notifyPendingFrame] ? 1 : 0;",
+        "return [texture_rgba notifyPendingFrame] ? 0 : 0;",
+        "macOS C-ABI pending-frame result",
     ),
     ("requirements", '<div class="req"><span class="id">R-S11ex</span>', '<div class="req"><span class="id">R-S11ex-disabled</span>', "normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11ey</span>', '<div class="req"><span class="id">R-S11ey-disabled</span>', "software-only normative requirement"),
@@ -2749,6 +3041,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<div class="req"><span class="id">R-S11fc</span>', '<div class="req"><span class="id">R-S11fc-disabled</span>', "first-image admission normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11ff</span>', '<div class="req"><span class="id">R-S11ff-disabled</span>', "viewer refresh admission normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11fm</span>', '<div class="req"><span class="id">R-S11fm-disabled</span>', "texture activation normative requirement"),
+    ("requirements", '<div class="req"><span class="id">R-S11fp</span>', '<div class="req"><span class="id">R-S11fp-disabled</span>', "pending-texture re-notification normative requirement"),
     ("requirements", "<tr><td>306</td>", "<tr><td>306-disabled</td>", "Appendix disposition"),
     ("requirements", "<tr><td>307</td>", "<tr><td>307-disabled</td>", "software-only Appendix disposition"),
     ("requirements", "<tr><td>308</td>", "<tr><td>308-disabled</td>", "native retirement Appendix disposition"),
@@ -2756,6 +3049,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", "<tr><td>311</td>", "<tr><td>311-disabled</td>", "first-image admission Appendix disposition"),
     ("requirements", "<tr><td>314</td>", "<tr><td>314-disabled</td>", "viewer refresh admission Appendix disposition"),
     ("requirements", "<tr><td>321</td>", "<tr><td>321-disabled</td>", "texture activation Appendix disposition"),
+    ("requirements", "<tr><td>324</td>", "<tr><td>324-disabled</td>", "pending-texture re-notification Appendix disposition"),
     ("hardening", "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "**R-S11ex-disabled/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "hardening ledger"),
     ("hardening", "**R-S11ey/R-S11e-186 software-RGBA-only desktop presentation", "**R-S11ey-disabled/R-S11e-186 software-RGBA-only desktop presentation", "software-only hardening ledger"),
     ("hardening", "**R-S11ez/R-S11e-187 pending desktop frame retirement finality", "**R-S11ez-disabled/R-S11e-187 pending desktop frame retirement finality", "native retirement hardening ledger"),
@@ -2763,6 +3057,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("hardening", "**R-S11fc/R-S11e-190 exact desktop first-image admission", "**R-S11fc-disabled/R-S11e-190 exact desktop first-image admission", "first-image admission hardening ledger"),
     ("hardening", "**R-S11ff/R-S11e-193 exact viewer refresh admission", "**R-S11ff-disabled/R-S11e-193 exact viewer refresh admission", "viewer refresh admission hardening ledger"),
     ("hardening", "**R-S11fm/R-S11e-200 desktop texture activation finality", "**R-S11fm-disabled/R-S11e-200 desktop texture activation finality", "texture activation hardening ledger"),
+    ("hardening", "**R-S11fp/R-S11e-203 exact desktop pending-texture re-notification", "**R-S11fp-disabled/R-S11e-203 exact desktop pending-texture re-notification", "pending-texture re-notification hardening ledger"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never", "true # first-image admission behavior gate disabled", "shared first-image admission behavior gate"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11ff_ --color never", "true # viewer refresh admission behavior gate disabled", "shared viewer refresh admission behavior gate"),
     ("dart_verify", "flutter::mobile_session_lifecycle_tests::r_s11ff_video_refresh_requires_the_current_exact_ui_owner", "flutter::mobile_session_lifecycle_tests::viewer_refresh_disabled", "fresh-bridge viewer refresh behavior gate"),

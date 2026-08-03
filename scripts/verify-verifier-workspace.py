@@ -18108,6 +18108,30 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "macOS native admission-result mutation",
         ),
         (
+            '"versioned native pending-frame notifier symbol"',
+            "native pending-frame notifier symbol mutation",
+        ),
+        (
+            '"exact-owner pending-frame re-notification ordering"',
+            "exact-owner pending-frame ordering mutation",
+        ),
+        (
+            '"Windows pending-frame registrar re-notification"',
+            "Windows pending-frame notifier mutation",
+        ),
+        (
+            '"Linux pending-frame registrar re-notification"',
+            "Linux pending-frame notifier mutation",
+        ),
+        (
+            '"macOS pending-frame re-notification"',
+            "macOS pending-frame notifier mutation",
+        ),
+        (
+            '"pending-texture re-notification normative requirement"',
+            "pending-frame notifier requirement mutation",
+        ),
+        (
             '"presentation refresh failure visibility"',
             "presentation failure-visibility mutation",
         ),
@@ -18701,9 +18725,27 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "let sessions = SESSIONS.read().unwrap();",
             "let handlers = session.ui_handler.session_handlers.read().unwrap();",
             "handler.client_owner_id.as_ref() != Some(client_owner_id)",
+            "handler.renderer.notify_pending_frame(",
             "return session.refresh_video(display);",
         ),
-        "independent UI-owner lock through refresh admission",
+        "independent UI-owner lock through pending-frame and refresh admission",
+    )
+    require_order(
+        sources["flutter_source"],
+        (
+            "lib.symbol::<FlutterRgbaRendererPluginTryNotifyPending>(",
+            '"FlutterRgbaRendererPluginTryNotifyPending",',
+            "fn notify_pending_frame(&self, display: usize)",
+            "let sessions = self.map_display_sessions.read().unwrap();",
+            "if !self.is_support_multi_ui_session",
+            "sessions.values().next()",
+            "sessions.get(&display)",
+            "let Some(func) = &self.notify_pending_func else",
+            'bail!("desktop texture pending-frame notifier is unavailable")',
+            "if unsafe { func(info.texture_rgba_ptr as _) } == 0",
+            'bail!("desktop texture pending-frame notification failed")',
+        ),
+        "independent versioned exact-display pending-frame notifier",
     )
     ffi_refresh = extract_between(
         sources["flutter_ffi_source"],
@@ -18937,6 +18979,42 @@ def validate_desktop_texture_lifecycle_contract(sources):
         ),
         "independent Windows latest-wins and failed-mark rollback contract",
     )
+    windows_notify = extract_between(
+        sources["texture_rgba_windows_texture"],
+        "bool TextureRgba::NotifyPendingFrame() {",
+        "\n}\n\nvoid TextureRgba::Retire()",
+        "independent Windows pending-frame re-notification",
+    )
+    require_order(
+        windows_notify,
+        (
+            "const std::lock_guard<std::mutex> lock(mutex_);",
+            "if (retired_ || texture_id_ <= 0 || texture_registrar_ == nullptr)",
+            "return false;",
+            "return !buffer_ready_ ||",
+            "texture_registrar_->MarkTextureFrameAvailable(texture_id_);",
+        ),
+        "independent Windows pending-only registrar re-notification",
+    )
+    require_order(
+        sources["texture_rgba_windows_c_api"],
+        (
+            "int FlutterRgbaRendererPluginTryNotifyPending(",
+            "if (texture_rgba == nullptr)",
+            "try {",
+            "->NotifyPendingFrame()",
+            "? 1",
+            ": 0;",
+            "} catch (...) {",
+            "return 0;",
+        ),
+        "independent Windows pending-frame C-ABI result",
+    )
+    require_text(
+        sources["texture_rgba_windows_c_api_h"],
+        "FLUTTER_PLUGIN_EXPORT int FlutterRgbaRendererPluginTryNotifyPending(",
+        "independent Windows pending-frame export declaration",
+    )
     windows_retire = extract_between(
         sources["texture_rgba_windows_texture"],
         "void TextureRgba::Retire() {",
@@ -19001,6 +19079,22 @@ def validate_desktop_texture_lifecycle_contract(sources):
             '"a retired texture accepted a new frame"',
             "independent portable Windows post-retirement admission regression",
         ),
+        (
+            '"pending-frame re-notification did not reach the registrar"',
+            "independent portable Windows pending-frame notifier regression",
+        ),
+        (
+            '"idle texture emitted a spurious frame notification"',
+            "independent portable Windows idle-notifier regression",
+        ),
+        (
+            '"failed re-notification consumed the pending frame"',
+            "independent portable Windows pending-preservation regression",
+        ),
+        (
+            '"a retired texture accepted re-notification"',
+            "independent portable Windows retired-notifier regression",
+        ),
     ):
         require_text(sources["texture_rgba_windows_test"], text, label)
     require_order(
@@ -19014,6 +19108,42 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "delete[] self->buffer;",
         ),
         "independent Linux latest-wins and failed-mark rollback contract",
+    )
+    linux_notify = extract_between(
+        sources["texture_rgba_linux"],
+        "static gboolean texture_rgba_notify_pending(",
+        "\n}\n\nstatic void texture_rgba_retire(",
+        "independent Linux pending-frame re-notification",
+    )
+    require_order(
+        linux_notify,
+        (
+            "if (self == nullptr)",
+            "g_mutex_lock(&self->mutex);",
+            "if (self->retired || self->texture_registrar == nullptr ||",
+            "self->texture_id <= 0)",
+            "return FALSE;",
+            "!self->buffer_ready || fl_texture_registrar_mark_texture_frame_available(",
+            "g_mutex_unlock(&self->mutex);",
+            "return marked;",
+        ),
+        "independent Linux pending-only registrar re-notification",
+    )
+    require_order(
+        sources["texture_rgba_linux"],
+        (
+            "int FlutterRgbaRendererPluginTryNotifyPending(",
+            "return texture_rgba_notify_pending(",
+            "reinterpret_cast<TextureRgba*>(texture_rgba)",
+            "? 1",
+            ": 0;",
+        ),
+        "independent Linux pending-frame C-ABI result",
+    )
+    require_text(
+        sources["texture_rgba_linux_h"],
+        "FLUTTER_PLUGIN_EXPORT int FlutterRgbaRendererPluginTryNotifyPending(",
+        "independent Linux pending-frame export declaration",
     )
     linux_retire = extract_between(
         sources["texture_rgba_linux"],
@@ -19076,6 +19206,10 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "independent native test production-implementation binding",
         ),
         (
+            "texture->texture_id = 17;",
+            "independent native test production registration sentinel",
+        ),
+        (
             '"a pending frame crossed the retirement boundary"',
             "independent native pending-frame retirement regression",
         ),
@@ -19094,6 +19228,22 @@ def validate_desktop_texture_lifecycle_contract(sources):
         (
             '"a retired texture accepted a new frame"',
             "independent native post-retirement admission regression",
+        ),
+        (
+            '"pending-frame re-notification did not reach the registrar"',
+            "independent Linux pending-frame notifier regression",
+        ),
+        (
+            '"idle texture emitted a spurious frame notification"',
+            "independent Linux idle-notifier regression",
+        ),
+        (
+            '"failed re-notification consumed the pending frame"',
+            "independent Linux pending-preservation regression",
+        ),
+        (
+            '"a retired texture accepted re-notification"',
+            "independent Linux retired-notifier regression",
         ),
     ):
         require_text(sources["texture_rgba_linux_test"], text, label)
@@ -19126,6 +19276,29 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "registry.textureFrameAvailable(textureId)",
         ),
         "independent macOS latest-wins pending-frame contract",
+    )
+    require_order(
+        sources["texture_rgba_macos_texture"],
+        (
+            "public func notifyPendingFrame() -> Bool",
+            "queue.sync",
+            "guard textureId > 0, let registry",
+            "return false",
+            "if framePending",
+            "registry.textureFrameAvailable(textureId)",
+            "return true",
+        ),
+        "independent macOS serialized pending-only re-notification",
+    )
+    require_order(
+        sources["texture_rgba_macos_c_api"],
+        (
+            "int FlutterRgbaRendererPluginTryNotifyPending(",
+            "if (texture_rgba_ptr == NULL)",
+            "return 0;",
+            "return [texture_rgba notifyPendingFrame] ? 1 : 0;",
+        ),
+        "independent macOS pending-frame C-ABI result",
     )
     require_order(
         sources["texture_rgba_macos_texture"],
@@ -19213,6 +19386,16 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "texture activation finality Appendix C row",
     )
     require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11fp</span>',
+        "pending-texture re-notification requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>324</td>",
+        "pending-texture re-notification Appendix C row",
+    )
+    require_text(
         sources["hardening"],
         "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
         "desktop texture lifecycle hardening ledger",
@@ -19231,6 +19414,11 @@ def validate_desktop_texture_lifecycle_contract(sources):
         sources["hardening"],
         "**R-S11fm/R-S11e-200 desktop texture activation finality",
         "texture activation finality hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11fp/R-S11e-203 exact desktop pending-texture re-notification",
+        "pending-texture re-notification hardening ledger",
     )
 
 
@@ -55613,7 +55801,7 @@ def run_source_mutations(sources):
             "                if handler.client_owner_id.as_ref() != Some(client_owner_id)",
             "if let Some(handler) = handlers.get(session_id) {\n"
             "                if false",
-            "independent UI-owner lock through refresh admission",
+            "independent UI-owner lock through pending-frame and refresh admission",
         ),
         (
             "flutter_ffi_source",
@@ -55787,6 +55975,36 @@ def run_source_mutations(sources):
             "texture activation finality hardening ledger",
         ),
         (
+            "requirements",
+            '<div class="req"><span class="id">R-S11fp</span>',
+            '<div class="req"><span class="id">R-S11fp-disabled</span>',
+            "pending-texture re-notification requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>324</td>",
+            "<tr><td>324-disabled</td>",
+            "pending-texture re-notification Appendix C row",
+        ),
+        (
+            "hardening",
+            "**R-S11fp/R-S11e-203 exact desktop pending-texture re-notification",
+            "**R-S11fp-disabled/R-S11e-203 exact desktop pending-texture re-notification",
+            "pending-texture re-notification hardening ledger",
+        ),
+        (
+            "flutter_source",
+            "handler.renderer.notify_pending_frame(\n",
+            "// pending texture was not re-notified\n",
+            "independent UI-owner lock through pending-frame and refresh admission",
+        ),
+        (
+            "flutter_source",
+            '"FlutterRgbaRendererPluginTryNotifyPending",',
+            '"FlutterRgbaRendererPluginNotifyPending",',
+            "independent versioned exact-display pending-frame notifier",
+        ),
+        (
             "desktop_render_texture_source",
             "import 'package:flutter/material.dart';",
             "import 'package:flutter_gpu_texture_renderer/flutter_gpu_texture_renderer.dart';",
@@ -55929,6 +56147,18 @@ def run_source_mutations(sources):
         ),
         (
             "texture_rgba_windows_texture",
+            "texture_registrar_->MarkTextureFrameAvailable(texture_id_);\n}",
+            "true;\n}",
+            "independent Windows pending-only registrar re-notification",
+        ),
+        (
+            "texture_rgba_windows_c_api",
+            "->NotifyPendingFrame()",
+            "->NotifyPendingFrameDisabled()",
+            "independent Windows pending-frame C-ABI result",
+        ),
+        (
+            "texture_rgba_windows_texture",
             "  if (buffer_ready_) {\n"
             "    const int background_index = foreground_index_ ^ 1;\n",
             "  if (false) {\n"
@@ -55972,6 +56202,12 @@ def run_source_mutations(sources):
             "independent portable Windows presented-storage lifetime regression",
         ),
         (
+            "texture_rgba_windows_test",
+            '"failed re-notification consumed the pending frame"',
+            '"pending-frame preservation was not checked"',
+            "independent portable Windows pending-preservation regression",
+        ),
+        (
             "texture_rgba_linux",
             "self->renderers->erase(found);",
             "self->renderers->clear();",
@@ -55982,6 +56218,12 @@ def run_source_mutations(sources):
             "const gboolean notification_needed = !self->buffer_ready;",
             "const gboolean notification_needed = TRUE;",
             "independent Linux latest-wins and failed-mark rollback contract",
+        ),
+        (
+            "texture_rgba_linux",
+            "!self->buffer_ready || fl_texture_registrar_mark_texture_frame_available(",
+            "!self->buffer_ready || TRUE || fl_texture_registrar_mark_texture_frame_available(",
+            "independent Linux pending-only registrar re-notification",
         ),
         (
             "texture_rgba_linux",
@@ -56026,6 +56268,18 @@ def run_source_mutations(sources):
             "independent native presented-storage lifetime regression",
         ),
         (
+            "texture_rgba_linux_test",
+            '"failed re-notification consumed the pending frame"',
+            '"pending-frame preservation was not checked"',
+            "independent Linux pending-preservation regression",
+        ),
+        (
+            "texture_rgba_linux_test",
+            "texture->texture_id = 17;",
+            "texture->texture_id = 0;",
+            "independent native test production registration sentinel",
+        ),
+        (
             "texture_rgba_macos",
             "renderers.removeValue(forKey: key)",
             "renderers[key]",
@@ -56042,6 +56296,18 @@ def run_source_mutations(sources):
             "let notificationNeeded = !framePending",
             "let notificationNeeded = true",
             "independent macOS latest-wins pending-frame contract",
+        ),
+        (
+            "texture_rgba_macos_texture",
+            "            if framePending {\n                registry.textureFrameAvailable(textureId)\n            }",
+            "            if framePending {\n                _ = registry\n            }",
+            "independent macOS serialized pending-only re-notification",
+        ),
+        (
+            "texture_rgba_macos_c_api",
+            "return [texture_rgba notifyPendingFrame] ? 1 : 0;",
+            "return [texture_rgba notifyPendingFrame] ? 0 : 0;",
+            "independent macOS pending-frame C-ABI result",
         ),
         (
             "verify",
@@ -66464,6 +66730,16 @@ def main():
                 / "flutter/third_party/texture_rgba_renderer/windows/"
                 "texture_rgba.cpp"
             ).read_text(encoding="utf-8"),
+            "texture_rgba_windows_c_api": (
+                repo
+                / "flutter/third_party/texture_rgba_renderer/windows/"
+                "texture_rgba_renderer_plugin_c_api.cpp"
+            ).read_text(encoding="utf-8"),
+            "texture_rgba_windows_c_api_h": (
+                repo
+                / "flutter/third_party/texture_rgba_renderer/windows/include/"
+                "texture_rgba_renderer/texture_rgba_renderer_plugin_c_api.h"
+            ).read_text(encoding="utf-8"),
             "texture_rgba_windows_cmake": (
                 repo
                 / "flutter/third_party/texture_rgba_renderer/windows/"
@@ -66484,6 +66760,11 @@ def main():
                 / "flutter/third_party/texture_rgba_renderer/linux/"
                 "texture_rgba_renderer_plugin.cc"
             ).read_text(encoding="utf-8"),
+            "texture_rgba_linux_h": (
+                repo
+                / "flutter/third_party/texture_rgba_renderer/linux/include/"
+                "texture_rgba_renderer/texture_rgba_renderer_plugin.h"
+            ).read_text(encoding="utf-8"),
             "texture_rgba_linux_test": (
                 repo
                 / "flutter/third_party/texture_rgba_renderer/linux/test/"
@@ -66498,6 +66779,11 @@ def main():
                 repo
                 / "flutter/third_party/texture_rgba_renderer/macos/Classes/"
                 "TextRgba.swift"
+            ).read_text(encoding="utf-8"),
+            "texture_rgba_macos_c_api": (
+                repo
+                / "flutter/third_party/texture_rgba_renderer/macos/Classes/"
+                "TextureRgbaApi.m"
             ).read_text(encoding="utf-8"),
             "android_voice_call_ownership_verifier": (
                 repo / "scripts/verify-android-voice-call-ownership.py"

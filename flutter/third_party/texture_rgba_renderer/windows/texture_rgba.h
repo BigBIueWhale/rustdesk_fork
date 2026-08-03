@@ -21,6 +21,7 @@ class TextureRgba {
   bool MarkVideoFrameAvailable(const uint8_t* buffer, size_t buffer_length,
                                size_t width, size_t height,
                                size_t stride_align);
+  bool NotifyPendingFrame();
   void Retire();
 
   int64_t texture_id() const { return texture_id_; }

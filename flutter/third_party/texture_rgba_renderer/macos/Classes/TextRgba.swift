@@ -160,6 +160,18 @@ import Foundation
         }
     }
 
+    @objc public func notifyPendingFrame() -> Bool {
+        queue.sync {
+            guard textureId > 0, let registry else {
+                return false
+            }
+            if framePending {
+                registry.textureFrameAvailable(textureId)
+            }
+            return true
+        }
+    }
+
     @objc public func markFrameAvaliable(
         data: Data,
         width: Int,

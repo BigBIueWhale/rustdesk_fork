@@ -481,6 +481,9 @@ pub type FlutterRgbaRendererPluginTryOnRgba = unsafe extern "C" fn(
     dst_rgba_stride: c_int,
 ) -> c_int;
 
+pub type FlutterRgbaRendererPluginTryNotifyPending =
+    unsafe extern "C" fn(texture_rgba: *mut c_void) -> c_int;
+
 fn commit_first_texture_notification<F>(
     render_notified: &mut bool,
     frame_admitted: bool,
@@ -512,6 +515,8 @@ struct VideoRenderer {
     map_display_sessions: Arc<RwLock<HashMap<usize, DisplaySessionInfo>>>,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     on_rgba_func: Option<Symbol<'static, FlutterRgbaRendererPluginTryOnRgba>>,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    notify_pending_func: Option<Symbol<'static, FlutterRgbaRendererPluginTryNotifyPending>>,
 }
 
 impl Default for VideoRenderer {
@@ -539,11 +544,33 @@ impl Default for VideoRenderer {
                 None
             }
         };
+        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        let notify_pending_func = match &*TEXTURE_RGBA_RENDERER_PLUGIN {
+            Ok(lib) => {
+                let find_sym_res = unsafe {
+                    lib.symbol::<FlutterRgbaRendererPluginTryNotifyPending>(
+                        "FlutterRgbaRendererPluginTryNotifyPending",
+                    )
+                };
+                match find_sym_res {
+                    Ok(sym) => Some(sym),
+                    Err(e) => {
+                        log::error!(
+                            "Failed to find symbol FlutterRgbaRendererPluginTryNotifyPending, {e}"
+                        );
+                        None
+                    }
+                }
+            }
+            Err(_) => None,
+        };
         Self {
             map_display_sessions: Default::default(),
             is_support_multi_ui_session: false,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             on_rgba_func,
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            notify_pending_func,
         }
     }
 }
@@ -658,6 +685,29 @@ impl VideoRenderer {
             .values_mut()
             .map(|v| v.render_notified = false)
             .count();
+    }
+
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    fn notify_pending_frame(&self, display: usize) -> ResultType<()> {
+        let sessions = self.map_display_sessions.read().unwrap();
+        let info = if !self.is_support_multi_ui_session {
+            sessions.values().next()
+        } else {
+            sessions.get(&display)
+        };
+        let Some(info) = info else {
+            return Ok(());
+        };
+        if info.texture_rgba_ptr == usize::default() {
+            return Ok(());
+        }
+        let Some(func) = &self.notify_pending_func else {
+            bail!("desktop texture pending-frame notifier is unavailable");
+        };
+        if unsafe { func(info.texture_rgba_ptr as _) } == 0 {
+            bail!("desktop texture pending-frame notification failed");
+        }
+        Ok(())
     }
 }
 
@@ -2604,6 +2654,11 @@ pub mod sessions {
                 // Keep the exact UI-owner read guard until nonblocking admission has
                 // linearized. Concurrent replacement therefore wins wholly before or after
                 // this request; a stale owner cannot select its successor.
+                #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                handler.renderer.notify_pending_frame(
+                    usize::try_from(display)
+                        .map_err(|_| anyhow!("viewer video refresh display is invalid"))?,
+                )?;
                 return session.refresh_video(display);
             }
         }

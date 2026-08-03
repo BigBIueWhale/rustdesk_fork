@@ -9,6 +9,39 @@ history remains the traceability record for that intermediate work.
 
 ## Current Verdict
 
+> **STOP-SHIP EVIDENCE STATUS (2026-08-03).** The current tree is not release-ready merely because
+> its source, semantic, mutation, compile, and confined protocol gates are extensive. The user has
+> explicitly identified the accumulated change volume without current native end-to-end testing as
+> a release risk, and that assessment is correct. Recent evidence proves many individual source
+> invariants and includes a real Linux controlled-server protocol/runtime smoke at the exact older
+> product parent named in the R-S11b/R-B4 record below. It does **not** prove the current Android app
+> lifecycle on a device; current Windows viewer focus/minimize/texture behavior; current macOS/iOS
+> behavior; a real capture-through-decode-through-presentation session; an installed current Linux
+> service across the required desktops/init systems; sustained reconnect/focus/performance behavior;
+> or the clean exact-commit Debian/Android/Windows R-B2/R-B10 artifact transaction. Those are
+> release-blocking evidence gaps, not details that source reasoning may waive.
+>
+> The exact product/source candidate at the start of this evidence audit was clean pushed commit
+> `ed76d7ce81386e13af8a494af0376b8703b397eb`. A fresh exact-candidate production-binary build plus
+> rootless loopback runtime sequence was attempted only in disposable containers as numeric
+> UID:GID 1000:1000, with `--network=none`, no published ports, a read-only source/root, all
+> capabilities dropped, `no-new-privileges`, and private tmpfs output. It produced **no new runtime
+> evidence**: the first attempt stopped before Cargo because old root-created extracted files in the
+> existing Cargo cache were unreadable; the second stopped before Cargo because the repository's
+> `1.75` toolchain selector tried to synchronize into a read-only Rustup root; and the corrected
+> exact-`1.75.0-x86_64-unknown-linux-gnu` attempt stopped during offline resolution because the local
+> cache lacks locked `crossbeam-epoch 0.9.20`. No attempt compiled project code, started RustDesk, or
+> opened a listener. No network was enabled and no root/cache-permission workaround was used. This
+> is an evidence-pipeline blocker and must not be rewritten as a product failure or a test pass.
+>
+> **Continuation rule:** prioritize exact-current evidence and test-harness/input closure over
+> additional product behavior changes. A further product change requires a separately source-proven
+> defect or must be necessary to obtain valid evidence; it does not earn release confidence merely
+> by adding another source/mutation gate. Every later claim must continue distinguishing compilation,
+> deterministic behavior tests, container-local protocol runtime, native platform execution,
+> installed-service behavior, real graphical end-to-end behavior, performance/soak evidence, and
+> exact release-artifact evidence.
+
 > **Current `.6` source verdict (2026-07-14): implementation and release-harness state are tracked here. Artifact and reproducibility proof exists only for an exact clean pushed commit whose complete `scripts/build-release.sh` transaction succeeds and emits the matching `dist/SHA256SUMS`; this source ledger makes no publication claim.** Earlier artifact hashes in this file prove only the older commits named beside them and must not be promoted as evidence for the current source tree.
 
 **Current machine inventory expectation.** `Cargo.lock` has 898 package records: 36 git-sourced records from

@@ -7053,7 +7053,7 @@ def validate_macos_descriptor_contract(sources):
             "current rustdesk-org Git requirement inventory",
         ),
         (
-            "870 lexical <code>unsafe {</code> blocks across 249 tracked Rust files, with at least one match in 76 files",
+            "872 lexical <code>unsafe {</code> blocks across 249 tracked Rust files, with at least one match in 76 files",
             "current Rust unsafe requirement inventory",
         ),
         (
@@ -19714,9 +19714,9 @@ def validate_desktop_texture_lifecycle_contract(sources):
     for text, label in (
         ('"dependencies_entries": 57', "independent Flutter direct-dependency count"),
         ('"union_entries": 63', "independent Flutter dependency-union count"),
-        ('"git_hosted_records": 6', "independent Flutter Git-lock count"),
+        ('"git_hosted_records": 5', "independent Flutter Git-lock count"),
         ('"package_records": 198', "independent Flutter package-lock count"),
-        ('"rustdesk_org_git_records": 5', "independent RustDesk Git-lock count"),
+        ('"rustdesk_org_git_records": 4', "independent RustDesk Git-lock count"),
     ):
         require_text(sources["dependency_inventory_source"], text, label)
 
@@ -26243,7 +26243,7 @@ def validate_android_builder_authority_contract(sources):
         ('single deferred Gradle-cache call', "Android late Gradle projection cardinality"),
         ('Gradle Cargo-metadata consumer', "Android retained Cargo final consumer"),
         (
-            '(\'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root\', "AGP 7.3.1 shared preferences root")',
+            '(\'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root\', "Android tooling shared preferences root")',
             "Android shared preferences root enforcement",
         ),
         (
@@ -30735,12 +30735,12 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
         require_text(android, text, label)
     require_text(
         wrapper,
-        "distributionSha256Sum=fe696c020f241a5f69c30f763c5a7f38eec54b490db19cd2b0962dda420d7d12",
+        "distributionSha256Sum=194717442575a6f96e1c1befa2c30e9a4fc90f701d7aee33eb879b79e7ff05c0",
         "Gradle-output wrapper publisher checksum",
     )
     require_text(
         sources["pins"],
-        'SHA256_ANDROID_GRADLE_WRAPPER_ALL="fe696c020f241a5f69c30f763c5a7f38eec54b490db19cd2b0962dda420d7d12"',
+        'SHA256_ANDROID_GRADLE_WRAPPER_ALL="194717442575a6f96e1c1befa2c30e9a4fc90f701d7aee33eb879b79e7ff05c0"',
         "Gradle-output independent publisher pin",
     )
     for text, label in (
@@ -45959,7 +45959,7 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            "870 lexical <code>unsafe {</code> blocks across 249 tracked Rust files, with at least one match in 76 files",
+            "872 lexical <code>unsafe {</code> blocks across 249 tracked Rust files, with at least one match in 76 files",
             "802 lexical <code>unsafe {</code> blocks across 243 tracked Rust files, with at least one match in 67 files",
             "current Rust unsafe requirement inventory",
         ),
@@ -60958,7 +60958,7 @@ def run_source_mutations(sources):
         ),
         (
             "android_builder_authority_verifier",
-            '(\'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root\', "AGP 7.3.1 shared preferences root")',
+            '(\'export ANDROID_PREFS_ROOT=/tmp/android-preferences-root\', "Android tooling shared preferences root")',
             '(\'export ANDROID_PREFS_ROOT=/home/ubuntu/.android\', "ambient Android preferences root")',
             "Android shared preferences root enforcement",
         ),
@@ -63404,8 +63404,8 @@ def run_source_mutations(sources):
         ),
         (
             "gradle_wrapper",
-            "distributionSha256Sum=fe696c020f241a5f69c30f763c5a7f38eec54b490db19cd2b0962dda420d7d12",
-            "distributionSha256Sum=0e696c020f241a5f69c30f763c5a7f38eec54b490db19cd2b0962dda420d7d12",
+            "distributionSha256Sum=194717442575a6f96e1c1befa2c30e9a4fc90f701d7aee33eb879b79e7ff05c0",
+            "distributionSha256Sum=094717442575a6f96e1c1befa2c30e9a4fc90f701d7aee33eb879b79e7ff05c0",
             "Gradle-output wrapper publisher checksum",
         ),
         (

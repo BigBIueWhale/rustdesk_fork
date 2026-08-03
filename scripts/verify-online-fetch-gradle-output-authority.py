@@ -220,7 +220,7 @@ def validate(sources: Dict[str, str]) -> None:
     require(
         wrapper,
         "distributionUrl=https\\://services.gradle.org/distributions/"
-        "gradle-7.6.4-all.zip",
+        "gradle-8.7-all.zip",
         "pinned complete Gradle distribution",
     )
 

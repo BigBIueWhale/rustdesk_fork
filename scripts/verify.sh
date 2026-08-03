@@ -14357,20 +14357,34 @@ agp_pin="$(pin_val ANDROID_AGP_VERSION)"
 kotlin_pin="$(pin_val ANDROID_KOTLIN_VERSION)"
 kotlin_stdlib_pin="$(pin_val ANDROID_KOTLIN_STDLIB_VERSION)"
 gradle_pin="$(pin_val ANDROID_GRADLE_WRAPPER)"
+gradle_sha_pin="$(pin_val SHA256_ANDROID_GRADLE_WRAPPER_ALL)"
 compile_sdk_pin="$(pin_val ANDROID_COMPILE_SDK)"
 target_sdk_pin="$(pin_val ANDROID_TARGET_SDK)"
 min_sdk_pin="$(pin_val ANDROID_MIN_SDK)"
 grep -qF "id \"com.android.application\" version \"${agp_pin}\"" flutter/android/settings.gradle || android_pin_bad="$android_pin_bad agp"
 grep -qF "id \"org.jetbrains.kotlin.android\" version \"${kotlin_pin}\"" flutter/android/settings.gradle || android_pin_bad="$android_pin_bad kotlin-plugin"
 grep -qF "gradle-${gradle_pin}-all.zip" flutter/android/gradle/wrapper/gradle-wrapper.properties || android_pin_bad="$android_pin_bad gradle-wrapper"
+grep -qF "distributionSha256Sum=${gradle_sha_pin}" flutter/android/gradle/wrapper/gradle-wrapper.properties || android_pin_bad="$android_pin_bad gradle-wrapper-checksum"
 grep -qE "compileSdkVersion[[:space:]]+${compile_sdk_pin}\\b" flutter/android/app/build.gradle || android_pin_bad="$android_pin_bad compile-sdk"
 grep -qE "targetSdkVersion[[:space:]]+${target_sdk_pin}\\b" flutter/android/app/build.gradle || android_pin_bad="$android_pin_bad target-sdk"
 grep -qE "minSdkVersion[[:space:]]+${min_sdk_pin}\\b" flutter/android/app/build.gradle || android_pin_bad="$android_pin_bad min-sdk"
 grep -qF "strictly(\"${kotlin_stdlib_pin}\")" flutter/android/app/build.gradle || android_pin_bad="$android_pin_bad kotlin-stdlib"
+grep -qF 'namespace "com.carriez.flutter_hbb"' flutter/android/app/build.gradle || android_pin_bad="$android_pin_bad app-namespace"
+grep -qF 'jvmTarget = JavaVersion.VERSION_1_8' flutter/android/app/build.gradle || android_pin_bad="$android_pin_bad kotlin-jvm-target"
+grep -qxF 'kotlin.daemon.useFallbackStrategy=false' flutter/android/gradle.properties || android_pin_bad="$android_pin_bad kotlin-daemon-fallback"
+grep -qF 'path: third_party/uni_links' flutter/pubspec.yaml || android_pin_bad="$android_pin_bad uni-links-local-source"
+grep -qF "namespace 'name.avioli.unilinks'" flutter/third_party/uni_links/android/build.gradle || android_pin_bad="$android_pin_bad uni-links-namespace"
+grep -qF "classpath 'com.android.tools.build:gradle:${agp_pin}'" flutter/third_party/uni_links/android/build.gradle || android_pin_bad="$android_pin_bad uni-links-agp"
+grep -qF 'f416118d843a7e9ed117c7bb7bdc2deda5a9e86f' flutter/third_party/uni_links/SOURCE.md || android_pin_bad="$android_pin_bad uni-links-provenance"
+if grep -qF 'PluginRegistry.Registrar' flutter/third_party/uni_links/android/src/main/java/name/avioli/unilinks/UniLinksPlugin.java; then android_pin_bad="$android_pin_bad uni-links-v1-registration"; fi
+grep -qF "'proguard-rules.pro'" flutter/android/app/build.gradle || android_pin_bad="$android_pin_bad proguard-reference"
+git ls-files --error-unmatch flutter/android/app/proguard-rules.pro >/dev/null 2>&1 || android_pin_bad="$android_pin_bad proguard-rules-untracked"
+[ ! -e flutter/android/app/proguard-rules ] || android_pin_bad="$android_pin_bad obsolete-proguard-name"
+if grep -qE '[[:space:]]package=' flutter/android/app/src/main/AndroidManifest.xml flutter/third_party/uni_links/android/src/main/AndroidManifest.xml; then android_pin_bad="$android_pin_bad ignored-manifest-package"; fi
 if [ -n "$android_pin_bad" ]; then
   echo "  FAIL R-B5a/R-B9: Android build pins drift from scripts/pins.env:$android_pin_bad"; rc=1
 else
-  echo "  ok  Android AGP/Kotlin plugin/Gradle/SDK pins and app kotlin-stdlib runtime pin match scripts/pins.env"
+  echo "  ok  Android AGP/Kotlin/Gradle/SDK pins, namespace/JVM policy, vendored UniLinks provenance, and active ProGuard rules match scripts/pins.env"
 fi
 
 echo "== (6c-a2) Android immutable Gradle seed and offline authority (R-B9/R-B10) =="

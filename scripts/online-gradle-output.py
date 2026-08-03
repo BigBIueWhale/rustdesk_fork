@@ -815,7 +815,7 @@ def remove_stage(staging: Path) -> None:
 def self_test() -> None:
     uid = os.geteuid()
     gid = os.getegid()
-    version = "7.6.4"
+    version = "8.7"
     archive = b"publisher-pinned-gradle-distribution\n"
     archive_hash = hashlib.sha256(archive).hexdigest()
     build_tools = "34.0.0"

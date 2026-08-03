@@ -118,24 +118,23 @@ EXPECTED = {
         ],
         "dev_dependencies_entries": 6,
         "direct_dependency_identities_sha256": "8b974dc71c796d4fa6c6dbcd885d9daf89815006949c5d7368d4eed86fda90a0",
-        "direct_dependency_records_sha256": "33a1be11082da26ff24aafe83c39993c811dcc12e5b7110481124f2c8dc4cce8",
+        "direct_dependency_records_sha256": "d06d4d2e9067156124c58386f5185d033f5f2df78363556fab6fc7d810e2fd9e",
         "sdk_entries_excluded": 0,
         "union_entries": 63,
     },
     "flutter_pubspec_lock": {
-        "git_hosted_records": 6,
-        "git_record_identities_sha256": "64510b513207d41fd4779555180cdbe746db2e1984401e0a0588671c5eb86df4",
+        "git_hosted_records": 5,
+        "git_record_identities_sha256": "ffedf83907b277b212554d1203dd47ee2995a5c4d3a47cae7e2c01e17e742f4d",
         "git_source_identities": {
             "dash_chat_2": "https://github.com/rustdesk-org/dash-chat-2",
             "desktop_multi_window": "https://github.com/rustdesk-org/rustdesk_desktop_multi_window",
             "dynamic_layouts": "https://github.com/rustdesk-org/dynamic_layouts",
-            "uni_links": "https://github.com/rustdesk-org/uni_links",
             "window_manager": "https://github.com/rustdesk-org/window_manager",
             "window_size": "https://github.com/google/flutter-desktop-embedding",
         },
         "package_records": 198,
-        "package_records_sha256": "488bc6926b0932456d0b792d7796ab79e4ccbb6145fdc2fb0f37d06175b81def",
-        "rustdesk_org_git_records": 5,
+        "package_records_sha256": "a9f3113981538267da263d9e49ff54b32e7aeb04e718d5ce40c0b47585b6f400",
+        "rustdesk_org_git_records": 4,
     },
     "github_workflows": {
         "disabled_workflow_definition_files": [
@@ -156,8 +155,8 @@ EXPECTED = {
     },
     "rust_sources": {
         "files_with_unsafe_blocks": 76,
-        "lexical_counts_by_file_sha256": "523d878efc8ce6887930a1ff025bcb9d27c7efb8d3073c4773755ace3d66e65c",
-        "lexical_unsafe_open_brace_blocks": 870,
+        "lexical_counts_by_file_sha256": "ea1a3c1d388269041bf9200cad76d59edcdfdba8ea495b09e6a90c8f66946766",
+        "lexical_unsafe_open_brace_blocks": 872,
         "tracked_rs_files": 249,
     },
 }

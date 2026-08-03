@@ -1026,7 +1026,7 @@ def validate(sources: Dict[str, str]) -> None:
 
     for token, label in (
         ('unset ANDROID_USER_HOME ANDROID_SDK_HOME', "single Android preference-location injection"),
-        ('export ANDROID_PREFS_ROOT=/tmp/android-preferences-root', "AGP 7.3.1 shared preferences root"),
+        ('export ANDROID_PREFS_ROOT=/tmp/android-preferences-root', "Android tooling shared preferences root"),
         ('Android preferences root was not freshly absent', "fresh Android preferences precondition"),
         ('install -d -m 0700 "$ANDROID_PREFS_ROOT"', "private legacy analytics preferences constructor"),
         ('install -d -m 0700 "$ANDROID_PREFS_ROOT/.android"', "private current-tools preferences constructor"),

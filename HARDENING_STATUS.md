@@ -143,6 +143,34 @@ history remains the traceability record for that intermediate work.
 > nor a system image. No Activity, service, task-swipe/Force-Stop, peer, renderer, device, emulator,
 > performance, stable-signing, installation, or runtime path executed; all such blockers remain open.
 >
+> R-S11fu then isolated the toolchain/plugin incompatibility without modifying or executing the host
+> RustDesk installation. Four disposable candidate assemblies ran only in the already-present immutable
+> Android builder as numeric UID:GID 1000:1000 with a read-only root/source/input closure, all capabilities
+> dropped, `no-new-privileges`, bounded private tmpfs/PIDs/memory/no-swap/CPU, no published port, Docker
+> socket, device, or host namespace. Bridge networking was available only to resolve candidate build
+> dependencies; the source and persistent online closure remained read-only. The final candidate selected
+> AGP 8.5.2, Kotlin plugin/stdlib 2.0.21, Gradle 8.7, `external_path 2.2.0`,
+> `flutter_keyboard_visibility 6.0.0`, and `sqflite 2.2.8+4`; vendored exact UniLinks commit
+> `f416118d843a7e9ed117c7bb7bdc2deda5a9e86f`; added the required namespaces/JVM target; disabled silent
+> Kotlin-daemon fallback; and corrected the ProGuard filename. It completed 549 Gradle tasks in 3m31s
+> without Kotlin incompatibility/fallback or UniLinks deprecated-API diagnostics. The complete log is
+> 4,195,085 bytes at SHA-256 `a65fd139f47405ca9b90c9ca2462c43fdde856305c66ec0f653f5a5330f8dfb2`;
+> its generated lockfile is byte-identical to the tracked candidate at SHA-256
+> `f1c1c9170bd6a13229eee1475dd4e6414a808bd44db0945df58c6f864cc77441`.
+> This was deliberately a **dummy-JNI build-graph diagnostic**: a copied NDK library stood in for
+> `librustdesk.so`. It is not a RustDesk APK, native integration, signed artifact, installed-app, device,
+> service, peer, lifecycle, renderer, presentation, performance, soak, or release result. The tracked
+> candidate then passed the dependency-inventory baseline and its complete 103-check self-test, the
+> 34-mutation Gradle-output authority suite, the 170-mutation Android-builder authority suite, Bash/Python
+> parsing, synchronized requirements/native-codec watch, the independent workspace baseline, and the
+> complete independent in-memory workspace source-mutation catalog. Those gates ran as numeric nonroot
+> in the immutable generic verifier with no network, read-only root/source, dropped capabilities,
+> `no-new-privileges`, bounded resources/private tmpfs, and no port, device, socket, or host namespace.
+> The complete mutation pass covered the exact staged candidate before this evidence-only sentence; a
+> final fast baseline/hash/diff repetition covers the resulting staged bytes without recursively rewriting
+> the ledger. The closure must still pass a clean exact-commit build with the real optimized Rust/JNI
+> library before push, and every physical-device/native-platform/release blocker above remains open.
+>
 > **Continuation rule:** prioritize exact-current evidence and test-harness/input closure over
 > additional product behavior changes. A further product change requires a separately source-proven
 > defect or must be necessary to obtain valid evidence; it does not earn release confidence merely
@@ -155,12 +183,12 @@ history remains the traceability record for that intermediate work.
 
 **Current machine inventory expectation.** `Cargo.lock` has 898 package records: 36 git-sourced records from
 26 unique git source URLs, including 26 rustdesk-org records from 20 unique rustdesk-org URLs.
-`flutter/pubspec.lock` has 198 package records, including 6 git records and 5 rustdesk-org records;
+`flutter/pubspec.lock` has 198 package records, including 5 git records and 4 rustdesk-org records;
 `flutter/pubspec.yaml` declares 57 main and 6 dev dependencies, a 63-name union. `.github/workflows/` has
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 870 lexical `unsafe {`
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 872 lexical `unsafe {`
 blocks across 249 tracked Rust files, 76 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
@@ -19905,7 +19933,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-14bbf4fd26c310d96aad4bacba2ef04ea6f864c70b2766c3ffd6451514360c9d  requirements.html
+34a5e7c6e0674165043febbe5a6e2814eab75eba6541424cb762b8caef7a439f  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -19944,3 +19972,4 @@ The same identity additionally binds R-S11fo and Appendix C #323.
 The same identity additionally binds R-S11fp and Appendix C #324.
 The same identity additionally binds R-S11fr and Appendix C #326.
 The same identity additionally binds R-S11fs and Appendix C #327.
+The same identity additionally binds R-S11fu and Appendix C #329.

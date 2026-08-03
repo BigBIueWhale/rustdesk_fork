@@ -5576,7 +5576,8 @@ if [ -n "$r_s11e63" ]; then echo "  FAIL R-S11e-63 Windows production-listener D
 # (3b-iii-d9cn) R-S11ax/R-S11dd/R-S11e-64/R-S11e-122: the runtime
 # smoke harness fixes its local Docker authority, has no host-process
 # scanner, builds numeric-nonroot into a private target from read-only
-# source, and preserves the immutable-image/network-none policy.
+# source and a pinned sealed vendor closure, and preserves the exact-image/
+# network-none policy.
 echo "== (3b-iii-d9cn) Smoke container and host/build authority (R-S11ax/R-S11dd/R-S11e-64/R-S11e-122) =="
 r_s11e64=
 smoke_build_run=$(awk '/^BUILD_RUN=\(/{inside=1} /^RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
@@ -5608,11 +5609,15 @@ grep -qF '= "$SMOKE_DOCKER_CONFIG_FILE_ID" ]' scripts/smoke-server.sh \
 grep -qF '= "$SMOKE_BUILD_TARGET_ID" ]' scripts/smoke-server.sh \
   || r_s11e64="$r_s11e64 private-build-target-identity-recheck-missing"
 grep -qF 'smoke_docker()' scripts/smoke-server.sh || r_s11e64="$r_s11e64 fixed-docker-funnel-missing"
-grep -qF 'readonly IMG=rd-devcheck' scripts/smoke-server.sh || r_s11e64="$r_s11e64 immutable-source-tag-missing"
-grep -qF 'IMAGE_ID=$(smoke_docker image inspect --format '\''{{.Id}}'\'' "$IMG") || {' scripts/smoke-server.sh \
-  || r_s11e64="$r_s11e64 local-image-resolution-missing"
-grep -qF 'if [[ ! "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then' scripts/smoke-server.sh \
-  || r_s11e64="$r_s11e64 canonical-image-id-validation-missing"
+grep -qF 'read_smoke_pin()' scripts/smoke-server.sh || r_s11e64="$r_s11e64 fixed-pin-reader-missing"
+for smoke_pin in DEV_CHECK_IMAGE_ID RUST_VERSION SHA256_CARGO_VENDOR_CLOSURE_V1 SHA256_CARGO_VENDOR_CONFIG; do
+  grep -qF "$(printf 'read_smoke_pin %s' "$smoke_pin")" scripts/smoke-server.sh \
+    || r_s11e64="$r_s11e64 smoke-pin-read-missing-$smoke_pin"
+done
+grep -qF 'IMAGE_ID=$(smoke_docker image inspect --format '\''{{.Id}}'\'' "$EXPECTED_IMAGE_ID") || {' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 exact-local-image-resolution-missing"
+grep -qF 'if [ "$IMAGE_ID" != "$EXPECTED_IMAGE_ID" ]; then' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 exact-image-id-comparison-missing"
 grep -qF 'readonly IMAGE_ID' scripts/smoke-server.sh || r_s11e64="$r_s11e64 immutable-image-id-missing"
 for smoke_run_block in "$smoke_build_run" "$smoke_runtime_run" "$smoke_lifecycle_run" "$smoke_pid_reuse_run" "$smoke_sibling_run"; do
   grep -qF -- '--network none' <<<"$smoke_run_block" || r_s11e64="$r_s11e64 network-none-missing"
@@ -5634,13 +5639,25 @@ grep -qF -- '--read-only' <<<"$smoke_build_run" || r_s11e64="$r_s11e64 build-rea
 grep -qF -- '-v "$PWD:/work:ro"' <<<"$smoke_build_run" || r_s11e64="$r_s11e64 build-read-only-source-missing"
 grep -qF -- '-v "$SMOKE_BUILD_TARGET:/work/target:rw"' <<<"$smoke_build_run" \
   || r_s11e64="$r_s11e64 private-build-target-missing"
+for smoke_build_env in \
+  'CARGO_HOME=/tmp/smoke-cargo-home' \
+  'CARGO_TARGET_DIR=/work/target' \
+  'CARGO_INCREMENTAL=0' \
+  'CARGO_NET_OFFLINE=true' \
+  'CARGO_NET_RETRY=0' \
+  'RUSTUP_TOOLCHAIN=$SMOKE_RUSTUP_TOOLCHAIN' \
+  'SMOKE_EXPECTED_RUSTUP_TOOLCHAIN=$SMOKE_RUSTUP_TOOLCHAIN' \
+  'SMOKE_EXPECTED_VENDOR_CLOSURE_SHA256=$SMOKE_VENDOR_CLOSURE_SHA256' \
+  'SMOKE_EXPECTED_VENDOR_CONFIG_SHA256=$SMOKE_VENDOR_CONFIG_SHA256'; do
+  grep -qF -- "$smoke_build_env" <<<"$smoke_build_run" \
+    || r_s11e64="$r_s11e64 sealed-build-environment-missing"
+done
 if grep -qF '$PWD:/work:rw' <<<"$smoke_build_run"; then
   r_s11e64="$r_s11e64 live-checkout-write-authority-present"
 fi
-grep -qF -- '-v rd-cargo-cache:/usr/local/cargo/registry' <<<"$smoke_build_run" \
-  || r_s11e64="$r_s11e64 build-registry-cache-missing"
-grep -qF -- '-v rd-git-cache:/usr/local/cargo/git' <<<"$smoke_build_run" \
-  || r_s11e64="$r_s11e64 build-git-cache-missing"
+if grep -Eq 'rd-(cargo|git)-cache|/usr/local/cargo/(registry|git)' <<<"$smoke_build_run"; then
+  r_s11e64="$r_s11e64 mutable-build-dependency-cache-present"
+fi
 if grep -qF '/usr/local/cargo/' <<<"$smoke_runtime_run"; then
   r_s11e64="$r_s11e64 runtime-dependency-cache-present"
 fi
@@ -5664,6 +5681,16 @@ grep -qF 'return argv == expected' scripts/smoke-process-guard.py \
   || r_s11e64="$r_s11e64 closed-process-role-comparison-missing"
 grep -qF 'cargo build --locked --offline --features linux-pkg-config' scripts/smoke-server-stage.sh \
   || r_s11e64="$r_s11e64 locked-offline-cargo-build-missing"
+grep -qF '/usr/bin/python3 -I -S "$CARGO_VENDOR_PROVENANCE" verify-subtree' scripts/smoke-server-stage.sh \
+  || r_s11e64="$r_s11e64 vendor-provenance-verification-missing"
+[ "$(grep -Fc 'verify_smoke_build_inputs' scripts/smoke-server-stage.sh)" -eq 3 ] \
+  || r_s11e64="$r_s11e64 vendor-pre-post-verification-cardinality-invalid"
+grep -qF 'SMOKE_CARGO_CONFIG_SHA256=$(/usr/bin/sha256sum -- "$CARGO_HOME/config.toml"' scripts/smoke-server-stage.sh \
+  || r_s11e64="$r_s11e64 private-cargo-config-identity-missing"
+grep -qF 'directory = "/work/online/cargo-vendor"' scripts/smoke-server-stage.sh \
+  || r_s11e64="$r_s11e64 sealed-vendor-source-map-missing"
+grep -qF 'verify_smoke_build_postconditions' scripts/smoke-server-stage.sh \
+  || r_s11e64="$r_s11e64 build-input-postcondition-missing"
 grep -qF '<span class="id">R-S11ax</span>' requirements.html || r_s11e64="$r_s11e64 normative-requirement-missing"
 grep -qF '<tr><td>172</td>' requirements.html || r_s11e64="$r_s11e64 appendix-row-missing"
 grep -qF '<span class="id">R-S11dd</span>' requirements.html || r_s11e64="$r_s11e64 host-build-normative-requirement-missing"
@@ -5673,7 +5700,7 @@ grep -qF 'R-S11e-64 — smoke container image, network, and dependency authority
 grep -qF 'R-S11dd/R-S11e-122 — runtime-smoke host, Docker-client, build-user, and checkout-write' HARDENING_STATUS.md \
   || r_s11e64="$r_s11e64 host-build-hardening-ledger-missing"
 if [ -n "$r_s11e64" ]; then echo "  FAIL R-S11e-64/R-S11e-122 smoke container/host-build authority:$r_s11e64"; rc=1; else
-  echo "  ok  R-S11e-64/R-S11e-122 smoke uses one fixed local Docker authority, no host process scan, one non-root private-target build, immutable image ID, network none, and no publication"; fi
+  echo "  ok  R-S11e-64/R-S11e-122 smoke uses one fixed local Docker authority, no host process scan, one non-root private-target build from the sealed vendor closure, exact image ID, network none, and no publication"; fi
 
 # (3b-iii-d9co) R-S11ay/R-S11e-65: every token-switched child launch
 # must receive a successfully created environment for the exact selected

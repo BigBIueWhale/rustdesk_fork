@@ -32,7 +32,42 @@ history remains the traceability record for that intermediate work.
 > exact-`1.75.0-x86_64-unknown-linux-gnu` attempt stopped during offline resolution because the local
 > cache lacks locked `crossbeam-epoch 0.9.20`. No attempt compiled project code, started RustDesk, or
 > opened a listener. No network was enabled and no root/cache-permission workaround was used. This
-> is an evidence-pipeline blocker and must not be rewritten as a product failure or a test pass.
+> was, at that point, an evidence-pipeline blocker and must not be rewritten as a product failure or
+> a test pass.
+>
+> A same-day follow-up found that blocker in the harness's input selection rather than the product:
+> the repository already contained the complete reviewed `online/cargo-vendor` closure and canonical
+> Cargo source map, whose provenance root and SHA-256 matched their pins before and after use. At clean
+> pushed HEAD `250e775b9a88a62a980937e1f278ad053f2d9d58` (whose only change from product parent
+> `ed76d7ce81386e13af8a494af0376b8703b397eb` was this evidence-ledger text), one disposable
+> numeric-UID:GID 1000:1000 container with the exact pinned development-image ID, `--network=none`,
+> no published ports, read-only root/source, all capabilities dropped, `no-new-privileges`, private
+> target/tmpfs state, exact Rust `1.75.0-x86_64-unknown-linux-gnu`, and the sealed vendor source map
+> linked the full RustDesk binary and smoke examples in 2m09s. Rootless selected stages then proved:
+> parked startup with no TCP listener; exactly container-loopback `127.0.0.1:21118` and zero UDP in
+> listening mode plus graceful exit; correct/wrong password keying behavior; a post-key full-session
+> admission reaching the expected headless-display error; and file-transfer login admission with a
+> nonempty Linux username. All selected stages passed. One reporting-only shell interpolation error
+> produced a blank printed config-digest field, so that field is not evidence; independent pre/post
+> checks did verify the config digest and complete vendor root. No host RustDesk, service, config,
+> listener, firewall, or host network state was read or changed by the application. This is meaningful
+> exact-current portable Linux protocol/server evidence, not native Android/Windows/Apple, real
+> capture/decode/presentation, focus/minimize, installed-service, performance/soak, or release-artifact
+> evidence. Those stop-ship gaps remain.
+>
+> The corrected harness path was then exercised against the final source changes in this slice, not
+> merely inspected. Its actual `smoke-server-stage.sh build` entrypoint ran from a fresh private
+> target with the same exact image, numeric non-root identity, network/root/source/capability
+> restrictions, exact toolchain, and sealed inputs; it verified the complete vendor root before
+> Cargo, linked the full binary and examples in 2m06s, and verified that root again after Cargo. It
+> emitted 334 existing warnings, so no warning-free claim is made. Six separate rootless runtime
+> containers then passed the MDWE VP9 encode, parked/no-listener, exact loopback-listener/zero-UDP/
+> graceful-exit, correct-versus-wrong keying, headless full-session admission, and file-transfer
+> admission stages. The full smoke harness's root-service lifecycle/PID-reuse/init-system stages were
+> deliberately not invoked because root containers were outside the user's test boundary. This
+> validates the corrected portable build/input path and selected protocol runtime, while leaving all
+> native, graphical, installed-service, privileged-lifecycle, performance/soak, and artifact gaps
+> above unchanged.
 >
 > **Continuation rule:** prioritize exact-current evidence and test-harness/input closure over
 > additional product behavior changes. A further product change requires a separately source-proven
@@ -5064,7 +5099,7 @@ and no listener, RustDesk runtime, peer, service, renderer, device, or host conf
 The focused semantic verifier passes and rejects all 20 deliberate mutations. Python and shell syntax,
 the neighboring R-S11e-204 terminal-authority focused mutation verifier, native-codec normal/self-test,
 requirements-hash equality at
-`c3ac56604d3844d90789e595abeabcf62e22d1707f447399c51448a6997c7074`, and the independent normal
+`ad337bca4ccc7f3e4d3aee0a883a57879048df00c0a65e76575299e215a4904a`, and the independent normal
 workspace gate pass. The complete independent catalog then passes all 3,713 mutation specifications;
 two earlier complete-catalog attempts are explicitly excluded because they correctly exposed one
 stale X11 mutation target and then its obsolete expected-failure label. A preliminary offline Cargo
@@ -9225,8 +9260,9 @@ network configuration was inspected or changed.
   unknown-postfix refusal, and preservation of the application authentication layers. R-S11aw and Appendix C #171
   make the model normative. Native Windows multi-session execution and exact signed-artifact proof remain R-R2/R-B2;
   external expert review remains R-V3.
-- **R-S11e-64 — smoke container image, network, and dependency authority — SOURCE IMPLEMENTED; CONTAINER
-  EXECUTION AND EXACT-ARTIFACT EVIDENCE REMAIN R-B2.** Platform: Linux Docker runtime-smoke harness. Surfaces:
+- **R-S11e-64 — smoke container image, network, and dependency authority — SOURCE IMPLEMENTED; ROOTLESS
+  PORTABLE BUILD/SELECTED-RUNTIME EVIDENCE PRESENT; FULL LIFECYCLE, NATIVE, AND EXACT-ARTIFACT EVIDENCE
+  REMAIN OPEN.** Platform: Linux Docker runtime-smoke harness. Surfaces:
   `scripts/smoke-server.sh`, its five Docker launch sites, and the sole Cargo build in
   `scripts/smoke-server-stage.sh`. Boundary: repository-controlled smoke execution ↔ Docker daemon image,
   network, host/peer, and dependency-resolution authority. Proven gap: `BUILD_RUN` and the ordinary `RUN` used
@@ -9240,23 +9276,30 @@ network configuration was inspected or changed.
   dependency-resolution authority—not public DMZ port exposure, a host RustDesk/service/config mutation, privilege
   escalation, or evidence of compromise.
 
-  Source closure: before any launch the harness locally inspects the already-present tag once, validates the
-  canonical `sha256:<64 lowercase hexadecimal>` image ID, marks it immutable, and uses only that ID. Build, ordinary
-  runtime, lifecycle, PID-reuse, and sibling launches all specify `--network none` and `--pull=never`; no launch
-  publishes a port, selects host network/PID or privileged mode, or mounts the Docker socket. Network-none retains
-  container loopback, which is the only network required by the same-container protocol/capture tests. The build
-  retains read-write source plus explicit registry and Git caches and invokes Cargo exactly once with
-  `--locked --offline`; missing locked inputs now fail closed. Ordinary runtime loses its unused dependency cache,
-  and all non-build stages retain read-only source. Existing lifecycle capabilities and root service semantics are
-  unchanged because they are the behavior the release smoke must exercise. R-S11ax and Appendix C #172 make this
-  authority model normative. The shared workspace semantic validator covers the complete launch inventory and has
-  deliberate mutations for image-ID validation/use, every network/pull class, cache separation, Cargo offline/lock
-  enforcement, requirement/ledger/gate presence, and the sibling. The focused shared source gate duplicates the
-  fail-loud launch-policy checks. No container, application binary, host listener, host firewall, or host RustDesk
-  service was executed or changed while closing this source slice. Exact runtime-smoke execution and release-artifact
-  evidence remain R-B2; external expert review remains R-V3. The former default-container-user and writable-checkout
-  build authority, ambient Docker-client authority, and host historical-selector monitor described by this
-  historical entry are superseded by R-S11dd/R-S11e-122.
+  Current source closure: the harness parses only the four fixed required names from `scripts/pins.env` with a
+  closed quoted-value grammar and never shell-sources that repository file. It addresses the exact pinned
+  development-image content ID directly, requires local inspection to return that identical ID, and has no tag,
+  pull, or build fallback. Build, ordinary runtime, lifecycle, PID-reuse, and sibling launches all specify
+  `--network none` and `--pull=never`; no launch publishes a port, selects host network/PID or privileged mode, or
+  mounts the Docker socket. Network-none retains container loopback, the only network required by same-container
+  protocol/capture tests. The build runs under the invoking numeric non-root UID:GID with all capabilities dropped,
+  `no-new-privileges`, a read-only root/source mount, private writable target, and bounded tmpfs. The former mutable
+  registry/Git volumes are absent. A fresh private `CARGO_HOME` selects the exact shipped Rust toolchain and Cargo
+  offline/no-retry mode; its read-only config is derived from the canonical pinned source-replacement map and points
+  only at read-only `online/cargo-vendor`. The map SHA-256 and complete canonical vendor-tree provenance root are
+  checked before Cargo, then the tree/map and generated config identity are checked again after the single
+  `cargo build --locked --offline` and before any runtime stage can run. Cargo's per-package checksum files remain
+  accidental-modification checks; the repository provenance root is the authentication boundary. All non-build
+  stages retain read-only source/target and receive no dependency state. Existing lifecycle capabilities and root
+  service semantics are unchanged because they are the behavior the full release smoke must eventually exercise;
+  they were not invoked for the rootless selected-stage evidence above. R-S11ax and Appendix C #172 make this
+  authority model normative. The shared workspace semantic validator and focused gate bind the complete launch
+  inventory, data-only pins, exact image, every network/pull class, sealed vendor/map pre/post checks, private Cargo
+  state, cache absence, Cargo offline/lock enforcement, requirement/ledger presence, and sibling isolation, with
+  deliberate mutations for each authority edge. The earlier default-container-user, writable-checkout, ambient
+  Docker-client, and host historical-selector authority is superseded by R-S11dd/R-S11e-122. Full root-service
+  lifecycle smoke, native device/graphical behavior, exact release artifacts, and external expert review remain
+  R-B2/R-R2/R-V3 work.
 - **R-S11e-65 — Windows token-switched helper environment finality — SOURCE IMPLEMENTED; NATIVE WINDOWS AND
   EXACT-ARTIFACT EVIDENCE REMAIN R-R2/R-B2.** Platform: Windows installed-service active-session tray,
   connection-manager, and whiteboard launches. Surfaces: `run_user_helper` →
@@ -19761,7 +19804,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-c3ac56604d3844d90789e595abeabcf62e22d1707f447399c51448a6997c7074  requirements.html
+ad337bca4ccc7f3e4d3aee0a883a57879048df00c0a65e76575299e215a4904a  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

@@ -12704,19 +12704,23 @@ def validate_smoke_container_authority_contract(sources):
             'readonly BUILD_UID="$(id -u)"',
             "smoke: refuses host or container-root execution",
             'readonly SMOKE_DOCKER_SOCKET_ID="$(stat -c',
+            "read_smoke_pin()",
+            "EXPECTED_IMAGE_ID=$(read_smoke_pin DEV_CHECK_IMAGE_ID)",
+            "SMOKE_RUST_VERSION=$(read_smoke_pin RUST_VERSION)",
+            "SMOKE_VENDOR_CLOSURE_SHA256=$(read_smoke_pin SHA256_CARGO_VENDOR_CLOSURE_V1)",
+            "SMOKE_VENDOR_CONFIG_SHA256=$(read_smoke_pin SHA256_CARGO_VENDOR_CONFIG)",
             "SMOKE_ROOT=$(mktemp -d /tmp/rustdesk-smoke.XXXXXXXXXX)",
             "readonly SMOKE_DOCKER_COMMAND=(",
             "smoke_docker_authority()",
             "smoke_docker()",
-            "readonly IMG=rd-devcheck",
-            "IMAGE_ID=$(smoke_docker image inspect --format '{{.Id}}' \"$IMG\") || {",
-            'if [[ ! "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then',
+            "IMAGE_ID=$(smoke_docker image inspect --format '{{.Id}}' \"$EXPECTED_IMAGE_ID\") || {",
+            'if [ "$IMAGE_ID" != "$EXPECTED_IMAGE_ID" ]; then',
             "readonly IMAGE_ID",
             "BUILD_RUN=(smoke_docker run",
         ),
-        "fixed smoke Docker authority and local image resolution precede every container",
+        "fixed smoke Docker authority and pinned input resolution precede every container",
     )
-    require_exact_count(smoke, '"$IMG"', 1, "smoke image tag is inspect-only")
+    require_exact_count(smoke, '"$EXPECTED_IMAGE_ID"', 3, "exact pinned smoke image authority")
     require_exact_count(smoke, '"$IMAGE_ID"', 6, "every smoke container uses the immutable image ID")
     require_exact_count(smoke, "smoke_docker run", 5, "complete smoke container launch inventory")
     require_exact_count(
@@ -12759,13 +12763,24 @@ def validate_smoke_container_authority_contract(sources):
         ("--memory-swap 12g", "build no-swap ceiling"),
         ("--cpus 4", "build CPU ceiling"),
         ("/tmp:rw,exec,nosuid,nodev,mode=1777,size=2g", "build scratch ceiling"),
+        ("CARGO_HOME=/tmp/smoke-cargo-home", "private Cargo home"),
+        ("CARGO_TARGET_DIR=/work/target", "private Cargo target selection"),
+        ("CARGO_INCREMENTAL=0", "incremental compilation refusal"),
+        ("CARGO_NET_OFFLINE=true", "Cargo network refusal"),
+        ("CARGO_NET_RETRY=0", "Cargo retry refusal"),
+        ('RUSTUP_TOOLCHAIN=$SMOKE_RUSTUP_TOOLCHAIN', "exact Rust toolchain selection"),
+        ('SMOKE_EXPECTED_RUSTUP_TOOLCHAIN=$SMOKE_RUSTUP_TOOLCHAIN', "exact Rust toolchain expectation"),
+        ('SMOKE_EXPECTED_VENDOR_CLOSURE_SHA256=$SMOKE_VENDOR_CLOSURE_SHA256', "sealed vendor closure authority"),
+        ('SMOKE_EXPECTED_VENDOR_CONFIG_SHA256=$SMOKE_VENDOR_CONFIG_SHA256', "canonical vendor source-map authority"),
         ('-v "$PWD:/work:ro"', "build read-only live source"),
         ('-v "$SMOKE_BUILD_TARGET:/work/target:rw"', "build private writable target"),
-        ("-v rd-cargo-cache:/usr/local/cargo/registry", "smoke build registry cache authority"),
-        ("-v rd-git-cache:/usr/local/cargo/git", "smoke build Git cache authority"),
     ):
         require_text(build, token, label)
     require_absent(build, '$PWD:/work:rw', "build live-checkout write authority")
+    require_absent(build, "rd-cargo-cache", "mutable smoke build registry cache authority")
+    require_absent(build, "rd-git-cache", "mutable smoke build Git cache authority")
+    require_absent(build, "/usr/local/cargo/registry", "image-global Cargo registry authority")
+    require_absent(build, "/usr/local/cargo/git", "image-global Cargo Git authority")
     require_absent(runtime, "/usr/local/cargo/", "smoke runtime dependency-cache authority")
     for block, label in (
         (runtime, "ordinary runtime"),
@@ -12838,6 +12853,54 @@ def validate_smoke_container_authority_contract(sources):
         raise VerificationError("smoke bypasses the fixed Docker-client authority funnel")
 
     for token, label in (
+        ('case "$name" in', "closed smoke pin reader"),
+        ("DEV_CHECK_IMAGE_ID|RUST_VERSION|SHA256_CARGO_VENDOR_CLOSURE_V1|SHA256_CARGO_VENDOR_CONFIG", "complete smoke pin allowlist"),
+        ('done < scripts/pins.env', "data-only smoke pin input"),
+        ('^${name}=\\"([A-Za-z0-9._:-]+)\\"', "canonical quoted smoke pin grammar"),
+        ('readonly SMOKE_RUSTUP_TOOLCHAIN="${SMOKE_RUST_VERSION}.0-x86_64-unknown-linux-gnu"', "exact shipped Rust toolchain derivation"),
+    ):
+        require_text(smoke, token, label)
+    require_absent(smoke, "source scripts/pins.env", "executable smoke pin manifest authority")
+
+    require_order(
+        stage,
+        (
+            "verify_smoke_build_inputs() {",
+            "prepare_smoke_cargo_home() {",
+            "verify_smoke_build_postconditions() {",
+            "  build)",
+            "    verify_smoke_build_inputs",
+            "    prepare_smoke_cargo_home",
+            "    cargo build --locked --offline --features linux-pkg-config",
+            "    verify_smoke_build_postconditions",
+        ),
+        "sealed inputs are verified before and after the exact smoke build",
+    )
+    require_exact_count(
+        stage,
+        "verify_smoke_build_inputs",
+        3,
+        "vendor input pre/post verification cardinality",
+    )
+    for token, label in (
+        ('readonly CARGO_VENDOR_DIR=/work/online/cargo-vendor', "sealed vendor path"),
+        ('readonly CARGO_VENDOR_CONFIG=/work/online/cargo-vendor-config.toml', "canonical vendor source-map path"),
+        ('/usr/bin/python3 -I -S "$CARGO_VENDOR_PROVENANCE" verify-subtree', "isolated vendor provenance verifier"),
+        ('--expected "$SMOKE_EXPECTED_VENDOR_CLOSURE_SHA256"', "vendor closure digest binding"),
+        ('actual_config_sha=$(/usr/bin/sha256sum -- "$CARGO_VENDOR_CONFIG"', "vendor source-map digest binding"),
+        ('[ "${CARGO_HOME:-}" = /tmp/smoke-cargo-home ]', "private Cargo-home refusal"),
+        ('[ "${CARGO_TARGET_DIR:-}" = /work/target ]', "private target refusal"),
+        ('[ "${CARGO_NET_OFFLINE:-}" = true ]', "Cargo offline environment enforcement"),
+        ('[ "${CARGO_INCREMENTAL:-}" = 0 ]', "incremental compilation enforcement"),
+        ('[ ! -e "$CARGO_HOME" ] && [ ! -L "$CARGO_HOME" ]', "fresh Cargo-home enforcement"),
+        ('/usr/bin/sed \'s#^directory = .*$#directory = "/work/online/cargo-vendor"#\'', "sealed Cargo directory source map"),
+        ('/usr/bin/chmod 0400 -- "$CARGO_HOME/config.toml"', "read-only private Cargo source map"),
+        ('SMOKE_CARGO_CONFIG_SHA256=$(/usr/bin/sha256sum -- "$CARGO_HOME/config.toml"', "private Cargo source-map identity"),
+        ('= "$SMOKE_CARGO_CONFIG_SHA256" ]', "private Cargo source-map postcondition"),
+    ):
+        require_text(stage, token, label)
+
+    for token, label in (
         ('"""Prove exact server process identities inside isolated smoke containers."""', "container-only process helper scope"),
         ("def server_argv_is_expected(argv, service_owned):", "closed server-role classifier"),
         ("expected = [NEUTRAL_ARGV0, SERVER_ROLE]", "ordinary exact server role"),
@@ -12874,10 +12937,13 @@ def validate_smoke_container_authority_contract(sources):
         requirements, "R-S11ax", "smoke container authority requirement"
     )
     for token, label in (
-        ("canonical local image ID", "canonical local image requirement"),
+        ("exact pinned development-image content ID", "exact pinned image requirement"),
         ("<code>--pull=never</code>", "implicit image-pull refusal requirement"),
         ("<code>--network none</code>", "network-none requirement"),
         ("<code>--locked --offline</code>", "locked offline Cargo requirement"),
+        ("MUST NOT</span> mount persistent registry or Git caches", "mutable build-cache prohibition"),
+        ("full vendor-tree provenance root", "sealed vendor provenance requirement"),
+        ("rechecked after Cargo", "build-input postcondition requirement"),
         ("MUST NOT</span> publish ports", "port-publication prohibition"),
     ):
         require_text(requirement, token, label)
@@ -43504,9 +43570,9 @@ def run_source_mutations(sources):
     mutations = (
         (
             "smoke",
-            'if [[ ! "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then',
-            'if [[ -z "$IMAGE_ID" ]]; then',
-            "fixed smoke Docker authority and local image resolution precede every container",
+            'if [ "$IMAGE_ID" != "$EXPECTED_IMAGE_ID" ]; then',
+            'if [ -z "$IMAGE_ID" ]; then',
+            "fixed smoke Docker authority and pinned input resolution precede every container",
         ),
         (
             "smoke",
@@ -43558,9 +43624,9 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
-            "  -v rd-git-cache:/usr/local/cargo/git\n  -w /work \"$IMAGE_ID\")",
-            "  -w /work \"$IMAGE_ID\")",
-            "smoke build Git cache authority",
+            '  --env "SMOKE_EXPECTED_VENDOR_CLOSURE_SHA256=$SMOKE_VENDOR_CLOSURE_SHA256"\n',
+            "",
+            "sealed vendor closure authority",
         ),
         (
             "smoke",
@@ -43589,8 +43655,8 @@ def run_source_mutations(sources):
         (
             "smoke",
             '  -w /work "$IMAGE_ID")\nRUN=(',
-            '  -w /work "$IMG")\nRUN=(',
-            "smoke image tag is inspect-only",
+            '  -w /work rd-devcheck)\nRUN=(',
+            "every smoke container uses the immutable image ID",
         ),
         (
             "smoke",
@@ -43602,13 +43668,13 @@ def run_source_mutations(sources):
             "smoke",
             "readonly DOCKER_BIN=/usr/bin/docker",
             "readonly DOCKER_BIN=/usr/local/bin/docker",
-            "fixed smoke Docker authority and local image resolution precede every container",
+            "fixed smoke Docker authority and pinned input resolution precede every container",
         ),
         (
             "smoke",
             "smoke: refuses host or container-root execution",
             "smoke: root execution accepted",
-            "fixed smoke Docker authority and local image resolution precede every container",
+            "fixed smoke Docker authority and pinned input resolution precede every container",
         ),
         (
             "smoke",
@@ -43678,8 +43744,8 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
-            "readonly IMG=rd-devcheck",
-            'scripts/smoke-process-guard.py monitor /tmp/baseline.json &\nreadonly IMG=rd-devcheck',
+            "IMAGE_ID=$(smoke_docker image inspect",
+            'scripts/smoke-process-guard.py monitor /tmp/baseline.json &\nIMAGE_ID=$(smoke_docker image inspect',
             "top-level host process inspection authority",
         ),
         (
@@ -43692,7 +43758,37 @@ def run_source_mutations(sources):
             "smoke_stage",
             "cargo build --locked --offline --features linux-pkg-config",
             "cargo build --features linux-pkg-config",
-            "smoke locked offline Cargo build",
+            "sealed inputs are verified before and after the exact smoke build",
+        ),
+        (
+            "smoke_stage",
+            "    verify_smoke_build_inputs\n    prepare_smoke_cargo_home",
+            "    true # pre-build vendor verification removed\n    prepare_smoke_cargo_home",
+            "sealed inputs are verified before and after the exact smoke build",
+        ),
+        (
+            "smoke_stage",
+            "    cargo build --locked --offline --features linux-pkg-config --bin rustdesk --example seed_password --example probe_client --example smoke_readiness --example pf_echo --example flood_probe --example mdwe_codec_probe --color never\n    verify_smoke_build_postconditions",
+            "    cargo build --locked --offline --features linux-pkg-config --bin rustdesk --example seed_password --example probe_client --example smoke_readiness --example pf_echo --example flood_probe --example mdwe_codec_probe --color never\n    true # post-build vendor verification removed",
+            "sealed inputs are verified before and after the exact smoke build",
+        ),
+        (
+            "smoke_stage",
+            '/usr/bin/python3 -I -S "$CARGO_VENDOR_PROVENANCE" verify-subtree',
+            "true # vendor provenance verifier removed",
+            "isolated vendor provenance verifier",
+        ),
+        (
+            "smoke_stage",
+            '/usr/bin/chmod 0400 -- "$CARGO_HOME/config.toml"',
+            '/usr/bin/chmod 0600 -- "$CARGO_HOME/config.toml"',
+            "read-only private Cargo source map",
+        ),
+        (
+            "smoke_stage",
+            '/usr/bin/sed \'s#^directory = .*$#directory = "/work/online/cargo-vendor"#\'',
+            '/usr/bin/sed \'s#^directory = .*$#directory = "/usr/local/cargo/registry"#\'',
+            "sealed Cargo directory source map",
         ),
         (
             "requirements",

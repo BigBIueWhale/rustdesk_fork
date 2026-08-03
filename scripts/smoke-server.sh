@@ -88,6 +88,45 @@ for variable in \
   }
 done
 
+read_smoke_pin() {
+  local name=$1 line value= count=0
+  case "$name" in
+    DEV_CHECK_IMAGE_ID|RUST_VERSION|SHA256_CARGO_VENDOR_CLOSURE_V1|SHA256_CARGO_VENDOR_CONFIG) ;;
+    *) echo "smoke: unsupported pin name $name" >&2; return 1 ;;
+  esac
+  while IFS= read -r line || [ -n "$line" ]; do
+    if [[ "$line" == "$name="* ]]; then
+      count=$((count + 1))
+      if [[ "$line" =~ ^${name}=\"([A-Za-z0-9._:-]+)\"([[:space:]]*#.*)?$ ]]; then
+        value=${BASH_REMATCH[1]}
+      else
+        echo "smoke: $name is not one canonical quoted pins.env assignment" >&2
+        return 1
+      fi
+    fi
+  done < scripts/pins.env
+  [ "$count" -eq 1 ] && [ -n "$value" ] || {
+    echo "smoke: $name must occur exactly once in scripts/pins.env" >&2
+    return 1
+  }
+  printf '%s\n' "$value"
+}
+
+EXPECTED_IMAGE_ID=$(read_smoke_pin DEV_CHECK_IMAGE_ID)
+SMOKE_RUST_VERSION=$(read_smoke_pin RUST_VERSION)
+SMOKE_VENDOR_CLOSURE_SHA256=$(read_smoke_pin SHA256_CARGO_VENDOR_CLOSURE_V1)
+SMOKE_VENDOR_CONFIG_SHA256=$(read_smoke_pin SHA256_CARGO_VENDOR_CONFIG)
+[[ "$EXPECTED_IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]] \
+  || { echo "smoke: DEV_CHECK_IMAGE_ID is not a canonical image ID" >&2; exit 1; }
+[[ "$SMOKE_RUST_VERSION" =~ ^[0-9]+\.[0-9]+$ ]] \
+  || { echo "smoke: RUST_VERSION is not a canonical major.minor version" >&2; exit 1; }
+[[ "$SMOKE_VENDOR_CLOSURE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+  || { echo "smoke: Cargo vendor closure pin is not canonical SHA-256" >&2; exit 1; }
+[[ "$SMOKE_VENDOR_CONFIG_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+  || { echo "smoke: Cargo vendor config pin is not canonical SHA-256" >&2; exit 1; }
+readonly EXPECTED_IMAGE_ID SMOKE_RUST_VERSION SMOKE_VENDOR_CLOSURE_SHA256 SMOKE_VENDOR_CONFIG_SHA256
+readonly SMOKE_RUSTUP_TOOLCHAIN="${SMOKE_RUST_VERSION}.0-x86_64-unknown-linux-gnu"
+
 SMOKE_ROOT=$(mktemp -d /tmp/rustdesk-smoke.XXXXXXXXXX)
 readonly SMOKE_ROOT
 readonly SMOKE_ROOT_ID="$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_ROOT")"
@@ -161,13 +200,12 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-readonly IMG=rd-devcheck
-IMAGE_ID=$(smoke_docker image inspect --format '{{.Id}}' "$IMG") || {
-  echo "smoke: required local image $IMG is absent" >&2
+IMAGE_ID=$(smoke_docker image inspect --format '{{.Id}}' "$EXPECTED_IMAGE_ID") || {
+  echo "smoke: required pinned local image $EXPECTED_IMAGE_ID is absent" >&2
   exit 1
 }
-if [[ ! "$IMAGE_ID" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-  echo "smoke: local image $IMG did not resolve to a canonical image ID" >&2
+if [ "$IMAGE_ID" != "$EXPECTED_IMAGE_ID" ]; then
+  echo "smoke: Docker did not resolve the exact pinned development image ID" >&2
   exit 1
 fi
 readonly IMAGE_ID
@@ -181,10 +219,17 @@ BUILD_RUN=(smoke_docker run --rm --network none --pull=never --read-only
   --cpus 4
   --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g
   --env HOME=/tmp/smoke-build
+  --env CARGO_HOME=/tmp/smoke-cargo-home
+  --env CARGO_TARGET_DIR=/work/target
+  --env CARGO_INCREMENTAL=0
+  --env CARGO_NET_OFFLINE=true
+  --env CARGO_NET_RETRY=0
+  --env "RUSTUP_TOOLCHAIN=$SMOKE_RUSTUP_TOOLCHAIN"
+  --env "SMOKE_EXPECTED_RUSTUP_TOOLCHAIN=$SMOKE_RUSTUP_TOOLCHAIN"
+  --env "SMOKE_EXPECTED_VENDOR_CLOSURE_SHA256=$SMOKE_VENDOR_CLOSURE_SHA256"
+  --env "SMOKE_EXPECTED_VENDOR_CONFIG_SHA256=$SMOKE_VENDOR_CONFIG_SHA256"
   -v "$PWD:/work:ro"
   -v "$SMOKE_BUILD_TARGET:/work/target:rw"
-  -v rd-cargo-cache:/usr/local/cargo/registry
-  -v rd-git-cache:/usr/local/cargo/git
   -w /work "$IMAGE_ID")
 RUN=(smoke_docker run --rm --network none --pull=never
   -v "$PWD:/work:ro"

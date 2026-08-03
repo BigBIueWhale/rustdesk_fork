@@ -9,9 +9,73 @@ readonly READY=/work/scripts/smoke-ready.sh
 readonly PROCESS_GUARD=/work/scripts/smoke-process-guard.py
 readonly SERVER_LAUNCHER=/work/target/smoke-server-launcher
 readonly BIND_SHIM=/work/target/smoke-bind-loopback.so
+readonly CARGO_VENDOR_DIR=/work/online/cargo-vendor
+readonly CARGO_VENDOR_CONFIG=/work/online/cargo-vendor-config.toml
+readonly CARGO_VENDOR_PROVENANCE=/work/scripts/online-input-provenance.py
 
 SRV=
 SRV_START=
+
+smoke_build_input_die() {
+  echo "smoke build: $*" >&2
+  return 1
+}
+
+verify_smoke_build_inputs() {
+  local actual_config_sha
+  [[ "${SMOKE_EXPECTED_VENDOR_CLOSURE_SHA256:-}" =~ ^[0-9a-f]{64}$ ]] \
+    || smoke_build_input_die "missing or malformed Cargo vendor closure pin" || return 1
+  [[ "${SMOKE_EXPECTED_VENDOR_CONFIG_SHA256:-}" =~ ^[0-9a-f]{64}$ ]] \
+    || smoke_build_input_die "missing or malformed Cargo vendor config pin" || return 1
+  [ -d "$CARGO_VENDOR_DIR" ] && [ ! -L "$CARGO_VENDOR_DIR" ] \
+    || smoke_build_input_die "sealed Cargo vendor directory is unavailable" || return 1
+  [ -f "$CARGO_VENDOR_CONFIG" ] && [ ! -L "$CARGO_VENDOR_CONFIG" ] \
+    || smoke_build_input_die "canonical Cargo vendor config is unavailable" || return 1
+  [ -f "$CARGO_VENDOR_PROVENANCE" ] && [ ! -L "$CARGO_VENDOR_PROVENANCE" ] \
+    || smoke_build_input_die "Cargo vendor provenance verifier is unavailable" || return 1
+  actual_config_sha=$(/usr/bin/sha256sum -- "$CARGO_VENDOR_CONFIG" | /usr/bin/awk '{print $1}')
+  [ "$actual_config_sha" = "$SMOKE_EXPECTED_VENDOR_CONFIG_SHA256" ] \
+    || smoke_build_input_die "canonical Cargo vendor config differs from its pin" || return 1
+  /usr/bin/python3 -I -S "$CARGO_VENDOR_PROVENANCE" verify-subtree \
+    --tree "$CARGO_VENDOR_DIR" --expected "$SMOKE_EXPECTED_VENDOR_CLOSURE_SHA256" \
+    || smoke_build_input_die "sealed Cargo vendor tree differs from its pin"
+}
+
+prepare_smoke_cargo_home() {
+  [ "${CARGO_HOME:-}" = /tmp/smoke-cargo-home ] \
+    || smoke_build_input_die "CARGO_HOME is not the private smoke path" || return 1
+  [ "${CARGO_TARGET_DIR:-}" = /work/target ] \
+    || smoke_build_input_die "CARGO_TARGET_DIR is not the private mounted target" || return 1
+  [ "${CARGO_NET_OFFLINE:-}" = true ] && [ "${CARGO_NET_RETRY:-}" = 0 ] \
+    || smoke_build_input_die "Cargo network refusal is incomplete" || return 1
+  [ "${CARGO_INCREMENTAL:-}" = 0 ] \
+    || smoke_build_input_die "incremental compilation must be disabled" || return 1
+  [ "${RUSTUP_TOOLCHAIN:-}" = "${SMOKE_EXPECTED_RUSTUP_TOOLCHAIN:-}" ] \
+    && [[ "$RUSTUP_TOOLCHAIN" =~ ^[0-9]+\.[0-9]+\.0-x86_64-unknown-linux-gnu$ ]] \
+    || smoke_build_input_die "Rustup toolchain is not the exact smoke pin" || return 1
+  [ ! -e "$CARGO_HOME" ] && [ ! -L "$CARGO_HOME" ] \
+    || smoke_build_input_die "private Cargo home already exists" || return 1
+  /usr/bin/install -d -m 0700 -- "$CARGO_HOME"
+  {
+    printf '[net]\noffline = true\n'
+    /usr/bin/sed 's#^directory = .*$#directory = "/work/online/cargo-vendor"#' "$CARGO_VENDOR_CONFIG"
+  } > "$CARGO_HOME/config.toml"
+  /usr/bin/chmod 0400 -- "$CARGO_HOME/config.toml"
+  [ "$(/usr/bin/grep -c '^directory = "/work/online/cargo-vendor"$' "$CARGO_HOME/config.toml")" -eq 1 ] \
+    || smoke_build_input_die "private Cargo source map has invalid vendor-directory cardinality" || return 1
+  [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$CARGO_HOME/config.toml")" = "$(/usr/bin/id -u):$(/usr/bin/id -g):400:1" ] \
+    || smoke_build_input_die "private Cargo source map metadata is invalid" || return 1
+  SMOKE_CARGO_CONFIG_SHA256=$(/usr/bin/sha256sum -- "$CARGO_HOME/config.toml" | /usr/bin/awk '{print $1}')
+  readonly SMOKE_CARGO_CONFIG_SHA256
+}
+
+verify_smoke_build_postconditions() {
+  verify_smoke_build_inputs || return 1
+  [ "$(/usr/bin/sha256sum -- "$CARGO_HOME/config.toml" | /usr/bin/awk '{print $1}')" = "$SMOKE_CARGO_CONFIG_SHA256" ] \
+    || smoke_build_input_die "private Cargo source map changed during compilation" || return 1
+  [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$CARGO_HOME/config.toml")" = "$(/usr/bin/id -u):$(/usr/bin/id -g):400:1" ] \
+    || smoke_build_input_die "private Cargo source map metadata changed during compilation"
+}
 
 start_server() {
   local executable=$1 log=$2
@@ -24,7 +88,10 @@ start_server() {
 
 case "$1" in
   build)
+    verify_smoke_build_inputs
+    prepare_smoke_cargo_home
     cargo build --locked --offline --features linux-pkg-config --bin rustdesk --example seed_password --example probe_client --example smoke_readiness --example pf_echo --example flood_probe --example mdwe_codec_probe --color never
+    verify_smoke_build_postconditions
     chmod 0755 target/debug/rustdesk
     cc -shared -fPIC -O2 -Wall -Wextra -Werror -o target/smoke-bind-loopback.so scripts/smoke-bind-loopback.c -ldl
     cc -O2 -Wall -Wextra -Werror -o target/smoke-server-launcher scripts/smoke-server-launcher.c

@@ -69,6 +69,28 @@ history remains the traceability record for that intermediate work.
 > native, graphical, installed-service, privileged-lifecycle, performance/soak, and artifact gaps
 > above unchanged.
 >
+> A final authority review then found that the public ordinary runtime array itself still relied on
+> Docker's default container user and capabilities even though the build array and the earlier
+> manually assembled evidence commands were numeric non-root. The harness now defaults to an exact
+> `--portable-rootless` control-flow class: numeric invoking UID:GID, all capabilities dropped,
+> no-new-privileges, read-only root/source/target, explicit PID/memory/no-swap/CPU ceilings, private
+> bounded tmpfs, network none, no pull, and no published port. Root service/lifecycle, PID-reuse,
+> init-system, user-creation/root-owned/installed-layout password, and packet-capture fixtures are
+> unreachable unless `--with-root-containers` is explicit. The full release orchestrator now passes
+> that flag explicitly so the safe default cannot silently weaken a future full release smoke; that
+> root-containing mode was not run here.
+>
+> The exact edited public command `bash scripts/smoke-server.sh --portable-rootless` then exited zero.
+> Its fresh sealed-vendor build linked the full production binary and smoke examples in 2m06s with
+> 334 existing warnings. Disposable non-root runtime containers passed MDWE VP9 encode, parked/no-
+> listener startup, exactly container-loopback `127.0.0.1:21118` TCP with zero UDP and graceful drain,
+> correct/wrong CPace keying, capacity shedding, authenticated headless Remote admission, sealed
+> port-forward echo, FileTransfer admission, forged-frame rejection, and different-source owner-safe
+> limiting. The terminal `SMOKE ROOTLESS OK` verdict expressly recorded that root/service/init-system/
+> user-creation/installed-layout/packet-capture, graphical/native/device, performance/soak, and
+> release-artifact evidence were not entered or claimed. This closes the public portable-harness
+> authority discrepancy; it does not close any of those release-blocking native or graphical gaps.
+>
 > **Continuation rule:** prioritize exact-current evidence and test-harness/input closure over
 > additional product behavior changes. A further product change requires a separately source-proven
 > defect or must be necessary to obtain valid evidence; it does not earn release confidence merely
@@ -5152,8 +5174,8 @@ objects ↔ a test observer which must prove that same owner; separately, the co
 which receives no published port or shared network namespace.
 
 Read-only source and history review found that every mounted smoke-stage readiness call supplied literal UID `0`.
-The original parked/listen calls came from `515c811`; later stages copied the same assumption. The top-level full
-smoke currently runs those ordinary runtime stages in a root container because other stages install service
+The original parked/listen calls came from `515c811`; later stages copied the same assumption. At the time, the
+top-level full smoke ran those ordinary runtime stages in a root container because other stages installed service
 fixtures or capture packets, so the bad expectation was normally self-confirming. A deliberately rootless direct
 run exposed the defect: the real server logged the required parked state, `/proc` showed no TCP or UDP listener,
 and the typed IPC probe returned `SMOKE_TYPED_IPC_READY state=parked`, but `smoke-ready.sh` correctly refused to
@@ -9263,7 +9285,7 @@ network configuration was inspected or changed.
 - **R-S11e-64 — smoke container image, network, and dependency authority — SOURCE IMPLEMENTED; ROOTLESS
   PORTABLE BUILD/SELECTED-RUNTIME EVIDENCE PRESENT; FULL LIFECYCLE, NATIVE, AND EXACT-ARTIFACT EVIDENCE
   REMAIN OPEN.** Platform: Linux Docker runtime-smoke harness. Surfaces:
-  `scripts/smoke-server.sh`, its five Docker launch sites, and the sole Cargo build in
+  `scripts/smoke-server.sh`, its six Docker launch sites, and the sole Cargo build in
   `scripts/smoke-server-stage.sh`. Boundary: repository-controlled smoke execution ↔ Docker daemon image,
   network, host/peer, and dependency-resolution authority. Proven gap: `BUILD_RUN` and the ordinary `RUN` used
   Docker's implicit default bridge, which Docker documents as providing outbound connectivity and access to the
@@ -9276,28 +9298,55 @@ network configuration was inspected or changed.
   dependency-resolution authority—not public DMZ port exposure, a host RustDesk/service/config mutation, privilege
   escalation, or evidence of compromise.
 
+  Follow-up review on 2026-08-03 found a second, independently source-proven harness defect. Although `BUILD_RUN`
+  had already been corrected to the invoking numeric non-root identity, the public ordinary `RUN` array still
+  omitted `--user`, capability removal, `no-new-privileges`, a read-only container root, and resource ceilings.
+  Docker therefore ran every parked/listen/keying/full-session/file-transfer/port-forward/injection/limiter stage
+  reached through that array as container root with its default capability set. The previously recorded manually
+  assembled rootless runs remain evidence for their exact commands, but the public default harness did not
+  reproduce that authority model. This was excess authority inside disposable, network-none containers; it was
+  not host root acquisition, a privileged container, Docker-socket exposure, a published port, a host RustDesk or
+  firewall change, or evidence of compromise.
+
   Current source closure: the harness parses only the four fixed required names from `scripts/pins.env` with a
   closed quoted-value grammar and never shell-sources that repository file. It addresses the exact pinned
   development-image content ID directly, requires local inspection to return that identical ID, and has no tag,
-  pull, or build fallback. Build, ordinary runtime, lifecycle, PID-reuse, and sibling launches all specify
-  `--network none` and `--pull=never`; no launch publishes a port, selects host network/PID or privileged mode, or
+  pull, or build fallback. Build, ordinary portable runtime, explicit-root ordinary fixture, lifecycle, PID-reuse,
+  and sibling launches all specify `--network none` and `--pull=never`; no launch publishes a port, selects host
+  network/PID or privileged mode, or
   mounts the Docker socket. Network-none retains container loopback, the only network required by same-container
-  protocol/capture tests. The build runs under the invoking numeric non-root UID:GID with all capabilities dropped,
-  `no-new-privileges`, a read-only root/source mount, private writable target, and bounded tmpfs. The former mutable
-  registry/Git volumes are absent. A fresh private `CARGO_HOME` selects the exact shipped Rust toolchain and Cargo
+  protocol/capture tests. The build and ordinary portable runtime run under the invoking numeric non-root UID:GID
+  with all capabilities dropped, `no-new-privileges`, a read-only root/source mount, explicit PID, memory/no-swap,
+  and CPU ceilings, and bounded private tmpfs. The build alone receives the private writable target; ordinary
+  runtime receives that target read-only. The former mutable registry/Git volumes are absent. A fresh private
+  `CARGO_HOME` selects the exact shipped Rust toolchain and Cargo
   offline/no-retry mode; its read-only config is derived from the canonical pinned source-replacement map and points
   only at read-only `online/cargo-vendor`. The map SHA-256 and complete canonical vendor-tree provenance root are
   checked before Cargo, then the tree/map and generated config identity are checked again after the single
   `cargo build --locked --offline` and before any runtime stage can run. Cargo's per-package checksum files remain
   accidental-modification checks; the repository provenance root is the authentication boundary. All non-build
-  stages retain read-only source/target and receive no dependency state. Existing lifecycle capabilities and root
-  service semantics are unchanged because they are the behavior the full release smoke must eventually exercise;
-  they were not invoked for the rootless selected-stage evidence above. R-S11ax and Appendix C #172 make this
-  authority model normative. The shared workspace semantic validator and focused gate bind the complete launch
+  stages retain read-only source/target and receive no dependency state. No-argument execution and explicit
+  `--portable-rootless` execution reach only the confined portable-runtime array. Root service/lifecycle,
+  PID-reuse, init-system, root-owned or user-creation password, installed-layout, and packet-capture fixtures are
+  unreachable unless `--with-root-containers` is explicit. Those separate arrays retain their documented root and
+  capability semantics because those are the behaviors the full release smoke must eventually exercise; they were
+  not invoked for the rootless selected-stage evidence above. The rootless success line enumerates those omissions
+  and expressly declines graphical/native/device, performance/soak, and release-artifact evidence. The full
+  release orchestrator is the one source-controlled caller that passes `--with-root-containers` explicitly; that
+  preserves the complete release gate without changing the public safe default. R-S11ax and Appendix C #172 make
+  this authority model normative. The shared workspace semantic validator and focused gate bind the complete launch
   inventory, data-only pins, exact image, every network/pull class, sealed vendor/map pre/post checks, private Cargo
-  state, cache absence, Cargo offline/lock enforcement, requirement/ledger presence, and sibling isolation, with
-  deliberate mutations for each authority edge. The earlier default-container-user, writable-checkout, ambient
-  Docker-client, and host historical-selector authority is superseded by R-S11dd/R-S11e-122. Full root-service
+  state, cache absence, Cargo offline/lock enforcement, portable-runtime identity/capability/resource confinement,
+  explicit root-stage reachability, truthful verdict scope, requirement/ledger presence, and sibling isolation,
+  with deliberate mutations for each authority edge. The exact edited command
+  `bash scripts/smoke-server.sh --portable-rootless` subsequently built and linked the production binary and smoke
+  examples from the sealed vendor closure in 2m06s, then exited zero after MDWE VP9, parked/no-listener, exact
+  container-loopback listener/zero-UDP/graceful-drain, correct/wrong keying, capacity, Remote admission,
+  port-forward, FileTransfer admission, forged-frame, and owner-safe limiter stages. Its terminal verdict named all
+  skipped root/native/graphical/performance/artifact classes. The complete source-mutation catalog also exited zero
+  after first exposing and closing an ambiguous mutation anchor and a zero-argument-default verifier blind spot.
+  The earlier build default-container-user, writable-checkout, ambient Docker-client, and host historical-selector
+  authority is superseded by R-S11dd/R-S11e-122. Full root-service
   lifecycle smoke, native device/graphical behavior, exact release artifacts, and external expert review remain
   R-B2/R-R2/R-V3 work.
 - **R-S11e-65 — Windows token-switched helper environment finality — SOURCE IMPLEMENTED; NATIVE WINDOWS AND
@@ -19804,7 +19853,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-ad337bca4ccc7f3e4d3aee0a883a57879048df00c0a65e76575299e215a4904a  requirements.html
+14bbf4fd26c310d96aad4bacba2ef04ea6f864c70b2766c3ffd6451514360c9d  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

@@ -11,8 +11,10 @@ nothing per-box needs to be verified out-of-band.
 
 The steps below were validated by installing the built `.deb` in a clean
 `ubuntu:22.04` container (clean install, binary + systemd unit placement), and the
-runtime behaviour by `scripts/smoke-server.sh` (one v4 TCP listener on 21118, zero
-UDP, fail-closed startup).
+portable runtime behaviour by `scripts/smoke-server.sh --portable-rootless` (one
+container-loopback v4 TCP listener on 21118, zero UDP, fail-closed startup). This
+does not claim installed-service, packet-capture, native GUI/device, or release-artifact
+validation.
 
 Related: [`TRANSPORT-SECURITY.md`](./TRANSPORT-SECURITY.md) (the wire protocol),
 [`SECURITY.md`](./SECURITY.md).
@@ -164,7 +166,9 @@ systemctl status rustdesk --no-pager
 
 # the box's own pre-ship assurance (run from the source tree, in Docker):
 bash scripts/verify.sh         # KATs + handshake + two-key cipher + compile + R-A6 gates
-bash scripts/smoke-server.sh   # runtime: one-TCP/zero-UDP, fail-closed, no-plaintext wire
+bash scripts/smoke-server.sh --portable-rootless  # safe default: portable one-TCP/zero-UDP + protocol smoke
+# Explicit separately authorized root-container fixtures only (service/init/user/capture):
+bash scripts/smoke-server.sh --with-root-containers
 ```
 
 A correctly-deployed host shows a single `0.0.0.0:21118` TCP LISTEN line and no UDP.

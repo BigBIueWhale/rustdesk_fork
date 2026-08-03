@@ -67,6 +67,9 @@ for entry in "${GATES[@]}"; do
     read -r -a gate_args <<< "$s"
     python3 "scripts/${gate_args[0]}" "${gate_args[@]:1}"
     gate_status=$?
+  elif [ "$s" = smoke-server.sh ]; then
+    bash "scripts/$s" --with-root-containers
+    gate_status=$?
   elif [ "$s" = smoke-debian-systemd-lifecycle.sh ] \
       && [ -n "$SYSTEMD_GATE_IMAGE" ]; then
     SYSTEMD_SMOKE_IMAGE="$SYSTEMD_GATE_IMAGE" \

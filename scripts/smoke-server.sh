@@ -11,7 +11,8 @@
 # The production binary has no runtime bind-address switch; this harness uses an LD_PRELOAD bind
 # shim that rewrites only the public test bind (0.0.0.0:21118 -> 127.0.0.1:21118).
 #
-# Validated at RUNTIME (not merely compile):
+# Validated at RUNTIME (not merely compile). Portable bullets run in the default rootless mode;
+# service/init-system/root-owned/packet-capture bullets require explicit --with-root-containers:
 #   - R-B4 build  : the full `rustdesk` binary builds + links + runs headless (sciter is `dyn`);
 #   - R-A4/R-S9 (fail-closed startup) : with NO permanent password the box PARKS — it stays alive
 #     but binds NO listener (nothing on the pinned port) and refuses every connection (finding D:
@@ -43,12 +44,36 @@
 # Most stages seed the permanent password via the TEST-ONLY `examples/seed_password` (a direct Config
 # write) for speed; stages (2b-2d) exercise the production `--password-stdin` CLI end-to-end.
 #
-# Usage:  scripts/smoke-server.sh           (the fast default path)
-#         SMOKE_DECAY=1 scripts/smoke-server.sh   (also runs stage 10 — the R-A8 limiter-DECAY proof,
-#                                                  which waits out the real 60s window, ~75 s slower)
+# Usage:  scripts/smoke-server.sh [--portable-rootless]
+#         scripts/smoke-server.sh --with-root-containers
+#         SMOKE_DECAY=1 scripts/smoke-server.sh [--portable-rootless]
+#
+# The default is the portable rootless path. The installed-service, root-owned password fixture,
+# user-creation fixture, PID-reuse namespace, init-system, and packet-capture stages are unreachable
+# unless --with-root-containers is explicit.
 set -euo pipefail
 umask 077
 cd "$(dirname "$0")/.."
+case "$#" in
+  0)
+    SMOKE_MODE=portable-rootless
+    ;;
+  1)
+    case "$1" in
+      --portable-rootless) SMOKE_MODE=portable-rootless ;;
+      --with-root-containers) SMOKE_MODE=with-root-containers ;;
+      *)
+        echo "usage: scripts/smoke-server.sh [--portable-rootless|--with-root-containers]" >&2
+        exit 2
+        ;;
+    esac
+    ;;
+  *)
+    echo "usage: scripts/smoke-server.sh [--portable-rootless|--with-root-containers]" >&2
+    exit 2
+    ;;
+esac
+readonly SMOKE_MODE
 readonly DOCKER_BIN=/usr/bin/docker
 readonly SMOKE_DOCKER_HOST=unix:///var/run/docker.sock
 readonly BUILD_UID="$(id -u)"
@@ -231,7 +256,20 @@ BUILD_RUN=(smoke_docker run --rm --network none --pull=never --read-only
   -v "$PWD:/work:ro"
   -v "$SMOKE_BUILD_TARGET:/work/target:rw"
   -w /work "$IMAGE_ID")
-RUN=(smoke_docker run --rm --network none --pull=never
+RUN=(smoke_docker run --rm --network none --pull=never --read-only
+  --user "$BUILD_UID:$BUILD_GID"
+  --cap-drop ALL
+  --security-opt no-new-privileges
+  --pids-limit 1024
+  --memory 4g
+  --memory-swap 4g
+  --cpus 2
+  --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=1g
+  --env HOME=/tmp/smoke-runtime
+  -v "$PWD:/work:ro"
+  -v "$SMOKE_BUILD_TARGET:/work/target:ro"
+  -w /work "$IMAGE_ID")
+ROOT_RUN=(smoke_docker run --rm --network none --pull=never
   -v "$PWD:/work:ro"
   -v "$SMOKE_BUILD_TARGET:/work/target:ro"
   -w /work "$IMAGE_ID")
@@ -445,6 +483,7 @@ printf '%s\n' "$build_out"
 record_stage_status R-B4-build
 [ "$STAGE_STATUS" -eq 0 ] || exit 1
 
+if [ "$SMOKE_MODE" = with-root-containers ]; then
 echo "== (0c) Linux manual supervisor lifecycle: exact hostile-record rejection, cross-container identity, pidfd-unavailable refusal, stop/crash recovery, privilege drop, and portable noninterference (R-S11c-27f/R-S11c-27g/R-S11c-27h/R-S11c-27i/R-S11c-27j/R-S11c-27n/R-S11c-27u) =="
 lifecycle_out=
 sibling_out=
@@ -594,6 +633,9 @@ printf '%s\n' "$runit_out"
 record_stage_status R-S11c-27r
 grep -Eq '^RUNIT_NATIVE_LIFECYCLE=pass os=debian-12 runit=2\.1\.2-54 portable_uid=4000 normal_restart=pass crash_recovery=automatic manager_shutdown=hup-111 child_exit_ms=[0-9]+$' <<<"$runit_out" \
   || { echo "  FAIL R-S11c-27r: native runit lifecycle or unrelated portable survival was not proven"; rc=1; }
+else
+  echo "== (0c-0g) portable-rootless mode: root service, PID-reuse, and init-system lifecycle stages not entered =="
+fi
 
 echo "== (0b) R-D3a MemoryDenyWriteExecute (W^X) validation: the deployed software VP9 encoder runs clean under the EXACT PR_SET_MDWE primitive systemd applies (so MemoryDenyWriteExecute=yes in the unit is safe) =="
 # The controlled --server only ENCODES (§13/Appendix C #2b); the probe sets PR_SET_MDWE|REFUSE_EXEC_GAIN
@@ -637,6 +679,7 @@ grep -q 'socket surface verified — exactly one TCP v4:21118, zero UDP' <<<"$ou
 grep -q 'R-T9: graceful shutdown complete — exiting 0' <<<"$out2" \
   || { echo "  FAIL R-T9: no graceful SIGTERM shutdown"; rc=1; }
 
+if [ "$SMOKE_MODE" = with-root-containers ]; then
 echo "== (2b) R-D8/R-D2: the REAL portable 'rustdesk --password-stdin' CLI provisions over user-owned uid-scoped IPC and cleanly set-and-exits =="
 # The other stages seed via the test-only examples/seed_password (a direct Config write) for speed,
 # which bypasses the production path. This stage runs the real noninteractive `--password-stdin` CLI
@@ -646,7 +689,7 @@ echo "== (2b) R-D8/R-D2: the REAL portable 'rustdesk --password-stdin' CLI provi
 # current-thread-runtime CLEAN TEARDOWN — the "set-and-exit" stock RustDesk lacked.
 # We provision by CHANGING an initial seeded password (--server refuses to listen with none, R-A4) —
 # the identical user-owned IPC path; service-launched servers are marked separately and reject this path.
-run_stage out2b "${RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh password-root
+run_stage out2b "${ROOT_RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh password-root
 echo "$out2b"
 record_stage_status R-D8/R-D2
 grep -q 'PW_EXIT=0' <<<"$out2b" \
@@ -662,7 +705,7 @@ echo "== (2c) R-D8: portable 'rustdesk --password-stdin' provisions over SAME-UI
 # An unprivileged owner (uid 4000) runs both non-installed --server and --password-stdin as itself.
 # The request reaches its own per-uid raw IPC directly; the endpoint's per-uid mode and SO_PEERCRED
 # identity are the authorization. This also exercises RLIMIT_NOFILE enforcement under non-root.
-run_stage out2c "${RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh password-nonroot
+run_stage out2c "${ROOT_RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh password-nonroot
 echo "$out2c"
 record_stage_status R-D8-nonroot
 grep -q 'UID=4000' <<<"$out2c" \
@@ -687,7 +730,7 @@ grep -q 'SOURCE_BIND_UNCHANGED=yes' <<<"$out2c" \
   || { echo "  FAIL R-D8: stage (2c) changed or could not re-prove the source bind"; rc=1; }
 
 echo "== (2d) R-S11b: installed layout selects service ownership and never falls back to user-owned password storage =="
-run_stage out2d "${RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh password-installed
+run_stage out2d "${ROOT_RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh password-installed
 echo "$out2d"
 record_stage_status R-S11b
 grep -q 'PW_EXIT=1' <<<"$out2d" \
@@ -696,6 +739,9 @@ grep -q 'KEYED_NEW: keying ok=false' <<<"$out2d" \
   || { echo "  FAIL R-S11b: installed-layout request fell back to user-owned password mutation"; rc=1; }
 grep -q 'KEYED_OLD: keying ok=true' <<<"$out2d" \
   || { echo "  FAIL R-S11b: failed installed-layout request changed or disabled the existing credential"; rc=1; }
+else
+  echo "== (2b-2d) portable-rootless mode: root-owned/user-creation/installed-layout password fixtures not entered =="
+fi
 
 echo "== (3) two-process: a CPace probe client keys the REAL server (R-A1/R-S1) + a wrong password is refused (R-P3/R-P14c) + the R-T12 observability fires =="
 run_stage out3 "${RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh keying
@@ -808,8 +854,9 @@ grep -q 'OWNER_DIFF_SRC: keying ok=true' <<<"$out8" \
 grep -q 'FLOODER_SAME_SRC: keying ok=false' <<<"$out8" \
   || { echo "  FAIL R-A8.2: the flooding source was NOT rate-limited (the per-source guess limiter is not working)"; rc=1; }
 
+if [ "$SMOKE_MODE" = with-root-containers ]; then
 echo "== (9) R-A9: wire-capture — a post-key LoginRequest canary is ENCRYPTED (never plaintext on the wire) =="
-run_stage out9 "${RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh capture
+run_stage out9 "${ROOT_RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh capture
 echo "$out9"
 record_stage_status R-A9
 # R-A9: the session bytes are indistinguishable from random — a known plaintext canary sent on the
@@ -821,6 +868,9 @@ grep -qE 'PCAP_SIZE: [0-9]{3,}' <<<"$out9" \
   || { echo "  FAIL R-A9: the wire capture was empty/trivial — no real traffic was captured"; rc=1; }
 grep -q 'CANARY_ON_WIRE: NO' <<<"$out9" \
   || { echo "  FAIL R-A9: the LoginRequest canary appeared as PLAINTEXT on the wire — the session is NOT encrypted"; rc=1; }
+else
+  echo "== (9) portable-rootless mode: packet-capture stage not entered =="
+fi
 
 # Opt-in (SMOKE_DECAY=1): the R-A8 limiter-DECAY proof waits out the real 60s GUESS_WINDOW, so it is
 # kept off the default fast path. It adds ~75 s but exercises the genuine production window (no
@@ -841,7 +891,11 @@ DECAY_NOTE=" + R-A8 limiter-decay (tripped block self-heals after the 60s window
 fi
 
 if [ "$rc" = 0 ]; then
-  echo "SMOKE OK: exact RustDesk executable under neutral smoke argv + mounted container stages + R-S11c-27o actual PID reuse recovery + R-S11c-27q native OpenRC exact lifecycle and portable noninterference + R-S11c-27r native runit exact lifecycle, automatic recovery, native shutdown, and portable noninterference + R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 non-installed user-owned --password-stdin IPC provisioning (clean set-and-exit; root-owned + non-root same-uid) + R-S11b installed-layout service ownership with no user-storage fallback + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S6 keyed-edge authorization (full session) + R-F1/R-D6/R-S5 port-forward/RDP tunnel relays end-to-end inside the seal + R-F1/R-F2 file transfer (keyed FileTransfer login -> non-empty process-owner PeerInfo.username on a headless unix box, never the 'No active console user' refusal) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
+  if [ "$SMOKE_MODE" = with-root-containers ]; then
+    echo "SMOKE OK: exact RustDesk executable under neutral smoke argv + mounted container stages + R-S11c-27o actual PID reuse recovery + R-S11c-27q native OpenRC exact lifecycle and portable noninterference + R-S11c-27r native runit exact lifecycle, automatic recovery, native shutdown, and portable noninterference + R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 non-installed user-owned --password-stdin IPC provisioning (clean set-and-exit; root-owned + non-root same-uid) + R-S11b installed-layout service ownership with no user-storage fallback + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S6 keyed-edge authorization (full session) + R-F1/R-D6/R-S5 port-forward/RDP tunnel relays end-to-end inside the seal + R-F1/R-F2 file transfer (keyed FileTransfer login -> non-empty process-owner PeerInfo.username on a headless unix box, never the 'No active console user' refusal) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
+  else
+    echo "SMOKE ROOTLESS OK: exact numeric-nonroot RustDesk executable + R-B4 build + one container-loopback TCP listener on 127.0.0.1:21118 and zero UDP + fail-closed parked startup + graceful drain + VP9 MDWE + correct/wrong CPace keying + capacity shedding + authenticated Remote admission + sealed port-forward relay + FileTransfer admission + forged-frame rejection + owner-safe limiter${DECAY_NOTE}. Root/service/init-system/user-creation/installed-layout/packet-capture, graphical/native/device, performance/soak, and release-artifact evidence were not entered or claimed."
+  fi
 else
   echo "SMOKE FAILED"; exit 1
 fi

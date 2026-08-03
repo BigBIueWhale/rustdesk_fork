@@ -5581,10 +5581,12 @@ if [ -n "$r_s11e63" ]; then echo "  FAIL R-S11e-63 Windows production-listener D
 echo "== (3b-iii-d9cn) Smoke container and host/build authority (R-S11ax/R-S11dd/R-S11e-64/R-S11e-122) =="
 r_s11e64=
 smoke_build_run=$(awk '/^BUILD_RUN=\(/{inside=1} /^RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
-smoke_runtime_run=$(awk '/^RUN=\(/{inside=1} /^LIFECYCLE_RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
+smoke_runtime_run=$(awk '/^RUN=\(/{inside=1} /^ROOT_RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
+smoke_root_run=$(awk '/^ROOT_RUN=\(/{inside=1} /^LIFECYCLE_RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
 smoke_lifecycle_run=$(awk '/^LIFECYCLE_RUN=\(/{inside=1} /^PID_REUSE_RUN=\(/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
 smoke_pid_reuse_run=$(awk '/^PID_REUSE_RUN=\(/{inside=1} /^PORT_HEX=/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
 smoke_sibling_run=$(awk '/docker_out=\$\(smoke_docker run -d --name "\$SIBLING_NAME"/{inside=1} inside{print} inside && /2>&1\)/{exit}' scripts/smoke-server.sh)
+smoke_default_mode=$(awk '/^case "\$#" in$/{inside=1} /^  1\)$/{if (inside) exit} inside{print}' scripts/smoke-server.sh)
 grep -qF 'readonly DOCKER_BIN=/usr/bin/docker' scripts/smoke-server.sh || r_s11e64="$r_s11e64 fixed-docker-client-missing"
 grep -qF 'readonly SMOKE_DOCKER_HOST=unix:///var/run/docker.sock' scripts/smoke-server.sh \
   || r_s11e64="$r_s11e64 fixed-local-docker-endpoint-missing"
@@ -5619,12 +5621,12 @@ grep -qF 'IMAGE_ID=$(smoke_docker image inspect --format '\''{{.Id}}'\'' "$EXPEC
 grep -qF 'if [ "$IMAGE_ID" != "$EXPECTED_IMAGE_ID" ]; then' scripts/smoke-server.sh \
   || r_s11e64="$r_s11e64 exact-image-id-comparison-missing"
 grep -qF 'readonly IMAGE_ID' scripts/smoke-server.sh || r_s11e64="$r_s11e64 immutable-image-id-missing"
-for smoke_run_block in "$smoke_build_run" "$smoke_runtime_run" "$smoke_lifecycle_run" "$smoke_pid_reuse_run" "$smoke_sibling_run"; do
+for smoke_run_block in "$smoke_build_run" "$smoke_runtime_run" "$smoke_root_run" "$smoke_lifecycle_run" "$smoke_pid_reuse_run" "$smoke_sibling_run"; do
   grep -qF -- '--network none' <<<"$smoke_run_block" || r_s11e64="$r_s11e64 network-none-missing"
   grep -qF -- '--pull=never' <<<"$smoke_run_block" || r_s11e64="$r_s11e64 implicit-pull-refusal-missing"
   grep -qF '"$IMAGE_ID"' <<<"$smoke_run_block" || r_s11e64="$r_s11e64 immutable-image-use-missing"
 done
-for smoke_readonly_run_block in "$smoke_runtime_run" "$smoke_lifecycle_run" "$smoke_pid_reuse_run" "$smoke_sibling_run"; do
+for smoke_readonly_run_block in "$smoke_runtime_run" "$smoke_root_run" "$smoke_lifecycle_run" "$smoke_pid_reuse_run" "$smoke_sibling_run"; do
   grep -qF -- '-v "$PWD:/work:ro"' <<<"$smoke_readonly_run_block" \
     || r_s11e64="$r_s11e64 runtime-read-only-source-missing"
   grep -qF -- '-v "$SMOKE_BUILD_TARGET:/work/target:ro"' <<<"$smoke_readonly_run_block" \
@@ -5639,6 +5641,37 @@ grep -qF -- '--read-only' <<<"$smoke_build_run" || r_s11e64="$r_s11e64 build-rea
 grep -qF -- '-v "$PWD:/work:ro"' <<<"$smoke_build_run" || r_s11e64="$r_s11e64 build-read-only-source-missing"
 grep -qF -- '-v "$SMOKE_BUILD_TARGET:/work/target:rw"' <<<"$smoke_build_run" \
   || r_s11e64="$r_s11e64 private-build-target-missing"
+for smoke_rootless_token in \
+  '--user "$BUILD_UID:$BUILD_GID"' \
+  '--cap-drop ALL' \
+  '--security-opt no-new-privileges' \
+  '--read-only' \
+  '--pids-limit 1024' \
+  '--memory 4g' \
+  '--memory-swap 4g' \
+  '--cpus 2' \
+  '--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=1g'; do
+  grep -qF -- "$smoke_rootless_token" <<<"$smoke_runtime_run" \
+    || r_s11e64="$r_s11e64 portable-runtime-confinement-missing"
+done
+grep -qF 'SMOKE_MODE=portable-rootless' <<<"$smoke_default_mode" \
+  || r_s11e64="$r_s11e64 portable-rootless-default-missing"
+grep -qF -- '--with-root-containers) SMOKE_MODE=with-root-containers' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 explicit-root-container-mode-missing"
+[ "$(grep -cF 'if [ "$SMOKE_MODE" = with-root-containers ]; then' scripts/smoke-server.sh)" -eq 4 ] \
+  || r_s11e64="$r_s11e64 root-container-mode-guard-cardinality-invalid"
+grep -qF 'portable-rootless mode: root service, PID-reuse, and init-system lifecycle stages not entered' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 root-lifecycle-mode-gate-missing"
+grep -qF 'portable-rootless mode: root-owned/user-creation/installed-layout password fixtures not entered' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 root-password-mode-gate-missing"
+grep -qF 'portable-rootless mode: packet-capture stage not entered' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 root-capture-mode-gate-missing"
+grep -qF 'Root/service/init-system/user-creation/installed-layout/packet-capture, graphical/native/device, performance/soak, and release-artifact evidence were not entered or claimed.' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 rootless-evidence-limit-missing"
+for root_stage in password-root password-nonroot password-installed capture; do
+  grep -qF '"${ROOT_RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh '"$root_stage" scripts/smoke-server.sh \
+    || r_s11e64="$r_s11e64 root-stage-not-confined-to-explicit-array-$root_stage"
+done
 for smoke_build_env in \
   'CARGO_HOME=/tmp/smoke-cargo-home' \
   'CARGO_TARGET_DIR=/work/target' \
@@ -5663,6 +5696,7 @@ if grep -qF '/usr/local/cargo/' <<<"$smoke_runtime_run"; then
 fi
 smoke_launch_surface="$smoke_build_run
 $smoke_runtime_run
+$smoke_root_run
 $smoke_lifecycle_run
 $smoke_pid_reuse_run
 $smoke_sibling_run"
@@ -5700,7 +5734,7 @@ grep -qF 'R-S11e-64 — smoke container image, network, and dependency authority
 grep -qF 'R-S11dd/R-S11e-122 — runtime-smoke host, Docker-client, build-user, and checkout-write' HARDENING_STATUS.md \
   || r_s11e64="$r_s11e64 host-build-hardening-ledger-missing"
 if [ -n "$r_s11e64" ]; then echo "  FAIL R-S11e-64/R-S11e-122 smoke container/host-build authority:$r_s11e64"; rc=1; else
-  echo "  ok  R-S11e-64/R-S11e-122 smoke uses one fixed local Docker authority, no host process scan, one non-root private-target build from the sealed vendor closure, exact image ID, network none, and no publication"; fi
+  echo "  ok  R-S11e-64/R-S11e-122 smoke defaults portable stages to numeric non-root confinement, requires explicit root-container selection for privileged fixtures, and uses one fixed local Docker authority, no host process scan, one non-root private-target build from the sealed vendor closure, exact image ID, network none, and no publication"; fi
 
 # (3b-iii-d9co) R-S11ay/R-S11e-65: every token-switched child launch
 # must receive a successfully created environment for the exact selected
@@ -13428,6 +13462,8 @@ grep -qF '"verify.sh|compile + KATs + handshake + policy funnel + R-A6 done-set"
 grep -qF '"verify-windows-harness.py --self-test|Windows harness contracts + bounded behavioral mutation suites"' "$release_gate" || release_gate_bad="$release_gate_bad missing-windows-harness"
 grep -qF '"android-rust-check.sh|pinned offline aarch64 Android Rust check"' "$release_gate" || release_gate_bad="$release_gate_bad missing-android-rust-check"
 grep -qF '"smoke-server.sh|runtime: host coexistence + one-TCP/zero-UDP, fail-closed, keying, provisioning, full session"' "$release_gate" || release_gate_bad="$release_gate_bad missing-smoke"
+grep -qF 'elif [ "$s" = smoke-server.sh ]; then' "$release_gate" || release_gate_bad="$release_gate_bad missing-explicit-full-smoke-dispatch"
+grep -qF 'bash "scripts/$s" --with-root-containers' "$release_gate" || release_gate_bad="$release_gate_bad missing-explicit-full-smoke-mode"
 grep -qF '"smoke-debian-systemd-lifecycle.sh|installed Debian systemd stop/restart/crash recovery + portable noninterference"' "$release_gate" || release_gate_bad="$release_gate_bad missing-installed-systemd-smoke"
 grep -qF '"dart-verify.sh|flutter analyze lib/ (zero errors)"' "$release_gate" || release_gate_bad="$release_gate_bad missing-dart-verify"
 grep -qF '"native-codec-watch.sh|native-codec advisory ledger + requirements.html hash pin"' "$release_gate" || release_gate_bad="$release_gate_bad missing-native-codec-watch"

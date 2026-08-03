@@ -3506,6 +3506,8 @@ def validate_scan_contract(scan, verify, apple, release):
         ('SYSTEMD_GATE_STATE_DIR=${SYSTEMD_SMOKE_STATE_DIR:-}', "systemd scratch override capture"),
         ("systemd image and state overrides must be supplied together", "systemd override pair admission"),
         ('unset SYSTEMD_SMOKE_IMAGE SYSTEMD_SMOKE_STATE_DIR', "systemd override environment confinement"),
+        ('[ "$s" = smoke-server.sh ]', "full-smoke explicit-root dispatch"),
+        ('bash "scripts/$s" --with-root-containers', "full-smoke explicit-root selection"),
         ('[ "$s" = smoke-debian-systemd-lifecycle.sh ]', "systemd-only override dispatch"),
         ('SYSTEMD_SMOKE_IMAGE="$SYSTEMD_GATE_IMAGE"', "systemd image scoped handoff"),
         ('SYSTEMD_SMOKE_STATE_DIR="$SYSTEMD_GATE_STATE_DIR"', "systemd scratch scoped handoff"),
@@ -4313,6 +4315,11 @@ def validate_smoke_contract(
         ("trap 'exit 130' INT", "host guard interrupt cleanup"),
         ("trap 'exit 143' TERM", "host guard termination cleanup"),
         ('BUILD_RUN=(smoke_docker run --rm', "confined non-root build container"),
+        ('RUN=(smoke_docker run --rm --network none --pull=never --read-only', "confined non-root portable runtime"),
+        ('ROOT_RUN=(smoke_docker run --rm --network none --pull=never', "separate explicit-root runtime"),
+        ('SMOKE_MODE=portable-rootless', "portable rootless default"),
+        ('--with-root-containers) SMOKE_MODE=with-root-containers', "explicit root-container selection"),
+        ('SMOKE ROOTLESS OK:', "truthful rootless terminal verdict"),
         ('--user "$BUILD_UID:$BUILD_GID"', "build-container invoking identity"),
         ('--cap-drop ALL', "build-container capability removal"),
         ('--security-opt no-new-privileges', "container privilege-gain refusal"),
@@ -12721,8 +12728,8 @@ def validate_smoke_container_authority_contract(sources):
         "fixed smoke Docker authority and pinned input resolution precede every container",
     )
     require_exact_count(smoke, '"$EXPECTED_IMAGE_ID"', 3, "exact pinned smoke image authority")
-    require_exact_count(smoke, '"$IMAGE_ID"', 6, "every smoke container uses the immutable image ID")
-    require_exact_count(smoke, "smoke_docker run", 5, "complete smoke container launch inventory")
+    require_exact_count(smoke, '"$IMAGE_ID"', 7, "every smoke container uses the immutable image ID")
+    require_exact_count(smoke, "smoke_docker run", 6, "complete smoke container launch inventory")
     require_exact_count(
         smoke,
         "smoke_docker image inspect",
@@ -12731,7 +12738,10 @@ def validate_smoke_container_authority_contract(sources):
     )
 
     build = extract_between(smoke, "BUILD_RUN=(", "\nRUN=(", "smoke build container")
-    runtime = extract_between(smoke, "\nRUN=(", "\nLIFECYCLE_RUN=(", "smoke runtime container")
+    runtime = extract_between(smoke, "\nRUN=(", "\nROOT_RUN=(", "smoke portable runtime container")
+    root_runtime = extract_between(
+        smoke, "\nROOT_RUN=(", "\nLIFECYCLE_RUN=(", "smoke explicit-root runtime container"
+    )
     lifecycle = extract_between(
         smoke, "LIFECYCLE_RUN=(", "\nPID_REUSE_RUN=(", "smoke lifecycle container"
     )
@@ -12744,10 +12754,10 @@ def validate_smoke_container_authority_contract(sources):
         "2>&1)",
         "smoke sibling container",
     )
-    container_blocks = (build, runtime, lifecycle, pid_reuse, sibling)
+    container_blocks = (build, runtime, root_runtime, lifecycle, pid_reuse, sibling)
     for block, label in zip(
         container_blocks,
-        ("build", "runtime", "lifecycle", "PID-reuse", "sibling"),
+        ("build", "portable runtime", "explicit-root runtime", "lifecycle", "PID-reuse", "sibling"),
     ):
         require_text(block, "--network none", f"smoke {label} network isolation")
         require_text(block, "--pull=never", f"smoke {label} implicit-pull refusal")
@@ -12782,8 +12792,32 @@ def validate_smoke_container_authority_contract(sources):
     require_absent(build, "/usr/local/cargo/registry", "image-global Cargo registry authority")
     require_absent(build, "/usr/local/cargo/git", "image-global Cargo Git authority")
     require_absent(runtime, "/usr/local/cargo/", "smoke runtime dependency-cache authority")
+    for token, label in (
+        ('--user "$BUILD_UID:$BUILD_GID"', "numeric non-root portable runtime identity"),
+        ("--cap-drop ALL", "portable runtime capability removal"),
+        ("--security-opt no-new-privileges", "portable runtime privilege-gain refusal"),
+        ("--read-only", "portable runtime read-only root"),
+        ("--pids-limit 1024", "portable runtime PID ceiling"),
+        ("--memory 4g", "portable runtime memory ceiling"),
+        ("--memory-swap 4g", "portable runtime no-swap ceiling"),
+        ("--cpus 2", "portable runtime CPU ceiling"),
+        ("/tmp:rw,exec,nosuid,nodev,mode=1777,size=1g", "portable runtime scratch ceiling"),
+    ):
+        require_text(runtime, token, label)
+    require_exact_count(
+        smoke,
+        'if [ "$SMOKE_MODE" = with-root-containers ]; then',
+        4,
+        "root-container mode guard cardinality",
+    )
+    require_text(
+        smoke,
+        'case "$#" in\n  0)\n    SMOKE_MODE=portable-rootless\n    ;;',
+        "portable rootless default",
+    )
     for block, label in (
         (runtime, "ordinary runtime"),
+        (root_runtime, "explicit-root runtime"),
         (lifecycle, "lifecycle"),
         (pid_reuse, "PID-reuse"),
         (sibling, "sibling"),
@@ -12794,6 +12828,31 @@ def validate_smoke_container_authority_contract(sources):
             '-v "$SMOKE_BUILD_TARGET:/work/target:ro"',
             f"{label} read-only target",
         )
+
+    require_order(
+        smoke,
+        (
+            "case \"$#\" in",
+            "SMOKE_MODE=portable-rootless",
+            "--with-root-containers) SMOKE_MODE=with-root-containers",
+            "readonly SMOKE_MODE",
+            "ROOT_RUN=(smoke_docker run",
+            'if [ "$SMOKE_MODE" = with-root-containers ]; then',
+            'run_stage out2b "${ROOT_RUN[@]}"',
+            'run_stage out2c "${ROOT_RUN[@]}"',
+            'run_stage out2d "${ROOT_RUN[@]}"',
+            'run_stage out9 "${ROOT_RUN[@]}"',
+            "SMOKE ROOTLESS OK:",
+        ),
+        "portable-rootless default and explicit-root stage reachability",
+    )
+    for token, label in (
+        ("portable-rootless mode: root service, PID-reuse, and init-system lifecycle stages not entered", "root lifecycle omission verdict"),
+        ("portable-rootless mode: root-owned/user-creation/installed-layout password fixtures not entered", "root password omission verdict"),
+        ("portable-rootless mode: packet-capture stage not entered", "root packet-capture omission verdict"),
+        ("Root/service/init-system/user-creation/installed-layout/packet-capture, graphical/native/device, performance/soak, and release-artifact evidence were not entered or claimed.", "rootless evidence limit"),
+    ):
+        require_text(smoke, token, label)
 
     complete_launch_surface = "\n".join(container_blocks)
     for token, label in (
@@ -12945,6 +13004,12 @@ def validate_smoke_container_authority_contract(sources):
         ("full vendor-tree provenance root", "sealed vendor provenance requirement"),
         ("rechecked after Cargo", "build-input postcondition requirement"),
         ("MUST NOT</span> publish ports", "port-publication prohibition"),
+        ("build and ordinary portable-runtime containers", "portable runtime non-root requirement"),
+        ("all capabilities dropped", "portable runtime capability requirement"),
+        ("explicit PID/memory/no-swap/CPU ceilings", "portable runtime resource requirement"),
+        ("--portable-rootless", "portable rootless selection requirement"),
+        ("--with-root-containers", "explicit root-container selection requirement"),
+        ("rootless terminal verdict", "truthful rootless verdict requirement"),
     ):
         require_text(requirement, token, label)
     require_text(requirements, "<tr><td>172</td>", "smoke container authority Appendix C row")
@@ -43584,7 +43649,7 @@ def run_source_mutations(sources):
             "smoke",
             "\nRUN=(smoke_docker run --rm --network none --pull=never",
             "\nRUN=(smoke_docker run --rm --pull=never",
-            "smoke runtime network isolation",
+            "smoke portable runtime network isolation",
         ),
         (
             "smoke",
@@ -43596,7 +43661,19 @@ def run_source_mutations(sources):
             "smoke",
             "\nRUN=(smoke_docker run --rm --network none --pull=never",
             "\nRUN=(smoke_docker run --rm --network none",
-            "smoke runtime implicit-pull refusal",
+            "smoke portable runtime implicit-pull refusal",
+        ),
+        (
+            "smoke",
+            "\nROOT_RUN=(smoke_docker run --rm --network none --pull=never",
+            "\nROOT_RUN=(smoke_docker run --rm --pull=never",
+            "smoke explicit-root runtime network isolation",
+        ),
+        (
+            "smoke",
+            "\nROOT_RUN=(smoke_docker run --rm --network none --pull=never",
+            "\nROOT_RUN=(smoke_docker run --rm --network none",
+            "smoke explicit-root runtime implicit-pull refusal",
         ),
         (
             "smoke",
@@ -43630,20 +43707,20 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
-            'RUN=(smoke_docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"',
-            'RUN=(smoke_docker run --rm --network none --pull=never\n  -v rd-cargo-cache:/usr/local/cargo/registry\n  -v "$PWD:/work:ro"',
+            '\nRUN=(smoke_docker run --rm --network none --pull=never --read-only',
+            '\nRUN=(smoke_docker run --rm --network none --pull=never --read-only\n  -v rd-cargo-cache:/usr/local/cargo/registry',
             "smoke runtime dependency-cache authority",
         ),
         (
             "smoke",
-            'RUN=(smoke_docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"',
-            'RUN=(smoke_docker run --rm --network none --pull=never --publish 21118:21118\n  -v "$PWD:/work:ro"',
+            '\nRUN=(smoke_docker run --rm --network none --pull=never --read-only',
+            '\nRUN=(smoke_docker run --rm --network none --pull=never --read-only --publish 21118:21118',
             "smoke published port authority",
         ),
         (
             "smoke",
-            'RUN=(smoke_docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"',
-            'RUN=(smoke_docker run --rm --network none --pull=never\n  -v /var/run/docker.sock:/var/run/docker.sock\n  -v "$PWD:/work:ro"',
+            '\nRUN=(smoke_docker run --rm --network none --pull=never --read-only',
+            '\nRUN=(smoke_docker run --rm --network none --pull=never --read-only\n  -v /var/run/docker.sock:/var/run/docker.sock',
             "smoke Docker socket authority",
         ),
         (
@@ -43720,9 +43797,63 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
-            '  --user "$BUILD_UID:$BUILD_GID"',
-            "  --user 0:0",
+            'BUILD_RUN=(smoke_docker run --rm --network none --pull=never --read-only\n  --user "$BUILD_UID:$BUILD_GID"',
+            "BUILD_RUN=(smoke_docker run --rm --network none --pull=never --read-only\n  --user 0:0",
             "numeric non-root build identity",
+        ),
+        (
+            "smoke",
+            '\nRUN=(smoke_docker run --rm --network none --pull=never --read-only\n  --user "$BUILD_UID:$BUILD_GID"',
+            "\nRUN=(smoke_docker run --rm --network none --pull=never --read-only\n  --user 0:0",
+            "numeric non-root portable runtime identity",
+        ),
+        (
+            "smoke",
+            '\nRUN=(smoke_docker run --rm --network none --pull=never --read-only\n  --user "$BUILD_UID:$BUILD_GID"\n  --cap-drop ALL',
+            '\nRUN=(smoke_docker run --rm --network none --pull=never --read-only\n  --user "$BUILD_UID:$BUILD_GID"',
+            "portable runtime capability removal",
+        ),
+        (
+            "smoke",
+            '\nRUN=(smoke_docker run --rm --network none --pull=never --read-only\n  --user "$BUILD_UID:$BUILD_GID"\n  --cap-drop ALL\n  --security-opt no-new-privileges',
+            '\nRUN=(smoke_docker run --rm --network none --pull=never --read-only\n  --user "$BUILD_UID:$BUILD_GID"\n  --cap-drop ALL',
+            "portable runtime privilege-gain refusal",
+        ),
+        (
+            "smoke",
+            '\nRUN=(smoke_docker run --rm --network none --pull=never --read-only',
+            '\nRUN=(smoke_docker run --rm --network none --pull=never',
+            "portable runtime read-only root",
+        ),
+        (
+            "smoke",
+            "  --memory 4g\n  --memory-swap 4g",
+            "  --memory 4g\n  --memory-swap 8g",
+            "portable runtime no-swap ceiling",
+        ),
+        (
+            "smoke",
+            "  --pids-limit 1024\n  --memory 4g\n  --memory-swap 4g\n  --cpus 2",
+            "  --pids-limit 1024\n  --memory 8g\n  --memory-swap 8g\n  --cpus 2",
+            "portable runtime memory ceiling",
+        ),
+        (
+            "smoke",
+            "  --pids-limit 1024\n  --memory 4g",
+            "  --pids-limit 4096\n  --memory 4g",
+            "portable runtime PID ceiling",
+        ),
+        (
+            "smoke",
+            "  --cpus 2\n  --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=1g",
+            "  --cpus 8\n  --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=4g",
+            "portable runtime CPU ceiling",
+        ),
+        (
+            "smoke",
+            "  --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=1g\n  --env HOME=/tmp/smoke-runtime",
+            "  --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=4g\n  --env HOME=/tmp/smoke-runtime",
+            "portable runtime scratch ceiling",
         ),
         (
             "smoke",
@@ -43738,9 +43869,33 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
-            'RUN=(smoke_docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"\n  -v "$SMOKE_BUILD_TARGET:/work/target:ro"',
-            'RUN=(smoke_docker run --rm --network none --pull=never\n  -v "$PWD:/work:ro"\n  -v "$SMOKE_BUILD_TARGET:/work/target:rw"',
+            '  --env HOME=/tmp/smoke-runtime\n  -v "$PWD:/work:ro"\n  -v "$SMOKE_BUILD_TARGET:/work/target:ro"',
+            '  --env HOME=/tmp/smoke-runtime\n  -v "$PWD:/work:ro"\n  -v "$SMOKE_BUILD_TARGET:/work/target:rw"',
             "ordinary runtime read-only target",
+        ),
+        (
+            "smoke",
+            "    SMOKE_MODE=portable-rootless",
+            "    SMOKE_MODE=with-root-containers",
+            "portable rootless default",
+        ),
+        (
+            "smoke",
+            'if [ "$SMOKE_MODE" = with-root-containers ]; then',
+            'if [ "$SMOKE_MODE" = portable-rootless ]; then',
+            "root-container mode guard cardinality",
+        ),
+        (
+            "smoke",
+            'run_stage out2b "${ROOT_RUN[@]}"',
+            'run_stage out2b "${RUN[@]}"',
+            "portable-rootless default and explicit-root stage reachability",
+        ),
+        (
+            "smoke",
+            "Root/service/init-system/user-creation/installed-layout/packet-capture, graphical/native/device, performance/soak, and release-artifact evidence were not entered or claimed.",
+            "Root/service/init-system evidence was not entered.",
+            "rootless evidence limit",
         ),
         (
             "smoke",
@@ -45111,6 +45266,18 @@ def run_source_mutations(sources):
             "verify_scan_preflight || exit 1",
             "true # scanner preflight removed",
             "release scanner preflight",
+        ),
+        (
+            "release",
+            'bash "scripts/$s" --with-root-containers',
+            'bash "scripts/$s"',
+            "full-smoke explicit-root selection",
+        ),
+        (
+            "release",
+            'elif [ "$s" = smoke-server.sh ]; then',
+            'elif false; then',
+            "full-smoke explicit-root dispatch",
         ),
         (
             "verify",

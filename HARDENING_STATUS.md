@@ -4475,8 +4475,10 @@ container, host RustDesk process/configuration, or firewall/UFW/nftables/iptable
 inspected, or changed.
 
 **R-S11fo/R-S11e-202 exact viewer decoder-endpoint finality — SOURCE IMPLEMENTED 2026-08-03;
-PINNED RUST 1.75 LINUX COMPILATION, 18/18 AFFECTED REGRESSIONS, 48/48 FOCUSED MUTATIONS,
-THE INDEPENDENT BASELINE, AND ONE COMPLETE INDEPENDENT SOURCE-MUTATION CATALOG GREEN;
+PINNED RUST 1.75 LINUX COMPILATION, EXPANDED ENDPOINT REGRESSION 1/1 GREEN, PRIOR
+18/18 AFFECTED GROUP GREEN BEFORE THIS TEST-ONLY FOLLOW-UP, 49/49 FOCUSED MUTATIONS,
+THE INDEPENDENT BASELINE, AND THE CURRENT FOLLOW-UP COMPLETE CATALOG GREEN; FINAL
+FROZEN-BYTE CATALOG REPETITION PENDING;
 NATIVE/DEVICE/ARTIFACT EVIDENCE PENDING.**
 Platform: shared outgoing-viewer core on Android, iOS, Windows, Linux, and macOS. Endpoint/action:
 authenticated peer video-frame admission, UI all/single-display refresh, decoder queue-depth/FPS
@@ -4544,6 +4546,25 @@ capabilities dropped, `no-new-privileges`, bounded resources, and no Docker sock
 namespace. No RustDesk executable, peer, listener, decoder, renderer, emulator, VM, physical device,
 installed app, host service, root/sudo, privileged container, host RustDesk process/configuration,
 or firewall/UFW/nftables/iptables/network state was run, inspected, or changed.
+
+Follow-up owned-worker-unwind evidence, 2026-08-03: no production Rust or behavior changed. The
+existing endpoint-finality regression now also creates an exact `OwnedVideoThread`, deliberately
+panics its receiver-owning worker, waits for unwind destruction of the receiver, and proves the
+production owner observes `None`, refuses refresh and frame admission, and retains a failed join
+result. A fresh pinned Rust 1.75 networkless build passed that expanded test 1/1. A disposable
+negative control replaced the receiver owner with `mem::forget`; the same test then failed with
+`left: Some(0)`, proving the new behavior assertion is load-bearing. The focused verifier passed
+normally and rejected all 49 mutations, and the independent semantic baseline passed. One reused
+target-cache attempt stopped uncounted in `zstd-sys` because inherited read-only copies rejected a
+build-script write; the counted runs used fresh or dedicated ordinary-user build output without
+weakening source/vendor modes. A pinned Apple iOS cross-check reached the expected missing
+`AudioUnit/AudioUnit.h` SDK boundary with zero Rust compiler diagnostics, but it stopped before the
+viewer crate and is explicitly not counted as an Apple product compile. This evidence exercises Rust
+worker unwind/RAII finality, not a real codec panic, refresh-channel failure, native renderer, app
+lifecycle, device, or installed artifact. The first complete unsliced independent source-mutation
+catalog against the ledger-updated candidate exited zero with `verify-verifier-workspace: ok`.
+Because recording that result changes the tracked ledger input, one final complete repetition from
+mutation one remains mandatory; no tracked byte may change after that terminal result.
 
 **R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,

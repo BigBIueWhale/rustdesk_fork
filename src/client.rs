@@ -5338,6 +5338,34 @@ mod tests {
         );
         let (_, worker) = owned.close().unwrap();
         worker.join().unwrap();
+
+        struct WorkerUnwindSignal(mpsc::Sender<()>);
+
+        impl Drop for WorkerUnwindSignal {
+            fn drop(&mut self) {
+                let _ = self.0.send(());
+            }
+        }
+
+        let (panic_sender, panic_receiver) = video_mailbox();
+        let (unwind_sender, unwind_receiver) = mpsc::channel();
+        let panicked_worker = std::thread::spawn(move || {
+            let _unwind_signal = WorkerUnwindSignal(unwind_sender);
+            let _receiver = panic_receiver;
+            panic!("deliberate decoder-worker unwind");
+        });
+        let mut panic_owned =
+            OwnedVideoThread::new("panicked-decoder-test", panic_sender, panicked_worker);
+
+        unwind_receiver.recv().expect("decoder worker unwound");
+        assert_eq!(panic_owned.pending_frames(), None);
+        assert!(!panic_owned.begin_refresh());
+        assert_eq!(
+            panic_owned.admit_frame(video_frame(4), true),
+            VideoFrameAdmission::Closed
+        );
+        let (_, panicked_worker) = panic_owned.close().unwrap();
+        assert!(panicked_worker.join().is_err());
     }
 
     #[test]

@@ -16711,6 +16711,10 @@ def validate_viewer_video_mailbox_contract(sources):
             "viewer video decoder-endpoint liveness regression",
         ),
         (
+            '"decoder worker unwind closes its exact owned endpoint"',
+            "viewer video decoder-worker unwind contract",
+        ),
+        (
             '"peer frame admission, recovery, and terminal endpoint-loss propagation"',
             "viewer video peer-admission endpoint-finality contract",
         ),
@@ -16854,6 +16858,12 @@ def validate_viewer_video_mailbox_contract(sources):
             "viewer video decoder-endpoint liveness regression",
         ),
         (
+            '("client", "let _receiver = panic_receiver;", '
+            '"std::mem::forget(panic_receiver);", '
+            '"decoder-worker unwind endpoint closure"),',
+            "viewer video decoder-worker unwind contract",
+        ),
+        (
             '("io_loop", "return false;\\n                    };\\n                    let is_keyframe", '
             '"return true;\\n                    };\\n                    let is_keyframe", '
             '"missing decoder owner finality"),',
@@ -16930,6 +16940,27 @@ def validate_viewer_video_mailbox_contract(sources):
         sources["client_source"],
         "fn r_s11fo_closed_decoder_endpoint_is_not_an_empty_live_mailbox()",
         "independent viewer decoder-endpoint liveness regression",
+    )
+    endpoint_finality_regression = extract_between(
+        sources["client_source"],
+        "fn r_s11fo_closed_decoder_endpoint_is_not_an_empty_live_mailbox() {",
+        "\n    #[test]\n    fn r_s11ev_generation_exhaustion_fails_closed()",
+        "independent decoder endpoint finality regression",
+    )
+    require_order(
+        endpoint_finality_regression,
+        (
+            "let (panic_sender, panic_receiver) = video_mailbox();",
+            "let _unwind_signal = WorkerUnwindSignal(unwind_sender);",
+            "let _receiver = panic_receiver;",
+            'panic!("deliberate decoder-worker unwind");',
+            'unwind_receiver.recv().expect("decoder worker unwound");',
+            "assert_eq!(panic_owned.pending_frames(), None);",
+            "assert!(!panic_owned.begin_refresh());",
+            "VideoFrameAdmission::Closed",
+            "assert!(panicked_worker.join().is_err());",
+        ),
+        "independent decoder worker unwind closes its exact endpoint",
     )
     peer_admission = extract_between(
         sources["client_io_loop"],
@@ -54782,6 +54813,12 @@ def run_source_mutations(sources):
         ),
         (
             "viewer_video_mailbox_verifier",
+            '"decoder worker unwind closes its exact owned endpoint"',
+            '"decoder worker unwind is ignored"',
+            "viewer video decoder-worker unwind contract",
+        ),
+        (
+            "viewer_video_mailbox_verifier",
             '"peer frame admission, recovery, and terminal endpoint-loss propagation"',
             '"peer frame admission and recovery"',
             "viewer video peer-admission endpoint-finality contract",
@@ -54827,6 +54864,12 @@ def run_source_mutations(sources):
             "fn r_s11fo_closed_decoder_endpoint_is_not_an_empty_live_mailbox()",
             "fn closed_decoder_endpoint_is_not_an_empty_live_mailbox()",
             "independent viewer decoder-endpoint liveness regression",
+        ),
+        (
+            "client_source",
+            "let _receiver = panic_receiver;",
+            "std::mem::forget(panic_receiver);",
+            "independent decoder worker unwind closes its exact endpoint",
         ),
         (
             "client_io_loop",

@@ -471,6 +471,27 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         require(client + io_loop, f"fn {test}()", f"{test} behavior regression")
 
+    endpoint_finality_regression = extract_rust_item(
+        client,
+        "fn r_s11fo_closed_decoder_endpoint_is_not_an_empty_live_mailbox()",
+        "decoder endpoint finality regression",
+    )
+    require_order(
+        endpoint_finality_regression,
+        (
+            "let (panic_sender, panic_receiver) = video_mailbox();",
+            "let _unwind_signal = WorkerUnwindSignal(unwind_sender);",
+            "let _receiver = panic_receiver;",
+            'panic!("deliberate decoder-worker unwind");',
+            'unwind_receiver.recv().expect("decoder worker unwound");',
+            "assert_eq!(panic_owned.pending_frames(), None);",
+            "assert!(!panic_owned.begin_refresh());",
+            "VideoFrameAdmission::Closed",
+            "assert!(panicked_worker.join().is_err());",
+        ),
+        "decoder worker unwind closes its exact owned endpoint",
+    )
+
     forbid(sources["cargo"], 'crossbeam-queue = "', "direct crossbeam-queue dependency")
     require(sources["lock"], 'name = "crossbeam-queue"', "transitive queue lock record")
 
@@ -581,6 +602,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("client", "fn r_s11fn_recording_control_is_latest_wins_at_its_exact_queue_position()", "fn recording_control_is_latest_wins_at_its_exact_queue_position()", "record-state regression"),
     ("client", "fn r_s11fn_mixed_controls_retain_exactly_two_semantic_items()", "fn mixed_controls_retain_exactly_two_semantic_items()", "mixed-control bound regression"),
     ("client", "fn r_s11fo_closed_decoder_endpoint_is_not_an_empty_live_mailbox()", "fn closed_decoder_endpoint_is_not_an_empty_live_mailbox()", "decoder-endpoint liveness regression"),
+    ("client", "let _receiver = panic_receiver;", "std::mem::forget(panic_receiver);", "decoder-worker unwind endpoint closure"),
     ("io_loop", "f.frames.first().map_or(false, |frame| frame.key)", "f.frames.iter().any(|frame| frame.key)", "leading keyframe"),
     ("io_loop", "thread.media_thread.admit_frame(vf, is_keyframe)", "thread.media_thread.try_send(vf)", "direct mailbox admission"),
     ("io_loop", "return false;\n                    };\n                    let is_keyframe", "return true;\n                    };\n                    let is_keyframe", "missing decoder owner finality"),

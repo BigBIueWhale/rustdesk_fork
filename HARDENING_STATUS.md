@@ -9,7 +9,7 @@ history remains the traceability record for that intermediate work.
 
 ## Current Verdict
 
-> **STOP-SHIP EVIDENCE STATUS (2026-08-03).** The current tree is not release-ready merely because
+> **STOP-SHIP EVIDENCE STATUS (2026-08-04).** The current tree is not release-ready merely because
 > its source, semantic, mutation, compile, and confined protocol gates are extensive. The user has
 > explicitly identified the accumulated change volume without current native end-to-end testing as
 > a release risk, and that assessment is correct. Recent evidence proves many individual source
@@ -113,6 +113,35 @@ history remains the traceability record for that intermediate work.
 > deliberate source mutations, the independent workspace baseline exited zero, and the native-codec
 > watch remained synchronized. Those source/ledger gates do not upgrade this compile result into
 > Android runtime, native-device, presentation-latency, or release evidence.
+>
+> Exact-current Android packaging was subsequently exercised at clean pushed commit
+> `f65e073b719b38ae59bd5e50a5a42ec01f025a16`, again without a product-source change. A fresh
+> numeric-UID:GID 1000:1000, networkless, no-pull, read-only-root container reverified the complete
+> 30,669,039,776-byte offline input closure as
+> `a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`; a private byte-equal
+> Gradle seed was mode-sealed in container tmpfs and its projection verified as
+> `522efa37b4b1da33d05369bea4ba7f2fd17ecd08b1afbd01bf3999d9a34299fe`. The real optimized
+> ARM64 JNI library built in 2m02s with the same 87 warnings, and offline Gradle `assembleRelease`
+> completed in 65.1s. The resulting 45,115,850-byte APK had SHA-256
+> `fbdb5e34652152042a508aacef681fd3aba49a73a2204c4314a023d4e4df616c`, package
+> `com.carriez.flutter_hbb` version 2065/1.4.7, min/target SDK 24/33, and the expected ARM64
+> `libapp.so`, `libflutter.so`, `libc++_shared.so`, and `librustdesk.so`; the Rust JNI library's
+> SHA-256 was `d891470b782d725429130de37ccee4ad827a2bf3696cba0087b207e86d3e7515`.
+> `apksigner` verified the build-time Android-debug v2 signature. This was neither the stable
+> project signature nor an R-B2 result; the APK was not retained or published.
+>
+> The packaging result is deliberately **not** diagnostic-clean. In addition to the existing Rust
+> warnings, Gradle reported SDK-XML-version, deprecated-plugin, and missing-font-family warnings and
+> emitted numerous Kotlin metadata `e:` diagnostics: transformed plugin outputs carried metadata
+> 2.1, other dependencies carried 1.8/1.9, and the reporting compiler/analyzer expected 1.6. Gradle
+> nevertheless exited zero. The exact task/classloader producing those diagnostics was not isolated,
+> so no compiler-version or harmless-warning claim is made. The source-pinned tuple is Kotlin Gradle
+> plugin 2.1.21, Kotlin stdlib 1.9.10, AGP 7.3.1, and Gradle 7.6.4; Android's official D8/R8 table
+> requires AGP 8.6 for Kotlin 2.1 class files. Resolving the actual compiler/lint ownership and
+> establishing one supported diagnostic-clean Android toolchain is now explicit stop-ship work, not
+> something an exit-zero APK may waive. The sealed SDK also contains neither an emulator executable
+> nor a system image. No Activity, service, task-swipe/Force-Stop, peer, renderer, device, emulator,
+> performance, stable-signing, installation, or runtime path executed; all such blockers remain open.
 >
 > **Continuation rule:** prioritize exact-current evidence and test-harness/input closure over
 > additional product behavior changes. A further product change requires a separately source-proven

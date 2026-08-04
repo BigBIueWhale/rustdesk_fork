@@ -81,6 +81,8 @@ def pin_value(source: str, name: str) -> str:
 PIN_VALUES = {
     "SHA256_ANDROID_CMDLINE_TOOLS":
         "a66d5ef0238fc0162e9c1446602ce0dd41702d4dd7a94d2ce42d12b7f80baf7e",
+    "SHA256_ANDROID_PLATFORM_TOOLS_37_0_1":
+        "d230f13842f60f782a8645f9c813f8f845bf36089ea7289f28c48f17979313f1",
     "SHA256_ANDROID_BUILD_TOOLS_30_0_3":
         "24593500aa95d2f99fb4f10658aae7e65cb519be6cd33fa164f15f27f3c4a2d6",
     "SHA256_ANDROID_BUILD_TOOLS_34_0_0":
@@ -194,7 +196,7 @@ def validate(sources: Dict[str, str]) -> None:
     forbid(stage, "target=/online", "online namespace mount")
     forbid(stage, "target=/src", "repository mount")
     forbid(stage, "sdkmanager", "moving SDK package resolver")
-    forbid(stage, '"platform-tools"', "moving platform-tools package")
+    forbid(stage, '"platform-tools"', "unversioned platform-tools alias")
     forbid(stage, "rm -rf /online/android-sdk", "destructive final replacement")
     forbid(stage, "cp -a /tmp/sdk /online/android-sdk", "direct final publication")
     require_order(
@@ -228,18 +230,22 @@ def validate(sources: Dict[str, str]) -> None:
             '"build-tools_r30.0.3-linux.zip",\n        53134793',
             "build-tools 30 archive",
         ),
+        (
+            '"platform-tools_r37.0.1-linux.zip",\n        9054187',
+            "platform-tools 37.0.1 archive",
+        ),
         ('"build-tools_r34-linux.zip",\n        61224257', "build-tools 34 archive"),
         ('"platform-31_r01.zip",\n        56475526', "platform 31 archive"),
         ('"platform-32_r01.zip",\n        66108299', "platform 32 archive"),
         ('"platform-33-ext3_r03.zip",\n        67334237', "platform 33 archive"),
         ('"platform-34-ext7_r03.zip",\n        63180081', "platform 34 archive"),
         (
-            '"031dedf9f4bd8eda3fa0ed24903d94d640607c8e805ba9f044ea8fcbddd91403"',
+            '"f7fa90b41ea168fc385f46e9c5f48f3cee28bddddd44abd5036d97d17a72fd2b"',
             "independent tree digest",
         ),
-        ("EXPECTED_TREE_FILES = 43468", "exact file count"),
-        ("EXPECTED_TREE_DIRECTORIES = 11293", "exact directory count"),
-        ("EXPECTED_TREE_BYTES = 876007562", "exact expanded bytes"),
+        ("EXPECTED_TREE_FILES = 43480", "exact file count"),
+        ("EXPECTED_TREE_DIRECTORIES = 11295", "exact directory count"),
+        ("EXPECTED_TREE_BYTES = 898205722", "exact expanded bytes"),
         ("response.status != 200", "HTTP status check"),
         ("response.geturl() != url", "redirect rejection"),
         ('response.headers.get("Content-Encoding")', "content encoding check"),
@@ -317,6 +323,18 @@ def validate(sources: Dict[str, str]) -> None:
             "pre-seal whole-tree closure",
         ),
         ("validate_semantics", "SDK consumer semantics"),
+        (
+            'root / "platform-tools" / "source.properties",\n'
+            '        "Pkg.Revision",\n'
+            '        "37.0.1",',
+            "platform-tools semantic revision",
+        ),
+        (
+            'root / "platform-tools" / "adb",\n'
+            "        executable=True,\n"
+            "        nonempty=True,",
+            "Flutter SDK-recognition adb consumer",
+        ),
         ("write_state(staging, payload)", "durable verification state"),
         ("RENAME_NOREPLACE = 1", "no-clobber primitive"),
         (
@@ -347,7 +365,6 @@ def validate(sources: Dict[str, str]) -> None:
         ("unpack_archive(", "general archive extraction"),
         ("subprocess", "child process execution"),
         ("os.system(", "shell execution"),
-        ("platform-tools", "unused moving platform-tools"),
         ("urllib.request.urlretrieve", "unbounded URL retrieval"),
         ("os.chmod(destination", "post-publication mode mutation"),
     ):
@@ -400,6 +417,8 @@ def validate(sources: Dict[str, str]) -> None:
 MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("pins", "SHA256_ANDROID_BUILD_TOOLS_30_0_3=",
              "SHA256_ANDROID_BUILD_TOOLS_30_0_3_DISABLED=", "build-tools 30 pin"),
+    Mutation("pins", "SHA256_ANDROID_PLATFORM_TOOLS_37_0_1=",
+             "SHA256_ANDROID_PLATFORM_TOOLS_37_0_1_DISABLED=", "platform-tools pin"),
     Mutation("pins", "SHA256_ANDROID_BUILD_TOOLS_34_0_0=",
              "SHA256_ANDROID_BUILD_TOOLS_34_0_0_DISABLED=", "build-tools 34 pin"),
     Mutation("pins", "SHA256_ANDROID_PLATFORM_31=",
@@ -484,6 +503,16 @@ MUTATIONS: Tuple[Mutation, ...] = (
              '"ignored"', "content length check"),
     Mutation("helper", "digest.hexdigest() != pins[spec.key]",
              "False", "download digest check"),
+    Mutation(
+        "helper",
+        'root / "platform-tools" / "adb",\n'
+        "        executable=True,\n"
+        "        nonempty=True,",
+        'root / "platform-tools" / "adb",\n'
+        "        executable=False,\n"
+        "        nonempty=True,",
+        "Flutter SDK-recognition adb consumer",
+    ),
     Mutation(
         "helper",
         "or before.st_nlink != 1\n"

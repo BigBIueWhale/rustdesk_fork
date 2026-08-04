@@ -3895,7 +3895,7 @@ stage_cargo_ndk() {
 }
 
 # ── The exact Android SDK archive closure ──────────────────────────────────────
-# SDK package aliases are repository-resolution inputs, not content pins. Fetch six
+# SDK package aliases are repository-resolution inputs, not content pins. Fetch seven
 # exact Google archive names under independently recorded hashes, combine them with
 # the already pinned command-line-tools archive, validate every ZIP member and output
 # byte, then publish one sealed tree. The producer receives only two read-only files
@@ -3913,6 +3913,7 @@ android_sdk_output_args() {
         --gid "$ONLINE_FETCH_GID" \
         --builder "$builder" \
         --package-pin "cmdline-tools=$SHA256_ANDROID_CMDLINE_TOOLS" \
+        --package-pin "platform-tools=$SHA256_ANDROID_PLATFORM_TOOLS_37_0_1" \
         --package-pin "build-tools-30.0.3=$SHA256_ANDROID_BUILD_TOOLS_30_0_3" \
         --package-pin "build-tools-34.0.0=$SHA256_ANDROID_BUILD_TOOLS_34_0_0" \
         --package-pin "platform-31=$SHA256_ANDROID_PLATFORM_31" \
@@ -3973,6 +3974,7 @@ stage_android_sdk() {
     mapfile -d '' output_args < <(android_sdk_output_args "$builder")
     container_pins=(
         --package-pin "cmdline-tools=$SHA256_ANDROID_CMDLINE_TOOLS"
+        --package-pin "platform-tools=$SHA256_ANDROID_PLATFORM_TOOLS_37_0_1"
         --package-pin "build-tools-30.0.3=$SHA256_ANDROID_BUILD_TOOLS_30_0_3"
         --package-pin "build-tools-34.0.0=$SHA256_ANDROID_BUILD_TOOLS_34_0_0"
         --package-pin "platform-31=$SHA256_ANDROID_PLATFORM_31"

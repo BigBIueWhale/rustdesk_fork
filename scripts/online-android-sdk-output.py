@@ -45,11 +45,11 @@ RENAME_NOREPLACE = 1
 FORBIDDEN_MODE_BITS = stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX
 DOWNLOAD_BASE = "https://dl.google.com/android/repository/"
 EXPECTED_TREE_DIGEST = (
-    "031dedf9f4bd8eda3fa0ed24903d94d640607c8e805ba9f044ea8fcbddd91403"
+    "f7fa90b41ea168fc385f46e9c5f48f3cee28bddddd44abd5036d97d17a72fd2b"
 )
-EXPECTED_TREE_FILES = 43468
-EXPECTED_TREE_DIRECTORIES = 11293
-EXPECTED_TREE_BYTES = 876007562
+EXPECTED_TREE_FILES = 43480
+EXPECTED_TREE_DIRECTORIES = 11295
+EXPECTED_TREE_BYTES = 898205722
 
 
 class SdkOutputError(RuntimeError):
@@ -98,6 +98,16 @@ SPECS = (
         frozenset({0o755}),
         frozenset({0}),
         True,
+    ),
+    PackageSpec(
+        "platform-tools",
+        "platform-tools_r37.0.1-linux.zip",
+        9054187,
+        "platform-tools",
+        "platform-tools",
+        12,
+        frozenset({0o644, 0o755}),
+        frozenset({0, 8}),
     ),
     PackageSpec(
         "build-tools-30.0.3",
@@ -1232,6 +1242,16 @@ def validate_semantics(root: Path) -> None:
         executable=True,
         nonempty=True,
     )
+    require_property(
+        root / "platform-tools" / "source.properties",
+        "Pkg.Revision",
+        "37.0.1",
+    )
+    require_file(
+        root / "platform-tools" / "adb",
+        executable=True,
+        nonempty=True,
+    )
     for version in ("30.0.3", "34.0.0"):
         tools = root / "build-tools" / version
         require_property(tools / "source.properties", "Pkg.Revision", version)
@@ -2152,6 +2172,19 @@ def fake_package_definitions() -> list[
             },
         )
     ]
+    packages.append(
+        (
+            "platform-tools",
+            "platform-tools.zip",
+            "platform-tools",
+            "platform-tools",
+            False,
+            {
+                "source.properties": (0o644, b"Pkg.Revision=37.0.1\n"),
+                "adb": (0o755, b"adb\n"),
+            },
+        )
+    )
     for version in ("30.0.3", "34.0.0"):
         packages.append(
             (

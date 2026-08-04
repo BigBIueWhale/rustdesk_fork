@@ -171,6 +171,17 @@ history remains the traceability record for that intermediate work.
 > the ledger. The closure must still pass a clean exact-commit build with the real optimized Rust/JNI
 > library before push, and every physical-device/native-platform/release blocker above remains open.
 >
+> That real-JNI attempt subsequently reached farther and exposed a validator defect rather than producing
+> an APK. At unpushed local candidate `6861fba3bb1f40ebaa60979e3efdf00eeedcc647`, a confined networked
+> Gradle-warm pass generated the exact bridge and built optimized ARM64 `librustdesk.so` at SHA-256
+> `0f4608be74db18012cb2918255ceadcac4d1226c4780d9914c76bc8abae1a493`, then Flutter stopped before
+> Gradle with `No Android SDK found`. The exact Flutter 3.24.5 locator requires `licenses/` or
+> `platform-tools/`; the newly exact SDK intentionally had neither, whereas the earlier dummy-JNI build
+> used a historical broad SDK that contained platform-tools. No APK, Gradle verdict, installation, device,
+> graphical, lifecycle, focus, reconnect, or performance evidence resulted. R-S11cr below now requires
+> fixed exact platform-tools 37.0.1 without restoring a moving resolver alias. Both local commits and this
+> correction remain unpushed until a fresh exact closure passes the real-JNI warm and networkless build.
+>
 > **Continuation rule:** prioritize exact-current evidence and test-harness/input closure over
 > additional product behavior changes. A further product change requires a separately source-proven
 > defect or must be necessary to obtain valid evidence; it does not earn release confidence merely
@@ -14998,9 +15009,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   acquisition and removes Gradle's SDK write/publication authority. Other archive/packaging
   producers, maintenance candidate-image publication, exact cold R-B2 artifacts, native/device
   evidence, and external R-V3 review remain open.
-- **R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority — SOURCE,
-  ADVERSARIAL TRANSACTION, COMPLETE DISPOSABLE NETWORK ACQUISITION, AND FOCUSED MUTATION EVIDENCE
-  IMPLEMENTED 2026-07-24; EXACT CLEAN RELEASE AND DEVICE EVIDENCE REMAIN OPEN.** Platform: the
+- **R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority — SOURCE
+  CORRECTION IN PROGRESS 2026-08-04; ADVERSARIAL TRANSACTION AND EARLIER CLOSURE EVIDENCE RECORDED;
+  CORRECTED DISPOSABLE ACQUISITION, EXACT CLEAN RELEASE, AND DEVICE EVIDENCE REMAIN OPEN.** Platform: the
   unprivileged Linux acquisition host and immutable Android-builder container. Endpoint/action:
   `scripts/online-fetch.sh::stage_android_sdk` and the downstream `stage_gradle` warm-cache
   transaction. Boundary: remote Android repository resolution and dependency-controlled Gradle
@@ -15017,13 +15028,15 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   slice changes no host or mobile RustDesk process, service, configuration, listener, firewall, or
   network state.
 
-  `scripts/pins.env` now records exact SHA-256 values for six fixed Google repository archives:
-  `build-tools_r30.0.3-linux.zip`, `build-tools_r34-linux.zip`, `platform-31_r01.zip`,
+  `scripts/pins.env` now records exact SHA-256 values for seven fixed Google repository archives:
+  `platform-tools_r37.0.1-linux.zip`, `build-tools_r30.0.3-linux.zip`,
+  `build-tools_r34-linux.zip`, `platform-31_r01.zip`,
   `platform-32_r01.zip`, `platform-33-ext3_r03.zip`, and `platform-34-ext7_r03.zip`. Each record
   also carries the exact byte length and independently checked official repository XML SHA-1 in its
   provenance comment. The existing command-line-tools revision-21 archive remains the seventh exact
-  input. The final closure intentionally omits unused moving `platform-tools`, resolver licenses,
-  `.temp`, `.knownPackages`, and generated `package.xml` files.
+  input. The final closure intentionally omits the moving `platform-tools` alias, resolver licenses,
+  `.temp`, `.knownPackages`, and generated `package.xml` files; it includes only the fixed exact
+  platform-tools 37.0.1 archive.
 
   `stage_android_sdk` now exclusively locks the canonical current-user-private online root,
   reconciles every `.rustdesk-android-sdk.*` transaction, and fully checks a present final tree
@@ -15041,7 +15054,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   the private downloads and SDK-output directories writable. It receives no online root, final
   name, repository, Docker socket, device, published port, or host network/PID/IPC/UTS namespace.
 
-  `scripts/online-android-sdk-output.py` downloads only the six fixed filenames from
+  `scripts/online-android-sdk-output.py` downloads only the seven fixed filenames from
   `https://dl.google.com/android/repository/`. It rejects redirects, non-200 status, transformed
   content, absent or wrong lengths, per-file/aggregate excess, and SHA-256 mismatch; creates every
   file exclusively; synchronizes it; and never executes an archive. Its ZIP contract binds each
@@ -15051,15 +15064,16 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   overflow, and cross-package collisions. Extraction creates explicit directories and
   `O_EXCL|O_NOFOLLOW` regular files and normalizes only the archive-derived executable bit.
 
-  After the producer stops, the host reopens and rehashes all seven archives, requires exact output
+  After the producer stops, the host reopens and rehashes all eight archives, requires exact output
   inventory and same-filesystem/mount closure, current ownership, raw modes, no symlink, special
   object, xattr, or external hardlink, and equality of every regular-file byte with a fresh archive
   stream. Consumer semantics require command-line tools revision 21 and executable `sdkmanager`,
-  both exact build-tools revisions with `aapt2`, `apksigner`, and `zipalign`, and platforms 31–34
-  with their exact API-level property and `android.jar`. The normalized complete tree is independently
+  fixed platform-tools revision 37.0.1 with executable nonempty `adb`, both exact build-tools
+  revisions with `aapt2`, `apksigner`, and `zipalign`, and platforms 31–34 with their exact API-level
+  property and `android.jar`. The normalized complete tree is independently
   bound at SHA-256
-  `031dedf9f4bd8eda3fa0ed24903d94d640607c8e805ba9f044ea8fcbddd91403`,
-  43,468 files, 11,293 directories, and 876,007,562 regular-file bytes. Every file and inner
+  `f7fa90b41ea168fc385f46e9c5f48f3cee28bddddd44abd5036d97d17a72fd2b`,
+  43,480 files, 11,295 directories, and 898,205,722 regular-file bytes. Every file and inner
   directory is sealed 0444/0555 and synchronized before descriptor-relative publication. The
   candidate root stays private mode 0700 because Linux must update its `..` entry during a
   cross-parent directory rename. `renameat2(RENAME_NOREPLACE)` installs the absent final name, then a
@@ -15092,14 +15106,15 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   publication/recovery, SDK mutation, occupied destination, wrong publisher checksum, and symlink
   rejection.
 
-  A disposable networked proof used immutable Android-builder image
+  The earlier disposable networked proof used immutable Android-builder image
   `sha256:c4ba44dab3002ce8331b2a6faf34b2ee6cdbef0914d8c50af9c73f404a14c121`
   as UID:GID 1000:1000 with no pull, read-only root and exact input binds, no capabilities or
   privilege gain, no port/device/socket/host namespace, fixed resources, and container-only tmpfs
-  outputs. It fetched all six exact archives, verified their lengths and hashes, expanded the full
-  seven-package closure, compared all 43,468 files to the archives, passed consumer semantics, and
-  independently produced the recorded whole-tree digest. The tmpfs vanished with the container;
-  no archive or SDK output was published to the host.
+  outputs. It fetched the then-six exact network archives, verified their lengths and hashes,
+  expanded the then-seven-package closure, compared all 43,468 files to those archives, and
+  independently produced the former whole-tree digest. The tmpfs vanished with the container; no
+  archive or SDK output was published to the host. The 2026-08-04 correction below supersedes that
+  closure, so this earlier run is not acquisition or build evidence for the current eight-package SDK.
 
   `scripts/verify-online-fetch-android-sdk-output-authority.py` and the corrected Gradle focused
   verifier bind the exact pins, archive names/lengths, four-mount producer topology, runtime floor,
@@ -15148,6 +15163,34 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   mutation expected the old diagnostic label. The independent assertion and mutation classification
   were corrected before the successful full rerun. No acquisition, release build, live SDK
   publication, or host/mobile runtime action was part of this evidence.
+
+  Follow-up correction (2026-08-04), **R-S11cr/R-S11e-110 fixed platform-tools/Flutter SDK-recognition
+  closure — SOURCE AUTHORED; CORRECTED ACQUISITION AND REAL-JNI APK BUILD PENDING**: the first
+  real-JNI candidate build against the newly acquired exact SDK generated the Flutter bridge and
+  completed the optimized ARM64 Rust library, then stopped before Gradle with `No Android SDK found`.
+  Exact inspection of the independently SHA-256-pinned Flutter 3.24.5 source established the cause:
+  `AndroidSdk.validSdkDirectory` accepts an SDK root only when it contains `licenses/` or
+  `platform-tools/`, and the closure deliberately omits resolver license state. The dummy-JNI
+  build-graph diagnostic had used the historical broad SDK, which contained platform-tools, and
+  therefore concealed this acquisition defect. This is a build-input completeness failure, not an
+  Android product-runtime failure and not evidence of host RustDesk/service/configuration/listener/
+  firewall/network mutation.
+
+  The corrected closure pins Google's stable `platform-tools_r37.0.1-linux.zip` by its official
+  repository2-1.xml length 9,054,187 and SHA-1
+  `477254aa5f903c15cf51001717bdf347fb6b53e0`, plus independently streamed SHA-256
+  `d230f13842f60f782a8645f9c813f8f845bf36089ea7289f28c48f17979313f1`. Its exact twelve regular
+  entries, root, modes, flags, compression, and 22,198,160 expanded bytes enter the existing closed
+  archive contract; no moving package alias or resolver is reintroduced. Consumer semantics require
+  `Pkg.Revision=37.0.1` and an executable nonempty `platform-tools/adb`. An independent virtual-tree
+  calculation first reproduced the former sealed candidate identity exactly, then added only the
+  fixed archive and derived the new normative closure:
+  `f7fa90b41ea168fc385f46e9c5f48f3cee28bddddd44abd5036d97d17a72fd2b`, 43,480 files, 11,295
+  directories, and 898,205,722 regular-file bytes. The transaction self-test fixture, focused pin/
+  archive/consumer mutations, independent workspace bindings, R-S11cr, and Appendix C #245 are
+  updated with the same requirement. A fresh exact acquisition, host-independent archive/output
+  comparison, real-JNI Gradle warm, networkless APK build, artifact inspection, and source-integrity
+  postcheck remain mandatory before this correction may be committed as build-closed or pushed.
 - **R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority —
   SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE LIVE
   FOURTEEN-ARCHIVE ACQUISITION EVIDENCE RECORDED; BROADER RELEASE EVIDENCE OPEN.** Platform: the unprivileged Linux
@@ -19933,7 +19976,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-34a5e7c6e0674165043febbe5a6e2814eab75eba6541424cb762b8caef7a439f  requirements.html
+2f74d564ab66d1f221b03a58cec471d6644bb59536ba74e1f1df47dcf8c9417b  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

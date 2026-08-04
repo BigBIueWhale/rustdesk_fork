@@ -31754,12 +31754,16 @@ def validate_online_fetch_android_sdk_output_authority_contract(sources):
             "Android SDK fixed origin",
         ),
         (
-            '"031dedf9f4bd8eda3fa0ed24903d94d640607c8e805ba9f044ea8fcbddd91403"',
+            '"f7fa90b41ea168fc385f46e9c5f48f3cee28bddddd44abd5036d97d17a72fd2b"',
             "Android SDK independent tree digest",
         ),
-        ("EXPECTED_TREE_FILES = 43468", "Android SDK file count"),
-        ("EXPECTED_TREE_DIRECTORIES = 11293", "Android SDK directory count"),
-        ("EXPECTED_TREE_BYTES = 876007562", "Android SDK byte count"),
+        ("EXPECTED_TREE_FILES = 43480", "Android SDK file count"),
+        ("EXPECTED_TREE_DIRECTORIES = 11295", "Android SDK directory count"),
+        ("EXPECTED_TREE_BYTES = 898205722", "Android SDK byte count"),
+        (
+            '"platform-tools_r37.0.1-linux.zip",\n        9054187',
+            "Android SDK fixed platform-tools archive",
+        ),
         ("response.geturl() != url", "Android SDK redirect refusal"),
         ("digest.hexdigest() != pins[spec.key]", "Android SDK package digest"),
         ("archive member escapes its exact root", "Android SDK traversal refusal"),
@@ -31795,6 +31799,12 @@ def validate_online_fetch_android_sdk_output_authority_contract(sources):
             "Android SDK post-rename recovery completion",
         ),
         ("validate_required_summary", "Android SDK whole-tree closure"),
+        (
+            'root / "platform-tools" / "adb",\n'
+            "        executable=True,\n"
+            "        nonempty=True,",
+            "Android SDK Flutter-recognition consumer",
+        ),
         (
             "validate_required_summary(summary)\n"
             "        validate_semantics(candidate)\n"

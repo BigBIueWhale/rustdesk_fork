@@ -15531,6 +15531,50 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   diagnostic debt and every physical-device/lifecycle/presentation/focus/reconnect/performance/soak gap remain
   stop-ship.
 
+- **R-S11fw/R-S11e-209 — Linux X11 capture shared-memory authority — SOURCE IMPLEMENTED;
+  CLEAN RUST 1.75 KERNEL-BEHAVIOR TESTS AND FOCUSED DELIBERATE-MUTATION GATE GREEN; REAL X SERVER,
+  CAPTURE/RENDER, INSTALLED-SERVICE, ARTIFACT, AND RELEASE EVIDENCE OPEN.** Platform: Linux X11.
+  Endpoint/action: `libs/scrap/src/x11/capturer.rs::{SharedMemory,Capturer::new}` and the XCB SHM
+  bindings in `libs/scrap/src/x11/ffi.rs`. Boundary: local-account/kernel System V IPC authority ↔
+  the capture process and authenticated local X server receiving raw screen pixels.
+
+  The inherited capturer called `shmget(IPC_PRIVATE, size, IPC_CREAT | 0o777)` and retained that
+  live segment until `Capturer::drop`; its source comment explicitly said that everyone could do
+  anything. It submitted `xcb_shm_attach` without checking the asynchronous protocol result. If
+  `shmat` failed, no constructed owner existed to remove the segment. This is direct source evidence
+  that every local account received kernel read/write permission over a live capture buffer and that
+  construction cleanup/protocol acceptance were incomplete. It is not evidence that another account
+  actually attached, that this host was exploited or modified, or that this path explains a reported
+  Android/Windows connection or focus-delay symptom.
+
+  One `SharedMemory` RAII owner now creates only an exact owner-read/write 0600 `IPC_PRIVATE`
+  segment after nonzero checked size arithmetic, exists before `shmat`, and attaches the capture
+  process read-only. `Capturer::new` sends `xcb_shm_attach_checked`, consumes its exact result through
+  `xcb_request_check`, and rejects X connection failure. Only after confirmed X-server attachment
+  does it call `IPC_RMID`, so the kernel segment is deletion-pending for the remainder of its useful
+  life. A failed deletion-pending transition performs a checked X-server detach and fails construction;
+  the RAII owner retries exact local detach/removal. Drop-time detach/removal failures are logged, and
+  there is no 0666/0777, unchecked-attach, or permissive compatibility fallback.
+
+  A fresh empty-target Rust 1.75 offline build compiled `scrap` and ran the two serialized focused
+  tests successfully: exact effective-user ownership, literal 0600 mode, one local attachment,
+  Linux `SHM_DEST` after `IPC_RMID`, and segment absence after final detach all passed (2 passed,
+  0 failed, 13 filtered). The tests use a literal 0600 expectation rather than mirroring the
+  production constant. `scripts/verify-x11-capture-shm.py --self-test` independently binds the
+  owner-only/local-read-only mode, checked attach/result order, immediate deletion-pending transition,
+  RAII cleanup, FFI surface, compiled tests, requirement, Appendix row, ledger, shared gate, and
+  independent workspace dispatch, and must reject its deliberate weakenings.
+
+  Verification runs only in an immutable, networkless, numeric-nonroot container with read-only
+  source/root, an executable private target tmpfs, all capabilities dropped, no-new-privileges, and
+  no port, host network/namespace, device, display, Docker socket, or privileged flag. No host
+  RustDesk executable/process/service/configuration, listener, firewall, UFW/nftables/iptables, or
+  network state was inspected or changed. The pinned verifier image has no Xvfb/Xorg fixture and the
+  host display is outside the permitted test boundary, so no actual X-server attach, screen capture,
+  capture-to-codec-to-render path, privileged installed-service/cross-user display, focus/background
+  lifecycle, latency budget, current artifact, cold release reproduction, independent reproduction,
+  or external-review result is claimed. Those remain explicit release evidence gaps.
+
 - **R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority —
   SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE LIVE
   FOURTEEN-ARCHIVE ACQUISITION EVIDENCE RECORDED; BROADER RELEASE EVIDENCE OPEN.** Platform: the unprivileged Linux
@@ -20399,7 +20443,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-e08f4e872490def836ff3d1e0568ce8910be6788f9ceec53ab9e98a080dd4b49  requirements.html
+b4489134ecfce52ab3f61bcfba17ce877a90dc58ac052071398b13774c82b314  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -20440,3 +20484,4 @@ The same identity additionally binds R-S11fr and Appendix C #326.
 The same identity additionally binds R-S11fs and Appendix C #327.
 The same identity additionally binds R-S11fu and Appendix C #329.
 The same identity additionally binds R-S11fv and Appendix C #330.
+The same identity additionally binds R-S11fw and Appendix C #331.

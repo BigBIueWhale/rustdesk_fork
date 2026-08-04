@@ -17241,6 +17241,171 @@ def validate_viewer_voice_call_worker_contract(sources):
     )
 
 
+def validate_x11_capture_shared_memory_contract(sources):
+    focused = sources["x11_capture_shared_memory_verifier"]
+    validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\n@dataclass(frozen=True)",
+        "X11 capture shared-memory focused validation",
+    )
+    for text, label in (
+        ("def extract_rust_item(", "Rust item parser"),
+        ("def require_order(", "ordered-source validator"),
+        ("MUTATIONS = (", "focused deliberate-mutation matrix"),
+        ("run_self_test(sources)", "focused deliberate-mutation dispatch"),
+    ):
+        require_text(focused, text, f"X11 capture shared-memory {label}")
+    for text, label in (
+        (
+            '"const SHM_OWNER_READ_WRITE: libc::c_int = 0o600;"',
+            "owner-only mode contract",
+        ),
+        (
+            '"libc::shmat(id, ptr::null(), libc::SHM_RDONLY)"',
+            "local read-only attachment contract",
+        ),
+        ('"xcb_shm_attach_checked("', "checked X-server attach contract"),
+        (
+            '\'check_xcb_request(server, attach, "MIT-SHM attach")?\'',
+            "X-server attach-result contract",
+        ),
+        ('"memory.mark_for_removal()"', "immediate deletion-pending contract"),
+        (
+            '"libc::shmctl(self.id, libc::IPC_RMID, ptr::null_mut())"',
+            "RAII removal contract",
+        ),
+        (
+            '"assert_eq!(status.shm_perm.mode & 0o777, 0o600);"',
+            "literal kernel-mode assertion contract",
+        ),
+        ('\'<span class="id">R-S11fw</span>\'', "normative-requirement binding"),
+        ('"<tr><td>331</td>"', "Appendix disposition binding"),
+        (
+            '"R-S11fw/R-S11e-209 — Linux X11 capture shared-memory authority"',
+            "hardening-ledger binding",
+        ),
+    ):
+        require_text(validation, text, f"X11 capture shared-memory {label}")
+    for text, label in (
+        (
+            "const SHM_OWNER_READ_WRITE: libc::c_int = 0o600;",
+            "exact owner-only mode",
+        ),
+        (
+            "assert_eq!(status.shm_perm.mode & 0o777, 0o600);",
+            "literal exact-mode kernel assertions",
+        ),
+        (
+            "fn r_s11fw_shared_memory_is_owner_only_and_drop_removes_it()",
+            "owner-only/removal behavior",
+        ),
+        (
+            "fn r_s11fw_attached_shared_memory_becomes_deletion_pending()",
+            "deletion-pending behavior",
+        ),
+    ):
+        require_text(sources["x11_capture"], text, f"X11 capture {label}")
+    require_exact_count(
+        sources["x11_capture"],
+        "assert_eq!(status.shm_perm.mode & 0o777, 0o600);",
+        2,
+        "X11 capture independent literal mode assertions",
+    )
+    require_absent(
+        sources["x11_capture"],
+        "libc::IPC_CREAT | 0o777",
+        "permissive X11 capture shared-memory mode",
+    )
+    constructor = extract_between(
+        sources["x11_capture"],
+        "    pub fn new(display: Display) -> io::Result<Capturer> {",
+        "\n\n    pub fn display(&self)",
+        "X11 capturer constructor",
+    )
+    require_order(
+        constructor,
+        (
+            ".checked_mul(rect.h as usize)",
+            "SharedMemory::create(size)?",
+            "xcb_shm_attach_checked(",
+            'check_xcb_request(server, attach, "MIT-SHM attach")?',
+            "memory.mark_for_removal()",
+        ),
+        "X11 checked size/attach/deletion-pending order",
+    )
+    for text, label in (
+        ("pub fn xcb_shm_attach_checked(", "checked attach binding"),
+        ("pub fn xcb_request_check(", "request-check binding"),
+        ("pub fn xcb_shm_detach_checked(", "checked detach binding"),
+    ):
+        require_text(sources["x11_ffi"], text, f"X11 {label}")
+    capturer_drop = extract_between(
+        sources["x11_capture"],
+        "impl Drop for Capturer {",
+        "\n}\n\n#[cfg(test)]",
+        "X11 capturer X-server detach",
+    )
+    require_order(
+        capturer_drop,
+        (
+            "xcb_shm_detach_checked(server, self.xcbid)",
+            'check_xcb_request(server, detach, "MIT-SHM drop detach")',
+            "failed to detach X11 capture shared memory from XCB",
+        ),
+        "X11 checked drop-time detach",
+    )
+    require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/verify-x11-capture-shm.py --repo . --self-test",
+        "shared X11 capture focused verifier",
+    )
+    require_text(
+        sources["verify"],
+        "x11::capturer::tests::r_s11fw_ -- --test-threads=1",
+        "shared X11 capture kernel behaviors",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11fw</span>',
+        "X11 capture shared-memory requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>331</td>",
+        "X11 capture shared-memory Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11fw/R-S11e-209 — Linux X11 capture shared-memory authority",
+        "X11 capture shared-memory hardening ledger",
+    )
+    try:
+        workspace_module = ast.parse(sources["workspace_verifier"])
+    except SyntaxError as exc:
+        raise VerificationError(
+            f"X11 capture shared-memory workspace dispatch: Python source does not parse: {exc}"
+        ) from exc
+    validators = [
+        node
+        for node in workspace_module.body
+        if isinstance(node, ast.FunctionDef) and node.name == "validate_sources"
+    ]
+    dispatches = (
+        [
+            node
+            for node in ast.walk(validators[0])
+            if isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id == "validate_x11_capture_shared_memory_contract"
+        ]
+        if len(validators) == 1
+        else []
+    )
+    if len(dispatches) != 1:
+        raise VerificationError("X11 capture shared-memory workspace dispatch is not exact")
+
+
 def validate_viewer_video_mailbox_contract(sources):
     focused = sources["viewer_video_mailbox_verifier"]
     validation = extract_between(
@@ -39975,6 +40140,7 @@ def validate_sources(sources):
     validate_whiteboard_ipc_protocol_contract(sources)
     validate_unix_listener_incumbent_contract(sources)
     validate_viewer_voice_call_worker_contract(sources)
+    validate_x11_capture_shared_memory_contract(sources)
     validate_viewer_video_mailbox_contract(sources)
     validate_viewer_file_finality_contract(sources)
     validate_viewer_rgba_mailbox_contract(sources)
@@ -67552,6 +67718,64 @@ def run_source_mutations(sources):
             "R-S11et-disabled/R-S11e-181 Windows dormant fixed-temp diagnostic append authority",
             "Windows dormant fixed-temp diagnostic hardening ledger",
         ),
+        (
+            "x11_capture",
+            "const SHM_OWNER_READ_WRITE: libc::c_int = 0o600;",
+            "const SHM_OWNER_READ_WRITE: libc::c_int = 0o666;",
+            "X11 capture exact owner-only mode",
+        ),
+        (
+            "x11_capture",
+            "xcb_shm_attach_checked(",
+            "xcb_shm_attach(",
+            "X11 checked size/attach/deletion-pending order",
+        ),
+        (
+            "x11_capture",
+            "assert_eq!(status.shm_perm.mode & 0o777, 0o600);",
+            "assert_eq!(status.shm_perm.mode & 0o777, SHM_OWNER_READ_WRITE as libc::c_ushort);",
+            "X11 capture independent literal mode assertions",
+        ),
+        (
+            "x11_capture_shared_memory_verifier",
+            '"const SHM_OWNER_READ_WRITE: libc::c_int = 0o600;"',
+            '"const SHM_OWNER_READ_WRITE: libc::c_int = 0o666;"',
+            "X11 capture shared-memory owner-only mode contract",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/verify-x11-capture-shm.py --repo . --self-test",
+            "true # X11 capture shared-memory verifier removed",
+            "shared X11 capture focused verifier",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11fw</span>',
+            '<span class="id">R-S11fw-disabled</span>',
+            "X11 capture shared-memory requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>331</td>",
+            "<tr><td>331-disabled</td>",
+            "X11 capture shared-memory Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11fw/R-S11e-209 — Linux X11 capture shared-memory authority",
+            "R-S11fw/R-S11e-209 — permissive Linux X11 capture memory",
+            "X11 capture shared-memory hardening ledger",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_viewer_voice_call_worker_contract(sources)\n"
+            "    validate_x11_capture_shared_memory_contract(sources)\n"
+            "    validate_viewer_video_mailbox_contract(sources)",
+            "    validate_viewer_voice_call_worker_contract(sources)\n"
+            "    validate_x11_capture_shared_memory_contract_disabled(sources)\n"
+            "    validate_viewer_video_mailbox_contract(sources)",
+            "X11 capture shared-memory workspace dispatch",
+        ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
     for key, old, new, expected in mutations:
@@ -68390,6 +68614,15 @@ def main():
             "viewer_voice_call_worker_verifier": (
                 repo / "scripts/verify-viewer-voice-call-worker.py"
             ).read_text(encoding="utf-8"),
+            "x11_capture_shared_memory_verifier": (
+                repo / "scripts/verify-x11-capture-shm.py"
+            ).read_text(encoding="utf-8"),
+            "x11_capture": (
+                repo / "libs/scrap/src/x11/capturer.rs"
+            ).read_text(encoding="utf-8"),
+            "x11_ffi": (repo / "libs/scrap/src/x11/ffi.rs").read_text(
+                encoding="utf-8"
+            ),
             "viewer_video_mailbox_verifier": (
                 repo / "scripts/verify-viewer-video-mailbox.py"
             ).read_text(encoding="utf-8"),

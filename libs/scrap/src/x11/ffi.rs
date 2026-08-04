@@ -20,14 +20,22 @@ extern "C" {
 
     pub fn xcb_generate_id(c: *mut xcb_connection_t) -> u32;
 
-    pub fn xcb_shm_attach(
+    pub fn xcb_shm_attach_checked(
         c: *mut xcb_connection_t,
         shmseg: xcb_shm_seg_t,
         shmid: u32,
         read_only: u8,
     ) -> xcb_void_cookie_t;
 
-    pub fn xcb_shm_detach(c: *mut xcb_connection_t, shmseg: xcb_shm_seg_t) -> xcb_void_cookie_t;
+    pub fn xcb_request_check(
+        c: *mut xcb_connection_t,
+        cookie: xcb_void_cookie_t,
+    ) -> *mut xcb_generic_error_t;
+
+    pub fn xcb_shm_detach_checked(
+        c: *mut xcb_connection_t,
+        shmseg: xcb_shm_seg_t,
+    ) -> xcb_void_cookie_t;
 
     pub fn xcb_shm_get_image_unchecked(
         c: *mut xcb_connection_t,

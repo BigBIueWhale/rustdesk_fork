@@ -15629,6 +15629,57 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   current artifacts, cold release reproduction, independent reproduction, and external review remain
   explicit release blockers.
 
+- **R-S11fy/R-S11e-211 — stale canonical Pub-cache replacement authority — SOURCE IMPLEMENTED;
+  NON-ROOT SYNTHETIC SUCCESS/CRASH/ROLLBACK SELF-TEST, 67-MUTATION FOCUSED GATE, AND COMPLETE
+  INDEPENDENT SOURCE-MUTATION MATRIX GREEN; REAL CANONICAL EXECUTION OPEN.** Platform: the unprivileged Linux acquisition host and
+  the existing immutable networked/offline builder profiles. Endpoint/action:
+  `scripts/online-fetch.sh::{stage_pub_cache,retire_pub_cache_output_staging}` and
+  `scripts/online-pub-cache-output.py` state-v2 replacement/recovery/archive commands. Boundary: a
+  structurally or semantically stale occupied `online/pub-cache` ↔ one exact-current, independently
+  revalidated candidate becoming canonical without root or destructive authority over the old tree.
+
+  The old acquisition path treated occupancy as final. If `check-complete` or either networkless
+  enforced-lockfile replay failed, it stopped before producing a current candidate. Historical
+  container-created trees can be root-owned and immutable. Source review initially proposed exchanging
+  the candidate directly from its staging parent with the old live directory and archiving the displaced
+  tree outside `online`; the first confined self-test correctly failed that design with `EACCES`. Linux
+  requires write permission on a moved directory when a cross-parent rename must update its `..` entry,
+  so that proposal could not satisfy the non-root/root-owned-old requirement and was discarded before any
+  canonical input was touched.
+
+  State v2 now records the exact candidate/old/online/staging/retired-record identities, candidate and old
+  tree digests, provenance, and deterministic no-clobber names before namespace mutation. A writable,
+  completely verified candidate is durably promoted from staging to a reserved sibling under the same
+  online parent. A descriptor-relative `RENAME_EXCHANGE` swaps those same-parent sibling names atomically,
+  which does not update the immutable old directory's `..` entry. Only the exact new live candidate is
+  descriptor-sealed to 0500. The old tree remains unchanged at the state-bound reserved sibling and is
+  revalidated by identity and digest; it is never chmodded, chowned, recursively removed, or moved across
+  parents. Only the user-owned journal envelope is no-clobber archived under the same-filesystem private
+  `.harness-state/retired-online-inputs` root.
+
+  Recovery distinguishes prepared, promoted, exchanged-but-unsealed, and completed topologies by all
+  three namespace identities. It validates both trees before finishing a recorded promotion or exchange;
+  every other arrangement is preserved and rejected. Rollback first restores the old live name by a
+  same-parent exchange, then restores traversal and demotes only the exact candidate. The confined helper
+  self-test passed normal replacement of a sealed old directory, recovery after promotion, recovery after
+  exchange before root sealing, rollback after candidate sealing, old identity/digest preservation,
+  candidate finality, and journal archival. The test ran as numeric UID/GID 1000 with no network, read-only
+  source/root filesystem, dropped capabilities, no-new-privileges, bounded resources, private tmpfs, and
+  no ports, devices, host namespace, Docker socket, or privileged flag. The focused verifier rejected all
+  67 deliberate weakenings of acquisition, semantic replay, state binding, old-tree validation, promotion,
+  same-parent exchange, root sealing, rollback, recovery, archival, fixtures, requirements, ledger, shared
+  wiring, and independent-workspace binding. The complete independent workspace source-mutation matrix
+  separately rejected mutations of the focused verifier and the underlying shell/helper/documentation
+  authority; the ordinary independent baseline was also green.
+
+  This is not operational replacement evidence. The real `online/pub-cache` and `.harness-state` were not
+  read by the helper, mutated, renamed, permission-changed, or archived; the actual networked producer was
+  not run. No host RustDesk executable/process/service/configuration, listener, firewall, display, or
+  network state was inspected or changed. The stale canonical Gradle input remains the next separate
+  native-gate blocker. Native Windows/Android/Linux builds, installed device/VM lifecycle and renderer
+  behavior, focus/task-swipe presentation latency, cross-version sessions, exact current artifacts, cold
+  release reproduction, independent reproduction, and external review remain explicit stop-ship gaps.
+
 - **R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority —
   SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE LIVE
   FOURTEEN-ARCHIVE ACQUISITION EVIDENCE RECORDED; BROADER RELEASE EVIDENCE OPEN.** Platform: the unprivileged Linux
@@ -20497,7 +20548,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-bbf1b995e0152da6ddb4645ff6aac1fd326c57f6499ccb79324f99ff8616518b  requirements.html
+2b9e33887a9658a0f6560c524e58b935011184d32e93ff12cc47202553bb99e7  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

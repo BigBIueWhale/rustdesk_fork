@@ -35,6 +35,7 @@ readonly CARGO_VENDOR_OUTPUT_HELPER="$SCRIPT_DIR/online-cargo-vendor-output.py"
 readonly WINDOWS_ENGINE_OUTPUT_HELPER="$SCRIPT_DIR/online-windows-engine-output.py"
 readonly FLUTTER_PUB_CACHE_OUTPUT_HELPER="$SCRIPT_DIR/online-flutter-pub-cache-output.py"
 readonly WIX_NUGET_RETIRE_HELPER="$SCRIPT_DIR/online-wix-nuget-retire.py"
+readonly RETIRED_ONLINE_INPUT_ROOT="$REPO_ROOT/.harness-state/retired-online-inputs"
 readonly VCPKG_FIXED_ARCHIVE_MANIFEST="$REPO_ROOT/res/vcpkg/libvpx/fixed-archive-acquisition-v1.txt"
 readonly ONLINE_FETCH_DOCKER_HOST=unix:///var/run/docker.sock
 readonly ONLINE_FETCH_UID="$(/usr/bin/id -u)"
@@ -490,6 +491,31 @@ prepare_online_root() {
     fi
     [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$ONLINE_DIR")" = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
         || die "online cache root is not current-user-private mode 0700"
+}
+
+prepare_retired_online_input_root() {
+    local retired_state_parent="$REPO_ROOT/.harness-state"
+    if [ -e "$retired_state_parent" ] || [ -L "$retired_state_parent" ]; then
+        [ -d "$retired_state_parent" ] && [ ! -L "$retired_state_parent" ] \
+            || die "harness state root is not one real directory"
+    else
+        /usr/bin/install -d -m 0700 -- "$retired_state_parent"
+    fi
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$retired_state_parent")" \
+       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "harness state root is not acquisition-identity-owned mode 0700"
+    if [ -e "$RETIRED_ONLINE_INPUT_ROOT" ] || [ -L "$RETIRED_ONLINE_INPUT_ROOT" ]; then
+        [ -d "$RETIRED_ONLINE_INPUT_ROOT" ] && [ ! -L "$RETIRED_ONLINE_INPUT_ROOT" ] \
+            || die "retired online-input root is not one real directory"
+    else
+        /usr/bin/install -d -m 0700 -- "$RETIRED_ONLINE_INPUT_ROOT"
+    fi
+    [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$RETIRED_ONLINE_INPUT_ROOT")" \
+       = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700" ] \
+        || die "retired online-input root is not acquisition-identity-owned mode 0700"
+    [ "$(/usr/bin/stat -c '%d' -- "$RETIRED_ONLINE_INPUT_ROOT")" \
+       = "$(/usr/bin/stat -c '%d' -- "$ONLINE_DIR")" ] \
+        || die "retired online-input root is not on the online filesystem"
 }
 assert_online_fetch_docker_authority
 
@@ -2999,13 +3025,31 @@ pub_cache_provenance_args() {
 }
 
 retire_pub_cache_output_staging() {
-    local staging="$1" staging_id="$2" disposition
+    local staging="$1" staging_id="$2" disposition archive
     disposition="$(
         pub_cache_output_tool recover \
             --online "$ONLINE_DIR" --staging "$staging" \
             --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
     )" || die "cannot reconcile private Pub-cache output staging"
     log "Pub-cache output staging reconciliation: $disposition"
+    if [ "$disposition" = replaced ]; then
+        prepare_retired_online_input_root
+        archive="$(
+            pub_cache_output_tool archive-replaced \
+                --online "$ONLINE_DIR" --staging "$staging" \
+                --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
+        )" || die "cannot archive the completed Pub-cache replacement record"
+        [ -d "$archive" ] && [ ! -L "$archive" ] \
+            || die "Pub-cache replacement-record archive is not one real directory"
+        [ ! -e "$staging" ] && [ ! -L "$staging" ] \
+            || die "private Pub-cache staging survived archival"
+        log "Displaced Pub cache remains an untouched reserved sibling; transaction record: $archive"
+        return 0
+    fi
+    case "$disposition" in
+        unpublished|published|unselected-while-occupied|replacement-prepared) ;;
+        *) die "private Pub-cache output staging has an unknown disposition" ;;
+    esac
     /usr/bin/python3 -I -S \
         "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
         --root "$staging" --expected-identity "$staging_id" \
@@ -3164,7 +3208,7 @@ for entry in sys.stdin.buffer.read().split(b'\0'):
 stage_pub_cache() {
     local builder="$DEB_BUILDER_IMAGE_ID"
     local status=0 source_status=0 input_status=0 output_status=0 semantic_status=0 publication_status=0
-    local lock_fd receipt="" digest="" existing=0
+    local lock_fd receipt="" digest="" current=0 replace_existing=0
     require_online_fetch_builder_image deb-builder "$builder"
     assert_online_fetch_source_tools
     exec {lock_fd}<"$ONLINE_DIR" \
@@ -3177,16 +3221,19 @@ stage_pub_cache() {
     mapfile -d '' PUB_CACHE_PROVENANCE_ARGS < <(pub_cache_provenance_args)
     readonly PUB_CACHE_PROVENANCE_ARGS
     if [ -e "$ONLINE_DIR/pub-cache" ] || [ -L "$ONLINE_DIR/pub-cache" ]; then
-        existing=1
-        receipt="$(
+        if receipt="$(
             pub_cache_output_tool check-complete \
                 --online "$ONLINE_DIR" \
                 --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
-        )" || output_status=$?
-        if [ "$output_status" -eq 0 ]; then
-            verify_pub_cache_resolution "$ONLINE_DIR/pub-cache" || semantic_status=$?
+        )" && verify_pub_cache_resolution "$ONLINE_DIR/pub-cache"
+        then
+            current=1
+        else
+            replace_existing=1
+            log "existing Pub cache is stale or semantically incomplete; preparing one verified replacement"
         fi
-    else
+    fi
+    if [ "$current" -eq 0 ]; then
         prepare_pub_cache_output_staging
         log "staging both enforced Pub lock closures into one private output; ./online remains read-only"
         online_docker_run \
@@ -3220,7 +3267,7 @@ stage_pub_cache() {
     retire_gradle_source_build
     verify_sha256 "$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz" "$SHA256_FLUTTER_3_24_5" \
         || input_status=$?
-    if [ "$existing" -eq 0 ]; then
+    if [ "$current" -eq 0 ]; then
         restore_pub_cache_output_traversal
         receipt="$(
             pub_cache_output_tool verify \
@@ -3241,12 +3288,23 @@ stage_pub_cache() {
         if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] \
            && [ "$input_status" -eq 0 ] && [ "$output_status" -eq 0 ] \
            && [ "$semantic_status" -eq 0 ]; then
-            pub_cache_output_tool publish \
-                --online "$ONLINE_DIR" --staging "$PUB_CACHE_OUTPUT_STAGING" \
-                --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
-                "${PUB_CACHE_PROVENANCE_ARGS[@]}" \
-                --expected-digest "$digest" \
-                || publication_status=$?
+            if [ "$replace_existing" -eq 1 ]; then
+                prepare_retired_online_input_root
+                pub_cache_output_tool replace \
+                    --online "$ONLINE_DIR" --staging "$PUB_CACHE_OUTPUT_STAGING" \
+                    --retired-root "$RETIRED_ONLINE_INPUT_ROOT" \
+                    --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+                    "${PUB_CACHE_PROVENANCE_ARGS[@]}" \
+                    --expected-digest "$digest" \
+                    || publication_status=$?
+            else
+                pub_cache_output_tool publish \
+                    --online "$ONLINE_DIR" --staging "$PUB_CACHE_OUTPUT_STAGING" \
+                    --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+                    "${PUB_CACHE_PROVENANCE_ARGS[@]}" \
+                    --expected-digest "$digest" \
+                    || publication_status=$?
+            fi
         fi
         retire_pub_cache_output_staging \
             "$PUB_CACHE_OUTPUT_STAGING" "$PUB_CACHE_OUTPUT_STAGING_ID"

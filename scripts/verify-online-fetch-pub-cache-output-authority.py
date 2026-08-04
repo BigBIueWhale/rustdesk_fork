@@ -220,6 +220,15 @@ def validate(sources: Dict[str, str]) -> None:
         ("readonly FLOCK_BIN=/usr/bin/flock", "fixed transaction-lock client"),
         ("pub_cache_output_tool() {", "fixed Pub-cache output helper"),
         ("pub_cache_provenance_args() {", "closed provenance mapper"),
+        ('readonly RETIRED_ONLINE_INPUT_ROOT="$REPO_ROOT/.harness-state/retired-online-inputs"',
+         "private retired-record namespace"),
+        ("prepare_retired_online_input_root() {", "private retired-record root"),
+        ('= "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:700"',
+         "current-identity private retired-record ownership"),
+        ('stat -c \'%d\' -- "$RETIRED_ONLINE_INPUT_ROOT"',
+         "retired-record filesystem identity"),
+        ('= "$(/usr/bin/stat -c \'%d\' -- "$ONLINE_DIR")"',
+         "same-filesystem retired-record root"),
         ("retire_pub_cache_output_staging() {", "private staging retirement"),
         ("recover_pub_cache_output_staging() {", "reserved-state recovery"),
         ("prepare_pub_cache_output_staging() {", "private staging preparation"),
@@ -234,6 +243,8 @@ def validate(sources: Dict[str, str]) -> None:
         ("pub_cache_output_tool prepare", "transaction preparation"),
         ("pub_cache_output_tool verify", "structural output verdict"),
         ("pub_cache_output_tool publish", "no-clobber publication"),
+        ("pub_cache_output_tool replace", "same-parent stale-output replacement"),
+        ("pub_cache_output_tool archive-replaced", "completed-record archival"),
         ("pub_cache_output_tool check-complete", "existing-output revalidation"),
         ("retire_pub_cache_output_staging", "reconciled staging retirement"),
     ):
@@ -257,6 +268,48 @@ def validate(sources: Dict[str, str]) -> None:
         "stage_pub_cache() {",
         "\n}\n\n# ── vcpkg overlay distfiles",
         "Pub-cache output lifecycle",
+    )
+    replacement = extract_between(
+        helper,
+        "def replace(",
+        "\n\ndef optional_identity(",
+        "Pub-cache replacement transaction",
+    )
+    finish_replacement = extract_between(
+        helper,
+        "def finish_promoted_replacement(",
+        "\n\ndef replace(",
+        "promoted Pub-cache replacement finality",
+    )
+    rollback_replacement = extract_between(
+        helper,
+        "def rollback_replacement(",
+        "\n\ndef finish_promoted_replacement(",
+        "Pub-cache replacement rollback",
+    )
+    recovery = extract_between(
+        helper,
+        "def recover(",
+        "\n\ndef archive_replaced(",
+        "Pub-cache replacement recovery",
+    )
+    archive = extract_between(
+        helper,
+        "def archive_replaced(",
+        "\n\ndef make_stage(",
+        "Pub-cache replacement-record archival",
+    )
+    displaced_validation = extract_between(
+        helper,
+        "def validate_displaced_output(",
+        "\n\ndef publish(",
+        "displaced Pub-cache validation",
+    )
+    helper_self_test = extract_between(
+        helper,
+        "def self_test(",
+        "\n\ndef common_arguments(",
+        "Pub-cache transaction self-test",
     )
 
     for token, label in (
@@ -398,7 +451,11 @@ def validate(sources: Dict[str, str]) -> None:
          "ephemeral top-level cleanup"),
         ('[[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]',
          "verified digest receipt"),
-        ('--expected-digest "$digest"', "digest-bound publication"),
+        ('replace_existing=1', "stale occupied-output selection"),
+        ('log "existing Pub cache is stale or semantically incomplete; preparing one verified replacement"',
+         "explicit stale-output disposition"),
+        ('--retired-root "$RETIRED_ONLINE_INPUT_ROOT"',
+         "state-bound retired-record root"),
         ('[ "$status" -eq 0 ] && [ "$source_status" -eq 0 ]',
          "producer/source verdict barrier"),
         ('&& [ "$input_status" -eq 0 ] && [ "$output_status" -eq 0 ]',
@@ -407,6 +464,18 @@ def validate(sources: Dict[str, str]) -> None:
         ('[ "$publication_status" -eq 0 ]', "publication verdict"),
     ):
         require(stage, token, label)
+    require_count(stage, '--expected-digest "$digest"', 2, "both publication digests")
+    require_order(
+        stage,
+        (
+            "pub_cache_output_tool check-complete",
+            'verify_pub_cache_resolution "$ONLINE_DIR/pub-cache"',
+            "current=1",
+            "replace_existing=1",
+            'if [ "$current" -eq 0 ]; then',
+        ),
+        "current-or-stale occupied-output decision",
+    )
     require_order(
         stage,
         (
@@ -431,7 +500,10 @@ def validate(sources: Dict[str, str]) -> None:
             "|| input_status=$?",
             "restore_pub_cache_output_traversal",
             "pub_cache_output_tool verify",
-            "verify_pub_cache_resolution",
+            'verify_pub_cache_resolution "$PUB_CACHE_OUTPUT_STAGING/output"',
+            'if [ "$replace_existing" -eq 1 ]; then',
+            "prepare_retired_online_input_root",
+            "pub_cache_output_tool replace",
             "pub_cache_output_tool publish",
             "retire_pub_cache_output_staging",
             '"$FLOCK_BIN" --unlock "$lock_fd"',
@@ -440,8 +512,11 @@ def validate(sources: Dict[str, str]) -> None:
     )
 
     for token, label in (
-        ('STATE_NAME = ".rustdesk-pub-cache-output-state-v1"',
+        ('STATE_NAME = ".rustdesk-pub-cache-output-state-v2"',
          "bounded transaction record"),
+        ("STATE_VERSION = 2", "replacement-aware transaction schema"),
+        ("RENAME_EXCHANGE = 2", "atomic exchange primitive"),
+        ("REPLACEMENT_PATTERN = re.compile(", "reserved displaced-output namespace"),
         ("TREE_LIMITS = (100_000, 30_000, 4 * 1024**3, 256 * 1024**2, 32)",
          "closed output bounds"),
         ("EXPECTED_GIT_DEPENDENCIES = 5", "exact Git dependency count"),
@@ -475,6 +550,10 @@ def validate(sources: Dict[str, str]) -> None:
          "Git inventory closure"),
         ("source_archive_sha256", "source archive provenance"),
         ("flutter_archive_sha256", "Flutter archive provenance"),
+        ("if stat.S_IMODE(os.lstat(output).st_mode) != 0o700:",
+         "staged candidate root mode"),
+        ("expected_mode = 0o500 if published else 0o700",
+         "candidate root phase mode"),
         ("sync_tree(output)", "content durability barrier"),
         ("RENAME_NOREPLACE = 1", "no-clobber rename primitive"),
         ('renameat2(staging_fd, "output", online_fd, "pub-cache", RENAME_NOREPLACE)',
@@ -482,8 +561,13 @@ def validate(sources: Dict[str, str]) -> None:
         ("Pub-cache publication rollback also failed", "rollback preservation"),
         ('return "unpublished"', "unpublished recovery"),
         ('return "published"', "published recovery"),
-        ("transaction state is incoherent and was preserved",
-         "ambiguous recovery refusal"),
+        ('return "unselected-while-occupied"', "unbound stale-stage recovery"),
+        ('return "replacement-prepared"', "prepared replacement recovery"),
+        ('return "replaced"', "completed replacement recovery"),
+        ("Pub-cache replacement transaction state is incoherent and was preserved",
+         "ambiguous replacement recovery refusal"),
+        ("Pub-cache output transaction state is incoherent and was preserved",
+         "ambiguous new-output recovery refusal"),
         ("self-test accepted an occupied Pub-cache destination",
          "destination-race fixture"),
         ("self-test accepted an escaping Pub-cache symlink",
@@ -494,6 +578,16 @@ def validate(sources: Dict[str, str]) -> None:
          "special-file fixture"),
         ("self-test accepted extended attributes in Pub-cache output",
          "extended-attribute fixture"),
+        ('prepare_replacement_case("promoted-crash")',
+         "candidate-promotion crash fixture"),
+        ('prepare_replacement_case("exchanged-crash")',
+         "exchange-before-seal crash fixture"),
+        ('prepare_replacement_case("rollback")',
+         "sealed-candidate rollback fixture"),
+        ("self-test replacement rollback did not restore prepared state",
+         "rollback topology assertion"),
+        ("self-test record archival changed the displaced Pub-cache identity",
+         "archival preservation assertion"),
     ):
         require(helper, token, label)
     require_order(
@@ -503,10 +597,97 @@ def validate(sources: Dict[str, str]) -> None:
             "sync_tree(output)",
             'renameat2(staging_fd, "output", online_fd, "pub-cache", RENAME_NOREPLACE)',
             "published Pub-cache identity postcondition failed",
-            "validate_shape(destination, strict_output=True)",
+            "validate_published_candidate(",
         ),
         "checked Pub-cache publication",
     )
+    for token, label in (
+        ("owners={(uid, gid), (0, 0)}", "root/current-owner old-tree admission"),
+        ("published=True", "immutable displaced-tree profile"),
+        ("expected_git_dependencies=None", "bounded historical Git inventory"),
+    ):
+        require(displaced_validation, token, label)
+    for token, label in (
+        ("normalize=True", "displaced-tree permission normalization"),
+        ("os.chmod", "displaced-tree chmod"),
+        ("os.fchmod", "displaced-tree descriptor chmod"),
+        ("shutil.rmtree", "displaced-tree deletion"),
+    ):
+        require_absent(displaced_validation, token, label)
+    require_order(
+        replacement,
+        (
+            "candidate = verify_staged(",
+            "candidate.digest != expected_digest",
+            "replaced = validate_displaced_output(destination, uid, gid)",
+            "retired_metadata = validate_retired_root(",
+            "state = record_replacement_publication(",
+            "validate_displaced_output(",
+            "sync_tree(output)",
+            'renameat2(\n            staging_fd,\n            "output",\n            online_fd,\n            replacement_name,\n            RENAME_NOREPLACE,',
+            "os.fsync(staging_fd)",
+            "os.fsync(online_fd)",
+            "finish_promoted_replacement(",
+        ),
+        "journaled candidate promotion",
+    )
+    require_order(
+        finish_replacement,
+        (
+            "validate_candidate_output(",
+            "validate_displaced_output(",
+            'optional_relative_identity(online_fd, replacement_name) != candidate_identity',
+            'optional_relative_identity(online_fd, "pub-cache") != replaced_identity',
+            'renameat2(\n                online_fd,\n                replacement_name,\n                online_fd,\n                "pub-cache",\n                RENAME_EXCHANGE,',
+            "os.fsync(online_fd)",
+            'optional_relative_identity(online_fd, "pub-cache") != candidate_identity',
+            'optional_relative_identity(online_fd, replacement_name) != replaced_identity',
+            "transition_root_mode(",
+            "fsync_directory(destination)",
+            "validate_published_candidate(",
+            "validate_displaced_output(",
+        ),
+        "same-parent exchange and exact finality",
+    )
+    require_order(
+        rollback_replacement,
+        (
+            'optional_relative_identity(online_fd, "pub-cache") != candidate_identity',
+            'optional_relative_identity(online_fd, replacement_name) != replaced_identity',
+            'renameat2(\n                online_fd,\n                "pub-cache",\n                online_fd,\n                replacement_name,\n                RENAME_EXCHANGE,',
+            'optional_relative_identity(online_fd, "pub-cache") != replaced_identity',
+            "transition_root_mode(",
+            'renameat2(\n                online_fd,\n                replacement_name,\n                staging_fd,\n                "output",\n                RENAME_NOREPLACE,',
+        ),
+        "old-first replacement rollback",
+    )
+    for token, label in (
+        ("private_output == output", "prepared candidate identity"),
+        ("live_output == replaced_output", "prepared/promoted old identity"),
+        ("replacement_output is None", "prepared sibling vacancy"),
+        ("replacement_output == output", "promoted candidate identity"),
+        ("live_output == output", "exchanged candidate identity"),
+        ("replacement_output == replaced_output", "exchanged old identity"),
+        ("already_exchanged=False", "promoted recovery finality"),
+        ("already_exchanged=True", "exchanged recovery finality"),
+        ("replacement transaction state is incoherent and was preserved",
+         "ambiguous replacement preservation"),
+    ):
+        require(recovery, token, label)
+    require_order(
+        archive,
+        (
+            "validate_displaced_output(",
+            "if identity(os.lstat(staging)) != staging_identity",
+            'renameat2(\n            online_fd,\n            staging.name,\n            retired_fd,\n            archive_name,\n            RENAME_NOREPLACE,',
+            "os.fsync(online_fd)",
+            "os.fsync(retired_fd)",
+            "retired Pub-cache archive identity postcondition failed",
+            "validate_displaced_output(",
+        ),
+        "journal-only archival with old-tree preservation",
+    )
+    require_absent(archive, 'replacement_name,\n            retired_fd', "cross-parent old-tree archival")
 
     validate_consumers(sources)
     require(
@@ -521,10 +702,17 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(requirements, '<span class="id">R-S11cn</span>', "R-S11cn requirement")
     require(requirements, "<tr><td>233</td>", "Appendix C #233 disposition")
+    require(requirements, '<span class="id">R-S11fy</span>', "R-S11fy requirement")
+    require(requirements, "<tr><td>333</td>", "Appendix C #333 disposition")
     require(
         hardening,
         "R-S11cn/R-S11e-106 — networked Pub-cache acquisition-output authority",
         "hardening-ledger disposition",
+    )
+    require(
+        hardening,
+        "R-S11fy/R-S11e-211 — stale canonical Pub-cache replacement authority",
+        "stale replacement hardening disposition",
     )
     require(
         workspace,
@@ -535,6 +723,12 @@ def validate(sources: Dict[str, str]) -> None:
         workspace,
         "Online-fetch Pub-cache output authority focused verifier",
         "workspace-verifier semantic binding",
+    )
+    require(
+        workspace,
+        '("journal-only archival with old-tree preservation",\n'
+        '         "Pub-cache focused preservation binding"),',
+        "workspace-verifier stale-replacement binding",
     )
 
 
@@ -652,17 +846,71 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "shell",
-        '--expected-digest "$digest"',
-        '--expected-digest "$receipt"',
-        "digest-bound publication",
+        '--retired-root "$RETIRED_ONLINE_INPUT_ROOT" \\\n'
+        '                    --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \\\n'
+        '                    "${PUB_CACHE_PROVENANCE_ARGS[@]}" \\\n'
+        '                    --expected-digest "$digest"',
+        '--retired-root "$RETIRED_ONLINE_INPUT_ROOT" \\\n'
+        '                    --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \\\n'
+        '                    "${PUB_CACHE_PROVENANCE_ARGS[@]}" \\\n'
+        '                    --expected-digest "$receipt"',
+        "replacement digest binding",
+    ),
+    Mutation(
+        "shell",
+        'pub_cache_output_tool publish \\\n'
+        '                    --online "$ONLINE_DIR" --staging "$PUB_CACHE_OUTPUT_STAGING" \\\n'
+        '                    --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \\\n'
+        '                    "${PUB_CACHE_PROVENANCE_ARGS[@]}" \\\n'
+        '                    --expected-digest "$digest"',
+        'pub_cache_output_tool publish \\\n'
+        '                    --online "$ONLINE_DIR" --staging "$PUB_CACHE_OUTPUT_STAGING" \\\n'
+        '                    --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \\\n'
+        '                    "${PUB_CACHE_PROVENANCE_ARGS[@]}" \\\n'
+        '                    --expected-digest "$receipt"',
+        "new-output digest binding",
     ),
     Mutation(
         "shell",
         '&& [ "$semantic_status" -eq 0 ]; then\n'
-        "            pub_cache_output_tool publish",
+        '            if [ "$replace_existing" -eq 1 ]; then',
         "; then # semantic verdict omitted\n"
-        "            pub_cache_output_tool publish",
+        '            if [ "$replace_existing" -eq 1 ]; then',
         "semantic publication barrier",
+    ),
+    Mutation(
+        "shell",
+        ')" && verify_pub_cache_resolution "$ONLINE_DIR/pub-cache"\n'
+        "        then",
+        ')" # occupied output trusted without semantic replay\n'
+        "        then",
+        "occupied-output semantic replay",
+    ),
+    Mutation(
+        "shell",
+        "            replace_existing=1\n"
+        '            log "existing Pub cache is stale or semantically incomplete; preparing one verified replacement"',
+        "            current=1 # stale output incorrectly accepted\n"
+        '            log "existing Pub cache is stale or semantically incomplete; preparing one verified replacement"',
+        "stale-output replacement selection",
+    ),
+    Mutation(
+        "shell",
+        "                pub_cache_output_tool replace \\\n",
+        "                pub_cache_output_tool publish \\\n",
+        "replacement command dispatch",
+    ),
+    Mutation(
+        "shell",
+        "            pub_cache_output_tool archive-replaced \\\n",
+        "            pub_cache_output_tool recover \\\n",
+        "completed replacement-record archival",
+    ),
+    Mutation(
+        "shell",
+        "stat -c '%d' -- \"$RETIRED_ONLINE_INPUT_ROOT\"",
+        "stat -c '%i' -- \"$RETIRED_ONLINE_INPUT_ROOT\"",
+        "retired-record same-filesystem proof",
     ),
     Mutation(
         "helper",
@@ -708,6 +956,94 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "helper",
+        'STATE_NAME = ".rustdesk-pub-cache-output-state-v2"',
+        'STATE_NAME = ".rustdesk-pub-cache-output-state-v1"',
+        "replacement transaction version",
+    ),
+    Mutation(
+        "helper",
+        "if stat.S_IMODE(os.lstat(output).st_mode) != 0o700:\n"
+        '        fail("staged Pub-cache candidate root is not mode 0700")',
+        "if stat.S_IMODE(os.lstat(output).st_mode) != 0o500:\n"
+        '        fail("staged Pub-cache candidate root is not mode 0700")',
+        "staged candidate root mode",
+    ),
+    Mutation(
+        "helper",
+        "    expected_mode = 0o500 if published else 0o700",
+        "    expected_mode = 0o500",
+        "candidate root phase mode",
+    ),
+    Mutation(
+        "helper",
+        "        owners={(uid, gid), (0, 0)},\n"
+        "        published=True,\n"
+        "        expected_identity=expected_identity,",
+        "        owners={(uid, gid)},\n"
+        "        published=True,\n"
+        "        expected_identity=expected_identity,",
+        "root-owned displaced-output admission",
+    ),
+    Mutation(
+        "helper",
+        "        expected_git_dependencies=None,",
+        "        expected_git_dependencies=EXPECTED_GIT_DEPENDENCIES,",
+        "historical displaced Git inventory",
+    ),
+    Mutation(
+        "helper",
+        "    state = record_replacement_publication(\n",
+        "    state = record_new_publication(\n",
+        "durable replacement intent",
+    ),
+    Mutation(
+        "helper",
+        '        renameat2(\n            staging_fd,\n            "output",\n            online_fd,\n            replacement_name,\n            RENAME_NOREPLACE,',
+        '        renameat2(\n            staging_fd,\n            "output",\n            online_fd,\n            replacement_name,\n            0,',
+        "candidate promotion no-clobber",
+    ),
+    Mutation(
+        "helper",
+        '            renameat2(\n                online_fd,\n                replacement_name,\n                online_fd,\n                "pub-cache",\n                RENAME_EXCHANGE,',
+        '            renameat2(\n                online_fd,\n                replacement_name,\n                staging_fd,\n                "pub-cache",\n                RENAME_EXCHANGE,',
+        "same-parent replacement exchange",
+    ),
+    Mutation(
+        "helper",
+        '            renameat2(\n                online_fd,\n                "pub-cache",\n                online_fd,\n                replacement_name,\n                RENAME_EXCHANGE,',
+        '            renameat2(\n                online_fd,\n                "pub-cache",\n                staging_fd,\n                replacement_name,\n                RENAME_EXCHANGE,',
+        "same-parent rollback exchange",
+    ),
+    Mutation(
+        "helper",
+        "                already_exchanged=True,\n"
+        "            )\n"
+        "            return \"replaced\"",
+        "                already_exchanged=False,\n"
+        "            )\n"
+        "            return \"replaced\"",
+        "exchanged-topology recovery",
+    ),
+    Mutation(
+        "helper",
+        '        renameat2(\n            online_fd,\n            staging.name,\n            retired_fd,\n            archive_name,\n            RENAME_NOREPLACE,',
+        '        renameat2(\n            online_fd,\n            replacement_name,\n            retired_fd,\n            archive_name,\n            RENAME_NOREPLACE,',
+        "journal-only archival source",
+    ),
+    Mutation(
+        "helper",
+        'prepare_replacement_case("promoted-crash")',
+        'prepare_replacement_case("promoted-crash-disabled")',
+        "promoted-candidate crash fixture",
+    ),
+    Mutation(
+        "helper",
+        'prepare_replacement_case("exchanged-crash")',
+        'prepare_replacement_case("exchanged-crash-disabled")',
+        "exchange-before-seal crash fixture",
+    ),
+    Mutation(
+        "helper",
         'required = {"hosted", "hosted-hashes", "git"}',
         'required = {"hosted", "git"}',
         "top-level inventory",
@@ -720,9 +1056,19 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "helper",
-        "sync_tree(output)",
-        "pass # output not synchronized",
-        "durability barrier",
+        'output = staging / "output"\n    sync_tree(output)\n    fsync_directory(staging)',
+        'output = staging / "output"\n    pass # new output not synchronized\n    fsync_directory(staging)',
+        "new-output durability barrier",
+    ),
+    Mutation(
+        "helper",
+        'fail("reserved replacement Pub-cache name is already occupied")\n'
+        "    sync_tree(output)\n"
+        "    fsync_directory(staging)",
+        'fail("reserved replacement Pub-cache name is already occupied")\n'
+        "    pass # replacement output not synchronized\n"
+        "    fsync_directory(staging)",
+        "replacement durability barrier",
     ),
     Mutation(
         "helper",
@@ -732,9 +1078,15 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "helper",
-        "transaction state is incoherent and was preserved",
-        "transaction state was discarded",
-        "ambiguous recovery",
+        "Pub-cache replacement transaction state is incoherent and was preserved",
+        "Pub-cache replacement transaction state was discarded",
+        "ambiguous replacement recovery",
+    ),
+    Mutation(
+        "helper",
+        "Pub-cache output transaction state is incoherent and was preserved",
+        "Pub-cache output transaction state was discarded",
+        "ambiguous new-output recovery",
     ),
     Mutation(
         "android",
@@ -803,10 +1155,36 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "Appendix C #233 disposition",
     ),
     Mutation(
+        "requirements",
+        '<span class="id">R-S11fy</span>',
+        '<span class="id">R-S11fy-disabled</span>',
+        "R-S11fy requirement",
+    ),
+    Mutation(
+        "requirements",
+        "<tr><td>333</td>",
+        "<tr><td>333-disabled</td>",
+        "Appendix C #333 disposition",
+    ),
+    Mutation(
         "hardening",
         "R-S11cn/R-S11e-106 — networked Pub-cache acquisition-output authority",
         "R-S11cn/R-S11e-106 — ambient Pub-cache output authority",
         "hardening disposition",
+    ),
+    Mutation(
+        "hardening",
+        "R-S11fy/R-S11e-211 — stale canonical Pub-cache replacement authority",
+        "R-S11fy/R-S11e-211 — ambient Pub-cache replacement authority",
+        "stale replacement hardening disposition",
+    ),
+    Mutation(
+        "workspace",
+        '("journal-only archival with old-tree preservation",\n'
+        '         "Pub-cache focused preservation binding"),',
+        '("journal-only archival with old-tree preservation",\n'
+        '         "Pub-cache focused observation"),',
+        "workspace-verifier stale-replacement binding",
     ),
 )
 

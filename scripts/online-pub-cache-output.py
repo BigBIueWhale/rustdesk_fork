@@ -16,9 +16,15 @@ import stat
 import tempfile
 
 
-STATE_NAME = ".rustdesk-pub-cache-output-state-v1"
-STATE_VERSION = 1
+STATE_NAME = ".rustdesk-pub-cache-output-state-v2"
+STATE_VERSION = 2
 STAGING_PATTERN = re.compile(r"\.rustdesk-pub-cache\.[A-Za-z0-9_]{8,64}")
+ARCHIVE_PATTERN = re.compile(
+    r"pub-cache-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+"
+)
+REPLACEMENT_PATTERN = re.compile(
+    r"\.rustdesk-retired-pub-cache-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+-[0-9a-f]+"
+)
 HEX_OBJECT_PATTERN = re.compile(r"[0-9a-f]{40}|[0-9a-f]{64}")
 HEX_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 VERSION_PATTERN = re.compile(r"[0-9]+(?:\.[0-9]+){2,3}")
@@ -29,6 +35,7 @@ ALLOWED_LEGACY_TOP_LEVEL = {"_temp", "log", "README.md"}
 TREE_LIMITS = (100_000, 30_000, 4 * 1024**3, 256 * 1024**2, 32)
 FORBIDDEN_MODE_BITS = stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX
 RENAME_NOREPLACE = 1
+RENAME_EXCHANGE = 2
 BLOCK_SIZE = 1024 * 1024
 
 
@@ -457,7 +464,12 @@ def read_small_regular(path: Path, maximum: int, label: str) -> bytes:
         os.close(descriptor)
 
 
-def validate_shape(root: Path, *, strict_output: bool) -> None:
+def validate_shape(
+    root: Path,
+    *,
+    strict_output: bool,
+    expected_git_dependencies: int | None = EXPECTED_GIT_DEPENDENCIES,
+) -> None:
     with os.scandir(root) as iterator:
         top = {entry.name: entry for entry in iterator}
     required = {"hosted", "hosted-hashes", "git"}
@@ -522,9 +534,16 @@ def validate_shape(root: Path, *, strict_output: bool) -> None:
         ]
     with os.scandir(bare) as iterator:
         bare_entries = list(iterator)
-    if (
-        len(checkout_entries) != EXPECTED_GIT_DEPENDENCIES
-        or len(bare_entries) != EXPECTED_GIT_DEPENDENCIES
+    if expected_git_dependencies is None:
+        if (
+            not checkout_entries
+            or len(checkout_entries) != len(bare_entries)
+            or len(checkout_entries) > 32
+        ):
+            fail("displaced Pub cache has an incoherent Git dependency inventory")
+    elif (
+        len(checkout_entries) != expected_git_dependencies
+        or len(bare_entries) != expected_git_dependencies
     ):
         fail("Pub cache does not contain the exact five locked Git dependencies")
     for entry in checkout_entries:
@@ -606,6 +625,67 @@ def provenance_values(
     }
 
 
+def validate_publication_state(value: dict[str, object]) -> None:
+    publication = value.get("publication")
+    expected_digest = value.get("expected_digest")
+    replaced_identity = value.get("replaced_output_identity")
+    replaced_digest = value.get("replaced_output_digest")
+    retired_root = value.get("retired_root")
+    retired_root_identity = value.get("retired_root_identity")
+    archive_name = value.get("archive_name")
+    replacement_name = value.get("replacement_name")
+    if publication == "unselected":
+        if any(
+            item is not None
+            for item in (
+                expected_digest,
+                replaced_identity,
+                replaced_digest,
+                retired_root,
+                retired_root_identity,
+                archive_name,
+                replacement_name,
+            )
+        ):
+            fail("unselected Pub-cache publication carries transaction authority")
+        return
+    if publication == "new":
+        if (
+            not isinstance(expected_digest, str)
+            or HEX_SHA256_PATTERN.fullmatch(expected_digest) is None
+            or any(
+                item is not None
+                for item in (
+                    replaced_identity,
+                    replaced_digest,
+                    retired_root,
+                    retired_root_identity,
+                    archive_name,
+                    replacement_name,
+                )
+            )
+        ):
+            fail("new Pub-cache publication state is malformed")
+        return
+    if publication != "replacement":
+        fail("Pub-cache publication state has an unknown disposition")
+    if (
+        not isinstance(expected_digest, str)
+        or HEX_SHA256_PATTERN.fullmatch(expected_digest) is None
+        or not isinstance(replaced_digest, str)
+        or HEX_SHA256_PATTERN.fullmatch(replaced_digest) is None
+        or not isinstance(retired_root, str)
+        or not isinstance(archive_name, str)
+        or ARCHIVE_PATTERN.fullmatch(archive_name) is None
+        or not isinstance(replacement_name, str)
+        or REPLACEMENT_PATTERN.fullmatch(replacement_name) is None
+    ):
+        fail("Pub-cache replacement state is malformed")
+    decode_identity(replaced_identity, "replaced Pub-cache output")
+    decode_identity(retired_root_identity, "retired Pub-cache root")
+    validate_absolute(Path(retired_root), "retired Pub-cache root")
+
+
 def load_state(
     online: Path,
     staging: Path,
@@ -640,6 +720,14 @@ def load_state(
         "source_archive_sha256",
         "flutter_version",
         "flutter_archive_sha256",
+        "publication",
+        "expected_digest",
+        "replaced_output_identity",
+        "replaced_output_digest",
+        "retired_root",
+        "retired_root_identity",
+        "archive_name",
+        "replacement_name",
     }
     if not isinstance(value, dict) or set(value) != required_keys:
         fail("Pub-cache output state has an unexpected schema")
@@ -660,6 +748,7 @@ def load_state(
         str(value.get("flutter_version")),
         str(value.get("flutter_archive_sha256")),
     )
+    validate_publication_state(value)
     return value
 
 
@@ -687,6 +776,14 @@ def prepare(
         "online_identity": encode_identity(identity(online_metadata)),
         "staging_identity": encode_identity(identity(staging_metadata)),
         "output_identity": encode_identity(identity(os.lstat(output))),
+        "publication": "unselected",
+        "expected_digest": None,
+        "replaced_output_identity": None,
+        "replaced_output_digest": None,
+        "retired_root": None,
+        "retired_root_identity": None,
+        "archive_name": None,
+        "replacement_name": None,
     }
     state.update(provenance)
     atomic_write_state(staging, state)
@@ -720,6 +817,8 @@ def verify_staged(
         published=False,
         expected_identity=decode_identity(state.get("output_identity"), "Pub-cache output"),
     )
+    if stat.S_IMODE(os.lstat(output).st_mode) != 0o700:
+        fail("staged Pub-cache candidate root is not mode 0700")
     validate_shape(output, strict_output=True)
     return summary
 
@@ -794,6 +893,219 @@ def open_directory(path: Path) -> int:
     return os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW)
 
 
+def transition_root_mode(
+    parent_fd: int,
+    name: str,
+    expected_identity: tuple[int, int],
+    uid: int,
+    gid: int,
+    source_modes: set[int],
+    destination_mode: int,
+    label: str,
+) -> None:
+    descriptor = os.open(
+        name,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW,
+        dir_fd=parent_fd,
+    )
+    try:
+        before = os.fstat(descriptor)
+        if (
+            identity(before) != expected_identity
+            or not stat.S_ISDIR(before.st_mode)
+            or before.st_uid != uid
+            or before.st_gid != gid
+            or stat.S_IMODE(before.st_mode) not in source_modes
+        ):
+            fail(f"{label} root transition precondition failed")
+        os.fchmod(descriptor, destination_mode)
+        os.fsync(descriptor)
+        after = os.fstat(descriptor)
+        if (
+            identity(after) != expected_identity
+            or after.st_uid != uid
+            or after.st_gid != gid
+            or stat.S_IMODE(after.st_mode) != destination_mode
+        ):
+            fail(f"{label} root transition postcondition failed")
+    finally:
+        os.close(descriptor)
+
+
+def validate_retired_root(
+    online: Path,
+    retired_root: Path,
+    uid: int,
+    gid: int,
+    expected_identity: tuple[int, int] | None = None,
+) -> os.stat_result:
+    metadata = validate_root(
+        retired_root,
+        "retired Pub-cache root",
+        {(uid, gid)},
+        expected_identity,
+    )
+    if stat.S_IMODE(metadata.st_mode) != 0o700:
+        fail("retired Pub-cache root is not mode 0700")
+    if metadata.st_dev != os.lstat(online).st_dev:
+        fail("retired Pub-cache root is not on the online filesystem")
+    online_text = os.fspath(online).rstrip("/") + "/"
+    retired_text = os.fspath(retired_root).rstrip("/") + "/"
+    if online_text.startswith(retired_text) or retired_text.startswith(online_text):
+        fail("retired Pub-cache root and online root are not disjoint")
+    return metadata
+
+
+def replacement_archive_name(
+    staging_identity: tuple[int, int],
+    replaced_identity: tuple[int, int],
+) -> str:
+    name = "pub-cache-{:x}-{:x}-{:x}-{:x}".format(
+        staging_identity[0],
+        staging_identity[1],
+        replaced_identity[0],
+        replaced_identity[1],
+    )
+    if ARCHIVE_PATTERN.fullmatch(name) is None:
+        fail("generated retired Pub-cache archive name is malformed")
+    return name
+
+
+def replacement_output_name(
+    staging_identity: tuple[int, int],
+    replaced_identity: tuple[int, int],
+) -> str:
+    name = ".rustdesk-retired-pub-cache-{:x}-{:x}-{:x}-{:x}".format(
+        staging_identity[0],
+        staging_identity[1],
+        replaced_identity[0],
+        replaced_identity[1],
+    )
+    if REPLACEMENT_PATTERN.fullmatch(name) is None:
+        fail("generated replacement Pub-cache name is malformed")
+    return name
+
+
+def record_new_publication(
+    staging: Path,
+    state: dict[str, object],
+    expected_digest: str,
+) -> dict[str, object]:
+    if state.get("publication") == "new":
+        if state.get("expected_digest") != expected_digest:
+            fail("new Pub-cache publication digest changed across retry")
+        return state
+    if state.get("publication") != "unselected":
+        fail("Pub-cache output is already bound to a different publication")
+    updated = dict(state)
+    updated["publication"] = "new"
+    updated["expected_digest"] = expected_digest
+    atomic_write_state(staging, updated)
+    return updated
+
+
+def record_replacement_publication(
+    staging: Path,
+    state: dict[str, object],
+    expected_digest: str,
+    replaced: TreeSummary,
+    replaced_identity: tuple[int, int],
+    retired_root: Path,
+    retired_root_identity: tuple[int, int],
+) -> dict[str, object]:
+    archive_name = replacement_archive_name(
+        decode_identity(state.get("staging_identity"), "Pub-cache staging"),
+        replaced_identity,
+    )
+    replacement_name = replacement_output_name(
+        decode_identity(state.get("staging_identity"), "Pub-cache staging"),
+        replaced_identity,
+    )
+    expected = {
+        "publication": "replacement",
+        "expected_digest": expected_digest,
+        "replaced_output_identity": encode_identity(replaced_identity),
+        "replaced_output_digest": replaced.digest,
+        "retired_root": os.fspath(retired_root),
+        "retired_root_identity": encode_identity(retired_root_identity),
+        "archive_name": archive_name,
+        "replacement_name": replacement_name,
+    }
+    if state.get("publication") == "replacement":
+        if any(state.get(name) != value for name, value in expected.items()):
+            fail("Pub-cache replacement authority changed across retry")
+        return state
+    if state.get("publication") != "unselected":
+        fail("Pub-cache output is already bound to a different publication")
+    updated = dict(state)
+    updated.update(expected)
+    atomic_write_state(staging, updated)
+    return updated
+
+
+def validate_candidate_output(
+    output: Path,
+    uid: int,
+    gid: int,
+    expected_identity: tuple[int, int],
+    expected_digest: str,
+    *,
+    published: bool,
+) -> None:
+    expected_mode = 0o500 if published else 0o700
+    if stat.S_IMODE(os.lstat(output).st_mode) != expected_mode:
+        fail(f"Pub-cache candidate root is not mode {expected_mode:04o}")
+    summary = inspect_tree(
+        output,
+        owners={(uid, gid)},
+        published=published,
+        expected_identity=expected_identity,
+    )
+    validate_shape(output, strict_output=True)
+    if summary.digest != expected_digest:
+        fail("Pub-cache candidate digest postcondition failed")
+
+
+def validate_published_candidate(
+    destination: Path,
+    uid: int,
+    gid: int,
+    expected_identity: tuple[int, int],
+    expected_digest: str,
+) -> None:
+    validate_candidate_output(
+        destination,
+        uid,
+        gid,
+        expected_identity,
+        expected_digest,
+        published=True,
+    )
+
+
+def validate_displaced_output(
+    output: Path,
+    uid: int,
+    gid: int,
+    expected_identity: tuple[int, int] | None = None,
+    expected_digest: str | None = None,
+) -> TreeSummary:
+    summary = inspect_tree(
+        output,
+        owners={(uid, gid), (0, 0)},
+        published=True,
+        expected_identity=expected_identity,
+    )
+    validate_shape(
+        output,
+        strict_output=False,
+        expected_git_dependencies=None,
+    )
+    if expected_digest is not None and summary.digest != expected_digest:
+        fail("displaced Pub-cache digest changed")
+    return summary
+
+
 def publish(
     online: Path,
     staging: Path,
@@ -814,6 +1126,7 @@ def publish(
     if summary.digest != expected_digest:
         fail("Pub cache changed after networkless semantic verification")
     state = load_state(online, staging, uid, gid)
+    state = record_new_publication(staging, state, expected_digest)
     destination = online / "pub-cache"
     if destination.exists() or destination.is_symlink():
         fail("Pub-cache destination appeared before no-clobber publication")
@@ -826,26 +1139,42 @@ def publish(
     try:
         renameat2(staging_fd, "output", online_fd, "pub-cache", RENAME_NOREPLACE)
         moved = True
-        os.chmod(destination, 0o500, follow_symlinks=False)
+        transition_root_mode(
+            online_fd,
+            "pub-cache",
+            decode_identity(state.get("output_identity"), "Pub-cache output"),
+            uid,
+            gid,
+            {0o700},
+            0o500,
+            "published Pub-cache",
+        )
         fsync_directory(destination)
         os.fsync(staging_fd)
         os.fsync(online_fd)
         expected_identity = decode_identity(state.get("output_identity"), "Pub-cache output")
         if identity(os.lstat(destination)) != expected_identity:
             fail("published Pub-cache identity postcondition failed")
-        published = inspect_tree(
+        validate_published_candidate(
             destination,
-            owners={(uid, gid)},
-            published=True,
-            expected_identity=expected_identity,
+            uid,
+            gid,
+            expected_identity,
+            expected_digest,
         )
-        validate_shape(destination, strict_output=True)
-        if published.digest != expected_digest:
-            fail("published Pub-cache digest postcondition failed")
     except BaseException as primary:
         if moved:
             try:
-                os.chmod(destination, 0o700, follow_symlinks=False)
+                transition_root_mode(
+                    online_fd,
+                    "pub-cache",
+                    decode_identity(state.get("output_identity"), "Pub-cache output"),
+                    uid,
+                    gid,
+                    {0o500, 0o700},
+                    0o700,
+                    "Pub-cache rollback",
+                )
                 renameat2(
                     online_fd,
                     "pub-cache",
@@ -863,6 +1192,295 @@ def publish(
         os.close(online_fd)
 
 
+def optional_relative_identity(directory_fd: int, name: str) -> tuple[int, int] | None:
+    try:
+        return identity(os.stat(name, dir_fd=directory_fd, follow_symlinks=False))
+    except FileNotFoundError:
+        return None
+
+
+def rollback_replacement(
+    online_fd: int,
+    staging_fd: int,
+    replacement_name: str,
+    candidate_identity: tuple[int, int],
+    replaced_identity: tuple[int, int],
+    uid: int,
+    gid: int,
+    *,
+    exchanged: bool,
+    promoted: bool,
+) -> None:
+    failures: list[str] = []
+    if exchanged:
+        try:
+            if optional_relative_identity(online_fd, "pub-cache") != candidate_identity:
+                fail("live Pub-cache identity changed before replacement rollback")
+            if optional_relative_identity(online_fd, replacement_name) != replaced_identity:
+                fail("displaced Pub-cache identity changed before replacement rollback")
+            renameat2(
+                online_fd,
+                "pub-cache",
+                online_fd,
+                replacement_name,
+                RENAME_EXCHANGE,
+            )
+            os.fsync(online_fd)
+            if optional_relative_identity(online_fd, "pub-cache") != replaced_identity:
+                fail("replacement rollback did not restore the displaced Pub-cache")
+            if optional_relative_identity(online_fd, replacement_name) != candidate_identity:
+                fail("replacement rollback lost the candidate Pub-cache")
+        except (OSError, PubCacheError) as error:
+            failures.append(f"Pub-cache same-parent replacement rollback failed: {error}")
+    if promoted and not failures:
+        try:
+            if optional_relative_identity(staging_fd, "output") is not None:
+                fail("Pub-cache staging output reappeared before replacement rollback")
+            transition_root_mode(
+                online_fd,
+                replacement_name,
+                candidate_identity,
+                uid,
+                gid,
+                {0o500, 0o700},
+                0o700,
+                "Pub-cache replacement rollback",
+            )
+            renameat2(
+                online_fd,
+                replacement_name,
+                staging_fd,
+                "output",
+                RENAME_NOREPLACE,
+            )
+            os.fsync(staging_fd)
+            os.fsync(online_fd)
+            if optional_relative_identity(staging_fd, "output") != candidate_identity:
+                fail("replacement rollback did not restore the staged candidate")
+            if optional_relative_identity(online_fd, replacement_name) is not None:
+                fail("replacement rollback left the promoted candidate name occupied")
+        except (OSError, PubCacheError) as error:
+            failures.append(f"Pub-cache candidate demotion failed: {error}")
+    try:
+        os.fsync(staging_fd)
+        os.fsync(online_fd)
+    except OSError as error:
+        failures.append(f"Pub-cache rollback directory synchronization failed: {error}")
+    if failures:
+        fail("; ".join(failures))
+
+
+def finish_promoted_replacement(
+    online: Path,
+    staging: Path,
+    state: dict[str, object],
+    uid: int,
+    gid: int,
+    *,
+    already_exchanged: bool,
+) -> None:
+    destination = online / "pub-cache"
+    replacement_name = str(state.get("replacement_name"))
+    if REPLACEMENT_PATTERN.fullmatch(replacement_name) is None:
+        fail("replacement Pub-cache name is malformed")
+    replacement = online / replacement_name
+    candidate_identity = decode_identity(state.get("output_identity"), "Pub-cache output")
+    replaced_identity = decode_identity(
+        state.get("replaced_output_identity"), "replaced Pub-cache output"
+    )
+    expected_digest = str(state.get("expected_digest"))
+    replaced_digest = str(state.get("replaced_output_digest"))
+    online_fd = open_directory(online)
+    staging_fd = open_directory(staging)
+    exchanged = already_exchanged
+    try:
+        if not exchanged:
+            validate_candidate_output(
+                replacement,
+                uid,
+                gid,
+                candidate_identity,
+                expected_digest,
+                published=False,
+            )
+            validate_displaced_output(
+                destination,
+                uid,
+                gid,
+                replaced_identity,
+                replaced_digest,
+            )
+            if optional_relative_identity(online_fd, replacement_name) != candidate_identity:
+                fail("promoted Pub-cache candidate identity changed before exchange")
+            if optional_relative_identity(online_fd, "pub-cache") != replaced_identity:
+                fail("existing Pub-cache identity changed before exchange")
+            renameat2(
+                online_fd,
+                replacement_name,
+                online_fd,
+                "pub-cache",
+                RENAME_EXCHANGE,
+            )
+            exchanged = True
+            os.fsync(online_fd)
+        if optional_relative_identity(online_fd, "pub-cache") != candidate_identity:
+            fail("replacement Pub-cache identity postcondition failed")
+        if optional_relative_identity(online_fd, replacement_name) != replaced_identity:
+            fail("displaced Pub-cache identity postcondition failed")
+        live_mode = stat.S_IMODE(os.lstat(destination).st_mode)
+        if live_mode == 0o700:
+            transition_root_mode(
+                online_fd,
+                "pub-cache",
+                candidate_identity,
+                uid,
+                gid,
+                {0o700},
+                0o500,
+                "replacement Pub-cache",
+            )
+        elif live_mode != 0o500:
+            fail("replacement Pub-cache root has an unrecoverable mode")
+        fsync_directory(destination)
+        os.fsync(online_fd)
+        validate_published_candidate(
+            destination,
+            uid,
+            gid,
+            candidate_identity,
+            expected_digest,
+        )
+        validate_displaced_output(
+            replacement,
+            uid,
+            gid,
+            replaced_identity,
+            replaced_digest,
+        )
+    except BaseException as primary:
+        try:
+            rollback_replacement(
+                online_fd,
+                staging_fd,
+                replacement_name,
+                candidate_identity,
+                replaced_identity,
+                uid,
+                gid,
+                exchanged=exchanged,
+                promoted=True,
+            )
+        except BaseException as rollback:
+            primary.add_note(f"Pub-cache replacement rollback also failed: {rollback}")
+        raise
+    finally:
+        os.close(staging_fd)
+        os.close(online_fd)
+
+
+def replace(
+    online: Path,
+    staging: Path,
+    retired_root: Path,
+    uid: int,
+    gid: int,
+    provenance: dict[str, str],
+    expected_digest: str,
+) -> None:
+    validate_pin(expected_digest, "verified Pub-cache digest", HEX_SHA256_PATTERN)
+    candidate = verify_staged(
+        online,
+        staging,
+        uid,
+        gid,
+        provenance,
+        normalize=False,
+    )
+    if candidate.digest != expected_digest:
+        fail("Pub cache changed after networkless semantic verification")
+    state = load_state(online, staging, uid, gid)
+    destination = online / "pub-cache"
+    replaced_metadata = os.lstat(destination)
+    replaced = validate_displaced_output(destination, uid, gid)
+    retired_metadata = validate_retired_root(online, retired_root, uid, gid)
+    state = record_replacement_publication(
+        staging,
+        state,
+        expected_digest,
+        replaced,
+        identity(replaced_metadata),
+        retired_root,
+        identity(retired_metadata),
+    )
+    replaced_identity = decode_identity(
+        state.get("replaced_output_identity"), "replaced Pub-cache output"
+    )
+    replaced_digest = str(state.get("replaced_output_digest"))
+    validate_displaced_output(
+        destination,
+        uid,
+        gid,
+        replaced_identity,
+        replaced_digest,
+    )
+    output = staging / "output"
+    replacement_name = str(state.get("replacement_name"))
+    if REPLACEMENT_PATTERN.fullmatch(replacement_name) is None:
+        fail("replacement Pub-cache name is malformed")
+    replacement = online / replacement_name
+    if replacement.exists() or replacement.is_symlink():
+        fail("reserved replacement Pub-cache name is already occupied")
+    sync_tree(output)
+    fsync_directory(staging)
+    online_fd = open_directory(online)
+    staging_fd = open_directory(staging)
+    promoted = False
+    candidate_identity = decode_identity(state.get("output_identity"), "Pub-cache output")
+    try:
+        if identity(os.lstat(output)) != candidate_identity:
+            fail("Pub-cache candidate identity changed before replacement")
+        if identity(os.lstat(destination)) != replaced_identity:
+            fail("existing Pub-cache identity changed before replacement")
+        renameat2(
+            staging_fd,
+            "output",
+            online_fd,
+            replacement_name,
+            RENAME_NOREPLACE,
+        )
+        promoted = True
+        os.fsync(staging_fd)
+        os.fsync(online_fd)
+    except BaseException as primary:
+        if promoted:
+            try:
+                rollback_replacement(
+                    online_fd,
+                    staging_fd,
+                    replacement_name,
+                    candidate_identity,
+                    replaced_identity,
+                    uid,
+                    gid,
+                    exchanged=False,
+                    promoted=True,
+                )
+            except BaseException as rollback:
+                primary.add_note(f"Pub-cache replacement rollback also failed: {rollback}")
+        raise
+    finally:
+        os.close(staging_fd)
+        os.close(online_fd)
+    finish_promoted_replacement(
+        online,
+        staging,
+        state,
+        uid,
+        gid,
+        already_exchanged=False,
+    )
+
+
 def optional_identity(path: Path) -> tuple[int, int] | None:
     try:
         return identity(os.lstat(path))
@@ -875,6 +1493,79 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
     output = decode_identity(state.get("output_identity"), "Pub-cache output")
     private_output = optional_identity(staging / "output")
     live_output = optional_identity(online / "pub-cache")
+    publication = state.get("publication")
+    if publication == "replacement":
+        replaced_output = decode_identity(
+            state.get("replaced_output_identity"), "replaced Pub-cache output"
+        )
+        expected_digest = str(state.get("expected_digest"))
+        replaced_digest = str(state.get("replaced_output_digest"))
+        replacement_name = str(state.get("replacement_name"))
+        if REPLACEMENT_PATTERN.fullmatch(replacement_name) is None:
+            fail("replacement Pub-cache name is malformed")
+        replacement = online / replacement_name
+        replacement_output = optional_identity(replacement)
+        retired_root = Path(str(state.get("retired_root")))
+        retired_identity = decode_identity(
+            state.get("retired_root_identity"), "retired Pub-cache root"
+        )
+        validate_retired_root(online, retired_root, uid, gid, retired_identity)
+        if (
+            private_output == output
+            and live_output == replaced_output
+            and replacement_output is None
+        ):
+            validate_candidate_output(
+                staging / "output",
+                uid,
+                gid,
+                output,
+                expected_digest,
+                published=False,
+            )
+            validate_displaced_output(
+                online / "pub-cache",
+                uid,
+                gid,
+                replaced_output,
+                replaced_digest,
+            )
+            return "replacement-prepared"
+        if (
+            private_output is None
+            and live_output == replaced_output
+            and replacement_output == output
+        ):
+            finish_promoted_replacement(
+                online,
+                staging,
+                state,
+                uid,
+                gid,
+                already_exchanged=False,
+            )
+            return "replaced"
+        if (
+            private_output is None
+            and live_output == output
+            and replacement_output == replaced_output
+        ):
+            finish_promoted_replacement(
+                online,
+                staging,
+                state,
+                uid,
+                gid,
+                already_exchanged=True,
+            )
+            return "replaced"
+        fail("Pub-cache replacement transaction state is incoherent and was preserved")
+    if (
+        publication == "unselected"
+        and private_output == output
+        and live_output is not None
+    ):
+        return "unselected-while-occupied"
     if private_output == output and live_output is None:
         return "unpublished"
     if private_output is None and live_output == output:
@@ -882,11 +1573,82 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
     fail("Pub-cache output transaction state is incoherent and was preserved")
 
 
+def archive_replaced(online: Path, staging: Path, uid: int, gid: int) -> Path:
+    if recover(online, staging, uid, gid) != "replaced":
+        fail("Pub-cache output is not a completed replacement")
+    state = load_state(online, staging, uid, gid)
+    retired_root = Path(str(state.get("retired_root")))
+    retired_identity = decode_identity(
+        state.get("retired_root_identity"), "retired Pub-cache root"
+    )
+    validate_retired_root(
+        online,
+        retired_root,
+        uid,
+        gid,
+        retired_identity,
+    )
+    archive_name = str(state.get("archive_name"))
+    if ARCHIVE_PATTERN.fullmatch(archive_name) is None:
+        fail("retired Pub-cache archive name is malformed")
+    destination = retired_root / archive_name
+    if destination.exists() or destination.is_symlink():
+        fail("retired Pub-cache archive destination is already occupied")
+    staging_identity = decode_identity(state.get("staging_identity"), "Pub-cache staging")
+    replacement_name = str(state.get("replacement_name"))
+    if REPLACEMENT_PATTERN.fullmatch(replacement_name) is None:
+        fail("replacement Pub-cache name is malformed")
+    replaced_identity = decode_identity(
+        state.get("replaced_output_identity"), "replaced Pub-cache output"
+    )
+    replaced_digest = str(state.get("replaced_output_digest"))
+    replacement = online / replacement_name
+    validate_displaced_output(
+        replacement,
+        uid,
+        gid,
+        replaced_identity,
+        replaced_digest,
+    )
+    online_fd = open_directory(online)
+    retired_fd = open_directory(retired_root)
+    try:
+        if identity(os.lstat(staging)) != staging_identity:
+            fail("Pub-cache staging identity changed before archival")
+        renameat2(
+            online_fd,
+            staging.name,
+            retired_fd,
+            archive_name,
+            RENAME_NOREPLACE,
+        )
+        os.fsync(online_fd)
+        os.fsync(retired_fd)
+        if optional_identity(staging) is not None:
+            fail("Pub-cache staging name survived archival")
+        if identity(os.lstat(destination)) != staging_identity:
+            fail("retired Pub-cache archive identity postcondition failed")
+        validate_displaced_output(
+            replacement,
+            uid,
+            gid,
+            replaced_identity,
+            replaced_digest,
+        )
+    finally:
+        os.close(retired_fd)
+        os.close(online_fd)
+    return destination
+
+
 def make_stage(online: Path) -> Path:
     return Path(tempfile.mkdtemp(prefix=".rustdesk-pub-cache.", dir=online))
 
 
-def make_fake_cache(root: Path) -> None:
+def make_fake_cache(
+    root: Path,
+    git_dependencies: int = EXPECTED_GIT_DEPENDENCIES,
+) -> None:
     hosted = root / "hosted" / "pub.dev"
     hashes = root / "hosted-hashes" / "pub.dev"
     git = root / "git"
@@ -903,7 +1665,7 @@ def make_fake_cache(root: Path) -> None:
         encoding="ascii",
     )
     (hashes / "example-1.0.0.sha256").write_text("a" * 64, encoding="ascii")
-    for index in range(EXPECTED_GIT_DEPENDENCIES):
+    for index in range(git_dependencies):
         resolved = f"{index + 1:040x}"
         bare = cache / f"repo{index}-{index + 17:040x}"
         checkout = git / f"repo{index}-{resolved}"
@@ -949,6 +1711,114 @@ def self_test() -> None:
     with tempfile.TemporaryDirectory(prefix="pub-cache-output-selftest.") as temporary:
         online = Path(temporary) / "online"
         online.mkdir(mode=0o700)
+
+        def prepare_replacement_case(label: str):
+            case_online = Path(temporary) / f"{label}-online"
+            case_online.mkdir(mode=0o700)
+            case_retired = Path(temporary) / f"{label}-records"
+            case_retired.mkdir(mode=0o700)
+            old = case_online / "pub-cache"
+            old.mkdir(mode=0o700)
+            make_fake_cache(old, EXPECTED_GIT_DEPENDENCIES + 1)
+            inspect_tree(old, owners={(uid, gid)}, normalize=True)
+            old.chmod(0o500)
+            old_summary = validate_displaced_output(old, uid, gid)
+            old_identity = identity(os.lstat(old))
+            case_staging = make_stage(case_online)
+            prepare(case_online, case_staging, uid, gid, provenance)
+            make_fake_cache(case_staging / "output")
+            candidate = verify_staged(
+                case_online,
+                case_staging,
+                uid,
+                gid,
+                provenance,
+                normalize=True,
+            )
+            return (
+                case_online,
+                case_retired,
+                case_staging,
+                candidate,
+                old_summary,
+                old_identity,
+            )
+
+        def bind_replacement_case(
+            case_online: Path,
+            case_retired: Path,
+            case_staging: Path,
+            candidate: TreeSummary,
+        ) -> dict[str, object]:
+            state = load_state(case_online, case_staging, uid, gid)
+            old_metadata = os.lstat(case_online / "pub-cache")
+            old_summary = validate_displaced_output(
+                case_online / "pub-cache",
+                uid,
+                gid,
+            )
+            retired_metadata = validate_retired_root(
+                case_online,
+                case_retired,
+                uid,
+                gid,
+            )
+            return record_replacement_publication(
+                case_staging,
+                state,
+                candidate.digest,
+                old_summary,
+                identity(old_metadata),
+                case_retired,
+                identity(retired_metadata),
+            )
+
+        def promote_replacement_case(
+            case_online: Path,
+            case_staging: Path,
+            state: dict[str, object],
+            *,
+            exchange: bool,
+        ) -> None:
+            replacement_name = str(state.get("replacement_name"))
+            online_fd = open_directory(case_online)
+            staging_fd = open_directory(case_staging)
+            try:
+                renameat2(
+                    staging_fd,
+                    "output",
+                    online_fd,
+                    replacement_name,
+                    RENAME_NOREPLACE,
+                )
+                os.fsync(staging_fd)
+                os.fsync(online_fd)
+                if exchange:
+                    renameat2(
+                        online_fd,
+                        replacement_name,
+                        online_fd,
+                        "pub-cache",
+                        RENAME_EXCHANGE,
+                    )
+                    os.fsync(online_fd)
+            finally:
+                os.close(staging_fd)
+                os.close(online_fd)
+
+        def cleanup_completed_replacement(
+            case_online: Path,
+            case_retired: Path,
+            case_staging: Path,
+        ) -> None:
+            state = load_state(case_online, case_staging, uid, gid)
+            displaced_path = case_online / str(state.get("replacement_name"))
+            archived = archive_replaced(case_online, case_staging, uid, gid)
+            remove_stage(archived)
+            remove_stage(displaced_path)
+            remove_stage(case_online / "pub-cache")
+            case_retired.rmdir()
+            case_online.rmdir()
 
         staging = make_stage(online)
         prepare(online, staging, uid, gid, provenance)
@@ -1050,6 +1920,217 @@ def self_test() -> None:
                     fail("self-test accepted extended attributes in Pub-cache output")
             remove_stage(staging)
 
+        replacement_online = Path(temporary) / "replacement-online"
+        replacement_online.mkdir(mode=0o700)
+        retired_root = Path(temporary) / "retired"
+        retired_root.mkdir(mode=0o700)
+        displaced = replacement_online / "pub-cache"
+        displaced.mkdir(mode=0o700)
+        make_fake_cache(displaced, EXPECTED_GIT_DEPENDENCIES + 1)
+        inspect_tree(
+            displaced,
+            owners={(uid, gid)},
+            normalize=True,
+        )
+        displaced.chmod(0o500)
+        displaced_summary = validate_displaced_output(displaced, uid, gid)
+        displaced_identity = identity(os.lstat(displaced))
+        staging = make_stage(replacement_online)
+        prepare(replacement_online, staging, uid, gid, provenance)
+        make_fake_cache(staging / "output")
+        candidate = verify_staged(
+            replacement_online,
+            staging,
+            uid,
+            gid,
+            provenance,
+            normalize=True,
+        )
+        replace(
+            replacement_online,
+            staging,
+            retired_root,
+            uid,
+            gid,
+            provenance,
+            candidate.digest,
+        )
+        if recover(replacement_online, staging, uid, gid) != "replaced":
+            fail("self-test did not classify a completed Pub-cache replacement")
+        replacement_state = load_state(replacement_online, staging, uid, gid)
+        replacement_name = str(replacement_state.get("replacement_name"))
+        retired_output = replacement_online / replacement_name
+        if identity(os.lstat(retired_output)) != displaced_identity:
+            fail("self-test replacement did not preserve the displaced Pub-cache identity")
+        if (
+            validate_displaced_output(retired_output, uid, gid).digest
+            != displaced_summary.digest
+        ):
+            fail("self-test replacement changed the displaced Pub-cache")
+        archived = archive_replaced(replacement_online, staging, uid, gid)
+        if staging.exists() or staging.is_symlink():
+            fail("self-test replacement archival left the online staging name present")
+        if identity(os.lstat(retired_output)) != displaced_identity:
+            fail("self-test record archival changed the displaced Pub-cache identity")
+        if not (archived / STATE_NAME).is_file():
+            fail("self-test replacement archival lost its transaction state")
+        complete = check_complete(replacement_online, uid, gid)
+        if complete.digest != candidate.digest:
+            fail("self-test replacement changed the current Pub-cache candidate")
+        remove_stage(archived)
+        retired_root.rmdir()
+        remove_stage(retired_output)
+        remove_stage(replacement_online / "pub-cache")
+        replacement_online.rmdir()
+
+        (
+            promoted_online,
+            promoted_records,
+            promoted_staging,
+            promoted_candidate,
+            promoted_old,
+            promoted_old_identity,
+        ) = prepare_replacement_case("promoted-crash")
+        promoted_state = bind_replacement_case(
+            promoted_online,
+            promoted_records,
+            promoted_staging,
+            promoted_candidate,
+        )
+        promote_replacement_case(
+            promoted_online,
+            promoted_staging,
+            promoted_state,
+            exchange=False,
+        )
+        if recover(promoted_online, promoted_staging, uid, gid) != "replaced":
+            fail("self-test did not recover a promoted replacement candidate")
+        promoted_displaced = promoted_online / str(promoted_state.get("replacement_name"))
+        if identity(os.lstat(promoted_displaced)) != promoted_old_identity:
+            fail("promoted-candidate recovery lost the displaced Pub-cache identity")
+        if (
+            validate_displaced_output(promoted_displaced, uid, gid).digest
+            != promoted_old.digest
+        ):
+            fail("promoted-candidate recovery changed the displaced Pub-cache")
+        cleanup_completed_replacement(
+            promoted_online,
+            promoted_records,
+            promoted_staging,
+        )
+
+        (
+            exchanged_online,
+            exchanged_records,
+            exchanged_staging,
+            exchanged_candidate,
+            exchanged_old,
+            exchanged_old_identity,
+        ) = prepare_replacement_case("exchanged-crash")
+        exchanged_state = bind_replacement_case(
+            exchanged_online,
+            exchanged_records,
+            exchanged_staging,
+            exchanged_candidate,
+        )
+        promote_replacement_case(
+            exchanged_online,
+            exchanged_staging,
+            exchanged_state,
+            exchange=True,
+        )
+        if stat.S_IMODE(os.lstat(exchanged_online / "pub-cache").st_mode) != 0o700:
+            fail("self-test exchanged candidate was unexpectedly sealed before recovery")
+        if recover(exchanged_online, exchanged_staging, uid, gid) != "replaced":
+            fail("self-test did not recover an exchanged unsealed candidate")
+        if stat.S_IMODE(os.lstat(exchanged_online / "pub-cache").st_mode) != 0o500:
+            fail("self-test recovery did not seal the exchanged candidate root")
+        exchanged_displaced = exchanged_online / str(exchanged_state.get("replacement_name"))
+        if identity(os.lstat(exchanged_displaced)) != exchanged_old_identity:
+            fail("exchanged-candidate recovery lost the displaced Pub-cache identity")
+        if (
+            validate_displaced_output(exchanged_displaced, uid, gid).digest
+            != exchanged_old.digest
+        ):
+            fail("exchanged-candidate recovery changed the displaced Pub-cache")
+        cleanup_completed_replacement(
+            exchanged_online,
+            exchanged_records,
+            exchanged_staging,
+        )
+
+        (
+            rollback_online,
+            rollback_records,
+            rollback_staging,
+            rollback_candidate,
+            rollback_old,
+            rollback_old_identity,
+        ) = prepare_replacement_case("rollback")
+        rollback_state = bind_replacement_case(
+            rollback_online,
+            rollback_records,
+            rollback_staging,
+            rollback_candidate,
+        )
+        promote_replacement_case(
+            rollback_online,
+            rollback_staging,
+            rollback_state,
+            exchange=True,
+        )
+        rollback_online_fd = open_directory(rollback_online)
+        rollback_staging_fd = open_directory(rollback_staging)
+        try:
+            candidate_identity = decode_identity(
+                rollback_state.get("output_identity"),
+                "rollback candidate",
+            )
+            transition_root_mode(
+                rollback_online_fd,
+                "pub-cache",
+                candidate_identity,
+                uid,
+                gid,
+                {0o700},
+                0o500,
+                "self-test rollback candidate",
+            )
+            rollback_replacement(
+                rollback_online_fd,
+                rollback_staging_fd,
+                str(rollback_state.get("replacement_name")),
+                candidate_identity,
+                rollback_old_identity,
+                uid,
+                gid,
+                exchanged=True,
+                promoted=True,
+            )
+        finally:
+            os.close(rollback_staging_fd)
+            os.close(rollback_online_fd)
+        if recover(rollback_online, rollback_staging, uid, gid) != "replacement-prepared":
+            fail("self-test replacement rollback did not restore prepared state")
+        if identity(os.lstat(rollback_online / "pub-cache")) != rollback_old_identity:
+            fail("self-test replacement rollback lost the old live Pub-cache")
+        if (
+            validate_displaced_output(rollback_online / "pub-cache", uid, gid).digest
+            != rollback_old.digest
+        ):
+            fail("self-test replacement rollback changed the old live Pub-cache")
+        if identity(os.lstat(rollback_staging / "output")) != candidate_identity:
+            fail("self-test replacement rollback lost the candidate Pub-cache")
+        if stat.S_IMODE(os.lstat(rollback_staging / "output").st_mode) != 0o700:
+            fail("self-test replacement rollback did not restore candidate traversal")
+        replacement_residue = rollback_online / str(rollback_state.get("replacement_name"))
+        if replacement_residue.exists() or replacement_residue.is_symlink():
+            fail("self-test replacement rollback left a reserved sibling occupied")
+        remove_stage(rollback_staging)
+        remove_stage(rollback_online / "pub-cache")
+        rollback_records.rmdir()
+        rollback_online.rmdir()
+
     print("ONLINE PUB CACHE OUTPUT SELF-TEST: PASS")
 
 
@@ -1082,8 +2163,15 @@ def argument_parser() -> argparse.ArgumentParser:
     common_arguments(publish_parser)
     provenance_arguments(publish_parser)
     publish_parser.add_argument("--expected-digest", required=True)
+    replace_parser = commands.add_parser("replace")
+    common_arguments(replace_parser)
+    provenance_arguments(replace_parser)
+    replace_parser.add_argument("--retired-root", type=Path, required=True)
+    replace_parser.add_argument("--expected-digest", required=True)
     recover_parser = commands.add_parser("recover")
     common_arguments(recover_parser)
+    archive_parser = commands.add_parser("archive-replaced")
+    common_arguments(archive_parser)
     complete_parser = commands.add_parser("check-complete")
     common_arguments(complete_parser, staging=False)
     commands.add_parser("self-test")
@@ -1132,9 +2220,28 @@ def main() -> int:
                 command_provenance(arguments),
                 arguments.expected_digest,
             )
+        elif arguments.command == "replace":
+            replace(
+                arguments.online,
+                arguments.staging,
+                arguments.retired_root,
+                arguments.uid,
+                arguments.gid,
+                command_provenance(arguments),
+                arguments.expected_digest,
+            )
         elif arguments.command == "recover":
             print(
                 recover(
+                    arguments.online,
+                    arguments.staging,
+                    arguments.uid,
+                    arguments.gid,
+                )
+            )
+        elif arguments.command == "archive-replaced":
+            print(
+                archive_replaced(
                     arguments.online,
                     arguments.staging,
                     arguments.uid,

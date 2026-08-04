@@ -31520,6 +31520,11 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
     for text, label in (
         ("Pub-cache output lifecycle", "Pub-cache focused lifecycle binding"),
         ("checked Pub-cache publication", "Pub-cache focused publication binding"),
+        ("journaled candidate promotion", "Pub-cache focused promotion binding"),
+        ("same-parent exchange and exact finality", "Pub-cache focused exchange binding"),
+        ("old-first replacement rollback", "Pub-cache focused rollback binding"),
+        ("journal-only archival with old-tree preservation",
+         "Pub-cache focused preservation binding"),
         ("closed Git semantic mapping", "Pub-cache focused Git-map binding"),
         (
             "('[ \"$authority_lock\" = \"$(sha256sum "
@@ -31541,6 +31546,7 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
     for text, label in (
         ("pub_cache_output_tool() {", "Pub-cache fixed output helper"),
         ("pub_cache_provenance_args() {", "Pub-cache provenance mapper"),
+        ("prepare_retired_online_input_root() {", "Pub-cache retired-record root"),
         ("recover_pub_cache_output_staging() {", "Pub-cache restart recovery"),
         ("verify_pub_cache_resolution() {", "Pub-cache semantic replay"),
         ("stage_pub_cache() {", "Pub-cache closed producer lifecycle"),
@@ -31571,6 +31577,9 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
          "Pub-cache networked project lock preimage"),
         ('[ "$project_lock" = "$(sha256sum /tmp/project/pubspec.lock',
          "Pub-cache networked project lock postcondition"),
+        (')" && verify_pub_cache_resolution "$ONLINE_DIR/pub-cache"\n'
+         "        then",
+         "Pub-cache occupied-output semantic replay"),
         ('[ "${#git_specs[@]}" -eq 5 ]', "Pub-cache exact Git dependency count"),
         ("fsck --full --no-dangling --no-reflogs", "Pub-cache Git object closure"),
         (
@@ -31580,9 +31589,14 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
         ),
         ('--expected-digest "$digest"', "Pub-cache digest-bound publication"),
         ("pub_cache_output_tool verify", "Pub-cache structural output verdict"),
+        ("pub_cache_output_tool replace", "Pub-cache stale-output replacement"),
+        ("pub_cache_output_tool archive-replaced", "Pub-cache replacement-record archival"),
         ("pub_cache_output_tool publish", "Pub-cache checked publication"),
         ("retire_pub_cache_output_staging", "Pub-cache private retirement"),
         ('&& [ "$semantic_status" -eq 0 ]', "Pub-cache semantic publication barrier"),
+        ("replace_existing=1", "Pub-cache stale-output selection"),
+        ('--retired-root "$RETIRED_ONLINE_INPUT_ROOT"',
+         "Pub-cache retired-record authority"),
     ):
         require_text(online, text, label)
     shared_gate = extract_between(
@@ -31655,7 +31669,10 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
             "retire_gradle_source_build",
             "restore_pub_cache_output_traversal",
             "pub_cache_output_tool verify",
-            "verify_pub_cache_resolution",
+            'verify_pub_cache_resolution "$PUB_CACHE_OUTPUT_STAGING/output"',
+            'if [ "$replace_existing" -eq 1 ]; then',
+            "prepare_retired_online_input_root",
+            "pub_cache_output_tool replace",
             "pub_cache_output_tool publish",
             "retire_pub_cache_output_staging",
             '"$FLOCK_BIN" --unlock "$lock_fd"',
@@ -31663,8 +31680,11 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
         "Pub-cache checked transaction order",
     )
     for text, label in (
-        ('STATE_NAME = ".rustdesk-pub-cache-output-state-v1"',
+        ('STATE_NAME = ".rustdesk-pub-cache-output-state-v2"',
          "Pub-cache bounded transaction record"),
+        ("STATE_VERSION = 2", "Pub-cache replacement transaction schema"),
+        ("RENAME_EXCHANGE = 2", "Pub-cache exchange primitive"),
+        ("REPLACEMENT_PATTERN = re.compile(", "Pub-cache displaced-output namespace"),
         ("TREE_LIMITS = (100_000, 30_000, 4 * 1024**3, 256 * 1024**2, 32)",
          "Pub-cache output bounds"),
         ("EXPECTED_GIT_DEPENDENCIES = 5", "Pub-cache Git inventory bound"),
@@ -31680,6 +31700,10 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
         ("if attributes:", "Pub-cache extended-attribute refusal"),
         ("Pub hosted package directories and content-hash records are not one exact set",
          "Pub-cache hosted/hash equality"),
+        ("if stat.S_IMODE(os.lstat(output).st_mode) != 0o700:",
+         "Pub-cache staged candidate root mode"),
+        ("expected_mode = 0o500 if published else 0o700",
+         "Pub-cache candidate root phase mode"),
         ("sync_tree(output)", "Pub-cache output durability"),
         ("RENAME_NOREPLACE = 1", "Pub-cache no-clobber primitive"),
         ('renameat2(staging_fd, "output", online_fd, "pub-cache", RENAME_NOREPLACE)',
@@ -31687,8 +31711,22 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
         ("Pub-cache publication rollback also failed", "Pub-cache rollback"),
         ('return "unpublished"', "Pub-cache unpublished recovery"),
         ('return "published"', "Pub-cache published recovery"),
-        ("transaction state is incoherent and was preserved",
-         "Pub-cache ambiguous-state refusal"),
+        ('return "replacement-prepared"', "Pub-cache prepared replacement recovery"),
+        ('return "replaced"', "Pub-cache completed replacement recovery"),
+        ("Pub-cache replacement transaction state is incoherent and was preserved",
+         "Pub-cache ambiguous replacement refusal"),
+        ("Pub-cache output transaction state is incoherent and was preserved",
+         "Pub-cache ambiguous new-output refusal"),
+        ('renameat2(\n                online_fd,\n                replacement_name,\n                online_fd,\n                "pub-cache",\n                RENAME_EXCHANGE,',
+         "Pub-cache same-parent exchange"),
+        ('renameat2(\n            online_fd,\n            staging.name,\n            retired_fd,\n            archive_name,\n            RENAME_NOREPLACE,',
+         "Pub-cache journal-only archival"),
+        ('prepare_replacement_case("promoted-crash")',
+         "Pub-cache promotion-crash fixture"),
+        ('prepare_replacement_case("exchanged-crash")',
+         "Pub-cache exchange-crash fixture"),
+        ('prepare_replacement_case("rollback")',
+         "Pub-cache rollback fixture"),
         ("self-test accepted an occupied Pub-cache destination",
          "Pub-cache destination-race fixture"),
         ("self-test accepted an escaping Pub-cache symlink",
@@ -31718,9 +31756,24 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
         "online-fetch Pub-cache output authority Appendix C row",
     )
     require_text(
+        sources["requirements"],
+        '<span class="id">R-S11fy</span>',
+        "stale Pub-cache replacement requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>333</td>",
+        "stale Pub-cache replacement Appendix C row",
+    )
+    require_text(
         sources["hardening"],
         "R-S11cn/R-S11e-106 — networked Pub-cache acquisition-output authority",
         "online-fetch Pub-cache output authority hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11fy/R-S11e-211 — stale canonical Pub-cache replacement authority",
+        "stale Pub-cache replacement hardening ledger",
     )
     require_text(
         sources["hardening"],
@@ -64236,6 +64289,12 @@ def run_source_mutations(sources):
             "Pub-cache focused lifecycle binding",
         ),
         (
+            "online_fetch_pub_cache_output_authority_verifier",
+            "journaled candidate promotion",
+            "unchecked candidate promotion",
+            "Pub-cache focused promotion binding",
+        ),
+        (
             "online_fetch",
             'source=$PUB_CACHE_OUTPUT_STAGING/output,target=/online/pub-cache',
             'source=$ONLINE_DIR,target=/online/pub-cache',
@@ -64314,6 +64373,20 @@ def run_source_mutations(sources):
             "Pub-cache digest receipt",
         ),
         (
+            "online_fetch",
+            ')" && verify_pub_cache_resolution "$ONLINE_DIR/pub-cache"\n'
+            "        then",
+            ')" # occupied cache trusted without semantic replay\n'
+            "        then",
+            "Pub-cache occupied-output semantic replay",
+        ),
+        (
+            "online_fetch",
+            "                pub_cache_output_tool replace \\\n",
+            "                pub_cache_output_tool publish \\\n",
+            "Pub-cache stale-output replacement",
+        ),
+        (
             "online_fetch_pub_cache_output_authority_verifier",
             "closed Git semantic mapping",
             "open Git semantic mapping",
@@ -64339,9 +64412,53 @@ def run_source_mutations(sources):
         ),
         (
             "online_pub_cache_output_helper",
-            "transaction state is incoherent and was preserved",
-            "transaction state was discarded",
-            "Pub-cache ambiguous-state refusal",
+            'STATE_NAME = ".rustdesk-pub-cache-output-state-v2"',
+            'STATE_NAME = ".rustdesk-pub-cache-output-state-v1"',
+            "Pub-cache bounded transaction record",
+        ),
+        (
+            "online_pub_cache_output_helper",
+            "if stat.S_IMODE(os.lstat(output).st_mode) != 0o700:\n"
+            '        fail("staged Pub-cache candidate root is not mode 0700")',
+            "if stat.S_IMODE(os.lstat(output).st_mode) != 0o500:\n"
+            '        fail("staged Pub-cache candidate root is not mode 0700")',
+            "Pub-cache staged candidate root mode",
+        ),
+        (
+            "online_pub_cache_output_helper",
+            "    expected_mode = 0o500 if published else 0o700",
+            "    expected_mode = 0o500",
+            "Pub-cache candidate root phase mode",
+        ),
+        (
+            "online_pub_cache_output_helper",
+            '            renameat2(\n                online_fd,\n                replacement_name,\n                online_fd,\n                "pub-cache",\n                RENAME_EXCHANGE,',
+            '            renameat2(\n                online_fd,\n                replacement_name,\n                staging_fd,\n                "pub-cache",\n                RENAME_EXCHANGE,',
+            "Pub-cache same-parent exchange",
+        ),
+        (
+            "online_pub_cache_output_helper",
+            '        renameat2(\n            online_fd,\n            staging.name,\n            retired_fd,\n            archive_name,\n            RENAME_NOREPLACE,',
+            '        renameat2(\n            online_fd,\n            replacement_name,\n            retired_fd,\n            archive_name,\n            RENAME_NOREPLACE,',
+            "Pub-cache journal-only archival",
+        ),
+        (
+            "online_pub_cache_output_helper",
+            'prepare_replacement_case("promoted-crash")',
+            'prepare_replacement_case("promoted-crash-disabled")',
+            "Pub-cache promotion-crash fixture",
+        ),
+        (
+            "online_pub_cache_output_helper",
+            "Pub-cache replacement transaction state is incoherent and was preserved",
+            "Pub-cache replacement transaction state was discarded",
+            "Pub-cache ambiguous replacement refusal",
+        ),
+        (
+            "online_pub_cache_output_helper",
+            "Pub-cache output transaction state is incoherent and was preserved",
+            "Pub-cache output transaction state was discarded",
+            "Pub-cache ambiguous new-output refusal",
         ),
         (
             "verify",
@@ -64362,10 +64479,28 @@ def run_source_mutations(sources):
             "online-fetch Pub-cache output authority Appendix C row",
         ),
         (
+            "requirements",
+            '<span class="id">R-S11fy</span>',
+            '<span class="id">R-S11fy-disabled</span>',
+            "stale Pub-cache replacement requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>333</td>",
+            "<tr><td>333-disabled</td>",
+            "stale Pub-cache replacement Appendix C row",
+        ),
+        (
             "hardening",
             "R-S11cn/R-S11e-106 — networked Pub-cache acquisition-output authority",
             "R-S11cn/R-S11e-106 — ambient Pub-cache output authority",
             "online-fetch Pub-cache output authority hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11fy/R-S11e-211 — stale canonical Pub-cache replacement authority",
+            "R-S11fy/R-S11e-211 — ambient Pub-cache replacement authority",
+            "stale Pub-cache replacement hardening ledger",
         ),
         (
             "online_fetch_libyuv_output_authority_verifier",

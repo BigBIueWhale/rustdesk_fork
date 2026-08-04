@@ -249,6 +249,29 @@ history remains the traceability record for that intermediate work.
 > persistent-process recovery failure and Windows out-of-focus display delay therefore remain stop-ship native
 > runtime gaps despite the substantially stronger artifact evidence.
 >
+> Following the user's explicit warning about accumulated changes without enough real testing, the
+> portable Linux server/protocol runtime was replayed at clean pushed product commit
+> `24ca45d9456c68d75c2d4534f6e1f21222daa471`, not inferred from an older run. The harness bound
+> source archive SHA-256 `0da4e4c6e92afde322729ce1df8b0128d5752fa8fa9d5fe443d0122727ba1e08`
+> and tree SHA-256 `58c86b91cddf585ae263dfa35b8581e72ebd2bb34bd0ed6d19c8bf9306d6a3c1`,
+> reverified the sealed vendor subtree, and linked the full RustDesk binary plus smoke fixtures in
+> 2m04s. The build retained 334 existing warnings, so no warning-free claim is made. The exact public
+> `bash scripts/smoke-server.sh --portable-rootless` path then passed the readiness self-test, MDWE
+> VP9 encode, parked/no-listener startup, exactly container-loopback `127.0.0.1:21118` TCP with zero
+> UDP and graceful drain, correct/wrong CPace keying, capacity shedding, authenticated Remote
+> admission through the expected headless-display boundary, sealed port-forward echo, FileTransfer
+> admission, forged-frame rejection, and different-source owner-safe limiting.
+>
+> Every build/runtime container used the invoking numeric non-root UID:GID, `--network=none`, no
+> published port, `--pull=never`, a read-only root, dropped all capabilities, enabled
+> `no-new-privileges`, used bounded private tmpfs/resources, and mounted the exact source read-only.
+> The explicit root/service/init-system/user-creation/installed-layout/packet-capture mode was not
+> entered. No host RustDesk process, service, configuration, listener, firewall, or network state was
+> read or changed by product code. This is exact-current real Linux server/protocol runtime evidence;
+> it is not capture/decode/presentation, graphical focus recovery, Android lifecycle, native Windows
+> or Apple, installed-service, performance/soak, or release-artifact evidence. Those stop-ship gaps
+> remain unchanged.
+>
 > **Continuation rule:** prioritize exact-current evidence and test-harness/input closure over
 > additional product behavior changes. A further product change requires a separately source-proven
 > defect or must be necessary to obtain valid evidence; it does not earn release confidence merely

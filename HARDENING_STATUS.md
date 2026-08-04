@@ -5196,6 +5196,19 @@ all 42, the dependency inventory self-test passed all 103 cases and independentl
 independent workspace baseline passed, and the native-codec normal/adversarial hash gates passed. This is a
 consistency and fail-closed gate repair, not a reduced dependency closure or native/device/runtime result.
 
+The source and gate correction was then committed as
+`8acfae205b3823373a7233ad2d1701b3c0d9b346` and replayed from a fresh exact `git archive` at SHA-256
+`17d250dabc0b924b5288a7cf6960903d317b4865bfa2fbfe6725957825a04fde`. A new pinned-builder
+invocation ran as numeric UID:GID 1000:1000 with a read-only root/repository/Flutter archive/current-lock
+Pub cache, dropped capabilities, `no-new-privileges`, finite PIDs/memory/no-swap/CPU/tmpfs, no port,
+device, Docker socket, privileged flag, or host namespace, and `--network none`. Both lockfiles resolved
+offline without drift; the project lock remained
+`f1c1c9170bd6a13229eee1475dd4e6414a808bd44db0945df58c6f864cc77441`; all 12 selected files were
+formatter-clean; targeted analysis of the six dependency-closed presentation state-machine/library files
+reported no issues; all same 29 Dart cases passed; and the production Linux callback and portable production
+Windows callback core both reported `PASS`. This is exact implementation-commit evidence. The following
+ledger-only commit does not alter the implementation, tests, dependency lock, or verifier behavior.
+
 Exact-current packaged Windows focus-loss, deliberately missed-focus, pointer-down recovery, repeated
 focus/unfocus, and sustained presentation behavior remain mandatory under both native-texture and
 software-RGBA modes, with simultaneous input proof and monotonic capture/encode/write/receive/decode/

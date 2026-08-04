@@ -15188,11 +15188,13 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `f7fa90b41ea168fc385f46e9c5f48f3cee28bddddd44abd5036d97d17a72fd2b`, 43,480 files, 11,295
   directories, and 898,205,722 regular-file bytes. The transaction self-test fixture, focused pin/
   archive/consumer mutations, independent workspace bindings, R-S11cr, and Appendix C #245 are
-  updated with the same requirement. A fresh exact acquisition, host-independent archive/output
-  comparison, real-JNI Gradle warm, networkless APK build, artifact inspection, and source-integrity
-  postcheck remain mandatory before this correction may be committed as build-closed or pushed.
+  updated with the same requirement. The fresh exact acquisition, source comparison, real-JNI
+  Gradle warm, networkless APK build, artifact inspection, and pinned-epoch payload comparison are
+  recorded immediately below. Stable-key signed A/B release reproduction and device execution
+  remain open.
 - **R-S11fv/R-S11e-208 — Gradle publication/offline-seed mode closure — SOURCE IMPLEMENTED;
-  FOCUSED TRANSACTION TESTS GREEN; FRESH EXACT-COMMIT WARM/OFFLINE APK EVIDENCE PENDING.** Platform:
+  FOCUSED/COMPLETE TRANSACTION TESTS AND EXACT REAL-JNI WARM/OFFLINE/PINNED-EPOCH PAYLOAD EVIDENCE
+  GREEN; STABLE SIGNED A/B AND DEVICE EVIDENCE OPEN.** Platform:
   the unprivileged Linux acquisition host and immutable Android-builder container. Endpoint/action:
   `scripts/online-gradle-output.py::{verify_staged,publish,recover,check_complete}` and
   `scripts/android-gradle-cache.py::materialize`. Boundary: networked Gradle output publication ↔
@@ -15236,15 +15238,68 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   the validator diagnostic. The next complete restart likewise rejected removal of the sealed-root
   rollback, then stopped because that meta-fixture named the target `sealed-root rollback` while
   the validator reports its encompassing `Gradle-output rollback` contract. That label is now also
-  identical to the validator diagnostic. This candidate is accepted only if a complete restart
-  from mutation one returns zero; no pass is inferred from either rejected weakening.
+  identical to the validator diagnostic. The third complete restart from mutation one then exited
+  zero against the exact staged candidate; no pass was inferred from either earlier rejected
+  weakening. The same final bytes passed the helper self-test, all 42 focused mutations, the
+  independent baseline, in-memory Python parsing, Bash parsing, the native-codec normal/adversarial
+  gates, the 103-case dependency inventory, all 38 Gradle-source mutations, and all 44 Android-SDK
+  output mutations before commit
+  `a3c40349483ec1a66e0d94a07c891d2fb23d7c58` (tree
+  `692be7e6d84e94908711b758badc4061941757fc`).
+
+  A new exact source archive for that commit is 29,245,440 bytes at SHA-256
+  `9815f69a18ef00f7052e370195f5af62d6c3067a9959dd35fc29a4a05e00a0e8`; independent immutable
+  authority and writable build trees passed every-input byte/mode comparison before and after each
+  counted build. The real networked warm pass produced 13,618,656-byte JNI
+  `783d9c0155617c0e1b8561a9f100328668ca5d692b30db86c897af9b88c8aee7`, 44,971,878-byte
+  debug-signed APK `e8f804537267f1dfbc2588c71ddc0229398ec9c24186c13709ef719b515edcf5`, and log
+  `54f6e89205caa1691bbf6677dd779790fe397ded3e3efbc37b3e07bb09825032`. The maintained
+  verify/publish/check-complete sequence then passed. The published root is mode 0500; an independent
+  full walk found 14,672 directories all mode 0500 and 30,503 files all mode 0400 or 0500. Recovery
+  classified the exact transaction as published, and its recorded staging inode was traversal-
+  restored and retired through the private-tree closure.
+
+  The first new networkless invocation used a caller-created UID-1000 `/tmp` root and correctly
+  failed after a fresh real JNI compile because `android-gradle-cache.py` requires its shared
+  destination parent to be root-owned mode 01777. No source or sealed input was changed or weakened.
+  A second independently extracted source ran as UID:GID 1000:1000 with a normal root-owned 01777
+  tmpfs, `--network none`, and the sealed Pub/SDK/Gradle inputs mounted read-only. It verified offline
+  Gradle projection digest `a56777b0d1d9c2d82f1ac0357ba375d868641ee306097d4a0039b3fe287436d7`, rebuilt real JNI in
+  1m52s, explicitly entered Gradle offline mode, and exited zero with 13,618,656-byte JNI
+  `a1d106e4ac01b7feb01625aa2d8389425ee201f213023db73c111da8641a256b`, 44,971,878-byte
+  debug-signed APK `96d034625f9b963fd706d7153fdaf13c717305b7d2da9f9ce1cff5ab1fdfab96`, and log
+  `3e6f76395a401e9e7fe246b8a6245c0ea715d7c566f3faafd3a4c50a932a548c`.
+
+  Because those manual warm/offline passes did not set the release harness's epoch, they are build-
+  closure rather than reproducibility evidence. Two further independent, fresh, networkless passes
+  used the pinned `SOURCE_DATE_EPOCH=1700000000`. Their JNI outputs are byte-identical at SHA-256
+  `9634c2ec9da4dbc2d5ad3966131d743696142aefb6ea947353d50c35124aa88b`. Their APK hashes differ
+  (`5480651d09f83bca53607cc49fa477a3d275d2f3081d8dd757c012f1da9d6458` versus
+  `dba2d539de5e921f37d4faf9f5305ef426c0fefe80555fcf9ce06f917ff0f870`) solely because each
+  disposable build generated a different Android Debug certificate
+  (`fe9f1a83adf2bfa865375a8fd61966451b084779a4fbfa6b9b3c714f9811c61e` versus
+  `d07c98ae629945fbbcc3199528e5c3dbed1c2dfb1f61f8b5139f7f0df175b729`). The 44,949,576-byte
+  region before the APK v2 signing block is byte-identical at
+  `cceb4c1e16944c14a1d7c8db207488262e037b4eb4d0877759d38abfc87172ed`; the 14,110-byte central-
+  directory/tail is byte-identical at
+  `3e628e8a53fdbbc60e315f7fe443b655d8ee0731607cb0a38f3a852021d3e37e`; and all 180 ZIP member
+  payloads and metadata are identical. Only the 8,192-byte debug-signing block differs. This proves
+  pinned-epoch JNI and unsigned APK payload reproducibility, not stable-key signed release A/B.
+
+  `apksigner` verifies the inspected candidate only under v2 with one 2048-bit Android Debug signer;
+  v1/v3/v4 are absent. The maintained manifest and mobile-at-rest key bootstrap artifact verifiers
+  pass. The APK has one `classes.dex` and exactly the four expected ARM64 libraries: `libapp.so`,
+  `libc++_shared.so`, `libflutter.so`, and `librustdesk.so`. The build still emits the known FRB
+  `_Dart_Handle` severe diagnostic, 87 Rust library warnings plus one service warning, the missing-
+  icon-font warning, and intermittent first-attempt Kotlin-daemon termination followed by successful
+  retry. None is concealed or claimed closed by the successful artifact build.
 
   No persistent `online/gradle-home`, host RustDesk executable/process/service/configuration,
   listener, firewall, UFW/nftables/iptables, or host network state was inspected or changed. The
-  old disposable writable candidate is not accepted or permission-normalized in place. A newly
-  published sealed disposable cache and a fresh real-JNI networkless APK build remain required
-  before artifact inspection; device lifecycle/presentation, stable signing, exact cold A/B release
-  reproduction, other native platforms, performance/soak, and external review remain stop-ship.
+  old disposable writable candidate was not accepted or permission-normalized in place. Stable-key
+  signing and exact signed release A/B through `scripts/build-android.sh`, physical-device lifecycle/
+  presentation and focus/background latency execution, other native platforms, performance/soak,
+  and external review remain stop-ship.
 
 - **R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority —
   SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE LIVE

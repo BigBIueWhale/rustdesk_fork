@@ -185,6 +185,70 @@ history remains the traceability record for that intermediate work.
 > later evidence upgrades the result into installation, device, lifecycle, graphical, focus, reconnect,
 > performance, stable-signing, or full R-B2/R-B10 release proof.
 >
+> A further exact-product Android artifact audit was completed against clean pushed product parent
+> `7c29f39a829b39de558a39d0ee7b575ac42e4ce9` (tree
+> `b0fe445494540f62ca512dc7231b44b97859a286`). Its 29,286,400-byte source archive is SHA-256
+> `f10337e4573114ec4c4a7ebac7e870fbc3c922acd297df4788f606b3e6533324`. The canonical
+> `scripts/build-android.sh` path did **not** pass: the independently reverified canonical online root
+> `a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918` still has a root-owned
+> Pub cache containing `sqflite 2.2.0` while the current lock requires `2.2.8+4`, and its Gradle cache
+> contains only 7.6.4 while the tracked wrapper requires 8.7. The first exact attempt therefore stopped
+> during enforced offline Pub resolution before native compilation. A second attempt with a separately
+> verified current Pub cache built the real JNI library, then stopped before Android compilation when the
+> absent Gradle 8.7 distribution correctly could not be fetched under `--network=none`. These are stale
+> build-input failures, not Android runtime failures or passes. The canonical Pub/Gradle trees and their
+> closure record were left byte-for-byte untouched; no root, permission workaround, or in-place cache
+> normalization was used.
+>
+> To test the product rather than hide those canonical-cache failures, two narrowly scoped networked
+> producers populated only a private ignored evidence directory: one replayed both exact Pub locks and one
+> ran the tracked real-JNI Gradle warm flow. Neither published a port, used host networking/namespaces,
+> mounted the Docker socket/device, or wrote the source/canonical online tree. The resulting sealed Pub
+> cache is `c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7`; the sealed Gradle
+> 8.7 cache is `aed3b86a664cdc11e0b262df0fae7b8e7105cdc9d18d41fc7ac90386cebead92` (30,503 files,
+> 14,672 directories, 4,207,223,247 bytes); and their independently verified complete disposable online
+> closure is `634b905e1c1ddf859f94649cdd10a62a9ef6159454fc77f8a82586b2f1fecdc1` (153,290 files,
+> 44,164 directories, 30,275,059,642 bytes). The warm flow itself built the 13,618,656-byte JNI library
+> `9634c2ec9da4dbc2d5ad3966131d743696142aefb6ea947353d50c35124aa88b` and a
+> 44,971,878-byte debug-signed APK `438c9339c263cace358be9b6b5bba2f97f887d304aa65a1d7053e334a57f8708`;
+> its 47,392-byte log is `4c4c3db4139f80568024f713cb90d12015d17df2830b4bcf816ad30b5bca2f85`.
+>
+> Two further independently extracted source trees then ran the real tracked inner build with numeric
+> UID:GID 1000:1000, the immutable Android builder
+> `sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2`,
+> `--pull=never`, `--network=none`, read-only container root and online closure, all capabilities dropped,
+> `no-new-privileges`, fixed PID/memory/no-swap/CPU bounds, private tmpfs, no published port, and no device,
+> Docker socket, or host namespace. Both enforced the exact Pub locks, regenerated the bridge, built the
+> real optimized JNI library in 2m31s/2m29s, verified Gradle offline projection
+> `861cc4a9b48fd685bff2ebaaea006b5323add0894a1b1fc55cb6828081b8661e`, and completed
+> `assembleRelease` in 66.8s/68.5s. The source comparator proved every committed input unchanged after
+> each build, and the full disposable online root reverified after each use. The 47,661-byte pass logs are
+> `71762aa3975f13bd1090299dac0c4001b530992a86628c1d96c4f81678c41d79` and
+> `b4a530a4ee19863572d9a3461a172a6f8ae54a1f772009f68187ca426936732a`.
+>
+> Both JNI outputs are byte-identical at the warm-run hash above. The two 44,971,878-byte raw Flutter APKs
+> differ (`585c65943b810fabed868fcd5b6fc933c671950428656d4049bccdc54e21ac33` versus
+> `5671c37dc6836d9d9ab3a6d7227324d4fb9eb7c02f7fc8428b7ac1da06401ac5`) and carry different
+> generated Android Debug certificate hashes (`41b5bce23b42c2a14b5004dd8b4c95044cbc6edb7d7085814cd58dd54ff0788f`
+> versus `e6d6f0754a75de4ee2b43960395d0abc699c1db6318c06bc06630a6c4dfa2db1`). Replacing those
+> transient signatures through the canonical stable-key signing command independently produced two
+> byte-identical 44,975,902-byte APKs at
+> `031a1f31c74d123b9121b3bb1d8e94aa025373403bb05fc023536ebc079e39b5`. Both verify as one-signer
+> v2/v3 artifacts with pinned certificate
+> `1091322BA0425AFA1EB50DEEAE439A5FFFE2B1DD82C82B04515D9290A0CEEFA9`, and both passed the
+> maintained manifest and mobile at-rest-key artifact validators. The two 675-byte signing logs are
+> themselves byte-identical at `948cca09762d2168f2215b0dcab186007fa9793247408030340284403f947daf`.
+> This proves reproducible stable-signed APK bytes for the exact product parent through disposable current
+> inputs; it does not make the still-failing canonical cache/build transaction an R-B2/R-B10 pass.
+>
+> The builds reproduced the known non-fatal Flutter-Rust-Bridge `_Dart_Handle` severe diagnostic, 87 Rust
+> library warnings plus one service warning, the SDK-XML-version warning, and the missing-icon-family warning;
+> no clean-diagnostic claim is made. No APK was installed or launched. No Activity, foreground service,
+> task swipe, Force Stop, real peer, capture, decoder, renderer, focus/background transition, Windows client,
+> physical device, emulator, presentation-latency measurement, or soak path ran. The reported Android
+> persistent-process recovery failure and Windows out-of-focus display delay therefore remain stop-ship native
+> runtime gaps despite the substantially stronger artifact evidence.
+>
 > **Continuation rule:** prioritize exact-current evidence and test-harness/input closure over
 > additional product behavior changes. A further product change requires a separately source-proven
 > defect or must be necessary to obtain valid evidence; it does not earn release confidence merely
@@ -15263,8 +15327,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   recorded immediately below. Stable-key signed A/B release reproduction and device execution
   remain open.
 - **R-S11fv/R-S11e-208 — Gradle publication/offline-seed mode closure — SOURCE IMPLEMENTED;
-  FOCUSED/COMPLETE TRANSACTION TESTS AND EXACT REAL-JNI WARM/OFFLINE/PINNED-EPOCH PAYLOAD EVIDENCE
-  GREEN; STABLE SIGNED A/B AND DEVICE EVIDENCE OPEN.** Platform:
+  FOCUSED/COMPLETE TRANSACTION TESTS, EXACT REAL-JNI WARM/OFFLINE/PINNED-EPOCH PAYLOAD, AND CURRENT
+  DISPOSABLE STABLE-SIGNED A/B EVIDENCE GREEN; CANONICAL CACHE TRANSACTION AND DEVICE EVIDENCE OPEN.** Platform:
   the unprivileged Linux acquisition host and immutable Android-builder container. Endpoint/action:
   `scripts/online-gradle-output.py::{verify_staged,publish,recover,check_complete}` and
   `scripts/android-gradle-cache.py::materialize`. Boundary: networked Gradle output publication ↔
@@ -15369,7 +15433,20 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   old disposable writable candidate was not accepted or permission-normalized in place. Stable-key
   signing and exact signed release A/B through `scripts/build-android.sh`, physical-device lifecycle/
   presentation and focus/background latency execution, other native platforms, performance/soak,
-  and external review remain stop-ship.
+  and external review remained stop-ship at that evidence point.
+
+  Follow-up exact-product evidence (2026-08-04): the disposable current-input workflow described in
+  Current Verdict independently reproduced the real JNI library and stable-key signed APK bytes from
+  two fresh source trees for product parent `7c29f39a829b39de558a39d0ee7b575ac42e4ce9`. The final APK is
+  44,975,902 bytes at SHA-256
+  `031a1f31c74d123b9121b3bb1d8e94aa025373403bb05fc023536ebc079e39b5`; its v2/v3 signature,
+  pinned certificate, manifest authority, and mobile at-rest-key artifact checks all pass. This closes
+  stable-signed byte reproducibility for that exact product parent under the separately verified disposable
+  closure. It does **not** close the canonical transaction: the maintained canonical Pub cache still lacks
+  the current locked graph and the maintained canonical Gradle cache still contains 7.6.4 rather than 8.7,
+  so `scripts/build-android.sh` fails closed before producing an artifact. Neither cache was modified. The
+  diagnostic debt and every physical-device/lifecycle/presentation/focus/reconnect/performance/soak gap remain
+  stop-ship.
 
 - **R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority —
   SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE LIVE

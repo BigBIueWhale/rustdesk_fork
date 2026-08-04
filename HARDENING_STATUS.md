@@ -179,8 +179,11 @@ history remains the traceability record for that intermediate work.
 > `platform-tools/`; the newly exact SDK intentionally had neither, whereas the earlier dummy-JNI build
 > used a historical broad SDK that contained platform-tools. No APK, Gradle verdict, installation, device,
 > graphical, lifecycle, focus, reconnect, or performance evidence resulted. R-S11cr below now requires
-> fixed exact platform-tools 37.0.1 without restoring a moving resolver alias. Both local commits and this
-> correction remain unpushed until a fresh exact closure passes the real-JNI warm and networkless build.
+> fixed exact platform-tools 37.0.1 without restoring a moving resolver alias. This is an interim record:
+> R-S11cr/R-S11fv below record the later real-JNI warm, fresh networkless, and pinned-epoch payload evidence,
+> and evidence commit `b761e6d0301055a4600b91b51090cd3248a0e1f9` was pushed to `master`. None of that
+> later evidence upgrades the result into installation, device, lifecycle, graphical, focus, reconnect,
+> performance, stable-signing, or full R-B2/R-B10 release proof.
 >
 > **Continuation rule:** prioritize exact-current evidence and test-harness/input closure over
 > additional product behavior changes. A further product change requires a separately source-proven
@@ -2723,8 +2726,8 @@ external-texture wrapper on the platform path.
 
 The shipped RGBA package is therefore now a provenance-bound, non-publishable in-tree derivative
 under `flutter/third_party/texture_rgba_renderer`, with the exact upstream Apache-2.0 license and
-an unchanged macOS podspec/checksum. `flutter/pubspec.yaml` and its lock select that local path;
-future online Pub-cache production expects seven Git dependencies rather than retaining the unsafe
+an unchanged macOS podspec/checksum. `flutter/pubspec.yaml` and its lock select that local path; at
+that slice, future online Pub-cache production expected seven Git dependencies rather than retaining the unsafe
 upstream checkout as executable dependency authority. Windows reserves the exact empty map owner
 before registering a callback, then retires and extracts that exact node on close, uses the callback
 unregister API, retains both texture and Dart result through completion, and restores the retired
@@ -2744,11 +2747,12 @@ R-S11ey/R-S11e-186 rather than retained as another native-ownership boundary.
 
 The pre-existing canonical `online/pub-cache` was produced for the former eight-Git lock and still
 contains the now-unselected upstream RGBA and GPU-plugin checkouts. Offline Pub resolution ignores
-those extra checkouts and the confined source/native checks below can consume the six-Git lock, but
-this slice does not rewrite or bless the old cache as an exact six-Git release input. A future checked
-networked Pub-cache production transaction must create and publish the exact six-checkout/six-bare
-closure before a cold release verdict; no manual deletion from the canonical cache is treated as a
-substitute for that transaction.
+those extra checkouts and the confined source/native checks below consumed the then-current six-Git
+lock, but this slice did not rewrite or bless the old cache as an exact six-Git release input. At
+that point a future checked networked Pub-cache production transaction had to create and publish the
+exact six-checkout/six-bare closure before a cold release verdict; no manual deletion from the
+canonical cache was treated as a substitute for that transaction. R-S11fu later vendored UniLinks
+and reduced the current lock and checked production closure to five Git dependencies.
 
 An exact Flutter 3.24.5 Linux probe placed the local path package under a fresh minimal Flutter
 project root, resolved it with `flutter pub get --offline`, ran Dart formatting and the strict
@@ -2934,12 +2938,12 @@ repository-owned software RGBA renderer governed by R-S11ex. Its ready event car
 display. Decoder construction and advertised supported decoding receive no adapter identity, and
 enabling an unsupported Cargo feature does not reintroduce a Flutter GPU presentation route.
 
-The exact current inventory is 198 Flutter lock records, six Git records (five from
+The exact current inventory after R-S11fu vendored UniLinks is 198 Flutter lock records, five Git records (four from
 `rustdesk-org`), and 57 main plus six development dependencies with a 63-name union. The current
 sealed `online/pub-cache` was produced for an older eight-Git graph and may still contain both the
 now-unselected upstream RGBA and GPU-plugin checkouts. Offline resolution may ignore those extra
-objects, but that cache is not claimed as a freshly produced exact six-Git release cache. A checked
-networked Pub-cache production transaction must eventually publish the exact six-checkout/six-bare
+objects, but that cache is not claimed as a freshly produced exact five-Git release cache. A checked
+networked Pub-cache production transaction must eventually publish the exact five-checkout/five-bare
 closure; manual pruning is not accepted as equivalent evidence.
 
 The focused, shared, Apple, Dart-verifier-authority, dependency-inventory, Pub-cache-authority, and
@@ -5138,6 +5142,59 @@ changed product-source files behind. The retained explicitly named Windows A/B a
 `bf0878d8ce6d48b915b0e82fb92e270693c09ceb` predates the parent by 720 commits and 403 changed
 product-source files. Those files are historical build evidence only. None executes this recovery
 edge, and none is represented as the user's operational artifact or current validation.
+
+A later evidence-first replay started from clean pushed parent
+`b761e6d0301055a4600b91b51090cd3248a0e1f9` without changing presentation behavior. It first proved
+that the canonical persistent `online/pub-cache` is stale relative to the current tracked
+`flutter/pubspec.lock`: the cache contains only `sqflite 2.2.0`, the lock requires `sqflite 2.2.8+4`
+with lock SHA-256 `f1c1c9170bd6a13229eee1475dd4e6414a808bd44db0945df58c6f864cc77441`, and the current
+Pub output validator also rejects the old cache because it does not contain the exact current five Git
+dependencies. An offline Dart run therefore failed during version solving before formatting, analysis, or
+tests. The canonical cache was mounted read-only in every attempt and remains untouched; it is an explicit
+R-B2/R-B10 input-refresh blocker, not current test evidence.
+
+One disposable current-lock cache was then acquired under the existing pinned Debian builder as numeric
+UID:GID 1000:1000. Only that producer had ordinary bridge egress; it had a read-only root/source/Flutter
+archive, all capabilities dropped, `no-new-privileges`, bounded PIDs/memory/no-swap/CPU/tmpfs/descriptors,
+and no port, device, Docker socket, privileged flag, or host namespace. A separate networkless verifier
+normalized and accepted the complete output at structural digest
+`167f017189e02ab3795bf7fe19073768c742fdf94d3628a310801d25b374902e`. A third container mounted that
+cache and all other inputs read-only, re-resolved both Flutter 3.24.5 and project lockfiles offline without
+lock drift, and exposed the previously documented one-line formatter drift in `remote_page.dart`. The
+source now carries exactly the formatter's three-line wrap for that existing callback; no control,
+presentation, protocol, lifecycle, thread, task, timer, or dependency behavior changed.
+
+After that correction, a complete presentation-focused networkless restart used normalized tracked-source
+archive SHA-256 `9ca714251bf7ee0baf53cc046d8877843039cb7065ec5a13f3f214dcf02b57aa` and completed formatting
+with zero changes, targeted analysis with zero errors and 13 existing nonfatal info diagnostics, all 29
+cases across `desktop_texture_lifecycle_test.dart`, `presentation_recovery_test.dart`,
+`rgba_publication_order_test.dart`, `mobile_session_start_queue_test.dart`, and
+`session_stream_finality_test.dart`, plus the production Linux texture callback test and the production
+Windows callback-core test. This is exact candidate deterministic Dart/Linux-native/portable-C++ behavior
+evidence. It does not execute the Windows Flutter engine, a Windows focus event, an Android Activity or
+foreground service, a task swipe or Force Stop, a RustDesk peer, capture/encode/network/decode, a compositor,
+an installed artifact, or a real display, and it supplies no presentation-latency or soak measurement.
+
+Three preliminary attempts are excluded from the new evidence. The first disposable producer invoked the
+Python-3.7+ validator under the builder's older Python and a one-off shell wrapper incorrectly converted that
+failure to status zero; its visible syntax error prevented acceptance, its staging was verified empty and
+removed by a separate networkless non-root container, and the wrapper is not repository code. The first
+networkless replay correctly stopped on formatter drift before tests. A later broad test list passed the five
+presentation/lifecycle suites but then failed because `mobile_file_session_lifecycle_test.dart` requires a
+fresh generated Rust bridge that the deliberately narrow transaction had not created; the closed 29-case
+presentation transaction was restarted independently and reached both callback-test verdicts before green.
+
+The next focused gate then correctly prevented publication of that candidate record: its desktop-texture
+verifier still required the pre-R-S11fu six-Git/five-`rustdesk-org` inventory even though R-S11fu had
+vendored UniLinks and already made 198 packages, five Git records, and four `rustdesk-org` records the
+normative/current lock. The lock, `dependency-inventory.py`, checked acquisition map, Pub-cache output
+helper and authority verifier, and independent workspace verifier all agree on 198/5/4. The stale focused
+assertions and mutations, the current R-S11ey/Appendix C #307 wording, and this R-S11e-186 current-inventory
+record are aligned to 198/5/4; the former R-S11ex six-Git state remains explicitly historical. The corrected
+desktop-texture verifier rejected all 184 deliberate mutations, the Pub-cache authority verifier rejected
+all 42, the dependency inventory self-test passed all 103 cases and independently reported 198/5/4, the
+independent workspace baseline passed, and the native-codec normal/adversarial hash gates passed. This is a
+consistency and fail-closed gate repair, not a reduced dependency closure or native/device/runtime result.
 
 Exact-current packaged Windows focus-loss, deliberately missed-focus, pointer-down recovery, repeated
 focus/unfocus, and sustained presentation behavior remain mandatory under both native-texture and
@@ -20086,7 +20143,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-099d9f28cfac77d94c1dd7da0ce7174536d2d4b2ca7066e258a878ae0cf43b0f  requirements.html
+d5ec6b54c3cce34357a24626c62fdde5404e4b9d483c01e1fede26285a018b79  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

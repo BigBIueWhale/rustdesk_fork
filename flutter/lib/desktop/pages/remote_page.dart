@@ -630,8 +630,9 @@ class _RemotePageState extends State<RemotePage>
                       cursorOverImage: _cursorOverImage,
                       keyboardEnabled: _keyboardEnabled,
                       remoteCursorMoved: _remoteCursorMoved,
-                      listenerBuilder: (child) => _buildRawTouchAndPointerRegion(
-                          child, enterView, leaveView),
+                      listenerBuilder: (child) =>
+                          _buildRawTouchAndPointerRegion(
+                              child, enterView, leaveView),
                       ffi: _ffi,
                     );
                   }),

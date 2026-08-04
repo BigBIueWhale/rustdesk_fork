@@ -1313,16 +1313,16 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "sole child-window software texture plugin registration",
     )
-    require(sources["pub_cache_output"], "EXPECTED_GIT_DEPENDENCIES = 6", "six-dependency Pub-cache output contract")
-    require(sources["pub_cache_output"], "exact six locked Git dependencies", "six-dependency Pub-cache diagnostic")
-    require(sources["pub_cache_verifier"], "EXPECTED_GIT_DEPENDENCIES = 6", "six-dependency Pub-cache verifier contract")
-    require(sources["online_fetch"], '[ "${#git_specs[@]}" -eq 6 ]', "six-dependency acquisition inventory")
+    require(sources["pub_cache_output"], "EXPECTED_GIT_DEPENDENCIES = 5", "five-dependency Pub-cache output contract")
+    require(sources["pub_cache_output"], "exact five locked Git dependencies", "five-dependency Pub-cache diagnostic")
+    require(sources["pub_cache_verifier"], "EXPECTED_GIT_DEPENDENCIES = 5", "five-dependency Pub-cache verifier contract")
+    require(sources["online_fetch"], '[ "${#git_specs[@]}" -eq 5 ]', "five-dependency acquisition inventory")
     for token in (
         '"dependencies_entries": 57',
         '"union_entries": 63',
-        '"git_hosted_records": 6',
+        '"git_hosted_records": 5',
         '"package_records": 198',
-        '"rustdesk_org_git_records": 5',
+        '"rustdesk_org_git_records": 4',
     ):
         require(sources["dependency_inventory"], token, "updated Flutter dependency inventory")
 
@@ -2661,15 +2661,15 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "online_fetch",
+        '[ "${#git_specs[@]}" -eq 5 ]',
         '[ "${#git_specs[@]}" -eq 6 ]',
-        '[ "${#git_specs[@]}" -eq 7 ]',
-        "six-dependency acquisition inventory",
+        "five-dependency acquisition inventory",
     ),
     (
         "pub_cache_output",
+        "EXPECTED_GIT_DEPENDENCIES = 5",
         "EXPECTED_GIT_DEPENDENCIES = 6",
-        "EXPECTED_GIT_DEPENDENCIES = 7",
-        "six-dependency Pub-cache output inventory",
+        "five-dependency Pub-cache output inventory",
     ),
     (
         "dependency_inventory",

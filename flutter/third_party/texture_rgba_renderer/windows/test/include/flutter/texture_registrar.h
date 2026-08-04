@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <functional>
 #include <utility>
+#include <variant>
 
 struct FlutterDesktopPixelBuffer {
   const uint8_t* buffer;
@@ -22,7 +23,8 @@ class PixelBufferTexture {
   explicit PixelBufferTexture(CopyBufferCallback callback)
       : callback_(std::move(callback)) {}
 
-  const FlutterDesktopPixelBuffer* CopyBuffer(size_t width, size_t height) {
+  const FlutterDesktopPixelBuffer* CopyPixelBuffer(size_t width,
+                                                   size_t height) const {
     return callback_(width, height);
   }
 
@@ -30,24 +32,18 @@ class PixelBufferTexture {
   CopyBufferCallback callback_;
 };
 
-class TextureVariant {
- public:
-  explicit TextureVariant(PixelBufferTexture texture)
-      : texture_(std::move(texture)) {}
+class GpuSurfaceTexture {};
 
-  const FlutterDesktopPixelBuffer* CopyBuffer(size_t width, size_t height) {
-    return texture_.CopyBuffer(width, height);
-  }
-
- private:
-  PixelBufferTexture texture_;
-};
+using TextureVariant = std::variant<PixelBufferTexture, GpuSurfaceTexture>;
 
 class TextureRegistrar {
  public:
   virtual ~TextureRegistrar() = default;
   virtual int64_t RegisterTexture(TextureVariant* texture) = 0;
   virtual bool MarkTextureFrameAvailable(int64_t texture_id) = 0;
+  virtual void UnregisterTexture(int64_t texture_id,
+                                 std::function<void()> callback) = 0;
+  virtual bool UnregisterTexture(int64_t texture_id) = 0;
 };
 
 }  // namespace flutter

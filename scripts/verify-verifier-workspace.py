@@ -18602,6 +18602,14 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "Windows latest-wins native pending-frame contract",
         ),
         (
+            '"add_executable(${CORE_TEST_NAME} EXCLUDE_FROM_ALL"',
+            "native Windows pinned-wrapper test isolation contract",
+        ),
+        (
+            '"& cmake --build $flutterBuildRoot --config Release --target texture_rgba_renderer_windows_core_test"',
+            "native Windows pinned-wrapper build gate contract",
+        ),
+        (
             '"const gboolean notification_needed = !self->buffer_ready;"',
             "Linux latest-wins native pending-frame contract",
         ),
@@ -18626,7 +18634,7 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "Linux native presented-storage regression contract",
         ),
         (
-            '"portable Windows test-only Flutter registrar interface"',
+            '"portable Windows test-only registrar parity with the pinned Flutter wrapper"',
             "portable Windows test registrar contract",
         ),
         (
@@ -19801,8 +19809,14 @@ def validate_desktop_texture_lifecycle_contract(sources):
         ),
         "independent explicit Windows production plugin source list",
     )
-    require_absent(
+    windows_plugin_sources = extract_between(
         sources["texture_rgba_windows_cmake"],
+        "list(APPEND PLUGIN_SOURCES",
+        ")\n\n# Define the plugin library target",
+        "independent Windows production plugin source list",
+    )
+    require_absent(
+        windows_plugin_sources,
         "test/",
         "independent test-only Windows texture source packaging",
     )
@@ -19810,6 +19824,31 @@ def validate_desktop_texture_lifecycle_contract(sources):
         sources["texture_rgba_windows_cmake"],
         "file(GLOB",
         "independent globbed Windows plugin source authority",
+    )
+    windows_native_test = extract_between(
+        sources["texture_rgba_windows_cmake"],
+        'set(CORE_TEST_NAME "texture_rgba_renderer_windows_core_test")',
+        "\n\n# List of absolute paths",
+        "independent native Windows pinned-wrapper callback-core target",
+    )
+    require_order(
+        windows_native_test,
+        (
+            "add_executable(${CORE_TEST_NAME} EXCLUDE_FROM_ALL",
+            '"test/texture_rgba_test.cc"',
+            '"texture_rgba.cpp"',
+            '"texture_rgba.h"',
+            "apply_standard_settings(${CORE_TEST_NAME})",
+            "target_link_libraries(${CORE_TEST_NAME} PRIVATE flutter flutter_wrapper_plugin)",
+            "RUNTIME_OUTPUT_DIRECTORY_RELEASE",
+            '"${CMAKE_BINARY_DIR}/texture_rgba_renderer_core_test"',
+        ),
+        "independent non-shipping native test against the pinned Flutter wrapper",
+    )
+    require_absent(
+        windows_native_test,
+        "test/include",
+        "independent portable registrar shim on the native Windows include path",
     )
     require_order(
         sources["texture_rgba_windows_texture"],
@@ -19894,12 +19933,16 @@ def validate_desktop_texture_lifecycle_contract(sources):
         (
             "class PixelBufferTexture",
             "using CopyBufferCallback =",
-            "class TextureVariant",
+            "CopyPixelBuffer(size_t width,",
+            "class GpuSurfaceTexture",
+            "using TextureVariant = std::variant<PixelBufferTexture, GpuSurfaceTexture>;",
             "class TextureRegistrar",
             "virtual int64_t RegisterTexture(TextureVariant* texture) = 0;",
             "virtual bool MarkTextureFrameAvailable(int64_t texture_id) = 0;",
+            "virtual void UnregisterTexture(int64_t texture_id,",
+            "virtual bool UnregisterTexture(int64_t texture_id) = 0;",
         ),
-        "independent portable Windows test registrar interface",
+        "independent portable Windows registrar parity with the pinned wrapper",
     )
     for text, label in (
         (
@@ -19909,6 +19952,10 @@ def validate_desktop_texture_lifecycle_contract(sources):
         (
             "TextureRgba texture(&registrar);",
             "independent portable Windows production texture construction",
+        ),
+        (
+            "std::get_if<flutter::PixelBufferTexture>(texture_)",
+            "independent pinned Flutter texture variant use",
         ),
         (
             '"a pending frame crossed the retirement boundary"',
@@ -19940,6 +19987,20 @@ def validate_desktop_texture_lifecycle_contract(sources):
         ),
     ):
         require_text(sources["texture_rgba_windows_test"], text, label)
+    require_order(
+        sources["build_windows_source"],
+        (
+            "$textureCoreTest = Join-Path $flutterBuildRoot",
+            "$textureCoreTest,",
+            "& $PYTHON_EXE build.py --flutter",
+            "& cmake --build $flutterBuildRoot --config Release --target texture_rgba_renderer_windows_core_test",
+            "if (-not (Test-Path -LiteralPath $textureCoreTest -PathType Leaf))",
+            "[void](Get-OrdinaryPathItem $textureCoreTest $true)",
+            "& $textureCoreTest",
+            'Die "native Windows texture callback-core test failed',
+        ),
+        "independent stale-safe native Windows pinned-wrapper test gate",
+    )
     require_order(
         sources["texture_rgba_linux"],
         (
@@ -57680,13 +57741,38 @@ def run_source_mutations(sources):
             "texture_rgba_windows_test_stub",
             "class TextureRegistrar {",
             "class DisabledTextureRegistrar {",
-            "independent portable Windows test registrar interface",
+            "independent portable Windows registrar parity with the pinned wrapper",
+        ),
+        (
+            "texture_rgba_windows_test_stub",
+            "using TextureVariant = std::variant<PixelBufferTexture, GpuSurfaceTexture>;",
+            "class TextureVariant {};",
+            "independent portable Windows registrar parity with the pinned wrapper",
         ),
         (
             "texture_rgba_windows_cmake",
-            '  "texture_rgba.h"\n',
-            '  "texture_rgba.h"\n  "test/texture_rgba_test.cc"\n',
+            '  "texture_rgba.h"\n  "texture_rgba_renderer_plugin.h"\n',
+            '  "texture_rgba.h"\n  "test/texture_rgba_test.cc"\n'
+            '  "texture_rgba_renderer_plugin.h"\n',
             "independent test-only Windows texture source packaging",
+        ),
+        (
+            "texture_rgba_windows_cmake",
+            "add_executable(${CORE_TEST_NAME} EXCLUDE_FROM_ALL",
+            "add_executable(${CORE_TEST_NAME}",
+            "independent non-shipping native test against the pinned Flutter wrapper",
+        ),
+        (
+            "build_windows_source",
+            "& cmake --build $flutterBuildRoot --config Release --target texture_rgba_renderer_windows_core_test",
+            "true # native Windows texture callback-core build disabled",
+            "independent stale-safe native Windows pinned-wrapper test gate",
+        ),
+        (
+            "build_windows_source",
+            "& $textureCoreTest\n    if ($LASTEXITCODE -ne 0)",
+            "true # native Windows texture callback-core execution disabled\n    if ($LASTEXITCODE -ne 0)",
+            "independent stale-safe native Windows pinned-wrapper test gate",
         ),
         (
             "texture_rgba_windows_test",
@@ -68315,6 +68401,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "desktop_texture_lifecycle_verifier": (
                 repo / "scripts/verify-desktop-texture-lifecycle.py"
+            ).read_text(encoding="utf-8"),
+            "build_windows_source": (
+                repo / "scripts/build-windows.ps1"
             ).read_text(encoding="utf-8"),
             "desktop_texture_lifecycle_source": (
                 repo / "flutter/lib/models/desktop_texture_lifecycle.dart"

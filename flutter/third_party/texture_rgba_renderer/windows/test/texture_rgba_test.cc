@@ -18,8 +18,25 @@ class TestTextureRegistrar final : public flutter::TextureRegistrar {
     return texture_id == 17 && mark_result;
   }
 
+  void UnregisterTexture(int64_t texture_id,
+                         std::function<void()> callback) override {
+    if (texture_id == 17 && callback) {
+      callback();
+    }
+  }
+
+  bool UnregisterTexture(int64_t texture_id) override {
+    return texture_id == 17;
+  }
+
   const FlutterDesktopPixelBuffer* CopyBuffer() {
-    return texture_ == nullptr ? nullptr : texture_->CopyBuffer(0, 0);
+    if (texture_ == nullptr) {
+      return nullptr;
+    }
+    const auto* pixel_texture =
+        std::get_if<flutter::PixelBufferTexture>(texture_);
+    return pixel_texture == nullptr ? nullptr
+                                    : pixel_texture->CopyPixelBuffer(0, 0);
   }
 
   flutter::TextureVariant* texture_ = nullptr;

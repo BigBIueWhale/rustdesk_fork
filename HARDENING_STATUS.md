@@ -4816,11 +4816,14 @@ Because recording that result changes the tracked ledger input, one final comple
 mutation one remains mandatory; no tracked byte may change after that terminal result.
 
 **R-S11fp/R-S11e-203 exact desktop pending-texture re-notification — SOURCE IMPLEMENTED
-2026-08-03; PINNED FLUTTER 3.24.5/RUST 1.75 FULL CONFINED TRANSACTION GREEN, BOTH
-PRODUCTION-NATIVE TESTS GREEN, 176/176 FOCUSED MUTATIONS, INDEPENDENT BASELINE, AND TWO
-COMPILED NEGATIVE CONTROLS GREEN; FIRST COMPLETE INDEPENDENT CATALOG GREEN; FINAL
-FROZEN-BYTE CATALOG REPETITION PENDING;
-NATIVE-DEVICE/ARTIFACT EVIDENCE PENDING.**
+2026-08-03; PRIOR PINNED FLUTTER 3.24.5/RUST 1.75 FULL CONFINED TRANSACTION GREEN;
+CURRENT NATIVE LINUX, PORTABLE WINDOWS PRODUCTION-SOURCE, AND EXACT PINNED-WINDOWS-HEADER
+TESTS GREEN; CURRENT 188/188 FOCUSED MUTATIONS, INDEPENDENT BASELINE, WINDOWS-HARNESS
+220-MUTATION/FIVE-BEHAVIOR SELF-TEST, POWERSHELL PARSE, AND FIRST COMPLETE CURRENT
+INDEPENDENT SOURCE-MUTATION CATALOG GREEN; WINDOWS NATIVE
+MSVC/PINNED-WRAPPER BUILD GATE ADDED 2026-08-04 BUT BLOCKED BEFORE VM LAUNCH BY THE
+STALE CANONICAL PUB CACHE; FINAL FROZEN-BYTE CATALOG REPETITION IS A PUBLICATION
+PRECONDITION; NATIVE-DEVICE/ARTIFACT EVIDENCE PENDING.**
 Platform: outgoing-viewer desktop presentation on Windows, Linux, and macOS. Endpoint/action: the
 current exact UI owner's focus/resume/tab-reselection recovery, Rust-to-native software-texture
 bridge, native pending-pixel owner, and Flutter texture registrar. Boundary: one published in-tree
@@ -4863,8 +4866,8 @@ the normal first-pending transition. No timer, display link, polling loop, detac
 queue, runtime, dependency, wire field, reconnect branch, compatibility fallback, or second state
 replica was added.
 
-The confined validation is deliberately failure-sensitive rather than operational. The production
-Windows texture-core and Linux Flutter-plugin tests require one initial coalesced mark, one explicit
+The confined validation is deliberately failure-sensitive rather than operational. The portable
+Windows production-source texture-core and native Linux Flutter-plugin tests require one initial coalesced mark, one explicit
 pending-frame re-notification, no idle mark, exact registrar-refusal propagation with the pending
 pixels still copyable, and post-retirement refusal. The Linux test explicitly models the production
 post-registration positive texture-ID transition. The focused semantic verifier binds exact-owner
@@ -4872,12 +4875,69 @@ ordering, Rust symbol/result handling, all three native implementations and C AB
 shared/Apple wiring, R-S11fp, Appendix C #324, and this ledger with deliberate mutations; the
 independent verifier directly binds the same production edges.
 
+A 2026-08-04 evidence review found that the portable Windows test shim did not match the pinned
+Flutter 3.24.5 Windows wrapper: the shim invented a `TextureVariant::CopyBuffer` method, whereas the
+pinned wrapper owns a `std::variant`, exposes `PixelBufferTexture::CopyPixelBuffer`, and requires
+both unregister overloads. The old portable pass therefore proved production texture-core behavior
+against a useful fake registrar, but not the real generated wrapper ABI or native MSVC compilation.
+The shim and shared regression body now use the pinned API shape. An `EXCLUDE_FROM_ALL` Windows
+CMake target compiles the same production `texture_rgba.cpp` and test against the generated pinned
+wrapper without the shim include path, writes outside the product/plugin output, and is neither a
+plugin source nor a bundled library. The existing offline Windows artifact harness removes any stale
+test executable, explicitly builds that target after `build.py --flutter`, verifies an ordinary exact
+output, executes it, and fails before packaging on any error. This is a native wrapper/compiler/core
+gate, not Flutter engine, window, compositor, focus/resume, visible-presentation, installed-artifact,
+or latency evidence. No successful Windows execution is claimed until that isolated gate actually
+runs.
+
+Current confined evidence for this correction is failure-sensitive. The focused verifier rejected
+all 188 deliberate mutations, including deletion of `EXCLUDE_FROM_ALL`, replacement of the real
+`std::variant` shape, and removal of either the native build or execution command. The independent
+semantic baseline passed. In an immutable Debian builder running as uid/gid 1000 with a read-only
+repository, no network, no capabilities, no Docker socket/host namespace, and private executable
+tmpfs, the production Windows texture core/test compiled with `-Wall -Wextra -Werror` and passed
+first against the parity shim, then again against the exact `texture_registrar.h`,
+`flutter_texture_registrar.h`, and `flutter_export.h` extracted from the verified pinned Flutter
+3.24.5 Windows-engine archive. That second result proves the real header/API shape and callback-core
+behavior under the confined Linux compiler; it is not MSVC, native CMake, Flutter DLL, engine,
+window, compositor, focus/resume, or visible-presentation execution. The Windows harness semantic
+baseline and its 220-mutation/five-bounded-behavior self-test passed in non-root, networkless,
+capability-free containers, and `build-windows.ps1` passed PowerShell AST parsing.
+
+One exact `DOUBLE_BUILD=0` worktree diagnostic used base commit
+`7cf1b7d9331b368356ffcb997c3eb0e9dd7d10e3`, twice-stable captured tree
+`6beadeb969a9aa38cf39fae2a5f84824d85465fc`, base source-manifest SHA-256
+`cbb768ea79e0d882425edec3185022b838d8ca9eced898907f6c8b57e088cf16`, and canonical online
+closure `a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`. The harness
+passed its no-build-host-network preflight, verified the golden image, WiX packages, olefile wheel,
+helper/builder identities, tool archives, and private online snapshot, then failed during private
+FRB generation because the canonical offline Pub cache has no locked `sqflite 2.2.8+4`. No VM or
+native CMake target launched. A second attempt pointed only at the already-read-only disposable
+current-input snapshot with closure
+`634b905e1c1ddf859f94649cdd10a62a9ef6159454fc77f8a82586b2f1fecdc1`; the release harness
+correctly refused it at the canonical-closure boundary before source capture. The canonical check
+was not weakened and canonical `online` was not changed. Therefore native Windows MSVC/wrapper
+execution remains an explicit blocker rather than a fabricated pass.
+
+The first complete current independent source-mutation catalog required three uncounted restarts.
+The first two runs rejected the mutated registrar/variant contracts but their attribution fixtures
+still expected the older generic diagnostic labels. The third rejected a test-source insertion into
+the production plugin list, then correctly refused to count its generic `texture_rgba.h` anchor
+because the new non-shipping target introduced a second valid occurrence. The two labels were aligned
+to the stronger pinned-wrapper diagnostic and the CMake mutation was scoped to the exact
+`PLUGIN_SOURCES` sequence; no validator condition or product/test behavior was weakened. Focused
+188/188 mutation and independent semantic baselines passed after each correction. A fresh complete
+catalog from mutation one then exited zero with `verify-verifier-workspace: ok`. The terminal
+exact-frozen-byte repetition and publication result are recorded separately after the ledger bytes
+are frozen; editing this tracked ledger to claim its own post-edit result would invalidate that
+result.
+
 One full fresh `scripts/dart-verify.sh` transaction used immutable Debian builder image
 `sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`, reverified the exact
 offline-input closure as
 `a94e73ae80a235e7544d862558fccd8f22b045abc2324b61ff98391ba411b918`, generated fresh Flutter
 Rust Bridge output, reported zero Flutter `lib/` analysis errors, and passed all 35 invoked Dart
-tests. The production Linux plugin test and portable Windows production texture-core test each
+tests. The native Linux plugin test and portable Windows production-source texture-core test each
 compiled with `-Wall -Wextra -Werror` and passed. The exact shipped Linux Rust feature library
 graph (`flutter,unix-file-copy-paste`) compiled under pinned Rust 1.75, then the generated-bridge
 transaction passed the 18-test mobile/session group, the separately invoked exact-owner refresh
@@ -20316,7 +20376,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-35a8c70d550490dc2f7d8b35043e5178e0b6d0c37e5516c3f92e1db6d00ec7a2  requirements.html
+e08f4e872490def836ff3d1e0568ce8910be6788f9ceec53ab9e98a080dd4b49  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

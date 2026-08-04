@@ -835,12 +835,15 @@ function Build {
     $setupPayloadMsi = Join-Path $setupPayloadDir 'rustdesk-installer.msi'
     $legacyStagedMsi = Join-Path $msiDist 'rustdesk-installer.msi'
     $artifactDir = Join-Path $SRC 'dist'
+    $flutterBuildRoot = Join-Path $SRC 'flutter\build\windows\x64'
+    $textureCoreTest = Join-Path $flutterBuildRoot 'texture_rgba_renderer_core_test\texture_rgba_renderer_windows_core_test.exe'
     $staleFiles = @(
         $msiBuiltOut,
         $msiOut,
         $msiContract,
         $setupOut,
         $legacyStagedMsi,
+        $textureCoreTest,
         (Join-Path $artifactDir 'rustdesk-setup.exe'),
         (Join-Path $artifactDir 'rustdesk-setup.exe.sha256'),
         (Join-Path $artifactDir 'rustdesk.msi'),
@@ -1110,6 +1113,21 @@ if /I "%~1"=="build" (
     # through and Emit-Artifacts reports "complete" with no .exe.
     & $PYTHON_EXE build.py --flutter
     if ($LASTEXITCODE -ne 0) { Die "build.py --flutter failed (exit $LASTEXITCODE) -- Python missing/not on PATH, or the cargo/flutter build errored (see above)" }
+
+    # R-S11fp: the portable callback-core test uses a deliberately small Flutter
+    # registrar shim. Build and execute the same production source and test body
+    # against this artifact build's pinned Flutter Windows wrapper before any
+    # package can be emitted. EXCLUDE_FROM_ALL keeps the test out of the product.
+    & cmake --build $flutterBuildRoot --config Release --target texture_rgba_renderer_windows_core_test
+    if ($LASTEXITCODE -ne 0) { Die "native Windows texture callback-core build failed (exit $LASTEXITCODE) -- the production core must compile against the pinned Flutter wrapper" }
+    if (-not (Test-Path -LiteralPath $textureCoreTest -PathType Leaf)) {
+        Die "native Windows texture callback-core test was not produced at $textureCoreTest"
+    }
+    [void](Get-OrdinaryPathItem $textureCoreTest $true)
+    & $textureCoreTest
+    if ($LASTEXITCODE -ne 0) { Die "native Windows texture callback-core test failed (exit $LASTEXITCODE)" }
+    Write-Host '[harness] native Windows texture callback core passed against the pinned Flutter wrapper'
+
     $applicationResource = Get-SingleCompiledWindowsResource 'rustdesk'
     Assert-CompiledWindowsResource $applicationResource 'RustDesk library'
     $applicationVersion = Get-CargoPackageVersion (Join-Path $SRC 'Cargo.toml')

@@ -47,6 +47,22 @@ target_include_directories(${PLUGIN_NAME} INTERFACE
   "${CMAKE_CURRENT_SOURCE_DIR}/include")
 target_link_libraries(${PLUGIN_NAME} PRIVATE flutter flutter_wrapper_plugin)
 
+# Kept out of the shipped plugin and the default Flutter build. The offline
+# Windows harness explicitly builds and runs this target so the production
+# callback core is checked against the pinned Flutter Windows wrapper, rather
+# than only against the portable test shim used on non-Windows builders.
+set(CORE_TEST_NAME "texture_rgba_renderer_windows_core_test")
+add_executable(${CORE_TEST_NAME} EXCLUDE_FROM_ALL
+  "test/texture_rgba_test.cc"
+  "texture_rgba.cpp"
+  "texture_rgba.h"
+)
+apply_standard_settings(${CORE_TEST_NAME})
+target_link_libraries(${CORE_TEST_NAME} PRIVATE flutter flutter_wrapper_plugin)
+set_target_properties(${CORE_TEST_NAME} PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY_RELEASE
+    "${CMAKE_BINARY_DIR}/texture_rgba_renderer_core_test")
+
 # List of absolute paths to libraries that should be bundled with the plugin.
 # This list could contain prebuilt libraries, or libraries created by an
 # external build triggered from this build file.

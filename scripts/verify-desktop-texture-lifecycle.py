@@ -119,6 +119,7 @@ def load_sources(repo: Path) -> Dict[str, str]:
             "flutter/third_party/texture_rgba_renderer/windows/test/include/"
             "flutter/texture_registrar.h"
         ),
+        "build_windows": "scripts/build-windows.ps1",
         "plugin_windows": (
             "flutter/third_party/texture_rgba_renderer/windows/"
             "texture_rgba_renderer_plugin.cpp"
@@ -1435,8 +1436,43 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "explicit Windows production plugin source list",
     )
-    forbid(windows_cmake, "test/", "test-only Windows texture source packaging")
+    windows_plugin_sources = extract_between(
+        windows_cmake,
+        "list(APPEND PLUGIN_SOURCES",
+        ")\n\n# Define the plugin library target",
+        "Windows production plugin source list",
+    )
+    forbid(
+        windows_plugin_sources,
+        "test/",
+        "test-only Windows texture source packaging",
+    )
     forbid(windows_cmake, "file(GLOB", "globbed Windows plugin source authority")
+    windows_native_test = extract_between(
+        windows_cmake,
+        'set(CORE_TEST_NAME "texture_rgba_renderer_windows_core_test")',
+        "\n\n# List of absolute paths",
+        "native Windows pinned-wrapper callback-core target",
+    )
+    require_order(
+        windows_native_test,
+        (
+            "add_executable(${CORE_TEST_NAME} EXCLUDE_FROM_ALL",
+            '"test/texture_rgba_test.cc"',
+            '"texture_rgba.cpp"',
+            '"texture_rgba.h"',
+            "apply_standard_settings(${CORE_TEST_NAME})",
+            "target_link_libraries(${CORE_TEST_NAME} PRIVATE flutter flutter_wrapper_plugin)",
+            "RUNTIME_OUTPUT_DIRECTORY_RELEASE",
+            '"${CMAKE_BINARY_DIR}/texture_rgba_renderer_core_test"',
+        ),
+        "non-shipping native Windows test against the pinned Flutter wrapper",
+    )
+    forbid(
+        windows_native_test,
+        "test/include",
+        "portable registrar shim on the native Windows include path",
+    )
     forbid(
         windows_texture,
         "UnregisterTexture",
@@ -1516,12 +1552,16 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "class PixelBufferTexture",
             "using CopyBufferCallback =",
-            "class TextureVariant",
+            "CopyPixelBuffer(size_t width,",
+            "class GpuSurfaceTexture",
+            "using TextureVariant = std::variant<PixelBufferTexture, GpuSurfaceTexture>;",
             "class TextureRegistrar",
             "virtual int64_t RegisterTexture(TextureVariant* texture) = 0;",
             "virtual bool MarkTextureFrameAvailable(int64_t texture_id) = 0;",
+            "virtual void UnregisterTexture(int64_t texture_id,",
+            "virtual bool UnregisterTexture(int64_t texture_id) = 0;",
         ),
-        "portable Windows test-only Flutter registrar interface",
+        "portable Windows test-only registrar parity with the pinned Flutter wrapper",
     )
     for needle, label in (
         (
@@ -1531,6 +1571,10 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "TextureRgba texture(&registrar);",
             "portable Windows production texture construction",
+        ),
+        (
+            "std::get_if<flutter::PixelBufferTexture>(texture_)",
+            "portable and native tests use the pinned Flutter texture variant shape",
         ),
         (
             '"a pending frame crossed the retirement boundary"',
@@ -1566,6 +1610,20 @@ def validate(sources: Dict[str, str]) -> None:
         ),
     ):
         require(windows_test, needle, label)
+    require_order(
+        sources["build_windows"],
+        (
+            "$textureCoreTest = Join-Path $flutterBuildRoot",
+            "$textureCoreTest,",
+            "& $PYTHON_EXE build.py --flutter",
+            "& cmake --build $flutterBuildRoot --config Release --target texture_rgba_renderer_windows_core_test",
+            "if (-not (Test-Path -LiteralPath $textureCoreTest -PathType Leaf))",
+            "[void](Get-OrdinaryPathItem $textureCoreTest $true)",
+            "& $textureCoreTest",
+            'Die "native Windows texture callback-core test failed',
+        ),
+        "stale-safe native Windows pinned-wrapper callback-core build and execution",
+    )
     windows_close = extract_braced_item(
         windows_plugin,
         'if (method_call.method_name() == "closeTexture")',
@@ -2866,10 +2924,35 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "portable Windows test registrar interface",
     ),
     (
+        "plugin_windows_test_stub",
+        "using TextureVariant = std::variant<PixelBufferTexture, GpuSurfaceTexture>;",
+        "class TextureVariant {};",
+        "portable Windows pinned-wrapper variant parity",
+    ),
+    (
         "plugin_windows_cmake",
-        '  "texture_rgba.h"\n',
-        '  "texture_rgba.h"\n  "test/texture_rgba_test.cc"\n',
+        '  "texture_rgba.h"\n  "texture_rgba_renderer_plugin.h"\n',
+        '  "texture_rgba.h"\n  "test/texture_rgba_test.cc"\n'
+        '  "texture_rgba_renderer_plugin.h"\n',
         "test-only Windows source packaging exclusion",
+    ),
+    (
+        "plugin_windows_cmake",
+        "add_executable(${CORE_TEST_NAME} EXCLUDE_FROM_ALL",
+        "add_executable(${CORE_TEST_NAME}",
+        "native Windows test excluded from the product build",
+    ),
+    (
+        "build_windows",
+        "& cmake --build $flutterBuildRoot --config Release --target texture_rgba_renderer_windows_core_test",
+        "true # native Windows texture callback-core build disabled",
+        "native Windows pinned-wrapper callback-core build gate",
+    ),
+    (
+        "build_windows",
+        "& $textureCoreTest\n    if ($LASTEXITCODE -ne 0)",
+        "true # native Windows texture callback-core execution disabled\n    if ($LASTEXITCODE -ne 0)",
+        "native Windows pinned-wrapper callback-core execution gate",
     ),
     (
         "plugin_windows_test",

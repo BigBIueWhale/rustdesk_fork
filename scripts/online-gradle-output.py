@@ -213,8 +213,13 @@ def inspect_tree(
     limits: tuple[int, int, int, int],
     hash_contents: bool,
     normalize: bool = False,
+    seal: bool = False,
+    require_sealed: bool = False,
+    seal_root: bool = True,
     expected_identity: tuple[int, int] | None = None,
 ) -> TreeSummary:
+    if sum((normalize, seal, require_sealed)) > 1:
+        fail("output tree mode policies are mutually exclusive")
     root_metadata = validate_root(root, "output tree", owners, expected_identity)
     root_device = root_metadata.st_dev
     maximum_files, maximum_directories, maximum_bytes, maximum_file = limits
@@ -236,6 +241,17 @@ def inspect_tree(
         if normalize:
             os.chmod(directory, 0o700, follow_symlinks=False)
             before = os.lstat(directory)
+        elif seal and (relative or seal_root):
+            os.chmod(directory, 0o500, follow_symlinks=False)
+            before = os.lstat(directory)
+        elif seal and stat.S_IMODE(before.st_mode) != 0o700:
+            fail("Gradle publication candidate root is not mode 0700")
+        elif require_sealed:
+            expected_mode = 0o500 if relative or seal_root else 0o700
+            if stat.S_IMODE(before.st_mode) != expected_mode:
+                fail(
+                    f"sealed output directory has wrong mode: {relative or '.'}"
+                )
         elif stat.S_IMODE(before.st_mode) & 0o022:
             fail(f"output directory is group/world writable: {directory}")
         with os.scandir(directory) as iterator:
@@ -270,6 +286,15 @@ def inspect_tree(
                 if normalize:
                     os.chmod(child, 0o700 if executable else 0o600, follow_symlinks=False)
                     metadata = os.lstat(child)
+                elif seal:
+                    os.chmod(child, 0o500 if executable else 0o400, follow_symlinks=False)
+                    metadata = os.lstat(child)
+                elif require_sealed:
+                    expected_mode = 0o500 if executable else 0o400
+                    if stat.S_IMODE(metadata.st_mode) != expected_mode:
+                        fail(
+                            f"sealed output file has wrong mode: {child_relative}"
+                        )
                 elif stat.S_IMODE(metadata.st_mode) & 0o022:
                     fail(f"output file is group/world writable: {child_relative}")
                 content = digest_file(child, metadata, hash_contents)
@@ -550,7 +575,13 @@ def check_complete(
     sdk = online / "android-sdk"
     gradle = online / "gradle-home"
     inspect_tree(sdk, owners=owners, limits=SDK_LIMITS, hash_contents=False)
-    inspect_tree(gradle, owners=owners, limits=GRADLE_LIMITS, hash_contents=False)
+    inspect_tree(
+        gradle,
+        owners=owners,
+        limits=GRADLE_LIMITS,
+        hash_contents=False,
+        require_sealed=True,
+    )
     validate_semantics(
         sdk,
         gradle,
@@ -625,9 +656,64 @@ def open_directory(path: Path) -> int:
     return os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW)
 
 
-def rollback_publication(online_fd: int, staging_fd: int) -> None:
+def transition_root_mode(
+    parent_fd: int,
+    name: str,
+    expected_identity: tuple[int, int],
+    uid: int,
+    gid: int,
+    source_modes: set[int],
+    destination_mode: int,
+    label: str,
+) -> None:
+    descriptor = os.open(
+        name,
+        os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC | os.O_NOFOLLOW,
+        dir_fd=parent_fd,
+    )
+    try:
+        before = os.fstat(descriptor)
+        if (
+            identity(before) != expected_identity
+            or not stat.S_ISDIR(before.st_mode)
+            or before.st_uid != uid
+            or before.st_gid != gid
+            or stat.S_IMODE(before.st_mode) not in source_modes
+        ):
+            fail(f"{label} root transition precondition failed")
+        os.fchmod(descriptor, destination_mode)
+        os.fsync(descriptor)
+        after = os.fstat(descriptor)
+        if (
+            identity(after) != expected_identity
+            or after.st_uid != uid
+            or after.st_gid != gid
+            or stat.S_IMODE(after.st_mode) != destination_mode
+        ):
+            fail(f"{label} root transition postcondition failed")
+    finally:
+        os.close(descriptor)
+
+
+def rollback_publication(
+    online_fd: int,
+    staging_fd: int,
+    expected_identity: tuple[int, int],
+    uid: int,
+    gid: int,
+) -> None:
     failures = []
     try:
+        transition_root_mode(
+            online_fd,
+            "gradle-home",
+            expected_identity,
+            uid,
+            gid,
+            {0o500, 0o700},
+            0o700,
+            "Gradle rollback",
+        )
         renameat2(
             online_fd,
             "gradle-home",
@@ -670,6 +756,25 @@ def publish(
     state = load_state(online, staging, uid, gid)
     if (online / "gradle-home").exists() or (online / "gradle-home").is_symlink():
         fail("Gradle output destination appeared before no-clobber publication")
+    sealed_summary = inspect_tree(
+        staging / "gradle-home",
+        owners={(uid, gid)},
+        limits=GRADLE_LIMITS,
+        hash_contents=False,
+        seal=True,
+        seal_root=False,
+        expected_identity=decode_identity(
+            state.get("staged_gradle_identity"), "staged Gradle"
+        ),
+    )
+    validate_semantics(
+        online / "android-sdk",
+        staging / "gradle-home",
+        gradle_version=gradle_version,
+        gradle_sha256=gradle_sha256,
+        build_tools=build_tools,
+        compile_sdk=compile_sdk,
+    )
     sync_tree(staging / "gradle-home")
     fsync_directory(staging)
     online_fd = open_directory(online)
@@ -679,6 +784,20 @@ def publish(
         renameat2(staging_fd, "gradle-home", online_fd, "gradle-home", RENAME_NOREPLACE)
         gradle_moved = True
         os.fsync(staging_fd)
+        os.fsync(online_fd)
+        staged_gradle_identity = decode_identity(
+            state.get("staged_gradle_identity"), "staged Gradle"
+        )
+        transition_root_mode(
+            online_fd,
+            "gradle-home",
+            staged_gradle_identity,
+            uid,
+            gid,
+            {0o700},
+            0o500,
+            "published Gradle",
+        )
         os.fsync(online_fd)
         if identity(os.lstat(online / "android-sdk")) != decode_identity(
             state.get("original_sdk_identity"), "original SDK"
@@ -700,6 +819,18 @@ def publish(
             state.get("staged_gradle_identity"), "staged Gradle"
         ):
             fail("published Gradle identity postcondition failed")
+        published_summary = inspect_tree(
+            online / "gradle-home",
+            owners={(uid, gid)},
+            limits=GRADLE_LIMITS,
+            hash_contents=False,
+            require_sealed=True,
+            expected_identity=decode_identity(
+                state.get("staged_gradle_identity"), "staged Gradle"
+            ),
+        )
+        if published_summary != sealed_summary:
+            fail("published sealed Gradle tree postcondition failed")
         validate_semantics(
             online / "android-sdk",
             online / "gradle-home",
@@ -711,7 +842,15 @@ def publish(
     except BaseException as primary:
         if gradle_moved:
             try:
-                rollback_publication(online_fd, staging_fd)
+                rollback_publication(
+                    online_fd,
+                    staging_fd,
+                    decode_identity(
+                        state.get("staged_gradle_identity"), "staged Gradle"
+                    ),
+                    uid,
+                    gid,
+                )
             except BaseException as rollback:
                 primary.add_note(f"publication rollback also failed: {rollback}")
         raise
@@ -755,6 +894,43 @@ def recover(online: Path, staging: Path, uid: int, gid: int) -> str:
         and live_gradle == staged_gradle
         and private_gradle is None
     ):
+        live_metadata = os.lstat(online / "gradle-home")
+        live_mode = stat.S_IMODE(live_metadata.st_mode)
+        if live_mode == 0o700:
+            inspect_tree(
+                online / "gradle-home",
+                owners={(uid, gid)},
+                limits=GRADLE_LIMITS,
+                hash_contents=False,
+                require_sealed=True,
+                seal_root=False,
+                expected_identity=staged_gradle,
+            )
+            online_fd = open_directory(online)
+            try:
+                transition_root_mode(
+                    online_fd,
+                    "gradle-home",
+                    staged_gradle,
+                    uid,
+                    gid,
+                    {0o700},
+                    0o500,
+                    "recovered Gradle publication",
+                )
+                os.fsync(online_fd)
+            finally:
+                os.close(online_fd)
+        elif live_mode != 0o500:
+            fail("published Gradle root has an unrecoverable mode")
+        inspect_tree(
+            online / "gradle-home",
+            owners={(uid, gid)},
+            limits=GRADLE_LIMITS,
+            hash_contents=False,
+            require_sealed=True,
+            expected_identity=staged_gradle,
+        )
         return "published"
     fail("Gradle output transaction state is incoherent and was preserved")
 
@@ -794,6 +970,7 @@ def make_stage(online: Path) -> Path:
 def remove_stage(staging: Path) -> None:
     for current, directories, files in os.walk(staging, topdown=False, followlinks=False):
         current_path = Path(current)
+        current_path.chmod(0o700)
         for name in files:
             path = current_path / name
             if path.is_symlink():
@@ -808,7 +985,6 @@ def remove_stage(staging: Path) -> None:
             else:
                 path.chmod(0o700)
                 path.rmdir()
-        current_path.chmod(0o700)
     staging.rmdir()
 
 
@@ -834,6 +1010,47 @@ def self_test() -> None:
         prepare(online, staging, uid, gid)
         create_fake_gradle(staging / "gradle-home", version, archive)
         return online, staging
+
+    def move_candidate_before_root_seal(online: Path, staging: Path) -> None:
+        verify_staged(
+            online,
+            staging,
+            uid,
+            gid,
+            gradle_version=version,
+            gradle_sha256=archive_hash,
+            build_tools=build_tools,
+            compile_sdk=compile_sdk,
+        )
+        state = load_state(online, staging, uid, gid)
+        inspect_tree(
+            staging / "gradle-home",
+            owners={(uid, gid)},
+            limits=GRADLE_LIMITS,
+            hash_contents=False,
+            seal=True,
+            seal_root=False,
+            expected_identity=decode_identity(
+                state.get("staged_gradle_identity"), "staged Gradle"
+            ),
+        )
+        sync_tree(staging / "gradle-home")
+        fsync_directory(staging)
+        online_fd = open_directory(online)
+        staging_fd = open_directory(staging)
+        try:
+            renameat2(
+                staging_fd,
+                "gradle-home",
+                online_fd,
+                "gradle-home",
+                RENAME_NOREPLACE,
+            )
+            os.fsync(staging_fd)
+            os.fsync(online_fd)
+        finally:
+            os.close(staging_fd)
+            os.close(online_fd)
 
     with tempfile.TemporaryDirectory(prefix="online-gradle-output-test-") as temporary:
         base = Path(temporary)
@@ -869,6 +1086,112 @@ def self_test() -> None:
             build_tools=build_tools,
             compile_sdk=compile_sdk,
         )
+        gradle = online / "gradle-home"
+        archive_path = (
+            gradle
+            / "wrapper"
+            / "dists"
+            / f"gradle-{version}-all"
+            / "token"
+            / f"gradle-{version}-all.zip"
+        )
+        launcher_path = (
+            archive_path.parent / f"gradle-{version}" / "bin" / "gradle"
+        )
+        if (
+            stat.S_IMODE(os.lstat(gradle).st_mode) != 0o500
+            or stat.S_IMODE(os.lstat(archive_path).st_mode) != 0o400
+            or stat.S_IMODE(os.lstat(launcher_path).st_mode) != 0o500
+        ):
+            fail("self-test publication did not seal the Gradle seed")
+        gradle.chmod(0o700)
+        try:
+            check_complete(
+                online,
+                uid,
+                gid,
+                gradle_version=version,
+                gradle_sha256=archive_hash,
+                build_tools=build_tools,
+                compile_sdk=compile_sdk,
+            )
+        except OutputError:
+            pass
+        else:
+            fail("self-test accepted a writable Gradle seed directory")
+        gradle.chmod(0o500)
+        archive_path.chmod(0o600)
+        try:
+            check_complete(
+                online,
+                uid,
+                gid,
+                gradle_version=version,
+                gradle_sha256=archive_hash,
+                build_tools=build_tools,
+                compile_sdk=compile_sdk,
+            )
+        except OutputError:
+            pass
+        else:
+            fail("self-test accepted a writable Gradle seed file")
+        archive_path.chmod(0o400)
+        remove_stage(staging)
+
+        online, staging = fixture(base / "post-rename-recovery")
+        move_candidate_before_root_seal(online, staging)
+        if stat.S_IMODE(os.lstat(online / "gradle-home").st_mode) != 0o700:
+            fail("self-test did not create the post-rename/pre-root-seal state")
+        if recover(online, staging, uid, gid) != "published":
+            fail("self-test did not recover the post-rename/pre-root-seal state")
+        if stat.S_IMODE(os.lstat(online / "gradle-home").st_mode) != 0o500:
+            fail("self-test recovery did not seal the published Gradle root")
+        check_complete(
+            online,
+            uid,
+            gid,
+            gradle_version=version,
+            gradle_sha256=archive_hash,
+            build_tools=build_tools,
+            compile_sdk=compile_sdk,
+        )
+        remove_stage(staging)
+
+        online, staging = fixture(base / "sealed-root-rollback")
+        move_candidate_before_root_seal(online, staging)
+        state = load_state(online, staging, uid, gid)
+        expected_gradle = decode_identity(
+            state.get("staged_gradle_identity"), "staged Gradle"
+        )
+        online_fd = open_directory(online)
+        staging_fd = open_directory(staging)
+        try:
+            transition_root_mode(
+                online_fd,
+                "gradle-home",
+                expected_gradle,
+                uid,
+                gid,
+                {0o700},
+                0o500,
+                "self-test published Gradle",
+            )
+            rollback_publication(
+                online_fd,
+                staging_fd,
+                expected_gradle,
+                uid,
+                gid,
+            )
+        finally:
+            os.close(staging_fd)
+            os.close(online_fd)
+        if (online / "gradle-home").exists() or (online / "gradle-home").is_symlink():
+            fail("self-test rollback left the published Gradle name occupied")
+        if recover(online, staging, uid, gid) != "unpublished":
+            fail("self-test rollback did not restore unpublished transaction state")
+        if stat.S_IMODE(os.lstat(staging / "gradle-home").st_mode) != 0o700:
+            fail("self-test rollback did not restore private root traversal")
         remove_stage(staging)
 
         online, staging = fixture(base / "sdk-mutation")

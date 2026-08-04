@@ -15191,6 +15191,61 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   updated with the same requirement. A fresh exact acquisition, host-independent archive/output
   comparison, real-JNI Gradle warm, networkless APK build, artifact inspection, and source-integrity
   postcheck remain mandatory before this correction may be committed as build-closed or pushed.
+- **R-S11fv/R-S11e-208 — Gradle publication/offline-seed mode closure — SOURCE IMPLEMENTED;
+  FOCUSED TRANSACTION TESTS GREEN; FRESH EXACT-COMMIT WARM/OFFLINE APK EVIDENCE PENDING.** Platform:
+  the unprivileged Linux acquisition host and immutable Android-builder container. Endpoint/action:
+  `scripts/online-gradle-output.py::{verify_staged,publish,recover,check_complete}` and
+  `scripts/android-gradle-cache.py::materialize`. Boundary: networked Gradle output publication ↔
+  immutable networkless APK-build input.
+
+  The first independent networkless APK attempt after the fixed platform-tools acquisition did not
+  reuse the warm source tree. It extracted a fresh exact commit `529d9d9191915fe8fa86c53dfd6b1522936c2150`
+  candidate, proved every committed input against a separate immutable authority, resolved the
+  pinned Pub graphs offline, regenerated the Flutter bridge, and completed the real optimized ARM64
+  JNI build in 2m28s. It then failed closed before Gradle with `Gradle cache seed directory is not
+  mode 0500: .`. The disposable Gradle publisher had emitted and `check-complete` had accepted a
+  mode-0700/0600 working tree, while the maintained offline projector intentionally admits only
+  mode-0500 directories and mode-0400/0500 files. This was a checked producer/consumer contract
+  split, not a RustDesk runtime failure or an excuse to weaken the consumer.
+
+  Publication now retains its existing post-producer structural and semantic verification, then
+  seals every candidate descendant directory/executable to 0500 and ordinary file to 0400. Only
+  the exact candidate root remains 0700 before `RENAME_NOREPLACE`, because Linux must update that
+  directory's `..` entry during the cross-parent rename. After namespace publication the helper
+  opens that exact recorded inode no-follow relative to the online root, checks identity, owner, and
+  the sole 0700 transition state, descriptor-seals it to 0500, fsyncs it and the namespace, and
+  rewalks the complete tree under the exact immutable profile before semantic acceptance. Rollback
+  descriptor-restores only the same root to 0700 before moving it; recovery completes only the
+  exact published-inode/pre-root-seal arrangement whose descendants are already sealed. An occupied
+  writable or mixed-mode tree now fails `check-complete` before offline materialization.
+
+  The confined helper behavioral self-test passes normal publication, exact root/file mode checks,
+  writable-root rejection, writable-file rejection, and exact post-rename/pre-root-seal recovery.
+  The focused Gradle-output authority verifier passes and rejects all 42 deliberate mutations,
+  including omission of descendant sealing, published-root sealing, complete sealed-tree checking,
+  durability, rollback, and the existing source/SDK/output boundaries. These checks ran as numeric
+  UID:GID 1000:1000 in the immutable generic verifier with no pull/network, read-only root/source,
+  all capabilities dropped, no-new-privileges, bounded resources, private scratch, and no port,
+  device, Docker socket, privileged flag, or host namespace.
+
+  The first complete independent source-mutation run correctly rejected the mutation that disabled
+  `check-complete`'s sealed-tree policy, but the meta-fixture expected the narrower label
+  `complete sealed-seed check` while the validator reported its stricter four-site
+  `complete/published/recovery sealed checks` contract. It therefore stopped with zero counted
+  effective targets rather than accepting the weakening. The mutation label is now identical to
+  the validator diagnostic. The next complete restart likewise rejected removal of the sealed-root
+  rollback, then stopped because that meta-fixture named the target `sealed-root rollback` while
+  the validator reports its encompassing `Gradle-output rollback` contract. That label is now also
+  identical to the validator diagnostic. This candidate is accepted only if a complete restart
+  from mutation one returns zero; no pass is inferred from either rejected weakening.
+
+  No persistent `online/gradle-home`, host RustDesk executable/process/service/configuration,
+  listener, firewall, UFW/nftables/iptables, or host network state was inspected or changed. The
+  old disposable writable candidate is not accepted or permission-normalized in place. A newly
+  published sealed disposable cache and a fresh real-JNI networkless APK build remain required
+  before artifact inspection; device lifecycle/presentation, stable signing, exact cold A/B release
+  reproduction, other native platforms, performance/soak, and external review remain stop-ship.
+
 - **R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority —
   SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE LIVE
   FOURTEEN-ARCHIVE ACQUISITION EVIDENCE RECORDED; BROADER RELEASE EVIDENCE OPEN.** Platform: the unprivileged Linux
@@ -19976,7 +20031,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-2f74d564ab66d1f221b03a58cec471d6644bb59536ba74e1f1df47dcf8c9417b  requirements.html
+099d9f28cfac77d94c1dd7da0ce7174536d2d4b2ca7066e258a878ae0cf43b0f  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -20016,3 +20071,4 @@ The same identity additionally binds R-S11fp and Appendix C #324.
 The same identity additionally binds R-S11fr and Appendix C #326.
 The same identity additionally binds R-S11fs and Appendix C #327.
 The same identity additionally binds R-S11fu and Appendix C #329.
+The same identity additionally binds R-S11fv and Appendix C #330.

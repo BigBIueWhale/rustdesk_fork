@@ -84,6 +84,7 @@ def validate(sources: Dict[str, str]) -> None:
     android = sources["android"]
     pins = sources["pins"]
     wrapper = sources["wrapper"]
+    projector = sources["projector"]
     try:
         ast.parse(helper)
     except SyntaxError as error:
@@ -217,6 +218,11 @@ def validate(sources: Dict[str, str]) -> None:
         raise AuthorityError(
             "Gradle wrapper checksum does not exactly match its independent pin"
         )
+    for token, label in (
+        ("SOURCE_DIRECTORY_MODE = 0o500", "offline seed directory mode"),
+        ("SOURCE_FILE_MODES = {0o400, 0o500}", "offline seed file modes"),
+    ):
+        require(projector, token, label)
     require(
         wrapper,
         "distributionUrl=https\\://services.gradle.org/distributions/"
@@ -273,13 +279,64 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         ('require_file(platform / "android.jar", nonempty=True)', "platform semantics"),
         ('sync_tree(staging / "gradle-home")', "Gradle durability"),
+        (
+            'sealed_summary = inspect_tree(\n'
+            '        staging / "gradle-home",\n'
+            '        owners={(uid, gid)},\n'
+            '        limits=GRADLE_LIMITS,\n'
+            '        hash_contents=False,\n'
+            '        seal=True,\n'
+            '        seal_root=False,',
+            "sealed descendants before namespace publication",
+        ),
+        (
+            'transition_root_mode(\n'
+            '            online_fd,\n'
+            '            "gradle-home",\n'
+            '            staged_gradle_identity,\n'
+            '            uid,\n'
+            '            gid,\n'
+            '            {0o700},\n'
+            '            0o500,\n'
+            '            "published Gradle",',
+            "descriptor-bound published-root sealing",
+        ),
+        (
+            'fail("published sealed Gradle tree postcondition failed")',
+            "sealed published-tree postcondition",
+        ),
+        (
+            'fail("Gradle publication candidate root is not mode 0700")',
+            "renameable candidate-root policy",
+        ),
+        (
+            'fail("self-test accepted a writable Gradle seed directory")',
+            "writable seed-directory rejection fixture",
+        ),
+        (
+            'fail("self-test accepted a writable Gradle seed file")',
+            "writable seed-file rejection fixture",
+        ),
+        (
+            'fail("self-test did not recover the post-rename/pre-root-seal state")',
+            "interrupted root-seal recovery fixture",
+        ),
+        (
+            'fail("self-test rollback did not restore unpublished transaction state")',
+            "sealed-root rollback fixture",
+        ),
         ("RENAME_NOREPLACE = 1", "no-clobber primitive"),
         (
             'renameat2(staging_fd, "gradle-home", online_fd, '
             '"gradle-home", RENAME_NOREPLACE)',
             "no-clobber publication",
         ),
-        ("rollback_publication(online_fd, staging_fd)", "publication rollback"),
+        (
+            "rollback_publication(\n"
+            "                    online_fd,\n"
+            "                    staging_fd,",
+            "publication rollback",
+        ),
         ('return "unpublished"', "unpublished recovery"),
         ('return "published"', "published recovery"),
         (
@@ -310,6 +367,18 @@ def validate(sources: Dict[str, str]) -> None:
         ),
     ):
         require(helper, token, label)
+    require_count(
+        helper,
+        "require_sealed=True,",
+        4,
+        "complete/published/recovery sealed-tree checks",
+    )
+    require_count(
+        helper,
+        "seal_root=False,",
+        3,
+        "prepublication and recovery root-mode exceptions",
+    )
     for token, label in (
         ("RENAME_EXCHANGE", "SDK exchange"),
         ("staged_sdk_identity", "staged SDK identity"),
@@ -324,9 +393,12 @@ def validate(sources: Dict[str, str]) -> None:
         helper,
         (
             "verify_staged(",
+            'sealed_summary = inspect_tree(',
+            'seal=True,',
             'sync_tree(staging / "gradle-home")',
             'renameat2(staging_fd, "gradle-home", online_fd, '
             '"gradle-home", RENAME_NOREPLACE)',
+            'transition_root_mode(',
             "read-only Android SDK identity postcondition failed",
             "read-only Android SDK content postcondition failed",
             "published Gradle identity postcondition failed",
@@ -353,8 +425,18 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["requirements"],
+        '<span class="id">R-S11fv</span>',
+        "R-S11fv immutable Gradle seed requirement",
+    )
+    require(
+        sources["requirements"],
         "<tr><td>245</td>",
         "Appendix C #245 disposition",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>330</td>",
+        "Appendix C #330 disposition",
     )
     require(
         sources["hardening"],
@@ -365,6 +447,11 @@ def validate(sources: Dict[str, str]) -> None:
         sources["hardening"],
         "R-S11cl/R-S11e-104 umask-independent Gradle SDK fixture authority",
         "private SDK fixture correction ledger",
+    )
+    require(
+        sources["hardening"],
+        "R-S11fv/R-S11e-208 — Gradle publication/offline-seed mode closure",
+        "Gradle seed mode-closure ledger",
     )
     require(
         sources["workspace"],
@@ -467,6 +554,18 @@ MUTATIONS: Tuple[Mutation, ...] = (
              "disabledDistributionSha256Sum=", "wrapper checksum"),
     Mutation("pins", "SHA256_ANDROID_GRADLE_WRAPPER_ALL=",
              "SHA256_ANDROID_GRADLE_WRAPPER_DISABLED=", "wrapper pin"),
+    Mutation(
+        "projector",
+        "SOURCE_DIRECTORY_MODE = 0o500",
+        "SOURCE_DIRECTORY_MODE = 0o700",
+        "offline seed directory mode",
+    ),
+    Mutation(
+        "projector",
+        "SOURCE_FILE_MODES = {0o400, 0o500}",
+        "SOURCE_FILE_MODES = {0o600, 0o700}",
+        "offline seed file modes",
+    ),
     Mutation("helper", "STATE_VERSION = 2", "STATE_VERSION = 1", "state version"),
     Mutation("helper", "set(value) != expected_keys", "False", "closed state schema"),
     Mutation(
@@ -513,8 +612,46 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "        require_file(tools / name, executable=True, nonempty=True)",
         "SDK semantic closure",
     ),
-    Mutation("helper", 'sync_tree(staging / "gradle-home")',
-             "pass # Gradle output not synchronized", "durability"),
+    Mutation(
+        "helper",
+        'sync_tree(staging / "gradle-home")\n'
+        "    fsync_directory(staging)\n"
+        "    online_fd = open_directory(online)\n"
+        "    staging_fd = open_directory(staging)\n"
+        "    gradle_moved = False",
+        "pass # Gradle output not synchronized\n"
+        "    fsync_directory(staging)\n"
+        "    online_fd = open_directory(online)\n"
+        "    staging_fd = open_directory(staging)\n"
+        "    gradle_moved = False",
+        "durability",
+    ),
+    Mutation(
+        "helper",
+        "        seal=True,\n        seal_root=False,\n"
+        "        expected_identity=decode_identity(\n"
+        '            state.get("staged_gradle_identity"), "staged Gradle"\n'
+        "        ),\n    )\n    validate_semantics(",
+        "        seal=False,\n        seal_root=False,\n"
+        "        expected_identity=decode_identity(\n"
+        '            state.get("staged_gradle_identity"), "staged Gradle"\n'
+        "        ),\n    )\n    validate_semantics(",
+        "prepublication descendant sealing",
+    ),
+    Mutation(
+        "helper",
+        '            0o500,\n            "published Gradle",',
+        '            0o700,\n            "published Gradle",',
+        "published root sealing",
+    ),
+    Mutation(
+        "helper",
+        "        require_sealed=True,\n    )\n    validate_semantics(\n"
+        "        sdk,\n        gradle,",
+        "        require_sealed=False,\n    )\n    validate_semantics(\n"
+        "        sdk,\n        gradle,",
+        "complete sealed-tree check",
+    ),
     Mutation(
         "helper",
         'renameat2(staging_fd, "gradle-home", online_fd, '
@@ -524,8 +661,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "helper",
-        "rollback_publication(online_fd, staging_fd)",
-        "pass # rollback omitted",
+        "rollback_publication(\n"
+        "                    online_fd,\n"
+        "                    staging_fd,",
+        "pass # rollback omitted\n"
+        "                if False:\n"
+        "                    staging_fd,",
         "publication rollback",
     ),
     Mutation(
@@ -555,9 +696,21 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "requirements",
+        '<span class="id">R-S11fv</span>',
+        '<span class="id">R-S11fv-disabled</span>',
+        "R-S11fv requirement",
+    ),
+    Mutation(
+        "requirements",
         "<tr><td>245</td>",
         "<tr><td>245-disabled</td>",
         "Appendix C #245",
+    ),
+    Mutation(
+        "requirements",
+        "<tr><td>330</td>",
+        "<tr><td>330-disabled</td>",
+        "Appendix C #330",
     ),
     Mutation(
         "hardening",
@@ -570,6 +723,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "R-S11cl/R-S11e-104 umask-independent Gradle SDK fixture authority",
         "R-S11cl/R-S11e-104 ambient Gradle SDK fixture authority",
         "private SDK fixture correction ledger",
+    ),
+    Mutation(
+        "hardening",
+        "R-S11fv/R-S11e-208 — Gradle publication/offline-seed mode closure",
+        "R-S11fv/R-S11e-208 — writable Gradle publication mode",
+        "Gradle seed mode-closure ledger",
     ),
 )
 
@@ -587,6 +746,9 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         "wrapper": (
             repo / "flutter/android/gradle/wrapper/gradle-wrapper.properties"
         ).read_text(encoding="utf-8"),
+        "projector": (repo / "scripts/android-gradle-cache.py").read_text(
+            encoding="utf-8"
+        ),
         "verify": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
         "requirements": (repo / "requirements.html").read_text(encoding="utf-8"),
         "hardening": (repo / "HARDENING_STATUS.md").read_text(encoding="utf-8"),

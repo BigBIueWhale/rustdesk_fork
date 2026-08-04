@@ -30656,6 +30656,7 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
     helper = sources["online_gradle_output_helper"]
     online = sources["online_fetch"]
     android = sources["android_apk_build"]
+    projector = sources["android_gradle_cache_projector"]
     wrapper = sources["gradle_wrapper"]
     for text, label in (
         ("Gradle output transaction", "Gradle-output focused lifecycle binding"),
@@ -30762,8 +30763,37 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
          "        require_file(tools / name, executable=True, nonempty=True)",
          "Gradle-output SDK semantic gate"),
         ('sync_tree(staging / "gradle-home")', "Gradle-output cache durability"),
+        (
+            'sealed_summary = inspect_tree(\n'
+            '        staging / "gradle-home",\n'
+            '        owners={(uid, gid)},\n'
+            '        limits=GRADLE_LIMITS,\n'
+            '        hash_contents=False,\n'
+            '        seal=True,\n'
+            '        seal_root=False,',
+            "Gradle-output prepublication descendant sealing",
+        ),
+        (
+            'transition_root_mode(\n'
+            '            online_fd,\n'
+            '            "gradle-home",\n'
+            '            staged_gradle_identity,\n'
+            '            uid,\n'
+            '            gid,\n'
+            '            {0o700},\n'
+            '            0o500,\n'
+            '            "published Gradle",',
+            "Gradle-output published-root sealing",
+        ),
+        (
+            "published sealed Gradle tree postcondition failed",
+            "Gradle-output sealed-tree postcondition",
+        ),
         ("RENAME_NOREPLACE = 1", "Gradle-output no-clobber cache install"),
-        ("rollback_publication(online_fd, staging_fd)",
+        (
+         "rollback_publication(\n"
+         "                    online_fd,\n"
+         "                    staging_fd,",
          "Gradle-output rollback"),
         ('return "unpublished"', "Gradle-output unpublished recovery"),
         ('return "published"', "Gradle-output published recovery"),
@@ -30774,6 +30804,14 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
          "Gradle-output SDK mutation fixture"),
         ("self-test accepted an occupied Gradle publication destination",
          "Gradle-output destination-race fixture"),
+        ("self-test accepted a writable Gradle seed directory",
+         "Gradle-output writable seed-directory fixture"),
+        ("self-test accepted a writable Gradle seed file",
+         "Gradle-output writable seed-file fixture"),
+        ("self-test did not recover the post-rename/pre-root-seal state",
+         "Gradle-output interrupted-root-seal fixture"),
+        ("self-test rollback did not restore unpublished transaction state",
+         "Gradle-output sealed-root rollback fixture"),
         (
             "previous_umask = os.umask(0o077)\n"
             "        try:\n"
@@ -30798,6 +30836,18 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
         "Gradle-output SDK fixture umask restoration",
     )
     require_exact_count(
+        helper,
+        "require_sealed=True,",
+        4,
+        "Gradle-output complete/published/recovery sealed checks",
+    )
+    require_exact_count(
+        helper,
+        "seal_root=False,",
+        3,
+        "Gradle-output renameable-root exceptions",
+    )
+    require_exact_count(
         focused,
         "previous_umask = os.umask(0o077)",
         2,
@@ -30813,8 +30863,11 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
         helper,
         (
             "verify_staged(",
+            'sealed_summary = inspect_tree(',
+            'seal=True,',
             'sync_tree(staging / "gradle-home")',
             'renameat2(staging_fd, "gradle-home", online_fd, "gradle-home", RENAME_NOREPLACE)',
+            'transition_root_mode(',
             "read-only Android SDK identity postcondition failed",
             "read-only Android SDK content postcondition failed",
             "published Gradle identity postcondition failed",
@@ -30852,6 +30905,16 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
         "online-fetch Gradle output authority Appendix C row",
     )
     require_text(
+        sources["requirements"],
+        '<span class="id">R-S11fv</span>',
+        "Gradle immutable-seed requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>330</td>",
+        "Gradle immutable-seed Appendix C row",
+    )
+    require_text(
         sources["hardening"],
         "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
         "online-fetch Android SDK/Gradle correction hardening ledger",
@@ -30860,6 +30923,51 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
         sources["hardening"],
         "R-S11cl/R-S11e-104 umask-independent Gradle SDK fixture authority",
         "online-fetch Gradle SDK fixture correction ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11fv/R-S11e-208 — Gradle publication/offline-seed mode closure",
+        "Gradle immutable-seed correction ledger",
+    )
+    require_exact_count(
+        focused,
+        '<span class="id">R-S11fv</span>',
+        2,
+        "Gradle focused immutable-seed requirement binding",
+    )
+    require_exact_count(
+        focused,
+        "<tr><td>330</td>",
+        2,
+        "Gradle focused immutable-seed disposition binding",
+    )
+    require_exact_count(
+        focused,
+        "R-S11fv/R-S11e-208 — Gradle publication/offline-seed mode closure",
+        2,
+        "Gradle focused immutable-seed ledger binding",
+    )
+    require_text(
+        projector,
+        "SOURCE_DIRECTORY_MODE = 0o500",
+        "Gradle offline projector seed-directory mode",
+    )
+    require_text(
+        projector,
+        "SOURCE_FILE_MODES = {0o400, 0o500}",
+        "Gradle offline projector seed-file modes",
+    )
+    require_exact_count(
+        focused,
+        "SOURCE_DIRECTORY_MODE = 0o500",
+        2,
+        "Gradle focused projector directory-mode binding",
+    )
+    require_exact_count(
+        focused,
+        "SOURCE_FILE_MODES = {0o400, 0o500}",
+        2,
+        "Gradle focused projector file-mode binding",
     )
 
 
@@ -63363,6 +63471,54 @@ def run_source_mutations(sources):
         ),
         (
             "online_gradle_output_helper",
+            "        seal=True,\n"
+            "        seal_root=False,\n"
+            "        expected_identity=decode_identity(\n"
+            '            state.get("staged_gradle_identity"), "staged Gradle"\n'
+            "        ),\n"
+            "    )\n"
+            "    validate_semantics(",
+            "        seal=False,\n"
+            "        seal_root=False,\n"
+            "        expected_identity=decode_identity(\n"
+            '            state.get("staged_gradle_identity"), "staged Gradle"\n'
+            "        ),\n"
+            "    )\n"
+            "    validate_semantics(",
+            "Gradle-output prepublication descendant sealing",
+        ),
+        (
+            "online_gradle_output_helper",
+            '            0o500,\n            "published Gradle",',
+            '            0o700,\n            "published Gradle",',
+            "Gradle-output published-root sealing",
+        ),
+        (
+            "online_gradle_output_helper",
+            "        require_sealed=True,\n"
+            "    )\n"
+            "    validate_semantics(\n"
+            "        sdk,\n"
+            "        gradle,",
+            "        require_sealed=False,\n"
+            "    )\n"
+            "    validate_semantics(\n"
+            "        sdk,\n"
+            "        gradle,",
+            "Gradle-output complete/published/recovery sealed checks",
+        ),
+        (
+            "online_gradle_output_helper",
+            "rollback_publication(\n"
+            "                    online_fd,\n"
+            "                    staging_fd,",
+            "pass # Gradle rollback omitted\n"
+            "                if False:\n"
+            "                    staging_fd,",
+            "Gradle-output rollback",
+        ),
+        (
+            "online_gradle_output_helper",
             "previous_umask = os.umask(0o077)",
             "previous_umask = os.umask(0o002)",
             "Gradle-output private SDK fixture umask scope",
@@ -63437,10 +63593,56 @@ def run_source_mutations(sources):
             "online-fetch Gradle output authority Appendix C row",
         ),
         (
+            "requirements",
+            '<span class="id">R-S11fv</span>',
+            '<span class="id">R-S11fv-disabled</span>',
+            "Gradle immutable-seed requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>330</td>",
+            "<tr><td>330-disabled</td>",
+            "Gradle immutable-seed Appendix C row",
+        ),
+        (
             "hardening",
             "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
             "R-S11cr/R-S11e-110 — ambient Android SDK authority",
             "online-fetch Android SDK/Gradle correction hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11fv/R-S11e-208 — Gradle publication/offline-seed mode closure",
+            "R-S11fv/R-S11e-208 — writable Gradle publication mode",
+            "Gradle immutable-seed correction ledger",
+        ),
+        (
+            "online_fetch_gradle_output_authority_verifier",
+            "        '<span class=\"id\">R-S11fv</span>',\n"
+            "        \"R-S11fv immutable Gradle seed requirement\",",
+            "        '<span class=\"id\">R-S11fv-disabled</span>',\n"
+            "        \"R-S11fv immutable Gradle seed requirement\",",
+            "Gradle focused immutable-seed requirement binding",
+        ),
+        (
+            "android_gradle_cache_projector",
+            "SOURCE_DIRECTORY_MODE = 0o500",
+            "SOURCE_DIRECTORY_MODE = 0o700",
+            "Gradle offline projector seed-directory mode",
+        ),
+        (
+            "android_gradle_cache_projector",
+            "SOURCE_FILE_MODES = {0o400, 0o500}",
+            "SOURCE_FILE_MODES = {0o600, 0o700}",
+            "Gradle offline projector seed-file modes",
+        ),
+        (
+            "online_fetch_gradle_output_authority_verifier",
+            '        ("SOURCE_DIRECTORY_MODE = 0o500", '
+            '"offline seed directory mode"),',
+            '        ("SOURCE_DIRECTORY_MODE = 0o700", '
+            '"offline seed directory mode"),',
+            "Gradle focused projector directory-mode binding",
         ),
         (
             "online_fetch_cargo_tool_output_authority_verifier",
@@ -68124,6 +68326,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "android_gradle_release_gate": (
                 repo / "scripts/test-android-gradle-cache.sh"
+            ).read_text(encoding="utf-8"),
+            "android_gradle_cache_projector": (
+                repo / "scripts/android-gradle-cache.py"
             ).read_text(encoding="utf-8"),
             "android_builder_image_authority_verifier": (
                 repo / "scripts/verify-android-builder-image-authority.py"

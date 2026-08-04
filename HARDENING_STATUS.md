@@ -16760,9 +16760,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Android/device/native installed-platform behavior, authenticate other maintenance images,
   or complete R-V3 external review.
 - **R-S11dd/R-S11e-122 — runtime-smoke host, Docker-client, build-user, and checkout-write
-  authority — SOURCE IMPLEMENTED 2026-07-26; CONFINED SYNTAX, HELPER SELF-TEST, WORKSPACE
-  NORMAL, AND COMPLETE SOURCE-MUTATION VERIFICATION PASS; FULL ROOT-CONTAINING RUNTIME SMOKE,
-  EXACT R-B2 ARTIFACT, AND EXTERNAL-REVIEW EVIDENCE REMAIN OPEN.** Platform: the unprivileged
+  authority — SOURCE IMPLEMENTED 2026-07-26; PRIOR CONFINED SYNTAX, HELPER SELF-TEST, WORKSPACE
+  NORMAL, AND COMPLETE SOURCE-MUTATION VERIFICATION PASS; DISJOINT TARGET CORRECTION CONFINED
+  NORMAL AND COMPLETE SOURCE-MUTATION VERIFICATION PASS 2026-08-04; FULL ROOT-CONTAINING RUNTIME
+  SMOKE, EXACT R-B2 ARTIFACT, AND EXTERNAL-REVIEW
+  EVIDENCE REMAIN OPEN.** Platform: the unprivileged
   Linux build host and the container-only Linux
   runtime-smoke fixtures. Endpoint/action: `scripts/smoke-server.sh` Docker resolution,
   compilation, ordinary runtime, service lifecycle, PID-reuse, and sibling orchestration;
@@ -16807,8 +16809,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `HEAD` commit, creates a private `git archive`, extracts it with canonical read-only modes,
   records independent archive and complete-tree SHA-256 values, and verifies source object
   identity and tree content after compilation and again after all runtime stages. The only
-  Cargo output bind is a new private mode-0700 target owned by the invoking user. The build
-  alone receives the canonical offline-input root read-only; every ordinary, lifecycle,
+  Cargo output bind is a new private mode-0700 target owned by the invoking user. It is mounted
+  at the disjoint top-level `/smoke-target`, never below the read-only `/work` source mount. The
+  build alone receives the canonical offline-input root read-only; every ordinary, lifecycle,
   PID-reuse, and sibling fixture receives only the exact source snapshot and private target
   read-only. The root/capability-requiring service and
   PID-reuse fixtures remain container-only with network none, no published port, Docker
@@ -16835,6 +16838,22 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   source-generation transaction is added to this non-Flutter smoke, and no ignored output is
   silently treated as committed authority.
 
+  The first replay of committed exact-source correction
+  `e5ec1105e0b18ee512060632b99ff7ed759a8cfc` on 2026-08-04 failed closed before any
+  container command or RustDesk product code started: Docker could not create the requested
+  nested `/work/target` mountpoint beneath the read-only exact-source mount. The transcript had
+  already bound source archive SHA-256
+  `17c52eae53782d9b8e48c852dec174610787285ca77c462aff5eb83d066aa690` and tree SHA-256
+  `7eb9c258ec3ba5fec97d7bfc7f29165ada67a1aa4fd1b274d727b349ae7aca08`.
+  Cleanup removed the private smoke workspace and test container state; the attempt opened no
+  listener and exercised no product behavior. This was a harness mount-topology defect, not a
+  RustDesk runtime failure. The source correction now uses disjoint `/work` and
+  `/smoke-target` mounts. Bash/Python syntax, the independent normal semantic contract, the
+  native-codec normal/self-test gates, and one uninterrupted complete source-mutation catalog
+  passed in the same pinned non-root, networkless, read-only verifier image. The correction
+  remains unpromoted to runtime evidence until that exact committed topology passes the complete
+  confined product replay.
+
   Bash syntax for the smoke and shared gate, Python syntax for the process helper and
   independent workspace validator, the pure process-helper positive/negative self-test, the
   workspace normal semantic contract, and its complete in-memory source-mutation catalog pass
@@ -16853,9 +16872,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   No project application binary, root fixture, host-process scan, listener, firewall/network
   query, or host RustDesk process/service/configuration inspection or mutation was performed
-  while implementing or verifying this source slice. The full root-containing runtime smoke
-  was intentionally not run; its current-source runtime behavior and exact artifact remain
-  R-B2 evidence, and external expert review remains R-V3.
+  while implementing or verifying the original source slice. The later failed exact-source
+  replay entered Docker only far enough to encounter the pre-command mount error described
+  above; it did not start the application. The full root-containing runtime smoke was
+  intentionally not run; its current-source runtime behavior and exact artifact remain R-B2
+  evidence, and external expert review remains R-V3.
 - **R-S11de/R-S11e-123 — Dart/FRB Docker client, daemon, and configuration authority —
   SOURCE, DELIBERATE-MUTATION GATES, AND CONFINED CURRENT-WORKTREE FULL TRANSACTION
   VERIFIED 2026-07-26; COLD INPUT ACQUISITION, EXACT CLEAN R-B2 ARTIFACT,
@@ -20171,7 +20192,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-9a3d75e26c3118a65ef52a27334d51de195b624581a94aa60737658c9d9d15a0  requirements.html
+b50f91f37b1e267fa46df300c0320bb74665b4b03b58fc2c9a08f52829276c57  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

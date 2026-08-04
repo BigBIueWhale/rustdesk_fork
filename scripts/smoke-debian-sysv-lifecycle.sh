@@ -3,13 +3,13 @@ set -euo pipefail
 umask 077
 
 readonly ROOT=/work
-readonly BINARY=$ROOT/target/debug/rustdesk
+readonly BINARY=/smoke-target/debug/rustdesk
 readonly INIT_SOURCE=$ROOT/res/rustdesk.init
 readonly UNIT_SOURCE=$ROOT/res/rustdesk.service
 readonly CONTROL_SOURCE=$ROOT/res/DEBIAN
 readonly READY=$ROOT/scripts/smoke-ready.sh
 readonly PROCESS_GUARD=$ROOT/scripts/smoke-process-guard.py
-readonly LAUNCHER_SOURCE=$ROOT/target/smoke-server-launcher
+readonly LAUNCHER_SOURCE=/smoke-target/smoke-server-launcher
 readonly FIXTURE=/tmp/rustdesk-debian-sysv
 readonly PACKAGE=rustdesk-sysv-smoke
 readonly PORTABLE_UID=4000

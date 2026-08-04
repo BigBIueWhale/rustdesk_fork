@@ -404,7 +404,7 @@ BUILD_RUN=(smoke_docker run --rm --network none --pull=never --read-only
   --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=2g
   --env HOME=/tmp/smoke-build
   --env CARGO_HOME=/tmp/smoke-cargo-home
-  --env CARGO_TARGET_DIR=/work/target
+  --env CARGO_TARGET_DIR=/smoke-target
   --env CARGO_INCREMENTAL=0
   --env CARGO_NET_OFFLINE=true
   --env CARGO_NET_RETRY=0
@@ -414,7 +414,7 @@ BUILD_RUN=(smoke_docker run --rm --network none --pull=never --read-only
   --env "SMOKE_EXPECTED_VENDOR_CONFIG_SHA256=$SMOKE_VENDOR_CONFIG_SHA256"
   --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"
   --mount "type=bind,source=$SMOKE_ONLINE_ROOT,target=/online,readonly"
-  -v "$SMOKE_BUILD_TARGET:/work/target:rw"
+  -v "$SMOKE_BUILD_TARGET:/smoke-target:rw"
   -w /work "$IMAGE_ID")
 RUN=(smoke_docker run --rm --network none --pull=never --read-only
   --user "$BUILD_UID:$BUILD_GID"
@@ -427,15 +427,15 @@ RUN=(smoke_docker run --rm --network none --pull=never --read-only
   --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=1g
   --env HOME=/tmp/smoke-runtime
   --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"
-  -v "$SMOKE_BUILD_TARGET:/work/target:ro"
+  -v "$SMOKE_BUILD_TARGET:/smoke-target:ro"
   -w /work "$IMAGE_ID")
 ROOT_RUN=(smoke_docker run --rm --network none --pull=never
   --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"
-  -v "$SMOKE_BUILD_TARGET:/work/target:ro"
+  -v "$SMOKE_BUILD_TARGET:/smoke-target:ro"
   -w /work "$IMAGE_ID")
 LIFECYCLE_RUN=(smoke_docker run --rm --network none --cap-add SYS_PTRACE --pull=never
   --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"
-  -v "$SMOKE_BUILD_TARGET:/work/target:ro"
+  -v "$SMOKE_BUILD_TARGET:/smoke-target:ro"
   -w /work "$IMAGE_ID")
 PID_REUSE_RUN=(smoke_docker run --rm --network none --read-only --pids-limit 128 --pull=never
   --cap-drop ALL --cap-add SYS_ADMIN --cap-add CHECKPOINT_RESTORE --cap-add SETPCAP
@@ -443,7 +443,7 @@ PID_REUSE_RUN=(smoke_docker run --rm --network none --read-only --pids-limit 128
   --tmpfs /tmp:rw,nosuid,nodev,mode=1777
   --tmpfs /run:rw,nosuid,nodev,noexec,mode=755
   --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"
-  -v "$SMOKE_BUILD_TARGET:/work/target:ro"
+  -v "$SMOKE_BUILD_TARGET:/smoke-target:ro"
   -w /work "$IMAGE_ID")
 PORT_HEX='527E' # 21118
 LOOPBACK_LISTEN='0100007F:527E' # 127.0.0.1:21118
@@ -488,7 +488,7 @@ start_sibling_docker() {
   SIBLING_NAME="rd-smoke-sibling-$suffix"
   if docker_out=$(smoke_docker run -d --name "$SIBLING_NAME" --network none --pull=never \
       --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly" \
-      -v "$SMOKE_BUILD_TARGET:/work/target:ro" \
+      -v "$SMOKE_BUILD_TARGET:/smoke-target:ro" \
       -v "$SIBLING_ROOT:/sibling:rw" \
       -w /work "$IMAGE_ID" \
       bash --noprofile --norc /work/scripts/smoke-server-stage.sh sibling-docker-server 2>&1); then

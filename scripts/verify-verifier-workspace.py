@@ -4325,7 +4325,7 @@ def validate_smoke_contract(
         ('--user "$BUILD_UID:$BUILD_GID"', "build-container invoking identity"),
         ('--cap-drop ALL', "build-container capability removal"),
         ('--security-opt no-new-privileges', "container privilege-gain refusal"),
-        ('-v "$SMOKE_BUILD_TARGET:/work/target:rw"', "private writable build target"),
+        ('-v "$SMOKE_BUILD_TARGET:/smoke-target:rw"', "private writable build target"),
         ('LIFECYCLE_RUN=(smoke_docker run --rm --network none --cap-add SYS_PTRACE', "network-isolated lifecycle procfs authority"),
         ('PID_REUSE_RUN=(smoke_docker run --rm --network none --read-only --pids-limit 128', "isolated PID reuse container"),
         ('--cap-drop ALL --cap-add SYS_ADMIN --cap-add CHECKPOINT_RESTORE --cap-add SETPCAP', "PID reuse minimal capability set"),
@@ -4333,7 +4333,7 @@ def validate_smoke_contract(
         ('--tmpfs /tmp:rw,nosuid,nodev,mode=1777', "PID reuse private tmpfs"),
         ('--tmpfs /run:rw,nosuid,nodev,noexec,mode=755', "PID reuse private runtime tmpfs"),
         ('--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"', "read-only exact-commit runtime source bind"),
-        ('-v "$SMOKE_BUILD_TARGET:/work/target:ro"', "read-only runtime build target"),
+        ('-v "$SMOKE_BUILD_TARGET:/smoke-target:ro"', "read-only runtime build target"),
         ('run_stage build_out "${BUILD_RUN[@]}"', "complete build transcript capture"),
         ('record_stage_status R-B4-build', "build status preservation"),
         ('record_stage_status R-S11c-27i', "hostile-record stage status preservation"),
@@ -4447,28 +4447,28 @@ def validate_smoke_contract(
         ('"$READY" --hold-running "$SRV" "$SRV_START" /tmp/sibling-docker.log 1 "sibling docker stop poll"', "sibling Docker identity-monitored stop wait"),
         ('SIBLING_DOCKER_READY pid=', "sibling Docker ready marker"),
         ('SIBLING_DOCKER_SURVIVED=pass pid=', "sibling Docker survival marker"),
-        ('install -o root -g root -m 0711 /work/target/debug/rustdesk /usr/bin/rustdesk', "identical installed-path fixture"),
+        ('install -o root -g root -m 0711 /smoke-target/debug/rustdesk /usr/bin/rustdesk', "identical installed-path fixture"),
         ('"$SERVER_LAUNCHER" "$installed_server" --service-owned-server', "sibling exact service-owned role"),
         ('"$PROCESS_GUARD" wait-service-server', "exact-role sibling identity proof"),
         ('SIBLING_CONTAINER_IDENTITY_READY pid=', "cross-container ready identity"),
         ('SIBLING_CONTAINER_IDENTITY_SURVIVED=pass pid=', "cross-container survivor identity"),
-        ('chmod 0755 target/debug/rustdesk', "installed-mode lifecycle executable"),
+        ('chmod 0755 /smoke-target/debug/rustdesk', "installed-mode lifecycle executable"),
         ('bash --noprofile --norc /work/scripts/smoke-service-lifecycle.sh', "mounted lifecycle script dispatch"),
         ('fixture=/tmp/rd-smoke-nonroot', "non-root fixture root"),
         ('install -d -o root -g "$gid" -m 0750 "$fixture" "$fixture/bin"', "protected fixture directories"),
         ('install -d -o rduser -g "$gid" -m 0700 "$fixture/home"', "private non-root home"),
-        ('install -o root -g "$gid" -m 0550 target/debug/rustdesk "$fixture/bin/rustdesk"', "portable server fixture"),
-        ('install -o root -g "$gid" -m 0550 target/debug/examples/seed_password "$fixture/bin/seed_password"', "password seeder fixture"),
-        ('install -o root -g "$gid" -m 0550 target/debug/examples/probe_client "$fixture/bin/probe_client"', "probe client fixture"),
-        ('install -o root -g "$gid" -m 0550 target/debug/examples/smoke_readiness "$fixture/bin/smoke_readiness"', "typed readiness probe fixture"),
-        ('install -o root -g "$gid" -m 0440 target/smoke-bind-loopback.so "$fixture/bin/smoke-bind-loopback.so"', "bind shim fixture"),
-        ('install -o root -g "$gid" -m 0550 target/smoke-server-launcher "$fixture/bin/smoke-server-launcher"', "neutral launcher fixture"),
+        ('install -o root -g "$gid" -m 0550 /smoke-target/debug/rustdesk "$fixture/bin/rustdesk"', "portable server fixture"),
+        ('install -o root -g "$gid" -m 0550 /smoke-target/debug/examples/seed_password "$fixture/bin/seed_password"', "password seeder fixture"),
+        ('install -o root -g "$gid" -m 0550 /smoke-target/debug/examples/probe_client "$fixture/bin/probe_client"', "probe client fixture"),
+        ('install -o root -g "$gid" -m 0550 /smoke-target/debug/examples/smoke_readiness "$fixture/bin/smoke_readiness"', "typed readiness probe fixture"),
+        ('install -o root -g "$gid" -m 0440 /smoke-target/smoke-bind-loopback.so "$fixture/bin/smoke-bind-loopback.so"', "bind shim fixture"),
+        ('install -o root -g "$gid" -m 0550 /smoke-target/smoke-server-launcher "$fixture/bin/smoke-server-launcher"', "neutral launcher fixture"),
         ('install -o root -g "$gid" -m 0550 scripts/smoke-ready.sh "$fixture/bin/smoke-ready.sh"', "readiness checker fixture"),
         ('install -o root -g "$gid" -m 0550 scripts/smoke-process-guard.py "$fixture/bin/smoke-process-guard.py"', "process proof fixture"),
         ('su -s /bin/bash -c /tmp/rd-smoke-nonroot/run.sh rduser', "non-root runner dispatch"),
         ('echo SOURCE_BIND_UNCHANGED=yes', "source-bind postcondition"),
-        ('$READY --wait-parked "$SRV" "$SRV_START" /tmp/srv1.log /work/target/debug/examples/smoke_readiness "$(id -u)"', "parked-server actual-owner readiness proof"),
-        ('$READY --wait-user-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness "$(id -u)"', "root user-owned IPC actual-owner readiness proof"),
+        ('$READY --wait-parked "$SRV" "$SRV_START" /tmp/srv1.log /smoke-target/debug/examples/smoke_readiness "$(id -u)"', "parked-server actual-owner readiness proof"),
+        ('$READY --wait-user-server "$SRV" "$SRV_START" /tmp/srv.log /smoke-target/debug/examples/smoke_readiness "$(id -u)"', "root user-owned IPC actual-owner readiness proof"),
         ('"$bin/smoke-ready.sh" --wait-user-server "$SRV" "$SRV_START" "$HOME/srv2c.log" "$bin/smoke_readiness" 4000', "non-root user-owned IPC readiness proof"),
         ('$READY --wait-key-failure', "key-failure observation proof"),
         ('$READY --wait-capacity-shed', "capacity-shed observation proof"),
@@ -4480,6 +4480,8 @@ def validate_smoke_contract(
     ):
         require_text(stage, text, label)
     for text, label in (
+        ('readonly BINARY=/smoke-target/debug/rustdesk', "Debian SysV disjoint source binary"),
+        ('readonly LAUNCHER_SOURCE=/smoke-target/smoke-server-launcher', "Debian SysV disjoint launcher source"),
         ('[ "${ID:-}" = debian ]', "Debian SysV operating-system proof"),
         ('[ "${VERSION_CODENAME:-}" = bookworm ]', "Debian SysV release proof"),
         ('[ ! -e /run/systemd/system ]', "Debian SysV backend proof"),
@@ -4509,6 +4511,9 @@ def validate_smoke_contract(
         "audited Debian OpenRC package pin",
     )
     for text, label in (
+        ('readonly SOURCE_BINARY=/smoke-target/debug/rustdesk', "native OpenRC disjoint source binary"),
+        ('readonly LAUNCHER_SOURCE=/smoke-target/smoke-server-launcher', "native OpenRC disjoint launcher source"),
+        ('readonly PROBE=/smoke-target/debug/examples/smoke_readiness', "native OpenRC disjoint readiness probe"),
         ('readonly OPENRC_VERSION=0.45.2-2+deb12u1', "native OpenRC exact version"),
         ('[ "$(dpkg-query -W -f=\'${Version}\' openrc)" = "$OPENRC_VERSION" ]', "native OpenRC installed-version proof"),
         ('[ "${VERSION_CODENAME:-}" = bookworm ]', "native OpenRC Debian release proof"),
@@ -4545,6 +4550,9 @@ def validate_smoke_contract(
         "audited Debian runit package pin",
     )
     for text, label in (
+        ('readonly SOURCE_BINARY=/smoke-target/debug/rustdesk', "native runit disjoint source binary"),
+        ('readonly LAUNCHER_SOURCE=/smoke-target/smoke-server-launcher', "native runit disjoint launcher source"),
+        ('readonly PROBE=/smoke-target/debug/examples/smoke_readiness', "native runit disjoint readiness probe"),
         ('readonly RUNIT_VERSION=2.1.2-54', "native runit exact version"),
         ('[ "$(dpkg-query -W -f=\'${Version}\' runit)" = "$RUNIT_VERSION" ]', "native runit installed-version proof"),
         ('[ "${VERSION_CODENAME:-}" = bookworm ]', "native runit Debian release proof"),
@@ -4607,7 +4615,7 @@ def validate_smoke_contract(
         ('RD_SERVICE_SMOKE_FORCE_PIDFD_UNAVAILABLE=1', "forced pidfd-unavailable runtime exercise"),
         ('SERVICE_LIFECYCLE_PIDFD_UNAVAILABLE_REFUSAL=pass generation=', "pidfd-unavailable runtime result"),
         ('PORTABLE_NONINTERFERENCE=pass uid=4000', "portable survival result"),
-        ('readonly SOURCE_BINARY=/work/target/debug/rustdesk', "manual lifecycle source binary"),
+        ('readonly SOURCE_BINARY=/smoke-target/debug/rustdesk', "manual lifecycle source binary"),
         ('readonly BINARY=/usr/bin/rustdesk', "manual lifecycle identical installed path"),
         ('[ "$INSTALLED_BINARY_IDENTITY" != "$SOURCE_BINARY_IDENTITY" ]', "installed executable object separation"),
         ('expected_executable = os.stat(sys.argv[8])', "expected installed executable proof"),
@@ -4700,11 +4708,11 @@ def validate_smoke_contract(
         raise VerificationError("non-root smoke fixture must stage exactly eight root-owned runtime files")
     if stage.count('$READY --wait-server') < 10:
         raise VerificationError("runtime smoke does not readiness-gate every ordinary server startup")
-    if stage.count('/work/target/debug/examples/smoke_readiness "$(id -u)"') != 14:
+    if stage.count('/smoke-target/debug/examples/smoke_readiness "$(id -u)"') != 14:
         raise VerificationError("runtime smoke readiness is not bound to each actual server owner")
     if stage.count('$READY --terminate-server') < 10:
         raise VerificationError("runtime smoke does not bound and prove ordinary server shutdown")
-    if stage.count('start_server /work/target/debug/rustdesk') != 12:
+    if stage.count('start_server /smoke-target/debug/rustdesk') != 12:
         raise VerificationError("runtime smoke does not route every ordinary server through the launcher")
     if stage.count('start_server /usr/share/rustdesk/rustdesk') != 1:
         raise VerificationError("installed-layout smoke does not route through the launcher")
@@ -12792,7 +12800,7 @@ def validate_smoke_container_authority_contract(sources):
         ("--cpus 4", "build CPU ceiling"),
         ("/tmp:rw,exec,nosuid,nodev,mode=1777,size=2g", "build scratch ceiling"),
         ("CARGO_HOME=/tmp/smoke-cargo-home", "private Cargo home"),
-        ("CARGO_TARGET_DIR=/work/target", "private Cargo target selection"),
+        ("CARGO_TARGET_DIR=/smoke-target", "private Cargo target selection"),
         ("CARGO_INCREMENTAL=0", "incremental compilation refusal"),
         ("CARGO_NET_OFFLINE=true", "Cargo network refusal"),
         ("CARGO_NET_RETRY=0", "Cargo retry refusal"),
@@ -12802,7 +12810,7 @@ def validate_smoke_container_authority_contract(sources):
         ('SMOKE_EXPECTED_VENDOR_CONFIG_SHA256=$SMOKE_VENDOR_CONFIG_SHA256', "canonical vendor source-map authority"),
         ('--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"', "build read-only exact-commit source"),
         ('--mount "type=bind,source=$SMOKE_ONLINE_ROOT,target=/online,readonly"', "build read-only offline input"),
-        ('-v "$SMOKE_BUILD_TARGET:/work/target:rw"', "build private writable target"),
+        ('-v "$SMOKE_BUILD_TARGET:/smoke-target:rw"', "build private writable target"),
     ):
         require_text(build, token, label)
     require_absent(smoke, '$PWD:/work:', "live-checkout mount authority")
@@ -12849,7 +12857,7 @@ def validate_smoke_container_authority_contract(sources):
         )
         require_text(
             block,
-            '-v "$SMOKE_BUILD_TARGET:/work/target:ro"',
+            '-v "$SMOKE_BUILD_TARGET:/smoke-target:ro"',
             f"{label} read-only target",
         )
 
@@ -12978,7 +12986,7 @@ def validate_smoke_container_authority_contract(sources):
         ('--expected "$SMOKE_EXPECTED_VENDOR_CLOSURE_SHA256"', "vendor closure digest binding"),
         ('actual_config_sha=$(/usr/bin/sha256sum -- "$CARGO_VENDOR_CONFIG"', "vendor source-map digest binding"),
         ('[ "${CARGO_HOME:-}" = /tmp/smoke-cargo-home ]', "private Cargo-home refusal"),
-        ('[ "${CARGO_TARGET_DIR:-}" = /work/target ]', "private target refusal"),
+        ('[ "${CARGO_TARGET_DIR:-}" = /smoke-target ]', "private target refusal"),
         ('[ "${CARGO_NET_OFFLINE:-}" = true ]', "Cargo offline environment enforcement"),
         ('[ "${CARGO_INCREMENTAL:-}" = 0 ]', "incremental compilation enforcement"),
         ('[ ! -e "$CARGO_HOME" ] && [ ! -L "$CARGO_HOME" ]', "fresh Cargo-home enforcement"),
@@ -44036,14 +44044,14 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
-            '  -v "$SMOKE_BUILD_TARGET:/work/target:rw"',
-            '  -v "$PWD/target:/work/target:rw"',
+            '  -v "$SMOKE_BUILD_TARGET:/smoke-target:rw"',
+            '  -v "$PWD/target:/smoke-target:rw"',
             "build private writable target",
         ),
         (
             "smoke",
-            '  --env HOME=/tmp/smoke-runtime\n  --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"\n  -v "$SMOKE_BUILD_TARGET:/work/target:ro"',
-            '  --env HOME=/tmp/smoke-runtime\n  --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"\n  -v "$SMOKE_BUILD_TARGET:/work/target:rw"',
+            '  --env HOME=/tmp/smoke-runtime\n  --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"\n  -v "$SMOKE_BUILD_TARGET:/smoke-target:ro"',
+            '  --env HOME=/tmp/smoke-runtime\n  --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"\n  -v "$SMOKE_BUILD_TARGET:/smoke-target:rw"',
             "ordinary runtime read-only target",
         ),
         (
@@ -45478,14 +45486,14 @@ def run_source_mutations(sources):
         ),
         (
             "smoke_stage",
-            'install -o root -g "$gid" -m 0550 target/debug/examples/probe_client "$fixture/bin/probe_client"',
+            'install -o root -g "$gid" -m 0550 /smoke-target/debug/examples/probe_client "$fixture/bin/probe_client"',
             "true # probe client fixture removed",
             "probe client fixture",
         ),
         (
             "smoke_stage",
-            "chmod 0755 target/debug/rustdesk",
-            "chmod 0700 target/debug/rustdesk",
+            "chmod 0755 /smoke-target/debug/rustdesk",
+            "chmod 0700 /smoke-target/debug/rustdesk",
             "installed-mode lifecycle executable",
         ),
         (
@@ -45496,8 +45504,8 @@ def run_source_mutations(sources):
         ),
         (
             "smoke_stage",
-            '$READY --wait-parked "$SRV" "$SRV_START" /tmp/srv1.log /work/target/debug/examples/smoke_readiness "$(id -u)"',
-            '$READY --wait-parked "$SRV" "$SRV_START" /tmp/srv1.log /work/target/debug/examples/smoke_readiness 0',
+            '$READY --wait-parked "$SRV" "$SRV_START" /tmp/srv1.log /smoke-target/debug/examples/smoke_readiness "$(id -u)"',
+            '$READY --wait-parked "$SRV" "$SRV_START" /tmp/srv1.log /smoke-target/debug/examples/smoke_readiness 0',
             "parked-server actual-owner readiness proof",
         ),
         (
@@ -45508,7 +45516,7 @@ def run_source_mutations(sources):
         ),
         (
             "smoke_stage",
-            '$READY --wait-user-server "$SRV" "$SRV_START" /tmp/srv.log /work/target/debug/examples/smoke_readiness "$(id -u)"',
+            '$READY --wait-user-server "$SRV" "$SRV_START" /tmp/srv.log /smoke-target/debug/examples/smoke_readiness "$(id -u)"',
             'true # root IPC readiness proof removed',
             "root user-owned IPC actual-owner readiness proof",
         ),
@@ -50138,7 +50146,7 @@ def run_source_mutations(sources):
         (
             "service_lifecycle",
             'readonly BINARY=/usr/bin/rustdesk',
-            'readonly BINARY=/work/target/debug/rustdesk',
+            'readonly BINARY=/smoke-target/debug/rustdesk',
             "manual lifecycle identical installed path",
         ),
         (
@@ -50209,6 +50217,12 @@ def run_source_mutations(sources):
         ),
         (
             "debian_sysv_lifecycle",
+            "readonly BINARY=/smoke-target/debug/rustdesk",
+            "readonly BINARY=$ROOT/target/debug/rustdesk",
+            "Debian SysV disjoint source binary",
+        ),
+        (
+            "debian_sysv_lifecycle",
             "assert_wrong_executable_alive() {",
             "assert_wrong_executable_alive_removed() {",
             "Debian SysV wrong-executable survival proof",
@@ -50245,6 +50259,12 @@ def run_source_mutations(sources):
         ),
         (
             "openrc_lifecycle",
+            "readonly PROBE=/smoke-target/debug/examples/smoke_readiness",
+            "readonly PROBE=$ROOT/target/debug/examples/smoke_readiness",
+            "native OpenRC disjoint readiness probe",
+        ),
+        (
+            "openrc_lifecycle",
             'run_openrc zap "$FIXTURE/crashed-zap.log"',
             'true # explicit OpenRC crash-state reset removed',
             "explicit OpenRC crash-state reset",
@@ -50272,6 +50292,12 @@ def run_source_mutations(sources):
             'runit=2.1.2-54',
             'runit',
             "audited Debian runit package pin",
+        ),
+        (
+            "runit_lifecycle",
+            "readonly LAUNCHER_SOURCE=/smoke-target/smoke-server-launcher",
+            "readonly LAUNCHER_SOURCE=$ROOT/target/smoke-server-launcher",
+            "native runit disjoint launcher source",
         ),
         (
             "runit_lifecycle",
@@ -50462,7 +50488,7 @@ def run_source_mutations(sources):
         (
             "smoke",
             'bash --noprofile --norc /work/scripts/smoke-server-stage.sh parked',
-            'bash -c "/work/target/debug/rustdesk --server"',
+            'bash -c "/smoke-target/debug/rustdesk --server"',
             "exact mounted stage dispatch",
         ),
         (

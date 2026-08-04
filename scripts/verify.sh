@@ -5629,7 +5629,7 @@ done
 for smoke_readonly_run_block in "$smoke_runtime_run" "$smoke_root_run" "$smoke_lifecycle_run" "$smoke_pid_reuse_run" "$smoke_sibling_run"; do
   grep -qF -- '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"' <<<"$smoke_readonly_run_block" \
     || r_s11e64="$r_s11e64 runtime-read-only-source-missing"
-  grep -qF -- '-v "$SMOKE_BUILD_TARGET:/work/target:ro"' <<<"$smoke_readonly_run_block" \
+  grep -qF -- '-v "$SMOKE_BUILD_TARGET:/smoke-target:ro"' <<<"$smoke_readonly_run_block" \
     || r_s11e64="$r_s11e64 runtime-read-only-target-missing"
 done
 grep -qF -- '--user "$BUILD_UID:$BUILD_GID"' <<<"$smoke_build_run" \
@@ -5642,7 +5642,7 @@ grep -qF -- '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"' <<<
   || r_s11e64="$r_s11e64 build-read-only-exact-source-missing"
 grep -qF -- '--mount "type=bind,source=$SMOKE_ONLINE_ROOT,target=/online,readonly"' <<<"$smoke_build_run" \
   || r_s11e64="$r_s11e64 build-read-only-online-input-missing"
-grep -qF -- '-v "$SMOKE_BUILD_TARGET:/work/target:rw"' <<<"$smoke_build_run" \
+grep -qF -- '-v "$SMOKE_BUILD_TARGET:/smoke-target:rw"' <<<"$smoke_build_run" \
   || r_s11e64="$r_s11e64 private-build-target-missing"
 for smoke_rootless_token in \
   '--user "$BUILD_UID:$BUILD_GID"' \
@@ -5677,7 +5677,7 @@ for root_stage in password-root password-nonroot password-installed capture; do
 done
 for smoke_build_env in \
   'CARGO_HOME=/tmp/smoke-cargo-home' \
-  'CARGO_TARGET_DIR=/work/target' \
+  'CARGO_TARGET_DIR=/smoke-target' \
   'CARGO_INCREMENTAL=0' \
   'CARGO_NET_OFFLINE=true' \
   'CARGO_NET_RETRY=0' \
@@ -7583,7 +7583,7 @@ echo "== (3b-iii-h2i) Linux active-seat service child takes the real non-root de
 r_s11c27h=
 grep -qF 'SERVICE_OWNED_SERVER_EXECUTABLE_FD_ENV' src/common.rs src/platform/linux.rs || r_s11c27h="$r_s11c27h executable-fd-binding-missing"
 grep -qF 'nix::unistd::close(executable_fd)' src/platform/linux.rs || r_s11c27h="$r_s11c27h final-image-executable-fd-close-missing"
-grep -qF 'chmod 0755 target/debug/rustdesk' scripts/smoke-server-stage.sh || r_s11c27h="$r_s11c27h installed-executable-mode-not-modeled"
+grep -qF 'chmod 0755 /smoke-target/debug/rustdesk' scripts/smoke-server-stage.sh || r_s11c27h="$r_s11c27h installed-executable-mode-not-modeled"
 grep -qF 'stat -c '\''%u:%g:%a'\'' -- "$BINARY"' scripts/smoke-service-lifecycle.sh || r_s11c27h="$r_s11c27h executable-owner-mode-not-asserted"
 grep -qF 'mode=$(sed -n' scripts/smoke-service-loginctl.sh || r_s11c27h="$r_s11c27h switchable-active-seat-fixture-missing"
 grep -qF 'uid=4001' scripts/smoke-service-loginctl.sh || r_s11c27h="$r_s11c27h non-root-seat-uid-missing"
@@ -7713,6 +7713,8 @@ bash -n scripts/smoke-debian-sysv-lifecycle.sh scripts/smoke-server-stage.sh scr
 dash -n res/rustdesk.init res/DEBIAN/preinst res/DEBIAN/postinst res/DEBIAN/prerm res/DEBIAN/postrm || r_s11c27l="$r_s11c27l package-shell-syntax-invalid"
 [ "$(stat -c %a res/rustdesk.init)" = 755 ] || r_s11c27l="$r_s11c27l init-script-not-executable"
 [ "$(stat -c %a scripts/smoke-debian-sysv-lifecycle.sh)" = 755 ] || r_s11c27l="$r_s11c27l smoke-script-not-executable"
+grep -qF 'readonly BINARY=/smoke-target/debug/rustdesk' scripts/smoke-debian-sysv-lifecycle.sh || r_s11c27l="$r_s11c27l disjoint-source-binary-missing"
+grep -qF 'readonly LAUNCHER_SOURCE=/smoke-target/smoke-server-launcher' scripts/smoke-debian-sysv-lifecycle.sh || r_s11c27l="$r_s11c27l disjoint-launcher-source-missing"
 grep -qF 'PIDFILE=/run/rustdesk.pid' res/rustdesk.init || r_s11c27l="$r_s11c27l init-pidfile-missing"
 grep -qF -- '--background --make-pidfile' res/rustdesk.init || r_s11c27l="$r_s11c27l init-owned-pid-missing"
 grep -qF -- '--retry=TERM/30/KILL/5' res/rustdesk.init || r_s11c27l="$r_s11c27l bounded-graceful-stop-missing"
@@ -7974,7 +7976,7 @@ for token in \
     || r_s11c27n="$r_s11c27n production:${token%% *}"
 done
 for token in \
-  'readonly SOURCE_BINARY=/work/target/debug/rustdesk' \
+  'readonly SOURCE_BINARY=/smoke-target/debug/rustdesk' \
   'readonly BINARY=/usr/bin/rustdesk' \
   'INSTALLED_BINARY_IDENTITY=$(stat -Lc' \
   '[ "$INSTALLED_BINARY_IDENTITY" != "$SOURCE_BINARY_IDENTITY" ]' \
@@ -7986,7 +7988,7 @@ for token in \
     || r_s11c27n="$r_s11c27n main-fixture:${token%% *}"
 done
 for token in \
-  'install -o root -g root -m 0711 /work/target/debug/rustdesk /usr/bin/rustdesk' \
+  'install -o root -g root -m 0711 /smoke-target/debug/rustdesk /usr/bin/rustdesk' \
   'installed_server=/usr/bin/rustdesk' \
   'RUSTDESK_SERVICE_OWNED_SERVER_LAUNCH_PARENT="$$"' \
   'RUSTDESK_SERVICE_OWNED_SERVER_GENERATION="$service_generation"' \
@@ -8201,6 +8203,9 @@ for token in \
     || r_s11c27q="$r_s11c27q orchestration:${token%% *}"
 done
 for token in \
+  'readonly SOURCE_BINARY=/smoke-target/debug/rustdesk' \
+  'readonly LAUNCHER_SOURCE=/smoke-target/smoke-server-launcher' \
+  'readonly PROBE=/smoke-target/debug/examples/smoke_readiness' \
   'readonly OPENRC_VERSION=0.45.2-2+deb12u1' \
   '[ "$(dpkg-query -W -f='"'"'${Version}'"'"' openrc)" = "$OPENRC_VERSION" ]' \
   'openrc --no-stop "$RUNLEVEL"' \
@@ -8257,6 +8262,9 @@ for token in \
     || r_s11c27r="$r_s11c27r orchestration:${token%% *}"
 done
 for token in \
+  'readonly SOURCE_BINARY=/smoke-target/debug/rustdesk' \
+  'readonly LAUNCHER_SOURCE=/smoke-target/smoke-server-launcher' \
+  'readonly PROBE=/smoke-target/debug/examples/smoke_readiness' \
   'readonly RUNIT_VERSION=2.1.2-54' \
   '[ "$(dpkg-query -W -f='"'"'${Version}'"'"' runit)" = "$RUNIT_VERSION" ]' \
   '/usr/bin/runsvdir "$SERVICES"' \

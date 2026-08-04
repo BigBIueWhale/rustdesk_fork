@@ -3,10 +3,10 @@ set -euo pipefail
 umask 077
 
 readonly READY=/work/scripts/smoke-ready.sh
-readonly SOURCE_BINARY=/work/target/debug/rustdesk
+readonly SOURCE_BINARY=/smoke-target/debug/rustdesk
 readonly BINARY=/usr/bin/rustdesk
-readonly PROBE=/work/target/debug/examples/smoke_readiness
-readonly LAUNCHER=/work/target/smoke-server-launcher
+readonly PROBE=/smoke-target/debug/examples/smoke_readiness
+readonly LAUNCHER=/smoke-target/smoke-server-launcher
 readonly RECORD=/run/rustdesk/service-child.record
 readonly FIXTURE=/tmp/rd-service-lifecycle
 readonly LOGINCTL_STATE=/tmp/rd-service-loginctl-state

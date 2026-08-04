@@ -3,15 +3,15 @@ set -euo pipefail
 umask 077
 
 readonly ROOT=/work
-readonly SOURCE_BINARY=$ROOT/target/debug/rustdesk
+readonly SOURCE_BINARY=/smoke-target/debug/rustdesk
 readonly BINARY=/usr/bin/rustdesk
 readonly OPENRC_SOURCE=$ROOT/res/service-managers/openrc/rustdesk
 readonly OPENRC_SERVICE=/etc/init.d/rustdesk
 readonly LOGINCTL_SOURCE=$ROOT/scripts/smoke-service-loginctl.sh
 readonly READY=$ROOT/scripts/smoke-ready.sh
 readonly PROCESS_GUARD=$ROOT/scripts/smoke-process-guard.py
-readonly LAUNCHER_SOURCE=$ROOT/target/smoke-server-launcher
-readonly PROBE=$ROOT/target/debug/examples/smoke_readiness
+readonly LAUNCHER_SOURCE=/smoke-target/smoke-server-launcher
+readonly PROBE=/smoke-target/debug/examples/smoke_readiness
 readonly PIDFILE=/run/rustdesk.pid
 readonly RECORD=/run/rustdesk/service-child.record
 readonly FIXTURE=/tmp/rustdesk-openrc-lifecycle

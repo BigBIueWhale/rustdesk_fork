@@ -4,9 +4,9 @@ umask 077
 
 readonly READY=/work/scripts/smoke-ready.sh
 readonly PROCESS_GUARD=/work/scripts/smoke-process-guard.py
-readonly BINARY=/work/target/debug/rustdesk
-readonly PROBE=/work/target/debug/examples/smoke_readiness
-readonly LAUNCHER=/work/target/smoke-server-launcher
+readonly BINARY=/smoke-target/debug/rustdesk
+readonly PROBE=/smoke-target/debug/examples/smoke_readiness
+readonly LAUNCHER=/smoke-target/smoke-server-launcher
 readonly RECORD=/run/rustdesk/service-child.record
 readonly NS_LAST_PID=/proc/sys/kernel/ns_last_pid
 readonly FIXTURE=/tmp/rd-service-pid-reuse

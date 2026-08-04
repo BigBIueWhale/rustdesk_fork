@@ -9,8 +9,8 @@ readonly READY=/work/scripts/smoke-ready.sh
 readonly PROCESS_GUARD=/work/scripts/smoke-process-guard.py
 readonly SERVER_LAUNCHER=/work/target/smoke-server-launcher
 readonly BIND_SHIM=/work/target/smoke-bind-loopback.so
-readonly CARGO_VENDOR_DIR=/work/online/cargo-vendor
-readonly CARGO_VENDOR_CONFIG=/work/online/cargo-vendor-config.toml
+readonly CARGO_VENDOR_DIR=/online/cargo-vendor
+readonly CARGO_VENDOR_CONFIG=/online/cargo-vendor-config.toml
 readonly CARGO_VENDOR_PROVENANCE=/work/scripts/online-input-provenance.py
 
 SRV=
@@ -58,10 +58,10 @@ prepare_smoke_cargo_home() {
   /usr/bin/install -d -m 0700 -- "$CARGO_HOME"
   {
     printf '[net]\noffline = true\n'
-    /usr/bin/sed 's#^directory = .*$#directory = "/work/online/cargo-vendor"#' "$CARGO_VENDOR_CONFIG"
+    /usr/bin/sed 's#^directory = .*$#directory = "/online/cargo-vendor"#' "$CARGO_VENDOR_CONFIG"
   } > "$CARGO_HOME/config.toml"
   /usr/bin/chmod 0400 -- "$CARGO_HOME/config.toml"
-  [ "$(/usr/bin/grep -c '^directory = "/work/online/cargo-vendor"$' "$CARGO_HOME/config.toml")" -eq 1 ] \
+  [ "$(/usr/bin/grep -c '^directory = "/online/cargo-vendor"$' "$CARGO_HOME/config.toml")" -eq 1 ] \
     || smoke_build_input_die "private Cargo source map has invalid vendor-directory cardinality" || return 1
   [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$CARGO_HOME/config.toml")" = "$(/usr/bin/id -u):$(/usr/bin/id -g):400:1" ] \
     || smoke_build_input_die "private Cargo source map metadata is invalid" || return 1

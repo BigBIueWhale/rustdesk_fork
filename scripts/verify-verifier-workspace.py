@@ -4308,6 +4308,8 @@ def validate_smoke_contract(
         ('SMOKE_ROOT=$(mktemp -d /tmp/rustdesk-smoke.XXXXXXXXXX)', "private smoke authority root"),
         ('readonly SMOKE_DOCKER_CONFIG_FILE_ID="$(stat -c', "private Docker config identity"),
         ('readonly SMOKE_BUILD_TARGET_ID="$(stat -c', "private build-target identity"),
+        ('readonly SMOKE_SOURCE_ARCHIVE_ID="$(stat -c', "private exact source-archive identity"),
+        ('readonly SMOKE_SOURCE_ID="$(stat -c', "private exact source-snapshot identity"),
         ('readonly SMOKE_DOCKER_COMMAND=(', "empty-environment Docker command"),
         ('smoke_docker_authority()', "Docker authority pre/post proof"),
         ('smoke_docker()', "single Docker invocation funnel"),
@@ -4330,7 +4332,7 @@ def validate_smoke_contract(
         ('--security-opt no-new-privileges --security-opt apparmor=unconfined', "PID reuse no-new-privileges and AppArmor scope"),
         ('--tmpfs /tmp:rw,nosuid,nodev,mode=1777', "PID reuse private tmpfs"),
         ('--tmpfs /run:rw,nosuid,nodev,noexec,mode=755', "PID reuse private runtime tmpfs"),
-        ('-v "$PWD:/work:ro"', "read-only runtime source bind"),
+        ('--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"', "read-only exact-commit runtime source bind"),
         ('-v "$SMOKE_BUILD_TARGET:/work/target:ro"', "read-only runtime build target"),
         ('run_stage build_out "${BUILD_RUN[@]}"', "complete build transcript capture"),
         ('record_stage_status R-B4-build', "build status preservation"),
@@ -4381,6 +4383,7 @@ def validate_smoke_contract(
         "--publish", "--publish-all", "sudo ", "pkill", "HOST_GUARD",
         "historical-selector", "smoke-process-guard.py record",
         "smoke-process-guard.py monitor",
+        '$PWD:/work:',
     ):
         if forbidden in smoke:
             raise VerificationError(
@@ -4403,7 +4406,11 @@ def validate_smoke_contract(
         raise VerificationError("sibling Docker run block is missing or no longer uses mounted dispatch")
     sibling_block = sibling_match.group(0)
     require_text(sibling_block, "--network none", "sibling Docker network isolation")
-    require_text(sibling_block, '-v "$PWD:/work:ro"', "sibling Docker read-only source bind")
+    require_text(
+        sibling_block,
+        '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"',
+        "sibling Docker read-only exact-commit source bind",
+    )
     require_text(sibling_block, '-v "$SIBLING_ROOT:/sibling:rw"', "sibling Docker private control bind")
     if "--pid" in sibling_block:
         raise VerificationError("sibling Docker must not share a host or container PID namespace")
@@ -12716,7 +12723,12 @@ def validate_smoke_container_authority_contract(sources):
             "SMOKE_RUST_VERSION=$(read_smoke_pin RUST_VERSION)",
             "SMOKE_VENDOR_CLOSURE_SHA256=$(read_smoke_pin SHA256_CARGO_VENDOR_CLOSURE_V1)",
             "SMOKE_VENDOR_CONFIG_SHA256=$(read_smoke_pin SHA256_CARGO_VENDOR_CONFIG)",
+            "smoke_source_tree_digest() {",
+            '[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]',
+            'SMOKE_SOURCE_COMMIT="$(git rev-parse --verify \'HEAD^{commit}\')"',
             "SMOKE_ROOT=$(mktemp -d /tmp/rustdesk-smoke.XXXXXXXXXX)",
+            'git -c core.hooksPath=/dev/null archive --format=tar "$SMOKE_SOURCE_COMMIT"',
+            'readonly SMOKE_SOURCE_TREE_SHA256="$(smoke_source_tree_digest)"',
             "readonly SMOKE_DOCKER_COMMAND=(",
             "smoke_docker_authority()",
             "smoke_docker()",
@@ -12730,6 +12742,12 @@ def validate_smoke_container_authority_contract(sources):
     require_exact_count(smoke, '"$EXPECTED_IMAGE_ID"', 3, "exact pinned smoke image authority")
     require_exact_count(smoke, '"$IMAGE_ID"', 7, "every smoke container uses the immutable image ID")
     require_exact_count(smoke, "smoke_docker run", 6, "complete smoke container launch inventory")
+    require_exact_count(
+        smoke,
+        '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"',
+        6,
+        "every smoke container uses the exact-commit source snapshot",
+    )
     require_exact_count(
         smoke,
         "smoke_docker image inspect",
@@ -12782,16 +12800,18 @@ def validate_smoke_container_authority_contract(sources):
         ('SMOKE_EXPECTED_RUSTUP_TOOLCHAIN=$SMOKE_RUSTUP_TOOLCHAIN', "exact Rust toolchain expectation"),
         ('SMOKE_EXPECTED_VENDOR_CLOSURE_SHA256=$SMOKE_VENDOR_CLOSURE_SHA256', "sealed vendor closure authority"),
         ('SMOKE_EXPECTED_VENDOR_CONFIG_SHA256=$SMOKE_VENDOR_CONFIG_SHA256', "canonical vendor source-map authority"),
-        ('-v "$PWD:/work:ro"', "build read-only live source"),
+        ('--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"', "build read-only exact-commit source"),
+        ('--mount "type=bind,source=$SMOKE_ONLINE_ROOT,target=/online,readonly"', "build read-only offline input"),
         ('-v "$SMOKE_BUILD_TARGET:/work/target:rw"', "build private writable target"),
     ):
         require_text(build, token, label)
-    require_absent(build, '$PWD:/work:rw', "build live-checkout write authority")
+    require_absent(smoke, '$PWD:/work:', "live-checkout mount authority")
     require_absent(build, "rd-cargo-cache", "mutable smoke build registry cache authority")
     require_absent(build, "rd-git-cache", "mutable smoke build Git cache authority")
     require_absent(build, "/usr/local/cargo/registry", "image-global Cargo registry authority")
     require_absent(build, "/usr/local/cargo/git", "image-global Cargo Git authority")
     require_absent(runtime, "/usr/local/cargo/", "smoke runtime dependency-cache authority")
+    require_absent(runtime, "target=/online", "smoke runtime offline-build-input authority")
     for token, label in (
         ('--user "$BUILD_UID:$BUILD_GID"', "numeric non-root portable runtime identity"),
         ("--cap-drop ALL", "portable runtime capability removal"),
@@ -12822,7 +12842,11 @@ def validate_smoke_container_authority_contract(sources):
         (pid_reuse, "PID-reuse"),
         (sibling, "sibling"),
     ):
-        require_text(block, '-v "$PWD:/work:ro"', f"{label} read-only source")
+        require_text(
+            block,
+            '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"',
+            f"{label} read-only exact-commit source",
+        )
         require_text(
             block,
             '-v "$SMOKE_BUILD_TARGET:/work/target:ro"',
@@ -12886,8 +12910,14 @@ def validate_smoke_container_authority_contract(sources):
         ('readonly SMOKE_DOCKER_CONFIG_ID="$(stat -c', "private Docker directory identity"),
         ('readonly SMOKE_DOCKER_CONFIG_FILE_ID="$(stat -c', "private Docker config identity"),
         ('readonly SMOKE_BUILD_TARGET_ID="$(stat -c', "private build-target identity"),
+        ('readonly SMOKE_SOURCE_ARCHIVE_ID="$(stat -c', "exact source-archive identity"),
+        ('readonly SMOKE_SOURCE_ID="$(stat -c', "exact source-snapshot identity"),
         ('= "$SMOKE_DOCKER_CONFIG_FILE_ID" ]', "Docker config identity recheck"),
         ('= "$SMOKE_BUILD_TARGET_ID" ]', "build-target identity recheck"),
+        ('= "$SMOKE_SOURCE_ARCHIVE_ID" ]', "source-archive identity recheck"),
+        ('= "$SMOKE_SOURCE_ID" ]', "source-snapshot identity recheck"),
+        ("verify_smoke_source_snapshot()", "exact source content postcondition"),
+        ('= "$SMOKE_SOURCE_TREE_SHA256" ]', "exact source tree digest postcondition"),
         ("smoke_docker_authority || return 1", "Docker authority precondition"),
         ('"${SMOKE_DOCKER_COMMAND[@]}" "$@" || status=$?', "single fixed Docker client invocation"),
         ("preserving changed Docker/build authority", "identity-safe cleanup refusal"),
@@ -12942,8 +12972,8 @@ def validate_smoke_container_authority_contract(sources):
         "vendor input pre/post verification cardinality",
     )
     for token, label in (
-        ('readonly CARGO_VENDOR_DIR=/work/online/cargo-vendor', "sealed vendor path"),
-        ('readonly CARGO_VENDOR_CONFIG=/work/online/cargo-vendor-config.toml', "canonical vendor source-map path"),
+        ('readonly CARGO_VENDOR_DIR=/online/cargo-vendor', "sealed vendor path"),
+        ('readonly CARGO_VENDOR_CONFIG=/online/cargo-vendor-config.toml', "canonical vendor source-map path"),
         ('/usr/bin/python3 -I -S "$CARGO_VENDOR_PROVENANCE" verify-subtree', "isolated vendor provenance verifier"),
         ('--expected "$SMOKE_EXPECTED_VENDOR_CLOSURE_SHA256"', "vendor closure digest binding"),
         ('actual_config_sha=$(/usr/bin/sha256sum -- "$CARGO_VENDOR_CONFIG"', "vendor source-map digest binding"),
@@ -12952,7 +12982,7 @@ def validate_smoke_container_authority_contract(sources):
         ('[ "${CARGO_NET_OFFLINE:-}" = true ]', "Cargo offline environment enforcement"),
         ('[ "${CARGO_INCREMENTAL:-}" = 0 ]', "incremental compilation enforcement"),
         ('[ ! -e "$CARGO_HOME" ] && [ ! -L "$CARGO_HOME" ]', "fresh Cargo-home enforcement"),
-        ('/usr/bin/sed \'s#^directory = .*$#directory = "/work/online/cargo-vendor"#\'', "sealed Cargo directory source map"),
+        ('/usr/bin/sed \'s#^directory = .*$#directory = "/online/cargo-vendor"#\'', "sealed Cargo directory source map"),
         ('/usr/bin/chmod 0400 -- "$CARGO_HOME/config.toml"', "read-only private Cargo source map"),
         ('SMOKE_CARGO_CONFIG_SHA256=$(/usr/bin/sha256sum -- "$CARGO_HOME/config.toml"', "private Cargo source-map identity"),
         ('= "$SMOKE_CARGO_CONFIG_SHA256" ]', "private Cargo source-map postcondition"),
@@ -13027,6 +13057,7 @@ def validate_smoke_container_authority_contract(sources):
         ("No top-level smoke operation", "host-process inspection prohibition"),
         ("invoking numeric non-root UID/GID", "non-root compile-container requirement"),
         ("fresh current-user-private target bind writable", "private target requirement"),
+        ("private read-only exact-commit source snapshot", "exact source-snapshot requirement"),
         ("Every runtime/lifecycle/sibling container", "read-only runtime target requirement"),
         ("R-S11e-122 ledger entry", "hardening-ledger requirement"),
     ):
@@ -43753,6 +43784,30 @@ def run_source_mutations(sources):
     mutations = (
         (
             "smoke",
+            '[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]',
+            "true # dirty or untracked source accepted",
+            "fixed smoke Docker authority and pinned input resolution precede every container",
+        ),
+        (
+            "smoke",
+            'git -c core.hooksPath=/dev/null archive --format=tar "$SMOKE_SOURCE_COMMIT"',
+            'tar --create --file=- --directory="$PWD" .',
+            "fixed smoke Docker authority and pinned input resolution precede every container",
+        ),
+        (
+            "smoke",
+            '[ "$tree_sha" = "$SMOKE_SOURCE_TREE_SHA256" ]',
+            '[ -n "$tree_sha" ]',
+            "exact source tree digest postcondition",
+        ),
+        (
+            "smoke",
+            '--mount "type=bind,source=$SMOKE_ONLINE_ROOT,target=/online,readonly"',
+            '--mount "type=bind,source=$SMOKE_ONLINE_ROOT,target=/online"',
+            "build read-only offline input",
+        ),
+        (
+            "smoke",
             'if [ "$IMAGE_ID" != "$EXPECTED_IMAGE_ID" ]; then',
             'if [ -z "$IMAGE_ID" ]; then',
             "fixed smoke Docker authority and pinned input resolution precede every container",
@@ -43975,9 +44030,9 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
-            '  -v "$PWD:/work:ro"\n  -v "$SMOKE_BUILD_TARGET:/work/target:rw"',
-            '  -v "$PWD:/work:rw"\n  -v "$SMOKE_BUILD_TARGET:/work/target:rw"',
-            "build read-only live source",
+            '  --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"\n  --mount "type=bind,source=$SMOKE_ONLINE_ROOT,target=/online,readonly"',
+            '  --mount "type=bind,source=$PWD,target=/work"\n  --mount "type=bind,source=$SMOKE_ONLINE_ROOT,target=/online,readonly"',
+            "every smoke container uses the exact-commit source snapshot",
         ),
         (
             "smoke",
@@ -43987,8 +44042,8 @@ def run_source_mutations(sources):
         ),
         (
             "smoke",
-            '  --env HOME=/tmp/smoke-runtime\n  -v "$PWD:/work:ro"\n  -v "$SMOKE_BUILD_TARGET:/work/target:ro"',
-            '  --env HOME=/tmp/smoke-runtime\n  -v "$PWD:/work:ro"\n  -v "$SMOKE_BUILD_TARGET:/work/target:rw"',
+            '  --env HOME=/tmp/smoke-runtime\n  --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"\n  -v "$SMOKE_BUILD_TARGET:/work/target:ro"',
+            '  --env HOME=/tmp/smoke-runtime\n  --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"\n  -v "$SMOKE_BUILD_TARGET:/work/target:rw"',
             "ordinary runtime read-only target",
         ),
         (
@@ -44059,7 +44114,7 @@ def run_source_mutations(sources):
         ),
         (
             "smoke_stage",
-            '/usr/bin/sed \'s#^directory = .*$#directory = "/work/online/cargo-vendor"#\'',
+            '/usr/bin/sed \'s#^directory = .*$#directory = "/online/cargo-vendor"#\'',
             '/usr/bin/sed \'s#^directory = .*$#directory = "/usr/local/cargo/registry"#\'',
             "sealed Cargo directory source map",
         ),

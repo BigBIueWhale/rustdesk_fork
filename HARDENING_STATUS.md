@@ -16801,11 +16801,16 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   `BUILD_RUN` is now the invoking numeric non-root UID:GID with all capabilities dropped,
   no-new-privileges, a read-only container root, no network or pull, and explicit PID,
-  memory/no-swap, CPU, and executable scratch ceilings. The live checkout is mounted
-  read-only; the only Cargo output bind is a new private mode-0700 target owned by the
-  invoking user, and the locked/offline registry and Git caches retain only their existing
-  build-input role. Every ordinary, lifecycle, PID-reuse, and sibling fixture receives both
-  source and that private target read-only. The root/capability-requiring service and
+  memory/no-swap, CPU, and executable scratch ceilings. A 2026-08-04 source-authority
+  follow-up removed the complete live-checkout bind, including ignored residue, from every
+  container. The orchestrator now requires a clean tracked/nonignored tree, resolves one full
+  `HEAD` commit, creates a private `git archive`, extracts it with canonical read-only modes,
+  records independent archive and complete-tree SHA-256 values, and verifies source object
+  identity and tree content after compilation and again after all runtime stages. The only
+  Cargo output bind is a new private mode-0700 target owned by the invoking user. The build
+  alone receives the canonical offline-input root read-only; every ordinary, lifecycle,
+  PID-reuse, and sibling fixture receives only the exact source snapshot and private target
+  read-only. The root/capability-requiring service and
   PID-reuse fixtures remain container-only with network none, no published port, Docker
   socket, device, host namespace, writable source, or writable build output. Their root and
   capability semantics are intentionally not described as non-root because they exercise
@@ -16819,6 +16824,16 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   containers. The prior host-monitor evidence recorded under R-S11c-27j and related
   historical runtime entries is historical only and no longer describes a current execution
   path. R-S11dd and Appendix C #257 make this closure normative.
+
+  The trigger for that follow-up was an evidence review, not an observed product failure: two
+  ignored generated Rust bridge files existed beside the clean checkout and the prior smoke
+  mounted that checkout wholesale. The smoke build uses default `use_dasp` plus
+  `linux-pkg-config`, not the optional `flutter` feature; `src/lib.rs` therefore compile-time
+  excludes `bridge_generated.rs` and `bridge_generated.io.rs` from this server build. The
+  earlier green portable run remains real working-tree Linux behavior, but is deliberately not
+  promoted to new exact-commit evidence until the corrected committed harness is replayed. No
+  source-generation transaction is added to this non-Flutter smoke, and no ignored output is
+  silently treated as committed authority.
 
   Bash syntax for the smoke and shared gate, Python syntax for the process helper and
   independent workspace validator, the pure process-helper positive/negative self-test, the
@@ -20156,7 +20171,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-d5ec6b54c3cce34357a24626c62fdde5404e4b9d483c01e1fede26285a018b79  requirements.html
+9a3d75e26c3118a65ef52a27334d51de195b624581a94aa60737658c9d9d15a0  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

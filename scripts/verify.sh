@@ -5575,8 +5575,8 @@ if [ -n "$r_s11e63" ]; then echo "  FAIL R-S11e-63 Windows production-listener D
 
 # (3b-iii-d9cn) R-S11ax/R-S11dd/R-S11e-64/R-S11e-122: the runtime
 # smoke harness fixes its local Docker authority, has no host-process
-# scanner, builds numeric-nonroot into a private target from read-only
-# source and a pinned sealed vendor closure, and preserves the exact-image/
+# scanner, builds numeric-nonroot into a private target from an exact clean
+# commit snapshot and a pinned sealed vendor closure, and preserves the exact-image/
 # network-none policy.
 echo "== (3b-iii-d9cn) Smoke container and host/build authority (R-S11ax/R-S11dd/R-S11e-64/R-S11e-122) =="
 r_s11e64=
@@ -5627,7 +5627,7 @@ for smoke_run_block in "$smoke_build_run" "$smoke_runtime_run" "$smoke_root_run"
   grep -qF '"$IMAGE_ID"' <<<"$smoke_run_block" || r_s11e64="$r_s11e64 immutable-image-use-missing"
 done
 for smoke_readonly_run_block in "$smoke_runtime_run" "$smoke_root_run" "$smoke_lifecycle_run" "$smoke_pid_reuse_run" "$smoke_sibling_run"; do
-  grep -qF -- '-v "$PWD:/work:ro"' <<<"$smoke_readonly_run_block" \
+  grep -qF -- '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"' <<<"$smoke_readonly_run_block" \
     || r_s11e64="$r_s11e64 runtime-read-only-source-missing"
   grep -qF -- '-v "$SMOKE_BUILD_TARGET:/work/target:ro"' <<<"$smoke_readonly_run_block" \
     || r_s11e64="$r_s11e64 runtime-read-only-target-missing"
@@ -5638,7 +5638,10 @@ grep -qF -- '--cap-drop ALL' <<<"$smoke_build_run" || r_s11e64="$r_s11e64 build-
 grep -qF -- '--security-opt no-new-privileges' <<<"$smoke_build_run" \
   || r_s11e64="$r_s11e64 build-no-new-privileges-missing"
 grep -qF -- '--read-only' <<<"$smoke_build_run" || r_s11e64="$r_s11e64 build-read-only-root-missing"
-grep -qF -- '-v "$PWD:/work:ro"' <<<"$smoke_build_run" || r_s11e64="$r_s11e64 build-read-only-source-missing"
+grep -qF -- '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"' <<<"$smoke_build_run" \
+  || r_s11e64="$r_s11e64 build-read-only-exact-source-missing"
+grep -qF -- '--mount "type=bind,source=$SMOKE_ONLINE_ROOT,target=/online,readonly"' <<<"$smoke_build_run" \
+  || r_s11e64="$r_s11e64 build-read-only-online-input-missing"
 grep -qF -- '-v "$SMOKE_BUILD_TARGET:/work/target:rw"' <<<"$smoke_build_run" \
   || r_s11e64="$r_s11e64 private-build-target-missing"
 for smoke_rootless_token in \
@@ -5685,8 +5688,8 @@ for smoke_build_env in \
   grep -qF -- "$smoke_build_env" <<<"$smoke_build_run" \
     || r_s11e64="$r_s11e64 sealed-build-environment-missing"
 done
-if grep -qF '$PWD:/work:rw' <<<"$smoke_build_run"; then
-  r_s11e64="$r_s11e64 live-checkout-write-authority-present"
+if grep -qF '$PWD:/work:' scripts/smoke-server.sh; then
+  r_s11e64="$r_s11e64 live-checkout-mount-authority-present"
 fi
 if grep -Eq 'rd-(cargo|git)-cache|/usr/local/cargo/(registry|git)' <<<"$smoke_build_run"; then
   r_s11e64="$r_s11e64 mutable-build-dependency-cache-present"
@@ -5721,8 +5724,21 @@ grep -qF '/usr/bin/python3 -I -S "$CARGO_VENDOR_PROVENANCE" verify-subtree' scri
   || r_s11e64="$r_s11e64 vendor-pre-post-verification-cardinality-invalid"
 grep -qF 'SMOKE_CARGO_CONFIG_SHA256=$(/usr/bin/sha256sum -- "$CARGO_HOME/config.toml"' scripts/smoke-server-stage.sh \
   || r_s11e64="$r_s11e64 private-cargo-config-identity-missing"
-grep -qF 'directory = "/work/online/cargo-vendor"' scripts/smoke-server-stage.sh \
+grep -qF 'directory = "/online/cargo-vendor"' scripts/smoke-server-stage.sh \
   || r_s11e64="$r_s11e64 sealed-vendor-source-map-missing"
+for smoke_source_token in \
+  '[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]' \
+  'SMOKE_SOURCE_COMMIT="$(git rev-parse --verify '\''HEAD^{commit}'\'')"' \
+  'git -c core.hooksPath=/dev/null archive --format=tar "$SMOKE_SOURCE_COMMIT"' \
+  'chmod -R a=rX "$SMOKE_SOURCE"' \
+  'smoke_source_tree_digest()' \
+  'verify_smoke_source_snapshot()' \
+  'SMOKE_SOURCE_COMMIT=%s archive_sha256=%s tree_sha256=%s'; do
+  grep -qF -- "$smoke_source_token" scripts/smoke-server.sh \
+    || r_s11e64="$r_s11e64 exact-source-authority-missing"
+done
+[ "$(grep -Fc -- '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"' scripts/smoke-server.sh)" -eq 6 ] \
+  || r_s11e64="$r_s11e64 exact-source-mount-cardinality-invalid"
 grep -qF 'verify_smoke_build_postconditions' scripts/smoke-server-stage.sh \
   || r_s11e64="$r_s11e64 build-input-postcondition-missing"
 grep -qF '<span class="id">R-S11ax</span>' requirements.html || r_s11e64="$r_s11e64 normative-requirement-missing"
@@ -7619,7 +7635,8 @@ grep -qF 'SIBLING_DOCKER_SURVIVED=pass pid=' scripts/smoke-server-stage.sh || r_
 grep -qF 'start_sibling_docker()' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-orchestrator-missing"
 grep -qF 'stop_sibling_docker()' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-stop-orchestrator-missing"
 grep -qF 'smoke_docker run -d --name "$SIBLING_NAME" --network none' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-network-isolation-missing"
-grep -qF -- '-v "$PWD:/work:ro"' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-source-bind-not-readonly"
+grep -qF -- '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"' scripts/smoke-server.sh \
+  || r_s11c27j="$r_s11c27j sibling-source-bind-not-readonly"
 grep -qF -- '-v "$SIBLING_ROOT:/sibling:rw"' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-control-bind-missing"
 grep -qF 'bash --noprofile --norc /work/scripts/smoke-server-stage.sh sibling-docker-server' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-mounted-stage-missing"
 grep -qF 'sibling_container_running' scripts/smoke-server.sh || r_s11c27j="$r_s11c27j sibling-running-check-missing"

@@ -76,6 +76,7 @@ esac
 readonly SMOKE_MODE
 readonly DOCKER_BIN=/usr/bin/docker
 readonly SMOKE_DOCKER_HOST=unix:///var/run/docker.sock
+readonly SMOKE_REPO_ROOT="$PWD"
 readonly BUILD_UID="$(id -u)"
 readonly BUILD_GID="$(id -g)"
 [ "$BUILD_UID" -ne 0 ] || {
@@ -152,17 +153,156 @@ SMOKE_VENDOR_CONFIG_SHA256=$(read_smoke_pin SHA256_CARGO_VENDOR_CONFIG)
 readonly EXPECTED_IMAGE_ID SMOKE_RUST_VERSION SMOKE_VENDOR_CLOSURE_SHA256 SMOKE_VENDOR_CONFIG_SHA256
 readonly SMOKE_RUSTUP_TOOLCHAIN="${SMOKE_RUST_VERSION}.0-x86_64-unknown-linux-gnu"
 
+smoke_source_tree_digest() {
+  /usr/bin/python3 -I -S - "$SMOKE_SOURCE" "$BUILD_UID" "$BUILD_GID" <<'PY'
+import hashlib
+import os
+import stat
+import sys
+
+root = os.fsencode(sys.argv[1])
+expected_uid = int(sys.argv[2])
+expected_gid = int(sys.argv[3])
+digest = hashlib.sha256()
+
+
+def fail(message):
+    raise SystemExit(f"smoke source: {message}")
+
+
+def add_field(value):
+    digest.update(len(value).to_bytes(8, "big"))
+    digest.update(value)
+
+
+root_metadata = os.lstat(root)
+if not stat.S_ISDIR(root_metadata.st_mode) or stat.S_IMODE(root_metadata.st_mode) != 0o555:
+    fail("snapshot root is not a mode-0555 real directory")
+if root_metadata.st_uid != expected_uid or root_metadata.st_gid != expected_gid:
+    fail("snapshot root ownership changed")
+
+entry_count = 0
+for current, directories, files in os.walk(root, topdown=True, followlinks=False):
+    directories.sort()
+    files.sort()
+    for name in [*directories, *files]:
+        path = os.path.join(current, name)
+        relative = os.path.relpath(path, root)
+        metadata = os.lstat(path)
+        if metadata.st_uid != expected_uid or metadata.st_gid != expected_gid:
+            fail(f"snapshot entry ownership changed: {os.fsdecode(relative)}")
+        mode = stat.S_IMODE(metadata.st_mode)
+        if stat.S_ISDIR(metadata.st_mode):
+            if mode != 0o555:
+                fail(f"snapshot directory mode changed: {os.fsdecode(relative)}")
+            kind = b"directory"
+            content_digest = b""
+        elif stat.S_ISREG(metadata.st_mode):
+            if mode not in (0o444, 0o555) or metadata.st_nlink != 1:
+                fail(f"snapshot file metadata changed: {os.fsdecode(relative)}")
+            flags = os.O_RDONLY | getattr(os, "O_CLOEXEC", 0) | getattr(os, "O_NOFOLLOW", 0)
+            descriptor = os.open(path, flags)
+            try:
+                before = os.fstat(descriptor)
+                file_digest = hashlib.sha256()
+                while True:
+                    block = os.read(descriptor, 1024 * 1024)
+                    if not block:
+                        break
+                    file_digest.update(block)
+                after = os.fstat(descriptor)
+            finally:
+                os.close(descriptor)
+            identity_before = (
+                before.st_dev,
+                before.st_ino,
+                before.st_mode,
+                before.st_uid,
+                before.st_gid,
+                before.st_nlink,
+                before.st_size,
+                before.st_mtime_ns,
+                before.st_ctime_ns,
+            )
+            identity_after = (
+                after.st_dev,
+                after.st_ino,
+                after.st_mode,
+                after.st_uid,
+                after.st_gid,
+                after.st_nlink,
+                after.st_size,
+                after.st_mtime_ns,
+                after.st_ctime_ns,
+            )
+            if identity_before != identity_after:
+                fail(f"snapshot file changed while read: {os.fsdecode(relative)}")
+            kind = b"file"
+            content_digest = file_digest.digest()
+        else:
+            fail(f"snapshot contains a symlink or special entry: {os.fsdecode(relative)}")
+        add_field(relative)
+        add_field(kind)
+        add_field(f"{mode:o}".encode("ascii"))
+        add_field(content_digest)
+        entry_count += 1
+
+if entry_count == 0:
+    fail("snapshot is empty")
+add_field(str(entry_count).encode("ascii"))
+print(digest.hexdigest())
+PY
+}
+
+readonly SMOKE_ONLINE_ROOT="$(realpath -e -- "$SMOKE_REPO_ROOT/online")"
+case "$SMOKE_ONLINE_ROOT" in
+  *','*|*':'*) echo "smoke: online input path contains a Docker mount delimiter" >&2; exit 1 ;;
+esac
+[ -d "$SMOKE_ONLINE_ROOT" ] && [ ! -L "$SMOKE_ONLINE_ROOT" ] || {
+  echo "smoke: canonical online input root is unavailable" >&2
+  exit 1
+}
+[ -z "$(git status --porcelain=v1 --untracked-files=all)" ] || {
+  echo "smoke: exact-commit runtime evidence requires a clean tracked and nonignored source tree" >&2
+  exit 1
+}
+SMOKE_SOURCE_COMMIT="$(git rev-parse --verify 'HEAD^{commit}')"
+[[ "$SMOKE_SOURCE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || {
+  echo "smoke: source commit is not one full lowercase Git object ID" >&2
+  exit 1
+}
+readonly SMOKE_SOURCE_COMMIT SMOKE_ONLINE_ROOT
+
 SMOKE_ROOT=$(mktemp -d /tmp/rustdesk-smoke.XXXXXXXXXX)
 readonly SMOKE_ROOT
-readonly SMOKE_ROOT_ID="$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_ROOT")"
 readonly SMOKE_DOCKER_CONFIG="$SMOKE_ROOT/docker-config"
 readonly SMOKE_BUILD_TARGET="$SMOKE_ROOT/target"
-install -d -m 0700 "$SMOKE_DOCKER_CONFIG" "$SMOKE_BUILD_TARGET"
+readonly SMOKE_SOURCE_ARCHIVE="$SMOKE_ROOT/source.tar"
+readonly SMOKE_SOURCE="$SMOKE_ROOT/source"
+install -d -m 0700 "$SMOKE_DOCKER_CONFIG" "$SMOKE_BUILD_TARGET" "$SMOKE_SOURCE"
 printf '{}\n' >"$SMOKE_DOCKER_CONFIG/config.json"
 chmod 0600 "$SMOKE_DOCKER_CONFIG/config.json"
+git -c core.hooksPath=/dev/null archive --format=tar "$SMOKE_SOURCE_COMMIT" >"$SMOKE_SOURCE_ARCHIVE"
+[ -s "$SMOKE_SOURCE_ARCHIVE" ] && [ ! -L "$SMOKE_SOURCE_ARCHIVE" ] || {
+  echo "smoke: exact source archive is missing or invalid" >&2
+  exit 1
+}
+chmod 0400 "$SMOKE_SOURCE_ARCHIVE"
+tar --extract --file="$SMOKE_SOURCE_ARCHIVE" --directory="$SMOKE_SOURCE"
+chmod -R a=rX "$SMOKE_SOURCE"
+readonly SMOKE_SOURCE_ARCHIVE_SHA256="$(sha256sum "$SMOKE_SOURCE_ARCHIVE" | awk '{print $1}')"
+readonly SMOKE_SOURCE_TREE_SHA256="$(smoke_source_tree_digest)"
+[[ "$SMOKE_SOURCE_ARCHIVE_SHA256" =~ ^[0-9a-f]{64}$ ]] \
+  && [[ "$SMOKE_SOURCE_TREE_SHA256" =~ ^[0-9a-f]{64}$ ]] || {
+  echo "smoke: exact source snapshot digests are malformed" >&2
+  exit 1
+}
+readonly SMOKE_ROOT_ID="$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_ROOT")"
 readonly SMOKE_DOCKER_CONFIG_ID="$(stat -c '%d:%i:%u:%g:%a:%h' -- "$SMOKE_DOCKER_CONFIG")"
 readonly SMOKE_DOCKER_CONFIG_FILE_ID="$(stat -c '%d:%i:%u:%g:%a:%h' -- "$SMOKE_DOCKER_CONFIG/config.json")"
 readonly SMOKE_BUILD_TARGET_ID="$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_BUILD_TARGET")"
+readonly SMOKE_SOURCE_ARCHIVE_ID="$(stat -c '%d:%i:%u:%g:%a:%h' -- "$SMOKE_SOURCE_ARCHIVE")"
+readonly SMOKE_SOURCE_ID="$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_SOURCE")"
 readonly SMOKE_DOCKER_COMMAND=(
   /usr/bin/env -i
   PATH=/usr/bin:/bin
@@ -185,6 +325,10 @@ smoke_docker_authority() {
     || { echo "smoke: private Docker config.json bytes changed" >&2; return 1; }
   [ "$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_BUILD_TARGET" 2>/dev/null)" = "$SMOKE_BUILD_TARGET_ID" ] \
     || { echo "smoke: private build-target authority changed" >&2; return 1; }
+  [ "$(stat -c '%d:%i:%u:%g:%a:%h' -- "$SMOKE_SOURCE_ARCHIVE" 2>/dev/null)" = "$SMOKE_SOURCE_ARCHIVE_ID" ] \
+    || { echo "smoke: exact source-archive authority changed" >&2; return 1; }
+  [ "$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_SOURCE" 2>/dev/null)" = "$SMOKE_SOURCE_ID" ] \
+    || { echo "smoke: exact source-snapshot authority changed" >&2; return 1; }
   [ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ] \
     && [ "$(stat -c '%d:%i:%u:%g:%a:%h' -- /var/run/docker.sock 2>/dev/null)" = "$SMOKE_DOCKER_SOCKET_ID" ] \
     || { echo "smoke: fixed local Docker Unix socket identity changed" >&2; return 1; }
@@ -198,12 +342,27 @@ smoke_docker() {
   return "$status"
 }
 
+verify_smoke_source_snapshot() {
+  local archive_sha tree_sha
+  archive_sha="$(sha256sum "$SMOKE_SOURCE_ARCHIVE" | awk '{print $1}')" || return 1
+  [ "$archive_sha" = "$SMOKE_SOURCE_ARCHIVE_SHA256" ] \
+    || { echo "smoke: exact source archive changed" >&2; return 1; }
+  tree_sha="$(smoke_source_tree_digest)" || return 1
+  [ "$tree_sha" = "$SMOKE_SOURCE_TREE_SHA256" ] \
+    || { echo "smoke: exact source snapshot changed" >&2; return 1; }
+}
+
 remove_smoke_authority_root() {
   [ "$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_ROOT" 2>/dev/null)" = "$SMOKE_ROOT_ID" ] \
     || { echo "smoke: preserving changed private authority root" >&2; return 125; }
   smoke_docker_authority \
     || { echo "smoke: preserving changed Docker/build authority" >&2; return 125; }
+  verify_smoke_source_snapshot \
+    || { echo "smoke: preserving changed exact source authority" >&2; return 125; }
   rm -rf -- "$SMOKE_BUILD_TARGET" || return 125
+  chmod -R u+rwX "$SMOKE_SOURCE" || return 125
+  rm -rf -- "$SMOKE_SOURCE" || return 125
+  rm -- "$SMOKE_SOURCE_ARCHIVE" || return 125
   rm -- "$SMOKE_DOCKER_CONFIG/config.json" || return 125
   rmdir -- "$SMOKE_DOCKER_CONFIG" || return 125
   if [ -e "$SMOKE_ROOT/sibling-docker.log" ] || [ -L "$SMOKE_ROOT/sibling-docker.log" ]; then
@@ -253,7 +412,8 @@ BUILD_RUN=(smoke_docker run --rm --network none --pull=never --read-only
   --env "SMOKE_EXPECTED_RUSTUP_TOOLCHAIN=$SMOKE_RUSTUP_TOOLCHAIN"
   --env "SMOKE_EXPECTED_VENDOR_CLOSURE_SHA256=$SMOKE_VENDOR_CLOSURE_SHA256"
   --env "SMOKE_EXPECTED_VENDOR_CONFIG_SHA256=$SMOKE_VENDOR_CONFIG_SHA256"
-  -v "$PWD:/work:ro"
+  --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"
+  --mount "type=bind,source=$SMOKE_ONLINE_ROOT,target=/online,readonly"
   -v "$SMOKE_BUILD_TARGET:/work/target:rw"
   -w /work "$IMAGE_ID")
 RUN=(smoke_docker run --rm --network none --pull=never --read-only
@@ -266,15 +426,15 @@ RUN=(smoke_docker run --rm --network none --pull=never --read-only
   --cpus 2
   --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=1g
   --env HOME=/tmp/smoke-runtime
-  -v "$PWD:/work:ro"
+  --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"
   -v "$SMOKE_BUILD_TARGET:/work/target:ro"
   -w /work "$IMAGE_ID")
 ROOT_RUN=(smoke_docker run --rm --network none --pull=never
-  -v "$PWD:/work:ro"
+  --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"
   -v "$SMOKE_BUILD_TARGET:/work/target:ro"
   -w /work "$IMAGE_ID")
 LIFECYCLE_RUN=(smoke_docker run --rm --network none --cap-add SYS_PTRACE --pull=never
-  -v "$PWD:/work:ro"
+  --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"
   -v "$SMOKE_BUILD_TARGET:/work/target:ro"
   -w /work "$IMAGE_ID")
 PID_REUSE_RUN=(smoke_docker run --rm --network none --read-only --pids-limit 128 --pull=never
@@ -282,7 +442,7 @@ PID_REUSE_RUN=(smoke_docker run --rm --network none --read-only --pids-limit 128
   --security-opt no-new-privileges --security-opt apparmor=unconfined
   --tmpfs /tmp:rw,nosuid,nodev,mode=1777
   --tmpfs /run:rw,nosuid,nodev,noexec,mode=755
-  -v "$PWD:/work:ro"
+  --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"
   -v "$SMOKE_BUILD_TARGET:/work/target:ro"
   -w /work "$IMAGE_ID")
 PORT_HEX='527E' # 21118
@@ -327,7 +487,7 @@ start_sibling_docker() {
   suffix=${SIBLING_ROOT##*.}
   SIBLING_NAME="rd-smoke-sibling-$suffix"
   if docker_out=$(smoke_docker run -d --name "$SIBLING_NAME" --network none --pull=never \
-      -v "$PWD:/work:ro" \
+      --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly" \
       -v "$SMOKE_BUILD_TARGET:/work/target:ro" \
       -v "$SIBLING_ROOT:/sibling:rw" \
       -w /work "$IMAGE_ID" \
@@ -450,6 +610,9 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
+printf 'SMOKE_SOURCE_COMMIT=%s archive_sha256=%s tree_sha256=%s\n' \
+  "$SMOKE_SOURCE_COMMIT" "$SMOKE_SOURCE_ARCHIVE_SHA256" "$SMOKE_SOURCE_TREE_SHA256"
+
 rc=0
 STAGE_STATUS=0
 run_stage() {
@@ -482,6 +645,7 @@ run_stage build_out "${BUILD_RUN[@]}" bash --noprofile --norc /work/scripts/smok
 printf '%s\n' "$build_out"
 record_stage_status R-B4-build
 [ "$STAGE_STATUS" -eq 0 ] || exit 1
+verify_smoke_source_snapshot || exit 1
 
 if [ "$SMOKE_MODE" = with-root-containers ]; then
 echo "== (0c) Linux manual supervisor lifecycle: exact hostile-record rejection, cross-container identity, pidfd-unavailable refusal, stop/crash recovery, privilege drop, and portable noninterference (R-S11c-27f/R-S11c-27g/R-S11c-27h/R-S11c-27i/R-S11c-27j/R-S11c-27n/R-S11c-27u) =="
@@ -891,6 +1055,7 @@ DECAY_NOTE=" + R-A8 limiter-decay (tripped block self-heals after the 60s window
 fi
 
 if [ "$rc" = 0 ]; then
+  verify_smoke_source_snapshot || exit 1
   if [ "$SMOKE_MODE" = with-root-containers ]; then
     echo "SMOKE OK: exact RustDesk executable under neutral smoke argv + mounted container stages + R-S11c-27o actual PID reuse recovery + R-S11c-27q native OpenRC exact lifecycle and portable noninterference + R-S11c-27r native runit exact lifecycle, automatic recovery, native shutdown, and portable noninterference + R-B4 build + socket surface (one v4 TCP on 127.0.0.1:21118, zero UDP) + R-A4 fail-closed/self-check + R-T9 graceful shutdown + R-D8/R-D2 non-installed user-owned --password-stdin IPC provisioning (clean set-and-exit; root-owned + non-root same-uid) + R-S11b installed-layout service ownership with no user-storage fallback + R-A1/R-S1 keying (two-process) + R-P3/R-P14c wrong-password refusal + R-T12 observability + R-T1 connection-flood capacity-shed + R-S6 keyed-edge authorization (full session) + R-F1/R-D6/R-S5 port-forward/RDP tunnel relays end-to-end inside the seal + R-F1/R-F2 file transfer (keyed FileTransfer login -> non-empty process-owner PeerInfo.username on a headless unix box, never the 'No active console user' refusal) + R-A8/R-T7 forged-frame rejection + R-A8.2/R-S10 owner-safe limiter + R-A9 wire-capture (no plaintext on the wire)${DECAY_NOTE} — ALL validated at RUNTIME."
   else

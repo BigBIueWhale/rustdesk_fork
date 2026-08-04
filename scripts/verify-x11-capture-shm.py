@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Verify X11 capture's System V shared-memory authority and cleanup contract."""
+"""Verify X11 capture shared-memory authority and GetImage frame finality."""
 
 from __future__ import annotations
 
@@ -196,6 +196,69 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         require(ffi, needle, label)
 
+    get_image_result = extract_rust_item(
+        capturer, "fn check_get_image_result(", "MIT-SHM GetImage result classifier"
+    )
+    require_order(
+        get_image_result,
+        (
+            "if let Some((error_code, major_code, minor_code, resource_id)) = protocol_error",
+            "if connection_error != 0",
+            "let reply_size = reply_size.ok_or_else",
+            "if reply_size != expected_size",
+        ),
+        "protocol, connection, reply-presence, and exact-size result order",
+    )
+    for needle, label in (
+        ("io::ErrorKind::ConnectionAborted", "connection failure classification"),
+        ("io::ErrorKind::InvalidData", "reply-size failure classification"),
+        ("X server returned no MIT-SHM GetImage reply", "missing-reply visibility"),
+    ):
+        require(get_image_result, needle, label)
+
+    get_image = extract_rust_item(
+        capturer,
+        "    fn get_image(&self) -> io::Result<()>",
+        "checked MIT-SHM GetImage transaction",
+    )
+    require_order(
+        get_image,
+        (
+            "let mut error = ptr::null_mut();",
+            "xcb_shm_get_image(",
+            "xcb_shm_get_image_reply(server, request, &mut error)",
+            "let reply_size = if response.is_null()",
+            "let protocol_error = if error.is_null()",
+            "libc::free(response.cast())",
+            "libc::free(error.cast())",
+            "xcb_connection_has_error(server)",
+            "check_get_image_result(reply_size, protocol_error, connection_error, self.size)",
+        ),
+        "checked request/reply ownership and final result validation",
+    )
+    forbid(capturer + ffi, "xcb_shm_get_image_unchecked(", "unchecked MIT-SHM GetImage")
+    for needle, label in (
+        ("pub fn xcb_shm_get_image(", "checked MIT-SHM GetImage binding"),
+        ("pub fn xcb_shm_get_image_reply(", "MIT-SHM GetImage reply binding"),
+    ):
+        require(ffi, needle, label)
+
+    frame = extract_rust_item(
+        capturer,
+        "    pub fn frame<'b>(&'b mut self) -> std::io::Result<&'b [u8]>",
+        "X11 frame publication",
+    )
+    require_order(
+        frame,
+        (
+            "self.get_image()?;",
+            "slice::from_raw_parts(self.memory.buffer, self.size)",
+            "would_block_if_equal",
+            "Ok(result)",
+        ),
+        "GetImage success before shared-buffer publication",
+    )
+
     for needle, label in (
         (
             "fn r_s11fw_shared_memory_is_owner_only_and_drop_removes_it()",
@@ -204,6 +267,14 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "fn r_s11fw_attached_shared_memory_becomes_deletion_pending()",
             "deletion-pending kernel test",
+        ),
+        (
+            "fn r_s11fx_get_image_accepts_only_an_exact_reply()",
+            "exact GetImage reply-size test",
+        ),
+        (
+            "fn r_s11fx_get_image_rejects_protocol_connection_and_missing_reply()",
+            "GetImage error-finality test",
         ),
     ):
         require(capturer, needle, label)
@@ -230,6 +301,21 @@ def validate(sources: Dict[str, str]) -> None:
         "R-S11e-209 hardening record",
     )
     require(
+        sources["requirements"],
+        '<span class="id">R-S11fx</span>',
+        "R-S11fx normative requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>332</td>",
+        "Appendix C #332 disposition",
+    )
+    require(
+        sources["hardening"],
+        "R-S11fx/R-S11e-210 — Linux X11 capture GetImage frame finality",
+        "R-S11e-210 hardening record",
+    )
+    require(
         sources["verify"],
         "scripts/verify-x11-capture-shm.py --repo . --self-test",
         "focused X11 capture shared-memory gate",
@@ -238,6 +324,11 @@ def validate(sources: Dict[str, str]) -> None:
         sources["verify"],
         "x11::capturer::tests::r_s11fw_ -- --test-threads=1",
         "compiled X11 shared-memory kernel tests",
+    )
+    require(
+        sources["verify"],
+        "x11::capturer::tests::r_s11fx_ -- --test-threads=1",
+        "compiled X11 GetImage finality tests",
     )
     try:
         workspace_module = ast.parse(sources["workspace"])
@@ -321,6 +412,36 @@ MUTATIONS = (
         "independent mode assertion",
     ),
     Mutation(
+        "capturer",
+        "let request = xcb_shm_get_image(",
+        "let request = xcb_shm_get_image_unchecked(",
+        "checked GetImage request",
+    ),
+    Mutation(
+        "capturer",
+        "xcb_shm_get_image_reply(server, request, &mut error)",
+        "xcb_shm_get_image_reply(server, request, ptr::null_mut())",
+        "GetImage protocol error receipt",
+    ),
+    Mutation(
+        "capturer",
+        "libc::free(response.cast());\n            libc::free(error.cast());",
+        "libc::free(response.cast());\n            let _ = error;",
+        "GetImage protocol error cleanup",
+    ),
+    Mutation(
+        "capturer",
+        "if reply_size != expected_size",
+        "if false",
+        "GetImage exact reply size",
+    ),
+    Mutation(
+        "capturer",
+        "self.get_image()?;",
+        "let _ = self.get_image();",
+        "GetImage result propagation",
+    ),
+    Mutation(
         "requirements",
         '<span class="id">R-S11fw</span>',
         '<span class="id">R-S11fw-disabled</span>',
@@ -337,6 +458,24 @@ MUTATIONS = (
         "R-S11fw/R-S11e-209 — Linux X11 capture shared-memory authority",
         "R-S11fw/R-S11e-209 — permissive Linux X11 capture memory",
         "hardening record",
+    ),
+    Mutation(
+        "requirements",
+        '<span class="id">R-S11fx</span>',
+        '<span class="id">R-S11fx-disabled</span>',
+        "GetImage normative requirement",
+    ),
+    Mutation(
+        "requirements",
+        "<tr><td>332</td>",
+        "<tr><td>332-disabled</td>",
+        "GetImage Appendix disposition",
+    ),
+    Mutation(
+        "hardening",
+        "R-S11fx/R-S11e-210 — Linux X11 capture GetImage frame finality",
+        "R-S11fx/R-S11e-210 — unchecked X11 frame publication",
+        "GetImage hardening record",
     ),
     Mutation(
         "verify",
@@ -375,7 +514,7 @@ def run_self_test(sources: Dict[str, str]) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Verify X11 capture shared-memory authority"
+        description="Verify X11 capture shared-memory authority and frame finality"
     )
     parser.add_argument("--repo", default=".", help="repository root")
     parser.add_argument("--self-test", action="store_true")

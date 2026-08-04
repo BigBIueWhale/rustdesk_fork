@@ -9121,10 +9121,11 @@ echo "== (3c-ii-a) viewer peer media display/thread + queue bounds (Appendix C #
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config common::codec::tests::av1_policy_is_not_advertised_or_negotiated --color never
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config common::codec::tests::av1_decoder_is_policy_disabled --color never
 "${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config --color never x11::capturer::tests::r_s11fw_ -- --test-threads=1
+"${RUN[@]}" cargo test -p scrap --lib --features linux-pkg-config --color never x11::capturer::tests::r_s11fx_ -- --test-threads=1
 if /usr/bin/python3 -I -S scripts/verify-x11-capture-shm.py --repo . --self-test; then
-  echo "  ok  R-S11fw/R-S11e-209 X11 capture shared memory is owner-only, checked, deletion-pending, and RAII-owned"
+  echo "  ok  R-S11fw/R-S11e-209 + R-S11fx/R-S11e-210 X11 capture shared memory and GetImage frame finality"
 else
-  echo "  FAIL R-S11fw/R-S11e-209: X11 capture regained permissive, unchecked, live-segment, or incomplete-cleanup authority"
+  echo "  FAIL R-S11fw/R-S11e-209 + R-S11fx/R-S11e-210: X11 capture regained permissive memory or unchecked/incomplete frame finality"
   rc=1
 fi
 if python3 scripts/verify-viewer-video-mailbox.py --repo . --self-test; then

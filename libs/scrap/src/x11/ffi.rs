@@ -37,7 +37,7 @@ extern "C" {
         shmseg: xcb_shm_seg_t,
     ) -> xcb_void_cookie_t;
 
-    pub fn xcb_shm_get_image_unchecked(
+    pub fn xcb_shm_get_image(
         c: *mut xcb_connection_t,
         drawable: xcb_drawable_t,
         x: i16,

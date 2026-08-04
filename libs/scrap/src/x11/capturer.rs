@@ -99,6 +99,44 @@ fn check_xcb_request(
     Ok(())
 }
 
+fn check_get_image_result(
+    reply_size: Option<usize>,
+    protocol_error: Option<(u8, u8, u16, u32)>,
+    connection_error: i32,
+    expected_size: usize,
+) -> io::Result<()> {
+    if let Some((error_code, major_code, minor_code, resource_id)) = protocol_error {
+        return Err(io::Error::new(
+            io::ErrorKind::Other,
+            format!(
+                "X server rejected MIT-SHM GetImage with error {error_code} \
+                 (major {major_code}, minor {minor_code}, resource {resource_id})"
+            ),
+        ));
+    }
+    if connection_error != 0 {
+        return Err(io::Error::new(
+            io::ErrorKind::ConnectionAborted,
+            format!("X connection failed during MIT-SHM GetImage: {connection_error}"),
+        ));
+    }
+    let reply_size = reply_size.ok_or_else(|| {
+        io::Error::new(
+            io::ErrorKind::Other,
+            "X server returned no MIT-SHM GetImage reply",
+        )
+    })?;
+    if reply_size != expected_size {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!(
+                "X server MIT-SHM GetImage size {reply_size} does not match capture buffer size {expected_size}"
+            ),
+        ));
+    }
+    Ok(())
+}
+
 pub struct Capturer {
     display: Display,
     memory: SharedMemory,
@@ -169,11 +207,13 @@ impl Capturer {
         &self.display
     }
 
-    fn get_image(&self) {
+    fn get_image(&self) -> io::Result<()> {
         let rect = self.display.rect();
-        unsafe {
-            let request = xcb_shm_get_image_unchecked(
-                self.display.server().raw(),
+        let server = self.display.server().raw();
+        let mut error = ptr::null_mut();
+        let (reply_size, protocol_error, connection_error) = unsafe {
+            let request = xcb_shm_get_image(
+                server,
                 self.display.root(),
                 rect.x,
                 rect.y,
@@ -184,14 +224,31 @@ impl Capturer {
                 self.xcbid,
                 0,
             );
-            let response =
-                xcb_shm_get_image_reply(self.display.server().raw(), request, ptr::null_mut());
-            libc::free(response as *mut _);
-        }
+            let response = xcb_shm_get_image_reply(server, request, &mut error);
+            let reply_size = if response.is_null() {
+                None
+            } else {
+                Some((*response).size as usize)
+            };
+            let protocol_error = if error.is_null() {
+                None
+            } else {
+                Some((
+                    (*error).error_code,
+                    (*error).major_code,
+                    (*error).minor_code,
+                    (*error).resource_id,
+                ))
+            };
+            libc::free(response.cast());
+            libc::free(error.cast());
+            (reply_size, protocol_error, xcb_connection_has_error(server))
+        };
+        check_get_image_result(reply_size, protocol_error, connection_error, self.size)
     }
 
     pub fn frame<'b>(&'b mut self) -> std::io::Result<&'b [u8]> {
-        self.get_image();
+        self.get_image()?;
         let result = unsafe { slice::from_raw_parts(self.memory.buffer, self.size) };
         crate::would_block_if_equal(&mut self.saved_raw_data, result)?;
         Ok(result)
@@ -262,5 +319,33 @@ mod tests {
 
         drop(memory);
         assert_segment_absent(id);
+    }
+
+    #[test]
+    fn r_s11fx_get_image_accepts_only_an_exact_reply() {
+        check_get_image_result(Some(4096), None, 0, 4096).expect("accept exact reply size");
+
+        let error = check_get_image_result(Some(4095), None, 0, 4096)
+            .expect_err("reject mismatched reply size");
+        assert_eq!(error.kind(), io::ErrorKind::InvalidData);
+    }
+
+    #[test]
+    fn r_s11fx_get_image_rejects_protocol_connection_and_missing_reply() {
+        let protocol = check_get_image_result(Some(4096), Some((8, 130, 4, 17)), 0, 4096)
+            .expect_err("reject X protocol error");
+        assert_eq!(protocol.kind(), io::ErrorKind::Other);
+        assert!(protocol.to_string().contains("error 8"));
+        assert!(protocol.to_string().contains("major 130"));
+        assert!(protocol.to_string().contains("minor 4"));
+        assert!(protocol.to_string().contains("resource 17"));
+
+        let connection =
+            check_get_image_result(None, None, 5, 4096).expect_err("reject X connection error");
+        assert_eq!(connection.kind(), io::ErrorKind::ConnectionAborted);
+
+        let missing =
+            check_get_image_result(None, None, 0, 4096).expect_err("reject missing X reply");
+        assert_eq!(missing.kind(), io::ErrorKind::Other);
     }
 }

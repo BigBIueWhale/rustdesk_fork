@@ -15575,6 +15575,60 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   lifecycle, latency budget, current artifact, cold release reproduction, independent reproduction,
   or external-review result is claimed. Those remain explicit release evidence gaps.
 
+- **R-S11fx/R-S11e-210 — Linux X11 capture GetImage frame finality — SOURCE IMPLEMENTED;
+  CLEAN RUST 1.75 PURE BRANCH TESTS AND FOCUSED DELIBERATE-MUTATION GATE GREEN; REAL X SERVER,
+  CAPTURE/RENDER, FOCUS/LATENCY, ARTIFACT, AND RELEASE EVIDENCE OPEN.** Platform: Linux X11.
+  Endpoint/action: `libs/scrap/src/x11/capturer.rs::{Capturer::get_image,Capturer::frame}` and
+  `libs/scrap/src/x11/ffi.rs` MIT-SHM GetImage bindings. Boundary: authenticated local X-server
+  request/reply completion and shared capture-buffer writes ↔ the frame admitted to compare, encode,
+  transport, and presentation.
+
+  The inherited capturer selected `xcb_shm_get_image_unchecked`, passed `NULL` for the reply
+  function's protocol-error output, freed the reply pointer without checking whether it existed, and
+  then always constructed and compared a slice over the shared buffer. XCB's official API contract
+  says the unsuffixed reply-producing request is checked, the `_unchecked` form routes errors to the
+  event queue, and the reply error output must be non-null for checked error receipt. The Xorg
+  MIT-SHM implementation reports the number of bytes written in the reply `size` and can reject the
+  request for invalid drawable/geometry/format/segment capacity. Therefore an X-server rejection,
+  connection failure, or missing reply could be flattened into admission of old or otherwise
+  unconfirmed shared bytes. This is direct source evidence of capture finality/freshness debt. It is
+  not a real-X-server reproduction and does not establish the cause of the reported Android/Windows
+  focus/background display delay, especially because those operational clients and the Debian server
+  predate the current hardening loop.
+
+  `Capturer::get_image` now returns `io::Result<()>`, submits checked `xcb_shm_get_image`, supplies a
+  real error-result pointer to `xcb_shm_get_image_reply`, snapshots reply/error fields before release,
+  and frees both XCB allocations on every outcome. One pure result classifier rejects protocol error
+  with the X error/major/minor/resource fields preserved for diagnosis, then connection failure,
+  missing reply, and a reply byte count that differs from the exact allocated capture-buffer size.
+  `frame()` propagates that result before constructing or comparing the shared slice, so only a
+  confirmed exact reply can enter unchanged-frame detection or later capture consumers. No retry,
+  timer, reconnect, queue, background service, protocol compatibility fallback, or unrelated X11
+  enumeration behavior changed.
+
+  A fresh empty-target Rust 1.75 offline build compiled `scrap` and ran the two focused tests
+  successfully (2 passed, 0 failed, 15 filtered): exact success, size mismatch, protocol error with
+  preserved fields, connection failure, and missing reply. `scripts/verify-x11-capture-shm.py
+  --self-test` additionally binds the checked FFI surface, non-null error receipt, reply/error cleanup,
+  classifier order, exact size, frame propagation, compiled tests, requirement, Appendix row, ledger,
+  shared gate, and independent workspace dispatch and rejects deliberate weakenings.
+
+  Verification uses only the immutable, networkless, numeric-nonroot Rust 1.75 container described in
+  R-S11fw, with read-only source/input mounts, private executable tmpfs output, dropped capabilities,
+  no-new-privileges, and no ports, host network/namespace, device, display, Docker socket, or privileged
+  flag. The first two compile invocations stopped before compilation because the first login shell hid
+  Cargo and the second Rustup wrapper attempted a write under the read-only image; the corrected direct
+  pinned-toolchain invocation produced the green result above. Two pre-verdict independent source-mutation
+  runs later stopped because one new fixture expected the wrong rejection label and another targeted both
+  a live assertion and its inert self-test literal; both unsafe mutations were rejected by the live
+  validator, the fixture bookkeeping was corrected, and neither incomplete run is counted as green. No
+  host RustDesk process/service/config,
+  listener, firewall, display, or network state was inspected or changed. The image has no isolated
+  Xorg/Xvfb fixture, so actual request/reply ABI execution, screen capture, capture-to-codec-to-render,
+  focus/background behavior, reconnect behavior, latency budgets/timestamps, cross-version sessions,
+  current artifacts, cold release reproduction, independent reproduction, and external review remain
+  explicit release blockers.
+
 - **R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority —
   SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE LIVE
   FOURTEEN-ARCHIVE ACQUISITION EVIDENCE RECORDED; BROADER RELEASE EVIDENCE OPEN.** Platform: the unprivileged Linux
@@ -20443,7 +20497,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-b4489134ecfce52ab3f61bcfba17ce877a90dc58ac052071398b13774c82b314  requirements.html
+bbf1b995e0152da6ddb4645ff6aac1fd326c57f6499ccb79324f99ff8616518b  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -20485,3 +20539,4 @@ The same identity additionally binds R-S11fs and Appendix C #327.
 The same identity additionally binds R-S11fu and Appendix C #329.
 The same identity additionally binds R-S11fv and Appendix C #330.
 The same identity additionally binds R-S11fw and Appendix C #331.
+The same identity additionally binds R-S11fx and Appendix C #332.

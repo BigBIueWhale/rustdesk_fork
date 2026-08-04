@@ -17285,6 +17285,20 @@ def validate_x11_capture_shared_memory_contract(sources):
             '"R-S11fw/R-S11e-209 — Linux X11 capture shared-memory authority"',
             "hardening-ledger binding",
         ),
+        ('"xcb_shm_get_image("', "checked GetImage request contract"),
+        (
+            '"xcb_shm_get_image_reply(server, request, &mut error)"',
+            "GetImage protocol-error receipt contract",
+        ),
+        ('"libc::free(error.cast())"', "GetImage error cleanup contract"),
+        ('"if reply_size != expected_size"', "exact reply-size contract"),
+        ('"self.get_image()?;"', "frame-publication propagation contract"),
+        ('\'<span class="id">R-S11fx</span>\'', "GetImage requirement binding"),
+        ('"<tr><td>332</td>"', "GetImage Appendix disposition binding"),
+        (
+            '"R-S11fx/R-S11e-210 — Linux X11 capture GetImage frame finality"',
+            "GetImage hardening-ledger binding",
+        ),
     ):
         require_text(validation, text, f"X11 capture shared-memory {label}")
     for text, label in (
@@ -17340,6 +17354,80 @@ def validate_x11_capture_shared_memory_contract(sources):
         ("pub fn xcb_shm_detach_checked(", "checked detach binding"),
     ):
         require_text(sources["x11_ffi"], text, f"X11 {label}")
+    for text, label in (
+        ("pub fn xcb_shm_get_image(", "checked GetImage binding"),
+        ("pub fn xcb_shm_get_image_reply(", "GetImage reply binding"),
+    ):
+        require_text(sources["x11_ffi"], text, f"X11 {label}")
+    require_absent(
+        sources["x11_capture"] + sources["x11_ffi"],
+        "xcb_shm_get_image_unchecked(",
+        "unchecked X11 GetImage request",
+    )
+    get_image_result = extract_between(
+        sources["x11_capture"],
+        "fn check_get_image_result(",
+        "\n\npub struct Capturer",
+        "X11 GetImage result classifier",
+    )
+    require_order(
+        get_image_result,
+        (
+            "if let Some((error_code, major_code, minor_code, resource_id)) = protocol_error",
+            "if connection_error != 0",
+            "let reply_size = reply_size.ok_or_else",
+            "if reply_size != expected_size",
+        ),
+        "X11 GetImage exact result order",
+    )
+    get_image = extract_between(
+        sources["x11_capture"],
+        "    fn get_image(&self) -> io::Result<()> {",
+        "\n\n    pub fn frame",
+        "X11 checked GetImage transaction",
+    )
+    require_order(
+        get_image,
+        (
+            "let mut error = ptr::null_mut();",
+            "xcb_shm_get_image(",
+            "xcb_shm_get_image_reply(server, request, &mut error)",
+            "let reply_size = if response.is_null()",
+            "let protocol_error = if error.is_null()",
+            "libc::free(response.cast())",
+            "libc::free(error.cast())",
+            "xcb_connection_has_error(server)",
+            "check_get_image_result(reply_size, protocol_error, connection_error, self.size)",
+        ),
+        "X11 checked GetImage ownership and result validation",
+    )
+    frame = extract_between(
+        sources["x11_capture"],
+        "    pub fn frame<'b>(&'b mut self) -> std::io::Result<&'b [u8]> {",
+        "\n}\n\nimpl Drop for Capturer",
+        "X11 frame publication",
+    )
+    require_order(
+        frame,
+        (
+            "self.get_image()?;",
+            "slice::from_raw_parts(self.memory.buffer, self.size)",
+            "would_block_if_equal",
+            "Ok(result)",
+        ),
+        "X11 GetImage success before frame publication",
+    )
+    for text, label in (
+        (
+            "fn r_s11fx_get_image_accepts_only_an_exact_reply()",
+            "exact GetImage reply regression",
+        ),
+        (
+            "fn r_s11fx_get_image_rejects_protocol_connection_and_missing_reply()",
+            "GetImage failure-finality regression",
+        ),
+    ):
+        require_text(sources["x11_capture"], text, f"X11 capture {label}")
     capturer_drop = extract_between(
         sources["x11_capture"],
         "impl Drop for Capturer {",
@@ -17366,6 +17454,11 @@ def validate_x11_capture_shared_memory_contract(sources):
         "shared X11 capture kernel behaviors",
     )
     require_text(
+        sources["verify"],
+        "x11::capturer::tests::r_s11fx_ -- --test-threads=1",
+        "shared X11 GetImage finality behaviors",
+    )
+    require_text(
         sources["requirements"],
         '<span class="id">R-S11fw</span>',
         "X11 capture shared-memory requirement",
@@ -17379,6 +17472,21 @@ def validate_x11_capture_shared_memory_contract(sources):
         sources["hardening"],
         "R-S11fw/R-S11e-209 — Linux X11 capture shared-memory authority",
         "X11 capture shared-memory hardening ledger",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11fx</span>',
+        "X11 GetImage frame-finality requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>332</td>",
+        "X11 GetImage frame-finality Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11fx/R-S11e-210 — Linux X11 capture GetImage frame finality",
+        "X11 GetImage frame-finality hardening ledger",
     )
     try:
         workspace_module = ast.parse(sources["workspace_verifier"])
@@ -67765,6 +67873,58 @@ def run_source_mutations(sources):
             "R-S11fw/R-S11e-209 — Linux X11 capture shared-memory authority",
             "R-S11fw/R-S11e-209 — permissive Linux X11 capture memory",
             "X11 capture shared-memory hardening ledger",
+        ),
+        (
+            "x11_capture",
+            "let request = xcb_shm_get_image(",
+            "let request = xcb_shm_get_image_unchecked(",
+            "unchecked X11 GetImage request",
+        ),
+        (
+            "x11_capture",
+            "xcb_shm_get_image_reply(server, request, &mut error)",
+            "xcb_shm_get_image_reply(server, request, ptr::null_mut())",
+            "X11 checked GetImage ownership and result validation",
+        ),
+        (
+            "x11_capture",
+            "if reply_size != expected_size",
+            "if false",
+            "X11 GetImage exact result order",
+        ),
+        (
+            "x11_capture",
+            "self.get_image()?;",
+            "let _ = self.get_image();",
+            "X11 GetImage success before frame publication",
+        ),
+        (
+            "x11_capture_shared_memory_verifier",
+            '            "xcb_shm_get_image(",\n'
+            '            "xcb_shm_get_image_reply(server, request, &mut error)",\n'
+            '            "let reply_size = if response.is_null()",',
+            '            "xcb_shm_get_image(",\n'
+            '            "xcb_shm_get_image_reply(server, request, ptr::null_mut())",\n'
+            '            "let reply_size = if response.is_null()",',
+            "X11 capture shared-memory GetImage protocol-error receipt contract",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11fx</span>',
+            '<span class="id">R-S11fx-disabled</span>',
+            "X11 GetImage frame-finality requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>332</td>",
+            "<tr><td>332-disabled</td>",
+            "X11 GetImage frame-finality Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11fx/R-S11e-210 — Linux X11 capture GetImage frame finality",
+            "R-S11fx/R-S11e-210 — unchecked X11 frame publication",
+            "X11 GetImage frame-finality hardening ledger",
         ),
         (
             "workspace_verifier",

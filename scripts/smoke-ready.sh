@@ -72,6 +72,14 @@ followed_file_identity() {
   stat -Lc '%d:%i:%u:%g:%a:%s' -- "$1"
 }
 
+mutable_file_object_identity() {
+  stat -c '%d:%i:%f:%u:%g:%a:%h' -- "$1"
+}
+
+followed_mutable_file_object_identity() {
+  stat -Lc '%d:%i:%f:%u:%g:%a:%h' -- "$1"
+}
+
 path_identity() {
   stat -c '%d:%i:%f:%u:%g:%a' -- "$1"
 }
@@ -295,10 +303,10 @@ wait_for_condition() (
   validate_pid "$pid"
   validate_start "$expected_start"
   validate_log "$log"
-  log_path_id=$(file_identity "$log") || fail "$label: log identity is unavailable"
+  log_path_id=$(mutable_file_object_identity "$log") || fail "$label: log identity is unavailable"
   exec {log_fd}<"$log" || fail "$label: log cannot be pinned"
   pinned_log="/proc/self/fd/$log_fd"
-  log_fd_id=$(followed_file_identity "$pinned_log") || fail "$label: pinned log identity is unavailable"
+  log_fd_id=$(followed_mutable_file_object_identity "$pinned_log") || fail "$label: pinned log identity is unavailable"
   [ "$log_path_id" = "$log_fd_id" ] || fail "$label: log changed while being pinned"
   pid_is_same_and_running "$pid" "$expected_start" || fail "$label: retained process identity is not running before readiness proof"
   now=$(monotonic_millis) || fail "$label: monotonic clock is unavailable"
@@ -337,10 +345,10 @@ wait_for_duration() (
   validate_pid "$pid"
   validate_start "$expected_start"
   validate_log "$log"
-  log_path_id=$(file_identity "$log") || fail "$label: log identity is unavailable"
+  log_path_id=$(mutable_file_object_identity "$log") || fail "$label: log identity is unavailable"
   exec {log_fd}<"$log" || fail "$label: log cannot be pinned"
   pinned_log="/proc/self/fd/$log_fd"
-  log_fd_id=$(followed_file_identity "$pinned_log") || fail "$label: pinned log identity is unavailable"
+  log_fd_id=$(followed_mutable_file_object_identity "$pinned_log") || fail "$label: pinned log identity is unavailable"
   [ "$log_path_id" = "$log_fd_id" ] || fail "$label: log changed while being pinned"
   pid_is_same_and_running "$pid" "$expected_start" || fail "$label: retained process identity is not running before monitored interval"
   now=$(monotonic_millis) || fail "$label: monotonic clock is unavailable"
@@ -420,10 +428,10 @@ signal_and_wait() (
   pinned_log=-
   if [ "$log" != - ]; then
     validate_log "$log"
-    log_path_id=$(file_identity "$log") || fail "$label: log identity is unavailable"
+    log_path_id=$(mutable_file_object_identity "$log") || fail "$label: log identity is unavailable"
     exec {log_fd}<"$log" || fail "$label: log cannot be pinned"
     pinned_log="/proc/self/fd/$log_fd"
-    log_fd_id=$(followed_file_identity "$pinned_log") || fail "$label: pinned log identity is unavailable"
+    log_fd_id=$(followed_mutable_file_object_identity "$pinned_log") || fail "$label: pinned log identity is unavailable"
     [ "$log_path_id" = "$log_fd_id" ] || fail "$label: log changed while being pinned"
   fi
   pid_is_same_and_running "$pid" "$expected_start" || fail "$label: retained process identity is not running before signal"
@@ -504,6 +512,18 @@ stop_self_test_child() {
   wait "$pid" 2>/dev/null || true
 }
 
+prove_growing_log_can_be_pinned() {
+  local log=$1 path_id log_fd pinned_log log_fd_id
+  path_id=$(mutable_file_object_identity "$log") || fail "self-test growing log identity is unavailable"
+  exec {log_fd}<"$log" || fail "self-test growing log cannot be pinned"
+  pinned_log="/proc/self/fd/$log_fd"
+  printf 'self-test concurrent log growth\n' >> "$log"
+  log_fd_id=$(followed_mutable_file_object_identity "$pinned_log") \
+    || fail "self-test pinned growing log identity is unavailable"
+  [ "$path_id" = "$log_fd_id" ] || fail "self-test rejected append-only growth of the pinned log object"
+  exec {log_fd}<&-
+}
+
 self_test() {
   local log parked_log probe typed_ready probe_hang rc
   SELF_TEST_TMP=$(mktemp -d /tmp/rd-smoke-ready.XXXXXX)
@@ -517,6 +537,7 @@ self_test() {
   SELF_TEST_IPC_MARKER=$SELF_TEST_TMP/ipc-owned
   : > "$log"
   remember_tmp_file "$log"
+  prove_growing_log_can_be_pinned "$log"
   : > "$parked_log"
   remember_tmp_file "$parked_log"
   cat > "$probe" <<EOF

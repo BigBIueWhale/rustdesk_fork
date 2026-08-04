@@ -819,16 +819,26 @@ echo "== (1) fail-closed startup: --server with NO password MUST PARK — stay a
 # exits) and probe /proc, mirroring stage (2)'s pattern.
 run_stage out1 "${RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh parked
 echo "$out1"
+parked_stage_status=$STAGE_STATUS
 record_stage_status R-A4/R-S9
-grep -q 'ALIVE=yes' <<<"$out1" \
-  || { echo "  FAIL R-A4/R-S9: --server exited on an empty permanent password (finding D: it MUST park, not exit/crash)"; rc=1; }
-grep -q 'TCP_LISTEN=\[\]' <<<"$out1" \
-  || { echo "  FAIL R-S9: a listener is bound with NO permanent password (must bind NOTHING while parked)"; rc=1; }
-grep -q 'the direct listener is PARKED' <<<"$out1" \
-  || { echo "  FAIL R-S9: missing the fail-closed park diagnostic on the empty-password path"; rc=1; }
-grep -q 'Direct server listening' <<<"$out1" \
-  && { echo "  FAIL R-S9: the server bound a listener with no permanent password"; rc=1; }
-[ "$rc" = 0 ] && echo "  ok  R-A4/R-S9 fail-closed startup (no password -> PARK: alive, nothing bound, runtime)"
+if [ "$parked_stage_status" -eq 0 ]; then
+  parked_evidence_ok=1
+  grep -q 'ALIVE=yes' <<<"$out1" \
+    || { echo "  FAIL R-A4/R-S9: --server exited on an empty permanent password (finding D: it MUST park, not exit/crash)"; parked_evidence_ok=0; rc=1; }
+  grep -q 'TCP_LISTEN=\[\]' <<<"$out1" \
+    || { echo "  FAIL R-S9: a listener is bound with NO permanent password (must bind NOTHING while parked)"; parked_evidence_ok=0; rc=1; }
+  grep -q 'the direct listener is PARKED' <<<"$out1" \
+    || { echo "  FAIL R-S9: missing the fail-closed park diagnostic on the empty-password path"; parked_evidence_ok=0; rc=1; }
+  if grep -q 'Direct server listening' <<<"$out1"; then
+    echo "  FAIL R-S9: the server bound a listener with no permanent password"
+    parked_evidence_ok=0
+    rc=1
+  fi
+  [ "$parked_evidence_ok" -eq 0 ] \
+    || echo "  ok  R-A4/R-S9 fail-closed startup (no password -> PARK: alive, nothing bound, runtime)"
+else
+  echo "  NOTE R-A4/R-S9: parked product-state assertions were not evaluated because the isolated stage did not emit a complete result"
+fi
 
 echo "== (2) seed a password, LISTEN on 127.0.0.1, assert the socket surface (R-B4) + R-T9 drain =="
 run_stage out2 "${RUN[@]}" bash --noprofile --norc /work/scripts/smoke-server-stage.sh listen

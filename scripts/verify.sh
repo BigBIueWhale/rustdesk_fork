@@ -5669,6 +5669,12 @@ grep -qF 'portable-rootless mode: root-owned/user-creation/installed-layout pass
   || r_s11e64="$r_s11e64 root-password-mode-gate-missing"
 grep -qF 'portable-rootless mode: packet-capture stage not entered' scripts/smoke-server.sh \
   || r_s11e64="$r_s11e64 root-capture-mode-gate-missing"
+grep -qF 'parked_stage_status=$STAGE_STATUS' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 parked-stage-status-not-preserved"
+grep -qF 'if [ "$parked_stage_status" -eq 0 ]; then' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 parked-product-assertions-not-stage-gated"
+grep -qF 'parked product-state assertions were not evaluated because the isolated stage did not emit a complete result' scripts/smoke-server.sh \
+  || r_s11e64="$r_s11e64 parked-stage-unavailable-verdict-missing"
 grep -qF 'Root/service/init-system/user-creation/installed-layout/packet-capture, graphical/native/device, performance/soak, and release-artifact evidence were not entered or claimed.' scripts/smoke-server.sh \
   || r_s11e64="$r_s11e64 rootless-evidence-limit-missing"
 for root_stage in password-root password-nonroot password-installed capture; do
@@ -7554,6 +7560,12 @@ echo "$smoke_ready_fail_block" | grep -qF 'exit 1' || r_s11c27f="$r_s11c27f read
 if echo "$smoke_ready_fail_block" | grep -qF 'return 1'; then
   r_s11c27f="$r_s11c27f readiness-failure-can-continue"
 fi
+grep -qF "stat -c '%d:%i:%f:%u:%g:%a:%h' -- \"\$1\"" scripts/smoke-ready.sh \
+  || r_s11c27f="$r_s11c27f mutable-log-stable-object-identity-missing"
+grep -qF 'prove_growing_log_can_be_pinned "$log"' scripts/smoke-ready.sh \
+  || r_s11c27f="$r_s11c27f growing-log-pin-self-test-missing"
+grep -qF 'self-test rejected append-only growth of the pinned log object' scripts/smoke-ready.sh \
+  || r_s11c27f="$r_s11c27f growing-log-pin-result-missing"
 grep -qF 'service-lifecycle-manual)' scripts/smoke-server-stage.sh || r_s11c27f="$r_s11c27f mounted-stage-dispatch-missing"
 grep -qF 'LIFECYCLE_RUN=(smoke_docker run --rm --network none' scripts/smoke-server.sh || r_s11c27f="$r_s11c27f network-isolated-runtime-missing"
 grep -qF 'record_stage_status R-S11c-27f' scripts/smoke-server.sh || r_s11c27f="$r_s11c27f runtime-status-not-preserved"

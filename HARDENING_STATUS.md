@@ -16854,6 +16854,28 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   remains unpromoted to runtime evidence until that exact committed topology passes the complete
   confined product replay.
 
+  The first exact-commit replay of the disjoint topology at
+  `12ebd52614e969134a31c10cc26600879374c3ac` bound source archive SHA-256
+  `185896ccfbe94b99f2d7ef8f33f02f4452f98c366e06ba97bd756521b3c6e321` and tree
+  SHA-256 `e53532644da30a688b458edd9c4f414466409f1a3ed69a42b2c845ebc3c6803d`.
+  Compilation and every later portable stage completed, including loopback-only/zero-UDP listener
+  proof, graceful drain, correct/wrong CPace, capacity shed, authenticated Remote admission to the
+  exact headless result, port-forward echo, FileTransfer admission, forged-frame rejection,
+  different-source limiter safety, and real 60-second limiter decay. The run nevertheless ended
+  red because the initial no-password parked stage's readiness checker compared a live log's byte
+  size before and after opening its pinned descriptor. A legitimate append in that interval changed
+  size and produced `log changed while being pinned` before the stage emitted its complete
+  alive/socket/diagnostic result. Typed IPC subsequently reported `state=parked`, but that alone is
+  not promoted to no-listener proof. The orchestrator then emitted three unsupported derivative
+  failure claims from the absent result lines. Source review proves this as an evidence-harness race:
+  immutable probe identity correctly retains size, while an append-growing log must be pinned by
+  stable object/type/ownership/mode/link identity without size. The correction separates those
+  identities, adds a deterministic growing-log self-test, and evaluates parked product assertions
+  only after a zero-exit isolated stage. No RustDesk product source or policy changes in this
+  follow-up. The failed replay published no port, touched no host RustDesk/service/firewall/network
+  state, and cleaned all private smoke/container state; its successful later stages remain truthful
+  partial behavior, not a green transaction.
+
   Bash syntax for the smoke and shared gate, Python syntax for the process helper and
   independent workspace validator, the pure process-helper positive/negative self-test, the
   workspace normal semantic contract, and its complete in-memory source-mutation catalog pass
@@ -20192,7 +20214,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-b50f91f37b1e267fa46df300c0320bb74665b4b03b58fc2c9a08f52829276c57  requirements.html
+35a8c70d550490dc2f7d8b35043e5178e0b6d0c37e5516c3f92e1db6d00ec7a2  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

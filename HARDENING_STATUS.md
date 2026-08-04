@@ -16876,6 +16876,31 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   state, and cleaned all private smoke/container state; its successful later stages remain truthful
   partial behavior, not a green transaction.
 
+  The evidence-only correction was committed and pushed as
+  `c2004d46c2d5026ec74e997c5b12a4530196c9c6`; local `HEAD`, `origin/master`, the
+  fetched branch, and an independent remote-head query matched before the replay. Its fresh
+  exact-commit portable-rootless replay bound source archive SHA-256
+  `362a413dd43fcc068bd43a6e9f963437c6e337b07e428f205ba3124362fad03d` and tree
+  SHA-256 `1b3d060c0a332388b883ac9fbd3705c3f3f06801fbc3ea0bc02d9d086185ae86`,
+  rebuilt the server and probes in a new private target, and exited zero. The runtime proved the
+  readiness helper, VP9 MDWE, no-password alive/parked/no-listener state, exactly one
+  container-local `127.0.0.1:21118` TCP listener with zero UDP, graceful drain, correct/wrong
+  CPace, capacity shedding, keyed Remote admission to the exact expected headless-display refusal,
+  sealed port-forward echo, FileTransfer admission, forged-frame AEAD rejection, different-source
+  limiter safety, and a real 64-second hold followed by recovery after the 60-second limiter
+  window. The entire run used the exact numeric non-root executable, no published port, no host
+  network/namespace/device/Docker-socket mount, and no host RustDesk/service/firewall/network
+  inspection or mutation. Scoped cleanup found a clean Git tree, no current-user
+  `/tmp/rustdesk-smoke.*` workspace, and no `rd-smoke-` container.
+
+  This green result is server/protocol evidence, not end-to-end evidence for the reported stale
+  display/focus lifecycle fault. Portable-rootless mode did not enter root/service/init-system/
+  user-creation/installed-layout/packet-capture stages, and the replay had no Flutter engine,
+  Android persistent-service lifecycle, Windows focus transition, native graphical session,
+  physical device, real peer screen stream, background/suspend transition, performance/soak, or
+  release artifact. Those native cross-platform connection/display lifecycle obligations remain
+  open and must not be inferred from this smoke.
+
   Bash syntax for the smoke and shared gate, Python syntax for the process helper and
   independent workspace validator, the pure process-helper positive/negative self-test, the
   workspace normal semantic contract, and its complete in-memory source-mutation catalog pass

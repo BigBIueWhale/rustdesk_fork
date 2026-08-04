@@ -31084,7 +31084,7 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
          "Pub-cache networked project lock preimage"),
         ('[ "$project_lock" = "$(sha256sum /tmp/project/pubspec.lock',
          "Pub-cache networked project lock postcondition"),
-        ('[ "${#git_specs[@]}" -eq 6 ]', "Pub-cache exact Git dependency count"),
+        ('[ "${#git_specs[@]}" -eq 5 ]', "Pub-cache exact Git dependency count"),
         ("fsck --full --no-dangling --no-reflogs", "Pub-cache Git object closure"),
         (
             '[[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then\n'
@@ -31180,7 +31180,7 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
          "Pub-cache bounded transaction record"),
         ("TREE_LIMITS = (100_000, 30_000, 4 * 1024**3, 256 * 1024**2, 32)",
          "Pub-cache output bounds"),
-        ("EXPECTED_GIT_DEPENDENCIES = 6", "Pub-cache Git inventory bound"),
+        ("EXPECTED_GIT_DEPENDENCIES = 5", "Pub-cache Git inventory bound"),
         ('required = {"hosted", "hosted-hashes", "git"}',
          "Pub-cache exact top-level inventory"),
         ("reject_descendant_mounts(canonical)", "Pub-cache mount closure"),

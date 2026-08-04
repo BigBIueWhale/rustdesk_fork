@@ -43,12 +43,6 @@ GIT_SPECS = (
         "https://github.com/rustdesk-org/dynamic_layouts.git",
     ),
     (
-        "uni_links",
-        "f416118d843a7e9ed117c7bb7bdc2deda5a9e86f",
-        "uni_links",
-        "https://github.com/rustdesk-org/uni_links",
-    ),
-    (
         "window_manager",
         "85789bfe6e4cfaf4ecc00c52857467fdb7f26879",
         ".",
@@ -130,8 +124,8 @@ def lock_package_block(lock: str, package: str) -> str:
 
 
 def validate_git_specs(semantic: str, lock: str) -> None:
-    require_count(semantic, '|https://github.com/', 6, "closed Git semantic mapping")
-    require_count(lock, "    source: git\n", 6, "locked Git package set")
+    require_count(semantic, '|https://github.com/', 5, "closed Git semantic mapping")
+    require_count(lock, "    source: git\n", 5, "locked Git package set")
     for package, resolved, package_path, url in GIT_SPECS:
         require(
             semantic,
@@ -292,7 +286,7 @@ def validate(sources: Dict[str, str]) -> None:
          "offline project lock postcondition"),
         ("tools_lock=", "flutter_tools lock preimage"),
         ("git_specs=(", "closed Git dependency map"),
-        ('[ "${#git_specs[@]}" -eq 6 ]', "exact Git dependency count"),
+        ('[ "${#git_specs[@]}" -eq 5 ]', "exact Git dependency count"),
         ('status --porcelain=v1 --untracked-files=all', "clean checkout proof"),
         ("diff --no-ext-diff --quiet --", "worktree index proof"),
         ("diff --cached --no-ext-diff --quiet --", "index HEAD proof"),
@@ -450,7 +444,7 @@ def validate(sources: Dict[str, str]) -> None:
          "bounded transaction record"),
         ("TREE_LIMITS = (100_000, 30_000, 4 * 1024**3, 256 * 1024**2, 32)",
          "closed output bounds"),
-        ("EXPECTED_GIT_DEPENDENCIES = 6", "exact Git dependency count"),
+        ("EXPECTED_GIT_DEPENDENCIES = 5", "exact Git dependency count"),
         ('required = {"hosted", "hosted-hashes", "git"}',
          "exact required top-level trees"),
         ('ALLOWED_LEGACY_TOP_LEVEL = {"_temp", "log", "README.md"}',
@@ -477,7 +471,7 @@ def validate(sources: Dict[str, str]) -> None:
          "hosted/hash set equality"),
         ('for advisory in ("archive-advisories.json", "http-advisories.json")',
          "required advisory cache"),
-        ("Pub cache does not contain the exact six locked Git dependencies",
+        ("Pub cache does not contain the exact five locked Git dependencies",
          "Git inventory closure"),
         ("source_archive_sha256", "source archive provenance"),
         ("flutter_archive_sha256", "Flutter archive provenance"),
@@ -708,8 +702,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "helper",
+        "EXPECTED_GIT_DEPENDENCIES = 5",
         "EXPECTED_GIT_DEPENDENCIES = 6",
-        "EXPECTED_GIT_DEPENDENCIES = 7",
         "Git inventory bound",
     ),
     Mutation(

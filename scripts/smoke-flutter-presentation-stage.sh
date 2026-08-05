@@ -53,6 +53,48 @@ case "$1" in
     mkdir -p "$TOOLCHAIN" "$PUB_CACHE" "$HOME"
     tar -C "$TOOLCHAIN" -xf /inputs/flutter.tar.xz
     tar -C "$PUB_CACHE" -xzf /inputs/pub-cache.tar.gz
+    # The deterministic pub-cache archive normalizes mtimes to SOURCE_DATE_EPOCH,
+    # but Dart uses each advisory response's mtime as cache-validity authority.
+    # Reconstruct exactly the mtimes attested inside the matching version/advisory
+    # JSON pair; otherwise Dart 3.5 attempts pub.dev even with --offline.
+    python3 - "$PUB_CACHE/hosted/pub.dev/.cache" <<'PY'
+import calendar
+import datetime
+import json
+import os
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+restored = 0
+for versions_path in sorted(root.glob("*-versions.json")):
+    with versions_path.open("r", encoding="utf-8") as stream:
+        versions = json.load(stream)
+    updated = versions.get("advisoriesUpdated")
+    if updated is None:
+        continue
+    advisory_path = versions_path.with_name(
+        versions_path.name.removesuffix("-versions.json") + "-advisories.json"
+    )
+    if not advisory_path.is_file() or advisory_path.is_symlink():
+        raise SystemExit(f"missing regular advisory response for {versions_path.name}")
+    with advisory_path.open("r", encoding="utf-8") as stream:
+        advisory = json.load(stream)
+    if advisory.get("advisoriesUpdated") != updated:
+        raise SystemExit(f"advisory timestamp mismatch for {versions_path.name}")
+    parsed = datetime.datetime.fromisoformat(updated.replace("Z", "+00:00"))
+    if parsed.tzinfo is None or parsed.utcoffset() != datetime.timedelta(0):
+        raise SystemExit(f"non-UTC advisory timestamp for {versions_path.name}")
+    nanoseconds = calendar.timegm(parsed.utctimetuple()) * 1_000_000_000
+    nanoseconds += parsed.microsecond * 1_000
+    os.utime(advisory_path, ns=(nanoseconds, nanoseconds), follow_symlinks=False)
+    if advisory_path.stat(follow_symlinks=False).st_mtime_ns != nanoseconds:
+        raise SystemExit(f"cannot reconstruct advisory mtime for {versions_path.name}")
+    restored += 1
+if restored != 2:
+    raise SystemExit(f"expected two cached advisory responses, found {restored}")
+print("FLUTTER_PUB_CACHE_SEMANTICS_OK advisories=2 reconstructed_from_json=true")
+PY
     [ -x "$FLUTTER_ROOT/bin/flutter" ] \
       || fail 'pinned Flutter SDK did not extract at the expected path'
     [ "$(sha256sum "$FLUTTER_ROOT/packages/flutter_tools/pubspec.lock" | awk '{print $1}')" = \

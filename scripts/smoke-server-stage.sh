@@ -92,6 +92,25 @@ case "$1" in
     prepare_smoke_cargo_home
     cargo build --locked --offline --features linux-pkg-config --bin rustdesk --example seed_password --example probe_client --example smoke_readiness --example pf_echo --example flood_probe --example mdwe_codec_probe --example video_pipeline_probe --color never
     cargo test --locked --offline --features linux-pkg-config --example video_pipeline_probe --color never
+    cargo test --locked --offline --features linux-pkg-config --lib --no-run --color never
+    mapfile -t viewer_pipeline_test_artifacts < <(
+      find /smoke-target/debug/deps -maxdepth 1 -type f -name 'librustdesk-*' -perm -u+x -print
+    )
+    [ "${#viewer_pipeline_test_artifacts[@]}" -eq 1 ] || {
+      echo "smoke build: expected one exact librustdesk test executable, found ${#viewer_pipeline_test_artifacts[@]}" >&2
+      exit 1
+    }
+    [ ! -e /smoke-target/production-viewer-pipeline-tests ] \
+      && [ ! -L /smoke-target/production-viewer-pipeline-tests ] || {
+      echo "smoke build: fixed production viewer test artifact already exists" >&2
+      exit 1
+    }
+    /usr/bin/install -m 0555 -- "${viewer_pipeline_test_artifacts[0]}" \
+      /smoke-target/production-viewer-pipeline-tests
+    [ "$(stat -c '%u:%g:%a:%h' -- /smoke-target/production-viewer-pipeline-tests)" \
+      = "$(id -u):$(id -g):555:1" ]
+    printf 'PRODUCTION_VIEWER_TEST_ARTIFACT sha256=%s\n' \
+      "$(sha256sum /smoke-target/production-viewer-pipeline-tests | awk '{print $1}')"
     verify_smoke_build_postconditions
     chmod 0755 /smoke-target/debug/rustdesk
     cc -shared -fPIC -O2 -Wall -Wextra -Werror -o /smoke-target/smoke-bind-loopback.so scripts/smoke-bind-loopback.c -ldl
@@ -395,6 +414,7 @@ EOS
     readonly XKB_COMPILER=/usr/bin/xkbcomp
     readonly MOTION=/smoke-target/smoke-x11-motion
     readonly VIDEO_PROBE=/smoke-target/debug/examples/video_pipeline_probe
+    readonly VIEWER_PIPELINE_TESTS=/smoke-target/production-viewer-pipeline-tests
     readonly XVFB_FILE_MANIFEST=/work/scripts/smoke-xvfb-files.tsv
     XVFB_PID=
     XVFB_START=
@@ -430,7 +450,8 @@ EOS
     trap 'exit 130' INT
     trap 'exit 143' TERM
 
-    for executable in "$XVFB" "$XKB_COMPILER" "$MOTION" "$VIDEO_PROBE"; do
+    for executable in "$XVFB" "$XKB_COMPILER" "$MOTION" "$VIDEO_PROBE" \
+      "$VIEWER_PIPELINE_TESTS"; do
       [ -f "$executable" ] && [ ! -L "$executable" ] && [ -x "$executable" ] || {
         echo "video pipeline executable is missing or not a regular non-symlink file: $executable" >&2
         exit 1
@@ -494,6 +515,19 @@ EOS
     [ "$VIDEO_STATUS" -eq 0 ] || exit "$VIDEO_STATUS"
     grep -Eq '^VIDEO_PIPELINE_OK codec=VP(8|9) dimensions=640x480 frames=[0-9]+ distinct=[0-9]+ receipts=[0-9]+ first_decode_ms=[0-9]+ pts_span_ms=[0-9]+ max_decode_us=[0-9]+ mean_decode_us=[0-9]+ max_receive_backlog_drift_ms=[0-9]+$' \
       <<<"$VIDEO_OUT"
+    if VIEWER_OUT=$(RUSTDESK_PRODUCTION_VIEWER_PIPELINE_SMOKE=1 \
+      timeout --signal=TERM --kill-after=5s 35s "$VIEWER_PIPELINE_TESTS" \
+      --exact --ignored --nocapture --test-threads=1 \
+      viewer_pipeline_smoke_tests::production_viewer_pipeline_recovers_after_stalled_publication_without_reconnect \
+      2>&1); then
+      VIEWER_STATUS=0
+    else
+      VIEWER_STATUS=$?
+    fi
+    printf '%s\n' "$VIEWER_OUT"
+    [ "$VIEWER_STATUS" -eq 0 ] || exit "$VIEWER_STATUS"
+    grep -Eq '^PRODUCTION_VIEWER_PIPELINE_OK dimensions=640x480 frames=[0-9]+ distinct=[0-9]+ stall_ms=[0-9]+ recovery_ms=[0-9]+ connected=true peer_info=true close_successes=[0-9]+ teardown=io-and-media-joined$' \
+      <<<"$VIEWER_OUT"
     "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/video-server.log
     wait "$SRV"
     SRV=

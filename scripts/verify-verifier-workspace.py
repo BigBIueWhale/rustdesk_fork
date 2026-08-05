@@ -44645,8 +44645,8 @@ def run_source_mutations(sources):
         ),
         (
             "smoke_stage",
-            "    cargo test --locked --offline --features linux-pkg-config --example video_pipeline_probe --color never\n    verify_smoke_build_postconditions",
-            "    cargo test --locked --offline --features linux-pkg-config --example video_pipeline_probe --color never\n    true # post-build vendor verification removed",
+            "      \"$(sha256sum /smoke-target/production-viewer-pipeline-tests | awk '{print $1}')\"\n    verify_smoke_build_postconditions",
+            "      \"$(sha256sum /smoke-target/production-viewer-pipeline-tests | awk '{print $1}')\"\n    true # post-build vendor verification removed",
             "sealed inputs are verified before and after the exact smoke build",
         ),
         (

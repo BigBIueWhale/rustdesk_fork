@@ -63,6 +63,8 @@ mod whiteboard;
 mod ui_cm_interface;
 mod ui_interface;
 mod ui_session_interface;
+#[cfg(all(test, target_os = "linux"))]
+mod viewer_pipeline_smoke_tests;
 
 #[cfg(any(target_os = "windows", target_os = "linux", target_os = "macos"))]
 pub mod clipboard_file;

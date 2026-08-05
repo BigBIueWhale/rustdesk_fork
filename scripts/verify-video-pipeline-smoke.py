@@ -44,6 +44,8 @@ def parse_manifest(text, fields, label):
 
 def validate(sources):
     probe = sources["probe"]
+    viewer = sources["viewer"]
+    lib = sources["lib"]
     motion = sources["motion"]
     stage = sources["stage"]
     smoke = sources["smoke"]
@@ -95,6 +97,41 @@ def validate(sources):
         require(frame_branch + probe, needle, "video admission invariant {}".format(needle))
 
     for needle, label in (
+        ('#[ignore = "runs only in the exact rootless video-pipeline smoke container"]', "ignored integration test"),
+        ('const EXACT_TEST_EXECUTABLE: &str = "/smoke-target/production-viewer-pipeline-tests";', "fixed test artifact path"),
+        ('const EXACT_WORKING_DIRECTORY: &str = "/work";', "fixed test working directory"),
+        ('const EXACT_HOME: &str = "/tmp/rd-video-pipeline";', "private test HOME"),
+        ('const EXACT_PEER: &str = "127.0.0.1:21118";', "exact production-viewer endpoint"),
+        ('std::env::var("RUSTDESK_PRODUCTION_VIEWER_PIPELINE_SMOKE")', "explicit runtime gate"),
+        ('std::env::current_exe().as_deref()', "test artifact identity gate"),
+        ('std::env::current_dir().as_deref()', "working-directory identity gate"),
+        ('std::env::var("HOME").as_deref()', "configuration-home identity gate"),
+        ("login.initialize(EXACT_PEER.to_owned(), ConnType::DEFAULT_CONN, None, None);", "real Remote session initialization"),
+        ("login.disable_audio.v = true;", "unrelated audio refusal"),
+        ("login.disable_clipboard.v = true;", "unrelated clipboard refusal"),
+        ("const PUBLICATION_STALL: Duration = Duration::from_millis(1_500);", "deliberate publication stall"),
+        ("const MAX_POST_STALL_RECOVERY: Duration = Duration::from_millis(2_500);", "post-stall recovery budget"),
+        ("const PIPELINE_DEADLINE: Duration = Duration::from_secs(25);", "finite integration deadline"),
+        ("const MIN_PUBLISHED_FRAMES: usize = 20;", "minimum production publications"),
+        ("const MIN_DISTINCT_FRAMES: usize = 10;", "minimum distinct production publications"),
+        ("Sha256::digest(&rgba.raw)", "production RGBA distinction"),
+        ("let start = session.start_io_thread();", "production viewer I/O start"),
+        ("ui.wait_for_completion(PIPELINE_DEADLINE)", "bounded production viewer observation"),
+        ("let joined = started && session.close_and_join();", "exact production viewer teardown"),
+        ("a production viewer or owned media worker panicked", "owned-worker panic assertion"),
+        ("PRODUCTION_VIEWER_PIPELINE_OK dimensions=", "production integration success transcript"),
+        ("teardown=io-and-media-joined", "production integration teardown transcript"),
+    ):
+        require(viewer, needle, label)
+    if ".reconnect(" in viewer:
+        fail("production viewer recovery test uses reconnect")
+    require(
+        lib,
+        '#[cfg(all(test, target_os = "linux"))]\nmod viewer_pipeline_smoke_tests;',
+        "Linux test-only production viewer module",
+    )
+
+    for needle, label in (
         ("#define FIXTURE_WIDTH 640U", "fixture width"),
         ("#define FIXTURE_HEIGHT 480U", "fixture height"),
         ("#define FIXTURE_FRAMES 240U", "finite fixture frames"),
@@ -114,6 +151,10 @@ def validate(sources):
         ("X11_NETWORK_SURFACE=unix-only tcp=0 udp=0", "pre-server socket proof"),
         ("start_server /smoke-target/debug/rustdesk", "real server launch"),
         ("$VIDEO_PROBE\" 127.0.0.1:21118 <<<", "password-stdin probe launch"),
+        ("readonly VIEWER_PIPELINE_TESTS=/smoke-target/production-viewer-pipeline-tests", "fixed production viewer artifact"),
+        ("RUSTDESK_PRODUCTION_VIEWER_PIPELINE_SMOKE=1", "production viewer runtime gate"),
+        ("viewer_pipeline_smoke_tests::production_viewer_pipeline_recovers_after_stalled_publication_without_reconnect", "exact production viewer test"),
+        ("^PRODUCTION_VIEWER_PIPELINE_OK dimensions=640x480", "production viewer stage verdict"),
         ("VIDEO_PIPELINE_CLEANUP=server,motion,xvfb-joined", "joined-owner transcript"),
         ("trap cleanup_video_pipeline EXIT", "failure cleanup"),
         ("$READY\" --terminate-server", "exact server termination"),
@@ -135,6 +176,15 @@ def validate(sources):
         "cargo test --locked --offline --features linux-pkg-config --example video_pipeline_probe --color never",
         "video probe unit tests in the offline smoke build",
     )
+    for needle, label in (
+        ("cargo test --locked --offline --features linux-pkg-config --lib --no-run --color never", "offline library test build"),
+        ("find /smoke-target/debug/deps -maxdepth 1 -type f -name 'librustdesk-*' -perm -u+x -print", "exact library test artifact discovery"),
+        ('[ "${#viewer_pipeline_test_artifacts[@]}" -eq 1 ]', "library test artifact cardinality"),
+        ("[ ! -e /smoke-target/production-viewer-pipeline-tests ]", "fixed artifact no-clobber gate"),
+        ("/usr/bin/install -m 0555", "read-only fixed test artifact"),
+        ("PRODUCTION_VIEWER_TEST_ARTIFACT sha256=", "test artifact digest transcript"),
+    ):
+        require(stage, needle, label)
     require(stage, "scripts/smoke-x11-motion.c -lX11", "motion helper build")
 
     video_run = scoped(smoke, "VIDEO_RUN=(", "PORT_HEX=", "video Docker authority")
@@ -184,6 +234,7 @@ def validate(sources):
         '"${XVFB_PREPARE_RUN[@]}"',
         '"${VIDEO_RUN[@]}"',
         "smoke-server-stage.sh video-pipeline",
+        "production viewer integration/recovery evidence is missing",
         "SMOKE VIDEO PIPELINE OK:",
     ):
         require(smoke, needle, "opt-in orchestration {}".format(needle))
@@ -303,11 +354,20 @@ def self_test(sources):
         ("probe", ".send(&receipt_message)", ".send(&Message::new())"),
         ("probe", "const MIN_DECODED_FRAMES: usize = 30;", "const MIN_DECODED_FRAMES: usize = 1;"),
         ("probe", "const MIN_PTS_SPAN_MS: i64 = 4_000;", "const MIN_PTS_SPAN_MS: i64 = 0;"),
+        ("viewer", 'const EXACT_PEER: &str = "127.0.0.1:21118";', 'const EXACT_PEER: &str = "0.0.0.0:21118";'),
+        ("viewer", 'std::env::current_exe().as_deref()', 'Ok(Path::new(EXACT_TEST_EXECUTABLE))'),
+        ("viewer", "const PUBLICATION_STALL: Duration = Duration::from_millis(1_500);", "const PUBLICATION_STALL: Duration = Duration::ZERO;"),
+        ("viewer", "const MAX_POST_STALL_RECOVERY: Duration = Duration::from_millis(2_500);", "const MAX_POST_STALL_RECOVERY: Duration = Duration::from_secs(25);"),
+        ("viewer", "let joined = started && session.close_and_join();", "let joined = started;"),
+        ("viewer", "ui.wait_for_completion(PIPELINE_DEADLINE)", "ViewerPipelineState::default()"),
+        ("lib", '#[cfg(all(test, target_os = "linux"))]\nmod viewer_pipeline_smoke_tests;', 'mod viewer_pipeline_smoke_tests;'),
         ("motion", "#define FIXTURE_FRAMES 240U", "#define FIXTURE_FRAMES 0U"),
         ("stage", "-nolisten tcp -ac -noreset", "-listen tcp -ac -noreset"),
         ("stage", "trap cleanup_video_pipeline EXIT", "trap - EXIT"),
         ("stage", "--example mdwe_codec_probe --example video_pipeline_probe", "--example mdwe_codec_probe"),
         ("stage", "cargo test --locked --offline --features linux-pkg-config --example video_pipeline_probe", "true # video probe tests removed"),
+        ("stage", "cargo test --locked --offline --features linux-pkg-config --lib --no-run --color never", "true # production viewer tests removed"),
+        ("stage", "RUSTDESK_PRODUCTION_VIEWER_PIPELINE_SMOKE=1", "RUSTDESK_PRODUCTION_VIEWER_PIPELINE_SMOKE=0"),
         ("smoke", "VIDEO_RUN=(smoke_docker run --rm --network none", "VIDEO_RUN=(smoke_docker run --rm --network host"),
         ("smoke", "VIDEO_RUN=(smoke_docker run --rm --network none --pull=never --read-only", "VIDEO_RUN=(smoke_docker run --rm --network none --pull=never"),
         ("smoke", "--pids-limit=1024", "--pids-limit=4096"),
@@ -331,6 +391,8 @@ def self_test(sources):
 def load_sources(repo):
     paths = {
         "probe": "examples/video_pipeline_probe.rs",
+        "viewer": "src/viewer_pipeline_smoke_tests.rs",
+        "lib": "src/lib.rs",
         "motion": "scripts/smoke-x11-motion.c",
         "stage": "scripts/smoke-server-stage.sh",
         "smoke": "scripts/smoke-server.sh",

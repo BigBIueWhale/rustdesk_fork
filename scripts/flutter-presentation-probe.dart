@@ -47,7 +47,8 @@ Future<void> _waitForMarker(
     if (await file.exists()) {
       final value = await file.readAsString();
       if (value != expected) {
-        throw StateError('$name has unexpected contents: ${value.length} bytes');
+        throw StateError(
+            '$name has unexpected contents: ${value.length} bytes');
       }
       return;
     }
@@ -104,7 +105,8 @@ Future<void> _frameWorker(List<Object> arguments) async {
     final texture = Pointer<Void>.fromAddress(textureAddress);
 
     _fillRgba(frame, 255, 0, 0);
-    if (tryOnRgba(texture, allocation.cast(), _frameBytes, _width, _height, 1) !=
+    if (tryOnRgba(
+            texture, allocation.cast(), _frameBytes, _width, _height, 1) !=
         1) {
       throw StateError('initial direct-ABI frame was rejected');
     }
@@ -115,9 +117,7 @@ Future<void> _frameWorker(List<Object> arguments) async {
     );
     await _waitForMarker(stateDirectory, 'switch', 'hidden\n');
 
-    for (var frameNumber = 0;
-        frameNumber < _hiddenFrameCount;
-        frameNumber++) {
+    for (var frameNumber = 0; frameNumber < _hiddenFrameCount; frameNumber++) {
       final isLast = frameNumber == _hiddenFrameCount - 1;
       _fillRgba(
         frame,
@@ -155,8 +155,8 @@ Future<void> _frameWorker(List<Object> arguments) async {
     sendPort.send('failure:$error\n$stackTrace');
   } finally {
     if (allocation != null) {
-      final free = DynamicLibrary.process()
-          .lookupFunction<_FreeNative, _Free>('free');
+      final free =
+          DynamicLibrary.process().lookupFunction<_FreeNative, _Free>('free');
       free(allocation);
     }
   }

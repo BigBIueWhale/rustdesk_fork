@@ -13,6 +13,9 @@ dependencies:
     path: third_party/desktop_multi_window
   texture_rgba_renderer:
     path: third_party/texture_rgba_renderer
+  url_launcher_windows: 3.1.4
+  window_size:
+    path: third_party/window_size
 
 flutter:
   uses-material-design: true

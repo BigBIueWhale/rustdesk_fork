@@ -39,6 +39,7 @@ PATHS = {
     "window_pubspec": (
         "scripts/flutter-presentation-probe-desktop-multi-window-pubspec.yaml"
     ),
+    "size_pubspec": "scripts/flutter-presentation-probe-window-size-pubspec.yaml",
     "manifest": "scripts/windows-presentation-source-manifest.py",
     "provision": "scripts/provision-windows-vm.sh",
     "guest_setup": "scripts/win-guest-setup.ps1",
@@ -126,6 +127,58 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(host, "DESKTOP_MULTI_WINDOW_COMMIT=b47e8385e5a75d38319ad706a64b0ead3108b093", "window plugin commit")
     require(host, "DESKTOP_MULTI_WINDOW_TREE=ee184480a0e519b9f51f7496d3d90674782481d6", "window plugin tree")
+    require(host, "WINDOW_SIZE_COMMIT=eb3964990cf19629c89ff8cb4a37640c7b3d5601", "window-size commit")
+    require(host, "WINDOW_SIZE_TREE=c1b4ec4f759387d00f1024ce539487242cd7ae1a", "window-size subtree")
+    if host.count("scripts/flutter-presentation-probe-window-size-pubspec.yaml") != 2:
+        raise VerificationError("window-size replacement pubspec inclusion is not exact")
+    require_order(
+        host,
+        (
+            "-name 'flutter-desktop-embedding-*' -print0",
+            'rev-parse "$WINDOW_SIZE_COMMIT^{commit}"',
+            'rev-parse "$WINDOW_SIZE_COMMIT:plugins/window_size"',
+            'archive --format=tar "$WINDOW_SIZE_COMMIT:plugins/window_size"',
+            "flutter-presentation-probe-window-size-pubspec.yaml",
+            "third_party/window_size/.rustdesk-source-identity.json",
+            "windows_helper_small_run",
+        ),
+        "exact window-size source materialization",
+    )
+    require(
+        host,
+        '"url_launcher_windows": (',
+        "resolved URL-launcher package receipt",
+    )
+    require(
+        host,
+        '"window_size": (',
+        "resolved window-size package receipt",
+    )
+    for digest, label in (
+        (
+            "4820fbfdb9478b1ebae27888254d445073732dae3d6ea81f0b7e06d5dedc3f02",
+            "plugin-platform-interface package content identity",
+        ),
+        (
+            "552f8a1e663569be95a8190206a38187b531910283c3e982193e4f2733f01029",
+            "URL-launcher-interface package content identity",
+        ),
+        (
+            "3284b6d2ac454cf34f114e1d3319866fdd1e19cdc329999057e44ffe936cfa77",
+            "URL-launcher package content identity",
+        ),
+    ):
+        require(host, digest, label)
+    require(
+        host,
+        "for package, (source, version, dependency, identity) in expected_packages.items():",
+        "complete resolved-package identity validation",
+    )
+    require(
+        host,
+        '  dart: ">=3.4.0 <4.0.0"',
+        "resolved Dart SDK envelope",
+    )
     for unsafe in (
         "sudo ",
         "--privileged",
@@ -149,6 +202,7 @@ def validate(sources: dict[str, str]) -> None:
             "flutter-presentation-probe-windows.dart",
             "presentation_recovery.dart",
             "flutter-presentation-probe-windows-pubspec.yaml",
+            r"third_party\window_size",
             "$resolve = Start-Process -FilePath $flutter",
             "'get', '--offline'",
             "'build', 'windows', '--release', '--no-pub'",
@@ -157,6 +211,9 @@ def validate(sources: dict[str, str]) -> None:
         "guest exact-source offline build order",
     )
     require(runner, "$env:PUB_CACHE = Join-Path $env:LOCALAPPDATA 'Pub\\Cache'", "pinned golden pub cache")
+    require(runner, "url_launcher_windows-3.1.4", "pinned URL-launcher cache")
+    require(runner, "url_launcher_platform_interface-2.3.2", "pinned URL-launcher interface cache")
+    require(runner, "plugin_platform_interface-2.1.8", "pinned plugin interface cache")
     require(runner, "windows-presentation-pubspec.lock", "resolved graph receipt")
     require(runner, "Stop-Computer -Force", "disposable guest shutdown")
     for unsafe in ("Invoke-WebRequest", "curl ", "wget ", "Start-Service", "Stop-Service"):
@@ -221,9 +278,15 @@ def validate(sources: dict[str, str]) -> None:
 
     require(sources["pubspec"], "path: third_party/desktop_multi_window", "local window plugin")
     require(sources["pubspec"], "path: third_party/texture_rgba_renderer", "local texture plugin")
+    require(sources["pubspec"], "url_launcher_windows: 3.1.4", "exact URL-launcher dependency")
+    require(sources["pubspec"], "path: third_party/window_size", "local window-size plugin")
     forbid(sources["pubspec"], "git:", "runtime dependency fetch")
     forbid(sources["pubspec"], "hosted:", "runtime hosted override")
     require(sources["window_pubspec"], "sdk: '>=2.17.0 <4.0.0'", "legacy listener language mode")
+    require(sources["size_pubspec"], "sdk: '>=2.12.0-0 <4.0.0'", "legacy window-size language mode")
+    require(sources["size_pubspec"], "pluginClass: WindowSizePlugin", "window-size native plugin")
+    if sources["size_pubspec"].count("pluginClass: WindowSizePlugin") != 3:
+        raise VerificationError("window-size platform plugin declarations are not exact")
     require(sources["focus_sink"], "$form.TopMost = $true", "visible focus sink")
     require(sources["focus_sink"], "Application]::Run($form)", "focus sink message loop")
 
@@ -346,7 +409,7 @@ def validate(sources: dict[str, str]) -> None:
     )
 
 
-def self_test(sources: dict[str, str]) -> None:
+def self_test(sources: dict[str, str]) -> int:
     mutations = (
         ("host", "--network none", "--network default"),
         ("host", "--graphics vnc,listen=127.0.0.1", "--graphics vnc"),
@@ -359,9 +422,119 @@ def self_test(sources: dict[str, str]) -> None:
             "    true # golden contract removed",
         ),
         ("host", "assert_clean_worktree", "true # worktree check removed"),
+        (
+            "host",
+            "WINDOW_SIZE_COMMIT=eb3964990cf19629c89ff8cb4a37640c7b3d5601",
+            "WINDOW_SIZE_COMMIT=0000000000000000000000000000000000000000",
+        ),
+        (
+            "host",
+            "WINDOW_SIZE_TREE=c1b4ec4f759387d00f1024ce539487242cd7ae1a",
+            "WINDOW_SIZE_TREE=0000000000000000000000000000000000000000",
+        ),
+        (
+            "host",
+            "        scripts/flutter-presentation-probe-window-size-pubspec.yaml \\\n",
+            "",
+        ),
+        (
+            "host",
+            "-name 'flutter-desktop-embedding-*' -print0",
+            "-name 'unrelated-repository-*' -print0",
+        ),
+        (
+            "host",
+            'rev-parse "$WINDOW_SIZE_COMMIT^{commit}"',
+            'rev-parse "HEAD^{commit}"',
+        ),
+        (
+            "host",
+            'rev-parse "$WINDOW_SIZE_COMMIT:plugins/window_size"',
+            'rev-parse "$WINDOW_SIZE_COMMIT^{tree}"',
+        ),
+        (
+            "host",
+            'archive --format=tar "$WINDOW_SIZE_COMMIT:plugins/window_size"',
+            'archive --format=tar "$WINDOW_SIZE_COMMIT"',
+        ),
+        (
+            "host",
+            "third_party/window_size/.rustdesk-source-identity.json",
+            "third_party/window_size/source-identity-removed.json",
+        ),
+        (
+            "host",
+            '"url_launcher_windows": (',
+            '"url_launcher_windows_removed": (',
+        ),
+        (
+            "host",
+            '"window_size": (',
+            '"window_size_removed": (',
+        ),
+        (
+            "host",
+            "4820fbfdb9478b1ebae27888254d445073732dae3d6ea81f0b7e06d5dedc3f02",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+        ),
+        (
+            "host",
+            "552f8a1e663569be95a8190206a38187b531910283c3e982193e4f2733f01029",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+        ),
+        (
+            "host",
+            "3284b6d2ac454cf34f114e1d3319866fdd1e19cdc329999057e44ffe936cfa77",
+            "0000000000000000000000000000000000000000000000000000000000000000",
+        ),
+        (
+            "host",
+            '  dart: ">=3.4.0 <4.0.0"',
+            '  dart: ">=3.3.0 <4.0.0"',
+        ),
         ("runner", "'get', '--offline'", "'get'"),
         ("runner", "'build', 'windows', '--release', '--no-pub'", "'build', 'windows'"),
         ("runner", "Stop-Computer -Force", "# guest shutdown removed"),
+        (
+            "runner",
+            "url_launcher_windows-3.1.4",
+            "url_launcher_windows-latest",
+        ),
+        (
+            "runner",
+            "url_launcher_platform_interface-2.3.2",
+            "url_launcher_platform_interface-latest",
+        ),
+        (
+            "runner",
+            "plugin_platform_interface-2.1.8",
+            "plugin_platform_interface-latest",
+        ),
+        (
+            "runner",
+            r"third_party\window_size",
+            r"third_party\removed_window_size",
+        ),
+        (
+            "pubspec",
+            "url_launcher_windows: 3.1.4",
+            "url_launcher_windows: any",
+        ),
+        (
+            "pubspec",
+            "path: third_party/window_size",
+            "path: third_party/removed_window_size",
+        ),
+        (
+            "size_pubspec",
+            "sdk: '>=2.12.0-0 <4.0.0'",
+            "sdk: '>=3.0.0 <4.0.0'",
+        ),
+        (
+            "size_pubspec",
+            "pluginClass: WindowSizePlugin",
+            "pluginClass: RemovedWindowSizePlugin",
+        ),
         (
             "controller",
             "[void][PresentationProbeNative]::DwmFlush()",
@@ -435,6 +608,7 @@ def self_test(sources: dict[str, str]) -> None:
         except VerificationError:
             continue
         raise VerificationError(f"self-test mutation {index} was accepted")
+    return len(mutations)
 
 
 def main() -> int:
@@ -445,12 +619,14 @@ def main() -> int:
     try:
         sources = load(args.repo.resolve())
         validate(sources)
+        mutation_count = 0
         if args.self_test:
-            self_test(sources)
+            mutation_count = self_test(sources)
     except (OSError, VerificationError) as error:
         print(f"verify-flutter-presentation-windows: FAIL: {error}")
         return 1
-    print("verify-flutter-presentation-windows: ok")
+    suffix = f" ({mutation_count} mutations)" if args.self_test else ""
+    print(f"verify-flutter-presentation-windows: ok{suffix}")
     return 0
 
 

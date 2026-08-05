@@ -94,6 +94,9 @@ try {
         'collection-1.18.0',
         'material_color_utilities-0.11.1',
         'meta-1.15.0',
+        'plugin_platform_interface-2.1.8',
+        'url_launcher_platform_interface-2.3.2',
+        'url_launcher_windows-3.1.4',
         'vector_math-2.1.4'
     )) {
         $packagePath = Join-Path $env:PUB_CACHE "hosted\pub.dev\$package"
@@ -142,6 +145,8 @@ try {
         -Destination (Join-Path $thirdParty 'texture_rgba_renderer') -Recurse -Force
     Copy-Item -LiteralPath (Join-Path $sourceRoot 'third_party\desktop_multi_window') `
         -Destination (Join-Path $thirdParty 'desktop_multi_window') -Recurse -Force
+    Copy-Item -LiteralPath (Join-Path $sourceRoot 'third_party\window_size') `
+        -Destination (Join-Path $thirdParty 'window_size') -Recurse -Force
 
     $resolve = Start-Process -FilePath $flutter -ArgumentList @('pub', 'get', '--offline') `
         -WorkingDirectory $appRoot -Wait -PassThru -NoNewWindow `

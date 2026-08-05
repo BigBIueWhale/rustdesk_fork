@@ -16126,21 +16126,22 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   review ran. This closes one source/bridge-verdict defect and one target compile-integration check only; the
   user's accumulated-change risk assessment and every native/end-to-end stop-ship gap remain in force.
 
-- **R-S11gb/R-S11e-215 native Windows presentation transaction — TEST HARNESS SOURCE IMPLEMENTED;
-  NATIVE VM/ENGINE/COMPOSITOR EXECUTION NOT YET RUN; WINDOWS REMAINS STOP-SHIP.** Platform: a
+- **R-S11gb/R-S11e-215 native Windows presentation transaction — FIRST NATIVE BUILD ATTEMPT
+  FAILED BEFORE APP EXECUTION; ENGINE/COMPOSITOR EVIDENCE OPEN; WINDOWS REMAINS STOP-SHIP.** Platform: a
   disposable Windows 11 overlay derived from the existing SHA-256-pinned golden. Endpoint/action: the
   repository-owned Windows <code>texture_rgba_renderer</code> plugin and direct C ABI used by Rust, exact
-  production <code>PresentationRecovery</code>, the pinned RustDesk desktop window-event implementation,
-  Flutter 3.24.5's real Windows engine, Win32 minimize/restore and focus transitions, real guest pointer
-  input, and composed desktop pixels. Boundary: decoded/latest-wins texture bytes and one pending
+  production <code>PresentationRecovery</code>, the pinned RustDesk desktop window-event implementation and
+  its exact production native-plugin dependencies, Flutter 3.24.5's real Windows engine, Win32 minimize/restore
+  and focus transitions, real guest pointer input, and composed desktop pixels. Boundary: decoded/latest-wins
+  texture bytes and one pending
   notification ↔ Flutter engine scheduling ↔ DWM-visible pixels after presentation suspension.
 
   This entry exists because the accumulated-change risk is real: source/mutation tests, Linux X11 pixels,
   and the portable Windows callback core do not prove current Windows presentation behavior. The new
   transaction is deliberately separate from <code>build-windows-vm.sh</code> and does not run the full
   release builder. It accepts only a clean committed tree, exact-manifests every source input, materializes
-  the already-pinned desktop event plugin by exact commit/tree, resolves a nine-package Flutter graph
-  offline, and builds a minimal native Windows app against the production texture plugin and exact recovery
+  the already-pinned desktop event plugin and window-size dependency by exact commit/tree, resolves the exact
+  thirteen-package Flutter graph offline, and builds a minimal native Windows app against the production texture plugin and exact recovery
   state machine. One real cycle minimizes and restores the app. A second gives focus to a separate visible
   WinForms window and returns through an injected guest mouse down. Each queues 128 direct-ABI frames, ends
   in a red/blue-channel-swap-invariant color, gates explicit re-notification, samples four DWM/GDI interior
@@ -16264,6 +16265,60 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   template only. No RustDesk peer, production app connection, focus/minimize transition, compositor pixel,
   display-latency budget, reconnect, Android persistent-service lifecycle, or cross-version flow ran here;
   the exact Windows presentation transaction remains the next stop-ship gate.
+
+  The first exact transaction against that regenerated golden, from clean pushed commit
+  `6a479c89fa13dce5c2ede5c17f1dcbf8875412d7` and tree
+  `e71cc7cb7cfaa55d656141b2d78c9fb6ef6517f4`, is uncounted native evidence. Its exact 154-file source
+  manifest verified inside Windows. Unprivileged session domain
+  `rustdesk-presentation-6a479c89-cec6895e`, UUID
+  `cec6895e-8f2e-455d-84e9-d01c8cfc2bd3`, had zero network interfaces, zero host-device or filesystem
+  passthroughs, and VNC parent/child plus the only new listener exactly on `127.0.0.1:5900`. Flutter app
+  creation and the then-declared nine-package offline resolve completed, but the native build stopped before
+  the app or controller could launch: RustDesk's pinned `desktop_multi_window/windows/flutter_window.cc`
+  directly includes `url_launcher_windows/url_launcher_windows.h` and registers that plugin plus
+  `window_size`, while the minimal probe had declared neither production dependency. MSVC therefore rejected
+  the absent URL-launcher header. App stdout, controller stdout, the structured result, pixels, focus/minimize,
+  pointer delivery, and latency evidence are all absent; this is a harness dependency-graph defect, not a
+  product presentation verdict. Exact-UUID cleanup removed the domain, QEMU/wrapper, and its loopback VNC
+  listener. The retained run is `.harness-state/windows-presentation-run.8CudZdAl`; the host RustDesk
+  service/process/configuration, display, firewall, routing, and network configuration were not changed.
+
+  The corrected harness does not stub the missing native API. It materializes `window_size` from the same
+  production-pinned commit `eb3964990cf19629c89ff8cb4a37640c7b3d5601` and exact package subtree
+  `c1b4ec4f759387d00f1024ce539487242cd7ae1a`, preserves its Dart 2.12 language mode while allowing the
+  pinned Dart 3 toolchain, declares exact `url_launcher_windows 3.1.4`, and validates the resulting
+  thirteen-package lock graph including hosted package content hashes, direct/transitive ownership, path
+  identities, and SDK envelope. Numeric UID:GID 1000:1000, networkless, read-only-root/source, capability-free,
+  no-new-privileges resolution against the existing offline cache selected exactly those thirteen packages;
+  analysis of the probe's own Dart sources returned no issues. One preliminary whole-workspace analysis is
+  uncounted because it also descended into the pinned plugins' bundled examples and correctly found their
+  intentionally undeclared example-only test dependencies; the narrowed probe-source analysis is green. A
+  separate preliminary immutable-image invocation is uncounted because Flutter's wrapper attempted to create
+  its SDK lockfile on the read-only image and stopped before resolution; the counted check used the pinned Dart
+  executable with the same read-only Flutter root rather than weakening image confinement. One parser-check
+  command was mistakenly invoked directly on the host and created or replaced only the two requested Python
+  bytecode files under the already-existing ignored `scripts/__pycache__`; those two files were immediately
+  removed, and that invocation is excluded from evidence. It used no root, network, listener, service, or
+  RustDesk authority. The first confined PowerShell parser invocation is also uncounted because PowerShell
+  attempted to create `/.cache` on the read-only image and stopped before parsing; the repeat placed only
+  `HOME` and `XDG_CACHE_HOME` on the private tmpfs and parsed all three scripts successfully without making
+  the image or source writable.
+
+  The complete pre-commit rehearsal materialized both exact Git sources, wrote and reverified a 240-file
+  synthetic-identity source manifest, selected the exact thirteen-package offline graph, and analyzed the
+  probe source cleanly. The focused presentation verifier now passes its baseline and rejects all 54
+  deliberate mutations; the Windows-helper 81-mutation gate, golden-domain 45-mutation gate, native-codec
+  ledger, embedded-Python syntax check, and independent workspace baseline are green. One complete independent
+  source-mutation catalog reached `verify-verifier-workspace: ok`, but is not final evidence for this exact
+  verifier revision: review immediately afterward expanded the focused catalog from 40 to 54 cases so every
+  new tree, repository, commit, replacement-pubspec, hosted-package, SDK-envelope, cache, and native-plugin
+  declaration edge is itself mutated. A fresh complete independent catalog then ran uninterrupted from mutation
+  one against that updated verifier and this evidence text and exited zero with
+  `verify-verifier-workspace: ok`. The focused gate, independent baseline, parsers, native-codec ledger, and
+  diff hygiene are rerun over the final recorded bytes; the complete catalog is not recursively rerun merely
+  to record its own successful result. These are dependency/static checks only. The correction must be
+  committed and the zero-interface Windows transaction
+  must complete from that exact commit before any engine, compositor, focus, pointer, or latency evidence exists.
 
 - **Exact Linux Flutter texture/X11 presentation recovery — EXECUTABLE EVIDENCE GREEN;
   ANDROID/WINDOWS/NATIVE END-TO-END EVIDENCE OPEN.** Platform: confined Linux X11 with Flutter

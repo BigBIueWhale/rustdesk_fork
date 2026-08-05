@@ -29,6 +29,8 @@ readonly PROCESS_ADMISSION_SECONDS=10
 readonly PROCESS_STOP_SECONDS=10
 readonly DESKTOP_MULTI_WINDOW_COMMIT=b47e8385e5a75d38319ad706a64b0ead3108b093
 readonly DESKTOP_MULTI_WINDOW_TREE=ee184480a0e519b9f51f7496d3d90674782481d6
+readonly WINDOW_SIZE_COMMIT=eb3964990cf19629c89ff8cb4a37640c7b3d5601
+readonly WINDOW_SIZE_TREE=c1b4ec4f759387d00f1024ce539487242cd7ae1a
 
 RUN_ROOT=""
 RUN_ROOT_ID=""
@@ -390,7 +392,8 @@ preflight() {
 }
 
 materialize_source() {
-    local dep_repo actual_tree media_output
+    local desktop_multi_window_repo window_size_repo actual_tree media_output
+    local -a dep_repos=() window_size_repos=()
     mkdir -m 0700 "$SOURCE_ROOT"
     git -C "$REPO_ROOT" archive --format=tar "$SOURCE_COMMIT" -- \
         scripts/run-flutter-presentation-windows.ps1 \
@@ -399,6 +402,7 @@ materialize_source() {
         scripts/flutter-presentation-probe-windows.dart \
         scripts/flutter-presentation-probe-windows-pubspec.yaml \
         scripts/flutter-presentation-probe-desktop-multi-window-pubspec.yaml \
+        scripts/flutter-presentation-probe-window-size-pubspec.yaml \
         scripts/windows-presentation-source-manifest.py \
         flutter/lib/models/presentation_recovery.dart \
         flutter/third_party/texture_rgba_renderer \
@@ -414,17 +418,17 @@ materialize_source() {
     )
     [ "${#dep_repos[@]}" = 1 ] \
         || die "pinned desktop_multi_window bare repository count is not exactly one"
-    dep_repo="${dep_repos[0]}"
-    [ "$(git -c safe.directory="$dep_repo" -C "$dep_repo" \
+    desktop_multi_window_repo="${dep_repos[0]}"
+    [ "$(git -c safe.directory="$desktop_multi_window_repo" -C "$desktop_multi_window_repo" \
         rev-parse "$DESKTOP_MULTI_WINDOW_COMMIT")" = \
         "$DESKTOP_MULTI_WINDOW_COMMIT" ] \
         || die "desktop_multi_window commit is absent from its offline repository"
-    actual_tree="$(git -c safe.directory="$dep_repo" -C "$dep_repo" \
+    actual_tree="$(git -c safe.directory="$desktop_multi_window_repo" -C "$desktop_multi_window_repo" \
         rev-parse "$DESKTOP_MULTI_WINDOW_COMMIT^{tree}")"
     [ "$actual_tree" = "$DESKTOP_MULTI_WINDOW_TREE" ] \
         || die "desktop_multi_window commit has an unexpected tree"
     mkdir -p "$SOURCE_ROOT/third_party/desktop_multi_window"
-    git -c safe.directory="$dep_repo" -C "$dep_repo" \
+    git -c safe.directory="$desktop_multi_window_repo" -C "$desktop_multi_window_repo" \
         archive --format=tar "$DESKTOP_MULTI_WINDOW_COMMIT" \
         | tar -x -C "$SOURCE_ROOT/third_party/desktop_multi_window"
     cp -- "$SOURCE_ROOT/scripts/flutter-presentation-probe-desktop-multi-window-pubspec.yaml" \
@@ -432,6 +436,30 @@ materialize_source() {
     printf '{"commit":"%s","tree":"%s"}\n' \
         "$DESKTOP_MULTI_WINDOW_COMMIT" "$DESKTOP_MULTI_WINDOW_TREE" \
         >"$SOURCE_ROOT/third_party/desktop_multi_window/.rustdesk-source-identity.json"
+
+    mapfile -d '' window_size_repos < <(
+        find "$ONLINE_DIR/pub-cache/git/cache" -mindepth 1 -maxdepth 1 -type d \
+            -name 'flutter-desktop-embedding-*' -print0
+    )
+    [ "${#window_size_repos[@]}" = 1 ] \
+        || die "pinned window_size bare repository count is not exactly one"
+    window_size_repo="${window_size_repos[0]}"
+    [ "$(git -c safe.directory="$window_size_repo" -C "$window_size_repo" \
+        rev-parse "$WINDOW_SIZE_COMMIT^{commit}")" = "$WINDOW_SIZE_COMMIT" ] \
+        || die "window_size commit is absent from its offline repository"
+    actual_tree="$(git -c safe.directory="$window_size_repo" -C "$window_size_repo" \
+        rev-parse "$WINDOW_SIZE_COMMIT:plugins/window_size")"
+    [ "$actual_tree" = "$WINDOW_SIZE_TREE" ] \
+        || die "window_size package has an unexpected tree"
+    mkdir -p "$SOURCE_ROOT/third_party/window_size"
+    git -c safe.directory="$window_size_repo" -C "$window_size_repo" \
+        archive --format=tar "$WINDOW_SIZE_COMMIT:plugins/window_size" \
+        | tar -x -C "$SOURCE_ROOT/third_party/window_size"
+    cp -- "$SOURCE_ROOT/scripts/flutter-presentation-probe-window-size-pubspec.yaml" \
+        "$SOURCE_ROOT/third_party/window_size/pubspec.yaml"
+    printf '{"commit":"%s","tree":"%s"}\n' \
+        "$WINDOW_SIZE_COMMIT" "$WINDOW_SIZE_TREE" \
+        >"$SOURCE_ROOT/third_party/window_size/.rustdesk-source-identity.json"
 
     windows_helper_small_run \
         --mount "type=bind,source=$SOURCE_ROOT,target=/source" \
@@ -682,22 +710,73 @@ for line in lock_lines[package_start:package_end]:
     elif current is not None:
         blocks[current].append(line.strip())
 expected_packages = {
-    "characters": ("hosted", 'version: "1.3.0"'),
-    "collection": ("hosted", 'version: "1.18.0"'),
-    "desktop_multi_window": ("path", 'version: "0.1.0"'),
-    "flutter": ("sdk", 'version: "0.0.0"'),
-    "material_color_utilities": ("hosted", 'version: "0.11.1"'),
-    "meta": ("hosted", 'version: "1.15.0"'),
-    "sky_engine": ("sdk", 'version: "0.0.99"'),
-    "texture_rgba_renderer": ("path", 'version: "0.0.16+rustdesk.1"'),
-    "vector_math": ("hosted", 'version: "2.1.4"'),
+    "characters": (
+        "hosted", 'version: "1.3.0"', "dependency: transitive",
+        'sha256: "04a925763edad70e8443c99234dc3328f442e811f1d8fd1a72f1c8ad0f69a605"',
+    ),
+    "collection": (
+        "hosted", 'version: "1.18.0"', "dependency: transitive",
+        "sha256: ee67cb0715911d28db6bf4af1026078bd6f0128b07a5f66fb2ed94ec6783c09a",
+    ),
+    "desktop_multi_window": (
+        "path", 'version: "0.1.0"', 'dependency: "direct main"',
+        'path: "third_party/desktop_multi_window"',
+    ),
+    "flutter": (
+        "sdk", 'version: "0.0.0"', 'dependency: "direct main"',
+        "description: flutter",
+    ),
+    "material_color_utilities": (
+        "hosted", 'version: "0.11.1"', "dependency: transitive",
+        "sha256: f7142bb1154231d7ea5f96bc7bde4bda2a0945d2806bb11670e30b850d56bdec",
+    ),
+    "meta": (
+        "hosted", 'version: "1.15.0"', "dependency: transitive",
+        "sha256: bdb68674043280c3428e9ec998512fb681678676b3c54e773629ffe74419f8c7",
+    ),
+    "plugin_platform_interface": (
+        "hosted", 'version: "2.1.8"', "dependency: transitive",
+        'sha256: "4820fbfdb9478b1ebae27888254d445073732dae3d6ea81f0b7e06d5dedc3f02"',
+    ),
+    "sky_engine": (
+        "sdk", 'version: "0.0.99"', "dependency: transitive",
+        "description: flutter",
+    ),
+    "texture_rgba_renderer": (
+        "path", 'version: "0.0.16+rustdesk.1"', 'dependency: "direct main"',
+        'path: "third_party/texture_rgba_renderer"',
+    ),
+    "url_launcher_platform_interface": (
+        "hosted", 'version: "2.3.2"', "dependency: transitive",
+        'sha256: "552f8a1e663569be95a8190206a38187b531910283c3e982193e4f2733f01029"',
+    ),
+    "url_launcher_windows": (
+        "hosted", 'version: "3.1.4"', 'dependency: "direct main"',
+        'sha256: "3284b6d2ac454cf34f114e1d3319866fdd1e19cdc329999057e44ffe936cfa77"',
+    ),
+    "vector_math": (
+        "hosted", 'version: "2.1.4"', "dependency: transitive",
+        'sha256: "80b3257d1492ce4d091729e3a67a60407d227c27241d6927be0130c98e741803"',
+    ),
+    "window_size": (
+        "path", 'version: "0.1.0"', 'dependency: "direct main"',
+        'path: "third_party/window_size"',
+    ),
 }
 if set(blocks) != set(expected_packages):
     raise SystemExit(f"presentation pubspec package set differs: {sorted(blocks)!r}")
-for package, (source, version) in expected_packages.items():
+for package, (source, version, dependency, identity) in expected_packages.items():
     lines = blocks[package]
-    if f"source: {source}" not in lines or version not in lines:
+    if any(required not in lines for required in (
+        f"source: {source}", version, dependency, identity,
+    )):
         raise SystemExit(f"presentation pubspec identity differs: {package}")
+if lock_lines[package_end:] != [
+    "sdks:",
+    '  dart: ">=3.4.0 <4.0.0"',
+    '  flutter: ">=3.22.0"',
+]:
+    raise SystemExit("presentation pubspec SDK envelope differs")
 state = root / "windows-presentation-state"
 for name, expected in {
     "app-finished": "ok\n",

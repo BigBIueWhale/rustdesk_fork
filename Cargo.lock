@@ -6162,6 +6162,7 @@ dependencies = [
  "cpal",
  "ctrlc",
  "dasp",
+ "dart-sys",
  "dbus",
  "default-net",
  "dispatch",

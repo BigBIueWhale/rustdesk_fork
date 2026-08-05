@@ -7074,7 +7074,7 @@ def validate_macos_descriptor_contract(sources):
             "current rustdesk-org Git requirement inventory",
         ),
         (
-            "872 lexical <code>unsafe {</code> blocks across 249 tracked Rust files, with at least one match in 76 files",
+            "884 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 77 files",
             "current Rust unsafe requirement inventory",
         ),
         (
@@ -26686,8 +26686,71 @@ def validate_android_builder_authority_contract(sources):
         ),
         ('MUTATIONS: Tuple[Mutation, ...]', "Android builder mutation inventory"),
         ('run_mutations(sources)', "Android builder mutation dispatch"),
+        ('"manifest": read_regular(repo, "Cargo.toml")',
+         "Android builder focused Cargo-manifest input"),
+        ('"lockfile": read_regular(repo, "Cargo.lock")',
+         "Android builder focused Cargo-lock input"),
+        ('"flutter_ffi": read_regular(repo, "src/flutter_ffi.rs")',
+         "Android builder focused Flutter-FFI input"),
+        ('"pub use dart_sys::Dart_Handle;"',
+         "Android builder focused canonical Dart-handle enforcement"),
+        ('"if grep -qF \'[SEVERE]\' \\"$FRB_CODEGEN_LOG\\"; then"',
+         "Android builder focused severe-diagnostic enforcement"),
+        ('"canonical Dart-handle ABI"',
+         "Android builder focused Dart-handle mutation"),
+        ('"severe FRB diagnostic rejection"',
+         "Android builder focused bridge-verdict mutation"),
     ):
         require_text(focused, text, label)
+    require_text(
+        sources["root_cargo"],
+        'flutter = ["flutter_rust_bridge", "dart-sys"]',
+        "Android canonical Dart-handle Flutter feature",
+    )
+    require_text(
+        sources["root_cargo"],
+        'dart-sys = { version = "=4.1.5", optional = true }',
+        "Android exact optional dart-sys dependency",
+    )
+    rustdesk_lock = extract_between(
+        sources["cargo_lock"],
+        '[[package]]\nname = "rustdesk"\n',
+        "\n[[package]]",
+        "root RustDesk lock record",
+    )
+    require_text(
+        rustdesk_lock,
+        ' "dart-sys",',
+        "Android root RustDesk dart-sys lock edge",
+    )
+    require_text(
+        sources["cargo_lock"],
+        '[[package]]\nname = "dart-sys"\nversion = "4.1.5"',
+        "Android locked canonical dart-sys package",
+    )
+    require_text(
+        sources["flutter_ffi_source"],
+        "pub use dart_sys::Dart_Handle;",
+        "Android canonical Dart-handle re-export",
+    )
+    require_absent(
+        sources["flutter_ffi_source"],
+        "pub type Dart_Handle",
+        "Android second Dart-handle type declaration",
+    )
+    require_order(
+        sources["android_apk_build"],
+        (
+            'FRB_CODEGEN_LOG="$(mktemp /tmp/rustdesk-frb-codegen.XXXXXXXXXX)"',
+            "flutter_rust_bridge_codegen --rust-input",
+            '2>&1 | tee "$FRB_CODEGEN_LOG"',
+            "if grep -qF '[SEVERE]' \"$FRB_CODEGEN_LOG\"; then",
+            'echo "[FATAL] Flutter-Rust-Bridge generation emitted a severe diagnostic" >&2',
+            'rm -f -- "$FRB_CODEGEN_LOG"\ntrap - EXIT',
+            'if [ "$APK_MODE" = rust-check ]; then',
+        ),
+        "Android bridge generation, severe verdict, and consumer order",
+    )
     for text, label in (
         ('getattr(os, "O_NOFOLLOW", 0)', "Android source descriptor no-follow open"),
         ('before.st_nlink != 1', "Android source hardlink refusal"),
@@ -27121,8 +27184,23 @@ def validate_android_builder_authority_contract(sources):
     )
     require_text(
         sources["verify"],
-        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141 Android APK builds use independent pass sources, private stable result validation, exact cleanup, and terminal no-clobber publication",
-        "Android builder shared result-publication disposition",
+        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141/R-S11e-213 Android APK builds use independent pass sources, the canonical Dart handle with fail-closed severe bridge diagnostics, private stable result validation, exact cleanup, and terminal no-clobber publication",
+        "Android builder shared bridge/result-publication disposition",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11ga</span>',
+        "Android canonical Dart-handle requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>335</td>",
+        "Android canonical Dart-handle Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11ga/R-S11e-213 — canonical Dart-handle ownership and fail-closed Android bridge diagnostics",
+        "Android canonical Dart-handle hardening ledger",
     )
     require_text(
         sources["requirements"],
@@ -46681,7 +46759,7 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            "872 lexical <code>unsafe {</code> blocks across 249 tracked Rust files, with at least one match in 76 files",
+            "884 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 77 files",
             "802 lexical <code>unsafe {</code> blocks across 243 tracked Rust files, with at least one match in 67 files",
             "current Rust unsafe requirement inventory",
         ),
@@ -61795,9 +61873,63 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141 Android APK builds use independent pass sources, private stable result validation, exact cleanup, and terminal no-clobber publication",
+            "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141/R-S11e-213 Android APK builds use independent pass sources, the canonical Dart handle with fail-closed severe bridge diagnostics, private stable result validation, exact cleanup, and terminal no-clobber publication",
             "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79 Android APK builds use ambient Docker authority",
-            "Android builder shared result-publication disposition",
+            "Android builder shared bridge/result-publication disposition",
+        ),
+        (
+            "root_cargo",
+            'flutter = ["flutter_rust_bridge", "dart-sys"]',
+            'flutter = ["flutter_rust_bridge"]',
+            "Android canonical Dart-handle Flutter feature",
+        ),
+        (
+            "root_cargo",
+            'dart-sys = { version = "=4.1.5", optional = true }',
+            'dart-sys = { version = "=4.1.4", optional = true }',
+            "Android exact optional dart-sys dependency",
+        ),
+        (
+            "cargo_lock",
+            ' "dasp",\n "dart-sys",\n "dbus",',
+            ' "dasp",\n "dbus",',
+            "Android root RustDesk dart-sys lock edge",
+        ),
+        (
+            "flutter_ffi_source",
+            "pub use dart_sys::Dart_Handle;",
+            "pub type Dart_Handle = *const std::ffi::c_void;",
+            "Android canonical Dart-handle re-export",
+        ),
+        (
+            "android_apk_build",
+            "if grep -qF '[SEVERE]' \"$FRB_CODEGEN_LOG\"; then",
+            "if false; then",
+            "Android bridge generation, severe verdict, and consumer order",
+        ),
+        (
+            "android_builder_authority_verifier",
+            '"canonical Dart-handle ABI"',
+            '"canonical Dart-handle ABI disabled"',
+            "Android builder focused Dart-handle mutation",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11ga</span>',
+            '<span class="id">R-S11ga-disabled</span>',
+            "Android canonical Dart-handle requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>335</td>",
+            "<tr><td>335-disabled</td>",
+            "Android canonical Dart-handle Appendix C row",
+        ),
+        (
+            "hardening",
+            "R-S11ga/R-S11e-213 — canonical Dart-handle ownership and fail-closed Android bridge diagnostics",
+            "R-S11ga/R-S11e-XXX — Dart-handle ownership and bridge diagnostics deferred",
+            "Android canonical Dart-handle hardening ledger",
         ),
         (
             "android_builder_image_authority_verifier",

@@ -58,12 +58,71 @@ def validate(sources: Dict[str, str]) -> None:
     gradle_gate = sources["gradle_gate"]
     checker = sources["checker"]
     inner = sources["inner"]
+    manifest = sources["manifest"]
+    lockfile = sources["lockfile"]
+    flutter_ffi = sources["flutter_ffi"]
     lib = sources["lib"]
     release = sources["release"]
     debian = sources["debian"]
     systemd_smoke = sources["systemd_smoke"]
     systemd_authority = sources["systemd_authority"]
     publisher = sources["publisher"]
+
+    require(
+        manifest,
+        'flutter = ["flutter_rust_bridge", "dart-sys"]',
+        "Flutter feature canonical Dart-handle dependency",
+    )
+    require(
+        manifest,
+        'dart-sys = { version = "=4.1.5", optional = true }',
+        "exact optional dart-sys dependency",
+    )
+    rustdesk_lock = extract(
+        lockfile,
+        '[[package]]\nname = "rustdesk"\n',
+        "\n[[package]]",
+        "root RustDesk lock record",
+    )
+    require(rustdesk_lock, ' "dart-sys",', "root RustDesk dart-sys lock edge")
+    require(
+        lockfile,
+        '[[package]]\nname = "dart-sys"\nversion = "4.1.5"',
+        "locked canonical dart-sys package",
+    )
+    require(
+        flutter_ffi,
+        "pub use dart_sys::Dart_Handle;",
+        "canonical Dart-handle re-export",
+    )
+    forbid(flutter_ffi, "pub type Dart_Handle", "second Dart-handle type declaration")
+    forbid(
+        flutter_ffi,
+        "Dart_Handle = *const std::ffi::c_void",
+        "incompatible const-void Dart handle",
+    )
+    for token, label in (
+        ('FRB_CODEGEN_LOG="$(mktemp /tmp/rustdesk-frb-codegen.XXXXXXXXXX)"', "private FRB diagnostic log"),
+        ('trap \'rm -f -- "$FRB_CODEGEN_LOG"\' EXIT', "FRB diagnostic-log cleanup"),
+        ('2>&1 | tee "$FRB_CODEGEN_LOG"', "complete FRB diagnostic capture"),
+        ("if grep -qF '[SEVERE]' \"$FRB_CODEGEN_LOG\"; then", "severe FRB diagnostic rejection"),
+        ('echo "[FATAL] Flutter-Rust-Bridge generation emitted a severe diagnostic" >&2', "fail-visible severe FRB verdict"),
+        ('rm -f -- "$FRB_CODEGEN_LOG"\ntrap - EXIT', "successful FRB diagnostic-log retirement"),
+    ):
+        require(inner, token, label)
+    require_order(
+        inner,
+        (
+            'FRB_CODEGEN_LOG="$(mktemp /tmp/rustdesk-frb-codegen.XXXXXXXXXX)"',
+            "flutter_rust_bridge_codegen --rust-input",
+            '2>&1 | tee "$FRB_CODEGEN_LOG"',
+            "if grep -qF '[SEVERE]' \"$FRB_CODEGEN_LOG\"; then",
+            'echo "[FATAL] Flutter-Rust-Bridge generation emitted a severe diagnostic" >&2',
+            'rm -f -- "$FRB_CODEGEN_LOG"\ntrap - EXIT',
+            'if [ "$APK_MODE" = rust-check ]; then',
+        ),
+        "FRB generation, diagnostic verdict, and Android consumer order",
+    )
 
     for token, label in (
         ("set -euo pipefail\numask 077", "private host-created state umask"),
@@ -1256,8 +1315,15 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["verify"],
-        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141 Android APK builds use independent pass sources, private stable result validation, exact cleanup, and terminal no-clobber publication",
-        "shared Android builder and result-publication disposition",
+        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141/R-S11e-213 Android APK builds use independent pass sources, the canonical Dart handle with fail-closed severe bridge diagnostics, private stable result validation, exact cleanup, and terminal no-clobber publication",
+        "shared Android builder, bridge, and result-publication disposition",
+    )
+    require(sources["requirements"], '<span class="id">R-S11ga</span>', "R-S11ga requirement")
+    require(sources["requirements"], "<tr><td>335</td>", "Dart-handle Appendix disposition")
+    require(
+        sources["hardening"],
+        "R-S11ga/R-S11e-213 — canonical Dart-handle ownership and fail-closed Android bridge diagnostics",
+        "Dart-handle and bridge-diagnostic hardening ledger",
     )
     require(sources["requirements"], '<span class="id">R-S11bj</span>', "R-S11bj requirement")
     require(sources["requirements"], '<span class="id">R-S11bk</span>', "R-S11bk requirement")
@@ -1338,6 +1404,36 @@ def validate(sources: Dict[str, str]) -> None:
 
 
 MUTATIONS: Tuple[Mutation, ...] = (
+    Mutation(
+        "manifest",
+        'flutter = ["flutter_rust_bridge", "dart-sys"]',
+        'flutter = ["flutter_rust_bridge"]',
+        "Flutter feature canonical Dart-handle dependency",
+    ),
+    Mutation(
+        "manifest",
+        'dart-sys = { version = "=4.1.5", optional = true }',
+        'dart-sys = { version = "=4.1.4", optional = true }',
+        "exact dart-sys version",
+    ),
+    Mutation(
+        "lockfile",
+        ' "dasp",\n "dart-sys",\n "dbus",',
+        ' "dasp",\n "dbus",',
+        "root RustDesk dart-sys lock edge",
+    ),
+    Mutation(
+        "flutter_ffi",
+        "pub use dart_sys::Dart_Handle;",
+        "pub type Dart_Handle = *const std::ffi::c_void;",
+        "canonical Dart-handle ABI",
+    ),
+    Mutation(
+        "inner",
+        "if grep -qF '[SEVERE]' \"$FRB_CODEGEN_LOG\"; then",
+        "if false; then",
+        "severe FRB diagnostic rejection",
+    ),
     Mutation("build", "set -euo pipefail\numask 077",
              "set -euo pipefail\numask 022", "private state umask"),
     Mutation("build", 'readonly BUILD_UID="$(/usr/bin/id -u)"',
@@ -1946,9 +2042,17 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("verify", "python3 scripts/verify-android-builder-authority.py --repo . --self-test", "true # Android builder authority verifier removed", "shared gate wiring"),
     Mutation(
         "verify",
-        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141 Android APK builds use independent pass sources, private stable result validation, exact cleanup, and terminal no-clobber publication",
+        "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141/R-S11e-213 Android APK builds use independent pass sources, the canonical Dart handle with fail-closed severe bridge diagnostics, private stable result validation, exact cleanup, and terminal no-clobber publication",
         "R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79 Android APK builds use ambient Docker authority",
-        "shared Android builder and result-publication disposition",
+        "shared Android builder, bridge, and result-publication disposition",
+    ),
+    Mutation("requirements", '<span class="id">R-S11ga</span>', '<span class="id">R-S11ga-disabled</span>', "Dart-handle requirement"),
+    Mutation("requirements", "<tr><td>335</td>", "<tr><td>335-disabled</td>", "Dart-handle Appendix disposition"),
+    Mutation(
+        "hardening",
+        "R-S11ga/R-S11e-213 — canonical Dart-handle ownership and fail-closed Android bridge diagnostics",
+        "R-S11ga/R-S11e-XXX — Dart-handle ownership and bridge diagnostics deferred",
+        "Dart-handle and bridge-diagnostic hardening ledger",
     ),
     Mutation("requirements", '<span class="id">R-S11bj</span>', '<span class="id">R-S11bj-disabled</span>', "requirement"),
     Mutation("requirements", '<span class="id">R-S11bk</span>', '<span class="id">R-S11bk-disabled</span>', "snapshot-mode requirement"),
@@ -2062,6 +2166,9 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         "requirements": read_regular(repo, "requirements.html"),
         "hardening": read_regular(repo, "HARDENING_STATUS.md"),
         "publisher": read_regular(repo, "scripts/publish-artifact-result.py"),
+        "manifest": read_regular(repo, "Cargo.toml"),
+        "lockfile": read_regular(repo, "Cargo.lock"),
+        "flutter_ffi": read_regular(repo, "src/flutter_ffi.rs"),
     }
 
 

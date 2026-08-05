@@ -1247,12 +1247,12 @@ else
   rc=1
 fi
 
-echo "== (3b-iii-a1a1) Android APK builder, result-publication, and mandatory release-gate authority (R-S11bj/R-S11bk/R-S11bl/R-S11bm/R-S11dj/R-S11dn/R-S11dw/R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141) =="
+echo "== (3b-iii-a1a1) Android APK builder, bridge ABI/verdict, result-publication, and mandatory release-gate authority (R-S11bj/R-S11bk/R-S11bl/R-S11bm/R-S11dj/R-S11dn/R-S11dw/R-S11ga/R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141/R-S11e-213) =="
 if python3 scripts/verify-android-build-source.py --self-test \
     && python3 scripts/verify-android-builder-authority.py --repo . --self-test; then
-  echo "  ok  R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141 Android APK builds use independent pass sources, private stable result validation, exact cleanup, and terminal no-clobber publication; mandatory Android release gates retain fixed local Docker authority and confined existing-image launches"
+  echo "  ok  R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141/R-S11e-213 Android APK builds use independent pass sources, the canonical Dart handle with fail-closed severe bridge diagnostics, private stable result validation, exact cleanup, and terminal no-clobber publication; mandatory Android release gates retain fixed local Docker authority and confined existing-image launches"
 else
-  echo "  FAIL R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141 Android APK builder or mandatory Android release gate regained live-tree, shared-pass, public-preverification, overwrite, recursive-cleanup, nonterminal-publication, pull, network, host-root, ambient Docker daemon/configuration, release-parent inheritance, incompatible preferences, unbounded resources, or simultaneous scratch-retention authority"
+  echo "  FAIL R-S11e-76/R-S11e-77/R-S11e-78/R-S11e-79/R-S11e-128/R-S11e-132/R-S11e-141/R-S11e-213 Android APK builder or mandatory Android release gate regained live-tree, shared-pass, contradictory Dart-handle ABI, severe-diagnostic acceptance, public-preverification, overwrite, recursive-cleanup, nonterminal-publication, pull, network, host-root, ambient Docker daemon/configuration, release-parent inheritance, incompatible preferences, unbounded resources, or simultaneous scratch-retention authority"
   rc=1
 fi
 

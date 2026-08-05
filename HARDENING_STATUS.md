@@ -420,6 +420,29 @@ history remains the traceability record for that intermediate work.
 > reconnect as a workaround. Native Android/Windows execution with monotonic stage timestamps,
 > latency/recovery budgets, and sustained lifecycle soak remains mandatory stop-ship evidence.
 >
+> A source-proven Android bridge follow-up corrected a narrower evidence defect without claiming to
+> close those runtime gaps. The FFI module had invented `Dart_Handle` as `const void *`, contradicting
+> the locked Dart C ABI's opaque `struct _Dart_Handle *` declaration; ffigen reported the redefinition
+> as severe even though Flutter-Rust-Bridge returned success. The Flutter feature now activates the
+> already-selected exact `dart-sys 4.1.5` package directly and the module re-exports its canonical
+> type, so the locked package count remains 898. The Android inner build also captures complete bridge
+> output and fails before Cargo/Gradle on any `[SEVERE]` diagnostic instead of treating exit zero alone
+> as valid evidence.
+>
+> The exact edited source then ran through fresh production bridge generation and `cargo ndk
+> --platform 21 --target aarch64-linux-android check --locked --release --features flutter --lib` in
+> the pre-existing immutable Android builder. The counted run was numeric UID:GID 1000:1000,
+> networkless, read-only-root/input, capability-free, no-new-privileges, bounded, and had no ports,
+> devices, Docker socket, or host namespace. Bridge generation completed without a severe diagnostic;
+> it retained warnings for intentionally opaque or unresolved declarations. The Rust check exited zero
+> in 1m09s with five `scrap` and 87 root-library warnings. Two earlier launch attempts are uncounted and
+> stopped before project code: one denied UID 1000 access to a root-owned mode-0700 tmpfs mount point,
+> and one applied an unintended 8-MiB file-size ceiling during pinned Rust archive extraction. Neither
+> failure was bypassed with privilege. No APK was assembled, signed, installed, launched, or connected,
+> and no Android lifecycle, foreground service, renderer, Windows focus/minimize, real peer, latency,
+> soak, or cross-version path ran. The overall tree therefore remains stop-ship despite this compile/
+> integration correction.
+>
 > **Continuation rule:** prioritize exact-current evidence and test-harness/input closure over
 > additional product behavior changes. A further product change requires a separately source-proven
 > defect or must be necessary to obtain valid evidence; it does not earn release confidence merely
@@ -437,8 +460,8 @@ history remains the traceability record for that intermediate work.
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 872 lexical `unsafe {`
-blocks across 249 tracked Rust files, 76 of which contain at least one; this is explicitly not AST proof.
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 884 lexical `unsafe {`
+blocks across 251 tracked Rust files, 77 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
 place and gated.** The single mandatory CPace PAKE runs at the `create_tcp_connection`
@@ -16006,6 +16029,72 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Windows focus delay, cross-version behavior, performance/soak, canonical cache replacement, exact current
   R-B2/R-B10, independent reproduction, and external review remain stop-ship gaps.
 
+- **R-S11ga/R-S11e-213 — canonical Dart-handle ownership and fail-closed Android bridge diagnostics —
+  SOURCE IMPLEMENTED; FRESH PRODUCTION BRIDGE GENERATION AND LOCKED ARM64 RUST CHECK GREEN;
+  APK/DEVICE/NATIVE PRESENTATION EVIDENCE OPEN.** Platform: every Flutter-feature Rust build, with
+  executable evidence on the Android ARM64 target. Endpoint/action: `src/flutter_ffi.rs` type ownership,
+  the root Cargo feature/dependency graph, and `scripts/android-apk-build.sh` bridge-generation verdict.
+  Boundary: the Dart C API's opaque handle ABI and ffigen diagnostics ↔ generated Rust/Dart bridge code
+  admitted to later Cargo/JNI/Gradle consumers.
+
+  The prior workaround stated that the pointee was immaterial and declared
+  `pub type Dart_Handle = *const std::ffi::c_void`. That claim was false as a source contract. The locked
+  `dart-sys 4.1.5` source defines `Dart_Handle = *mut _Dart_Handle`, and the locked
+  Flutter-Rust-Bridge `dart_api.h` expresses the same owner as `typedef struct _Dart_Handle*
+  Dart_Handle`. Flutter-Rust-Bridge already selected that exact package transitively but did not re-export
+  the name at its crate root. Its temporary generated stubs resolved the name through
+  `crate::flutter_ffi::*`, so the local alias caused ffigen to diagnose two different C typedefs. Pointer
+  representation happened to be the same, but that does not authorize a contradictory declaration or a
+  severe diagnostic in release evidence.
+
+  `dart-sys = { version = "=4.1.5", optional = true }` is now a direct optional dependency activated by
+  the `flutter` feature, the root lock record carries the direct edge, and `flutter_ffi.rs` re-exports
+  `dart_sys::Dart_Handle`. No second handle type remains and no new package entered the 898-record lock.
+  Android bridge generation writes its complete combined output through `tee` to a fresh private tmpfs log,
+  emits that output to the enclosing build log, rejects any `[SEVERE]` marker before Cargo or Gradle even
+  when the outer generator exits zero, and retires the log on success while an exit trap owns other exits.
+  The focused Android authority verifier rejected all 178 deliberate mutations, including the exact manifest
+  feature and package pin, root lock edge, canonical re-export, second-type absence, private output capture,
+  severe verdict, and consumer order; the shared verifier, normative requirement, Appendix disposition, and
+  independent workspace gate bind that focused contract.
+
+  Counted executable evidence used a fresh archive of HEAD overlaid with every edited tracked file inside
+  pre-existing immutable Android-builder image
+  `sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2`. It ran as numeric UID:GID
+  1000:1000 with no network, pull, published port, device, Docker socket, or host namespace; a read-only
+  root, source, and exact private Android input snapshot; all capabilities dropped; no-new-privileges; finite
+  PIDs/memory/no-swap/CPU/descriptors/file size; and fresh private tmpfs work. Production bridge generation
+  completed without `[SEVERE]`. It retained the already-visible unresolvable-module warnings plus ffigen
+  warnings that intentionally opaque `_Dart_Handle`, `DartCObject`, and `Display` declarations have no
+  definition; those warnings were neither hidden nor relabeled as clean. The exact command
+  `cargo ndk --platform 21 --target aarch64-linux-android check --locked --release --features flutter
+  --lib` exited zero in 1m09s with five `scrap` and 87 root-library warnings.
+
+  The dependency inventory then exposed pre-existing expectation drift from tracked source changes after its
+  last synchronization: the actual committed tree already contained 251 Rust files, 884 lexical `unsafe {`
+  blocks, and 77 files with at least one match, while the ledger still said 249/872/76. This slice adds no
+  unsafe block; it synchronizes those current totals and the lock-record digest affected by the new direct edge.
+  The normal inventory and all 103 adversarial self-checks pass, and the Cargo package count remains 898.
+  The independent workspace baseline passed, and its complete in-memory source-mutation catalog then ran
+  uninterrupted from mutation one to `verify-verifier-workspace: ok`. After recording that verdict, the
+  178-mutation focused gate, 103-check inventory suite, independent baseline, native-codec normal/adversarial
+  gates, Bash/Python syntax, exact requirements hashes, and diff hygiene all passed. The full catalog is not
+  recursively rerun merely to record its own successful result.
+
+  Two setup attempts are explicitly uncounted. The first stopped before project code because UID 1000 could
+  not create a child in a root-owned mode-0700 `/work` tmpfs mount. The second stopped during pinned Rust
+  archive extraction because an intended 32-GiB file-size ceiling had been supplied as 8,388,608 bytes. The
+  counted attempt used a standard 1777 tmpfs mount boundary with an immediate UID-owned mode-0700 work child
+  and the correctly expressed finite file ceiling. No root, capability, writable host input, or other
+  bypass was granted.
+
+  No full APK was assembled, signed, retained, installed, or launched. No Activity, foreground service,
+  task swipe/reopen/Force Stop, actual peer, display/control/file transfer, capture/decode/render, Windows
+  focus/minimize, device/emulator/VM, cross-version interoperability, latency budget, sustained soak,
+  canonical cache replacement, clean exact-commit R-B2/R-B10 release, independent reproduction, or external
+  review ran. This closes one source/bridge-verdict defect and one target compile-integration check only; the
+  user's accumulated-change risk assessment and every native/end-to-end stop-ship gap remain in force.
+
 - **R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority —
   SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE LIVE
   FOURTEEN-ARCHIVE ACQUISITION EVIDENCE RECORDED; BROADER RELEASE EVIDENCE OPEN.** Platform: the unprivileged Linux
@@ -20874,7 +20963,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-f62162b7ee393de95f736036969f2ea5c0111dbf36812900572bdebb1413ddf1  requirements.html
+396b73d30f95f5dc72398c3065c3f1c60b62a2f57e661a1db090546227f163cd  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -20917,3 +21006,6 @@ The same identity additionally binds R-S11fu and Appendix C #329.
 The same identity additionally binds R-S11fv and Appendix C #330.
 The same identity additionally binds R-S11fw and Appendix C #331.
 The same identity additionally binds R-S11fx and Appendix C #332.
+The same identity additionally binds R-S11fy and Appendix C #333.
+The same identity additionally binds R-S11fz and Appendix C #334.
+The same identity additionally binds R-S11ga and Appendix C #335.

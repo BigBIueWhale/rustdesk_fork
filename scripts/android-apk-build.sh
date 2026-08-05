@@ -146,10 +146,22 @@ pub_lock_after="$(sha256sum flutter/pubspec.lock | awk '{print $1}')"
     exit 1
 }
 # FRB bridge (--llvm-compiler-opts so ffigen resolves <stdbool.h> -> correct bool bindings).
+# ffigen can emit a [SEVERE] diagnostic yet let the outer generator return success. Preserve its
+# complete output for the build log, but reject that contradictory success before Cargo or Gradle.
+FRB_CODEGEN_LOG="$(mktemp /tmp/rustdesk-frb-codegen.XXXXXXXXXX)"
+readonly FRB_CODEGEN_LOG
+trap 'rm -f -- "$FRB_CODEGEN_LOG"' EXIT
 flutter_rust_bridge_codegen --rust-input ./src/flutter_ffi.rs \
     --dart-output ./flutter/lib/generated_bridge.dart \
     --llvm-path "$LLVM_ROOT" \
-    --llvm-compiler-opts="-I$(echo "$LLVM_ROOT"/lib/clang/*/include)"
+    --llvm-compiler-opts="-I$(echo "$LLVM_ROOT"/lib/clang/*/include)" \
+    2>&1 | tee "$FRB_CODEGEN_LOG"
+if grep -qF '[SEVERE]' "$FRB_CODEGEN_LOG"; then
+    echo "[FATAL] Flutter-Rust-Bridge generation emitted a severe diagnostic" >&2
+    exit 1
+fi
+rm -f -- "$FRB_CODEGEN_LOG"
+trap - EXIT
 if [ "$APK_MODE" = rust-check ]; then
     cargo ndk --platform 21 --target aarch64-linux-android \
         check --locked --release --features flutter --lib

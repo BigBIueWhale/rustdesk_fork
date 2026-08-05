@@ -31037,13 +31037,55 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
     android = sources["android_apk_build"]
     projector = sources["android_gradle_cache_projector"]
     wrapper = sources["gradle_wrapper"]
+    publication = extract_between(
+        helper,
+        "def publish(",
+        "\ndef optional_identity(",
+        "Gradle-output one-name publication helper",
+    )
+    replacement = extract_between(
+        helper,
+        "def replace(",
+        "\ndef validate_sdk_state(",
+        "Gradle-output replacement helper",
+    )
+    replacement_finish = extract_between(
+        helper,
+        "def finish_promoted_replacement(",
+        "\ndef replace(",
+        "Gradle-output replacement finisher",
+    )
     for text, label in (
         ("Gradle output transaction", "Gradle-output focused lifecycle binding"),
         ("checked one-name publication", "Gradle-output focused publication binding"),
+        ("publication journal after durable candidate",
+         "Gradle-output focused publication-order mutation"),
+        ("replacement journal after durable candidate",
+         "Gradle-output focused replacement-order mutation"),
+        ("replacement SDK pre/post full-content closure",
+         "Gradle-output focused SDK full-content sequence"),
+        ("replacement SDK precondition",
+         "Gradle-output focused SDK precondition mutation"),
+        ("replacement SDK postcondition",
+         "Gradle-output focused SDK postcondition mutation"),
+        ("same-parent replacement exchange", "Gradle-output focused replacement binding"),
         ("MUTATIONS: Tuple[Mutation, ...]", "Gradle-output focused mutation inventory"),
         ("run_mutations(sources)", "Gradle-output focused mutation dispatch"),
     ):
         require_text(focused, text, label)
+    require_text(
+        focused,
+        '("gradle_output_tool replace", "checked stale-output replacement"),',
+        "Gradle-output focused replacement dispatch binding",
+    )
+    require_text(
+        focused,
+        '            "finish_promoted_replacement(",\n'
+        '        ),\n'
+        '        "checked stale-output replacement",\n'
+        '    )',
+        "Gradle-output focused replacement sequence",
+    )
     for text, label in (
         ('/usr/bin/chmod 0700 "$ONLINE_DIR"', "Gradle-output private online root"),
         ("readonly FLOCK_BIN=/usr/bin/flock", "Gradle-output fixed lock client"),
@@ -31069,6 +31111,9 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
         ('[ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] && [ "$output_status" -eq 0 ]',
          "Gradle-output publication barrier"),
         ("gradle_output_tool publish", "Gradle-output checked publisher"),
+        ("gradle_output_tool replace", "Gradle-output checked replacement"),
+        ("gradle_output_tool archive-replaced", "Gradle-output replacement archival"),
+        ('--expected-digest "$digest"', "Gradle-output candidate digest receipt"),
         ("retire_gradle_output_staging", "Gradle-output private retirement"),
     ):
         require_text(online, text, label)
@@ -31147,7 +31192,7 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
             '        staging / "gradle-home",\n'
             '        owners={(uid, gid)},\n'
             '        limits=GRADLE_LIMITS,\n'
-            '        hash_contents=False,\n'
+            '        hash_contents=True,\n'
             '        seal=True,\n'
             '        seal_root=False,',
             "Gradle-output prepublication descendant sealing",
@@ -31169,6 +31214,16 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
             "Gradle-output sealed-tree postcondition",
         ),
         ("RENAME_NOREPLACE = 1", "Gradle-output no-clobber cache install"),
+        ("RENAME_EXCHANGE = 2", "Gradle-output same-parent replacement"),
+        ('        "replaced_gradle_digest": replaced.digest,',
+         "Gradle-output displaced-content binding"),
+        (
+            '        hash_contents=True,\n'
+            '        expected_identity=expected_identity,\n'
+            '    )\n'
+            '    if summary.files == 0:',
+            "Gradle-output displaced full-content validation",
+        ),
         (
          "rollback_publication(\n"
          "                    online_fd,\n"
@@ -31176,6 +31231,8 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
          "Gradle-output rollback"),
         ('return "unpublished"', "Gradle-output unpublished recovery"),
         ('return "published"', "Gradle-output published recovery"),
+        ('return "replacement-prepared"', "Gradle-output prepared replacement recovery"),
+        ('return "replaced"', "Gradle-output completed replacement recovery"),
         ("state is incoherent and was preserved", "Gradle-output ambiguous-state refusal"),
         ("self-test did not classify completed publication",
          "Gradle-output completed-transaction fixture"),
@@ -31191,6 +31248,16 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
          "Gradle-output interrupted-root-seal fixture"),
         ("self-test rollback did not restore unpublished transaction state",
          "Gradle-output sealed-root rollback fixture"),
+        ("self-test did not recover a promoted Gradle replacement",
+         "Gradle-output promotion-crash fixture"),
+        ("self-test did not recover a prepared Gradle replacement",
+         "Gradle-output prepared-journal crash fixture"),
+        ("self-test did not recover an exchanged Gradle replacement",
+         "Gradle-output exchange-crash fixture"),
+        ("self-test Gradle replacement rollback did not restore prepared state",
+         "Gradle-output replacement rollback fixture"),
+        ("retired Gradle archive identity postcondition failed",
+         "Gradle-output replacement archive postcondition"),
         (
             "previous_umask = os.umask(0o077)\n"
             "        try:\n"
@@ -31205,46 +31272,56 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
     require_exact_count(
         helper,
         "previous_umask = os.umask(0o077)",
-        1,
+        2,
         "Gradle-output private SDK fixture umask",
     )
     require_exact_count(
         helper,
         "os.umask(previous_umask)",
-        1,
+        2,
         "Gradle-output SDK fixture umask restoration",
     )
     require_exact_count(
         helper,
         "require_sealed=True,",
-        4,
+        5,
         "Gradle-output complete/published/recovery sealed checks",
     )
     require_exact_count(
         helper,
         "seal_root=False,",
-        3,
+        5,
         "Gradle-output renameable-root exceptions",
+    )
+    require_exact_count(
+        helper,
+        "if sealed_summary.digest != expected_digest:",
+        2,
+        "Gradle-output sealed-candidate digest checks",
     )
     require_exact_count(
         focused,
         "previous_umask = os.umask(0o077)",
-        2,
+        4,
         "Gradle-output focused private SDK fixture umask",
     )
     require_exact_count(
         focused,
         "os.umask(previous_umask)",
-        2,
+        4,
         "Gradle-output focused SDK fixture umask restoration",
     )
     require_order(
-        helper,
+        publication,
         (
             "verify_staged(",
             'sealed_summary = inspect_tree(',
             'seal=True,',
+            'if sealed_summary.digest != expected_digest:',
+            'validate_semantics(',
             'sync_tree(staging / "gradle-home")',
+            'fsync_directory(staging)',
+            'state = record_new_publication(',
             'renameat2(staging_fd, "gradle-home", online_fd, "gradle-home", RENAME_NOREPLACE)',
             'transition_root_mode(',
             "read-only Android SDK identity postcondition failed",
@@ -31254,8 +31331,53 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
         ),
         "Gradle-output checked one-name publication",
     )
+    require_order(
+        replacement,
+        (
+            "verify_staged(",
+            "validate_displaced_output(destination, uid, gid)",
+            "validate_retired_root(online, retired_root, uid, gid)",
+            "sealed_summary = inspect_tree(",
+            "seal=True,",
+            "if sealed_summary.digest != expected_digest:",
+            "validate_semantics(",
+            "sync_tree(output)",
+            "fsync_directory(staging)",
+            "state = record_replacement_publication(",
+            "validate_displaced_output(\n        destination,",
+            'fail("reserved replacement Gradle name is already occupied")',
+            "validate_sdk_state(online, state, uid, gid)",
+            "online_fd = open_directory(online)",
+            "RENAME_NOREPLACE,",
+            "finish_promoted_replacement(",
+        ),
+        "Gradle-output checked stale-output replacement",
+    )
+    require_exact_count(
+        replacement,
+        "validate_sdk_state(online, state, uid, gid)",
+        1,
+        "Gradle-output replacement SDK full-content precondition",
+    )
+    require_exact_count(
+        replacement_finish,
+        "validate_sdk_state(online, state, uid, gid)",
+        1,
+        "Gradle-output replacement SDK full-content postcondition",
+    )
+    require_order(
+        replacement_finish,
+        (
+            "if not exchanged:",
+            "RENAME_EXCHANGE,",
+            '"replacement Gradle",',
+            "validate_candidate_output(",
+            "validate_displaced_output(",
+            "validate_sdk_state(online, state, uid, gid)",
+        ),
+        "Gradle-output replacement SDK pre/post full-content closure",
+    )
     for text, label in (
-        ("RENAME_EXCHANGE", "Gradle-output SDK exchange"),
         ("staged_sdk_identity", "Gradle-output staged SDK identity"),
         ('sync_tree(staging / "android-sdk")', "Gradle-output SDK durability"),
         ('renameat2(staging_fd, "android-sdk"', "Gradle-output SDK publication"),
@@ -31294,6 +31416,16 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
         "Gradle immutable-seed Appendix C row",
     )
     require_text(
+        sources["requirements"],
+        '<span class="id">R-S11fz</span>',
+        "Gradle stale-cache replacement requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>334</td>",
+        "Gradle stale-cache replacement Appendix C row",
+    )
+    require_text(
         sources["hardening"],
         "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
         "online-fetch Android SDK/Gradle correction hardening ledger",
@@ -31307,6 +31439,11 @@ def validate_online_fetch_gradle_output_authority_contract(sources):
         sources["hardening"],
         "R-S11fv/R-S11e-208 — Gradle publication/offline-seed mode closure",
         "Gradle immutable-seed correction ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11fz/R-S11e-212 — stale canonical Gradle-cache replacement authority",
+        "Gradle stale-cache replacement ledger",
     )
     require_exact_count(
         focused,
@@ -63968,6 +64105,144 @@ def run_source_mutations(sources):
             "Gradle-output focused publication binding",
         ),
         (
+            "online_fetch_gradle_output_authority_verifier",
+            '("gradle_output_tool replace", "checked stale-output replacement"),',
+            '("gradle_output_tool replace", "unchecked stale-output replacement"),',
+            "Gradle-output focused replacement dispatch binding",
+        ),
+        (
+            "online_fetch_gradle_output_authority_verifier",
+            '            "finish_promoted_replacement(",\n'
+            '        ),\n'
+            '        "checked stale-output replacement",\n'
+            '    )',
+            '            "finish_promoted_replacement(",\n'
+            '        ),\n'
+            '        "unchecked stale-output replacement",\n'
+            '    )',
+            "Gradle-output focused replacement sequence",
+        ),
+        (
+            "online_fetch_gradle_output_authority_verifier",
+            "publication journal after durable candidate",
+            "publication journal before durable candidate",
+            "Gradle-output focused publication-order mutation",
+        ),
+        (
+            "online_fetch_gradle_output_authority_verifier",
+            "replacement journal after durable candidate",
+            "replacement journal before durable candidate",
+            "Gradle-output focused replacement-order mutation",
+        ),
+        (
+            "online_fetch_gradle_output_authority_verifier",
+            "replacement SDK pre/post full-content closure",
+            "replacement SDK partial-content closure",
+            "Gradle-output focused SDK full-content sequence",
+        ),
+        (
+            "online_fetch_gradle_output_authority_verifier",
+            "replacement SDK precondition",
+            "SDK-before-promotion mutation disabled",
+            "Gradle-output focused SDK precondition mutation",
+        ),
+        (
+            "online_fetch_gradle_output_authority_verifier",
+            "replacement SDK postcondition",
+            "SDK-before-success mutation disabled",
+            "Gradle-output focused SDK postcondition mutation",
+        ),
+        (
+            "online_fetch_gradle_output_authority_verifier",
+            "same-parent replacement exchange",
+            "cross-parent output replacement",
+            "Gradle-output focused replacement binding",
+        ),
+        (
+            "online_fetch",
+            "            gradle_output_tool replace \\\n",
+            "            gradle_output_tool publish \\\n",
+            "Gradle-output checked replacement",
+        ),
+        (
+            "online_fetch",
+            "            gradle_output_tool archive-replaced \\\n",
+            "            gradle_output_tool recover \\\n",
+            "Gradle-output replacement archival",
+        ),
+        (
+            "online_gradle_output_helper",
+            "RENAME_EXCHANGE = 2",
+            "RENAME_EXCHANGE = 0",
+            "Gradle-output same-parent replacement",
+        ),
+        (
+            "online_gradle_output_helper",
+            '        "replaced_gradle_digest": replaced.digest,',
+            '        "replaced_gradle_digest": expected_digest,',
+            "Gradle-output displaced-content binding",
+        ),
+        (
+            "online_gradle_output_helper",
+            '    sync_tree(staging / "gradle-home")\n'
+            "    fsync_directory(staging)\n"
+            "    state = record_new_publication(staging, state, expected_digest)",
+            "    state = record_new_publication(staging, state, expected_digest)\n"
+            '    sync_tree(staging / "gradle-home")\n'
+            "    fsync_directory(staging)",
+            "Gradle-output checked one-name publication",
+        ),
+        (
+            "online_gradle_output_helper",
+            "    sync_tree(output)\n"
+            "    fsync_directory(staging)\n"
+            "    state = record_replacement_publication(",
+            "    state = record_replacement_publication(",
+            "Gradle-output checked stale-output replacement",
+        ),
+        (
+            "online_gradle_output_helper",
+            '    if replacement.exists() or replacement.is_symlink():\n'
+            '        fail("reserved replacement Gradle name is already occupied")\n'
+            "    validate_sdk_state(online, state, uid, gid)\n"
+            "    online_fd = open_directory(online)",
+            '    if replacement.exists() or replacement.is_symlink():\n'
+            '        fail("reserved replacement Gradle name is already occupied")\n'
+            "    online_fd = open_directory(online)",
+            "Gradle-output checked stale-output replacement",
+        ),
+        (
+            "online_gradle_output_helper",
+            "        validate_displaced_output(\n"
+            "            replacement,\n"
+            "            uid,\n"
+            "            gid,\n"
+            "            replaced_identity,\n"
+            "            replaced_digest,\n"
+            "        )\n"
+            "        validate_sdk_state(online, state, uid, gid)",
+            "        validate_displaced_output(\n"
+            "            replacement,\n"
+            "            uid,\n"
+            "            gid,\n"
+            "            replaced_identity,\n"
+            "            replaced_digest,\n"
+            "        )",
+            "Gradle-output replacement SDK full-content postcondition",
+        ),
+        (
+            "online_gradle_output_helper",
+            '        hash_contents=True,\n'
+            '        expected_identity=expected_identity,\n'
+            '    )\n'
+            '    if summary.files == 0:',
+            '        hash_contents=False,\n'
+            '        expected_identity=expected_identity,\n'
+            '    )\n'
+            '    if summary.files == 0:',
+            "Gradle-output displaced full-content validation",
+        ),
+        (
             "online_gradle_output_helper",
             "reject_descendant_mounts(canonical)",
             "return # descendant mounts accepted",
@@ -63995,6 +64270,8 @@ def run_source_mutations(sources):
             '            state.get("staged_gradle_identity"), "staged Gradle"\n'
             "        ),\n"
             "    )\n"
+            "    if sealed_summary.digest != expected_digest:\n"
+            '        fail("sealed Gradle candidate digest changed")\n'
             "    validate_semantics(",
             "        seal=False,\n"
             "        seal_root=False,\n"
@@ -64002,6 +64279,8 @@ def run_source_mutations(sources):
             '            state.get("staged_gradle_identity"), "staged Gradle"\n'
             "        ),\n"
             "    )\n"
+            "    if sealed_summary.digest != expected_digest:\n"
+            '        fail("sealed Gradle candidate digest changed")\n'
             "    validate_semantics(",
             "Gradle-output prepublication descendant sealing",
         ),
@@ -64037,26 +64316,70 @@ def run_source_mutations(sources):
         ),
         (
             "online_gradle_output_helper",
-            "previous_umask = os.umask(0o077)",
-            "previous_umask = os.umask(0o002)",
+            "previous_umask = os.umask(0o077)\n"
+            "        try:\n"
+            '            create_fake_sdk(online / "android-sdk", '
+            "build_tools, compile_sdk)\n"
+            "        finally:\n"
+            "            os.umask(previous_umask)",
+            "previous_umask = os.umask(0o002)\n"
+            "        try:\n"
+            '            create_fake_sdk(online / "android-sdk", '
+            "build_tools, compile_sdk)\n"
+            "        finally:\n"
+            "            os.umask(previous_umask)",
             "Gradle-output private SDK fixture umask scope",
         ),
         (
             "online_gradle_output_helper",
-            "os.umask(previous_umask)",
-            "os.umask(0o077)",
+            "previous_umask = os.umask(0o077)\n"
+            "        try:\n"
+            '            create_fake_sdk(online / "android-sdk", '
+            "build_tools, compile_sdk)\n"
+            "        finally:\n"
+            "            os.umask(previous_umask)",
+            "previous_umask = os.umask(0o077)\n"
+            "        try:\n"
+            '            create_fake_sdk(online / "android-sdk", '
+            "build_tools, compile_sdk)\n"
+            "        finally:\n"
+            "            os.umask(0o077)",
             "Gradle-output private SDK fixture umask scope",
         ),
         (
             "online_fetch_gradle_output_authority_verifier",
-            "previous_umask = os.umask(0o077)",
-            "previous_umask = os.umask(0o002)",
+            '            "previous_umask = os.umask(0o077)\\n"\n'
+            '            "        try:\\n"\n'
+            "            '            create_fake_sdk(online / \"android-sdk\", '\n"
+            '            "build_tools, compile_sdk)\\n"\n'
+            '            "        finally:\\n"\n'
+            '            "            os.umask(previous_umask)",\n'
+            '            "private SDK fixture umask scope",',
+            '            "previous_umask = os.umask(0o002)\\n"\n'
+            '            "        try:\\n"\n'
+            "            '            create_fake_sdk(online / \"android-sdk\", '\n"
+            '            "build_tools, compile_sdk)\\n"\n'
+            '            "        finally:\\n"\n'
+            '            "            os.umask(previous_umask)",\n'
+            '            "private SDK fixture umask scope",',
             "Gradle-output focused private SDK fixture umask",
         ),
         (
             "online_fetch_gradle_output_authority_verifier",
-            "os.umask(previous_umask)",
-            "os.umask(0o077)",
+            '            "previous_umask = os.umask(0o077)\\n"\n'
+            '            "        try:\\n"\n'
+            "            '            create_fake_sdk(online / \"android-sdk\", '\n"
+            '            "build_tools, compile_sdk)\\n"\n'
+            '            "        finally:\\n"\n'
+            '            "            os.umask(previous_umask)",\n'
+            '            "private SDK fixture umask scope",',
+            '            "previous_umask = os.umask(0o077)\\n"\n'
+            '            "        try:\\n"\n'
+            "            '            create_fake_sdk(online / \"android-sdk\", '\n"
+            '            "build_tools, compile_sdk)\\n"\n'
+            '            "        finally:\\n"\n'
+            '            "            os.umask(0o077)",\n'
+            '            "private SDK fixture umask scope",',
             "Gradle-output focused SDK fixture umask restoration",
         ),
         (
@@ -64123,6 +64446,18 @@ def run_source_mutations(sources):
             "Gradle immutable-seed Appendix C row",
         ),
         (
+            "requirements",
+            '<span class="id">R-S11fz</span>',
+            '<span class="id">R-S11fz-disabled</span>',
+            "Gradle stale-cache replacement requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>334</td>",
+            "<tr><td>334-disabled</td>",
+            "Gradle stale-cache replacement Appendix C row",
+        ),
+        (
             "hardening",
             "R-S11cr/R-S11e-110 — exact Android SDK acquisition and publication authority",
             "R-S11cr/R-S11e-110 — ambient Android SDK authority",
@@ -64133,6 +64468,12 @@ def run_source_mutations(sources):
             "R-S11fv/R-S11e-208 — Gradle publication/offline-seed mode closure",
             "R-S11fv/R-S11e-208 — writable Gradle publication mode",
             "Gradle immutable-seed correction ledger",
+        ),
+        (
+            "hardening",
+            "R-S11fz/R-S11e-212 — stale canonical Gradle-cache replacement authority",
+            "R-S11fz/R-S11e-212 — destructive Gradle-cache replacement authority",
+            "Gradle stale-cache replacement ledger",
         ),
         (
             "online_fetch_gradle_output_authority_verifier",

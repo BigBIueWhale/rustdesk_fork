@@ -92,6 +92,25 @@ def validate(sources: Dict[str, str]) -> None:
             "Gradle output helper does not parse: {}".format(error)
         ) from error
 
+    publication = extract_between(
+        helper,
+        "def publish(",
+        "\ndef optional_identity(",
+        "Gradle one-name publication helper",
+    )
+    replacement = extract_between(
+        helper,
+        "def replace(",
+        "\ndef validate_sdk_state(",
+        "Gradle replacement helper",
+    )
+    replacement_finish = extract_between(
+        helper,
+        "def finish_promoted_replacement(",
+        "\ndef replace(",
+        "Gradle replacement finisher",
+    )
+
     stage = extract_between(
         shell,
         "stage_gradle() {",
@@ -117,6 +136,24 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         ("gradle_output_tool verify", "output postcondition"),
         ("gradle_output_tool publish", "checked publication"),
+        ("gradle_output_tool replace", "checked stale-output replacement"),
+        ("gradle_output_tool archive-replaced", "replacement-record archival"),
+        ("prepare_retired_online_input_root", "retired-record root preparation"),
+        ('--expected-digest "$digest"', "verified candidate digest binding"),
+        (
+            '            replace_existing=1\n'
+            '            log "existing Gradle cache is stale or semantically incomplete; '
+            'preparing one verified replacement"',
+            "stale-cache replacement selection",
+        ),
+        (
+            '    if [[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then\n'
+            '        digest="${BASH_REMATCH[1]}"\n'
+            '    else\n'
+            '        output_status=1\n'
+            '    fi',
+            "candidate digest receipt",
+        ),
         ("retire_gradle_output_staging", "private staging retirement"),
         (
             '[ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] && '
@@ -231,8 +268,10 @@ def validate(sources: Dict[str, str]) -> None:
     )
 
     for token, label in (
-        ('STATE_NAME = ".rustdesk-gradle-output-state-v2"', "new state schema"),
-        ("STATE_VERSION = 2", "state version"),
+        ('STATE_NAME = ".rustdesk-gradle-output-state-v3"', "current state schema"),
+        ('LEGACY_STATE_NAME = ".rustdesk-gradle-output-state-v2"', "legacy state schema"),
+        ("STATE_VERSION = 3", "state version"),
+        ("LEGACY_STATE_VERSION = 2", "legacy state version"),
         (
             "GRADLE_LIMITS = (100_000, 100_000, 12 * 1024**3, 2 * 1024**3)",
             "Gradle output bounds",
@@ -241,7 +280,8 @@ def validate(sources: Dict[str, str]) -> None:
             "SDK_LIMITS = (100_000, 100_000, 4 * 1024**3, 2 * 1024**3)",
             "SDK input bounds",
         ),
-        ("set(value) != expected_keys", "closed state schema"),
+        ("set(value) != current_keys", "closed current state schema"),
+        ("set(value) != legacy_keys", "closed legacy state schema"),
         ("reject_descendant_mounts(canonical)", "descendant-mount rejection"),
         ("os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW", "no-follow reads"),
         ("stable_metadata(before) != stable_metadata(after)", "stable reads"),
@@ -260,8 +300,9 @@ def validate(sources: Dict[str, str]) -> None:
             "post-publication SDK content check",
         ),
         (
-            "Android SDK changed during Gradle output recovery",
-            "recovery SDK content check",
+            '    if summary.digest != state.get("sdk_source_digest"):\n'
+            '        fail("Android SDK changed during Gradle output recovery")',
+            "current recovery SDK content check",
         ),
         ("Gradle dependency module cache is absent", "module-cache semantics"),
         ("exactly one pinned distribution archive", "single wrapper archive"),
@@ -284,7 +325,7 @@ def validate(sources: Dict[str, str]) -> None:
             '        staging / "gradle-home",\n'
             '        owners={(uid, gid)},\n'
             '        limits=GRADLE_LIMITS,\n'
-            '        hash_contents=False,\n'
+            '        hash_contents=True,\n'
             '        seal=True,\n'
             '        seal_root=False,',
             "sealed descendants before namespace publication",
@@ -326,6 +367,49 @@ def validate(sources: Dict[str, str]) -> None:
             "sealed-root rollback fixture",
         ),
         ("RENAME_NOREPLACE = 1", "no-clobber primitive"),
+        ("RENAME_EXCHANGE = 2", "same-parent exchange primitive"),
+        (
+            '        "replaced_gradle_digest": replaced.digest,',
+            "displaced full-content digest binding",
+        ),
+        (
+            '            renameat2(\n'
+            '                online_fd,\n'
+            '                replacement_name,\n'
+            '                online_fd,\n'
+            '                "gradle-home",\n'
+            '                RENAME_EXCHANGE,\n'
+            '            )\n'
+            '            exchanged = True',
+            "same-parent replacement exchange",
+        ),
+        (
+            '            renameat2(\n'
+            '                online_fd,\n'
+            '                "gradle-home",\n'
+            '                online_fd,\n'
+            '                replacement_name,\n'
+            '                RENAME_EXCHANGE,\n'
+            '            )',
+            "old-first replacement rollback",
+        ),
+        (
+            '        hash_contents=True,\n'
+            '        expected_identity=expected_identity,\n'
+            '    )\n'
+            '    if summary.files == 0:',
+            "displaced full-content validation",
+        ),
+        (
+            '        renameat2(\n'
+            '            online_fd,\n'
+            '            staging.name,\n'
+            '            retired_fd,\n'
+            '            archive_name,\n'
+            '            RENAME_NOREPLACE,\n'
+            '        )',
+            "replacement journal archival",
+        ),
         (
             'renameat2(staging_fd, "gradle-home", online_fd, '
             '"gradle-home", RENAME_NOREPLACE)',
@@ -339,6 +423,8 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         ('return "unpublished"', "unpublished recovery"),
         ('return "published"', "published recovery"),
+        ('return "replacement-prepared"', "prepared replacement recovery"),
+        ('return "replaced"', "completed replacement recovery"),
         (
             "state is incoherent and was preserved",
             "ambiguous-state refusal",
@@ -357,6 +443,30 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         ("self-test accepted a symlinked output", "symlink fixture"),
         (
+            "self-test did not recover a promoted Gradle replacement",
+            "promotion-crash recovery fixture",
+        ),
+        (
+            "self-test did not recover a prepared Gradle replacement",
+            "prepared-journal recovery fixture",
+        ),
+        (
+            "self-test did not recover an exchanged Gradle replacement",
+            "exchange-before-seal recovery fixture",
+        ),
+        (
+            "self-test Gradle replacement rollback did not restore prepared state",
+            "sealed-candidate rollback fixture",
+        ),
+        (
+            "self-test replacement changed the displaced Gradle output",
+            "displaced-output preservation fixture",
+        ),
+        (
+            "retired Gradle archive identity postcondition failed",
+            "replacement journal archival",
+        ),
+        (
             "previous_umask = os.umask(0o077)\n"
             "        try:\n"
             '            create_fake_sdk(online / "android-sdk", '
@@ -370,17 +480,22 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(
         helper,
         "require_sealed=True,",
-        4,
+        5,
         "complete/published/recovery sealed-tree checks",
     )
     require_count(
         helper,
         "seal_root=False,",
-        3,
+        5,
         "prepublication and recovery root-mode exceptions",
     )
+    require_count(
+        helper,
+        "if sealed_summary.digest != expected_digest:",
+        2,
+        "sealed candidate digest checks",
+    )
     for token, label in (
-        ("RENAME_EXCHANGE", "SDK exchange"),
         ("staged_sdk_identity", "staged SDK identity"),
         ('sync_tree(staging / "android-sdk")', "SDK publication durability"),
         ('renameat2(staging_fd, "android-sdk"', "SDK publication"),
@@ -390,12 +505,16 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         forbid(helper, token, label)
     require_order(
-        helper,
+        publication,
         (
             "verify_staged(",
             'sealed_summary = inspect_tree(',
             'seal=True,',
+            'if sealed_summary.digest != expected_digest:',
+            'validate_semantics(',
             'sync_tree(staging / "gradle-home")',
+            'fsync_directory(staging)',
+            'state = record_new_publication(',
             'renameat2(staging_fd, "gradle-home", online_fd, '
             '"gradle-home", RENAME_NOREPLACE)',
             'transition_root_mode(',
@@ -405,6 +524,52 @@ def validate(sources: Dict[str, str]) -> None:
             "validate_semantics(",
         ),
         "checked one-name publication",
+    )
+    require_order(
+        replacement,
+        (
+            "verify_staged(",
+            "validate_displaced_output(destination, uid, gid)",
+            "validate_retired_root(online, retired_root, uid, gid)",
+            "sealed_summary = inspect_tree(",
+            "seal=True,",
+            "if sealed_summary.digest != expected_digest:",
+            "validate_semantics(",
+            "sync_tree(output)",
+            "fsync_directory(staging)",
+            "state = record_replacement_publication(",
+            "validate_displaced_output(\n        destination,",
+            'fail("reserved replacement Gradle name is already occupied")',
+            "validate_sdk_state(online, state, uid, gid)",
+            "online_fd = open_directory(online)",
+            "RENAME_NOREPLACE,",
+            "finish_promoted_replacement(",
+        ),
+        "checked stale-output replacement",
+    )
+    require_count(
+        replacement,
+        "validate_sdk_state(online, state, uid, gid)",
+        1,
+        "replacement SDK full-content precondition",
+    )
+    require_count(
+        replacement_finish,
+        "validate_sdk_state(online, state, uid, gid)",
+        1,
+        "replacement SDK full-content postcondition",
+    )
+    require_order(
+        replacement_finish,
+        (
+            "if not exchanged:",
+            "RENAME_EXCHANGE,",
+            '"replacement Gradle",',
+            "validate_candidate_output(",
+            "validate_displaced_output(",
+            "validate_sdk_state(online, state, uid, gid)",
+        ),
+        "replacement SDK pre/post full-content closure",
     )
 
     require(
@@ -430,6 +595,11 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["requirements"],
+        '<span class="id">R-S11fz</span>',
+        "R-S11fz stale Gradle replacement requirement",
+    )
+    require(
+        sources["requirements"],
         "<tr><td>245</td>",
         "Appendix C #245 disposition",
     )
@@ -437,6 +607,11 @@ def validate(sources: Dict[str, str]) -> None:
         sources["requirements"],
         "<tr><td>330</td>",
         "Appendix C #330 disposition",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>334</td>",
+        "Appendix C #334 disposition",
     )
     require(
         sources["hardening"],
@@ -452,6 +627,11 @@ def validate(sources: Dict[str, str]) -> None:
         sources["hardening"],
         "R-S11fv/R-S11e-208 — Gradle publication/offline-seed mode closure",
         "Gradle seed mode-closure ledger",
+    )
+    require(
+        sources["hardening"],
+        "R-S11fz/R-S11e-212 — stale canonical Gradle-cache replacement authority",
+        "stale Gradle replacement ledger",
     )
     require(
         sources["workspace"],
@@ -521,6 +701,36 @@ MUTATIONS: Tuple[Mutation, ...] = (
              "gradle_output_tool accept \\\n", "output postcondition"),
     Mutation(
         "shell",
+        '            replace_existing=1\n'
+        '            log "existing Gradle cache is stale or semantically incomplete; '
+        'preparing one verified replacement"',
+        '            die "stale Gradle cache cannot be replaced"',
+        "stale-cache replacement selection",
+    ),
+    Mutation(
+        "shell",
+        '    if [[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then\n'
+        '        digest="${BASH_REMATCH[1]}"\n'
+        '    else\n'
+        '        output_status=1\n'
+        '    fi',
+        '    digest="0" # unchecked producer receipt',
+        "candidate digest receipt",
+    ),
+    Mutation(
+        "shell",
+        "            gradle_output_tool replace \\\n",
+        "            gradle_output_tool publish \\\n",
+        "checked replacement dispatch",
+    ),
+    Mutation(
+        "shell",
+        "            gradle_output_tool archive-replaced \\\n",
+        "            gradle_output_tool recover \\\n",
+        "replacement-record archival",
+    ),
+    Mutation(
+        "shell",
         '[ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] && '
         '[ "$output_status" -eq 0 ]',
         '[ "$status" -eq 0 ]',
@@ -566,8 +776,69 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "SOURCE_FILE_MODES = {0o600, 0o700}",
         "offline seed file modes",
     ),
-    Mutation("helper", "STATE_VERSION = 2", "STATE_VERSION = 1", "state version"),
-    Mutation("helper", "set(value) != expected_keys", "False", "closed state schema"),
+    Mutation("helper", "STATE_VERSION = 3", "STATE_VERSION = 1", "state version"),
+    Mutation("helper", "set(value) != current_keys", "False", "closed state schema"),
+    Mutation(
+        "helper",
+        "RENAME_EXCHANGE = 2",
+        "RENAME_EXCHANGE = 0",
+        "same-parent exchange primitive",
+    ),
+    Mutation(
+        "helper",
+        '        "replaced_gradle_digest": replaced.digest,',
+        '        "replaced_gradle_digest": expected_digest,',
+        "displaced full-content digest binding",
+    ),
+    Mutation(
+        "helper",
+        '            renameat2(\n'
+        '                online_fd,\n'
+        '                replacement_name,\n'
+        '                online_fd,\n'
+        '                "gradle-home",\n'
+        '                RENAME_EXCHANGE,\n'
+        '            )\n'
+        '            exchanged = True',
+        '            exchanged = True # same-parent exchange omitted',
+        "replacement exchange",
+    ),
+    Mutation(
+        "helper",
+        '            renameat2(\n'
+        '                online_fd,\n'
+        '                "gradle-home",\n'
+        '                online_fd,\n'
+        '                replacement_name,\n'
+        '                RENAME_EXCHANGE,\n'
+        '            )',
+        "            pass # old live name not restored",
+        "old-first replacement rollback",
+    ),
+    Mutation(
+        "helper",
+        '        hash_contents=True,\n'
+        '        expected_identity=expected_identity,\n'
+        '    )\n'
+        '    if summary.files == 0:',
+        '        hash_contents=False,\n'
+        '        expected_identity=expected_identity,\n'
+        '    )\n'
+        '    if summary.files == 0:',
+        "displaced full-content validation",
+    ),
+    Mutation(
+        "helper",
+        '        renameat2(\n'
+        '            online_fd,\n'
+        '            staging.name,\n'
+        '            retired_fd,\n'
+        '            archive_name,\n'
+        '            RENAME_NOREPLACE,\n'
+        '        )',
+        "        pass # replacement journal not archived",
+        "replacement journal archival",
+    ),
     Mutation(
         "helper",
         "reject_descendant_mounts(canonical)",
@@ -594,8 +865,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "helper",
-        "Android SDK changed during Gradle output recovery",
-        "Android SDK mutation accepted during recovery",
+        '    if summary.digest != state.get("sdk_source_digest"):\n'
+        '        fail("Android SDK changed during Gradle output recovery")',
+        "    pass # current recovery SDK mutation accepted",
         "recovery SDK check",
     ),
     Mutation("helper", "digest.hexdigest() != gradle_sha256",
@@ -616,11 +888,13 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "helper",
         'sync_tree(staging / "gradle-home")\n'
         "    fsync_directory(staging)\n"
+        "    state = record_new_publication(staging, state, expected_digest)\n"
         "    online_fd = open_directory(online)\n"
         "    staging_fd = open_directory(staging)\n"
         "    gradle_moved = False",
         "pass # Gradle output not synchronized\n"
         "    fsync_directory(staging)\n"
+        "    state = record_new_publication(staging, state, expected_digest)\n"
         "    online_fd = open_directory(online)\n"
         "    staging_fd = open_directory(staging)\n"
         "    gradle_moved = False",
@@ -628,14 +902,68 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "helper",
+        '    sync_tree(staging / "gradle-home")\n'
+        "    fsync_directory(staging)\n"
+        "    state = record_new_publication(staging, state, expected_digest)",
+        "    state = record_new_publication(staging, state, expected_digest)\n"
+        '    sync_tree(staging / "gradle-home")\n'
+        "    fsync_directory(staging)",
+        "publication journal after durable candidate",
+    ),
+    Mutation(
+        "helper",
+        "    sync_tree(output)\n"
+        "    fsync_directory(staging)\n"
+        "    state = record_replacement_publication(",
+        "    state = record_replacement_publication(",
+        "replacement journal after durable candidate",
+    ),
+    Mutation(
+        "helper",
+        '    if replacement.exists() or replacement.is_symlink():\n'
+        '        fail("reserved replacement Gradle name is already occupied")\n'
+        "    validate_sdk_state(online, state, uid, gid)\n"
+        "    online_fd = open_directory(online)",
+        '    if replacement.exists() or replacement.is_symlink():\n'
+        '        fail("reserved replacement Gradle name is already occupied")\n'
+        "    online_fd = open_directory(online)",
+        "replacement SDK precondition",
+    ),
+    Mutation(
+        "helper",
+        "        validate_displaced_output(\n"
+        "            replacement,\n"
+        "            uid,\n"
+        "            gid,\n"
+        "            replaced_identity,\n"
+        "            replaced_digest,\n"
+        "        )\n"
+        "        validate_sdk_state(online, state, uid, gid)",
+        "        validate_displaced_output(\n"
+        "            replacement,\n"
+        "            uid,\n"
+        "            gid,\n"
+        "            replaced_identity,\n"
+        "            replaced_digest,\n"
+        "        )",
+        "replacement SDK postcondition",
+    ),
+    Mutation(
+        "helper",
         "        seal=True,\n        seal_root=False,\n"
         "        expected_identity=decode_identity(\n"
         '            state.get("staged_gradle_identity"), "staged Gradle"\n'
-        "        ),\n    )\n    validate_semantics(",
+        "        ),\n    )\n"
+        "    if sealed_summary.digest != expected_digest:\n"
+        '        fail("sealed Gradle candidate digest changed")\n'
+        "    validate_semantics(",
         "        seal=False,\n        seal_root=False,\n"
         "        expected_identity=decode_identity(\n"
         '            state.get("staged_gradle_identity"), "staged Gradle"\n'
-        "        ),\n    )\n    validate_semantics(",
+        "        ),\n    )\n"
+        "    if sealed_summary.digest != expected_digest:\n"
+        '        fail("sealed Gradle candidate digest changed")\n'
+        "    validate_semantics(",
         "prepublication descendant sealing",
     ),
     Mutation(
@@ -671,14 +999,34 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "helper",
-        "previous_umask = os.umask(0o077)",
-        "previous_umask = os.umask(0o002)",
+        "previous_umask = os.umask(0o077)\n"
+        "        try:\n"
+        '            create_fake_sdk(online / "android-sdk", '
+        "build_tools, compile_sdk)\n"
+        "        finally:\n"
+        "            os.umask(previous_umask)",
+        "previous_umask = os.umask(0o002)\n"
+        "        try:\n"
+        '            create_fake_sdk(online / "android-sdk", '
+        "build_tools, compile_sdk)\n"
+        "        finally:\n"
+        "            os.umask(previous_umask)",
         "private SDK fixture umask",
     ),
     Mutation(
         "helper",
-        "os.umask(previous_umask)",
-        "os.umask(0o077)",
+        "previous_umask = os.umask(0o077)\n"
+        "        try:\n"
+        '            create_fake_sdk(online / "android-sdk", '
+        "build_tools, compile_sdk)\n"
+        "        finally:\n"
+        "            os.umask(previous_umask)",
+        "previous_umask = os.umask(0o077)\n"
+        "        try:\n"
+        '            create_fake_sdk(online / "android-sdk", '
+        "build_tools, compile_sdk)\n"
+        "        finally:\n"
+        "            os.umask(0o077)",
         "SDK fixture umask restoration",
     ),
     Mutation(
@@ -702,6 +1050,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "requirements",
+        '<span class="id">R-S11fz</span>',
+        '<span class="id">R-S11fz-disabled</span>',
+        "R-S11fz requirement",
+    ),
+    Mutation(
+        "requirements",
         "<tr><td>245</td>",
         "<tr><td>245-disabled</td>",
         "Appendix C #245",
@@ -711,6 +1065,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "<tr><td>330</td>",
         "<tr><td>330-disabled</td>",
         "Appendix C #330",
+    ),
+    Mutation(
+        "requirements",
+        "<tr><td>334</td>",
+        "<tr><td>334-disabled</td>",
+        "Appendix C #334",
     ),
     Mutation(
         "hardening",
@@ -729,6 +1089,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "R-S11fv/R-S11e-208 — Gradle publication/offline-seed mode closure",
         "R-S11fv/R-S11e-208 — writable Gradle publication mode",
         "Gradle seed mode-closure ledger",
+    ),
+    Mutation(
+        "hardening",
+        "R-S11fz/R-S11e-212 — stale canonical Gradle-cache replacement authority",
+        "R-S11fz/R-S11e-212 — destructive Gradle-cache replacement authority",
+        "stale Gradle replacement ledger",
     ),
 )
 

@@ -4318,13 +4318,30 @@ gradle_output_semantic_args() {
 }
 
 retire_gradle_output_staging() {
-    local staging="$1" staging_id="$2" disposition
+    local staging="$1" staging_id="$2" disposition archived
     disposition="$(
         gradle_output_tool recover \
             --online "$ONLINE_DIR" --staging "$staging" \
             --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
     )" || die "cannot reconcile private Gradle output staging"
     log "Gradle output staging reconciliation: $disposition"
+    if [ "$disposition" = replaced ]; then
+        prepare_retired_online_input_root
+        archived="$(
+            gradle_output_tool archive-replaced \
+                --online "$ONLINE_DIR" --staging "$staging" \
+                --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
+        )" || die "cannot archive the completed Gradle replacement record"
+        [ -d "$archived" ] && [ ! -L "$archived" ] \
+            || die "Gradle replacement-record archive is not one real directory"
+        [ ! -e "$staging" ] && [ ! -L "$staging" ] \
+            || die "Gradle replacement-record archival left online staging"
+        return 0
+    fi
+    case "$disposition" in
+        unpublished|published|unselected-while-occupied|replacement-prepared) ;;
+        *) die "unknown Gradle output reconciliation disposition: $disposition" ;;
+    esac
     /usr/bin/python3 -I -S \
         "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
         --root "$staging" --expected-identity "$staging_id" \
@@ -4353,6 +4370,7 @@ recover_gradle_output_staging() {
 }
 
 prepare_gradle_output_staging() {
+    local semantic_args=("$@")
     GRADLE_OUTPUT_STAGING="$(
         umask 077
         /usr/bin/mktemp -d "$ONLINE_DIR/.rustdesk-gradle-warm.XXXXXXXXXX"
@@ -4361,7 +4379,8 @@ prepare_gradle_output_staging() {
     readonly GRADLE_OUTPUT_STAGING GRADLE_OUTPUT_STAGING_ID
     if ! gradle_output_tool prepare \
         --online "$ONLINE_DIR" --staging "$GRADLE_OUTPUT_STAGING" \
-        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID"
+        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+        "${semantic_args[@]}"
     then
         /usr/bin/python3 -I -S \
             "$GRADLE_SOURCE_AUTHORITY/scripts/restore-private-directory-modes.py" \
@@ -4395,6 +4414,7 @@ stage_gradle() {
     local builder="$ANDROID_BUILDER_IMAGE_ID"
     local status=0 source_status=0 output_status=0 publication_status=0
     local lock_fd semantic_args=() sdk_args=()
+    local receipt="" digest="" current=0 replace_existing=0
     require_online_fetch_builder_image android-builder "$builder"
     assert_online_fetch_source_tools
     exec {lock_fd}<"$ONLINE_DIR" \
@@ -4412,11 +4432,18 @@ stage_gradle() {
         --online "$ONLINE_DIR" "${sdk_args[@]}" \
         || die "exact Android SDK input is incomplete, stale, or unsafe"
     if [ -e "$ONLINE_DIR/gradle-home" ] || [ -L "$ONLINE_DIR/gradle-home" ]; then
-        gradle_output_tool check-complete \
+        if gradle_output_tool check-complete \
             --online "$ONLINE_DIR" \
             --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
-            "${semantic_args[@]}" \
-            || die "existing Gradle/SDK output is incomplete or structurally unsafe"
+            "${semantic_args[@]}"
+        then
+            current=1
+        else
+            replace_existing=1
+            log "existing Gradle cache is stale or semantically incomplete; preparing one verified replacement"
+        fi
+    fi
+    if [ "$current" -eq 1 ]; then
         retire_gradle_source_build
         "$FLOCK_BIN" --unlock "$lock_fd" \
             || die "cannot release the Gradle output transaction lock"
@@ -4424,7 +4451,7 @@ stage_gradle() {
         log "gradle cache already warm and semantically verified, skipping"
         return 0
     fi
-    prepare_gradle_output_staging
+    prepare_gradle_output_staging "${semantic_args[@]}"
     log "warming Gradle into one private cache output; the exact SDK and ./online remain read-only"
     online_docker_run \
         --env APK_MODE=warm \
@@ -4439,17 +4466,35 @@ stage_gradle() {
     (verify_gradle_source_unchanged) || source_status=$?
     retire_gradle_source_build
     restore_gradle_output_traversal
-    gradle_output_tool verify \
-        --online "$ONLINE_DIR" --staging "$GRADLE_OUTPUT_STAGING" \
-        --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
-        "${semantic_args[@]}" \
-        || output_status=$?
-    if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] && [ "$output_status" -eq 0 ]; then
-        gradle_output_tool publish \
+    receipt="$(
+        gradle_output_tool verify \
             --online "$ONLINE_DIR" --staging "$GRADLE_OUTPUT_STAGING" \
             --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
-            "${semantic_args[@]}" \
-            || publication_status=$?
+            "${semantic_args[@]}"
+    )" || output_status=$?
+    if [[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then
+        digest="${BASH_REMATCH[1]}"
+    else
+        output_status=1
+    fi
+    if [ "$status" -eq 0 ] && [ "$source_status" -eq 0 ] && [ "$output_status" -eq 0 ]; then
+        if [ "$replace_existing" -eq 1 ]; then
+            prepare_retired_online_input_root
+            gradle_output_tool replace \
+                --online "$ONLINE_DIR" --staging "$GRADLE_OUTPUT_STAGING" \
+                --retired-root "$RETIRED_ONLINE_INPUT_ROOT" \
+                --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+                "${semantic_args[@]}" \
+                --expected-digest "$digest" \
+                || publication_status=$?
+        else
+            gradle_output_tool publish \
+                --online "$ONLINE_DIR" --staging "$GRADLE_OUTPUT_STAGING" \
+                --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
+                "${semantic_args[@]}" \
+                --expected-digest "$digest" \
+                || publication_status=$?
+        fi
     fi
     retire_gradle_output_staging "$GRADLE_OUTPUT_STAGING" "$GRADLE_OUTPUT_STAGING_ID"
     "$FLOCK_BIN" --unlock "$lock_fd" \

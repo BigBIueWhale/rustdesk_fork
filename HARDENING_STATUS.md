@@ -15675,10 +15675,112 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   This is not operational replacement evidence. The real `online/pub-cache` and `.harness-state` were not
   read by the helper, mutated, renamed, permission-changed, or archived; the actual networked producer was
   not run. No host RustDesk executable/process/service/configuration, listener, firewall, display, or
-  network state was inspected or changed. The stale canonical Gradle input remains the next separate
-  native-gate blocker. Native Windows/Android/Linux builds, installed device/VM lifecycle and renderer
+  network state was inspected or changed. R-S11fz below separately closes the stale canonical Gradle
+  replacement source authority; its real canonical execution remains open. Native Windows/Android/Linux builds, installed device/VM lifecycle and renderer
   behavior, focus/task-swipe presentation latency, cross-version sessions, exact current artifacts, cold
   release reproduction, independent reproduction, and external review remain explicit stop-ship gaps.
+
+- **R-S11fz/R-S11e-212 — stale canonical Gradle-cache replacement authority — SOURCE IMPLEMENTED;
+  NON-ROOT SUCCESS/CRASH/ROLLBACK SELF-TEST, 59-MUTATION FOCUSED GATE, AND COMPLETE INDEPENDENT
+  SOURCE-MUTATION CATALOG GREEN; REAL CANONICAL EXECUTION OPEN.** Platform: the unprivileged Linux
+  acquisition host and existing immutable networked/offline Android-builder profiles. Endpoint/action:
+  `scripts/online-fetch.sh::stage_gradle`, the versioned `scripts/online-gradle-output.py` transaction,
+  and occupied `online/gradle-home` publication. Boundary: one stale, potentially root-owned immutable
+  canonical Gradle seed ↔ one current independently checked candidate, with no permission-changing,
+  deletion, cross-parent-move, or recursive cleanup authority over the displaced tree.
+
+  The prior path treated occupancy as final. Exact sealed-tree and current wrapper/dependency/SDK
+  semantics were checked, but any failure aborted before a candidate was built. This left the maintained
+  canonical 7.6.4 cache unable to satisfy the tracked 8.7 wrapper and blocked the canonical Android gate.
+  That was a fail-closed input-availability defect. It is not evidence that the old cache was malicious,
+  that Docker escaped, that host root was acquired, that a listener was exposed, or that host RustDesk,
+  service, configuration, firewall, display, or network state changed.
+
+  Existing exact output remains an unchanged fast path. A stale occupied output now permits the same
+  narrowly mounted warmer to build only a private candidate. Independent verification normalizes that
+  candidate, rechecks the read-only Android SDK identity and full-content digest, validates the exact
+  publisher-pinned Gradle 8.7 archive/launcher, dependency module cache, build-tools, and platform, and
+  returns a full-content tree digest. Producer exit, source postcondition, output verdict, and that exact
+  receipt all precede publication authority.
+
+  State v3 durably binds the four semantic pins, original SDK identity/content, online and staging
+  identities, candidate and displaced identities/full-content digests, a same-filesystem private retired-
+  record root, and deterministic no-clobber archive/replacement names. Exact v2 journals remain readable
+  only for their former absent-destination no-clobber recovery; they cannot admit a new producer or stale-
+  cache replacement. Before mutation the occupied tree must be nonempty, bounded, mount/link/type closed,
+  wholly root- or acquisition-identity-owned, non-group/world-writable, and fully readable without any
+  permission change. Unreadable legacy state fails closed and requires operator-authorized retirement; it
+  is never normalized merely to make replacement succeed. The new candidate alone must use the exact
+  0500/0400-or-0500 publication profile.
+
+  Final crash-window review found that the first implementation selected `new` or `replacement` in the
+  durable journal before it sealed the candidate descendants. Termination in that interval therefore left
+  a selected record whose filesystem had not yet reached the prepared invariant. That pre-verdict path is
+  deleted. The candidate's descendants are now sealed while its root remains current-owner mode 0700; the
+  sealed full-content digest and current semantics are revalidated; and the complete tree plus staging
+  parent are synchronized before the journal may durably select a disposition. A crash before selection is
+  unselected and disposable, while a crash after selection exposes the exact prepared topology. Only then
+  does descriptor-relative `RENAME_NOREPLACE` promote it to a reserved sibling under the same locked online
+  parent; after namespace synchronization, same-parent `RENAME_EXCHANGE` atomically swaps that sibling with
+  `gradle-home`, avoiding a `..` update on the immutable old root. Only the exact candidate root is then
+  descriptor-sealed 0500. The live candidate is revalidated against its full digest and current semantics;
+  the displaced tree remains unchanged at the recorded sibling and is revalidated by exact identity,
+  owner/mode profile, and full-content digest. The original SDK's identity and full-content digest are
+  revalidated immediately before the replacement namespace sequence and again before success. The first
+  failure prevents exchange; the second reaches the same old-first rollback and restores the old live cache.
+
+  Recovery recognizes only prepared, promoted, exchanged-but-unsealed, and completed identity topologies,
+  rechecking SDK, candidate, and displaced content before it finishes either namespace boundary. Any other
+  arrangement is preserved. Rollback restores the old live name first through same-parent exchange, then
+  descriptor-restores and demotes only the exact candidate. After completion, the user-owned journal
+  envelope is no-clobber archived outside `online`; the displaced immutable cache stays untouched at its
+  reserved sibling because moving it across parents would require authority the transaction deliberately
+  does not possess.
+
+  The helper parses and its synthetic normal publication plus sealed-
+  old replacement, post-journal/pre-promotion recovery, promotion-crash recovery,
+  exchange-before-root-seal recovery, sealed-candidate rollback,
+  displaced identity/full-content preservation, candidate finality, journal archival, SDK mutation,
+  checksum, writable-seed, destination-race, and symlink cases pass as numeric UID/GID 1000:1000 in the
+  immutable networkless verifier image with read-only root/source, dropped capabilities, no-new-privileges,
+  bounded resources, private tmpfs, and no port, device, Docker socket, host namespace, or privileged flag.
+  The focused authority verifier rejects all 59 deliberate weakenings of the stale-output decision, digest
+  receipt, closed state, SDK/semantic binding, displaced full-content validation, same-parent promotion and
+  exchange, candidate sealing and synchronization before journal selection, SDK full-content pre/post closure,
+  old-first rollback, recovery,
+  archival, fixtures, requirements, hardening
+  record, shared wiring, and independent-workspace binding. The ordinary independent workspace baseline and
+  complete independent in-memory source-mutation catalog are green. The first complete catalog invocation is
+  deliberately not counted: adding a second umask-scoped replacement fixture made an older independent
+  mutation target ambiguous between two effective runtime sites. Both live validators rejected the weakening,
+  the fixture was narrowed to the exact original SDK setup block, the independent baseline passed, and the
+  complete catalog then reran from the beginning to exit zero. After the final journal-order correction, the
+  first new complete catalog run is also uncounted: the newly added generic focused-label mutation matched both
+  the shell replacement-dispatch assertion and the production-helper sequence label, so mutating either one
+  left the other string to satisfy the independent verifier's broad presence check. The independent contract and
+  mutation inventory now bind those two exact contexts separately. That restart also remains uncounted: the
+  deliberate helper reordering was correctly rejected by the extracted publication sequence, but its catalog
+  entry expected its descriptive mutation label instead of that exact validator diagnostic. Both journal-order
+  mutation expectations now name the authority check that rejects them. A later first catalog on the SDK-race
+  correction is also uncounted: its focused-label mutation appended ` disabled` to `replacement SDK precondition`,
+  leaving the original substring intact and therefore making no effective authority change. Both SDK-label
+  mutations now use non-overlapping replacement text. That restart is also uncounted: removing the real
+  pre-promotion SDK check was correctly rejected by the earlier extracted replacement-order validator, while
+  the catalog entry expected the later cardinality diagnostic. The entry now names the first exact authority
+  check that fires; the catalog restarted from mutation one.
+
+  A final read-only compatibility check ran only `validate_displaced_output` against the actual stale
+  canonical `online/gradle-home` through the same immutable numeric-nonroot, networkless, read-only-source
+  container. The real tree is wholly UID:GID 1000:1000, non-group/world-writable, contains 21,709 files
+  and 12,818 directories totaling 4,590,447,012 regular-file bytes, and passed mount/link/type/stability
+  plus full-content validation at SHA-256
+  `074cbfdc08dd721fb93e3413481d50ab7a5e4e626a4d7addf0477595d97132df`. Its legacy 0755/0644 profile is
+  intentionally not reusable as an exact immutable seed, but it can be preserved without chmod/chown by
+  the replacement transaction. This read-only check performed no publication, exchange, archive, producer,
+  or semantic-current claim. No `.harness-state`, networked producer, APK, native artifact, installed
+  device/VM/service, capture/decode/presentation session, focus/reconnect latency path, performance/soak,
+  cold exact-commit release, independent reproduction, or external review ran in this slice. Those remain
+  explicit stop-ship evidence gaps.
 
 - **R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority —
   SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE LIVE
@@ -20548,7 +20650,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-2b9e33887a9658a0f6560c524e58b935011184d32e93ff12cc47202553bb99e7  requirements.html
+f62162b7ee393de95f736036969f2ea5c0111dbf36812900572bdebb1413ddf1  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

@@ -1,0 +1,20 @@
+name: desktop_multi_window
+description: Test-only local materialization of RustDesk's pinned window-event plugin.
+version: 0.1.0
+publish_to: none
+
+environment:
+  # Preserve the pinned plugin's pre-Dart-3 language mode: its listener is an
+  # abstract class intentionally used as a mixin by the RustDesk UI.
+  sdk: '>=2.17.0 <4.0.0'
+  flutter: '>=3.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      windows:
+        pluginClass: DesktopMultiWindowPlugin

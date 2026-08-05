@@ -20513,6 +20513,21 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "desktop texture shared focused-verifier wiring",
     )
     require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/verify-flutter-presentation-windows.py --repo . --self-test",
+        "native Windows presentation shared focused-verifier wiring",
+    )
+    require_text(
+        sources["windows_presentation_verifier"],
+        '"host": "scripts/smoke-flutter-presentation-windows.sh"',
+        "independent native Windows presentation host binding",
+    )
+    require_text(
+        sources["windows_presentation_verifier"],
+        '"controller": "scripts/flutter-presentation-probe-windows-controller.ps1"',
+        "independent native Windows presentation controller binding",
+    )
+    require_text(
         sources["apple"],
         "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test",
         "desktop texture Apple focused-verifier wiring",
@@ -58103,6 +58118,18 @@ def run_source_mutations(sources):
             "desktop texture shared focused-verifier wiring",
         ),
         (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/verify-flutter-presentation-windows.py --repo . --self-test",
+            "true # native Windows presentation verifier removed",
+            "native Windows presentation shared focused-verifier wiring",
+        ),
+        (
+            "windows_presentation_verifier",
+            '"controller": "scripts/flutter-presentation-probe-windows-controller.ps1"',
+            '"controller": "scripts/removed-windows-presentation-controller.ps1"',
+            "independent native Windows presentation controller binding",
+        ),
+        (
             "apple",
             "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test",
             "true # desktop texture lifecycle verifier removed",
@@ -69612,6 +69639,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "desktop_texture_lifecycle_verifier": (
                 repo / "scripts/verify-desktop-texture-lifecycle.py"
+            ).read_text(encoding="utf-8"),
+            "windows_presentation_verifier": (
+                repo / "scripts/verify-flutter-presentation-windows.py"
             ).read_text(encoding="utf-8"),
             "build_windows_source": (
                 repo / "scripts/build-windows.ps1"

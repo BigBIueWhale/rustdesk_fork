@@ -16126,6 +16126,59 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   review ran. This closes one source/bridge-verdict defect and one target compile-integration check only; the
   user's accumulated-change risk assessment and every native/end-to-end stop-ship gap remain in force.
 
+- **R-S11gb/R-S11e-215 native Windows presentation transaction — TEST HARNESS SOURCE IMPLEMENTED;
+  NATIVE VM/ENGINE/COMPOSITOR EXECUTION NOT YET RUN; WINDOWS REMAINS STOP-SHIP.** Platform: a
+  disposable Windows 11 overlay derived from the existing SHA-256-pinned golden. Endpoint/action: the
+  repository-owned Windows <code>texture_rgba_renderer</code> plugin and direct C ABI used by Rust, exact
+  production <code>PresentationRecovery</code>, the pinned RustDesk desktop window-event implementation,
+  Flutter 3.24.5's real Windows engine, Win32 minimize/restore and focus transitions, real guest pointer
+  input, and composed desktop pixels. Boundary: decoded/latest-wins texture bytes and one pending
+  notification ↔ Flutter engine scheduling ↔ DWM-visible pixels after presentation suspension.
+
+  This entry exists because the accumulated-change risk is real: source/mutation tests, Linux X11 pixels,
+  and the portable Windows callback core do not prove current Windows presentation behavior. The new
+  transaction is deliberately separate from <code>build-windows-vm.sh</code> and does not run the full
+  release builder. It accepts only a clean committed tree, exact-manifests every source input, materializes
+  the already-pinned desktop event plugin by exact commit/tree, resolves a nine-package Flutter graph
+  offline, and builds a minimal native Windows app against the production texture plugin and exact recovery
+  state machine. One real cycle minimizes and restores the app. A second gives focus to a separate visible
+  WinForms window and returns through an injected guest mouse down. Each queues 128 direct-ABI frames, ends
+  in a red/blue-channel-swap-invariant color, gates explicit re-notification, samples four DWM/GDI interior
+  desktop pixels, and requires a three-sample majority within 2500 ms after re-arm. The result separately
+  records whether pixels had already become current before re-arm rather than assuming the mechanism.
+
+  Host authority is intentionally narrow. The domain uses unprivileged <code>qemu:///session</code>, one
+  disposable overlay, no network interface, no host device/filesystem passthrough, and VNC whose parent and
+  child XML listen addresses must both be exactly <code>127.0.0.1</code>. A live listener-delta check rejects
+  every new non-loopback endpoint. The golden, source commit/tree, source ISO, domain XML, guest result,
+  exact UUID/name lifecycle, and post-run worktree/golden identity are receipt-bound. Media and disk helpers
+  run as numeric UID:GID 1000:1000 in pinned networkless read-only containers with dropped capabilities and
+  no-new-privileges; no helper receives a Docker socket, published port, privileged flag, host namespace, or
+  device. The host RustDesk process/service/configuration/display, firewall, UFW, nftables, iptables,
+  routing, and host network configuration are outside the transaction and are not mutated.
+
+  Counted static bring-up is green: the exact probe resolved its local/pinned dependency graph offline and
+  passed Dart analysis with no issues inside immutable Flutter-check image
+  <code>sha256:058ca8987af63df55aa0a0a8e6f2ab25904d73061f59e27a53ac9ab19acc71c9</code>; all three PowerShell
+  files parsed without errors inside immutable PowerShell image
+  <code>sha256:810c4f1e0c9d23022c3ec18c50a6205ee4b60766f1739d329b2948df1fd7d5b0</code>; and the bounded source
+  manifest accepted its exact baseline while rejecting changed content, a changed root runner, a symlink,
+  and a Windows case collision inside immutable verifier image
+  <code>sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c</code>. All counted containers
+  were numeric UID:GID 1000:1000, networkless, read-only, capability-free, no-new-privileges, and bounded.
+  One preliminary <code>python3 -m py_compile</code> was mistakenly invoked directly on the host against the
+  new manifest helper; it only read that source and created one bytecode cache file, which was immediately
+  removed. It opened no network/listener, gained no authority, and touched no RustDesk/service/configuration,
+  but it is excluded from counted evidence because it violated the preferred containment rule.
+
+  No VM has yet been started by this slice, no Windows executable has been built or launched, and no native
+  pixel result or latency has been observed. The harness must pass from the exact committed source before
+  this entry can become executable evidence. Even then it proves only the narrow current Windows native
+  texture/recovery/presentation edge—not the full RustDesk app, a peer, capture/encode/transport/decode,
+  simultaneous remote control, software-RGBA mode, Android task-swipe/reopen/Force-Stop or persistent-service
+  recovery, cross-version behavior, sustained focus/soak, packaged release artifacts, clean cold R-B2/R-B10,
+  independent reproduction, or external review. All of those remain stop-ship.
+
 - **Exact Linux Flutter texture/X11 presentation recovery — EXECUTABLE EVIDENCE GREEN;
   ANDROID/WINDOWS/NATIVE END-TO-END EVIDENCE OPEN.** Platform: confined Linux X11 with Flutter
   3.24.5 and software rendering. Endpoint/action: the repository's production Linux
@@ -21103,7 +21156,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-30a7cc1209a2353fdd46339f417c06b8b47903eb1fbe7847cf4e29c708812068  requirements.html
+81aba79043b289c153f11ea2be29bcce430a6a3075deb044dcefa70e0a1fb970  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -21149,3 +21202,4 @@ The same identity additionally binds R-S11fx and Appendix C #332.
 The same identity additionally binds R-S11fy and Appendix C #333.
 The same identity additionally binds R-S11fz and Appendix C #334.
 The same identity additionally binds R-S11ga and Appendix C #335.
+The same identity additionally binds R-S11gb and Appendix C #337.

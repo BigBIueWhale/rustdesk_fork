@@ -1,0 +1,18 @@
+name: rustdesk_presentation_probe
+description: Test-only native Windows presentation recovery probe.
+publish_to: none
+version: 0.0.1
+
+environment:
+  sdk: '>=3.1.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  desktop_multi_window:
+    path: third_party/desktop_multi_window
+  texture_rgba_renderer:
+    path: third_party/texture_rgba_renderer
+
+flutter:
+  uses-material-design: true

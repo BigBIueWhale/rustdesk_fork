@@ -9160,6 +9160,12 @@ else
   echo "  FAIL R-S11ex/R-S11fa/R-S11fc/R-S11ff/R-S11fs: Flutter texture lifecycle, exact presentation-resume recovery including pointer-evidenced missing-focus recovery, first-image admission, or viewer refresh admission regressed"
   rc=1
 fi
+if /usr/bin/python3 -I -S scripts/verify-flutter-presentation-windows.py --repo . --self-test; then
+  echo "  ok  R-S11gb/R-S11e-215 native Windows presentation evidence remains exact-commit, isolated, loopback-only, pixel-observed, and latency-bounded"
+else
+  echo "  FAIL R-S11gb/R-S11e-215: native Windows presentation evidence lost source finality, isolation, real transition/pointer/pixel proof, or latency bounds"
+  rc=1
+fi
 if python3 scripts/verify-viewer-file-finality.py --repo . --self-test; then
   echo "  ok  R-S11fg/R-S11fh/R-S11fi/R-S11fj file frames retain exact writer completion and local persistence/digest failures are terminal"
 else

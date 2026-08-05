@@ -272,6 +272,64 @@ history remains the traceability record for that intermediate work.
 > or Apple, installed-service, performance/soak, or release-artifact evidence. Those stop-ship gaps
 > remain unchanged.
 >
+> An evidence-only Android follow-up then built the real exact-current product at clean pushed commit
+> `226ce5bcb1421cebe76cdf3b66b27ed22589bebc` (tree
+> `0bc5fc501d5dcb0199b9e827dcd61288c1f8a39e`) from source archive SHA-256
+> `050d243e130a803109dca1bd1cb279e749399aca20e81c79387cfdcb9afc2146`. It deliberately did
+> not mutate or publish the stale canonical caches. Instead, the already-retained private current-input
+> snapshot from the earlier Android investigation was mounted read-only after its complete 30.3-GB
+> closure reverified as `634b905e1c1ddf859f94649cdd10a62a9ef6159454fc77f8a82586b2f1fecdc1`,
+> its Gradle 8.7/SDK semantics passed the current checker, and its Pub cache reverified as
+> `c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7`. The current
+> Cargo, Pub, and Gradle declaration files are byte-unchanged from the parent that produced that private
+> cache. The exact source comparator passed before and after the build, and the complete private snapshot,
+> Gradle semantics, and Pub digest all passed again after use.
+>
+> The corrected container run built the optimized real ARM64 JNI library in 2m32s and completed offline
+> Gradle `assembleRelease` in 70.1s. The 13,618,656-byte JNI library is
+> `9634c2ec9da4dbc2d5ad3966131d743696142aefb6ea947353d50c35124aa88b`; the transiently
+> signed 44,971,878-byte raw APK is
+> `1d12c4332fb0cd2c3b5ed5b3d1716c199886e70c76605ec3da829ca310120d71`. Stable-key signing
+> produced a 44,975,902-byte APK at
+> `031a1f31c74d123b9121b3bb1d8e94aa025373403bb05fc023536ebc079e39b5`, byte-identical to
+> both independently built retained APKs from product parent `7c29f39a829b39de558a39d0ee7b575ac42e4ce9`.
+> The current artifact verifies as one RSA-4096 signer with pinned certificate
+> `1091322BA0425AFA1EB50DEEAE439A5FFFE2B1DD82C82B04515D9290A0CEEFA9`, v2/v3 signatures,
+> package `com.carriez.flutter_hbb` version 2065/1.4.7, compile/min/target SDK 34/24/33, ARM64-only,
+> and exactly `libapp.so`, `libc++_shared.so`, `libflutter.so`, and `librustdesk.so`; the packaged
+> `librustdesk.so` equals the separately retained JNI hash. Both maintained manifest and mobile at-rest-key
+> artifact validators passed.
+>
+> This result is not diagnostic-clean. The build retained the known Flutter-Rust-Bridge `_Dart_Handle`
+> severe typedef diagnostic, 87 Rust-library warnings plus one service warning, the SDK XML-version warning,
+> missing icon-family warning, and one Kotlin daemon startup-attempt diagnostic: the first daemon announced
+> readiness and then exited with code zero before Gradle completed successfully. The tracked
+> `kotlin.daemon.useFallbackStrategy=false` remained in force. Kotlin's official
+> [compiler-execution documentation](https://kotlinlang.org/docs/compiler-execution-strategy.html) says an
+> actual compiler fallback reports `Failed to compile with Kotlin daemon` and
+> `Using fallback strategy`; neither string appears in the complete 47,810-byte log, so the evidence supports
+> a daemon-start retry rather than silent in-process compilation. The `e:` diagnostic still prevents any
+> diagnostic-clean claim. The complete build-log SHA-256 is
+> `91ce8986d0d8667fd7929aaa892fcde465d13403d4e7b2006ccf518a5dcd4405`.
+>
+> The first invocation is retained as an uncounted harness failure: it mounted the writable source at
+> `/evidence/source` while the canonical inner script requires `/src`, so fixed lookup of
+> `/src/scripts/flutter-offline-shim.sh` failed before Rust or Gradle execution. A reporting-only negated-shell
+> status capture printed zero while the outer transaction correctly exited nonzero. The corrected attempt used
+> a fresh exact source tree and the required `/src` mount; no check was removed or weakened.
+>
+> Every counted container used the pre-existing immutable Android-builder image
+> `sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2` as numeric
+> UID:GID 1000:1000 with `--pull=never`, `--network=none`, no published port, read-only root and
+> dependency snapshot, dropped capabilities, `no-new-privileges`, finite resources, private scratch/output,
+> and no device, Docker socket, or host namespace. No canonical `online/` or `.harness-state` input was
+> written, exchanged, archived, or permission-changed; no host RustDesk process, service, configuration,
+> listener, display, firewall, or network state was inspected or changed by product code. This is exact-current
+> Android packaging and cross-time byte-equality evidence, not a clean canonical R-B2/R-B10 double build and not
+> installed-device, Activity/foreground-service, task-swipe/Force-Stop, peer, capture/decode/presentation,
+> Windows-focus, performance/soak, cross-version, independent-reproduction, or external-review evidence. Those
+> release blockers remain open.
+>
 > **Continuation rule:** prioritize exact-current evidence and test-harness/input closure over
 > additional product behavior changes. A further product change requires a separately source-proven
 > defect or must be necessary to obtain valid evidence; it does not earn release confidence merely
@@ -15781,6 +15839,82 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   device/VM/service, capture/decode/presentation session, focus/reconnect latency path, performance/soak,
   cold exact-commit release, independent reproduction, or external review ran in this slice. Those remain
   explicit stop-ship evidence gaps.
+
+- **R-S11fz exact-current private-cache Android artifact evidence — REAL JNI/APK BUILD AND STABLE
+  ARTIFACT VALIDATION RECORDED 2026-08-05; CANONICAL CACHE REPLACEMENT, CLEAN R-B2/R-B10,
+  AND DEVICE RUNTIME REMAIN OPEN.** Exact source: clean pushed commit
+  `226ce5bcb1421cebe76cdf3b66b27ed22589bebc`, tree
+  `0bc5fc501d5dcb0199b9e827dcd61288c1f8a39e`, source archive SHA-256
+  `050d243e130a803109dca1bd1cb279e749399aca20e81c79387cfdcb9afc2146`. Boundary: an exact
+  current source snapshot plus one previously produced, separately retained private current Android-input
+  snapshot -> one disposable real-JNI ARM64 APK build and stable-key artifact validation. This did not grant
+  publication authority over canonical `online/`, did not exercise the new replacement transaction, and did
+  not run a full release transaction.
+
+  Before product execution, the retained read-only snapshot's complete 30.3-GB closure reverified as
+  `634b905e1c1ddf859f94649cdd10a62a9ef6159454fc77f8a82586b2f1fecdc1`; the current
+  `online-gradle-output.py check-complete` accepted its pinned Gradle 8.7 wrapper, publisher checksum, build
+  tools 34.0.0, compile SDK 34, and full SDK/content shape; and the current Pub output checker returned
+  `c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7`. The current
+  `Cargo.lock`, `Cargo.toml`, `flutter/pubspec.lock`, `flutter/pubspec.yaml`, wrapper properties, and Android
+  Gradle declarations are byte-unchanged from product parent `7c29f39a829b39de558a39d0ee7b575ac42e4ce9`,
+  which created that current private cache. The exact Android source comparator passed before building and
+  again after generated outputs existed; complete snapshot provenance, Gradle semantics, and the Pub digest
+  passed again after use.
+
+  The corrected exact-current run generated the Flutter bridge, built the optimized real ARM64 JNI library in
+  2m32s, projected the private Gradle cache at
+  `861cc4a9b48fd685bff2ebaaea006b5323add0894a1b1fc55cb6828081b8661e`, and completed offline
+  `assembleRelease` in 70.1s. The 13,618,656-byte JNI library is
+  `9634c2ec9da4dbc2d5ad3966131d743696142aefb6ea947353d50c35124aa88b`; the 44,971,878-byte
+  transient-signature APK is `1d12c4332fb0cd2c3b5ed5b3d1716c199886e70c76605ec3da829ca310120d71`.
+  Stable-key signing produced a 44,975,902-byte artifact at
+  `031a1f31c74d123b9121b3bb1d8e94aa025373403bb05fc023536ebc079e39b5`. It is byte-identical to
+  both independently built retained stable APKs from `7c29f39a829b39de558a39d0ee7b575ac42e4ce9`; this is
+  cross-time byte-equality evidence, not a substitute for an exact-current canonical A/B release transaction.
+
+  `apksigner -Werr` verified one RSA-4096 signer, the pinned certificate
+  `1091322BA0425AFA1EB50DEEAE439A5FFFE2B1DD82C82B04515D9290A0CEEFA9`, v1 false, v2/v3 true,
+  and v3.1/v4 false. The maintained manifest and mobile at-rest-key artifact validators both passed. Independent
+  ZIP inspection found exactly `libapp.so`, `libc++_shared.so`, `libflutter.so`, and `librustdesk.so` under
+  `lib/arm64-v8a`; the embedded JNI hash equals the separately retained library. `aapt2` reported package
+  `com.carriez.flutter_hbb`, version 2065/1.4.7, compile/min/target SDK 34/24/33, and only `arm64-v8a` native
+  code.
+
+  Diagnostics remain explicit. The 47,810-byte log at
+  `91ce8986d0d8667fd7929aaa892fcde465d13403d4e7b2006ccf518a5dcd4405` contains the known
+  Flutter-Rust-Bridge `_Dart_Handle` severe typedef diagnostic, 87 Rust-library warnings plus one service
+  warning, the SDK XML-version warning, missing icon-family warning, and a Kotlin daemon startup-attempt-one
+  diagnostic after the daemon announced readiness and exited with code zero. The build retained
+  `kotlin.daemon.useFallbackStrategy=false`. Kotlin's official
+  [compiler-execution documentation](https://kotlinlang.org/docs/compiler-execution-strategy.html) identifies
+  an actual fallback with the separate `Failed to compile with Kotlin daemon` and `Using fallback strategy`
+  messages; neither is present, so this is classified as a daemon-start retry, not proof of silent fallback.
+  The `e:` diagnostic nevertheless keeps the result non-clean.
+
+  The first invocation is uncounted and preserved: it mounted the writable exact source at
+  `/evidence/source`, but the canonical inner builder intentionally addresses `/src`; fixed lookup of
+  `/src/scripts/flutter-offline-shim.sh` therefore stopped before Rust or Gradle. The wrapper's negated command
+  captured a reporting-only zero status even though Docker correctly returned nonzero. A fresh source tree and
+  the required `/src` mount were used for the counted run; no validation was waived.
+
+  On the complete evidence text before this self-recording paragraph, the focused Gradle authority verifier
+  rejected all 59 deliberate mutations, the independent workspace baseline passed, and native-codec normal and
+  adversarial self-test gates passed. The complete independent in-memory source-mutation catalog then ran
+  uninterrupted from mutation one and exited zero with `verify-verifier-workspace: ok`. The final focused gate,
+  independent baseline, native-codec gates, and diff hygiene are rerun after adding this verdict so the eventual
+  committed bytes are covered without recursively rewriting and rerunning the full catalog merely to record its
+  own result.
+
+  All project execution used pre-existing immutable Android-builder image
+  `sha256:fc9adbc23c769c604de4ff046dbb95a6d8bb240377a67f6a070a9db94c7f50f2`, numeric UID:GID
+  1000:1000, no pull/network/port/device/socket/host namespace, read-only root/source authority/input snapshot,
+  dropped capabilities, no-new-privileges, bounded resources, and one fresh private writable source/output
+  area. Canonical `online/`, retained `.harness-state` inputs, host RustDesk/service/configuration, listeners,
+  display, firewall, and host networking were not changed. No APK was installed or launched. Android
+  Activity/foreground-service/task-swipe/Force-Stop recovery, real peer/display/control, capture/decode/render,
+  Windows focus delay, cross-version behavior, performance/soak, canonical cache replacement, exact current
+  R-B2/R-B10, independent reproduction, and external review remain stop-ship gaps.
 
 - **R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority —
   SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE LIVE

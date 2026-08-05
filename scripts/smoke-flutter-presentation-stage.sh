@@ -211,6 +211,7 @@ PY
     [ -z "$(find /out -xdev -type l -print -quit)" ] \
       || fail 'runtime input contains a symlink'
     (cd /out && sha256sum --check --strict manifest.sha256)
+    echo 'FLUTTER_PRESENTATION_STEP=runtime-bundle-integrity ok'
 
     xvfb_file_count=0
     while IFS=$'\t' read -r relative size mode digest extra || [ -n "${relative:-}" ]; do
@@ -226,6 +227,7 @@ PY
       xvfb_file_count=$((xvfb_file_count + 1))
     done < "$XVFB_MANIFEST"
     [ "$xvfb_file_count" -eq 5 ] || fail 'Xvfb file manifest cardinality is not five'
+    echo 'FLUTTER_PRESENTATION_STEP=runtime-xvfb-closure ok'
 
     export DISPLAY=:99
     export HOME=/tmp/home
@@ -234,6 +236,10 @@ PY
     export LIBGL_ALWAYS_SOFTWARE=1
     export LD_LIBRARY_PATH="/out/bundle/lib:/xvfb-root/usr/lib/x86_64-linux-gnu"
     mkdir -m 0700 "$HOME" "$XDG_RUNTIME_DIR"
+    TCP_TABLES=(/proc/net/tcp)
+    [ ! -r /proc/net/tcp6 ] || TCP_TABLES+=(/proc/net/tcp6)
+    UDP_TABLES=(/proc/net/udp)
+    [ ! -r /proc/net/udp6 ] || UDP_TABLES+=(/proc/net/udp6)
     XVFB_PID=
     XVFB_START=
     APP_PID=
@@ -260,6 +266,7 @@ PY
     trap 'exit 130' INT
     trap 'exit 143' TERM
 
+    echo 'FLUTTER_PRESENTATION_STEP=runtime-xvfb-start begin'
     "$XVFB" :99 -screen 0 1280x800x24 -nolisten tcp -ac -noreset \
       >/tmp/xvfb.log 2>&1 &
     XVFB_PID=$!
@@ -272,10 +279,11 @@ PY
     done
     [ -S /tmp/.X11-unix/X99 ] && [ ! -L /tmp/.X11-unix/X99 ] \
       || fail 'Xvfb Unix socket did not become ready'
+    echo 'FLUTTER_PRESENTATION_STEP=runtime-xvfb-start ok'
     tcp_listeners=$(awk 'FNR > 1 && $4 == "0A" { n++ } END { print n + 0 }' \
-      /proc/net/tcp /proc/net/tcp6 2>/dev/null)
+      "${TCP_TABLES[@]}")
     udp_sockets=$(awk 'FNR > 1 { n++ } END { print n + 0 }' \
-      /proc/net/udp /proc/net/udp6 2>/dev/null)
+      "${UDP_TABLES[@]}")
     [ "$tcp_listeners" -eq 0 ] && [ "$udp_sockets" -eq 0 ] \
       || fail 'networkless runtime has an INET listener or UDP socket'
     echo 'FLUTTER_PRESENTATION_NETWORK_SURFACE=network-none tcp-listen:0 udp:0 x11:unix-only'
@@ -317,10 +325,10 @@ PY
     grep -Eq '^FLUTTER_PROBE_APP_OK texture_id=[1-9][0-9]* direct_abi=true hidden_frames=128 closed=true$' \
       /tmp/flutter-app.log || { cat /tmp/flutter-app.log >&2; fail 'Flutter close verdict is missing'; }
     [ "$(awk 'FNR > 1 && $4 == "0A" { n++ } END { print n + 0 }' \
-      /proc/net/tcp /proc/net/tcp6 2>/dev/null)" -eq 0 ] \
+      "${TCP_TABLES[@]}")" -eq 0 ] \
       || fail 'runtime opened an INET listener'
     [ "$(awk 'FNR > 1 { n++ } END { print n + 0 }' \
-      /proc/net/udp /proc/net/udp6 2>/dev/null)" -eq 0 ] \
+      "${UDP_TABLES[@]}")" -eq 0 ] \
       || fail 'runtime opened a UDP socket'
     "$READY" --stop "$XVFB_PID" "$XVFB_START"
     wait "$XVFB_PID" 2>/dev/null || true

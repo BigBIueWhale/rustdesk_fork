@@ -170,6 +170,8 @@ class _LifecycleObserver with WidgetsBindingObserver {
 }
 
 Future<void> main(List<String> arguments) async {
+  stdout.writeln('FLUTTER_PROBE_STEP=dart-main begin');
+  await stdout.flush();
   WidgetsFlutterBinding.ensureInitialized();
   if (arguments.length != 1) {
     stderr.writeln('expected one private state-directory argument');
@@ -180,6 +182,8 @@ Future<void> main(List<String> arguments) async {
     stderr.writeln('state directory is absent or not absolute');
     exit(64);
   }
+  stdout.writeln('FLUTTER_PROBE_STEP=texture-create begin');
+  await stdout.flush();
   final renderer = TextureRgbaRenderer();
   final textureId = await renderer.createTexture(_textureKey);
   final textureAddress = await renderer.getTexturePtr(_textureKey);
@@ -189,6 +193,10 @@ Future<void> main(List<String> arguments) async {
     );
     exit(1);
   }
+  stdout.writeln(
+    'FLUTTER_PROBE_STEP=texture-create ok id=$textureId pointer=$textureAddress',
+  );
+  await stdout.flush();
 
   final observer = _LifecycleObserver();
   WidgetsBinding.instance.addObserver(observer);
@@ -201,6 +209,8 @@ Future<void> main(List<String> arguments) async {
       ),
     ),
   );
+  stdout.writeln('FLUTTER_PROBE_STEP=run-app ok');
+  await stdout.flush();
 
   final libraryPath =
       '${Directory.current.path}/lib/libtexture_rgba_renderer_plugin.so';

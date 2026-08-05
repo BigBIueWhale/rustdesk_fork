@@ -208,6 +208,7 @@ static void wait_for_map_state(Display *display, Window window, int expected,
     }
     sleep_millis(kPollMs);
   }
+  dump_window_tree(display, DefaultRootWindow(display), 0);
   fprintf(stderr, "flutter presentation X11 probe: timed out waiting for %s\n",
           label);
   exit(1);

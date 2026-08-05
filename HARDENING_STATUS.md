@@ -16423,6 +16423,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   release-runner waiter modes now retain exact PID/start identity, owned listener inode when
   listening, both owned IPC sockets, typed state, and before/after TCP/UDP checks, but make no
   inapplicable stderr-log assertion; the log-enforcing modes used by other smokes remain unchanged.
+  A fifth exact committed run passed the typed parked-state proof and completed the shipped
+  authenticated same-user password mutation: the CLI printed its exact `Done!` success marker, but
+  the Linux Flutter runner nevertheless returned status 1. The harness correctly rejected the
+  contradictory outcome before accepting server readiness or starting a viewer. This exposed the
+  separate R-S11gd runner-exit defect recorded below; cleanup retired the owned network-none state.
   No root, configuration injection, policy bypass, or product-only test hook is admitted. Controlled
   peer and viewer run as numeric non-root in separate mount, PID,
   IPC, temporary-home/configuration, and X11 state. The controlled peer owns a Docker
@@ -16464,6 +16469,30 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   concurrent control/file/audio correctness; long reconnect/focus/resource/performance soak; cold
   R-B2/R-B10 artifacts; independent reproduction; or external review. Every such item remains
   explicitly release-blocking.
+
+- **R-S11gd/R-S11e-217 Linux Flutter handled-command exit contract — SOURCE FIX IMPLEMENTED;
+  EXACT COMMITTED EXECUTION PENDING.** Platform: shipped Linux Flutter runner. Endpoint/action:
+  dynamic core loading and the `rustdesk_core_main` UI-continuation decision for CLI commands.
+
+  The Rust FFI boolean means only “continue into Flutter UI.” A successfully handled command such
+  as `--password-stdin` returns false after printing `Done!`; actual command errors exit nonzero in
+  Rust before returning. `flutter/linux/main.cc` previously treated that false UI decision exactly
+  like `dlopen`/`dlsym` failure and returned 1. The fifth full-peer run reproduced the contradiction
+  with the actual release bundle, not a mock: the credential transaction completed, but the shipped
+  runner reported failure.
+
+  The runner now separates invocation success from the UI decision with an explicit output
+  parameter. A null decision output, missing bundled core, or missing symbol still returns
+  `EXIT_FAILURE`; a successful false decision returns `EXIT_SUCCESS`; and only a true decision
+  enters `g_application_run`. Rust's existing nonzero exits for validation, authorization, and
+  command failures are unchanged. Shared source gates and the self-mutating full-peer verifier bind
+  both branches, the independent workspace verifier binds the actual Linux runner path, and the
+  exact release transaction must rerun before this fix is credited as executable evidence.
+
+  This narrow correction does not by itself prove password persistence, listening, peer
+  authentication, pixels, focus recovery, Android/Windows lifecycle behavior, release packaging,
+  cross-version operation, soak, independent reproduction, or external review. Those remain with
+  R-S11gc and the other explicit stop-ship boundaries.
 
 - **Exact Linux Flutter texture/X11 presentation recovery — EXECUTABLE EVIDENCE GREEN;
   ANDROID/WINDOWS/NATIVE END-TO-END EVIDENCE OPEN.** Platform: confined Linux X11 with Flutter
@@ -21442,7 +21471,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-ab6fa0d21874e3ba1b950679834f94696cc4ed153e632f3b13d067c9974d1a15  requirements.html
+c98eb7efda600adcf1e86edcb2d41fbe17d14489f47c2a56c5025ebad9e7e5ba  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

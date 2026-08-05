@@ -33,6 +33,7 @@ PATHS = {
     "host": "scripts/smoke-flutter-peer-presentation.sh",
     "stage": "scripts/smoke-flutter-peer-presentation-stage.sh",
     "ready": "scripts/smoke-ready.sh",
+    "linux_runner": "flutter/linux/main.cc",
     "controller": "scripts/flutter-peer-presentation-x11.c",
     "source": "scripts/flutter-peer-source-x11.c",
     "verify": "scripts/verify.sh",
@@ -54,6 +55,7 @@ def validate(sources: dict[str, str]) -> None:
     host = sources["host"]
     stage = sources["stage"]
     ready = sources["ready"]
+    linux_runner = sources["linux_runner"]
     controller = sources["controller"]
     source = sources["source"]
 
@@ -218,6 +220,26 @@ def validate(sources: dict[str, str]) -> None:
     require(ready, "--wait-typed-parked)", "typed parked CLI mode")
     require(ready, "--wait-typed-user-server)", "typed listening CLI mode")
 
+    require_order(
+        linux_runner,
+        (
+            "bool flutter_rustdesk_core_main(bool* should_start_ui)",
+            "*should_start_ui = core_main();",
+            "bool should_start_ui = false;",
+            "if (!flutter_rustdesk_core_main(&should_start_ui))",
+            "return EXIT_FAILURE;",
+            "if (!should_start_ui)",
+            "return EXIT_SUCCESS;",
+            "g_application_run",
+        ),
+        "Linux runner load/handled-command/UI decision contract",
+    )
+    forbid(
+        linux_runner,
+        "if (!flutter_rustdesk_core_main())",
+        "handled core command classified as loader failure",
+    )
+
     require(source, "The two independently colored halves encode one of 256", "source-state contract")
     require(source, "frame = (frame + 1U) & 255U;", "256-state source cadence")
     require(source, "attributes.override_redirect = True;", "source fixture isolation")
@@ -291,6 +313,7 @@ MUTATIONS = (
     ("stage", "--lib --example smoke_readiness --release", "--lib --release"),
     ("stage", '"$READY" --wait-typed-parked "$SERVER_PID" "$SERVER_START"', '"$READY" --wait-tcp-listener "$SERVER_PID" "$SERVER_START"'),
     ("ready", "server_typed_parked() {", "server_typed_parked_removed() {"),
+    ("linux_runner", "return EXIT_SUCCESS;", "return EXIT_FAILURE;"),
     ("stage", "! grep -Fq '[SEVERE]'", "true # severe output ignored"),
     ("stage", "export HOME CARGO_HOME CI=true PUB_CACHE=/evidence-online/pub-cache", "export HOME CARGO_HOME CI=true PUB_CACHE=/online/pub-cache"),
     ("stage", "--password-stdin", "--password rustdesk-peer-9f2a7c4e"),

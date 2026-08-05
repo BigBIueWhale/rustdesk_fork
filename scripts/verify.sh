@@ -8647,8 +8647,19 @@ grep -qF 'CMAKE_INSTALL_RPATH "$ORIGIN/lib"' flutter/linux/CMakeLists.txt || r_s
 grep -q 'Linux Flutter runner Rust core library load provenance' requirements.html || r_s11c10s="$r_s11c10s requirements-disposition-missing"
 grep -q 'R-S11c-10s closes the Linux Flutter runner Rust core library load provenance' HARDENING_STATUS.md || r_s11c10s="$r_s11c10s hardening-ledger-missing"
 main_entry_block=$(awk '/int main\(int argc, char\*\* argv\)/,/g_application_run/' flutter/linux/main.cc)
-if ! echo "$main_entry_block" | grep -qF 'return 1;'; then
-  r_s11c10s="$r_s11c10s core-load-failure-not-fatal"
+if ! echo "$main_entry_block" | grep -qF 'if (!flutter_rustdesk_core_main(&should_start_ui)) {' \
+  || ! echo "$main_entry_block" | grep -qF 'return EXIT_FAILURE;' \
+  || ! echo "$main_entry_block" | grep -qF 'if (!should_start_ui) {' \
+  || ! echo "$main_entry_block" | grep -qF 'return EXIT_SUCCESS;'; then
+  r_s11c10s="$r_s11c10s core-entry-exit-contract-missing"
+fi
+grep -qF '*should_start_ui = core_main();' flutter/linux/main.cc \
+  || r_s11c10s="$r_s11c10s core-ui-decision-not-separated"
+grep -qF 'R-S11gd' requirements.html || r_s11c10s="$r_s11c10s handled-cli-requirement-missing"
+grep -qF 'R-S11gd/R-S11e-217' HARDENING_STATUS.md \
+  || r_s11c10s="$r_s11c10s handled-cli-ledger-missing"
+if grep -qF 'if (!flutter_rustdesk_core_main())' flutter/linux/main.cc; then
+  r_s11c10s="$r_s11c10s handled-cli-still-classified-as-failure"
 fi
 if grep -qF '#define RUSTDESK_LIB_PATH "librustdesk.so"' flutter/linux/main.cc; then
   r_s11c10s="$r_s11c10s bare-core-path"

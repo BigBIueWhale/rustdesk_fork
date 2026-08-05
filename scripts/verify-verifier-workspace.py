@@ -20548,6 +20548,11 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "independent full-peer Linux presentation source binding",
     )
     require_text(
+        sources["flutter_peer_presentation_verifier"],
+        '"linux_runner": "flutter/linux/main.cc"',
+        "independent Linux Flutter runner exit-contract binding",
+    )
+    require_text(
         sources["apple"],
         "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test",
         "desktop texture Apple focused-verifier wiring",
@@ -58160,6 +58165,12 @@ def run_source_mutations(sources):
             '"controller": "scripts/flutter-peer-presentation-x11.c"',
             '"controller": "scripts/removed-flutter-peer-presentation-x11.c"',
             "independent full-peer Linux presentation controller binding",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
+            '"linux_runner": "flutter/linux/main.cc"',
+            '"linux_runner": "flutter/linux/removed-main.cc"',
+            "independent Linux Flutter runner exit-contract binding",
         ),
         (
             "apple",

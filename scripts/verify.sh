@@ -5743,10 +5743,14 @@ for smoke_source_token in \
   grep -qF -- "$smoke_source_token" scripts/smoke-server.sh \
     || r_s11e64="$r_s11e64 exact-source-authority-missing"
 done
-[ "$(grep -Fc -- '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"' scripts/smoke-server.sh)" -eq 6 ] \
+[ "$(grep -Fc -- '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"' scripts/smoke-server.sh)" -eq 8 ] \
   || r_s11e64="$r_s11e64 exact-source-mount-cardinality-invalid"
 grep -qF 'verify_smoke_build_postconditions' scripts/smoke-server-stage.sh \
   || r_s11e64="$r_s11e64 build-input-postcondition-missing"
+/usr/bin/python3 -I -S scripts/verify-video-pipeline-smoke.py --repo . \
+  || r_s11e64="$r_s11e64 video-pipeline-semantic-verifier-failed"
+/usr/bin/python3 -I -S scripts/verify-video-pipeline-smoke.py --repo . --self-test \
+  || r_s11e64="$r_s11e64 video-pipeline-mutation-self-test-failed"
 grep -qF '<span class="id">R-S11ax</span>' requirements.html || r_s11e64="$r_s11e64 normative-requirement-missing"
 grep -qF '<tr><td>172</td>' requirements.html || r_s11e64="$r_s11e64 appendix-row-missing"
 grep -qF '<span class="id">R-S11dd</span>' requirements.html || r_s11e64="$r_s11e64 host-build-normative-requirement-missing"

@@ -90,11 +90,13 @@ case "$1" in
   build)
     verify_smoke_build_inputs
     prepare_smoke_cargo_home
-    cargo build --locked --offline --features linux-pkg-config --bin rustdesk --example seed_password --example probe_client --example smoke_readiness --example pf_echo --example flood_probe --example mdwe_codec_probe --color never
+    cargo build --locked --offline --features linux-pkg-config --bin rustdesk --example seed_password --example probe_client --example smoke_readiness --example pf_echo --example flood_probe --example mdwe_codec_probe --example video_pipeline_probe --color never
+    cargo test --locked --offline --features linux-pkg-config --example video_pipeline_probe --color never
     verify_smoke_build_postconditions
     chmod 0755 /smoke-target/debug/rustdesk
     cc -shared -fPIC -O2 -Wall -Wextra -Werror -o /smoke-target/smoke-bind-loopback.so scripts/smoke-bind-loopback.c -ldl
     cc -O2 -Wall -Wextra -Werror -o /smoke-target/smoke-server-launcher scripts/smoke-server-launcher.c
+    cc -O2 -Wall -Wextra -Werror -o /smoke-target/smoke-x11-motion scripts/smoke-x11-motion.c -lX11
     ;;
   mdwe)
     /smoke-target/debug/examples/mdwe_codec_probe
@@ -387,6 +389,127 @@ EOS
     /smoke-target/debug/examples/probe_client "127.0.0.1:21118" "Str0ng-Test-Pw-123" ok login 2>&1
     $READY --terminate-server "$SRV" "$SRV_START" /tmp/srv.log
     wait "$SRV"
+    ;;
+  video-pipeline)
+    readonly XVFB=/xvfb-root/usr/bin/Xvfb
+    readonly XKB_COMPILER=/usr/bin/xkbcomp
+    readonly MOTION=/smoke-target/smoke-x11-motion
+    readonly VIDEO_PROBE=/smoke-target/debug/examples/video_pipeline_probe
+    readonly XVFB_FILE_MANIFEST=/work/scripts/smoke-xvfb-files.tsv
+    XVFB_PID=
+    XVFB_START=
+    MOTION_PID=
+    MOTION_START=
+    cleanup_video_pipeline() {
+      status=$?
+      trap - EXIT HUP INT TERM
+      cleanup_status=0
+      if [ -n "$SRV" ] && [ -n "$SRV_START" ] && "$READY" --is-running "$SRV" "$SRV_START"; then
+        "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/video-server.log \
+          || cleanup_status=$?
+        wait "$SRV" 2>/dev/null || cleanup_status=$?
+      fi
+      if [ -n "$MOTION_PID" ] && [ -n "$MOTION_START" ] \
+        && "$READY" --is-running "$MOTION_PID" "$MOTION_START"; then
+        "$READY" --stop "$MOTION_PID" "$MOTION_START" || cleanup_status=$?
+        wait "$MOTION_PID" 2>/dev/null || true
+      fi
+      if [ -n "$XVFB_PID" ] && [ -n "$XVFB_START" ] \
+        && "$READY" --is-running "$XVFB_PID" "$XVFB_START"; then
+        "$READY" --stop "$XVFB_PID" "$XVFB_START" || cleanup_status=$?
+        wait "$XVFB_PID" 2>/dev/null || true
+      fi
+      if [ "$cleanup_status" -ne 0 ]; then
+        echo "VIDEO_PIPELINE_CLEANUP_EXIT=$cleanup_status" >&2
+        exit 125
+      fi
+      exit "$status"
+    }
+    trap cleanup_video_pipeline EXIT
+    trap 'exit 129' HUP
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+
+    for executable in "$XVFB" "$XKB_COMPILER" "$MOTION" "$VIDEO_PROBE"; do
+      [ -f "$executable" ] && [ ! -L "$executable" ] && [ -x "$executable" ] || {
+        echo "video pipeline executable is missing or not a regular non-symlink file: $executable" >&2
+        exit 1
+      }
+    done
+    [ -f "$XVFB_FILE_MANIFEST" ] && [ ! -L "$XVFB_FILE_MANIFEST" ]
+    xvfb_file_count=0
+    while IFS=$'\t' read -r relative size mode digest extra || [ -n "${relative:-}" ]; do
+      [ -n "${relative:-}" ] || continue
+      [[ "$relative" == \#* ]] && continue
+      [ -z "${extra:-}" ]
+      [[ "$relative" =~ ^[A-Za-z0-9._+/-]+$ ]]
+      [[ "$relative" != /* ]] && [[ "$relative" != ../* ]] && [[ "$relative" != */../* ]]
+      [[ "$size" =~ ^[1-9][0-9]*$ ]]
+      [[ "$mode" =~ ^(644|755)$ ]]
+      [[ "$digest" =~ ^[0-9a-f]{64}$ ]]
+      xvfb_file="/xvfb-root/$relative"
+      [ -f "$xvfb_file" ] && [ ! -L "$xvfb_file" ]
+      [ "$(stat -c %u:%g:%a:%h:%s -- "$xvfb_file")" = "$(id -u):$(id -g):$mode:1:$size" ]
+      [ "$(sha256sum "$xvfb_file" | awk '{print $1}')" = "$digest" ]
+      xvfb_file_count=$((xvfb_file_count + 1))
+    done < "$XVFB_FILE_MANIFEST"
+    [ "$xvfb_file_count" -eq 5 ]
+    export HOME=/tmp/rd-video-pipeline
+    export DISPLAY=:99
+    mkdir -p "$HOME"
+    LD_LIBRARY_PATH=/xvfb-root/usr/lib/x86_64-linux-gnu \
+      "$XVFB" :99 -screen 0 640x480x24 -nolisten tcp -ac -noreset \
+      >/tmp/xvfb.log 2>&1 &
+    XVFB_PID=$!
+    XVFB_START=$($READY --identity "$XVFB_PID")
+    "$MOTION" >/tmp/x11-motion.log 2>&1 &
+    MOTION_PID=$!
+    MOTION_START=$($READY --identity "$MOTION_PID")
+    "$READY" --wait-log "$MOTION_PID" "$MOTION_START" /tmp/x11-motion.log \
+      'X11_MOTION_READY display=:99 dimensions=640x480 frames=240 interval_ms=100' \
+      'X11 motion fixture readiness'
+    [ -S /tmp/.X11-unix/X99 ] && [ ! -L /tmp/.X11-unix/X99 ]
+    x11_tcp_count=$(awk 'FNR > 1 && $4 == "0A" { count++ } END { print count + 0 }' /proc/net/tcp)
+    [ ! -r /proc/net/tcp6 ] \
+      || x11_tcp_count=$((x11_tcp_count + $(awk 'FNR > 1 && $4 == "0A" { count++ } END { print count + 0 }' /proc/net/tcp6)))
+    x11_udp_count=$(awk 'FNR > 1 { count++ } END { print count + 0 }' /proc/net/udp)
+    [ ! -r /proc/net/udp6 ] \
+      || x11_udp_count=$((x11_udp_count + $(awk 'FNR > 1 { count++ } END { print count + 0 }' /proc/net/udp6)))
+    [ "$x11_tcp_count" = 0 ]
+    [ "$x11_udp_count" = 0 ]
+    echo 'X11_NETWORK_SURFACE=unix-only tcp=0 udp=0'
+
+    /smoke-target/debug/examples/seed_password 'Str0ng-Test-Pw-123' >/dev/null 2>&1 \
+      || { echo SEED_FAIL; exit 1; }
+    start_server /smoke-target/debug/rustdesk /tmp/video-server.log
+    "$READY" --wait-server "$SRV" "$SRV_START" /tmp/video-server.log \
+      /smoke-target/debug/examples/smoke_readiness "$(id -u)"
+    if VIDEO_OUT=$(timeout --signal=TERM --kill-after=5s 35s \
+      "$VIDEO_PROBE" 127.0.0.1:21118 <<<'Str0ng-Test-Pw-123' 2>&1); then
+      VIDEO_STATUS=0
+    else
+      VIDEO_STATUS=$?
+    fi
+    printf '%s\n' "$VIDEO_OUT"
+    [ "$VIDEO_STATUS" -eq 0 ] || exit "$VIDEO_STATUS"
+    grep -Eq '^VIDEO_PIPELINE_OK codec=VP(8|9) dimensions=640x480 frames=[0-9]+ distinct=[0-9]+ receipts=[0-9]+ first_decode_ms=[0-9]+ pts_span_ms=[0-9]+ max_decode_us=[0-9]+ mean_decode_us=[0-9]+ max_receive_backlog_drift_ms=[0-9]+$' \
+      <<<"$VIDEO_OUT"
+    "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/video-server.log
+    wait "$SRV"
+    SRV=
+    SRV_START=
+    "$READY" --stop "$MOTION_PID" "$MOTION_START"
+    wait "$MOTION_PID" 2>/dev/null || true
+    MOTION_PID=
+    MOTION_START=
+    "$READY" --stop "$XVFB_PID" "$XVFB_START"
+    wait "$XVFB_PID" 2>/dev/null || true
+    XVFB_PID=
+    XVFB_START=
+    grep -F 'X11_MOTION_READY' /tmp/x11-motion.log
+    [ ! -s /tmp/xvfb.log ] || { echo 'Xvfb emitted unexpected diagnostics:' >&2; cat /tmp/xvfb.log >&2; exit 1; }
+    echo 'VIDEO_PIPELINE_CLEANUP=server,motion,xvfb-joined'
+    trap - EXIT HUP INT TERM
     ;;
   port-forward)
     export HOME=/tmp/rd6b

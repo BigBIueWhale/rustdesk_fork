@@ -1,0 +1,6 @@
+# relative path<TAB>size<TAB>mode<TAB>sha256
+usr/bin/Xvfb	2057824	755	c50687113cd5232844b8fa3a49276a48a022fa7fc4275b983ae8f88158efed72
+usr/bin/xkbcomp	222144	755	eca6986af7d15277394b8476b8ad85229ee1a1a879d43d2a526f106af3761550
+usr/lib/x86_64-linux-gnu/libXfont2.so.2.0.0	186112	644	36a98a0e7303d3782bdadd09ec9efc5b38a5cf1ba026197e4ea8b5adc6bac5c2
+usr/lib/x86_64-linux-gnu/libfontenc.so.1.0.0	34664	644	17c5f578e9c6b1a4fe79a2155e63676c9041e7633a5a5d8ddd769986c9b513a0
+usr/lib/x86_64-linux-gnu/libxkbfile.so.1.0.2	155744	644	e48b41d06c82ee1f5a9b58e5dae109048ceed7fb7d86a707beffd554326eb3b1

@@ -1,0 +1,10 @@
+# name<TAB>size<TAB>sha256<TAB>exact official Debian package URL
+#
+# Test-infrastructure input only: these packages provide a non-root Xvfb to the opt-in video
+# pipeline smoke. They are fetched by a disposable, unprivileged acquisition container and are
+# never installed into the host, the pinned development image, or a release artifact.
+xvfb	3153788	7f98f5ddc39593249330fa2612949b6298618b945becb2d9d7b598e7ca789ea0	https://deb.debian.org/debian/pool/main/x/xorg-server/xvfb_21.1.7-3+deb12u12_amd64.deb
+libxfont2	131728	96ca8e9e1d913dd9855f46f1f09d0e0aec964b70d428da9f032250fc7a400419	https://security.debian.org/debian-security/pool/updates/main/libx/libxfont/libxfont2_2.0.6-1+deb12u1_amd64.deb
+libfontenc1	24328	1d0aa6ea16a34a8de1ea170360c4cb699f3239aeddb292df2d2c4eb6e835de4b	https://deb.debian.org/debian/pool/main/libf/libfontenc/libfontenc1_1.1.4-1_amd64.deb
+x11-xkb-utils	164876	b25970e444fadf4717e5624bc2a2eecef785d09d731b571da8d43f5297b43b12	https://deb.debian.org/debian/pool/main/x/x11-xkb-utils/x11-xkb-utils_7.7+7_amd64.deb
+libxkbfile1	75176	7c58d9986f918b71568ad83dbb6f4ab22c185f243461d41acee920cc5e13d347	https://deb.debian.org/debian/pool/main/libx/libxkbfile/libxkbfile1_1.1.0-1_amd64.deb

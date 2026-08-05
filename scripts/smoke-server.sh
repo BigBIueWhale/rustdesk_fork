@@ -46,6 +46,7 @@
 #
 # Usage:  scripts/smoke-server.sh [--portable-rootless]
 #         scripts/smoke-server.sh --with-root-containers
+#         scripts/smoke-server.sh --video-pipeline
 #         SMOKE_DECAY=1 scripts/smoke-server.sh [--portable-rootless]
 #
 # The default is the portable rootless path. The installed-service, root-owned password fixture,
@@ -62,14 +63,15 @@ case "$#" in
     case "$1" in
       --portable-rootless) SMOKE_MODE=portable-rootless ;;
       --with-root-containers) SMOKE_MODE=with-root-containers ;;
+      --video-pipeline) SMOKE_MODE=video-pipeline-rootless ;;
       *)
-        echo "usage: scripts/smoke-server.sh [--portable-rootless|--with-root-containers]" >&2
+        echo "usage: scripts/smoke-server.sh [--portable-rootless|--with-root-containers|--video-pipeline]" >&2
         exit 2
         ;;
     esac
     ;;
   *)
-    echo "usage: scripts/smoke-server.sh [--portable-rootless|--with-root-containers]" >&2
+    echo "usage: scripts/smoke-server.sh [--portable-rootless|--with-root-containers|--video-pipeline]" >&2
     exit 2
     ;;
 esac
@@ -279,7 +281,11 @@ readonly SMOKE_DOCKER_CONFIG="$SMOKE_ROOT/docker-config"
 readonly SMOKE_BUILD_TARGET="$SMOKE_ROOT/target"
 readonly SMOKE_SOURCE_ARCHIVE="$SMOKE_ROOT/source.tar"
 readonly SMOKE_SOURCE="$SMOKE_ROOT/source"
-install -d -m 0700 "$SMOKE_DOCKER_CONFIG" "$SMOKE_BUILD_TARGET" "$SMOKE_SOURCE"
+readonly SMOKE_XVFB_DEBS="$SMOKE_ROOT/xvfb-debs"
+readonly SMOKE_XVFB_ROOT="$SMOKE_ROOT/xvfb-root"
+install -d -m 0700 \
+  "$SMOKE_DOCKER_CONFIG" "$SMOKE_BUILD_TARGET" "$SMOKE_SOURCE" \
+  "$SMOKE_XVFB_DEBS" "$SMOKE_XVFB_ROOT"
 printf '{}\n' >"$SMOKE_DOCKER_CONFIG/config.json"
 chmod 0600 "$SMOKE_DOCKER_CONFIG/config.json"
 git -c core.hooksPath=/dev/null archive --format=tar "$SMOKE_SOURCE_COMMIT" >"$SMOKE_SOURCE_ARCHIVE"
@@ -303,6 +309,8 @@ readonly SMOKE_DOCKER_CONFIG_FILE_ID="$(stat -c '%d:%i:%u:%g:%a:%h' -- "$SMOKE_D
 readonly SMOKE_BUILD_TARGET_ID="$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_BUILD_TARGET")"
 readonly SMOKE_SOURCE_ARCHIVE_ID="$(stat -c '%d:%i:%u:%g:%a:%h' -- "$SMOKE_SOURCE_ARCHIVE")"
 readonly SMOKE_SOURCE_ID="$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_SOURCE")"
+readonly SMOKE_XVFB_DEBS_ID="$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_XVFB_DEBS")"
+readonly SMOKE_XVFB_ROOT_ID="$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_XVFB_ROOT")"
 readonly SMOKE_DOCKER_COMMAND=(
   /usr/bin/env -i
   PATH=/usr/bin:/bin
@@ -329,6 +337,10 @@ smoke_docker_authority() {
     || { echo "smoke: exact source-archive authority changed" >&2; return 1; }
   [ "$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_SOURCE" 2>/dev/null)" = "$SMOKE_SOURCE_ID" ] \
     || { echo "smoke: exact source-snapshot authority changed" >&2; return 1; }
+  [ "$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_XVFB_DEBS" 2>/dev/null)" = "$SMOKE_XVFB_DEBS_ID" ] \
+    || { echo "smoke: private Xvfb package authority changed" >&2; return 1; }
+  [ "$(stat -c '%d:%i:%u:%g:%a' -- "$SMOKE_XVFB_ROOT" 2>/dev/null)" = "$SMOKE_XVFB_ROOT_ID" ] \
+    || { echo "smoke: private Xvfb tool authority changed" >&2; return 1; }
   [ -S /var/run/docker.sock ] && [ ! -L /var/run/docker.sock ] \
     && [ "$(stat -c '%d:%i:%u:%g:%a:%h' -- /var/run/docker.sock 2>/dev/null)" = "$SMOKE_DOCKER_SOCKET_ID" ] \
     || { echo "smoke: fixed local Docker Unix socket identity changed" >&2; return 1; }
@@ -359,6 +371,8 @@ remove_smoke_authority_root() {
     || { echo "smoke: preserving changed Docker/build authority" >&2; return 125; }
   verify_smoke_source_snapshot \
     || { echo "smoke: preserving changed exact source authority" >&2; return 125; }
+  chmod -R u+rwX "$SMOKE_XVFB_DEBS" "$SMOKE_XVFB_ROOT" || return 125
+  rm -rf -- "$SMOKE_XVFB_DEBS" "$SMOKE_XVFB_ROOT" || return 125
   rm -rf -- "$SMOKE_BUILD_TARGET" || return 125
   chmod -R u+rwX "$SMOKE_SOURCE" || return 125
   rm -rf -- "$SMOKE_SOURCE" || return 125
@@ -444,6 +458,34 @@ PID_REUSE_RUN=(smoke_docker run --rm --network none --read-only --pids-limit 128
   --tmpfs /run:rw,nosuid,nodev,noexec,mode=755
   --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"
   -v "$SMOKE_BUILD_TARGET:/smoke-target:ro"
+  -w /work "$IMAGE_ID")
+XVFB_PREPARE_RUN=(smoke_docker run --rm --network bridge --pull=never --read-only
+  --user "$BUILD_UID:$BUILD_GID"
+  --cap-drop ALL
+  --security-opt no-new-privileges
+  --pids-limit 32
+  --memory 256m
+  --memory-swap 256m
+  --cpus 1
+  --tmpfs /tmp:rw,nosuid,nodev,noexec,mode=1777,size=32m
+  --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"
+  --mount "type=bind,source=$SMOKE_XVFB_DEBS,target=/xvfb-debs"
+  --mount "type=bind,source=$SMOKE_XVFB_ROOT,target=/xvfb-root"
+  -w /work "$IMAGE_ID")
+VIDEO_RUN=(smoke_docker run --rm --network none --pull=never --read-only
+  --user "$BUILD_UID:$BUILD_GID"
+  --cap-drop ALL
+  --security-opt no-new-privileges
+  --pids-limit=1024
+  --memory=4g
+  --memory-swap=4g
+  --cpus=2
+  --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=1g
+  --tmpfs /tmp/.X11-unix:rw,nosuid,nodev,noexec,mode=1777,size=1m
+  --mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"
+  --mount "type=bind,source=$SMOKE_BUILD_TARGET,target=/smoke-target,readonly"
+  --mount "type=bind,source=$SMOKE_XVFB_ROOT,target=/xvfb-root,readonly"
+  --mount "type=bind,source=$SMOKE_XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly"
   -w /work "$IMAGE_ID")
 PORT_HEX='527E' # 21118
 LOOPBACK_LISTEN='0100007F:527E' # 127.0.0.1:21118
@@ -646,6 +688,38 @@ printf '%s\n' "$build_out"
 record_stage_status R-B4-build
 [ "$STAGE_STATUS" -eq 0 ] || exit 1
 verify_smoke_source_snapshot || exit 1
+
+if [ "$SMOKE_MODE" = video-pipeline-rootless ]; then
+  echo "== (0b) acquire the exact non-root Xvfb test closure in an isolated producer container =="
+  run_stage xvfb_prepare_out "${XVFB_PREPARE_RUN[@]}" \
+    bash --noprofile --norc /work/scripts/smoke-xvfb-prepare.sh
+  printf '%s\n' "$xvfb_prepare_out"
+  record_stage_status Xvfb-test-infrastructure
+  [ "$STAGE_STATUS" -eq 0 ] || exit 1
+  [ "$(grep -c '^XVFB_PACKAGE_OK ' <<<"$xvfb_prepare_out")" -eq 5 ] \
+    || { echo '  FAIL video pipeline: the exact five-package Xvfb closure was not acquired'; exit 1; }
+  grep -q '^XVFB_ACQUISITION_NETWORK_SURFACE=tcp-listen:0 udp:0$' <<<"$xvfb_prepare_out" \
+    || { echo '  FAIL video pipeline: the acquisition container retained a listener or UDP socket'; exit 1; }
+  grep -Eq '^XVFB_TOOL_CLOSURE_OK packages=5 xvfb_sha256=[0-9a-f]{64} xkbcomp_sha256=[0-9a-f]{64}$' <<<"$xvfb_prepare_out" \
+    || { echo '  FAIL video pipeline: the extracted Xvfb closure did not match its file manifest'; exit 1; }
+  verify_smoke_source_snapshot || exit 1
+
+  echo "== (1) real X11 capture -> VP8/VP9 encode -> keyed loopback -> exact receipt -> software decode =="
+  run_stage video_pipeline_out "${VIDEO_RUN[@]}" \
+    bash --noprofile --norc /work/scripts/smoke-server-stage.sh video-pipeline
+  printf '%s\n' "$video_pipeline_out"
+  record_stage_status real-video-pipeline
+  [ "$STAGE_STATUS" -eq 0 ] || exit 1
+  grep -q '^X11_NETWORK_SURFACE=unix-only tcp=0 udp=0$' <<<"$video_pipeline_out" \
+    || { echo '  FAIL video pipeline: Xvfb did not remain Unix-socket-only'; exit 1; }
+  grep -Eq '^VIDEO_PIPELINE_OK codec=VP(8|9) dimensions=640x480 frames=[0-9]+ distinct=[0-9]+ receipts=[0-9]+ first_decode_ms=[0-9]+ pts_span_ms=[0-9]+ max_decode_us=[0-9]+ mean_decode_us=[0-9]+ max_receive_backlog_drift_ms=[0-9]+$' <<<"$video_pipeline_out" \
+    || { echo '  FAIL video pipeline: the real decode transcript is missing or outside its bounds'; exit 1; }
+  grep -q '^VIDEO_PIPELINE_CLEANUP=server,motion,xvfb-joined$' <<<"$video_pipeline_out" \
+    || { echo '  FAIL video pipeline: exact runtime owners were not joined'; exit 1; }
+  verify_smoke_source_snapshot || exit 1
+  echo "SMOKE VIDEO PIPELINE OK: exact committed RustDesk server captured a changing 640x480 Xvfb display, software-encoded it, carried it over the keyed 127.0.0.1:21118 session with exact generation receipts, and software-decoded multiple changing frames under finite bounds. Xvfb used only a private Unix socket; the runtime container had no network, capabilities, host namespaces, devices, published ports, Docker socket, Flutter/compositor presentation, native Windows/Android lifecycle, installed-service, performance/soak, or release-artifact coverage."
+  exit 0
+fi
 
 if [ "$SMOKE_MODE" = with-root-containers ]; then
 echo "== (0c) Linux manual supervisor lifecycle: exact hostile-record rejection, cross-container identity, pidfd-unavailable refusal, stop/crash recovery, privilege drop, and portable noninterference (R-S11c-27f/R-S11c-27g/R-S11c-27h/R-S11c-27i/R-S11c-27j/R-S11c-27n/R-S11c-27u) =="

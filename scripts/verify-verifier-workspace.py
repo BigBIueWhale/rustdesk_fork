@@ -4394,7 +4394,7 @@ def validate_smoke_contract(
             )
     if re.search(r"(?m)^\s+-[pP](?:\s|$)", smoke):
         raise VerificationError("runtime smoke publishes a container port")
-    if smoke.count("bash --noprofile --norc /work/scripts/smoke-server-stage.sh") != 22:
+    if smoke.count("bash --noprofile --norc /work/scripts/smoke-server-stage.sh") != 23:
         raise VerificationError("runtime smoke does not preserve the exact mounted stage dispatch set")
     if smoke.count("run_stage out") != 14 or smoke.count("record_stage_status ") < 21:
         raise VerificationError("runtime smoke does not preserve every isolated stage status and transcript")
@@ -4711,11 +4711,11 @@ def validate_smoke_contract(
         raise VerificationError("non-root smoke fixture must stage exactly eight root-owned runtime files")
     if stage.count('$READY --wait-server') < 10:
         raise VerificationError("runtime smoke does not readiness-gate every ordinary server startup")
-    if stage.count('/smoke-target/debug/examples/smoke_readiness "$(id -u)"') != 14:
+    if stage.count('/smoke-target/debug/examples/smoke_readiness "$(id -u)"') != 15:
         raise VerificationError("runtime smoke readiness is not bound to each actual server owner")
     if stage.count('$READY --terminate-server') < 10:
         raise VerificationError("runtime smoke does not bound and prove ordinary server shutdown")
-    if stage.count('start_server /smoke-target/debug/rustdesk') != 12:
+    if stage.count('start_server /smoke-target/debug/rustdesk') != 13:
         raise VerificationError("runtime smoke does not route every ordinary server through the launcher")
     if stage.count('start_server /usr/share/rustdesk/rustdesk') != 1:
         raise VerificationError("installed-layout smoke does not route through the launcher")
@@ -12754,12 +12754,12 @@ def validate_smoke_container_authority_contract(sources):
         "fixed smoke Docker authority and pinned input resolution precede every container",
     )
     require_exact_count(smoke, '"$EXPECTED_IMAGE_ID"', 3, "exact pinned smoke image authority")
-    require_exact_count(smoke, '"$IMAGE_ID"', 7, "every smoke container uses the immutable image ID")
-    require_exact_count(smoke, "smoke_docker run", 6, "complete smoke container launch inventory")
+    require_exact_count(smoke, '"$IMAGE_ID"', 9, "every smoke container uses the immutable image ID")
+    require_exact_count(smoke, "smoke_docker run", 8, "complete smoke container launch inventory")
     require_exact_count(
         smoke,
         '--mount "type=bind,source=$SMOKE_SOURCE,target=/work,readonly"',
-        6,
+        8,
         "every smoke container uses the exact-commit source snapshot",
     )
     require_exact_count(
@@ -12767,6 +12767,16 @@ def validate_smoke_container_authority_contract(sources):
         "smoke_docker image inspect",
         1,
         "single fixed-client local image resolution",
+    )
+    require_text(
+        verify,
+        "/usr/bin/python3 -I -S scripts/verify-video-pipeline-smoke.py --repo . \\",
+        "video-pipeline semantic verifier integration",
+    )
+    require_text(
+        verify,
+        "/usr/bin/python3 -I -S scripts/verify-video-pipeline-smoke.py --repo . --self-test \\",
+        "video-pipeline mutation self-test integration",
     )
 
     build = extract_between(smoke, "BUILD_RUN=(", "\nRUN=(", "smoke build container")
@@ -12778,7 +12788,7 @@ def validate_smoke_container_authority_contract(sources):
         smoke, "LIFECYCLE_RUN=(", "\nPID_REUSE_RUN=(", "smoke lifecycle container"
     )
     pid_reuse = extract_between(
-        smoke, "PID_REUSE_RUN=(", "\nPORT_HEX=", "smoke PID-reuse container"
+        smoke, "PID_REUSE_RUN=(", "\nXVFB_PREPARE_RUN=(", "smoke PID-reuse container"
     )
     sibling = extract_through(
         smoke,
@@ -44635,8 +44645,8 @@ def run_source_mutations(sources):
         ),
         (
             "smoke_stage",
-            "    cargo build --locked --offline --features linux-pkg-config --bin rustdesk --example seed_password --example probe_client --example smoke_readiness --example pf_echo --example flood_probe --example mdwe_codec_probe --color never\n    verify_smoke_build_postconditions",
-            "    cargo build --locked --offline --features linux-pkg-config --bin rustdesk --example seed_password --example probe_client --example smoke_readiness --example pf_echo --example flood_probe --example mdwe_codec_probe --color never\n    true # post-build vendor verification removed",
+            "    cargo test --locked --offline --features linux-pkg-config --example video_pipeline_probe --color never\n    verify_smoke_build_postconditions",
+            "    cargo test --locked --offline --features linux-pkg-config --example video_pipeline_probe --color never\n    true # post-build vendor verification removed",
             "sealed inputs are verified before and after the exact smoke build",
         ),
         (

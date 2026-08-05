@@ -32,6 +32,7 @@ def require_order(source: str, needles: tuple[str, ...], label: str) -> None:
 PATHS = {
     "host": "scripts/smoke-flutter-peer-presentation.sh",
     "stage": "scripts/smoke-flutter-peer-presentation-stage.sh",
+    "ready": "scripts/smoke-ready.sh",
     "controller": "scripts/flutter-peer-presentation-x11.c",
     "source": "scripts/flutter-peer-source-x11.c",
     "verify": "scripts/verify.sh",
@@ -52,6 +53,7 @@ def load(repo: Path) -> dict[str, str]:
 def validate(sources: dict[str, str]) -> None:
     host = sources["host"]
     stage = sources["stage"]
+    ready = sources["ready"]
     controller = sources["controller"]
     source = sources["source"]
 
@@ -175,9 +177,9 @@ def validate(sources: dict[str, str]) -> None:
             "start_xvfb :98 640x480x24",
             '"$SOURCE_FIXTURE" >/tmp/source.log',
             '(cd /out/bundle && exec env RUST_LOG=info "$APP" --server)',
-            '"$READY" --wait-parked "$SERVER_PID" "$SERVER_START"',
+            '"$READY" --wait-typed-parked "$SERVER_PID" "$SERVER_START"',
             "--password-stdin",
-            '"$READY" --wait-user-server "$SERVER_PID" "$SERVER_START"',
+            '"$READY" --wait-typed-user-server "$SERVER_PID" "$SERVER_START"',
             "listener_is_exact",
             'mv "$COORD/server.ready.tmp" "$COORD/server.ready"',
             'mv "$COORD/server.result.tmp" "$COORD/server.result"',
@@ -202,6 +204,19 @@ def validate(sources: dict[str, str]) -> None:
     forbid(stage, "RUSTDESK_PASSWORD", "password environment variable")
     for unsafe in ("sudo ", "--privileged", "systemctl", "ufw ", "iptables", "nft "):
         forbid(stage, unsafe, "runtime authority expansion")
+
+    for function, expected_state in (
+        ("server_typed_parked() {", "parked"),
+        ("server_typed_ready() {", '"$expected"'),
+    ):
+        require(ready, function, "typed release-runner readiness predicate")
+        body = ready.split(function, 1)[1].split("\n}", 1)[0]
+        require(body, 'ipc_surface_ready "$pid" "$uid"', "owned dual-IPC surface proof")
+        require(body, f"typed_ipc_ready \"$probe\" {expected_state}", "typed IPC state proof")
+        require(body, '"$(udp_socket_count)" = 0', "typed readiness zero-UDP proof")
+        forbid(body, "grep ", "release-runner text-log dependency")
+    require(ready, "--wait-typed-parked)", "typed parked CLI mode")
+    require(ready, "--wait-typed-user-server)", "typed listening CLI mode")
 
     require(source, "The two independently colored halves encode one of 256", "source-state contract")
     require(source, "frame = (frame + 1U) & 255U;", "256-state source cadence")
@@ -274,7 +289,8 @@ MUTATIONS = (
     ("host", 'host.get("PortBindings") not in (None, {})', "False"),
     ("stage", '[ "$interfaces" = lo ]', '[ -n "$interfaces" ]'),
     ("stage", "--lib --example smoke_readiness --release", "--lib --release"),
-    ("stage", '"$READY" --wait-parked "$SERVER_PID" "$SERVER_START"', '"$READY" --wait-tcp-listener "$SERVER_PID" "$SERVER_START"'),
+    ("stage", '"$READY" --wait-typed-parked "$SERVER_PID" "$SERVER_START"', '"$READY" --wait-tcp-listener "$SERVER_PID" "$SERVER_START"'),
+    ("ready", "server_typed_parked() {", "server_typed_parked_removed() {"),
     ("stage", "! grep -Fq '[SEVERE]'", "true # severe output ignored"),
     ("stage", "export HOME CARGO_HOME CI=true PUB_CACHE=/evidence-online/pub-cache", "export HOME CARGO_HOME CI=true PUB_CACHE=/online/pub-cache"),
     ("stage", "--password-stdin", "--password rustdesk-peer-9f2a7c4e"),

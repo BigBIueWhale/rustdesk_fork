@@ -254,6 +254,33 @@ server_parked() {
   ipc_surface_ready "$pid" "$uid"
 }
 
+# The release Flutter runner routes Rust logs to its private log tree instead of
+# redirected stderr. Keep the complete socket/PID/typed-state proof while making
+# no text-log claim for that runner.
+server_typed_ready() {
+  local pid=$1 expected_start=$2 _log=$3 deadline=$4 probe=$5 expected=$6 uid=$7
+  [ "$(tcp_listen_count)" = 1 ] || return 1
+  [ "$(udp_socket_count)" = 0 ] || return 1
+  pid_owns_listener "$pid" "$SERVER_LISTEN_HEX" || return 1
+  ipc_surface_ready "$pid" "$uid" || return 1
+  typed_ipc_ready "$probe" "$expected" "$pid" "$expected_start" "$deadline" || return 1
+  [ "$(tcp_listen_count)" = 1 ] || return 1
+  [ "$(udp_socket_count)" = 0 ] || return 1
+  pid_owns_listener "$pid" "$SERVER_LISTEN_HEX" || return 1
+  ipc_surface_ready "$pid" "$uid"
+}
+
+server_typed_parked() {
+  local pid=$1 expected_start=$2 _log=$3 deadline=$4 probe=$5 uid=$6
+  [ "$(tcp_listen_count)" = 0 ] || return 1
+  [ "$(udp_socket_count)" = 0 ] || return 1
+  ipc_surface_ready "$pid" "$uid" || return 1
+  typed_ipc_ready "$probe" parked "$pid" "$expected_start" "$deadline" || return 1
+  [ "$(tcp_listen_count)" = 0 ] || return 1
+  [ "$(udp_socket_count)" = 0 ] || return 1
+  ipc_surface_ready "$pid" "$uid"
+}
+
 log_contains() {
   local _pid=$1 _expected_start=$2 log=$3 _deadline=$4 literal=$5
   grep -Fq -- "$literal" "$log"
@@ -713,6 +740,13 @@ case "${1:-}" in
     wait_for_condition "$READY_WAIT_SECONDS" "$2" "$3" "$4" 'parked server' server_parked "$PINNED_PROBE" "$6" \
       || { probe_diagnostic "$PINNED_PROBE" parked "$2" "$3"; exit 1; }
     ;;
+  --wait-typed-parked)
+    [ "$#" -eq 6 ] || fail 'usage: --wait-typed-parked PID START_IDENTITY LOG TYPED_IPC_PROBE UID'
+    validate_uid "$6"
+    pin_probe "$5"
+    wait_for_condition "$READY_WAIT_SECONDS" "$2" "$3" "$4" 'typed parked server' server_typed_parked "$PINNED_PROBE" "$6" \
+      || { probe_diagnostic "$PINNED_PROBE" parked "$2" "$3"; exit 1; }
+    ;;
   --wait-server)
     [ "$#" -eq 6 ] || fail 'usage: --wait-server PID START_IDENTITY LOG TYPED_IPC_PROBE UID'
     validate_uid "$6"
@@ -725,6 +759,13 @@ case "${1:-}" in
     validate_uid "$6"
     pin_probe "$5"
     wait_for_condition "$READY_WAIT_SECONDS" "$2" "$3" "$4" 'listening user-owned server and IPC' server_ready "$PINNED_PROBE" user-server "$6" \
+      || { probe_diagnostic "$PINNED_PROBE" user-server "$2" "$3"; exit 1; }
+    ;;
+  --wait-typed-user-server)
+    [ "$#" -eq 6 ] || fail 'usage: --wait-typed-user-server PID START_IDENTITY LOG TYPED_IPC_PROBE UID'
+    validate_uid "$6"
+    pin_probe "$5"
+    wait_for_condition "$READY_WAIT_SECONDS" "$2" "$3" "$4" 'typed listening user-owned server and IPC' server_typed_ready "$PINNED_PROBE" user-server "$6" \
       || { probe_diagnostic "$PINNED_PROBE" user-server "$2" "$3"; exit 1; }
     ;;
   --wait-key-failure)

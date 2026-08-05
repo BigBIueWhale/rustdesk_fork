@@ -16415,6 +16415,14 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   identity and both owned IPC sockets while proving credential-empty parked state with zero INET
   listeners/UDP, performs the shipped CLI's authenticated same-user IPC mutation, and requires that
   same server identity to transition to typed password-present/listener-bound/user-writable state.
+  A fourth exact committed run built the bundle and reached the real parked daemon: the typed probe
+  reported `state=parked` while the namespace had zero TCP listeners and zero UDP. The generic
+  shared waiter nevertheless rejected that valid state because it also expected a Rust log phrase
+  on redirected stderr, while the release Flutter runner routes Rust logs to its private log tree.
+  Cleanup retired the parked server without ever starting a viewer or public listener. Two additive
+  release-runner waiter modes now retain exact PID/start identity, owned listener inode when
+  listening, both owned IPC sockets, typed state, and before/after TCP/UDP checks, but make no
+  inapplicable stderr-log assertion; the log-enforcing modes used by other smokes remain unchanged.
   No root, configuration injection, policy bypass, or product-only test hook is admitted. Controlled
   peer and viewer run as numeric non-root in separate mount, PID,
   IPC, temporary-home/configuration, and X11 state. The controlled peer owns a Docker
@@ -21434,7 +21442,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-3a80b1d1208e9758dd423e9848688b0dfded82b4971cd8d5cc22a929215c49b7  requirements.html
+ab6fa0d21874e3ba1b950679834f94696cc4ed153e632f3b13d067c9974d1a15  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

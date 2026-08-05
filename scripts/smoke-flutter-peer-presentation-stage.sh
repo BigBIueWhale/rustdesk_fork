@@ -397,7 +397,7 @@ CFG
     (cd /out/bundle && exec env RUST_LOG=info "$APP" --server) >/tmp/server.log 2>&1 &
     SERVER_PID=$!
     SERVER_START=$("$READY" --identity "$SERVER_PID")
-    "$READY" --wait-parked "$SERVER_PID" "$SERVER_START" /tmp/server.log \
+    "$READY" --wait-typed-parked "$SERVER_PID" "$SERVER_START" /tmp/server.log \
       "$PROBE" "$(id -u)"
     set +e
     password_output="$(printf '%s\n' 'rustdesk-peer-9f2a7c4e' \
@@ -409,7 +409,7 @@ CFG
       || fail "shipped password-stdin command exited $password_status"
     grep -qx 'Done!' <<<"$password_output" \
       || fail 'password-stdin completion marker differs'
-    "$READY" --wait-user-server "$SERVER_PID" "$SERVER_START" /tmp/server.log \
+    "$READY" --wait-typed-user-server "$SERVER_PID" "$SERVER_START" /tmp/server.log \
       "$PROBE" "$(id -u)"
     listener_is_exact || fail 'server listener is not exactly 127.0.0.1:21118'
     [ "$(udp_socket_count)" -eq 0 ] || fail 'server network namespace has a UDP socket'

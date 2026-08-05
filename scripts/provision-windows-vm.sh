@@ -260,8 +260,9 @@ stop_owned_virt_process() {
 }
 
 virsh_bounded() {
-    timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \
-        virsh --connect qemu:///session --no-pkttyagent "$@"
+    setsid --wait \
+        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \
+        virsh --connect qemu:///session "$@" </dev/null
 }
 
 domain_name_is_listed() {

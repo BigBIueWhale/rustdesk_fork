@@ -19067,7 +19067,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Every guest-specific post-create operation addresses the retained UUID:
   secondary name proof, repeated UEFI boot keys, state polling, `destroy`, and
   `undefine --nvram`. All control runs under the C locale through one
-  fixed-session, no-pkttyagent, finite-timeout wrapper. Enumeration/control
+  fixed-session, detached/no-stdin, finite-timeout wrapper. Enumeration/control
   errors are distinct from absence and cannot become off/success. The marker
   path accepts only an authoritatively `shut off` UUID, verifies the final
   golden hash, then undefines the UUID and proves it absent before logging
@@ -19166,7 +19166,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Every guest-specific post-commit read/control now addresses the retained
   UUID: secondary name proof, XML inspection, state polling, destroy, and
   `undefine --nvram`. Control has one finite-timeout, fixed-session,
-  no-pkttyagent wrapper under the C locale. `/proc` parsing now uses the final
+  detached/no-stdin wrapper under the C locale. `/proc` parsing now uses the final
   parenthesis delimiter so a legal process name cannot shift the state/start/
   group/session fields. Error/signal cleanup scans and drains the complete
   retained process group/session, not only its leader; a reused or otherwise
@@ -19230,6 +19230,61 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   slice. No host RustDesk/service/configuration/firewall/network state was
   inspected or mutated. Those evidence obligations and the broader
   Ralph-loop goal remain open.
+- **R-S11dr/R-S11ds/R-S11e-214 — version-compatible noninteractive session-libvirt control —
+  SOURCE IMPLEMENTED; ACTUAL HOST LIBVIRT 10.0.0 READ-ONLY ENUMERATION GREEN;
+  VM/NATIVE-WINDOWS/ARTIFACT EVIDENCE OPEN.** Platform: the unprivileged Linux
+  Windows-golden and per-build VM hosts. Endpoint/action: every bounded
+  `virsh` name/UUID query and UUID-addressed control performed by
+  `scripts/provision-windows-vm.sh` and `scripts/build-windows-vm.sh`.
+  Boundary: a script launched from an operator terminal ↔ noninteractive
+  control of only the invoking user's `qemu:///session` domains.
+
+  Read-only current-state proof found that both maintained wrappers passed
+  `--no-pkttyagent`, while the scripts pin their executable search to
+  `/usr/bin:/bin` and the provisioned host supplies libvirt/virsh 10.0.0.
+  That binary rejects the option before connecting. Upstream added the option
+  only after libvirt 10.0.0; the upstream issue documenting its introduction
+  also records the portable pre-option technique: run `virsh` in a fresh
+  session with standard input closed. The prior requirements and all three
+  semantic verifiers incorrectly protected the incompatible spelling. This
+  was deterministic Windows build/native-evidence availability and verifier-
+  specification debt, not a VM launch, domain mutation, privilege change,
+  listener, or RustDesk runtime failure.
+
+  Both wrappers now execute exactly `setsid --wait`, then the existing
+  `timeout --foreground --kill-after=2` boundary, then
+  `virsh --connect qemu:///session "$@" </dev/null`. The outer fresh session
+  removes the controlling terminal; closed standard input prevents an
+  interactive credential read; the timeout remains the exact owner that
+  terminates and reaps `virsh`; the C locale, fixed unprivileged session URI,
+  exact-UUID controls, and all existing failure classifications are unchanged.
+  There is no version probe, fallback branch, alternate URI, system-libvirt
+  path, polkit prompt, privilege grant, or compatibility alias. The unsupported
+  option is forbidden rather than conditionally retained.
+
+  Actual read-only invocations of the corrected command shape successfully
+  enumerated all session-domain names and UUIDs and returned exact URI
+  `qemu:///session` under host libvirt 10.0.0. Both enumerations were empty.
+  No `pkttyagent` remained, no domain was created or controlled, and no KVM,
+  Windows guest, product code, listener, service, host RustDesk configuration,
+  firewall, or network state was started or changed. Confined verification used
+  immutable image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  as numeric UID:GID 1000:1000 with no pull/network, a read-only root and
+  repository, all capabilities dropped, no-new-privileges, bounded resources,
+  non-executable private scratch, and no socket, device, port, or host
+  namespace. The golden focused verifier rejected all 45 deliberate
+  weakenings. The per-build verifier rejected all 225 weakenings and passed
+  five bounded synthetic behavioral suites after the exact 524,544 descriptor
+  ceiling and SHA-256-pinned local `olefile` wheel were supplied read-only;
+  nothing was installed. The independent baseline and complete unsliced
+  source-mutation catalog both exited zero. Preliminary attempts that exposed
+  the default descriptor ceiling and the image's absent `olefile` are retained,
+  not counted as passes. Appendix C #336 carries the correction. Native
+  Windows focus/minimize and compositor execution, the complete Windows
+  artifact build, clean cold R-B2/R-B10, independent reproduction, and
+  external review remain open. The broader connection correctness/performance
+  and Ralph-loop goals remain active.
 - **R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission —
   SOURCE IMPLEMENTED AND CONFINED BEHAVIOR/MUTATION VERIFIED 2026-07-29;
   EXECUTABLE LIBVIRT/VM AND COLD RELEASE EVIDENCE OPEN.**
@@ -21048,7 +21103,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-396b73d30f95f5dc72398c3065c3f1c60b62a2f57e661a1db090546227f163cd  requirements.html
+30a7cc1209a2353fdd46339f417c06b8b47903eb1fbe7847cf4e29c708812068  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

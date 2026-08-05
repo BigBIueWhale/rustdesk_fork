@@ -29156,8 +29156,17 @@ def validate_windows_golden_domain_authority_contract(sources):
             "Windows golden pre-existing-name refusal",
         ),
         (
-            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
-            "        virsh --connect qemu:///session --no-pkttyagent \"$@\"",
+            "setsid --wait \\\n",
+            "Windows golden detached session-libvirt control",
+        ),
+        (
+            'virsh --connect qemu:///session "$@" </dev/null',
+            "Windows golden closed session-libvirt control input",
+        ),
+        (
+            "setsid --wait \\\n"
+            '        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
+            "        virsh --connect qemu:///session \"$@\" </dev/null",
             "Windows golden bounded fixed libvirt control",
         ),
         (
@@ -29292,6 +29301,7 @@ def validate_windows_golden_domain_authority_contract(sources):
         ('send-key "$DOMAIN"', "Windows golden name-addressed boot-key absence"),
         ('domstate "$DOMAIN"', "Windows golden name-addressed state absence"),
         ("virsh -c qemu:///session", "Windows golden legacy virsh absence"),
+        ("--no-pkttyagent", "Windows golden post-libvirt-10 virsh option absence"),
         ("|| true", "Windows golden suppressed lifecycle error absence"),
     ):
         require_absent(provision, forbidden, label)
@@ -29366,6 +29376,16 @@ def validate_windows_golden_domain_authority_contract(sources):
             "Windows golden normative process-group admission",
         ),
         (
+            "use the fixed session URI, C locale, one fresh <code>setsid</code> "
+            "control session with standard input closed",
+            "Windows golden version-compatible noninteractive control requirement",
+        ),
+        (
+            "MUST NOT</span> require the post-libvirt-10.0.0 "
+            "<code>--no-pkttyagent</code> option",
+            "Windows golden unsupported virsh option prohibition",
+        ),
+        (
             "Domain cleanup <span class=\"kw\">MUST NOT</span> request storage deletion",
             "Windows golden normative storage preservation",
         ),
@@ -29386,6 +29406,11 @@ def validate_windows_golden_domain_authority_contract(sources):
         "Windows golden Appendix C #291 disposition",
     )
     require_text(
+        sources["requirements"],
+        "<tr><td>336</td>",
+        "Windows golden Appendix C #336 disposition",
+    )
+    require_text(
         sources["hardening"],
         "R-S11dr/R-S11e-136 — Windows golden provisioner owns one exact libvirt UUID",
         "Windows golden hardening-ledger disposition",
@@ -29394,6 +29419,12 @@ def validate_windows_golden_domain_authority_contract(sources):
         sources["hardening"],
         "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
         "Windows golden setsid-admission hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dr/R-S11ds/R-S11e-214 — version-compatible noninteractive "
+        "session-libvirt control",
+        "Windows golden version-compatible session-libvirt hardening ledger",
     )
     require_text(
         sources["verify"],
@@ -29426,6 +29457,22 @@ def validate_windows_golden_domain_authority_contract(sources):
         (
             "post-launch process-group admission",
             "Windows golden focused admission binding",
+        ),
+        (
+            "detached session-libvirt control",
+            "Windows golden focused detached-control mutation",
+        ),
+        (
+            "closed session-libvirt control input",
+            "Windows golden focused closed-input mutation",
+        ),
+        (
+            "Appendix C #336 disposition",
+            "Windows golden focused compatibility-Appendix mutation",
+        ),
+        (
+            "version-compatible session-libvirt hardening ledger",
+            "Windows golden focused compatibility-ledger mutation",
         ),
     ):
         require_text(focused, text, label)
@@ -29510,6 +29557,30 @@ def validate_windows_golden_domain_authority_contract(sources):
             "Windows golden setsid-admission hardening ledger",
             "Windows golden admission-ledger mutation",
         ),
+        (
+            "Windows golden detached session-libvirt control",
+            "Windows golden detached-control mutation",
+        ),
+        (
+            "Windows golden closed session-libvirt control input",
+            "Windows golden closed-input mutation",
+        ),
+        (
+            "Windows golden post-libvirt-10 virsh option absence",
+            "Windows golden unsupported-option mutation",
+        ),
+        (
+            "Windows golden version-compatible noninteractive control requirement",
+            "Windows golden compatibility-requirement mutation",
+        ),
+        (
+            "Windows golden Appendix C #336 disposition",
+            "Windows golden compatibility-Appendix mutation",
+        ),
+        (
+            "Windows golden version-compatible session-libvirt hardening ledger",
+            "Windows golden compatibility-ledger mutation",
+        ),
     ):
         require_text(mutation_matrix, text, label)
 
@@ -29565,8 +29636,17 @@ def validate_windows_build_domain_authority_contract(sources):
             "Windows build pre-existing-UUID refusal",
         ),
         (
-            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
-            '        virsh --connect qemu:///session --no-pkttyagent "$@"',
+            "setsid --wait \\\n",
+            "Windows build detached session-libvirt control",
+        ),
+        (
+            'virsh --connect qemu:///session "$@" </dev/null',
+            "Windows build closed session-libvirt control input",
+        ),
+        (
+            "setsid --wait \\\n"
+            '        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
+            '        virsh --connect qemu:///session "$@" </dev/null',
             "Windows build bounded fixed libvirt control",
         ),
         (
@@ -29766,6 +29846,7 @@ def validate_windows_build_domain_authority_contract(sources):
         ('virsh_bounded undefine "$CURRENT_DOMAIN"', "Windows build name-addressed undefine absence"),
         ("domain_uuid_now", "Windows build legacy name-to-UUID helper absence"),
         ("virsh -c qemu:///session", "Windows build legacy virsh wrapper absence"),
+        ("--no-pkttyagent", "Windows build post-libvirt-10 virsh option absence"),
     ):
         require_absent(build, forbidden, label)
 
@@ -29907,6 +29988,16 @@ def validate_windows_build_domain_authority_contract(sources):
             "Windows build normative UUID-only control",
         ),
         (
+            "use the fixed <code>qemu:///session</code> URI, C locale, one fresh "
+            "<code>setsid</code> control session with standard input closed",
+            "Windows build version-compatible noninteractive control requirement",
+        ),
+        (
+            "MUST NOT</span> require the post-libvirt-10.0.0 "
+            "<code>--no-pkttyagent</code> option",
+            "Windows build unsupported virsh option prohibition",
+        ),
+        (
             "complete retained matching client process group and session",
             "Windows build normative complete client-process authority",
         ),
@@ -29932,6 +30023,11 @@ def validate_windows_build_domain_authority_contract(sources):
         "Windows build Appendix C #291 disposition",
     )
     require_text(
+        sources["requirements"],
+        "<tr><td>336</td>",
+        "Windows build Appendix C #336 disposition",
+    )
+    require_text(
         sources["hardening"],
         "R-S11ds/R-S11e-137 — Windows per-build VM owns one exact libvirt UUID",
         "Windows build hardening-ledger disposition",
@@ -29940,6 +30036,12 @@ def validate_windows_build_domain_authority_contract(sources):
         sources["hardening"],
         "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
         "Windows build setsid-admission hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dr/R-S11ds/R-S11e-214 — version-compatible noninteractive "
+        "session-libvirt control",
+        "Windows build version-compatible session-libvirt hardening ledger",
     )
     require_text(
         sources["verify"],
@@ -30196,6 +30298,22 @@ def validate_windows_build_domain_authority_contract(sources):
             "Windows build focused delayed-admission fixture",
         ),
         (
+            "detached bounded virsh",
+            "Windows build focused detached-control mutation",
+        ),
+        (
+            "closed virsh input",
+            "Windows build focused closed-input mutation",
+        ),
+        (
+            "Appendix C #336 disposition",
+            "Windows build focused compatibility-Appendix mutation",
+        ),
+        (
+            "version-compatible session-libvirt hardening-ledger disposition",
+            "Windows build focused compatibility-ledger mutation",
+        ),
+        (
             "exact run-root retirement before authority clearing",
             "Windows build focused run-root retirement binding",
         ),
@@ -30333,6 +30451,30 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             "Windows golden setsid-admission hardening ledger",
             "Windows shared admission-ledger mutation",
+        ),
+        (
+            "Windows build detached session-libvirt control",
+            "Windows build detached-control mutation",
+        ),
+        (
+            "Windows build closed session-libvirt control input",
+            "Windows build closed-input mutation",
+        ),
+        (
+            "Windows build post-libvirt-10 virsh option absence",
+            "Windows build unsupported-option mutation",
+        ),
+        (
+            "Windows build version-compatible noninteractive control requirement",
+            "Windows build compatibility-requirement mutation",
+        ),
+        (
+            "Windows golden Appendix C #336 disposition",
+            "Windows shared compatibility-Appendix mutation",
+        ),
+        (
+            "Windows golden version-compatible session-libvirt hardening ledger",
+            "Windows shared compatibility-ledger mutation",
         ),
         (
             "Windows build retained run-root device/inode",
@@ -63182,10 +63324,22 @@ def run_source_mutations(sources):
         ),
         (
             "windows_provision",
-            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
-            "        virsh --connect qemu:///session --no-pkttyagent \"$@\"",
+            "setsid --wait \\\n"
+            '        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
+            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
+            "Windows golden detached session-libvirt control",
+        ),
+        (
+            "windows_provision",
+            'virsh --connect qemu:///session "$@" </dev/null',
             'virsh --connect qemu:///session "$@"',
-            "Windows golden bounded fixed libvirt control",
+            "Windows golden closed session-libvirt control input",
+        ),
+        (
+            "windows_provision",
+            "export LC_ALL=C",
+            "export LC_ALL=C\n# --no-pkttyagent is not a compatible control boundary",
+            "Windows golden post-libvirt-10 virsh option absence",
         ),
         (
             "windows_provision",
@@ -63344,6 +63498,13 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
+            "use the fixed session URI, C locale, one fresh <code>setsid</code> "
+            "control session with standard input closed",
+            "use the fixed session URI and an interactive control process",
+            "Windows golden version-compatible noninteractive control requirement",
+        ),
+        (
+            "requirements",
             "<tr><td>271</td>",
             "<tr><td>271-disabled</td>",
             "Windows golden Appendix C #271 disposition",
@@ -63353,6 +63514,12 @@ def run_source_mutations(sources):
             "<tr><td>291</td>",
             "<tr><td>291-disabled</td>",
             "Windows golden Appendix C #291 disposition",
+        ),
+        (
+            "requirements",
+            "<tr><td>336</td>",
+            "<tr><td>336-disabled</td>",
+            "Windows golden Appendix C #336 disposition",
         ),
         (
             "verify",
@@ -63371,6 +63538,13 @@ def run_source_mutations(sources):
             "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
             "R-S11dr/R-S11ds/R-S11e-170 — ambient setsid process-group admission",
             "Windows golden setsid-admission hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11dr/R-S11ds/R-S11e-214 — version-compatible noninteractive "
+            "session-libvirt control",
+            "R-S11dr/R-S11ds/R-S11e-214 — interactive session-libvirt control",
+            "Windows golden version-compatible session-libvirt hardening ledger",
         ),
         (
             "windows_build",
@@ -63403,6 +63577,25 @@ def run_source_mutations(sources):
             'uuids="$(virsh_bounded list --all --uuid)" || return 2',
             'uuids="$(virsh_bounded list --uuid)" || return 1',
             "Windows build fail-closed UUID enumeration",
+        ),
+        (
+            "windows_build",
+            "setsid --wait \\\n"
+            '        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
+            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
+            "Windows build detached session-libvirt control",
+        ),
+        (
+            "windows_build",
+            'virsh --connect qemu:///session "$@" </dev/null',
+            'virsh --connect qemu:///session "$@"',
+            "Windows build closed session-libvirt control input",
+        ),
+        (
+            "windows_build",
+            "export LC_ALL=C",
+            "export LC_ALL=C\n# --no-pkttyagent is not a compatible control boundary",
+            "Windows build post-libvirt-10 virsh option absence",
         ),
         (
             "windows_build",
@@ -63550,6 +63743,13 @@ def run_source_mutations(sources):
             "boundedly re-prove that same live identity",
             "optionally inspect that live identity",
             "Windows build normative process-group admission",
+        ),
+        (
+            "requirements",
+            "use the fixed <code>qemu:///session</code> URI, C locale, one fresh "
+            "<code>setsid</code> control session with standard input closed",
+            "use an interactive system-libvirt control process",
+            "Windows build version-compatible noninteractive control requirement",
         ),
         (
             "requirements",

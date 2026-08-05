@@ -683,10 +683,17 @@ def validate_sources(sources: dict[str, str]) -> None:
         2,
         "TERM/KILL deadlines",
     )
+    require(virsh_bounded, "setsid --wait \\\n", "detached bounded virsh")
     require(
         virsh_bounded,
-        'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
-        '        virsh --connect qemu:///session --no-pkttyagent "$@"',
+        'virsh --connect qemu:///session "$@" </dev/null',
+        "closed virsh input",
+    )
+    require(
+        virsh_bounded,
+        'setsid --wait \\\n'
+        '        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
+        '        virsh --connect qemu:///session "$@" </dev/null',
         "bounded fixed-session noninteractive libvirt control wrapper",
     )
     direct_virsh = re.findall(r"(?m)^[ \t]*virsh(?:[ \t]|$)", host)
@@ -815,6 +822,7 @@ def validate_sources(sources: dict[str, str]) -> None:
         ('virsh_bounded undefine "$CURRENT_DOMAIN"', "name-addressed undefine"),
         ("domain_uuid_now", "legacy split name-to-UUID lookup"),
         ("virsh -c qemu:///session", "legacy interactive virsh wrapper"),
+        ("--no-pkttyagent", "post-libvirt-10 virsh option"),
     ):
         if forbidden in host:
             raise VerificationError(f"forbidden {description}: {forbidden}")
@@ -979,6 +987,16 @@ def validate_sources(sources: dict[str, str]) -> None:
             "normative UUID-only post-create control",
         ),
         (
+            "use the fixed <code>qemu:///session</code> URI, C locale, one fresh "
+            "<code>setsid</code> control session with standard input closed",
+            "normative version-compatible noninteractive control",
+        ),
+        (
+            "MUST NOT</span> require the post-libvirt-10.0.0 "
+            "<code>--no-pkttyagent</code> option",
+            "normative unsupported virsh option prohibition",
+        ),
+        (
             "complete retained matching client process group and session",
             "normative complete client-process authority",
         ),
@@ -1003,6 +1021,7 @@ def validate_sources(sources: dict[str, str]) -> None:
         require(exact_domain_requirement, literal, description)
     require(requirements, "<tr><td>272</td>", "Appendix C #272 disposition")
     require(requirements, "<tr><td>291</td>", "Appendix C #291 disposition")
+    require(requirements, "<tr><td>336</td>", "Appendix C #336 disposition")
     require(
         hardening,
         "R-S11ds/R-S11e-137 — Windows per-build VM owns one exact libvirt UUID",
@@ -1012,6 +1031,12 @@ def validate_sources(sources: dict[str, str]) -> None:
         hardening,
         "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
         "setsid-admission hardening-ledger disposition",
+    )
+    require(
+        hardening,
+        "R-S11dr/R-S11ds/R-S11e-214 — version-compatible noninteractive "
+        "session-libvirt control",
+        "version-compatible session-libvirt hardening-ledger disposition",
     )
     require(
         verify,
@@ -2407,11 +2432,23 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
         ),
         ("setsid wait", "host", "setsid --wait virt-install", "setsid virt-install"),
         (
-            "bounded virsh",
+            "detached bounded virsh",
             "host",
-            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
-            '        virsh --connect qemu:///session --no-pkttyagent "$@"',
+            'setsid --wait \\\n'
+            '        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
+            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
+        ),
+        (
+            "closed virsh input",
+            "host",
+            'virsh --connect qemu:///session "$@" </dev/null',
             'virsh --connect qemu:///session "$@"',
+        ),
+        (
+            "post-libvirt-10 virsh option absence",
+            "host",
+            "export LC_ALL=C",
+            "export LC_ALL=C\n# --no-pkttyagent is not a compatible control boundary",
         ),
         (
             "fail-closed domain-name enumeration",
@@ -2926,6 +2963,13 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "optionally inspect that live identity",
         ),
         (
+            "normative version-compatible noninteractive control",
+            "requirements",
+            "use the fixed <code>qemu:///session</code> URI, C locale, one fresh "
+            "<code>setsid</code> control session with standard input closed",
+            "use an interactive system-libvirt control process",
+        ),
+        (
             "Appendix C #272 disposition",
             "requirements",
             "<tr><td>272</td>",
@@ -2938,6 +2982,12 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "<tr><td>291-disabled</td>",
         ),
         (
+            "Appendix C #336 disposition",
+            "requirements",
+            "<tr><td>336</td>",
+            "<tr><td>336-disabled</td>",
+        ),
+        (
             "R-S11ds hardening-ledger disposition",
             "hardening",
             "R-S11ds/R-S11e-137 — Windows per-build VM owns one exact libvirt UUID",
@@ -2948,6 +2998,13 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "hardening",
             "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
             "R-S11dr/R-S11ds/R-S11e-170 — ambient setsid process-group admission",
+        ),
+        (
+            "version-compatible session-libvirt hardening-ledger disposition",
+            "hardening",
+            "R-S11dr/R-S11ds/R-S11e-214 — version-compatible noninteractive "
+            "session-libvirt control",
+            "R-S11dr/R-S11ds/R-S11e-214 — interactive session-libvirt control",
         ),
         (
             "R-S11ds focused gate wiring",

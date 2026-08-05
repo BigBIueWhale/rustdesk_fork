@@ -123,8 +123,17 @@ def validate(sources):
             "exact owned process-group terminal stop",
         ),
         (
-            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
-            "        virsh --connect qemu:///session --no-pkttyagent \"$@\"",
+            "setsid --wait \\\n",
+            "detached session-libvirt control",
+        ),
+        (
+            'virsh --connect qemu:///session "$@" </dev/null',
+            "closed session-libvirt control input",
+        ),
+        (
+            "setsid --wait \\\n"
+            '        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
+            "        virsh --connect qemu:///session \"$@\" </dev/null",
             "bounded fixed session-libvirt control",
         ),
         ('list --all --name', "fail-closed complete name enumeration"),
@@ -247,6 +256,7 @@ def validate(sources):
         ('send-key "$DOMAIN"', "name-addressed boot-key absence"),
         ('domstate "$DOMAIN"', "name-addressed state-query absence"),
         ("virsh -c qemu:///session", "unbounded legacy virsh absence"),
+        ("--no-pkttyagent", "post-libvirt-10 virsh option absence"),
         ("|| true", "suppressed lifecycle error absence"),
         (
             "independently name-owned pre-creation collision handling remains",
@@ -330,6 +340,16 @@ def validate(sources):
             "UUID-only normative control boundary",
         ),
         (
+            "use the fixed session URI, C locale, one fresh <code>setsid</code> "
+            "control session with standard input closed",
+            "version-compatible noninteractive control requirement",
+        ),
+        (
+            "MUST NOT</span> require the post-libvirt-10.0.0 "
+            "<code>--no-pkttyagent</code> option",
+            "unsupported virsh option prohibition",
+        ),
+        (
             "Domain cleanup <span class=\"kw\">MUST NOT</span> request storage deletion",
             "golden-storage preservation requirement",
         ),
@@ -350,6 +370,11 @@ def validate(sources):
         "Appendix C #291 disposition",
     )
     require_text(
+        sources["requirements"],
+        "<tr><td>336</td>",
+        "Appendix C #336 disposition",
+    )
+    require_text(
         sources["hardening"],
         "R-S11dr/R-S11e-136 — Windows golden provisioner owns one exact libvirt UUID",
         "hardening-ledger disposition",
@@ -358,6 +383,12 @@ def validate(sources):
         sources["hardening"],
         "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
         "setsid-admission hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11dr/R-S11ds/R-S11e-214 — version-compatible noninteractive "
+        "session-libvirt control",
+        "version-compatible session-libvirt hardening ledger",
     )
     require_text(
         sources["verify"],
@@ -436,9 +467,22 @@ def run_self_test(sources):
         ),
         (
             "provision",
-            "virsh --connect qemu:///session --no-pkttyagent",
-            "virsh --connect qemu:///session",
-            "bounded fixed session-libvirt control",
+            "setsid --wait \\\n"
+            '        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
+            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
+            "detached session-libvirt control",
+        ),
+        (
+            "provision",
+            'virsh --connect qemu:///session "$@" </dev/null',
+            'virsh --connect qemu:///session "$@"',
+            "closed session-libvirt control input",
+        ),
+        (
+            "provision",
+            "export LC_ALL=C",
+            "export LC_ALL=C\n# --no-pkttyagent is not a compatible control boundary",
+            "post-libvirt-10 virsh option absence",
         ),
         (
             "provision",
@@ -599,6 +643,13 @@ def run_self_test(sources):
         ),
         (
             "requirements",
+            "use the fixed session URI, C locale, one fresh <code>setsid</code> "
+            "control session with standard input closed",
+            "use the fixed session URI and an interactive control process",
+            "version-compatible noninteractive control requirement",
+        ),
+        (
+            "requirements",
             "<tr><td>271</td>",
             "<tr><td>271-disabled</td>",
             "Appendix C #271 disposition",
@@ -608,6 +659,12 @@ def run_self_test(sources):
             "<tr><td>291</td>",
             "<tr><td>291-disabled</td>",
             "Appendix C #291 disposition",
+        ),
+        (
+            "requirements",
+            "<tr><td>336</td>",
+            "<tr><td>336-disabled</td>",
+            "Appendix C #336 disposition",
         ),
         (
             "hardening",
@@ -620,6 +677,13 @@ def run_self_test(sources):
             "R-S11dr/R-S11ds/R-S11e-170 — exact setsid process-group admission",
             "R-S11dr/R-S11ds/R-S11e-170 — ambient setsid process-group admission",
             "setsid-admission hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11dr/R-S11ds/R-S11e-214 — version-compatible noninteractive "
+            "session-libvirt control",
+            "R-S11dr/R-S11ds/R-S11e-214 — interactive session-libvirt control",
+            "version-compatible session-libvirt hardening ledger",
         ),
         (
             "verify",

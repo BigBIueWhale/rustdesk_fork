@@ -16238,6 +16238,33 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Windows presentation transaction must then execute successfully. Until that happens, Windows remains
   stop-ship and no focus/display-latency fix is claimed proven.
 
+  The first regeneration attempt from exact codec-provisioning commit
+  `0dc449e` is also uncounted. Its live authority audit was green: unprivileged session UUID
+  `452ddfed-8813-4e7f-b186-a7c5d939fb0b`, one `type=user`/`e1000e` provisioning interface, no
+  host-device or filesystem passthrough, and VNC parent/child plus the only new listener exactly on
+  `127.0.0.1:5900`. At 20:34:25 local time the host entered global OOM while the guest was still
+  installing the Windows SDK. The kernel killed an unrelated UID-1000 process named `2.1.220` with
+  approximately 29.6 GiB resident memory; the simultaneous memory pressure made the bounded libvirt
+  identity proof fail, so the provisioner refused success and its exact-UUID cleanup terminated QEMU.
+  QEMU's log records SIGTERM from session libvirtd and `reason=destroyed`; Windows' `ShutdownTime`
+  remained 17:26:56 UTC (the earlier OS-install shutdown), and the Visual Studio log ends mid-package
+  without an installer error or completion. Thus this was not a guest-requested shutdown, codec failure,
+  or product result. Cleanup removed the domain, QEMU/wrapper, and loopback VNC listener; the receipt-less
+  candidate is preserved as `win11-golden-failed-host-oom-c6806f20e6db.qcow2`, full SHA-256
+  `c6806f20e6dbea8004b81aed154e8462229385f144bf4651ab69618bea0fe041`.
+
+  A clean repeat from the same exact `0dc449e` source completed provisioning. Live and post-restart audits
+  bound persistent session UUID `112fb268-04d0-459b-8c07-76be564e38ef` to the same one user-mode NIC,
+  zero passthroughs, and loopback-only VNC; no new OOM occurred, and terminal cleanup left no domain,
+  QEMU/wrapper, or VM listener. The first acceptance attempt intentionally failed at the old immutable-image
+  pin after finding the exact v2 receipt; the regenerated qcow2 is now pinned as
+  `2fa5560f6bbc1f90559f12328af269f316fed19a9620ffcbf9b74da37d1936c2`. Independent read-only
+  inspection confirmed that receipt, the non-expiring builder assertion, all three Flutter Windows engine
+  variants, and warmed `cpu_features`, JPEG, Opus, libvpx, and libyuv libraries. This validates the golden
+  template only. No RustDesk peer, production app connection, focus/minimize transition, compositor pixel,
+  display-latency budget, reconnect, Android persistent-service lifecycle, or cross-version flow ran here;
+  the exact Windows presentation transaction remains the next stop-ship gate.
+
 - **Exact Linux Flutter texture/X11 presentation recovery — EXECUTABLE EVIDENCE GREEN;
   ANDROID/WINDOWS/NATIVE END-TO-END EVIDENCE OPEN.** Platform: confined Linux X11 with Flutter
   3.24.5 and software rendering. Endpoint/action: the repository's production Linux

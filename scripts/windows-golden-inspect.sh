@@ -11,11 +11,16 @@ fail() {
 
 [ "$#" -eq 1 ] || fail "requires exactly one fixed operation"
 readonly GOLDEN=/authority/golden.qcow2
+readonly EXPECTED_RECEIPT=$'rustdesk-windows-golden-v2\nbuilder-password-never-expires=true\nsetup-complete=true'
 [ -f "$GOLDEN" ] && [ ! -L "$GOLDEN" ] || fail "golden input must be a regular file"
 
 case "$1" in
     marker)
-        exec /usr/bin/virt-cat -a "$GOLDEN" /guest-setup-done.txt >/dev/null 2>&1
+        marker="$({ /usr/bin/virt-cat -a "$GOLDEN" /guest-setup-done.txt \
+            | /usr/bin/tr -d '\r'; } 2>/dev/null)" \
+            || fail "cannot read the golden completion receipt"
+        [ "$marker" = "$EXPECTED_RECEIPT" ] \
+            || fail "golden completion receipt is absent or incompatible"
         ;;
     inventory)
         printf '%s\n' '=== C:\ root listing (expect flutter, vcpkg, guest-setup-done.txt, online, src) ==='
@@ -32,10 +37,12 @@ case "$1" in
             | /usr/bin/grep -i windows \
             || printf '%s\n' '(no windows engine — flutter precache --windows did not run)'
         printf '%s\n' '=== verdict ==='
-        if /usr/bin/virt-cat -a "$GOLDEN" /guest-setup-done.txt >/dev/null 2>&1; then
-            printf '%s\n' 'GOLDEN-OK: C:\guest-setup-done.txt present — win-guest-setup.ps1 ran to completion'
+        marker="$({ /usr/bin/virt-cat -a "$GOLDEN" /guest-setup-done.txt \
+            | /usr/bin/tr -d '\r'; } 2>/dev/null || :)"
+        if [ "$marker" = "$EXPECTED_RECEIPT" ]; then
+            printf '%s\n' 'GOLDEN-OK: exact v2 completion receipt present — setup completed with a non-expiring builder password'
         else
-            printf '%s\n' 'GOLDEN-FAIL: C:\guest-setup-done.txt ABSENT — win-guest-setup.ps1 did not complete'
+            printf '%s\n' 'GOLDEN-FAIL: exact v2 completion receipt ABSENT — setup is incomplete or incompatible'
             printf '%s\n' '=== C:\setup-transcript.txt (tail, where it stopped) ==='
             /usr/bin/virt-cat -a "$GOLDEN" /setup-transcript.txt 2>/dev/null \
                 | /usr/bin/tail -30 \

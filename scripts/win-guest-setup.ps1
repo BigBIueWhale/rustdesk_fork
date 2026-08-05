@@ -201,6 +201,12 @@ if ($src) {
 # disk is attached (so provisioning + ordinary boots no-op) -- runs run-build.ps1 off the CD. Keeping the
 # build logic on the CD means it changes without re-provisioning; only this tiny launcher is baked in.
 Log 'installing the per-build logon harness (persistent auto-login + build task)'
+$builderAccount = Get-LocalUser -Name 'builder'
+$builderAccount | Set-LocalUser -PasswordNeverExpires $true
+$builderAccount = Get-LocalUser -Name 'builder'
+if ($null -ne $builderAccount.PasswordExpires) {
+    Die 'the dedicated builder password is still configured to expire'
+}
 $winlogon = 'HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon'
 Set-ItemProperty $winlogon 'AutoAdminLogon'  '1'
 Set-ItemProperty $winlogon 'DefaultUserName' 'builder'
@@ -219,7 +225,11 @@ $trg = New-ScheduledTaskTrigger -AtLogOn -User 'builder'
 Register-ScheduledTask -TaskName 'RustdeskPerBuild' -Action $act -Trigger $trg -RunLevel Highest `
     -User 'builder' -Password 'RustdeskBuild!1' -Force | Out-Null
 
-New-Item -ItemType File -Force -Path 'C:\guest-setup-done.txt' | Out-Null
+@'
+rustdesk-windows-golden-v2
+builder-password-never-expires=true
+setup-complete=true
+'@ | Set-Content -Encoding ASCII 'C:\guest-setup-done.txt'
 Log 'guest toolchain provisioning complete -- shutting down (this powered-off image IS the golden)'
 # Shut down so provision-windows-vm.sh's `virt-install --wait` returns and the golden is the
 # clean, provisioned baseline. A failed setup leaves NO marker + never shuts down -> the wait

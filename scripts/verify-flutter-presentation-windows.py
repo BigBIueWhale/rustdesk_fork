@@ -40,6 +40,8 @@ PATHS = {
         "scripts/flutter-presentation-probe-desktop-multi-window-pubspec.yaml"
     ),
     "manifest": "scripts/windows-presentation-source-manifest.py",
+    "guest_setup": "scripts/win-guest-setup.ps1",
+    "golden_inspector": "scripts/windows-golden-inspect.sh",
     "recovery": "flutter/lib/models/presentation_recovery.dart",
     "verify": "scripts/verify.sh",
     "workspace": "scripts/verify-verifier-workspace.py",
@@ -61,6 +63,8 @@ def validate(sources: dict[str, str]) -> None:
     controller = sources["controller"]
     dart = sources["dart"]
     manifest = sources["manifest"]
+    guest_setup = sources["guest_setup"]
+    golden_inspector = sources["golden_inspector"]
 
     require_order(
         host,
@@ -101,6 +105,21 @@ def validate(sources: dict[str, str]) -> None:
     forbid(host, "windows_helper_kvm_guestfish_run", "KVM device helper")
     require(host, "qemu-img create -f qcow2 -F qcow2 -b ../win11-golden.qcow2", "disposable overlay")
     require(host, 'sha256sum "$GOLDEN"', "golden before/after digest")
+    require_order(
+        host,
+        (
+            'windows_helper_runtime_resolve "$ONLINE_DIR/build-images/win-helper.docker.tar.gz"',
+            "golden_has_contract",
+            'die "Windows presentation golden lacks the exact non-expiring-builder contract"',
+            "materialize_source",
+        ),
+        "golden contract before source materialization and VM creation",
+    )
+    require(
+        host,
+        "/authority/windows-golden-inspect.sh marker",
+        "fixed golden receipt inspector",
+    )
     require(host, "DESKTOP_MULTI_WINDOW_COMMIT=b47e8385e5a75d38319ad706a64b0ead3108b093", "window plugin commit")
     require(host, "DESKTOP_MULTI_WINDOW_TREE=ee184480a0e519b9f51f7496d3d90674782481d6", "window plugin tree")
     for unsafe in (
@@ -215,6 +234,32 @@ def validate(sources: dict[str, str]) -> None:
     require(manifest, "runner.read_bytes() != canonical_runner.read_bytes()", "runner equality")
     require(manifest, "actual != manifest[\"files\"]", "exact inventory")
 
+    require_order(
+        guest_setup,
+        (
+            "Get-LocalUser -Name 'builder'",
+            "Set-LocalUser -PasswordNeverExpires $true",
+            "if ($null -ne $builderAccount.PasswordExpires)",
+            "rustdesk-windows-golden-v2",
+            "builder-password-never-expires=true",
+            "setup-complete=true",
+            "Stop-Computer -Force",
+        ),
+        "non-expiring builder and exact completion receipt",
+    )
+    require(
+        golden_inspector,
+        "$'rustdesk-windows-golden-v2\\nbuilder-password-never-expires=true\\nsetup-complete=true'",
+        "exact golden receipt validation",
+    )
+    if golden_inspector.count("EXPECTED_RECEIPT") != 3:
+        raise VerificationError("golden receipt definition/use count is not exact")
+    require(
+        golden_inspector,
+        "/usr/bin/tr -d '\\r'",
+        "receipt newline normalization",
+    )
+
     require(sources["recovery"], "class PresentationRecovery", "production recovery owner")
     require(
         sources["verify"],
@@ -250,6 +295,11 @@ def self_test(sources: dict[str, str]) -> None:
         ("host", "virsh --connect qemu:///session", "virsh --connect qemu:///system"),
         ("host", "if not parsed.is_loopback:", "if False:"),
         ("host", "windows_helper_guestfish_run", "windows_helper_kvm_guestfish_run"),
+        (
+            "host",
+            "    golden_has_contract \\\n        || die \"Windows presentation golden lacks the exact non-expiring-builder contract\"",
+            "    true # golden contract removed",
+        ),
         ("host", "assert_clean_worktree", "true # worktree check removed"),
         ("runner", "'get', '--offline'", "'get'"),
         ("runner", "'build', 'windows', '--release', '--no-pub'", "'build', 'windows'"),
@@ -267,6 +317,21 @@ def self_test(sources: dict[str, str]) -> None:
         ("dart", "await widget.texture.close();", "// texture close removed"),
         ("manifest", "metadata.st_nlink != 1", "False"),
         ("manifest", "actual != manifest[\"files\"]", "False"),
+        (
+            "guest_setup",
+            "Set-LocalUser -PasswordNeverExpires $true",
+            "Set-LocalUser -PasswordNeverExpires $false",
+        ),
+        (
+            "guest_setup",
+            "if ($null -ne $builderAccount.PasswordExpires)",
+            "if ($false)",
+        ),
+        (
+            "golden_inspector",
+            "builder-password-never-expires=true",
+            "builder-password-never-expires=unchecked",
+        ),
         ("verify", "/usr/bin/python3 -I -S scripts/verify-flutter-presentation-windows.py --repo . --self-test", "true # verifier removed"),
         ("requirements", '<span class="id">R-S11gb</span>', '<span class="id">R-S11gb-disabled</span>'),
         ("requirements", "<tr><td>337</td>", "<tr><td>337-disabled</td>"),

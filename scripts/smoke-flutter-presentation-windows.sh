@@ -340,6 +340,13 @@ output_path.write_text("".join(f"{item}\n" for item in new), encoding="ascii")
 PY
 }
 
+golden_has_contract() {
+    windows_helper_guestfish_run \
+        --mount "type=bind,source=$GOLDEN,target=/authority/golden.qcow2,readonly" \
+        -- /bin/bash --noprofile --norc \
+            /authority/windows-golden-inspect.sh marker
+}
+
 preflight() {
     require_cmd git tar python3 qemu-img virt-install virsh ss timeout setsid awk sha256sum stat
     assert_no_build_host_network_residual
@@ -378,6 +385,8 @@ preflight() {
     capture_listeners >"$LISTENERS_BEFORE"
     windows_helper_authority_open
     windows_helper_runtime_resolve "$ONLINE_DIR/build-images/win-helper.docker.tar.gz"
+    golden_has_contract \
+        || die "Windows presentation golden lacks the exact non-expiring-builder contract"
 }
 
 materialize_source() {

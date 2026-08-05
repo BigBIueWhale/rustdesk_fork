@@ -16171,9 +16171,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   removed. It opened no network/listener, gained no authority, and touched no RustDesk/service/configuration,
   but it is excluded from counted evidence because it violated the preferred containment rule.
 
-  No VM has yet been started by this slice, no Windows executable has been built or launched, and no native
-  pixel result or latency has been observed. The harness must pass from the exact committed source before
-  this entry can become executable evidence. Even then it proves only the narrow current Windows native
+  At the initial harness commit no VM had yet been started by this slice, no Windows executable had been
+  built or launched, and no native pixel result or latency had been observed. The harness must pass from
+  exact committed source before this entry can become executable evidence. Even then it proves only the
+  narrow current Windows native
   texture/recovery/presentation edge—not the full RustDesk app, a peer, capture/encode/transport/decode,
   simultaneous remote control, software-RGBA mode, Android task-swipe/reopen/Force-Stop or persistent-service
   recovery, cross-version behavior, sustained focus/soak, packaged release artifacts, clean cold R-B2/R-B10,
@@ -16189,6 +16190,32 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   below the identically named golden inside the helper; that same relative name resolves to the pinned golden
   from the host run directory. No fallback, copied golden, privilege, device, network, or product mutation is
   introduced. This is a harness path-identity correction only and must be re-executed from a new exact commit.
+
+  The second exact-commit invocation at `d54235f94bd770b031410f5ac587662c6762b193` is also uncounted
+  native evidence. The corrected disk identity passed, the unprivileged session domain was created with zero
+  network interfaces, and its sole new listener was VNC on `127.0.0.1:5900`. The guest remained running until
+  the unchanged one-hour deadline and the wrapper then destroyed and undefined its exact UUID. Read-only
+  follow-up proved that the domain, listener, QEMU process, and wrapper were all absent. The host RustDesk
+  service/process/configuration and host firewall/network state were not read or mutated by project code.
+
+  This was not a slow Flutter build or a product presentation failure. The retained OUTPUT disk contained
+  only Windows' automatic `System Volume Information`, with no initial `source-found` progress receipt. The
+  stopped overlay showed that Windows had booted, the golden launcher and `RustdeskPerBuild` task were present,
+  but the task's Task Scheduler `DynamicInfo` retained an all-zero last-run field. Offline SAM inspection then
+  identified the cause: the local account policy's maximum password age is exactly 42 days, while `builder`'s
+  account-control bits were `0x0010` (normal account) without `0x0200` (password does not expire). The golden
+  was provisioned on 2026-06-23 and this attempt ran on 2026-08-05, after that limit. Winlogon still carried
+  `AutoAdminLogon=1` and `DefaultUserName=builder`, but the expired dedicated build credential prevented the
+  interactive logon, so the logon task and presentation runner never began. Consequently this attempt provides
+  no Windows Flutter engine, texture, compositor-pixel, focus, minimize, pointer, latency, or RustDesk behavior
+  evidence.
+
+  The required correction is a golden-image lifecycle contract, not a timeout increase or an evidentiary
+  fallback. Golden provisioning must set the dedicated disposable-VM `builder` password to never expire,
+  verify the resulting account property inside Windows, and only then publish a versioned exact completion
+  receipt. Golden inspection and the presentation harness must reject an absent/old receipt before domain
+  creation. The already-pinned old golden is therefore incompatible and cannot count again; a newly provisioned,
+  receipt-valid golden and updated exact digest are required before the native transaction may be rerun.
 
 - **Exact Linux Flutter texture/X11 presentation recovery — EXECUTABLE EVIDENCE GREEN;
   ANDROID/WINDOWS/NATIVE END-TO-END EVIDENCE OPEN.** Platform: confined Linux X11 with Flutter

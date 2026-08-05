@@ -10,7 +10,8 @@ fail() {
 
 [ "$(id -u)" -ne 0 ] || fail 'refuses root execution'
 [ "$(id -g)" -ne 0 ] || fail 'refuses a root primary group'
-[ "$#" -eq 1 ] || fail 'expected one stage: build, server, or viewer'
+[ "$#" -eq 1 ] \
+  || fail 'expected one stage: pub-cache, pub-cache-check, build, server, or viewer'
 
 verify_regular() {
   [ -f "$1" ] && [ ! -L "$1" ] || fail "missing regular input: $1"
@@ -110,12 +111,74 @@ UDP6_TABLE=
 [ ! -r /proc/net/udp6 ] || UDP6_TABLE=/proc/net/udp6
 
 case "$1" in
+  pub-cache)
+    : "${RUSTDESK_EVIDENCE_PUB_CACHE_SHA256:?}"
+    [ -d /evidence-pub-cache ] && [ ! -L /evidence-pub-cache ] \
+      || fail 'retained evidence Pub cache is missing or linked'
+    [ -d /evidence-online ] && [ ! -L /evidence-online ] \
+      && [ "$(stat -c '%u:%g:%a' /evidence-online)" = "$(id -u):$(id -g):700" ] \
+      || fail 'evidence-cache output is not a private current-user directory'
+    [ -z "$(find /evidence-online -mindepth 1 -maxdepth 1 -print -quit)" ] \
+      || fail 'evidence-cache output is not empty'
+    verify_regular /source/scripts/online-pub-cache-output.py
+    /usr/bin/python3 -I -S - /source/scripts/online-pub-cache-output.py \
+      /evidence-pub-cache "$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256" "$(id -u)" "$(id -g)" <<'PY'
+import importlib.util
+import pathlib
+import sys
+
+helper_path = pathlib.Path(sys.argv[1])
+root = pathlib.Path(sys.argv[2])
+expected = sys.argv[3]
+uid = int(sys.argv[4])
+gid = int(sys.argv[5])
+spec = importlib.util.spec_from_file_location("rustdesk_pub_cache_output", helper_path)
+if spec is None or spec.loader is None:
+    raise SystemExit("cannot load Pub-cache verifier")
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+summary = module.inspect_tree(root, owners={(uid, gid)}, published=False)
+module.validate_shape(root, strict_output=True)
+if summary.digest != expected:
+    raise SystemExit(
+        f"retained evidence Pub-cache digest differs: {summary.digest} != {expected}"
+    )
+print(f"FLUTTER_PEER_RETAINED_PUB_CACHE_OK sha256={summary.digest}")
+PY
+    cp -a /evidence-pub-cache /evidence-online/pub-cache
+    chmod 0500 /evidence-online/pub-cache
+    cache_receipt="$(/usr/bin/python3 -I -S /source/scripts/online-pub-cache-output.py \
+      check-complete --online /evidence-online --uid "$(id -u)" --gid "$(id -g)")"
+    [ "$cache_receipt" = "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256" ] \
+      || fail 'sealed evidence Pub-cache receipt differs'
+    printf 'sha256=%s source=retained-read-only-copy semantics=current-five-git-lock\n' \
+      "$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256" > /evidence-online/pub-cache.identity
+    chmod 0444 /evidence-online/pub-cache.identity
+    chmod 0555 /evidence-online
+    printf 'FLUTTER_PEER_PUB_CACHE_PREPARED sha256=%s source_unchanged=true sealed_copy=true\n' \
+      "$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256"
+    ;;
+
+  pub-cache-check)
+    : "${RUSTDESK_EVIDENCE_PUB_CACHE_SHA256:?}"
+    verify_regular /evidence-online/pub-cache.identity
+    [ "$(< /evidence-online/pub-cache.identity)" = \
+      "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 source=retained-read-only-copy semantics=current-five-git-lock" ] \
+      || fail 'evidence Pub-cache identity receipt differs'
+    cache_receipt="$(/usr/bin/python3 -I -S /source/scripts/online-pub-cache-output.py \
+      check-complete --online /evidence-online --uid "$(id -u)" --gid "$(id -g)")"
+    [ "$cache_receipt" = "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256" ] \
+      || fail 'evidence Pub-cache postcheck receipt differs'
+    printf 'FLUTTER_PEER_PUB_CACHE_CHECK_OK sha256=%s sealed=true\n' \
+      "$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256"
+    ;;
+
   build)
     for variable in \
       RUSTDESK_RUST_VERSION RUSTDESK_RUST_SHA256 RUSTDESK_RUST_SIZE \
       RUSTDESK_FLUTTER_VERSION RUSTDESK_FLUTTER_SHA256 RUSTDESK_FLUTTER_SIZE \
       RUSTDESK_LLVM_VERSION RUSTDESK_LLVM_SHA256 RUSTDESK_LLVM_SIZE \
-      RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256; do
+      RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256 RUSTDESK_EVIDENCE_PUB_CACHE_SHA256; do
       [ -n "${!variable:-}" ] || fail "missing build identity: $variable"
     done
     verify_archive "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz" \
@@ -134,10 +197,16 @@ case "$1" in
       /source/scripts/flutter-peer-presentation-x11.c; do
       verify_regular "$input"
     done
-    for directory in /online/cargo-vendor /online/pub-cache /online/vcpkg; do
+    for directory in /online/cargo-vendor /online/vcpkg /evidence-online/pub-cache; do
       [ -d "$directory" ] && [ ! -L "$directory" ] \
         || fail "missing build-input directory: $directory"
     done
+    verify_regular /evidence-online/pub-cache.identity
+    [ "$(< /evidence-online/pub-cache.identity)" = \
+      "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 source=retained-read-only-copy semantics=current-five-git-lock" ] \
+      || fail 'build evidence Pub-cache identity differs'
+    [ "$(stat -c '%u:%g:%a' /evidence-online/pub-cache)" = \
+      "$(id -u):$(id -g):500" ] || fail 'build evidence Pub-cache root is not sealed'
     [ -d /out ] && [ ! -L /out ] \
       && [ "$(stat -c '%u:%g:%a' /out)" = "$(id -u):$(id -g):700" ] \
       || fail 'build output is not a private current-user directory'
@@ -169,7 +238,7 @@ case "$1" in
     [ "$(sha256sum "$FLUTTER_ROOT/packages/flutter_tools/pubspec.lock" | awk '{print $1}')" = \
       "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256" ] \
       || fail 'Flutter tools lockfile differs from its pin'
-    export HOME CARGO_HOME CI=true PUB_CACHE=/online/pub-cache
+    export HOME CARGO_HOME CI=true PUB_CACHE=/evidence-online/pub-cache
     export REAL_FLUTTER="$FLUTTER_ROOT/bin/flutter"
     export VCPKG_ROOT=/online/vcpkg
     export LIBCLANG_PATH="$LLVM_ROOT/lib"
@@ -249,8 +318,9 @@ CFG
       || fail 'build output contains a symlink'
     [ -z "$(find /out -xdev -type f -perm /6000 -print -quit)" ] \
       || fail 'build output contains a setuid or setgid file'
-    printf 'rust=%s flutter=%s llvm=%s features=flutter,unix-file-copy-paste app=rustdesk\n' \
+    printf 'rust=%s flutter=%s llvm=%s pub_cache_sha256=%s features=flutter,unix-file-copy-paste app=rustdesk\n' \
       "$RUSTDESK_RUST_VERSION" "$RUSTDESK_FLUTTER_VERSION" "$RUSTDESK_LLVM_VERSION" \
+      "$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256" \
       > /out/build.identity
     find /out -xdev -type f -exec chmod 0444 {} +
     chmod 0555 /out/flutter-peer-source-x11 /out/flutter-peer-presentation-x11 \
@@ -461,6 +531,6 @@ CFG
     ;;
 
   *)
-    fail 'expected build, server, or viewer stage'
+    fail 'expected pub-cache, pub-cache-check, build, server, or viewer stage'
     ;;
 esac

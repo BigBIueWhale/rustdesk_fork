@@ -10,6 +10,8 @@ umask 077
 
 readonly HOST_UID="$(/usr/bin/id -u)"
 readonly HOST_GID="$(/usr/bin/id -g)"
+readonly EVIDENCE_PUB_CACHE="$REPO_ROOT/.harness-state/android-current-evidence-7c29f39/pub-cache"
+readonly EVIDENCE_PUB_CACHE_SHA256=c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7
 WORKSPACE=
 WORKSPACE_ID=
 BUILD_WORK=
@@ -82,6 +84,11 @@ verify_online_shas \
   "rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75" \
   "flutter-${FLUTTER_VERSION}.tar.xz" "$SHA256_FLUTTER_3_24_5" \
   "llvm-${LLVM_VERSION}.tar.xz" "$SHA256_LLVM_15_0_6"
+[ -d "$EVIDENCE_PUB_CACHE" ] && [ ! -L "$EVIDENCE_PUB_CACHE" ] \
+  && [ "$(stat -c '%u:%g:%a' "$EVIDENCE_PUB_CACHE")" = \
+    "$HOST_UID:$HOST_GID:700" ] \
+  || die 'retained current-lock evidence Pub cache is unavailable or has changed metadata'
+readonly EVIDENCE_PUB_CACHE_ID="$(stat -c '%d:%i:%u:%g:%a' "$EVIDENCE_PUB_CACHE")"
 
 WORKSPACE="$(mktemp -d /tmp/rustdesk-flutter-peer-presentation.XXXXXXXXXX)"
 [ -d "$WORKSPACE" ] && [ ! -L "$WORKSPACE" ] \
@@ -112,9 +119,10 @@ readonly BUILD_OUTPUT="$WORKSPACE/output"
 readonly XVFB_DEBS="$WORKSPACE/xvfb-debs"
 readonly XVFB_ROOT="$WORKSPACE/xvfb-root"
 readonly COORD="$WORKSPACE/coord"
+readonly EVIDENCE_ONLINE="$WORKSPACE/evidence-online"
 BUILD_WORK="$WORKSPACE/build-work"
 mkdir "$SOURCE_SNAPSHOT" "$BUILD_OUTPUT" "$XVFB_DEBS" "$XVFB_ROOT" \
-  "$COORD" "$BUILD_WORK"
+  "$COORD" "$EVIDENCE_ONLINE" "$BUILD_WORK"
 git archive --format=tar --output="$SOURCE_ARCHIVE" "$SOURCE_COMMIT"
 readonly SOURCE_ARCHIVE_SHA256="$(sha256sum "$SOURCE_ARCHIVE" | awk '{print $1}')"
 tar -xf "$SOURCE_ARCHIVE" -C "$SOURCE_SNAPSHOT"
@@ -186,6 +194,22 @@ run_owned_container "$WORKSPACE/xvfb.cid" \
   "$DEV_CHECK_IMAGE_ID" \
   bash --noprofile --norc /work/scripts/smoke-xvfb-prepare.sh
 
+echo '== copy and reverify the retained exact-current Pub cache without mutating it =='
+run_owned_container "$WORKSPACE/pub-cache.cid" \
+  --pull=never --network=none --read-only \
+  --user "$HOST_UID:$HOST_GID" \
+  --cap-drop=ALL --security-opt=no-new-privileges \
+  --pids-limit=128 --memory=2g --memory-swap=2g --cpus=2 \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=128m \
+  --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$EVIDENCE_ONLINE,target=/evidence-online,bind-recursive=disabled" \
+  --env "RUSTDESK_EVIDENCE_PUB_CACHE_SHA256=$EVIDENCE_PUB_CACHE_SHA256" \
+  "$DEV_CHECK_IMAGE_ID" \
+  bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh pub-cache
+[ "$(stat -c '%d:%i:%u:%g:%a' "$EVIDENCE_PUB_CACHE")" = "$EVIDENCE_PUB_CACHE_ID" ] \
+  || die 'retained evidence Pub-cache identity changed while copied'
+
 echo '== build one exact full RustDesk Linux Flutter bundle without packaging =='
 run_owned_container "$WORKSPACE/build.cid" \
   --pull=never --network=none --read-only \
@@ -196,6 +220,7 @@ run_owned_container "$WORKSPACE/build.cid" \
   --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=1g \
   --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$EVIDENCE_ONLINE,target=/evidence-online,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$BUILD_WORK,target=/build-work,bind-recursive=disabled" \
   --mount "type=bind,source=$BUILD_OUTPUT,target=/out,bind-recursive=disabled" \
   --env "RUSTDESK_RUST_VERSION=$RUST_VERSION" \
@@ -208,8 +233,24 @@ run_owned_container "$WORKSPACE/build.cid" \
   --env "RUSTDESK_LLVM_SHA256=$SHA256_LLVM_15_0_6" \
   --env "RUSTDESK_LLVM_SIZE=$SIZE_LLVM_15_0_6" \
   --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
+  --env "RUSTDESK_EVIDENCE_PUB_CACHE_SHA256=$EVIDENCE_PUB_CACHE_SHA256" \
   "$DEB_BUILDER_IMAGE_ID" \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh build
+
+echo '== reverify the exact evidence Pub-cache copy after the offline build =='
+run_owned_container "$WORKSPACE/pub-cache-post.cid" \
+  --pull=never --network=none --read-only \
+  --user "$HOST_UID:$HOST_GID" \
+  --cap-drop=ALL --security-opt=no-new-privileges \
+  --pids-limit=64 --memory=1g --memory-swap=1g --cpus=1 \
+  --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=64m \
+  --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$EVIDENCE_ONLINE,target=/evidence-online,readonly,bind-recursive=disabled" \
+  --env "RUSTDESK_EVIDENCE_PUB_CACHE_SHA256=$EVIDENCE_PUB_CACHE_SHA256" \
+  "$DEV_CHECK_IMAGE_ID" \
+  bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh pub-cache-check
+[ "$(stat -c '%d:%i:%u:%g:%a' "$EVIDENCE_PUB_CACHE")" = "$EVIDENCE_PUB_CACHE_ID" ] \
+  || die 'retained evidence Pub-cache identity changed during the build'
 
 chmod -R u+rwX "$BUILD_WORK"
 rm -rf -- "$BUILD_WORK"

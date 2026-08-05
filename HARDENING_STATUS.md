@@ -16392,8 +16392,17 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   The new transaction builds the exact release-mode Linux Rust shared core and actual RustDesk
   Flutter runner from one clean commit using the pinned offline Rust 1.75, Flutter 3.24.5, LLVM,
-  Cargo-vendor, vcpkg, Pub-cache, and immutable-image inputs. It performs no Debian packaging or
-  release double build. Controlled peer and viewer run as numeric non-root in separate mount, PID,
+  Cargo-vendor, vcpkg, and immutable-image inputs. The first exact committed run correctly stopped
+  before compilation because the canonical root-owned Pub cache is stale and lacks locked
+  `sqflite 2.2.8+4`; no product, X server, or listener started. That canonical tree remains
+  read-only, unchanged, and explicitly blocks R-B10. The evidence harness now admits only the
+  previously retained current-lock cache after a networkless numeric-nonroot read-only validation of
+  its complete closed-tree/five-Git shape and structural digest
+  `c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7`, copies it to fresh
+  private state, seals and revalidates the copy, exposes that copy read-only to the build, enforces
+  both locks offline, and repeats the complete check after build. This is evidence input only, not a
+  canonical-cache repair or release pass. The harness performs no Debian packaging or release double
+  build. Controlled peer and viewer run as numeric non-root in separate mount, PID,
   IPC, temporary-home/configuration, and X11 state. The controlled peer owns a Docker
   `--network=none` namespace whose only interface must be `lo`; the viewer shares only that exact
   owned namespace, so its sole target is container-loopback `127.0.0.1:21118` without an external
@@ -21410,7 +21419,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-2f663bf7f2c05a343ae9af22e6b579bf0c06b8650c81d986c5b70ce1a2ba2733  requirements.html
+38267f3099f7a850dd73b42ff3ee329006c2dd88820d65e161af0420d092db02  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

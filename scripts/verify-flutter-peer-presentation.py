@@ -63,7 +63,9 @@ def validate(sources: dict[str, str]) -> None:
             "require_online_complete",
             "git archive --format=tar",
             "smoke-xvfb-prepare.sh",
+            "smoke-flutter-peer-presentation-stage.sh pub-cache",
             "smoke-flutter-peer-presentation-stage.sh build",
+            "smoke-flutter-peer-presentation-stage.sh pub-cache-check",
             'local_docker run --detach --cidfile "$SERVER_CID_FILE"',
             "--pull=never --network=none --read-only",
             'inspect_container_contract "$SERVER_CID" none server',
@@ -75,8 +77,25 @@ def validate(sources: dict[str, str]) -> None:
     )
     if host.count("--network=bridge") != 1:
         raise VerificationError("the exact Xvfb producer must be the sole bridge-network container")
-    if host.count("--network=none") != 2:
-        raise VerificationError("only the build and controlled-peer anchors use direct network-none")
+    if host.count("--network=none") != 4:
+        raise VerificationError(
+            "only Pub-cache copy/check, build, and controlled-peer anchor use network-none"
+        )
+    require(
+        host,
+        ".harness-state/android-current-evidence-7c29f39/pub-cache",
+        "retained current-lock Pub-cache input",
+    )
+    require(
+        host,
+        "c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7",
+        "retained current-lock Pub-cache digest",
+    )
+    require(
+        host,
+        'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache,readonly',
+        "read-only retained Pub-cache mount",
+    )
     require(host, 'host.get("NetworkMode") != expected_network', "inspected network mode")
     require(host, 'host.get("IpcMode") not in ("private", "")', "private IPC namespace")
     require(host, 'host.get("PidMode") not in ("", None)', "private PID namespace")
@@ -103,6 +122,16 @@ def validate(sources: dict[str, str]) -> None:
     require_order(
         stage,
         (
+            "FLUTTER_PEER_RETAINED_PUB_CACHE_OK",
+            "cp -a /evidence-pub-cache /evidence-online/pub-cache",
+            "check-complete --online /evidence-online",
+            "FLUTTER_PEER_PUB_CACHE_PREPARED",
+        ),
+        "retained Pub-cache immutable copy and verification",
+    )
+    require_order(
+        stage,
+        (
             'verify_archive "/online/rust-',
             'verify_archive "/online/flutter-',
             'verify_archive "/online/llvm-',
@@ -118,6 +147,7 @@ def validate(sources: dict[str, str]) -> None:
         "exact offline full-product bundle build",
     )
     require(stage, "cp -a /source/. \"$BUILD_SOURCE/\"", "private writable build copy")
+    require(stage, "export HOME CARGO_HOME CI=true PUB_CACHE=/evidence-online/pub-cache", "current-lock sealed Pub cache")
     require(stage, "assert_loopback_only_interface", "runtime loopback-only inspection")
     require(stage, '[ "$interfaces" = lo ]', "sole loopback interface")
     require(stage, '0100007F:527E', "exact 127.0.0.1:21118 listener")
@@ -221,10 +251,12 @@ def validate(sources: dict[str, str]) -> None:
 MUTATIONS = (
     ("host", "--pull=never --network=none --read-only", "--pull=never --network=host --read-only"),
     ("host", '--network="container:$SERVER_CID" --read-only', "--network=bridge --read-only"),
+    ("host", 'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache,readonly', 'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache'),
     ("host", 'host.get("PortBindings") not in (None, {})', "False"),
     ("stage", '[ "$interfaces" = lo ]', '[ -n "$interfaces" ]'),
     ("stage", "cargo build --locked --features flutter,unix-file-copy-paste --lib --release", "cargo build --release"),
     ("stage", "! grep -Fq '[SEVERE]'", "true # severe output ignored"),
+    ("stage", "export HOME CARGO_HOME CI=true PUB_CACHE=/evidence-online/pub-cache", "export HOME CARGO_HOME CI=true PUB_CACHE=/online/pub-cache"),
     ("stage", "--password-stdin", "--password rustdesk-peer-9f2a7c4e"),
     ("stage", '"$CONTROLLER" :98 :99 "$VIEWER_PID"', '"$CONTROLLER" :99 :99 "$VIEWER_PID"'),
     ("controller", "FRESH_LIMIT_MS 1000U", "FRESH_LIMIT_MS 10000U"),

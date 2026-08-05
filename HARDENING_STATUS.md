@@ -16126,8 +16126,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   review ran. This closes one source/bridge-verdict defect and one target compile-integration check only; the
   user's accumulated-change risk assessment and every native/end-to-end stop-ship gap remain in force.
 
-- **R-S11gb/R-S11e-215 native Windows presentation transaction — FIRST NATIVE BUILD ATTEMPT
-  FAILED BEFORE APP EXECUTION; ENGINE/COMPOSITOR EVIDENCE OPEN; WINDOWS REMAINS STOP-SHIP.** Platform: a
+- **R-S11gb/R-S11e-215 native Windows presentation transaction — NATIVE RELEASE BUILD AND APP PROCESS
+  REACHED; VM GRAPHICS SURFACE FAILED BEFORE WINDOW/PIXELS; WINDOWS REMAINS STOP-SHIP.** Platform: a
   disposable Windows 11 overlay derived from the existing SHA-256-pinned golden. Endpoint/action: the
   repository-owned Windows <code>texture_rgba_renderer</code> plugin and direct C ABI used by Rust, exact
   production <code>PresentationRecovery</code>, the pinned RustDesk desktop window-event implementation and
@@ -16316,9 +16316,62 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   one against that updated verifier and this evidence text and exited zero with
   `verify-verifier-workspace: ok`. The focused gate, independent baseline, parsers, native-codec ledger, and
   diff hygiene are rerun over the final recorded bytes; the complete catalog is not recursively rerun merely
-  to record its own successful result. These are dependency/static checks only. The correction must be
-  committed and the zero-interface Windows transaction
-  must complete from that exact commit before any engine, compositor, focus, pointer, or latency evidence exists.
+  to record its own successful result. These are dependency/static checks only. The correction was committed
+  and pushed as `d3cc1a61de8c77419c08471251ed72adff890476`, tree
+  `811f6ad7fc760415a65ae1a99f0c3577d21a3105`.
+
+  The exact zero-interface transaction from that commit reached substantially farther but still supplies no
+  product-presentation verdict. Its 240-file source manifest and exact thirteen-package offline graph verified,
+  and the native Windows release build completed in 57.9 seconds. Domain
+  `rustdesk-presentation-d3cc1a61-d6d0e0c6`, UUID
+  `d6d0e0c6-6e66-495d-9a08-ced045a4de58`, had zero network interfaces, zero host-device/filesystem
+  passthroughs, and VNC parent/child plus its only new listener exactly on `127.0.0.1:5900`. The app process
+  launched and wrote only `initial-submitted: white`; no visible top-level window, compositor pixel, recovery
+  cycle, pointer event, or latency sample followed. Flutter/ANGLE reported
+  `SwapChain11::reset` failure `0x887A0022`, device/context loss, and
+  `Failed to create platform view rendering surface`; the Win32 controller then timed out waiting for the
+  process window. Exact-UUID cleanup removed the domain, QEMU/wrapper, and listener. The retained run is
+  `.harness-state/windows-presentation-run.4PKJdV2A`.
+
+  Read-only follow-up and two uncounted adapter diagnostics distinguish this from the product texture path.
+  Libvirt had selected `bochs` when the transaction left the video model implicit. The guest's Windows device
+  state showed the PCI controller unbound, while the separate inbox `ROOT\\BASICDISPLAY` and
+  `ROOT\\BASICRENDER` fallback devices were both configured and started; therefore the earlier shorthand
+  "no display driver" was too broad. One disposable explicit-VGA run was safely aborted during XML reporting
+  when the helper's intentionally narrowed `PATH` made an unqualified `rg` unavailable; exact-UUID cleanup ran
+  before product execution and its three owned files were removed explicitly. A second 15-minute VGA diagnostic
+  was intentionally not counted because its outer bound interrupted immediately after the 50.2-second native
+  build and before the app launched. Its retained path is
+  `.harness-state/windows-presentation-vga-diagnostic.cQGkPkI7`.
+
+  The decisive fresh golden-backed VGA comparison used exact commit/tree above and source-ISO SHA-256
+  `76039da9efe0ad9a3a80629a4b31cc93019e4df80916a8fd34a7d261cfab2b72`, domain UUID
+  `0e47c296-ad89-48b9-8eb6-d3935bdd1d07`, zero network interfaces, and loopback-only VNC. Its native build
+  completed in 60.8 seconds, the app process launched, and it failed before a window with the same
+  `0x887A0022` ANGLE swap-chain/context-loss sequence. The guest shut itself down after 17 minutes 44 seconds;
+  exact cleanup left no domain, QEMU process, or listener. The retained run is
+  `.harness-state/windows-presentation-vga-fresh.XFQignja`. This falsifies an explicit-`vga` harness change as
+  a fix; no such change is made.
+
+  Exact Flutter engine revision `a18df97ca57a249df5d8d68cd0820600223ce262` also rules out a command-line
+  software-rendering shortcut for this release transaction. The public Windows embedder properties expose no
+  renderer switch, the generated runner sends application argv to the Dart entrypoint, and environment engine
+  switches are compiled out under `FLUTTER_RELEASE`. The engine selects its software compositor only when EGL
+  manager construction fails; here EGL construction succeeds and later window-surface creation fails. The
+  repository currently carries no pinned Windows WDDM virtual-GPU driver, and this QEMU build has no QXL device.
+  Native Windows pixel evidence therefore needs a separately reviewed, pinned, genuinely working graphics
+  environment rather than a timeout increase, an ignored surface failure, an app argv token, or a `bochs` to
+  `vga` substitution.
+
+  All three completed/aborted diagnostics remained unprivileged, zero-interface, loopback-only, and confined to
+  disposable VM disks plus pinned non-root networkless helper containers. No root/sudo, privileged container,
+  image build/pull/tag, non-loopback listener, host RustDesk process/service/configuration, host display,
+  firewall/UFW/nftables/iptables, routing, or host network mutation occurred. More importantly, this is still
+  **no native Windows presentation evidence**: it does not exercise even the first visible probe frame, much
+  less the full RustDesk peer/capture/transport/decode/control flow, the reported Windows focus/display delay,
+  Android task-swipe/persistent-service/Force-Stop recovery, cross-version behavior, performance/soak, exact
+  release artifacts, independent reproduction, or external review. The accumulated-change risk and every one
+  of those release gaps remain stop-ship.
 
 - **Exact Linux Flutter texture/X11 presentation recovery — EXECUTABLE EVIDENCE GREEN;
   ANDROID/WINDOWS/NATIVE END-TO-END EVIDENCE OPEN.** Platform: confined Linux X11 with Flutter
@@ -21297,7 +21350,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-81aba79043b289c153f11ea2be29bcce430a6a3075deb044dcefa70e0a1fb970  requirements.html
+810f1af30ff0a3f268e98dc1805567adb836a2e971c28cde3792d28efb350967  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

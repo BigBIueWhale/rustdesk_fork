@@ -181,6 +181,7 @@ run_owned_container "$WORKSPACE/runtime.cid" \
   --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$BUILD_OUTPUT,target=/out,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$RUNTIME_STATE,target=/state,bind-recursive=disabled" \
   "$DEV_CHECK_IMAGE_ID" \
   bash --noprofile --norc /source/scripts/smoke-flutter-presentation-stage.sh runtime \

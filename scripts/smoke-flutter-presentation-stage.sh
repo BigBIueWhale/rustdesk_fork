@@ -236,6 +236,7 @@ PY
     export LIBGL_ALWAYS_SOFTWARE=1
     export LD_LIBRARY_PATH="/out/bundle/lib:/xvfb-root/usr/lib/x86_64-linux-gnu"
     mkdir -m 0700 "$HOME" "$XDG_RUNTIME_DIR"
+    mkdir -m 1777 /tmp/.X11-unix
     TCP_TABLES=(/proc/net/tcp)
     [ ! -r /proc/net/tcp6 ] || TCP_TABLES+=(/proc/net/tcp6)
     UDP_TABLES=(/proc/net/udp)
@@ -279,6 +280,8 @@ PY
     done
     [ -S /tmp/.X11-unix/X99 ] && [ ! -L /tmp/.X11-unix/X99 ] \
       || fail 'Xvfb Unix socket did not become ready'
+    "$READY" --hold-running "$XVFB_PID" "$XVFB_START" /tmp/xvfb.log 1 \
+      'Flutter presentation Xvfb stability'
     echo 'FLUTTER_PRESENTATION_STEP=runtime-xvfb-start ok'
     tcp_listeners=$(awk 'FNR > 1 && $4 == "0A" { n++ } END { print n + 0 }' \
       "${TCP_TABLES[@]}")

@@ -87,7 +87,10 @@ static bool window_has_title(Display *display, Window window,
 
 static bool find_window(Display *display, Window root, const char *title,
                         Window *result) {
-  if (window_has_title(display, root, title)) {
+  XWindowAttributes attributes;
+  if (window_has_title(display, root, title) &&
+      XGetWindowAttributes(display, root, &attributes) != 0 &&
+      attributes.map_state == IsViewable) {
     *result = root;
     return true;
   }

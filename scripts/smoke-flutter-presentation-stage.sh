@@ -73,8 +73,11 @@ for versions_path in sorted(root.glob("*-versions.json")):
     updated = versions.get("advisoriesUpdated")
     if updated is None:
         continue
+    suffix = "-versions.json"
+    if not versions_path.name.endswith(suffix):
+        raise SystemExit(f"invalid version cache name: {versions_path.name}")
     advisory_path = versions_path.with_name(
-        versions_path.name.removesuffix("-versions.json") + "-advisories.json"
+        versions_path.name[: -len(suffix)] + "-advisories.json"
     )
     if not advisory_path.is_file() or advisory_path.is_symlink():
         raise SystemExit(f"missing regular advisory response for {versions_path.name}")
@@ -88,7 +91,7 @@ for versions_path in sorted(root.glob("*-versions.json")):
     nanoseconds = calendar.timegm(parsed.utctimetuple()) * 1_000_000_000
     nanoseconds += parsed.microsecond * 1_000
     os.utime(advisory_path, ns=(nanoseconds, nanoseconds), follow_symlinks=False)
-    if advisory_path.stat(follow_symlinks=False).st_mtime_ns != nanoseconds:
+    if os.stat(advisory_path, follow_symlinks=False).st_mtime_ns != nanoseconds:
         raise SystemExit(f"cannot reconstruct advisory mtime for {versions_path.name}")
     restored += 1
 if restored != 2:

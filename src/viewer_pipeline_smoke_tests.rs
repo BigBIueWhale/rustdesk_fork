@@ -327,8 +327,9 @@ fn production_viewer_pipeline_recovers_after_stalled_publication_without_reconne
     {
         let mut login = session.lc.write().unwrap();
         login.initialize(EXACT_PEER.to_owned(), ConnType::DEFAULT_CONN, None, None);
-        login.disable_audio.v = true;
-        login.disable_clipboard.v = true;
+        let config = login.get_config();
+        config.disable_audio.v = true;
+        config.disable_clipboard.v = true;
     }
 
     let panic_count = Arc::new(std::sync::atomic::AtomicUsize::new(0));

@@ -126,11 +126,13 @@ tar -xf "$SOURCE_ARCHIVE" -C "$SOURCE_SNAPSHOT"
 chmod -R a-w "$SOURCE_SNAPSHOT"
 
 run_owned_container() {
-  local cid_file=$1
+  local cid_file=$1 run_status=0 cleanup_status=0
   shift
   CID_FILES+=("$cid_file")
-  local_docker run --rm --cidfile "$cid_file" "$@"
-  cleanup_container "$cid_file"
+  local_docker run --rm --cidfile "$cid_file" "$@" || run_status=$?
+  cleanup_container "$cid_file" || cleanup_status=$?
+  [ "$cleanup_status" -eq 0 ] || return 125
+  return "$run_status"
 }
 
 echo '== acquire the exact five-package Xvfb closure in a non-root producer =='

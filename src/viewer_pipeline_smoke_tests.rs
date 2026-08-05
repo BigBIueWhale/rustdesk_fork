@@ -298,14 +298,18 @@ fn production_viewer_pipeline_recovers_after_stalled_publication_without_reconne
         Ok("1"),
         "the production viewer smoke requires its explicit runtime marker"
     );
+    let current_executable =
+        std::env::current_exe().expect("the production viewer smoke must resolve its executable");
     assert_eq!(
-        std::env::current_exe().as_deref(),
-        Ok(Path::new(EXACT_TEST_EXECUTABLE)),
+        current_executable.as_path(),
+        Path::new(EXACT_TEST_EXECUTABLE),
         "the production viewer smoke refuses any other test artifact path"
     );
+    let current_directory = std::env::current_dir()
+        .expect("the production viewer smoke must resolve its working directory");
     assert_eq!(
-        std::env::current_dir().as_deref(),
-        Ok(Path::new(EXACT_WORKING_DIRECTORY)),
+        current_directory.as_path(),
+        Path::new(EXACT_WORKING_DIRECTORY),
         "the production viewer smoke refuses any other working directory"
     );
     assert_eq!(

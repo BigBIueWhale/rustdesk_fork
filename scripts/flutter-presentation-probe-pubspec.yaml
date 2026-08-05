@@ -1,0 +1,16 @@
+name: rustdesk_presentation_probe
+description: Confined RustDesk Flutter presentation evidence probe.
+publish_to: none
+version: 0.0.0+1
+
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  texture_rgba_renderer:
+    path: /source/flutter/third_party/texture_rgba_renderer
+
+flutter:
+  uses-material-design: false

@@ -112,23 +112,33 @@ PY
     # Resolve flutter_tools with the SDK's Dart executable before the first
     # Flutter wrapper invocation. A cold wrapper otherwise attempts its own
     # advisory refresh even when the eventual project build is offline.
+    echo 'FLUTTER_PRESENTATION_STEP=flutter-tools-pub begin'
     (
       cd "$FLUTTER_ROOT/packages/flutter_tools"
       dart pub get --offline --enforce-lockfile >/dev/null
     )
+    echo 'FLUTTER_PRESENTATION_STEP=flutter-tools-pub ok'
+    echo 'FLUTTER_PRESENTATION_STEP=flutter-version begin'
     flutter_version="$(flutter --version --no-version-check 2>&1)" \
       || { printf '%s\n' "$flutter_version" >&2; fail 'Flutter version inspection failed'; }
     grep -q "Flutter $RUSTDESK_FLUTTER_VERSION " <<<"$flutter_version" \
       || { printf '%s\n' "$flutter_version" >&2; fail 'Flutter SDK version differs from its pin'; }
+    echo 'FLUTTER_PRESENTATION_STEP=flutter-version ok'
+    echo 'FLUTTER_PRESENTATION_STEP=flutter-create begin'
     flutter create --platforms=linux --project-name rustdesk_presentation_probe \
       --org com.carriez --no-pub "$APP" >/dev/null
+    echo 'FLUTTER_PRESENTATION_STEP=flutter-create ok'
     cp /source/scripts/flutter-presentation-probe.dart "$APP/lib/main.dart"
     cp /source/scripts/flutter-presentation-probe-pubspec.yaml "$APP/pubspec.yaml"
     rm -f "$APP/analysis_options.yaml"
     (
       cd "$APP"
+      echo 'FLUTTER_PRESENTATION_STEP=app-dart-pub begin'
       dart pub get --offline >/dev/null
+      echo 'FLUTTER_PRESENTATION_STEP=app-dart-pub ok'
+      echo 'FLUTTER_PRESENTATION_STEP=app-flutter-pub begin'
       flutter pub get --offline --enforce-lockfile >/dev/null
+      echo 'FLUTTER_PRESENTATION_STEP=app-flutter-pub ok'
       dart format --output=none --set-exit-if-changed lib/main.dart
       flutter analyze --no-pub lib/main.dart
       flutter build linux --release --no-pub

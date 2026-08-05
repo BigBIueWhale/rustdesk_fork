@@ -61,14 +61,17 @@ case "$1" in
     export HOME PUB_CACHE CI=true
     export PATH="$FLUTTER_ROOT/bin:$FLUTTER_ROOT/bin/cache/dart-sdk/bin:$PATH"
     git config --global --add safe.directory "$FLUTTER_ROOT"
-    flutter_version="$(flutter --version --no-version-check 2>&1)" \
-      || { printf '%s\n' "$flutter_version" >&2; fail 'Flutter version inspection failed'; }
-    grep -q "Flutter $RUSTDESK_FLUTTER_VERSION " <<<"$flutter_version" \
-      || { printf '%s\n' "$flutter_version" >&2; fail 'Flutter SDK version differs from its pin'; }
+    # Resolve flutter_tools with the SDK's Dart executable before the first
+    # Flutter wrapper invocation. A cold wrapper otherwise attempts its own
+    # advisory refresh even when the eventual project build is offline.
     (
       cd "$FLUTTER_ROOT/packages/flutter_tools"
       dart pub get --offline --enforce-lockfile >/dev/null
     )
+    flutter_version="$(flutter --version --no-version-check 2>&1)" \
+      || { printf '%s\n' "$flutter_version" >&2; fail 'Flutter version inspection failed'; }
+    grep -q "Flutter $RUSTDESK_FLUTTER_VERSION " <<<"$flutter_version" \
+      || { printf '%s\n' "$flutter_version" >&2; fail 'Flutter SDK version differs from its pin'; }
     flutter create --platforms=linux --project-name rustdesk_presentation_probe \
       --org com.carriez --no-pub "$APP" >/dev/null
     cp /source/scripts/flutter-presentation-probe.dart "$APP/lib/main.dart"
@@ -77,6 +80,7 @@ case "$1" in
     (
       cd "$APP"
       dart pub get --offline >/dev/null
+      flutter pub get --offline --enforce-lockfile >/dev/null
       dart format --output=none --set-exit-if-changed lib/main.dart
       flutter analyze --no-pub lib/main.dart
       flutter build linux --release --no-pub

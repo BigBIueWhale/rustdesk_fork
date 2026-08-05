@@ -9,7 +9,7 @@ history remains the traceability record for that intermediate work.
 
 ## Current Verdict
 
-> **STOP-SHIP EVIDENCE STATUS (2026-08-04).** The current tree is not release-ready merely because
+> **STOP-SHIP EVIDENCE STATUS (2026-08-05).** The current tree is not release-ready merely because
 > its source, semantic, mutation, compile, and confined protocol gates are extensive. The user has
 > explicitly identified the accumulated change volume without current native end-to-end testing as
 > a release risk, and that assessment is correct. Recent evidence proves many individual source
@@ -329,6 +329,41 @@ history remains the traceability record for that intermediate work.
 > installed-device, Activity/foreground-service, task-swipe/Force-Stop, peer, capture/decode/presentation,
 > Windows-focus, performance/soak, cross-version, independent-reproduction, or external-review evidence. Those
 > release blockers remain open.
+>
+> A new test-only harness then closed one narrower graphical evidence gap at exact harness commit
+> `8e31ab67d060c9128ef5c1b8f629e04404edfe21` (Git tree
+> `c1e8ed3aad5c3adad8dfb8344fffb4e0e59b038b`, source-archive SHA-256
+> `448f74f953148b68dbb1ebea11b85c34e2086f0d75e71ebf10deea42f8efa00c`, harness tree digest
+> `6079d98e22a1c7f025f9260d87608700db034e0c06c30f9a09568e662124b7b7`). A fresh offline
+> build linked the full RustDesk server plus the dedicated probe and passed the probe's four unit
+> regressions. A real X11 fixture then changed a 640x480 display, the production controlled-side path
+> captured and software-encoded it as VP9, a keyed direct session carried the frames over exact
+> container-loopback `127.0.0.1:21118`, the probe sent each exact display/generation receipt before
+> invoking the real software decoder, and 33 of 33 decoded frames were distinct across 4043 ms. The
+> measured first decode was 96 ms, worst decode 3612 us, mean decode 670 us, and maximum receive-
+> backlog drift 0 ms. Xvfb had zero TCP listeners and zero UDP sockets before RustDesk started; the
+> server, motion fixture, and Xvfb were identity-bound, terminated, and joined.
+>
+> That result used no root or privileged container. The build and graphical runtime were numeric
+> non-root with read-only roots/source, dropped capabilities, `no-new-privileges`, bounded resources,
+> no published port, Docker-socket mount, host namespace, or device; the runtime used
+> `--network=none`. A separate disposable non-root acquisition container had ordinary bridge egress
+> only while downloading five exact SHA-256-pinned Debian Xvfb packages over HTTPS; it installed
+> nothing and ended with zero TCP listeners and zero UDP sockets. No host RustDesk process, service,
+> configuration, listener, display, firewall, or network state was inspected or changed by project
+> code. This is real capture/encode/keyed-transport/receipt/software-decode evidence. It still bypasses
+> Flutter texture publication and compositor presentation and does not execute focus/minimize,
+> Android task swipe/reopen/Force Stop, native Windows, an installed service, a physical device/VM,
+> cross-version behavior, sustained performance/soak, release artifacts, independent reproduction,
+> or external review. It therefore does not yet reproduce or close the user's display-only delayed-
+> presentation report.
+>
+> The user's explicit release mandate remains broader than the reported symptoms: the complete
+> connection lifecycle must be correct and performant across supported platforms, including clean
+> ownership on connect/reconnect/close, task swipe/reopen/Force Stop, focus/minimize/restore, and
+> bounded capture/encode/transport/receipt/decode/publication/render progress and recovery without
+> reconnect as a workaround. Native Android/Windows execution with monotonic stage timestamps,
+> latency/recovery budgets, and sustained lifecycle soak remains mandatory stop-ship evidence.
 >
 > **Continuation rule:** prioritize exact-current evidence and test-harness/input closure over
 > additional product behavior changes. A further product change requires a separately source-proven

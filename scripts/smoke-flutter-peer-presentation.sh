@@ -139,7 +139,9 @@ run_owned_container() {
 }
 
 inspect_container_contract() {
-  local cid=$1 expected_network=$2 label=$3 json_path="$WORKSPACE/$label.inspect.json"
+  local cid=$1 expected_network=$2 label=$3
+  local json_path
+  json_path="$WORKSPACE/$label.inspect.json"
   local_docker container inspect "$cid" > "$json_path"
   /usr/bin/python3 -I -S - "$json_path" "$expected_network" "$HOST_UID:$HOST_GID" <<'PY'
 import json

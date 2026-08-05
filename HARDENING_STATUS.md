@@ -16402,7 +16402,12 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   private state, seals and revalidates the copy, exposes that copy read-only to the build, enforces
   both locks offline, and repeats the complete check after build. This is evidence input only, not a
   canonical-cache repair or release pass. The harness performs no Debian packaging or release double
-  build. Controlled peer and viewer run as numeric non-root in separate mount, PID,
+  build. A second exact committed run built that release Rust/Flutter bundle successfully and
+  revalidated the sealed Pub-cache copy unchanged after build, but stopped before peer readiness
+  because the outer container-inspection function expanded `label` from a same-statement `local`
+  declaration under `set -u`. Cleanup retired the owned network-none server container. The corrected
+  harness assigns the receipt path only after the three arguments exist, and its focused mutation
+  suite rejects reintroducing the unsafe declaration. Controlled peer and viewer run as numeric non-root in separate mount, PID,
   IPC, temporary-home/configuration, and X11 state. The controlled peer owns a Docker
   `--network=none` namespace whose only interface must be `lo`; the viewer shares only that exact
   owned namespace, so its sole target is container-loopback `127.0.0.1:21118` without an external
@@ -16433,8 +16438,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   input, the 256-state source, shared-verifier wiring, and requirement/ledger records. The independent
   workspace verifier separately binds the focused verifier and its controller/source paths.
 
-  No execution result is recorded yet because the harness itself must first be committed so its
-  exact-source archive can honestly contain the files being run. A green future result will close
+  No corrected runtime result is recorded yet; each harness correction must first be committed so
+  its exact-source archive can honestly contain the files being run. A green future result will close
   only one Linux/X11 software-codec full-peer and focus cycle. It will not establish Android
   Activity/foreground-service/task-swipe/reopen/Force-Stop behavior; Windows engine/compositor
   behavior; macOS/iOS; installed service/cross-user behavior; cross-version interoperability;
@@ -21419,7 +21424,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-38267f3099f7a850dd73b42ff3ee329006c2dd88820d65e161af0420d092db02  requirements.html
+152929b35f7a203dd03167733fcc1a5d9c5e7b57892107e6499bf91f430be4c7  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

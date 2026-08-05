@@ -97,6 +97,15 @@ def validate(sources: dict[str, str]) -> None:
         "read-only retained Pub-cache mount",
     )
     require(host, 'host.get("NetworkMode") != expected_network', "inspected network mode")
+    require_order(
+        host,
+        (
+            "local cid=$1 expected_network=$2 label=$3\n  local json_path",
+            'json_path="$WORKSPACE/$label.inspect.json"',
+            'local_docker container inspect "$cid" > "$json_path"',
+        ),
+        "nounset-safe inspected-container receipt path",
+    )
     require(host, 'host.get("IpcMode") not in ("private", "")', "private IPC namespace")
     require(host, 'host.get("PidMode") not in ("", None)', "private PID namespace")
     require(host, 'host.get("PortBindings") not in (None, {})', "no port publication")
@@ -249,6 +258,7 @@ def validate(sources: dict[str, str]) -> None:
 
 
 MUTATIONS = (
+    ("host", "local cid=$1 expected_network=$2 label=$3\n  local json_path\n  json_path=", "local cid=$1 expected_network=$2 label=$3 json_path="),
     ("host", "--pull=never --network=none --read-only", "--pull=never --network=host --read-only"),
     ("host", '--network="container:$SERVER_CID" --read-only', "--network=bridge --read-only"),
     ("host", 'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache,readonly', 'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache'),

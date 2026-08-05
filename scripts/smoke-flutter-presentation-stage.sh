@@ -93,6 +93,10 @@ for versions_path in sorted(root.glob("*-versions.json")):
         )
     nanoseconds = calendar.timegm(parsed.utctimetuple()) * 1_000_000_000
     nanoseconds += parsed.microsecond * 1_000
+    # Dart's FileStat timestamp conversion can expose less precision than the
+    # six-digit API timestamp. Make the cache file deterministically newer,
+    # rather than merely equal before that conversion.
+    nanoseconds += 1_000_000_000
     os.utime(advisory_path, ns=(nanoseconds, nanoseconds), follow_symlinks=False)
     if os.stat(advisory_path, follow_symlinks=False).st_mtime_ns != nanoseconds:
         raise SystemExit(f"cannot reconstruct advisory mtime for {versions_path.name}")

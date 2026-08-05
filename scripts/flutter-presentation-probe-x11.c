@@ -109,6 +109,73 @@ static bool find_window(Display *display, Window root, const char *title,
   return found;
 }
 
+static void dump_window_tree(Display *display, Window window,
+                             unsigned int depth) {
+  XWindowAttributes attributes;
+  if (XGetWindowAttributes(display, window, &attributes) == 0) {
+    return;
+  }
+  char *legacy_name = NULL;
+  (void)XFetchName(display, window, &legacy_name);
+  XClassHint class_hint = {0};
+  const Status has_class = XGetClassHint(display, window, &class_hint);
+  fprintf(stderr,
+          "flutter presentation X11 window depth=%u id=%lu map=%d "
+          "override=%d wm_name=%s class_name=%s class_class=%s net_name=",
+          depth, window, attributes.map_state, attributes.override_redirect,
+          legacy_name == NULL ? "<none>" : legacy_name,
+          has_class == 0 || class_hint.res_name == NULL ? "<none>"
+                                                       : class_hint.res_name,
+          has_class == 0 || class_hint.res_class == NULL ? "<none>"
+                                                        : class_hint.res_class);
+  const Atom property = XInternAtom(display, "_NET_WM_NAME", True);
+  Atom actual_type = None;
+  int actual_format = 0;
+  unsigned long item_count = 0;
+  unsigned long bytes_after = 0;
+  unsigned char *value = NULL;
+  if (property != None &&
+      XGetWindowProperty(display, window, property, 0, 4096, False,
+                         AnyPropertyType, &actual_type, &actual_format,
+                         &item_count, &bytes_after, &value) == Success &&
+      actual_type != None && actual_format == 8 && bytes_after == 0 &&
+      value != NULL) {
+    (void)fwrite(value, 1, item_count, stderr);
+  } else {
+    fputs("<none>", stderr);
+  }
+  fputc('\n', stderr);
+  if (legacy_name != NULL) {
+    XFree(legacy_name);
+  }
+  if (has_class != 0) {
+    if (class_hint.res_name != NULL) {
+      XFree(class_hint.res_name);
+    }
+    if (class_hint.res_class != NULL) {
+      XFree(class_hint.res_class);
+    }
+  }
+  if (value != NULL) {
+    XFree(value);
+  }
+
+  Window returned_root = 0;
+  Window returned_parent = 0;
+  Window *children = NULL;
+  unsigned int count = 0;
+  if (XQueryTree(display, window, &returned_root, &returned_parent, &children,
+                 &count) == 0) {
+    return;
+  }
+  for (unsigned int index = 0; index < count; ++index) {
+    dump_window_tree(display, children[index], depth + 1);
+  }
+  if (children != NULL) {
+    XFree(children);
+  }
+}
+
 static Window wait_for_window(Display *display, const char *title) {
   const int64_t deadline = monotonic_millis() + kWindowWaitMs;
   Window window = 0;
@@ -118,6 +185,7 @@ static Window wait_for_window(Display *display, const char *title) {
     }
     sleep_millis(kPollMs);
   }
+  dump_window_tree(display, DefaultRootWindow(display), 0);
   fail("timed out waiting for the exact Flutter window title");
   return 0;
 }

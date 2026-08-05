@@ -456,11 +456,15 @@ prepare_disks() {
             part-disk /dev/sda mbr : \
             part-set-mbr-id /dev/sda 1 0x0c : \
             mkfs vfat /dev/sda1 label:OUTPUT
-    qemu-img create -f qcow2 -F qcow2 -b "$GOLDEN" "$OVERLAY" >/dev/null
+    (
+        cd "$RUN_ROOT"
+        qemu-img create -f qcow2 -F qcow2 -b ../win11-golden.qcow2 \
+            overlay.qcow2 >/dev/null
+    )
     windows_helper_guestfish_run \
-        --mount "type=bind,source=$OVERLAY,target=/authority/overlay.qcow2" \
-        --mount "type=bind,source=$GOLDEN,target=/authority/golden.qcow2,readonly" \
-        -- /usr/bin/guestfish --rw -a /authority/overlay.qcow2 run : \
+        --mount "type=bind,source=$OVERLAY,target=/authority/pass/overlay.qcow2" \
+        --mount "type=bind,source=$GOLDEN,target=/authority/win11-golden.qcow2,readonly" \
+        -- /usr/bin/guestfish --rw -a /authority/pass/overlay.qcow2 run : \
             mount /dev/sda1 / : \
             mkdir-p /EFI/BOOT : \
             cp /EFI/Microsoft/Boot/bootmgfw.efi /EFI/BOOT/BOOTX64.EFI

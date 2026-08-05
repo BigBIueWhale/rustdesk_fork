@@ -99,7 +99,7 @@ def validate(sources: dict[str, str]) -> None:
     require(host, "if not parsed.is_loopback:", "live listener loopback check")
     require(host, "windows_helper_guestfish_run", "device-free disk helper")
     forbid(host, "windows_helper_kvm_guestfish_run", "KVM device helper")
-    require(host, 'qemu-img create -f qcow2 -F qcow2 -b "$GOLDEN"', "disposable overlay")
+    require(host, "qemu-img create -f qcow2 -F qcow2 -b ../win11-golden.qcow2", "disposable overlay")
     require(host, 'sha256sum "$GOLDEN"', "golden before/after digest")
     require(host, "DESKTOP_MULTI_WINDOW_COMMIT=b47e8385e5a75d38319ad706a64b0ead3108b093", "window plugin commit")
     require(host, "DESKTOP_MULTI_WINDOW_TREE=ee184480a0e519b9f51f7496d3d90674782481d6", "window plugin tree")

@@ -16179,6 +16179,17 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   recovery, cross-version behavior, sustained focus/soak, packaged release artifacts, clean cold R-B2/R-B10,
   independent reproduction, or external review. All of those remain stop-ship.
 
+  The first exact-commit invocation at `3bc95f05b0ee746ae3eec8e9445f20a347a4e537` is uncounted native
+  evidence. Exact source and pinned helper verification passed, and the small OUTPUT disk was created, but
+  the qcow2 overlay recorded the golden's absolute host path while the networkless libguestfs helper exposed
+  that same read-only golden at a private authority path. The helper therefore could not resolve the backing
+  name and stopped during EFI fallback preparation before `virt-install`, domain creation, Windows boot,
+  Flutter build, or app execution. Read-only follow-up proved no libvirt domain existed and no VNC listener
+  had been added. The corrected overlay uses `../win11-golden.qcow2`, with the overlay mounted one directory
+  below the identically named golden inside the helper; that same relative name resolves to the pinned golden
+  from the host run directory. No fallback, copied golden, privilege, device, network, or product mutation is
+  introduced. This is a harness path-identity correction only and must be re-executed from a new exact commit.
+
 - **Exact Linux Flutter texture/X11 presentation recovery — EXECUTABLE EVIDENCE GREEN;
   ANDROID/WINDOWS/NATIVE END-TO-END EVIDENCE OPEN.** Platform: confined Linux X11 with Flutter
   3.24.5 and software rendering. Endpoint/action: the repository's production Linux

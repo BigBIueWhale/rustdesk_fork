@@ -9166,6 +9166,12 @@ else
   echo "  FAIL R-S11gb/R-S11e-215: native Windows presentation evidence lost source finality, isolation, real transition/pointer/pixel proof, or latency bounds"
   rc=1
 fi
+if /usr/bin/python3 -I -S scripts/verify-flutter-peer-presentation.py --repo . --self-test; then
+  echo "  ok  R-S11gc/R-S11e-216 Linux full-peer presentation evidence remains exact-commit, separate-peer, networkless, pixel-current, stable-connection, and lifecycle-bounded"
+else
+  echo "  FAIL R-S11gc/R-S11e-216: Linux full-peer presentation evidence lost source finality, peer isolation, prompt authentication, current pixels, stable transport, or exact teardown"
+  rc=1
+fi
 if python3 scripts/verify-viewer-file-finality.py --repo . --self-test; then
   echo "  ok  R-S11fg/R-S11fh/R-S11fi/R-S11fj file frames retain exact writer completion and local persistence/digest failures are terminal"
 else

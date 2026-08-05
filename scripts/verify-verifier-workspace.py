@@ -20528,6 +20528,26 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "independent native Windows presentation controller binding",
     )
     require_text(
+        sources["verify"],
+        "/usr/bin/python3 -I -S scripts/verify-flutter-peer-presentation.py --repo . --self-test",
+        "full-peer Linux presentation shared focused-verifier wiring",
+    )
+    require_text(
+        sources["flutter_peer_presentation_verifier"],
+        '"host": "scripts/smoke-flutter-peer-presentation.sh"',
+        "independent full-peer Linux presentation host binding",
+    )
+    require_text(
+        sources["flutter_peer_presentation_verifier"],
+        '"controller": "scripts/flutter-peer-presentation-x11.c"',
+        "independent full-peer Linux presentation controller binding",
+    )
+    require_text(
+        sources["flutter_peer_presentation_verifier"],
+        '"source": "scripts/flutter-peer-source-x11.c"',
+        "independent full-peer Linux presentation source binding",
+    )
+    require_text(
         sources["apple"],
         "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test",
         "desktop texture Apple focused-verifier wiring",
@@ -58130,6 +58150,18 @@ def run_source_mutations(sources):
             "independent native Windows presentation controller binding",
         ),
         (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/verify-flutter-peer-presentation.py --repo . --self-test",
+            "true # full-peer Linux presentation verifier removed",
+            "full-peer Linux presentation shared focused-verifier wiring",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
+            '"controller": "scripts/flutter-peer-presentation-x11.c"',
+            '"controller": "scripts/removed-flutter-peer-presentation-x11.c"',
+            "independent full-peer Linux presentation controller binding",
+        ),
+        (
             "apple",
             "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test",
             "true # desktop texture lifecycle verifier removed",
@@ -69642,6 +69674,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "windows_presentation_verifier": (
                 repo / "scripts/verify-flutter-presentation-windows.py"
+            ).read_text(encoding="utf-8"),
+            "flutter_peer_presentation_verifier": (
+                repo / "scripts/verify-flutter-peer-presentation.py"
             ).read_text(encoding="utf-8"),
             "build_windows_source": (
                 repo / "scripts/build-windows.ps1"

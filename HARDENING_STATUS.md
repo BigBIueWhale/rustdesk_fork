@@ -16373,6 +16373,66 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   release artifacts, independent reproduction, or external review. The accumulated-change risk and every one
   of those release gaps remain stop-ship.
 
+- **R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence — HARNESS SOURCE
+  IMPLEMENTED; EXACT COMMITTED EXECUTION PENDING; ALL NON-LINUX/NATIVE/RELEASE GAPS REMAIN
+  STOP-SHIP.** The user explicitly requires the connection flow to be correct and performant as a
+  whole, not merely patched around individual complaints. The concrete reported symptom is also
+  retained: after Android task removal with its persistent service still alive, or after a Windows
+  viewer loses focus, control can remain responsive while displayed video falls as much as about ten
+  seconds behind; reconnecting restores current display, and Android additionally required Force Stop
+  in the observed stale-service case. Those are cross-platform operational observations against
+  older deployed builds, not a proven cause in current source and not evidence that only Android is
+  affected.
+
+  The prior Linux evidence did not close that risk. One real production smoke exercised capture,
+  encode, authenticated transport, decode, and the Rust UI callback but stopped before Flutter. A
+  separate release Flutter app exercised the production texture plugin and actual X11 pixels with
+  synthetic direct-ABI frames but had no peer, handshake, capture, transport, or decoder. Passing
+  both is not the same as passing one product session, and this ledger forbids treating it that way.
+
+  The new transaction builds the exact release-mode Linux Rust shared core and actual RustDesk
+  Flutter runner from one clean commit using the pinned offline Rust 1.75, Flutter 3.24.5, LLVM,
+  Cargo-vendor, vcpkg, Pub-cache, and immutable-image inputs. It performs no Debian packaging or
+  release double build. Controlled peer and viewer run as numeric non-root in separate mount, PID,
+  IPC, temporary-home/configuration, and X11 state. The controlled peer owns a Docker
+  `--network=none` namespace whose only interface must be `lo`; the viewer shares only that exact
+  owned namespace, so its sole target is container-loopback `127.0.0.1:21118` without an external
+  interface or host-published port. Both runtimes have read-only roots/source/bundle, all
+  capabilities dropped, `no-new-privileges`, bounded resources, no device, Docker socket, host
+  namespace, or host display. The only networked producer is the existing non-root acquisition of
+  five exact SHA-256-pinned Xvfb packages; it receives no source/output authority beyond that private
+  closure.
+
+  The controlled peer provisions a fixed test password through redirected `--password-stdin`, then
+  starts the exact shipped `--server` runner and must own exactly one IPv4 listener at
+  `127.0.0.1:21118` with zero UDP. The viewer starts the shipped runner with only
+  `--connect 127.0.0.1`; an XTest controller binds the exact PID/class/title remote window, types the
+  credential into the real `connect-password-prompt`, and submits Enter. The source fixture encodes
+  256 ordered states as two independently colored halves. The observer correlates actual Flutter/X11
+  pixels with live source history, requiring four distinct initial pictures no more than 1000 ms old.
+  It then holds focus on a separate mapped sink for 2000 ms and returns through a real pointer click;
+  three distinct current pictures must appear within 2500 ms. The authenticated TCP client tuple and
+  socket inode are sampled before and after that focus cycle and must remain identical, so a reconnect
+  cannot be credited as presentation recovery. The real remote window closes through
+  `WM_DELETE_WINDOW`, all viewer/server/source/Xvfb owners must join, and the listener/UDP surface,
+  bundle manifest, result receipts, container configurations, source commit/tree/archive, online
+  inputs, and clean worktree must revalidate before the terminal verdict.
+
+  The focused verifier deliberately breaks external-interface isolation, namespace sharing,
+  no-port inspection, offline/locked compilation, severe-diagnostic rejection, prompt-only password
+  handling, source-display selection, frame-age and recovery bounds, stable socket identity, XTest
+  input, the 256-state source, shared-verifier wiring, and requirement/ledger records. The independent
+  workspace verifier separately binds the focused verifier and its controller/source paths.
+
+  No execution result is recorded yet because the harness itself must first be committed so its
+  exact-source archive can honestly contain the files being run. A green future result will close
+  only one Linux/X11 software-codec full-peer and focus cycle. It will not establish Android
+  Activity/foreground-service/task-swipe/reopen/Force-Stop behavior; Windows engine/compositor
+  behavior; macOS/iOS; installed service/cross-user behavior; cross-version interoperability;
+  concurrent control/file/audio correctness; long reconnect/focus/resource/performance soak; cold
+  R-B2/R-B10 artifacts; independent reproduction; or external review. Every such item remains
+  explicitly release-blocking.
+
 - **Exact Linux Flutter texture/X11 presentation recovery — EXECUTABLE EVIDENCE GREEN;
   ANDROID/WINDOWS/NATIVE END-TO-END EVIDENCE OPEN.** Platform: confined Linux X11 with Flutter
   3.24.5 and software rendering. Endpoint/action: the repository's production Linux
@@ -21350,7 +21410,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-810f1af30ff0a3f268e98dc1805567adb836a2e971c28cde3792d28efb350967  requirements.html
+2f663bf7f2c05a343ae9af22e6b579bf0c06b8650c81d986c5b70ce1a2ba2733  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -21397,3 +21457,4 @@ The same identity additionally binds R-S11fy and Appendix C #333.
 The same identity additionally binds R-S11fz and Appendix C #334.
 The same identity additionally binds R-S11ga and Appendix C #335.
 The same identity additionally binds R-S11gb and Appendix C #337.
+The same identity additionally binds R-S11gc and Appendix C #338.

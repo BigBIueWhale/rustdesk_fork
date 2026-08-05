@@ -58,7 +58,31 @@ static bool window_has_title(Display *display, Window window,
   if (name != NULL) {
     XFree(name);
   }
-  return matches;
+  if (matches) {
+    return true;
+  }
+
+  const Atom property = XInternAtom(display, "_NET_WM_NAME", True);
+  if (property == None) {
+    return false;
+  }
+  Atom actual_type = None;
+  int actual_format = 0;
+  unsigned long item_count = 0;
+  unsigned long bytes_after = 0;
+  unsigned char *value = NULL;
+  const int property_status = XGetWindowProperty(
+      display, window, property, 0, 4096, False, AnyPropertyType, &actual_type,
+      &actual_format, &item_count, &bytes_after, &value);
+  const size_t expected_length = strlen(expected);
+  const bool property_matches =
+      property_status == Success && actual_type != None && actual_format == 8 &&
+      bytes_after == 0 && item_count == expected_length && value != NULL &&
+      memcmp(value, expected, expected_length) == 0;
+  if (value != NULL) {
+    XFree(value);
+  }
+  return property_matches;
 }
 
 static bool find_window(Display *display, Window root, const char *title,

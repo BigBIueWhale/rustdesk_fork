@@ -337,8 +337,12 @@ PY
     wait "$XVFB_PID" 2>/dev/null || true
     XVFB_PID=
     XVFB_START=
-    [ ! -s /tmp/xvfb.log ] \
-      || { cat /tmp/xvfb.log >&2; fail 'Xvfb emitted diagnostics'; }
+    if [ -s /tmp/xvfb.log ]; then
+      [ "$(cat /tmp/xvfb.log)" = \
+        '_XSERVTransmkdir: Owner of /tmp/.X11-unix should be set to root' ] \
+        || { cat /tmp/xvfb.log >&2; fail 'Xvfb emitted unexpected diagnostics'; }
+      echo 'FLUTTER_PRESENTATION_XVFB_LOG=expected-nonroot-socket-owner-warning'
+    fi
     echo 'FLUTTER_PRESENTATION_RUNTIME_OK app=joined texture=closed xvfb=joined'
     trap - EXIT HUP INT TERM
     ;;

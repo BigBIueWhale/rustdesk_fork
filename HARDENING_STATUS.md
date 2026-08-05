@@ -443,6 +443,37 @@ history remains the traceability record for that intermediate work.
 > soak, or cross-version path ran. The overall tree therefore remains stop-ship despite this compile/
 > integration correction.
 >
+> The next exact-current test-only slice reached the actual Linux Flutter presentation boundary at
+> commit `3fde1f1ffb1798e46641d98415b89118b927b15c` (Git tree
+> `f4e0928ddbfcade8a1f80aaf224b748324e31aee`, source-archive SHA-256
+> `6a7f9fd740f6b2e8302f8a2bf0fa9d8f27b8a88b5ec0f97238f6742543d9811a`). It built an
+> actual Flutter 3.24.5 release app against the repository's production Linux
+> `texture_rgba_renderer` plugin, verified both direct C ABI symbols that Rust invokes, and rendered
+> the real Flutter `Texture` widget into Xvfb. Actual X11 pixels first showed the submitted solid-red
+> frame. The fixture then externally unmapped the viewable application window, submitted 128 newer
+> frames through that direct ABI while hidden, held the window hidden for 1500 ms, remapped it, and
+> called the exact pending-frame notifier. Without reconnect, the visible compositor pixels reached
+> the newest solid-green frame in 48 ms. Exact texture close, application exit, and Xvfb join all
+> completed.
+>
+> Build and runtime were numeric non-root, no-pull, read-only-root/source, capability-free,
+> `no-new-privileges`, bounded, and had no published port, device, Docker socket, privileged flag,
+> or host namespace. The build and runtime used `--network=none`; the runtime proved zero TCP
+> listeners and zero UDP sockets, and Xvfb was Unix-socket-only. One separate disposable non-root
+> producer had ordinary bridge egress solely to acquire the five exact SHA-256-pinned Xvfb packages;
+> it ended with zero TCP listeners and zero UDP sockets and installed nothing on the host or into an
+> image. No host RustDesk process, service, configuration, listener, display, firewall, or network
+> state was read by project code or changed.
+>
+> This is real Linux Flutter-plugin, texture, X11-pixel, hide/show, pending-frame, and teardown
+> evidence. It directly drives the production ABI rather than a complete RustDesk viewer session,
+> uses software rendering under Xvfb, and does not execute capture, transport, decode, Dart event
+> delivery, native Windows focus/minimize, Android task swipe/reopen/Force Stop, Apple platforms,
+> a native device/VM, installed service, cross-version behavior, sustained performance/soak,
+> exact release artifacts, independent reproduction, or external review. It therefore narrows but
+> does not reproduce or close the user's Android/Windows display-only delay, and the tree remains
+> STOP-SHIP.
+>
 > **Continuation rule:** prioritize exact-current evidence and test-harness/input closure over
 > additional product behavior changes. A further product change requires a separately source-proven
 > defect or must be necessary to obtain valid evidence; it does not earn release confidence merely
@@ -16094,6 +16125,60 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   canonical cache replacement, clean exact-commit R-B2/R-B10 release, independent reproduction, or external
   review ran. This closes one source/bridge-verdict defect and one target compile-integration check only; the
   user's accumulated-change risk assessment and every native/end-to-end stop-ship gap remain in force.
+
+- **Exact Linux Flutter texture/X11 presentation recovery — EXECUTABLE EVIDENCE GREEN;
+  ANDROID/WINDOWS/NATIVE END-TO-END EVIDENCE OPEN.** Platform: confined Linux X11 with Flutter
+  3.24.5 and software rendering. Endpoint/action: the repository's production Linux
+  `texture_rgba_renderer` plugin, its direct C ABI used by Rust, Flutter's actual `Texture` widget,
+  external window unmap/remap, pending-frame notification, visible compositor pixels, and exact
+  renderer/application/Xvfb teardown. This entry records evidence only; it adds no product behavior
+  or normative claim for a platform that did not execute.
+
+  The counted exact candidate was commit `3fde1f1ffb1798e46641d98415b89118b927b15c`, tree
+  `f4e0928ddbfcade8a1f80aaf224b748324e31aee`, and source-archive SHA-256
+  `6a7f9fd740f6b2e8302f8a2bf0fa9d8f27b8a88b5ec0f97238f6742543d9811a`. The harness
+  verified immutable builder identities, exact Flutter and Pub-cache inputs, reconstructed the
+  advisory-cache freshness semantics lost to the deterministic archive mtime, resolved entirely
+  offline, formatted and analyzed the fixture cleanly, built an actual release Flutter bundle, and
+  found both production direct-ABI symbols in the built plugin. The deterministic Pub-cache archive
+  behavior is not classified as a new release defect: `scripts/win-guest-setup.ps1` already documents
+  and performs the equivalent fresh advisory-cache stamping for its offline Flutter-tools resolve.
+
+  The real runtime first observed solid-red pixels from the submitted frame in the actual Flutter
+  window. It selected the exact-title `IsViewable` application window, externally unmapped it,
+  submitted 128 newer frames through `FlutterRgbaRendererPluginTryOnRgba` while hidden, retained the
+  hidden state for 1500 ms, remapped the window, and invoked the exact pending notifier. The newest
+  solid-green frame became visible in 48 ms without reconnect. The terminal evidence markers were
+  `direct_abi=true actual_texture=true x11_pixels=true`,
+  `FLUTTER_PRESENTATION_NETWORK_SURFACE=network-none tcp-listen:0 udp:0 x11:unix-only`, and
+  `FLUTTER_PRESENTATION_RUNTIME_OK app=joined texture=closed xvfb=joined`.
+
+  All project build and runtime execution was numeric non-root, no-pull, networkless, read-only-root
+  and read-only-source, capability-free, `no-new-privileges`, resource-bounded, and had no published
+  port, device, Docker-socket mount, privileged flag, or host namespace. Xvfb used only its Unix
+  socket. The separate numeric-non-root five-package producer used bridge egress only for exact
+  SHA-256-pinned Debian-package acquisition, installed nothing, and reported zero TCP listeners and
+  zero UDP sockets. Exact container identities and the private workspace were retired. No host
+  RustDesk executable, process, service, configuration, listener, display, firewall/UFW/nftables/
+  iptables, or host-network state was read by project code or changed.
+
+  Bring-up failures remain uncounted and explicit: cold Flutter-tools resolution initially entered
+  the advisory fetch; the helper initially assumed newer Python string/datetime APIs than the pinned
+  Python 3.6; exact advisory timestamps lost subsecond precision until the restored mtime was made
+  strictly newer; formatting correctly rejected the first fixture; one wrapper masked a container
+  exit status; network-none omitted optional IPv6 proc tables; Xvfb needed its exact pinned xkbcomp
+  closure and private socket directory; and title lookup initially selected a hidden GTK helper
+  rather than the viewable application window. Each correction was exercised in a fresh exact-source
+  attempt. No failed attempt used root, added a capability, published a port, mounted a device or
+  Docker socket, entered a host namespace, or touched host RustDesk/network state.
+
+  This evidence does not include the Windows renderer/compositor or focus/minimize path; Android
+  Activity/foreground-service/task-swipe/reopen/Force-Stop behavior; macOS/iOS; hardware/GPU
+  rendering; a complete capture-through-transport-through-decode-through-Dart presentation session;
+  a native device/VM; an installed service; cross-version behavior; sustained latency/performance/
+  soak; exact R-B2/R-B10 release artifacts; independent reproduction; or external review. It does
+  not reproduce or close the reported Android/Windows display-only delay. The accumulated-change
+  risk and the broader correct-and-performant connection-lifecycle mandate remain STOP-SHIP.
 
 - **R-S11cs/R-S11e-111 — fixed SHA-256 toolchain and installer archive acquisition authority —
   SOURCE IMPLEMENTED 2026-07-24; ADVERSARIAL TRANSACTION/MUTATION AND COMPLETE LIVE

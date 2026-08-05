@@ -85,9 +85,12 @@ for versions_path in sorted(root.glob("*-versions.json")):
         advisory = json.load(stream)
     if advisory.get("advisoriesUpdated") != updated:
         raise SystemExit(f"advisory timestamp mismatch for {versions_path.name}")
-    parsed = datetime.datetime.fromisoformat(updated.replace("Z", "+00:00"))
-    if parsed.tzinfo is None or parsed.utcoffset() != datetime.timedelta(0):
-        raise SystemExit(f"non-UTC advisory timestamp for {versions_path.name}")
+    try:
+        parsed = datetime.datetime.strptime(updated, "%Y-%m-%dT%H:%M:%S.%fZ")
+    except ValueError as error:
+        raise SystemExit(
+            f"invalid UTC advisory timestamp for {versions_path.name}: {error}"
+        )
     nanoseconds = calendar.timegm(parsed.utctimetuple()) * 1_000_000_000
     nanoseconds += parsed.microsecond * 1_000
     os.utime(advisory_path, ns=(nanoseconds, nanoseconds), follow_symlinks=False)

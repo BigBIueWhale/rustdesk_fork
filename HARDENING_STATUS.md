@@ -16407,7 +16407,16 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   because the outer container-inspection function expanded `label` from a same-statement `local`
   declaration under `set -u`. Cleanup retired the owned network-none server container. The corrected
   harness assigns the receipt path only after the three arguments exist, and its focused mutation
-  suite rejects reintroducing the unsafe declaration. Controlled peer and viewer run as numeric non-root in separate mount, PID,
+  suite rejects reintroducing the unsafe declaration. A third exact committed run again built the
+  full bundle and revalidated its sealed inputs, then stopped before starting either product role:
+  the shipped unprivileged `--password-stdin` command correctly refused to mutate a user-owned
+  credential before its authorizing daemon existed. The corrected order now starts the shipped
+  nonroot `--server` first, uses the existing pinned typed-IPC probe to bind its exact PID/start
+  identity and both owned IPC sockets while proving credential-empty parked state with zero INET
+  listeners/UDP, performs the shipped CLI's authenticated same-user IPC mutation, and requires that
+  same server identity to transition to typed password-present/listener-bound/user-writable state.
+  No root, configuration injection, policy bypass, or product-only test hook is admitted. Controlled
+  peer and viewer run as numeric non-root in separate mount, PID,
   IPC, temporary-home/configuration, and X11 state. The controlled peer owns a Docker
   `--network=none` namespace whose only interface must be `lo`; the viewer shares only that exact
   owned namespace, so its sole target is container-loopback `127.0.0.1:21118` without an external
@@ -16417,9 +16426,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   five exact SHA-256-pinned Xvfb packages; it receives no source/output authority beyond that private
   closure.
 
-  The controlled peer provisions a fixed test password through redirected `--password-stdin`, then
-  starts the exact shipped `--server` runner and must own exactly one IPv4 listener at
-  `127.0.0.1:21118` with zero UDP. The viewer starts the shipped runner with only
+  The controlled peer starts the exact shipped `--server` runner parked, provisions a fixed test
+  password through redirected `--password-stdin` and its authenticated same-user IPC transaction,
+  then must make that same server own exactly one IPv4 listener at `127.0.0.1:21118` with zero UDP.
+  The viewer starts the shipped runner with only
   `--connect 127.0.0.1`; an XTest controller binds the exact PID/class/title remote window, types the
   credential into the real `connect-password-prompt`, and submits Enter. The source fixture encodes
   256 ordered states as two independently colored halves. The observer correlates actual Flutter/X11
@@ -21424,7 +21434,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-152929b35f7a203dd03167733fcc1a5d9c5e7b57892107e6499bf91f430be4c7  requirements.html
+3a80b1d1208e9758dd423e9848688b0dfded82b4971cd8d5cc22a929215c49b7  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

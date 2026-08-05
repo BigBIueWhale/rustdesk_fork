@@ -50,6 +50,7 @@ verify_runtime_bundle() {
   (cd /out && sha256sum --check --strict manifest.sha256 >/dev/null)
   for executable in \
     /out/bundle/rustdesk \
+    /out/smoke-readiness \
     /out/flutter-peer-source-x11 \
     /out/flutter-peer-presentation-x11 \
     /source/scripts/smoke-ready.sh \
@@ -285,7 +286,8 @@ CFG
       [ "$codegen_status" -eq 0 ] || fail "Flutter bridge generation exited $codegen_status"
       ! grep -Fq '[SEVERE]' "$codegen_log" \
         || fail 'Flutter bridge generation emitted a severe diagnostic'
-      cargo build --locked --features flutter,unix-file-copy-paste --lib --release
+      cargo build --locked --features flutter,unix-file-copy-paste \
+        --lib --example smoke_readiness --release
       sed -i 's/ffi.NativeFunction<ffi.Bool Function(DartPort/ffi.NativeFunction<ffi.Uint8 Function(DartPort/g' \
         flutter/lib/generated_bridge.dart
       (
@@ -312,6 +314,8 @@ CFG
     cc -std=c11 -O2 -Wall -Wextra -Werror \
       "$BUILD_SOURCE/scripts/flutter-peer-presentation-x11.c" \
       $(pkg-config --cflags --libs x11 xtst) -o /out/flutter-peer-presentation-x11
+    verify_regular "$BUILD_SOURCE/target/release/examples/smoke_readiness"
+    cp "$BUILD_SOURCE/target/release/examples/smoke_readiness" /out/smoke-readiness
     mkdir /out/bundle
     cp -a "$BUNDLE/." /out/bundle/
     [ -z "$(find /out -xdev -type l -print -quit)" ] \
@@ -323,12 +327,14 @@ CFG
       "$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256" \
       > /out/build.identity
     find /out -xdev -type f -exec chmod 0444 {} +
-    chmod 0555 /out/flutter-peer-source-x11 /out/flutter-peer-presentation-x11 \
+    chmod 0555 /out/smoke-readiness /out/flutter-peer-source-x11 \
+      /out/flutter-peer-presentation-x11 \
       /out/bundle/rustdesk /out/bundle/lib/*.so*
     (
       cd /out
       find bundle -type f -print0 | sort -z | xargs -0 sha256sum
-      sha256sum build.identity flutter-peer-source-x11 flutter-peer-presentation-x11
+      sha256sum build.identity smoke-readiness flutter-peer-source-x11 \
+        flutter-peer-presentation-x11
     ) > /out/manifest.sha256
     chmod 0444 /out/manifest.sha256
     find /out -xdev -type d -exec chmod 0555 {} +
@@ -343,6 +349,7 @@ CFG
     readonly READY=/source/scripts/smoke-ready.sh
     readonly XVFB=/xvfb-root/usr/bin/Xvfb
     readonly APP=/out/bundle/rustdesk
+    readonly PROBE=/out/smoke-readiness
     readonly SOURCE_FIXTURE=/out/flutter-peer-source-x11
     readonly COORD=/coord
     [ -d "$COORD" ] && [ ! -L "$COORD" ] \
@@ -387,6 +394,11 @@ CFG
     SOURCE_START=$("$READY" --identity "$SOURCE_PID")
     "$READY" --wait-log "$SOURCE_PID" "$SOURCE_START" /tmp/source.log \
       FLUTTER_PEER_SOURCE_READY 'peer source readiness'
+    (cd /out/bundle && exec env RUST_LOG=info "$APP" --server) >/tmp/server.log 2>&1 &
+    SERVER_PID=$!
+    SERVER_START=$("$READY" --identity "$SERVER_PID")
+    "$READY" --wait-parked "$SERVER_PID" "$SERVER_START" /tmp/server.log \
+      "$PROBE" "$(id -u)"
     set +e
     password_output="$(printf '%s\n' 'rustdesk-peer-9f2a7c4e' \
       | (cd /out/bundle && "$APP" --password-stdin) 2>&1)"
@@ -397,17 +409,14 @@ CFG
       || fail "shipped password-stdin command exited $password_status"
     grep -qx 'Done!' <<<"$password_output" \
       || fail 'password-stdin completion marker differs'
-    (cd /out/bundle && exec "$APP" --server) >/tmp/server.log 2>&1 &
-    SERVER_PID=$!
-    SERVER_START=$("$READY" --identity "$SERVER_PID")
-    "$READY" --wait-tcp-listener "$SERVER_PID" "$SERVER_START" /tmp/server.log \
-      0100007F:527E 'exact loopback direct server'
+    "$READY" --wait-user-server "$SERVER_PID" "$SERVER_START" /tmp/server.log \
+      "$PROBE" "$(id -u)"
     listener_is_exact || fail 'server listener is not exactly 127.0.0.1:21118'
     [ "$(udp_socket_count)" -eq 0 ] || fail 'server network namespace has a UDP socket'
     printf 'server_pid=%s server_start=%s listener=127.0.0.1:21118\n' \
       "$SERVER_PID" "$SERVER_START" > "$COORD/server.ready.tmp"
     mv "$COORD/server.ready.tmp" "$COORD/server.ready"
-    echo 'FLUTTER_PEER_SERVER_READY network=none interfaces=lo listener=127.0.0.1:21118 udp=0'
+    echo 'FLUTTER_PEER_SERVER_READY network=none interfaces=lo listener=127.0.0.1:21118 udp=0 parked_then_passworded=true'
     stop_seen=0
     for _ in $(seq 1 1200); do
       if [ -f "$COORD/stop" ] && [ ! -L "$COORD/stop" ]; then

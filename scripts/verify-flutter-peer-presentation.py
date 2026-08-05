@@ -148,7 +148,8 @@ def validate(sources: dict[str, str]) -> None:
             '"$REAL_FLUTTER" pub get --offline --enforce-lockfile',
             "flutter_rust_bridge_codegen",
             "! grep -Fq '[SEVERE]'",
-            "cargo build --locked --features flutter,unix-file-copy-paste --lib --release",
+            "cargo build --locked --features flutter,unix-file-copy-paste",
+            "--lib --example smoke_readiness --release",
             '"$REAL_FLUTTER" build linux --release --no-pub',
             "readelf --wide --dyn-syms",
             "FLUTTER_PEER_BUILD_OK",
@@ -156,6 +157,12 @@ def validate(sources: dict[str, str]) -> None:
         "exact offline full-product bundle build",
     )
     require(stage, "cp -a /source/. \"$BUILD_SOURCE/\"", "private writable build copy")
+    require(
+        stage,
+        'cp "$BUILD_SOURCE/target/release/examples/smoke_readiness" /out/smoke-readiness',
+        "typed main-IPC readiness probe artifact",
+    )
+    require(stage, "readonly PROBE=/out/smoke-readiness", "runtime readiness probe binding")
     require(stage, "export HOME CARGO_HOME CI=true PUB_CACHE=/evidence-online/pub-cache", "current-lock sealed Pub cache")
     require(stage, "assert_loopback_only_interface", "runtime loopback-only inspection")
     require(stage, '[ "$interfaces" = lo ]', "sole loopback interface")
@@ -167,8 +174,10 @@ def validate(sources: dict[str, str]) -> None:
             "export DISPLAY=:98 HOME=/tmp/server-home",
             "start_xvfb :98 640x480x24",
             '"$SOURCE_FIXTURE" >/tmp/source.log',
+            '(cd /out/bundle && exec env RUST_LOG=info "$APP" --server)',
+            '"$READY" --wait-parked "$SERVER_PID" "$SERVER_START"',
             "--password-stdin",
-            '(cd /out/bundle && exec "$APP" --server)',
+            '"$READY" --wait-user-server "$SERVER_PID" "$SERVER_START"',
             "listener_is_exact",
             'mv "$COORD/server.ready.tmp" "$COORD/server.ready"',
             'mv "$COORD/server.result.tmp" "$COORD/server.result"',
@@ -264,7 +273,8 @@ MUTATIONS = (
     ("host", 'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache,readonly', 'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache'),
     ("host", 'host.get("PortBindings") not in (None, {})', "False"),
     ("stage", '[ "$interfaces" = lo ]', '[ -n "$interfaces" ]'),
-    ("stage", "cargo build --locked --features flutter,unix-file-copy-paste --lib --release", "cargo build --release"),
+    ("stage", "--lib --example smoke_readiness --release", "--lib --release"),
+    ("stage", '"$READY" --wait-parked "$SERVER_PID" "$SERVER_START"', '"$READY" --wait-tcp-listener "$SERVER_PID" "$SERVER_START"'),
     ("stage", "! grep -Fq '[SEVERE]'", "true # severe output ignored"),
     ("stage", "export HOME CARGO_HOME CI=true PUB_CACHE=/evidence-online/pub-cache", "export HOME CARGO_HOME CI=true PUB_CACHE=/online/pub-cache"),
     ("stage", "--password-stdin", "--password rustdesk-peer-9f2a7c4e"),

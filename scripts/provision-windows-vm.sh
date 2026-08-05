@@ -52,8 +52,31 @@ AUTOUNATTEND_ISO="$STATE_DIR/autounattend.iso"   # the PROVISION CD: autounatten
 TOOLCHAINS_ISO="$STATE_DIR/toolchains.iso"        # the TOOLCHAINS CD: the staged ./online windows artifacts
 SRC_ISO="$STATE_DIR/src.iso"                      # the SRC CD: the committed repo (res/vcpkg etc.) for warming
 
+verify_sha512_file() {
+    local file="$1" expected="$2"
+    [ -f "$file" ] && [ ! -L "$file" ] \
+        || die "required SHA512-pinned file is not regular: $file"
+    [ "$(sha512sum "$file" | awk '{print $1}')" = "$expected" ] \
+        || die "SHA512 mismatch for $file"
+}
+
+verify_libvpx_windows_tools() {
+    local hash name extra count=0
+    [ "$(sha256sum "$REPO_ROOT/res/vcpkg/libvpx/windows-tools.sha512" | awk '{print $1}')" = "$SHA256_LIBVPX_WINDOWS_TOOLS_MANIFEST" ] \
+        || die "libvpx Windows tool manifest does not match its pin"
+    while read -r hash name extra; do
+        [ -n "$hash" ] && [ -n "$name" ] && [ -z "$extra" ] \
+            || die "malformed libvpx Windows tool manifest entry"
+        [[ "$hash" =~ ^[0-9a-f]{128}$ ]] || die "malformed libvpx Windows tool SHA512"
+        [[ "$name" =~ ^[A-Za-z0-9._~+-]+$ ]] || die "malformed libvpx Windows tool name"
+        verify_sha512_file "$ONLINE_DIR/vcpkg-distfiles/windows-tools/$name" "$hash"
+        count=$((count + 1))
+    done <"$REPO_ROOT/res/vcpkg/libvpx/windows-tools.sha512"
+    [ "$count" = 32 ] || die "libvpx Windows tool manifest must contain exactly 32 entries"
+}
+
 preflight() {
-    require_cmd virt-install virsh qemu-img xorriso setsid timeout awk
+    require_cmd virt-install virsh qemu-img xorriso setsid timeout awk sha256sum sha512sum
     assert_no_build_host_network_residual
     [[ "$DOMAIN" =~ ^[A-Za-z0-9._-]+$ ]] \
         || die "HARNESS_PREFIX contains an invalid domain-name character"
@@ -87,6 +110,13 @@ preflight() {
     verify_sha256 "$ONLINE_DIR/win/Git-2.45.2-64-bit.exe"                  "${SHA256_GIT_WIN_2_45_2}"
     verify_sha256 "$ONLINE_DIR/win/rustup-init.exe"                        "${SHA256_RUSTUP_INIT_WIN}"
     verify_sha256 "$ONLINE_DIR/vcpkg-${VCPKG_BASELINE}.tar.gz"             "${SHA256_VCPKG_120DEAC3}"
+    verify_sha512_file "$ONLINE_DIR/vcpkg-distfiles/libvpx-${LIBVPX_SOURCE_REF}.tar.gz" "$SHA512_LIBVPX_SOURCE"
+    verify_sha512_file "$ONLINE_DIR/vcpkg-distfiles/libvpx-${LIBVPX_FIX_COMMIT}.patch" "$SHA512_LIBVPX_PATCH"
+    verify_sha512_file "$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz" "$SHA512_LIBYUV"
+    [ -f "$ONLINE_DIR/vcpkg-distfiles/libvpx-native-key.txt" ] \
+        && [ ! -L "$ONLINE_DIR/vcpkg-distfiles/libvpx-native-key.txt" ] \
+        || die "libvpx native key is missing"
+    verify_libvpx_windows_tools
     log "preflight OK — building the golden Win11 template (immutable, pinned)"
 }
 
@@ -113,7 +143,12 @@ build_media() {
         "/win/rust-1.75.0-x86_64-pc-windows-msvc.msi=$ONLINE_DIR/win/rust-1.75.0-x86_64-pc-windows-msvc.msi" \
         "/win/rustup-init.exe=$ONLINE_DIR/win/rustup-init.exe" \
         "/flutter-windows-engine.tar.gz=$ONLINE_DIR/flutter-windows-engine.tar.gz" \
-        "/flutter-pub-cache.tar.gz=$ONLINE_DIR/flutter-pub-cache.tar.gz"
+        "/flutter-pub-cache.tar.gz=$ONLINE_DIR/flutter-pub-cache.tar.gz" \
+        "/vcpkg-distfiles/libvpx-${LIBVPX_SOURCE_REF}.tar.gz=$ONLINE_DIR/vcpkg-distfiles/libvpx-${LIBVPX_SOURCE_REF}.tar.gz" \
+        "/vcpkg-distfiles/libvpx-${LIBVPX_FIX_COMMIT}.patch=$ONLINE_DIR/vcpkg-distfiles/libvpx-${LIBVPX_FIX_COMMIT}.patch" \
+        "/vcpkg-distfiles/libvpx-native-key.txt=$ONLINE_DIR/vcpkg-distfiles/libvpx-native-key.txt" \
+        "/vcpkg-distfiles/libyuv-${LIBYUV_COMMIT}.tar.gz=$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz" \
+        "/vcpkg-distfiles/windows-tools=$ONLINE_DIR/vcpkg-distfiles/windows-tools"
 }
 
 # golden_has_done_marker: true iff C:\guest-setup-done.txt contains the exact v2 receipt in the

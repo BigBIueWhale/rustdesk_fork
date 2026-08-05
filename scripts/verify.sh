@@ -14545,7 +14545,8 @@ if [ -n "$r_b10" ]; then echo "  FAIL R-B10 offline-build canary:$r_b10"; rc=1; 
 # git REF. gitiles `+archive` is empirically non-reproducible (so a URL SHA-pin is impossible) and
 # R-R1 forbids vendoring — so online-fetch's stage_vcpkg_distfiles captures a REPRODUCIBLE
 # `git archive | gzip -n` of the pinned commit into ./online and the portfile consumes it
-# SHA512-verified (file://), with vcpkg_from_git as the capture-less (Windows-VM) fallback. Assert
+# SHA512-verified (file://), with vcpkg_from_git retained only as the ordinary capture-less fallback.
+# Windows golden provisioning carries this exact capture through RUSTDESK_VCPKG_DISTFILES_DIR. Assert
 # the portfile carries a 128-hex SHA512 (the captured pin) AND a 40-hex commit REF (the fallback
 # anchor), the SHA512 equals the non-sentinel pins.env value, and the capture stage is defined+wired.
 echo "== (6d) R-B12(a) libyuv vcpkg distfile SHA512 pinning =="

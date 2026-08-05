@@ -162,6 +162,76 @@ Log 'extracting + bootstrapping vcpkg @120deac3 -> C:\vcpkg'
 tar -xf (Join-Path $tc 'vcpkg-120deac3062162151622ca4860575a33844ba10b.tar.gz') -C 'C:\'
 Rename-Item 'C:\vcpkg-120deac3062162151622ca4860575a33844ba10b' 'C:\vcpkg' -ErrorAction SilentlyContinue
 & 'C:\vcpkg\bootstrap-vcpkg.bat' -disableMetrics
+if ($LASTEXITCODE -ne 0) { Die "vcpkg bootstrap failed (exit $LASTEXITCODE)" }
+
+# --- verified vcpkg offline inputs ------------------------------------------------------------
+# Custom RustDesk overlay sources and libvpx's Windows helper tools come from the same hash-pinned
+# online capture used by the other target builders. Keep ordinary vcpkg origin access available for
+# baseline ports whose URL + SHA512 are owned by vcpkg, but make both custom codecs consume the exact
+# local capture and pre-seed every libvpx acquisition helper into VCPKG_DOWNLOADS.
+$src = (Get-PSDrive -PSProvider FileSystem |
+        Where-Object { Test-Path (Join-Path $_.Root 'res\vcpkg') } | Select-Object -First 1).Root
+if (-not $src) { Die 'PROVISION media not found (no drive has res\vcpkg); refusing an incomplete native warm' }
+$ports = Join-Path $src 'res\vcpkg'
+$distfilesMedia = Join-Path $tc 'vcpkg-distfiles'
+if (-not (Test-Path -LiteralPath $distfilesMedia -PathType Container)) {
+    Die 'toolchains media lacks the verified vcpkg-distfiles directory'
+}
+$distfiles = 'C:\vcpkg-distfiles'
+$downloads = 'C:\vcpkg-build-downloads'
+foreach ($directory in @($distfiles, $downloads)) {
+    if (Test-Path -LiteralPath $directory) { Remove-Item -LiteralPath $directory -Recurse -Force }
+    New-Item -ItemType Directory -Path $directory | Out-Null
+}
+$distfileSpecs = @(
+    @('libvpx-v1.15.2.tar.gz', '824fe8719e4115ec359ae0642f5e1cea051d458f09eb8c24d60858cf082f66e411215e23228173ab154044bafbdfbb2d93b589bb726f55b233939b91f928aae0'),
+    @('libvpx-d5f35ac8d93cba7f7a3f7ddb8f9dc8bd28f785e1.patch', '2980e0504e207047d55e6c98dcc55c2a3c06315b4ec04d59c42d786657e03ba0e1c73a0718ac6635990aac25fc642b204a1d56e13501ce2bd9625996ad0310d8'),
+    @('libyuv-0faf8dd0e004520a61a603a4d2996d5ecc80dc3f.tar.gz', 'be6b343ab6c62e8f2d1571fedf25f5facbf7cd7fe8e1cc4949dab7549ad15f962c91ea43bf567785e54382d7689514f6b66d61bd56b3f38ba54ef51c5fd0da9b')
+)
+foreach ($spec in $distfileSpecs) {
+    $name = $spec[0]
+    $expectedHash = $spec[1]
+    $source = Join-Path $distfilesMedia $name
+    if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { Die "verified vcpkg distfile is missing: $name" }
+    if ((Get-FileHash -LiteralPath $source -Algorithm SHA512).Hash.ToLowerInvariant() -ne $expectedHash) {
+        Die "verified vcpkg distfile SHA512 mismatch: $name"
+    }
+    Copy-Item -LiteralPath $source -Destination (Join-Path $distfiles $name)
+    Copy-Item -LiteralPath $source -Destination (Join-Path $downloads $name)
+}
+$nativeKeySource = Join-Path $distfilesMedia 'libvpx-native-key.txt'
+if (-not (Test-Path -LiteralPath $nativeKeySource -PathType Leaf)) { Die 'libvpx native key is missing' }
+$nativeKey = (Get-Content -LiteralPath $nativeKeySource -Raw).Trim()
+if ($nativeKey -notmatch '^[0-9a-f]{64}$') { Die "libvpx native key is malformed: $nativeKey" }
+Copy-Item -LiteralPath $nativeKeySource -Destination (Join-Path $distfiles 'libvpx-native-key.txt')
+
+$toolManifest = Join-Path $ports 'libvpx\windows-tools.sha512'
+$toolMedia = Join-Path $distfilesMedia 'windows-tools'
+$toolEntries = Get-Content -LiteralPath $toolManifest | Where-Object { $_ -notmatch '^\s*$' }
+if ($toolEntries.Count -ne 32) { Die "libvpx Windows tool manifest must contain exactly 32 entries, found $($toolEntries.Count)" }
+foreach ($entry in $toolEntries) {
+    $toolMatch = [regex]::Match($entry, '^([0-9a-f]{128})  ([A-Za-z0-9._~+-]+)$')
+    if (-not $toolMatch.Success) { Die "malformed libvpx Windows tool manifest entry: $entry" }
+    $toolHash = $toolMatch.Groups[1].Value
+    $toolName = $toolMatch.Groups[2].Value
+    $toolSource = Join-Path $toolMedia $toolName
+    if (-not (Test-Path -LiteralPath $toolSource -PathType Leaf)) { Die "offline libvpx build tool missing: $toolName" }
+    if ((Get-FileHash -LiteralPath $toolSource -Algorithm SHA512).Hash.ToLowerInvariant() -ne $toolHash) {
+        Die "offline libvpx build tool SHA512 mismatch: $toolName"
+    }
+    $cacheName = $toolName
+    if ($toolName -ceq 'mingw-w64-x86_64-pkgconf-1~2.4.3-1-any.pkg.tar.zst') {
+        $cacheName = "msys2-$toolName"
+    } elseif ($toolName -ceq '7zr.exe') {
+        $cacheName = "$($toolHash.Substring(0, 8))-$toolName"
+    }
+    Copy-Item -LiteralPath $toolSource -Destination (Join-Path $downloads $cacheName)
+}
+$env:RUSTDESK_VCPKG_DISTFILES_DIR = $distfiles
+$env:VCPKG_KEEP_ENV_VARS = 'RUSTDESK_VCPKG_DISTFILES_DIR'
+$env:VCPKG_BINARY_SOURCES = 'clear'
+$env:VCPKG_DOWNLOADS = $downloads
+Log 'verified and staged the offline libvpx/libyuv acquisition closure'
 
 # --- machine PATH + env (so build-windows.ps1's Preflight version asserts pass) ---------------
 Log 'setting machine PATH + env'
@@ -174,22 +244,14 @@ $cur = [Environment]::GetEnvironmentVariable('Path','Machine')
 [Environment]::SetEnvironmentVariable('VCPKG_ROOT', 'C:\vcpkg', 'Machine')
 
 # --- vcpkg sec3.2 x64-windows natives -- warm them into the golden (the per-build is --network=none) ----
-# Find the SRC CD (the committed repo that provision-windows-vm.sh mounts) for the overlay ports.
-$src = (Get-PSDrive -PSProvider FileSystem |
-        Where-Object { Test-Path (Join-Path $_.Root 'res\vcpkg') } | Select-Object -First 1).Root
-if ($src) {
-    $ports = Join-Path $src 'res\vcpkg'
-    Log "building the vcpkg x64-windows-static natives (overlay-ports $ports) -- slow (~30-60min)"
-    # Start-Process -Wait -PassThru (native-stderr decoupling as the dart resolve above + the -Wait the
-    # reliable-ExitCode quirk demands): vcpkg writes progress/warnings to stderr; under autounattend's
-    # `*>&1 | Tee` + ErrorActionPreference=Stop a benign warning would be a fatal NativeCommandError. A CHILD
-    # process's stderr goes to the console, never this script's pipeline. Judge by ExitCode. (A hang -- e.g. a
-    # source download that can't reach the net -- is caught by the 130m provision wait.)
-    $vp = Start-Process 'C:\vcpkg\vcpkg.exe' -ArgumentList 'install',"--overlay-ports=$ports",'--triplet','x64-windows-static','libvpx','libyuv','opus','libjpeg-turbo','cpu-features' -Wait -PassThru -NoNewWindow
-    if ($vp.ExitCode -ne 0) { Die "vcpkg install of the x64-windows natives failed (exit $($vp.ExitCode))" }
-} else {
-    Log 'WARN: no SRC CD (res\vcpkg) found -- skipped the vcpkg-native warm; the offline build cannot link codecs'
-}
+Log "building the vcpkg x64-windows-static natives (overlay-ports $ports) -- slow (~30-60min)"
+# Start-Process -Wait -PassThru (native-stderr decoupling as the dart resolve above + the -Wait the
+# reliable-ExitCode quirk demands): vcpkg writes progress/warnings to stderr; under autounattend's
+# `*>&1 | Tee` + ErrorActionPreference=Stop a benign warning would be a fatal NativeCommandError. A CHILD
+# process's stderr goes to the console, never this script's pipeline. Judge by ExitCode. A genuine hang is
+# caught by the 130m provision wait.
+$vp = Start-Process 'C:\vcpkg\vcpkg.exe' -ArgumentList 'install',"--overlay-ports=$ports",'--triplet','x64-windows-static','libvpx','libyuv','opus','libjpeg-turbo','cpu-features' -Wait -PassThru -NoNewWindow
+if ($vp.ExitCode -ne 0) { Die "vcpkg install of the x64-windows natives failed (exit $($vp.ExitCode))" }
 # WiX NuGet is intentionally per-build media, not golden-template state:
 # scripts/build-windows.ps1 verifies the signed packages in
 # OFFLINE\wix-nuget-packages and restores them into a fresh writable

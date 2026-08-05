@@ -4,12 +4,30 @@ vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 # (gitiles `+archive` is NON-reproducible; R-R1 forbids vendoring). online-fetch.sh's
 # stage_vcpkg_distfiles writes a reproducible `git archive | gzip -n` of the pinned commit into
 # ./online and this consumes it, SHA512-verified (scripts/pins.env: SHA512_LIBYUV); the full git
-# commit SHA-1 is the upstream content anchor. Hosts without the ./online capture (Windows golden
-# VM) fall back to the git-SHA-1 commit pin (git verifies the tree on checkout).
-set(_libyuv_archive "/online/libyuv-0faf8dd0e004520a61a603a4d2996d5ecc80dc3f.tar.gz")
-if(EXISTS "${_libyuv_archive}")
+# commit SHA-1 is the upstream content anchor. The Windows golden carries the same capture in its
+# RUSTDESK_VCPKG_DISTFILES_DIR; ordinary source builds retain the legacy /online location and the
+# git-SHA-1 fallback.
+set(_libyuv_archive_name "libyuv-0faf8dd0e004520a61a603a4d2996d5ecc80dc3f.tar.gz")
+set(_libyuv_archive "")
+set(_libyuv_distfiles_native "$ENV{RUSTDESK_VCPKG_DISTFILES_DIR}")
+if(NOT _libyuv_distfiles_native STREQUAL "")
+    file(TO_CMAKE_PATH "${_libyuv_distfiles_native}" _libyuv_distfiles)
+    set(_libyuv_distfiles_archive "${_libyuv_distfiles}/${_libyuv_archive_name}")
+    if(EXISTS "${_libyuv_distfiles_archive}")
+        set(_libyuv_archive "${_libyuv_distfiles_archive}")
+    endif()
+endif()
+if(_libyuv_archive STREQUAL "" AND EXISTS "/online/${_libyuv_archive_name}")
+    set(_libyuv_archive "/online/${_libyuv_archive_name}")
+endif()
+if(NOT _libyuv_archive STREQUAL "")
+    if(CMAKE_HOST_WIN32)
+        set(_libyuv_file_url "file:///")
+    else()
+        set(_libyuv_file_url "file://")
+    endif()
     vcpkg_download_distfile(_libyuv_tgz
-        URLS "file://${_libyuv_archive}"
+        URLS "${_libyuv_file_url}${_libyuv_archive}"
         FILENAME "libyuv-0faf8dd0.tar.gz"
         SHA512 be6b343ab6c62e8f2d1571fedf25f5facbf7cd7fe8e1cc4949dab7549ad15f962c91ea43bf567785e54382d7689514f6b66d61bd56b3f38ba54ef51c5fd0da9b
     )

@@ -40,8 +40,10 @@ PATHS = {
         "scripts/flutter-presentation-probe-desktop-multi-window-pubspec.yaml"
     ),
     "manifest": "scripts/windows-presentation-source-manifest.py",
+    "provision": "scripts/provision-windows-vm.sh",
     "guest_setup": "scripts/win-guest-setup.ps1",
     "golden_inspector": "scripts/windows-golden-inspect.sh",
+    "libyuv_port": "res/vcpkg/libyuv/portfile.cmake",
     "recovery": "flutter/lib/models/presentation_recovery.dart",
     "verify": "scripts/verify.sh",
     "workspace": "scripts/verify-verifier-workspace.py",
@@ -63,8 +65,10 @@ def validate(sources: dict[str, str]) -> None:
     controller = sources["controller"]
     dart = sources["dart"]
     manifest = sources["manifest"]
+    provision = sources["provision"]
     guest_setup = sources["guest_setup"]
     golden_inspector = sources["golden_inspector"]
+    libyuv_port = sources["libyuv_port"]
 
     require_order(
         host,
@@ -235,8 +239,38 @@ def validate(sources: dict[str, str]) -> None:
     require(manifest, "actual != manifest[\"files\"]", "exact inventory")
 
     require_order(
+        provision,
+        (
+            'verify_sha512_file "$ONLINE_DIR/vcpkg-distfiles/libvpx-${LIBVPX_SOURCE_REF}.tar.gz" "$SHA512_LIBVPX_SOURCE"',
+            'verify_sha512_file "$ONLINE_DIR/vcpkg-distfiles/libvpx-${LIBVPX_FIX_COMMIT}.patch" "$SHA512_LIBVPX_PATCH"',
+            'verify_sha512_file "$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz" "$SHA512_LIBYUV"',
+            "verify_libvpx_windows_tools",
+            '"/vcpkg-distfiles/libvpx-${LIBVPX_SOURCE_REF}.tar.gz=$ONLINE_DIR/vcpkg-distfiles/libvpx-${LIBVPX_SOURCE_REF}.tar.gz"',
+            '"/vcpkg-distfiles/libvpx-${LIBVPX_FIX_COMMIT}.patch=$ONLINE_DIR/vcpkg-distfiles/libvpx-${LIBVPX_FIX_COMMIT}.patch"',
+            '"/vcpkg-distfiles/libyuv-${LIBYUV_COMMIT}.tar.gz=$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz"',
+            '"/vcpkg-distfiles/windows-tools=$ONLINE_DIR/vcpkg-distfiles/windows-tools"',
+        ),
+        "golden host-side distfile verification and media construction",
+    )
+    require(
+        provision,
+        '"$(sha256sum "$REPO_ROOT/res/vcpkg/libvpx/windows-tools.sha512" | awk \'{print $1}\')" = "$SHA256_LIBVPX_WINDOWS_TOOLS_MANIFEST"',
+        "pinned Windows helper manifest",
+    )
+
+    require_order(
         guest_setup,
         (
+            "if ($LASTEXITCODE -ne 0) { Die \"vcpkg bootstrap failed (exit $LASTEXITCODE)\" }",
+            "if (-not $src) { Die 'PROVISION media not found",
+            "$distfilesMedia = Join-Path $tc 'vcpkg-distfiles'",
+            "Get-FileHash -LiteralPath $source -Algorithm SHA512",
+            "libvpx Windows tool manifest must contain exactly 32 entries",
+            "$env:RUSTDESK_VCPKG_DISTFILES_DIR = $distfiles",
+            "$env:VCPKG_KEEP_ENV_VARS = 'RUSTDESK_VCPKG_DISTFILES_DIR'",
+            "$env:VCPKG_BINARY_SOURCES = 'clear'",
+            "$env:VCPKG_DOWNLOADS = $downloads",
+            "vcpkg install of the x64-windows natives failed",
             "Get-LocalUser -Name 'builder'",
             "Set-LocalUser -PasswordNeverExpires $true",
             "if ($null -ne $builderAccount.PasswordExpires)",
@@ -246,6 +280,30 @@ def validate(sources: dict[str, str]) -> None:
             "Stop-Computer -Force",
         ),
         "non-expiring builder and exact completion receipt",
+    )
+    for value in (
+        "824fe8719e4115ec359ae0642f5e1cea051d458f09eb8c24d60858cf082f66e411215e23228173ab154044bafbdfbb2d93b589bb726f55b233939b91f928aae0",
+        "2980e0504e207047d55e6c98dcc55c2a3c06315b4ec04d59c42d786657e03ba0e1c73a0718ac6635990aac25fc642b204a1d56e13501ce2bd9625996ad0310d8",
+        "be6b343ab6c62e8f2d1571fedf25f5facbf7cd7fe8e1cc4949dab7549ad15f962c91ea43bf567785e54382d7689514f6b66d61bd56b3f38ba54ef51c5fd0da9b",
+    ):
+        require(guest_setup, value, "guest-side distfile SHA512 pin")
+    require(guest_setup, '$cacheName = "msys2-$toolName"', "MSYS2 cache-name normalization")
+    require(guest_setup, '$cacheName = "$($toolHash.Substring(0, 8))-$toolName"', "7zr cache-name normalization")
+    forbid(guest_setup, "WARN: no SRC CD", "optional native warm")
+
+    require_order(
+        libyuv_port,
+        (
+            'set(_libyuv_distfiles_native "$ENV{RUSTDESK_VCPKG_DISTFILES_DIR}")',
+            'file(TO_CMAKE_PATH "${_libyuv_distfiles_native}" _libyuv_distfiles)',
+            'set(_libyuv_distfiles_archive "${_libyuv_distfiles}/${_libyuv_archive_name}")',
+            'if(EXISTS "${_libyuv_distfiles_archive}")',
+            'if(CMAKE_HOST_WIN32)',
+            'set(_libyuv_file_url "file:///")',
+            'vcpkg_download_distfile(_libyuv_tgz',
+            'URLS "${_libyuv_file_url}${_libyuv_archive}"',
+        ),
+        "libyuv Windows distfile capture consumption",
     )
     require(
         golden_inspector,
@@ -317,6 +375,36 @@ def self_test(sources: dict[str, str]) -> None:
         ("dart", "await widget.texture.close();", "// texture close removed"),
         ("manifest", "metadata.st_nlink != 1", "False"),
         ("manifest", "actual != manifest[\"files\"]", "False"),
+        (
+            "provision",
+            'verify_sha512_file "$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz" "$SHA512_LIBYUV"',
+            "true # libyuv host verification removed",
+        ),
+        (
+            "provision",
+            '"/vcpkg-distfiles/windows-tools=$ONLINE_DIR/vcpkg-distfiles/windows-tools"',
+            '"/vcpkg-distfiles/windows-tools=/tmp/unverified"',
+        ),
+        (
+            "guest_setup",
+            "$env:RUSTDESK_VCPKG_DISTFILES_DIR = $distfiles",
+            "$env:RUSTDESK_VCPKG_DISTFILES_DIR = ''",
+        ),
+        (
+            "guest_setup",
+            "if (-not $src) { Die 'PROVISION media not found",
+            "if (-not $src) { Log 'PROVISION media not found",
+        ),
+        (
+            "guest_setup",
+            "Get-FileHash -LiteralPath $source -Algorithm SHA512",
+            "Get-FileHash -LiteralPath $source -Algorithm MD5",
+        ),
+        (
+            "libyuv_port",
+            'set(_libyuv_distfiles_native "$ENV{RUSTDESK_VCPKG_DISTFILES_DIR}")',
+            'set(_libyuv_distfiles_native "")',
+        ),
         (
             "guest_setup",
             "Set-LocalUser -PasswordNeverExpires $true",

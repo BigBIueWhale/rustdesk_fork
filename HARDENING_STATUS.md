@@ -16217,6 +16217,27 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   creation. The already-pinned old golden is therefore incompatible and cannot count again; a newly provisioned,
   receipt-valid golden and updated exact digest are required before the native transaction may be rerun.
 
+  The first golden-regeneration attempt from exact commit `f134044559fcb43a8f3823f9fdf571f217258dee`
+  is likewise uncounted and supplies no product evidence. Its unprivileged session domain used one
+  `type=user` interface solely for the provisioning step, no host device/filesystem passthrough, and one VNC
+  listener whose parent and child addresses were both exactly `127.0.0.1`; cleanup removed the exact domain,
+  QEMU process, wrapper, and listener after the unchanged 130-minute deadline. Read-only inspection showed
+  that setup did start, then failed before reaching the new password lifecycle check or v2 receipt: the libvpx
+  overlay port rejected an absent `RUSTDESK_VCPKG_DISTFILES_DIR`. The verified libvpx source/security patch,
+  32 pinned Windows acquisition tools, and deterministic libyuv archive already existed in `online`, but the
+  golden toolchains ISO did not carry them and guest setup did not stage their vcpkg environment. This is
+  provisioning drift introduced after the old golden was created—not a Flutter engine, compositor, focus,
+  latency, reconnect, Android-service, or RustDesk connection result.
+
+  Golden provisioning now fails closed unless those exact SHA512-verified inputs and the pinned helper
+  manifest are present, carries them on the existing toolchains ISO, re-verifies and stages them inside
+  Windows, preserves `RUSTDESK_VCPKG_DISTFILES_DIR` through vcpkg, and makes absent PROVISION source media
+  fatal instead of skipping the native warm. Libyuv consumes the same deterministic capture from that
+  directory while retaining its pre-existing ordinary source-build fallback. This correction still does not
+  count as native behavior evidence: a new receipt-valid, digest-pinned golden must complete and the exact
+  Windows presentation transaction must then execute successfully. Until that happens, Windows remains
+  stop-ship and no focus/display-latency fix is claimed proven.
+
 - **Exact Linux Flutter texture/X11 presentation recovery — EXECUTABLE EVIDENCE GREEN;
   ANDROID/WINDOWS/NATIVE END-TO-END EVIDENCE OPEN.** Platform: confined Linux X11 with Flutter
   3.24.5 and software rendering. Endpoint/action: the repository's production Linux

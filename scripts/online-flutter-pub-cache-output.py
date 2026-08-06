@@ -29,15 +29,22 @@ STAGING_PATTERN = re.compile(
 VERSION_PATTERN = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+\Z")
 SHA256_PATTERN = re.compile(r"[0-9a-f]{64}\Z")
 IMAGE_PATTERN = re.compile(r"sha256:[0-9a-f]{64}\Z")
+LOCK_PACKAGE_PATTERN = re.compile(r"  ([a-z_][a-z0-9_]*):\Z")
+LOCK_SOURCE_PATTERN = re.compile(r"    source: ([a-z]+)\Z")
+LOCK_VERSION_PATTERN = re.compile(r'    version: "([0-9A-Za-z][0-9A-Za-z.+-]*)"\Z')
+LOCK_NAME_PATTERN = re.compile(r"      name: ([a-z_][a-z0-9_]*)\Z")
+LOCK_SHA256_PATTERN = re.compile(r'      sha256: "?([0-9a-f]{64})"?\Z')
 BLOCK_SIZE = 1024 * 1024
 TAR_BLOCK_SIZE = 512
 MAX_ARCHIVE_BYTES = 256 * 1024 * 1024
 MAX_STATE_BYTES = 8192
+MAX_LOCK_BYTES = 512 * 1024
 MOUNTINFO_LIMIT = 8 * 1024 * 1024
 RENAME_NOREPLACE = 1
 ARCHIVE_MTIME = 1_700_000_000
 MAX_MEMBER_PATH_BYTES = 181
 MAX_MEMBER_DEPTH = 16
+HOSTED_LOCK_RECORDS = 95
 
 SPECIAL_MODES = frozenset(
     {
@@ -48,10 +55,6 @@ SPECIAL_MODES = frozenset(
 EMPTY_FILES = frozenset(
     {
         "hosted/pub.dev/archive-3.6.1/test/tests/res/emptyfile.txt",
-        "hosted/pub.dev/build_runner_core-7.3.2/test/fixtures/"
-        "no_packages_file/no_pubspec",
-        "hosted/pub.dev/icons_launcher-2.1.7/coverage/lcov.info",
-        "hosted/pub.dev/puppeteer-3.16.0/example/html/empty.html",
     }
 )
 
@@ -79,28 +82,35 @@ class ArchiveContract:
     cache_records: int | None = None
 
 
+@dataclass(frozen=True)
+class HostedLockRecord:
+    name: str
+    version: str
+    sha256: str
+
+
 PRODUCTION_CONTRACT = ArchiveContract(
-    member_count=24_807,
-    directory_count=5_348,
-    file_count=19_459,
-    total_bytes=409_644_171,
+    member_count=7_778,
+    directory_count=1_054,
+    file_count=6_724,
+    total_bytes=86_925_556,
     metadata_sha256=(
-        "1c46903c18501ccf33c84f8f469082a9747b6f3787a48c54cb820db98bcb4353"
+        "fa1189aa532a4444dcd2c0643030e7a41dae0421968843fa2ee48c258ac69c80"
     ),
     payload_sha256=(
-        "6d7f2bf0178ef22678492a6f174921601a1f2828f3df05078f4c4720fe9e404a"
+        "a57b1bf257350624e3cd5610121f0ce84a601cfb090f7490fa9073be086f7478"
     ),
     named_file_sha256=(
-        "61afffd626dc838bf66abc3e49c0188da48b29cc9cd5a86e3eb1c9a08b0dd7fb"
+        "d9b7aa737bea93d62fb46cfa1e2a49339040f8f594c8ac1d61459b3e895106e8"
     ),
-    mode_counts=((0o644, 18_991), (0o754, 2), (0o755, 5_814)),
+    mode_counts=((0o644, 6_712), (0o754, 2), (0o755, 1_064)),
     empty_files=EMPTY_FILES,
     special_modes=SPECIAL_MODES,
-    hosted_members=24_543,
-    hosted_hash_members=264,
-    package_directories=262,
-    hash_records=262,
-    cache_records=257,
+    hosted_members=7_681,
+    hosted_hash_members=97,
+    package_directories=95,
+    hash_records=95,
+    cache_records=0,
 )
 
 
@@ -589,8 +599,6 @@ def validate_archive_semantics(
     if contract is PRODUCTION_CONTRACT:
         for required in (
             "hosted/pub.dev/test-1.25.7/pubspec.yaml",
-            "hosted/pub.dev/.cache/archive-advisories.json",
-            "hosted/pub.dev/.cache/http-advisories.json",
         ):
             if required not in names:
                 fail(
@@ -746,6 +754,148 @@ def read_bounded_regular_file(path: Path, maximum: int) -> bytes:
         return bytes(data)
     finally:
         os.close(descriptor)
+
+
+def read_projection_input(path: Path, maximum: int, label: str) -> bytes:
+    descriptor = os.open(path, os.O_RDONLY | os.O_CLOEXEC | os.O_NOFOLLOW)
+    try:
+        before = os.fstat(descriptor)
+        if (
+            not stat.S_ISREG(before.st_mode)
+            or before.st_nlink != 1
+            or before.st_size > maximum
+        ):
+            fail(f"{label} is not one bounded single-link regular file")
+        data = bytearray()
+        while True:
+            block = os.read(descriptor, min(BLOCK_SIZE, maximum + 1 - len(data)))
+            if not block:
+                break
+            data.extend(block)
+            if len(data) > maximum:
+                fail(f"{label} exceeds its byte bound")
+        after = os.fstat(descriptor)
+        if stable_file_metadata(before) != stable_file_metadata(after):
+            fail(f"{label} changed while it was read")
+        return bytes(data)
+    finally:
+        os.close(descriptor)
+
+
+def parse_flutter_tools_lock(
+    lockfile: Path,
+    expected_sha256: str,
+) -> tuple[HostedLockRecord, ...]:
+    validate_absolute(lockfile, "flutter_tools lockfile")
+    if SHA256_PATTERN.fullmatch(expected_sha256) is None:
+        fail("flutter_tools manifest digest is not one lowercase SHA-256 value")
+    encoded = read_projection_input(
+        lockfile,
+        MAX_LOCK_BYTES,
+        "flutter_tools lockfile",
+    )
+    if hashlib.sha256(encoded).hexdigest() != expected_sha256:
+        fail("flutter_tools manifest lockfile differs from its pin")
+    try:
+        lines = encoded.decode("ascii").splitlines()
+    except UnicodeDecodeError:
+        fail("flutter_tools lockfile is not ASCII")
+
+    records: list[HostedLockRecord] = []
+    package: str | None = None
+    source: str | None = None
+    version: str | None = None
+    description_name: str | None = None
+    digest: str | None = None
+
+    def finish() -> None:
+        nonlocal package, source, version, description_name, digest
+        if package is not None and source == "hosted":
+            if (
+                version is None
+                or description_name != package
+                or digest is None
+            ):
+                fail(f"hosted flutter_tools lock record is incomplete: {package}")
+            records.append(HostedLockRecord(package, version, digest))
+        package = source = version = description_name = digest = None
+
+    for line in lines:
+        match = LOCK_PACKAGE_PATTERN.fullmatch(line)
+        if match is not None:
+            finish()
+            package = match.group(1)
+            continue
+        if package is None:
+            continue
+        if match := LOCK_SOURCE_PATTERN.fullmatch(line):
+            source = match.group(1)
+        elif match := LOCK_VERSION_PATTERN.fullmatch(line):
+            version = match.group(1)
+        elif match := LOCK_NAME_PATTERN.fullmatch(line):
+            description_name = match.group(1)
+        elif match := LOCK_SHA256_PATTERN.fullmatch(line):
+            digest = match.group(1)
+    finish()
+    ordered = tuple(sorted(records, key=lambda record: record.name.encode("ascii")))
+    if len(ordered) != HOSTED_LOCK_RECORDS:
+        fail(
+            "flutter_tools hosted lock count is "
+            f"{len(ordered)}, expected {HOSTED_LOCK_RECORDS}"
+        )
+    if len({record.name for record in ordered}) != len(ordered):
+        fail("flutter_tools hosted lock records are duplicated")
+    return ordered
+
+
+def collect_projection_paths(root: Path, relative: str, device: int) -> list[str]:
+    path = root / relative
+    metadata = os.lstat(path)
+    if metadata.st_dev != device:
+        fail(f"Flutter Pub-cache projection crosses a filesystem: {relative}")
+    if list_xattrs(path):
+        fail(f"Flutter Pub-cache projection carries extended metadata: {relative}")
+    validate_member_name(relative)
+    paths = [relative]
+    if stat.S_ISDIR(metadata.st_mode):
+        with os.scandir(path) as iterator:
+            entries = sorted(iterator, key=lambda entry: os.fsencode(entry.name))
+        for entry in entries:
+            child = f"{relative}/{entry.name}"
+            paths.extend(collect_projection_paths(root, child, device))
+    elif not stat.S_ISREG(metadata.st_mode):
+        fail(f"Flutter Pub-cache projection contains a non-regular entry: {relative}")
+    return paths
+
+
+def write_projection_manifest(
+    cache: Path,
+    lockfile: Path,
+    lock_sha256: str,
+    writer: BinaryIO,
+) -> None:
+    validate_absolute(cache, "Flutter Pub-cache projection source")
+    cache_metadata = os.lstat(cache)
+    if not stat.S_ISDIR(cache_metadata.st_mode):
+        fail("Flutter Pub-cache projection source is not one real directory")
+    records = parse_flutter_tools_lock(lockfile, lock_sha256)
+    paths = {"hosted", "hosted/pub.dev", "hosted-hashes", "hosted-hashes/pub.dev"}
+    for record in records:
+        basename = f"{record.name}-{record.version}"
+        package = f"hosted/pub.dev/{basename}"
+        hash_record = f"hosted-hashes/pub.dev/{basename}.sha256"
+        hash_bytes = read_projection_input(
+            cache / hash_record,
+            len(record.sha256),
+            f"Flutter Pub-cache hash record {basename}",
+        )
+        if hash_bytes != record.sha256.encode("ascii"):
+            fail(f"Flutter Pub-cache hash record differs from the lock: {basename}")
+        paths.update(collect_projection_paths(cache, package, cache_metadata.st_dev))
+        paths.add(hash_record)
+    for relative in sorted(paths, key=lambda value: value.encode("ascii")):
+        validate_member_name(relative)
+        write_all(writer, relative.encode("ascii") + b"\0")
 
 
 def common_state_values(
@@ -1727,6 +1877,85 @@ def run_self_test() -> None:
                     "self-test accepted xattrs on Flutter Pub-cache output",
                 )
 
+        projection = root / "projection"
+        projection.mkdir(mode=0o700)
+        (projection / "hosted" / "pub.dev").mkdir(parents=True)
+        (projection / "hosted-hashes" / "pub.dev").mkdir(parents=True)
+        lock_lines = ["packages:"]
+        expected_paths = {
+            "hosted",
+            "hosted/pub.dev",
+            "hosted-hashes",
+            "hosted-hashes/pub.dev",
+        }
+        for index in range(HOSTED_LOCK_RECORDS):
+            name = f"package_{index:03d}"
+            version_text = "1.0.0"
+            package_digest = hashlib.sha256(name.encode("ascii")).hexdigest()
+            basename = f"{name}-{version_text}"
+            package_directory = projection / "hosted" / "pub.dev" / basename
+            package_directory.mkdir()
+            (package_directory / "pubspec.yaml").write_text(
+                f"name: {name}\nversion: {version_text}\n",
+                encoding="ascii",
+            )
+            hash_record = (
+                projection / "hosted-hashes" / "pub.dev" / f"{basename}.sha256"
+            )
+            hash_record.write_text(package_digest, encoding="ascii")
+            lock_lines.extend(
+                (
+                    f"  {name}:",
+                    "    dependency: transitive",
+                    "    description:",
+                    f"      name: {name}",
+                    f"      sha256: {package_digest}",
+                    '      url: "https://pub.dev"',
+                    "    source: hosted",
+                    f'    version: "{version_text}"',
+                )
+            )
+            expected_paths.update(
+                {
+                    f"hosted/pub.dev/{basename}",
+                    f"hosted/pub.dev/{basename}/pubspec.yaml",
+                    f"hosted-hashes/pub.dev/{basename}.sha256",
+                }
+            )
+        lockfile = root / "projection.pubspec.lock"
+        lock_bytes = ("\n".join(lock_lines) + "\n").encode("ascii")
+        lockfile.write_bytes(lock_bytes)
+        manifest = io.BytesIO()
+        write_projection_manifest(
+            projection,
+            lockfile,
+            hashlib.sha256(lock_bytes).hexdigest(),
+            manifest,
+        )
+        manifest_paths = manifest.getvalue().rstrip(b"\0").decode("ascii").split("\0")
+        if (
+            manifest_paths != sorted(expected_paths)
+            or any("/.cache" in path for path in manifest_paths)
+        ):
+            fail("self-test did not emit the exact lock-derived projection manifest")
+        original_hash = next(
+            (projection / "hosted-hashes" / "pub.dev").iterdir()
+        )
+        original_hash.write_text("0" * 64, encoding="ascii")
+        expect_failure(
+            lambda: write_projection_manifest(
+                projection,
+                lockfile,
+                hashlib.sha256(lock_bytes).hexdigest(),
+                io.BytesIO(),
+            ),
+            "self-test accepted a projection hash that differs from the lock",
+        )
+        expect_failure(
+            lambda: parse_flutter_tools_lock(lockfile, "0" * 64),
+            "self-test accepted an unpinned flutter_tools manifest lockfile",
+        )
+
         normalization_entries = [
             ("hosted", None, 0o755),
             ("hosted/pub.dev", None, 0o755),
@@ -1835,6 +2064,10 @@ def main() -> int:
     bounded.add_argument("--gid", required=True, type=int)
     bounded.add_argument("--sha256", required=True)
     bounded.add_argument("--size", required=True, type=int)
+    manifest = subparsers.add_parser("write-projection-manifest")
+    manifest.add_argument("--cache", required=True, type=Path)
+    manifest.add_argument("--lockfile", required=True, type=Path)
+    manifest.add_argument("--lock-sha256", required=True)
     subparsers.add_parser("normalize-tar")
     subparsers.add_parser("self-test")
     arguments = parser.parse_args()
@@ -1845,6 +2078,14 @@ def main() -> int:
         return 0
     if arguments.command == "normalize-tar":
         normalize_tar_stream(sys.stdin.buffer, sys.stdout.buffer)
+        return 0
+    if arguments.command == "write-projection-manifest":
+        write_projection_manifest(
+            arguments.cache,
+            arguments.lockfile,
+            arguments.lock_sha256,
+            sys.stdout.buffer,
+        )
         return 0
     if arguments.command == "write-bounded":
         write_bounded_output(

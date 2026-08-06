@@ -4932,9 +4932,6 @@ verify_flutter_pub_cache_archive_resolution() {
             --no-same-owner --no-same-permissions
         /usr/bin/tar -C /tmp/pub-cache --extract --file=/tmp/pub-cache.tar.gz \
             --no-same-owner --no-same-permissions
-        [ -d /tmp/pub-cache/hosted/pub.dev/.cache ]
-        /usr/bin/find /tmp/pub-cache/hosted/pub.dev/.cache \
-            -type f -exec /usr/bin/touch -- {} +
         export HOME=/tmp/home
         export PUB_CACHE=/tmp/pub-cache
         export PUB_HOSTED_URL=https://pub.dev
@@ -5044,17 +5041,30 @@ stage_flutter_pub_cache() {
     log "packaging the exact flutter_tools Pub cache into one private output"
     online_docker_run_offline \
         --mount "type=bind,source=$ONLINE_DIR/pub-cache,target=/inputs/pub-cache,readonly,bind-recursive=disabled" \
+        --mount "type=bind,source=$source,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$GRADLE_SOURCE_AUTHORITY/scripts/online-flutter-pub-cache-output.py,target=/authority/online-flutter-pub-cache-output.py,readonly,bind-recursive=disabled" \
         --mount "type=bind,source=$staging/output,target=/outputs/pub-cache.tar.gz" \
+        --env "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK" \
         --env "RUSTDESK_FLUTTER_PUB_CACHE_SHA256=$SHA256_FLUTTER_PUB_CACHE" \
         --env "RUSTDESK_FLUTTER_PUB_CACHE_SIZE=$SIZE_FLUTTER_PUB_CACHE" \
         "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
         export LC_ALL=C
+        lock=/tmp/flutter-tools.pubspec.lock
+        /usr/bin/tar -xOf /inputs/flutter.tar.xz \
+            flutter/packages/flutter_tools/pubspec.lock >"$lock"
+        [ "$(/usr/bin/sha256sum "$lock" | /usr/bin/cut -d" " -f1)" \
+            = "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256" ]
         cd /inputs/pub-cache
-        /usr/bin/tar --sort=name --mtime=@1700000000 \
+        /usr/bin/python3 -I -S \
+            /authority/online-flutter-pub-cache-output.py \
+            write-projection-manifest \
+            --cache /inputs/pub-cache --lockfile "$lock" \
+            --lock-sha256 "$RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256" \
+            | /usr/bin/tar --null --verbatim-files-from --no-recursion \
+            --hard-dereference --sort=name --mtime=@1700000000 \
             --owner=0 --group=0 --numeric-owner \
             --mode="u+rwX,go+rX,go-w" \
-            -cf - hosted hosted-hashes \
+            --files-from=- -cf - \
             | /usr/bin/python3 -I -S \
                 /authority/online-flutter-pub-cache-output.py normalize-tar \
             | /usr/bin/gzip -n -9 \

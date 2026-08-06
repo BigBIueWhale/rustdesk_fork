@@ -99,10 +99,10 @@ def validate(sources: Dict[str, str]) -> None:
     tools_lock = pin_value(pins, "SHA256_FLUTTER_TOOLS_LOCK")
     builder = pin_value(pins, "ANDROID_BUILDER_IMAGE_ID")
     if output_sha256 != (
-        "2e17bac34a6a3229c91f4786f78d23ff10dbee1c49b2053b84838202d99d805c"
+        "69db14598f59440d4c2b16e017b2266f3b011cd1cc6854c65b6caaea8db946ae"
     ):
         raise AuthorityError("Flutter Pub-cache SHA-256 differs from the reviewed pin")
-    if output_size != "198126354":
+    if output_size != "18771131":
         raise AuthorityError("Flutter Pub-cache size differs from the reviewed pin")
     if tools_lock != (
         "66955192347d2d4eb24476745462c80a11d9bbf19a461f3504bbbd86e366ee8e"
@@ -181,9 +181,26 @@ def validate(sources: Dict[str, str]) -> None:
             "exact read-only cache source",
         ),
         (
+            "source=$source,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled",
+            "exact producer Flutter source",
+        ),
+        (
             "source=$staging/output,target=/outputs/pub-cache.tar.gz",
             "sole writable output inode",
         ),
+        (
+            "RUSTDESK_FLUTTER_TOOLS_LOCK_SHA256=$SHA256_FLUTTER_TOOLS_LOCK",
+            "producer lockfile contract",
+        ),
+        (
+            "write-projection-manifest",
+            "lock-derived projection",
+        ),
+        (
+            "--null --verbatim-files-from --no-recursion",
+            "exact nonrecursive manifest consumption",
+        ),
+        ("--hard-dereference", "regular-file archive projection"),
         ('--mode="u+rwX,go+rX,go-w"', "mode normalization"),
         ("normalize-tar", "exact historical mode normalization"),
         ("write-bounded", "bounded output writer"),
@@ -264,18 +281,35 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         ('DESTINATION = "flutter-pub-cache.tar.gz"', "fixed final name"),
         ("MAX_ARCHIVE_BYTES = 256 * 1024 * 1024", "archive byte bound"),
+        ("HOSTED_LOCK_RECORDS = 95", "exact hosted lock record count"),
         ("PRODUCTION_CONTRACT = ArchiveContract(", "logical archive contract"),
-        ("member_count=24_807", "exact member count"),
-        ("directory_count=5_348", "exact directory count"),
-        ("file_count=19_459", "exact regular-file count"),
-        ("total_bytes=409_644_171", "exact uncompressed bytes"),
+        ("member_count=7_778", "exact member count"),
+        ("directory_count=1_054", "exact directory count"),
+        ("file_count=6_724", "exact regular-file count"),
+        ("total_bytes=86_925_556", "exact uncompressed bytes"),
         (
-            '"1c46903c18501ccf33c84f8f469082a9747b6f3787a48c54cb820db98bcb4353"',
+            '"fa1189aa532a4444dcd2c0643030e7a41dae0421968843fa2ee48c258ac69c80"',
             "exact metadata digest",
         ),
         (
-            '"61afffd626dc838bf66abc3e49c0188da48b29cc9cd5a86e3eb1c9a08b0dd7fb"',
+            '"d9b7aa737bea93d62fb46cfa1e2a49339040f8f594c8ac1d61459b3e895106e8"',
             "name-bound payload digest",
+        ),
+        (
+            "def parse_flutter_tools_lock(",
+            "exact flutter_tools lock parser",
+        ),
+        (
+            "def write_projection_manifest(",
+            "minimal projection manifest",
+        ),
+        (
+            "if hash_bytes != record.sha256.encode(\"ascii\"):",
+            "lock-to-cache hash equality",
+        ),
+        (
+            'paths = {"hosted", "hosted/pub.dev", "hosted-hashes", "hosted-hashes/pub.dev"}',
+            "metadata-free projection roots",
         ),
         (
             "if uid <= 0 or gid <= 0:\n"
@@ -322,6 +356,14 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "self-test accepted a raw tar missing one special-mode member",
             "raw normalization negative fixture",
+        ),
+        (
+            "self-test did not emit the exact lock-derived projection manifest",
+            "projection manifest fixture",
+        ),
+        (
+            "self-test accepted a projection hash that differs from the lock",
+            "projection hash negative fixture",
         ),
         ("online-flutter-pub-cache-output: PASS", "runtime fixture result"),
     ):
@@ -396,6 +438,14 @@ def mutations() -> Tuple[Mutation, ...]:
         ),
         Mutation(
             "shell",
+            "source=$ONLINE_DIR/pub-cache,target=/inputs/pub-cache,readonly,bind-recursive=disabled\" \\\n"
+            "        --mount \"type=bind,source=$source,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled",
+            "source=$ONLINE_DIR/pub-cache,target=/inputs/pub-cache,readonly,bind-recursive=disabled\" \\\n"
+            "        --mount \"type=bind,source=$ONLINE_DIR,target=/inputs/flutter.tar.xz",
+            "exact producer Flutter source",
+        ),
+        Mutation(
+            "shell",
             "online_docker_run_pub_semantic() {\n"
             "    online_docker run --rm --pull=never --network=none --read-only",
             "online_docker_run_pub_semantic() {\n"
@@ -429,6 +479,18 @@ def mutations() -> Tuple[Mutation, ...]:
             '--mode="u+rwX,go+rX,go-w"',
             '--mode="a=rX"',
             "historical mode normalization",
+        ),
+        Mutation(
+            "shell",
+            "--null --verbatim-files-from --no-recursion",
+            "--null --verbatim-files-from",
+            "nonrecursive projection manifest",
+        ),
+        Mutation(
+            "shell",
+            "--hard-dereference",
+            "--no-recursion",
+            "regular-file archive projection",
         ),
         Mutation(
             "shell",
@@ -470,6 +532,24 @@ def mutations() -> Tuple[Mutation, ...]:
         ),
         Mutation(
             "helper",
+            "HOSTED_LOCK_RECORDS = 95",
+            "HOSTED_LOCK_RECORDS = 94",
+            "exact hosted lock record count",
+        ),
+        Mutation(
+            "helper",
+            'if hash_bytes != record.sha256.encode("ascii"):',
+            "if False:",
+            "lock-to-cache hash equality",
+        ),
+        Mutation(
+            "helper",
+            'paths = {"hosted", "hosted/pub.dev", "hosted-hashes", "hosted-hashes/pub.dev"}',
+            'paths = {"hosted", "hosted/pub.dev", "hosted/pub.dev/.cache", "hosted-hashes", "hosted-hashes/pub.dev"}',
+            "metadata-free projection roots",
+        ),
+        Mutation(
+            "helper",
             'mutable[100:108] = b"0000754\\0"',
             'mutable[100:108] = b"0000755\\0"',
             "special archive modes",
@@ -494,8 +574,8 @@ def mutations() -> Tuple[Mutation, ...]:
         ),
         Mutation(
             "pins",
-            'SIZE_FLUTTER_PUB_CACHE="198126354"',
-            'SIZE_FLUTTER_PUB_CACHE="198126355"',
+            'SIZE_FLUTTER_PUB_CACHE="18771131"',
+            'SIZE_FLUTTER_PUB_CACHE="18771132"',
             "exact compressed size",
         ),
         Mutation(

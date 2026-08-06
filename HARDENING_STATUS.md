@@ -17560,8 +17560,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   acquisition, maintenance-image acquisition/distribution, exact clean R-B2/R-B10 artifacts,
   native/device behavior, independent image distribution, and R-V3 external review remain open.
 - **R-S11cy/R-S11e-117 — exact Windows flutter_tools Pub-cache acquisition-output authority —
-  SOURCE, TRANSACTION FIXTURE, DISPOSABLE REPRODUCTION, ARCHIVE SEMANTIC, OFFLINE RESOLUTION,
-  AND MUTATION VERIFIED 2026-07-25; EXACT CLEAN RELEASE EVIDENCE REMAINS OPEN.** Platform:
+  SOURCE, TRANSACTION/PROJECTION FIXTURE, TWO DISPOSABLE REPRODUCTIONS, ARCHIVE SEMANTIC,
+  OFFLINE RESOLUTION, AND FOCUSED/BROAD MUTATION VERIFIED 2026-08-06; EXACT CLEAN RELEASE
+  EVIDENCE REMAINS OPEN.** Platform:
   the unprivileged Linux acquisition host, immutable Android-builder, and offline Windows
   `flutter_tools` provision input. Endpoint/action:
   `scripts/online-fetch.sh::stage_flutter_pub_cache`, which projects the already complete
@@ -17593,9 +17594,21 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   SHA-256 and size before, between, and after those processes. The extracted
   `packages/flutter_tools/pubspec.lock` is independently pinned at SHA-256
   `66955192347d2d4eb24476745462c80a11d9bbf19a461f3504bbbd86e366ee8e`.
-  The output remains the established 198,126,354-byte archive at SHA-256
-  `2e17bac34a6a3229c91f4786f78d23ff10dbee1c49b2053b84838202d99d805c`;
-  this slice does not repin it.
+  Exact cold reconstruction exposed a later conceptual defect in the 2026-07-25 contract:
+  it tarred the whole R-S11cn app-plus-tools union cache even though the durable Windows input
+  was described as a 95-package `flutter_tools` closure. The preserved historical archive had
+  24,807 members, while the current exact union produced 23,731; the member comparison found
+  1,690 historical-only paths, 614 current-only paths, and 240 changed paths. Most changed
+  payloads were Pub's time-varying `.cache/*-versions.json` responses, and package trees also
+  followed app-lock changes. Repinning that whole-union output would therefore retain a
+  fundamentally nondeterministic and overbroad boundary.
+
+  The producer now treats R-S11cn only as authenticated acquisition source. It parses the
+  pinned Flutter lock into exactly 95 hosted name/version/content-SHA records, requires every
+  corresponding source hash record to equal the lock, and selects only those 95 package trees
+  and 95 hash files. App-only packages and the complete hosted metadata cache are absent. The
+  output is the 18,771,131-byte archive at SHA-256
+  `69db14598f59440d4c2b16e017b2266f3b011cd1cc6854c65b6caaea8db946ae`.
 
   UID or primary GID zero is refused. The canonical current-user mode-0700 online root is
   exclusively locked before reconciliation, occupied-output validation, staging, or
@@ -17613,14 +17626,19 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   source and lock digests, immutable Android-builder ID, output length/SHA-256, and fixed
   destination. Packaging uses `--pull=never`, `--network=none`, a read-only root, numeric
   UID:GID, all capabilities dropped, no-new-privileges, fixed PID/memory/no-swap/CPU limits,
-  and bounded non-executable tmpfs. It receives exactly three host mounts: `pub-cache`
-  read-only with recursive submount inclusion disabled, the exact committed helper read-only,
-  and the one recorded candidate inode writable. It receives no online root, final name,
-  live checkout, Docker socket, device, port, other writable host path, or host namespace.
+  and bounded non-executable tmpfs. It receives exactly four host mounts: `pub-cache` and the
+  exact Flutter source archive read-only with recursive submount inclusion disabled, the exact
+  committed helper read-only, and the one recorded candidate inode writable. It receives no
+  online root, final name, live checkout, Docker socket, device, port, other writable host
+  path, or host namespace.
 
-  The C-locale producer selects only `hosted` and `hosted-hashes`, applies GNU tar name
-  sorting, numeric owner/group zero, epoch 1700000000, and
-  `u+rwX,go+rX,go-w`, then `gzip -n -9`. That general normalization would collapse the
+  The C-locale producer extracts only the exact `flutter_tools` lock from the pinned Flutter
+  archive and reproves its SHA-256. The helper's bounded canonical parser emits a sorted
+  NUL-delimited manifest for the 95 selected package trees, 95 exact hash records, and four
+  required parent directories. GNU tar consumes only those explicitly enumerated paths with
+  literal NUL framing, recursion disabled, and hardlinks dereferenced, then applies name
+  sorting, numeric owner/group zero, epoch 1700000000, and `u+rwX,go+rX,go-w` before
+  `gzip -n -9`. That general normalization would collapse the
   historical source's two mode-0754 files to 0755. The helper therefore operates as a
   streaming raw-tar normalizer: it validates each header checksum and complete padded
   payload, changes exactly the two reviewed short-name regular headers from 0755 to 0754,
@@ -17632,20 +17650,20 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   `scripts/online-flutter-pub-cache-output.py` then independently performs stable
   no-follow hashing and parses rather than extracts the gzip tar. The logical contract is
-  exactly 24,807 members: 5,348 directories, 19,459 regular files, and 409,644,171 regular
-  bytes. It binds 24,543 hosted members, 264 hosted-hash members, 262 direct package
-  directories, 262 direct `.sha256` records, 257 direct metadata-cache records, four exact
-  historical empty files, required `test-1.25.7`, and both advisory-cache records. Every
+  exactly 7,778 members: 1,054 directories, 6,724 regular files, and 86,925,556 regular
+  bytes. It binds 7,681 hosted members, 97 hosted-hash members, exactly 95 direct package
+  directories, 95 direct `.sha256` records, zero metadata-cache records, one exact empty file,
+  and required `test-1.25.7`. Every
   name is unique bounded relative ASCII rooted in one of the two admitted trees with maximum
   path length 181 and depth 16. Links, link targets, devices, FIFOs, sparse/special entries,
   traversal, backslashes, PAX metadata, names, device fields, wrong ownership/time/mode, and
-  duplicates are rejected. All directories are 0755; regular modes are exactly 18,991 at
-  0644, 466 at 0755, and the two named files at 0754. Exact ordered metadata SHA-256
-  `1c46903c18501ccf33c84f8f469082a9747b6f3787a48c54cb820db98bcb4353`,
+  duplicates are rejected. All directories are 0755; regular modes are exactly 6,712 at
+  0644, 10 at 0755, and the two named files at 0754. Exact ordered metadata SHA-256
+  `fa1189aa532a4444dcd2c0643030e7a41dae0421968843fa2ee48c258ac69c80`,
   concatenated payload SHA-256
-  `6d7f2bf0178ef22678492a6f174921601a1f2828f3df05078f4c4720fe9e404a`,
+  `a57b1bf257350624e3cd5610121f0ce84a601cfb090f7490fa9073be086f7478`,
   and name-bound per-file SHA-256
-  `61afffd626dc838bf66abc3e49c0188da48b29cc9cd5a86e3eb1c9a08b0dd7fb`
+  `d9b7aa737bea93d62fb46cfa1e2a49339040f8f594c8ac1d61459b3e895106e8`
   make the full ordering/name/mode/size/content claim executable. The candidate is fsynced,
   sealed mode 0400, and completely revalidated.
 
@@ -17654,9 +17672,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   executable tmpfs. It receives only the pinned Flutter archive, sealed candidate, and exact
   helper read-only. It copies the archive into disposable scratch, checks the complete byte
   and logical contract there, and only then extracts both reviewed archives into scratch
-  without restoring owner or permission authority. It touches only regular files below
-  `hosted/pub.dev/.cache`, matching the Windows consumer's advisory-freshness step, closes
-  HOME/Pub/Git/PATH configuration, proves the exact lock digest, runs
+  without restoring owner or permission authority. It asserts the complete metadata-free
+  logical contract, closes HOME/Pub/Git/PATH configuration, proves the exact lock digest, runs
   `dart pub get --offline --enforce-lockfile`, and proves the lock unchanged. Producer,
   Pub-source, Flutter-input, structural-output, offline-semantic, and publication statuses are
   independent.
@@ -17678,13 +17695,18 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   dropped, no-new-privileges, and fixed resource/tmpfs ceilings. The transaction self-test
   covers cold publication/recovery, wrong digest, independently pinned but semantically wrong
   archive, occupied destination preservation, interrupted state, symlink, external hardlink,
-  xattr, both special-mode header rewrites, and a missing-special rejection. A disposable
-  read-only source projection reproduced exactly 198,126,354 bytes and SHA-256
-  `2e17bac34a6a3229c91f4786f78d23ff10dbee1c49b2053b84838202d99d805c`;
-  its full semantic parser passed. A second fresh no-network disposable process extracted
-  only into tmpfs and completed the exact flutter_tools offline enforced-lock replay with the
-  lock digest unchanged. The persistent source cache and archive remained read-only and were
-  not modified, chmodded, renamed, replaced, or deleted.
+  xattr, exact 95-record lock parsing, exact projection inventory, wrong source-hash rejection,
+  wrong lock-digest rejection, both special-mode header rewrites, and a missing-special
+  rejection. Two independent numeric-nonroot networkless productions from the same exact
+  read-only source emitted byte-identical 18,771,131-byte archives at SHA-256
+  `69db14598f59440d4c2b16e017b2266f3b011cd1cc6854c65b6caaea8db946ae`.
+  The independent full semantic parser accepted the exact logical contract. A separate fresh
+  no-network process extracted only into tmpfs, confirmed exactly 95 package directories and
+  95 hash records with no `.cache`, and completed the exact flutter_tools offline enforced-lock
+  replay with the lock digest unchanged. The focused verifier rejected all 30 deliberate
+  mutations and the independent workspace structural binding passed. The persistent source
+  cache and historical archive remained read-only and were not modified, chmodded, renamed,
+  replaced, or deleted; only disposable evidence copies were quarantined or regenerated.
 
   The focused mutation verifier and independent workspace mutation matrix bind the helper,
   producer topology, pins, shared gate, R-S11cy, Appendix C #252, and this ledger. Exact test
@@ -21841,7 +21863,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-e22c2a4758dd7db7c82a6bf5ed449c6febe01e1ae2c07c465a175ecb3e6a0ac4  requirements.html
+7203122824cb5c8c7b276f2996a51821f177733662718b459d65d4164bb4e2ea  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

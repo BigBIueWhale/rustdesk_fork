@@ -34150,6 +34150,7 @@ def validate_online_fetch_flutter_pub_cache_output_authority_contract(sources):
             "focused lifecycle binding",
         ),
         ("complete logical contract", "focused archive binding"),
+        ("metadata-free projection roots", "focused minimal-projection binding"),
         ("run_mutations(sources)", "focused mutation dispatch"),
     ):
         require_text(focused, text, label)
@@ -34179,9 +34180,19 @@ def validate_online_fetch_flutter_pub_cache_output_authority_contract(sources):
             "exact read-only source mount",
         ),
         (
+            "source=$source,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled",
+            "exact producer Flutter source mount",
+        ),
+        (
             "source=$staging/output,target=/outputs/pub-cache.tar.gz",
             "sole writable candidate",
         ),
+        ("write-projection-manifest", "lock-derived minimal projection"),
+        (
+            "--null --verbatim-files-from --no-recursion",
+            "nonrecursive projection-manifest consumption",
+        ),
+        ("--hard-dereference", "regular-file archive projection"),
         ('--mode="u+rwX,go+rX,go-w"', "mode normalization"),
         ("normalize-tar", "raw tar normalization"),
         ("write-bounded", "bounded output writer"),
@@ -34243,8 +34254,19 @@ def validate_online_fetch_flutter_pub_cache_output_authority_contract(sources):
             "transaction state",
         ),
         ("PRODUCTION_CONTRACT = ArchiveContract(", "closed archive contract"),
-        ("member_count=24_807", "exact member count"),
-        ("total_bytes=409_644_171", "exact uncompressed byte count"),
+        ("HOSTED_LOCK_RECORDS = 95", "exact hosted lock count"),
+        ("member_count=7_778", "exact member count"),
+        ("total_bytes=86_925_556", "exact uncompressed byte count"),
+        ("def parse_flutter_tools_lock(", "exact lock parser"),
+        ("def write_projection_manifest(", "minimal projection manifest"),
+        (
+            'if hash_bytes != record.sha256.encode("ascii"):',
+            "lock-to-cache hash equality",
+        ),
+        (
+            'paths = {"hosted", "hosted/pub.dev", "hosted-hashes", "hosted-hashes/pub.dev"}',
+            "metadata-free projection roots",
+        ),
         (
             "if uid <= 0 or gid <= 0:\n"
             '        fail("Flutter Pub-cache transaction refuses UID or primary GID zero")',
@@ -62602,8 +62624,8 @@ def run_source_mutations(sources):
         ),
         (
             "cargo_lock",
-            ' "dasp",\n "dart-sys",\n "dbus",',
-            ' "dasp",\n "dbus",',
+            ' "ctrlc",\n "dart-sys",\n "dasp",',
+            ' "ctrlc",\n "dasp",',
             "Android root RustDesk dart-sys lock edge",
         ),
         (
@@ -66902,9 +66924,29 @@ def run_source_mutations(sources):
         ),
         (
             "online_fetch",
+            "source=$ONLINE_DIR/pub-cache,target=/inputs/pub-cache,readonly,bind-recursive=disabled\" \\\n"
+            "        --mount \"type=bind,source=$source,target=/inputs/flutter.tar.xz,readonly,bind-recursive=disabled",
+            "source=$ONLINE_DIR/pub-cache,target=/inputs/pub-cache,readonly,bind-recursive=disabled\" \\\n"
+            "        --mount \"type=bind,source=$ONLINE_DIR,target=/inputs/flutter.tar.xz",
+            "exact producer Flutter source mount",
+        ),
+        (
+            "online_fetch",
             '--mode="u+rwX,go+rX,go-w"',
             '--mode="a=rX"',
             "mode normalization",
+        ),
+        (
+            "online_fetch",
+            "--null --verbatim-files-from --no-recursion",
+            "--null --verbatim-files-from",
+            "nonrecursive projection-manifest consumption",
+        ),
+        (
+            "online_fetch",
+            "--hard-dereference",
+            "--no-recursion",
+            "regular-file archive projection",
         ),
         (
             "online_fetch",
@@ -66945,6 +66987,24 @@ def run_source_mutations(sources):
             "if actual != expected:",
             "if False:",
             "complete semantic contract",
+        ),
+        (
+            "online_flutter_pub_cache_output_helper",
+            "HOSTED_LOCK_RECORDS = 95",
+            "HOSTED_LOCK_RECORDS = 94",
+            "exact hosted lock count",
+        ),
+        (
+            "online_flutter_pub_cache_output_helper",
+            'if hash_bytes != record.sha256.encode("ascii"):',
+            "if False:",
+            "lock-to-cache hash equality",
+        ),
+        (
+            "online_flutter_pub_cache_output_helper",
+            'paths = {"hosted", "hosted/pub.dev", "hosted-hashes", "hosted-hashes/pub.dev"}',
+            'paths = {"hosted", "hosted/pub.dev", "hosted/pub.dev/.cache", "hosted-hashes", "hosted-hashes/pub.dev"}',
+            "metadata-free projection roots",
         ),
         (
             "online_flutter_pub_cache_output_helper",

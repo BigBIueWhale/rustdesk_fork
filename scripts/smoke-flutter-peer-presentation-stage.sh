@@ -332,7 +332,7 @@ CFG
       $(pkg-config --cflags --libs x11) -o /out/flutter-peer-source-x11
     cc -std=c11 -O2 -Wall -Wextra -Werror \
       "$BUILD_SOURCE/scripts/flutter-peer-presentation-x11.c" \
-      $(pkg-config --cflags --libs x11 xtst) -o /out/flutter-peer-presentation-x11
+      $(pkg-config --cflags --libs x11 xtst atspi-2) -o /out/flutter-peer-presentation-x11
     cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
       "$BUILD_SOURCE/scripts/smoke-bind-loopback.c" \
       -Wl,-z,relro,-z,now,-z,noexecstack -ldl -o /out/smoke-bind-loopback.so
@@ -479,6 +479,8 @@ CFG
   viewer)
     verify_runtime_bundle
     assert_loopback_only_interface
+    [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] \
+      || fail 'viewer lacks its private D-Bus accessibility session'
     readonly READY=/source/scripts/smoke-ready.sh
     readonly XVFB=/xvfb-root/usr/bin/Xvfb
     readonly APP=/out/bundle/rustdesk
@@ -531,7 +533,7 @@ CFG
       cat /tmp/viewer-xvfb.log >&2 || true
       exit "$controller_status"
     fi
-    grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK typed_via_xtest=true argv_password=false$' \
+    grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true retired=true typed_via_xtest=true argv_password=false$' \
       <<<"$controller_output" || fail 'real password prompt verdict is missing'
     grep -Eq '^FLUTTER_PEER_FOCUS_RECOVERY_OK .* real_pointer=true stable_connection=true$' \
       <<<"$controller_output" || fail 'stable-connection focus recovery verdict is missing'

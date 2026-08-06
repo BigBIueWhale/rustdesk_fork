@@ -16468,6 +16468,22 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   it does not accept an arbitrary title match, a case-insensitive class, or a different process. A corrected exact
   committed runtime remains required before this item can advance.
 
+  An eighth exact committed run used commit `731d0eed3d60824c9f9316da55e977334d63cd30`,
+  tree `f582a08054a48d970e5a989b3c411df291eb5572`, and source-archive SHA-256
+  `c9b2a9dde5ef1c705a35a577d711755de01eacdccde279ba5370b3c23a581427`. It rebuilt
+  the actual release Rust/Flutter bundle, retained all 65 Rust warnings, passed the parked and
+  passworded typed-IPC lifecycle, exposed only the shimmed `127.0.0.1:21118` listener with zero
+  UDP, and passed the exact viewer PID/title/`WM_CLASS` boundary. The controller then injected the
+  credential after its blind 750-ms delay and eventually timed out without authenticated current
+  pixels or a Rust-to-Dart texture-publication event. The product had created a pixel-buffer texture,
+  and an early focus callback logged `StateError` while the peer display inventory was still empty,
+  but neither observation proves that authentication completed or that a media/presentation path
+  failed. Source tracing proves the remote title is assigned before the secondary Flutter engine and
+  password prompt finish initialization; the old controller's `PASSWORD_PROMPT_OK` line represented
+  key injection, not observation of that prompt. This eighth result is therefore an invalid
+  prompt-readiness witness, not a product authentication, media, pixel, delay, or focus verdict.
+  Cleanup again joined all exact owners and closed the private listener.
+
   No root, product configuration injection, policy bypass, or product-only test hook is admitted. Controlled
   peer and viewer run as numeric non-root in separate mount, PID,
   IPC, temporary-home/configuration, and X11 state. The controlled peer owns a Docker
@@ -16483,9 +16499,14 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   password through redirected `--password-stdin` and its authenticated same-user IPC transaction,
   then must make that same server own exactly one IPv4 listener at `127.0.0.1:21118` with zero UDP.
   The viewer starts the shipped runner with only
-  `--connect 127.0.0.1`; an XTest controller binds the exact launcher PID, exact
-  `rustdesk`/`Rustdesk` X11 instance/class pair, and exact remote-title shape, types the
-  credential into the real `connect-password-prompt`, and submits Enter. The source fixture encodes
+  `--connect 127.0.0.1` inside a viewer-only private D-Bus/AT-SPI session supplied by the pinned
+  runtime image; no host bus or socket is mounted. An XTest/AT-SPI controller binds the exact
+  launcher PID, exact `rustdesk`/`Rustdesk` X11 instance/class pair, and exact remote-title shape,
+  then waits for exactly one same-PID `PASSWORD_TEXT` accessible that is visible, showing, enabled,
+  sensitive, editable, focusable, and focused. Only then may it type the credential and submit Enter;
+  that exact prompt must remain absent for five bounded consecutive scans before pixel evidence may
+  begin. Fixed delays and title-only prompt inference are forbidden, and accessibility unavailability
+  fails closed instead of falling back to blind input. The source fixture encodes
   256 ordered states as two independently colored halves. The observer correlates actual Flutter/X11
   pixels with live source history, requiring four distinct initial pictures no more than 1000 ms old.
   It then holds focus on a separate mapped sink for 2000 ms and returns through a real pointer click;
@@ -16498,9 +16519,25 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   The focused verifier deliberately breaks external-interface isolation, namespace sharing,
   no-port inspection, offline/locked compilation, severe-diagnostic rejection, prompt-only password
-  handling, source-display selection, frame-age and recovery bounds, stable socket identity, XTest
-  input, the 256-state source, shared-verifier wiring, and requirement/ledger records. The independent
+  handling, the viewer-only accessibility session, exact accessible process/role/state/singularity,
+  prompt readiness and stable retirement, source-display selection, frame-age and recovery bounds,
+  stable socket identity, XTest input, the 256-state source, shared-verifier wiring, and
+  requirement/ledger records. The independent
   workspace verifier separately binds the focused verifier and its controller/source paths.
+
+  Pre-publication verification ran only in immutable verifier image
+  `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c` as numeric
+  UID/GID 1000 with `--pull=never`, `--network=none`, read-only root and source, all capabilities
+  dropped, `no-new-privileges`, bounded PIDs/memory/no-swap/CPU/tmpfs, and no port, device, Docker
+  socket, privileged flag, or host namespace. The focused verifier and every deliberate mutation
+  passed; the C11 controller compiled with `-Wall -Wextra -Werror` against X11, XTest, and AT-SPI;
+  both shell stages parsed; the native-codec/requirements-hash gate and all of its mutations passed;
+  and the independent workspace semantic baseline passed. A fresh complete independent in-memory
+  source-mutation catalog then ran from mutation one to terminal exit zero and printed
+  `verify-verifier-workspace: ok`; it was neither sampled nor shortened. These gates started no
+  RustDesk process, X server, listener, or networked process and changed no host service,
+  configuration, display, firewall, route, or network state. The synchronized requirements
+  SHA-256 is `b49f58c833e4d150924ea6b5ab2f7a448547f799b8d9794e79da0c26cccf331c`.
 
   No corrected runtime result is recorded yet; each harness correction must first be committed so
   its exact-source archive can honestly contain the files being run. A green future result will close
@@ -21517,7 +21554,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-731919458c6d304ba89335e137c8aa34fdd1f8963a1208d06025e03c93261b9a  requirements.html
+b49f58c833e4d150924ea6b5ab2f7a448547f799b8d9794e79da0c26cccf331c  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

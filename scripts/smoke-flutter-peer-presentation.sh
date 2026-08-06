@@ -311,6 +311,7 @@ local_docker run --cidfile "$VIEWER_CID_FILE" \
   --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$COORD,target=/coord,bind-recursive=disabled" \
   "$DEV_CHECK_IMAGE_ID" \
+  dbus-run-session -- \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh viewer \
   > "$WORKSPACE/viewer.log" 2>&1
 viewer_status=$?

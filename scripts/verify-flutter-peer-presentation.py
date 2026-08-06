@@ -87,6 +87,9 @@ def validate(sources: dict[str, str]) -> None:
         raise VerificationError(
             "only Pub-cache copy/check, build, and controlled-peer anchor use network-none"
         )
+    require(host, "dbus-run-session --", "private viewer accessibility session")
+    if host.count("dbus-run-session --") != 1:
+        raise VerificationError("the private accessibility session must be viewer-only")
     require(
         host,
         ".harness-state/android-current-evidence-7c29f39/pub-cache",
@@ -183,6 +186,17 @@ def validate(sources: dict[str, str]) -> None:
         "bind shim manifest entry",
     )
     require(stage, '[ "$(udp_socket_count)" -eq 0 ]', "zero UDP runtime surface")
+    require(stage, "pkg-config --cflags --libs x11 xtst atspi-2", "AT-SPI controller link")
+    require(
+        stage,
+        '[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]',
+        "private accessibility-session address",
+    )
+    require(
+        stage,
+        "FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true retired=true typed_via_xtest=true",
+        "accessible password-prompt verdict",
+    )
     require_order(
         stage,
         (
@@ -277,6 +291,8 @@ def validate(sources: dict[str, str]) -> None:
 
     require(controller, 'strstr(title, "127.0.0.1 - Remote Desktop")', "exact real viewer title")
     require(controller, "pid != expected_pid", "viewer process identity")
+    if controller.count("pid != expected_pid") != 2:
+        raise VerificationError("X11 and AT-SPI process-identity checks must both be exact")
     require(
         controller,
         'strcmp(hint.res_name, "rustdesk") != 0',
@@ -291,13 +307,36 @@ def validate(sources: dict[str, str]) -> None:
     if controller.count("XTestFakeKeyEvent") != 2:
         raise VerificationError("XTest key press/release calls are not exact")
     require(controller, 'static const char password[] = "rustdesk-peer-9f2a7c4e";', "test credential")
+    require(controller, "atspi_init() != 0", "private AT-SPI initialization")
+    require(controller, "atspi_get_desktop_count() != 1", "single private accessibility desktop")
+    require(controller, "pid != expected_pid", "accessible process identity")
+    require(controller, "role == ATSPI_ROLE_PASSWORD_TEXT", "password-field accessible role")
+    for state in (
+        "ATSPI_STATE_EDITABLE",
+        "ATSPI_STATE_ENABLED",
+        "ATSPI_STATE_SENSITIVE",
+        "ATSPI_STATE_SHOWING",
+        "ATSPI_STATE_VISIBLE",
+        "ATSPI_STATE_FOCUSED",
+        "ATSPI_STATE_FOCUSABLE",
+    ):
+        require(controller, state, f"password accessible {state}")
+    require(
+        controller,
+        "scan.visible_passwords == 1U && scan.ready_passwords == 1U",
+        "singular ready password accessible",
+    )
+    forbid(controller, "PASSWORD_SETTLE_MS", "blind password-prompt delay")
     require(controller, "AUTH_WAIT_MS 30000U", "authentication deadline")
     require(controller, "FRESH_LIMIT_MS 1000U", "live-frame freshness bound")
     require(controller, "RECOVERY_LIMIT_MS 2500U", "focus-recovery bound")
     require_order(
         controller,
         (
+            "wait_for_password_prompt((unsigned int)viewer_pid, &prompt_scan)",
             "type_password(display)",
+            "wait_for_password_prompt_retirement((unsigned int)viewer_pid, &prompt_scan)",
+            "atspi_exit() != 0",
             "wait_for_current_frames(source, display, &viewer, &history, AUTH_WAIT_MS",
             "read_connection_identity(&connection_before)",
             "sink = create_focus_sink(display)",
@@ -340,6 +379,11 @@ def validate(sources: dict[str, str]) -> None:
         "exact GTK-derived X11 <code>WM_CLASS</code> instance/class pair",
         "normative exact viewer-window identity",
     )
+    require(
+        sources["requirements"],
+        "viewer-only private D-Bus/AT-SPI session",
+        "normative exact password-prompt readiness boundary",
+    )
     require(sources["requirements"], "<tr><td>338</td>", "Appendix C evidence row")
     require(
         sources["hardening"],
@@ -357,6 +401,11 @@ def validate(sources: dict[str, str]) -> None:
         "hardening exact viewer-window identity disposition",
     )
     require(
+        sources["hardening"],
+        "An eighth exact committed run used commit `731d0eed3d60824c9f9316da55e977334d63cd30`",
+        "hardening invalid prompt-readiness evidence disposition",
+    )
+    require(
         sources["readme"],
         "smoke-flutter-peer-presentation.sh",
         "harness README inventory",
@@ -369,6 +418,7 @@ MUTATIONS = (
     ("host", '--network="container:$SERVER_CID" --read-only', "--network=bridge --read-only"),
     ("host", 'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache,readonly', 'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache'),
     ("host", 'host.get("PortBindings") not in (None, {})', "False"),
+    ("host", "dbus-run-session --", "true # private accessibility session removed"),
     ("stage", '[ "$interfaces" = lo ]', '[ -n "$interfaces" ]'),
     ("stage", "--lib --example smoke_readiness --release", "--lib --release"),
     ("stage", '"$READY" --wait-typed-parked "$SERVER_PID" "$SERVER_START"', '"$READY" --wait-tcp-listener "$SERVER_PID" "$SERVER_START"'),
@@ -377,6 +427,7 @@ MUTATIONS = (
     ("stage", "! grep -Fq '[SEVERE]'", "true # severe output ignored"),
     ("stage", "export HOME CARGO_HOME CI=true PUB_CACHE=/evidence-online/pub-cache", "export HOME CARGO_HOME CI=true PUB_CACHE=/online/pub-cache"),
     ("stage", '[ -z "${LD_PRELOAD:-}" ]', "true # ambient preload accepted"),
+    ("stage", '[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]', "true # accessibility bus not required"),
     ("stage", "--password-stdin", "--password rustdesk-peer-9f2a7c4e"),
     ("stage", 'LD_PRELOAD="$BIND_SHIM" RUST_LOG=info exec "$APP" --server', 'RUST_LOG=info exec "$APP" --server'),
     ("stage", 'wait_process_maps_exact_file "$SERVER_PID" "$SERVER_START" "$BIND_SHIM"', "true # mapped shim unproved"),
@@ -387,6 +438,10 @@ MUTATIONS = (
     ("controller", "RECOVERY_LIMIT_MS 2500U", "RECOVERY_LIMIT_MS 10000U"),
     ("controller", "left->inode == right->inode", "1"),
     ("controller", "XTestFakeKeyEvent", "RemovedFakeKeyEvent"),
+    ("controller", "role == ATSPI_ROLE_PASSWORD_TEXT", "role == ATSPI_ROLE_ENTRY"),
+    ("controller", "scan.visible_passwords == 1U && scan.ready_passwords == 1U", "scan.visible_passwords > 0U"),
+    ("controller", "wait_for_password_prompt((unsigned int)viewer_pid, &prompt_scan)", "false"),
+    ("controller", "wait_for_password_prompt_retirement((unsigned int)viewer_pid, &prompt_scan)", "false"),
     ("controller", 'strcmp(hint.res_name, "rustdesk") != 0', "0"),
     ("controller", 'strcmp(hint.res_class, "Rustdesk") != 0', "0"),
     ("source", "frame = (frame + 1U) & 255U;", "frame = 0U;"),
@@ -394,9 +449,11 @@ MUTATIONS = (
     ("requirements", '<div class="req"><span class="id">R-S11gc</span>', '<div class="req"><span class="id">R-S11gc-disabled</span>'),
     ("requirements", "existing external <code>smoke-bind-loopback.c</code> confinement shim", "unmanifested compatibility shim"),
     ("requirements", "exact GTK-derived X11 <code>WM_CLASS</code> instance/class pair", "arbitrary X11 class substring"),
+    ("requirements", "viewer-only private D-Bus/AT-SPI session", "ambient accessibility session"),
     ("hardening", "R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence", "R-S11gc-disabled/R-S11e-216"),
     ("hardening", "The corrected evidence boundary now compiles the existing audited `smoke-bind-loopback.c`", "The evidence boundary assumes an ambient bind rewrite"),
     ("hardening", "The corrected observer now requires the launcher PID and both exact `WM_CLASS` fields", "The observer accepts any title match"),
+    ("hardening", "An eighth exact committed run used commit `731d0eed3d60824c9f9316da55e977334d63cd30`", "The eighth exact run proved product presentation failure"),
 )
 
 

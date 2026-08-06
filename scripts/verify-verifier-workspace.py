@@ -33556,7 +33556,7 @@ def validate_online_fetch_libvpx_local_output_authority_contract(sources):
             "libvpx committed subtree enumeration",
         ),
         (
-            "online_source_git cat-file blob",
+            'online_source_git cat-file blob "$object"',
             "libvpx committed blob hashing",
         ),
         (
@@ -33570,6 +33570,30 @@ def validate_online_fetch_libvpx_local_output_authority_contract(sources):
         (
             "libvpx_live_native_key",
             "libvpx committed/live key equality",
+        ),
+        (
+            "materialize_libvpx_private_source_authority() {",
+            "libvpx private committed-blob materialization",
+        ),
+        (
+            'online_source_git cat-file blob "$LIBVPX_SOURCE_AUTHORITY_BLOB"',
+            "libvpx private committed-blob bytes",
+        ),
+        (
+            "set -o noclobber",
+            "libvpx private patch no-clobber creation",
+        ),
+        (
+            '/usr/bin/chmod 0400 "$LIBVPX_SOURCE_AUTHORITY_PATCH"',
+            "libvpx private patch sealing",
+        ),
+        (
+            "verify_libvpx_private_source_authority() {",
+            "libvpx private source postcondition",
+        ),
+        (
+            'online_source_git hash-object --no-filters -- "$LIBVPX_SOURCE_AUTHORITY_PATCH"',
+            "libvpx private patch-to-blob equality",
         ),
     ):
         require_text(source_authority, text, label)
@@ -33585,13 +33609,22 @@ def validate_online_fetch_libvpx_local_output_authority_contract(sources):
             "stage_vcpkg_fixed_archives",
             "prepare_libvpx_source_authority",
             '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
+            'verify_libvpx_private_source_authority "before committed libvpx local publication"',
             '"$LIBVPX_LOCAL_OUTPUT_HELPER" publish',
             '"$FLOCK_BIN" --unlock "$lock_fd"',
+            'verify_libvpx_private_source_authority "after committed libvpx local publication"',
             "verify_libvpx_source_authority",
             "require_libvpx_distfiles",
         ),
         "libvpx local-output transaction order",
     )
+    for text, label in (
+        ('--source-root "$LIBVPX_SOURCE_AUTHORITY_ROOT"',
+         "libvpx exact private source root"),
+        ('--source-patch "$LIBVPX_SOURCE_AUTHORITY_PATCH"',
+         "libvpx exact private patch source"),
+    ):
+        require_text(lifecycle, text, label)
     for token, label in (
         (".patch.part", "libvpx predictable patch temporary"),
         ("libvpx-native-key.txt.part", "libvpx predictable key temporary"),
@@ -66459,6 +66492,36 @@ def run_source_mutations(sources):
             "online_source_git for-each-ref --format='%(refname)' refs/replace",
             "true # libvpx Git replacement-ref authority removed",
             "libvpx Git replacement-ref authority",
+        ),
+        (
+            "online_fetch",
+            'online_source_git cat-file blob "$LIBVPX_SOURCE_AUTHORITY_BLOB"',
+            'cat "$REPO_ROOT/res/vcpkg/libvpx/0005-cve-2026-1861.patch"',
+            "libvpx private committed-blob bytes",
+        ),
+        (
+            "online_fetch",
+            "set -o noclobber",
+            "set +o noclobber",
+            "libvpx private patch no-clobber creation",
+        ),
+        (
+            "online_fetch",
+            'online_source_git cat-file blob "$object"',
+            'online_source_git show "$object"',
+            "libvpx committed blob hashing",
+        ),
+        (
+            "online_fetch",
+            '/usr/bin/chmod 0400 "$LIBVPX_SOURCE_AUTHORITY_PATCH"',
+            '/usr/bin/chmod 0664 "$LIBVPX_SOURCE_AUTHORITY_PATCH"',
+            "libvpx private patch sealing",
+        ),
+        (
+            "online_fetch",
+            'verify_libvpx_private_source_authority "after committed libvpx local publication"',
+            'true # private source postcondition removed "after committed libvpx local publication"',
+            "libvpx local-output transaction order",
         ),
         (
             "online_libvpx_local_output_helper",

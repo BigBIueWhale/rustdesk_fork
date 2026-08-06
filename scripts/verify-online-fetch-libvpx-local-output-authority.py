@@ -88,7 +88,7 @@ def validate(sources: Mapping[str, str]) -> None:
             "committed subtree enumeration",
         ),
         (
-            "online_source_git cat-file blob",
+            'online_source_git cat-file blob "$object"',
             "committed blob-byte hashing",
         ),
         (
@@ -106,6 +106,30 @@ def validate(sources: Mapping[str, str]) -> None:
         (
             "LIBVPX_SOURCE_AUTHORITY_NATIVE_KEY",
             "retained exact native key",
+        ),
+        (
+            "materialize_libvpx_private_source_authority() {",
+            "private committed-blob materialization",
+        ),
+        (
+            'online_source_git cat-file blob "$LIBVPX_SOURCE_AUTHORITY_BLOB"',
+            "private committed-blob bytes",
+        ),
+        (
+            "set -o noclobber",
+            "private patch no-clobber creation",
+        ),
+        (
+            '/usr/bin/chmod 0400 "$LIBVPX_SOURCE_AUTHORITY_PATCH"',
+            "private patch sealing",
+        ),
+        (
+            "verify_libvpx_private_source_authority() {",
+            "private source postcondition function",
+        ),
+        (
+            'online_source_git hash-object --no-filters -- "$LIBVPX_SOURCE_AUTHORITY_PATCH"',
+            "private patch-to-blob equality",
         ),
         (
             "verify_libvpx_source_authority() {",
@@ -131,6 +155,7 @@ def validate(sources: Mapping[str, str]) -> None:
             "online_source_git hash-object --no-filters",
             "libvpx_native_key_for_commit",
             "libvpx_live_native_key",
+            "materialize_libvpx_private_source_authority",
         ),
         "committed source derivation order",
     )
@@ -147,8 +172,10 @@ def validate(sources: Mapping[str, str]) -> None:
             "stage_vcpkg_fixed_archives",
             "prepare_libvpx_source_authority",
             '"$FLOCK_BIN" --exclusive --nonblock "$lock_fd"',
+            'verify_libvpx_private_source_authority "before committed libvpx local publication"',
             '"$LIBVPX_LOCAL_OUTPUT_HELPER" publish',
             '"$FLOCK_BIN" --unlock "$lock_fd"',
+            'verify_libvpx_private_source_authority "after committed libvpx local publication"',
             "verify_libvpx_source_authority",
             "require_libvpx_distfiles",
         ),
@@ -157,9 +184,11 @@ def validate(sources: Mapping[str, str]) -> None:
     for text, label in (
         (
             "--source-patch "
-            '"$REPO_ROOT/res/vcpkg/libvpx/0005-cve-2026-1861.patch"',
-            "exact committed patch source",
+            '"$LIBVPX_SOURCE_AUTHORITY_PATCH"',
+            "exact private committed patch source",
         ),
+        ('--source-root "$LIBVPX_SOURCE_AUTHORITY_ROOT"',
+         "exact private committed source root"),
         ("--patch-sha512", "patch publisher hash"),
         ("--native-key", "native-key publisher input"),
         ("--source-commit", "publisher source commit"),
@@ -191,6 +220,11 @@ def validate(sources: Mapping[str, str]) -> None:
         "consumer source and output proof",
     )
     require_absent(consumer, "cat \"$dir/libvpx-native-key", "path-read key verdict")
+    require_text(
+        consumer,
+        'verify_libvpx_private_source_authority "before libvpx distfile consumption"',
+        "consumer private-source postcondition",
+    )
     require_absent(
         consumer,
         'sha512sum "$dir/libvpx-${LIBVPX_FIX_COMMIT}.patch"',
@@ -372,8 +406,8 @@ Mutation = Tuple[str, str, str, str]
 MUTATIONS: Tuple[Mutation, ...] = (
     (
         "online",
-        "online_source_git cat-file blob",
-        "online_source_git show",
+        'online_source_git cat-file blob "$object"',
+        'online_source_git show "$object"',
         "committed blob-byte hashing",
     ),
     (
@@ -396,9 +430,35 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "online",
-        "online_source_git hash-object --no-filters",
-        "online_source_git hash-object",
+        "online_source_git hash-object --no-filters -- \\\n"
+        "            res/vcpkg/libvpx/0005-cve-2026-1861.patch",
+        "online_source_git hash-object -- \\\n"
+        "            res/vcpkg/libvpx/0005-cve-2026-1861.patch",
         "committed source derivation order",
+    ),
+    (
+        "online",
+        'online_source_git cat-file blob "$LIBVPX_SOURCE_AUTHORITY_BLOB"',
+        'cat "$REPO_ROOT/res/vcpkg/libvpx/0005-cve-2026-1861.patch"',
+        "private committed-blob bytes",
+    ),
+    (
+        "online",
+        "set -o noclobber",
+        "set +o noclobber",
+        "private patch no-clobber creation",
+    ),
+    (
+        "online",
+        '/usr/bin/chmod 0400 "$LIBVPX_SOURCE_AUTHORITY_PATCH"',
+        '/usr/bin/chmod 0664 "$LIBVPX_SOURCE_AUTHORITY_PATCH"',
+        "private patch sealing",
+    ),
+    (
+        "online",
+        'verify_libvpx_private_source_authority "after committed libvpx local publication"',
+        'true # private source postcondition removed "after committed libvpx local publication"',
+        "libvpx local-output lifecycle order",
     ),
     (
         "online",

@@ -577,6 +577,10 @@ LIBVPX_SOURCE_AUTHORITY_COMMIT=""
 LIBVPX_SOURCE_AUTHORITY_TREE=""
 LIBVPX_SOURCE_AUTHORITY_BLOB=""
 LIBVPX_SOURCE_AUTHORITY_NATIVE_KEY=""
+LIBVPX_SOURCE_AUTHORITY_ROOT=""
+LIBVPX_SOURCE_AUTHORITY_PATCH=""
+LIBVPX_SOURCE_AUTHORITY_ROOT_ID=""
+LIBVPX_SOURCE_AUTHORITY_PATCH_ID=""
 
 libvpx_native_key_for_commit() {
     local commit="$1" inventory entry metadata mode type object file digest count=0
@@ -613,6 +617,74 @@ libvpx_native_key_for_commit() {
         done <"$inventory"
         [ "$count" -gt 0 ] || die "committed libvpx source tree is empty"
     ) | /usr/bin/sha256sum | /usr/bin/awk '{print $1}'
+}
+
+verify_libvpx_private_source_authority() {
+    local phase="$1" directory current
+    [ "$LIBVPX_SOURCE_AUTHORITY_ROOT" = "$ONLINE_FETCH_TMP/libvpx-source-authority" ] \
+        && [ "$LIBVPX_SOURCE_AUTHORITY_PATCH" \
+             = "$LIBVPX_SOURCE_AUTHORITY_ROOT/res/vcpkg/libvpx/0005-cve-2026-1861.patch" ] \
+        || { echo "[FATAL] $phase: private libvpx source paths changed" >&2; return 1; }
+    for directory in \
+        "$LIBVPX_SOURCE_AUTHORITY_ROOT" \
+        "$LIBVPX_SOURCE_AUTHORITY_ROOT/res" \
+        "$LIBVPX_SOURCE_AUTHORITY_ROOT/res/vcpkg" \
+        "$LIBVPX_SOURCE_AUTHORITY_ROOT/res/vcpkg/libvpx"
+    do
+        [ -d "$directory" ] && [ ! -L "$directory" ] \
+            && [ "$(/usr/bin/stat -c '%u:%g:%a' -- "$directory")" \
+                 = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:500" ] \
+            || { echo "[FATAL] $phase: private libvpx source directory changed" >&2; return 1; }
+    done
+    [ "$(/usr/bin/stat -c '%d:%i' -- "$LIBVPX_SOURCE_AUTHORITY_ROOT")" \
+       = "$LIBVPX_SOURCE_AUTHORITY_ROOT_ID" ] \
+        || { echo "[FATAL] $phase: private libvpx source root identity changed" >&2; return 1; }
+    [ -f "$LIBVPX_SOURCE_AUTHORITY_PATCH" ] && [ ! -L "$LIBVPX_SOURCE_AUTHORITY_PATCH" ] \
+        && [ "$(/usr/bin/stat -c '%u:%g:%a:%h' -- "$LIBVPX_SOURCE_AUTHORITY_PATCH")" \
+             = "$ONLINE_FETCH_UID:$ONLINE_FETCH_GID:400:1" ] \
+        && [ "$(/usr/bin/stat -c '%d:%i' -- "$LIBVPX_SOURCE_AUTHORITY_PATCH")" \
+             = "$LIBVPX_SOURCE_AUTHORITY_PATCH_ID" ] \
+        || { echo "[FATAL] $phase: private libvpx patch metadata changed" >&2; return 1; }
+    current="$(
+        online_source_git hash-object --no-filters -- "$LIBVPX_SOURCE_AUTHORITY_PATCH"
+    )" || { echo "[FATAL] $phase: cannot hash the private libvpx patch" >&2; return 1; }
+    [ "$current" = "$LIBVPX_SOURCE_AUTHORITY_BLOB" ] \
+        || { echo "[FATAL] $phase: private libvpx patch differs from its committed blob" >&2; return 1; }
+    current="$(
+        /usr/bin/sha512sum "$LIBVPX_SOURCE_AUTHORITY_PATCH" | /usr/bin/awk '{print $1}'
+    )" || { echo "[FATAL] $phase: cannot digest the private libvpx patch" >&2; return 1; }
+    [ "$current" = "$SHA512_LIBVPX_PATCH" ] \
+        || { echo "[FATAL] $phase: private libvpx patch differs from its SHA-512 pin" >&2; return 1; }
+}
+
+materialize_libvpx_private_source_authority() {
+    LIBVPX_SOURCE_AUTHORITY_ROOT="$ONLINE_FETCH_TMP/libvpx-source-authority"
+    LIBVPX_SOURCE_AUTHORITY_PATCH="$LIBVPX_SOURCE_AUTHORITY_ROOT/res/vcpkg/libvpx/0005-cve-2026-1861.patch"
+    [ ! -e "$LIBVPX_SOURCE_AUTHORITY_ROOT" ] && [ ! -L "$LIBVPX_SOURCE_AUTHORITY_ROOT" ] \
+        || die "private libvpx source authority already exists"
+    (
+        umask 077
+        /usr/bin/mkdir -p "$LIBVPX_SOURCE_AUTHORITY_ROOT/res/vcpkg/libvpx"
+    ) || die "cannot create the private libvpx source authority"
+    (
+        set -o noclobber
+        online_source_git cat-file blob "$LIBVPX_SOURCE_AUTHORITY_BLOB" \
+            >"$LIBVPX_SOURCE_AUTHORITY_PATCH"
+    ) || die "cannot exclusively materialize the committed libvpx patch blob"
+    /usr/bin/chmod 0400 "$LIBVPX_SOURCE_AUTHORITY_PATCH"
+    /usr/bin/chmod 0500 \
+        "$LIBVPX_SOURCE_AUTHORITY_ROOT/res/vcpkg/libvpx" \
+        "$LIBVPX_SOURCE_AUTHORITY_ROOT/res/vcpkg" \
+        "$LIBVPX_SOURCE_AUTHORITY_ROOT/res" \
+        "$LIBVPX_SOURCE_AUTHORITY_ROOT"
+    LIBVPX_SOURCE_AUTHORITY_ROOT_ID="$(
+        /usr/bin/stat -c '%d:%i' -- "$LIBVPX_SOURCE_AUTHORITY_ROOT"
+    )"
+    LIBVPX_SOURCE_AUTHORITY_PATCH_ID="$(
+        /usr/bin/stat -c '%d:%i' -- "$LIBVPX_SOURCE_AUTHORITY_PATCH"
+    )"
+    verify_libvpx_private_source_authority "after private libvpx source materialization" \
+        || die "cannot establish the private libvpx source authority"
 }
 
 prepare_libvpx_source_authority() {
@@ -656,6 +728,7 @@ prepare_libvpx_source_authority() {
         || die "cannot derive the live libvpx native-input key"
     [ "$current_key" = "$LIBVPX_SOURCE_AUTHORITY_NATIVE_KEY" ] \
         || die "live libvpx inputs differ from the committed native-input authority"
+    materialize_libvpx_private_source_authority
 }
 
 verify_libvpx_source_authority() {
@@ -790,6 +863,8 @@ require_libvpx_distfiles() {
     local dir="$ONLINE_DIR/vcpkg-distfiles"
     verify_libvpx_source_authority "before libvpx distfile consumption" \
         || die "committed libvpx source authority changed before consumption"
+    verify_libvpx_private_source_authority "before libvpx distfile consumption" \
+        || die "private libvpx source authority changed before consumption"
     [ -f "$dir/libvpx-${LIBVPX_SOURCE_REF}.tar.gz" ] \
         && [ ! -L "$dir/libvpx-${LIBVPX_SOURCE_REF}.tar.gz" ] \
         || die "libvpx source capture missing — stage_vcpkg_distfiles must run first"
@@ -798,8 +873,8 @@ require_libvpx_distfiles() {
         || die "libvpx source capture SHA512 mismatch"
     /usr/bin/python3 -I -S "$LIBVPX_LOCAL_OUTPUT_HELPER" check \
         --online "$ONLINE_DIR" \
-        --source-root "$REPO_ROOT" \
-        --source-patch "$REPO_ROOT/res/vcpkg/libvpx/0005-cve-2026-1861.patch" \
+        --source-root "$LIBVPX_SOURCE_AUTHORITY_ROOT" \
+        --source-patch "$LIBVPX_SOURCE_AUTHORITY_PATCH" \
         --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
         --fix-commit "$LIBVPX_FIX_COMMIT" \
         --patch-sha512 "$SHA512_LIBVPX_PATCH" \
@@ -3338,11 +3413,13 @@ stage_libvpx_distfiles() {
         || die "cannot open the online root for libvpx local-output serialization"
     "$FLOCK_BIN" --exclusive --nonblock "$lock_fd" \
         || die "another online-output transaction already owns the online root"
+    verify_libvpx_private_source_authority "before committed libvpx local publication" \
+        || die "private libvpx source authority changed before local publication"
     action="$(
         /usr/bin/python3 -I -S "$LIBVPX_LOCAL_OUTPUT_HELPER" publish \
             --online "$ONLINE_DIR" \
-            --source-root "$REPO_ROOT" \
-            --source-patch "$REPO_ROOT/res/vcpkg/libvpx/0005-cve-2026-1861.patch" \
+            --source-root "$LIBVPX_SOURCE_AUTHORITY_ROOT" \
+            --source-patch "$LIBVPX_SOURCE_AUTHORITY_PATCH" \
             --uid "$ONLINE_FETCH_UID" --gid "$ONLINE_FETCH_GID" \
             --fix-commit "$LIBVPX_FIX_COMMIT" \
             --patch-sha512 "$SHA512_LIBVPX_PATCH" \
@@ -3358,6 +3435,8 @@ stage_libvpx_distfiles() {
     "$FLOCK_BIN" --unlock "$lock_fd" \
         || die "cannot release the libvpx local-output transaction lock"
     exec {lock_fd}<&-
+    verify_libvpx_private_source_authority "after committed libvpx local publication" \
+        || die "private libvpx source authority changed during local publication"
     verify_libvpx_source_authority "after committed libvpx local publication" \
         || die "committed libvpx source authority changed during local publication"
     require_libvpx_distfiles

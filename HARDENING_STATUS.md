@@ -16484,6 +16484,27 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   prompt-readiness witness, not a product authentication, media, pixel, delay, or focus verdict.
   Cleanup again joined all exact owners and closed the private listener.
 
+  A ninth exact committed run used commit `c32873e1cdfe2aff288df9d0ae0ea41a1bb311ea`, tree
+  `e23574cfc3f3bd2365be2ceb9279b1ba07b82d45`, and source-archive SHA-256
+  `d61af93904e4470d5bba66a4e09bcd7883a5aa12cf785420141f0c0b2cc0927c`. The exact
+  five-package acquisition again had zero listening TCP/UDP sockets; retained Pub-cache digest
+  `c3c59a…` reverified unchanged; bridge generation had no severe diagnostic; and the actual release
+  Rust core completed in 5m18s with the same 65 warnings before the Flutter release bundle built.
+  The transaction then stopped while linking the evidence controller: that controller directly calls
+  `g_object_unref`, while `pkg-config --libs atspi-2` in the pinned image emits `-latspi -ldbus-1
+  -lglib-2.0` but not the directly required `-lgobject-2.0`. The linker rejected the unresolved
+  symbol and missing direct DSO before output sealing or any server, viewer, X server, product
+  configuration, or listener started. This is deterministic harness link-closure debt, not a
+  RustDesk authentication, media, pixel, delay, or focus verdict. The corrected controller link
+  requests `gobject-2.0` explicitly through the same pinned pkg-config authority; it does not add a
+  package, image, product dependency, runtime privilege, bus mount, network surface, or fallback.
+  In the same immutable numeric-nonroot/networkless verifier profile, the focused gate and every
+  deliberate mutation passed; the complete controller linked warning-clean into non-executable
+  tmpfs with the exact build flags; both shell stages parsed; the independent semantic baseline and
+  native-codec/requirements-hash gate passed; and a fresh complete independent in-memory
+  source-mutation catalog ran from mutation one to terminal `verify-verifier-workspace: ok`, exit
+  zero. The catalog was neither sampled nor shortened and no product/runtime process started.
+
   No root, product configuration injection, policy bypass, or product-only test hook is admitted. Controlled
   peer and viewer run as numeric non-root in separate mount, PID,
   IPC, temporary-home/configuration, and X11 state. The controlled peer owns a Docker
@@ -16530,7 +16551,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   UID/GID 1000 with `--pull=never`, `--network=none`, read-only root and source, all capabilities
   dropped, `no-new-privileges`, bounded PIDs/memory/no-swap/CPU/tmpfs, and no port, device, Docker
   socket, privileged flag, or host namespace. The focused verifier and every deliberate mutation
-  passed; the C11 controller compiled with `-Wall -Wextra -Werror` against X11, XTest, and AT-SPI;
+  passed; the C11 controller passed syntax-only compilation with `-Wall -Wextra -Werror` against
+  X11, XTest, and AT-SPI;
   both shell stages parsed; the native-codec/requirements-hash gate and all of its mutations passed;
   and the independent workspace semantic baseline passed. A fresh complete independent in-memory
   source-mutation catalog then ran from mutation one to terminal exit zero and printed

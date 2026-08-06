@@ -186,7 +186,11 @@ def validate(sources: dict[str, str]) -> None:
         "bind shim manifest entry",
     )
     require(stage, '[ "$(udp_socket_count)" -eq 0 ]', "zero UDP runtime surface")
-    require(stage, "pkg-config --cflags --libs x11 xtst atspi-2", "AT-SPI controller link")
+    require(
+        stage,
+        "pkg-config --cflags --libs x11 xtst atspi-2 gobject-2.0",
+        "direct AT-SPI and GObject controller link",
+    )
     require(
         stage,
         '[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]',
@@ -428,6 +432,7 @@ MUTATIONS = (
     ("stage", "export HOME CARGO_HOME CI=true PUB_CACHE=/evidence-online/pub-cache", "export HOME CARGO_HOME CI=true PUB_CACHE=/online/pub-cache"),
     ("stage", '[ -z "${LD_PRELOAD:-}" ]', "true # ambient preload accepted"),
     ("stage", '[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]', "true # accessibility bus not required"),
+    ("stage", "pkg-config --cflags --libs x11 xtst atspi-2 gobject-2.0", "pkg-config --cflags --libs x11 xtst atspi-2"),
     ("stage", "--password-stdin", "--password rustdesk-peer-9f2a7c4e"),
     ("stage", 'LD_PRELOAD="$BIND_SHIM" RUST_LOG=info exec "$APP" --server', 'RUST_LOG=info exec "$APP" --server'),
     ("stage", 'wait_process_maps_exact_file "$SERVER_PID" "$SERVER_START" "$BIND_SHIM"', "true # mapped shim unproved"),

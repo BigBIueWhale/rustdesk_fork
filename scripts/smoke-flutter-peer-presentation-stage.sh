@@ -332,7 +332,8 @@ CFG
       $(pkg-config --cflags --libs x11) -o /out/flutter-peer-source-x11
     cc -std=c11 -O2 -Wall -Wextra -Werror \
       "$BUILD_SOURCE/scripts/flutter-peer-presentation-x11.c" \
-      $(pkg-config --cflags --libs x11 xtst atspi-2) -o /out/flutter-peer-presentation-x11
+      $(pkg-config --cflags --libs x11 xtst atspi-2 gobject-2.0) \
+      -o /out/flutter-peer-presentation-x11
     cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
       "$BUILD_SOURCE/scripts/smoke-bind-loopback.c" \
       -Wl,-z,relro,-z,now,-z,noexecstack -ldl -o /out/smoke-bind-loopback.so

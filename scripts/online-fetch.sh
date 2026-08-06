@@ -4726,7 +4726,7 @@ stage_windows_engine() {
                     bin/cache/artifacts/engine/windows-x64-profile \
                     bin/cache/artifacts/engine/windows-x64-release \
                     -type f -print
-                /usr/bin/printf '%s\n' \
+                /usr/bin/printf "%s\n" \
                     bin/cache/libimobiledevice.stamp \
                     bin/cache/usbmuxd.stamp \
                     bin/cache/windows-sdk.stamp

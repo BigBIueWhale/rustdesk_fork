@@ -186,6 +186,10 @@ def validate(sources: Dict[str, str]) -> None:
         ("bin/cache/usbmuxd.stamp", "exact usbmuxd stamp"),
         ("bin/cache/windows-sdk.stamp", "exact Windows SDK stamp"),
         (
+            '/usr/bin/printf "%s\\n" \\',
+            "shell-safe stamp manifest framing",
+        ),
+        (
             '$(/usr/bin/wc -l < /tmp/stage.txt)" -eq 73',
             "exact producer inventory count",
         ),
@@ -364,6 +368,12 @@ def mutations() -> Tuple[Mutation, ...]:
             '$(/usr/bin/wc -l < /tmp/stage.txt)" -eq 73',
             '$(/usr/bin/wc -l < /tmp/stage.txt)" -gt 0',
             "exact producer inventory count",
+        ),
+        Mutation(
+            "shell",
+            '/usr/bin/printf "%s\\n" \\',
+            "/usr/bin/printf '%s\\n' \\",
+            "shell-safe stamp manifest framing",
         ),
         Mutation(
             "shell",

@@ -33987,6 +33987,10 @@ def validate_online_fetch_windows_engine_output_authority_contract(sources):
         ("bin/cache/usbmuxd.stamp", "exact usbmuxd stamp"),
         ("bin/cache/windows-sdk.stamp", "exact Windows SDK stamp"),
         (
+            '/usr/bin/printf "%s\\n" \\',
+            "shell-safe stamp manifest framing",
+        ),
+        (
             '$(/usr/bin/wc -l < /tmp/stage.txt)" -eq 73',
             "exact producer inventory count",
         ),
@@ -66769,6 +66773,12 @@ def run_source_mutations(sources):
             '$(/usr/bin/wc -l < /tmp/stage.txt)" -eq 73',
             '$(/usr/bin/wc -l < /tmp/stage.txt)" -gt 0',
             "exact producer inventory count",
+        ),
+        (
+            "online_fetch",
+            '/usr/bin/printf "%s\\n" \\',
+            "/usr/bin/printf '%s\\n' \\",
+            "shell-safe stamp manifest framing",
         ),
         (
             "online_fetch",

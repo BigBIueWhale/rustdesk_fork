@@ -373,10 +373,45 @@ def validate(sources: dict[str, str]) -> None:
         "singular ready password accessible",
     )
     require(controller, "scan.password_nodes == 0U", "exact password-node retirement")
+    require(controller, "ACCESSIBLE_NAME_LIMIT 96U", "bounded accessible-name diagnostic")
+    require(
+        controller,
+        "strnlen(name, ACCESSIBLE_NAME_LIMIT + 1U)",
+        "bounded accessible-name read",
+    )
+    require(controller, "if (emit_diagnostic != 0)", "failure-only accessibility diagnostic")
+    require(
+        controller,
+        '"FLUTTER_PEER_ATSPI_NODE depth=%u role=%d "',
+        "sanitized accessibility-tree diagnostic",
+    )
+    require(
+        controller,
+        "scan_password_prompt((unsigned int)viewer_pid, &diagnostic_scan, 1)",
+        "exact same-PID failure rescan",
+    )
+    require(
+        controller,
+        "memset(last_scan, 0, sizeof(*last_scan));",
+        "initialized prompt failure diagnostics",
+    )
+    require(controller, "g_free(name);", "accessible-name diagnostic release")
+    forbid(controller, "atspi_accessible_get_text", "accessible text/value disclosure")
+    if controller.count("scan_password_prompt(expected_pid, &scan, 0)") != 2:
+        raise VerificationError("normal prompt scans must not emit accessibility diagnostics")
     forbid(controller, "PASSWORD_SETTLE_MS", "blind password-prompt delay")
     require(controller, "AUTH_WAIT_MS 30000U", "authentication deadline")
     require(controller, "FRESH_LIMIT_MS 1000U", "live-frame freshness bound")
     require(controller, "RECOVERY_LIMIT_MS 2500U", "focus-recovery bound")
+    require_order(
+        controller,
+        (
+            "wait_for_password_prompt((unsigned int)viewer_pid, &prompt_scan)",
+            "scan_password_prompt((unsigned int)viewer_pid, &diagnostic_scan, 1)",
+            "exit_atspi_after_failure()",
+        ),
+        "failed prompt scan diagnostic before teardown",
+    )
     require_order(
         controller,
         (
@@ -460,7 +495,17 @@ def validate(sources: dict[str, str]) -> None:
     require(
         sources["hardening"],
         "An eleventh exact committed run used commit `c85303247b3599999113af806e8527de964a1f03`",
-        "hardening contradictory Flutter password-state disposition",
+        "hardening corrected AT-SPI role interpretation",
+    )
+    require(
+        sources["hardening"],
+        "A twelfth exact committed run used commit `85c7c8ee9731e3548169fae1d031e1b225045012`",
+        "hardening exact zero-password-node evidence disposition",
+    )
+    require(
+        sources["hardening"],
+        "The next diagnostic reuses that same bounded, exact-PID accessibility traversal",
+        "hardening bounded accessibility diagnostic",
     )
     require(
         sources["readme"],
@@ -505,6 +550,15 @@ MUTATIONS = (
     ("controller", "role == ATSPI_ROLE_PASSWORD_TEXT", "role == ATSPI_ROLE_ENTRY"),
     ("controller", "scan.password_nodes == 1U && scan.visible_passwords == 1U", "scan.visible_passwords > 0U"),
     ("controller", "scan.password_nodes == 0U", "scan.visible_passwords == 0U"),
+    ("controller", "ACCESSIBLE_NAME_LIMIT 96U", "ACCESSIBLE_NAME_LIMIT 4096U"),
+    ("controller", "strnlen(name, ACCESSIBLE_NAME_LIMIT + 1U)", "strlen(name)"),
+    ("controller", "if (emit_diagnostic != 0)", "if (1)"),
+    ("controller", '"FLUTTER_PEER_ATSPI_NODE depth=%u role=%d "', '"UNBOUND_ATSPI_NODE depth=%u role=%d "'),
+    ("controller", "scan_password_prompt((unsigned int)viewer_pid, &diagnostic_scan, 1)", "scan_password_prompt((unsigned int)viewer_pid, &diagnostic_scan, 0)"),
+    ("controller", "scan_password_prompt(expected_pid, &scan, 0)", "scan_password_prompt(expected_pid, &scan, 1)"),
+    ("controller", "memset(last_scan, 0, sizeof(*last_scan));", "memset(last_scan, 0, 0);"),
+    ("controller", "atspi_accessible_get_name(accessible, &error)", "atspi_accessible_get_text(accessible, &error)"),
+    ("controller", "g_free(name);", "name = NULL;"),
     ("controller", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0 && atspi_state_set_contains(states, ATSPI_STATE_SHOWING) != 0"),
     ("controller", "wait_for_password_prompt((unsigned int)viewer_pid, &prompt_scan)", "false"),
     ("controller", "wait_for_password_prompt_retirement((unsigned int)viewer_pid, &prompt_scan)", "false"),
@@ -522,6 +576,8 @@ MUTATIONS = (
     ("hardening", "The corrected observer now requires the launcher PID and both exact `WM_CLASS` fields", "The observer accepts any title match"),
     ("hardening", "An eighth exact committed run used commit `731d0eed3d60824c9f9316da55e977334d63cd30`", "The eighth exact run proved product presentation failure"),
     ("hardening", "An eleventh exact committed run used commit `c85303247b3599999113af806e8527de964a1f03`", "The eleventh exact run proved product presentation failure"),
+    ("hardening", "A twelfth exact committed run used commit `85c7c8ee9731e3548169fae1d031e1b225045012`", "The twelfth exact run proved product presentation failure"),
+    ("hardening", "The next diagnostic reuses that same bounded, exact-PID accessibility traversal", "The next diagnostic accepts any accessibility traversal"),
 )
 
 

@@ -16551,14 +16551,17 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   one-line identity worked: its private D-Bus and AT-SPI registry activated without a host bus or
   socket, and the controller bound the exact same-PID `rustdesk`/`Rustdesk` remote window. After the
   bounded prompt scan it reported one application, 28 nodes, no node satisfying the old compound
-  readiness predicate, and exactly one focused node whose numeric AT-SPI role was 39. In the pinned
-  headers role 39 is `PASSWORD_TEXT`; the real password field therefore existed and was focused.
+  readiness predicate, and exactly one focused node whose numeric AT-SPI role was 39. The initial
+  run interpretation incorrectly counted role 39 as `PASSWORD_TEXT`. The pinned enum makes role 39
+  `PANEL` and role 40 `PASSWORD_TEXT`, so this run did not establish that a password field existed;
+  the focused object was consistent with Flutter's top-level panel.
   Exact cleanup joined the viewer, server, source fixture, and both Xvfb owners and closed the sole
   listener. Because no credential was injected, this run is not authentication, media, pixel,
   delay, or focus-recovery evidence.
 
-  The failed predicate was internally impossible for this exact Flutter engine, not a missing
-  prompt. Pinned engine revision `a18df97ca5` creates `PASSWORD_TEXT` only when both
+  Independently of that corrected run interpretation, the old compound predicate was internally
+  impossible for any genuine obscured password field in this exact Flutter engine. Pinned engine
+  revision `a18df97ca5` creates `PASSWORD_TEXT` only when both
   `IsTextField` and `IsObscured` are set, while the same `fl_accessible_node.cc` state table maps
   AT-SPI `SHOWING` to the inverse of `IsObscured`. Every genuine obscured Flutter password field is
   consequently password-role and not `SHOWING`. The corrected contract deletes only that
@@ -16580,6 +16583,27 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   source-mutation catalog then ran from mutation one on the corrected verifier bytes and exited zero
   with terminal `verify-verifier-workspace: ok`. No product, X server, bus, interface, or listener
   started during those source gates.
+
+  A twelfth exact committed run used commit `85c7c8ee9731e3548169fae1d031e1b225045012`,
+  tree `72aebaede99bd85c04df99c6f044824fbd52ec40`, and source-archive SHA-256
+  `7dfc91756673649982f74e0de62ab5bf01b1e5915f96aa108e5b3b8c5b2a3fbe`. It acquired
+  exactly the same five pinned Xvfb packages while proving zero listening TCP and zero UDP, rebuilt
+  the release core in 5m21s with the same 65 warnings, built and manifested all 79 bundle files,
+  reverified the sealed Pub-cache copy, passed parked/passworded server readiness, and exposed only
+  `127.0.0.1:21118` with zero UDP in the external-interface-free namespace. The private viewer
+  D-Bus and AT-SPI registry activated, and the controller again bound the exact same-PID window. The
+  corrected scan then reported one application, 28 nodes, zero password-role nodes, and one focused
+  role-39 `PANEL`. No credential was typed, no authentication or pixel observation began, exact
+  cleanup joined every owned process, and the listener closed. This is evidence that the required
+  password accessible was absent at the observation boundary; by itself it does not distinguish a
+  prompt that was never constructed from one whose Flutter semantics were not exported.
+
+  The next diagnostic reuses that same bounded, exact-PID accessibility traversal after a failed
+  prompt wait. It emits each node's numeric role and six already-tested state bits plus at most 96
+  printable sanitized bytes of its accessible name, then fails exactly as before. It never reads an
+  accessible text value, runs only before any credential input, and cannot relax the singular
+  password-node predicate or reach XTest input. This evidence-only diagnostic changes no product
+  Rust/Flutter code, package, dependency, image, privilege, bus, network surface, or fallback.
 
   No root, product configuration injection, policy bypass, or product-only test hook is admitted. Controlled
   peer and viewer run as numeric non-root in separate mount, PID,
@@ -16639,7 +16663,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   configuration, display, firewall, route, or network state. The synchronized requirements
   SHA-256 is `a5721cb6fecc87ebba0188bb41ce509b870b7a3c0a25125fba078780b3b44b03`.
 
-  No green full-peer runtime result is recorded after eleven exact committed attempts; each harness
+  No green full-peer runtime result is recorded after twelve exact committed attempts; each harness
   correction must first be committed so
   its exact-source archive can honestly contain the files being run. A green future result will close
   only one Linux/X11 software-codec full-peer and focus cycle. It will not establish Android

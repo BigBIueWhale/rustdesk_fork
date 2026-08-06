@@ -16451,6 +16451,23 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   full media/session path under literal loopback but cannot be cited as native product bind-address
   evidence. The product's intentional wildcard listener implementation and release behavior remain
   unchanged.
+
+  A seventh exact committed run used commit `5f196f805ca3b22ec0fa11b27c65a6b1c0b16bce`,
+  tree `be0dc14ab22aef078b2a939235eeefdb36cde0c2`, and source-archive SHA-256
+  `b46c92504e30d4741bdc99ba73b0b33e844fd28acc6ced53a71692ba3c3c1799`. It rebuilt
+  the release bundle, proved the exact manifested loopback shim was mapped by the exact server,
+  passed the parked/passworded typed-IPC transitions, and exposed only `127.0.0.1:21118` with zero
+  UDP. The real viewer then created the Linux remote multi-window engine in the launcher process,
+  but the observer rejected its X11 identity before authentication. The pinned plugin creates that
+  additional engine/window in-process, and neither the runner nor plugin overrides GTK's program
+  class. For executable `rustdesk`, GTK's documented default yields the exact `WM_CLASS`
+  instance/class pair `rustdesk`/`Rustdesk`; the observer instead searched for lowercase `rustdesk`
+  inside the case-sensitive class field. This is a deterministic observer mismatch, not a peer,
+  decode, presentation, or focus-recovery product verdict. Cleanup retired the exact viewer,
+  server, source, and Xvfb owners and closed the listener without host exposure. The corrected observer now requires the launcher PID and both exact `WM_CLASS` fields;
+  it does not accept an arbitrary title match, a case-insensitive class, or a different process. A corrected exact
+  committed runtime remains required before this item can advance.
+
   No root, product configuration injection, policy bypass, or product-only test hook is admitted. Controlled
   peer and viewer run as numeric non-root in separate mount, PID,
   IPC, temporary-home/configuration, and X11 state. The controlled peer owns a Docker
@@ -16466,7 +16483,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   password through redirected `--password-stdin` and its authenticated same-user IPC transaction,
   then must make that same server own exactly one IPv4 listener at `127.0.0.1:21118` with zero UDP.
   The viewer starts the shipped runner with only
-  `--connect 127.0.0.1`; an XTest controller binds the exact PID/class/title remote window, types the
+  `--connect 127.0.0.1`; an XTest controller binds the exact launcher PID, exact
+  `rustdesk`/`Rustdesk` X11 instance/class pair, and exact remote-title shape, types the
   credential into the real `connect-password-prompt`, and submits Enter. The source fixture encodes
   256 ordered states as two independently colored halves. The observer correlates actual Flutter/X11
   pixels with live source history, requiring four distinct initial pictures no more than 1000 ms old.
@@ -21499,7 +21517,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-9d271bf051df50bea4e386c9fe461a30d4b24279043b19dac89c1115cf725ada  requirements.html
+731919458c6d304ba89335e137c8aa34fdd1f8963a1208d06025e03c93261b9a  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

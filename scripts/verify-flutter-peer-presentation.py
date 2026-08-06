@@ -277,6 +277,16 @@ def validate(sources: dict[str, str]) -> None:
 
     require(controller, 'strstr(title, "127.0.0.1 - Remote Desktop")', "exact real viewer title")
     require(controller, "pid != expected_pid", "viewer process identity")
+    require(
+        controller,
+        'strcmp(hint.res_name, "rustdesk") != 0',
+        "exact RustDesk X11 instance identity",
+    )
+    require(
+        controller,
+        'strcmp(hint.res_class, "Rustdesk") != 0',
+        "exact GTK-derived RustDesk X11 class identity",
+    )
     require(controller, "XTestFakeKeyEvent", "real X11 password input")
     if controller.count("XTestFakeKeyEvent") != 2:
         raise VerificationError("XTest key press/release calls are not exact")
@@ -325,6 +335,11 @@ def validate(sources: dict[str, str]) -> None:
         "existing external <code>smoke-bind-loopback.c</code> confinement shim",
         "normative loopback-confinement boundary",
     )
+    require(
+        sources["requirements"],
+        "exact GTK-derived X11 <code>WM_CLASS</code> instance/class pair",
+        "normative exact viewer-window identity",
+    )
     require(sources["requirements"], "<tr><td>338</td>", "Appendix C evidence row")
     require(
         sources["hardening"],
@@ -335,6 +350,11 @@ def validate(sources: dict[str, str]) -> None:
         sources["hardening"],
         "The corrected evidence boundary now compiles the existing audited `smoke-bind-loopback.c`",
         "hardening loopback-confinement disposition",
+    )
+    require(
+        sources["hardening"],
+        "The corrected observer now requires the launcher PID and both exact `WM_CLASS` fields",
+        "hardening exact viewer-window identity disposition",
     )
     require(
         sources["readme"],
@@ -367,12 +387,16 @@ MUTATIONS = (
     ("controller", "RECOVERY_LIMIT_MS 2500U", "RECOVERY_LIMIT_MS 10000U"),
     ("controller", "left->inode == right->inode", "1"),
     ("controller", "XTestFakeKeyEvent", "RemovedFakeKeyEvent"),
+    ("controller", 'strcmp(hint.res_name, "rustdesk") != 0', "0"),
+    ("controller", 'strcmp(hint.res_class, "Rustdesk") != 0', "0"),
     ("source", "frame = (frame + 1U) & 255U;", "frame = 0U;"),
     ("verify", "/usr/bin/python3 -I -S scripts/verify-flutter-peer-presentation.py --repo . --self-test", "true"),
     ("requirements", '<div class="req"><span class="id">R-S11gc</span>', '<div class="req"><span class="id">R-S11gc-disabled</span>'),
     ("requirements", "existing external <code>smoke-bind-loopback.c</code> confinement shim", "unmanifested compatibility shim"),
+    ("requirements", "exact GTK-derived X11 <code>WM_CLASS</code> instance/class pair", "arbitrary X11 class substring"),
     ("hardening", "R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence", "R-S11gc-disabled/R-S11e-216"),
     ("hardening", "The corrected evidence boundary now compiles the existing audited `smoke-bind-loopback.c`", "The evidence boundary assumes an ambient bind rewrite"),
+    ("hardening", "The corrected observer now requires the launcher PID and both exact `WM_CLASS` fields", "The observer accepts any title match"),
 )
 
 

@@ -51,6 +51,7 @@ typedef struct {
     unsigned int height;
     unsigned long pid;
     char title[512];
+    char instance_name[256];
     char class_name[256];
 } ViewerWindow;
 
@@ -298,8 +299,9 @@ static int inspect_viewer_candidate(Display *display, Window window, unsigned lo
     if (read_window_pid(display, window, &pid) != 0 || pid != expected_pid) {
         return 0;
     }
-    if (XGetClassHint(display, window, &hint) == 0 || hint.res_class == NULL ||
-        strstr(hint.res_class, "rustdesk") == NULL) {
+    if (XGetClassHint(display, window, &hint) == 0 || hint.res_name == NULL ||
+        hint.res_class == NULL || strcmp(hint.res_name, "rustdesk") != 0 ||
+        strcmp(hint.res_class, "Rustdesk") != 0) {
         if (hint.res_name != NULL) {
             XFree(hint.res_name);
         }
@@ -313,11 +315,13 @@ static int inspect_viewer_candidate(Display *display, Window window, unsigned lo
     candidate->height = (unsigned int)attributes.height;
     candidate->pid = pid;
     strcpy(candidate->title, title);
-    if (strlen(hint.res_class) >= sizeof(candidate->class_name)) {
+    if (strlen(hint.res_name) >= sizeof(candidate->instance_name) ||
+        strlen(hint.res_class) >= sizeof(candidate->class_name)) {
         XFree(hint.res_name);
         XFree(hint.res_class);
         return -1;
     }
+    strcpy(candidate->instance_name, hint.res_name);
     strcpy(candidate->class_name, hint.res_class);
     XFree(hint.res_name);
     XFree(hint.res_class);
@@ -600,8 +604,9 @@ int main(int argc, char **argv) {
         XCloseDisplay(source);
         return 1;
     }
-    printf("FLUTTER_PEER_WINDOW_OK pid=%lu title=%s class=%s dimensions=%ux%u\n",
-           viewer.pid, viewer.title, viewer.class_name, viewer.width, viewer.height);
+    printf("FLUTTER_PEER_WINDOW_OK pid=%lu title=%s wm_instance=%s wm_class=%s dimensions=%ux%u\n",
+           viewer.pid, viewer.title, viewer.instance_name, viewer.class_name, viewer.width,
+           viewer.height);
     XRaiseWindow(display, viewer.window);
     XSetInputFocus(display, viewer.window, RevertToParent, CurrentTime);
     XSync(display, False);

@@ -20707,6 +20707,11 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "independent confined desktop tab-retirement behavior gate",
     )
     require_text(
+        sources["dart_verify"],
+        "third_party/desktop_multi_window/lib/",
+        "independent vendored desktop multi-window analyzer gate",
+    )
+    require_text(
         sources["flutter_gitattributes"],
         "third_party/desktop_multi_window/** -text",
         "independent vendored desktop multi-window byte preservation",
@@ -58620,6 +58625,12 @@ def run_source_mutations(sources):
             "flutter test --no-pub test/desktop_tab_retirement_test.dart",
             "true # desktop tab-retirement behavior gate removed",
             "independent confined desktop tab-retirement behavior gate",
+        ),
+        (
+            "dart_verify",
+            "third_party/desktop_multi_window/lib/",
+            "third_party/desktop_multi_window-disabled/lib/",
+            "independent vendored desktop multi-window analyzer gate",
         ),
         (
             "flutter_pubspec_yaml",

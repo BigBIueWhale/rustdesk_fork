@@ -88,7 +88,7 @@ class DesktopMultiWindow {
       final ids = result
               ?.map<int>((id) => id.toInt())
               .where((id) => id != 0)
-              ?.toList() ??
+              .toList() ??
           [];
       assert(ids.every((id) => id > 0), 'id must be greater than 0');
       return ids;

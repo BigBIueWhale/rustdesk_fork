@@ -16737,15 +16737,21 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `533883bcb0ffe91a9afdb13b8bac9b14b3e054ba` retains the identical self-erasure and post-free read,
   so an unrelated pin bump is not a correction.
 
-  The pending native correction vendors the exact previously pinned plugin under
-  `flutter/third_party/desktop_multi_window`, preserves its Apache-2.0 license and all Dart,
-  Linux, Windows, and macOS implementations, and changes only the Linux close lifetime. Close
+  The native correction vendors the exact previously pinned plugin under
+  `flutter/third_party/desktop_multi_window`, preserves its Apache-2.0 license and functional
+  Dart, Linux, Windows, and macOS behavior, and changes the native behavior only at the Linux
+  close lifetime. Close
   scheduling becomes idempotent; GTK default destruction is inhibited; and the owning-map erase is
   posted to the GTK idle queue so the `delete-event` callback returns before the `FlutterWindow`
   destructor can run. `pubspec.yaml` and `pubspec.lock` bind the local deterministic path, never the
   retained cache. Focused and independent verifiers reject provenance loss, path redirection,
   missing idempotence, lost idle deferral, synchronous owner deletion, or restoration of the
-  post-free field read. Fresh offline dependency resolution, build/analyzer tests, complete mutation
+  post-free field read. The later exact plugin analyzer exposed seven upstream diagnostics. Its
+  behavior-preserving cleanup removes an impossible null-aware call and unused imports, calls
+  `super.initState()`, uses a real `@override`, matches overridden parameter names, and replaces
+  deprecated `describeEnum(edge)` with the identical `edge.name` wire value. The exact plugin
+  analyzer is now focused- and independently mutation-bound. Fresh offline dependency resolution,
+  build/analyzer tests, complete mutation
   closure, and an exact committed full-peer rerun remain required; this is not a green claim.
 
   The first authoritative fresh-generation attempt against this pending source then rejected the

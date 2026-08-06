@@ -1,6 +1,3 @@
-import 'dart:ui';
-
-import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 import 'channels.dart';
@@ -106,9 +103,12 @@ class WindowControllerMainImpl extends WindowController {
   /// Sets whether the window can be moved by user.
   ///
   /// @platforms macos
-  /// @override
+  @override
   Future<void> setMovable(bool isMovable) async {
-    return _channel.invokeMethod('setMovable', <String, dynamic>{'windowId': _id, 'isMovable': isMovable});
+    return _channel.invokeMethod('setMovable', <String, dynamic>{
+      'windowId': _id,
+      'isMovable': isMovable,
+    });
   }
 
   @override
@@ -143,24 +143,24 @@ class WindowControllerMainImpl extends WindowController {
   }
 
   @override
-  Future<void> startResizing(SubWindowResizeEdge subWindowResizeEdge) {
+  Future<void> startResizing(SubWindowResizeEdge resizeEdge) {
     return _channel.invokeMethod<bool>(
       'startResizing',
       {
         "windowId": _id,
-        "resizeEdge": describeEnum(subWindowResizeEdge),
-        "top": subWindowResizeEdge == SubWindowResizeEdge.top ||
-            subWindowResizeEdge == SubWindowResizeEdge.topLeft ||
-            subWindowResizeEdge == SubWindowResizeEdge.topRight,
-        "bottom": subWindowResizeEdge == SubWindowResizeEdge.bottom ||
-            subWindowResizeEdge == SubWindowResizeEdge.bottomLeft ||
-            subWindowResizeEdge == SubWindowResizeEdge.bottomRight,
-        "right": subWindowResizeEdge == SubWindowResizeEdge.right ||
-            subWindowResizeEdge == SubWindowResizeEdge.topRight ||
-            subWindowResizeEdge == SubWindowResizeEdge.bottomRight,
-        "left": subWindowResizeEdge == SubWindowResizeEdge.left ||
-            subWindowResizeEdge == SubWindowResizeEdge.topLeft ||
-            subWindowResizeEdge == SubWindowResizeEdge.bottomLeft,
+        "resizeEdge": resizeEdge.name,
+        "top": resizeEdge == SubWindowResizeEdge.top ||
+            resizeEdge == SubWindowResizeEdge.topLeft ||
+            resizeEdge == SubWindowResizeEdge.topRight,
+        "bottom": resizeEdge == SubWindowResizeEdge.bottom ||
+            resizeEdge == SubWindowResizeEdge.bottomLeft ||
+            resizeEdge == SubWindowResizeEdge.bottomRight,
+        "right": resizeEdge == SubWindowResizeEdge.right ||
+            resizeEdge == SubWindowResizeEdge.topRight ||
+            resizeEdge == SubWindowResizeEdge.bottomRight,
+        "left": resizeEdge == SubWindowResizeEdge.left ||
+            resizeEdge == SubWindowResizeEdge.topLeft ||
+            resizeEdge == SubWindowResizeEdge.bottomLeft,
       },
     );
   }
@@ -171,9 +171,9 @@ class WindowControllerMainImpl extends WindowController {
   }
 
   @override
-  Future<void> setPreventClose(bool setPreventClose) async {
+  Future<void> setPreventClose(bool isPreventClose) async {
     final Map<String, dynamic> arguments = {
-      'setPreventClose': setPreventClose,
+      'setPreventClose': isPreventClose,
       'windowId': _id
     };
     await _channel.invokeMethod('setPreventClose', arguments);
@@ -194,7 +194,7 @@ class WindowControllerMainImpl extends WindowController {
 
   @override
   Future<void> setInitBackgroundColor(Color color) async {
-     final Map<String, dynamic> arguments = {
+    final Map<String, dynamic> arguments = {
       'windowId': _id,
       'a': color.alpha,
       'r': color.red,

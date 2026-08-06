@@ -659,6 +659,11 @@ def validate(sources: dict[str, str]) -> None:
         "desktop multi-window native destruction returns before owner retirement",
         "offline native multi-window lifetime gate",
     )
+    require(
+        dart_verify,
+        "third_party/desktop_multi_window/lib/",
+        "vendored desktop multi-window analyzer gate",
+    )
     forbid(controller, "PASSWORD_SETTLE_MS", "blind password-prompt delay")
     require(controller, "AUTH_WAIT_MS 30000U", "authentication deadline")
     require(controller, "FRESH_LIMIT_MS 1000U", "live-frame freshness bound")
@@ -882,6 +887,7 @@ MUTATIONS = (
     ("multi_window_linux", "g_idle_add_full(", "callback->OnWindowDestroy(id);\n      g_idle_add_full("),
     ("multi_window_linux", "return TRUE;", "return self->isPreventClose;"),
     ("dart_verify", "desktop multi-window native destruction returns before owner retirement", "desktop multi-window native destruction gate removed"),
+    ("dart_verify", "third_party/desktop_multi_window/lib/", "third_party/desktop_multi_window-disabled/lib/"),
     ("controller", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0 && atspi_state_set_contains(states, ATSPI_STATE_SHOWING) != 0"),
     ("controller", "wait_for_password_prompt((unsigned int)viewer_pid, &prompt_scan)", "false"),
     ("controller", "wait_for_password_prompt_retirement((unsigned int)viewer_pid, &prompt_scan)", "false"),

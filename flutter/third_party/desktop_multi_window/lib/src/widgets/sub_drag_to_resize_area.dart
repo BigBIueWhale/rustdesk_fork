@@ -42,6 +42,7 @@ class _DragToResizeEdgeState extends State<DragToResizeEdge> {
 
   @override
   void initState() {
+    super.initState();
     cursor = widget.resizeCursor;
   }
 

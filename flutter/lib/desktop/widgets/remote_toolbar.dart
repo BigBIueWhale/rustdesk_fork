@@ -2157,7 +2157,7 @@ class _ResolutionsMenuState extends State<_ResolutionsMenu> {
         FilteringTextInputFormatter.allow(RegExp(r'[0-9]')),
       ],
       controller: controller,
-    ).workaroundFreezeLinuxMint();
+    );
   }
 
   List<Widget> _supportedResolutionMenuButtons() => resolutions

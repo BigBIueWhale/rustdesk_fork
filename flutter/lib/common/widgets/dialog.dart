@@ -92,8 +92,7 @@ Future<String> changeAutoDisconnectTimeout(String old) async {
                               r'^([0-9]|[1-9]\d|[1-9]\d{2}|[1-9]\d{3}|[1-5]\d{4}|6[0-4]\d{3}|65[0-4]\d{2}|655[0-2]\d|6553[0-5])$')),
                         ],
                         controller: controller,
-                        autofocus: true)
-                    .workaroundFreezeLinuxMint(),
+                        autofocus: true),
               ),
             ],
           ),
@@ -155,22 +154,25 @@ class DialogTextField extends StatelessWidget {
         Expanded(
           child: Column(
             children: [
-              TextField(
-                decoration: InputDecoration(
-                  labelText: title,
-                  hintText: hintText,
-                  prefixIcon: prefixIcon,
-                  suffixIcon: suffixIcon,
-                  helperText: helperText,
-                  helperMaxLines: 8,
+              Semantics(
+                focusable: true,
+                child: TextField(
+                  decoration: InputDecoration(
+                    labelText: title,
+                    hintText: hintText,
+                    prefixIcon: prefixIcon,
+                    suffixIcon: suffixIcon,
+                    helperText: helperText,
+                    helperMaxLines: 8,
+                  ),
+                  controller: controller,
+                  focusNode: focusNode,
+                  autofocus: true,
+                  obscureText: obscureText,
+                  keyboardType: keyboardType,
+                  inputFormatters: inputFormatters,
+                  maxLength: maxLength,
                 ),
-                controller: controller,
-                focusNode: focusNode,
-                autofocus: true,
-                obscureText: obscureText,
-                keyboardType: keyboardType,
-                inputFormatters: inputFormatters,
-                maxLength: maxLength,
               ),
               if (errorText != null)
                 Align(
@@ -185,7 +187,7 @@ class DialogTextField extends StatelessWidget {
                   ).paddingOnly(top: 8, left: 12),
                 ),
             ],
-          ).workaroundFreezeLinuxMint(),
+          ),
         ),
       ],
     ).paddingSymmetric(vertical: 4.0);
@@ -644,7 +646,7 @@ void renameDialog(
                 autofocus: true,
                 decoration: InputDecoration(labelText: translate('Name')),
                 validator: validator,
-              ).workaroundFreezeLinuxMint(),
+              ),
             ),
           ),
           // NOT use Offstage to wrap LinearProgressIndicator

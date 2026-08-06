@@ -37,6 +37,10 @@ PATHS = {
     "controller": "scripts/flutter-peer-presentation-x11.c",
     "source": "scripts/flutter-peer-source-x11.c",
     "bind_shim": "scripts/smoke-bind-loopback.c",
+    "flutter_common": "flutter/lib/common.dart",
+    "flutter_dialog": "flutter/lib/common/widgets/dialog.dart",
+    "password_semantics_test": "flutter/test/password_field_semantics_test.dart",
+    "dart_verify": "scripts/dart-verify.sh",
     "verify": "scripts/verify.sh",
     "workspace": "scripts/verify-verifier-workspace.py",
     "requirements": "requirements.html",
@@ -60,6 +64,10 @@ def validate(sources: dict[str, str]) -> None:
     controller = sources["controller"]
     source = sources["source"]
     bind_shim = sources["bind_shim"]
+    flutter_common = sources["flutter_common"]
+    flutter_dialog = sources["flutter_dialog"]
+    password_semantics_test = sources["password_semantics_test"]
+    dart_verify = sources["dart_verify"]
 
     require_order(
         host,
@@ -399,6 +407,59 @@ def validate(sources: dict[str, str]) -> None:
     forbid(controller, "atspi_accessible_get_text", "accessible text/value disclosure")
     if controller.count("scan_password_prompt(expected_pid, &scan, 0)") != 2:
         raise VerificationError("normal prompt scans must not emit accessibility diagnostics")
+    forbid(
+        flutter_common,
+        "WorkaroundFreezeLinuxMint",
+        "global Linux semantics-exclusion abstraction",
+    )
+    forbid(
+        flutter_dialog,
+        "workaroundFreezeLinuxMint",
+        "connect-password descendant-semantics exclusion",
+    )
+    require(
+        flutter_dialog,
+        "obscureText: !_passwordVisible,",
+        "connect-password default obscured state",
+    )
+    require(
+        flutter_dialog,
+        "obscureText: obscureText,",
+        "dialog password-state forwarding",
+    )
+    require(
+        flutter_dialog,
+        "focusable: true,",
+        "dialog text-field focusability export",
+    )
+    for flag in (
+        "isTextField",
+        "isObscured",
+        "hasEnabledState",
+        "isEnabled",
+        "isFocusable",
+        "isFocused",
+    ):
+        require(
+            password_semantics_test,
+            f"{flag}: true",
+            f"password semantics regression {flag}",
+        )
+    require(
+        password_semantics_test,
+        "semanticsEnabled: true",
+        "password regression semantics enablement",
+    )
+    require(
+        dart_verify,
+        "flutter test --no-pub test/password_field_semantics_test.dart",
+        "offline password semantics behavior gate",
+    )
+    require(
+        dart_verify,
+        "if grep -RInF --include='*.dart' 'workaroundFreezeLinuxMint' flutter/lib",
+        "authored-Dart global semantics-exclusion absence gate",
+    )
     forbid(controller, "PASSWORD_SETTLE_MS", "blind password-prompt delay")
     require(controller, "AUTH_WAIT_MS 30000U", "authentication deadline")
     require(controller, "FRESH_LIMIT_MS 1000U", "live-frame freshness bound")
@@ -504,8 +565,18 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(
         sources["hardening"],
-        "The next diagnostic reuses that same bounded, exact-PID accessibility traversal",
+        "The next diagnostic reused that same bounded, exact-PID accessibility traversal",
         "hardening bounded accessibility diagnostic",
+    )
+    require(
+        sources["hardening"],
+        "A thirteenth exact committed run used commit `0a01023fdc6530a93663ebd34871f614ede69c21`",
+        "hardening exact prompt-tree evidence disposition",
+    )
+    require(
+        sources["hardening"],
+        "The correction removes that global semantics-deletion helper and all of its authored",
+        "hardening Linux semantics-deletion product correction",
     )
     require(
         sources["readme"],
@@ -559,6 +630,14 @@ MUTATIONS = (
     ("controller", "memset(last_scan, 0, sizeof(*last_scan));", "memset(last_scan, 0, 0);"),
     ("controller", "atspi_accessible_get_name(accessible, &error)", "atspi_accessible_get_text(accessible, &error)"),
     ("controller", "g_free(name);", "name = NULL;"),
+    ("flutter_common", "void earlyAssert() {", "extension WorkaroundFreezeLinuxMint on Widget {}\nvoid earlyAssert() {"),
+    ("flutter_dialog", "obscureText: !_passwordVisible,", "obscureText: false,"),
+    ("flutter_dialog", "obscureText: obscureText,", "obscureText: false,"),
+    ("flutter_dialog", "focusable: true,", "focusable: false,"),
+    ("password_semantics_test", "isObscured: true", "isObscured: false"),
+    ("password_semantics_test", "semanticsEnabled: true", "semanticsEnabled: false"),
+    ("dart_verify", "flutter test --no-pub test/password_field_semantics_test.dart", "true # password semantics test disabled"),
+    ("dart_verify", "if grep -RInF --include='*.dart' 'workaroundFreezeLinuxMint' flutter/lib", "if false; then # global semantics exclusion accepted"),
     ("controller", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0 && atspi_state_set_contains(states, ATSPI_STATE_SHOWING) != 0"),
     ("controller", "wait_for_password_prompt((unsigned int)viewer_pid, &prompt_scan)", "false"),
     ("controller", "wait_for_password_prompt_retirement((unsigned int)viewer_pid, &prompt_scan)", "false"),
@@ -577,7 +656,9 @@ MUTATIONS = (
     ("hardening", "An eighth exact committed run used commit `731d0eed3d60824c9f9316da55e977334d63cd30`", "The eighth exact run proved product presentation failure"),
     ("hardening", "An eleventh exact committed run used commit `c85303247b3599999113af806e8527de964a1f03`", "The eleventh exact run proved product presentation failure"),
     ("hardening", "A twelfth exact committed run used commit `85c7c8ee9731e3548169fae1d031e1b225045012`", "The twelfth exact run proved product presentation failure"),
-    ("hardening", "The next diagnostic reuses that same bounded, exact-PID accessibility traversal", "The next diagnostic accepts any accessibility traversal"),
+    ("hardening", "The next diagnostic reused that same bounded, exact-PID accessibility traversal", "The next diagnostic accepted any accessibility traversal"),
+    ("hardening", "A thirteenth exact committed run used commit `0a01023fdc6530a93663ebd34871f614ede69c21`", "The thirteenth exact run proved product presentation success"),
+    ("hardening", "The correction removes that global semantics-deletion helper and all of its authored", "The correction retains global semantics deletion"),
 )
 
 

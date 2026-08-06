@@ -244,7 +244,7 @@ class _FileManagerPageState extends State<FileManagerPage> {
                                   errorText: errorText,
                                 ),
                                 controller: name,
-                              ).workaroundFreezeLinuxMint(),
+                              ),
                             ],
                           ),
                           actions: [

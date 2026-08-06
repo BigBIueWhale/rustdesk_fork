@@ -236,13 +236,15 @@ class _PortForwardPageState extends State<PortForwardPage>
       String? hint}) {
     return Expanded(
       child: Padding(
-          padding: const EdgeInsets.all(10.0),
-          child: TextField(
-              controller: controller,
-              inputFormatters: inputFormatters,
-              decoration: InputDecoration(
-                hintText: hint,
-              )).workaroundFreezeLinuxMint()),
+        padding: const EdgeInsets.all(10.0),
+        child: TextField(
+          controller: controller,
+          inputFormatters: inputFormatters,
+          decoration: InputDecoration(
+            hintText: hint,
+          ),
+        ),
+      ),
     );
   }
 

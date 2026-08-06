@@ -425,7 +425,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
                       // ko/zh/ja input method: the button will trigger `onKeyEvent`
                       //                     and the event will not popup if `KeyEventResult.handled` is returned.
                       onChanged: null,
-                    ).workaroundFreezeLinuxMint(),
+                    ),
             ),
           ];
           return paints;

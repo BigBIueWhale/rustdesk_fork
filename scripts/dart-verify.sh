@@ -195,7 +195,8 @@ local_docker run --rm --pull=never --network=none --read-only \
       test/mobile_session_start_queue_test.dart \
       test/session_stream_finality_test.dart \
       test/presentation_recovery_test.dart \
-      test/rgba_publication_order_test.dart
+      test/rgba_publication_order_test.dart \
+      test/password_field_semantics_test.dart
     set +e
     out="$(flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/ 2>&1)"
     analyze_status=$?
@@ -231,6 +232,8 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/presentation_recovery_test.dart
     echo "  == R-S11fr software RGBA decode commits only the exact newest publication =="
     flutter test --no-pub test/rgba_publication_order_test.dart
+    echo "  == R-S11gc obscured password fields retain enabled focused semantics =="
+    flutter test --no-pub test/password_field_semantics_test.dart
     echo "  == R-S11ez Linux native texture callback retirement finality =="
     engine="${flutter_roots[0]}/bin/cache/artifacts/engine/linux-x64"
     plugin=/src/flutter/third_party/texture_rgba_renderer/linux
@@ -396,6 +399,28 @@ dg_clean 'showServerSettingsWithValue|showServerSettingFromQr|ServerConfigImport
 # R-G1: the server/proxy visibility, Change-ID, and deep-link server-setting controls are gone.
 # Their Dart aliases are not compatibility API: reject renamed raw-string replacements too.
 dg_clean 'kOption(HideServerSetting|HideProxySetting|DisableChangeId|AllowDeepLinkServerSettings)|hide-server-settings|hide-proxy-settings|disable-change-id|allow-deep-link-server-settings' 'R-G1 dead Dart policy-option aliases'
+# R-S11gc: the former Linux-Mint workaround wrapped every opted-in Linux text field in
+# ExcludeSemantics. That widget intentionally drops its whole descendant semantics tree, so the
+# real connect-password field reached AT-SPI as neither password-role nor enabled/focusable. The
+# device-specific upstream freeze cannot be mitigated by making all Linux inputs inaccessible.
+echo "== R-S11gc Linux text-field semantics remain present =="
+if grep -RInF --include='*.dart' 'workaroundFreezeLinuxMint' flutter/lib >/dev/null; then
+  echo "  FAIL R-S11gc: authored Dart retained the global Linux semantics exclusion"; exit 1
+fi
+grep -qF 'obscureText: obscureText,' flutter/lib/common/widgets/dialog.dart \
+  || { echo "  FAIL R-S11gc: DialogTextField no longer forwards obscured state"; exit 1; }
+grep -qF 'focusable: true,' flutter/lib/common/widgets/dialog.dart \
+  || { echo "  FAIL R-S11gc: DialogTextField no longer exports focusability"; exit 1; }
+grep -qF 'obscureText: !_passwordVisible,' flutter/lib/common/widgets/dialog.dart \
+  || { echo "  FAIL R-S11gc: PasswordWidget no longer defaults to obscured state"; exit 1; }
+for flag in isTextField isObscured hasEnabledState isEnabled isFocusable isFocused; do
+  grep -qF "$flag: true" flutter/test/password_field_semantics_test.dart \
+    || { echo "  FAIL R-S11gc: password semantics regression lacks $flag"; exit 1; }
+done
+grep -qF 'semanticsEnabled: true' flutter/test/password_field_semantics_test.dart \
+  || { echo "  FAIL R-S11gc: password regression does not enable real semantics"; exit 1; }
+echo "  ok  R-S11gc Linux password/text fields retain their real Flutter semantics"
+
 # R-G2/R-SV5: numeric IDs are not viewer identities. Keep the authored Flutter API, connect choke
 # point, autocomplete, and peer rendering on one exact direct-address model. In particular, never
 # delete interior spaces: doing so changes an invalid target into a different target before validation.

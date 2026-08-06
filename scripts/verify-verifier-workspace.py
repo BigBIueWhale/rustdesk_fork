@@ -20570,6 +20570,26 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "independent Linux Flutter runner exit-contract binding",
     )
     require_text(
+        sources["flutter_peer_presentation_verifier"],
+        '"flutter_common": "flutter/lib/common.dart"',
+        "independent Linux Flutter common-semantics binding",
+    )
+    require_text(
+        sources["flutter_peer_presentation_verifier"],
+        '"flutter_dialog": "flutter/lib/common/widgets/dialog.dart"',
+        "independent Linux Flutter password-dialog binding",
+    )
+    require_text(
+        sources["flutter_peer_presentation_verifier"],
+        '"password_semantics_test": "flutter/test/password_field_semantics_test.dart"',
+        "independent Linux Flutter password-semantics regression binding",
+    )
+    require_text(
+        sources["flutter_peer_presentation_verifier"],
+        '"dart_verify": "scripts/dart-verify.sh"',
+        "independent Linux Flutter offline behavior-gate binding",
+    )
+    require_text(
         sources["apple"],
         "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test",
         "desktop texture Apple focused-verifier wiring",
@@ -58194,6 +58214,30 @@ def run_source_mutations(sources):
             '"linux_runner": "flutter/linux/main.cc"',
             '"linux_runner": "flutter/linux/removed-main.cc"',
             "independent Linux Flutter runner exit-contract binding",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
+            '"flutter_common": "flutter/lib/common.dart"',
+            '"flutter_common": "flutter/lib/removed-common.dart"',
+            "independent Linux Flutter common-semantics binding",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
+            '"flutter_dialog": "flutter/lib/common/widgets/dialog.dart"',
+            '"flutter_dialog": "flutter/lib/common/widgets/removed-dialog.dart"',
+            "independent Linux Flutter password-dialog binding",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
+            '"password_semantics_test": "flutter/test/password_field_semantics_test.dart"',
+            '"password_semantics_test": "flutter/test/removed-password-field-semantics-test.dart"',
+            "independent Linux Flutter password-semantics regression binding",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
+            '"dart_verify": "scripts/dart-verify.sh"',
+            '"dart_verify": "scripts/removed-dart-verify.sh"',
+            "independent Linux Flutter offline behavior-gate binding",
         ),
         (
             "apple",

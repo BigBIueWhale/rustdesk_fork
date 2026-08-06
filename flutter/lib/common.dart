@@ -3603,19 +3603,6 @@ void earlyAssert() {
   assert('\1' == '1');
 }
 
-// https://github.com/flutter/flutter/issues/153560#issuecomment-2497160535
-// For TextField, TextFormField
-extension WorkaroundFreezeLinuxMint on Widget {
-  Widget workaroundFreezeLinuxMint() {
-    // No need to check if is Linux Mint, because this workaround is harmless on other platforms.
-    if (isLinux) {
-      return ExcludeSemantics(child: this);
-    } else {
-      return this;
-    }
-  }
-}
-
 // Don't use `extension` here, the border looks weird if using `extension` in my test.
 Widget workaroundWindowBorder(BuildContext context, Widget child) {
   if (!isWin10) {

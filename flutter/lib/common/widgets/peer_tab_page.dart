@@ -604,7 +604,7 @@ class _PeerSearchBarState extends State<PeerSearchBar> {
                           border: InputBorder.none,
                           isDense: true,
                         ),
-                      ).workaroundFreezeLinuxMint(),
+                      ),
                     ),
                     // Icon(Icons.close),
                     IconButton(

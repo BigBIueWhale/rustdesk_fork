@@ -938,7 +938,7 @@ void _rdpDialog(String id) async {
                         hintText: '3389'),
                     controller: portController,
                     autofocus: true,
-                  ).workaroundFreezeLinuxMint(),
+                  ),
                 ),
               ],
             ),

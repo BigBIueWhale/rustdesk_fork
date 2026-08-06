@@ -845,7 +845,7 @@ class _SafetyState extends State<_Safety> with AutomaticKeepAliveClientMixin {
                     contentPadding:
                         EdgeInsets.symmetric(vertical: 12, horizontal: 12),
                   ),
-                ).workaroundFreezeLinuxMint().marginOnly(right: 15),
+                ).marginOnly(right: 15),
               ),
               Obx(() => ElevatedButton(
                     onPressed:
@@ -1535,7 +1535,7 @@ _LabeledTextField(
             style: TextStyle(
               color: disabledTextColor(context, enabled),
             ),
-          ).workaroundFreezeLinuxMint(),
+          ),
         ],
       ),
     ],

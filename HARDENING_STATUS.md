@@ -16598,12 +16598,63 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   password accessible was absent at the observation boundary; by itself it does not distinguish a
   prompt that was never constructed from one whose Flutter semantics were not exported.
 
-  The next diagnostic reuses that same bounded, exact-PID accessibility traversal after a failed
+  The next diagnostic reused that same bounded, exact-PID accessibility traversal after a failed
   prompt wait. It emits each node's numeric role and six already-tested state bits plus at most 96
   printable sanitized bytes of its accessible name, then fails exactly as before. It never reads an
   accessible text value, runs only before any credential input, and cannot relax the singular
   password-node predicate or reach XTest input. This evidence-only diagnostic changes no product
   Rust/Flutter code, package, dependency, image, privilege, bus, network surface, or fallback.
+
+  A thirteenth exact committed run used commit `0a01023fdc6530a93663ebd34871f614ede69c21`,
+  tree `f9cda6ac38b50025f90b6e974213d655fa80c9dd`, and source-archive SHA-256
+  `70ead83cf4d3bcc07fb29951e834495d5b2fbfd7361f44eb69beef20718ec6b5`. It acquired
+  the same five pinned Xvfb packages while proving zero listening TCP and zero UDP, rebuilt the
+  release core in 5m20s with the same 65 warnings, built and manifested all 79 bundle files,
+  reverified the sealed Pub-cache copy, passed parked/passworded server readiness, and exposed only
+  `127.0.0.1:21118` with zero UDP in the external-interface-free namespace. The private viewer
+  D-Bus and AT-SPI registry activated and the controller bound the exact same-PID window. The
+  diagnostic proved that the real prompt was constructed: its tree contained the named `Password
+  required` panel, `Remember password`, `Cancel`, and `OK`, but the input itself was role 61
+  `TEXT` with `editable=1`, `enabled=0`, `sensitive=0`, `visible=1`, `focusable=0`, and
+  `focused=0`; the focused node remained role 39 `PANEL`. No credential was typed, authentication
+  and pixel observation never began, cleanup joined all exact owners, and the listener closed.
+
+  Source tracing then found the product cause at the exact observation boundary. Every opted-in
+  Linux text field, including the connect-password `DialogTextField`, was wrapped by the global
+  `workaroundFreezeLinuxMint()` helper in Flutter application code. On every Linux distribution,
+  that helper returned `ExcludeSemantics`, whose contract removes the complete descendant semantics
+  tree. The upstream Flutter issue it cites is an open Linux Mint 22/Cinnamon TextField selection
+  freeze; it does not establish that deleting every selected field's semantics on all Linux is
+  harmless. The correction removes that global semantics-deletion helper and all of its authored
+  call sites rather than special-casing the evidence harness. A focused widget regression requires
+  the real obscured dialog field to remain text-field, obscured, enabled, focusable, and focused,
+  while source gates retain the production `PasswordWidget` to `DialogTextField` obscured-state
+  forwarding and recursively reject resurrection of the helper. This change deliberately accepts
+  that the cited Mint/Cinnamon engine bug may need a separate, properly scoped engine/platform fix;
+  silently making Linux fields inaccessible is not a correct mitigation.
+
+  The focused regression then exposed a second real boundary instead of being weakened to pass.
+  Flutter 3.24.5's `EditableText` supplied the focus action and `isFocused` but not the raw
+  `isFocusable` flag. Exact pinned engine source in `fl_accessible_node.cc` maps Linux
+  `ATK_STATE_FOCUSABLE` only from `kFlutterSemanticsFlagIsFocusable`; the focus action cannot
+  satisfy the runtime predicate. The product therefore annotates the always-enabled
+  `DialogTextField` with `Semantics(focusable: true)` and retains the end-to-end `FOCUSABLE`
+  requirement. Against freshly generated bridges, the real widget node then carried all six
+  required flags: text-field, obscured, enabled-state, enabled, focusable, and focused.
+
+  The canonical `dart-verify.sh` transaction remained fail-closed before generation because its
+  read-only canonical Pub cache still lacks locked `sqflite 2.2.8+4`; it ran no analyzer or test and
+  is not counted as product evidence. A separate networkless numeric-nonroot focused transaction
+  instead mounted the already-retained current-lock Pub cache read-only at structural digest
+  `c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7`, copied only Git's
+  tracked-plus-untracked non-ignored source inventory into tmpfs, freshly generated all bridge
+  outputs with pinned Rust 1.75, Flutter 3.24.5, LLVM 15.0.6, and FRB 1.80.1, rejected severe
+  diagnostics, and passed the exact password semantics widget test 1/1. The generator's known
+  unresolved conditional-module and Dart C-header warnings remained visible. A subsequent fresh
+  transaction in the same profile reported 24 generator warning lines and zero severe diagnostics,
+  kept both selected files formatter-clean, made `flutter analyze lib/` exit zero with zero errors,
+  40 warnings, and 224 infos, and again passed the widget regression 1/1. No warning-free claim is
+  made. This is still not the wider Dart/Rust test suite, a product peer session, or release evidence.
 
   No root, product configuration injection, policy bypass, or product-only test hook is admitted. Controlled
   peer and viewer run as numeric non-root in separate mount, PID,
@@ -16663,8 +16714,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   configuration, display, firewall, route, or network state. The synchronized requirements
   SHA-256 is `a5721cb6fecc87ebba0188bb41ce509b870b7a3c0a25125fba078780b3b44b03`.
 
-  No green full-peer runtime result is recorded after twelve exact committed attempts; each harness
-  correction must first be committed so
+  No green full-peer runtime result is recorded after thirteen exact committed attempts; each product
+  or harness correction must first be committed so
   its exact-source archive can honestly contain the files being run. A green future result will close
   only one Linux/X11 software-codec full-peer and focus cycle. It will not establish Android
   Activity/foreground-service/task-swipe/reopen/Force-Stop behavior; Windows engine/compositor

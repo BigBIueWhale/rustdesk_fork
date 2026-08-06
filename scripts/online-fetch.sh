@@ -3182,21 +3182,15 @@ verify_pub_cache_resolution() {
                 fsck --full --no-dangling --no-reflogs >/dev/null
             /usr/bin/git -c safe.directory="$remote" --git-dir="$remote" \
                 cat-file -e "${resolved}^{commit}"
-            bad_mode="$(
-                /usr/bin/git -c safe.directory="$checkout" -C "$checkout" \
-                    ls-tree -rz --full-tree -r HEAD \
-                    | /usr/bin/python3 -I -S -c "
-import sys
-for entry in sys.stdin.buffer.read().split(b'\0'):
-    if not entry:
-        continue
-    metadata, path = entry.split(b'\t', 1)
-    mode = metadata.split(b' ', 1)[0]
-    if mode not in (b'100644', b'100755', b'120000'):
-        print(mode.decode('ascii', 'replace'), path.decode('utf-8', 'replace'))
-        break
-"
-            )"
+            tree_listing=/tmp/pub-cache-git-tree
+            /usr/bin/git -c safe.directory="$checkout" -C "$checkout" \
+                ls-tree -rz --full-tree -r HEAD >"$tree_listing"
+            bad_mode=""
+            while IFS= read -r -d "" entry; do
+                mode="${entry%% *}"
+                case "$mode" in 100644|100755|120000) ;; *) bad_mode="$mode"; break ;; esac
+            done <"$tree_listing"
+            rm -f -- "$tree_listing"
             [ -z "$bad_mode" ]
             [ -f "$checkout/$package_path/pubspec.yaml" ]
             grep -qE "^name:[[:space:]]*$package\$" "$checkout/$package_path/pubspec.yaml"

@@ -347,7 +347,7 @@ def validate(sources: Dict[str, str]) -> None:
          "bare-cache namespace restriction"),
         ("fsck --full --no-dangling --no-reflogs", "Git object closure"),
         ('cat-file -e "${resolved}^{commit}"', "locked commit availability"),
-        ("mode not in (b'100644', b'100755', b'120000')",
+        ('case "$mode" in 100644|100755|120000)',
          "Git tree mode closure"),
         ('grep -qE "^name:[[:space:]]*$package\\$"',
          "locked package identity"),
@@ -357,6 +357,12 @@ def validate(sources: Dict[str, str]) -> None:
         semantic,
         "online_docker_run_pub_semantic \\",
         "shared Pub semantic profile use",
+    )
+    require_count(
+        semantic,
+        "'",
+        2,
+        "single-quoted semantic payload boundaries",
     )
     validate_git_specs(semantic, sources["pub_lock"])
 
@@ -837,6 +843,18 @@ MUTATIONS: Tuple[Mutation, ...] = (
         'case "$remote" in /online/pub-cache/git/cache/*)',
         'case "$remote" in /online/*)',
         "Git bare-cache namespace",
+    ),
+    Mutation(
+        "shell",
+        'case "$mode" in 100644|100755|120000)',
+        'case "$mode" in 100644|100755)',
+        "Git tree mode closure",
+    ),
+    Mutation(
+        "shell",
+        '            bad_mode=""\n',
+        "            bad_mode=''\n",
+        "single-quoted semantic payload boundaries",
     ),
     Mutation(
         "shell",

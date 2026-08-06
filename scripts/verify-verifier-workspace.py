@@ -32223,6 +32223,8 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
          "Pub-cache occupied-output semantic replay"),
         ('[ "${#git_specs[@]}" -eq 4 ]', "Pub-cache exact Git dependency count"),
         ("fsck --full --no-dangling --no-reflogs", "Pub-cache Git object closure"),
+        ('case "$mode" in 100644|100755|120000)',
+         "Pub-cache Git tree mode closure"),
         (
             '[[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then\n'
             '            digest="${BASH_REMATCH[1]}"',
@@ -32240,6 +32242,18 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
          "Pub-cache retired-record authority"),
     ):
         require_text(online, text, label)
+    semantic = extract_between(
+        online,
+        "verify_pub_cache_resolution() {",
+        "\n}\n\nstage_pub_cache() {",
+        "Pub-cache semantic replay",
+    )
+    require_exact_count(
+        semantic,
+        "'",
+        2,
+        "Pub-cache single-quoted semantic payload boundaries",
+    )
     shared_gate = extract_between(
         verify,
         'echo "== (6c-b) Flutter/Dart lockfile is authoritative (R-R1/R-B12) =="',
@@ -65505,6 +65519,12 @@ def run_source_mutations(sources):
             'source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled" \\\n'
             "            --workdir /tmp/project \\\n",
             "Pub-cache producer workdir before project creation",
+        ),
+        (
+            "online_fetch",
+            '            bad_mode=""\n',
+            "            bad_mode=''\n",
+            "Pub-cache single-quoted semantic payload boundaries",
         ),
         (
             "online_fetch",

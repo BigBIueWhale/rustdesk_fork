@@ -16374,7 +16374,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   of those release gaps remain stop-ship.
 
 - **R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence — HARNESS SOURCE
-  IMPLEMENTED; EXACT COMMITTED EXECUTION PENDING; ALL NON-LINUX/NATIVE/RELEASE GAPS REMAIN
+  IMPLEMENTED; EXACT COMMITTED GREEN EXECUTION PENDING; ALL NON-LINUX/NATIVE/RELEASE GAPS REMAIN
   STOP-SHIP.** The user explicitly requires the connection flow to be correct and performant as a
   whole, not merely patched around individual complaints. The concrete reported symptom is also
   retained: after Android task removal with its persistent service still alive, or after a Windows
@@ -16541,6 +16541,46 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   used the same networkless/read-only-root/capability-free profile and started no RustDesk, X server,
   product configuration, interface, or listener. Its transient witness was removed after the test.
 
+  An eleventh exact committed run used commit `c85303247b3599999113af806e8527de964a1f03`,
+  tree `898bd090d13a9df725257fa03a02730fbe32e59c`, and source-archive SHA-256
+  `30556f5878e7db34a79f56461da360c8f4ecff0c2e13a331ab5df98b9463a596`. It acquired
+  exactly the five pinned Xvfb packages while proving zero listening TCP and zero UDP, rebuilt the
+  release core in 5m17s with the same 65 warnings, built and manifested all 79 bundle files,
+  reverified the sealed Pub-cache copy, passed the parked/passworded server lifecycle, and exposed
+  only `127.0.0.1:21118` with zero UDP in the external-interface-free namespace. The viewer's exact
+  one-line identity worked: its private D-Bus and AT-SPI registry activated without a host bus or
+  socket, and the controller bound the exact same-PID `rustdesk`/`Rustdesk` remote window. After the
+  bounded prompt scan it reported one application, 28 nodes, no node satisfying the old compound
+  readiness predicate, and exactly one focused node whose numeric AT-SPI role was 39. In the pinned
+  headers role 39 is `PASSWORD_TEXT`; the real password field therefore existed and was focused.
+  Exact cleanup joined the viewer, server, source fixture, and both Xvfb owners and closed the sole
+  listener. Because no credential was injected, this run is not authentication, media, pixel,
+  delay, or focus-recovery evidence.
+
+  The failed predicate was internally impossible for this exact Flutter engine, not a missing
+  prompt. Pinned engine revision `a18df97ca5` creates `PASSWORD_TEXT` only when both
+  `IsTextField` and `IsObscured` are set, while the same `fl_accessible_node.cc` state table maps
+  AT-SPI `SHOWING` to the inverse of `IsObscured`. Every genuine obscured Flutter password field is
+  consequently password-role and not `SHOWING`. The corrected contract deletes only that
+  contradictory state requirement while retaining exact process, singular password role,
+  `VISIBLE`, `EDITABLE`, `ENABLED`, `SENSITIVE`, `FOCUSABLE`, and `FOCUSED`. It also closes two
+  adjacent proof weaknesses: readiness now rejects any second password-role node even if hidden,
+  and post-Enter retirement requires the password-role node itself to disappear for five bounded
+  scans rather than merely becoming non-visible. Failure diagnostics report the individual required
+  state bits. This correction changes no Rust/Flutter product code, dependency, package, image,
+  privilege, identity, bus, interface, listener, credential path, or fallback.
+
+  Focused verification first exposed one test-of-the-test weakness: after adding exact
+  password-role accounting, the controller legitimately contained two role comparisons, while the
+  old mutation changed only the first and the verifier accepted the second as sufficient. The
+  verifier now requires exactly both accounting and readiness comparisons; its complete focused
+  mutation set passes. In the immutable numeric-nonroot/networkless verifier profile, the full
+  controller links warning-clean, the independent workspace baseline passes, and the synchronized
+  requirements/native-codec normal and adversarial gates pass. A new complete, unsliced independent
+  source-mutation catalog then ran from mutation one on the corrected verifier bytes and exited zero
+  with terminal `verify-verifier-workspace: ok`. No product, X server, bus, interface, or listener
+  started during those source gates.
+
   No root, product configuration injection, policy bypass, or product-only test hook is admitted. Controlled
   peer and viewer run as numeric non-root in separate mount, PID,
   IPC, temporary-home/configuration, and X11 state. The controlled peer owns a Docker
@@ -16559,9 +16599,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `--connect 127.0.0.1` inside a viewer-only private D-Bus/AT-SPI session supplied by the pinned
   runtime image; no host bus or socket is mounted. An XTest/AT-SPI controller binds the exact
   launcher PID, exact `rustdesk`/`Rustdesk` X11 instance/class pair, and exact remote-title shape,
-  then waits for exactly one same-PID `PASSWORD_TEXT` accessible that is visible, showing, enabled,
-  sensitive, editable, focusable, and focused. Only then may it type the credential and submit Enter;
-  that exact prompt must remain absent for five bounded consecutive scans before pixel evidence may
+  then waits for exactly one same-PID `PASSWORD_TEXT` accessible that is visible, enabled,
+  sensitive, editable, focusable, and focused. The pinned Flutter engine's contradictory
+  obscured-password `SHOWING` mapping is explicitly forbidden as a readiness predicate. Only then
+  may the controller type the credential and submit Enter; that exact password-role node must remain
+  absent for five bounded consecutive scans before pixel evidence may
   begin. Fixed delays and title-only prompt inference are forbidden, and accessibility unavailability
   fails closed instead of falling back to blind input. The source fixture encodes
   256 ordered states as two independently colored halves. The observer correlates actual Flutter/X11
@@ -16595,9 +16637,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `verify-verifier-workspace: ok`; it was neither sampled nor shortened. These gates started no
   RustDesk process, X server, listener, or networked process and changed no host service,
   configuration, display, firewall, route, or network state. The synchronized requirements
-  SHA-256 is `b49f58c833e4d150924ea6b5ab2f7a448547f799b8d9794e79da0c26cccf331c`.
+  SHA-256 is `a5721cb6fecc87ebba0188bb41ce509b870b7a3c0a25125fba078780b3b44b03`.
 
-  No corrected runtime result is recorded yet; each harness correction must first be committed so
+  No green full-peer runtime result is recorded after eleven exact committed attempts; each harness
+  correction must first be committed so
   its exact-source archive can honestly contain the files being run. A green future result will close
   only one Linux/X11 software-codec full-peer and focus cycle. It will not establish Android
   Activity/foreground-service/task-swipe/reopen/Force-Stop behavior; Windows engine/compositor
@@ -21612,7 +21655,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-b49f58c833e4d150924ea6b5ab2f7a448547f799b8d9794e79da0c26cccf331c  requirements.html
+a5721cb6fecc87ebba0188bb41ce509b870b7a3c0a25125fba078780b3b44b03  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

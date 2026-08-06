@@ -351,21 +351,28 @@ def validate(sources: dict[str, str]) -> None:
     require(controller, "atspi_get_desktop_count() != 1", "single private accessibility desktop")
     require(controller, "pid != expected_pid", "accessible process identity")
     require(controller, "role == ATSPI_ROLE_PASSWORD_TEXT", "password-field accessible role")
+    if controller.count("role == ATSPI_ROLE_PASSWORD_TEXT") != 2:
+        raise VerificationError("password-role accounting and readiness checks must both be exact")
     for state in (
         "ATSPI_STATE_EDITABLE",
         "ATSPI_STATE_ENABLED",
         "ATSPI_STATE_SENSITIVE",
-        "ATSPI_STATE_SHOWING",
         "ATSPI_STATE_VISIBLE",
         "ATSPI_STATE_FOCUSED",
         "ATSPI_STATE_FOCUSABLE",
     ):
         require(controller, state, f"password accessible {state}")
+    forbid(
+        controller,
+        "ATSPI_STATE_SHOWING",
+        "impossible Flutter obscured-password showing state",
+    )
     require(
         controller,
-        "scan.visible_passwords == 1U && scan.ready_passwords == 1U",
+        "scan.password_nodes == 1U && scan.visible_passwords == 1U",
         "singular ready password accessible",
     )
+    require(controller, "scan.password_nodes == 0U", "exact password-node retirement")
     forbid(controller, "PASSWORD_SETTLE_MS", "blind password-prompt delay")
     require(controller, "AUTH_WAIT_MS 30000U", "authentication deadline")
     require(controller, "FRESH_LIMIT_MS 1000U", "live-frame freshness bound")
@@ -424,6 +431,11 @@ def validate(sources: dict[str, str]) -> None:
         "viewer-only private D-Bus/AT-SPI session",
         "normative exact password-prompt readiness boundary",
     )
+    require(
+        sources["requirements"],
+        "maps AT-SPI <code>SHOWING</code> to the inverse of that same <code>IsObscured</code> flag",
+        "normative pinned Flutter password-state contract",
+    )
     require(sources["requirements"], "<tr><td>338</td>", "Appendix C evidence row")
     require(
         sources["hardening"],
@@ -444,6 +456,11 @@ def validate(sources: dict[str, str]) -> None:
         sources["hardening"],
         "An eighth exact committed run used commit `731d0eed3d60824c9f9316da55e977334d63cd30`",
         "hardening invalid prompt-readiness evidence disposition",
+    )
+    require(
+        sources["hardening"],
+        "An eleventh exact committed run used commit `c85303247b3599999113af806e8527de964a1f03`",
+        "hardening contradictory Flutter password-state disposition",
     )
     require(
         sources["readme"],
@@ -486,7 +503,9 @@ MUTATIONS = (
     ("controller", "left->inode == right->inode", "1"),
     ("controller", "XTestFakeKeyEvent", "RemovedFakeKeyEvent"),
     ("controller", "role == ATSPI_ROLE_PASSWORD_TEXT", "role == ATSPI_ROLE_ENTRY"),
-    ("controller", "scan.visible_passwords == 1U && scan.ready_passwords == 1U", "scan.visible_passwords > 0U"),
+    ("controller", "scan.password_nodes == 1U && scan.visible_passwords == 1U", "scan.visible_passwords > 0U"),
+    ("controller", "scan.password_nodes == 0U", "scan.visible_passwords == 0U"),
+    ("controller", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0 && atspi_state_set_contains(states, ATSPI_STATE_SHOWING) != 0"),
     ("controller", "wait_for_password_prompt((unsigned int)viewer_pid, &prompt_scan)", "false"),
     ("controller", "wait_for_password_prompt_retirement((unsigned int)viewer_pid, &prompt_scan)", "false"),
     ("controller", 'strcmp(hint.res_name, "rustdesk") != 0', "0"),
@@ -497,10 +516,12 @@ MUTATIONS = (
     ("requirements", "existing external <code>smoke-bind-loopback.c</code> confinement shim", "unmanifested compatibility shim"),
     ("requirements", "exact GTK-derived X11 <code>WM_CLASS</code> instance/class pair", "arbitrary X11 class substring"),
     ("requirements", "viewer-only private D-Bus/AT-SPI session", "ambient accessibility session"),
+    ("requirements", "maps AT-SPI <code>SHOWING</code> to the inverse of that same <code>IsObscured</code> flag", "maps password visibility consistently"),
     ("hardening", "R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence", "R-S11gc-disabled/R-S11e-216"),
     ("hardening", "The corrected evidence boundary now compiles the existing audited `smoke-bind-loopback.c`", "The evidence boundary assumes an ambient bind rewrite"),
     ("hardening", "The corrected observer now requires the launcher PID and both exact `WM_CLASS` fields", "The observer accepts any title match"),
     ("hardening", "An eighth exact committed run used commit `731d0eed3d60824c9f9316da55e977334d63cd30`", "The eighth exact run proved product presentation failure"),
+    ("hardening", "An eleventh exact committed run used commit `c85303247b3599999113af806e8527de964a1f03`", "The eleventh exact run proved product presentation failure"),
 )
 
 

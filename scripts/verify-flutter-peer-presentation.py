@@ -36,6 +36,7 @@ PATHS = {
     "linux_runner": "flutter/linux/main.cc",
     "controller": "scripts/flutter-peer-presentation-x11.c",
     "source": "scripts/flutter-peer-source-x11.c",
+    "bind_shim": "scripts/smoke-bind-loopback.c",
     "verify": "scripts/verify.sh",
     "workspace": "scripts/verify-verifier-workspace.py",
     "requirements": "requirements.html",
@@ -58,6 +59,7 @@ def validate(sources: dict[str, str]) -> None:
     linux_runner = sources["linux_runner"]
     controller = sources["controller"]
     source = sources["source"]
+    bind_shim = sources["bind_shim"]
 
     require_order(
         host,
@@ -156,6 +158,8 @@ def validate(sources: dict[str, str]) -> None:
             "--lib --example smoke_readiness --release",
             '"$REAL_FLUTTER" build linux --release --no-pub',
             "readelf --wide --dyn-syms",
+            '"$BUILD_SOURCE/scripts/smoke-bind-loopback.c"',
+            "-Wl,-z,relro,-z,now,-z,noexecstack",
             "FLUTTER_PEER_BUILD_OK",
         ),
         "exact offline full-product bundle build",
@@ -168,9 +172,16 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(stage, "readonly PROBE=/out/smoke-readiness", "runtime readiness probe binding")
     require(stage, "export HOME CARGO_HOME CI=true PUB_CACHE=/evidence-online/pub-cache", "current-lock sealed Pub cache")
+    require(stage, '[ -z "${LD_PRELOAD:-}" ]', "ambient preload refusal")
     require(stage, "assert_loopback_only_interface", "runtime loopback-only inspection")
     require(stage, '[ "$interfaces" = lo ]', "sole loopback interface")
     require(stage, '0100007F:527E', "exact 127.0.0.1:21118 listener")
+    require(stage, "verify_regular /out/smoke-bind-loopback.so", "manifested bind shim")
+    require(
+        stage,
+        "sha256sum build.identity smoke-bind-loopback.so smoke-readiness",
+        "bind shim manifest entry",
+    )
     require(stage, '[ "$(udp_socket_count)" -eq 0 ]', "zero UDP runtime surface")
     require_order(
         stage,
@@ -178,7 +189,8 @@ def validate(sources: dict[str, str]) -> None:
             "export DISPLAY=:98 HOME=/tmp/server-home",
             "start_xvfb :98 640x480x24",
             '"$SOURCE_FIXTURE" >/tmp/source.log',
-            '(cd /out/bundle && exec env RUST_LOG=info "$APP" --server)',
+            'LD_PRELOAD="$BIND_SHIM" RUST_LOG=info exec "$APP" --server',
+            'wait_process_maps_exact_file "$SERVER_PID" "$SERVER_START" "$BIND_SHIM"',
             '"$READY" --wait-typed-parked "$SERVER_PID" "$SERVER_START"',
             "--password-stdin",
             '"$READY" --wait-typed-user-server "$SERVER_PID" "$SERVER_START"',
@@ -204,6 +216,9 @@ def validate(sources: dict[str, str]) -> None:
     )
     forbid(stage, '"$APP" --connect 127.0.0.1 --password', "connect password argv")
     forbid(stage, "RUSTDESK_PASSWORD", "password environment variable")
+    forbid(stage, "export LD_PRELOAD", "process-wide preload export")
+    if stage.count('LD_PRELOAD="$BIND_SHIM"') != 1:
+        raise VerificationError("the bind shim must be scoped to the controlled server launch")
     for unsafe in ("sudo ", "--privileged", "systemctl", "ufw ", "iptables", "nft "):
         forbid(stage, unsafe, "runtime authority expansion")
 
@@ -244,6 +259,21 @@ def validate(sources: dict[str, str]) -> None:
     require(source, "frame = (frame + 1U) & 255U;", "256-state source cadence")
     require(source, "attributes.override_redirect = True;", "source fixture isolation")
     require(source, "sigaction(SIGTERM", "source fixture teardown")
+
+    require_order(
+        bind_shim,
+        (
+            "addr->sa_family == AF_INET",
+            "rewritten.sin_addr.s_addr == htonl(INADDR_ANY)",
+            "ntohs(rewritten.sin_port) == 21118",
+            "rewritten.sin_addr.s_addr = htonl(INADDR_LOOPBACK)",
+            "return fn(sockfd, (const struct sockaddr *)&rewritten, sizeof(rewritten));",
+            "return fn(sockfd, addr, addrlen);",
+        ),
+        "narrow loopback bind rewrite and exact passthrough",
+    )
+    if bind_shim.count("21118") != 1:
+        raise VerificationError("the bind shim port match is not singular")
 
     require(controller, 'strstr(title, "127.0.0.1 - Remote Desktop")', "exact real viewer title")
     require(controller, "pid != expected_pid", "viewer process identity")
@@ -290,11 +320,21 @@ def validate(sources: dict[str, str]) -> None:
         '<div class="req"><span class="id">R-S11gc</span>',
         "normative evidence requirement",
     )
+    require(
+        sources["requirements"],
+        "existing external <code>smoke-bind-loopback.c</code> confinement shim",
+        "normative loopback-confinement boundary",
+    )
     require(sources["requirements"], "<tr><td>338</td>", "Appendix C evidence row")
     require(
         sources["hardening"],
         "R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence",
         "hardening evidence ledger",
+    )
+    require(
+        sources["hardening"],
+        "The corrected evidence boundary now compiles the existing audited `smoke-bind-loopback.c`",
+        "hardening loopback-confinement disposition",
     )
     require(
         sources["readme"],
@@ -316,7 +356,12 @@ MUTATIONS = (
     ("linux_runner", "return EXIT_SUCCESS;", "return EXIT_FAILURE;"),
     ("stage", "! grep -Fq '[SEVERE]'", "true # severe output ignored"),
     ("stage", "export HOME CARGO_HOME CI=true PUB_CACHE=/evidence-online/pub-cache", "export HOME CARGO_HOME CI=true PUB_CACHE=/online/pub-cache"),
+    ("stage", '[ -z "${LD_PRELOAD:-}" ]', "true # ambient preload accepted"),
     ("stage", "--password-stdin", "--password rustdesk-peer-9f2a7c4e"),
+    ("stage", 'LD_PRELOAD="$BIND_SHIM" RUST_LOG=info exec "$APP" --server', 'RUST_LOG=info exec "$APP" --server'),
+    ("stage", 'wait_process_maps_exact_file "$SERVER_PID" "$SERVER_START" "$BIND_SHIM"', "true # mapped shim unproved"),
+    ("bind_shim", "ntohs(rewritten.sin_port) == 21118", "ntohs(rewritten.sin_port) == 21119"),
+    ("bind_shim", "return fn(sockfd, addr, addrlen);", "return fn(sockfd, (const struct sockaddr *)&rewritten, sizeof(rewritten));"),
     ("stage", '"$CONTROLLER" :98 :99 "$VIEWER_PID"', '"$CONTROLLER" :99 :99 "$VIEWER_PID"'),
     ("controller", "FRESH_LIMIT_MS 1000U", "FRESH_LIMIT_MS 10000U"),
     ("controller", "RECOVERY_LIMIT_MS 2500U", "RECOVERY_LIMIT_MS 10000U"),
@@ -325,7 +370,9 @@ MUTATIONS = (
     ("source", "frame = (frame + 1U) & 255U;", "frame = 0U;"),
     ("verify", "/usr/bin/python3 -I -S scripts/verify-flutter-peer-presentation.py --repo . --self-test", "true"),
     ("requirements", '<div class="req"><span class="id">R-S11gc</span>', '<div class="req"><span class="id">R-S11gc-disabled</span>'),
+    ("requirements", "existing external <code>smoke-bind-loopback.c</code> confinement shim", "unmanifested compatibility shim"),
     ("hardening", "R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence", "R-S11gc-disabled/R-S11e-216"),
+    ("hardening", "The corrected evidence boundary now compiles the existing audited `smoke-bind-loopback.c`", "The evidence boundary assumes an ambient bind rewrite"),
 )
 
 

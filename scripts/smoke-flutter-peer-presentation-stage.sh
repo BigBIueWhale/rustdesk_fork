@@ -10,6 +10,7 @@ fail() {
 
 [ "$(id -u)" -ne 0 ] || fail 'refuses root execution'
 [ "$(id -g)" -ne 0 ] || fail 'refuses a root primary group'
+[ -z "${LD_PRELOAD:-}" ] || fail 'refuses an ambient preload'
 [ "$#" -eq 1 ] \
   || fail 'expected one stage: pub-cache, pub-cache-check, build, server, or viewer'
 
@@ -48,6 +49,7 @@ verify_runtime_bundle() {
   [ -z "$(find /out -xdev -type l -print -quit)" ] \
     || fail 'runtime bundle contains a symlink'
   (cd /out && sha256sum --check --strict manifest.sha256 >/dev/null)
+  verify_regular /out/smoke-bind-loopback.so
   for executable in \
     /out/bundle/rustdesk \
     /out/smoke-readiness \
@@ -86,6 +88,23 @@ listener_is_exact() {
   [ "$(tcp_listener_count)" -eq 1 ] \
     && awk 'FNR > 1 && $4 == "0A" && $2 == "0100007F:527E" { count++ }
       END { exit count == 1 ? 0 : 1 }' /proc/net/tcp
+}
+
+process_maps_exact_file() {
+  local pid=$1 expected=$2
+  [ -r "/proc/$pid/maps" ] \
+    && awk -v expected="$expected" '$6 == expected { found = 1 }
+      END { exit found == 1 ? 0 : 1 }' "/proc/$pid/maps"
+}
+
+wait_process_maps_exact_file() {
+  local pid=$1 start=$2 expected=$3
+  for _ in $(seq 1 300); do
+    process_maps_exact_file "$pid" "$expected" && return 0
+    "$READY" --is-running "$pid" "$start" || return 1
+    sleep 0.02
+  done
+  return 1
 }
 
 start_xvfb() {
@@ -314,6 +333,9 @@ CFG
     cc -std=c11 -O2 -Wall -Wextra -Werror \
       "$BUILD_SOURCE/scripts/flutter-peer-presentation-x11.c" \
       $(pkg-config --cflags --libs x11 xtst) -o /out/flutter-peer-presentation-x11
+    cc -std=c11 -shared -fPIC -O2 -Wall -Wextra -Werror \
+      "$BUILD_SOURCE/scripts/smoke-bind-loopback.c" \
+      -Wl,-z,relro,-z,now,-z,noexecstack -ldl -o /out/smoke-bind-loopback.so
     verify_regular "$BUILD_SOURCE/target/release/examples/smoke_readiness"
     cp "$BUILD_SOURCE/target/release/examples/smoke_readiness" /out/smoke-readiness
     mkdir /out/bundle
@@ -333,7 +355,7 @@ CFG
     (
       cd /out
       find bundle -type f -print0 | sort -z | xargs -0 sha256sum
-      sha256sum build.identity smoke-readiness flutter-peer-source-x11 \
+      sha256sum build.identity smoke-bind-loopback.so smoke-readiness flutter-peer-source-x11 \
         flutter-peer-presentation-x11
     ) > /out/manifest.sha256
     chmod 0444 /out/manifest.sha256
@@ -349,6 +371,7 @@ CFG
     readonly READY=/source/scripts/smoke-ready.sh
     readonly XVFB=/xvfb-root/usr/bin/Xvfb
     readonly APP=/out/bundle/rustdesk
+    readonly BIND_SHIM=/out/smoke-bind-loopback.so
     readonly PROBE=/out/smoke-readiness
     readonly SOURCE_FIXTURE=/out/flutter-peer-source-x11
     readonly COORD=/coord
@@ -394,9 +417,12 @@ CFG
     SOURCE_START=$("$READY" --identity "$SOURCE_PID")
     "$READY" --wait-log "$SOURCE_PID" "$SOURCE_START" /tmp/source.log \
       FLUTTER_PEER_SOURCE_READY 'peer source readiness'
-    (cd /out/bundle && exec env RUST_LOG=info "$APP" --server) >/tmp/server.log 2>&1 &
+    (cd /out/bundle && LD_PRELOAD="$BIND_SHIM" RUST_LOG=info exec "$APP" --server) \
+      >/tmp/server.log 2>&1 &
     SERVER_PID=$!
     SERVER_START=$("$READY" --identity "$SERVER_PID")
+    wait_process_maps_exact_file "$SERVER_PID" "$SERVER_START" "$BIND_SHIM" \
+      || fail 'controlled server did not map the manifested loopback bind shim'
     "$READY" --wait-typed-parked "$SERVER_PID" "$SERVER_START" /tmp/server.log \
       "$PROBE" "$(id -u)"
     set +e

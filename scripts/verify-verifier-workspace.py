@@ -6040,6 +6040,18 @@ def validate_smoke_contract(
         ('rm -- "$parent/ipc" "$parent/ipc_password"', "exact self-test IPC entry removal"),
     ):
         require_text(readiness, text, label)
+    for function in ("server_ready() {", "server_typed_ready() {"):
+        body = extract_between(
+            readiness,
+            function,
+            "\n}",
+            f"{function[:-4]} successful typed IPC readiness",
+        )
+        require_text(
+            body,
+            'typed_ipc_ready "$probe" "$expected" "$pid" "$expected_start" "$deadline" || return 1',
+            f"{function[:-4]} successful typed IPC readiness transaction",
+        )
     if "SMOKE_READY_TIMEOUT" in readiness or "READY_WAIT_SECONDS:-" in readiness:
         raise VerificationError("smoke readiness deadline accepts ambient override authority")
     if "rm -rf" in readiness:
@@ -20546,6 +20558,11 @@ def validate_desktop_texture_lifecycle_contract(sources):
         sources["flutter_peer_presentation_verifier"],
         '"source": "scripts/flutter-peer-source-x11.c"',
         "independent full-peer Linux presentation source binding",
+    )
+    require_text(
+        sources["flutter_peer_presentation_verifier"],
+        '"bind_shim": "scripts/smoke-bind-loopback.c"',
+        "independent full-peer Linux loopback-confinement binding",
     )
     require_text(
         sources["flutter_peer_presentation_verifier"],
@@ -58165,6 +58182,12 @@ def run_source_mutations(sources):
             '"controller": "scripts/flutter-peer-presentation-x11.c"',
             '"controller": "scripts/removed-flutter-peer-presentation-x11.c"',
             "independent full-peer Linux presentation controller binding",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
+            '"bind_shim": "scripts/smoke-bind-loopback.c"',
+            '"bind_shim": "scripts/removed-smoke-bind-loopback.c"',
+            "independent full-peer Linux loopback-confinement binding",
         ),
         (
             "flutter_peer_presentation_verifier",

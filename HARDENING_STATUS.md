@@ -16428,7 +16428,30 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   the Linux Flutter runner nevertheless returned status 1. The harness correctly rejected the
   contradictory outcome before accepting server readiness or starting a viewer. This exposed the
   separate R-S11gd runner-exit defect recorded below; cleanup retired the owned network-none state.
-  No root, configuration injection, policy bypass, or product-only test hook is admitted. Controlled
+  A sixth exact committed run used commit `05f9d6e9e5d35aca7564222714f21d4f67cc56f2`,
+  tree `18ee30b23dc11d4fbe7d51aa54fd8c360517d4d7`, and source-archive SHA-256
+  `eb63f001feedd6476b185624938e641dc386a6aa61e4841999fe561fddcae8ce`.
+  It built the real release bundle, passed typed parked readiness, made the shipped authenticated
+  `--password-stdin` command print `Done!` and exit zero, and observed that same server enter typed
+  `user-server` state with zero UDP. The run then found the product's intentional wildcard
+  `0.0.0.0:21118` listener and rejected it against the harness's literal-loopback contract before
+  starting a viewer. The server container had only `lo` in its Docker `--network=none` namespace,
+  published no port, and had no host namespace; no host listener, service, firewall, route, or
+  network state changed. This was a deterministic harness contradiction, not a production bind
+  regression or public exposure.
+
+  The corrected evidence boundary now compiles the existing audited `smoke-bind-loopback.c` from
+  the same exact committed snapshot, includes the shared object in the immutable runtime manifest,
+  loads it only for the controlled server process tree, and waits for that exact manifested path to
+  appear in the exact server process's maps before credential provisioning. The source verifier
+  requires the shim to rewrite only `AF_INET` + `INADDR_ANY` + port 21118 to `INADDR_LOOPBACK` and
+  to pass every other bind through unchanged. Every stage rejects ambient `LD_PRELOAD`; the harness
+  does not export it, and neither the separate password CLI nor viewer launch receives it. This is
+  explicit evidence-only confinement outside the product. A future green result may prove the
+  full media/session path under literal loopback but cannot be cited as native product bind-address
+  evidence. The product's intentional wildcard listener implementation and release behavior remain
+  unchanged.
+  No root, product configuration injection, policy bypass, or product-only test hook is admitted. Controlled
   peer and viewer run as numeric non-root in separate mount, PID,
   IPC, temporary-home/configuration, and X11 state. The controlled peer owns a Docker
   `--network=none` namespace whose only interface must be `lo`; the viewer shares only that exact
@@ -16470,8 +16493,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   R-B2/R-B10 artifacts; independent reproduction; or external review. Every such item remains
   explicitly release-blocking.
 
-- **R-S11gd/R-S11e-217 Linux Flutter handled-command exit contract — SOURCE FIX IMPLEMENTED;
-  EXACT COMMITTED EXECUTION PENDING.** Platform: shipped Linux Flutter runner. Endpoint/action:
+- **R-S11gd/R-S11e-217 Linux Flutter handled-command exit contract — SOURCE FIX AND EXACT
+  RELEASE-BUNDLE EXECUTION RECORDED; BROADER R-S11gc EVIDENCE REMAINS OPEN.** Platform: shipped
+  Linux Flutter runner. Endpoint/action:
   dynamic core loading and the `rustdesk_core_main` UI-continuation decision for CLI commands.
 
   The Rust FFI boolean means only “continue into Flutter UI.” A successfully handled command such
@@ -16486,8 +16510,12 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `EXIT_FAILURE`; a successful false decision returns `EXIT_SUCCESS`; and only a true decision
   enters `g_application_run`. Rust's existing nonzero exits for validation, authorization, and
   command failures are unchanged. Shared source gates and the self-mutating full-peer verifier bind
-  both branches, the independent workspace verifier binds the actual Linux runner path, and the
-  exact release transaction must rerun before this fix is credited as executable evidence.
+  both branches, and the independent workspace verifier binds the actual Linux runner path. The
+  sixth exact committed release-bundle transaction made the shipped authenticated
+  `--password-stdin` command print `Done!` and exit zero, after which the same process reached typed
+  `user-server` state. The run then stopped at the separate literal-loopback harness contradiction
+  before viewer start, so this executable evidence closes only the handled-command exit contract
+  and does not close R-S11gc.
 
   This narrow correction does not by itself prove password persistence, listening, peer
   authentication, pixels, focus recovery, Android/Windows lifecycle behavior, release packaging,
@@ -21471,7 +21499,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-c98eb7efda600adcf1e86edcb2d41fbe17d14489f47c2a56c5025ebad9e7e5ba  requirements.html
+9d271bf051df50bea4e386c9fe461a30d4b24279043b19dac89c1115cf725ada  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

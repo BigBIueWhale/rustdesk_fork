@@ -338,6 +338,15 @@ def validate(sources: Mapping[str, str]) -> None:
             "exact-reuse inode fixture",
         ),
         (
+            "self-test did not consume an exact occupied patch duplicate",
+            "mixed exact-occupied/missing-output fixture",
+        ),
+        (
+            'elif final_metadata is None:\n'
+            '            fail("recorded libvpx local-output candidate has no exact final")',
+            "exact occupied duplicate retirement",
+        ),
+        (
             "self-test accepted unreconciled state in the read-only consumer",
             "read-only unresolved-state fixture",
         ),
@@ -571,6 +580,20 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "self-test overwrote an occupied wrong libvpx destination",
         "wrong destination accepted",
         "wrong-destination no-clobber fixture",
+    ),
+    (
+        "helper",
+        'elif final_metadata is None:\n'
+        '            fail("recorded libvpx local-output candidate has no exact final")',
+        'elif final_metadata is None or identity(final_metadata) != expected:\n'
+        '            fail("recorded libvpx local-output candidate has no exact final")',
+        "exact occupied duplicate retirement",
+    ),
+    (
+        "helper",
+        "self-test did not consume an exact occupied patch duplicate",
+        "mixed occupied duplicate accepted without proof",
+        "mixed exact-occupied/missing-output fixture",
     ),
     (
         "helper",

@@ -875,8 +875,8 @@ def retire_recorded(
             finally:
                 os.close(candidate)
             unlink_exact(staging_fd, name, expected)
-        elif final_metadata is None or identity(final_metadata) != expected:
-            fail("recorded libvpx local-output candidate has no exact owned location")
+        elif final_metadata is None:
+            fail("recorded libvpx local-output candidate has no exact final")
     current_state, current_identity = read_state(staging_fd)
     if current_state != state or current_identity != state_identity:
         fail("libvpx local-output state changed before retirement")
@@ -1362,6 +1362,32 @@ def self_test() -> None:
             != "complete"
         ):
             fail("self-test rejected exact historical libvpx local-output metadata")
+
+        mixed = fixture_online(root, "exact-patch-missing-key")
+        mixed_patch = mixed / "vcpkg-distfiles" / patch_name(fix_commit)
+        mixed_key = mixed / "vcpkg-distfiles" / KEY_NAME
+        mixed_patch.write_bytes(patch)
+        mixed_patch.chmod(0o664)
+        mixed_patch_identity = identity(os.lstat(mixed_patch))
+        if (
+            publish_local_outputs(
+                mixed,
+                source,
+                source_patch,
+                uid,
+                gid,
+                fix_commit,
+                patch_sha512,
+                native_key,
+                source_commit,
+                source_tree,
+                source_blob,
+            )
+            != "published"
+            or identity(os.lstat(mixed_patch)) != mixed_patch_identity
+            or mixed_key.read_bytes() != (native_key + "\n").encode("ascii")
+        ):
+            fail("self-test did not consume an exact occupied patch duplicate")
         check_local_outputs(
             online,
             source,

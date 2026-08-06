@@ -33675,6 +33675,15 @@ def validate_online_fetch_libvpx_local_output_authority_contract(sources):
             "libvpx occupied-output fixture",
         ),
         (
+            "self-test did not consume an exact occupied patch duplicate",
+            "libvpx mixed exact-occupied/missing-output fixture",
+        ),
+        (
+            'elif final_metadata is None:\n'
+            '            fail("recorded libvpx local-output candidate has no exact final")',
+            "libvpx exact occupied duplicate retirement",
+        ),
+        (
             "self-test accepted a symlinked stale local-output entry",
             "libvpx symlink fixture",
         ),
@@ -66564,6 +66573,20 @@ def run_source_mutations(sources):
             "source.chmod(0o700)",
             "source.chmod(0o770)",
             "libvpx umask-independent private source fixture",
+        ),
+        (
+            "online_libvpx_local_output_helper",
+            'elif final_metadata is None:\n'
+            '            fail("recorded libvpx local-output candidate has no exact final")',
+            'elif final_metadata is None or identity(final_metadata) != expected:\n'
+            '            fail("recorded libvpx local-output candidate has no exact final")',
+            "libvpx exact occupied duplicate retirement",
+        ),
+        (
+            "online_libvpx_local_output_helper",
+            "self-test did not consume an exact occupied patch duplicate",
+            "mixed occupied duplicate accepted without proof",
+            "libvpx mixed exact-occupied/missing-output fixture",
         ),
         (
             "online_fetch_libvpx_local_output_authority_verifier",

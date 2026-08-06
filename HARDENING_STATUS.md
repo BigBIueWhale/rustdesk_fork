@@ -17232,8 +17232,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   Restart reconciliation accepts only bounded ordinary current-owner partial files in an
   unprepared reserved directory, or a recorded arrangement whose exact source/byte authority still
-  equals the current transaction and in which every candidate identity is still staged or is the
-  exact final. State is stably reread before exact-identity retirement. A symlink, special file,
+  equals the current transaction and in which each candidate identity is still staged or is the
+  exact final, or the candidate is absent only while the independently revalidated exact occupied
+  final remains. This last topology is required when an existing exact patch consumes its staged
+  duplicate while the same transaction publishes a previously missing receipt. State is stably
+  reread before retirement. A symlink, special file,
   external hardlink, descendant mount, xattr, unexpected entry, changed parent, missing candidate
   identity, or mismatched recorded authority is preserved and rejected. The read-only consumer
   command refuses and preserves any unreconciled reserved transaction and applies the same
@@ -17245,6 +17248,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   as numeric UID:GID 1000:1000 with `--pull=never`, no network, read-only root/source, all
   capabilities dropped, no-new-privileges, fixed PID/memory/no-swap/CPU ceilings, and bounded
   non-executable scratch. It exercised cold two-file publication, exact occupied inode reuse,
+  mixed exact-patch/missing-receipt publication without replacing the occupied patch,
   historical-mode reuse, wrong occupied output refusal without overwrite, interrupted unprepared
   reconciliation, successful read-only validation, preservation of unresolved read-only state,
   preservation of a recorded transaction from a different source authority, and symlinked
@@ -21837,7 +21841,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-e7fbcc934e5cb215263f5279db8915de9bd92d920ad59f1272780fe702ccc910  requirements.html
+e22c2a4758dd7db7c82a6bf5ed449c6febe01e1ae2c07c465a175ecb3e6a0ac4  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

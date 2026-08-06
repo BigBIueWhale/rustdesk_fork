@@ -4732,7 +4732,7 @@ stage_windows_engine() {
                     bin/cache/windows-sdk.stamp
             } | /usr/bin/sort -u > /tmp/stage.txt
             [ "$(/usr/bin/wc -l < /tmp/stage.txt)" -eq 73 ] || {
-                echo "precache output does not match the exact 73-file Windows projection" >&2
+                echo "precache output does not match the exact 73-file Windows projection: got $(/usr/bin/wc -l < /tmp/stage.txt) (debug=$(/usr/bin/find bin/cache/artifacts/engine/windows-x64 -type f -print | /usr/bin/wc -l), profile=$(/usr/bin/find bin/cache/artifacts/engine/windows-x64-profile -type f -print | /usr/bin/wc -l), release=$(/usr/bin/find bin/cache/artifacts/engine/windows-x64-release -type f -print | /usr/bin/wc -l))" >&2
                 exit 1
             }
             /usr/bin/find \

@@ -3240,7 +3240,7 @@ stage_pub_cache() {
             --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
             --mount "type=bind,source=$PUB_CACHE_OUTPUT_STAGING/output,target=/online/pub-cache" \
             --mount "type=bind,source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled" \
-            --workdir /tmp/project \
+            --workdir /tmp \
             "$builder" /bin/bash --noprofile --norc -euo pipefail -c '
             umask 077
             mkdir /tmp/toolchain /tmp/home /tmp/project

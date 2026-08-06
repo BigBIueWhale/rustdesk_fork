@@ -414,6 +414,7 @@ def validate(sources: Dict[str, str]) -> None:
         "producer source mount",
     )
     require_count(stage, "--enforce-lockfile", 2, "networked lock enforcement")
+    require_count(stage, "--workdir /tmp \\\n", 1, "producer workdir before project creation")
     require_count(
         stage,
         '"$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz" "$SHA256_FLUTTER_3_24_5"',
@@ -425,6 +426,7 @@ def validate(sources: Dict[str, str]) -> None:
         ('source=$ONLINE_DIR,target=/online"', "broad writable online mount"),
         ('source=$REPO_ROOT/flutter', "live Flutter source mount"),
         ('target=/project"', "persistent writable source mount"),
+        ("--workdir /tmp/project", "pre-created disposable project directory"),
         ("mkdir -p \"$PUB_CACHE\"", "direct final cache creation"),
         ("rm -rf \"$ONLINE_DIR/pub-cache\"", "destructive final replacement"),
         ("git config --global --add safe.directory \"*\"", "wildcard Git trust"),
@@ -439,6 +441,7 @@ def validate(sources: Dict[str, str]) -> None:
          "single private durable output"),
         ('source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled',
          "read-only exact project input"),
+        ("--workdir /tmp \\\n", "producer workdir before project creation"),
         ("cp -a /project-source/. /tmp/project/", "disposable project copy"),
         ('project_lock="$(sha256sum /project-source/pubspec.lock',
          "networked project lock preimage"),
@@ -766,6 +769,14 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "cp -a /project-source/. /tmp/project/",
         "cp -a /project-source/. /project/",
         "disposable project copy",
+    ),
+    Mutation(
+        "shell",
+        'source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled" \\\n'
+        "            --workdir /tmp \\\n",
+        'source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled" \\\n'
+        "            --workdir /tmp/project \\\n",
+        "producer workdir before project creation",
     ),
     Mutation(
         "shell",

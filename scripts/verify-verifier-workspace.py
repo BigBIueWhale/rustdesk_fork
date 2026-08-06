@@ -32196,6 +32196,11 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
          "Pub-cache narrow writable output"),
         ('source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled',
          "Pub-cache read-only exact project input"),
+        (
+            'source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled" \\\n'
+            "            --workdir /tmp \\\n",
+            "Pub-cache producer workdir before project creation",
+        ),
         ("cp -a /project-source/. /tmp/project/", "Pub-cache disposable project copy"),
         ("dart pub get --enforce-lockfile", "Pub-cache flutter_tools lock enforcement"),
         ("flutter pub get --enforce-lockfile", "Pub-cache project lock enforcement"),
@@ -65492,6 +65497,14 @@ def run_source_mutations(sources):
             'source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled',
             'source=$REPO_ROOT/flutter,target=/project-source,readonly',
             "Pub-cache read-only exact project input",
+        ),
+        (
+            "online_fetch",
+            'source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled" \\\n'
+            "            --workdir /tmp \\\n",
+            'source=$GRADLE_SOURCE_BUILD/flutter,target=/project-source,readonly,bind-recursive=disabled" \\\n'
+            "            --workdir /tmp/project \\\n",
+            "Pub-cache producer workdir before project creation",
         ),
         (
             "online_fetch",

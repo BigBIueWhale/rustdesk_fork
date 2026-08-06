@@ -330,11 +330,9 @@ packages:
   desktop_multi_window:
     dependency: "direct main"
     description:
-      path: "."
-      ref: b47e8385e5a75d38319ad706a64b0ead3108b093
-      resolved-ref: b47e8385e5a75d38319ad706a64b0ead3108b093
-      url: "https://github.com/rustdesk-org/rustdesk_desktop_multi_window"
-    source: git
+      path: "third_party/desktop_multi_window"
+      relative: true
+    source: path
     version: "0.1.0"
   device_info_plus:
     dependency: "direct main"

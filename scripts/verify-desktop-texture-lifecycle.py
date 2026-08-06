@@ -1326,16 +1326,16 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "sole child-window software texture plugin registration",
     )
-    require(sources["pub_cache_output"], "EXPECTED_GIT_DEPENDENCIES = 5", "five-dependency Pub-cache output contract")
-    require(sources["pub_cache_output"], "exact five locked Git dependencies", "five-dependency Pub-cache diagnostic")
-    require(sources["pub_cache_verifier"], "EXPECTED_GIT_DEPENDENCIES = 5", "five-dependency Pub-cache verifier contract")
-    require(sources["online_fetch"], '[ "${#git_specs[@]}" -eq 5 ]', "five-dependency acquisition inventory")
+    require(sources["pub_cache_output"], "EXPECTED_GIT_DEPENDENCIES = 4", "four-dependency Pub-cache output contract")
+    require(sources["pub_cache_output"], "exact four locked Git dependencies", "four-dependency Pub-cache diagnostic")
+    require(sources["pub_cache_verifier"], "EXPECTED_GIT_DEPENDENCIES = 4", "four-dependency Pub-cache verifier contract")
+    require(sources["online_fetch"], '[ "${#git_specs[@]}" -eq 4 ]', "four-dependency acquisition inventory")
     for token in (
         '"dependencies_entries": 57',
         '"union_entries": 63',
-        '"git_hosted_records": 5',
+        '"git_hosted_records": 4',
         '"package_records": 198',
-        '"rustdesk_org_git_records": 4',
+        '"rustdesk_org_git_records": 3',
     ):
         require(sources["dependency_inventory"], token, "updated Flutter dependency inventory")
 
@@ -2731,21 +2731,33 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "online_fetch",
+        '[ "${#git_specs[@]}" -eq 4 ]',
         '[ "${#git_specs[@]}" -eq 5 ]',
-        '[ "${#git_specs[@]}" -eq 6 ]',
-        "five-dependency acquisition inventory",
+        "four-dependency acquisition inventory",
     ),
     (
         "pub_cache_output",
+        "EXPECTED_GIT_DEPENDENCIES = 4",
         "EXPECTED_GIT_DEPENDENCIES = 5",
-        "EXPECTED_GIT_DEPENDENCIES = 6",
-        "five-dependency Pub-cache output inventory",
+        "four-dependency Pub-cache output inventory",
     ),
     (
         "dependency_inventory",
         '"package_records": 198',
         '"package_records": 199',
         "updated Flutter package inventory",
+    ),
+    (
+        "dependency_inventory",
+        '"git_hosted_records": 4',
+        '"git_hosted_records": 5',
+        "updated Flutter Git dependency inventory",
+    ),
+    (
+        "dependency_inventory",
+        '"rustdesk_org_git_records": 3',
+        '"rustdesk_org_git_records": 4',
+        "updated RustDesk Git dependency inventory",
     ),
     ("model", "clientOwnerId = isMobile ? _mobileClientOwnerId : Uuid().v4obj();", "clientOwnerId = isMobile ? _mobileClientOwnerId : sessionId;", "fresh desktop UI owner"),
     ("remote", "await _awaitCleanup('texture retirement', textureDisposal);", "unawaited(textureDisposal);", "RemoteDesktop texture finality"),

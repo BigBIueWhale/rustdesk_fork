@@ -46,6 +46,12 @@ PATHS = {
     "desktop_camera_tabs": "flutter/lib/desktop/pages/view_camera_tab_page.dart",
     "desktop_tabbar": "flutter/lib/desktop/widgets/tabbar_widget.dart",
     "desktop_tab_retirement_test": "flutter/test/desktop_tab_retirement_test.dart",
+    "flutter_attributes": "flutter/.gitattributes",
+    "flutter_pubspec": "flutter/pubspec.yaml",
+    "flutter_lock": "flutter/pubspec.lock",
+    "multi_window_linux": "flutter/third_party/desktop_multi_window/linux/flutter_window.cc",
+    "multi_window_header": "flutter/third_party/desktop_multi_window/linux/flutter_window.h",
+    "multi_window_upstream": "flutter/third_party/desktop_multi_window/UPSTREAM.md",
     "dart_verify": "scripts/dart-verify.sh",
     "verify": "scripts/verify.sh",
     "workspace": "scripts/verify-verifier-workspace.py",
@@ -79,8 +85,19 @@ def validate(sources: dict[str, str]) -> None:
     desktop_camera_tabs = sources["desktop_camera_tabs"]
     desktop_tabbar = sources["desktop_tabbar"]
     desktop_tab_retirement_test = sources["desktop_tab_retirement_test"]
+    flutter_attributes = sources["flutter_attributes"]
+    flutter_pubspec = sources["flutter_pubspec"]
+    flutter_lock = sources["flutter_lock"]
+    multi_window_linux = sources["multi_window_linux"]
+    multi_window_header = sources["multi_window_header"]
+    multi_window_upstream = sources["multi_window_upstream"]
     dart_verify = sources["dart_verify"]
 
+    require(
+        flutter_attributes,
+        "third_party/desktop_multi_window/** -text",
+        "vendored desktop multi-window byte preservation",
+    )
     require_order(
         host,
         (
@@ -572,6 +589,76 @@ def validate(sources: dict[str, str]) -> None:
         "flutter test --no-pub test/desktop_tab_retirement_test.dart",
         "offline desktop tab retirement behavior gate",
     )
+    require_order(
+        flutter_pubspec,
+        (
+            "desktop_multi_window:",
+            "path: third_party/desktop_multi_window",
+        ),
+        "vendored desktop multi-window dependency",
+    )
+    forbid(
+        flutter_pubspec,
+        "https://github.com/rustdesk-org/rustdesk_desktop_multi_window",
+        "ambient desktop multi-window Git dependency",
+    )
+    require_order(
+        flutter_lock,
+        (
+            "desktop_multi_window:",
+            'path: "third_party/desktop_multi_window"',
+            "relative: true",
+            "source: path",
+            'version: "0.1.0"',
+        ),
+        "locked vendored desktop multi-window dependency",
+    )
+    require(
+        multi_window_upstream,
+        "b47e8385e5a75d38319ad706a64b0ead3108b093",
+        "vendored desktop multi-window provenance",
+    )
+    require(
+        multi_window_header,
+        "bool destroy_pending_ = false;",
+        "idempotent native subwindow destruction state",
+    )
+    require_order(
+        multi_window_linux,
+        (
+            "gboolean destroyWindowWhenIdle(gpointer data)",
+            "pending->callback->OnWindowDestroy(pending->id);",
+            "if (!self->isPreventClose)",
+            "if (self->destroy_pending_)",
+            "self->destroy_pending_ = true;",
+            "callback->OnWindowClose(id);",
+            "g_idle_add_full(",
+            "destroyWindowWhenIdle,",
+            "new PendingWindowDestroy{callback, id}",
+            "return TRUE;",
+        ),
+        "native subwindow callback return before owning-map retirement",
+    )
+    forbid(
+        multi_window_linux,
+        "callback->OnWindowDestroy(self->id_);",
+        "synchronous native self-destruction",
+    )
+    forbid(
+        multi_window_linux,
+        "callback->OnWindowDestroy(id);",
+        "synchronous native self-destruction",
+    )
+    forbid(
+        multi_window_linux,
+        "return self->isPreventClose;",
+        "post-destruction native field read",
+    )
+    require(
+        dart_verify,
+        "desktop multi-window native destruction returns before owner retirement",
+        "offline native multi-window lifetime gate",
+    )
     forbid(controller, "PASSWORD_SETTLE_MS", "blind password-prompt delay")
     require(controller, "AUTH_WAIT_MS 30000U", "authentication deadline")
     require(controller, "FRESH_LIMIT_MS 1000U", "live-frame freshness bound")
@@ -697,8 +784,18 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(
         sources["hardening"],
-        "The pending correction gives the tab controller one asynchronous pre-removal boundary",
+        "The first correction gives the tab controller one asynchronous pre-removal boundary",
         "hardening awaited viewer teardown correction",
+    )
+    require(
+        sources["hardening"],
+        "A fifteenth exact committed run used commit `4dac16a203c8c98e7e3764c76250a69934922c14`",
+        "hardening awaited-teardown runtime result",
+    )
+    require(
+        sources["hardening"],
+        "Its Linux GTK",
+        "hardening native multi-window lifetime diagnosis",
     )
     require(
         sources["readme"],
@@ -775,6 +872,16 @@ MUTATIONS = (
     ("desktop_tab_retirement_test", "await retirement.future;", "return;"),
     ("desktop_tab_retirement_test", "expect(controller.length, 2);", "expect(controller.length, 0);"),
     ("dart_verify", "flutter test --no-pub test/desktop_tab_retirement_test.dart", "true # desktop tab retirement test disabled"),
+    ("flutter_attributes", "third_party/desktop_multi_window/** -text", "third_party/desktop_multi_window/** text=auto"),
+    ("flutter_pubspec", "path: third_party/desktop_multi_window", "path: /tmp/desktop_multi_window"),
+    ("flutter_lock", 'path: "third_party/desktop_multi_window"', 'path: "/tmp/desktop_multi_window"'),
+    ("multi_window_upstream", "b47e8385e5a75d38319ad706a64b0ead3108b093", "unreviewed-upstream"),
+    ("multi_window_header", "bool destroy_pending_ = false;", "bool destroy_pending_ = true;"),
+    ("multi_window_linux", "pending->callback->OnWindowDestroy(pending->id);", "return G_SOURCE_REMOVE;"),
+    ("multi_window_linux", "if (self->destroy_pending_)", "if (false)"),
+    ("multi_window_linux", "g_idle_add_full(", "callback->OnWindowDestroy(id);\n      g_idle_add_full("),
+    ("multi_window_linux", "return TRUE;", "return self->isPreventClose;"),
+    ("dart_verify", "desktop multi-window native destruction returns before owner retirement", "desktop multi-window native destruction gate removed"),
     ("controller", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0 && atspi_state_set_contains(states, ATSPI_STATE_SHOWING) != 0"),
     ("controller", "wait_for_password_prompt((unsigned int)viewer_pid, &prompt_scan)", "false"),
     ("controller", "wait_for_password_prompt_retirement((unsigned int)viewer_pid, &prompt_scan)", "false"),
@@ -797,7 +904,9 @@ MUTATIONS = (
     ("hardening", "A thirteenth exact committed run used commit `0a01023fdc6530a93663ebd34871f614ede69c21`", "The thirteenth exact run proved product presentation success"),
     ("hardening", "The correction removes that global semantics-deletion helper and all of its authored", "The correction retains global semantics deletion"),
     ("hardening", "A fourteenth exact committed run used commit `715171b9a9a03f0516130981f278a22d546775ac`", "The fourteenth exact run was green"),
-    ("hardening", "The pending correction gives the tab controller one asynchronous pre-removal boundary", "The pending correction keeps asynchronous State.dispose"),
+    ("hardening", "The first correction gives the tab controller one asynchronous pre-removal boundary", "The first correction keeps asynchronous State.dispose"),
+    ("hardening", "A fifteenth exact committed run used commit `4dac16a203c8c98e7e3764c76250a69934922c14`", "The fifteenth exact run was green"),
+    ("hardening", "Its Linux GTK", "Its unrelated Linux GTK"),
 )
 
 

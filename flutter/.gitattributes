@@ -1,1 +1,2 @@
 * text=auto
+third_party/desktop_multi_window/** -text

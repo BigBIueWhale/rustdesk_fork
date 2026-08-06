@@ -171,7 +171,7 @@ PY
       check-complete --online /evidence-online --uid "$(id -u)" --gid "$(id -g)")"
     [ "$cache_receipt" = "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256" ] \
       || fail 'sealed evidence Pub-cache receipt differs'
-    printf 'sha256=%s source=retained-read-only-copy semantics=current-five-git-lock\n' \
+    printf 'sha256=%s source=retained-read-only-copy semantics=current-four-git-lock\n' \
       "$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256" > /evidence-online/pub-cache.identity
     chmod 0444 /evidence-online/pub-cache.identity
     chmod 0555 /evidence-online
@@ -183,7 +183,7 @@ PY
     : "${RUSTDESK_EVIDENCE_PUB_CACHE_SHA256:?}"
     verify_regular /evidence-online/pub-cache.identity
     [ "$(< /evidence-online/pub-cache.identity)" = \
-      "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 source=retained-read-only-copy semantics=current-five-git-lock" ] \
+      "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 source=retained-read-only-copy semantics=current-four-git-lock" ] \
       || fail 'evidence Pub-cache identity receipt differs'
     cache_receipt="$(/usr/bin/python3 -I -S /source/scripts/online-pub-cache-output.py \
       check-complete --online /evidence-online --uid "$(id -u)" --gid "$(id -g)")"
@@ -223,7 +223,7 @@ PY
     done
     verify_regular /evidence-online/pub-cache.identity
     [ "$(< /evidence-online/pub-cache.identity)" = \
-      "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 source=retained-read-only-copy semantics=current-five-git-lock" ] \
+      "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 source=retained-read-only-copy semantics=current-four-git-lock" ] \
       || fail 'build evidence Pub-cache identity differs'
     [ "$(stat -c '%u:%g:%a' /evidence-online/pub-cache)" = \
       "$(id -u):$(id -g):500" ] || fail 'build evidence Pub-cache root is not sealed'

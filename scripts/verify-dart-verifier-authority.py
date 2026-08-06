@@ -207,6 +207,8 @@ def validate_contract(sources: Dict[str, str]) -> None:
             'flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/',
             'flutter analyze --no-pub \\\n'
             '      third_party/texture_rgba_renderer/lib/',
+            'flutter analyze --no-pub \\\n'
+            '      third_party/desktop_multi_window/lib/',
             'analyze_status=$?',
             'if [ "$analyze_status" -ne 0 ] || [ "$errs" != "0" ]; then',
             'flutter test --no-pub test/address_validator_test.dart',
@@ -222,6 +224,16 @@ def validate_contract(sources: Dict[str, str]) -> None:
             "grep -qF 'await controller.closeAll();' flutter/lib/desktop/widgets/tabbar_widget.dart",
             "grep -qF 'while (state.value.tabs.isNotEmpty) {'",
             "if grep -qF 'tabController.clear();' \"$tab_page\"; then",
+            "grep -qF 'path: third_party/desktop_multi_window' flutter/pubspec.yaml",
+            "grep -qF 'third_party/desktop_multi_window/** -text' flutter/.gitattributes",
+            "grep -qF 'bool destroy_pending_ = false;' \"$multi_window/linux/flutter_window.h\"",
+            "'gboolean destroyWindowWhenIdle(gpointer data)'",
+            "'pending->callback->OnWindowDestroy(pending->id);'",
+            "'if (self->destroy_pending_)'",
+            "'self->destroy_pending_ = true;'",
+            "if grep -qF 'callback->OnWindowDestroy(self->id_);'",
+            "if grep -qF 'callback->OnWindowDestroy(id);'",
+            "if grep -qF 'return self->isPreventClose;'",
             '--env "RUSTDESK_RUST_VERSION=$RUST_VERSION"',
             'tar -C "$toolchain" -xf "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz"',
             '--components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview',
@@ -274,6 +286,20 @@ def validate_contract(sources: Dict[str, str]) -> None:
         dart.index('(cd "$toolchain/flutter/packages/flutter_tools" && dart pub get --offline --enforce-lockfile >/dev/null)')
         < dart.index('flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/'),
         "Flutter tool dependencies are not explicitly resolved offline before analyzer launch",
+    )
+    require(
+        dart.index('flutter analyze --no-pub \\\n'
+                   '      third_party/texture_rgba_renderer/lib/')
+        < dart.index('flutter analyze --no-pub \\\n'
+                     '      third_party/desktop_multi_window/lib/')
+        < dart.index('flutter test --no-pub test/address_validator_test.dart'),
+        "vendored plugin analysis is not complete before focused Flutter tests",
+    )
+    require(
+        dart.index("grep -qF 'path: third_party/desktop_multi_window' flutter/pubspec.yaml")
+        < dart.index("'gboolean destroyWindowWhenIdle(gpointer data)'")
+        < dart.index("if grep -qF 'callback->OnWindowDestroy(self->id_);'"),
+        "desktop multi-window source gate is incomplete or misordered",
     )
     require(
         dart.index('flutter test --no-pub test/address_validator_test.dart')
@@ -740,6 +766,37 @@ MUTATIONS = (
         '      third_party/texture_rgba_renderer/lib/',
         "true # in-tree native RGBA Dart wrapper analysis disabled",
         "in-tree native RGBA Dart wrapper analysis",
+    ),
+    Mutation(
+        "dart",
+        'flutter analyze --no-pub \\\n'
+        '      third_party/desktop_multi_window/lib/',
+        "true # vendored desktop multi-window Dart analysis disabled",
+        "vendored desktop multi-window Dart analysis",
+    ),
+    Mutation(
+        "dart",
+        "grep -qF 'path: third_party/desktop_multi_window' flutter/pubspec.yaml",
+        "true # vendored dependency source gate disabled",
+        "vendored desktop multi-window dependency source gate",
+    ),
+    Mutation(
+        "dart",
+        "grep -qF 'third_party/desktop_multi_window/** -text' flutter/.gitattributes",
+        "true # vendored byte-preservation gate disabled",
+        "vendored desktop multi-window byte-preservation gate",
+    ),
+    Mutation(
+        "dart",
+        "'gboolean destroyWindowWhenIdle(gpointer data)'",
+        "'gboolean destroyWindowSynchronously(gpointer data)'",
+        "deferred native destruction source gate",
+    ),
+    Mutation(
+        "dart",
+        "if grep -qF 'return self->isPreventClose;'",
+        "if false; then # post-destruction owner read accepted",
+        "post-destruction owner-read refusal",
     ),
     Mutation(
         "dart",

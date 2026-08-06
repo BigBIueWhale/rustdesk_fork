@@ -486,7 +486,7 @@ history remains the traceability record for that intermediate work.
 
 **Current machine inventory expectation.** `Cargo.lock` has 898 package records: 36 git-sourced records from
 26 unique git source URLs, including 26 rustdesk-org records from 20 unique rustdesk-org URLs.
-`flutter/pubspec.lock` has 198 package records, including 5 git records and 4 rustdesk-org records;
+`flutter/pubspec.lock` has 198 package records, including 4 git records and 3 rustdesk-org records;
 `flutter/pubspec.yaml` declares 57 main and 6 dev dependencies, a 63-name union. `.github/workflows/` has
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
@@ -3227,11 +3227,12 @@ repository-owned software RGBA renderer governed by R-S11ex. Its ready event car
 display. Decoder construction and advertised supported decoding receive no adapter identity, and
 enabling an unsupported Cargo feature does not reintroduce a Flutter GPU presentation route.
 
-The exact current inventory after R-S11fu vendored UniLinks is 198 Flutter lock records, five Git records (four from
-`rustdesk-org`), and 57 main plus six development dependencies with a 63-name union. The current
+The exact current inventory after vendoring UniLinks and `desktop_multi_window` is 198 Flutter lock records,
+four Git records (three from `rustdesk-org`), and 57 main plus six development dependencies with a 63-name union. The current
 sealed `online/pub-cache` was produced for an older eight-Git graph and may still contain both the
-now-unselected upstream RGBA and GPU-plugin checkouts. Offline resolution may ignore those extra
-objects, but that cache is not claimed as a freshly produced exact five-Git release cache. A checked
+now-unselected upstream RGBA, GPU-plugin, UniLinks, and desktop-multi-window checkouts. Offline
+resolution may ignore extra objects only when every selected locked package is present; this cache
+is not claimed as a freshly produced exact four-Git release cache. A checked
 networked Pub-cache production transaction must eventually publish the exact five-checkout/five-bare
 closure; manual pruning is not accepted as equivalent evidence.
 
@@ -16682,7 +16683,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   crash are consistent with that ordering. This is a real teardown/resource-management defect
   exposed by the first successful full presentation path, not a green full transaction.
 
-  The pending correction gives the tab controller one asynchronous pre-removal boundary, makes
+  The first correction gives the tab controller one asynchronous pre-removal boundary, makes
   individual and all-tab closes wait at that boundary, and re-resolves an exact tab by object
   identity after waiting so delayed cleanup cannot remove a replacement at the old index. Remote
   and view-camera pages idempotently retire texture publication, await texture release, close the
@@ -16707,8 +16708,59 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   expects the full recovery/texture/session ordering rejection, while camera cleanup-binding removal
   and synchronous-clear injection are distinct mutations and must each reach their exact rejection.
   The publication gate repeats the complete catalog after this evidence-ledger edit, with the final
-  receipt recorded outside the self-referential tracked tree. An exact committed full-peer rerun
-  remains required; this paragraph is not a green runtime claim for the pending source.
+  receipt recorded outside the self-referential tracked tree.
+
+  A fifteenth exact committed run used commit `4dac16a203c8c98e7e3764c76250a69934922c14`,
+  tree `a454a18dce13cd0db2028cea36769c27bb642bb3`, and source-archive SHA-256
+  `c8d78a7734783955298312d6ab2ede0b40314d569e7b8a656ad4e661d8a618f7`. It acquired the
+  same exact five Xvfb packages with zero acquisition listeners/UDP sockets, reverified the sealed
+  Pub cache, rebuilt the release core in 5m21s with the 65-warning baseline, manifested 79 bundle
+  files, and exposed only `127.0.0.1:21118` with zero UDP in the external-interface-free peer
+  namespace. The exact password accessible again passed every predicate before XTest entry.
+  Authentication and presentation passed: four initial pictures were first-current in 0 ms and at
+  most 250 ms old; across a real 2000-ms focus loss the blurred age was 42 ms, maximum observed age
+  was 247 ms, recovery was 0 ms, and the authenticated TCP tuple/inode stayed identical.
+
+  The fifteenth transaction is also red. Its log proves the first correction executed before native
+  subwindow destruction: remote-page cleanup began, the exact pixelbuffer texture was destroyed,
+  the exact session model closed, and only then did the main engine request the subwindow close.
+  The process nevertheless emitted the same two engine-less messenger warnings and exited 139;
+  cleanup joined every controlled owner and closed the listener. The first correction therefore
+  fixes a real Dart/texture/session ordering defect but is not the complete native crash fix.
+
+  Exact source tracing found the remaining direct lifetime violation in pinned
+  `rustdesk_desktop_multi_window` commit `b47e8385e5a75d38319ad706a64b0ead3108b093`. Its Linux GTK
+  `delete-event` callback calls `OnWindowDestroy`, which immediately erases the manager-owned
+  `unique_ptr<FlutterWindow>` and runs that same callback object's destructor; the callback then
+  returns `self->isPreventClose` by reading freed storage. The destructor also destroys the GTK
+  widget/Flutter engine while its delete signal is still unwinding. Upstream `master` at
+  `533883bcb0ffe91a9afdb13b8bac9b14b3e054ba` retains the identical self-erasure and post-free read,
+  so an unrelated pin bump is not a correction.
+
+  The pending native correction vendors the exact previously pinned plugin under
+  `flutter/third_party/desktop_multi_window`, preserves its Apache-2.0 license and all Dart,
+  Linux, Windows, and macOS implementations, and changes only the Linux close lifetime. Close
+  scheduling becomes idempotent; GTK default destruction is inhibited; and the owning-map erase is
+  posted to the GTK idle queue so the `delete-event` callback returns before the `FlutterWindow`
+  destructor can run. `pubspec.yaml` and `pubspec.lock` bind the local deterministic path, never the
+  retained cache. Focused and independent verifiers reject provenance loss, path redirection,
+  missing idempotence, lost idle deferral, synchronous owner deletion, or restoration of the
+  post-free field read. Fresh offline dependency resolution, build/analyzer tests, complete mutation
+  closure, and an exact committed full-peer rerun remain required; this is not a green claim.
+
+  The first authoritative fresh-generation attempt against this pending source then rejected the
+  retained Pub cache before FRB code generation: the tracked Android-toolchain closure from commit
+  `526b9604257f9d12313547450336adc8d74e5903` locks `external_path 2.2.0`,
+  `flutter_keyboard_visibility 6.0.0`, and `sqflite 2.2.8+4`, while the sealed cache still contains
+  only `1.0.3`, `5.4.1`, and `2.2.0`. Earlier Linux smoke builds consumed stale generated
+  package/plugin metadata pointing at those older directories, so their successful native build did
+  not prove the committed Pub lock resolves offline. The new path dependency merely forced the
+  resolver to expose this pre-existing closure failure; it did not cause the missing package bytes.
+  Downgrading the Android repair or accepting stale generated metadata is forbidden. The closed
+  acquisition and evidence contracts now describe the exact four remaining Git dependencies after
+  vendoring, but a checked replacement cache must acquire the exact locked hosted packages and pass
+  networkless semantic replay before fresh generation can resume. This is a red reproducibility
+  finding, not a native-patch test result and not a release claim.
 
   No root, product configuration injection, policy bypass, or product-only test hook is admitted. Controlled
   peer and viewer run as numeric non-root in separate mount, PID,
@@ -16766,11 +16818,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `verify-verifier-workspace: ok`; it was neither sampled nor shortened. These gates started no
   RustDesk process, X server, listener, or networked process and changed no host service,
   configuration, display, firewall, route, or network state. The synchronized requirements
-  SHA-256 is `a5721cb6fecc87ebba0188bb41ce509b870b7a3c0a25125fba078780b3b44b03`.
+  SHA-256 is `e7fbcc934e5cb215263f5279db8915de9bd92d920ad59f1272780fe702ccc910`.
 
-  No green full-peer transaction is recorded after fourteen exact committed attempts. The fourteenth
-  run is strong authenticated presentation/focus/performance evidence, but its viewer exit 139 keeps
-  the overall boundary red. Each product or harness correction must first be committed so
+  No green full-peer transaction is recorded after fifteen exact committed attempts. The fourteenth
+  and fifteenth runs are strong authenticated presentation/focus/performance evidence, but both
+  viewer exit-139 results keep the overall boundary red. Each product or harness correction must first be committed so
   its exact-source archive can honestly contain the files being run. A green future result will close
   only one Linux/X11 software-codec full-peer and focus cycle. It will not establish Android
   Activity/foreground-service/task-swipe/reopen/Force-Stop behavior; Windows engine/compositor
@@ -21785,7 +21837,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-a5721cb6fecc87ebba0188bb41ce509b870b7a3c0a25125fba078780b3b44b03  requirements.html
+e7fbcc934e5cb215263f5279db8915de9bd92d920ad59f1272780fe702ccc910  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

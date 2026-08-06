@@ -20063,9 +20063,9 @@ def validate_desktop_texture_lifecycle_contract(sources):
     for text, label in (
         ('"dependencies_entries": 57', "independent Flutter direct-dependency count"),
         ('"union_entries": 63', "independent Flutter dependency-union count"),
-        ('"git_hosted_records": 5', "independent Flutter Git-lock count"),
+        ('"git_hosted_records": 4', "independent Flutter Git-lock count"),
         ('"package_records": 198', "independent Flutter package-lock count"),
-        ('"rustdesk_org_git_records": 4', "independent RustDesk Git-lock count"),
+        ('"rustdesk_org_git_records": 3', "independent RustDesk Git-lock count"),
     ):
         require_text(sources["dependency_inventory_source"], text, label)
 
@@ -20615,6 +20615,30 @@ def validate_desktop_texture_lifecycle_contract(sources):
             '"desktop_tab_retirement_test": "flutter/test/desktop_tab_retirement_test.dart"',
             "tab-retirement regression",
         ),
+        (
+            '"flutter_attributes": "flutter/.gitattributes"',
+            "vendored multi-window byte preservation",
+        ),
+        (
+            '"flutter_pubspec": "flutter/pubspec.yaml"',
+            "vendored multi-window dependency manifest",
+        ),
+        (
+            '"flutter_lock": "flutter/pubspec.lock"',
+            "vendored multi-window dependency lock",
+        ),
+        (
+            '"multi_window_linux": "flutter/third_party/desktop_multi_window/linux/flutter_window.cc"',
+            "vendored multi-window Linux lifetime",
+        ),
+        (
+            '"multi_window_header": "flutter/third_party/desktop_multi_window/linux/flutter_window.h"',
+            "vendored multi-window Linux lifetime state",
+        ),
+        (
+            '"multi_window_upstream": "flutter/third_party/desktop_multi_window/UPSTREAM.md"',
+            "vendored multi-window provenance",
+        ),
     ):
         require_text(
             sources["flutter_peer_presentation_verifier"],
@@ -20681,6 +20705,81 @@ def validate_desktop_texture_lifecycle_contract(sources):
         sources["dart_verify"],
         "flutter test --no-pub test/desktop_tab_retirement_test.dart",
         "independent confined desktop tab-retirement behavior gate",
+    )
+    require_text(
+        sources["flutter_gitattributes"],
+        "third_party/desktop_multi_window/** -text",
+        "independent vendored desktop multi-window byte preservation",
+    )
+    require_order(
+        sources["flutter_pubspec_yaml"],
+        (
+            "desktop_multi_window:",
+            "path: third_party/desktop_multi_window",
+        ),
+        "independent vendored desktop multi-window dependency",
+    )
+    require_absent(
+        sources["flutter_pubspec_yaml"],
+        "https://github.com/rustdesk-org/rustdesk_desktop_multi_window",
+        "independent ambient desktop multi-window Git dependency",
+    )
+    require_order(
+        sources["flutter_pubspec_lock"],
+        (
+            "desktop_multi_window:",
+            'path: "third_party/desktop_multi_window"',
+            "relative: true",
+            "source: path",
+            'version: "0.1.0"',
+        ),
+        "independent locked vendored desktop multi-window dependency",
+    )
+    require_text(
+        sources["desktop_multi_window_upstream"],
+        "b47e8385e5a75d38319ad706a64b0ead3108b093",
+        "independent vendored desktop multi-window provenance",
+    )
+    require_text(
+        sources["desktop_multi_window_header"],
+        "bool destroy_pending_ = false;",
+        "independent idempotent native subwindow destruction state",
+    )
+    require_order(
+        sources["desktop_multi_window_linux"],
+        (
+            "gboolean destroyWindowWhenIdle(gpointer data)",
+            "pending->callback->OnWindowDestroy(pending->id);",
+            "if (!self->isPreventClose)",
+            "if (self->destroy_pending_)",
+            "self->destroy_pending_ = true;",
+            "callback->OnWindowClose(id);",
+            "g_idle_add_full(",
+            "destroyWindowWhenIdle,",
+            "new PendingWindowDestroy{callback, id}",
+            "return TRUE;",
+        ),
+        "independent native subwindow callback return before owner retirement",
+    )
+    require_absent(
+        sources["desktop_multi_window_linux"],
+        "callback->OnWindowDestroy(self->id_);",
+        "independent synchronous native self-destruction",
+    )
+    require_absent(
+        sources["desktop_multi_window_linux"],
+        "callback->OnWindowDestroy(id);",
+        "independent synchronous native self-destruction",
+    )
+    require_absent(
+        sources["desktop_multi_window_linux"],
+        "return self->isPreventClose;",
+        "independent post-destruction native field read",
+    )
+    require_text(
+        sources["dart_verify"],
+        "desktop multi-window native destruction returns before owner retirement",
+        "independent confined native multi-window lifetime gate",
     )
     require_text(
         sources["apple"],
@@ -32117,7 +32216,7 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
         (')" && verify_pub_cache_resolution "$ONLINE_DIR/pub-cache"\n'
          "        then",
          "Pub-cache occupied-output semantic replay"),
-        ('[ "${#git_specs[@]}" -eq 5 ]', "Pub-cache exact Git dependency count"),
+        ('[ "${#git_specs[@]}" -eq 4 ]', "Pub-cache exact Git dependency count"),
         ("fsck --full --no-dangling --no-reflogs", "Pub-cache Git object closure"),
         (
             '[[ "$receipt" =~ ^sha256=([0-9a-f]{64})$ ]]; then\n'
@@ -32224,7 +32323,7 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
         ("REPLACEMENT_PATTERN = re.compile(", "Pub-cache displaced-output namespace"),
         ("TREE_LIMITS = (100_000, 30_000, 4 * 1024**3, 256 * 1024**2, 32)",
          "Pub-cache output bounds"),
-        ("EXPECTED_GIT_DEPENDENCIES = 5", "Pub-cache Git inventory bound"),
+        ("EXPECTED_GIT_DEPENDENCIES = 4", "Pub-cache Git inventory bound"),
         ('required = {"hosted", "hosted-hashes", "git"}',
          "Pub-cache exact top-level inventory"),
         ("reject_descendant_mounts(canonical)", "Pub-cache mount closure"),
@@ -58345,6 +58444,42 @@ def run_source_mutations(sources):
             "independent full-peer tab-retirement regression binding",
         ),
         (
+            "flutter_peer_presentation_verifier",
+            '"flutter_attributes": "flutter/.gitattributes"',
+            '"flutter_attributes": "flutter/removed-.gitattributes"',
+            "independent full-peer vendored multi-window byte preservation binding",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
+            '"flutter_pubspec": "flutter/pubspec.yaml"',
+            '"flutter_pubspec": "flutter/removed-pubspec.yaml"',
+            "independent full-peer vendored multi-window dependency manifest binding",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
+            '"flutter_lock": "flutter/pubspec.lock"',
+            '"flutter_lock": "flutter/removed-pubspec.lock"',
+            "independent full-peer vendored multi-window dependency lock binding",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
+            '"multi_window_linux": "flutter/third_party/desktop_multi_window/linux/flutter_window.cc"',
+            '"multi_window_linux": "flutter/third_party/desktop_multi_window/linux/removed-flutter-window.cc"',
+            "independent full-peer vendored multi-window Linux lifetime binding",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
+            '"multi_window_header": "flutter/third_party/desktop_multi_window/linux/flutter_window.h"',
+            '"multi_window_header": "flutter/third_party/desktop_multi_window/linux/removed-flutter-window.h"',
+            "independent full-peer vendored multi-window Linux lifetime state binding",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
+            '"multi_window_upstream": "flutter/third_party/desktop_multi_window/UPSTREAM.md"',
+            '"multi_window_upstream": "flutter/third_party/desktop_multi_window/REMOVED-UPSTREAM.md"',
+            "independent full-peer vendored multi-window provenance binding",
+        ),
+        (
             "desktop_remote_page_dart",
             "Future<void> prepareForRemoval({bool closeSession = true})",
             "Future<void> prepareForRemoval({bool closeSession = false})",
@@ -58398,6 +58533,66 @@ def run_source_mutations(sources):
             "flutter test --no-pub test/desktop_tab_retirement_test.dart",
             "true # desktop tab-retirement behavior gate removed",
             "independent confined desktop tab-retirement behavior gate",
+        ),
+        (
+            "flutter_pubspec_yaml",
+            "path: third_party/desktop_multi_window",
+            "path: /tmp/desktop_multi_window",
+            "independent vendored desktop multi-window dependency",
+        ),
+        (
+            "flutter_gitattributes",
+            "third_party/desktop_multi_window/** -text",
+            "third_party/desktop_multi_window/** text=auto",
+            "independent vendored desktop multi-window byte preservation",
+        ),
+        (
+            "flutter_pubspec_lock",
+            'path: "third_party/desktop_multi_window"',
+            'path: "/tmp/desktop_multi_window"',
+            "independent locked vendored desktop multi-window dependency",
+        ),
+        (
+            "desktop_multi_window_upstream",
+            "b47e8385e5a75d38319ad706a64b0ead3108b093",
+            "unreviewed-upstream",
+            "independent vendored desktop multi-window provenance",
+        ),
+        (
+            "desktop_multi_window_header",
+            "bool destroy_pending_ = false;",
+            "bool destroy_pending_ = true;",
+            "independent idempotent native subwindow destruction state",
+        ),
+        (
+            "desktop_multi_window_linux",
+            "pending->callback->OnWindowDestroy(pending->id);",
+            "return G_SOURCE_REMOVE;",
+            "independent native subwindow callback return before owner retirement",
+        ),
+        (
+            "desktop_multi_window_linux",
+            "if (self->destroy_pending_)",
+            "if (false)",
+            "independent native subwindow callback return before owner retirement",
+        ),
+        (
+            "desktop_multi_window_linux",
+            "g_idle_add_full(",
+            "callback->OnWindowDestroy(id);\n      g_idle_add_full(",
+            "independent synchronous native self-destruction",
+        ),
+        (
+            "desktop_multi_window_linux",
+            "return TRUE;",
+            "return self->isPreventClose;",
+            "independent post-destruction native field read",
+        ),
+        (
+            "dart_verify",
+            "desktop multi-window native destruction returns before owner retirement",
+            "desktop multi-window native destruction gate removed",
+            "independent confined native multi-window lifetime gate",
         ),
         (
             "apple",
@@ -58578,6 +58773,18 @@ def run_source_mutations(sources):
             '"package_records": 198',
             '"package_records": 199',
             "independent Flutter package-lock count",
+        ),
+        (
+            "dependency_inventory_source",
+            '"git_hosted_records": 4',
+            '"git_hosted_records": 5',
+            "independent Flutter Git-lock count",
+        ),
+        (
+            "dependency_inventory_source",
+            '"rustdesk_org_git_records": 3',
+            '"rustdesk_org_git_records": 4',
+            "independent RustDesk Git-lock count",
         ),
         (
             "requirements",
@@ -69823,6 +70030,26 @@ def main():
             ).read_text(encoding="utf-8"),
             "desktop_tab_retirement_test": (
                 repo / "flutter/test/desktop_tab_retirement_test.dart"
+            ).read_text(encoding="utf-8"),
+            "flutter_pubspec_yaml": (repo / "flutter/pubspec.yaml").read_text(
+                encoding="utf-8"
+            ),
+            "flutter_gitattributes": (repo / "flutter/.gitattributes").read_text(
+                encoding="utf-8"
+            ),
+            "flutter_pubspec_lock": (repo / "flutter/pubspec.lock").read_text(
+                encoding="utf-8"
+            ),
+            "desktop_multi_window_linux": (
+                repo
+                / "flutter/third_party/desktop_multi_window/linux/flutter_window.cc"
+            ).read_text(encoding="utf-8"),
+            "desktop_multi_window_header": (
+                repo
+                / "flutter/third_party/desktop_multi_window/linux/flutter_window.h"
+            ).read_text(encoding="utf-8"),
+            "desktop_multi_window_upstream": (
+                repo / "flutter/third_party/desktop_multi_window/UPSTREAM.md"
             ).read_text(encoding="utf-8"),
             "main_dart": (repo / "flutter/lib/main.dart").read_text(encoding="utf-8"),
             "web_bridge_dart": (repo / "flutter/lib/web/bridge.dart").read_text(encoding="utf-8"),

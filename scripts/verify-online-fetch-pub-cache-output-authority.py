@@ -31,12 +31,6 @@ GIT_SPECS = (
         "https://github.com/rustdesk-org/Dash-Chat-2",
     ),
     (
-        "desktop_multi_window",
-        "b47e8385e5a75d38319ad706a64b0ead3108b093",
-        ".",
-        "https://github.com/rustdesk-org/rustdesk_desktop_multi_window",
-    ),
-    (
         "dynamic_layouts",
         "24cb88413fa5181d949ddacbb30a65d5c459e7d9",
         ".",
@@ -124,8 +118,13 @@ def lock_package_block(lock: str, package: str) -> str:
 
 
 def validate_git_specs(semantic: str, lock: str) -> None:
-    require_count(semantic, '|https://github.com/', 5, "closed Git semantic mapping")
-    require_count(lock, "    source: git\n", 5, "locked Git package set")
+    require_count(
+        semantic,
+        '|https://github.com/',
+        len(GIT_SPECS),
+        "closed Git semantic mapping",
+    )
+    require_count(lock, "    source: git\n", len(GIT_SPECS), "locked Git package set")
     for package, resolved, package_path, url in GIT_SPECS:
         require(
             semantic,
@@ -339,7 +338,7 @@ def validate(sources: Dict[str, str]) -> None:
          "offline project lock postcondition"),
         ("tools_lock=", "flutter_tools lock preimage"),
         ("git_specs=(", "closed Git dependency map"),
-        ('[ "${#git_specs[@]}" -eq 5 ]', "exact Git dependency count"),
+        ('[ "${#git_specs[@]}" -eq 4 ]', "exact Git dependency count"),
         ('status --porcelain=v1 --untracked-files=all', "clean checkout proof"),
         ("diff --no-ext-diff --quiet --", "worktree index proof"),
         ("diff --cached --no-ext-diff --quiet --", "index HEAD proof"),
@@ -519,7 +518,7 @@ def validate(sources: Dict[str, str]) -> None:
         ("REPLACEMENT_PATTERN = re.compile(", "reserved displaced-output namespace"),
         ("TREE_LIMITS = (100_000, 30_000, 4 * 1024**3, 256 * 1024**2, 32)",
          "closed output bounds"),
-        ("EXPECTED_GIT_DEPENDENCIES = 5", "exact Git dependency count"),
+        ("EXPECTED_GIT_DEPENDENCIES = 4", "exact Git dependency count"),
         ('required = {"hosted", "hosted-hashes", "git"}',
          "exact required top-level trees"),
         ('ALLOWED_LEGACY_TOP_LEVEL = {"_temp", "log", "README.md"}',
@@ -546,7 +545,7 @@ def validate(sources: Dict[str, str]) -> None:
          "hosted/hash set equality"),
         ('for advisory in ("archive-advisories.json", "http-advisories.json")',
          "required advisory cache"),
-        ("Pub cache does not contain the exact five locked Git dependencies",
+        ("Pub cache does not contain the exact four locked Git dependencies",
          "Git inventory closure"),
         ("source_archive_sha256", "source archive provenance"),
         ("flutter_archive_sha256", "Flutter archive provenance"),
@@ -950,8 +949,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "helper",
+        "EXPECTED_GIT_DEPENDENCIES = 4",
         "EXPECTED_GIT_DEPENDENCIES = 5",
-        "EXPECTED_GIT_DEPENDENCIES = 6",
         "Git inventory bound",
     ),
     Mutation(

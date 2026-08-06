@@ -118,23 +118,22 @@ EXPECTED = {
         ],
         "dev_dependencies_entries": 6,
         "direct_dependency_identities_sha256": "8b974dc71c796d4fa6c6dbcd885d9daf89815006949c5d7368d4eed86fda90a0",
-        "direct_dependency_records_sha256": "d06d4d2e9067156124c58386f5185d033f5f2df78363556fab6fc7d810e2fd9e",
+        "direct_dependency_records_sha256": "46b47f30ea87093820c9834c03be3bdf527c0068c370d435f1d61d4a97a16e29",
         "sdk_entries_excluded": 0,
         "union_entries": 63,
     },
     "flutter_pubspec_lock": {
-        "git_hosted_records": 5,
-        "git_record_identities_sha256": "ffedf83907b277b212554d1203dd47ee2995a5c4d3a47cae7e2c01e17e742f4d",
+        "git_hosted_records": 4,
+        "git_record_identities_sha256": "69dc55197788011c066e34e99755f59c607876501d2dbf6355628bfe32d8a63b",
         "git_source_identities": {
             "dash_chat_2": "https://github.com/rustdesk-org/dash-chat-2",
-            "desktop_multi_window": "https://github.com/rustdesk-org/rustdesk_desktop_multi_window",
             "dynamic_layouts": "https://github.com/rustdesk-org/dynamic_layouts",
             "window_manager": "https://github.com/rustdesk-org/window_manager",
             "window_size": "https://github.com/google/flutter-desktop-embedding",
         },
         "package_records": 198,
-        "package_records_sha256": "a9f3113981538267da263d9e49ff54b32e7aeb04e718d5ce40c0b47585b6f400",
-        "rustdesk_org_git_records": 4,
+        "package_records_sha256": "4c99be9bed16669399668ccbcdc45111b1bcaf1a195ff9fa05d37b4d38111f3e",
+        "rustdesk_org_git_records": 3,
     },
     "github_workflows": {
         "disabled_workflow_definition_files": [

@@ -90,6 +90,37 @@ def validate(sources: dict[str, str]) -> None:
     require(host, "dbus-run-session --", "private viewer accessibility session")
     if host.count("dbus-run-session --") != 1:
         raise VerificationError("the private accessibility session must be viewer-only")
+    require(host, 'readonly VIEWER_PASSWD="$WORKSPACE/viewer.passwd"', "private passwd witness")
+    require(
+        host,
+        'readonly VIEWER_PASSWD_ENTRY="rustdesk-evidence:x:$HOST_UID:$HOST_GID:RustDesk peer evidence:/tmp/viewer-home:/usr/sbin/nologin"',
+        "exact numeric-nonroot passwd identity",
+    )
+    require(host, 'chmod 0400 "$VIEWER_PASSWD.tmp"', "private passwd witness mode")
+    require(
+        host,
+        'source=$VIEWER_PASSWD,target=/etc/passwd,readonly,bind-recursive=disabled',
+        "read-only viewer passwd mount",
+    )
+    if host.count("target=/etc/passwd") != 1:
+        raise VerificationError("only the viewer may receive the passwd witness")
+    require_order(
+        host,
+        (
+            'readonly VIEWER_CID_FILE="$WORKSPACE/viewer.cid"',
+            'local_docker run --cidfile "$VIEWER_CID_FILE"',
+            'source=$VIEWER_PASSWD,target=/etc/passwd,readonly,bind-recursive=disabled',
+            "dbus-run-session --",
+        ),
+        "viewer-only passwd identity mount",
+    )
+    require(
+        host,
+        'mount.get("Destination") == "/etc/passwd"',
+        "inspected passwd mount destination",
+    )
+    require(host, 'passwd_mount.get("RW") is not False', "inspected read-only passwd mount")
+    require(host, "private viewer passwd witness changed during runtime", "passwd witness finality")
     require(
         host,
         ".harness-state/android-current-evidence-7c29f39/pub-cache",
@@ -109,7 +140,7 @@ def validate(sources: dict[str, str]) -> None:
     require_order(
         host,
         (
-            "local cid=$1 expected_network=$2 label=$3\n  local json_path",
+            "local cid=$1 expected_network=$2 label=$3\n  local json_path expected_passwd_source=",
             'json_path="$WORKSPACE/$label.inspect.json"',
             'local_docker container inspect "$cid" > "$json_path"',
         ),
@@ -195,6 +226,11 @@ def validate(sources: dict[str, str]) -> None:
         stage,
         '[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]',
         "private accessibility-session address",
+    )
+    require(
+        stage,
+        '[ "$(getent passwd "$(id -u)")" = "$EXPECTED_PASSWD_ENTRY" ]',
+        "resolved numeric viewer identity",
     )
     require(
         stage,
@@ -417,12 +453,17 @@ def validate(sources: dict[str, str]) -> None:
 
 
 MUTATIONS = (
-    ("host", "local cid=$1 expected_network=$2 label=$3\n  local json_path\n  json_path=", "local cid=$1 expected_network=$2 label=$3 json_path="),
+    ("host", 'local cid=$1 expected_network=$2 label=$3\n  local json_path expected_passwd_source=\n  json_path="$WORKSPACE/$label.inspect.json"', 'local cid=$1 expected_network=$2 label=$3 json_path="$WORKSPACE/$label.inspect.json"\n  local expected_passwd_source='),
     ("host", "--pull=never --network=none --read-only", "--pull=never --network=host --read-only"),
     ("host", '--network="container:$SERVER_CID" --read-only', "--network=bridge --read-only"),
     ("host", 'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache,readonly', 'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache'),
     ("host", 'host.get("PortBindings") not in (None, {})', "False"),
     ("host", "dbus-run-session --", "true # private accessibility session removed"),
+    ("host", 'local_docker run --cidfile "$VIEWER_CID_FILE"', 'local_docker run --cidfile "$SERVER_CID_FILE"'),
+    ("host", 'chmod 0400 "$VIEWER_PASSWD.tmp"', 'chmod 0444 "$VIEWER_PASSWD.tmp"'),
+    ("host", 'source=$VIEWER_PASSWD,target=/etc/passwd,readonly,bind-recursive=disabled', 'source=$VIEWER_PASSWD,target=/tmp/passwd,readonly,bind-recursive=disabled'),
+    ("host", 'passwd_mount.get("RW") is not False', "False"),
+    ("host", "private viewer passwd witness changed during runtime", "passwd witness finality removed"),
     ("stage", '[ "$interfaces" = lo ]', '[ -n "$interfaces" ]'),
     ("stage", "--lib --example smoke_readiness --release", "--lib --release"),
     ("stage", '"$READY" --wait-typed-parked "$SERVER_PID" "$SERVER_START"', '"$READY" --wait-tcp-listener "$SERVER_PID" "$SERVER_START"'),
@@ -432,6 +473,7 @@ MUTATIONS = (
     ("stage", "export HOME CARGO_HOME CI=true PUB_CACHE=/evidence-online/pub-cache", "export HOME CARGO_HOME CI=true PUB_CACHE=/online/pub-cache"),
     ("stage", '[ -z "${LD_PRELOAD:-}" ]', "true # ambient preload accepted"),
     ("stage", '[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]', "true # accessibility bus not required"),
+    ("stage", '[ "$(getent passwd "$(id -u)")" = "$EXPECTED_PASSWD_ENTRY" ]', "true # numeric identity unresolved"),
     ("stage", "pkg-config --cflags --libs x11 xtst atspi-2 gobject-2.0", "pkg-config --cflags --libs x11 xtst atspi-2"),
     ("stage", "--password-stdin", "--password rustdesk-peer-9f2a7c4e"),
     ("stage", 'LD_PRELOAD="$BIND_SHIM" RUST_LOG=info exec "$APP" --server', 'RUST_LOG=info exec "$APP" --server'),

@@ -120,9 +120,19 @@ readonly XVFB_DEBS="$WORKSPACE/xvfb-debs"
 readonly XVFB_ROOT="$WORKSPACE/xvfb-root"
 readonly COORD="$WORKSPACE/coord"
 readonly EVIDENCE_ONLINE="$WORKSPACE/evidence-online"
+readonly VIEWER_PASSWD="$WORKSPACE/viewer.passwd"
+readonly VIEWER_PASSWD_ENTRY="rustdesk-evidence:x:$HOST_UID:$HOST_GID:RustDesk peer evidence:/tmp/viewer-home:/usr/sbin/nologin"
 BUILD_WORK="$WORKSPACE/build-work"
 mkdir "$SOURCE_SNAPSHOT" "$BUILD_OUTPUT" "$XVFB_DEBS" "$XVFB_ROOT" \
   "$COORD" "$EVIDENCE_ONLINE" "$BUILD_WORK"
+printf '%s\n' "$VIEWER_PASSWD_ENTRY" > "$VIEWER_PASSWD.tmp"
+chmod 0400 "$VIEWER_PASSWD.tmp"
+mv "$VIEWER_PASSWD.tmp" "$VIEWER_PASSWD"
+[ -f "$VIEWER_PASSWD" ] && [ ! -L "$VIEWER_PASSWD" ] \
+  && [ "$(stat -c '%u:%g:%a:%h' "$VIEWER_PASSWD")" = "$HOST_UID:$HOST_GID:400:1" ] \
+  && [ "$(<"$VIEWER_PASSWD")" = "$VIEWER_PASSWD_ENTRY" ] \
+  || die 'private viewer passwd witness creation failed'
+readonly VIEWER_PASSWD_ID="$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$VIEWER_PASSWD")"
 git archive --format=tar --output="$SOURCE_ARCHIVE" "$SOURCE_COMMIT"
 readonly SOURCE_ARCHIVE_SHA256="$(sha256sum "$SOURCE_ARCHIVE" | awk '{print $1}')"
 tar -xf "$SOURCE_ARCHIVE" -C "$SOURCE_SNAPSHOT"
@@ -140,10 +150,16 @@ run_owned_container() {
 
 inspect_container_contract() {
   local cid=$1 expected_network=$2 label=$3
-  local json_path
+  local json_path expected_passwd_source=
   json_path="$WORKSPACE/$label.inspect.json"
+  case "$label" in
+    server) ;;
+    viewer) expected_passwd_source=$VIEWER_PASSWD ;;
+    *) die "unknown inspected runtime label: $label" ;;
+  esac
   local_docker container inspect "$cid" > "$json_path"
-  /usr/bin/python3 -I -S - "$json_path" "$expected_network" "$HOST_UID:$HOST_GID" <<'PY'
+  /usr/bin/python3 -I -S - "$json_path" "$expected_network" "$HOST_UID:$HOST_GID" \
+    "$expected_passwd_source" <<'PY'
 import json
 import pathlib
 import sys
@@ -151,6 +167,7 @@ import sys
 path = pathlib.Path(sys.argv[1])
 expected_network = sys.argv[2]
 expected_user = sys.argv[3]
+expected_passwd_source = sys.argv[4]
 objects = json.loads(path.read_text(encoding="utf-8"))
 if len(objects) != 1:
     raise SystemExit("container inspection cardinality differs")
@@ -180,6 +197,17 @@ for mount in obj.get("Mounts", []):
     source = mount.get("Source", "")
     if source.endswith("docker.sock") or source.startswith("/dev/"):
         raise SystemExit(f"unsafe mount: {source}")
+passwd_mounts = [
+    mount for mount in obj.get("Mounts", []) if mount.get("Destination") == "/etc/passwd"
+]
+if expected_passwd_source:
+    if len(passwd_mounts) != 1:
+        raise SystemExit("viewer passwd witness mount cardinality differs")
+    passwd_mount = passwd_mounts[0]
+    if passwd_mount.get("Source") != expected_passwd_source or passwd_mount.get("RW") is not False:
+        raise SystemExit("viewer passwd witness source or read-only contract differs")
+elif passwd_mounts:
+    raise SystemExit("non-viewer container received a passwd witness mount")
 PY
 }
 
@@ -310,6 +338,7 @@ local_docker run --cidfile "$VIEWER_CID_FILE" \
   --mount "type=bind,source=$XVFB_ROOT,target=/xvfb-root,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$XVFB_ROOT/usr/bin/xkbcomp,target=/usr/bin/xkbcomp,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$COORD,target=/coord,bind-recursive=disabled" \
+  --mount "type=bind,source=$VIEWER_PASSWD,target=/etc/passwd,readonly,bind-recursive=disabled" \
   "$DEV_CHECK_IMAGE_ID" \
   dbus-run-session -- \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh viewer \
@@ -319,6 +348,9 @@ set -e
 VIEWER_CID=$(<"$VIEWER_CID_FILE")
 [[ "$VIEWER_CID" =~ ^[0-9a-f]{64}$ ]] || die 'viewer container identity is malformed'
 inspect_container_contract "$VIEWER_CID" "container:$SERVER_CID" viewer
+[ "$(stat -c '%d:%i:%u:%g:%a:%h:%s' "$VIEWER_PASSWD")" = "$VIEWER_PASSWD_ID" ] \
+  && [ "$(<"$VIEWER_PASSWD")" = "$VIEWER_PASSWD_ENTRY" ] \
+  || die 'private viewer passwd witness changed during runtime'
 cat "$WORKSPACE/viewer.log"
 if [ ! -f "$COORD/stop" ] && [ ! -L "$COORD/stop" ]; then
   printf 'outer-retirement-after-viewer-status=%s\n' "$viewer_status" > "$COORD/stop.tmp"

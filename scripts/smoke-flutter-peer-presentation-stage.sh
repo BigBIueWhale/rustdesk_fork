@@ -480,6 +480,14 @@ CFG
   viewer)
     verify_runtime_bundle
     assert_loopback_only_interface
+    readonly EXPECTED_PASSWD_ENTRY="rustdesk-evidence:x:$(id -u):$(id -g):RustDesk peer evidence:/tmp/viewer-home:/usr/sbin/nologin"
+    command -v getent >/dev/null \
+      || fail 'viewer runtime lacks passwd-database inspection'
+    [ -f /etc/passwd ] && [ ! -L /etc/passwd ] \
+      && [ "$(stat -c '%u:%g:%a:%h' /etc/passwd)" = "$(id -u):$(id -g):400:1" ] \
+      && [ "$(</etc/passwd)" = "$EXPECTED_PASSWD_ENTRY" ] \
+      && [ "$(getent passwd "$(id -u)")" = "$EXPECTED_PASSWD_ENTRY" ] \
+      || fail 'viewer passwd identity witness differs'
     [ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ] \
       || fail 'viewer lacks its private D-Bus accessibility session'
     readonly READY=/source/scripts/smoke-ready.sh

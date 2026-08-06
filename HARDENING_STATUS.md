@@ -16505,6 +16505,42 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   source-mutation catalog ran from mutation one to terminal `verify-verifier-workspace: ok`, exit
   zero. The catalog was neither sampled nor shortened and no product/runtime process started.
 
+  A tenth exact committed run used commit `c482884986cf2589984f7d05829182113e2bf75d`, tree
+  `d58f81eeba0b8c4ae593423f09bfdf868966f58f`, and source-archive SHA-256
+  `f28b89cf728945d975855ddbaea669f0acd1897070e59925599cc32ce9197a26`. It rebuilt the
+  release core in 5m17s with the same 65 warnings, built and manifested all 79 bundle files, proved
+  the direct GObject controller link, and reverified the sealed Pub-cache copy. The exact server then
+  passed parked/passworded typed readiness and exposed only `127.0.0.1:21118` with zero UDP. Before
+  the viewer product could start, `dbus-run-session` failed because the pinned image deliberately has
+  no passwd-database entry for arbitrary numeric UID 1000; `dbus-daemon` could not resolve its current
+  UID and exited while creating the private session bus. Exact cleanup joined the server, source, and
+  Xvfb owners and closed the listener. This is private-session harness identity debt, not a product
+  authentication, media, pixel, delay, or focus verdict.
+
+  The corrected viewer receives one exact temporary passwd witness created in the harness's private
+  mode-0700 workspace: a single `rustdesk-evidence` entry for the already-selected host numeric
+  UID/GID, fixed home `/tmp/viewer-home`, and `/usr/sbin/nologin`. It contains no root/system account
+  or credential, is owned by that same nonroot identity at mode 0400, and is mounted read-only only at
+  the viewer container's `/etc/passwd`; the server and every producer receive no such mount. Outer
+  container inspection binds its exact source, target, singleton cardinality, and read-only state;
+  the viewer stage binds exact owner/mode/link-count/content and successful same-UID `getent`; and the
+  outer transaction revalidates source identity/content after viewer exit. This adds no UID change,
+  capability, privilege escalation, host passwd/group/shadow mount, host bus/socket, product input,
+  interface, or published port. Missing or changed identity evidence fails closed before viewer
+  launch.
+
+  In the same immutable numeric-nonroot/networkless verifier profile, the focused verifier rejected
+  every deliberate mutation, the complete controller linked warning-clean, both shell stages parsed,
+  the native-codec/requirements-hash gate and independent baseline passed, and a fresh complete
+  independent source-mutation catalog ran from mutation one to terminal
+  `verify-verifier-workspace: ok`, exit zero, without sampling. A separate targeted boundary
+  transaction mounted the exact one-line mode-0400 witness read-only at `/etc/passwd`, resolved UID
+  1000 exactly with `getent`, created a real private session bus with `dbus-run-session`, and completed
+  `org.freedesktop.DBus.ListNames`; it printed
+  `PRIVATE_DBUS_IDENTITY_OK uid=1000 passwd=one-line-read-only network=none`. That disposable test
+  used the same networkless/read-only-root/capability-free profile and started no RustDesk, X server,
+  product configuration, interface, or listener. Its transient witness was removed after the test.
+
   No root, product configuration injection, policy bypass, or product-only test hook is admitted. Controlled
   peer and viewer run as numeric non-root in separate mount, PID,
   IPC, temporary-home/configuration, and X11 state. The controlled peer owns a Docker

@@ -16656,6 +16656,60 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   40 warnings, and 224 infos, and again passed the widget regression 1/1. No warning-free claim is
   made. This is still not the wider Dart/Rust test suite, a product peer session, or release evidence.
 
+  A fourteenth exact committed run used commit `715171b9a9a03f0516130981f278a22d546775ac`,
+  tree `ec93614de768955d61abbd2353e99476963a83c6`, and source-archive SHA-256
+  `0eb0be8f261b07cda83a13e5dc2017ebdff0319db66b6fe59a55756f1b4c041f`. It repeated the
+  exact five-package acquisition with zero TCP listeners and zero UDP sockets, rebuilt the release
+  Rust core in 5m26s with the existing 65-warning baseline, built and manifested 79 Flutter bundle
+  files, reverified the retained Pub-cache input, passed parked/passworded typed readiness, and
+  exposed only `127.0.0.1:21118` with zero UDP inside the external-interface-free namespace. The
+  real same-PID password field was singular, password-role, editable, enabled, sensitive, visible,
+  focusable, and focused. XTest entered the credential only after that observation, the prompt
+  retired, and authentication completed. Four distinct initial pictures were at most 247 ms old;
+  throughout a real 2000-ms focus loss the observed maximum age was 260 ms; three current pictures
+  recovered in 0 ms; and the authenticated TCP tuple/inode remained identical. The controller
+  printed the complete `FLUTTER_PEER_PRESENTATION_OK` verdict without reconnecting.
+
+  The fourteenth transaction is nevertheless red. Closing that real remote window logged two
+  attempts to set a handler on an `FlBinaryMessenger` whose engine was gone, then the viewer
+  segfaulted and exited 139. The harness correctly rejected the exit. Exact cleanup still joined
+  the controlled server, capture source, and both Xvfb owners and closed the listener. Source tracing
+  found a direct lifecycle contradiction: remote and view-camera pages declared `State.dispose()`
+  as asynchronous even though Flutter never awaits it, tab and window close paths synchronously
+  removed or cleared those pages, and the Linux taskbar-close path could destroy the subwindow
+  engine without awaiting page cleanup at all. Texture-plugin method-channel retirement and session
+  cleanup could therefore run after engine destruction; the observed messenger warnings and native
+  crash are consistent with that ordering. This is a real teardown/resource-management defect
+  exposed by the first successful full presentation path, not a green full transaction.
+
+  The pending correction gives the tab controller one asynchronous pre-removal boundary, makes
+  individual and all-tab closes wait at that boundary, and re-resolves an exact tab by object
+  identity after waiting so delayed cleanup cannot remove a replacement at the old index. Remote
+  and view-camera pages idempotently retire texture publication, await texture release, close the
+  exact FFI session, restore their UI/plugin state, and leave `State.dispose()` synchronous; the
+  state method remains only a fallback and no longer pretends the framework will await it. Normal
+  tab buttons, dialog cancellation, context-menu close, taskbar/native window close, main-window
+  `onDestroy`, and tab-to-window ownership transfer all converge on the same boundary; transfer
+  explicitly preserves the native session while still retiring the old engine-owned texture. A
+  focused three-case Flutter regression requires individual removal to remain pending until cleanup
+  completes, all snapshotted window tabs to retire before clearing, and a same-key replacement to
+  survive an old delayed close. A networkless numeric-nonroot focused run first passed 3/3 against
+  the latest previously generated bridge whose Rust ABI matches the unchanged Rust source. A later
+  clean transaction freshly generated all bridge outputs from the pending source with the pinned
+  Rust/Flutter/LLVM/FRB tools, reported 18 known generator warning lines and zero severe diagnostics,
+  kept the three selected Dart files formatter-clean, made `flutter analyze lib/` exit zero with zero
+  errors, 40 warnings, and 224 infos, and passed 14/14 combined tab-retirement, texture-lifecycle,
+  and password-semantics tests. The complete independent source-mutation catalog then exited zero
+  with `verify-verifier-workspace: ok` in the pinned, networkless, read-only, numeric-nonroot
+  verifier container. Its first two attempts failed closed because two new camera teardown mutations
+  were rejected by stronger earlier contracts than the fixture's expected later diagnostics. The
+  fixture was corrected without weakening either product check: awaited texture retirement now
+  expects the full recovery/texture/session ordering rejection, while camera cleanup-binding removal
+  and synchronous-clear injection are distinct mutations and must each reach their exact rejection.
+  The publication gate repeats the complete catalog after this evidence-ledger edit, with the final
+  receipt recorded outside the self-referential tracked tree. An exact committed full-peer rerun
+  remains required; this paragraph is not a green runtime claim for the pending source.
+
   No root, product configuration injection, policy bypass, or product-only test hook is admitted. Controlled
   peer and viewer run as numeric non-root in separate mount, PID,
   IPC, temporary-home/configuration, and X11 state. The controlled peer owns a Docker
@@ -16714,8 +16768,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   configuration, display, firewall, route, or network state. The synchronized requirements
   SHA-256 is `a5721cb6fecc87ebba0188bb41ce509b870b7a3c0a25125fba078780b3b44b03`.
 
-  No green full-peer runtime result is recorded after thirteen exact committed attempts; each product
-  or harness correction must first be committed so
+  No green full-peer transaction is recorded after fourteen exact committed attempts. The fourteenth
+  run is strong authenticated presentation/focus/performance evidence, but its viewer exit 139 keeps
+  the overall boundary red. Each product or harness correction must first be committed so
   its exact-source archive can honestly contain the files being run. A green future result will close
   only one Linux/X11 software-codec full-peer and focus cycle. It will not establish Android
   Activity/foreground-service/task-swipe/reopen/Force-Stop behavior; Windows engine/compositor

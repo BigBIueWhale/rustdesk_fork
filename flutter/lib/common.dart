@@ -721,7 +721,10 @@ closeConnection({String? id}) {
         }));
         return;
       }
-      controller.closeBy(id);
+      unawaited(controller.closeBy(id).catchError((Object error, StackTrace _) {
+        debugPrint(
+            '[closeConnection] Failed to close desktop tab: ${error.runtimeType}');
+      }));
     }
   }
 }

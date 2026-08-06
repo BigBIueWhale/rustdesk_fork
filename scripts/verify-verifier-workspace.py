@@ -19632,10 +19632,11 @@ def validate_desktop_texture_lifecycle_contract(sources):
             page,
             (
                 "_presentationRecovery.retire();",
-                "super.dispose();",
                 "final textureDisposal = _ffi.textureModel.dispose();",
-                "await textureDisposal;",
-                "await _ffi.close(closeSession: closeSession);",
+                "await _awaitCleanup('texture retirement', textureDisposal);",
+                "'session retirement', _ffi.close(closeSession: closeSession)",
+                "void dispose() {",
+                "super.dispose();",
             ),
             f"independent {label} recovery/texture/session retirement",
         )
@@ -20588,6 +20589,98 @@ def validate_desktop_texture_lifecycle_contract(sources):
         sources["flutter_peer_presentation_verifier"],
         '"dart_verify": "scripts/dart-verify.sh"',
         "independent Linux Flutter offline behavior-gate binding",
+    )
+    for binding, label in (
+        (
+            '"desktop_remote_page": "flutter/lib/desktop/pages/remote_page.dart"',
+            "remote-page teardown",
+        ),
+        (
+            '"desktop_remote_tabs": "flutter/lib/desktop/pages/remote_tab_page.dart"',
+            "remote-tab teardown",
+        ),
+        (
+            '"desktop_camera_page": "flutter/lib/desktop/pages/view_camera_page.dart"',
+            "camera-page teardown",
+        ),
+        (
+            '"desktop_camera_tabs": "flutter/lib/desktop/pages/view_camera_tab_page.dart"',
+            "camera-tab teardown",
+        ),
+        (
+            '"desktop_tabbar": "flutter/lib/desktop/widgets/tabbar_widget.dart"',
+            "tab-controller teardown",
+        ),
+        (
+            '"desktop_tab_retirement_test": "flutter/test/desktop_tab_retirement_test.dart"',
+            "tab-retirement regression",
+        ),
+    ):
+        require_text(
+            sources["flutter_peer_presentation_verifier"],
+            binding,
+            f"independent full-peer {label} binding",
+        )
+    for page_key, label in (
+        ("desktop_remote_page_dart", "remote"),
+        ("desktop_camera_page_dart", "camera"),
+    ):
+        require_text(
+            sources[page_key],
+            "Future<void> prepareForRemoval({bool closeSession = true})",
+            f"independent {label} explicit cleanup boundary",
+        )
+        require_text(
+            sources[page_key],
+            "await _awaitCleanup('texture retirement', textureDisposal);",
+            f"independent {label} awaited texture retirement",
+        )
+        if "Future<void> dispose() async" in sources[page_key]:
+            raise VerificationError(
+                f"independent {label} asynchronous State.dispose was retained"
+            )
+    require_text(
+        sources["desktop_tabbar_dart"],
+        "await onBeforeRemove?.call(tab, closeSession);",
+        "independent individual tab cleanup-before-removal",
+    )
+    require_text(
+        sources["desktop_tabbar_dart"],
+        "await controller.closeAll();",
+        "independent taskbar/native-window cleanup boundary",
+    )
+    require_text(
+        sources["desktop_tabbar_dart"],
+        "while (state.value.tabs.isNotEmpty) {",
+        "independent close-time arriving-tab drain",
+    )
+    for tabs_key, label in (
+        ("desktop_remote_tab_dart", "remote"),
+        ("desktop_camera_tab_dart", "camera"),
+    ):
+        require_text(
+            sources[tabs_key],
+            "tabController.onBeforeRemove = _prepareTabForRemoval;",
+            f"independent {label} tab cleanup binding",
+        )
+        if "tabController.clear();" in sources[tabs_key]:
+            raise VerificationError(
+                f"independent {label} synchronous tab clear bypass was retained"
+            )
+    require_text(
+        sources["desktop_tab_retirement_test"],
+        "window close retires every snapshotted tab before clearing",
+        "independent desktop window-retirement regression",
+    )
+    require_text(
+        sources["desktop_tab_retirement_test"],
+        "expect(started, unorderedEquals(['first', 'second', 'late']));",
+        "independent late-arriving desktop tab retirement regression",
+    )
+    require_text(
+        sources["dart_verify"],
+        "flutter test --no-pub test/desktop_tab_retirement_test.dart",
+        "independent confined desktop tab-retirement behavior gate",
     )
     require_text(
         sources["apple"],
@@ -58240,6 +58333,73 @@ def run_source_mutations(sources):
             "independent Linux Flutter offline behavior-gate binding",
         ),
         (
+            "flutter_peer_presentation_verifier",
+            '"desktop_tabbar": "flutter/lib/desktop/widgets/tabbar_widget.dart"',
+            '"desktop_tabbar": "flutter/lib/desktop/widgets/removed-tabbar-widget.dart"',
+            "independent full-peer tab-controller teardown binding",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
+            '"desktop_tab_retirement_test": "flutter/test/desktop_tab_retirement_test.dart"',
+            '"desktop_tab_retirement_test": "flutter/test/removed-tab-retirement-test.dart"',
+            "independent full-peer tab-retirement regression binding",
+        ),
+        (
+            "desktop_remote_page_dart",
+            "Future<void> prepareForRemoval({bool closeSession = true})",
+            "Future<void> prepareForRemoval({bool closeSession = false})",
+            "independent remote explicit cleanup boundary",
+        ),
+        (
+            "desktop_camera_page_dart",
+            "await _awaitCleanup('texture retirement', textureDisposal);",
+            "unawaited(textureDisposal);",
+            "independent desktop camera viewer recovery/texture/session retirement",
+        ),
+        (
+            "desktop_tabbar_dart",
+            "await onBeforeRemove?.call(tab, closeSession);",
+            "onBeforeRemove?.call(tab, closeSession);",
+            "independent individual tab cleanup-before-removal",
+        ),
+        (
+            "desktop_tabbar_dart",
+            "while (state.value.tabs.isNotEmpty) {",
+            "if (state.value.tabs.isNotEmpty) {",
+            "independent close-time arriving-tab drain",
+        ),
+        (
+            "desktop_remote_tab_dart",
+            "tabController.onBeforeRemove = _prepareTabForRemoval;",
+            "tabController.onBeforeRemove = null;",
+            "independent remote tab cleanup binding",
+        ),
+        (
+            "desktop_camera_tab_dart",
+            "tabController.onBeforeRemove = _prepareTabForRemoval;",
+            "tabController.clear();",
+            "independent camera tab cleanup binding",
+        ),
+        (
+            "desktop_camera_tab_dart",
+            "tabController.onBeforeRemove = _prepareTabForRemoval;",
+            "tabController.onBeforeRemove = _prepareTabForRemoval;\n"
+            "    tabController.clear();",
+            "independent camera synchronous tab clear bypass was retained",
+        ),
+        (
+            "desktop_tab_retirement_test",
+            "window close retires every snapshotted tab before clearing",
+            "window close clears before retiring snapshotted tabs",
+            "independent desktop window-retirement regression",
+        ),
+        (
+            "dart_verify",
+            "flutter test --no-pub test/desktop_tab_retirement_test.dart",
+            "true # desktop tab-retirement behavior gate removed",
+            "independent confined desktop tab-retirement behavior gate",
+        ),
+        (
             "apple",
             "python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test",
             "true # desktop texture lifecycle verifier removed",
@@ -69657,6 +69817,12 @@ def main():
             ).read_text(encoding="utf-8"),
             "desktop_camera_tab_dart": (
                 repo / "flutter/lib/desktop/pages/view_camera_tab_page.dart"
+            ).read_text(encoding="utf-8"),
+            "desktop_tabbar_dart": (
+                repo / "flutter/lib/desktop/widgets/tabbar_widget.dart"
+            ).read_text(encoding="utf-8"),
+            "desktop_tab_retirement_test": (
+                repo / "flutter/test/desktop_tab_retirement_test.dart"
             ).read_text(encoding="utf-8"),
             "main_dart": (repo / "flutter/lib/main.dart").read_text(encoding="utf-8"),
             "web_bridge_dart": (repo / "flutter/lib/web/bridge.dart").read_text(encoding="utf-8"),

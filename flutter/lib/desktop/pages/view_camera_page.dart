@@ -27,9 +27,6 @@ import 'package:flutter_hbb/native/custom_cursor.dart'
 
 final SimpleWrapper<bool> _firstEnterImage = SimpleWrapper(false);
 
-// Used to skip session close if "move to new window" is clicked.
-final Map<String, bool> closeSessionOnDispose = {};
-
 class ViewCameraPage extends StatefulWidget {
   ViewCameraPage({
     Key? key,
@@ -60,6 +57,15 @@ class ViewCameraPage extends StatefulWidget {
   final DesktopTabController? tabController;
 
   FFI get ffi => (_lastState.value! as _ViewCameraPageState)._ffi;
+
+  Future<void> prepareForRemoval({bool closeSession = true}) {
+    final state = _lastState.value;
+    if (state is _ViewCameraPageState) {
+      return state._prepareForRemoval(closeSession: closeSession);
+    }
+    removeSharedStates(id);
+    return Future<void>.value();
+  }
 
   void setPresentationSelected(bool selected) {
     final state = _lastState.value;
@@ -95,6 +101,8 @@ class _ViewCameraPageState extends State<ViewCameraPage>
   Function(bool)? _onEnterOrLeaveImage4Toolbar;
 
   late FFI _ffi;
+  Future<void>? _cleanupFuture;
+  bool? _cleanupClosesSession;
 
   SessionID get sessionId => _ffi.sessionId;
 
@@ -225,14 +233,33 @@ class _ViewCameraPageState extends State<ViewCameraPage>
     }
   }
 
-  @override
-  Future<void> dispose() async {
-    final closeSession = closeSessionOnDispose.remove(widget.id) ?? true;
-    _presentationRecovery.retire();
+  Future<void> _prepareForRemoval({required bool closeSession}) {
+    final cleanup = _cleanupFuture;
+    if (cleanup != null) {
+      if (_cleanupClosesSession != closeSession) {
+        debugPrint(
+            'VIEW CAMERA PAGE cleanup policy already fixed for ${widget.id}: '
+            'requested closeSession=$closeSession, active closeSession=$_cleanupClosesSession');
+      }
+      return cleanup;
+    }
+    _cleanupClosesSession = closeSession;
+    return _cleanupFuture = _cleanupResources(closeSession: closeSession);
+  }
 
-    // https://github.com/flutter/flutter/issues/64935
-    super.dispose();
-    debugPrint("VIEW CAMERA PAGE dispose session $sessionId ${widget.id}");
+  Future<void> _awaitCleanup(String operation, Future<dynamic> cleanup) async {
+    try {
+      await cleanup;
+    } catch (error, stackTrace) {
+      debugPrint(
+          'VIEW CAMERA PAGE $operation failed for ${widget.id}: ${error.runtimeType}');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  Future<void> _cleanupResources({required bool closeSession}) async {
+    _presentationRecovery.retire();
+    debugPrint("VIEW CAMERA PAGE cleanup session $sessionId ${widget.id}");
     // Invalidate texture publication before any asynchronous page cleanup.
     // The framework does not await State.dispose(), so keep the ordering inside
     // this continuation: exact textures retire before the native UI session.
@@ -245,18 +272,46 @@ class _ViewCameraPageState extends State<ViewCameraPage>
     _ffi.dialogManager.hideMobileActionsOverlay();
     _ffi.imageModel.disposeImage();
     _ffi.cursorModel.disposeImages();
-    _rawKeyFocusNode.dispose();
-    await textureDisposal;
-    await _ffi.close(closeSession: closeSession);
     _timer?.cancel();
+    _timer = null;
+
+    // All engine-backed work must finish while the owning Flutter engine is
+    // still alive. State.dispose() is synchronous and cannot provide that
+    // boundary, so every tab/window close awaits this method before removal.
+    await _awaitCleanup('texture retirement', textureDisposal);
+    await _awaitCleanup(
+        'session retirement', _ffi.close(closeSession: closeSession));
     _ffi.dialogManager.dismissAll();
     if (closeSession) {
-      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
-          overlays: SystemUiOverlay.values);
+      await _awaitCleanup(
+          'system UI restoration',
+          SystemChrome.setEnabledSystemUIMode(SystemUiMode.manual,
+              overlays: SystemUiOverlay.values));
     }
     WakelockManager.disable(_uniqueKey);
-    await Get.delete<FFI>(tag: widget.id);
-    removeSharedStates(widget.id);
+    await _awaitCleanup('FFI registry retirement',
+        Get.delete<FFI>(tag: widget.id).then<void>((_) {}));
+    try {
+      removeSharedStates(widget.id);
+    } catch (error, stackTrace) {
+      debugPrint(
+          'VIEW CAMERA PAGE shared-state retirement failed for ${widget.id}: ${error.runtimeType}');
+      debugPrintStack(stackTrace: stackTrace);
+    }
+  }
+
+  @override
+  void dispose() {
+    final cleanup =
+        _prepareForRemoval(closeSession: _cleanupClosesSession ?? true);
+    unawaited(cleanup.catchError((Object error, StackTrace stackTrace) {
+      debugPrint(
+          'VIEW CAMERA PAGE cleanup failed for ${widget.id}: ${error.runtimeType}');
+      debugPrintStack(stackTrace: stackTrace);
+    }));
+    _rawKeyFocusNode.dispose();
+    widget._lastState.value = null;
+    super.dispose();
   }
 
   void _setPresentationSelected(bool selected) {

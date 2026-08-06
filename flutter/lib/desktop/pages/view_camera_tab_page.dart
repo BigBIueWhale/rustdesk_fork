@@ -92,7 +92,7 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
         selectedIcon: selectedIcon,
         unselectedIcon: unselectedIcon,
         onTabCloseButton: () async {
-          tabController.closeBy(peerId!);
+          await tabController.closeBy(peerId!);
         },
         page: ViewCameraPage(
           key: ValueKey(peerId),
@@ -110,6 +110,7 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
       ));
       _update_remote_count();
     }
+    tabController.onBeforeRemove = _prepareTabForRemoval;
     tabController.onRemoved = (_, id) => onRemoveId(id);
     rustDeskWinManager.setMethodHandler(_remoteMethodHandler);
   }
@@ -278,7 +279,7 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
           style: style,
         ),
         proc: () async {
-          tabController.closeBy(key);
+          await tabController.closeBy(key);
           cancelFunc();
         },
         padding: padding,
@@ -328,12 +329,19 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
     return widget.params["windowId"];
   }
 
+  Future<void> _prepareTabForRemoval(TabInfo tab, bool closeSession) async {
+    final page = tab.page;
+    if (page is ViewCameraPage) {
+      await page.prepareForRemoval(closeSession: closeSession);
+    }
+  }
+
   Future<bool> handleWindowCloseButton() async {
     final connLength = tabController.length;
     if (connLength == 1) {
     }
     if (connLength <= 1) {
-      tabController.clear();
+      await tabController.closeAll();
       return true;
     } else {
       final bool res;
@@ -344,7 +352,7 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
         res = await closeConfirmDialog();
       }
       if (res) {
-        tabController.clear();
+        await tabController.closeAll();
       }
       return res;
     }
@@ -386,7 +394,7 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
         selectedIcon: selectedIcon,
         unselectedIcon: unselectedIcon,
         onTabCloseButton: () async {
-          tabController.closeBy(id);
+          await tabController.closeBy(id);
         },
         page: ViewCameraPage(
           key: ValueKey(id),
@@ -405,7 +413,7 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
     } else if (call.method == kWindowDisableGrabKeyboard) {
       // ???
     } else if (call.method == "onDestroy") {
-      tabController.clear();
+      await tabController.closeAll();
     } else if (call.method == kWindowActionRebuild) {
       reloadCurrentWindow();
     } else if (call.method == kWindowEventActiveSession) {
@@ -448,8 +456,7 @@ class _ViewCameraTabPageState extends State<ViewCameraTabPage> {
         debugPrint('Failed to get cached session data: $e');
       }
       if (close && returnValue != null) {
-        closeSessionOnDispose[id] = false;
-        tabController.closeBy(id);
+        await tabController.closeBy(id, closeSession: false);
       }
     } else if (call.method == kWindowEventRemoteWindowCoords) {
       final viewCameraPage =

@@ -100,6 +100,7 @@ class DesktopTabController {
   Function(int, String)? onRemoved;
   Function(String)? onSelected;
   Future<void> Function()? onCloseWindow;
+  Future<void> Function(TabInfo, bool closeSession)? onBeforeRemove;
 
   DesktopTabController(
       {required this.tabType, this.onRemoved, this.onSelected});
@@ -143,7 +144,12 @@ class DesktopTabController {
     }
     state.value.tabs.removeAt(index);
     state.value.scrollController.itemCount = state.value.tabs.length;
-    jumpTo(toIndex);
+    if (state.value.tabs.isEmpty) {
+      state.value.selected = 0;
+      state.refresh();
+    } else {
+      jumpTo(toIndex);
+    }
     onRemoved?.call(index, key);
   }
 
@@ -198,22 +204,53 @@ class DesktopTabController {
     return false;
   }
 
-  void closeBy(String? key) {
+  Future<void> closeBy(String? key, {bool closeSession = true}) async {
     if (!isDesktop) return;
     assert(onRemoved != null);
-    if (key == null) {
-      if (state.value.selected < state.value.tabs.length) {
-        remove(state.value.selected);
-      }
-    } else {
-      final index = state.value.tabs.indexWhere((tab) => tab.key == key);
-      remove(index);
+    final initialIndex = key == null
+        ? state.value.selected
+        : state.value.tabs.indexWhere((tab) => tab.key == key);
+    if (initialIndex < 0 || initialIndex >= state.value.tabs.length) {
+      return;
     }
+    final tab = state.value.tabs[initialIndex];
+    await onBeforeRemove?.call(tab, closeSession);
+
+    // Cleanup is asynchronous. Re-resolve the exact tab before mutating the
+    // list so a concurrent close cannot remove a replacement at the old index.
+    final currentIndex =
+        state.value.tabs.indexWhere((item) => identical(item, tab));
+    remove(currentIndex);
   }
 
   void clear() {
     state.value.tabs.clear();
     state.refresh();
+  }
+
+  Future<void> closeAll({bool closeSession = true}) async {
+    while (state.value.tabs.isNotEmpty) {
+      final tabs = List<TabInfo>.of(state.value.tabs);
+      final beforeRemove = onBeforeRemove;
+      if (beforeRemove != null) {
+        await Future.wait<void>(
+            tabs.map((tab) => beforeRemove(tab, closeSession)));
+      }
+
+      // Remove only the exact objects that were retired. If a new tab arrives
+      // while cleanup is pending, the next loop iteration retires it before
+      // window/engine destruction instead of mistaking it for an old tab.
+      final closingTabs = tabs.toSet();
+      state.value.tabs.removeWhere(closingTabs.contains);
+      state.value.scrollController.itemCount = state.value.tabs.length;
+      if (state.value.tabs.isNotEmpty) {
+        state.value.selected =
+            min(state.value.selected, state.value.tabs.length - 1);
+      } else {
+        state.value.selected = 0;
+      }
+      state.refresh();
+    }
   }
 
   Widget? widget(String key) {
@@ -442,7 +479,7 @@ class _DesktopTabState extends State<DesktopTab>
           final res = await onWindowCloseButton?.call() ?? true;
           if (!res) return;
         }
-        controller.clear();
+        await controller.closeAll();
       }
       await windowController.hide();
       await rustDeskWinManager

@@ -42,7 +42,7 @@ class _FileManagerTabPageState extends State<FileManagerTabPage> {
         selectedIcon: selectedIcon,
         unselectedIcon: unselectedIcon,
         onTabCloseButton: () async {
-          tabController.closeBy(params['id']);
+          await tabController.closeBy(params['id']);
         },
         page: FileManagerPage(
           key: ValueKey(params['id']),
@@ -72,7 +72,7 @@ class _FileManagerTabPageState extends State<FileManagerTabPage> {
             selectedIcon: selectedIcon,
             unselectedIcon: unselectedIcon,
             onTabCloseButton: () async {
-              tabController.closeBy(id);
+              await tabController.closeBy(id);
             },
             page: FileManagerPage(
               key: ValueKey(id),

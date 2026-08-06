@@ -40,6 +40,12 @@ PATHS = {
     "flutter_common": "flutter/lib/common.dart",
     "flutter_dialog": "flutter/lib/common/widgets/dialog.dart",
     "password_semantics_test": "flutter/test/password_field_semantics_test.dart",
+    "desktop_remote_page": "flutter/lib/desktop/pages/remote_page.dart",
+    "desktop_remote_tabs": "flutter/lib/desktop/pages/remote_tab_page.dart",
+    "desktop_camera_page": "flutter/lib/desktop/pages/view_camera_page.dart",
+    "desktop_camera_tabs": "flutter/lib/desktop/pages/view_camera_tab_page.dart",
+    "desktop_tabbar": "flutter/lib/desktop/widgets/tabbar_widget.dart",
+    "desktop_tab_retirement_test": "flutter/test/desktop_tab_retirement_test.dart",
     "dart_verify": "scripts/dart-verify.sh",
     "verify": "scripts/verify.sh",
     "workspace": "scripts/verify-verifier-workspace.py",
@@ -67,6 +73,12 @@ def validate(sources: dict[str, str]) -> None:
     flutter_common = sources["flutter_common"]
     flutter_dialog = sources["flutter_dialog"]
     password_semantics_test = sources["password_semantics_test"]
+    desktop_remote_page = sources["desktop_remote_page"]
+    desktop_remote_tabs = sources["desktop_remote_tabs"]
+    desktop_camera_page = sources["desktop_camera_page"]
+    desktop_camera_tabs = sources["desktop_camera_tabs"]
+    desktop_tabbar = sources["desktop_tabbar"]
+    desktop_tab_retirement_test = sources["desktop_tab_retirement_test"]
     dart_verify = sources["dart_verify"]
 
     require_order(
@@ -460,6 +472,106 @@ def validate(sources: dict[str, str]) -> None:
         "if grep -RInF --include='*.dart' 'workaroundFreezeLinuxMint' flutter/lib",
         "authored-Dart global semantics-exclusion absence gate",
     )
+    for page, label in (
+        (desktop_remote_page, "remote desktop"),
+        (desktop_camera_page, "view camera"),
+    ):
+        require(
+            page,
+            "Future<void> prepareForRemoval({bool closeSession = true})",
+            f"{label} explicit cleanup boundary",
+        )
+        require_order(
+            page,
+            (
+                "final textureDisposal = _ffi.textureModel.dispose();",
+                "await _awaitCleanup('texture retirement', textureDisposal);",
+                "'session retirement', _ffi.close(closeSession: closeSession)",
+                "void dispose() {",
+                "super.dispose();",
+            ),
+            f"{label} engine-backed cleanup before synchronous State disposal",
+        )
+        forbid(page, "Future<void> dispose() async", f"{label} asynchronous State.dispose")
+    require_order(
+        desktop_tabbar,
+        (
+            "await onBeforeRemove?.call(tab, closeSession);",
+            "final currentIndex =",
+            "state.value.tabs.indexWhere((item) => identical(item, tab));",
+            "remove(currentIndex);",
+        ),
+        "exact individual tab retirement before removal",
+    )
+    require_order(
+        desktop_tabbar,
+        (
+            "Future<void> closeAll({bool closeSession = true}) async {",
+            "while (state.value.tabs.isNotEmpty) {",
+            "await Future.wait<void>(",
+            "state.value.tabs.removeWhere(closingTabs.contains);",
+        ),
+        "all-tab retirement before clearing",
+    )
+    require(
+        desktop_tabbar,
+        "await controller.closeAll();",
+        "native window-close retirement boundary",
+    )
+    for tabs, page_type, label in (
+        (desktop_remote_tabs, "RemotePage", "remote desktop tabs"),
+        (desktop_camera_tabs, "ViewCameraPage", "view-camera tabs"),
+    ):
+        require(
+            tabs,
+            "tabController.onBeforeRemove = _prepareTabForRemoval;",
+            f"{label} cleanup binding",
+        )
+        require(
+            tabs,
+            f"if (page is {page_type}) {{",
+            f"{label} exact page type",
+        )
+        require(
+            tabs,
+            "await page.prepareForRemoval(closeSession: closeSession);",
+            f"{label} awaited page cleanup",
+        )
+        require(
+            tabs,
+            "await tabController.closeBy(id, closeSession: false);",
+            f"{label} transfer without native session close",
+        )
+        forbid(tabs, "tabController.clear();", f"{label} synchronous clear bypass")
+    for name in (
+        "tab removal waits for exact resource retirement",
+        "window close retires every snapshotted tab before clearing",
+        "delayed close cannot remove a replacement with the same key",
+    ):
+        require(
+            desktop_tab_retirement_test,
+            f"testWidgets('{name}'",
+            f"desktop tab regression {name}",
+        )
+    require(
+        desktop_tab_retirement_test,
+        "await retirement.future;",
+        "individual tab retirement barrier",
+    )
+    require(
+        desktop_tab_retirement_test,
+        "expect(started, unorderedEquals(['first', 'second', 'late']));",
+        "late-arriving window tab retirement",
+    )
+    if desktop_tab_retirement_test.count("expect(controller.length, 2);") != 1:
+        raise VerificationError(
+            "window retirement regression must retain its initial pre-clear length check"
+        )
+    require(
+        dart_verify,
+        "flutter test --no-pub test/desktop_tab_retirement_test.dart",
+        "offline desktop tab retirement behavior gate",
+    )
     forbid(controller, "PASSWORD_SETTLE_MS", "blind password-prompt delay")
     require(controller, "AUTH_WAIT_MS 30000U", "authentication deadline")
     require(controller, "FRESH_LIMIT_MS 1000U", "live-frame freshness bound")
@@ -579,6 +691,16 @@ def validate(sources: dict[str, str]) -> None:
         "hardening Linux semantics-deletion product correction",
     )
     require(
+        sources["hardening"],
+        "A fourteenth exact committed run used commit `715171b9a9a03f0516130981f278a22d546775ac`",
+        "hardening viewer teardown-crash evidence",
+    )
+    require(
+        sources["hardening"],
+        "The pending correction gives the tab controller one asynchronous pre-removal boundary",
+        "hardening awaited viewer teardown correction",
+    )
+    require(
         sources["readme"],
         "smoke-flutter-peer-presentation.sh",
         "harness README inventory",
@@ -638,6 +760,21 @@ MUTATIONS = (
     ("password_semantics_test", "semanticsEnabled: true", "semanticsEnabled: false"),
     ("dart_verify", "flutter test --no-pub test/password_field_semantics_test.dart", "true # password semantics test disabled"),
     ("dart_verify", "if grep -RInF --include='*.dart' 'workaroundFreezeLinuxMint' flutter/lib", "if false; then # global semantics exclusion accepted"),
+    ("desktop_remote_page", "Future<void> prepareForRemoval({bool closeSession = true})", "Future<void> prepareForRemoval({bool closeSession = false})"),
+    ("desktop_remote_page", "await _awaitCleanup('texture retirement', textureDisposal);", "unawaited(textureDisposal);"),
+    ("desktop_remote_page", "void dispose() {", "Future<void> dispose() async {"),
+    ("desktop_camera_page", "await _awaitCleanup('texture retirement', textureDisposal);", "unawaited(textureDisposal);"),
+    ("desktop_tabbar", "await onBeforeRemove?.call(tab, closeSession);", "onBeforeRemove?.call(tab, closeSession);"),
+    ("desktop_tabbar", "state.value.tabs.indexWhere((item) => identical(item, tab));", "initialIndex;"),
+    ("desktop_tabbar", "await Future.wait<void>(", "Future.wait<void>("),
+    ("desktop_tabbar", "while (state.value.tabs.isNotEmpty) {", "if (state.value.tabs.isNotEmpty) {"),
+    ("desktop_tabbar", "await controller.closeAll();", "controller.clear();"),
+    ("desktop_remote_tabs", "tabController.onBeforeRemove = _prepareTabForRemoval;", "tabController.onBeforeRemove = null;"),
+    ("desktop_remote_tabs", "await tabController.closeBy(id, closeSession: false);", "await tabController.closeBy(id);"),
+    ("desktop_camera_tabs", "await page.prepareForRemoval(closeSession: closeSession);", "page.prepareForRemoval(closeSession: closeSession);"),
+    ("desktop_tab_retirement_test", "await retirement.future;", "return;"),
+    ("desktop_tab_retirement_test", "expect(controller.length, 2);", "expect(controller.length, 0);"),
+    ("dart_verify", "flutter test --no-pub test/desktop_tab_retirement_test.dart", "true # desktop tab retirement test disabled"),
     ("controller", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0 && atspi_state_set_contains(states, ATSPI_STATE_SHOWING) != 0"),
     ("controller", "wait_for_password_prompt((unsigned int)viewer_pid, &prompt_scan)", "false"),
     ("controller", "wait_for_password_prompt_retirement((unsigned int)viewer_pid, &prompt_scan)", "false"),
@@ -659,6 +796,8 @@ MUTATIONS = (
     ("hardening", "The next diagnostic reused that same bounded, exact-PID accessibility traversal", "The next diagnostic accepted any accessibility traversal"),
     ("hardening", "A thirteenth exact committed run used commit `0a01023fdc6530a93663ebd34871f614ede69c21`", "The thirteenth exact run proved product presentation success"),
     ("hardening", "The correction removes that global semantics-deletion helper and all of its authored", "The correction retains global semantics deletion"),
+    ("hardening", "A fourteenth exact committed run used commit `715171b9a9a03f0516130981f278a22d546775ac`", "The fourteenth exact run was green"),
+    ("hardening", "The pending correction gives the tab controller one asynchronous pre-removal boundary", "The pending correction keeps asynchronous State.dispose"),
 )
 
 

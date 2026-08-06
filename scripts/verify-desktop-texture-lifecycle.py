@@ -353,20 +353,23 @@ def validate(sources: Dict[str, str]) -> None:
             ),
             f"{label} selected exact-session refresh",
         )
-        dispose = extract_braced_item(
-            page, "Future<void> dispose()", f"{label} disposal"
+        cleanup = extract_braced_item(
+            page,
+            "Future<void> _cleanupResources({required bool closeSession}) async",
+            f"{label} cleanup",
         )
         require_order(
-            dispose,
+            cleanup,
             (
                 "_presentationRecovery.retire();",
-                "super.dispose();",
                 "final textureDisposal = _ffi.textureModel.dispose();",
-                "await textureDisposal;",
-                "await _ffi.close(closeSession: closeSession);",
+                "await _awaitCleanup('texture retirement', textureDisposal);",
+                "'session retirement', _ffi.close(closeSession: closeSession)",
             ),
             f"{label} recovery/texture/session retirement order",
         )
+        require(page, "void dispose() {", f"{label} synchronous State disposal")
+        forbid(page, "Future<void> dispose() async", f"{label} asynchronous State disposal")
 
     for key, page_type, label in (
         ("remote_tab", "RemotePage", "desktop remote tabs"),
@@ -1028,21 +1031,30 @@ def validate(sources: Dict[str, str]) -> None:
         "fresh desktop UI owner independent of connection UUID",
     )
 
-    for key, signature in (
-        ("remote", "Future<void> dispose()"),
-        ("camera", "Future<void> dispose()"),
-    ):
-        page_dispose = extract_braced_item(
-            sources[key], signature, f"{key} page disposal"
+    for key in ("remote", "camera"):
+        page_cleanup = extract_braced_item(
+            sources[key],
+            "Future<void> _cleanupResources({required bool closeSession}) async",
+            f"{key} page cleanup",
         )
         require_order(
-            page_dispose,
+            page_cleanup,
             (
                 "final textureDisposal = _ffi.textureModel.dispose();",
-                "await textureDisposal;",
-                "await _ffi.close(closeSession: closeSession);",
+                "await _awaitCleanup('texture retirement', textureDisposal);",
+                "'session retirement', _ffi.close(closeSession: closeSession)",
             ),
             f"{key} texture finality before native close",
+        )
+        require(
+            sources[key],
+            "void dispose() {",
+            f"{key} synchronous State disposal",
+        )
+        forbid(
+            sources[key],
+            "Future<void> dispose() async",
+            f"{key} asynchronous State disposal",
         )
 
     flutter = sources["flutter"]
@@ -2736,8 +2748,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "updated Flutter package inventory",
     ),
     ("model", "clientOwnerId = isMobile ? _mobileClientOwnerId : Uuid().v4obj();", "clientOwnerId = isMobile ? _mobileClientOwnerId : sessionId;", "fresh desktop UI owner"),
-    ("remote", "await textureDisposal;", "textureDisposal;", "RemoteDesktop texture finality"),
-    ("camera", "await textureDisposal;", "textureDisposal;", "ViewCamera texture finality"),
+    ("remote", "await _awaitCleanup('texture retirement', textureDisposal);", "unawaited(textureDisposal);", "RemoteDesktop texture finality"),
+    ("camera", "await _awaitCleanup('texture retirement', textureDisposal);", "unawaited(textureDisposal);", "ViewCamera texture finality"),
     ("flutter", "if handler.client_owner_id.as_ref() != Some(client_owner_id)", "if false", "native exact owner admission"),
     ("flutter", "&client_owner_id,", "&session_id,", "native owner propagation"),
     (

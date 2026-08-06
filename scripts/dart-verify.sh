@@ -188,6 +188,8 @@ local_docker run --rm --pull=never --network=none --read-only \
       lib/models/session_stream_finality.dart \
       lib/models/presentation_recovery.dart \
       lib/models/rgba_publication_order.dart \
+      lib/desktop/pages/remote_page.dart \
+      lib/desktop/pages/view_camera_page.dart \
       lib/mobile/pages/remote_page.dart \
       lib/mobile/pages/view_camera_page.dart \
       lib/web/bridge.dart \
@@ -196,6 +198,7 @@ local_docker run --rm --pull=never --network=none --read-only \
       test/session_stream_finality_test.dart \
       test/presentation_recovery_test.dart \
       test/rgba_publication_order_test.dart \
+      test/desktop_tab_retirement_test.dart \
       test/password_field_semantics_test.dart
     set +e
     out="$(flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/ 2>&1)"
@@ -228,6 +231,8 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/session_stream_finality_test.dart
     echo "  == R-S11ex flutter test: desktop texture lifecycle exact finality =="
     flutter test --no-pub test/desktop_texture_lifecycle_test.dart
+    echo "  == desktop tab removal awaits engine-backed resource retirement =="
+    flutter test --no-pub test/desktop_tab_retirement_test.dart
     echo "  == viewer presentation recovery coalesces background and focus transitions =="
     flutter test --no-pub test/presentation_recovery_test.dart
     echo "  == R-S11fr software RGBA decode commits only the exact newest publication =="
@@ -420,6 +425,50 @@ done
 grep -qF 'semanticsEnabled: true' flutter/test/password_field_semantics_test.dart \
   || { echo "  FAIL R-S11gc: password regression does not enable real semantics"; exit 1; }
 echo "  ok  R-S11gc Linux password/text fields retain their real Flutter semantics"
+
+echo "== desktop viewer teardown completes before Flutter engine destruction =="
+for page in flutter/lib/desktop/pages/remote_page.dart \
+  flutter/lib/desktop/pages/view_camera_page.dart; do
+  grep -qF 'Future<void> prepareForRemoval({bool closeSession = true})' "$page" \
+    || { echo "  FAIL desktop teardown: $page lacks explicit awaited cleanup"; exit 1; }
+  grep -qF 'await _awaitCleanup('\''texture retirement'\'', textureDisposal);' "$page" \
+    || { echo "  FAIL desktop teardown: $page does not await texture retirement"; exit 1; }
+  grep -qF 'void dispose() {' "$page" \
+    || { echo "  FAIL desktop teardown: $page retained asynchronous State.dispose"; exit 1; }
+  if grep -qF 'Future<void> dispose() async' "$page"; then
+    echo "  FAIL desktop teardown: $page has an unawaitable asynchronous State.dispose"; exit 1
+  fi
+done
+grep -qF 'await onBeforeRemove?.call(tab, closeSession);' \
+  flutter/lib/desktop/widgets/tabbar_widget.dart \
+  || { echo "  FAIL desktop teardown: individual tab removal bypasses cleanup"; exit 1; }
+grep -qF 'await Future.wait<void>(' flutter/lib/desktop/widgets/tabbar_widget.dart \
+  || { echo "  FAIL desktop teardown: window-level tab cleanup is not awaited"; exit 1; }
+grep -qF 'while (state.value.tabs.isNotEmpty) {' \
+  flutter/lib/desktop/widgets/tabbar_widget.dart \
+  || { echo "  FAIL desktop teardown: window cleanup does not drain tabs arriving during close"; exit 1; }
+grep -qF 'await controller.closeAll();' flutter/lib/desktop/widgets/tabbar_widget.dart \
+  || { echo "  FAIL desktop teardown: native window close bypasses tab cleanup"; exit 1; }
+for tab_page in flutter/lib/desktop/pages/remote_tab_page.dart \
+  flutter/lib/desktop/pages/view_camera_tab_page.dart; do
+  grep -qF 'tabController.onBeforeRemove = _prepareTabForRemoval;' "$tab_page" \
+    || { echo "  FAIL desktop teardown: $tab_page does not bind page cleanup"; exit 1; }
+  grep -qF 'await tabController.closeAll();' "$tab_page" \
+    || { echo "  FAIL desktop teardown: $tab_page does not await window cleanup"; exit 1; }
+  if grep -qF 'tabController.clear();' "$tab_page"; then
+    echo "  FAIL desktop teardown: $tab_page retained an unsafe synchronous clear"; exit 1
+  fi
+done
+grep -qF "testWidgets('tab removal waits for exact resource retirement'" \
+  flutter/test/desktop_tab_retirement_test.dart \
+  || { echo "  FAIL desktop teardown: individual retirement regression is missing"; exit 1; }
+grep -qF "testWidgets('window close retires every snapshotted tab before clearing'" \
+  flutter/test/desktop_tab_retirement_test.dart \
+  || { echo "  FAIL desktop teardown: window retirement regression is missing"; exit 1; }
+grep -qF "expect(started, unorderedEquals(['first', 'second', 'late']));" \
+  flutter/test/desktop_tab_retirement_test.dart \
+  || { echo "  FAIL desktop teardown: late-arriving tab regression is missing"; exit 1; }
+echo "  ok  desktop remote/view-camera resources retire before tab and engine destruction"
 
 # R-G2/R-SV5: numeric IDs are not viewer identities. Keep the authored Flutter API, connect choke
 # point, autocomplete, and peer rendering on one exact direct-address model. In particular, never

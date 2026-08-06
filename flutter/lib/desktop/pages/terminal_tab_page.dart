@@ -120,7 +120,7 @@ class _TerminalTabPageState extends State<TerminalTabPage> {
         debugPrint('[TerminalTabPage] Session cleanup failed for $tabKey: $e');
       }
       // Always close the tab from UI, regardless of session cleanup result
-      tabController.closeBy(tabKey);
+      await tabController.closeBy(tabKey);
     } catch (e) {
       debugPrint('[TerminalTabPage] Error closing tab $tabKey: $e');
     } finally {

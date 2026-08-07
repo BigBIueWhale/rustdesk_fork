@@ -17133,7 +17133,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `verify-verifier-workspace: ok`; it was neither sampled nor shortened. These gates started no
   RustDesk process, X server, listener, or networked process and changed no host service,
   configuration, display, firewall, route, or network state. The synchronized requirements
-  SHA-256 is `281bb99609152e6456521ecc31cd710d92931b8f50088329301484d7b1ca7ab2`.
+  SHA-256 is `67a499e49c6dc42c757229420ffe6a66e9f41d65a1752fff93323f91dc595d3c`.
 
   The twenty-first exact committed transaction is green. Commit
   `38ad03ea7a2465297425ad745ada5c05f8de7e94`, tree
@@ -17189,6 +17189,80 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   cross-version operation, soak, independent reproduction, or external review. The later exact
   transaction closes R-S11gc's narrow Linux evidence; those broader claims remain with the other
   explicit stop-ship boundaries.
+
+- **R-S11gf/R-S11e-218 Linux Flutter texture-plugin load authority — SOURCE IMPLEMENTED;
+  EXACT-CURRENT FULL-PEER, PACKAGED-ARTIFACT, AND CROSS-PLATFORM EVIDENCE PENDING.** Platform:
+  Linux outgoing Flutter viewer. Endpoint/action: lazy Rust loading of the repository-owned software
+  RGBA renderer before native texture registration. Boundary: exact application-bundle code identity
+  versus ambient ELF dynamic-loader search.
+
+  Read-only source tracing found that Linux alone initialized `TEXTURE_RGBA_RENDERER_PLUGIN` with
+  `Library::open("libtexture_rgba_renderer_plugin.so")`. The `dlopen(3)` contract treats a name with
+  no slash as a search request: calling-object RPATH/RUNPATH, `LD_LIBRARY_PATH`, the loader cache,
+  and default directories can participate. This contradicted the existing Debian package authority,
+  which admits exactly one renderer member at
+  `/usr/share/rustdesk/lib/libtexture_rgba_renderer_plugin.so`, while Windows already constructs an
+  application-relative DLL path and macOS opens the current image. The renderer is outgoing-viewer
+  presentation code; the installed Linux root service ordinarily controls a separate user-owned
+  server role and no root-service reachability, exploit, host mutation, or compromise was
+  demonstrated. This is nevertheless concrete ambient-library authority and a future-reactivation
+  risk, not a merely stylistic path choice.
+
+  Linux now obtains the current executable, rejects anything other than a clean absolute file path,
+  derives exactly `<executable-parent>/lib/libtexture_rgba_renderer_plugin.so`, and passes that
+  slash-containing pathname to `Library::open`. A missing executable identity, malformed path,
+  absent plugin, or loader error leaves the renderer unavailable. There is no bare-soname,
+  environment-selected, current-working-directory, system-library, or compatibility fallback.
+  Focused path regressions bind the installed `/usr/share/rustdesk` and ordinary portable/bundle
+  layouts and reject relative, parent-traversing, and fileless roots. The desktop-texture verifier
+  binds the fixed basename, path derivation, exact loader call, tests, shared/fresh-bridge gate
+  wiring, R-S11gf, Appendix C #341, and this ledger; the independent workspace verifier binds those
+  same source families and mutations separately.
+
+  The counted compile transaction ran as numeric UID/GID 1000:1000 in the pinned Debian-builder
+  image `sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2` with
+  no network, a read-only root and offline inputs, all capabilities dropped, no-new-privileges, no
+  Docker socket or host namespace, no port publication, one disposable tmpfs source, and one fresh
+  private compiler target. It hash-checked the individually required Rust 1.75.0, Flutter 3.24.5,
+  LLVM 15.0.6, and FRB 1.80.1 archives; generated all four bridge outputs from an exact tracked
+  source archive plus this pending `src/flutter.rs`; rejected any `[SEVERE]` generator diagnostic;
+  passed exact Rust 1.75 rustfmt; compiled the production library with
+  `flutter,unix-file-copy-paste`; and passed both selected regressions (`2 passed`, `0 failed`, 483
+  filtered). The warning-only generator output and existing compiler warnings are retained as
+  warnings, not promoted to failures or hidden. An earlier direct compile against the checkout's
+  ignored stale bridge failed on its older FFI signatures; a fresh-generation attempt then failed
+  rustfmt; and a second attempt reused an output whose dependency-owned copied headers were mode
+  0400. None count as success. The counted transaction used a new target rather than changing those
+  permissions.
+
+  This narrow transaction verified the four individually required archive hashes and exercised the
+  current Cargo vendor/Pub-cache contents offline; it does not certify the canonical full-online
+  closure. That closure's current manifest identity still differs from the pinned expected identity,
+  so the full-peer harness remains fail-closed and no runtime result is claimed from it.
+
+  On the tracked verifier bytes, the focused desktop-texture verifier rejects all 202 deliberate
+  mutations, Python AST parsing and the three shell-gate parses pass, the independent workspace
+  baseline ends in `verify-verifier-workspace: ok`, the requirements digest is synchronized, and
+  diff hygiene is clean. The first complete unsliced independent source-mutation run failed because
+  changing either of two focused-verifier copies of the absolute-path token remained accepted. Exact
+  cardinality binding corrected that real verifier gap. The next complete run proved both changes
+  were rejected but exposed the fixture's stale expected cardinality diagnostic; the following run
+  similarly proved ambient-soname rejection but exposed its stale expected diagnostic. A temporary
+  in-container targeted replay then exercised every new R-S11gf independent mutation and passed.
+  After aligning those diagnostic identities without weakening validation, a fresh complete
+  unsliced catalog ran from mutation one to terminal `verify-verifier-workspace: ok` and exited zero.
+  Failed and diagnostic-mismatch attempts are not counted as passes. All verifier execution used the
+  pinned numeric-nonroot, networkless, read-only-root/source, capability-free profile and started no
+  RustDesk process or listener.
+
+  This source correction does not inherit R-S11gc's earlier exact commit `38ad03e` runtime result:
+  that artifact predates the changed loader bytes. An exact-current full-peer run must prove the
+  release bundle actually resolves the new path, authenticates, presents current pixels through
+  focus loss, and exits cleanly. Exact Debian-artifact execution, Windows/Android/macOS/iOS behavior,
+  focus/background/reconnect/resource soak, current cold R-B2/R-B10 artifacts, independent
+  reproduction, and external review remain explicit release blockers. No host RustDesk process,
+  service, binary, configuration, listener, display, firewall/UFW/nftables/iptables state, or host
+  network state was inspected or changed for this source slice.
 
 - **Exact Linux Flutter texture/X11 presentation recovery — EXECUTABLE EVIDENCE GREEN;
   ANDROID/WINDOWS/NATIVE END-TO-END EVIDENCE OPEN.** Platform: confined Linux X11 with Flutter
@@ -22193,7 +22267,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-281bb99609152e6456521ecc31cd710d92931b8f50088329301484d7b1ca7ab2  requirements.html
+67a499e49c6dc42c757229420ffe6a66e9f41d65a1752fff93323f91dc595d3c  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

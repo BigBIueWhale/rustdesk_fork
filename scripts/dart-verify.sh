@@ -356,6 +356,9 @@ PY
     echo "  == R-S11fr generated-bridge software RGBA recovery regressions =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       flutter::mobile_session_lifecycle_tests::r_s11fr_ -- --test-threads=1
+    echo "  == R-S11gf application-relative Linux texture-plugin load authority =="
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      flutter::linux_texture_plugin_path_tests::r_s11gf_ -- --test-threads=1
     echo "  == R-S11fg/R-S11fh/R-S11fi/R-S11fj generated-bridge file writer, receive-persistence, and digest-inspection finality regressions =="
     cargo test --offline --locked -p hbb_common --lib \
       fs::tests::r_s11fg_read_step_returns_the_exact_file_frame_receipt -- --test-threads=1

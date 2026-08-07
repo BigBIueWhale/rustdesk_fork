@@ -19076,6 +19076,26 @@ def validate_desktop_texture_lifecycle_contract(sources):
             '"<tr><td>321</td>"',
             "texture activation Appendix C contract",
         ),
+        (
+            '"clean absolute application-relative Linux texture-plugin path"',
+            "Linux application-relative texture-plugin path contract",
+        ),
+        (
+            '"current-application Linux texture-plugin loader"',
+            "Linux exact-path texture-plugin loader contract",
+        ),
+        (
+            '"ambient Linux texture-plugin soname load"',
+            "Linux ambient-soname exclusion contract",
+        ),
+        (
+            '"application-relative Linux texture-plugin regression"',
+            "Linux application-relative texture-plugin regression contract",
+        ),
+        (
+            '"unclean Linux texture-plugin root rejection regression"',
+            "Linux texture-plugin path rejection regression contract",
+        ),
         ("MUTATIONS: Tuple[Mutation, ...]", "desktop texture mutation inventory"),
         ("run_self_test(sources)", "desktop texture mutation dispatch"),
     ):
@@ -19091,6 +19111,76 @@ def validate_desktop_texture_lifecycle_contract(sources):
             else validation
         )
         require_text(source, text, label)
+
+    for text, label in (
+        (
+            '"if !executable.is_absolute()",',
+            "focused Linux absolute texture-plugin path cardinality",
+        ),
+        (
+            '"Library::open(path)",',
+            "focused Linux exact-path texture-plugin open cardinality",
+        ),
+    ):
+        require_exact_count(focused, text, 2, label)
+
+    require_order(
+        sources["flutter_source"],
+        (
+            'const LINUX_TEXTURE_RGBA_RENDERER_PLUGIN: &str = "libtexture_rgba_renderer_plugin.so";',
+            "fn linux_texture_plugin_path(",
+            "if !executable.is_absolute()",
+            "executable.file_name().is_none()",
+            "std::path::Component::RootDir | std::path::Component::Normal(_)",
+            "let parent = executable.parent().ok_or_else",
+            '.join("lib")',
+            ".join(LINUX_TEXTURE_RGBA_RENDERER_PLUGIN)",
+            "fn load_linux_texture_plugin()",
+            "std::env::current_exe()",
+            "linux_texture_plugin_path(&executable)",
+            "Library::open(path)",
+        ),
+        "independent application-relative Linux texture-plugin load authority",
+    )
+    require_absent(
+        sources["flutter_source"],
+        'Library::open("libtexture_rgba_renderer_plugin.so")',
+        "independent ambient Linux texture-plugin soname load",
+    )
+    for test in (
+        "r_s11gf_linux_texture_plugin_is_exactly_application_relative",
+        "r_s11gf_linux_texture_plugin_rejects_ambient_or_unclean_roots",
+    ):
+        require_text(
+            sources["flutter_source"],
+            f"fn {test}()",
+            f"independent Linux texture-plugin regression: {test}",
+        )
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11gf</span>',
+        "Linux texture-plugin load-authority requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>341</td>",
+        "Linux texture-plugin load-authority Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "**R-S11gf/R-S11e-218 Linux Flutter texture-plugin load authority",
+        "Linux texture-plugin load-authority hardening ledger",
+    )
+    require_text(
+        sources["verify"],
+        "cargo test --lib --features linux-pkg-config,flutter r_s11gf_ --color never",
+        "Linux texture-plugin shared behavior gate",
+    )
+    require_text(
+        sources["dart_verify"],
+        "flutter::linux_texture_plugin_path_tests::r_s11gf_",
+        "Linux texture-plugin fresh-bridge behavior gate",
+    )
 
     require_order(
         sources["desktop_texture_lifecycle_source"],
@@ -58614,6 +58704,84 @@ def run_source_mutations(sources):
             '"let notificationNeeded = true",\n'
             '            "framePending = true",',
             "macOS latest-wins native pending-frame contract",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '"if !executable.is_absolute()",',
+            '"if false",',
+            "focused Linux absolute texture-plugin path cardinality",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '"Library::open(path)",',
+            '"Library::open(LINUX_TEXTURE_RGBA_RENDERER_PLUGIN)",',
+            "focused Linux exact-path texture-plugin open cardinality",
+        ),
+        (
+            "flutter_source",
+            "        load_linux_texture_plugin();",
+            '        Library::open("libtexture_rgba_renderer_plugin.so");',
+            "independent ambient Linux texture-plugin soname load",
+        ),
+        (
+            "flutter_source",
+            "if !executable.is_absolute()",
+            "if false",
+            "independent application-relative Linux texture-plugin load authority",
+        ),
+        (
+            "flutter_source",
+            '.join("lib")',
+            '.join("plugins")',
+            "independent application-relative Linux texture-plugin load authority",
+        ),
+        (
+            "flutter_source",
+            "Library::open(path)",
+            "Library::open(LINUX_TEXTURE_RGBA_RENDERER_PLUGIN)",
+            "independent application-relative Linux texture-plugin load authority",
+        ),
+        (
+            "flutter_source",
+            "fn r_s11gf_linux_texture_plugin_is_exactly_application_relative()",
+            "fn linux_texture_plugin_path_is_not_tested()",
+            "independent Linux texture-plugin regression",
+        ),
+        (
+            "flutter_source",
+            "fn r_s11gf_linux_texture_plugin_rejects_ambient_or_unclean_roots()",
+            "fn linux_texture_plugin_rejection_is_not_tested()",
+            "independent Linux texture-plugin regression",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11gf</span>',
+            '<div class="req"><span class="id">R-S11gf-disabled</span>',
+            "Linux texture-plugin load-authority requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>341</td>",
+            "<tr><td>341-disabled</td>",
+            "Linux texture-plugin load-authority Appendix C row",
+        ),
+        (
+            "hardening",
+            "**R-S11gf/R-S11e-218 Linux Flutter texture-plugin load authority",
+            "**R-S11gf-disabled/R-S11e-218 Linux Flutter texture-plugin load authority",
+            "Linux texture-plugin load-authority hardening ledger",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11gf_ --color never",
+            "true # Linux texture-plugin path tests removed",
+            "Linux texture-plugin shared behavior gate",
+        ),
+        (
+            "dart_verify",
+            "flutter::linux_texture_plugin_path_tests::r_s11gf_",
+            "flutter::linux_texture_plugin_path_tests::disabled",
+            "Linux texture-plugin fresh-bridge behavior gate",
         ),
         (
             "desktop_texture_lifecycle_source",

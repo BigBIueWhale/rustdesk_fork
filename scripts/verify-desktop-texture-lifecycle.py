@@ -1058,6 +1058,63 @@ def validate(sources: Dict[str, str]) -> None:
         )
 
     flutter = sources["flutter"]
+    require(
+        flutter,
+        'const LINUX_TEXTURE_RGBA_RENDERER_PLUGIN: &str = "libtexture_rgba_renderer_plugin.so";',
+        "fixed Linux texture-plugin basename",
+    )
+    linux_plugin_path = extract_braced_item(
+        flutter,
+        "fn linux_texture_plugin_path(",
+        "Linux application-relative texture-plugin path",
+    )
+    require_order(
+        linux_plugin_path,
+        (
+            "if !executable.is_absolute()",
+            "executable.file_name().is_none()",
+            "std::path::Component::RootDir | std::path::Component::Normal(_)",
+            "let parent = executable.parent().ok_or_else",
+            '.join("lib")',
+            ".join(LINUX_TEXTURE_RGBA_RENDERER_PLUGIN)",
+        ),
+        "clean absolute application-relative Linux texture-plugin path",
+    )
+    linux_plugin_loader = extract_braced_item(
+        flutter,
+        "fn load_linux_texture_plugin()",
+        "Linux texture-plugin loader",
+    )
+    require_order(
+        linux_plugin_loader,
+        (
+            "std::env::current_exe()",
+            "linux_texture_plugin_path(&executable)",
+            "Library::open(path)",
+        ),
+        "current-application Linux texture-plugin loader",
+    )
+    require(
+        flutter,
+        "pub static ref TEXTURE_RGBA_RENDERER_PLUGIN: Result<Library, LibError> =\n"
+        "        load_linux_texture_plugin();",
+        "Linux texture-plugin loader wiring",
+    )
+    forbid(
+        flutter,
+        'Library::open("libtexture_rgba_renderer_plugin.so")',
+        "ambient Linux texture-plugin soname load",
+    )
+    require(
+        flutter,
+        "fn r_s11gf_linux_texture_plugin_is_exactly_application_relative()",
+        "application-relative Linux texture-plugin regression",
+    )
+    require(
+        flutter,
+        "fn r_s11gf_linux_texture_plugin_rejects_ambient_or_unclean_roots()",
+        "unclean Linux texture-plugin root rejection regression",
+    )
     admission = extract_braced_item(
         flutter,
         "fn with_exact_ui_owner_renderer",
@@ -2260,6 +2317,11 @@ def validate(sources: Dict[str, str]) -> None:
             '<div class="req"><span class="id">R-S11fs</span>',
             "R-S11fs pointer-evidenced presentation recovery requirement",
         ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11gf</span>',
+            "R-S11gf Linux texture-plugin load-authority requirement",
+        ),
         ("requirements", "<tr><td>306</td>", "Appendix C #306"),
         ("requirements", "<tr><td>307</td>", "Appendix C #307"),
         ("requirements", "<tr><td>308</td>", "Appendix C #308"),
@@ -2270,6 +2332,7 @@ def validate(sources: Dict[str, str]) -> None:
         ("requirements", "<tr><td>324</td>", "Appendix C #324"),
         ("requirements", "<tr><td>326</td>", "Appendix C #326"),
         ("requirements", "<tr><td>327</td>", "Appendix C #327"),
+        ("requirements", "<tr><td>341</td>", "Appendix C #341"),
         (
             "hardening",
             "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration",
@@ -2321,9 +2384,19 @@ def validate(sources: Dict[str, str]) -> None:
             "pointer-evidenced presentation recovery hardening ledger",
         ),
         (
+            "hardening",
+            "**R-S11gf/R-S11e-218 Linux Flutter texture-plugin load authority",
+            "Linux texture-plugin load-authority hardening ledger",
+        ),
+        (
             "verify",
             "cargo test --lib --features linux-pkg-config,flutter r_s11ex_ --color never",
             "shared native behavior gate",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11gf_ --color never",
+            "shared Linux texture-plugin path behavior gate",
         ),
         (
             "verify",
@@ -2339,6 +2412,11 @@ def validate(sources: Dict[str, str]) -> None:
             "dart_verify",
             "flutter::mobile_session_lifecycle_tests::r_s11ff_video_refresh_requires_the_current_exact_ui_owner",
             "fresh-bridge exact UI-owner refresh behavior gate",
+        ),
+        (
+            "dart_verify",
+            "flutter::linux_texture_plugin_path_tests::r_s11gf_",
+            "fresh-bridge Linux texture-plugin path behavior gate",
         ),
         (
             "dart_verify",
@@ -2806,6 +2884,48 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "flutter",
+        "        load_linux_texture_plugin();",
+        '        Library::open("libtexture_rgba_renderer_plugin.so");',
+        "Linux ambient-soname loader exclusion",
+    ),
+    (
+        "flutter",
+        "if !executable.is_absolute()",
+        "if false",
+        "Linux absolute executable-path requirement",
+    ),
+    (
+        "flutter",
+        "executable.file_name().is_none()",
+        "false",
+        "Linux executable file-identity requirement",
+    ),
+    (
+        "flutter",
+        '.join("lib")',
+        '.join("plugins")',
+        "Linux exact application library directory",
+    ),
+    (
+        "flutter",
+        "Library::open(path)",
+        "Library::open(LINUX_TEXTURE_RGBA_RENDERER_PLUGIN)",
+        "Linux exact-path dynamic-library open",
+    ),
+    (
+        "flutter",
+        "fn r_s11gf_linux_texture_plugin_is_exactly_application_relative()",
+        "fn linux_texture_plugin_path_is_not_tested()",
+        "Linux application-relative path regression",
+    ),
+    (
+        "flutter",
+        "fn r_s11gf_linux_texture_plugin_rejects_ambient_or_unclean_roots()",
+        "fn linux_texture_plugin_rejection_is_not_tested()",
+        "Linux unclean-root rejection regression",
+    ),
+    (
+        "flutter",
         "session.ui_handler.rearm_rgba_for_presentation_recovery(\n",
         "// software publication was not re-armed\n",
         "exact-owner software publication re-arm ordering",
@@ -3224,6 +3344,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<div class="req"><span class="id">R-S11fp</span>', '<div class="req"><span class="id">R-S11fp-disabled</span>', "pending-texture re-notification normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11fr</span>', '<div class="req"><span class="id">R-S11fr-disabled</span>', "software-RGBA recovery normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11fs</span>', '<div class="req"><span class="id">R-S11fs-disabled</span>', "pointer-evidenced presentation recovery normative requirement"),
+    ("requirements", '<div class="req"><span class="id">R-S11gf</span>', '<div class="req"><span class="id">R-S11gf-disabled</span>', "Linux texture-plugin load-authority normative requirement"),
     ("requirements", "<tr><td>306</td>", "<tr><td>306-disabled</td>", "Appendix disposition"),
     ("requirements", "<tr><td>307</td>", "<tr><td>307-disabled</td>", "software-only Appendix disposition"),
     ("requirements", "<tr><td>308</td>", "<tr><td>308-disabled</td>", "native retirement Appendix disposition"),
@@ -3233,6 +3354,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", "<tr><td>321</td>", "<tr><td>321-disabled</td>", "texture activation Appendix disposition"),
     ("requirements", "<tr><td>324</td>", "<tr><td>324-disabled</td>", "pending-texture re-notification Appendix disposition"),
     ("requirements", "<tr><td>327</td>", "<tr><td>327-disabled</td>", "pointer-evidenced presentation recovery Appendix disposition"),
+    ("requirements", "<tr><td>341</td>", "<tr><td>341-disabled</td>", "Linux texture-plugin load-authority Appendix disposition"),
     ("hardening", "**R-S11ex/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "**R-S11ex-disabled/R-S11e-185 exact desktop Flutter texture lifecycle and UI-owner registration", "hardening ledger"),
     ("hardening", "**R-S11ey/R-S11e-186 software-RGBA-only desktop presentation", "**R-S11ey-disabled/R-S11e-186 software-RGBA-only desktop presentation", "software-only hardening ledger"),
     ("hardening", "**R-S11ez/R-S11e-187 pending desktop frame retirement finality", "**R-S11ez-disabled/R-S11e-187 pending desktop frame retirement finality", "native retirement hardening ledger"),
@@ -3243,9 +3365,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("hardening", "**R-S11fp/R-S11e-203 exact desktop pending-texture re-notification", "**R-S11fp-disabled/R-S11e-203 exact desktop pending-texture re-notification", "pending-texture re-notification hardening ledger"),
     ("hardening", "**R-S11fr/R-S11e-205 exact software-RGBA presentation recovery", "**R-S11fr-disabled/R-S11e-205 exact software-RGBA presentation recovery", "software-RGBA recovery hardening ledger"),
     ("hardening", "**R-S11fs/R-S11e-206 pointer-evidenced desktop presentation recovery", "**R-S11fs-disabled/R-S11e-206 pointer-evidenced desktop presentation recovery", "pointer-evidenced presentation recovery hardening ledger"),
+    ("hardening", "**R-S11gf/R-S11e-218 Linux Flutter texture-plugin load authority", "**R-S11gf-disabled/R-S11e-218 Linux Flutter texture-plugin load authority", "Linux texture-plugin load-authority hardening ledger"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never", "true # first-image admission behavior gate disabled", "shared first-image admission behavior gate"),
+    ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11gf_ --color never", "true # Linux texture-plugin path tests disabled", "shared Linux texture-plugin path behavior gate"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11ff_ --color never", "true # viewer refresh admission behavior gate disabled", "shared viewer refresh admission behavior gate"),
     ("dart_verify", "flutter::mobile_session_lifecycle_tests::r_s11ff_video_refresh_requires_the_current_exact_ui_owner", "flutter::mobile_session_lifecycle_tests::viewer_refresh_disabled", "fresh-bridge viewer refresh behavior gate"),
+    ("dart_verify", "flutter::linux_texture_plugin_path_tests::r_s11gf_", "flutter::linux_texture_plugin_path_tests::disabled", "fresh-bridge Linux texture-plugin path behavior gate"),
     ("dart_verify", "flutter test --no-pub test/desktop_texture_lifecycle_test.dart", "true # desktop texture lifecycle test disabled", "Dart behavior gate"),
     ("dart_verify", "\n    /tmp/texture_rgba_renderer_plugin_test\n", "\n    true # Linux native callback behavior gate disabled\n", "Linux native callback behavior gate"),
     ("dart_verify", "\n    /tmp/texture_rgba_windows_core_test\n", "\n    true # portable Windows callback-core gate disabled\n", "portable Windows callback-core behavior gate"),

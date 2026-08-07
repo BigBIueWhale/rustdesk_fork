@@ -17,7 +17,7 @@ use serde::Serialize;
 use serde_json::json;
 #[cfg(windows)]
 use std::ffi::CStr;
-#[cfg(target_os = "windows")]
+#[cfg(any(target_os = "linux", target_os = "windows"))]
 use std::io::{Error as IoError, ErrorKind as IoErrorKind};
 #[cfg(any(target_os = "android", test))]
 use std::sync::{mpsc, Condvar, Mutex};
@@ -160,12 +160,76 @@ lazy_static::lazy_static! {
 
 #[cfg(target_os = "linux")]
 lazy_static::lazy_static! {
-    pub static ref TEXTURE_RGBA_RENDERER_PLUGIN: Result<Library, LibError> = Library::open("libtexture_rgba_renderer_plugin.so");
+    pub static ref TEXTURE_RGBA_RENDERER_PLUGIN: Result<Library, LibError> =
+        load_linux_texture_plugin();
 }
 
 #[cfg(target_os = "macos")]
 lazy_static::lazy_static! {
     pub static ref TEXTURE_RGBA_RENDERER_PLUGIN: Result<Library, LibError> = Library::open_self();
+}
+
+#[cfg(target_os = "linux")]
+const LINUX_TEXTURE_RGBA_RENDERER_PLUGIN: &str = "libtexture_rgba_renderer_plugin.so";
+
+#[cfg(target_os = "linux")]
+fn linux_texture_plugin_path(executable: &std::path::Path) -> std::io::Result<std::path::PathBuf> {
+    if !executable.is_absolute()
+        || executable.file_name().is_none()
+        || !executable.components().all(|component| {
+            matches!(
+                component,
+                std::path::Component::RootDir | std::path::Component::Normal(_)
+            )
+        })
+    {
+        return Err(IoError::new(
+            IoErrorKind::InvalidInput,
+            "RustDesk executable path is not a clean absolute file path",
+        ));
+    }
+    let parent = executable.parent().ok_or_else(|| {
+        IoError::new(
+            IoErrorKind::InvalidInput,
+            "RustDesk executable path has no application directory",
+        )
+    })?;
+    Ok(parent.join("lib").join(LINUX_TEXTURE_RGBA_RENDERER_PLUGIN))
+}
+
+#[cfg(target_os = "linux")]
+fn load_linux_texture_plugin() -> Result<Library, LibError> {
+    let executable = std::env::current_exe().map_err(LibError::OpeningLibraryError)?;
+    let path = linux_texture_plugin_path(&executable).map_err(LibError::OpeningLibraryError)?;
+    Library::open(path)
+}
+
+#[cfg(all(target_os = "linux", test))]
+mod linux_texture_plugin_path_tests {
+    use super::*;
+
+    #[test]
+    fn r_s11gf_linux_texture_plugin_is_exactly_application_relative() {
+        assert_eq!(
+            linux_texture_plugin_path(std::path::Path::new("/usr/share/rustdesk/rustdesk"))
+                .unwrap(),
+            std::path::Path::new("/usr/share/rustdesk/lib/libtexture_rgba_renderer_plugin.so")
+        );
+        assert_eq!(
+            linux_texture_plugin_path(std::path::Path::new("/tmp/bundle/rustdesk")).unwrap(),
+            std::path::Path::new("/tmp/bundle/lib/libtexture_rgba_renderer_plugin.so")
+        );
+    }
+
+    #[test]
+    fn r_s11gf_linux_texture_plugin_rejects_ambient_or_unclean_roots() {
+        assert!(linux_texture_plugin_path(std::path::Path::new("rustdesk")).is_err());
+        assert!(linux_texture_plugin_path(std::path::Path::new(
+            "/usr/share/rustdesk/../attacker/rustdesk"
+        ))
+        .is_err());
+        assert!(linux_texture_plugin_path(std::path::Path::new("/")).is_err());
+    }
 }
 
 // Move this function into `src/platform/windows.rs` if there're more calls to load plugins.

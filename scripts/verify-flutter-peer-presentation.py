@@ -160,18 +160,23 @@ def validate(sources: dict[str, str]) -> None:
     require(host, "private viewer passwd witness changed during runtime", "passwd witness finality")
     require(
         host,
-        ".harness-state/android-current-evidence-7c29f39/pub-cache",
-        "retained current-lock Pub-cache input",
+        'readonly EVIDENCE_PUB_CACHE="$ONLINE_DIR/pub-cache"',
+        "canonical current-lock Pub-cache input",
     )
     require(
         host,
-        "c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7",
-        "retained current-lock Pub-cache digest",
+        "dd1c48d617c1b4881cd27e07ab6ea0f4ce38336972caa6d1f27e4fb967efa526",
+        "canonical current-lock Pub-cache digest",
+    )
+    require(
+        host,
+        '"$HOST_UID:$HOST_GID:500"',
+        "sealed canonical Pub-cache metadata",
     )
     require(
         host,
         'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache,readonly',
-        "read-only retained Pub-cache mount",
+        "read-only canonical Pub-cache mount",
     )
     require(host, 'host.get("NetworkMode") != expected_network', "inspected network mode")
     require_order(
@@ -208,12 +213,18 @@ def validate(sources: dict[str, str]) -> None:
     require_order(
         stage,
         (
-            "FLUTTER_PEER_RETAINED_PUB_CACHE_OK",
+            "FLUTTER_PEER_CANONICAL_PUB_CACHE_OK",
             "cp -a /evidence-pub-cache /evidence-online/pub-cache",
             "check-complete --online /evidence-online",
             "FLUTTER_PEER_PUB_CACHE_PREPARED",
         ),
-        "retained Pub-cache immutable copy and verification",
+        "canonical Pub-cache immutable copy and verification",
+    )
+    require(stage, "published=True", "published canonical Pub-cache inspection")
+    require(
+        stage,
+        "printf 'sha256=%s source=canonical-pinned-online-copy semantics=current-four-git-lock\\n'",
+        "canonical Pub-cache copy provenance",
     )
     require_order(
         stage,
@@ -814,6 +825,7 @@ MUTATIONS = (
     ("host", "--pull=never --network=none --read-only", "--pull=never --network=host --read-only"),
     ("host", '--network="container:$SERVER_CID" --read-only', "--network=bridge --read-only"),
     ("host", 'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache,readonly', 'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache'),
+    ("host", '"$HOST_UID:$HOST_GID:500"', '"$HOST_UID:$HOST_GID:700"'),
     ("host", 'host.get("PortBindings") not in (None, {})', "False"),
     ("host", "dbus-run-session --", "true # private accessibility session removed"),
     ("host", 'local_docker run --cidfile "$VIEWER_CID_FILE"', 'local_docker run --cidfile "$SERVER_CID_FILE"'),
@@ -828,6 +840,8 @@ MUTATIONS = (
     ("linux_runner", "return EXIT_SUCCESS;", "return EXIT_FAILURE;"),
     ("stage", "! grep -Fq '[SEVERE]'", "true # severe output ignored"),
     ("stage", "export HOME CARGO_HOME CI=true PUB_CACHE=/evidence-online/pub-cache", "export HOME CARGO_HOME CI=true PUB_CACHE=/online/pub-cache"),
+    ("stage", "published=True", "published=False"),
+    ("stage", "printf 'sha256=%s source=canonical-pinned-online-copy semantics=current-four-git-lock\\n'", "printf 'sha256=%s source=unverified-copy semantics=current-four-git-lock\\n'"),
     ("stage", '[ -z "${LD_PRELOAD:-}" ]', "true # ambient preload accepted"),
     ("stage", '[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]', "true # accessibility bus not required"),
     ("stage", '[ "$(getent passwd "$(id -u)")" = "$EXPECTED_PASSWD_ENTRY" ]', "true # numeric identity unresolved"),

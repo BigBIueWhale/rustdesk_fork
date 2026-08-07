@@ -134,7 +134,7 @@ case "$1" in
   pub-cache)
     : "${RUSTDESK_EVIDENCE_PUB_CACHE_SHA256:?}"
     [ -d /evidence-pub-cache ] && [ ! -L /evidence-pub-cache ] \
-      || fail 'retained evidence Pub cache is missing or linked'
+      || fail 'canonical evidence Pub cache is missing or linked'
     [ -d /evidence-online ] && [ ! -L /evidence-online ] \
       && [ "$(stat -c '%u:%g:%a' /evidence-online)" = "$(id -u):$(id -g):700" ] \
       || fail 'evidence-cache output is not a private current-user directory'
@@ -157,13 +157,13 @@ if spec is None or spec.loader is None:
     raise SystemExit("cannot load Pub-cache verifier")
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
-summary = module.inspect_tree(root, owners={(uid, gid)}, published=False)
+summary = module.inspect_tree(root, owners={(uid, gid)}, published=True)
 module.validate_shape(root, strict_output=True)
 if summary.digest != expected:
     raise SystemExit(
-        f"retained evidence Pub-cache digest differs: {summary.digest} != {expected}"
+        f"canonical evidence Pub-cache digest differs: {summary.digest} != {expected}"
     )
-print(f"FLUTTER_PEER_RETAINED_PUB_CACHE_OK sha256={summary.digest}")
+print(f"FLUTTER_PEER_CANONICAL_PUB_CACHE_OK sha256={summary.digest}")
 PY
     cp -a /evidence-pub-cache /evidence-online/pub-cache
     chmod 0500 /evidence-online/pub-cache
@@ -171,7 +171,7 @@ PY
       check-complete --online /evidence-online --uid "$(id -u)" --gid "$(id -g)")"
     [ "$cache_receipt" = "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256" ] \
       || fail 'sealed evidence Pub-cache receipt differs'
-    printf 'sha256=%s source=retained-read-only-copy semantics=current-four-git-lock\n' \
+    printf 'sha256=%s source=canonical-pinned-online-copy semantics=current-four-git-lock\n' \
       "$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256" > /evidence-online/pub-cache.identity
     chmod 0444 /evidence-online/pub-cache.identity
     chmod 0555 /evidence-online
@@ -183,7 +183,7 @@ PY
     : "${RUSTDESK_EVIDENCE_PUB_CACHE_SHA256:?}"
     verify_regular /evidence-online/pub-cache.identity
     [ "$(< /evidence-online/pub-cache.identity)" = \
-      "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 source=retained-read-only-copy semantics=current-four-git-lock" ] \
+      "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 source=canonical-pinned-online-copy semantics=current-four-git-lock" ] \
       || fail 'evidence Pub-cache identity receipt differs'
     cache_receipt="$(/usr/bin/python3 -I -S /source/scripts/online-pub-cache-output.py \
       check-complete --online /evidence-online --uid "$(id -u)" --gid "$(id -g)")"
@@ -223,7 +223,7 @@ PY
     done
     verify_regular /evidence-online/pub-cache.identity
     [ "$(< /evidence-online/pub-cache.identity)" = \
-      "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 source=retained-read-only-copy semantics=current-four-git-lock" ] \
+      "sha256=$RUSTDESK_EVIDENCE_PUB_CACHE_SHA256 source=canonical-pinned-online-copy semantics=current-four-git-lock" ] \
       || fail 'build evidence Pub-cache identity differs'
     [ "$(stat -c '%u:%g:%a' /evidence-online/pub-cache)" = \
       "$(id -u):$(id -g):500" ] || fail 'build evidence Pub-cache root is not sealed'

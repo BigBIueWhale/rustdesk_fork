@@ -10,8 +10,8 @@ umask 077
 
 readonly HOST_UID="$(/usr/bin/id -u)"
 readonly HOST_GID="$(/usr/bin/id -g)"
-readonly EVIDENCE_PUB_CACHE="$REPO_ROOT/.harness-state/android-current-evidence-7c29f39/pub-cache"
-readonly EVIDENCE_PUB_CACHE_SHA256=c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7
+readonly EVIDENCE_PUB_CACHE="$ONLINE_DIR/pub-cache"
+readonly EVIDENCE_PUB_CACHE_SHA256=dd1c48d617c1b4881cd27e07ab6ea0f4ce38336972caa6d1f27e4fb967efa526
 WORKSPACE=
 WORKSPACE_ID=
 BUILD_WORK=
@@ -86,8 +86,8 @@ verify_online_shas \
   "llvm-${LLVM_VERSION}.tar.xz" "$SHA256_LLVM_15_0_6"
 [ -d "$EVIDENCE_PUB_CACHE" ] && [ ! -L "$EVIDENCE_PUB_CACHE" ] \
   && [ "$(stat -c '%u:%g:%a' "$EVIDENCE_PUB_CACHE")" = \
-    "$HOST_UID:$HOST_GID:700" ] \
-  || die 'retained current-lock evidence Pub cache is unavailable or has changed metadata'
+    "$HOST_UID:$HOST_GID:500" ] \
+  || die 'canonical current-lock evidence Pub cache is unavailable or has changed metadata'
 readonly EVIDENCE_PUB_CACHE_ID="$(stat -c '%d:%i:%u:%g:%a' "$EVIDENCE_PUB_CACHE")"
 
 WORKSPACE="$(mktemp -d /tmp/rustdesk-flutter-peer-presentation.XXXXXXXXXX)"
@@ -224,7 +224,7 @@ run_owned_container "$WORKSPACE/xvfb.cid" \
   "$DEV_CHECK_IMAGE_ID" \
   bash --noprofile --norc /work/scripts/smoke-xvfb-prepare.sh
 
-echo '== copy and reverify the retained exact-current Pub cache without mutating it =='
+echo '== copy and reverify the canonical exact-current Pub cache without mutating it =='
 run_owned_container "$WORKSPACE/pub-cache.cid" \
   --pull=never --network=none --read-only \
   --user "$HOST_UID:$HOST_GID" \
@@ -238,7 +238,7 @@ run_owned_container "$WORKSPACE/pub-cache.cid" \
   "$DEV_CHECK_IMAGE_ID" \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh pub-cache
 [ "$(stat -c '%d:%i:%u:%g:%a' "$EVIDENCE_PUB_CACHE")" = "$EVIDENCE_PUB_CACHE_ID" ] \
-  || die 'retained evidence Pub-cache identity changed while copied'
+  || die 'canonical evidence Pub-cache identity changed while copied'
 
 echo '== build one exact full RustDesk Linux Flutter bundle without packaging =='
 run_owned_container "$WORKSPACE/build.cid" \
@@ -280,7 +280,7 @@ run_owned_container "$WORKSPACE/pub-cache-post.cid" \
   "$DEV_CHECK_IMAGE_ID" \
   bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh pub-cache-check
 [ "$(stat -c '%d:%i:%u:%g:%a' "$EVIDENCE_PUB_CACHE")" = "$EVIDENCE_PUB_CACHE_ID" ] \
-  || die 'retained evidence Pub-cache identity changed during the build'
+  || die 'canonical evidence Pub-cache identity changed during the build'
 
 chmod -R u+rwX "$BUILD_WORK"
 rm -rf -- "$BUILD_WORK"

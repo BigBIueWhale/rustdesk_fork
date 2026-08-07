@@ -307,7 +307,7 @@ def validate(sources: dict[str, str]) -> None:
         (
             "export DISPLAY=:99 HOME=/tmp/viewer-home",
             "start_xvfb :99 1280x800x24",
-            '(cd /out/bundle && exec "$APP" --connect 127.0.0.1)',
+            '(cd /out/bundle && RUST_LOG=info exec "$APP" --connect 127.0.0.1)',
             '"$CONTROLLER" :98 :99 "$VIEWER_PID"',
             "stable_connection=true",
             "viewer did not retire after its real remote window closed",
@@ -315,6 +315,16 @@ def validate(sources: dict[str, str]) -> None:
             "FLUTTER_PEER_VIEWER_RUNTIME_OK",
         ),
         "viewer prompt/pixel/lifecycle transaction",
+    )
+    require_order(
+        stage,
+        (
+            'if [ "$(<"$COORD/stop")" != viewer-complete ]; then',
+            "FLUTTER_PEER_SERVER_DIAGNOSTIC_BEGIN",
+            "cat /tmp/server.log >&2",
+            "FLUTTER_PEER_SERVER_DIAGNOSTIC_END",
+        ),
+        "failed-viewer server diagnostic",
     )
     forbid(stage, '"$APP" --connect 127.0.0.1 --password', "connect password argv")
     forbid(stage, "RUSTDESK_PASSWORD", "password environment variable")
@@ -848,6 +858,8 @@ MUTATIONS = (
     ("stage", "pkg-config --cflags --libs x11 xtst atspi-2 gobject-2.0", "pkg-config --cflags --libs x11 xtst atspi-2"),
     ("stage", "--password-stdin", "--password rustdesk-peer-9f2a7c4e"),
     ("stage", 'LD_PRELOAD="$BIND_SHIM" RUST_LOG=info exec "$APP" --server', 'RUST_LOG=info exec "$APP" --server'),
+    ("stage", 'RUST_LOG=info exec "$APP" --connect 127.0.0.1', 'exec "$APP" --connect 127.0.0.1'),
+    ("stage", "FLUTTER_PEER_SERVER_DIAGNOSTIC_BEGIN", "FLUTTER_PEER_SERVER_DIAGNOSTIC_OMITTED"),
     ("stage", 'wait_process_maps_exact_file "$SERVER_PID" "$SERVER_START" "$BIND_SHIM"', "true # mapped shim unproved"),
     ("bind_shim", "ntohs(rewritten.sin_port) == 21118", "ntohs(rewritten.sin_port) == 21119"),
     ("bind_shim", "return fn(sockfd, addr, addrlen);", "return fn(sockfd, (const struct sockaddr *)&rewritten, sizeof(rewritten));"),

@@ -460,6 +460,11 @@ CFG
     "$READY" --stop "$SERVER_PID" "$SERVER_START"
     wait "$SERVER_PID"
     SERVER_PID= SERVER_START=
+    if [ "$(<"$COORD/stop")" != viewer-complete ]; then
+      echo 'FLUTTER_PEER_SERVER_DIAGNOSTIC_BEGIN' >&2
+      cat /tmp/server.log >&2
+      echo 'FLUTTER_PEER_SERVER_DIAGNOSTIC_END' >&2
+    fi
     "$READY" --stop "$SOURCE_PID" "$SOURCE_START"
     wait "$SOURCE_PID"
     SOURCE_PID= SOURCE_START=
@@ -528,7 +533,8 @@ CFG
     start_xvfb :99 1280x800x24 /tmp/viewer-xvfb.log
     listener_is_exact || fail 'shared namespace lost the exact loopback server listener'
     [ "$(udp_socket_count)" -eq 0 ] || fail 'shared namespace has a UDP socket before connect'
-    (cd /out/bundle && exec "$APP" --connect 127.0.0.1) >/tmp/viewer.log 2>&1 &
+    (cd /out/bundle && RUST_LOG=info exec "$APP" --connect 127.0.0.1) \
+      >/tmp/viewer.log 2>&1 &
     VIEWER_PID=$!
     VIEWER_START=$("$READY" --identity "$VIEWER_PID")
     set +e

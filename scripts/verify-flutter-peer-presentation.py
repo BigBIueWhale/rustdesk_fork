@@ -57,6 +57,9 @@ PATHS = {
     "url_launcher_linux": "flutter/third_party/url_launcher_linux/linux/url_launcher_plugin.cc",
     "url_launcher_test": "flutter/third_party/url_launcher_linux/linux/test/url_launcher_shutdown_test.cc",
     "url_launcher_upstream": "flutter/third_party/url_launcher_linux/UPSTREAM.md",
+    "window_manager_linux": "flutter/third_party/window_manager/linux/window_manager_plugin.cc",
+    "window_manager_test": "flutter/third_party/window_manager/linux/test/window_manager_shutdown_test.cc",
+    "window_manager_upstream": "flutter/third_party/window_manager/UPSTREAM.md",
     "dart_verify": "scripts/dart-verify.sh",
     "verify": "scripts/verify.sh",
     "workspace": "scripts/verify-verifier-workspace.py",
@@ -101,6 +104,9 @@ def validate(sources: dict[str, str]) -> None:
     url_launcher_linux = sources["url_launcher_linux"]
     url_launcher_test = sources["url_launcher_test"]
     url_launcher_upstream = sources["url_launcher_upstream"]
+    window_manager_linux = sources["window_manager_linux"]
+    window_manager_test = sources["window_manager_test"]
+    window_manager_upstream = sources["window_manager_upstream"]
     dart_verify = sources["dart_verify"]
 
     require(
@@ -851,6 +857,159 @@ def validate(sources: dict[str, str]) -> None:
         raise VerificationError(
             "exact stock URL-launcher rejection must appear once in execution and once in its source gate"
         )
+    require(
+        flutter_attributes,
+        "third_party/window_manager/** -text",
+        "vendored window-manager byte preservation",
+    )
+    require_order(
+        flutter_pubspec,
+        (
+            "window_manager:",
+            "path: third_party/window_manager",
+        ),
+        "vendored window-manager dependency override",
+    )
+    require_order(
+        flutter_lock,
+        (
+            "window_manager:",
+            'path: "third_party/window_manager"',
+            "relative: true",
+            "source: path",
+            'version: "0.3.6"',
+        ),
+        "locked vendored window-manager dependency",
+    )
+    for token, label in (
+        (
+            "85789bfe6e4cfaf4ecc00c52857467fdb7f26879",
+            "window-manager upstream commit",
+        ),
+        (
+            "9627e63c85411da995da37cb7cd6d392766a509d",
+            "window-manager upstream tree",
+        ),
+        (
+            "5b2a562f2e853cde3661468aea2a38fc9d1abef5e2fbd3befbc86831a7f7cd87",
+            "window-manager upstream Linux source digest",
+        ),
+        (
+            "70fe0130bbbd928d04cd33a49ecde422ec54fd748b7a4e983f4e31be6e73f5f5",
+            "window-manager close asset digest",
+        ),
+        (
+            "93f2ed012ec01288b78ad4816ef254261e9ff25e8a9858359b45431c9a5de5f4",
+            "window-manager maximize asset digest",
+        ),
+        (
+            "0976edbb9977136544af17de125f345a41065694de92036d9365817ea6d8f05a",
+            "window-manager minimize asset digest",
+        ),
+        (
+            "3d375930c514ec2ebc0603ad1e1398b4daf458951042a97232d16f17e1c9603b",
+            "window-manager unmaximize asset digest",
+        ),
+    ):
+        require(window_manager_upstream, token, label)
+    require_order(
+        dart_verify,
+        (
+            'grep -qxF "!flutter/third_party/window_manager/$asset" .gitignore',
+            "sha256sum -c - <<'EOF'",
+            "70fe0130bbbd928d04cd33a49ecde422ec54fd748b7a4e983f4e31be6e73f5f5  images/ic_chrome_close.png",
+            "93f2ed012ec01288b78ad4816ef254261e9ff25e8a9858359b45431c9a5de5f4  images/ic_chrome_maximize.png",
+            "0976edbb9977136544af17de125f345a41065694de92036d9365817ea6d8f05a  images/ic_chrome_minimize.png",
+            "3d375930c514ec2ebc0603ad1e1398b4daf458951042a97232d16f17e1c9603b  images/ic_chrome_unmaximize.png",
+        ),
+        "vendored window-manager shipped asset authority",
+    )
+    require_order(
+        window_manager_linux,
+        (
+            "GtkWindow* window;",
+            "GtkWindow* get_window(WindowManagerPlugin* self)",
+            "return self->window;",
+            "if (get_window(self) == nullptr)",
+            '"window_unavailable"',
+            "fl_method_call_respond(method_call, response, nullptr);",
+            "return;",
+        ),
+        "queued window call rejection after GTK destruction",
+    )
+    require_order(
+        window_manager_linux,
+        (
+            "static void window_manager_plugin_dispose(GObject* object)",
+            "g_signal_handlers_disconnect_by_data(self->window, self);",
+            "g_signal_remove_emission_hook(",
+            "g_clear_object(&self->channel);",
+            "g_clear_object(&self->registrar);",
+            "main_window_initialized = false;",
+        ),
+        "window-manager callback/channel/registrar retirement",
+    )
+    require_order(
+        window_manager_linux,
+        (
+            "void on_window_destroy(GtkWidget* widget, gpointer data)",
+            "plugin->button_press_emission_hook = 0;",
+            "plugin->window = nullptr;",
+            "GObject* window_manager_plugin_register_with_registrar_for_window(",
+            "plugin->window = window;",
+            'g_signal_connect(window, "destroy", G_CALLBACK(on_window_destroy), plugin);',
+            "plugin->button_press_emission_hook = g_signal_add_emission_hook(",
+        ),
+        "concrete native window registration and terminal destroy callback",
+    )
+    require_order(
+        window_manager_test,
+        (
+            "gpointer weak_plugin =",
+            "window_manager_plugin_register_with_registrar_for_window(",
+            "g_object_add_weak_pointer(G_OBJECT(weak_plugin), &weak_plugin);",
+            '"isMaximized"',
+            "FL_IS_METHOD_ERROR_RESPONSE(response)",
+            'g_strcmp0(code, "window_unavailable") == 0',
+            "FL_BINARY_MESSENGER_GET_IFACE(messenger)->shutdown(",
+            "messenger->handler_sets_during_shutdown == 0",
+            "weak_plugin == nullptr",
+        ),
+        "window-manager destroyed-window and shutdown regression",
+    )
+    require_order(
+        sources["desktop_tabbar"],
+        (
+            "Timer? _initialMaximizedTimer;",
+            "_initialMaximizedTimer = Timer(Duration(milliseconds: 500)",
+            "Future<void> _syncInitialMaximizedState() async",
+            "if (!mounted || stateGlobal.isMaximized.value == maximized)",
+            "if (mounted) {",
+            "_initialMaximizedTimer?.cancel();",
+            "_initialMaximizedTimer = null;",
+        ),
+        "cancellable mounted delayed maximize query",
+    )
+    require_order(
+        dart_verify,
+        (
+            "\n    /tmp/window_manager_shutdown_test\n",
+            "window_manager_guard_disabled.cc",
+            "/tmp/window_manager_guard_disabled_test",
+            '[ "$guard_disabled_status" -eq 1 ]',
+            "FAIL: destroyed-window call was not rejected",
+        ),
+        "confined window-manager behavior and guard-removed negative control",
+    )
+    if dart_verify.count('[ "$guard_disabled_status" -eq 1 ]') != 2:
+        raise VerificationError(
+            "window-manager guard-disabled rejection must appear once in execution and once in its source gate"
+        )
+    require(
+        stage,
+        "grep -qF 'FlBinaryMessenger without an engine' /tmp/viewer.log",
+        "runtime refusal of post-engine messenger use",
+    )
     forbid(controller, "PASSWORD_SETTLE_MS", "blind password-prompt delay")
     require(controller, "AUTH_WAIT_MS 30000U", "authentication deadline")
     require(controller, "FRESH_LIMIT_MS 1000U", "live-frame freshness bound")
@@ -960,6 +1119,25 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(
         sources["requirements"],
+        "The GTK <code>destroy</code> signal is a terminal admission boundary",
+        "normative terminal native-window admission boundary",
+    )
+    require(
+        sources["requirements"],
+        "zero shutdown-time handler mutations",
+        "normative window-manager messenger shutdown finality",
+    )
+    if sources["requirements"].count("zero shutdown-time handler mutations") != 2:
+        raise VerificationError(
+            "window-manager messenger shutdown finality must be bound in the requirement and Appendix disposition"
+        )
+    require(
+        sources["requirements"],
+        "recheck <code>mounted</code> after awaiting and again inside a post-frame callback",
+        "normative delayed Dart callback lifetime",
+    )
+    require(
+        sources["requirements"],
         "maps AT-SPI <code>SHOWING</code> to the inverse of that same <code>IsObscured</code> flag",
         "normative pinned Flutter password-state contract",
     )
@@ -984,6 +1162,21 @@ def validate(sources: dict[str, str]) -> None:
         sources["hardening"],
         "An eighth exact committed run used commit `731d0eed3d60824c9f9316da55e977334d63cd30`",
         "hardening invalid prompt-readiness evidence disposition",
+    )
+    require(
+        sources["hardening"],
+        "A twentieth exact committed run used commit",
+        "warning-clean but crashing twentieth real-peer evidence",
+    )
+    require(
+        sources["hardening"],
+        "The exact top native frames were `gtk_window_is_maximized`",
+        "exact stale window-manager crash diagnosis",
+    )
+    require(
+        sources["hardening"],
+        "Already-queued calls receive\n  `window_unavailable` without entering GTK",
+        "window-manager terminal-admission correction record",
     )
     require(
         sources["hardening"],
@@ -1166,6 +1359,29 @@ MUTATIONS = (
     ("dart_verify", "\n    /tmp/url_launcher_shutdown_test\n", "\n    true # URL-launcher shutdown test disabled\n"),
     ("dart_verify", '"$upstream_url_launcher/url_launcher_plugin.cc" | sha256sum -c -', '"$upstream_url_launcher/url_launcher_plugin.cc" | true'),
     ("dart_verify", '[ "$upstream_status" -eq 1 ]', '[ "$upstream_status" -eq 0 ]'),
+    ("flutter_attributes", "third_party/window_manager/** -text", "third_party/window_manager/** text=auto"),
+    ("flutter_pubspec", "path: third_party/window_manager", "path: /tmp/window_manager"),
+    ("flutter_lock", 'path: "third_party/window_manager"', 'path: "/tmp/window_manager"'),
+    ("window_manager_upstream", "85789bfe6e4cfaf4ecc00c52857467fdb7f26879", "unreviewed-window-manager"),
+    ("window_manager_upstream", "9627e63c85411da995da37cb7cd6d392766a509d", "unidentified-window-manager-tree"),
+    ("window_manager_upstream", "5b2a562f2e853cde3661468aea2a38fc9d1abef5e2fbd3befbc86831a7f7cd87", "unidentified-window-manager-linux-source"),
+    ("window_manager_upstream", "70fe0130bbbd928d04cd33a49ecde422ec54fd748b7a4e983f4e31be6e73f5f5", "unidentified-window-manager-close-asset"),
+    ("window_manager_upstream", "93f2ed012ec01288b78ad4816ef254261e9ff25e8a9858359b45431c9a5de5f4", "unidentified-window-manager-maximize-asset"),
+    ("window_manager_upstream", "0976edbb9977136544af17de125f345a41065694de92036d9365817ea6d8f05a", "unidentified-window-manager-minimize-asset"),
+    ("window_manager_upstream", "3d375930c514ec2ebc0603ad1e1398b4daf458951042a97232d16f17e1c9603b", "unidentified-window-manager-unmaximize-asset"),
+    ("dart_verify", 'grep -qxF "!flutter/third_party/window_manager/$asset" .gitignore', "true # ignored window-manager assets accepted"),
+    ("window_manager_linux", "if (get_window(self) == nullptr)", "if (false)"),
+    ("window_manager_linux", '"window_unavailable"', '"window_still_available"'),
+    ("window_manager_linux", "g_clear_object(&self->channel);", "self->channel = nullptr;"),
+    ("window_manager_linux", 'g_signal_connect(window, "destroy", G_CALLBACK(on_window_destroy), plugin);', 'g_signal_connect(window, "show", G_CALLBACK(on_window_destroy), plugin);'),
+    ("window_manager_linux", "plugin->window = nullptr;", "plugin->window = GTK_WINDOW(widget);"),
+    ("window_manager_test", "messenger->handler_sets_during_shutdown == 0", "messenger->handler_sets_during_shutdown == 1"),
+    ("window_manager_test", "g_object_add_weak_pointer(G_OBJECT(weak_plugin), &weak_plugin);", "g_object_add_weak_pointer(G_OBJECT(messenger), &weak_plugin);"),
+    ("desktop_tabbar", "_initialMaximizedTimer?.cancel();", "_initialMaximizedTimer?.isActive;"),
+    ("desktop_tabbar", "if (mounted) {", "if (true) {"),
+    ("dart_verify", "\n    /tmp/window_manager_shutdown_test\n", "\n    true # window-manager native test disabled\n"),
+    ("dart_verify", '[ "$guard_disabled_status" -eq 1 ]', '[ "$guard_disabled_status" -eq 0 ]'),
+    ("stage", "grep -qF 'FlBinaryMessenger without an engine' /tmp/viewer.log", "grep -qF 'unrelated warning' /tmp/viewer.log"),
     ("controller", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0 && atspi_state_set_contains(states, ATSPI_STATE_SHOWING) != 0"),
     ("controller", "wait_for_password_prompt((unsigned int)viewer_pid, &prompt_scan)", "false"),
     ("controller", "wait_for_password_prompt_retirement((unsigned int)viewer_pid, &prompt_scan)", "false"),
@@ -1183,6 +1399,9 @@ MUTATIONS = (
     ("requirements", '<div class="req"><span class="id">R-S11ge</span>', '<div class="req"><span class="id">R-S11ge-disabled</span>'),
     ("requirements", "observe exactly two terminal handler-set operations", "ignore terminal handler-set cardinality"),
     ("requirements", "button-press and button-release hooks are one paired ownership unit", "button-release hook ownership is optional"),
+    ("requirements", "The GTK <code>destroy</code> signal is a terminal admission boundary", "GTK destruction does not affect method admission"),
+    ("requirements", "zero shutdown-time handler mutations", "any number of shutdown-time handler mutations"),
+    ("requirements", "recheck <code>mounted</code> after awaiting and again inside a post-frame callback", "assume the widget remains mounted"),
     ("requirements", "<tr><td>340</td>", "<tr><td>340-disabled</td>"),
     ("requirements", "maps AT-SPI <code>SHOWING</code> to the inverse of that same <code>IsObscured</code> flag", "maps password visibility consistently"),
     ("hardening", "R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence", "R-S11gc-disabled/R-S11e-216"),
@@ -1203,6 +1422,9 @@ MUTATIONS = (
     ("hardening", "A nineteenth exact committed run used commit", "An uncounted nineteenth run used commit"),
     ("hardening", "Exact stacks bound both warnings to the two Pigeon channels", "A guess associated the warnings with a plugin"),
     ("hardening", "retained and removed only the press-hook ID", "owned both global hook IDs"),
+    ("hardening", "A twentieth exact committed run used commit", "An uncounted twentieth run used commit"),
+    ("hardening", "The exact top native frames were `gtk_window_is_maximized`", "The crash location was guessed"),
+    ("hardening", "Already-queued calls receive\n  `window_unavailable` without entering GTK", "Queued calls continue into GTK"),
 )
 
 

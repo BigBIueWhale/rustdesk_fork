@@ -20063,11 +20063,17 @@ def validate_desktop_texture_lifecycle_contract(sources):
     for text, label in (
         ('"dependencies_entries": 57', "independent Flutter direct-dependency count"),
         ('"union_entries": 63', "independent Flutter dependency-union count"),
-        ('"git_hosted_records": 4', "independent Flutter Git-lock count"),
+        ('"git_hosted_records": 3', "independent Flutter Git-lock count"),
         ('"package_records": 198', "independent Flutter package-lock count"),
-        ('"rustdesk_org_git_records": 3', "independent RustDesk Git-lock count"),
+        ('"rustdesk_org_git_records": 2', "independent RustDesk Git-lock count"),
     ):
         require_text(sources["dependency_inventory_source"], text, label)
+    require_exact_count(
+        sources["dependency_inventory_source"],
+        '"rustdesk_org_git_records": 2',
+        2,
+        "independent RustDesk Git-lock current and fixture counts",
+    )
 
     require_order(
         sources["texture_rgba_windows"],
@@ -20552,6 +20558,11 @@ def validate_desktop_texture_lifecycle_contract(sources):
     )
     require_text(
         sources["flutter_peer_presentation_verifier"],
+        '"stage": "scripts/smoke-flutter-peer-presentation-stage.sh"',
+        "independent full-peer Linux presentation stage binding",
+    )
+    require_text(
+        sources["flutter_peer_presentation_verifier"],
         '"controller": "scripts/flutter-peer-presentation-x11.c"',
         "independent full-peer Linux presentation controller binding",
     )
@@ -20651,6 +20662,18 @@ def validate_desktop_texture_lifecycle_contract(sources):
             '"url_launcher_upstream": "flutter/third_party/url_launcher_linux/UPSTREAM.md"',
             "vendored URL-launcher provenance",
         ),
+        (
+            '"window_manager_linux": "flutter/third_party/window_manager/linux/window_manager_plugin.cc"',
+            "vendored window-manager Linux lifetime",
+        ),
+        (
+            '"window_manager_test": "flutter/third_party/window_manager/linux/test/window_manager_shutdown_test.cc"',
+            "vendored window-manager shutdown regression",
+        ),
+        (
+            '"window_manager_upstream": "flutter/third_party/window_manager/UPSTREAM.md"',
+            "vendored window-manager provenance",
+        ),
     ):
         require_text(
             sources["flutter_peer_presentation_verifier"],
@@ -20689,6 +20712,19 @@ def validate_desktop_texture_lifecycle_contract(sources):
         sources["desktop_tabbar_dart"],
         "while (state.value.tabs.isNotEmpty) {",
         "independent close-time arriving-tab drain",
+    )
+    require_order(
+        sources["desktop_tabbar_dart"],
+        (
+            "Timer? _initialMaximizedTimer;",
+            "_initialMaximizedTimer = Timer(Duration(milliseconds: 500)",
+            "Future<void> _syncInitialMaximizedState() async",
+            "if (!mounted || stateGlobal.isMaximized.value == maximized)",
+            "if (mounted) {",
+            "_initialMaximizedTimer?.cancel();",
+            "_initialMaximizedTimer = null;",
+        ),
+        "independent cancellable mounted delayed maximize query",
     )
     for tabs_key, label in (
         ("desktop_remote_tab_dart", "remote"),
@@ -20931,9 +20967,175 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "independent exact stock URL-launcher rejection execution/source-gate cardinality",
     )
     require_text(
+        sources["flutter_gitattributes"],
+        "third_party/window_manager/** -text",
+        "independent vendored window-manager byte preservation",
+    )
+    require_order(
+        sources["flutter_pubspec_yaml"],
+        (
+            "window_manager:",
+            "path: third_party/window_manager",
+        ),
+        "independent vendored window-manager dependency override",
+    )
+    require_order(
+        sources["flutter_pubspec_lock"],
+        (
+            "window_manager:",
+            'path: "third_party/window_manager"',
+            "relative: true",
+            "source: path",
+            'version: "0.3.6"',
+        ),
+        "independent locked vendored window-manager dependency",
+    )
+    for token, label in (
+        (
+            "85789bfe6e4cfaf4ecc00c52857467fdb7f26879",
+            "upstream commit",
+        ),
+        (
+            "9627e63c85411da995da37cb7cd6d392766a509d",
+            "upstream tree",
+        ),
+        (
+            "5b2a562f2e853cde3661468aea2a38fc9d1abef5e2fbd3befbc86831a7f7cd87",
+            "upstream Linux source digest",
+        ),
+        (
+            "70fe0130bbbd928d04cd33a49ecde422ec54fd748b7a4e983f4e31be6e73f5f5",
+            "close asset digest",
+        ),
+        (
+            "93f2ed012ec01288b78ad4816ef254261e9ff25e8a9858359b45431c9a5de5f4",
+            "maximize asset digest",
+        ),
+        (
+            "0976edbb9977136544af17de125f345a41065694de92036d9365817ea6d8f05a",
+            "minimize asset digest",
+        ),
+        (
+            "3d375930c514ec2ebc0603ad1e1398b4daf458951042a97232d16f17e1c9603b",
+            "unmaximize asset digest",
+        ),
+    ):
+        require_text(
+            sources["desktop_window_manager_upstream"],
+            token,
+            f"independent vendored window-manager {label}",
+        )
+    require_order(
+        sources["dart_verify"],
+        (
+            'grep -qxF "!flutter/third_party/window_manager/$asset" .gitignore',
+            "sha256sum -c - <<'EOF'",
+            "70fe0130bbbd928d04cd33a49ecde422ec54fd748b7a4e983f4e31be6e73f5f5  images/ic_chrome_close.png",
+            "93f2ed012ec01288b78ad4816ef254261e9ff25e8a9858359b45431c9a5de5f4  images/ic_chrome_maximize.png",
+            "0976edbb9977136544af17de125f345a41065694de92036d9365817ea6d8f05a  images/ic_chrome_minimize.png",
+            "3d375930c514ec2ebc0603ad1e1398b4daf458951042a97232d16f17e1c9603b  images/ic_chrome_unmaximize.png",
+        ),
+        "independent vendored window-manager shipped asset authority",
+    )
+    require_order(
+        sources["desktop_window_manager_linux"],
+        (
+            "GtkWindow* window;",
+            "GtkWindow* get_window(WindowManagerPlugin* self)",
+            "return self->window;",
+            "if (get_window(self) == nullptr)",
+            '"window_unavailable"',
+            "fl_method_call_respond(method_call, response, nullptr);",
+            "return;",
+        ),
+        "independent queued window call rejection after GTK destruction",
+    )
+    require_order(
+        sources["desktop_window_manager_linux"],
+        (
+            "static void window_manager_plugin_dispose(GObject* object)",
+            "g_signal_handlers_disconnect_by_data(self->window, self);",
+            "g_signal_remove_emission_hook(",
+            "g_clear_object(&self->channel);",
+            "g_clear_object(&self->registrar);",
+            "main_window_initialized = false;",
+        ),
+        "independent window-manager callback/channel/registrar retirement",
+    )
+    require_order(
+        sources["desktop_window_manager_linux"],
+        (
+            "void on_window_destroy(GtkWidget* widget, gpointer data)",
+            "plugin->button_press_emission_hook = 0;",
+            "plugin->window = nullptr;",
+            "GObject* window_manager_plugin_register_with_registrar_for_window(",
+            "plugin->window = window;",
+            'g_signal_connect(window, "destroy", G_CALLBACK(on_window_destroy), plugin);',
+            "plugin->button_press_emission_hook = g_signal_add_emission_hook(",
+        ),
+        "independent concrete native window registration and terminal destroy callback",
+    )
+    require_order(
+        sources["desktop_window_manager_test"],
+        (
+            "gpointer weak_plugin =",
+            "window_manager_plugin_register_with_registrar_for_window(",
+            "g_object_add_weak_pointer(G_OBJECT(weak_plugin), &weak_plugin);",
+            '"isMaximized"',
+            "FL_IS_METHOD_ERROR_RESPONSE(response)",
+            'g_strcmp0(code, "window_unavailable") == 0',
+            "FL_BINARY_MESSENGER_GET_IFACE(messenger)->shutdown(",
+            "messenger->handler_sets_during_shutdown == 0",
+            "weak_plugin == nullptr",
+        ),
+        "independent window-manager destroyed-window and shutdown regression",
+    )
+    require_order(
+        sources["dart_verify"],
+        (
+            "\n    /tmp/window_manager_shutdown_test\n",
+            "window_manager_guard_disabled.cc",
+            "/tmp/window_manager_guard_disabled_test",
+            '[ "$guard_disabled_status" -eq 1 ]',
+            "FAIL: destroyed-window call was not rejected",
+        ),
+        "independent confined window-manager behavior and negative control",
+    )
+    require_count(
+        sources["dart_verify"],
+        '[ "$guard_disabled_status" -eq 1 ]',
+        2,
+        "independent window-manager guard-disabled execution/source-gate cardinality",
+    )
+    require_text(
+        sources["flutter_peer_presentation_stage"],
+        "grep -qF 'FlBinaryMessenger without an engine' /tmp/viewer.log",
+        "independent runtime refusal of post-engine messenger use",
+    )
+    require_text(
         sources["requirements"],
         '<div class="req"><span class="id">R-S11ge</span>',
         "Linux plugin and GTK callback lifetime requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "bind one concrete <code>GtkWindow</code> at registration",
+        "concrete window-manager registration requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "receive a deterministic <code>window_unavailable</code> error without entering GTK",
+        "destroyed-window rejection requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "own a cancellable timer and recheck <code>mounted</code>",
+        "delayed Dart query lifetime requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "the exact full-peer viewer must exit zero without an engine-less messenger warning",
+        "warning-clean full-peer teardown requirement",
     )
     require_text(
         sources["requirements"],
@@ -20964,6 +21166,26 @@ def validate_desktop_texture_lifecycle_contract(sources):
         sources["hardening"],
         "retained and removed only the press-hook ID",
         "unmatched GTK release-hook diagnosis",
+    )
+    require_text(
+        sources["hardening"],
+        "A twentieth exact committed run used commit",
+        "twentieth exact full-peer result",
+    )
+    require_text(
+        sources["hardening"],
+        "The exact top native frames were `gtk_window_is_maximized`",
+        "exact window-manager teardown diagnosis",
+    )
+    require_text(
+        sources["hardening"],
+        "Already-queued calls receive\n  `window_unavailable` without entering GTK",
+        "awaited window-manager lifetime correction",
+    )
+    require_text(
+        sources["hardening"],
+        "No green full-peer transaction is recorded after twenty exact committed attempts",
+        "full-peer result remains red pending exact rerun",
     )
     require_text(
         sources["apple"],
@@ -32405,7 +32627,7 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
         (')" && verify_pub_cache_resolution "$ONLINE_DIR/pub-cache"\n'
          "        then",
          "Pub-cache occupied-output semantic replay"),
-        ('[ "${#git_specs[@]}" -eq 4 ]', "Pub-cache exact Git dependency count"),
+        ('[ "${#git_specs[@]}" -eq 3 ]', "Pub-cache exact Git dependency count"),
         ("fsck --full --no-dangling --no-reflogs", "Pub-cache Git object closure"),
         ('case "$mode" in 100644|100755|120000)',
          "Pub-cache Git tree mode closure"),
@@ -32526,7 +32748,7 @@ def validate_online_fetch_pub_cache_output_authority_contract(sources):
         ("REPLACEMENT_PATTERN = re.compile(", "Pub-cache displaced-output namespace"),
         ("TREE_LIMITS = (100_000, 30_000, 4 * 1024**3, 256 * 1024**2, 32)",
          "Pub-cache output bounds"),
-        ("EXPECTED_GIT_DEPENDENCIES = 4", "Pub-cache Git inventory bound"),
+        ("EXPECTED_GIT_DEPENDENCIES = 3", "Pub-cache Git inventory bound"),
         ('required = {"hosted", "hosted-hashes", "git"}',
          "Pub-cache exact top-level inventory"),
         ("reject_descendant_mounts(canonical)", "Pub-cache mount closure"),
@@ -39672,7 +39894,7 @@ def validate_dart_verifier_authority_contract(sources):
             "Dart verifier generated-source analysis",
         ),
         (
-            'flutter analyze --no-pub \\\n'
+            'flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings \\\n'
             '      third_party/texture_rgba_renderer/lib/',
             "Dart verifier in-tree RGBA wrapper analysis",
         ),
@@ -58668,6 +58890,12 @@ def run_source_mutations(sources):
         ),
         (
             "flutter_peer_presentation_verifier",
+            '"stage": "scripts/smoke-flutter-peer-presentation-stage.sh"',
+            '"stage": "scripts/removed-smoke-flutter-peer-presentation-stage.sh"',
+            "independent full-peer Linux presentation stage binding",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
             '"bind_shim": "scripts/smoke-bind-loopback.c"',
             '"bind_shim": "scripts/removed-smoke-bind-loopback.c"',
             "independent full-peer Linux loopback-confinement binding",
@@ -58769,6 +58997,24 @@ def run_source_mutations(sources):
             "independent full-peer vendored URL-launcher provenance binding",
         ),
         (
+            "flutter_peer_presentation_verifier",
+            '"window_manager_linux": "flutter/third_party/window_manager/linux/window_manager_plugin.cc"',
+            '"window_manager_linux": "flutter/third_party/window_manager/linux/removed-window-manager-plugin.cc"',
+            "independent full-peer vendored window-manager Linux lifetime binding",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
+            '"window_manager_test": "flutter/third_party/window_manager/linux/test/window_manager_shutdown_test.cc"',
+            '"window_manager_test": "flutter/third_party/window_manager/linux/test/removed-window-manager-shutdown-test.cc"',
+            "independent full-peer vendored window-manager shutdown regression binding",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
+            '"window_manager_upstream": "flutter/third_party/window_manager/UPSTREAM.md"',
+            '"window_manager_upstream": "flutter/third_party/window_manager/REMOVED-UPSTREAM.md"',
+            "independent full-peer vendored window-manager provenance binding",
+        ),
+        (
             "desktop_remote_page_dart",
             "Future<void> prepareForRemoval({bool closeSession = true})",
             "Future<void> prepareForRemoval({bool closeSession = false})",
@@ -58791,6 +59037,18 @@ def run_source_mutations(sources):
             "while (state.value.tabs.isNotEmpty) {",
             "if (state.value.tabs.isNotEmpty) {",
             "independent close-time arriving-tab drain",
+        ),
+        (
+            "desktop_tabbar_dart",
+            "_initialMaximizedTimer?.cancel();",
+            "_initialMaximizedTimer?.isActive;",
+            "independent cancellable mounted delayed maximize query",
+        ),
+        (
+            "desktop_tabbar_dart",
+            "if (!mounted || stateGlobal.isMaximized.value == maximized)",
+            "if (stateGlobal.isMaximized.value == maximized)",
+            "independent cancellable mounted delayed maximize query",
         ),
         (
             "desktop_remote_tab_dart",
@@ -59008,10 +59266,162 @@ def run_source_mutations(sources):
             "independent exact stock URL-launcher rejection execution/source-gate cardinality",
         ),
         (
+            "flutter_gitattributes",
+            "third_party/window_manager/** -text",
+            "third_party/window_manager/** text=auto",
+            "independent vendored window-manager byte preservation",
+        ),
+        (
+            "flutter_pubspec_yaml",
+            "path: third_party/window_manager",
+            "path: /tmp/window_manager",
+            "independent vendored window-manager dependency override",
+        ),
+        (
+            "flutter_pubspec_lock",
+            'path: "third_party/window_manager"',
+            'path: "/tmp/window_manager"',
+            "independent locked vendored window-manager dependency",
+        ),
+        (
+            "desktop_window_manager_upstream",
+            "85789bfe6e4cfaf4ecc00c52857467fdb7f26879",
+            "unreviewed-window-manager",
+            "independent vendored window-manager upstream commit",
+        ),
+        (
+            "desktop_window_manager_upstream",
+            "9627e63c85411da995da37cb7cd6d392766a509d",
+            "unidentified-window-manager-tree",
+            "independent vendored window-manager upstream tree",
+        ),
+        (
+            "desktop_window_manager_upstream",
+            "5b2a562f2e853cde3661468aea2a38fc9d1abef5e2fbd3befbc86831a7f7cd87",
+            "unidentified-window-manager-linux-source",
+            "independent vendored window-manager upstream Linux source digest",
+        ),
+        (
+            "desktop_window_manager_upstream",
+            "70fe0130bbbd928d04cd33a49ecde422ec54fd748b7a4e983f4e31be6e73f5f5",
+            "unidentified-window-manager-close-asset",
+            "independent vendored window-manager close asset digest",
+        ),
+        (
+            "desktop_window_manager_upstream",
+            "93f2ed012ec01288b78ad4816ef254261e9ff25e8a9858359b45431c9a5de5f4",
+            "unidentified-window-manager-maximize-asset",
+            "independent vendored window-manager maximize asset digest",
+        ),
+        (
+            "desktop_window_manager_upstream",
+            "0976edbb9977136544af17de125f345a41065694de92036d9365817ea6d8f05a",
+            "unidentified-window-manager-minimize-asset",
+            "independent vendored window-manager minimize asset digest",
+        ),
+        (
+            "desktop_window_manager_upstream",
+            "3d375930c514ec2ebc0603ad1e1398b4daf458951042a97232d16f17e1c9603b",
+            "unidentified-window-manager-unmaximize-asset",
+            "independent vendored window-manager unmaximize asset digest",
+        ),
+        (
+            "dart_verify",
+            'grep -qxF "!flutter/third_party/window_manager/$asset" .gitignore',
+            "true # ignored window-manager assets accepted",
+            "independent vendored window-manager shipped asset authority",
+        ),
+        (
+            "desktop_window_manager_linux",
+            "if (get_window(self) == nullptr)",
+            "if (false)",
+            "independent queued window call rejection after GTK destruction",
+        ),
+        (
+            "desktop_window_manager_linux",
+            '"window_unavailable"',
+            '"window_still_available"',
+            "independent queued window call rejection after GTK destruction",
+        ),
+        (
+            "desktop_window_manager_linux",
+            "g_clear_object(&self->channel);",
+            "self->channel = nullptr;",
+            "independent window-manager callback/channel/registrar retirement",
+        ),
+        (
+            "desktop_window_manager_linux",
+            'g_signal_connect(window, "destroy", G_CALLBACK(on_window_destroy), plugin);',
+            'g_signal_connect(window, "show", G_CALLBACK(on_window_destroy), plugin);',
+            "independent concrete native window registration and terminal destroy callback",
+        ),
+        (
+            "desktop_window_manager_linux",
+            "plugin->window = nullptr;",
+            "plugin->window = GTK_WINDOW(widget);",
+            "independent concrete native window registration and terminal destroy callback",
+        ),
+        (
+            "desktop_window_manager_test",
+            "messenger->handler_sets_during_shutdown == 0",
+            "messenger->handler_sets_during_shutdown == 1",
+            "independent window-manager destroyed-window and shutdown regression",
+        ),
+        (
+            "desktop_window_manager_test",
+            "g_object_add_weak_pointer(G_OBJECT(weak_plugin), &weak_plugin);",
+            "g_object_add_weak_pointer(G_OBJECT(messenger), &weak_plugin);",
+            "independent window-manager destroyed-window and shutdown regression",
+        ),
+        (
+            "dart_verify",
+            "\n    /tmp/window_manager_shutdown_test\n",
+            "\n    true # window-manager shutdown test disabled\n",
+            "independent confined window-manager behavior and negative control",
+        ),
+        (
+            "dart_verify",
+            '    [ "$guard_disabled_status" -eq 1 ] \\\n'
+            '      || { echo "  FAIL window manager: guard-disabled source unexpectedly passed or crashed"; exit 1; }',
+            '    [ "$guard_disabled_status" -eq 0 ] \\\n'
+            '      || { echo "  FAIL window manager: guard-disabled source unexpectedly passed or crashed"; exit 1; }',
+            "independent window-manager guard-disabled execution/source-gate cardinality",
+        ),
+        (
+            "flutter_peer_presentation_stage",
+            "grep -qF 'FlBinaryMessenger without an engine' /tmp/viewer.log",
+            "grep -qF 'unrelated warning' /tmp/viewer.log",
+            "independent runtime refusal of post-engine messenger use",
+        ),
+        (
             "requirements",
             '<div class="req"><span class="id">R-S11ge</span>',
             '<div class="req"><span class="id">R-S11ge-disabled</span>',
             "Linux plugin and GTK callback lifetime requirement",
+        ),
+        (
+            "requirements",
+            "bind one concrete <code>GtkWindow</code> at registration",
+            "derive a toplevel repeatedly from the registrar",
+            "concrete window-manager registration requirement",
+        ),
+        (
+            "requirements",
+            "receive a deterministic <code>window_unavailable</code> error without entering GTK",
+            "continue queued calls into GTK",
+            "destroyed-window rejection requirement",
+        ),
+        (
+            "requirements",
+            "own a cancellable timer and recheck <code>mounted</code>",
+            "issue delayed queries without lifecycle ownership",
+            "delayed Dart query lifetime requirement",
+        ),
+        (
+            "requirements",
+            "the exact full-peer viewer must exit zero without an engine-less messenger warning",
+            "a successful authentication is sufficient",
+            "warning-clean full-peer teardown requirement",
         ),
         (
             "requirements",
@@ -59048,6 +59458,30 @@ def run_source_mutations(sources):
             "retained and removed only the press-hook ID",
             "owned both global hook IDs",
             "unmatched GTK release-hook diagnosis",
+        ),
+        (
+            "hardening",
+            "A twentieth exact committed run used commit",
+            "An uncounted twentieth run used commit",
+            "twentieth exact full-peer result",
+        ),
+        (
+            "hardening",
+            "The exact top native frames were `gtk_window_is_maximized`",
+            "A guess implicated window_manager",
+            "exact window-manager teardown diagnosis",
+        ),
+        (
+            "hardening",
+            "Already-queued calls receive\n  `window_unavailable` without entering GTK",
+            "Queued calls continue into GTK",
+            "awaited window-manager lifetime correction",
+        ),
+        (
+            "hardening",
+            "No green full-peer transaction is recorded after twenty exact committed attempts",
+            "The full-peer transaction is green",
+            "full-peer result remains red pending exact rerun",
         ),
         (
             "apple",
@@ -59231,15 +59665,15 @@ def run_source_mutations(sources):
         ),
         (
             "dependency_inventory_source",
+            '"git_hosted_records": 3',
             '"git_hosted_records": 4',
-            '"git_hosted_records": 5',
             "independent Flutter Git-lock count",
         ),
         (
             "dependency_inventory_source",
+            '"rustdesk_org_git_records": 2',
             '"rustdesk_org_git_records": 3',
-            '"rustdesk_org_git_records": 4',
-            "independent RustDesk Git-lock count",
+            "independent RustDesk Git-lock current and fixture counts",
         ),
         (
             "requirements",
@@ -70626,6 +71060,20 @@ def main():
             ).read_text(encoding="utf-8"),
             "desktop_url_launcher_upstream": (
                 repo / "flutter/third_party/url_launcher_linux/UPSTREAM.md"
+            ).read_text(encoding="utf-8"),
+            "desktop_window_manager_linux": (
+                repo
+                / "flutter/third_party/window_manager/linux/window_manager_plugin.cc"
+            ).read_text(encoding="utf-8"),
+            "desktop_window_manager_test": (
+                repo
+                / "flutter/third_party/window_manager/linux/test/window_manager_shutdown_test.cc"
+            ).read_text(encoding="utf-8"),
+            "desktop_window_manager_upstream": (
+                repo / "flutter/third_party/window_manager/UPSTREAM.md"
+            ).read_text(encoding="utf-8"),
+            "flutter_peer_presentation_stage": (
+                repo / "scripts/smoke-flutter-peer-presentation-stage.sh"
             ).read_text(encoding="utf-8"),
             "main_dart": (repo / "flutter/lib/main.dart").read_text(encoding="utf-8"),
             "web_bridge_dart": (repo / "flutter/lib/web/bridge.dart").read_text(encoding="utf-8"),

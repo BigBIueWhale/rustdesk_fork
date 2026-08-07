@@ -1326,18 +1326,22 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "sole child-window software texture plugin registration",
     )
-    require(sources["pub_cache_output"], "EXPECTED_GIT_DEPENDENCIES = 4", "four-dependency Pub-cache output contract")
-    require(sources["pub_cache_output"], "exact four locked Git dependencies", "four-dependency Pub-cache diagnostic")
-    require(sources["pub_cache_verifier"], "EXPECTED_GIT_DEPENDENCIES = 4", "four-dependency Pub-cache verifier contract")
-    require(sources["online_fetch"], '[ "${#git_specs[@]}" -eq 4 ]', "four-dependency acquisition inventory")
+    require(sources["pub_cache_output"], "EXPECTED_GIT_DEPENDENCIES = 3", "three-dependency Pub-cache output contract")
+    require(sources["pub_cache_output"], "exact three locked Git dependencies", "three-dependency Pub-cache diagnostic")
+    require(sources["pub_cache_verifier"], "EXPECTED_GIT_DEPENDENCIES = 3", "three-dependency Pub-cache verifier contract")
+    require(sources["online_fetch"], '[ "${#git_specs[@]}" -eq 3 ]', "three-dependency acquisition inventory")
     for token in (
         '"dependencies_entries": 57',
         '"union_entries": 63',
-        '"git_hosted_records": 4',
+        '"git_hosted_records": 3',
         '"package_records": 198',
-        '"rustdesk_org_git_records": 3',
+        '"rustdesk_org_git_records": 2',
     ):
         require(sources["dependency_inventory"], token, "updated Flutter dependency inventory")
+    if sources["dependency_inventory"].count('"rustdesk_org_git_records": 2') != 2:
+        raise VerificationError(
+            "updated RustDesk Git dependency inventory must bind current and fixture expectations"
+        )
 
     require_order(
         sources["pubspec"],
@@ -2731,15 +2735,15 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "online_fetch",
+        '[ "${#git_specs[@]}" -eq 3 ]',
         '[ "${#git_specs[@]}" -eq 4 ]',
-        '[ "${#git_specs[@]}" -eq 5 ]',
-        "four-dependency acquisition inventory",
+        "three-dependency acquisition inventory",
     ),
     (
         "pub_cache_output",
+        "EXPECTED_GIT_DEPENDENCIES = 3",
         "EXPECTED_GIT_DEPENDENCIES = 4",
-        "EXPECTED_GIT_DEPENDENCIES = 5",
-        "four-dependency Pub-cache output inventory",
+        "three-dependency Pub-cache output inventory",
     ),
     (
         "dependency_inventory",
@@ -2749,14 +2753,14 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "dependency_inventory",
+        '"git_hosted_records": 3',
         '"git_hosted_records": 4',
-        '"git_hosted_records": 5',
         "updated Flutter Git dependency inventory",
     ),
     (
         "dependency_inventory",
+        '"rustdesk_org_git_records": 2',
         '"rustdesk_org_git_records": 3',
-        '"rustdesk_org_git_records": 4',
         "updated RustDesk Git dependency inventory",
     ),
     ("model", "clientOwnerId = isMobile ? _mobileClientOwnerId : Uuid().v4obj();", "clientOwnerId = isMobile ? _mobileClientOwnerId : sessionId;", "fresh desktop UI owner"),

@@ -30,7 +30,7 @@ HEX_SHA256_PATTERN = re.compile(r"[0-9a-f]{64}")
 VERSION_PATTERN = re.compile(r"[0-9]+(?:\.[0-9]+){2,3}")
 CHECKOUT_PATTERN = re.compile(r".+-([0-9a-f]{40}|[0-9a-f]{64})")
 BARE_CACHE_PATTERN = re.compile(r".+-[0-9a-f]{40}")
-EXPECTED_GIT_DEPENDENCIES = 4
+EXPECTED_GIT_DEPENDENCIES = 3
 ALLOWED_LEGACY_TOP_LEVEL = {"_temp", "log", "README.md"}
 TREE_LIMITS = (100_000, 30_000, 4 * 1024**3, 256 * 1024**2, 32)
 FORBIDDEN_MODE_BITS = stat.S_ISUID | stat.S_ISGID | stat.S_ISVTX
@@ -545,7 +545,7 @@ def validate_shape(
         len(checkout_entries) != expected_git_dependencies
         or len(bare_entries) != expected_git_dependencies
     ):
-        fail("Pub cache does not contain the exact four locked Git dependencies")
+        fail("Pub cache does not contain the exact three locked Git dependencies")
     for entry in checkout_entries:
         if (
             not entry.is_dir(follow_symlinks=False)

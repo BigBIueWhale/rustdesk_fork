@@ -603,6 +603,10 @@ CFG
     VIEWER_PID= VIEWER_START=
     [ "$viewer_status" -eq 0 ] \
       || { cat /tmp/viewer.log >&2; fail "viewer exited $viewer_status"; }
+    if grep -qF 'FlBinaryMessenger without an engine' /tmp/viewer.log; then
+      cat /tmp/viewer.log >&2
+      fail 'viewer used a Flutter messenger after engine retirement'
+    fi
     listener_is_exact || fail 'viewer lifecycle changed the exact server listener'
     [ "$(udp_socket_count)" -eq 0 ] || fail 'viewer lifecycle opened a UDP socket'
     "$READY" --stop "$XVFB_PID" "$XVFB_START"

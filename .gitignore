@@ -14,6 +14,10 @@ __pycache__
 cert.pfx
 *.bak
 *png
+!flutter/third_party/window_manager/images/ic_chrome_close.png
+!flutter/third_party/window_manager/images/ic_chrome_maximize.png
+!flutter/third_party/window_manager/images/ic_chrome_minimize.png
+!flutter/third_party/window_manager/images/ic_chrome_unmaximize.png
 *svg
 *jpg
 sciter.dll

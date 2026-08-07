@@ -205,10 +205,12 @@ def validate_contract(sources: Dict[str, str]) -> None:
             'grep -qE "GpuTexture|gpu_texture|AdapterLuid|adapter_luid|mainHasHwcodec|mainHasVram|main_has_hwcodec|main_has_vram"',
             'DART-VERIFY: FAILED — freshly generated bridge retained the retired GPU/VRAM presentation surface',
             'flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings lib/',
-            'flutter analyze --no-pub \\\n'
+            'flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings \\\n'
             '      third_party/texture_rgba_renderer/lib/',
-            'flutter analyze --no-pub \\\n'
+            'flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings \\\n'
             '      third_party/desktop_multi_window/lib/',
+            'flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings \\\n'
+            '      third_party/window_manager/lib/',
             'analyze_status=$?',
             'if [ "$analyze_status" -ne 0 ] || [ "$errs" != "0" ]; then',
             'flutter test --no-pub test/address_validator_test.dart',
@@ -256,6 +258,29 @@ def validate_contract(sources: Dict[str, str]) -> None:
             "'/tmp/url_launcher_upstream_test >/tmp/url_launcher_upstream.out 2>&1'",
             "'[ \"$upstream_status\" -eq 1 ]'",
             "'FAIL: shutdown did not perform exactly one terminal reset per URL channel'",
+            '"$window_manager/test/window_manager_shutdown_test.cc"',
+            '\n    /tmp/window_manager_shutdown_test\n',
+            '"$window_manager/test/window_manager_shutdown_test.cc" \\\n'
+            '      /tmp/window_manager_guard_disabled.cc',
+            "'[ \"$guard_disabled_status\" -eq 1 ]'",
+            "'FAIL: destroyed-window call was not rejected'",
+            "grep -qF 'third_party/window_manager/** -text' flutter/.gitattributes",
+            "grep -qF 'path: third_party/window_manager' flutter/pubspec.yaml",
+            "grep -qxF \"!flutter/third_party/window_manager/$asset\" .gitignore",
+            "'images/ic_chrome_close.png'",
+            "'images/ic_chrome_maximize.png'",
+            "'images/ic_chrome_minimize.png'",
+            "'images/ic_chrome_unmaximize.png'",
+            "sha256sum -c - <<'EOF'",
+            "70fe0130bbbd928d04cd33a49ecde422ec54fd748b7a4e983f4e31be6e73f5f5  images/ic_chrome_close.png",
+            "93f2ed012ec01288b78ad4816ef254261e9ff25e8a9858359b45431c9a5de5f4  images/ic_chrome_maximize.png",
+            "0976edbb9977136544af17de125f345a41065694de92036d9365817ea6d8f05a  images/ic_chrome_minimize.png",
+            "3d375930c514ec2ebc0603ad1e1398b4daf458951042a97232d16f17e1c9603b  images/ic_chrome_unmaximize.png",
+            "'messenger->handler_sets_during_shutdown == 0'",
+            "'g_object_add_weak_pointer(G_OBJECT(weak_plugin), &weak_plugin);'",
+            "'g_strcmp0(code, \"window_unavailable\") == 0'",
+            "'Timer? _initialMaximizedTimer;'",
+            "'_initialMaximizedTimer?.cancel();'",
             '--env "RUSTDESK_RUST_VERSION=$RUST_VERSION"',
             'tar -C "$toolchain" -xf "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz"',
             '--components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview',
@@ -277,6 +302,10 @@ def validate_contract(sources: Dict[str, str]) -> None:
     require(
         dart.count('[ "$upstream_status" -eq 1 ]') == 2,
         "exact stock URL-launcher rejection must appear once in execution and once in its source gate",
+    )
+    require(
+        dart.count('[ "$guard_disabled_status" -eq 1 ]') == 2,
+        "window-manager guard-disabled rejection must appear once in execution and once in its source gate",
     )
     require(
         dart.index('initialize_local_docker_authority "$WORKSPACE/docker-config" "dart-verify"')
@@ -314,10 +343,12 @@ def validate_contract(sources: Dict[str, str]) -> None:
         "Flutter tool dependencies are not explicitly resolved offline before analyzer launch",
     )
     require(
-        dart.index('flutter analyze --no-pub \\\n'
+        dart.index('flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings \\\n'
                    '      third_party/texture_rgba_renderer/lib/')
-        < dart.index('flutter analyze --no-pub \\\n'
+        < dart.index('flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings \\\n'
                      '      third_party/desktop_multi_window/lib/')
+        < dart.index('flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings \\\n'
+                     '      third_party/window_manager/lib/')
         < dart.index('flutter test --no-pub test/address_validator_test.dart'),
         "vendored plugin analysis is not complete before focused Flutter tests",
     )
@@ -327,6 +358,14 @@ def validate_contract(sources: Dict[str, str]) -> None:
         < dart.index("'gboolean destroyWindowWhenIdle(gpointer data)'")
         < dart.index("if grep -qF 'callback->OnWindowDestroy(self->id_);'"),
         "desktop multi-window source gate is incomplete or misordered",
+    )
+    require(
+        dart.index('"$window_manager/test/window_manager_shutdown_test.cc"')
+        < dart.index('\n    /tmp/window_manager_shutdown_test\n')
+        < dart.index('/tmp/window_manager_guard_disabled.cc')
+        < dart.index('[ "$guard_disabled_status" -eq 1 ]')
+        < dart.index("FAIL: destroyed-window call was not rejected"),
+        "window-manager behavior and negative-control gate is incomplete or misordered",
     )
     require(
         dart.index('flutter test --no-pub test/address_validator_test.dart')
@@ -789,17 +828,24 @@ MUTATIONS = (
     ),
     Mutation(
         "dart",
-        'flutter analyze --no-pub \\\n'
+        'flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings \\\n'
         '      third_party/texture_rgba_renderer/lib/',
         "true # in-tree native RGBA Dart wrapper analysis disabled",
         "in-tree native RGBA Dart wrapper analysis",
     ),
     Mutation(
         "dart",
-        'flutter analyze --no-pub \\\n'
+        'flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings \\\n'
         '      third_party/desktop_multi_window/lib/',
         "true # vendored desktop multi-window Dart analysis disabled",
         "vendored desktop multi-window Dart analysis",
+    ),
+    Mutation(
+        "dart",
+        'flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings \\\n'
+        '      third_party/window_manager/lib/',
+        "true # vendored window-manager Dart analysis disabled",
+        "vendored window-manager Dart analysis",
     ),
     Mutation(
         "dart",
@@ -898,6 +944,74 @@ MUTATIONS = (
         '    [ "$upstream_status" -eq 0 ] \\\n'
         '      || { echo "  FAIL URL launcher: exact stock disposal unexpectedly passed or crashed"; exit 1; }',
         "exact stock URL-launcher rejection",
+    ),
+    Mutation(
+        "dart",
+        '\n    /tmp/window_manager_shutdown_test\n',
+        '\n    true # window-manager shutdown test disabled\n',
+        "window-manager native shutdown behavior gate",
+    ),
+    Mutation(
+        "dart",
+        '    [ "$guard_disabled_status" -eq 1 ] \\\n'
+        '      || { echo "  FAIL window manager: guard-disabled source unexpectedly passed or crashed"; exit 1; }',
+        '    [ "$guard_disabled_status" -eq 0 ] \\\n'
+        '      || { echo "  FAIL window manager: guard-disabled source unexpectedly passed or crashed"; exit 1; }',
+        "window-manager guard-removed negative control",
+    ),
+    Mutation(
+        "dart",
+        "grep -qF 'third_party/window_manager/** -text' flutter/.gitattributes",
+        "true # window-manager byte-preservation gate disabled",
+        "vendored window-manager byte preservation",
+    ),
+    Mutation(
+        "dart",
+        "grep -qF 'path: third_party/window_manager' flutter/pubspec.yaml",
+        "true # window-manager path override accepted absent",
+        "vendored window-manager dependency source gate",
+    ),
+    Mutation(
+        "dart",
+        'grep -qxF "!flutter/third_party/window_manager/$asset" .gitignore',
+        "true # ignored window-manager assets accepted",
+        "vendored window-manager asset inventory",
+    ),
+    Mutation(
+        "dart",
+        "70fe0130bbbd928d04cd33a49ecde422ec54fd748b7a4e983f4e31be6e73f5f5  images/ic_chrome_close.png",
+        "00fe0130bbbd928d04cd33a49ecde422ec54fd748b7a4e983f4e31be6e73f5f5  images/ic_chrome_close.png",
+        "vendored window-manager close asset identity",
+    ),
+    Mutation(
+        "dart",
+        "93f2ed012ec01288b78ad4816ef254261e9ff25e8a9858359b45431c9a5de5f4  images/ic_chrome_maximize.png",
+        "00f2ed012ec01288b78ad4816ef254261e9ff25e8a9858359b45431c9a5de5f4  images/ic_chrome_maximize.png",
+        "vendored window-manager maximize asset identity",
+    ),
+    Mutation(
+        "dart",
+        "0976edbb9977136544af17de125f345a41065694de92036d9365817ea6d8f05a  images/ic_chrome_minimize.png",
+        "0076edbb9977136544af17de125f345a41065694de92036d9365817ea6d8f05a  images/ic_chrome_minimize.png",
+        "vendored window-manager minimize asset identity",
+    ),
+    Mutation(
+        "dart",
+        "3d375930c514ec2ebc0603ad1e1398b4daf458951042a97232d16f17e1c9603b  images/ic_chrome_unmaximize.png",
+        "00375930c514ec2ebc0603ad1e1398b4daf458951042a97232d16f17e1c9603b  images/ic_chrome_unmaximize.png",
+        "vendored window-manager unmaximize asset identity",
+    ),
+    Mutation(
+        "dart",
+        "  'g_object_add_weak_pointer(G_OBJECT(weak_plugin), &weak_plugin);' \\\n",
+        "  'g_object_add_weak_pointer(G_OBJECT(messenger), &weak_plugin);' \\\n",
+        "direct window-manager plugin release witness source gate",
+    ),
+    Mutation(
+        "dart",
+        "  '_initialMaximizedTimer?.cancel();' \\\n",
+        "  '_initialMaximizedTimer?.isActive;' \\\n",
+        "delayed window-manager query cancellation source gate",
     ),
     Mutation(
         "dart",

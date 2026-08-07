@@ -330,6 +330,7 @@ class DesktopTab extends StatefulWidget {
 // ignore: must_be_immutable
 class _DesktopTabState extends State<DesktopTab>
     with MultiWindowListener, WindowListener {
+  Timer? _initialMaximizedTimer;
   Timer? _macOSCheckRestoreTimer;
   int _macOSCheckRestoreCounter = 0;
 
@@ -376,31 +377,40 @@ class _DesktopTabState extends State<DesktopTab>
     DesktopMultiWindow.addListener(this);
     windowManager.addListener(this);
 
-    Future.delayed(Duration(milliseconds: 500), () {
-      if (isMainWindow) {
-        windowManager.isMaximized().then((maximized) {
-          if (stateGlobal.isMaximized.value != maximized) {
-            WidgetsBinding.instance.addPostFrameCallback(
-                (_) => setState(() => stateGlobal.setMaximized(maximized)));
-          }
-        });
-      } else {
-        final wc = WindowController.fromWindowId(kWindowId!);
-        wc.isMaximized().then((maximized) {
-          debugPrint("isMaximized $maximized");
-          if (stateGlobal.isMaximized.value != maximized) {
-            WidgetsBinding.instance.addPostFrameCallback(
-                (_) => setState(() => stateGlobal.setMaximized(maximized)));
-          }
-        });
-      }
+    _initialMaximizedTimer = Timer(Duration(milliseconds: 500), () {
+      _syncInitialMaximizedState();
     });
+  }
+
+  Future<void> _syncInitialMaximizedState() async {
+    try {
+      final bool maximized;
+      if (isMainWindow) {
+        maximized = await windowManager.isMaximized();
+      } else {
+        maximized =
+            await WindowController.fromWindowId(kWindowId!).isMaximized();
+        debugPrint("isMaximized $maximized");
+      }
+      if (!mounted || stateGlobal.isMaximized.value == maximized) {
+        return;
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() => stateGlobal.setMaximized(maximized));
+        }
+      });
+    } catch (e) {
+      debugPrint('Failed to read initial maximized state: $e');
+    }
   }
 
   @override
   void dispose() {
     DesktopMultiWindow.removeListener(this);
     windowManager.removeListener(this);
+    _initialMaximizedTimer?.cancel();
+    _initialMaximizedTimer = null;
     _macOSCheckRestoreTimer?.cancel();
     super.dispose();
   }
@@ -647,7 +657,9 @@ class _DesktopTabState extends State<DesktopTab>
                               .then((value) => stateGlobal.setMaximized(value));
                         }
                       }
-                    : (isIncomingHomePage ? () {} : null), // Keep tap recognizer for Windows touch.
+                    : (isIncomingHomePage
+                        ? () {}
+                        : null), // Keep tap recognizer for Windows touch.
                 onPanStart: (_) => startDragging(isMainWindow),
                 onPanCancel: () {
                   // We want to disable dragging of the tab area in the tab bar.

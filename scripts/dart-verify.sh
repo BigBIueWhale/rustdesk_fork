@@ -190,6 +190,7 @@ local_docker run --rm --pull=never --network=none --read-only \
       lib/models/rgba_publication_order.dart \
       lib/desktop/pages/remote_page.dart \
       lib/desktop/pages/view_camera_page.dart \
+      lib/desktop/widgets/tabbar_widget.dart \
       lib/mobile/pages/remote_page.dart \
       lib/mobile/pages/view_camera_page.dart \
       lib/web/bridge.dart \
@@ -215,10 +216,12 @@ local_docker run --rm --pull=never --network=none --read-only \
       echo "DART-VERIFY: FAILED — flutter analyze exited $analyze_status with $errs error diagnostic(s) in lib/" >&2
       exit 1
     fi
-    flutter analyze --no-pub \
+    flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings \
       third_party/texture_rgba_renderer/lib/
-    flutter analyze --no-pub \
+    flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings \
       third_party/desktop_multi_window/lib/
+    flutter analyze --no-pub --no-fatal-infos --no-fatal-warnings \
+      third_party/window_manager/lib/
     echo "  == R-SV10 flutter test: address_validator (bare-ID rejection) =="
     flutter test --no-pub test/address_validator_test.dart
     echo "  == R-G9 flutter test: saved-peer serialization contract =="
@@ -285,6 +288,53 @@ local_docker run --rm --pull=never --network=none --read-only \
     grep -qF 'FAIL: shutdown did not perform exactly one terminal reset per URL channel' \
       /tmp/url_launcher_upstream.out \
       || { echo "  FAIL URL launcher: exact stock disposal failed for the wrong reason"; exit 1; }
+    echo "  == Linux window-manager rejects calls after its GTK window is destroyed =="
+    window_manager=/src/flutter/third_party/window_manager/linux
+    c++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter \
+      -I"$engine" -I"$window_manager" -I"$window_manager/include" \
+      "$window_manager/test/window_manager_shutdown_test.cc" \
+      "$window_manager/window_manager_plugin.cc" \
+      -L"$engine" -Wl,-rpath,"$engine" -lflutter_linux_gtk \
+      $(pkg-config --cflags --libs gtk+-3.0) \
+      -o /tmp/window_manager_shutdown_test
+    /tmp/window_manager_shutdown_test
+    echo "  == removing the destroyed-window guard is rejected by the same regression =="
+    cp "$window_manager/window_manager_plugin.cc" /tmp/window_manager_guard_disabled.cc
+    python3 -I -S - /tmp/window_manager_guard_disabled.cc <<PY
+import pathlib
+import sys
+
+path = pathlib.Path(sys.argv[1])
+source = path.read_text(encoding="utf-8")
+guard = """  if (get_window(self) == nullptr) {
+    response = FL_METHOD_RESPONSE(fl_method_error_response_new(
+        "window_unavailable", "The native window has already been destroyed.",
+        nullptr));
+    fl_method_call_respond(method_call, response, nullptr);
+    return;
+  }
+"""
+if source.count(guard) != 1:
+    raise SystemExit("window-manager guard mutation cardinality differs")
+path.write_text(source.replace(guard, "", 1), encoding="utf-8")
+PY
+    c++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter \
+      -I"$engine" -I"$window_manager" -I"$window_manager/include" \
+      "$window_manager/test/window_manager_shutdown_test.cc" \
+      /tmp/window_manager_guard_disabled.cc \
+      -L"$engine" -Wl,-rpath,"$engine" -lflutter_linux_gtk \
+      $(pkg-config --cflags --libs gtk+-3.0) \
+      -o /tmp/window_manager_guard_disabled_test
+    set +e
+    /tmp/window_manager_guard_disabled_test \
+      >/tmp/window_manager_guard_disabled.out 2>&1
+    guard_disabled_status=$?
+    set -e
+    [ "$guard_disabled_status" -eq 1 ] \
+      || { echo "  FAIL window manager: guard-disabled source unexpectedly passed or crashed"; exit 1; }
+    grep -qF 'FAIL: destroyed-window call was not rejected' \
+      /tmp/window_manager_guard_disabled.out \
+      || { echo "  FAIL window manager: guard-disabled source failed for the wrong reason"; exit 1; }
     echo "  == R-S11ez portable Windows texture callback-core retirement finality =="
     windows_plugin=/src/flutter/third_party/texture_rgba_renderer/windows
     c++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter \
@@ -606,6 +656,79 @@ for token in \
     || { echo "  FAIL URL launcher: missing exact-stock negative control: $token"; exit 1; }
 done
 echo "  ok  Linux URL-launcher shutdown has one non-recursive handler owner"
+
+echo "== Linux window-manager callbacks stop at GTK window destruction =="
+window_manager=flutter/third_party/window_manager
+grep -qF 'third_party/window_manager/** -text' flutter/.gitattributes \
+  || { echo "  FAIL window manager: vendored bytes are subject to text conversion"; exit 1; }
+grep -qF 'path: third_party/window_manager' flutter/pubspec.yaml \
+  || { echo "  FAIL window manager: override does not use the vendored plugin"; exit 1; }
+grep -qF 'path: "third_party/window_manager"' flutter/pubspec.lock \
+  || { echo "  FAIL window manager: lockfile does not bind the vendored plugin"; exit 1; }
+for asset in \
+  'images/ic_chrome_close.png' \
+  'images/ic_chrome_maximize.png' \
+  'images/ic_chrome_minimize.png' \
+  'images/ic_chrome_unmaximize.png'; do
+  grep -qxF "!flutter/third_party/window_manager/$asset" .gitignore \
+    || { echo "  FAIL window manager: shipped asset remains ignored: $asset"; exit 1; }
+done
+(
+  cd "$window_manager"
+  sha256sum -c - <<'EOF'
+70fe0130bbbd928d04cd33a49ecde422ec54fd748b7a4e983f4e31be6e73f5f5  images/ic_chrome_close.png
+93f2ed012ec01288b78ad4816ef254261e9ff25e8a9858359b45431c9a5de5f4  images/ic_chrome_maximize.png
+0976edbb9977136544af17de125f345a41065694de92036d9365817ea6d8f05a  images/ic_chrome_minimize.png
+3d375930c514ec2ebc0603ad1e1398b4daf458951042a97232d16f17e1c9603b  images/ic_chrome_unmaximize.png
+EOF
+) || { echo "  FAIL window manager: shipped asset identity mismatch"; exit 1; }
+for token in \
+  '85789bfe6e4cfaf4ecc00c52857467fdb7f26879' \
+  '9627e63c85411da995da37cb7cd6d392766a509d' \
+  '5b2a562f2e853cde3661468aea2a38fc9d1abef5e2fbd3befbc86831a7f7cd87'; do
+  grep -qF "$token" "$window_manager/UPSTREAM.md" \
+    || { echo "  FAIL window manager: exact upstream provenance is absent: $token"; exit 1; }
+done
+for token in \
+  'GtkWindow* window;' \
+  'gulong button_press_emission_hook;' \
+  'g_signal_connect(window, "destroy", G_CALLBACK(on_window_destroy), plugin);' \
+  'plugin->window = nullptr;' \
+  '"window_unavailable"' \
+  'g_signal_handlers_disconnect_by_data(self->window, self);' \
+  'g_clear_object(&self->channel);' \
+  'g_clear_object(&self->registrar);'; do
+  grep -qF "$token" "$window_manager/linux/window_manager_plugin.cc" \
+    || { echo "  FAIL window manager: missing native lifetime edge: $token"; exit 1; }
+done
+for token in \
+  'gpointer weak_plugin =' \
+  'window_manager_plugin_register_with_registrar_for_window(' \
+  'g_object_add_weak_pointer(G_OBJECT(weak_plugin), &weak_plugin);' \
+  'messenger->handler_sets_during_shutdown == 0' \
+  'FL_IS_METHOD_ERROR_RESPONSE(response)' \
+  'g_strcmp0(code, "window_unavailable") == 0' \
+  'weak_plugin == nullptr'; do
+  grep -qF "$token" "$window_manager/linux/test/window_manager_shutdown_test.cc" \
+    || { echo "  FAIL window manager: missing native regression edge: $token"; exit 1; }
+done
+for token in \
+  '/tmp/window_manager_shutdown_test' \
+  '/tmp/window_manager_guard_disabled_test' \
+  '[ "$guard_disabled_status" -eq 1 ]' \
+  'FAIL: destroyed-window call was not rejected'; do
+  grep -qF "$token" scripts/dart-verify.sh \
+    || { echo "  FAIL window manager: missing confined behavior gate: $token"; exit 1; }
+done
+for token in \
+  'Timer? _initialMaximizedTimer;' \
+  '_initialMaximizedTimer?.cancel();' \
+  'if (!mounted || stateGlobal.isMaximized.value == maximized)' \
+  'if (mounted) {'; do
+  grep -qF "$token" flutter/lib/desktop/widgets/tabbar_widget.dart \
+    || { echo "  FAIL window manager: delayed Dart callback outlives its widget: $token"; exit 1; }
+done
+echo "  ok  Linux window-manager callbacks stop at GTK window destruction"
 
 # R-G2/R-SV5: numeric IDs are not viewer identities. Keep the authored Flutter API, connect choke
 # point, autocomplete, and peer rendering on one exact direct-address model. In particular, never

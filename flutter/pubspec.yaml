@@ -113,6 +113,8 @@ dependency_overrides:
   flutter_plugin_android_lifecycle: 2.0.17
   url_launcher_linux:
     path: third_party/url_launcher_linux
+  window_manager:
+    path: third_party/window_manager
 
 # rerun: flutter pub run flutter_launcher_icons
 flutter_icons:

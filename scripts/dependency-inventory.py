@@ -43,7 +43,7 @@ EXPECTED = {
         "git_source_identities_sha256": "c4502af3f4c24f3d2c536bb4d39b2e85831450a838fa890140e1238ab3a91e24",
         "git_sourced_records": 36,
         "package_records": 898,
-        "package_records_sha256": "3d4fc3d3af0c676c480ef5cd2be70888661a4672e231779a83d4ae59188f9800",
+        "package_records_sha256": "049b991b9ac1687dde7ffef3f0b7cb4eb59740b8d907b7f46132432d67e12861",
         "rustdesk_org_git_records": 26,
         "unique_git_source_urls": 26,
     },
@@ -123,17 +123,16 @@ EXPECTED = {
         "union_entries": 63,
     },
     "flutter_pubspec_lock": {
-        "git_hosted_records": 4,
-        "git_record_identities_sha256": "69dc55197788011c066e34e99755f59c607876501d2dbf6355628bfe32d8a63b",
+        "git_hosted_records": 3,
+        "git_record_identities_sha256": "b10d9865713f31cd55882387ddb5934e610a6f63806e8ac3dc308feb498cf042",
         "git_source_identities": {
             "dash_chat_2": "https://github.com/rustdesk-org/dash-chat-2",
             "dynamic_layouts": "https://github.com/rustdesk-org/dynamic_layouts",
-            "window_manager": "https://github.com/rustdesk-org/window_manager",
             "window_size": "https://github.com/google/flutter-desktop-embedding",
         },
         "package_records": 198,
-        "package_records_sha256": "4c99be9bed16669399668ccbcdc45111b1bcaf1a195ff9fa05d37b4d38111f3e",
-        "rustdesk_org_git_records": 3,
+        "package_records_sha256": "faae98ba54c85f346ce6592b47f22ce897c05ff071e2b4c53b2c17a232ce813f",
+        "rustdesk_org_git_records": 2,
     },
     "github_workflows": {
         "disabled_workflow_definition_files": [

@@ -1504,11 +1504,9 @@ packages:
   window_manager:
     dependency: "direct main"
     description:
-      path: "."
-      ref: "85789bfe6e4cfaf4ecc00c52857467fdb7f26879"
-      resolved-ref: "85789bfe6e4cfaf4ecc00c52857467fdb7f26879"
-      url: "https://github.com/rustdesk-org/window_manager"
-    source: git
+      path: "third_party/window_manager"
+      relative: true
+    source: path
     version: "0.3.6"
   window_size:
     dependency: "direct main"

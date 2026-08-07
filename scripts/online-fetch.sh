@@ -3227,10 +3227,9 @@ verify_pub_cache_resolution() {
         git_specs=(
           "dash_chat_2|bd6b5b41254e57c5bcece202ebfb234de63e6487|.|https://github.com/rustdesk-org/Dash-Chat-2"
           "dynamic_layouts|24cb88413fa5181d949ddacbb30a65d5c459e7d9|.|https://github.com/rustdesk-org/dynamic_layouts.git"
-          "window_manager|85789bfe6e4cfaf4ecc00c52857467fdb7f26879|.|https://github.com/rustdesk-org/window_manager"
           "window_size|eb3964990cf19629c89ff8cb4a37640c7b3d5601|plugins/window_size|https://github.com/google/flutter-desktop-embedding.git"
         )
-        [ "${#git_specs[@]}" -eq 4 ]
+        [ "${#git_specs[@]}" -eq 3 ]
         for spec in "${git_specs[@]}"; do
             IFS="|" read -r package resolved package_path url <<<"$spec"
             checkouts=(/online/pub-cache/git/*-"$resolved")

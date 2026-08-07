@@ -125,6 +125,39 @@ start_xvfb() {
     "Flutter peer presentation Xvfb $display stability"
 }
 
+emit_runtime_logs() {
+  local label=$1 root=$2 path metadata uid gid mode size links files=0 bytes=0
+  [[ "$label" =~ ^[A-Z]+$ ]] || fail 'runtime-log diagnostic label is malformed'
+  if [ ! -e "$root" ]; then
+    printf 'FLUTTER_PEER_%s_FILE_LOGS_ABSENT\n' "$label" >&2
+    return
+  fi
+  [ -d "$root" ] && [ ! -L "$root" ] \
+    || fail 'runtime-log diagnostic root is not one real directory'
+  while IFS= read -r -d '' path; do
+    [ -f "$path" ] && [ ! -L "$path" ] \
+      || fail 'runtime-log diagnostic selected a non-regular file'
+    metadata="$(stat -c '%u %g %a %s %h' "$path")"
+    read -r uid gid mode size links <<<"$metadata"
+    [ "$uid:$gid" = "$(id -u):$(id -g)" ] \
+      && [[ "$mode" =~ ^[0-7]{3,4}$ ]] \
+      && [ $((8#$mode & 0022)) -eq 0 ] \
+      && [[ "$size" =~ ^[0-9]+$ ]] \
+      && [ "$links" = 1 ] \
+      || fail 'runtime-log diagnostic file metadata differs'
+    files=$((files + 1))
+    bytes=$((bytes + size))
+    [ "$files" -le 16 ] && [ "$size" -le 8388608 ] && [ "$bytes" -le 33554432 ] \
+      || fail 'runtime-log diagnostic exceeds its exact bounds'
+    printf 'FLUTTER_PEER_%s_FILE_LOG_BEGIN path=%s bytes=%s\n' \
+      "$label" "${path#"$root"/}" "$size" >&2
+    cat -- "$path" >&2
+    printf 'FLUTTER_PEER_%s_FILE_LOG_END\n' "$label" >&2
+  done < <(find "$root" -xdev -mindepth 1 -maxdepth 5 -type f -print0 | sort -z)
+  [ "$files" -gt 0 ] \
+    || printf 'FLUTTER_PEER_%s_FILE_LOGS_EMPTY\n' "$label" >&2
+}
+
 TCP6_TABLE=
 [ ! -r /proc/net/tcp6 ] || TCP6_TABLE=/proc/net/tcp6
 UDP6_TABLE=
@@ -463,6 +496,7 @@ CFG
     if [ "$(<"$COORD/stop")" != viewer-complete ]; then
       echo 'FLUTTER_PEER_SERVER_DIAGNOSTIC_BEGIN' >&2
       cat /tmp/server.log >&2
+      emit_runtime_logs SERVER "$HOME/.local/share/logs"
       echo 'FLUTTER_PEER_SERVER_DIAGNOSTIC_END' >&2
     fi
     "$READY" --stop "$SOURCE_PID" "$SOURCE_START"
@@ -546,6 +580,7 @@ CFG
     if [ "$controller_status" -ne 0 ]; then
       cat /tmp/viewer.log >&2 || true
       cat /tmp/viewer-xvfb.log >&2 || true
+      emit_runtime_logs VIEWER "$HOME/.local/share/logs"
       exit "$controller_status"
     fi
     grep -q '^FLUTTER_PEER_PASSWORD_PROMPT_OK accessible=true retired=true typed_via_xtest=true argv_password=false$' \

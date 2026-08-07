@@ -322,9 +322,26 @@ def validate(sources: dict[str, str]) -> None:
             'if [ "$(<"$COORD/stop")" != viewer-complete ]; then',
             "FLUTTER_PEER_SERVER_DIAGNOSTIC_BEGIN",
             "cat /tmp/server.log >&2",
+            'emit_runtime_logs SERVER "$HOME/.local/share/logs"',
             "FLUTTER_PEER_SERVER_DIAGNOSTIC_END",
         ),
         "failed-viewer server diagnostic",
+    )
+    require_order(
+        stage,
+        (
+            "emit_runtime_logs() {",
+            "runtime-log diagnostic selected a non-regular file",
+            "runtime-log diagnostic file metadata differs",
+            "runtime-log diagnostic exceeds its exact bounds",
+            "cat -- \"$path\" >&2",
+        ),
+        "bounded owned runtime-file diagnostics",
+    )
+    require(
+        stage,
+        'emit_runtime_logs VIEWER "$HOME/.local/share/logs"',
+        "failed-viewer file diagnostics",
     )
     forbid(stage, '"$APP" --connect 127.0.0.1 --password', "connect password argv")
     forbid(stage, "RUSTDESK_PASSWORD", "password environment variable")
@@ -860,6 +877,8 @@ MUTATIONS = (
     ("stage", 'LD_PRELOAD="$BIND_SHIM" RUST_LOG=info exec "$APP" --server', 'RUST_LOG=info exec "$APP" --server'),
     ("stage", 'RUST_LOG=info exec "$APP" --connect 127.0.0.1', 'exec "$APP" --connect 127.0.0.1'),
     ("stage", "FLUTTER_PEER_SERVER_DIAGNOSTIC_BEGIN", "FLUTTER_PEER_SERVER_DIAGNOSTIC_OMITTED"),
+    ("stage", "runtime-log diagnostic exceeds its exact bounds", "runtime-log diagnostic bounds omitted"),
+    ("stage", 'emit_runtime_logs VIEWER "$HOME/.local/share/logs"', 'true # viewer file diagnostics omitted'),
     ("stage", 'wait_process_maps_exact_file "$SERVER_PID" "$SERVER_START" "$BIND_SHIM"', "true # mapped shim unproved"),
     ("bind_shim", "ntohs(rewritten.sin_port) == 21118", "ntohs(rewritten.sin_port) == 21119"),
     ("bind_shim", "return fn(sockfd, addr, addrlen);", "return fn(sockfd, (const struct sockaddr *)&rewritten, sizeof(rewritten));"),

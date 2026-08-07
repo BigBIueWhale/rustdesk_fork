@@ -27,8 +27,6 @@ readonly CREATE_TIMEOUT_SECONDS=300
 readonly CONTROL_TIMEOUT_SECONDS=30
 readonly PROCESS_ADMISSION_SECONDS=10
 readonly PROCESS_STOP_SECONDS=10
-readonly DESKTOP_MULTI_WINDOW_COMMIT=b47e8385e5a75d38319ad706a64b0ead3108b093
-readonly DESKTOP_MULTI_WINDOW_TREE=ee184480a0e519b9f51f7496d3d90674782481d6
 readonly WINDOW_SIZE_COMMIT=eb3964990cf19629c89ff8cb4a37640c7b3d5601
 readonly WINDOW_SIZE_TREE=c1b4ec4f759387d00f1024ce539487242cd7ae1a
 
@@ -392,8 +390,8 @@ preflight() {
 }
 
 materialize_source() {
-    local desktop_multi_window_repo window_size_repo actual_tree media_output
-    local -a dep_repos=() window_size_repos=()
+    local vendored_window_source window_size_repo actual_tree media_output
+    local -a window_size_repos=()
     mkdir -m 0700 "$SOURCE_ROOT"
     git -C "$REPO_ROOT" archive --format=tar "$SOURCE_COMMIT" -- \
         scripts/run-flutter-presentation-windows.ps1 \
@@ -406,6 +404,7 @@ materialize_source() {
         scripts/flutter-presentation-probe-window-size-pubspec.yaml \
         scripts/windows-presentation-source-manifest.py \
         flutter/lib/models/presentation_recovery.dart \
+        flutter/third_party/desktop_multi_window \
         flutter/third_party/texture_rgba_renderer \
         | tar -x -C "$SOURCE_ROOT"
     cp -- "$SOURCE_ROOT/scripts/run-flutter-presentation-windows.ps1" \
@@ -413,30 +412,13 @@ materialize_source() {
     cmp -s -- "$SOURCE_ROOT/run-build.ps1" \
         "$SOURCE_ROOT/scripts/run-flutter-presentation-windows.ps1" \
         || die "generated presentation root runner differs from its source"
-    mapfile -d '' dep_repos < <(
-        find "$ONLINE_DIR/pub-cache/git/cache" -mindepth 1 -maxdepth 1 -type d \
-            -name 'rustdesk_desktop_multi_window-*' -print0
-    )
-    [ "${#dep_repos[@]}" = 1 ] \
-        || die "pinned desktop_multi_window bare repository count is not exactly one"
-    desktop_multi_window_repo="${dep_repos[0]}"
-    [ "$(git -c safe.directory="$desktop_multi_window_repo" -C "$desktop_multi_window_repo" \
-        rev-parse "$DESKTOP_MULTI_WINDOW_COMMIT")" = \
-        "$DESKTOP_MULTI_WINDOW_COMMIT" ] \
-        || die "desktop_multi_window commit is absent from its offline repository"
-    actual_tree="$(git -c safe.directory="$desktop_multi_window_repo" -C "$desktop_multi_window_repo" \
-        rev-parse "$DESKTOP_MULTI_WINDOW_COMMIT^{tree}")"
-    [ "$actual_tree" = "$DESKTOP_MULTI_WINDOW_TREE" ] \
-        || die "desktop_multi_window commit has an unexpected tree"
-    mkdir -p "$SOURCE_ROOT/third_party/desktop_multi_window"
-    git -c safe.directory="$desktop_multi_window_repo" -C "$desktop_multi_window_repo" \
-        archive --format=tar "$DESKTOP_MULTI_WINDOW_COMMIT" \
-        | tar -x -C "$SOURCE_ROOT/third_party/desktop_multi_window"
+    vendored_window_source="$SOURCE_ROOT/flutter/third_party/desktop_multi_window"
+    [ -d "$vendored_window_source" ] && [ ! -L "$vendored_window_source" ] \
+        || die "exact-commit vendored desktop_multi_window source is absent or symlinked"
+    mkdir -p "$SOURCE_ROOT/third_party"
+    mv -- "$vendored_window_source" "$SOURCE_ROOT/third_party/desktop_multi_window"
     cp -- "$SOURCE_ROOT/scripts/flutter-presentation-probe-desktop-multi-window-pubspec.yaml" \
         "$SOURCE_ROOT/third_party/desktop_multi_window/pubspec.yaml"
-    printf '{"commit":"%s","tree":"%s"}\n' \
-        "$DESKTOP_MULTI_WINDOW_COMMIT" "$DESKTOP_MULTI_WINDOW_TREE" \
-        >"$SOURCE_ROOT/third_party/desktop_multi_window/.rustdesk-source-identity.json"
 
     mapfile -d '' window_size_repos < <(
         find "$ONLINE_DIR/pub-cache/git/cache" -mindepth 1 -maxdepth 1 -type d \

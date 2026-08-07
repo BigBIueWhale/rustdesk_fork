@@ -16384,12 +16384,27 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   into successful evidence. Attempt failure remains diagnostic data: it cannot relax, replace, or manufacture
   the real Flutter compositor/pixel/focus transaction verdict.
 
-  Source syntax and 74 deliberate contract/authority mutations pass in the pinned numeric-nonroot,
+  Source syntax and 77 deliberate contract/authority mutations pass in the pinned numeric-nonroot,
   networkless, read-only-root/source verifier container. That image has no Windows compiler, so no native
   compile, device creation, swap-chain, pixel, Flutter, focus, peer, or release claim is made yet. Exact native
   execution from a clean committed tree in the existing zero-interface, loopback-VNC disposable Windows VM is
   the required next evidence. No RustDesk product source, renderer selection, driver, dependency, golden,
   service, configuration, listener policy, or fallback behavior is changed by this diagnostic slice.
+
+  The first exact committed attempt at `7c8c1addef4160fbefd52faf4ea2492b8352f886` stopped before disk
+  preparation or VM creation because this older transaction still required one
+  `rustdesk_desktop_multi_window-*` bare repository in the offline Pub cache. That source ceased to be a cache
+  dependency when the production package was vendored at exact repository path
+  `flutter/third_party/desktop_multi_window`; the current closed cache correctly contains no such bare
+  repository. The retained pre-VM run is `.harness-state/windows-presentation-run.EL4tGWNc`. No native code,
+  D3D call, guest, VNC listener, or product process ran, so this attempt supplies no native evidence.
+
+  The pending closure correction removes only that obsolete ambient-cache selector. The exact committed Git
+  archive now carries the current repository-owned plugin—including its upstream provenance, local lifetime
+  fixes, and Windows implementation—then applies the pre-existing probe-only SDK-range pubspec replacement.
+  The exact source manifest still hashes the resulting complete input and binds it to the tested commit/tree.
+  This changes no production package or cache and prevents the Windows transaction from silently testing the
+  obsolete upstream plugin instead of RustDesk's current vendored source.
 
   All three completed/aborted diagnostics remained unprivileged, zero-interface, loopback-only, and confined to
   disposable VM disks plus pinned non-root networkless helper containers. No root/sudo, privileged container,

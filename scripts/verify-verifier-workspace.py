@@ -20552,6 +20552,11 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "independent native Windows D3D11 diagnostic binding",
     )
     require_text(
+        sources["windows_presentation_verifier"],
+        '"multi_window_upstream": "flutter/third_party/desktop_multi_window/UPSTREAM.md"',
+        "independent native Windows vendored window-plugin binding",
+    )
+    require_text(
         sources["verify"],
         "/usr/bin/python3 -I -S scripts/verify-flutter-peer-presentation.py --repo . --self-test",
         "full-peer Linux presentation shared focused-verifier wiring",
@@ -58886,6 +58891,12 @@ def run_source_mutations(sources):
             '"d3d11": "scripts/flutter-presentation-d3d11-preflight-windows.cpp"',
             '"d3d11": "scripts/removed-windows-d3d11-preflight.cpp"',
             "independent native Windows D3D11 diagnostic binding",
+        ),
+        (
+            "windows_presentation_verifier",
+            '"multi_window_upstream": "flutter/third_party/desktop_multi_window/UPSTREAM.md"',
+            '"multi_window_upstream": "flutter/third_party/desktop_multi_window/REMOVED.md"',
+            "independent native Windows vendored window-plugin binding",
         ),
         (
             "verify",

@@ -47,6 +47,7 @@ PATHS = {
     "golden_inspector": "scripts/windows-golden-inspect.sh",
     "libyuv_port": "res/vcpkg/libyuv/portfile.cmake",
     "recovery": "flutter/lib/models/presentation_recovery.dart",
+    "multi_window_upstream": "flutter/third_party/desktop_multi_window/UPSTREAM.md",
     "verify": "scripts/verify.sh",
     "workspace": "scripts/verify-verifier-workspace.py",
     "requirements": "requirements.html",
@@ -127,8 +128,6 @@ def validate(sources: dict[str, str]) -> None:
         "/authority/windows-golden-inspect.sh marker",
         "fixed golden receipt inspector",
     )
-    require(host, "DESKTOP_MULTI_WINDOW_COMMIT=b47e8385e5a75d38319ad706a64b0ead3108b093", "window plugin commit")
-    require(host, "DESKTOP_MULTI_WINDOW_TREE=ee184480a0e519b9f51f7496d3d90674782481d6", "window plugin tree")
     require(host, "WINDOW_SIZE_COMMIT=eb3964990cf19629c89ff8cb4a37640c7b3d5601", "window-size commit")
     require(host, "WINDOW_SIZE_TREE=c1b4ec4f759387d00f1024ce539487242cd7ae1a", "window-size subtree")
     if host.count("scripts/flutter-presentation-probe-window-size-pubspec.yaml") != 2:
@@ -137,6 +136,18 @@ def validate(sources: dict[str, str]) -> None:
         raise VerificationError("D3D11 preflight source inclusion is not exact")
     if host.count('"window_association_hresult",') != 2:
         raise VerificationError("host window-association outcome validators are not exact")
+    require_order(
+        host,
+        (
+            "flutter/third_party/desktop_multi_window",
+            'vendored_window_source="$SOURCE_ROOT/flutter/third_party/desktop_multi_window"',
+            '[ -d "$vendored_window_source" ] && [ ! -L "$vendored_window_source" ]',
+            'mv -- "$vendored_window_source" "$SOURCE_ROOT/third_party/desktop_multi_window"',
+            "flutter-presentation-probe-desktop-multi-window-pubspec.yaml",
+        ),
+        "exact-commit vendored desktop multi-window materialization",
+    )
+    forbid(host, "rustdesk_desktop_multi_window-*", "retired ambient window-plugin cache selector")
     require_order(
         host,
         (
@@ -469,6 +480,11 @@ def validate(sources: dict[str, str]) -> None:
 
     require(sources["recovery"], "class PresentationRecovery", "production recovery owner")
     require(
+        sources["multi_window_upstream"],
+        "b47e8385e5a75d38319ad706a64b0ead3108b093",
+        "vendored window plugin upstream identity",
+    )
+    require(
         sources["verify"],
         "/usr/bin/python3 -I -S scripts/verify-flutter-presentation-windows.py --repo . --self-test",
         "shared verifier wiring",
@@ -582,6 +598,16 @@ def self_test(sources: dict[str, str]) -> int:
             "host",
             "        scripts/flutter-presentation-d3d11-preflight-windows.cpp \\\n",
             "",
+        ),
+        (
+            "host",
+            "        flutter/third_party/desktop_multi_window \\\n",
+            "",
+        ),
+        (
+            "host",
+            'mv -- "$vendored_window_source" "$SOURCE_ROOT/third_party/desktop_multi_window"',
+            'mv -- "$vendored_window_source" "$SOURCE_ROOT/third_party/removed_multi_window"',
         ),
         (
             "host",
@@ -726,6 +752,11 @@ def self_test(sources: dict[str, str]) -> int:
         ("dart", "await widget.texture.close();", "// texture close removed"),
         ("manifest", "metadata.st_nlink != 1", "False"),
         ("manifest", "actual != manifest[\"files\"]", "False"),
+        (
+            "multi_window_upstream",
+            "b47e8385e5a75d38319ad706a64b0ead3108b093",
+            "unreviewed-window-plugin-upstream",
+        ),
         (
             "provision",
             'verify_sha512_file "$ONLINE_DIR/libyuv-${LIBYUV_COMMIT}.tar.gz" "$SHA512_LIBYUV"',

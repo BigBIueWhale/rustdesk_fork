@@ -257,7 +257,7 @@ if ($vp.ExitCode -ne 0) { Die "vcpkg install of the x64-windows natives failed (
 # OFFLINE\wix-nuget-packages and restores them into a fresh writable
 # NUGET_PACKAGES directory.
 
-# --- per-build harness: persistent auto-login + a logon task that runs the build CD's run-build.ps1 ----
+# --- per-build harness: persistent auto-login + an interactive logon task that runs run-build.ps1 ----
 # A per-build is a throwaway CoW clone of this golden + a BUILD CD (the repo's run-build.ps1) + an OUTPUT
 # disk. On its boot the golden auto-logins and this task fires golden-logon.ps1, which -- ONLY when an OUTPUT
 # disk is attached (so provisioning + ordinary boots no-op) -- runs run-build.ps1 off the CD. Keeping the
@@ -284,12 +284,20 @@ if ($rb) { & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $rb }
 '@ | Set-Content -Encoding ASCII 'C:\golden-logon.ps1'
 $act = New-ScheduledTaskAction -Execute 'powershell.exe' -Argument '-NoProfile -ExecutionPolicy Bypass -File C:\golden-logon.ps1'
 $trg = New-ScheduledTaskTrigger -AtLogOn -User 'builder'
-Register-ScheduledTask -TaskName 'RustdeskPerBuild' -Action $act -Trigger $trg -RunLevel Highest `
-    -User 'builder' -Password 'RustdeskBuild!1' -Force | Out-Null
+$principal = New-ScheduledTaskPrincipal -UserId 'builder' -LogonType Interactive -RunLevel Highest
+Register-ScheduledTask -TaskName 'RustdeskPerBuild' -Action $act -Trigger $trg `
+    -Principal $principal -Force | Out-Null
+$registeredTask = Get-ScheduledTask -TaskName 'RustdeskPerBuild'
+if ($registeredTask.Principal.LogonType -cne 'Interactive' -or
+    $registeredTask.Principal.UserId -notmatch '(^|\\)builder$' -or
+    $registeredTask.Principal.RunLevel -cne 'Highest') {
+    Die 'the per-build task is not bound to the interactive builder logon at its declared run level'
+}
 
 @'
-rustdesk-windows-golden-v2
+rustdesk-windows-golden-v3
 builder-password-never-expires=true
+builder-logon-task=interactive
 setup-complete=true
 '@ | Set-Content -Encoding ASCII 'C:\guest-setup-done.txt'
 Log 'guest toolchain provisioning complete -- shutting down (this powered-off image IS the golden)'

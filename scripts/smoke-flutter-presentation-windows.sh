@@ -386,7 +386,7 @@ preflight() {
     windows_helper_authority_open
     windows_helper_runtime_resolve "$ONLINE_DIR/build-images/win-helper.docker.tar.gz"
     golden_has_contract \
-        || die "Windows presentation golden lacks the exact non-expiring-builder contract"
+        || die "Windows presentation golden lacks the exact interactive-builder contract"
 }
 
 materialize_source() {
@@ -634,8 +634,6 @@ progress = (root / "windows-presentation-progress.txt").read_text(encoding="asci
 diagnostic_progress = [
     "source-found", "source-verified", "probe-built", "d3d11-preflight"
 ]
-if progress not in (diagnostic_progress, [*diagnostic_progress, "probe-passed"]):
-    raise SystemExit(f"unexpected presentation progress: {progress!r}")
 preflight = json.loads(
     (root / "windows-presentation-d3d11-preflight.json").read_text(
         encoding="utf-8-sig"
@@ -677,6 +675,8 @@ for field, expected_name in (("default_adapter", "default-adapter"), ("warp", "w
     if not isinstance(attempt["pixel_matches"], bool):
         raise SystemExit(f"D3D11 {expected_name} pixel verdict is malformed")
 print("windows presentation D3D11 preflight: validated")
+if progress not in (diagnostic_progress, [*diagnostic_progress, "probe-passed"]):
+    raise SystemExit(f"unexpected presentation progress after validated D3D11 preflight: {progress!r}")
 if (root / "windows-presentation-runner-failure.txt").exists():
     raise SystemExit("guest presentation runner recorded failure after validated D3D11 preflight")
 success_required = {

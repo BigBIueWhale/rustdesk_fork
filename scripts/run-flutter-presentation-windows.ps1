@@ -208,9 +208,14 @@ install(TARGETS rustdesk_d3d11_preflight RUNTIME DESTINATION "${CMAKE_INSTALL_PR
             }
             Fail 'native D3D11 preflight exceeded 30 seconds'
         }
+        $d3d11PreflightRun.WaitForExit()
+        $d3d11PreflightRun.Refresh()
         $d3d11PreflightExit = $d3d11PreflightRun.ExitCode
     } finally {
         $d3d11PreflightRun.Dispose()
+    }
+    if ($null -eq $d3d11PreflightExit -or $d3d11PreflightExit -isnot [int]) {
+        Fail 'native D3D11 preflight produced no typed exit status'
     }
     if ($d3d11PreflightExit -ne 0) {
         Fail "native D3D11 preflight failed with exit $d3d11PreflightExit"

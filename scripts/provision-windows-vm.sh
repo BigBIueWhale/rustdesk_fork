@@ -151,7 +151,7 @@ build_media() {
         "/vcpkg-distfiles/windows-tools=$ONLINE_DIR/vcpkg-distfiles/windows-tools"
 }
 
-# golden_has_done_marker: true iff C:\guest-setup-done.txt contains the exact v2 receipt in the
+# golden_has_done_marker: true iff C:\guest-setup-done.txt contains the exact v3 receipt in the
 # golden qcow2 — the DEFINITIVE completion signal. The guest writes it only after it has verified
 # that the persistent builder account's password cannot expire, and immediately before shutdown. Read
 # read-only via libguestfs-in-docker; the caller MUST invoke this only when the domain is OFF (the
@@ -426,7 +426,7 @@ stop_and_undefine_owned_domain() {
 
 build_golden() {
     mkdir -p "$STATE_DIR"
-    # Reuse an existing golden ONLY if it actually finished with the exact v2 receipt. A qcow2 left behind by
+    # Reuse an existing golden ONLY if it actually finished with the exact v3 receipt. A qcow2 left behind by
     # a FAILED or older provision has no compatible receipt — silently reusing it falsely reports success on
     # a stale image. A present qcow2 is now immutable/pinned input: mismatch or no marker fails loud so the
     # operator can delete/re-provision deliberately instead of the script mutating a present-but-wrong file.
@@ -435,7 +435,7 @@ build_golden() {
         if golden_has_done_marker; then
             log "golden already exists + has the done-marker: $GOLDEN (delete to force a rebuild)"; return 0
         fi
-        die "golden exists but lacks the exact v2 completion receipt (stale/failed/incompatible provision): $GOLDEN — delete it deliberately before rebuilding"
+        die "golden exists but lacks the exact v3 completion receipt (stale/failed/incompatible provision): $GOLDEN — delete it deliberately before rebuilding"
     fi
     build_media
     PROVISION_DOMAIN_UUID="$(</proc/sys/kernel/random/uuid)"
@@ -532,10 +532,10 @@ build_golden() {
     local mins=0 offstreak=0 checked=0 state
     while true; do
         [ "$(monotonic_seconds)" -lt "$PROVISION_VM_DEADLINE" ] \
-            || die "golden provisioning exceeded 130m without the v2 completion receipt — setup failed or stuck at the desktop"
+            || die "golden provisioning exceeded 130m without the v3 completion receipt — setup failed or stuck at the desktop"
         sleep 60
         [ "$(monotonic_seconds)" -lt "$PROVISION_VM_DEADLINE" ] \
-            || die "golden provisioning exceeded 130m without the v2 completion receipt — setup failed or stuck at the desktop"
+            || die "golden provisioning exceeded 130m without the v3 completion receipt — setup failed or stuck at the desktop"
         mins=$((mins + 1))
         prove_owned_domain || die "owned golden domain disappeared or changed identity"
         state="$(virsh_bounded domstate "$PROVISION_DOMAIN_UUID")" \
@@ -551,7 +551,7 @@ build_golden() {
                         verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"
                         stop_and_undefine_owned_domain \
                             || die "completed golden domain could not be undefined safely"
-                        log "golden Win11 template built: $GOLDEN (exact v2 completion receipt present) — clone an overlay, never boot this"
+                        log "golden Win11 template built: $GOLDEN (exact v3 completion receipt present) — clone an overlay, never boot this"
                         break
                     fi
                     log "domain off but no done-marker yet (mins=$mins) — transient reboot, still waiting"

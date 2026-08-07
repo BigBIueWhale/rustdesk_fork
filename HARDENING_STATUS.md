@@ -16406,7 +16406,55 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   This changes no production package or cache and prevents the Windows transaction from silently testing the
   obsolete upstream plugin instead of RustDesk's current vendored source.
 
-  All three completed/aborted diagnostics remained unprivileged, zero-interface, loopback-only, and confined to
+  The exact rerun from clean pushed commit `eb415af73ff7644baca3e5d0c60a9d4d906dd28a`, tree
+  `7958814ac8cc0172e52ed0425b49e1c2c2653f45`, and source-ISO SHA-256
+  `fa7282aad56f5a57cf15cc1bf931ab92a1a44c7f0506f969afae7a288248eb27` reached native Windows execution.
+  Domain `rustdesk-presentation-eb415af7-8ff5bb11`, UUID
+  `8ff5bb11-428b-4117-8ec1-5c833d8241a0`, had zero network interfaces, zero host-device/filesystem passthroughs,
+  and VNC parent/child plus the only new listener exactly on `127.0.0.1:5900`. The exact Flutter release probe
+  built in 58.0 seconds, and the side diagnostic emitted JSON SHA-256
+  `356f06920dff3d407756212c488c669f8d8155fb5fc5d8a119252462f396175f`. Both attempts created their HWND and
+  D3D11 device at feature level `0x0000B100`. The default attempt selected `Microsoft Basic Render Driver`
+  with adapter flags 0; explicit WARP selected the same description with software flag 2. Both then failed
+  `CreateSwapChainForHwnd` with `0x887A0022`; no back buffer, render target, present, DWM flush, or desktop-pixel
+  match followed.
+
+  This result identifies a test-environment defect below RustDesk, not a product renderer verdict. Golden
+  provisioning registered `RustdeskPerBuild` with `-User builder -Password ...`; Windows defines that Password
+  task logon as able to run non-interactively, while an Interactive task must use the already-logged-on user's
+  interactive token. Microsoft separately documents `DXGI_ERROR_NOT_CURRENTLY_AVAILABLE` for swap-chain APIs
+  from Session 0. The exact task definition plus identical default/WARP failure is therefore strong evidence
+  that this runner used the wrong desktop boundary, but this run did not record its numeric Windows session ID,
+  so that last step remains an explicit inference rather than a directly measured field.
+
+  A second harness defect stopped progress at `probe-built`: after the bounded `WaitForExit(Int32)` returned,
+  Windows PowerShell exposed no typed `ExitCode`, so the runner failed with a blank exit value even though the
+  complete JSON existed. The host then checked progress before parsing that JSON and reported only the missing
+  phase. The pending correction performs the parameterless exit synchronization and process refresh before
+  reading a typed status, validates recovered JSON before classifying progress, and versions the golden contract
+  as v3. New provisioning explicitly binds the task to `New-ScheduledTaskPrincipal -LogonType Interactive`,
+  re-reads its principal, rejects a different logon type/user/run level, stores no task password, and writes the
+  v3 receipt only afterward. The existing v2 golden is rejected rather than modified or silently reused; a new
+  receipt-valid, digest-pinned golden and a clean rerun are required. The exact domain was destroyed/undefined
+  after failure. No controller, Flutter app process, platform surface, visible frame, focus/minimize cycle,
+  pointer event, or latency measurement ran.
+
+  Source verification of that correction is green in pinned immutable containers. The focused presentation
+  gate rejects all 85 mutations; Windows-helper authority rejects 81, golden-domain authority rejects 45,
+  offline Pub-cache output authority rejects 70, and the broader Windows harness rejects 225 mutations plus
+  passes five bounded behavioral suites. Both changed PowerShell files parse without errors, Bash parsing,
+  `git diff --check`, and the independent workspace baseline pass. The first broader-harness invocation is
+  excluded because its container omitted the required `nofile=524544` ceiling and its private-tree fixture
+  rejected that weaker environment. The second is excluded because the generic verifier image does not bundle
+  `olefile`. The counted repeat supplied the existing read-only `olefile 0.47` wheel through `PYTHONPATH` only
+  after independently confirming its pinned SHA-256
+  `543c7da2a7adadf21214938bb79c83ea12b473a4b6ee4ad4bf854e7715e13d1f`; it installed or downloaded nothing.
+  One complete unsliced independent source-mutation catalog then exited zero. After this ledger receipt changed
+  tracked bytes, a fresh complete final-byte catalog again ran from mutation one to terminal
+  `verify-verifier-workspace: ok`; no tracked byte changed afterward. These are source and harness-fixture
+  results only. They do not replace the required newly provisioned native Windows run.
+
+  All of these completed/aborted diagnostics remained unprivileged, zero-interface, loopback-only, and confined to
   disposable VM disks plus pinned non-root networkless helper containers. No root/sudo, privileged container,
   image build/pull/tag, non-loopback listener, host RustDesk process/service/configuration, host display,
   firewall/UFW/nftables/iptables, routing, or host network mutation occurred. More importantly, this is still

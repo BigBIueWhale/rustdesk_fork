@@ -118,7 +118,7 @@ def validate(sources: dict[str, str]) -> None:
         (
             'windows_helper_runtime_resolve "$ONLINE_DIR/build-images/win-helper.docker.tar.gz"',
             "golden_has_contract",
-            'die "Windows presentation golden lacks the exact non-expiring-builder contract"',
+            'die "Windows presentation golden lacks the exact interactive-builder contract"',
             "materialize_source",
         ),
         "golden contract before source materialization and VM creation",
@@ -202,12 +202,13 @@ def validate(sources: dict[str, str]) -> None:
             '"windows-presentation-d3d11-preflight.json",',
             "diagnostic_progress = [",
             '"d3d11-preflight"',
-            'progress not in (diagnostic_progress, [*diagnostic_progress, "probe-passed"])',
             '"rustdesk-windows-d3d11-preflight-v1"',
             '"window_association_hresult",',
             'for field, expected_name in (("default_adapter", "default-adapter"), ("warp", "warp")):',
             're.fullmatch(r"0x[0-9A-F]{8}", value)',
             'print("windows presentation D3D11 preflight: validated")',
+            'progress not in (diagnostic_progress, [*diagnostic_progress, "probe-passed"])',
+            'unexpected presentation progress after validated D3D11 preflight',
             'raise SystemExit("guest presentation runner recorded failure after validated D3D11 preflight")',
             'if progress != [*diagnostic_progress, "probe-passed"]:',
             '"guest_d3d11_preflight_sha256": digest(',
@@ -247,7 +248,10 @@ def validate(sources: dict[str, str]) -> None:
             "$d3d11PreflightRun.WaitForExit(30000)",
             "$d3d11PreflightRun.Kill()",
             "$d3d11PreflightRun.WaitForExit(5000)",
+            "$d3d11PreflightRun.WaitForExit()",
+            "$d3d11PreflightRun.Refresh()",
             "$d3d11PreflightRun.Dispose()",
+            "native D3D11 preflight produced no typed exit status",
             "'format,default_adapter,warp'",
             "'rustdesk-windows-d3d11-preflight-v1'",
             "'^0x[0-9A-F]{8}$'",
@@ -264,6 +268,11 @@ def validate(sources: dict[str, str]) -> None:
     require(runner, "'window_hresult'", "guest window outcome validation")
     require(runner, "$attempt.name -cne $expectedName", "guest attempt identity validation")
     require(runner, "$attempt.pixel_matches -isnot [bool]", "guest pixel-verdict type validation")
+    require(
+        runner,
+        "if ($null -eq $d3d11PreflightExit -or $d3d11PreflightExit -isnot [int])",
+        "guest typed diagnostic exit status",
+    )
     if runner.count("'^0x[0-9A-F]{8}$'") != 3:
         raise VerificationError("D3D11 guest HRESULT validators are not exact")
     if runner.count("'window_hresult'") != 2:
@@ -434,12 +443,18 @@ def validate(sources: dict[str, str]) -> None:
             "Get-LocalUser -Name 'builder'",
             "Set-LocalUser -PasswordNeverExpires $true",
             "if ($null -ne $builderAccount.PasswordExpires)",
-            "rustdesk-windows-golden-v2",
+            "New-ScheduledTaskPrincipal -UserId 'builder' -LogonType Interactive -RunLevel Highest",
+            "Register-ScheduledTask -TaskName 'RustdeskPerBuild' -Action $act -Trigger $trg",
+            "-Principal $principal -Force",
+            "Get-ScheduledTask -TaskName 'RustdeskPerBuild'",
+            "$registeredTask.Principal.LogonType -cne 'Interactive'",
+            "rustdesk-windows-golden-v3",
             "builder-password-never-expires=true",
+            "builder-logon-task=interactive",
             "setup-complete=true",
             "Stop-Computer -Force",
         ),
-        "non-expiring builder and exact completion receipt",
+        "non-expiring builder, interactive logon task, and exact completion receipt",
     )
     for value in (
         "824fe8719e4115ec359ae0642f5e1cea051d458f09eb8c24d60858cf082f66e411215e23228173ab154044bafbdfbb2d93b589bb726f55b233939b91f928aae0",
@@ -449,6 +464,21 @@ def validate(sources: dict[str, str]) -> None:
         require(guest_setup, value, "guest-side distfile SHA512 pin")
     require(guest_setup, '$cacheName = "msys2-$toolName"', "MSYS2 cache-name normalization")
     require(guest_setup, '$cacheName = "$($toolHash.Substring(0, 8))-$toolName"', "7zr cache-name normalization")
+    require(
+        guest_setup,
+        "$registeredTask.Principal.UserId -notmatch '(^|\\\\)builder$'",
+        "interactive task exact builder identity validation",
+    )
+    require(
+        guest_setup,
+        "$registeredTask.Principal.RunLevel -cne 'Highest'",
+        "interactive task declared run-level validation",
+    )
+    forbid(
+        guest_setup,
+        "-Password 'RustdeskBuild!1' -Force",
+        "stored per-build task password",
+    )
     forbid(guest_setup, "WARN: no SRC CD", "optional native warm")
 
     require_order(
@@ -467,7 +497,7 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(
         golden_inspector,
-        "$'rustdesk-windows-golden-v2\\nbuilder-password-never-expires=true\\nsetup-complete=true'",
+        "$'rustdesk-windows-golden-v3\\nbuilder-password-never-expires=true\\nbuilder-logon-task=interactive\\nsetup-complete=true'",
         "exact golden receipt validation",
     )
     if golden_inspector.count("EXPECTED_RECEIPT") != 3:
@@ -520,7 +550,7 @@ def self_test(sources: dict[str, str]) -> int:
         ("host", "windows_helper_guestfish_run", "windows_helper_kvm_guestfish_run"),
         (
             "host",
-            "    golden_has_contract \\\n        || die \"Windows presentation golden lacks the exact non-expiring-builder contract\"",
+            "    golden_has_contract \\\n        || die \"Windows presentation golden lacks the exact interactive-builder contract\"",
             "    true # golden contract removed",
         ),
         ("host", "assert_clean_worktree", "true # worktree check removed"),
@@ -663,6 +693,16 @@ def self_test(sources: dict[str, str]) -> int:
         ),
         (
             "runner",
+            "$d3d11PreflightRun.Refresh()",
+            "# process-state refresh removed",
+        ),
+        (
+            "runner",
+            "if ($null -eq $d3d11PreflightExit -or $d3d11PreflightExit -isnot [int])",
+            "if ($false)",
+        ),
+        (
+            "runner",
             "'format,default_adapter,warp'",
             "'format,default_adapter'",
         ),
@@ -798,9 +838,39 @@ def self_test(sources: dict[str, str]) -> int:
             "if ($false)",
         ),
         (
+            "guest_setup",
+            "New-ScheduledTaskPrincipal -UserId 'builder' -LogonType Interactive -RunLevel Highest",
+            "New-ScheduledTaskPrincipal -UserId 'builder' -LogonType Password -RunLevel Highest",
+        ),
+        (
+            "guest_setup",
+            "-Principal $principal -Force",
+            "-User 'builder' -Password 'untrusted' -Force",
+        ),
+        (
+            "guest_setup",
+            "$registeredTask.Principal.LogonType -cne 'Interactive'",
+            "$registeredTask.Principal.LogonType -cne 'Password'",
+        ),
+        (
+            "guest_setup",
+            "$registeredTask.Principal.UserId -notmatch '(^|\\\\)builder$'",
+            "$false",
+        ),
+        (
+            "guest_setup",
+            "$registeredTask.Principal.RunLevel -cne 'Highest'",
+            "$false",
+        ),
+        (
             "golden_inspector",
             "builder-password-never-expires=true",
             "builder-password-never-expires=unchecked",
+        ),
+        (
+            "golden_inspector",
+            "builder-logon-task=interactive",
+            "builder-logon-task=unchecked",
         ),
         ("verify", "/usr/bin/python3 -I -S scripts/verify-flutter-presentation-windows.py --repo . --self-test", "true # verifier removed"),
         ("requirements", '<span class="id">R-S11gb</span>', '<span class="id">R-S11gb-disabled</span>'),

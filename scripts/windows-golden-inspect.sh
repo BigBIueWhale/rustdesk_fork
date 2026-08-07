@@ -11,7 +11,7 @@ fail() {
 
 [ "$#" -eq 1 ] || fail "requires exactly one fixed operation"
 readonly GOLDEN=/authority/golden.qcow2
-readonly EXPECTED_RECEIPT=$'rustdesk-windows-golden-v2\nbuilder-password-never-expires=true\nsetup-complete=true'
+readonly EXPECTED_RECEIPT=$'rustdesk-windows-golden-v3\nbuilder-password-never-expires=true\nbuilder-logon-task=interactive\nsetup-complete=true'
 [ -f "$GOLDEN" ] && [ ! -L "$GOLDEN" ] || fail "golden input must be a regular file"
 
 case "$1" in
@@ -40,9 +40,9 @@ case "$1" in
         marker="$({ /usr/bin/virt-cat -a "$GOLDEN" /guest-setup-done.txt \
             | /usr/bin/tr -d '\r'; } 2>/dev/null || :)"
         if [ "$marker" = "$EXPECTED_RECEIPT" ]; then
-            printf '%s\n' 'GOLDEN-OK: exact v2 completion receipt present — setup completed with a non-expiring builder password'
+            printf '%s\n' 'GOLDEN-OK: exact v3 completion receipt present — setup completed with a non-expiring builder password and interactive logon task'
         else
-            printf '%s\n' 'GOLDEN-FAIL: exact v2 completion receipt ABSENT — setup is incomplete or incompatible'
+            printf '%s\n' 'GOLDEN-FAIL: exact v3 completion receipt ABSENT — setup is incomplete or incompatible'
             printf '%s\n' '=== C:\setup-transcript.txt (tail, where it stopped) ==='
             /usr/bin/virt-cat -a "$GOLDEN" /setup-transcript.txt 2>/dev/null \
                 | /usr/bin/tail -30 \

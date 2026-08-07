@@ -16364,6 +16364,33 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   environment rather than a timeout increase, an ignored surface failure, an app argv token, or a `bochs` to
   `vga` substitution.
 
+  A follow-up exact-source review narrows the next diagnostic without changing that stop-ship verdict. At
+  engine revision `a18df97ca57a249df5d8d68cd0820600223ce262`, Windows EGL-manager construction tries three
+  ANGLE attribute sets. The third is described as a WARP fallback but does not include
+  `EGL_PLATFORM_ANGLE_DEVICE_TYPE_ANGLE=EGL_PLATFORM_ANGLE_DEVICE_TYPE_WARP_ANGLE`. At the engine-pinned
+  ANGLE revision `6a09e41ce6ea8c93524faae1a925eb01562f53b1`, an omitted device type defaults to hardware while an
+  explicit WARP value selects `D3D_DRIVER_TYPE_WARP`. That fallback loop surrounds EGL initialization, not
+  the later `CreateSwapChainForHwnd` surface construction which emitted `0x887A0022`. This is evidence of a
+  misleading/incomplete fallback expression and a plausible environment discriminator; it is not proof that
+  WARP succeeds, that changing Flutter fixes RustDesk, or that the deployed focus-delay symptom has this cause.
+
+  The pending harness-only diagnostic therefore adds one minimal native executable to the same exact-source,
+  offline Windows build. It creates the ANGLE-shaped `B8G8R8A8`, one-buffer, sequential HWND swap chain first
+  with adapter zero plus `D3D_DRIVER_TYPE_UNKNOWN`, then with an explicit `D3D_DRIVER_TYPE_WARP` device. Each
+  attempt records the adapter, feature level, HRESULT at each relevant construction/presentation stage, the
+  present/DWM result, and a composed
+  desktop-pixel observation in a closed JSON envelope. The guest validates that envelope, bounds the exact
+  process to 30 seconds with exact-process termination and disposal, and the host binds the diagnostic digest
+  into successful evidence. Attempt failure remains diagnostic data: it cannot relax, replace, or manufacture
+  the real Flutter compositor/pixel/focus transaction verdict.
+
+  Source syntax and 74 deliberate contract/authority mutations pass in the pinned numeric-nonroot,
+  networkless, read-only-root/source verifier container. That image has no Windows compiler, so no native
+  compile, device creation, swap-chain, pixel, Flutter, focus, peer, or release claim is made yet. Exact native
+  execution from a clean committed tree in the existing zero-interface, loopback-VNC disposable Windows VM is
+  the required next evidence. No RustDesk product source, renderer selection, driver, dependency, golden,
+  service, configuration, listener policy, or fallback behavior is changed by this diagnostic slice.
+
   All three completed/aborted diagnostics remained unprivileged, zero-interface, loopback-only, and confined to
   disposable VM disks plus pinned non-root networkless helper containers. No root/sudo, privileged container,
   image build/pull/tag, non-loopback listener, host RustDesk process/service/configuration, host display,

@@ -139,6 +139,19 @@ try {
         -Destination (Join-Path $appRoot 'lib\presentation_recovery.dart') -Force
     Copy-Item -LiteralPath (Join-Path $sourceRoot 'scripts\flutter-presentation-probe-windows-pubspec.yaml') `
         -Destination (Join-Path $appRoot 'pubspec.yaml') -Force
+    Copy-Item -LiteralPath (Join-Path $sourceRoot 'scripts\flutter-presentation-d3d11-preflight-windows.cpp') `
+        -Destination (Join-Path $appRoot 'windows\runner\d3d11_preflight.cpp') -Force
+    Add-Content -LiteralPath (Join-Path $appRoot 'windows\runner\CMakeLists.txt') -Encoding ASCII -Value @'
+
+add_executable(rustdesk_d3d11_preflight WIN32
+  "d3d11_preflight.cpp"
+)
+apply_standard_settings(rustdesk_d3d11_preflight)
+target_compile_definitions(rustdesk_d3d11_preflight PRIVATE "NOMINMAX")
+target_link_libraries(rustdesk_d3d11_preflight PRIVATE d3d11 dxgi dwmapi user32 gdi32)
+install(TARGETS rustdesk_d3d11_preflight RUNTIME DESTINATION "${CMAKE_INSTALL_PREFIX}"
+  COMPONENT Runtime)
+'@
     $thirdParty = Join-Path $appRoot 'third_party'
     New-Item -ItemType Directory -Path $thirdParty | Out-Null
     Copy-Item -LiteralPath (Join-Path $sourceRoot 'flutter\third_party\texture_rgba_renderer') `
@@ -171,11 +184,88 @@ try {
     $releaseRoot = Join-Path $appRoot 'build\windows\x64\runner\Release'
     $executable = Join-Path $releaseRoot 'rustdesk_presentation_probe.exe'
     $pluginDll = Join-Path $releaseRoot 'texture_rgba_renderer_plugin.dll'
-    foreach ($path in @($executable, $pluginDll)) {
+    $d3d11Preflight = Join-Path $releaseRoot 'rustdesk_d3d11_preflight.exe'
+    foreach ($path in @($executable, $pluginDll, $d3d11Preflight)) {
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
             Fail "native probe output is absent: $path"
         }
     }
+    $d3d11PreflightOutput = Join-Path $outputRoot 'windows-presentation-d3d11-preflight.json'
+    $d3d11PreflightRun = Start-Process -FilePath $d3d11Preflight -PassThru `
+        -WorkingDirectory $releaseRoot `
+        -RedirectStandardOutput $d3d11PreflightOutput `
+        -RedirectStandardError (Join-Path $outputRoot 'windows-presentation-d3d11-preflight.stderr.txt')
+    $d3d11PreflightExit = $null
+    try {
+        if (-not $d3d11PreflightRun.WaitForExit(30000)) {
+            try {
+                $d3d11PreflightRun.Kill()
+                if (-not $d3d11PreflightRun.WaitForExit(5000)) {
+                    Fail 'native D3D11 preflight did not exit after exact-process termination'
+                }
+            } catch {
+                Fail "native D3D11 preflight timeout cleanup failed: $($_.Exception.Message)"
+            }
+            Fail 'native D3D11 preflight exceeded 30 seconds'
+        }
+        $d3d11PreflightExit = $d3d11PreflightRun.ExitCode
+    } finally {
+        $d3d11PreflightRun.Dispose()
+    }
+    if ($d3d11PreflightExit -ne 0) {
+        Fail "native D3D11 preflight failed with exit $d3d11PreflightExit"
+    }
+    $d3d11Result = [IO.File]::ReadAllText($d3d11PreflightOutput, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    $rootProperties = @($d3d11Result.PSObject.Properties.Name)
+    if (($rootProperties -join ',') -cne 'format,default_adapter,warp' -or
+        $d3d11Result.format -cne 'rustdesk-windows-d3d11-preflight-v1') {
+        Fail 'native D3D11 preflight result is malformed'
+    }
+    $attemptProperties = @(
+        'name', 'window_hresult', 'factory_hresult', 'adapter_hresult',
+        'device_hresult', 'swap_chain_hresult', 'window_association_hresult',
+        'back_buffer_hresult', 'render_target_hresult', 'present_hresult',
+        'dwm_flush_hresult', 'feature_level', 'adapter_flags',
+        'adapter_description', 'desktop_pixel', 'pixel_matches'
+    )
+    $hresultProperties = @(
+        'window_hresult', 'factory_hresult', 'adapter_hresult', 'device_hresult',
+        'swap_chain_hresult', 'window_association_hresult', 'back_buffer_hresult',
+        'render_target_hresult', 'present_hresult', 'dwm_flush_hresult'
+    )
+    $attempts = @(
+        [PSCustomObject]@{
+            Attempt = $d3d11Result.default_adapter
+            ExpectedName = 'default-adapter'
+        },
+        [PSCustomObject]@{
+            Attempt = $d3d11Result.warp
+            ExpectedName = 'warp'
+        }
+    )
+    foreach ($entry in $attempts) {
+        $attempt = $entry.Attempt
+        $expectedName = $entry.ExpectedName
+        $actualProperties = @($attempt.PSObject.Properties.Name)
+        if (($actualProperties -join ',') -cne ($attemptProperties -join ',') -or
+            $attempt.name -cne $expectedName -or
+            $attempt.feature_level -cnotmatch '^0x[0-9A-F]{8}$' -or
+            $attempt.desktop_pixel -cnotmatch '^0x[0-9A-F]{8}$' -or
+            $attempt.adapter_flags -is [bool] -or
+            ($attempt.adapter_flags -isnot [int] -and $attempt.adapter_flags -isnot [long]) -or
+            $attempt.adapter_flags -lt 0 -or $attempt.adapter_flags -gt 4294967295 -or
+            $attempt.adapter_description -isnot [string] -or
+            $attempt.pixel_matches -isnot [bool]) {
+            Fail "native D3D11 $expectedName preflight result is malformed"
+        }
+        foreach ($property in $hresultProperties) {
+            if ($attempt.$property -cnotmatch '^0x[0-9A-F]{8}$') {
+                Fail "native D3D11 $expectedName preflight HRESULT is malformed: $property"
+            }
+        }
+    }
+    Add-Content -LiteralPath (Join-Path $outputRoot 'windows-presentation-progress.txt') `
+        -Value 'd3d11-preflight' -Encoding ASCII
     $controller = Join-Path $sourceRoot 'scripts\flutter-presentation-probe-windows-controller.ps1'
     $focusSink = Join-Path $sourceRoot 'scripts\flutter-presentation-probe-windows-focus-sink.ps1'
     $controllerRun = Start-Process -FilePath 'powershell.exe' `

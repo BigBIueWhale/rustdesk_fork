@@ -399,6 +399,7 @@ materialize_source() {
         scripts/run-flutter-presentation-windows.ps1 \
         scripts/flutter-presentation-probe-windows-controller.ps1 \
         scripts/flutter-presentation-probe-windows-focus-sink.ps1 \
+        scripts/flutter-presentation-d3d11-preflight-windows.cpp \
         scripts/flutter-presentation-probe-windows.dart \
         scripts/flutter-presentation-probe-windows-pubspec.yaml \
         scripts/flutter-presentation-probe-desktop-multi-window-pubspec.yaml \
@@ -633,26 +634,79 @@ extract_and_validate() {
     python3 - "$extracted" "$SOURCE_COMMIT" "$SOURCE_TREE" <<'PY'
 import json
 import pathlib
+import re
 import sys
 
 root = pathlib.Path(sys.argv[1])
 commit, tree = sys.argv[2:]
-required = {
-    "windows-presentation-result.json",
+diagnostic_required = {
     "windows-presentation-progress.txt",
     "windows-presentation-source-verify.stdout.txt",
-    "windows-presentation-controller.stdout.txt",
-    "windows-presentation-app.stdout.txt",
+    "windows-presentation-d3d11-preflight.json",
     "windows-presentation-pubspec.lock",
 }
-missing = sorted(name for name in required if not (root / name).is_file())
+missing = sorted(name for name in diagnostic_required if not (root / name).is_file())
 if missing:
-    raise SystemExit(f"presentation evidence is missing: {missing!r}")
-if (root / "windows-presentation-runner-failure.txt").exists():
-    raise SystemExit("guest presentation runner recorded failure")
+    raise SystemExit(f"presentation diagnostic evidence is missing: {missing!r}")
 progress = (root / "windows-presentation-progress.txt").read_text(encoding="ascii").splitlines()
-if progress != ["source-found", "source-verified", "probe-built", "probe-passed"]:
+diagnostic_progress = [
+    "source-found", "source-verified", "probe-built", "d3d11-preflight"
+]
+if progress not in (diagnostic_progress, [*diagnostic_progress, "probe-passed"]):
     raise SystemExit(f"unexpected presentation progress: {progress!r}")
+preflight = json.loads(
+    (root / "windows-presentation-d3d11-preflight.json").read_text(
+        encoding="utf-8-sig"
+    )
+)
+if not isinstance(preflight, dict) or sorted(preflight) != [
+    "default_adapter", "format", "warp"
+]:
+    raise SystemExit("D3D11 preflight envelope is not exact")
+if preflight["format"] != "rustdesk-windows-d3d11-preflight-v1":
+    raise SystemExit("D3D11 preflight format differs")
+attempt_fields = [
+    "adapter_description", "adapter_flags", "adapter_hresult", "back_buffer_hresult",
+    "desktop_pixel", "device_hresult", "dwm_flush_hresult", "factory_hresult",
+    "feature_level", "name", "pixel_matches", "present_hresult",
+    "render_target_hresult", "swap_chain_hresult", "window_association_hresult",
+    "window_hresult",
+]
+hresult_fields = [
+    "window_hresult", "factory_hresult", "adapter_hresult", "device_hresult",
+    "swap_chain_hresult", "window_association_hresult", "back_buffer_hresult",
+    "render_target_hresult", "present_hresult", "dwm_flush_hresult",
+]
+for field, expected_name in (("default_adapter", "default-adapter"), ("warp", "warp")):
+    attempt = preflight[field]
+    if not isinstance(attempt, dict) or sorted(attempt) != attempt_fields:
+        raise SystemExit(f"D3D11 {expected_name} result envelope is not exact")
+    if attempt["name"] != expected_name:
+        raise SystemExit(f"D3D11 {expected_name} result identity differs")
+    for value_field in (*hresult_fields, "feature_level", "desktop_pixel"):
+        value = attempt[value_field]
+        if not isinstance(value, str) or re.fullmatch(r"0x[0-9A-F]{8}", value) is None:
+            raise SystemExit(f"D3D11 {expected_name} {value_field} is malformed")
+    flags = attempt["adapter_flags"]
+    if isinstance(flags, bool) or not isinstance(flags, int) or not 0 <= flags <= 0xFFFFFFFF:
+        raise SystemExit(f"D3D11 {expected_name} adapter flags are malformed")
+    if not isinstance(attempt["adapter_description"], str):
+        raise SystemExit(f"D3D11 {expected_name} adapter description is malformed")
+    if not isinstance(attempt["pixel_matches"], bool):
+        raise SystemExit(f"D3D11 {expected_name} pixel verdict is malformed")
+print("windows presentation D3D11 preflight: validated")
+if (root / "windows-presentation-runner-failure.txt").exists():
+    raise SystemExit("guest presentation runner recorded failure after validated D3D11 preflight")
+success_required = {
+    "windows-presentation-result.json",
+    "windows-presentation-controller.stdout.txt",
+    "windows-presentation-app.stdout.txt",
+}
+missing = sorted(name for name in success_required if not (root / name).is_file())
+if missing:
+    raise SystemExit(f"presentation success evidence is missing: {missing!r}")
+if progress != [*diagnostic_progress, "probe-passed"]:
+    raise SystemExit(f"presentation progress did not reach success: {progress!r}")
 result = json.loads((root / "windows-presentation-result.json").read_text(encoding="utf-8-sig"))
 if sorted(result) != sorted([
     "format", "verdict", "source_commit", "source_tree",
@@ -828,6 +882,9 @@ record = {
     "golden_sha256": golden,
     "source_iso_sha256": digest(source_iso),
     "domain_xml_sha256": digest(domain_xml),
+    "guest_d3d11_preflight_sha256": digest(
+        evidence / "windows-presentation-d3d11-preflight.json"
+    ),
     "guest_result_sha256": digest(evidence / "windows-presentation-result.json"),
     "domain_network_interfaces": 0,
     "vnc_listen": "127.0.0.1",

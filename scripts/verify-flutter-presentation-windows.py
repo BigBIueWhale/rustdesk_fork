@@ -34,6 +34,7 @@ PATHS = {
     "runner": "scripts/run-flutter-presentation-windows.ps1",
     "controller": "scripts/flutter-presentation-probe-windows-controller.ps1",
     "focus_sink": "scripts/flutter-presentation-probe-windows-focus-sink.ps1",
+    "d3d11": "scripts/flutter-presentation-d3d11-preflight-windows.cpp",
     "dart": "scripts/flutter-presentation-probe-windows.dart",
     "pubspec": "scripts/flutter-presentation-probe-windows-pubspec.yaml",
     "window_pubspec": (
@@ -64,6 +65,7 @@ def validate(sources: dict[str, str]) -> None:
     host = sources["host"]
     runner = sources["runner"]
     controller = sources["controller"]
+    d3d11 = sources["d3d11"]
     dart = sources["dart"]
     manifest = sources["manifest"]
     provision = sources["provision"]
@@ -131,6 +133,10 @@ def validate(sources: dict[str, str]) -> None:
     require(host, "WINDOW_SIZE_TREE=c1b4ec4f759387d00f1024ce539487242cd7ae1a", "window-size subtree")
     if host.count("scripts/flutter-presentation-probe-window-size-pubspec.yaml") != 2:
         raise VerificationError("window-size replacement pubspec inclusion is not exact")
+    if host.count("scripts/flutter-presentation-d3d11-preflight-windows.cpp") != 1:
+        raise VerificationError("D3D11 preflight source inclusion is not exact")
+    if host.count('"window_association_hresult",') != 2:
+        raise VerificationError("host window-association outcome validators are not exact")
     require_order(
         host,
         (
@@ -179,6 +185,24 @@ def validate(sources: dict[str, str]) -> None:
         '  dart: ">=3.4.0 <4.0.0"',
         "resolved Dart SDK envelope",
     )
+    require_order(
+        host,
+        (
+            '"windows-presentation-d3d11-preflight.json",',
+            "diagnostic_progress = [",
+            '"d3d11-preflight"',
+            'progress not in (diagnostic_progress, [*diagnostic_progress, "probe-passed"])',
+            '"rustdesk-windows-d3d11-preflight-v1"',
+            '"window_association_hresult",',
+            'for field, expected_name in (("default_adapter", "default-adapter"), ("warp", "warp")):',
+            're.fullmatch(r"0x[0-9A-F]{8}", value)',
+            'print("windows presentation D3D11 preflight: validated")',
+            'raise SystemExit("guest presentation runner recorded failure after validated D3D11 preflight")',
+            'if progress != [*diagnostic_progress, "probe-passed"]:',
+            '"guest_d3d11_preflight_sha256": digest(',
+        ),
+        "host D3D11 diagnostic evidence binding",
+    )
     for unsafe in (
         "sudo ",
         "--privileged",
@@ -202,10 +226,20 @@ def validate(sources: dict[str, str]) -> None:
             "flutter-presentation-probe-windows.dart",
             "presentation_recovery.dart",
             "flutter-presentation-probe-windows-pubspec.yaml",
+            "flutter-presentation-d3d11-preflight-windows.cpp",
             r"third_party\window_size",
             "$resolve = Start-Process -FilePath $flutter",
             "'get', '--offline'",
             "'build', 'windows', '--release', '--no-pub'",
+            "rustdesk_d3d11_preflight.exe",
+            "windows-presentation-d3d11-preflight.json",
+            "$d3d11PreflightRun.WaitForExit(30000)",
+            "$d3d11PreflightRun.Kill()",
+            "$d3d11PreflightRun.WaitForExit(5000)",
+            "$d3d11PreflightRun.Dispose()",
+            "'format,default_adapter,warp'",
+            "'rustdesk-windows-d3d11-preflight-v1'",
+            "'^0x[0-9A-F]{8}$'",
             "flutter-presentation-probe-windows-controller.ps1",
         ),
         "guest exact-source offline build order",
@@ -216,8 +250,60 @@ def validate(sources: dict[str, str]) -> None:
     require(runner, "plugin_platform_interface-2.1.8", "pinned plugin interface cache")
     require(runner, "windows-presentation-pubspec.lock", "resolved graph receipt")
     require(runner, "Stop-Computer -Force", "disposable guest shutdown")
+    require(runner, "'window_hresult'", "guest window outcome validation")
+    require(runner, "$attempt.name -cne $expectedName", "guest attempt identity validation")
+    require(runner, "$attempt.pixel_matches -isnot [bool]", "guest pixel-verdict type validation")
+    if runner.count("'^0x[0-9A-F]{8}$'") != 3:
+        raise VerificationError("D3D11 guest HRESULT validators are not exact")
+    if runner.count("'window_hresult'") != 2:
+        raise VerificationError("D3D11 guest window outcome validators are not exact")
     for unsafe in ("Invoke-WebRequest", "curl ", "wget ", "Start-Service", "Stop-Service"):
         forbid(runner, unsafe, "guest network/service mutation")
+
+    require_order(
+        d3d11,
+        (
+            "factory->EnumAdapters(0, &selected_adapter)",
+            "warp ? D3D_DRIVER_TYPE_WARP : D3D_DRIVER_TYPE_UNKNOWN",
+            "DXGI_FORMAT_B8G8R8A8_UNORM",
+            "DXGI_USAGE_RENDER_TARGET_OUTPUT |",
+            "DXGI_SWAP_EFFECT_SEQUENTIAL",
+            "factory2->CreateSwapChainForHwnd(",
+            "swap_chain->Present(1, 0)",
+            "attempt.dwm_flush = DwmFlush()",
+            "attempt.desktop_pixel = ReadDesktopPixel(window)",
+            'rustdesk-windows-d3d11-preflight-v1',
+        ),
+        "default-adapter and explicit-WARP compositor preflight",
+    )
+    require(d3d11, "D3D_FEATURE_LEVEL_11_1", "ANGLE-matching feature-level head")
+    require(d3d11, "D3D_FEATURE_LEVEL_9_3", "ANGLE-matching feature-level tail")
+    require(d3d11, 'attempt.name = warp ? "warp" : "default-adapter"', "attempt identity")
+    require(d3d11, "HRESULT window = E_UNEXPECTED", "window outcome sentinel")
+    require(d3d11, "attempt.window = S_OK", "window admission outcome")
+    require(d3d11, "attempt.window_association =", "window-association outcome")
+    require(d3d11, "result.pop_back()", "bounded UTF-8 terminator removal")
+    for unsafe in (
+        "WinHttp",
+        "WinINet",
+        "URLDownloadToFile",
+        "InternetOpen",
+        "WSAStartup",
+        "WSASocket",
+        "socket(",
+        "connect(",
+        "bind(",
+        "listen(",
+        "CreateProcess",
+        "ShellExecute",
+        "WinExec",
+        "CreateService",
+        "OpenSCManager",
+        "RegSetValue",
+        "AdjustTokenPrivileges",
+        "system(",
+    ):
+        forbid(d3d11, unsafe, "D3D11 preflight authority expansion")
 
     require_order(
         controller,
@@ -492,8 +578,83 @@ def self_test(sources: dict[str, str]) -> int:
             '  dart: ">=3.4.0 <4.0.0"',
             '  dart: ">=3.3.0 <4.0.0"',
         ),
+        (
+            "host",
+            "        scripts/flutter-presentation-d3d11-preflight-windows.cpp \\\n",
+            "",
+        ),
+        (
+            "host",
+            '"windows-presentation-d3d11-preflight.json",',
+            '"windows-presentation-d3d11-preflight-removed.json",',
+        ),
+        (
+            "host",
+            'progress not in (diagnostic_progress, [*diagnostic_progress, "probe-passed"])',
+            "progress != diagnostic_progress",
+        ),
+        (
+            "host",
+            '"guest_d3d11_preflight_sha256": digest(',
+            '"guest_d3d11_preflight_sha256_removed": digest(',
+        ),
+        (
+            "host",
+            '"window_association_hresult",',
+            '"window_association_removed",',
+        ),
+        (
+            "host",
+            'print("windows presentation D3D11 preflight: validated")',
+            'print("windows presentation D3D11 preflight: unchecked")',
+        ),
         ("runner", "'get', '--offline'", "'get'"),
         ("runner", "'build', 'windows', '--release', '--no-pub'", "'build', 'windows'"),
+        (
+            "runner",
+            "flutter-presentation-d3d11-preflight-windows.cpp",
+            "removed-d3d11-preflight.cpp",
+        ),
+        (
+            "runner",
+            "rustdesk_d3d11_preflight.exe",
+            "removed_d3d11_preflight.exe",
+        ),
+        (
+            "runner",
+            "windows-presentation-d3d11-preflight.json",
+            "removed-d3d11-preflight.json",
+        ),
+        (
+            "runner",
+            "$d3d11PreflightRun.WaitForExit(30000)",
+            "$d3d11PreflightRun.WaitForExit()",
+        ),
+        (
+            "runner",
+            "$d3d11PreflightRun.Kill()",
+            "# exact-process timeout cleanup removed",
+        ),
+        (
+            "runner",
+            "'format,default_adapter,warp'",
+            "'format,default_adapter'",
+        ),
+        (
+            "runner",
+            "'^0x[0-9A-F]{8}$'",
+            "'.*'",
+        ),
+        (
+            "runner",
+            "$attempt.name -cne $expectedName",
+            "$false",
+        ),
+        (
+            "runner",
+            "'window_hresult'",
+            "'window_result_removed'",
+        ),
         ("runner", "Stop-Computer -Force", "# guest shutdown removed"),
         (
             "runner",
@@ -541,6 +702,23 @@ def self_test(sources: dict[str, str]) -> int:
             "# DWM synchronization removed",
         ),
         ("controller", "mouse_event(0x0002", "mouse_event(0x0000"),
+        (
+            "d3d11",
+            "warp ? D3D_DRIVER_TYPE_WARP : D3D_DRIVER_TYPE_UNKNOWN",
+            "D3D_DRIVER_TYPE_UNKNOWN",
+        ),
+        (
+            "d3d11",
+            "DXGI_SWAP_EFFECT_SEQUENTIAL",
+            "DXGI_SWAP_EFFECT_DISCARD",
+        ),
+        (
+            "d3d11",
+            "factory2->CreateSwapChainForHwnd(",
+            "factory2->CreateSwapChainForComposition(",
+        ),
+        ("d3d11", "result.pop_back()", "result.clear()"),
+        ("d3d11", "HRESULT window = E_UNEXPECTED", "HRESULT window = S_OK"),
         ("controller", "Require-Color $window 'green' 2500", "Start-Sleep -Seconds 10"),
         ("controller", "Require-Color $window 'magenta' 2500", "Start-Sleep -Seconds 10"),
         ("dart", "FlutterRgbaRendererPluginTryNotifyPending", "NotifierRemoved"),

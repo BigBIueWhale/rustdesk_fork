@@ -20547,6 +20547,11 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "independent native Windows presentation controller binding",
     )
     require_text(
+        sources["windows_presentation_verifier"],
+        '"d3d11": "scripts/flutter-presentation-d3d11-preflight-windows.cpp"',
+        "independent native Windows D3D11 diagnostic binding",
+    )
+    require_text(
         sources["verify"],
         "/usr/bin/python3 -I -S scripts/verify-flutter-peer-presentation.py --repo . --self-test",
         "full-peer Linux presentation shared focused-verifier wiring",
@@ -58875,6 +58880,12 @@ def run_source_mutations(sources):
             '"controller": "scripts/flutter-presentation-probe-windows-controller.ps1"',
             '"controller": "scripts/removed-windows-presentation-controller.ps1"',
             "independent native Windows presentation controller binding",
+        ),
+        (
+            "windows_presentation_verifier",
+            '"d3d11": "scripts/flutter-presentation-d3d11-preflight-windows.cpp"',
+            '"d3d11": "scripts/removed-windows-d3d11-preflight.cpp"',
+            "independent native Windows D3D11 diagnostic binding",
         ),
         (
             "verify",

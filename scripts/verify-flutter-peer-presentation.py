@@ -181,7 +181,7 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(
         host,
-        "dd1c48d617c1b4881cd27e07ab6ea0f4ce38336972caa6d1f27e4fb967efa526",
+        "854718cb6c9f02d6364ae038e1d3bb9d0ef90e13048a119008bc7c47e9507d19",
         "canonical current-lock Pub-cache digest",
     )
     require(
@@ -239,7 +239,7 @@ def validate(sources: dict[str, str]) -> None:
     require(stage, "published=True", "published canonical Pub-cache inspection")
     require(
         stage,
-        "printf 'sha256=%s source=canonical-pinned-online-copy semantics=current-four-git-lock\\n'",
+        "printf 'sha256=%s source=canonical-pinned-online-copy semantics=current-three-git-lock\\n'",
         "canonical Pub-cache copy provenance",
     )
     require_order(
@@ -1079,7 +1079,7 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(
         sources["requirements"],
-        "dd1c48d617c1b4881cd27e07ab6ea0f4ce38336972caa6d1f27e4fb967efa526",
+        "854718cb6c9f02d6364ae038e1d3bb9d0ef90e13048a119008bc7c47e9507d19",
         "normative canonical current-lock Pub-cache input",
     )
     require(
@@ -1088,7 +1088,7 @@ def validate(sources: dict[str, str]) -> None:
         "normative canonical Pub-cache copy provenance",
     )
     if sources["requirements"].count(
-        "dd1c48d617c1b4881cd27e07ab6ea0f4ce38336972caa6d1f27e4fb967efa526"
+        "854718cb6c9f02d6364ae038e1d3bb9d0ef90e13048a119008bc7c47e9507d19"
     ) != 2:
         raise VerificationError(
             "canonical Pub-cache digest must bind the requirement and Appendix disposition"
@@ -1276,7 +1276,7 @@ MUTATIONS = (
     ("stage", "! grep -Fq '[SEVERE]'", "true # severe output ignored"),
     ("stage", "export HOME CARGO_HOME CI=true PUB_CACHE=/evidence-online/pub-cache", "export HOME CARGO_HOME CI=true PUB_CACHE=/online/pub-cache"),
     ("stage", "published=True", "published=False"),
-    ("stage", "printf 'sha256=%s source=canonical-pinned-online-copy semantics=current-four-git-lock\\n'", "printf 'sha256=%s source=unverified-copy semantics=current-four-git-lock\\n'"),
+    ("stage", "printf 'sha256=%s source=canonical-pinned-online-copy semantics=current-three-git-lock\\n'", "printf 'sha256=%s source=unverified-copy semantics=current-three-git-lock\\n'"),
     ("stage", '[ -z "${LD_PRELOAD:-}" ]', "true # ambient preload accepted"),
     ("stage", '[ -n "${DBUS_SESSION_BUS_ADDRESS:-}" ]', "true # accessibility bus not required"),
     ("stage", '[ "$(getent passwd "$(id -u)")" = "$EXPECTED_PASSWD_ENTRY" ]', "true # numeric identity unresolved"),
@@ -1393,7 +1393,7 @@ MUTATIONS = (
     ("requirements", "existing external <code>smoke-bind-loopback.c</code> confinement shim", "unmanifested compatibility shim"),
     ("requirements", "exact GTK-derived X11 <code>WM_CLASS</code> instance/class pair", "arbitrary X11 class substring"),
     ("requirements", "viewer-only private D-Bus/AT-SPI session", "ambient accessibility session"),
-    ("requirements", "dd1c48d617c1b4881cd27e07ab6ea0f4ce38336972caa6d1f27e4fb967efa526", "c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7"),
+    ("requirements", "854718cb6c9f02d6364ae038e1d3bb9d0ef90e13048a119008bc7c47e9507d19", "c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7"),
     ("requirements", "canonical-pinned-online-copy", "unverified-cache-copy"),
     ("requirements", "only after that response callback returns may native code defer", "native code may immediately defer"),
     ("requirements", '<div class="req"><span class="id">R-S11ge</span>', '<div class="req"><span class="id">R-S11ge-disabled</span>'),

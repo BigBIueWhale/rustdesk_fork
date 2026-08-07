@@ -16762,15 +16762,17 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   package/plugin metadata pointing at those older directories, so their successful native build did
   not prove the committed Pub lock resolves offline. The new path dependency merely forced the
   resolver to expose this pre-existing closure failure; it did not cause the missing package bytes.
-  Downgrading the Android repair or accepting stale generated metadata is forbidden. The closed
-  acquisition and evidence contracts now describe the exact four remaining Git dependencies after
-  vendoring, but a checked replacement cache must acquire the exact locked hosted packages and pass
-  networkless semantic replay before fresh generation can resume. This is a red reproducibility
-  finding, not a native-patch test result and not a release claim.
+  Downgrading the Android repair or accepting stale generated metadata is forbidden. At that
+  intermediate revision, the closed acquisition and evidence contracts described the exact four
+  remaining Git dependencies after vendoring, but a checked replacement cache still had to acquire
+  the exact locked hosted packages and pass networkless semantic replay before fresh generation
+  could resume. This was a red reproducibility finding, not a native-patch test result or release
+  claim.
 
   That build-input finding was subsequently repaired through the checked nonroot publication path,
-  not by weakening the lock or editing the occupied cache in place. The exact pinned online closure
-  now contains the current four-Git Pub graph at mode 0500 and structural digest
+  not by weakening the lock or editing the occupied cache in place. At that intermediate revision,
+  the exact pinned online closure contained the then-current four-Git Pub graph at mode 0500 and
+  structural digest
   `dd1c48d617c1b4881cd27e07ab6ea0f4ce38336972caa6d1f27e4fb967efa526`.
   Its complete online-closure receipt is
   `50d1d2747532520a740c4037f3b61fb733d2be6057337295cbdbe0d698378412`
@@ -16964,6 +16966,26 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   paragraph because editing the paragraph afterward would invalidate that byte freeze. A clean exact
   committed real-peer exit-zero rerun remains mandatory before any green runtime claim.
 
+  Vendoring `window_manager` reduced the committed application lock to exactly three Git records,
+  two from `rustdesk-org`. The first exact committed peer attempt at candidate commit
+  `3d89498ceada87d7d7d4653aa29bf5ab5410d327` correctly stopped before compilation because the
+  retained canonical Pub cache still had the superseded fourth Git checkout. That was an input-shape
+  rejection, not a product or lifecycle verdict; no RustDesk process, X server, or listener started.
+  A separate private snapshot first reverified the retained closure
+  `50d1d2747532520a740c4037f3b61fb733d2be6057337295cbdbe0d698378412`, then the checked nonroot
+  acquisition transaction replaced only the stale Pub cache through its preservation-first
+  same-parent exchange. Both exact application and Flutter-tools locks replayed offline, every other
+  occupied Android, Debian, Windows, Cargo, native-codec, SDK, Gradle, and WiX input revalidated, and
+  the complete fixed-archive SHA-256/SHA-512 sweep passed. The exact current Pub cache is mode 0500
+  with structural digest
+  `854718cb6c9f02d6364ae038e1d3bb9d0ef90e13048a119008bc7c47e9507d19`; the refreshed canonical
+  online-closure receipt is
+  `d552816bcd34cb3a5c47403dcd782def30a61626a3363a274bcd979c5245c27b` over 193,952 files,
+  62,162 directories, 35 symlinks, 34,989,432,893 regular-file bytes, 14 hardlink groups, and nine
+  explicitly checked case collisions. The displaced cache remains preservation-bound by the
+  transaction record. This establishes current offline input coherence only; the clean exact
+  committed real-peer rerun remains mandatory before any green runtime claim.
+
   No root, product configuration injection, policy bypass, or product-only test hook is admitted. Controlled
   peer and viewer run as numeric non-root in separate mount, PID,
   IPC, temporary-home/configuration, and X11 state. The controlled peer owns a Docker
@@ -17020,7 +17042,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `verify-verifier-workspace: ok`; it was neither sampled nor shortened. These gates started no
   RustDesk process, X server, listener, or networked process and changed no host service,
   configuration, display, firewall, route, or network state. The synchronized requirements
-  SHA-256 is `65ee64cf5dd3f18ed01397ca3376a0368dcb8ec2b888389148f194c80271c1d5`.
+  SHA-256 is `42d7ed6fb39595eabca2803c030988b3955e4fa90c70f2fbff04fcc1fafa42d8`.
 
   No green full-peer transaction is recorded after twenty exact committed attempts. The fourteenth,
   fifteenth, eighteenth, nineteenth, and twentieth runs are strong authenticated presentation/focus/performance evidence,
@@ -22065,7 +22087,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-65ee64cf5dd3f18ed01397ca3376a0368dcb8ec2b888389148f194c80271c1d5  requirements.html
+42d7ed6fb39595eabca2803c030988b3955e4fa90c70f2fbff04fcc1fafa42d8  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

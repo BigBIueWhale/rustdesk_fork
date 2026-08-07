@@ -44,6 +44,8 @@ public:
 
   gulong pressedEmissionHook = 0;
 
+  gulong releasedEmissionHook = 0;
+
   bool destroy_pending_ = false;
 
 protected:

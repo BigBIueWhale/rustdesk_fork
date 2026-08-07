@@ -54,6 +54,9 @@ PATHS = {
     "multi_window_channel": "flutter/third_party/desktop_multi_window/linux/window_channel.cc",
     "multi_window_channel_header": "flutter/third_party/desktop_multi_window/linux/window_channel.h",
     "multi_window_upstream": "flutter/third_party/desktop_multi_window/UPSTREAM.md",
+    "url_launcher_linux": "flutter/third_party/url_launcher_linux/linux/url_launcher_plugin.cc",
+    "url_launcher_test": "flutter/third_party/url_launcher_linux/linux/test/url_launcher_shutdown_test.cc",
+    "url_launcher_upstream": "flutter/third_party/url_launcher_linux/UPSTREAM.md",
     "dart_verify": "scripts/dart-verify.sh",
     "verify": "scripts/verify.sh",
     "workspace": "scripts/verify-verifier-workspace.py",
@@ -95,6 +98,9 @@ def validate(sources: dict[str, str]) -> None:
     multi_window_channel = sources["multi_window_channel"]
     multi_window_channel_header = sources["multi_window_channel_header"]
     multi_window_upstream = sources["multi_window_upstream"]
+    url_launcher_linux = sources["url_launcher_linux"]
+    url_launcher_test = sources["url_launcher_test"]
+    url_launcher_upstream = sources["url_launcher_upstream"]
     dart_verify = sources["dart_verify"]
 
     require(
@@ -671,6 +677,11 @@ def validate(sources: dict[str, str]) -> None:
         "idempotent native subwindow destruction state",
     )
     require(
+        multi_window_header,
+        "gulong releasedEmissionHook = 0;",
+        "owned native button-release emission hook",
+    )
+    require(
         multi_window_channel_header,
         "using CompletionHandler = std::function<void()>;",
         "native Dart-response completion contract",
@@ -709,6 +720,20 @@ def validate(sources: dict[str, str]) -> None:
         ),
         "Dart cleanup response and native callback return before owning-map retirement",
     )
+    require_order(
+        multi_window_linux,
+        (
+            "this->pressedEmissionHook = g_signal_add_emission_hook(",
+            "this->releasedEmissionHook = g_signal_add_emission_hook(",
+            "FlutterWindow::~FlutterWindow()",
+            "if (this->pressedEmissionHook != 0)",
+            "this->pressedEmissionHook);",
+            "if (this->releasedEmissionHook != 0)",
+            "this->releasedEmissionHook);",
+            "gtk_widget_destroy(this->window_);",
+        ),
+        "paired GTK global emission-hook ownership before subwindow destruction",
+    )
     forbid(
         multi_window_linux,
         'InvokeMethodSelfVoid("onDestroy"',
@@ -745,6 +770,87 @@ def validate(sources: dict[str, str]) -> None:
         "third_party/desktop_multi_window/lib/",
         "vendored desktop multi-window analyzer gate",
     )
+    require(
+        flutter_attributes,
+        "third_party/url_launcher_linux/** -text",
+        "vendored URL-launcher byte preservation",
+    )
+    require_order(
+        flutter_pubspec,
+        (
+            "url_launcher_linux:",
+            "path: third_party/url_launcher_linux",
+        ),
+        "vendored URL-launcher dependency override",
+    )
+    require_order(
+        flutter_lock,
+        (
+            "url_launcher_linux:",
+            'path: "third_party/url_launcher_linux"',
+            "relative: true",
+            "source: path",
+            'version: "3.2.1"',
+        ),
+        "locked vendored URL-launcher dependency",
+    )
+    require(
+        url_launcher_upstream,
+        "4e9ba368772369e3e08f231d2301b4ef72b9ff87c31192ef471b380ef29a4935",
+        "vendored URL-launcher hosted provenance",
+    )
+    require(
+        url_launcher_upstream,
+        "52cd2d6ef9bc4e1b28eca16d4593c06c52fbc4de3be8083230060c35c4b0db2d",
+        "vendored URL-launcher upstream Linux source identity",
+    )
+    forbid(
+        url_launcher_linux,
+        "ful_url_launcher_api_clear_method_handlers(",
+        "recursive URL handler clearing during plugin disposal",
+    )
+    require_order(
+        url_launcher_linux,
+        (
+            "static void fl_url_launcher_plugin_dispose(GObject* object)",
+            "g_clear_object(&self->registrar);",
+            "G_OBJECT_CLASS(fl_url_launcher_plugin_parent_class)->dispose(object);",
+        ),
+        "non-recursive URL plugin disposal",
+    )
+    require_order(
+        url_launcher_test,
+        (
+            "g_hash_table_size(messenger->handlers) == 2",
+            "weak_plugin != nullptr",
+            "FL_BINARY_MESSENGER_GET_IFACE(messenger)->shutdown(",
+            "g_hash_table_size(messenger->handlers) == 0",
+            "messenger->handler_sets_during_shutdown == 2",
+            "weak_plugin == nullptr",
+        ),
+        "URL plugin messenger-shutdown ownership regression",
+    )
+    require(
+        dart_verify,
+        "\n    /tmp/url_launcher_shutdown_test\n",
+        "confined URL-launcher native shutdown test",
+    )
+    require_order(
+        dart_verify,
+        (
+            "upstream_url_launcher=/online/pub-cache/hosted/pub.dev/url_launcher_linux-3.2.1/linux",
+            "52cd2d6ef9bc4e1b28eca16d4593c06c52fbc4de3be8083230060c35c4b0db2d",
+            '"$upstream_url_launcher/url_launcher_plugin.cc" | sha256sum -c -',
+            "/tmp/url_launcher_upstream_test >/tmp/url_launcher_upstream.out 2>&1",
+            '[ "$upstream_status" -eq 1 ]',
+            "FAIL: shutdown did not perform exactly one terminal reset per URL channel",
+        ),
+        "exact stock URL-launcher negative control",
+    )
+    if dart_verify.count('[ "$upstream_status" -eq 1 ]') != 2:
+        raise VerificationError(
+            "exact stock URL-launcher rejection must appear once in execution and once in its source gate"
+        )
     forbid(controller, "PASSWORD_SETTLE_MS", "blind password-prompt delay")
     require(controller, "AUTH_WAIT_MS 30000U", "authentication deadline")
     require(controller, "FRESH_LIMIT_MS 1000U", "live-frame freshness bound")
@@ -839,10 +945,26 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(
         sources["requirements"],
+        '<div class="req"><span class="id">R-S11ge</span>',
+        "normative Linux plugin and GTK callback lifetime requirement",
+    )
+    require(
+        sources["requirements"],
+        "observe exactly two terminal handler-set operations",
+        "normative non-re-entrant URL handler retirement",
+    )
+    require(
+        sources["requirements"],
+        "button-press and button-release hooks are one paired ownership unit",
+        "normative paired GTK hook retirement",
+    )
+    require(
+        sources["requirements"],
         "maps AT-SPI <code>SHOWING</code> to the inverse of that same <code>IsObscured</code> flag",
         "normative pinned Flutter password-state contract",
     )
     require(sources["requirements"], "<tr><td>338</td>", "Appendix C evidence row")
+    require(sources["requirements"], "<tr><td>340</td>", "Appendix C teardown row")
     require(
         sources["hardening"],
         "R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence",
@@ -917,6 +1039,21 @@ def validate(sources: dict[str, str]) -> None:
         sources["hardening"],
         "The pending correction adds one response completion to the existing channel",
         "hardening response-bound native teardown correction",
+    )
+    require(
+        sources["hardening"],
+        "A nineteenth exact committed run used commit",
+        "hardening response-bound runtime result",
+    )
+    require(
+        sources["hardening"],
+        "Exact stacks bound both warnings to the two Pigeon channels",
+        "hardening exact URL-launcher teardown diagnosis",
+    )
+    require(
+        sources["hardening"],
+        "retained and removed only the press-hook ID",
+        "hardening unmatched GTK release-hook diagnosis",
     )
     require(
         sources["readme"],
@@ -1006,6 +1143,7 @@ MUTATIONS = (
     ("multi_window_upstream", "b47e8385e5a75d38319ad706a64b0ead3108b093", "unreviewed-upstream"),
     ("multi_window_upstream", "waits for the method\nresponse before scheduling the idle erase", "schedules the idle erase without waiting for Dart"),
     ("multi_window_header", "bool destroy_pending_ = false;", "bool destroy_pending_ = true;"),
+    ("multi_window_header", "gulong releasedEmissionHook = 0;", "gulong releasedEmissionHook = 1;"),
     ("multi_window_channel_header", "using CompletionHandler = std::function<void()>;", "using CompletionHandler = void (*)();"),
     ("multi_window_channel", "fl_method_channel_invoke_method_finish(data->channel, res, &error);", "response = nullptr;"),
     ("multi_window_channel", "completion();", "true; # completion omitted"),
@@ -1013,9 +1151,21 @@ MUTATIONS = (
     ("multi_window_linux", "if (self->destroy_pending_)", "if (false)"),
     ("multi_window_linux", 'channel->InvokeMethodSelf("onDestroy", args, [callback, id]() {', 'channel->InvokeMethodSelfVoid("onDestroy", args); if (false) {'),
     ("multi_window_linux", "g_idle_add_full(", "callback->OnWindowDestroy(id);\n      g_idle_add_full("),
+    ("multi_window_linux", "this->releasedEmissionHook = g_signal_add_emission_hook(", "g_signal_add_emission_hook("),
+    ("multi_window_linux", "if (this->releasedEmissionHook != 0)", "if (false)"),
     ("multi_window_linux", "return TRUE;", "return self->isPreventClose;"),
     ("dart_verify", "desktop multi-window waits for Dart cleanup response before owner retirement", "desktop multi-window native destruction gate removed"),
     ("dart_verify", "third_party/desktop_multi_window/lib/", "third_party/desktop_multi_window-disabled/lib/"),
+    ("flutter_attributes", "third_party/url_launcher_linux/** -text", "third_party/url_launcher_linux/** text=auto"),
+    ("flutter_pubspec", "path: third_party/url_launcher_linux", "path: /tmp/url_launcher_linux"),
+    ("flutter_lock", 'path: "third_party/url_launcher_linux"', 'path: "/tmp/url_launcher_linux"'),
+    ("url_launcher_upstream", "4e9ba368772369e3e08f231d2301b4ef72b9ff87c31192ef471b380ef29a4935", "unreviewed-url-launcher"),
+    ("url_launcher_upstream", "52cd2d6ef9bc4e1b28eca16d4593c06c52fbc4de3be8083230060c35c4b0db2d", "unidentified-url-launcher-linux-source"),
+    ("url_launcher_linux", "g_clear_object(&self->registrar);", "ful_url_launcher_api_clear_method_handlers(fl_plugin_registrar_get_messenger(self->registrar), nullptr);\n  g_clear_object(&self->registrar);"),
+    ("url_launcher_test", "messenger->handler_sets_during_shutdown == 2", "messenger->handler_sets_during_shutdown == 6"),
+    ("dart_verify", "\n    /tmp/url_launcher_shutdown_test\n", "\n    true # URL-launcher shutdown test disabled\n"),
+    ("dart_verify", '"$upstream_url_launcher/url_launcher_plugin.cc" | sha256sum -c -', '"$upstream_url_launcher/url_launcher_plugin.cc" | true'),
+    ("dart_verify", '[ "$upstream_status" -eq 1 ]', '[ "$upstream_status" -eq 0 ]'),
     ("controller", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0 && atspi_state_set_contains(states, ATSPI_STATE_SHOWING) != 0"),
     ("controller", "wait_for_password_prompt((unsigned int)viewer_pid, &prompt_scan)", "false"),
     ("controller", "wait_for_password_prompt_retirement((unsigned int)viewer_pid, &prompt_scan)", "false"),
@@ -1030,6 +1180,10 @@ MUTATIONS = (
     ("requirements", "dd1c48d617c1b4881cd27e07ab6ea0f4ce38336972caa6d1f27e4fb967efa526", "c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7"),
     ("requirements", "canonical-pinned-online-copy", "unverified-cache-copy"),
     ("requirements", "only after that response callback returns may native code defer", "native code may immediately defer"),
+    ("requirements", '<div class="req"><span class="id">R-S11ge</span>', '<div class="req"><span class="id">R-S11ge-disabled</span>'),
+    ("requirements", "observe exactly two terminal handler-set operations", "ignore terminal handler-set cardinality"),
+    ("requirements", "button-press and button-release hooks are one paired ownership unit", "button-release hook ownership is optional"),
+    ("requirements", "<tr><td>340</td>", "<tr><td>340-disabled</td>"),
     ("requirements", "maps AT-SPI <code>SHOWING</code> to the inverse of that same <code>IsObscured</code> flag", "maps password visibility consistently"),
     ("hardening", "R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence", "R-S11gc-disabled/R-S11e-216"),
     ("hardening", "The corrected evidence boundary now compiles the existing audited `smoke-bind-loopback.c`", "The evidence boundary assumes an ambient bind rewrite"),
@@ -1046,6 +1200,9 @@ MUTATIONS = (
     ("hardening", "Its Linux GTK", "Its unrelated Linux GTK"),
     ("hardening", "An eighteenth exact committed diagnostic run used commit", "An uncounted diagnostic run used commit"),
     ("hardening", "The pending correction adds one response completion to the existing channel", "The pending correction adds one arbitrary delay"),
+    ("hardening", "A nineteenth exact committed run used commit", "An uncounted nineteenth run used commit"),
+    ("hardening", "Exact stacks bound both warnings to the two Pigeon channels", "A guess associated the warnings with a plugin"),
+    ("hardening", "retained and removed only the press-hook ID", "owned both global hook IDs"),
 )
 
 

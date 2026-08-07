@@ -16845,6 +16845,52 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   An exact committed full-peer rerun, including viewer exit zero, remains mandatory before this item
   can become green.
 
+  A nineteenth exact committed run used commit
+  `a968e78ec9542eb8c182309b6ef6c832a6d31ebd`, tree
+  `c4c979fa4743033676981290b441cf365b437301`, and the response-bound native/Dart handshake above.
+  The clean exact build again exercised both actual product roles: the prompt retired,
+  authentication succeeded, four initial source states were current with first-current latency
+  0 ms and maximum initial age 297 ms, the same authenticated connection stayed alive through the
+  real 2000-ms blur, the blurred sample was 121 ms old, recovery took 0 ms, and the maximum recovery
+  observation was 253 ms. The server and all evidence owners joined and the listener closed. The
+  viewer nevertheless emitted the same two engine-less messenger warnings and exited 139. This
+  proves the response handshake closed a real ordering hole but was not sufficient, and the
+  transaction remains red.
+
+  A disposable diagnostic-only exact build then interposed a bounded channel tracer on the isolated
+  viewer only; neither diagnostic commit is in this branch and neither is eligible to publish. That
+  run again authenticated and passed actual pixels/focus on one connection (first-current 0 ms,
+  maximum initial age 253 ms, 2000-ms blurred age 84 ms, recovery 0 ms, maximum observed age
+  297 ms), then exited 139. Exact stacks bound both warnings to the two Pigeon channels
+  `dev.flutter.pigeon.url_launcher_linux.UrlLauncherApi.canLaunchUrl` and
+  `dev.flutter.pigeon.url_launcher_linux.UrlLauncherApi.launchUrl` in locked
+  `url_launcher_linux 3.2.1`. Its two messenger handlers jointly retain one API object, that API
+  owns the plugin, and the plugin can therefore reach its final reference while messenger shutdown
+  is already removing those handlers. Upstream disposal then redundantly calls
+  `ful_url_launcher_api_clear_method_handlers()`, constructing channels and resetting the same
+  handlers re-entrantly after engine retirement. Current upstream source retains that ownership
+  pattern, so an unrelated dependency bump is not accepted as a fix.
+
+  R-S11ge/Appx C #340 carries the smallest direct correction. The exact locked package is vendored
+  with its hosted SHA-256 provenance; Linux plugin disposal omits only that redundant recursive
+  clear and still releases its registrar and parent object. A native regression using the exact
+  generated Pigeon code and pinned Flutter 3.24.5 engine requires two real handlers, handler-owned
+  plugin retention, shutdown through the real messenger interface, exactly two normal terminal
+  handler resets (one per channel), an empty handler table, and final plugin release. The corrected
+  source passes warning-clean; the exact stock 3.2.1 disposal fails the same executable test because
+  it performs additional resets during shutdown. This is stronger than a source-spelling assertion
+  but remains only a focused native lifetime proof until the real peer exits cleanly.
+
+  The same audit found a second independent lifetime defect in the vendored multi-window Linux
+  implementation. It installs process-global GTK button-press and button-release emission hooks
+  with the `FlutterWindow` as callback data, but retained and removed only the press-hook ID. The
+  pending correction owns both returned IDs and conditionally removes both before GTK window/engine
+  destruction, eliminating the release hook's dangling callback pointer. Exact pinned-engine
+  C++14 compilation passes with new warnings forbidden. Focused and independent verifiers mutate
+  both hook ownership and both URL-launcher ownership boundaries. Full offline analysis, complete
+  mutation closure, and a clean exact committed peer rerun remain mandatory; none of these pending
+  source results is represented as release-green evidence.
+
   No root, product configuration injection, policy bypass, or product-only test hook is admitted. Controlled
   peer and viewer run as numeric non-root in separate mount, PID,
   IPC, temporary-home/configuration, and X11 state. The controlled peer owns a Docker
@@ -16903,9 +16949,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   configuration, display, firewall, route, or network state. The synchronized requirements
   SHA-256 is `e7fbcc934e5cb215263f5279db8915de9bd92d920ad59f1272780fe702ccc910`.
 
-  No green full-peer transaction is recorded after eighteen exact committed attempts. The fourteenth,
-  fifteenth, and eighteenth runs are strong authenticated presentation/focus/performance evidence,
-  but all three viewer exit-139 results keep the overall boundary red. Each product or harness correction must first be committed so
+  No green full-peer transaction is recorded after nineteen exact committed attempts. The fourteenth,
+  fifteenth, eighteenth, and nineteenth runs are strong authenticated presentation/focus/performance evidence,
+  but all four viewer exit-139 results keep the overall boundary red. Each product or harness correction must first be committed so
   its exact-source archive can honestly contain the files being run. A green future result will close
   only one Linux/X11 software-codec full-peer and focus cycle. It will not establish Android
   Activity/foreground-service/task-swipe/reopen/Force-Stop behavior; Windows engine/compositor
@@ -21946,7 +21992,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-ffbe456898d9777a2d9d10145cd878c3e49838aeb3cff539015ae951d6f0e4ec  requirements.html
+d9c07f5b3a39be840903a3a99905baa2695217899a995ecd9bc3f343b186ec46  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -21994,3 +22040,5 @@ The same identity additionally binds R-S11fz and Appendix C #334.
 The same identity additionally binds R-S11ga and Appendix C #335.
 The same identity additionally binds R-S11gb and Appendix C #337.
 The same identity additionally binds R-S11gc and Appendix C #338.
+The same identity additionally binds R-S11gd and Appendix C #339.
+The same identity additionally binds R-S11ge and Appendix C #340.

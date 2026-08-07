@@ -252,6 +252,39 @@ local_docker run --rm --pull=never --network=none --read-only \
       $(pkg-config --cflags --libs gtk+-3.0) \
       -o /tmp/texture_rgba_renderer_plugin_test
     /tmp/texture_rgba_renderer_plugin_test
+    echo "  == Linux URL-launcher shutdown does not recursively register channels =="
+    url_launcher=/src/flutter/third_party/url_launcher_linux/linux
+    c++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter \
+      -I"$engine" -I"$url_launcher" -I"$url_launcher/include" \
+      "$url_launcher/test/url_launcher_shutdown_test.cc" \
+      "$url_launcher/messages.g.cc" \
+      "$url_launcher/url_launcher_plugin.cc" \
+      -L"$engine" -Wl,-rpath,"$engine" -lflutter_linux_gtk \
+      $(pkg-config --cflags --libs gtk+-3.0) \
+      -o /tmp/url_launcher_shutdown_test
+    /tmp/url_launcher_shutdown_test
+    echo "  == exact stock Linux URL-launcher disposal is rejected by the same regression =="
+    upstream_url_launcher=/online/pub-cache/hosted/pub.dev/url_launcher_linux-3.2.1/linux
+    printf '%s  %s\n' \
+      '52cd2d6ef9bc4e1b28eca16d4593c06c52fbc4de3be8083230060c35c4b0db2d' \
+      "$upstream_url_launcher/url_launcher_plugin.cc" | sha256sum -c -
+    c++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter \
+      -I"$engine" -I"$upstream_url_launcher" -I"$upstream_url_launcher/include" \
+      "$url_launcher/test/url_launcher_shutdown_test.cc" \
+      "$upstream_url_launcher/messages.g.cc" \
+      "$upstream_url_launcher/url_launcher_plugin.cc" \
+      -L"$engine" -Wl,-rpath,"$engine" -lflutter_linux_gtk \
+      $(pkg-config --cflags --libs gtk+-3.0) \
+      -o /tmp/url_launcher_upstream_test
+    set +e
+    /tmp/url_launcher_upstream_test >/tmp/url_launcher_upstream.out 2>&1
+    upstream_status=$?
+    set -e
+    [ "$upstream_status" -eq 1 ] \
+      || { echo "  FAIL URL launcher: exact stock disposal unexpectedly passed or crashed"; exit 1; }
+    grep -qF 'FAIL: shutdown did not perform exactly one terminal reset per URL channel' \
+      /tmp/url_launcher_upstream.out \
+      || { echo "  FAIL URL launcher: exact stock disposal failed for the wrong reason"; exit 1; }
     echo "  == R-S11ez portable Windows texture callback-core retirement finality =="
     windows_plugin=/src/flutter/third_party/texture_rgba_renderer/windows
     c++ -std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter \
@@ -487,6 +520,8 @@ grep -qF 'waits for the method' "$multi_window/UPSTREAM.md" \
   || { echo "  FAIL desktop multi-window: native/Dart teardown deviation is unrecorded"; exit 1; }
 grep -qF 'bool destroy_pending_ = false;' "$multi_window/linux/flutter_window.h" \
   || { echo "  FAIL desktop multi-window: close scheduling is not idempotent"; exit 1; }
+grep -qF 'gulong releasedEmissionHook = 0;' "$multi_window/linux/flutter_window.h" \
+  || { echo "  FAIL desktop multi-window: release-hook ownership is absent"; exit 1; }
 grep -qF 'using CompletionHandler = std::function<void()>;' \
   "$multi_window/linux/window_channel.h" \
   || { echo "  FAIL desktop multi-window: Dart cleanup has no native completion contract"; exit 1; }
@@ -498,6 +533,15 @@ for token in \
   'completion();'; do
   grep -qF "$token" "$multi_window/linux/window_channel.cc" \
     || { echo "  FAIL desktop multi-window: missing response-completion stage: $token"; exit 1; }
+done
+for token in \
+  'this->releasedEmissionHook = g_signal_add_emission_hook(' \
+  'if (this->pressedEmissionHook != 0)' \
+  'this->pressedEmissionHook);' \
+  'if (this->releasedEmissionHook != 0)' \
+  'this->releasedEmissionHook);'; do
+  grep -qF "$token" "$multi_window/linux/flutter_window.cc" \
+    || { echo "  FAIL desktop multi-window: unmatched GTK hook lifetime: $token"; exit 1; }
 done
 for token in \
   'gboolean destroyWindowWhenIdle(gpointer data)' \
@@ -527,6 +571,41 @@ if grep -qF 'return self->isPreventClose;' \
   echo "  FAIL desktop multi-window: GTK callback still reads its destroyed owner"; exit 1
 fi
 echo "  ok  desktop multi-window waits for Dart cleanup response before owner retirement"
+
+echo "== Linux URL-launcher handlers retire without recursive engine-shutdown registration =="
+url_launcher=flutter/third_party/url_launcher_linux
+grep -qF 'third_party/url_launcher_linux/** -text' flutter/.gitattributes \
+  || { echo "  FAIL URL launcher: vendored bytes are subject to text conversion"; exit 1; }
+grep -qF 'path: third_party/url_launcher_linux' flutter/pubspec.yaml \
+  || { echo "  FAIL URL launcher: override does not use the vendored plugin"; exit 1; }
+grep -qF 'path: "third_party/url_launcher_linux"' flutter/pubspec.lock \
+  || { echo "  FAIL URL launcher: lockfile does not bind the vendored plugin"; exit 1; }
+grep -qF '4e9ba368772369e3e08f231d2301b4ef72b9ff87c31192ef471b380ef29a4935' \
+  "$url_launcher/UPSTREAM.md" \
+  || { echo "  FAIL URL launcher: exact hosted provenance is absent"; exit 1; }
+grep -qF '52cd2d6ef9bc4e1b28eca16d4593c06c52fbc4de3be8083230060c35c4b0db2d' \
+  "$url_launcher/UPSTREAM.md" \
+  || { echo "  FAIL URL launcher: exact upstream Linux source identity is absent"; exit 1; }
+if grep -qF 'ful_url_launcher_api_clear_method_handlers(' \
+  "$url_launcher/linux/url_launcher_plugin.cc"; then
+  echo "  FAIL URL launcher: plugin disposal recursively clears messenger handlers"; exit 1
+fi
+for token in \
+  'FL_BINARY_MESSENGER_GET_IFACE(messenger)->shutdown(' \
+  'messenger->handler_sets_during_shutdown == 2' \
+  'weak_plugin == nullptr'; do
+  grep -qF "$token" "$url_launcher/linux/test/url_launcher_shutdown_test.cc" \
+    || { echo "  FAIL URL launcher: missing shutdown regression: $token"; exit 1; }
+done
+for token in \
+  'upstream_url_launcher=/online/pub-cache/hosted/pub.dev/url_launcher_linux-3.2.1/linux' \
+  '/tmp/url_launcher_upstream_test >/tmp/url_launcher_upstream.out 2>&1' \
+  '[ "$upstream_status" -eq 1 ]' \
+  'FAIL: shutdown did not perform exactly one terminal reset per URL channel'; do
+  grep -qF "$token" scripts/dart-verify.sh \
+    || { echo "  FAIL URL launcher: missing exact-stock negative control: $token"; exit 1; }
+done
+echo "  ok  Linux URL-launcher shutdown has one non-recursive handler owner"
 
 # R-G2/R-SV5: numeric IDs are not viewer identities. Keep the authored Flutter API, connect choke
 # point, autocomplete, and peer rendering on one exact direct-address model. In particular, never

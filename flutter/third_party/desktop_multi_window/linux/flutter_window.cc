@@ -161,9 +161,9 @@ FlutterWindow::FlutterWindow(
   this->pressedEmissionHook = g_signal_add_emission_hook(
       g_signal_lookup("button-press-event", GTK_TYPE_WIDGET), 0,
       onMousePressHook, this, NULL);
-  g_signal_add_emission_hook(
-            g_signal_lookup("button-release-event", GTK_TYPE_WIDGET), 0,
-            onMouseReleaseHook, this, NULL);
+  this->releasedEmissionHook = g_signal_add_emission_hook(
+      g_signal_lookup("button-release-event", GTK_TYPE_WIDGET), 0,
+      onMouseReleaseHook, this, NULL);
 
   gtk_widget_grab_focus(GTK_WIDGET(fl_view));
   gtk_widget_hide(GTK_WIDGET(window_));
@@ -181,7 +181,16 @@ int64_t FlutterWindow::GetId()
 
 FlutterWindow::~FlutterWindow()
 {
-  g_signal_remove_emission_hook(g_signal_lookup("button-press-event", GTK_TYPE_WIDGET), this->pressedEmissionHook);
+  if (this->pressedEmissionHook != 0) {
+    g_signal_remove_emission_hook(
+        g_signal_lookup("button-press-event", GTK_TYPE_WIDGET),
+        this->pressedEmissionHook);
+  }
+  if (this->releasedEmissionHook != 0) {
+    g_signal_remove_emission_hook(
+        g_signal_lookup("button-release-event", GTK_TYPE_WIDGET),
+        this->releasedEmissionHook);
+  }
   if (this->window_)
   {
     gtk_widget_destroy(this->window_);

@@ -20639,6 +20639,18 @@ def validate_desktop_texture_lifecycle_contract(sources):
             '"multi_window_upstream": "flutter/third_party/desktop_multi_window/UPSTREAM.md"',
             "vendored multi-window provenance",
         ),
+        (
+            '"url_launcher_linux": "flutter/third_party/url_launcher_linux/linux/url_launcher_plugin.cc"',
+            "vendored URL-launcher Linux lifetime",
+        ),
+        (
+            '"url_launcher_test": "flutter/third_party/url_launcher_linux/linux/test/url_launcher_shutdown_test.cc"',
+            "vendored URL-launcher shutdown regression",
+        ),
+        (
+            '"url_launcher_upstream": "flutter/third_party/url_launcher_linux/UPSTREAM.md"',
+            "vendored URL-launcher provenance",
+        ),
     ):
         require_text(
             sources["flutter_peer_presentation_verifier"],
@@ -20756,6 +20768,11 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "independent idempotent native subwindow destruction state",
     )
     require_text(
+        sources["desktop_multi_window_header"],
+        "gulong releasedEmissionHook = 0;",
+        "independent owned native button-release emission hook",
+    )
+    require_text(
         sources["desktop_multi_window_channel_header"],
         "using CompletionHandler = std::function<void()>;",
         "independent native Dart-response completion contract",
@@ -20794,6 +20811,20 @@ def validate_desktop_texture_lifecycle_contract(sources):
         ),
         "independent Dart cleanup response and native callback return before owner retirement",
     )
+    require_order(
+        sources["desktop_multi_window_linux"],
+        (
+            "this->pressedEmissionHook = g_signal_add_emission_hook(",
+            "this->releasedEmissionHook = g_signal_add_emission_hook(",
+            "FlutterWindow::~FlutterWindow()",
+            "if (this->pressedEmissionHook != 0)",
+            "this->pressedEmissionHook);",
+            "if (this->releasedEmissionHook != 0)",
+            "this->releasedEmissionHook);",
+            "gtk_widget_destroy(this->window_);",
+        ),
+        "independent paired GTK global emission-hook ownership",
+    )
     require_absent(
         sources["desktop_multi_window_linux"],
         'InvokeMethodSelfVoid("onDestroy"',
@@ -20824,6 +20855,115 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "desktop multi-window waits for Dart cleanup response before owner retirement",
         2,
         "independent confined native multi-window lifetime gate cardinality",
+    )
+    require_text(
+        sources["flutter_gitattributes"],
+        "third_party/url_launcher_linux/** -text",
+        "independent vendored URL-launcher byte preservation",
+    )
+    require_order(
+        sources["flutter_pubspec_yaml"],
+        (
+            "url_launcher_linux:",
+            "path: third_party/url_launcher_linux",
+        ),
+        "independent vendored URL-launcher dependency override",
+    )
+    require_order(
+        sources["flutter_pubspec_lock"],
+        (
+            "url_launcher_linux:",
+            'path: "third_party/url_launcher_linux"',
+            "relative: true",
+            "source: path",
+            'version: "3.2.1"',
+        ),
+        "independent locked vendored URL-launcher dependency",
+    )
+    require_text(
+        sources["desktop_url_launcher_upstream"],
+        "4e9ba368772369e3e08f231d2301b4ef72b9ff87c31192ef471b380ef29a4935",
+        "independent vendored URL-launcher hosted provenance",
+    )
+    require_text(
+        sources["desktop_url_launcher_upstream"],
+        "52cd2d6ef9bc4e1b28eca16d4593c06c52fbc4de3be8083230060c35c4b0db2d",
+        "independent vendored URL-launcher upstream Linux source identity",
+    )
+    require_absent(
+        sources["desktop_url_launcher_linux"],
+        "ful_url_launcher_api_clear_method_handlers(",
+        "independent recursive URL handler clearing during disposal",
+    )
+    require_order(
+        sources["desktop_url_launcher_test"],
+        (
+            "g_hash_table_size(messenger->handlers) == 2",
+            "weak_plugin != nullptr",
+            "FL_BINARY_MESSENGER_GET_IFACE(messenger)->shutdown(",
+            "g_hash_table_size(messenger->handlers) == 0",
+            "messenger->handler_sets_during_shutdown == 2",
+            "weak_plugin == nullptr",
+        ),
+        "independent URL plugin messenger-shutdown ownership regression",
+    )
+    require_text(
+        sources["dart_verify"],
+        "\n    /tmp/url_launcher_shutdown_test\n",
+        "independent confined URL-launcher native shutdown test",
+    )
+    require_order(
+        sources["dart_verify"],
+        (
+            "upstream_url_launcher=/online/pub-cache/hosted/pub.dev/url_launcher_linux-3.2.1/linux",
+            "52cd2d6ef9bc4e1b28eca16d4593c06c52fbc4de3be8083230060c35c4b0db2d",
+            '"$upstream_url_launcher/url_launcher_plugin.cc" | sha256sum -c -',
+            "/tmp/url_launcher_upstream_test >/tmp/url_launcher_upstream.out 2>&1",
+            '[ "$upstream_status" -eq 1 ]',
+            "FAIL: shutdown did not perform exactly one terminal reset per URL channel",
+        ),
+        "independent exact stock URL-launcher negative control",
+    )
+    require_count(
+        sources["dart_verify"],
+        '[ "$upstream_status" -eq 1 ]',
+        2,
+        "independent exact stock URL-launcher rejection execution/source-gate cardinality",
+    )
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11ge</span>',
+        "Linux plugin and GTK callback lifetime requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "observe exactly two terminal handler-set operations",
+        "non-re-entrant URL handler retirement requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "button-press and button-release hooks are one paired ownership unit",
+        "paired GTK hook retirement requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>340</td>",
+        "Linux plugin and GTK callback lifetime Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "A nineteenth exact committed run used commit",
+        "response-bound full-peer runtime result",
+    )
+    require_text(
+        sources["hardening"],
+        "Exact stacks bound both warnings to the two Pigeon channels",
+        "exact URL-launcher teardown diagnosis",
+    )
+    require_text(
+        sources["hardening"],
+        "retained and removed only the press-hook ID",
+        "unmatched GTK release-hook diagnosis",
     )
     require_text(
         sources["apple"],
@@ -58611,6 +58751,24 @@ def run_source_mutations(sources):
             "independent full-peer vendored multi-window provenance binding",
         ),
         (
+            "flutter_peer_presentation_verifier",
+            '"url_launcher_linux": "flutter/third_party/url_launcher_linux/linux/url_launcher_plugin.cc"',
+            '"url_launcher_linux": "flutter/third_party/url_launcher_linux/linux/removed-url-launcher-plugin.cc"',
+            "independent full-peer vendored URL-launcher Linux lifetime binding",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
+            '"url_launcher_test": "flutter/third_party/url_launcher_linux/linux/test/url_launcher_shutdown_test.cc"',
+            '"url_launcher_test": "flutter/third_party/url_launcher_linux/linux/test/removed-url-launcher-shutdown-test.cc"',
+            "independent full-peer vendored URL-launcher shutdown regression binding",
+        ),
+        (
+            "flutter_peer_presentation_verifier",
+            '"url_launcher_upstream": "flutter/third_party/url_launcher_linux/UPSTREAM.md"',
+            '"url_launcher_upstream": "flutter/third_party/url_launcher_linux/REMOVED-UPSTREAM.md"',
+            "independent full-peer vendored URL-launcher provenance binding",
+        ),
+        (
             "desktop_remote_page_dart",
             "Future<void> prepareForRemoval({bool closeSession = true})",
             "Future<void> prepareForRemoval({bool closeSession = false})",
@@ -58708,6 +58866,12 @@ def run_source_mutations(sources):
             "independent idempotent native subwindow destruction state",
         ),
         (
+            "desktop_multi_window_header",
+            "gulong releasedEmissionHook = 0;",
+            "gulong releasedEmissionHook = 1;",
+            "independent owned native button-release emission hook",
+        ),
+        (
             "desktop_multi_window_channel_header",
             "using CompletionHandler = std::function<void()>;",
             "using CompletionHandler = void (*)();",
@@ -58757,6 +58921,18 @@ def run_source_mutations(sources):
         ),
         (
             "desktop_multi_window_linux",
+            "this->releasedEmissionHook = g_signal_add_emission_hook(",
+            "g_signal_add_emission_hook(",
+            "independent paired GTK global emission-hook ownership",
+        ),
+        (
+            "desktop_multi_window_linux",
+            "if (this->releasedEmissionHook != 0)",
+            "if (false)",
+            "independent paired GTK global emission-hook ownership",
+        ),
+        (
+            "desktop_multi_window_linux",
             "return TRUE;",
             "return self->isPreventClose;",
             "independent post-destruction native field read",
@@ -58766,6 +58942,112 @@ def run_source_mutations(sources):
             "desktop multi-window waits for Dart cleanup response before owner retirement",
             "desktop multi-window native destruction gate removed",
             "independent confined native multi-window lifetime gate cardinality",
+        ),
+        (
+            "flutter_gitattributes",
+            "third_party/url_launcher_linux/** -text",
+            "third_party/url_launcher_linux/** text=auto",
+            "independent vendored URL-launcher byte preservation",
+        ),
+        (
+            "flutter_pubspec_yaml",
+            "path: third_party/url_launcher_linux",
+            "path: /tmp/url_launcher_linux",
+            "independent vendored URL-launcher dependency override",
+        ),
+        (
+            "flutter_pubspec_lock",
+            'path: "third_party/url_launcher_linux"',
+            'path: "/tmp/url_launcher_linux"',
+            "independent locked vendored URL-launcher dependency",
+        ),
+        (
+            "desktop_url_launcher_upstream",
+            "4e9ba368772369e3e08f231d2301b4ef72b9ff87c31192ef471b380ef29a4935",
+            "unreviewed-url-launcher",
+            "independent vendored URL-launcher hosted provenance",
+        ),
+        (
+            "desktop_url_launcher_upstream",
+            "52cd2d6ef9bc4e1b28eca16d4593c06c52fbc4de3be8083230060c35c4b0db2d",
+            "unidentified-url-launcher-linux-source",
+            "independent vendored URL-launcher upstream Linux source identity",
+        ),
+        (
+            "desktop_url_launcher_linux",
+            "g_clear_object(&self->registrar);",
+            "ful_url_launcher_api_clear_method_handlers(\n"
+            "      fl_plugin_registrar_get_messenger(self->registrar), nullptr);\n"
+            "  g_clear_object(&self->registrar);",
+            "independent recursive URL handler clearing during disposal",
+        ),
+        (
+            "desktop_url_launcher_test",
+            "messenger->handler_sets_during_shutdown == 2",
+            "messenger->handler_sets_during_shutdown == 6",
+            "independent URL plugin messenger-shutdown ownership regression",
+        ),
+        (
+            "dart_verify",
+            "\n    /tmp/url_launcher_shutdown_test\n",
+            "\n    true # URL-launcher shutdown test disabled\n",
+            "independent confined URL-launcher native shutdown test",
+        ),
+        (
+            "dart_verify",
+            '"$upstream_url_launcher/url_launcher_plugin.cc" | sha256sum -c -',
+            '"$upstream_url_launcher/url_launcher_plugin.cc" | true',
+            "independent exact stock URL-launcher negative control",
+        ),
+        (
+            "dart_verify",
+            '    [ "$upstream_status" -eq 1 ] \\\n'
+            '      || { echo "  FAIL URL launcher: exact stock disposal unexpectedly passed or crashed"; exit 1; }',
+            '    [ "$upstream_status" -eq 0 ] \\\n'
+            '      || { echo "  FAIL URL launcher: exact stock disposal unexpectedly passed or crashed"; exit 1; }',
+            "independent exact stock URL-launcher rejection execution/source-gate cardinality",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11ge</span>',
+            '<div class="req"><span class="id">R-S11ge-disabled</span>',
+            "Linux plugin and GTK callback lifetime requirement",
+        ),
+        (
+            "requirements",
+            "observe exactly two terminal handler-set operations",
+            "ignore terminal handler-set cardinality",
+            "non-re-entrant URL handler retirement requirement",
+        ),
+        (
+            "requirements",
+            "button-press and button-release hooks are one paired ownership unit",
+            "button-release hook ownership is optional",
+            "paired GTK hook retirement requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>340</td>",
+            "<tr><td>340-disabled</td>",
+            "Linux plugin and GTK callback lifetime Appendix C row",
+        ),
+        (
+            "hardening",
+            "A nineteenth exact committed run used commit",
+            "An uncounted nineteenth run used commit",
+            "response-bound full-peer runtime result",
+        ),
+        (
+            "hardening",
+            "Exact stacks bound both warnings to the two Pigeon channels",
+            "A guess associated the warnings with a plugin",
+            "exact URL-launcher teardown diagnosis",
+        ),
+        (
+            "hardening",
+            "retained and removed only the press-hook ID",
+            "owned both global hook IDs",
+            "unmatched GTK release-hook diagnosis",
         ),
         (
             "apple",
@@ -70333,6 +70615,17 @@ def main():
             ).read_text(encoding="utf-8"),
             "desktop_multi_window_upstream": (
                 repo / "flutter/third_party/desktop_multi_window/UPSTREAM.md"
+            ).read_text(encoding="utf-8"),
+            "desktop_url_launcher_linux": (
+                repo
+                / "flutter/third_party/url_launcher_linux/linux/url_launcher_plugin.cc"
+            ).read_text(encoding="utf-8"),
+            "desktop_url_launcher_test": (
+                repo
+                / "flutter/third_party/url_launcher_linux/linux/test/url_launcher_shutdown_test.cc"
+            ).read_text(encoding="utf-8"),
+            "desktop_url_launcher_upstream": (
+                repo / "flutter/third_party/url_launcher_linux/UPSTREAM.md"
             ).read_text(encoding="utf-8"),
             "main_dart": (repo / "flutter/lib/main.dart").read_text(encoding="utf-8"),
             "web_bridge_dart": (repo / "flutter/lib/web/bridge.dart").read_text(encoding="utf-8"),

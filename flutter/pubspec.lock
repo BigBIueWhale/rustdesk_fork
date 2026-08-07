@@ -1313,10 +1313,9 @@ packages:
   url_launcher_linux:
     dependency: transitive
     description:
-      name: url_launcher_linux
-      sha256: "4e9ba368772369e3e08f231d2301b4ef72b9ff87c31192ef471b380ef29a4935"
-      url: "https://pub.dev"
-    source: hosted
+      path: "third_party/url_launcher_linux"
+      relative: true
+    source: path
     version: "3.2.1"
   url_launcher_macos:
     dependency: transitive

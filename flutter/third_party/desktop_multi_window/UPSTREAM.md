@@ -18,6 +18,12 @@ subwindow engine may disappear. Native code therefore also waits for the method
 response before scheduling the idle erase. Both the Dart cleanup and the
 method-response callback have returned before destruction begins.
 
+The imported Linux source also installed process-global GTK button-press and
+button-release emission hooks with the subwindow object as callback data, but
+retained and removed only the press-hook ID. The vendored correction owns both
+IDs and removes both hooks before destroying the GTK window, so no global hook
+can retain a dangling `FlutterWindow` pointer after owner retirement.
+
 The vendored Dart also carries behavior-preserving analyzer hygiene required by
 the release gate: it removes an impossible null-aware call and unused imports,
 calls `super.initState()`, uses a real `@override`, matches overridden parameter

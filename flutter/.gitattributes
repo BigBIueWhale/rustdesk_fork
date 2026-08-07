@@ -1,2 +1,3 @@
 * text=auto
 third_party/desktop_multi_window/** -text
+third_party/url_launcher_linux/** -text

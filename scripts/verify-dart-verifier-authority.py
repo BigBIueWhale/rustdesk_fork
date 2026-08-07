@@ -229,6 +229,7 @@ def validate_contract(sources: Dict[str, str]) -> None:
             "grep -qF 'waits for the method' \"$multi_window/UPSTREAM.md\"",
             "grep -qF 'response before scheduling the idle erase' \"$multi_window/UPSTREAM.md\"",
             "grep -qF 'bool destroy_pending_ = false;' \"$multi_window/linux/flutter_window.h\"",
+            "grep -qF 'gulong releasedEmissionHook = 0;' \"$multi_window/linux/flutter_window.h\"",
             "grep -qF 'using CompletionHandler = std::function<void()>;'",
             "'struct SelfMethodInvokeAsyncUserData'",
             "'fl_method_channel_invoke_method_finish(data->channel, res, &error);'",
@@ -243,6 +244,18 @@ def validate_contract(sources: Dict[str, str]) -> None:
             "if grep -qF 'callback->OnWindowDestroy(self->id_);'",
             "if grep -qF 'callback->OnWindowDestroy(id);'",
             "if grep -qF 'return self->isPreventClose;'",
+            '"$url_launcher/test/url_launcher_shutdown_test.cc"',
+            '\n    /tmp/url_launcher_shutdown_test\n',
+            "grep -qF 'third_party/url_launcher_linux/** -text' flutter/.gitattributes",
+            "grep -qF 'path: third_party/url_launcher_linux' flutter/pubspec.yaml",
+            "if grep -qF 'ful_url_launcher_api_clear_method_handlers('",
+            "'messenger->handler_sets_during_shutdown == 2'",
+            "'upstream_url_launcher=/online/pub-cache/hosted/pub.dev/url_launcher_linux-3.2.1/linux'",
+            "'52cd2d6ef9bc4e1b28eca16d4593c06c52fbc4de3be8083230060c35c4b0db2d'",
+            '"$upstream_url_launcher/url_launcher_plugin.cc" | sha256sum -c -',
+            "'/tmp/url_launcher_upstream_test >/tmp/url_launcher_upstream.out 2>&1'",
+            "'[ \"$upstream_status\" -eq 1 ]'",
+            "'FAIL: shutdown did not perform exactly one terminal reset per URL channel'",
             '--env "RUSTDESK_RUST_VERSION=$RUST_VERSION"',
             'tar -C "$toolchain" -xf "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz"',
             '--components=rustc,cargo,rust-std-x86_64-unknown-linux-gnu,rustfmt-preview',
@@ -260,6 +273,10 @@ def validate_contract(sources: Dict[str, str]) -> None:
             '[ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ]',
         ),
         "dart verifier authority",
+    )
+    require(
+        dart.count('[ "$upstream_status" -eq 1 ]') == 2,
+        "exact stock URL-launcher rejection must appear once in execution and once in its source gate",
     )
     require(
         dart.index('initialize_local_docker_authority "$WORKSPACE/docker-config" "dart-verify"')
@@ -810,6 +827,12 @@ MUTATIONS = (
     ),
     Mutation(
         "dart",
+        "grep -qF 'gulong releasedEmissionHook = 0;' \"$multi_window/linux/flutter_window.h\"",
+        "true # release-hook ownership accepted absent",
+        "native release-hook ownership",
+    ),
+    Mutation(
+        "dart",
         "'fl_method_channel_invoke_method_finish(data->channel, res, &error);'",
         "'response completion omitted'",
         "native Dart-response finality",
@@ -831,6 +854,50 @@ MUTATIONS = (
         "if grep -qF 'return self->isPreventClose;'",
         "if false; then # post-destruction owner read accepted",
         "post-destruction owner-read refusal",
+    ),
+    Mutation(
+        "dart",
+        '\n    /tmp/url_launcher_shutdown_test\n',
+        '\n    true # URL-launcher shutdown test disabled\n',
+        "URL-launcher native shutdown behavior gate",
+    ),
+    Mutation(
+        "dart",
+        "grep -qF 'third_party/url_launcher_linux/** -text' flutter/.gitattributes",
+        "true # URL-launcher byte-preservation gate disabled",
+        "vendored URL-launcher byte preservation",
+    ),
+    Mutation(
+        "dart",
+        "grep -qF 'path: third_party/url_launcher_linux' flutter/pubspec.yaml",
+        "true # URL-launcher path override accepted absent",
+        "vendored URL-launcher dependency source gate",
+    ),
+    Mutation(
+        "dart",
+        "if grep -qF 'ful_url_launcher_api_clear_method_handlers('",
+        "if false; then # recursive URL handler clear accepted",
+        "recursive URL handler clear refusal",
+    ),
+    Mutation(
+        "dart",
+        "'messenger->handler_sets_during_shutdown == 2'",
+        "'messenger->handler_sets_during_shutdown == 6'",
+        "URL-launcher shutdown registration regression",
+    ),
+    Mutation(
+        "dart",
+        '"$upstream_url_launcher/url_launcher_plugin.cc" | sha256sum -c -',
+        '"$upstream_url_launcher/url_launcher_plugin.cc" | true',
+        "exact stock URL-launcher source authentication",
+    ),
+    Mutation(
+        "dart",
+        '    [ "$upstream_status" -eq 1 ] \\\n'
+        '      || { echo "  FAIL URL launcher: exact stock disposal unexpectedly passed or crashed"; exit 1; }',
+        '    [ "$upstream_status" -eq 0 ] \\\n'
+        '      || { echo "  FAIL URL launcher: exact stock disposal unexpectedly passed or crashed"; exit 1; }',
+        "exact stock URL-launcher rejection",
     ),
     Mutation(
         "dart",

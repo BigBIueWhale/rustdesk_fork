@@ -21184,8 +21184,8 @@ def validate_desktop_texture_lifecycle_contract(sources):
     )
     require_text(
         sources["hardening"],
-        "No green full-peer transaction is recorded after twenty exact committed attempts",
-        "full-peer result remains red pending exact rerun",
+        "The twenty-first exact committed transaction is green",
+        "exact committed full-peer green result",
     )
     require_text(
         sources["apple"],
@@ -59479,9 +59479,9 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "No green full-peer transaction is recorded after twenty exact committed attempts",
-            "The full-peer transaction is green",
-            "full-peer result remains red pending exact rerun",
+            "The twenty-first exact committed transaction is green",
+            "The twenty-first exact committed transaction remains unverified",
+            "exact committed full-peer green result",
         ),
         (
             "apple",

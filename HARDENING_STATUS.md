@@ -16844,8 +16844,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   weakening a validator, and a separate mutation was added that injects fire-and-forget teardown
   while retaining the correct response call. The fourth complete run proceeded past all prior
   points and exited zero with `verify-verifier-workspace: ok`; it was neither sampled nor shortened.
-  An exact committed full-peer rerun, including viewer exit zero, remains mandatory before this item
-  can become green.
+  At that byte freeze, an exact committed full-peer rerun including viewer exit zero still remained
+  mandatory before this item could become green; the later green transaction is recorded below.
 
   A nineteenth exact committed run used commit
   `a968e78ec9542eb8c182309b6ef6c832a6d31ebd`, tree
@@ -16963,8 +16963,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   actual `shipped asset authority` label. The expected diagnostic identity was aligned without
   weakening the validator or product gate. A complete unsliced restart from mutation one is the
   terminal pre-commit byte-freeze gate; its result is deliberately not preclaimed in this tracked
-  paragraph because editing the paragraph afterward would invalidate that byte freeze. A clean exact
-  committed real-peer exit-zero rerun remains mandatory before any green runtime claim.
+  paragraph because editing the paragraph afterward would invalidate that byte freeze. At that byte
+  freeze, a clean exact committed real-peer exit-zero rerun still remained mandatory before any
+  green runtime claim.
 
   Vendoring `window_manager` reduced the committed application lock to exactly three Git records,
   two from `rustdesk-org`. The first exact committed peer attempt at candidate commit
@@ -16983,8 +16984,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `d552816bcd34cb3a5c47403dcd782def30a61626a3363a274bcd979c5245c27b` over 193,952 files,
   62,162 directories, 35 symlinks, 34,989,432,893 regular-file bytes, 14 hardlink groups, and nine
   explicitly checked case collisions. The displaced cache remains preservation-bound by the
-  transaction record. This establishes current offline input coherence only; the clean exact
-  committed real-peer rerun remains mandatory before any green runtime claim.
+  transaction record. This establishes current offline input coherence only; the subsequent exact
+  committed runtime verdict is recorded below.
 
   No root, product configuration injection, policy bypass, or product-only test hook is admitted. Controlled
   peer and viewer run as numeric non-root in separate mount, PID,
@@ -17042,21 +17043,35 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `verify-verifier-workspace: ok`; it was neither sampled nor shortened. These gates started no
   RustDesk process, X server, listener, or networked process and changed no host service,
   configuration, display, firewall, route, or network state. The synchronized requirements
-  SHA-256 is `42d7ed6fb39595eabca2803c030988b3955e4fa90c70f2fbff04fcc1fafa42d8`.
+  SHA-256 is `281bb99609152e6456521ecc31cd710d92931b8f50088329301484d7b1ca7ab2`.
 
-  No green full-peer transaction is recorded after twenty exact committed attempts. The fourteenth,
-  fifteenth, eighteenth, nineteenth, and twentieth runs are strong authenticated presentation/focus/performance evidence,
-  but all five viewer exit-139 results keep the overall boundary red. Each product or harness correction must first be committed so
-  its exact-source archive can honestly contain the files being run. A green future result will close
-  only one Linux/X11 software-codec full-peer and focus cycle. It will not establish Android
+  The twenty-first exact committed transaction is green. Commit
+  `38ad03ea7a2465297425ad745ada5c05f8de7e94`, tree
+  `a71a28b7aba45d90ec39886b6317928e27bb6a1d`, and source-archive SHA-256
+  `58da0080ef04f1433792ddd3ec8170da5a14b35958f22956b283da1c870cd53b`
+  rebuilt the optimized Rust core and real 79-file Flutter Linux bundle from the exact current
+  closure. The viewer authenticated by typing through the singular real password accessible, which
+  then retired stably. Four distinct initial states reached the real Flutter/X11 window with the
+  first fresh frame in 83 ms and maximum age 289 ms. During a real 2000-ms focus loss the blurred
+  sample was 81 ms old; pointer return recovered in 0 ms with maximum recovery age 287 ms while the
+  exact authenticated TCP tuple and socket inode remained unchanged. The real window closed through
+  `WM_DELETE_WINDOW`; the viewer exited zero without the former engine-less messenger warnings,
+  post-destruction GTK call, or signal 139; and viewer, server, source fixture, and both Xvfb owners
+  joined. The listener closed, zero UDP remained, the source commit/tree/archive and sealed Pub-cache
+  digest revalidated, and the transaction printed its terminal
+  `FLUTTER_PEER_PRESENTATION_SMOKE_OK` verdict. The fourteenth, fifteenth, eighteenth, nineteenth,
+  and twentieth runs remain useful red historical evidence for the defects this transaction closes.
+
+  This green result closes only one Linux/X11 software-codec full-peer and focus cycle. It does not
+  establish Android
   Activity/foreground-service/task-swipe/reopen/Force-Stop behavior; Windows engine/compositor
   behavior; macOS/iOS; installed service/cross-user behavior; cross-version interoperability;
   concurrent control/file/audio correctness; long reconnect/focus/resource/performance soak; cold
   R-B2/R-B10 artifacts; independent reproduction; or external review. Every such item remains
   explicitly release-blocking.
 
-- **R-S11gd/R-S11e-217 Linux Flutter handled-command exit contract — SOURCE FIX AND EXACT
-  RELEASE-BUNDLE EXECUTION RECORDED; BROADER R-S11gc EVIDENCE REMAINS OPEN.** Platform: shipped
+- **R-S11gd/R-S11e-217 Linux Flutter handled-command exit contract — SOURCE FIX, EXACT
+  RELEASE-BUNDLE EXECUTION, AND LATER FULL-PEER EVIDENCE RECORDED.** Platform: shipped
   Linux Flutter runner. Endpoint/action:
   dynamic core loading and the `rustdesk_core_main` UI-continuation decision for CLI commands.
 
@@ -17081,8 +17096,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   This narrow correction does not by itself prove password persistence, listening, peer
   authentication, pixels, focus recovery, Android/Windows lifecycle behavior, release packaging,
-  cross-version operation, soak, independent reproduction, or external review. Those remain with
-  R-S11gc and the other explicit stop-ship boundaries.
+  cross-version operation, soak, independent reproduction, or external review. The later exact
+  transaction closes R-S11gc's narrow Linux evidence; those broader claims remain with the other
+  explicit stop-ship boundaries.
 
 - **Exact Linux Flutter texture/X11 presentation recovery — EXECUTABLE EVIDENCE GREEN;
   ANDROID/WINDOWS/NATIVE END-TO-END EVIDENCE OPEN.** Platform: confined Linux X11 with Flutter
@@ -22087,7 +22103,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-42d7ed6fb39595eabca2803c030988b3955e4fa90c70f2fbff04fcc1fafa42d8  requirements.html
+281bb99609152e6456521ecc31cd710d92931b8f50088329301484d7b1ca7ab2  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

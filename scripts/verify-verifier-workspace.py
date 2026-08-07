@@ -2721,7 +2721,7 @@ def validate_debian_result_publication_contract(sources):
          "Debian publisher pending identity"),
     ):
         require_text(build, text, label)
-    require_count(
+    require_exact_count(
         build,
         '/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-artifact-result.py"',
         2,
@@ -20746,9 +20746,36 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "independent vendored desktop multi-window provenance",
     )
     require_text(
+        sources["desktop_multi_window_upstream"],
+        "waits for the method\nresponse before scheduling the idle erase",
+        "independent vendored native/Dart teardown handshake record",
+    )
+    require_text(
         sources["desktop_multi_window_header"],
         "bool destroy_pending_ = false;",
         "independent idempotent native subwindow destruction state",
+    )
+    require_text(
+        sources["desktop_multi_window_channel_header"],
+        "using CompletionHandler = std::function<void()>;",
+        "independent native Dart-response completion contract",
+    )
+    require_order(
+        sources["desktop_multi_window_channel"],
+        (
+            "struct SelfMethodInvokeAsyncUserData",
+            "fl_method_channel_invoke_method_finish(data->channel, res, &error);",
+            "auto completion = std::move(data->completion);",
+            "delete data;",
+            "completion();",
+        ),
+        "independent native method-response ownership and completion",
+    )
+    require_count(
+        sources["desktop_multi_window_channel"],
+        "fl_method_channel_invoke_method_finish(data->channel, res, &error);",
+        2,
+        "independent complete native method-response finality",
     )
     require_order(
         sources["desktop_multi_window_linux"],
@@ -20759,12 +20786,18 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "if (self->destroy_pending_)",
             "self->destroy_pending_ = true;",
             "callback->OnWindowClose(id);",
+            'channel->InvokeMethodSelf("onDestroy", args, [callback, id]() {',
             "g_idle_add_full(",
             "destroyWindowWhenIdle,",
             "new PendingWindowDestroy{callback, id}",
             "return TRUE;",
         ),
-        "independent native subwindow callback return before owner retirement",
+        "independent Dart cleanup response and native callback return before owner retirement",
+    )
+    require_absent(
+        sources["desktop_multi_window_linux"],
+        'InvokeMethodSelfVoid("onDestroy"',
+        "independent fire-and-forget native destruction notification",
     )
     require_absent(
         sources["desktop_multi_window_linux"],
@@ -20783,8 +20816,14 @@ def validate_desktop_texture_lifecycle_contract(sources):
     )
     require_text(
         sources["dart_verify"],
-        "desktop multi-window native destruction returns before owner retirement",
+        "desktop multi-window waits for Dart cleanup response before owner retirement",
         "independent confined native multi-window lifetime gate",
+    )
+    require_exact_count(
+        sources["dart_verify"],
+        "desktop multi-window waits for Dart cleanup response before owner retirement",
+        2,
+        "independent confined native multi-window lifetime gate cardinality",
     )
     require_text(
         sources["apple"],
@@ -58657,22 +58696,58 @@ def run_source_mutations(sources):
             "independent vendored desktop multi-window provenance",
         ),
         (
+            "desktop_multi_window_upstream",
+            "waits for the method\nresponse before scheduling the idle erase",
+            "schedules the idle erase without waiting for Dart",
+            "independent vendored native/Dart teardown handshake record",
+        ),
+        (
             "desktop_multi_window_header",
             "bool destroy_pending_ = false;",
             "bool destroy_pending_ = true;",
             "independent idempotent native subwindow destruction state",
         ),
         (
+            "desktop_multi_window_channel_header",
+            "using CompletionHandler = std::function<void()>;",
+            "using CompletionHandler = void (*)();",
+            "independent native Dart-response completion contract",
+        ),
+        (
+            "desktop_multi_window_channel",
+            "fl_method_channel_invoke_method_finish(data->channel, res, &error);",
+            "response = nullptr;",
+            "independent complete native method-response finality",
+        ),
+        (
+            "desktop_multi_window_channel",
+            "completion();",
+            "true; // completion omitted",
+            "independent native method-response ownership and completion",
+        ),
+        (
             "desktop_multi_window_linux",
             "pending->callback->OnWindowDestroy(pending->id);",
             "return G_SOURCE_REMOVE;",
-            "independent native subwindow callback return before owner retirement",
+            "independent Dart cleanup response and native callback return before owner retirement",
         ),
         (
             "desktop_multi_window_linux",
             "if (self->destroy_pending_)",
             "if (false)",
-            "independent native subwindow callback return before owner retirement",
+            "independent Dart cleanup response and native callback return before owner retirement",
+        ),
+        (
+            "desktop_multi_window_linux",
+            'channel->InvokeMethodSelf("onDestroy", args, [callback, id]() {',
+            'channel->InvokeMethodSelfVoid("onDestroy", args); if (false) {',
+            "independent Dart cleanup response and native callback return before owner retirement",
+        ),
+        (
+            "desktop_multi_window_linux",
+            "// Dart owns the asynchronous texture/session cleanup performed by",
+            'channel->InvokeMethodSelfVoid("onDestroy", args);\n        // Dart owns the asynchronous texture/session cleanup performed by',
+            "independent fire-and-forget native destruction notification",
         ),
         (
             "desktop_multi_window_linux",
@@ -58688,9 +58763,9 @@ def run_source_mutations(sources):
         ),
         (
             "dart_verify",
-            "desktop multi-window native destruction returns before owner retirement",
+            "desktop multi-window waits for Dart cleanup response before owner retirement",
             "desktop multi-window native destruction gate removed",
-            "independent confined native multi-window lifetime gate",
+            "independent confined native multi-window lifetime gate cardinality",
         ),
         (
             "apple",
@@ -70247,6 +70322,14 @@ def main():
             "desktop_multi_window_header": (
                 repo
                 / "flutter/third_party/desktop_multi_window/linux/flutter_window.h"
+            ).read_text(encoding="utf-8"),
+            "desktop_multi_window_channel": (
+                repo
+                / "flutter/third_party/desktop_multi_window/linux/window_channel.cc"
+            ).read_text(encoding="utf-8"),
+            "desktop_multi_window_channel_header": (
+                repo
+                / "flutter/third_party/desktop_multi_window/linux/window_channel.h"
             ).read_text(encoding="utf-8"),
             "desktop_multi_window_upstream": (
                 repo / "flutter/third_party/desktop_multi_window/UPSTREAM.md"

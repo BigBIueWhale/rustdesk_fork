@@ -51,6 +51,8 @@ PATHS = {
     "flutter_lock": "flutter/pubspec.lock",
     "multi_window_linux": "flutter/third_party/desktop_multi_window/linux/flutter_window.cc",
     "multi_window_header": "flutter/third_party/desktop_multi_window/linux/flutter_window.h",
+    "multi_window_channel": "flutter/third_party/desktop_multi_window/linux/window_channel.cc",
+    "multi_window_channel_header": "flutter/third_party/desktop_multi_window/linux/window_channel.h",
     "multi_window_upstream": "flutter/third_party/desktop_multi_window/UPSTREAM.md",
     "dart_verify": "scripts/dart-verify.sh",
     "verify": "scripts/verify.sh",
@@ -90,6 +92,8 @@ def validate(sources: dict[str, str]) -> None:
     flutter_lock = sources["flutter_lock"]
     multi_window_linux = sources["multi_window_linux"]
     multi_window_header = sources["multi_window_header"]
+    multi_window_channel = sources["multi_window_channel"]
+    multi_window_channel_header = sources["multi_window_channel_header"]
     multi_window_upstream = sources["multi_window_upstream"]
     dart_verify = sources["dart_verify"]
 
@@ -657,10 +661,37 @@ def validate(sources: dict[str, str]) -> None:
         "vendored desktop multi-window provenance",
     )
     require(
+        multi_window_upstream,
+        "waits for the method\nresponse before scheduling the idle erase",
+        "vendored native/Dart teardown handshake record",
+    )
+    require(
         multi_window_header,
         "bool destroy_pending_ = false;",
         "idempotent native subwindow destruction state",
     )
+    require(
+        multi_window_channel_header,
+        "using CompletionHandler = std::function<void()>;",
+        "native Dart-response completion contract",
+    )
+    require_order(
+        multi_window_channel,
+        (
+            "struct SelfMethodInvokeAsyncUserData",
+            "fl_method_channel_invoke_method_finish(data->channel, res, &error);",
+            "auto completion = std::move(data->completion);",
+            "delete data;",
+            "completion();",
+        ),
+        "native method-response ownership and completion",
+    )
+    if multi_window_channel.count(
+        "fl_method_channel_invoke_method_finish(data->channel, res, &error);"
+    ) != 2:
+        raise VerificationError(
+            "both forwarded and self method calls must finish their exact response"
+        )
     require_order(
         multi_window_linux,
         (
@@ -670,12 +701,18 @@ def validate(sources: dict[str, str]) -> None:
             "if (self->destroy_pending_)",
             "self->destroy_pending_ = true;",
             "callback->OnWindowClose(id);",
+            'channel->InvokeMethodSelf("onDestroy", args, [callback, id]() {',
             "g_idle_add_full(",
             "destroyWindowWhenIdle,",
             "new PendingWindowDestroy{callback, id}",
             "return TRUE;",
         ),
-        "native subwindow callback return before owning-map retirement",
+        "Dart cleanup response and native callback return before owning-map retirement",
+    )
+    forbid(
+        multi_window_linux,
+        'InvokeMethodSelfVoid("onDestroy"',
+        "fire-and-forget native destruction notification",
     )
     forbid(
         multi_window_linux,
@@ -694,9 +731,15 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(
         dart_verify,
-        "desktop multi-window native destruction returns before owner retirement",
+        "desktop multi-window waits for Dart cleanup response before owner retirement",
         "offline native multi-window lifetime gate",
     )
+    if dart_verify.count(
+        "desktop multi-window waits for Dart cleanup response before owner retirement"
+    ) != 2:
+        raise VerificationError(
+            "offline native multi-window lifetime gate must bind heading and verdict"
+        )
     require(
         dart_verify,
         "third_party/desktop_multi_window/lib/",
@@ -771,6 +814,31 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(
         sources["requirements"],
+        "dd1c48d617c1b4881cd27e07ab6ea0f4ce38336972caa6d1f27e4fb967efa526",
+        "normative canonical current-lock Pub-cache input",
+    )
+    require(
+        sources["requirements"],
+        "canonical-pinned-online-copy",
+        "normative canonical Pub-cache copy provenance",
+    )
+    if sources["requirements"].count(
+        "dd1c48d617c1b4881cd27e07ab6ea0f4ce38336972caa6d1f27e4fb967efa526"
+    ) != 2:
+        raise VerificationError(
+            "canonical Pub-cache digest must bind the requirement and Appendix disposition"
+        )
+    if sources["requirements"].count("canonical-pinned-online-copy") != 2:
+        raise VerificationError(
+            "canonical Pub-cache provenance must bind the requirement and Appendix disposition"
+        )
+    require(
+        sources["requirements"],
+        "only after that response callback returns may native code defer",
+        "normative Dart-response-before-engine-destruction boundary",
+    )
+    require(
+        sources["requirements"],
         "maps AT-SPI <code>SHOWING</code> to the inverse of that same <code>IsObscured</code> flag",
         "normative pinned Flutter password-state contract",
     )
@@ -839,6 +907,16 @@ def validate(sources: dict[str, str]) -> None:
         sources["hardening"],
         "Its Linux GTK",
         "hardening native multi-window lifetime diagnosis",
+    )
+    require(
+        sources["hardening"],
+        "An eighteenth exact committed diagnostic run used commit",
+        "hardening response-race runtime diagnosis",
+    )
+    require(
+        sources["hardening"],
+        "The pending correction adds one response completion to the existing channel",
+        "hardening response-bound native teardown correction",
     )
     require(
         sources["readme"],
@@ -926,12 +1004,17 @@ MUTATIONS = (
     ("flutter_pubspec", "path: third_party/desktop_multi_window", "path: /tmp/desktop_multi_window"),
     ("flutter_lock", 'path: "third_party/desktop_multi_window"', 'path: "/tmp/desktop_multi_window"'),
     ("multi_window_upstream", "b47e8385e5a75d38319ad706a64b0ead3108b093", "unreviewed-upstream"),
+    ("multi_window_upstream", "waits for the method\nresponse before scheduling the idle erase", "schedules the idle erase without waiting for Dart"),
     ("multi_window_header", "bool destroy_pending_ = false;", "bool destroy_pending_ = true;"),
+    ("multi_window_channel_header", "using CompletionHandler = std::function<void()>;", "using CompletionHandler = void (*)();"),
+    ("multi_window_channel", "fl_method_channel_invoke_method_finish(data->channel, res, &error);", "response = nullptr;"),
+    ("multi_window_channel", "completion();", "true; # completion omitted"),
     ("multi_window_linux", "pending->callback->OnWindowDestroy(pending->id);", "return G_SOURCE_REMOVE;"),
     ("multi_window_linux", "if (self->destroy_pending_)", "if (false)"),
+    ("multi_window_linux", 'channel->InvokeMethodSelf("onDestroy", args, [callback, id]() {', 'channel->InvokeMethodSelfVoid("onDestroy", args); if (false) {'),
     ("multi_window_linux", "g_idle_add_full(", "callback->OnWindowDestroy(id);\n      g_idle_add_full("),
     ("multi_window_linux", "return TRUE;", "return self->isPreventClose;"),
-    ("dart_verify", "desktop multi-window native destruction returns before owner retirement", "desktop multi-window native destruction gate removed"),
+    ("dart_verify", "desktop multi-window waits for Dart cleanup response before owner retirement", "desktop multi-window native destruction gate removed"),
     ("dart_verify", "third_party/desktop_multi_window/lib/", "third_party/desktop_multi_window-disabled/lib/"),
     ("controller", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0", "editable != 0 && enabled != 0 && sensitive != 0 && visible != 0 && atspi_state_set_contains(states, ATSPI_STATE_SHOWING) != 0"),
     ("controller", "wait_for_password_prompt((unsigned int)viewer_pid, &prompt_scan)", "false"),
@@ -944,6 +1027,9 @@ MUTATIONS = (
     ("requirements", "existing external <code>smoke-bind-loopback.c</code> confinement shim", "unmanifested compatibility shim"),
     ("requirements", "exact GTK-derived X11 <code>WM_CLASS</code> instance/class pair", "arbitrary X11 class substring"),
     ("requirements", "viewer-only private D-Bus/AT-SPI session", "ambient accessibility session"),
+    ("requirements", "dd1c48d617c1b4881cd27e07ab6ea0f4ce38336972caa6d1f27e4fb967efa526", "c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7"),
+    ("requirements", "canonical-pinned-online-copy", "unverified-cache-copy"),
+    ("requirements", "only after that response callback returns may native code defer", "native code may immediately defer"),
     ("requirements", "maps AT-SPI <code>SHOWING</code> to the inverse of that same <code>IsObscured</code> flag", "maps password visibility consistently"),
     ("hardening", "R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence", "R-S11gc-disabled/R-S11e-216"),
     ("hardening", "The corrected evidence boundary now compiles the existing audited `smoke-bind-loopback.c`", "The evidence boundary assumes an ambient bind rewrite"),
@@ -958,6 +1044,8 @@ MUTATIONS = (
     ("hardening", "The first correction gives the tab controller one asynchronous pre-removal boundary", "The first correction keeps asynchronous State.dispose"),
     ("hardening", "A fifteenth exact committed run used commit `4dac16a203c8c98e7e3764c76250a69934922c14`", "The fifteenth exact run was green"),
     ("hardening", "Its Linux GTK", "Its unrelated Linux GTK"),
+    ("hardening", "An eighteenth exact committed diagnostic run used commit", "An uncounted diagnostic run used commit"),
+    ("hardening", "The pending correction adds one response completion to the existing channel", "The pending correction adds one arbitrary delay"),
 )
 
 

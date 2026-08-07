@@ -472,7 +472,7 @@ grep -qF "expect(started, unorderedEquals(['first', 'second', 'late']));" \
   || { echo "  FAIL desktop teardown: late-arriving tab regression is missing"; exit 1; }
 echo "  ok  desktop remote/view-camera resources retire before tab and engine destruction"
 
-echo "== desktop multi-window native destruction returns before owner retirement =="
+echo "== desktop multi-window waits for Dart cleanup response before owner retirement =="
 multi_window=flutter/third_party/desktop_multi_window
 grep -qF 'third_party/desktop_multi_window/** -text' flutter/.gitattributes \
   || { echo "  FAIL desktop multi-window: vendored bytes are subject to text conversion"; exit 1; }
@@ -482,18 +482,38 @@ grep -qF 'path: "third_party/desktop_multi_window"' flutter/pubspec.lock \
   || { echo "  FAIL desktop multi-window: lockfile does not bind the vendored plugin"; exit 1; }
 grep -qF 'b47e8385e5a75d38319ad706a64b0ead3108b093' "$multi_window/UPSTREAM.md" \
   || { echo "  FAIL desktop multi-window: exact upstream provenance is absent"; exit 1; }
+grep -qF 'waits for the method' "$multi_window/UPSTREAM.md" \
+  && grep -qF 'response before scheduling the idle erase' "$multi_window/UPSTREAM.md" \
+  || { echo "  FAIL desktop multi-window: native/Dart teardown deviation is unrecorded"; exit 1; }
 grep -qF 'bool destroy_pending_ = false;' "$multi_window/linux/flutter_window.h" \
   || { echo "  FAIL desktop multi-window: close scheduling is not idempotent"; exit 1; }
+grep -qF 'using CompletionHandler = std::function<void()>;' \
+  "$multi_window/linux/window_channel.h" \
+  || { echo "  FAIL desktop multi-window: Dart cleanup has no native completion contract"; exit 1; }
+for token in \
+  'struct SelfMethodInvokeAsyncUserData' \
+  'fl_method_channel_invoke_method_finish(data->channel, res, &error);' \
+  'auto completion = std::move(data->completion);' \
+  'delete data;' \
+  'completion();'; do
+  grep -qF "$token" "$multi_window/linux/window_channel.cc" \
+    || { echo "  FAIL desktop multi-window: missing response-completion stage: $token"; exit 1; }
+done
 for token in \
   'gboolean destroyWindowWhenIdle(gpointer data)' \
   'pending->callback->OnWindowDestroy(pending->id);' \
   'if (self->destroy_pending_)' \
   'self->destroy_pending_ = true;' \
+  'channel->InvokeMethodSelf("onDestroy", args, [callback, id]() {' \
   'g_idle_add_full(' \
   'new PendingWindowDestroy{callback, id}'; do
   grep -qF "$token" "$multi_window/linux/flutter_window.cc" \
     || { echo "  FAIL desktop multi-window: missing native lifetime stage: $token"; exit 1; }
 done
+if grep -qF 'InvokeMethodSelfVoid("onDestroy"' \
+  "$multi_window/linux/flutter_window.cc"; then
+  echo "  FAIL desktop multi-window: engine teardown does not await Dart cleanup"; exit 1
+fi
 if grep -qF 'callback->OnWindowDestroy(self->id_);' \
   "$multi_window/linux/flutter_window.cc"; then
   echo "  FAIL desktop multi-window: GTK callback still destroys its own owner"; exit 1
@@ -506,7 +526,7 @@ if grep -qF 'return self->isPreventClose;' \
   "$multi_window/linux/flutter_window.cc"; then
   echo "  FAIL desktop multi-window: GTK callback still reads its destroyed owner"; exit 1
 fi
-echo "  ok  desktop multi-window native destruction is deferred past the GTK callback"
+echo "  ok  desktop multi-window waits for Dart cleanup response before owner retirement"
 
 # R-G2/R-SV5: numeric IDs are not viewer identities. Keep the authored Flutter API, connect choke
 # point, autocomplete, and peer rendering on one exact direct-address model. In particular, never

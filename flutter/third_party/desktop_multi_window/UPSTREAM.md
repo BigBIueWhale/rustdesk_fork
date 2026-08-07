@@ -6,13 +6,17 @@ This directory is an exact source import of
 `flutter/pubspec.yaml` and `flutter/pubspec.lock`.
 
 The functional source change in the imported plugin is the Linux
-subwindow-destruction lifetime correction in `linux/flutter_window.cc` and
-`linux/flutter_window.h`. The upstream callback erased the manager-owned
+subwindow-destruction lifetime correction in `linux/flutter_window.cc`,
+`linux/flutter_window.h`, `linux/window_channel.cc`, and
+`linux/window_channel.h`. The upstream callback erased the manager-owned
 `FlutterWindow` from inside that same object's GTK `delete-event` callback and
 then read the freed object while returning. The vendored correction makes close
 scheduling idempotent, inhibits GTK's synchronous default destruction, and
-defers the owning-map erase to the GTK idle queue so the signal callback has
-returned before destruction begins.
+defers the owning-map erase to the GTK idle queue. RustDesk's Dart `onDestroy`
+handler is asynchronous because it retires textures and sessions before the
+subwindow engine may disappear. Native code therefore also waits for the method
+response before scheduling the idle erase. Both the Dart cleanup and the
+method-response callback have returned before destruction begins.
 
 The vendored Dart also carries behavior-preserving analyzer hygiene required by
 the release gate: it removes an impossible null-aware call and unused imports,

@@ -5,8 +5,8 @@
 #ifndef DESKTOP_MULTI_WINDOW_LINUX_WINDOW_CHANNEL_H_
 #define DESKTOP_MULTI_WINDOW_LINUX_WINDOW_CHANNEL_H_
 
-#include <memory>
 #include <functional>
+#include <memory>
 
 #include "flutter_linux/flutter_linux.h"
 
@@ -38,6 +38,12 @@ class WindowChannel {
   );
 
   void InvokeMethodSelfVoid(const gchar* method, FlValue *arguments);
+
+  using CompletionHandler = std::function<void()>;
+
+  void InvokeMethodSelf(const gchar* method,
+                        FlValue *arguments,
+                        CompletionHandler completion);
 
  private:
 

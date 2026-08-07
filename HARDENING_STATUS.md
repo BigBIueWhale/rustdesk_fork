@@ -16768,6 +16768,83 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   networkless semantic replay before fresh generation can resume. This is a red reproducibility
   finding, not a native-patch test result and not a release claim.
 
+  That build-input finding was subsequently repaired through the checked nonroot publication path,
+  not by weakening the lock or editing the occupied cache in place. The exact pinned online closure
+  now contains the current four-Git Pub graph at mode 0500 and structural digest
+  `dd1c48d617c1b4881cd27e07ab6ea0f4ce38336972caa6d1f27e4fb967efa526`.
+  Its complete online-closure receipt is
+  `50d1d2747532520a740c4037f3b61fb733d2be6057337295cbdbe0d698378412`
+  over 174,684 files, 56,876 directories, 35 symlinks, 34,572,235,445 regular-file
+  bytes, eight hard links, and nine explicitly checked case collisions. Exact acquisition replay
+  passed at commits `362add3` and `a678c6f`. The canonical Dart verifier then ran from a detached
+  exact `a678c6f` snapshot: fresh bridge generation, the application and both in-tree plugin
+  analyzers, all selected Flutter tests, the native Linux and portable Windows callback tests, the
+  shipped-feature Rust check, the maintained lifecycle/audio/video/receipt Rust tests, and final
+  source-digest postcondition all passed. The shipped Rust check retained its existing 65-warning
+  baseline; no warning-free or native-device claim is made.
+
+  The full-peer harness still referred to the obsolete ignored five-dependency cache after that
+  canonical correction. It now accepts only the exact mode-0500 canonical `online/pub-cache`, checks
+  the structural digest above, copies it in a networkless numeric-nonroot transaction, seals and
+  rechecks the copy under the production publisher, and records provenance
+  `canonical-pinned-online-copy`. The focused verifier rejects changes to its path, digest, mode,
+  publisher check, or provenance. The independent workspace semantic baseline and its complete,
+  unsliced `--source-mutations-only` catalog both passed inside the same strict networkless,
+  read-only, numeric-nonroot verifier container without a host bus or cgroup mount. The broader
+  executable `--self-test` mode is not claimed here because its systemd/cgroup authority contract is
+  a separate boundary; no host authority was mounted merely to obtain that additional line.
+
+  A sixteenth exact committed run used commit
+  `6fd5e5354a97b9f0e244e28b30c3d142e813fdc3`, tree
+  `d76faf80b6526c9bd46dbe86068ee73f1063c96a`, and source-archive SHA-256
+  `45a29f61671b8ae8eba859b17ee836fd2b0be6645a38fdefc3c5484d46fee329`.
+  It resolved both locks from the canonical copy, freshly built the release core and 79-file Flutter
+  bundle, started the two real product roles in the external-interface-free namespace, and failed
+  closed because the observed password accessible did not retire after XTest submission. A
+  seventeenth exact run at commit `8e6202da93225d640f7ea91c5facbbf78c465a1a`, tree
+  `b21e7a6af036775393ca53f747a6ad6e0279ab05`, archive SHA-256
+  `94f7e9521d92f21bea65211075ceb888827cf43a6f8fa2b19058fe7fb47e4fea`,
+  reproduced that failure with ordinary process stderr retained. Neither failure authenticated or
+  produced pixel evidence; both joined every exact owner and closed the loopback listener.
+
+  An eighteenth exact committed diagnostic run used commit
+  `6a6767ef181b26e70e26fa066e01b1f387cb9a84`, tree
+  `5e26137c1cd5ebf44ba6b045d092628d77b67cd0`, and source-archive SHA-256
+  `0b6e2f02a5b3bfb6367f560c6ba5a7dbfff4cf043b683eb8ed2a2ce842aaadae`.
+  The added diagnostic collector admitted only current-UID/GID, single-link, non-group/world-writable
+  regular files under exact 16-file, 8-MiB-per-file, and 32-MiB-aggregate bounds, and emitted them only
+  on failure. This time the same real path retired the singular password prompt, authenticated, and
+  passed presentation: first-current pixels arrived in 82 ms, four initial states were at most
+  287 ms old, the 2000-ms blurred sample was 81 ms old, the maximum observed age was 290 ms,
+  recovery was 0 ms, and the exact authenticated TCP tuple/inode remained unchanged. The transaction
+  nevertheless correctly stayed red because the viewer segfaulted during subwindow teardown and
+  exited 139. Server logs prove the session had been fully authenticated, encoded with VP9, and then
+  closed/reset by the viewer; all controlled owners joined and the listener closed.
+
+  Those bounded logs disprove the idea that a single GTK-idle deferral completed the lifetime fix.
+  RustDesk's Dart `onDestroy` method awaits `closeAll`, which in turn awaits exact texture and session
+  retirement. The vendored native plugin had sent that method fire-and-forget and scheduled engine
+  deletion immediately for the next idle turn. The idle callback could therefore destroy the engine
+  while the asynchronous method response was still in flight; the observed attempts to use an
+  `FlBinaryMessenger` without an engine and exit 139 are direct evidence of that ordering violation.
+  The pending correction adds one response completion to the existing channel: native code retains
+  the window/channel through `fl_method_channel_invoke_method_finish`, then schedules the owning-map
+  erase for a later GTK idle turn. It does not add a timer, retry, second teardown path, dependency,
+  or platform-wide refactor. The focused verifier independently rejects removing response finality,
+  completion invocation, idempotence, or post-response idle deferral. Against the exact pinned
+  Flutter 3.24.5 Linux headers, the modified native channel passed a C++14 syntax/type check with all
+  new warnings treated as errors; the only suppressed warning class was two pre-existing unused
+  callback parameters. The complete independent source-mutation catalog required four unsliced
+  starts. The first three did not accept broken product code: each correctly reached a new teardown
+  mutation and the strengthened validator rejected it, but the catalog fixture still expected the
+  pre-rename diagnostic label and therefore failed its effective-target accounting. Every mutation
+  tied to the renamed ordered gate was then audited, the expected labels were aligned without
+  weakening a validator, and a separate mutation was added that injects fire-and-forget teardown
+  while retaining the correct response call. The fourth complete run proceeded past all prior
+  points and exited zero with `verify-verifier-workspace: ok`; it was neither sampled nor shortened.
+  An exact committed full-peer rerun, including viewer exit zero, remains mandatory before this item
+  can become green.
+
   No root, product configuration injection, policy bypass, or product-only test hook is admitted. Controlled
   peer and viewer run as numeric non-root in separate mount, PID,
   IPC, temporary-home/configuration, and X11 state. The controlled peer owns a Docker
@@ -16826,9 +16903,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   configuration, display, firewall, route, or network state. The synchronized requirements
   SHA-256 is `e7fbcc934e5cb215263f5279db8915de9bd92d920ad59f1272780fe702ccc910`.
 
-  No green full-peer transaction is recorded after fifteen exact committed attempts. The fourteenth
-  and fifteenth runs are strong authenticated presentation/focus/performance evidence, but both
-  viewer exit-139 results keep the overall boundary red. Each product or harness correction must first be committed so
+  No green full-peer transaction is recorded after eighteen exact committed attempts. The fourteenth,
+  fifteenth, and eighteenth runs are strong authenticated presentation/focus/performance evidence,
+  but all three viewer exit-139 results keep the overall boundary red. Each product or harness correction must first be committed so
   its exact-source archive can honestly contain the files being run. A green future result will close
   only one Linux/X11 software-codec full-peer and focus cycle. It will not establish Android
   Activity/foreground-service/task-swipe/reopen/Force-Stop behavior; Windows engine/compositor
@@ -21869,7 +21946,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-7203122824cb5c8c7b276f2996a51821f177733662718b459d65d4164bb4e2ea  requirements.html
+ffbe456898d9777a2d9d10145cd878c3e49838aeb3cff539015ae951d6f0e4ec  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

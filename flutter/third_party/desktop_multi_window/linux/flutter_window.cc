@@ -223,21 +223,26 @@ gboolean onWindowClose(GtkWidget *widget, GdkEvent *, gpointer arg)
       return TRUE;
     }
     self->destroy_pending_ = true;
-    if (auto channel = self->GetWindowChannel())
-    {
-      auto args = fl_value_new_map();
-      channel->InvokeMethodSelfVoid("onDestroy", args);
-    }
     if (auto callback = self->callback_.lock())
     {
       const auto id = self->id_;
       callback->OnWindowClose(id);
-      g_idle_add_full(
-          G_PRIORITY_DEFAULT_IDLE,
-          destroyWindowWhenIdle,
-          new PendingWindowDestroy{callback, id},
-          deletePendingWindowDestroy);
-      return TRUE;
+      if (auto channel = self->GetWindowChannel())
+      {
+        g_autoptr(FlValue) args = fl_value_new_map();
+        // Dart owns the asynchronous texture/session cleanup performed by
+        // onDestroy. Keep this window and its Flutter engine alive until that
+        // method response proves the cleanup has completed, then retire the
+        // native owner after the response callback itself has unwound.
+        channel->InvokeMethodSelf("onDestroy", args, [callback, id]() {
+          g_idle_add_full(
+              G_PRIORITY_DEFAULT_IDLE,
+              destroyWindowWhenIdle,
+              new PendingWindowDestroy{callback, id},
+              deletePendingWindowDestroy);
+        });
+        return TRUE;
+      }
     }
     self->destroy_pending_ = false;
     return FALSE;

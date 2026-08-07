@@ -226,11 +226,20 @@ def validate_contract(sources: Dict[str, str]) -> None:
             "if grep -qF 'tabController.clear();' \"$tab_page\"; then",
             "grep -qF 'path: third_party/desktop_multi_window' flutter/pubspec.yaml",
             "grep -qF 'third_party/desktop_multi_window/** -text' flutter/.gitattributes",
+            "grep -qF 'waits for the method' \"$multi_window/UPSTREAM.md\"",
+            "grep -qF 'response before scheduling the idle erase' \"$multi_window/UPSTREAM.md\"",
             "grep -qF 'bool destroy_pending_ = false;' \"$multi_window/linux/flutter_window.h\"",
+            "grep -qF 'using CompletionHandler = std::function<void()>;'",
+            "'struct SelfMethodInvokeAsyncUserData'",
+            "'fl_method_channel_invoke_method_finish(data->channel, res, &error);'",
+            "'auto completion = std::move(data->completion);'",
+            "'completion();'",
             "'gboolean destroyWindowWhenIdle(gpointer data)'",
             "'pending->callback->OnWindowDestroy(pending->id);'",
             "'if (self->destroy_pending_)'",
             "'self->destroy_pending_ = true;'",
+            "'channel->InvokeMethodSelf(\"onDestroy\", args, [callback, id]() {'",
+            "if grep -qF 'InvokeMethodSelfVoid(\"onDestroy\"'",
             "if grep -qF 'callback->OnWindowDestroy(self->id_);'",
             "if grep -qF 'callback->OnWindowDestroy(id);'",
             "if grep -qF 'return self->isPreventClose;'",
@@ -297,6 +306,7 @@ def validate_contract(sources: Dict[str, str]) -> None:
     )
     require(
         dart.index("grep -qF 'path: third_party/desktop_multi_window' flutter/pubspec.yaml")
+        < dart.index("'struct SelfMethodInvokeAsyncUserData'")
         < dart.index("'gboolean destroyWindowWhenIdle(gpointer data)'")
         < dart.index("if grep -qF 'callback->OnWindowDestroy(self->id_);'"),
         "desktop multi-window source gate is incomplete or misordered",
@@ -785,6 +795,30 @@ MUTATIONS = (
         "grep -qF 'third_party/desktop_multi_window/** -text' flutter/.gitattributes",
         "true # vendored byte-preservation gate disabled",
         "vendored desktop multi-window byte-preservation gate",
+    ),
+    Mutation(
+        "dart",
+        "grep -qF 'response before scheduling the idle erase' \"$multi_window/UPSTREAM.md\"",
+        "true # native/Dart teardown deviation record accepted absent",
+        "vendored native/Dart teardown deviation record",
+    ),
+    Mutation(
+        "dart",
+        "grep -qF 'using CompletionHandler = std::function<void()>;'",
+        "true # native response completion contract accepted absent",
+        "native Dart-response completion contract",
+    ),
+    Mutation(
+        "dart",
+        "'fl_method_channel_invoke_method_finish(data->channel, res, &error);'",
+        "'response completion omitted'",
+        "native Dart-response finality",
+    ),
+    Mutation(
+        "dart",
+        "if grep -qF 'InvokeMethodSelfVoid(\"onDestroy\"'",
+        "if false; then # fire-and-forget engine teardown accepted",
+        "fire-and-forget native teardown refusal",
     ),
     Mutation(
         "dart",

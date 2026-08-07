@@ -27,6 +27,22 @@ struct MethodInvokeAsyncUserData {
 
 };
 
+struct SelfMethodInvokeAsyncUserData {
+ public:
+  SelfMethodInvokeAsyncUserData(FlMethodChannel *channel,
+                                WindowChannel::CompletionHandler completion)
+      : channel(channel), completion(std::move(completion)) {
+    g_object_ref(channel);
+  }
+
+  ~SelfMethodInvokeAsyncUserData() {
+    g_object_unref(channel);
+  }
+
+  FlMethodChannel *channel;
+  WindowChannel::CompletionHandler completion;
+};
+
 }
 
 WindowChannel::WindowChannel(int64_t window_id, FlMethodChannel *method_channel)
@@ -103,4 +119,31 @@ void WindowChannel::InvokeMethodSelfVoid(const gchar* method, FlValue *arguments
   fl_value_set(args, fl_value_new_string("fromWindowId"), fl_value_new_int(0));
   fl_method_channel_invoke_method(
           fl_method_channel_, method, args, nullptr, nullptr, nullptr);
+}
+
+void WindowChannel::InvokeMethodSelf(
+    const gchar* method,
+    FlValue *arguments,
+    CompletionHandler completion) {
+  g_autoptr(FlValue) args = fl_value_new_map();
+  fl_value_set(args, fl_value_new_string("arguments"), arguments);
+  fl_value_set(args, fl_value_new_string("fromWindowId"), fl_value_new_int(0));
+  auto *user_data =
+      new SelfMethodInvokeAsyncUserData(fl_method_channel_, std::move(completion));
+  fl_method_channel_invoke_method(
+      fl_method_channel_, method, args, nullptr,
+      +[](GObject *, GAsyncResult *res, gpointer user_data) {
+        auto *data = static_cast<SelfMethodInvokeAsyncUserData *>(user_data);
+        g_autoptr(GError) error = nullptr;
+        g_autoptr(FlMethodResponse) response =
+            fl_method_channel_invoke_method_finish(data->channel, res, &error);
+        if (response == nullptr) {
+          g_warning("failed to finish self method call: %s",
+                    error == nullptr ? "unknown error" : error->message);
+        }
+        auto completion = std::move(data->completion);
+        delete data;
+        completion();
+      },
+      user_data);
 }

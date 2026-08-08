@@ -32,6 +32,7 @@ def require_order(source: str, needles: tuple[str, ...], label: str) -> None:
 PATHS = {
     "host": "scripts/smoke-flutter-peer-presentation.sh",
     "stage": "scripts/smoke-flutter-peer-presentation-stage.sh",
+    "pins": "scripts/pins.env",
     "ready": "scripts/smoke-ready.sh",
     "linux_runner": "flutter/linux/main.cc",
     "controller": "scripts/flutter-peer-presentation-x11.c",
@@ -79,6 +80,7 @@ def load(repo: Path) -> dict[str, str]:
 def validate(sources: dict[str, str]) -> None:
     host = sources["host"]
     stage = sources["stage"]
+    pins = sources["pins"]
     ready = sources["ready"]
     linux_runner = sources["linux_runner"]
     controller = sources["controller"]
@@ -119,8 +121,8 @@ def validate(sources: dict[str, str]) -> None:
         (
             "assert_clean_worktree",
             'readonly SOURCE_COMMIT="$(git rev-parse HEAD)"',
-            "require_online_complete",
             "git archive --format=tar",
+            'run_input_check "$WORKSPACE/input-pre.cid"',
             "smoke-xvfb-prepare.sh",
             "smoke-flutter-peer-presentation-stage.sh pub-cache",
             "smoke-flutter-peer-presentation-stage.sh build",
@@ -130,16 +132,19 @@ def validate(sources: dict[str, str]) -> None:
             'inspect_container_contract "$SERVER_CID" none server',
             '--network="container:$SERVER_CID" --read-only',
             'inspect_container_contract "$VIEWER_CID" "container:$SERVER_CID" viewer',
+            'run_input_check "$WORKSPACE/input-post.cid"',
             "FLUTTER_PEER_PRESENTATION_SMOKE_OK",
         ),
         "exact-source build and separate-peer transaction",
     )
     if host.count("--network=bridge") != 1:
         raise VerificationError("the exact Xvfb producer must be the sole bridge-network container")
-    if host.count("--network=none") != 4:
+    if host.count("--network=none") != 5:
         raise VerificationError(
-            "only Pub-cache copy/check, build, and controlled-peer anchor use network-none"
+            "only the reusable input check, Pub-cache copy/check, build, and controlled-peer anchor use network-none"
         )
+    if host.count('run_input_check "$WORKSPACE/input-') != 2:
+        raise VerificationError("persistent build inputs must be checked before and after the transaction")
     require(host, "dbus-run-session --", "private viewer accessibility session")
     if host.count("dbus-run-session --") != 1:
         raise VerificationError("the private accessibility session must be viewer-only")
@@ -169,10 +174,10 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(
         host,
-        'mount.get("Destination") == "/etc/passwd"',
+        'if [ "$destination" = /etc/passwd ]; then',
         "inspected passwd mount destination",
     )
-    require(host, 'passwd_mount.get("RW") is not False', "inspected read-only passwd mount")
+    require(host, '[ "$writable" = false ]', "inspected read-only passwd mount")
     require(host, "private viewer passwd witness changed during runtime", "passwd witness finality")
     require(
         host,
@@ -181,7 +186,7 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(
         host,
-        "854718cb6c9f02d6364ae038e1d3bb9d0ef90e13048a119008bc7c47e9507d19",
+        'readonly EVIDENCE_PUB_CACHE_SHA256="$SHA256_FLUTTER_PEER_PUB_CACHE_CLOSURE_V1"',
         "canonical current-lock Pub-cache digest",
     )
     require(
@@ -194,22 +199,53 @@ def validate(sources: dict[str, str]) -> None:
         'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache,readonly',
         "read-only canonical Pub-cache mount",
     )
-    require(host, 'host.get("NetworkMode") != expected_network', "inspected network mode")
+    require(host, '[ "$network" = "$expected_network" ]', "inspected network mode")
     require_order(
         host,
         (
-            "local cid=$1 expected_network=$2 label=$3\n  local json_path expected_passwd_source=",
-            'json_path="$WORKSPACE/$label.inspect.json"',
-            'local_docker container inspect "$cid" > "$json_path"',
+            "local cid=$1 expected_network=$2 label=$3",
+            "local expected_passwd_source= mounts_path source destination writable extra",
+            "local network ipc pid uts privileged read_only user ports devices caps security",
+            "local passwd_mounts=0",
+            "network=\"$(local_docker container inspect --format '{{.HostConfig.NetworkMode}}' \"$cid\")\"",
+            'mounts_path="$WORKSPACE/$label.mounts.tsv"',
         ),
         "nounset-safe inspected-container receipt path",
     )
-    require(host, 'host.get("IpcMode") not in ("private", "")', "private IPC namespace")
-    require(host, 'host.get("PidMode") not in ("", None)', "private PID namespace")
-    require(host, 'host.get("PortBindings") not in (None, {})', "no port publication")
-    require(host, 'sorted(host.get("CapDrop") or []) != ["ALL"]', "all capabilities dropped")
-    require(host, 'config.get("User") != expected_user', "numeric non-root user")
-    require(host, 'host.get("ReadonlyRootfs") is not True', "read-only root")
+    require(host, '{ [ -z "$ipc" ] || [ "$ipc" = private ]; }', "private IPC namespace")
+    require(host, '[ -z "$pid" ] && [ -z "$uts" ]', "private PID and UTS namespaces")
+    require(host, "[ \"$ports\" = null ] || [ \"$ports\" = '{}' ]", "no port publication")
+    require(host, "[ \"$caps\" = '[\"ALL\"]' ]", "all capabilities dropped")
+    require(host, '[ "$user" = "$HOST_UID:$HOST_GID" ]', "numeric non-root user")
+    require(host, '[ "$privileged" = false ] && [ "$read_only" = true ]', "read-only unprivileged rootfs")
+    require(host, "'[\"no-new-privileges\"]'|'[\"no-new-privileges:true\"]'", "exact no-new-privileges")
+    require(host, "[[ \"$source\" != */docker.sock ]] && [[ \"$source\" != /dev/* ]]", "unsafe mount rejection")
+    require(host, 'require_exact_local_image deb-builder "$DEB_BUILDER_IMAGE_ID"', "exact builder image ID")
+    require(host, 'require_exact_local_image devcheck "$DEV_CHECK_IMAGE_ID"', "exact verifier image ID")
+    if host.count('source=$ONLINE_DIR,target=/online,readonly') != 1:
+        raise VerificationError("only the persistent-input verifier may mount the complete online root")
+    require(
+        host,
+        'source=$BUILD_INPUT_ROOT,target=/online,readonly,bind-recursive=disabled',
+        "empty build-input namespace root",
+    )
+    for relative in (
+        "rust-${RUST_VERSION}.tar.xz",
+        "flutter-${FLUTTER_VERSION}.tar.xz",
+        "llvm-${LLVM_VERSION}.tar.xz",
+        "cargo-vendor",
+        "cargo-vendor-config.toml",
+        "frb-tool/bin/flutter_rust_bridge_codegen",
+        "vcpkg/installed/x64-linux",
+    ):
+        require(
+            host,
+            f"source=$ONLINE_DIR/{relative},target=/online/{relative},readonly,bind-recursive=disabled",
+            f"exact build-input mount {relative}",
+        )
+    forbid(host, "require_online_complete", "unrelated full-online closure gate")
+    forbid(host, "local_docker_image_provenance", "host Python image verifier")
+    forbid(host, "/usr/bin/python3", "host Python execution")
     require(host, "assert_clean_worktree", "clean postcondition")
     require(host, "source archive changed during the probe", "exact source postcondition")
     for unsafe in (
@@ -225,6 +261,44 @@ def validate(sources: dict[str, str]) -> None:
         "/dev/kvm",
     ):
         forbid(host, unsafe, "host authority expansion")
+
+    require_order(
+        stage,
+        (
+            "input-check)",
+            'verify_archive "/online/rust-',
+            'verify_archive "/online/flutter-',
+            'verify_archive "/online/llvm-',
+            "/source/scripts/online-input-provenance.py verify-subtree",
+            '--tree /online/cargo-vendor --expected "$RUSTDESK_CARGO_VENDOR_SHA256"',
+            "/source/scripts/online-cargo-tool-output.py check-complete",
+            '"$(sha256sum /online/frb-tool/bin/flutter_rust_bridge_codegen | awk \'{print $1}\')" = \\\n      "$RUSTDESK_FRB_SHA256"',
+            '--tree /online/vcpkg/installed/x64-linux',
+            "FLUTTER_PEER_INPUTS_OK",
+        ),
+        "exact consumed-input pre/post validation",
+    )
+    for pin_name, pin_value in (
+        (
+            "SHA256_FLUTTER_PEER_PUB_CACHE_CLOSURE_V1",
+            "fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4",
+        ),
+        (
+            "SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1",
+            "24a2295145b04938abed637daac104252c4374a119db19749451a8fc69858436",
+        ),
+        (
+            "SHA256_FLUTTER_PEER_FRB_CODEGEN",
+            "24508d54dcad4f6b5c5b70395d24437a563d64fc2c24a17ca7e25f24ddb418fa",
+        ),
+        ("SIZE_FLUTTER_PEER_FRB_CODEGEN", "17211448"),
+    ):
+        require(pins, f'{pin_name}="{pin_value}"', f"exact R-S11gc input pin {pin_name}")
+    require(
+        pins,
+        "This does not repin SHA256_ONLINE_CLOSURE_V1.",
+        "full-online closure non-inference",
+    )
 
     require_order(
         stage,
@@ -1079,7 +1153,7 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(
         sources["requirements"],
-        "854718cb6c9f02d6364ae038e1d3bb9d0ef90e13048a119008bc7c47e9507d19",
+        "fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4",
         "normative canonical current-lock Pub-cache input",
     )
     require(
@@ -1088,7 +1162,7 @@ def validate(sources: dict[str, str]) -> None:
         "normative canonical Pub-cache copy provenance",
     )
     if sources["requirements"].count(
-        "854718cb6c9f02d6364ae038e1d3bb9d0ef90e13048a119008bc7c47e9507d19"
+        "fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4"
     ) != 2:
         raise VerificationError(
             "canonical Pub-cache digest must bind the requirement and Appendix disposition"
@@ -1147,6 +1221,16 @@ def validate(sources: dict[str, str]) -> None:
         sources["hardening"],
         "R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence",
         "hardening evidence ledger",
+    )
+    require(
+        sources["hardening"],
+        "R-S11gc exact-current full-peer input authority recovery",
+        "exact-current input-authority ledger",
+    )
+    require(
+        sources["hardening"],
+        "The full canonical online closure remains red and was not repinned.",
+        "full-online closure residual ledger",
     )
     require(
         sources["hardening"],
@@ -1256,18 +1340,29 @@ def validate(sources: dict[str, str]) -> None:
 
 
 MUTATIONS = (
-    ("host", 'local cid=$1 expected_network=$2 label=$3\n  local json_path expected_passwd_source=\n  json_path="$WORKSPACE/$label.inspect.json"', 'local cid=$1 expected_network=$2 label=$3 json_path="$WORKSPACE/$label.inspect.json"\n  local expected_passwd_source='),
+    ("host", "local passwd_mounts=0", "local passwd_mounts=1"),
     ("host", "--pull=never --network=none --read-only", "--pull=never --network=host --read-only"),
     ("host", '--network="container:$SERVER_CID" --read-only', "--network=bridge --read-only"),
+    ("host", 'run_input_check "$WORKSPACE/input-post.cid"', "true # persistent input postcheck removed"),
+    ("host", 'require_exact_local_image deb-builder "$DEB_BUILDER_IMAGE_ID"', "true # exact builder image omitted"),
+    ("host", 'source=$ONLINE_DIR/cargo-vendor,target=/online/cargo-vendor,readonly,bind-recursive=disabled', 'source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled'),
     ("host", 'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache,readonly', 'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache'),
     ("host", '"$HOST_UID:$HOST_GID:500"', '"$HOST_UID:$HOST_GID:700"'),
-    ("host", 'host.get("PortBindings") not in (None, {})', "False"),
+    ("host", "[ \"$ports\" = null ] || [ \"$ports\" = '{}' ]", "true"),
     ("host", "dbus-run-session --", "true # private accessibility session removed"),
     ("host", 'local_docker run --cidfile "$VIEWER_CID_FILE"', 'local_docker run --cidfile "$SERVER_CID_FILE"'),
     ("host", 'chmod 0400 "$VIEWER_PASSWD.tmp"', 'chmod 0444 "$VIEWER_PASSWD.tmp"'),
     ("host", 'source=$VIEWER_PASSWD,target=/etc/passwd,readonly,bind-recursive=disabled', 'source=$VIEWER_PASSWD,target=/tmp/passwd,readonly,bind-recursive=disabled'),
-    ("host", 'passwd_mount.get("RW") is not False', "False"),
+    ("host", '[ "$writable" = false ]', "true"),
     ("host", "private viewer passwd witness changed during runtime", "passwd witness finality removed"),
+    ("stage", '--tree /online/cargo-vendor --expected "$RUSTDESK_CARGO_VENDOR_SHA256"', '--tree /online/cargo-vendor --expected "$RUSTDESK_VCPKG_X64_LINUX_SHA256"'),
+    ("stage", "/source/scripts/online-cargo-tool-output.py check-complete", "true # FRB semantic validation omitted"),
+    ("stage", '"$(sha256sum /online/frb-tool/bin/flutter_rust_bridge_codegen | awk \'{print $1}\')" = \\\n      "$RUSTDESK_FRB_SHA256"', '"$(sha256sum /online/frb-tool/bin/flutter_rust_bridge_codegen | awk \'{print $1}\')" = \\\n      "$RUSTDESK_CARGO_VENDOR_SHA256"'),
+    ("stage", "--tree /online/vcpkg/installed/x64-linux", "--tree /online/vcpkg/installed/arm64-android"),
+    ("pins", 'SHA256_FLUTTER_PEER_PUB_CACHE_CLOSURE_V1="fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4"', 'SHA256_FLUTTER_PEER_PUB_CACHE_CLOSURE_V1="c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7"'),
+    ("pins", 'SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1="24a2295145b04938abed637daac104252c4374a119db19749451a8fc69858436"', 'SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1="34a2295145b04938abed637daac104252c4374a119db19749451a8fc69858436"'),
+    ("pins", 'SHA256_FLUTTER_PEER_FRB_CODEGEN="24508d54dcad4f6b5c5b70395d24437a563d64fc2c24a17ca7e25f24ddb418fa"', 'SHA256_FLUTTER_PEER_FRB_CODEGEN="34508d54dcad4f6b5c5b70395d24437a563d64fc2c24a17ca7e25f24ddb418fa"'),
+    ("pins", 'SIZE_FLUTTER_PEER_FRB_CODEGEN="17211448"', 'SIZE_FLUTTER_PEER_FRB_CODEGEN="17211447"'),
     ("stage", '[ "$interfaces" = lo ]', '[ -n "$interfaces" ]'),
     ("stage", "--lib --example smoke_readiness --release", "--lib --release"),
     ("stage", '"$READY" --wait-typed-parked "$SERVER_PID" "$SERVER_START"', '"$READY" --wait-tcp-listener "$SERVER_PID" "$SERVER_START"'),
@@ -1393,7 +1488,7 @@ MUTATIONS = (
     ("requirements", "existing external <code>smoke-bind-loopback.c</code> confinement shim", "unmanifested compatibility shim"),
     ("requirements", "exact GTK-derived X11 <code>WM_CLASS</code> instance/class pair", "arbitrary X11 class substring"),
     ("requirements", "viewer-only private D-Bus/AT-SPI session", "ambient accessibility session"),
-    ("requirements", "854718cb6c9f02d6364ae038e1d3bb9d0ef90e13048a119008bc7c47e9507d19", "c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7"),
+    ("requirements", "fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4", "c3c59a30604f10c11950cdb4d0a7646ddb46eb6ae031c27869a1b82a8d33c4d7"),
     ("requirements", "canonical-pinned-online-copy", "unverified-cache-copy"),
     ("requirements", "only after that response callback returns may native code defer", "native code may immediately defer"),
     ("requirements", '<div class="req"><span class="id">R-S11ge</span>', '<div class="req"><span class="id">R-S11ge-disabled</span>'),
@@ -1405,6 +1500,8 @@ MUTATIONS = (
     ("requirements", "<tr><td>340</td>", "<tr><td>340-disabled</td>"),
     ("requirements", "maps AT-SPI <code>SHOWING</code> to the inverse of that same <code>IsObscured</code> flag", "maps password visibility consistently"),
     ("hardening", "R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence", "R-S11gc-disabled/R-S11e-216"),
+    ("hardening", "R-S11gc exact-current full-peer input authority recovery", "R-S11gc unbounded input acceptance"),
+    ("hardening", "The full canonical online closure remains red and was not repinned.", "The full canonical online closure is green."),
     ("hardening", "The corrected evidence boundary now compiles the existing audited `smoke-bind-loopback.c`", "The evidence boundary assumes an ambient bind rewrite"),
     ("hardening", "The corrected observer now requires the launcher PID and both exact `WM_CLASS` fields", "The observer accepts any title match"),
     ("hardening", "An eighth exact committed run used commit `731d0eed3d60824c9f9316da55e977334d63cd30`", "The eighth exact run proved product presentation failure"),

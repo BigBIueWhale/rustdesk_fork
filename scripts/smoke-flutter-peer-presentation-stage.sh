@@ -12,7 +12,7 @@ fail() {
 [ "$(id -g)" -ne 0 ] || fail 'refuses a root primary group'
 [ -z "${LD_PRELOAD:-}" ] || fail 'refuses an ambient preload'
 [ "$#" -eq 1 ] \
-  || fail 'expected one stage: pub-cache, pub-cache-check, build, server, or viewer'
+  || fail 'expected one stage: input-check, pub-cache, pub-cache-check, build, server, or viewer'
 
 verify_regular() {
   [ -f "$1" ] && [ ! -L "$1" ] || fail "missing regular input: $1"
@@ -164,6 +164,60 @@ UDP6_TABLE=
 [ ! -r /proc/net/udp6 ] || UDP6_TABLE=/proc/net/udp6
 
 case "$1" in
+  input-check)
+    for variable in \
+      RUSTDESK_RUST_VERSION RUSTDESK_RUST_SHA256 RUSTDESK_RUST_SIZE \
+      RUSTDESK_FLUTTER_VERSION RUSTDESK_FLUTTER_SHA256 RUSTDESK_FLUTTER_SIZE \
+      RUSTDESK_LLVM_VERSION RUSTDESK_LLVM_SHA256 RUSTDESK_LLVM_SIZE \
+      RUSTDESK_FRB_VERSION RUSTDESK_FRB_SHA256 RUSTDESK_FRB_SIZE \
+      RUSTDESK_CARGO_VENDOR_SHA256 RUSTDESK_CARGO_VENDOR_CONFIG_SHA256 \
+      RUSTDESK_CARGO_VENDOR_CONFIG_SIZE RUSTDESK_VCPKG_X64_LINUX_SHA256; do
+      [ -n "${!variable:-}" ] || fail "missing input identity: $variable"
+    done
+    verify_archive "/online/rust-${RUSTDESK_RUST_VERSION}.tar.xz" \
+      "$RUSTDESK_RUST_SIZE" "$RUSTDESK_RUST_SHA256" Rust
+    verify_archive "/online/flutter-${RUSTDESK_FLUTTER_VERSION}.tar.xz" \
+      "$RUSTDESK_FLUTTER_SIZE" "$RUSTDESK_FLUTTER_SHA256" Flutter
+    verify_archive "/online/llvm-${RUSTDESK_LLVM_VERSION}.tar.xz" \
+      "$RUSTDESK_LLVM_SIZE" "$RUSTDESK_LLVM_SHA256" LLVM
+    for input in \
+      /online/cargo-vendor-config.toml \
+      /online/frb-tool/bin/flutter_rust_bridge_codegen \
+      /source/scripts/online-cargo-tool-output.py \
+      /source/scripts/online-input-provenance.py; do
+      verify_regular "$input"
+    done
+    for directory in /online/cargo-vendor /online/frb-tool /online/vcpkg/installed/x64-linux; do
+      [ -d "$directory" ] && [ ! -L "$directory" ] \
+        || fail "missing persistent build-input directory: $directory"
+    done
+    [ "$(stat -c %s /online/cargo-vendor-config.toml)" = \
+      "$RUSTDESK_CARGO_VENDOR_CONFIG_SIZE" ] \
+      || fail 'Cargo vendor configuration size differs from its pin'
+    [ "$(sha256sum /online/cargo-vendor-config.toml | awk '{print $1}')" = \
+      "$RUSTDESK_CARGO_VENDOR_CONFIG_SHA256" ] \
+      || fail 'Cargo vendor configuration digest differs from its pin'
+    /usr/bin/python3 -I -S /source/scripts/online-input-provenance.py verify-subtree \
+      --tree /online/cargo-vendor --expected "$RUSTDESK_CARGO_VENDOR_SHA256"
+    /usr/bin/python3 -I -S /source/scripts/online-cargo-tool-output.py check-complete \
+      --online /online --uid "$(id -u)" --gid "$(id -g)" \
+      --kind frb --tool-version "$RUSTDESK_FRB_VERSION" \
+      --rust-version "$RUSTDESK_RUST_VERSION"
+    [ "$(stat -c %s /online/frb-tool/bin/flutter_rust_bridge_codegen)" = \
+      "$RUSTDESK_FRB_SIZE" ] \
+      || fail 'FRB codegen size differs from its evidence pin'
+    [ "$(sha256sum /online/frb-tool/bin/flutter_rust_bridge_codegen | awk '{print $1}')" = \
+      "$RUSTDESK_FRB_SHA256" ] \
+      || fail 'FRB codegen digest differs from its evidence pin'
+    /usr/bin/python3 -I -S /source/scripts/online-input-provenance.py verify-subtree \
+      --tree /online/vcpkg/installed/x64-linux \
+      --expected "$RUSTDESK_VCPKG_X64_LINUX_SHA256"
+    printf 'FLUTTER_PEER_INPUTS_OK rust=%s flutter=%s llvm=%s frb=%s cargo_vendor=%s vcpkg_x64_linux=%s\n' \
+      "$RUSTDESK_RUST_SHA256" "$RUSTDESK_FLUTTER_SHA256" "$RUSTDESK_LLVM_SHA256" \
+      "$RUSTDESK_FRB_SHA256" "$RUSTDESK_CARGO_VENDOR_SHA256" \
+      "$RUSTDESK_VCPKG_X64_LINUX_SHA256"
+    ;;
+
   pub-cache)
     : "${RUSTDESK_EVIDENCE_PUB_CACHE_SHA256:?}"
     [ -d /evidence-pub-cache ] && [ ! -L /evidence-pub-cache ] \

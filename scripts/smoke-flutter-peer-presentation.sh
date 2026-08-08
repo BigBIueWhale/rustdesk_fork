@@ -11,7 +11,7 @@ umask 077
 readonly HOST_UID="$(/usr/bin/id -u)"
 readonly HOST_GID="$(/usr/bin/id -g)"
 readonly EVIDENCE_PUB_CACHE="$ONLINE_DIR/pub-cache"
-readonly EVIDENCE_PUB_CACHE_SHA256=854718cb6c9f02d6364ae038e1d3bb9d0ef90e13048a119008bc7c47e9507d19
+readonly EVIDENCE_PUB_CACHE_SHA256="$SHA256_FLUTTER_PEER_PUB_CACHE_CLOSURE_V1"
 WORKSPACE=
 WORKSPACE_ID=
 BUILD_WORK=
@@ -57,7 +57,7 @@ trap 'exit 129' HUP
 trap 'exit 130' INT
 trap 'exit 143' TERM
 
-require_cmd git tar sha256sum stat find chmod docker python3
+require_cmd git tar sha256sum stat find chmod docker
 [ "$HOST_UID" -ne 0 ] || die 'flutter peer presentation smoke refuses host root'
 [ "$HOST_GID" -ne 0 ] || die 'flutter peer presentation smoke refuses a root primary group'
 assert_clean_worktree
@@ -68,22 +68,17 @@ readonly SOURCE_TREE="$(git rev-parse 'HEAD^{tree}')"
   || die 'source commit or tree identity is malformed'
 
 for pin in \
-  DEB_BUILDER_IMAGE_ID DEV_CHECK_IMAGE_ID DEV_CHECK_BASE_IMAGE_ID \
-  DEV_CHECK_IMAGE_CONFIG_ID DEV_CHECK_IMAGE_MANIFEST_ID \
-  DEV_CHECK_SOURCE_COMMIT DEV_CHECK_SOURCE_REPOSITORY \
-  SHA256_DEV_CHECK_DOCKERFILE SHA256_DEV_CHECK_DPKG_MANIFEST \
-  SHA256_DEV_CHECK_CARGO SHA256_DEV_CHECK_RUSTC \
+  DEB_BUILDER_IMAGE_ID DEV_CHECK_IMAGE_ID \
   RUST_VERSION SHA256_RUST_1_75 SIZE_RUST_1_75 \
   FLUTTER_VERSION SHA256_FLUTTER_3_24_5 SIZE_FLUTTER_3_24_5 \
   LLVM_VERSION SHA256_LLVM_15_0_6 SIZE_LLVM_15_0_6 \
-  SHA256_FLUTTER_TOOLS_LOCK; do
+  FLUTTER_RUST_BRIDGE_VERSION SHA256_FLUTTER_TOOLS_LOCK \
+  SHA256_CARGO_VENDOR_CLOSURE_V1 SHA256_CARGO_VENDOR_CONFIG \
+  SIZE_CARGO_VENDOR_CONFIG SHA256_FLUTTER_PEER_PUB_CACHE_CLOSURE_V1 \
+  SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1 \
+  SHA256_FLUTTER_PEER_FRB_CODEGEN SIZE_FLUTTER_PEER_FRB_CODEGEN; do
   [ -n "${!pin:-}" ] || die "pins.env is missing $pin"
 done
-require_online_complete
-verify_online_shas \
-  "rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75" \
-  "flutter-${FLUTTER_VERSION}.tar.xz" "$SHA256_FLUTTER_3_24_5" \
-  "llvm-${LLVM_VERSION}.tar.xz" "$SHA256_LLVM_15_0_6"
 [ -d "$EVIDENCE_PUB_CACHE" ] && [ ! -L "$EVIDENCE_PUB_CACHE" ] \
   && [ "$(stat -c '%u:%g:%a' "$EVIDENCE_PUB_CACHE")" = \
     "$HOST_UID:$HOST_GID:500" ] \
@@ -97,21 +92,17 @@ WORKSPACE="$(mktemp -d /tmp/rustdesk-flutter-peer-presentation.XXXXXXXXXX)"
 WORKSPACE_ID="$(stat -c '%d:%i:%u:%g:%a' "$WORKSPACE")"
 initialize_local_docker_authority "$WORKSPACE/docker-config" \
   'flutter-peer-presentation-smoke'
-require_pinned_builder_image deb-builder "$DEB_BUILDER_IMAGE_ID"
-local_docker_image_provenance verify-local \
-  --role devcheck \
-  --expected-id "$DEV_CHECK_IMAGE_ID" \
-  --image-ref "$DEV_CHECK_IMAGE_ID" \
-  --base "rust:1.75-slim@${DEV_CHECK_BASE_IMAGE_ID}" \
-  --dockerfile-sha "$SHA256_DEV_CHECK_DOCKERFILE" \
-  --dpkg-sha "$SHA256_DEV_CHECK_DPKG_MANIFEST" \
-  --cargo-sha "$SHA256_DEV_CHECK_CARGO" \
-  --rustc-sha "$SHA256_DEV_CHECK_RUSTC" \
-  --source-commit "$DEV_CHECK_SOURCE_COMMIT" \
-  --source-repository "$DEV_CHECK_SOURCE_REPOSITORY" \
-  --config-id "$DEV_CHECK_IMAGE_CONFIG_ID" \
-  --manifest-id "$DEV_CHECK_IMAGE_MANIFEST_ID" \
-  || die 'immutable devcheck image provenance verification failed'
+
+require_exact_local_image() {
+  local label=$1 expected=$2 actual
+  actual="$(local_docker image inspect --format '{{.Id}}' "$expected")" \
+    || die "$label image is not locally available by its exact content ID"
+  [ "$actual" = "$expected" ] \
+    || die "$label image content ID differs: expected $expected, got $actual"
+}
+
+require_exact_local_image deb-builder "$DEB_BUILDER_IMAGE_ID"
+require_exact_local_image devcheck "$DEV_CHECK_IMAGE_ID"
 
 readonly SOURCE_ARCHIVE="$WORKSPACE/source.tar"
 readonly SOURCE_SNAPSHOT="$WORKSPACE/source"
@@ -120,11 +111,14 @@ readonly XVFB_DEBS="$WORKSPACE/xvfb-debs"
 readonly XVFB_ROOT="$WORKSPACE/xvfb-root"
 readonly COORD="$WORKSPACE/coord"
 readonly EVIDENCE_ONLINE="$WORKSPACE/evidence-online"
+readonly BUILD_INPUT_ROOT="$WORKSPACE/build-input-root"
 readonly VIEWER_PASSWD="$WORKSPACE/viewer.passwd"
 readonly VIEWER_PASSWD_ENTRY="rustdesk-evidence:x:$HOST_UID:$HOST_GID:RustDesk peer evidence:/tmp/viewer-home:/usr/sbin/nologin"
 BUILD_WORK="$WORKSPACE/build-work"
 mkdir "$SOURCE_SNAPSHOT" "$BUILD_OUTPUT" "$XVFB_DEBS" "$XVFB_ROOT" \
-  "$COORD" "$EVIDENCE_ONLINE" "$BUILD_WORK"
+  "$COORD" "$EVIDENCE_ONLINE" "$BUILD_INPUT_ROOT" "$BUILD_WORK"
+mkdir -p "$BUILD_INPUT_ROOT/frb-tool/bin" "$BUILD_INPUT_ROOT/vcpkg/installed"
+chmod -R a-w "$BUILD_INPUT_ROOT"
 printf '%s\n' "$VIEWER_PASSWD_ENTRY" > "$VIEWER_PASSWD.tmp"
 chmod 0400 "$VIEWER_PASSWD.tmp"
 mv "$VIEWER_PASSWD.tmp" "$VIEWER_PASSWD"
@@ -150,66 +144,94 @@ run_owned_container() {
 
 inspect_container_contract() {
   local cid=$1 expected_network=$2 label=$3
-  local json_path expected_passwd_source=
-  json_path="$WORKSPACE/$label.inspect.json"
+  local expected_passwd_source= mounts_path source destination writable extra
+  local network ipc pid uts privileged read_only user ports devices caps security
+  local passwd_mounts=0
   case "$label" in
     server) ;;
     viewer) expected_passwd_source=$VIEWER_PASSWD ;;
     *) die "unknown inspected runtime label: $label" ;;
   esac
-  local_docker container inspect "$cid" > "$json_path"
-  /usr/bin/python3 -I -S - "$json_path" "$expected_network" "$HOST_UID:$HOST_GID" \
-    "$expected_passwd_source" <<'PY'
-import json
-import pathlib
-import sys
-
-path = pathlib.Path(sys.argv[1])
-expected_network = sys.argv[2]
-expected_user = sys.argv[3]
-expected_passwd_source = sys.argv[4]
-objects = json.loads(path.read_text(encoding="utf-8"))
-if len(objects) != 1:
-    raise SystemExit("container inspection cardinality differs")
-obj = objects[0]
-host = obj["HostConfig"]
-config = obj["Config"]
-if host.get("NetworkMode") != expected_network:
-    raise SystemExit(f"network mode differs: {host.get('NetworkMode')!r}")
-if host.get("IpcMode") not in ("private", ""):
-    raise SystemExit(f"IPC namespace is not private: {host.get('IpcMode')!r}")
-if host.get("PidMode") not in ("", None) or host.get("UTSMode") not in ("", None):
-    raise SystemExit("container shares a PID or UTS namespace")
-if host.get("Privileged") is not False or host.get("ReadonlyRootfs") is not True:
-    raise SystemExit("container privilege/read-only-root contract differs")
-if config.get("User") != expected_user:
-    raise SystemExit(f"numeric user differs: {config.get('User')!r}")
-if host.get("PortBindings") not in (None, {}):
-    raise SystemExit("container publishes a port")
-if host.get("Devices") not in (None, []):
-    raise SystemExit("container receives a host device")
-if sorted(host.get("CapDrop") or []) != ["ALL"]:
-    raise SystemExit("container does not drop all capabilities")
-security = host.get("SecurityOpt") or []
-if not any(value in ("no-new-privileges", "no-new-privileges:true") for value in security):
-    raise SystemExit("container lacks no-new-privileges")
-for mount in obj.get("Mounts", []):
-    source = mount.get("Source", "")
-    if source.endswith("docker.sock") or source.startswith("/dev/"):
-        raise SystemExit(f"unsafe mount: {source}")
-passwd_mounts = [
-    mount for mount in obj.get("Mounts", []) if mount.get("Destination") == "/etc/passwd"
-]
-if expected_passwd_source:
-    if len(passwd_mounts) != 1:
-        raise SystemExit("viewer passwd witness mount cardinality differs")
-    passwd_mount = passwd_mounts[0]
-    if passwd_mount.get("Source") != expected_passwd_source or passwd_mount.get("RW") is not False:
-        raise SystemExit("viewer passwd witness source or read-only contract differs")
-elif passwd_mounts:
-    raise SystemExit("non-viewer container received a passwd witness mount")
-PY
+  network="$(local_docker container inspect --format '{{.HostConfig.NetworkMode}}' "$cid")"
+  ipc="$(local_docker container inspect --format '{{.HostConfig.IpcMode}}' "$cid")"
+  pid="$(local_docker container inspect --format '{{.HostConfig.PidMode}}' "$cid")"
+  uts="$(local_docker container inspect --format '{{.HostConfig.UTSMode}}' "$cid")"
+  privileged="$(local_docker container inspect --format '{{.HostConfig.Privileged}}' "$cid")"
+  read_only="$(local_docker container inspect --format '{{.HostConfig.ReadonlyRootfs}}' "$cid")"
+  user="$(local_docker container inspect --format '{{.Config.User}}' "$cid")"
+  ports="$(local_docker container inspect --format '{{json .HostConfig.PortBindings}}' "$cid")"
+  devices="$(local_docker container inspect --format '{{json .HostConfig.Devices}}' "$cid")"
+  caps="$(local_docker container inspect --format '{{json .HostConfig.CapDrop}}' "$cid")"
+  security="$(local_docker container inspect --format '{{json .HostConfig.SecurityOpt}}' "$cid")"
+  [ "$network" = "$expected_network" ] || die "$label network mode differs: $network"
+  { [ -z "$ipc" ] || [ "$ipc" = private ]; } || die "$label IPC namespace is not private"
+  [ -z "$pid" ] && [ -z "$uts" ] || die "$label shares a PID or UTS namespace"
+  [ "$privileged" = false ] && [ "$read_only" = true ] \
+    || die "$label privilege/read-only-root contract differs"
+  [ "$user" = "$HOST_UID:$HOST_GID" ] || die "$label numeric user differs: $user"
+  { [ "$ports" = null ] || [ "$ports" = '{}' ]; } || die "$label publishes a port"
+  { [ "$devices" = null ] || [ "$devices" = '[]' ]; } || die "$label receives a host device"
+  [ "$caps" = '["ALL"]' ] || die "$label does not drop all capabilities"
+  case "$security" in
+    '["no-new-privileges"]'|'["no-new-privileges:true"]') ;;
+    *) die "$label lacks the exact no-new-privileges contract" ;;
+  esac
+  mounts_path="$WORKSPACE/$label.mounts.tsv"
+  local_docker container inspect \
+    --format '{{range .Mounts}}{{printf "%s\t%s\t%t\n" .Source .Destination .RW}}{{end}}' \
+    "$cid" > "$mounts_path"
+  while IFS=$'\t' read -r source destination writable extra \
+    || [ -n "${source:-}${destination:-}${writable:-}${extra:-}" ]; do
+    [ -n "$source" ] && [ -n "$destination" ] && [ -n "$writable" ] && [ -z "$extra" ] \
+      || die "$label inspection produced a malformed mount receipt"
+    [[ "$source" != */docker.sock ]] && [[ "$source" != /dev/* ]] \
+      || die "$label receives an unsafe mount: $source"
+    if [ "$destination" = /etc/passwd ]; then
+      passwd_mounts=$((passwd_mounts + 1))
+      [ -n "$expected_passwd_source" ] && [ "$source" = "$expected_passwd_source" ] \
+        && [ "$writable" = false ] \
+        || die "$label passwd witness source or read-only contract differs"
+    fi
+  done < "$mounts_path"
+  if [ -n "$expected_passwd_source" ]; then
+    [ "$passwd_mounts" -eq 1 ] || die 'viewer passwd witness mount cardinality differs'
+  else
+    [ "$passwd_mounts" -eq 0 ] || die 'non-viewer container received a passwd witness mount'
+  fi
 }
+
+run_input_check() {
+  local cid_file=$1
+  run_owned_container "$cid_file" \
+    --pull=never --network=none --read-only \
+    --user "$HOST_UID:$HOST_GID" \
+    --cap-drop=ALL --security-opt=no-new-privileges \
+    --pids-limit=64 --memory=2g --memory-swap=2g --cpus=2 \
+    --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=128m \
+    --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \
+    --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+    --env "RUSTDESK_RUST_VERSION=$RUST_VERSION" \
+    --env "RUSTDESK_RUST_SHA256=$SHA256_RUST_1_75" \
+    --env "RUSTDESK_RUST_SIZE=$SIZE_RUST_1_75" \
+    --env "RUSTDESK_FLUTTER_VERSION=$FLUTTER_VERSION" \
+    --env "RUSTDESK_FLUTTER_SHA256=$SHA256_FLUTTER_3_24_5" \
+    --env "RUSTDESK_FLUTTER_SIZE=$SIZE_FLUTTER_3_24_5" \
+    --env "RUSTDESK_LLVM_VERSION=$LLVM_VERSION" \
+    --env "RUSTDESK_LLVM_SHA256=$SHA256_LLVM_15_0_6" \
+    --env "RUSTDESK_LLVM_SIZE=$SIZE_LLVM_15_0_6" \
+    --env "RUSTDESK_FRB_VERSION=$FLUTTER_RUST_BRIDGE_VERSION" \
+    --env "RUSTDESK_FRB_SHA256=$SHA256_FLUTTER_PEER_FRB_CODEGEN" \
+    --env "RUSTDESK_FRB_SIZE=$SIZE_FLUTTER_PEER_FRB_CODEGEN" \
+    --env "RUSTDESK_CARGO_VENDOR_SHA256=$SHA256_CARGO_VENDOR_CLOSURE_V1" \
+    --env "RUSTDESK_CARGO_VENDOR_CONFIG_SHA256=$SHA256_CARGO_VENDOR_CONFIG" \
+    --env "RUSTDESK_CARGO_VENDOR_CONFIG_SIZE=$SIZE_CARGO_VENDOR_CONFIG" \
+    --env "RUSTDESK_VCPKG_X64_LINUX_SHA256=$SHA256_FLUTTER_PEER_VCPKG_X64_LINUX_CLOSURE_V1" \
+    "$DEV_CHECK_IMAGE_ID" \
+    bash --noprofile --norc /source/scripts/smoke-flutter-peer-presentation-stage.sh input-check
+}
+
+echo '== independently verify every persistent input consumed by the build =='
+run_input_check "$WORKSPACE/input-pre.cid"
 
 echo '== acquire the exact five-package Xvfb closure in one non-root producer =='
 run_owned_container "$WORKSPACE/xvfb.cid" \
@@ -249,7 +271,14 @@ run_owned_container "$WORKSPACE/build.cid" \
   --ulimit nofile=8192:8192 --ulimit fsize=4294967296:4294967296 \
   --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=1g \
   --mount "type=bind,source=$SOURCE_SNAPSHOT,target=/source,readonly,bind-recursive=disabled" \
-  --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$BUILD_INPUT_ROOT,target=/online,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ONLINE_DIR/rust-${RUST_VERSION}.tar.xz,target=/online/rust-${RUST_VERSION}.tar.xz,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ONLINE_DIR/flutter-${FLUTTER_VERSION}.tar.xz,target=/online/flutter-${FLUTTER_VERSION}.tar.xz,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ONLINE_DIR/llvm-${LLVM_VERSION}.tar.xz,target=/online/llvm-${LLVM_VERSION}.tar.xz,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ONLINE_DIR/cargo-vendor,target=/online/cargo-vendor,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ONLINE_DIR/cargo-vendor-config.toml,target=/online/cargo-vendor-config.toml,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ONLINE_DIR/frb-tool/bin/flutter_rust_bridge_codegen,target=/online/frb-tool/bin/flutter_rust_bridge_codegen,readonly,bind-recursive=disabled" \
+  --mount "type=bind,source=$ONLINE_DIR/vcpkg/installed/x64-linux,target=/online/vcpkg/installed/x64-linux,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$EVIDENCE_ONLINE,target=/evidence-online,readonly,bind-recursive=disabled" \
   --mount "type=bind,source=$BUILD_WORK,target=/build-work,bind-recursive=disabled" \
   --mount "type=bind,source=$BUILD_OUTPUT,target=/out,bind-recursive=disabled" \
@@ -382,10 +411,8 @@ grep -q '^FLUTTER_PEER_SERVER_RUNTIME_OK server=joined source=joined xvfb=joined
 [ "$(<"$COORD/server.result")" = 'server=joined source=joined xvfb=joined listener=closed' ] \
   || die 'server result receipt differs'
 
-verify_online_shas \
-  "rust-${RUST_VERSION}.tar.xz" "$SHA256_RUST_1_75" \
-  "flutter-${FLUTTER_VERSION}.tar.xz" "$SHA256_FLUTTER_3_24_5" \
-  "llvm-${LLVM_VERSION}.tar.xz" "$SHA256_LLVM_15_0_6"
+echo '== independently reverify every persistent build input after runtime =='
+run_input_check "$WORKSPACE/input-post.cid"
 [ "$(git rev-parse HEAD)" = "$SOURCE_COMMIT" ] \
   && [ "$(git rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE" ] \
   || die 'repository identity changed during the probe'

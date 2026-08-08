@@ -17133,7 +17133,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `verify-verifier-workspace: ok`; it was neither sampled nor shortened. These gates started no
   RustDesk process, X server, listener, or networked process and changed no host service,
   configuration, display, firewall, route, or network state. The synchronized requirements
-  SHA-256 is `67a499e49c6dc42c757229420ffe6a66e9f41d65a1752fff93323f91dc595d3c`.
+  SHA-256 is `bdd378bdc9f1881c71fee1fd234edbb78b8c8efdd45d0e89e2eecaf1369f7d24`.
 
   The twenty-first exact committed transaction is green. Commit
   `38ad03ea7a2465297425ad745ada5c05f8de7e94`, tree
@@ -17242,7 +17242,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
   On the tracked verifier bytes, the focused desktop-texture verifier rejects all 202 deliberate
   mutations, Python AST parsing and the three shell-gate parses pass, the independent workspace
-  baseline ends in `verify-verifier-workspace: ok`, the requirements digest is synchronized, and
+  baseline ends in `verify-verifier-workspace: ok`, the requirements digest is synchronized at
+  `bdd378bdc9f1881c71fee1fd234edbb78b8c8efdd45d0e89e2eecaf1369f7d24`, and
   diff hygiene is clean. The first complete unsliced independent source-mutation run failed because
   changing either of two focused-verifier copies of the absolute-path token remained accepted. Exact
   cardinality binding corrected that real verifier gap. The next complete run proved both changes
@@ -17263,6 +17264,40 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   reproduction, and external review remain explicit release blockers. No host RustDesk process,
   service, binary, configuration, listener, display, firewall/UFW/nftables/iptables state, or host
   network state was inspected or changed for this source slice.
+
+- **R-S11gc exact-current full-peer input authority recovery — HARNESS CORRECTED; RUNTIME RESULT
+  PENDING.** The previous full-peer entry remained bound to Pub-cache digest
+  `854718cb6c9f02d6364ae038e1d3bb9d0ef90e13048a119008bc7c47e9507d19`, but those bytes are no
+  longer present. The current sealed `online/pub-cache` has strict current-three-Git shape and
+  digest `fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4`. A separate pinned
+  numeric-nonroot, networkless, read-only verifier resolved the exact project lock
+  `cc7da12d2a7033bd76f5d19926ee39242ff1cd19f55223d2d9ad12d530329eae` and Flutter-tools lock
+  `66955192347d2d4eb24476745462c80a11d9bbf19a461f3504bbbd86e366ee8e` with
+  `--offline --enforce-lockfile`, including exactly the three locked Git commits. The pin refresh is
+  therefore explicit evidence-input authority, not path-based acceptance.
+
+  The full canonical online closure remains red and was not repinned. Its expected digest is
+  `d552816bcd34cb3a5c47403dcd782def30a61626a3363a274bcd979c5245c27b`, while the inspected live
+  tree produced `c9016ffb36516e3e5d361067f0cba4a6120c2678adb31e258d7a68885aca554f`; the file, directory,
+  symlink, byte, and hardlink cardinalities also differ. R-B10 cold equality remains stop-ship. The
+  R-S11gc transaction now checks only—and all of—the persistent inputs it actually consumes, twice,
+  in separate networkless numeric-nonroot containers: exact Rust/Flutter/LLVM archives; the pinned
+  Cargo-vendor tree and configuration; the FRB 1.80.1 install metadata plus exact codegen binary;
+  the exact x64-Linux vcpkg subtree; and the separately copied, sealed, strict Pub-cache. The build
+  receives only those exact paths under an otherwise empty read-only `/online` mount namespace and
+  independently repeats archive and both Pub-lock resolutions. The whole persistent `online/` root
+  is visible only to the read-only input verifier, not to the compiler. A green peer result cannot
+  be used to infer the unrelated full-online closure.
+
+  The outer runner no longer executes Python on the host. Exact builder and verifier images are
+  admitted only by their immutable local content IDs; all tree, semantic, build, and product code
+  executes inside constrained containers. Runtime container inspection uses the fixed Docker CLI as
+  orchestration and still fails closed on network, PID/IPC/UTS, rootfs, numeric-user, port, device,
+  capability, no-new-privileges, unsafe-mount, and viewer-only passwd-witness differences. The
+  controlled peer retains `--network=none`, and the viewer can share only that exact loopback-only
+  namespace; neither publishes a port or touches the already-running host RustDesk service. The
+  exact-current committed full-peer build/runtime result is intentionally still pending at this
+  ledger point.
 
 - **Exact Linux Flutter texture/X11 presentation recovery — EXECUTABLE EVIDENCE GREEN;
   ANDROID/WINDOWS/NATIVE END-TO-END EVIDENCE OPEN.** Platform: confined Linux X11 with Flutter
@@ -22267,7 +22302,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-67a499e49c6dc42c757229420ffe6a66e9f41d65a1752fff93323f91dc595d3c  requirements.html
+bdd378bdc9f1881c71fee1fd234edbb78b8c8efdd45d0e89e2eecaf1369f7d24  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

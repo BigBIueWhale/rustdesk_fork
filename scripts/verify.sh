@@ -2224,7 +2224,7 @@ grep -Fq 'SetInformationJobObject(' "$privacy_broker_source" || r_s11e36="$r_s11
 grep -Fq 'cb: mem::size_of::<STARTUPINFOW>() as u32' "$privacy_broker_source" || r_s11e36="$r_s11e36 startup-info-size-missing"
 grep -Fq 'let mut pending = WindowHandlers {' "$privacy_broker_source" || r_s11e36="$r_s11e36 pending-owner-missing"
 echo "$privacy_broker_launch" | grep -Fq 'FALSE,' || r_s11e36="$r_s11e36 process-handle-inheritance-not-disabled"
-grep -Fq 'CREATE_SUSPENDED | DETACHED_PROCESS' "$privacy_broker_source" || r_s11e36="$r_s11e36 suspended-process-creation-missing"
+grep -Fq 'CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | DETACHED_PROCESS' "$privacy_broker_source" || r_s11e36="$r_s11e36 suspended-process-with-exact-environment-missing"
 grep -Fq 'pending.process_id = proc_info.dwProcessId;' "$privacy_broker_source" || r_s11e36="$r_s11e36 immutable-process-id-capture-missing"
 grep -Fq 'if pending.hthread == 0 || pending.hprocess == 0 || pending.process_id == 0' "$privacy_broker_source" || r_s11e36="$r_s11e36 complete-process-identity-check-missing"
 grep -Fq 'AssignProcessToJobObject(pending.hjob as _, proc_info.hProcess)' "$privacy_broker_source" || r_s11e36="$r_s11e36 exact-process-job-assignment-missing"
@@ -10493,15 +10493,19 @@ grep -qE 'enum KeepScreenOn|KeepScreenOn\.(never|serviceOn)' "$sp" && r_d7a="$r_
 grep -qF "title: 'Keep screen on'" "$sp" && r_d7a="$r_d7a keep-screen-on-radio-present"
 ms=flutter/android/app/src/main/kotlin/com/carriez/flutter_hbb/MainService.kt
 af=libs/scrap/src/android/ffi.rs
+afr=libs/scrap/src/android/frame_raw.rs
 grep -qE 'return START_NOT_STICKY' "$ms" || r_d7a="$r_d7a onStartCommand-not-START_NOT_STICKY"
 grep -qE 'return START_STICKY|START_REDELIVER_INTENT' "$ms" && r_d7a="$r_d7a sticky-restart-present"
 grep -qE 'val useVP9|startVP9VideoRecorder|createMediaCodec|MIMETYPE_VIDEO_VP9' "$ms" && r_d7a="$r_d7a vp9-encoder-present"
-grep -qF 'data: Vec<u8>' "$af" || r_d7a="$r_d7a android-raw-media-not-owned"
-grep -qF 'update_from_jni_buffer' "$af" || r_d7a="$r_d7a android-raw-media-no-jni-copy"
+grep -qF 'data: Vec<u8>' "$afr" || r_d7a="$r_d7a android-raw-media-not-owned"
+grep -qF 'update_from_jni_buffer' "$af" || r_d7a="$r_d7a android-raw-media-jni-wiring-missing"
+grep -qF 'pub(crate) fn update_from_jni_buffer' "$afr" || r_d7a="$r_d7a android-raw-media-no-jni-copy"
 grep -qF 'MAX_ANDROID_VIDEO_RAW_BYTES' "$af" || r_d7a="$r_d7a android-video-raw-no-cap"
 grep -qF 'MAX_ANDROID_AUDIO_RAW_BYTES' "$af" || r_d7a="$r_d7a android-audio-raw-no-cap"
-grep -qF 'dropping oversized Android' "$af" || r_d7a="$r_d7a android-raw-media-no-oversize-drop"
-grep -qF 'AtomicPtr' "$af" && r_d7a="$r_d7a android-raw-media-retains-pointer"
+grep -qF 'if len > max_len {' "$afr" || r_d7a="$r_d7a android-raw-media-no-cap-enforcement"
+grep -qF 'dropping oversized Android' "$afr" || r_d7a="$r_d7a android-raw-media-no-oversize-drop"
+grep -qF 'self.data.extend_from_slice(slice);' "$afr" || r_d7a="$r_d7a android-raw-media-no-owned-copy"
+grep -qF 'AtomicPtr' "$af" "$afr" && r_d7a="$r_d7a android-raw-media-retains-pointer"
 if [ -n "$r_d7a" ]; then
   echo "  FAIL R-D7a: keep-screen-on / onStartCommand / useVP9-encoder / Android raw-media JNI not conformant:$r_d7a"; rc=1
 else
@@ -10632,7 +10636,7 @@ grep -qF 'const MEDIA_WORKER_REAPER_THREADS: usize = 4;' src/client.rs \
   || android_client_owner_bad="$android_client_owner_bad fixed-media-reaper-missing"
 grep -qF 'crate::client::join_media_workers_off_runtime(workers).await;' src/client/io_loop.rs \
   || android_client_owner_bad="$android_client_owner_bad media-worker-fixed-pool-join-missing"
-grep -qF 'media_thread: OwnedMediaThread' src/client/io_loop.rs \
+grep -qF 'media_thread: OwnedVideoThread' src/client/io_loop.rs \
   || android_client_owner_bad="$android_client_owner_bad video-worker-owner-missing"
 grep -qF 'voice_call_audio: Option<VoiceCallAudio>' src/client/io_loop.rs \
   || android_client_owner_bad="$android_client_owner_bad voice-audio-owner-missing"
@@ -10804,13 +10808,13 @@ grep -qF 'const MAX_VIDEO_FRAME_ACK_CONTROLLERS: usize = 64;' src/server/video_s
   || android_client_owner_bad="$android_client_owner_bad video-ack-controller-cap-missing"
 grep -qF 'static ref VIDEO_FRAME_ACK_CONTROLLERS: Mutex<HashMap<VideoFrameStreamKey, Weak<VideoFrameAckState>>> = Default::default();' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad video-ack-exact-stream-registry-missing"
-grep -qF 'round.pending.clone_from(connection_ids);' src/server/video_service.rs \
+grep -qF 'round.targets.extend(' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad video-ack-exact-round-targets-missing"
 grep -qF 'generation == 0 || generation <= round.generation' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad video-ack-monotonic-round-missing"
 grep -qF 'round.generation != generation' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad video-ack-pending-id-gate-missing"
-grep -qF '.wait_timeout_while(round, timeout, |round| !round.complete())' src/server/video_service.rs \
+grep -qF '.wait_timeout_while(round, timeout, |round| !round.capture_may_advance())' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad video-ack-condition-wait-missing"
 grep -qF 'sp.send_video_frame_with_targets(' src/server/video_service.rs \
   || android_client_owner_bad="$android_client_owner_bad video-ack-prepare-before-send-wiring-missing"
@@ -11079,7 +11083,10 @@ ok = (
     and session_start.index("acquire_android_client_owner(client_owner_id)")
         < session_start.index("sessions::session_has_client_owner(session_id, client_owner_id)")
         < session_start.index("match session.start_io_thread()")
-        < session_start.index("rollback_failed_session_start(session_id);")
+        < session_start.index(
+            "rollback_failed_session_start(session_id);",
+            session_start.index("match session.start_io_thread()"),
+        )
         < session_start.index("drop(owner_admission)")
     and session_start.count("rollback_failed_session_start(session_id);") == 3
     and failed_start_rollback.index("sessions::remove_session_by_session_id(session_id)")
@@ -11974,7 +11981,7 @@ fi
 # credential/HWID tags stay reserved together so protobuf regeneration cannot silently reuse them.
 r_s18_password=
 grep -qE '^\s*bytes +password *= *2\b' libs/hbb_common/protos/message.proto && r_s18_password="$r_s18_password proto-field2-live"
-grep -qE '^\s*reserved +2, *12, *14;' libs/hbb_common/protos/message.proto || r_s18_password="$r_s18_password proto-deleted-tags-2-12-14-not-reserved"
+grep -qE '^\s*reserved +2, *9, *12, *14;' libs/hbb_common/protos/message.proto || r_s18_password="$r_s18_password proto-deleted-tags-2-9-12-14-not-reserved"
 grep -RInE '\blr\.password\b' src/server --include='*.rs' 2>/dev/null | grep -v '//' >/dev/null && r_s18_password="$r_s18_password responder-lr-password-read"
 client_login_request_init=$(awk '/let mut lr = LoginRequest \{/{flag=1} flag{print} flag && /\.\.Default::default\(\)/{flag=0}' src/client.rs)
 if [ -z "$client_login_request_init" ]; then
@@ -12352,7 +12359,7 @@ grep -q 'the single writer' src/server/connection.rs                     || r_t8
 # R-T3 introduces exactly ONE controlled split — set_session_keys splits the keyed Framed so the write
 # half goes to the SOLE dedicated writer task (single-writer preserved, NOT a second writer). Forbid any
 # OTHER code split, and assert this one has the R-T3 shape feeding writer_task (doc `///` mentions excluded).
-code_splits=$(grep -n '\.split()' libs/hbb_common/src/tcp.rs 2>/dev/null | grep -v '///' | wc -l)
+code_splits=$(sed -n '1,/^#\[cfg(test)\]/p' libs/hbb_common/src/tcp.rs | grep -n '\.split()' | grep -v '///' | wc -l)
 if [ "$code_splits" != "1" ]; then
   r_t8_missing="$r_t8_missing tcp-split-count=$code_splits(want exactly the 1 R-T3 writer-task split)!"
 fi
@@ -13291,7 +13298,7 @@ software_codec_build_hits() (
   grep -rInE 'hwcodec|vram|mediacodec' \
       --exclude-dir='.git' --exclude-dir='target' \
       --include='*.sh' --include='*.py' --include='*.yml' --include='*.yaml' --include='*.ps1' . 2>/dev/null \
-    | grep -vE '^\./scripts/(verify-android-voice-call-ownership|verify-verifier-workspace)\.py:[0-9]+:' \
+    | grep -vE '^\./scripts/(verify-android-voice-call-ownership|verify-desktop-texture-lifecycle|verify-verifier-workspace)\.py:[0-9]+:' \
     | grep -vE '/target/|requirements\.html|scripts/verify\.sh' \
     | grep -vE ':[0-9]+:[[:space:]]*#' \
     | grep -vE 'scrap_hwcodec|macos_hwcodec_check|has_hwcodec|hwcodec_check|common/hwcodec\.rs' \
@@ -13307,6 +13314,8 @@ software_codec_build_gate_self_test() {
     >"$fixture/scripts/verify-android-voice-call-ownership.py" || return 1
   printf '%s\n' 'mediacodec = ["ndk"]' \
     >"$fixture/scripts/verify-verifier-workspace.py" || return 1
+  printf '%s\n' 'forbid(flutter, '\''feature = "vram"'\'', "Flutter VRAM feature branch")' \
+    >"$fixture/scripts/verify-desktop-texture-lifecycle.py" || return 1
   printf '%s\n' '# features.append("hwcodec"); vram dropped' >"$fixture/build.py" || return 1
   printf '%s\n' '[features]' 'default = []' >"$fixture/Cargo.toml" || return 1
   hits="$(software_codec_build_hits "$fixture")" || return 1
@@ -14097,7 +14106,7 @@ grep -qF 'env.new_global_ref(application_context)' "$r_s14_ffi_rs" || r_s14_miss
 grep -qF 'init_ndk_context(java_vm, context_jobject)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing ndk-context-not-application-global-bound"
 grep -qF 'pub fn bind_main_service_generation(' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-binding-missing"
 grep -qF 'env.is_same_object(current.owner.as_obj(), service)' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-not-exact-object-bound"
-grep -qF 'if generation.is_some() && context.generation != generation' "$r_s14_ffi_rs" || r_s14_missing="$r_s14_missing service-generation-callback-gate-missing"
+[ "$(grep -cF 'if generation == 0 || context.generation != Some(generation)' "$r_s14_ffi_rs")" -eq 2 ] || r_s14_missing="$r_s14_missing service-generation-callback-gate-missing"
 grep -qF 'bind that generation only after JNI proves that its caller is the exact currently retained <code>MainService</code> object' requirements.html || r_s14_missing="$r_s14_missing exact-object-listener-generation-requirement-missing"
 grep -qF 'a retained global <code>applicationContext</code> reference' requirements.html || r_s14_missing="$r_s14_missing application-context-global-reference-requirement-missing"
 grep -qF 'service_generation: u64' "$r_s14_flutter" || r_s14_missing="$r_s14_missing connection-manager-generation-owner-missing"
@@ -14489,8 +14498,12 @@ grep -qF 'ref: bd6b5b41254e57c5bcece202ebfb234de63e6487' flutter/pubspec.yaml ||
   dart_lock_bad="$dart_lock_bad dash-chat-ref-not-commit"
 grep -qF 'ref: 85789bfe6e4cfaf4ecc00c52857467fdb7f26879' flutter/pubspec.yaml ||
   dart_lock_bad="$dart_lock_bad window-manager-ref-not-commit"
-grep -qF 'ref: b47e8385e5a75d38319ad706a64b0ead3108b093' flutter/pubspec.yaml ||
-  dart_lock_bad="$dart_lock_bad desktop-multi-window-ref-not-commit"
+grep -qF 'path: third_party/desktop_multi_window' flutter/pubspec.yaml ||
+  dart_lock_bad="$dart_lock_bad desktop-multi-window-not-vendored"
+grep -qF 'path: "third_party/desktop_multi_window"' flutter/pubspec.lock ||
+  dart_lock_bad="$dart_lock_bad desktop-multi-window-lock-not-local"
+grep -qF 'b47e8385e5a75d38319ad706a64b0ead3108b093' flutter/third_party/desktop_multi_window/UPSTREAM.md ||
+  dart_lock_bad="$dart_lock_bad desktop-multi-window-provenance-not-commit-bound"
 if ! awk '
   function clean(value) {
     gsub(/"/, "", value)

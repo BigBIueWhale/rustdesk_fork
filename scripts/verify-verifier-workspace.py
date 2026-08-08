@@ -41504,7 +41504,7 @@ def validate_universal_software_codec_build_gate(sources):
         if line.strip().startswith("| grep -v")
     )
     expected_exclusion_lines = (
-        "| grep -vE '^\\./scripts/(verify-android-voice-call-ownership|verify-verifier-workspace)\\.py:[0-9]+:' \\",
+        "| grep -vE '^\\./scripts/(verify-android-voice-call-ownership|verify-desktop-texture-lifecycle|verify-verifier-workspace)\\.py:[0-9]+:' \\",
         "| grep -vE '/target/|requirements\\.html|scripts/verify\\.sh' \\",
         "| grep -vE ':[0-9]+:[[:space:]]*#' \\",
         "| grep -vE 'scrap_hwcodec|macos_hwcodec_check|has_hwcodec|hwcodec_check|common/hwcodec\\.rs' \\",
@@ -41512,7 +41512,7 @@ def validate_universal_software_codec_build_gate(sources):
     )
     if exclusion_lines != expected_exclusion_lines:
         raise VerificationError(
-            "software-codec exact verifier-fixture scope: exclusion pipeline is not the exact two-file/no-wildcard policy"
+            "software-codec exact verifier-fixture scope: exclusion pipeline is not the exact three-file/no-wildcard policy"
         )
     require_order(
         gate,
@@ -41520,6 +41520,7 @@ def validate_universal_software_codec_build_gate(sources):
             "software_codec_build_gate_self_test() {",
             '>"$fixture/scripts/verify-android-voice-call-ownership.py"',
             '>"$fixture/scripts/verify-verifier-workspace.py"',
+            '>"$fixture/scripts/verify-desktop-texture-lifecycle.py"',
             '>"$fixture/build.py"',
             "'default = []'",
             '[ -z "$hits" ] || return 1',
@@ -62392,7 +62393,7 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "| grep -vE '^\\./scripts/(verify-android-voice-call-ownership|verify-verifier-workspace)\\.py:[0-9]+:'",
+            "| grep -vE '^\\./scripts/(verify-android-voice-call-ownership|verify-desktop-texture-lifecycle|verify-verifier-workspace)\\.py:[0-9]+:'",
             "| grep -vE '^\\./scripts/verify-'",
             "software-codec exact verifier-fixture scope",
         ),
@@ -62407,6 +62408,12 @@ def run_source_mutations(sources):
             '>"$fixture/scripts/verify-android-voice-call-ownership.py" || return 1',
             '>"$fixture/scripts/verify-android-ownership.py" || return 1',
             "software-codec behavioral fixture",
+        ),
+        (
+            "verify",
+            '>"$fixture/scripts/verify-desktop-texture-lifecycle.py" || return 1',
+            '>"$fixture/scripts/verify-desktop-texture.py" || return 1',
+            "software-codec exact texture-verifier fixture",
         ),
         (
             "verify",

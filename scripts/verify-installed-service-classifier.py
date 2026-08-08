@@ -71,15 +71,9 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require_exact_count(
         linux,
-        '"/usr/share/rustdesk/rustdesk"',
-        2,
-        "Linux packaged runner path and positive regression",
-    )
-    require_exact_count(
-        linux,
-        '"/usr/bin/rustdesk"',
-        2,
-        "Linux installed entry path and positive regression",
+        '["/usr/share/rustdesk/rustdesk", "/usr/bin/rustdesk"]',
+        1,
+        "closed Linux installed-executable values",
     )
     linux_match = extract_rust_function(
         linux,
@@ -111,18 +105,27 @@ def validate(sources: Dict[str, str]) -> None:
     )
     if "starts_with" in linux_match + linux_installed:
         raise VerificationError("Linux installed-state classifier retains prefix authority")
-    require_exact_count(
+    linux_regression = extract_rust_function(
         linux,
         "fn r_s11e80_linux_installed_classifier_requires_an_exact_supported_executable()",
-        1,
         "focused Linux exact-path regression",
     )
+    for accepted in (
+        '"/usr/share/rustdesk/rustdesk"',
+        '"/usr/bin/rustdesk"',
+    ):
+        require_exact_count(
+            linux_regression,
+            accepted,
+            1,
+            f"Linux positive path regression {accepted}",
+        )
     for rejected in (
         '"/usr/share/rustdesk/rustdesk-helper"',
         '"/usr-malicious/rustdesk"',
         '"/nix/store/attacker-selected/bin/rustdesk"',
     ):
-        require(linux, rejected, f"Linux negative path regression {rejected}")
+        require(linux_regression, rejected, f"Linux negative path regression {rejected}")
 
     macos = sources["macos"]
     macos_expected = extract_rust_function(

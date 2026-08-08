@@ -1418,8 +1418,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     Mutation(
         "lockfile",
-        ' "dasp",\n "dart-sys",\n "dbus",',
-        ' "dasp",\n "dbus",',
+        ' "ctrlc",\n "dart-sys",\n "dasp",',
+        ' "ctrlc",\n "dasp",',
         "root RustDesk dart-sys lock edge",
     ),
     Mutation(

@@ -708,8 +708,8 @@ def verify_endpoint_ownership(rust: Mapping[str, RustSource]) -> None:
         unique=True,
     )
     service_postfix.require(
-        ("cfg", "!", "(", "target_os", "=", '"linux"', ")", "&&", "postfix", "==", '"_service_credential"'),
-        "Linux credential replica service endpoint classification",
+        ("cfg", "!", "(", "any", "(", "target_os", "=", '"linux"', ",", "target_os", "=", '"macos"', ")", ")", "&&", "postfix", "==", '"_service_credential"'),
+        "Linux/macOS credential replica service endpoint classification",
         unique=True,
     )
     parent_path = config.function("ipc_parent_dir_for_uid")
@@ -911,7 +911,7 @@ def verify_raw_endpoint_separation(rust: Mapping[str, RustSource]) -> None:
     )
     service_listener.require_order(
         (
-            (("credential_incoming", ".", "as_mut", "(", ")"), "raw credential accept lane"),
+            (("credential_incoming", ".", "next", "(", ")"), "raw credential accept lane"),
             (("try_acquire_service_credential_ipc_transaction_slot", "(", ")"), "credential work admission"),
             (("authenticate_linux_service_owned_password_replica_server", "(", "&", "stream", ",", "password", "::", "SERVICE_CREDENTIAL_IPC_POSTFIX", OPTIONAL_COMMA, ")"), "exact child proof before request read"),
             (("transactions", ".", "spawn", "(", "handle_linux_service_credential_snapshot_transaction"), "owned credential handler"),
@@ -968,8 +968,8 @@ def verify_linux_identity_and_authority(rust: Mapping[str, RustSource]) -> None:
     snapshot = auth.function("service_scoped_ipc_authorization_snapshot_from_stream")
     snapshot.require_order(
         (
-            (("peer_pid_from_fd", "(", "fd", ")"), "socket peer PID"),
             (("peer_uid_from_fd", "(", "fd", ")"), "socket peer UID"),
+            (("let", "peer_pid", "=", "peer_pid_from_fd", "(", "fd", ")"), "Linux socket peer PID binding"),
             (("active_uid_fresh", "(", ")"), "fresh active session UID"),
             (("is_allowed_service_peer_uid", "(", "uid", ",", "active_uid", ")"), "session authority decision"),
         )
@@ -1674,7 +1674,7 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
             (("receive_credential_snapshot_request_unix", "(", "&", "mut", "stream", ",", "deadline"), "bodyless credential request"),
             (("authenticate_linux_service_owned_password_replica_server", "(", "&", "stream", ",", "password", "::", "SERVICE_CREDENTIAL_IPC_POSTFIX", OPTIONAL_COMMA, ")"), "post-read exact-child reauthentication"),
             (("refreshed", "!=", "identity"), "accepted-socket identity continuity"),
-            (("linux_service_owned_runtime_prs_replica", "(", ")"), "root-owned PRS snapshot"),
+            (("service_owned_runtime_prs_replica", "(", '"Linux"', ")"), "root-owned PRS snapshot"),
             (("send_credential_replica_unix", "(", "&", "mut", "stream", ",", "operation_id", ",", "&", "replica", ",", "deadline"), "operation-bound PRS response"),
         )
     )
@@ -1702,7 +1702,7 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
             (("durable_value", "=", "value", ".", "clone", "(", ")"), "root-owned plaintext copy"),
             (("spawn_blocking", "(", "move", "||", "{", "Config", "::", "set_permanent_password_persisted", "(", "durable_value", ".", "as_str", "(", ")", ")"), "root durable credential write"),
             (("if", "!", "durable_result", "{", "return", "Ok", "(", "IpcMutationResult", "::", "Rejected", ")"), "no-replica result before durable acceptance"),
-            (("linux_service_owned_runtime_prs_replica", "(", ")"), "root PRS extraction after persistence"),
+            (("service_owned_runtime_prs_replica", "(", '"Linux"', ")"), "root PRS extraction after persistence"),
             (("request_graceful_shutdown_after_authority_failure", "(", ")"), "fail-stop on post-persistence PRS failure"),
             (("complete_main_password_mutation", "(", "operation_id", ",", "&", "replica", ",", "true", ",", "ms_timeout", ")"), "same-operation PRS child convergence"),
             (("Ok", "(", "IpcMutationResult", "::", "Applied", ")", "=>", "Ok", "(", "IpcMutationResult", "::", "Applied", ")"), "exact applied convergence"),
@@ -1718,14 +1718,14 @@ def verify_flow_finality_and_shutdown(rust: Mapping[str, RustSource]) -> None:
     commit.forbid(("sleep", "(", "0.1", ")", ".", "await"), "outer finality retry")
     commit.forbid(("Uuid", "::", "new_v4"), "operation ID regeneration during recovery")
 
-    root_replica = ipc.function("linux_service_owned_runtime_prs_replica")
+    root_replica = ipc.function("service_owned_runtime_prs_replica")
     root_replica.require_order(
         (
             (("Config", "::", "read_permanent_password_prs", "(", ")"), "root credential read"),
             (("Available", "(", "prs", ")", "=>", "{", "Ok", "(", "SensitivePassword", "::", "new", "(", "prs", ")", ")"), "available PRS replica"),
             (("PermanentPasswordPrsRead", "::", "Empty", "=>"), "explicit empty replica"),
             (("UndecryptableStorage", "=>"), "undecryptable storage branch"),
-            (("bail", "!", "(", '"Linux root service credential storage is undecryptable"', ")"), "undecryptable fail closed"),
+            (("bail", "!", "(", '"{platform} root service credential storage is undecryptable"', ")"), "undecryptable fail closed"),
         )
     )
 
@@ -2080,7 +2080,7 @@ def verify_callers(rust: Mapping[str, RustSource]) -> None:
         (
             (("rpassword", "::", "prompt_password", "(", '"New permanent password: "', ")"), "non-echoing password prompt"),
             (("rpassword", "::", "prompt_password", "(", '"Confirm permanent password: "'), "non-echoing confirmation"),
-            (("matches", "=", "password", "==", "confirmation"), "confirmation comparison"),
+            (("matches", "=", "password", ".", "constant_time_eq", "(", "&", "confirmation", ")"), "constant-time confirmation comparison"),
             (("confirmation", ".", "zeroize", "(", ")"), "confirmation erasure"),
             (("if", "!", "matches"), "mismatch rejection"),
         )
@@ -2217,6 +2217,36 @@ def expect_rejection(sources: Mapping[str, str], mutation: Mutation) -> None:
 def self_test(sources: Mapping[str, str]) -> None:
     validate_sources(sources)
     mutations = (
+        Mutation(
+            "credential replica service endpoint excludes Linux",
+            "libs/hbb_common/src/config.rs",
+            'cfg!(any(target_os = "linux", target_os = "macos")) && postfix == "_service_credential"',
+            'cfg!(target_os = "macos") && postfix == "_service_credential"',
+        ),
+        Mutation(
+            "credential replica listener loses its exact accept lane",
+            "src/ipc.rs",
+            "result = credential_incoming.next() => {",
+            "result = incoming.next() => { /* credential_incoming */",
+        ),
+        Mutation(
+            "service authorization snapshot loses the Linux socket peer PID",
+            "src/ipc/auth.rs",
+            "let peer_pid = peer_pid_from_fd(fd);",
+            "let peer_pid = None; /* peer_pid_from_fd(fd) */",
+        ),
+        Mutation(
+            "shared service-owned PRS snapshot helper is bypassed",
+            "src/ipc.rs",
+            "fn service_owned_runtime_prs_replica(platform: &str) -> ResultType<SensitivePassword>",
+            "fn service_owned_runtime_prs_replica_unchecked(platform: &str) -> ResultType<SensitivePassword>",
+        ),
+        Mutation(
+            "interactive confirmation comparison regains ordinary string equality",
+            "src/core_main.rs",
+            "let matches = password.constant_time_eq(&confirmation);",
+            "let matches = password.as_str() == confirmation.as_str();",
+        ),
         Mutation(
             "secret body read loses its absolute deadline",
             "src/ipc/password.rs",

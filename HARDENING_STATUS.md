@@ -17265,8 +17265,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   service, binary, configuration, listener, display, firewall/UFW/nftables/iptables state, or host
   network state was inspected or changed for this source slice.
 
-- **R-S11gc exact-current full-peer input authority recovery — HARNESS CORRECTED; RUNTIME RESULT
-  PENDING.** The previous full-peer entry remained bound to Pub-cache digest
+- **R-S11gc exact-current full-peer input authority recovery — EXECUTABLE EVIDENCE GREEN; BROADER
+  PLATFORM/SOAK EVIDENCE OPEN.** The previous full-peer entry remained bound to Pub-cache digest
   `854718cb6c9f02d6364ae038e1d3bb9d0ef90e13048a119008bc7c47e9507d19`, but those bytes are no
   longer present. The current sealed `online/pub-cache` has strict current-three-Git shape and
   digest `fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4`. A separate pinned
@@ -17331,8 +17331,40 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   complete unsliced independent `--source-mutations-only` catalog then reached terminal
   `verify-verifier-workspace: ok`. After that result was recorded in the tracked ledger, a fresh
   complete catalog over those ledger-updated bytes also reached the same terminal verdict and exited
-  zero. No tracked byte changed afterward. Another clean committed full-peer transaction remains
-  required.
+  zero. No tracked byte changed afterward. At that ledger point, another clean committed full-peer
+  transaction was still required.
+
+  That clean transaction then executed exact pushed commit
+  `8ab3769681679e0e6843da922f25415be3bd0540`, tree
+  `979836fd42d3d5add4ed00a3ad8b2413c10e2f16`, and source-archive SHA-256
+  `4b5bc77e9a94a7353f0cc90e9b21a6a67f231ce238cc1b3a9012347d35f31ba3`. Both persistent-input
+  checks passed around the transaction. The exact Xvfb producer admitted five pinned packages and
+  proved zero TCP listeners and zero UDP sockets. Fresh bridge generation completed without a severe
+  diagnostic; the cold networkless Rust release build finished in 5m09s with its existing 65-warning
+  application inventory; and Flutter produced the exact 79-file release bundle with the expected
+  runner and core library. The sealed Pub-cache copy remained unchanged after the build.
+
+  The real viewer authenticated through the actual accessible password prompt using XTest, without a
+  password argument. It then observed current decoded Flutter-texture pixels: initial freshness was
+  0 ms, maximum initial age was 246 ms, and four distinct frames were seen. Across an externally
+  induced 2,000 ms focus-loss interval, the stream remained connected and fresh with a 41 ms blurred
+  age; recovery after focus return was 0 ms, the total maximum age was 286 ms, and a real pointer
+  operation was observed without reconnect. The terminal receipt bound the actual peer, capture,
+  transport, decode, Flutter texture, X11 pixels, focus recovery, viewer/server/Xvfb joins, and clean
+  listener retirement.
+
+  Runtime confinement was observed, not inferred: the controlled server had `--network=none`, only
+  interface `lo`, exactly one TCP listener at `127.0.0.1:21118`, zero UDP sockets, and no published
+  port. Its viewer shared only that exact namespace. The exact mount receipts passed for both runtime
+  containers, and the server closed the listener before retirement. Cleanup left no scoped peer
+  workspace or retained devcheck container. The host RustDesk process/service/binary/configuration,
+  host listener, display, firewall, route, and network state were not inspected or changed.
+
+  This closes exact-current Linux X11 full-peer presentation and focus-loss freshness for this source
+  slice only. It does not establish Android or Windows background/focus lifecycle behavior, repeated
+  reconnect/resource soak, file-transfer coexistence, Debian-artifact execution, macOS/iOS behavior,
+  cold cross-platform R-B2 artifacts, full R-B10 online-closure equality, independent reproduction,
+  or external review. Those remain explicit release blockers.
 
 - **Exact Linux Flutter texture/X11 presentation recovery — EXECUTABLE EVIDENCE GREEN;
   ANDROID/WINDOWS/NATIVE END-TO-END EVIDENCE OPEN.** Platform: confined Linux X11 with Flutter

@@ -620,6 +620,15 @@ archive_current_source >"$VERIFY_SOURCE_ARCHIVE"
 SOURCE_DIGEST="$(sha256sum "$VERIFY_SOURCE_ARCHIVE" | awk '{print $1}')"
 readonly SOURCE_DIGEST
 tar --extract --file="$VERIFY_SOURCE_ARCHIVE" --directory="$VERIFY_SOURCE" --no-same-owner
+for generated_bridge_mountpoint in src/bridge_generated.rs src/bridge_generated.io.rs; do
+  { [ ! -e "$VERIFY_SOURCE/$generated_bridge_mountpoint" ] \
+      && [ ! -L "$VERIFY_SOURCE/$generated_bridge_mountpoint" ]; } \
+    || { echo "verify: canonical source unexpectedly contains a generated bridge mountpoint: $generated_bridge_mountpoint" >&2; exit 1; }
+  install -m 0444 /dev/null "$VERIFY_SOURCE/$generated_bridge_mountpoint"
+  [ "$(stat -c '%u:%g:%a:%h:%s' "$VERIFY_SOURCE/$generated_bridge_mountpoint")" = \
+      "$VERIFY_UID:$VERIFY_GID:444:1:0" ] \
+    || { echo "verify: generated bridge mountpoint has invalid metadata: $generated_bridge_mountpoint" >&2; exit 1; }
+done
 chmod -R a-w "$VERIFY_SOURCE"
 /usr/bin/python3 scripts/online-input-provenance.py snapshot-subtree-create \
   --source online/cargo-vendor \

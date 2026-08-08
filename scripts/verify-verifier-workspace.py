@@ -14568,6 +14568,18 @@ def validate_mobile_at_rest_fail_closed_contract(sources):
     )
     require_text(
         sources["verify"],
+        "grep -qF -- '-keep class com.carriez.flutter_hbb.MainApplication { *; }' "
+        "flutter/android/app/proguard-rules.pro",
+        "mobile at-rest MainApplication active keep-rule source",
+    )
+    require_text(
+        sources["verify"],
+        "grep -qF -- '-keep class com.carriez.flutter_hbb.MobileAtRestStorageKey { *; }' "
+        "flutter/android/app/proguard-rules.pro",
+        "mobile at-rest key-wrapper active keep-rule source",
+    )
+    require_text(
+        sources["verify"],
         "[ \"$(grep -cF 'target=/checks/verify-android-mobile-key-artifact.py,readonly' "
         "scripts/build-android.sh)\" -eq 2 ]",
         "mobile at-rest shared immutable checker-mount cardinality",
@@ -45530,6 +45542,22 @@ def python_mutation_scopes(source, offsets):
 
 def run_source_mutations(sources):
     mutations = (
+        (
+            "verify",
+            "grep -qF -- '-keep class com.carriez.flutter_hbb.MainApplication { *; }' "
+            "flutter/android/app/proguard-rules.pro",
+            "grep -qF -- '-keep class com.carriez.flutter_hbb.MainApplication { *; }' "
+            "flutter/android/app/proguard-rules",
+            "mobile at-rest MainApplication active keep-rule source",
+        ),
+        (
+            "verify",
+            "grep -qF -- '-keep class com.carriez.flutter_hbb.MobileAtRestStorageKey { *; }' "
+            "flutter/android/app/proguard-rules.pro",
+            "grep -qF -- '-keep class com.carriez.flutter_hbb.MobileAtRestStorageKey { *; }' "
+            "flutter/android/app/proguard-rules",
+            "mobile at-rest key-wrapper active keep-rule source",
+        ),
         (
             "smoke",
             '[ -z "$(git status --porcelain=v1 --untracked-files=all)" ]',

@@ -1239,9 +1239,9 @@ python3 -c 'import ast, pathlib; ast.parse(pathlib.Path("scripts/verify-android-
   || mobile_at_rest_bad="$mobile_at_rest_bad android-artifact-helper-syntax"
 python3 scripts/verify-android-mobile-key-artifact.py --self-test \
   || mobile_at_rest_bad="$mobile_at_rest_bad android-artifact-helper-self-test"
-grep -qF -- '-keep class com.carriez.flutter_hbb.MainApplication { *; }' flutter/android/app/proguard-rules \
+grep -qF -- '-keep class com.carriez.flutter_hbb.MainApplication { *; }' flutter/android/app/proguard-rules.pro \
   || mobile_at_rest_bad="$mobile_at_rest_bad android-bootstrap-not-kept-for-artifact-audit"
-grep -qF -- '-keep class com.carriez.flutter_hbb.MobileAtRestStorageKey { *; }' flutter/android/app/proguard-rules \
+grep -qF -- '-keep class com.carriez.flutter_hbb.MobileAtRestStorageKey { *; }' flutter/android/app/proguard-rules.pro \
   || mobile_at_rest_bad="$mobile_at_rest_bad android-key-wrapper-not-kept-for-artifact-audit"
 [ "$(grep -cF 'target=/checks/verify-android-mobile-key-artifact.py,readonly' scripts/build-android.sh)" -eq 2 ] \
   || mobile_at_rest_bad="$mobile_at_rest_bad android-signed-artifact-helper-not-mounted-at-both-gates"

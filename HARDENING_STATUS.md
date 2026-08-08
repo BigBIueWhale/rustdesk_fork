@@ -17366,6 +17366,114 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   cold cross-platform R-B2 artifacts, full R-B10 online-closure equality, independent reproduction,
   or external review. Those remain explicit release blockers.
 
+- **R-B10 exact-current canonical online-input reconciliation — OPERATIONAL ACQUISITION,
+  PRESERVATION-FIRST REPLACEMENT, AND COMPLETE CLOSURE VERIFICATION GREEN 2026-08-08;
+  COLD RELEASE/DOUBLE-BUILD AND NATIVE DEVICE/VM EVIDENCE OPEN.** Exact source authority:
+  clean pushed commit `66c53ba3286c1636bf76b6a4ac3f5943036722ee`, tree
+  `a34b81db605c31cf1c4352d621dfd01e346a03a4`, and canonical Git-archive SHA-256
+  `1a235e8267bc0d574f6055286bc3b269b656907cec856b55601ad813d1283dae`.
+  Boundary: the intentionally stale but preserved canonical Android/native/Windows-helper inputs
+  plus an obsolete whole-tree receipt -> one current, individually checked, self-recorded
+  `online/` closure usable by the networkless build gates. This is input-maintenance evidence, not
+  a claim that a clean R-B2 release was built twice or that an installed Android/Windows client ran.
+
+  The first real `scripts/online-fetch.sh` execution reverified the immutable builder/verifier
+  images, fixed archives, exact Cargo vendor, FRB tool, and current three-Git Pub cache, then stopped
+  before Gradle at the occupied `vcpkg-distfiles/libvpx-native-key.txt`: the exact security patch
+  still matched source and its SHA-512 pin, but the 65-byte receipt contained historical key
+  `8e936f7953fa1065cf276106b54bc3ad93208e6854557143c5e42a66802dac6e`
+  instead of committed-overlay key
+  `afa7f36e0104d94645cbd9d8c08e9701b406ac1bc3e5f7f533e5b241f7a6551f`.
+  Both occupied native-codec trees separately carried still older receipt
+  `2f1a0d9ec38bec3b32c2154a752119c3240c9944ab0ce1c4dfaf91e6a4bfac23`;
+  the live NDK contained 28 build-created `__pycache__`/`.pyc` entries outside the exact archive;
+  and the root-owned SDK retained the obsolete resolver-shaped output. Updating only a marker would
+  have falsely blessed old binaries, while deleting or permission-normalizing those trees would
+  have violated their source contracts.
+
+  One explicit operator-retirement transaction therefore ran in the immutable devcheck image as
+  numeric UID:GID 1000:1000 with `--network=none`, read-only root, all capabilities dropped,
+  `no-new-privileges`, bounded resources, no port/device/socket/host namespace, and exactly one
+  writable `online/` bind. It used descriptor-relative same-parent
+  `renameat2(RENAME_NOREPLACE)` only. The old libvpx key, complete root-owned vcpkg tree, dirty NDK,
+  and root-owned SDK retained their exact device/inode/owner/mode under distinct
+  `.rustdesk-retired-*` names; no content was removed, chmodded, chowned, overwritten, or moved
+  across parents. Their identities remain respectively `66306:117742238`, `66306:103977791`,
+  `66306:115118913`, and `66306:125997901`.
+
+  The next canonical acquisition published the current libvpx receipt, built both native-codec
+  consumer projections from the pinned baseline and overlay, and independently admitted their
+  exact header/static-library/ELF inventories. The x64 and ARM64 output keys are
+  `05ba4d6d9009ff1a01cc7ab5c7ecd50bdcc8ea75e7cd3de9ca7a8367719bf7f7`
+  and `4c3f9f263a5d6c87db34f2fc6645c3ac768eb686ae4037db0dae556c5fa35698`;
+  both carry the current libvpx key. The NDK was re-extracted and compared entry-for-entry with the
+  pinned r28c ZIP before publication. The SDK producer acquired its eight fixed filenames and
+  passed exact length, digest, archive-inventory, semantic, byte-comparison, and sealed-tree checks
+  before publishing current-owner mode-0555 NDK and SDK roots.
+
+  Gradle warming then performed a real clean ARM64 Rust/JNI release compilation from the exact
+  commit in 2m30s, with the existing 87 library warnings plus one service warning, followed by a
+  successful 236.8-second `assembleRelease` of a 45.0-MB transient APK. That APK was only the cache
+  warmer's disposable output: it was neither stable-signed, retained, installed, launched, nor
+  counted as R-B2/device evidence. The independently verified Gradle 8.7 candidate had full-content
+  digest `46291a99308d1c8992d22d0bdd6f1c050b51dccbedc18ae46f567e0e7150f8b6`.
+  The state-v3 same-parent exchange installed exact inode `66306:113814497`, preserved displaced
+  digest `074cbfdc08dd721fb93e3413481d50ab7a5e4e626a4d7addf0477595d97132df`
+  at exact inode `66306:127308720`, revalidated SDK digest
+  `60f888eb0a836b5e58fb58a05a3a0823b15b9da57fe72adff70de7cccd067ee5`
+  around publication, and archived its durable journal under
+  `.harness-state/retired-online-inputs`.
+
+  That invocation next stopped on the preserved root-owned 198,126,354-byte historical
+  `flutter-pub-cache.tar.gz` (`2e17bac34a6a3229c91f4786f78d23ff10dbee1c49b2053b84838202d99d805c`)
+  rather than overwriting it with the current narrow contract. A second exact same-parent,
+  no-clobber retirement preserved inode `66306:103715841`. The following acquisition rerun
+  reaccepted every new native/NDK/SDK/Gradle final, then networklessly projected and independently
+  replayed the exact 95-package Flutter-tools cache. The published current-owner mode-0400 archive
+  is exactly 18,771,131 bytes at SHA-256
+  `69db14598f59440d4c2b16e017b2266f3b011cd1cc6854c65b6caaea8db946ae`.
+  WiX, Windows engine/toolchain, fixed archives, and every individually pinned SHA-256/SHA-512 input
+  reverified before the expected obsolete whole-tree pin stopped the run.
+
+  Two fresh independent devcheck-container launches then hashed the complete read-only tree and
+  agreed exactly on canonical closure
+  `eacb4d0fadb044f2f38520ad5263470a89c286bed69927ce2c32babcbc01ab24`:
+  266,866 files, 80,019 directories, 76 symlinks, 38,967,060,125 regular-file bytes,
+  30 hardlink groups, and 17 explicitly represented case-collision groups. A separate
+  numeric-nonroot, networkless container atomically wrote the self-excluded record and immediately
+  reverified it. After the tracked pin was updated,
+  `scripts/online-fetch.sh --verify-offline-inputs` reverified every archive/image and the complete
+  canonical closure and
+  exited zero. Preservation-bound historical inputs remain included by exact bytes but are not
+  canonical consumer names or inferred-valid build outputs.
+
+  Before this result was recorded, the focused container-authority, Gradle-output,
+  Flutter-tools-cache-output, and Cargo-vendor-output verifiers passed and rejected respectively
+  all 44, 59, 30, and 23 deliberate mutations. The independent workspace semantic baseline passed,
+  and its complete unsliced `--source-mutations-only` catalog reached terminal
+  `verify-verifier-workspace: ok` with exit zero inside a numeric-nonroot, networkless, read-only
+  devcheck container. Two preliminary Python bytecode wrapper attempts are not counted: CPython
+  tried to create `scripts/__pycache__` through the read-only source mount; rerunning with its
+  bytecode cache redirected to container tmpfs passed without changing source. A terminal complete
+  catalog repetition over these ledger-updated bytes remains the immediate pre-commit gate and is
+  deliberately not preclaimed in this tracked paragraph, because editing the paragraph after that
+  run would invalidate the final-byte freeze.
+
+  The monolithic `scripts/verify.sh` shared gate was deliberately not invoked: its current IPC
+  fixture starts isolated containers as UID:GID 0:0 with `CAP_CHOWN` and `CAP_FOWNER`. Although that
+  is a documented narrow fixture, invoking it would violate the operator's explicit no-root rule.
+  The successful nonroot gates above do not relabel the omitted shared Cargo/test stages as green.
+
+  The networked acquisition containers used only the source-owned outbound bridge profiles:
+  numeric nonroot, `--pull=never`, read-only root, dropped capabilities, no privilege gain,
+  bounded PID/memory/no-swap/CPU/tmpfs, and no published port, device, Docker-socket mount, or host
+  namespace. No RustDesk runtime, host service, host configuration, host listener, host display,
+  UFW/nftables/iptables state, route, or host-network state was inspected or changed. Exact clean
+  Android and Windows release artifacts, installed Activity/foreground-service/task-swipe/
+  Force-Stop and focus/minimize/restore behavior, real presentation/control/file-transfer
+  coexistence, repeated reconnect/resource soak, cross-version behavior, cold double-build byte
+  equality, independent reproduction, and external review remain stop-ship gaps.
+
 - **Exact Linux Flutter texture/X11 presentation recovery — EXECUTABLE EVIDENCE GREEN;
   ANDROID/WINDOWS/NATIVE END-TO-END EVIDENCE OPEN.** Platform: confined Linux X11 with Flutter
   3.24.5 and software rendering. Endpoint/action: the repository's production Linux

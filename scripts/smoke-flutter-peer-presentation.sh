@@ -150,9 +150,11 @@ run_owned_container() {
 
 inspect_container_contract() {
   local cid=$1 expected_network=$2 label=$3
-  local expected_passwd_source= mounts_path source destination writable extra
+  local expected_passwd_source= mounts_path record_kind source destination writable extra
   local network ipc pid uts privileged read_only user ports devices caps security
+  local source_mounts=0 output_mounts=0 xvfb_root_mounts=0 xkbcomp_mounts=0 coord_mounts=0
   local passwd_mounts=0
+  local receipt_ends=0
   case "$label" in
     server) ;;
     viewer) expected_passwd_source=$VIEWER_PASSWD ;;
@@ -184,21 +186,61 @@ inspect_container_contract() {
   esac
   mounts_path="$WORKSPACE/$label.mounts.tsv"
   local_docker container inspect \
-    --format '{{range .Mounts}}{{printf "%s\t%s\t%t\n" .Source .Destination .RW}}{{end}}' \
+    --format '{{range .Mounts}}{{printf "%s\t%s\t%s\t%t\n" .Type .Source .Destination .RW}}{{end}}{{printf "end"}}' \
     "$cid" > "$mounts_path"
-  while IFS=$'\t' read -r source destination writable extra \
-    || [ -n "${source:-}${destination:-}${writable:-}${extra:-}" ]; do
-    [ -n "$source" ] && [ -n "$destination" ] && [ -n "$writable" ] && [ -z "$extra" ] \
+  while IFS=$'\t' read -r record_kind source destination writable extra \
+    || [ -n "${record_kind:-}${source:-}${destination:-}${writable:-}${extra:-}" ]; do
+    if [ "$record_kind" = end ]; then
+      [ -z "$source" ] && [ -z "$destination" ] && [ -z "$writable" ] \
+        && [ -z "$extra" ] && [ "$receipt_ends" -eq 0 ] \
+        || die "$label inspection produced a malformed mount terminator"
+      receipt_ends=1
+      continue
+    fi
+    [ "$record_kind" = bind ] && [ "$receipt_ends" -eq 0 ] \
+      && [ -n "$source" ] && [ -n "$destination" ] && [ -n "$writable" ] && [ -z "$extra" ] \
       || die "$label inspection produced a malformed mount receipt"
     [[ "$source" != */docker.sock ]] && [[ "$source" != /dev/* ]] \
       || die "$label receives an unsafe mount: $source"
-    if [ "$destination" = /etc/passwd ]; then
-      passwd_mounts=$((passwd_mounts + 1))
-      [ -n "$expected_passwd_source" ] && [ "$source" = "$expected_passwd_source" ] \
-        && [ "$writable" = false ] \
-        || die "$label passwd witness source or read-only contract differs"
-    fi
+    case "$destination" in
+      /source)
+        [ "$source" = "$SOURCE_SNAPSHOT" ] && [ "$writable" = false ] \
+          || die "$label source mount contract differs"
+        source_mounts=$((source_mounts + 1))
+        ;;
+      /out)
+        [ "$source" = "$BUILD_OUTPUT" ] && [ "$writable" = false ] \
+          || die "$label output mount contract differs"
+        output_mounts=$((output_mounts + 1))
+        ;;
+      /xvfb-root)
+        [ "$source" = "$XVFB_ROOT" ] && [ "$writable" = false ] \
+          || die "$label Xvfb root mount contract differs"
+        xvfb_root_mounts=$((xvfb_root_mounts + 1))
+        ;;
+      /usr/bin/xkbcomp)
+        [ "$source" = "$XVFB_ROOT/usr/bin/xkbcomp" ] && [ "$writable" = false ] \
+          || die "$label xkbcomp mount contract differs"
+        xkbcomp_mounts=$((xkbcomp_mounts + 1))
+        ;;
+      /coord)
+        [ "$source" = "$COORD" ] && [ "$writable" = true ] \
+          || die "$label coordination mount contract differs"
+        coord_mounts=$((coord_mounts + 1))
+        ;;
+      /etc/passwd)
+        [ -n "$expected_passwd_source" ] && [ "$source" = "$expected_passwd_source" ] \
+          && [ "$writable" = false ] \
+          || die "$label passwd witness source or read-only contract differs"
+        passwd_mounts=$((passwd_mounts + 1))
+        ;;
+      *) die "$label receives an unexpected mount destination: $destination" ;;
+    esac
   done < "$mounts_path"
+  [ "$receipt_ends" -eq 1 ] && [ "$source_mounts" -eq 1 ] \
+    && [ "$output_mounts" -eq 1 ] && [ "$xvfb_root_mounts" -eq 1 ] \
+    && [ "$xkbcomp_mounts" -eq 1 ] && [ "$coord_mounts" -eq 1 ] \
+    || die "$label runtime mount cardinality differs"
   if [ -n "$expected_passwd_source" ]; then
     [ "$passwd_mounts" -eq 1 ] || die 'viewer passwd witness mount cardinality differs'
   else

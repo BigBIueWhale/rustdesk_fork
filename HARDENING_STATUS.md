@@ -17308,6 +17308,32 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   skeleton before Docker overlays the exact read-only sources; it does not broaden the mounted
   inputs or make the namespace writable.
 
+  The second exact committed attempt at `b98307025f9187557ff52ddbc0a45dbe3c4f75b8` passed the
+  exact input precheck, exact five-package Xvfb closure, sealed Pub-cache preparation, seven nested
+  read-only input mounts, fresh bridge generation, and the networkless release Cargo/Flutter build.
+  The build reported `FLUTTER_PEER_BUILD_OK` with the exact generated runner and core library, and
+  the post-build sealed Pub-cache recheck passed. The controlled server container was then created
+  under `--network=none`, but the outer inspector rejected its mount receipt before peer readiness or
+  viewer launch. Cleanup retired the server and private workspace. This is no pixel,
+  display-freshness, focus-recovery, control, or product pass/fail verdict.
+
+  A scoped never-started-container reproduction proved the inspector defect exactly: Docker CLI
+  appends its own final newline, while the mount template already ended every record with a newline,
+  yielding one terminal empty record that the fail-closed parser correctly rejected. The pending
+  harness correction emits a distinct final `end` record instead. It also strengthens the receipt
+  from an unsafe-mount/passwd check to an exact unordered contract: one read-only source, output,
+  Xvfb root, and `xkbcomp` bind, one writable private coordination bind, and exactly one additional
+  read-only private passwd bind for the viewer only. Only bind records before exactly one terminator
+  are accepted; unknown destinations and wrong sources, modes, types, or cardinalities fail closed.
+  The diagnostic containers were never started, used `--network=none`, and were removed by exact ID;
+  a label-scoped read-only check found none retained. Container-only Bash/Python parsing, the focused
+  verifier's complete deliberate-mutation set, and the independent workspace baseline passed. A
+  complete unsliced independent `--source-mutations-only` catalog then reached terminal
+  `verify-verifier-workspace: ok`. After that result was recorded in the tracked ledger, a fresh
+  complete catalog over those ledger-updated bytes also reached the same terminal verdict and exited
+  zero. No tracked byte changed afterward. Another clean committed full-peer transaction remains
+  required.
+
 - **Exact Linux Flutter texture/X11 presentation recovery — EXECUTABLE EVIDENCE GREEN;
   ANDROID/WINDOWS/NATIVE END-TO-END EVIDENCE OPEN.** Platform: confined Linux X11 with Flutter
   3.24.5 and software rendering. Endpoint/action: the repository's production Linux

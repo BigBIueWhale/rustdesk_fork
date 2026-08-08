@@ -174,7 +174,7 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(
         host,
-        'if [ "$destination" = /etc/passwd ]; then',
+        "/etc/passwd)",
         "inspected passwd mount destination",
     )
     require(host, '[ "$writable" = false ]', "inspected read-only passwd mount")
@@ -204,9 +204,11 @@ def validate(sources: dict[str, str]) -> None:
         host,
         (
             "local cid=$1 expected_network=$2 label=$3",
-            "local expected_passwd_source= mounts_path source destination writable extra",
+            "local expected_passwd_source= mounts_path record_kind source destination writable extra",
             "local network ipc pid uts privileged read_only user ports devices caps security",
+            "local source_mounts=0 output_mounts=0 xvfb_root_mounts=0 xkbcomp_mounts=0 coord_mounts=0",
             "local passwd_mounts=0",
+            "local receipt_ends=0",
             "network=\"$(local_docker container inspect --format '{{.HostConfig.NetworkMode}}' \"$cid\")\"",
             'mounts_path="$WORKSPACE/$label.mounts.tsv"',
         ),
@@ -219,7 +221,35 @@ def validate(sources: dict[str, str]) -> None:
     require(host, '[ "$user" = "$HOST_UID:$HOST_GID" ]', "numeric non-root user")
     require(host, '[ "$privileged" = false ] && [ "$read_only" = true ]', "read-only unprivileged rootfs")
     require(host, "'[\"no-new-privileges\"]'|'[\"no-new-privileges:true\"]'", "exact no-new-privileges")
+    require(
+        host,
+        '{{end}}{{printf "end"}}',
+        "unambiguous inspected-mount terminator",
+    )
+    require(
+        host,
+        '[ "$record_kind" = bind ] && [ "$receipt_ends" -eq 0 ]',
+        "bind-only pre-terminator receipt",
+    )
     require(host, "[[ \"$source\" != */docker.sock ]] && [[ \"$source\" != /dev/* ]]", "unsafe mount rejection")
+    for expected_mount in (
+        '[ "$source" = "$SOURCE_SNAPSHOT" ] && [ "$writable" = false ]',
+        '[ "$source" = "$BUILD_OUTPUT" ] && [ "$writable" = false ]',
+        '[ "$source" = "$XVFB_ROOT" ] && [ "$writable" = false ]',
+        '[ "$source" = "$XVFB_ROOT/usr/bin/xkbcomp" ] && [ "$writable" = false ]',
+        '[ "$source" = "$COORD" ] && [ "$writable" = true ]',
+    ):
+        require(host, expected_mount, "exact inspected runtime mount")
+    require(
+        host,
+        '*) die "$label receives an unexpected mount destination: $destination" ;;',
+        "unexpected mount rejection",
+    )
+    require(
+        host,
+        '[ "$receipt_ends" -eq 1 ] && [ "$source_mounts" -eq 1 ]',
+        "exact runtime mount cardinality",
+    )
     require(host, 'require_exact_local_image deb-builder "$DEB_BUILDER_IMAGE_ID"', "exact builder image ID")
     require(host, 'require_exact_local_image devcheck "$DEV_CHECK_IMAGE_ID"', "exact verifier image ID")
     if host.count('source=$ONLINE_DIR,target=/online,readonly') != 1:
@@ -1353,6 +1383,9 @@ def validate(sources: dict[str, str]) -> None:
 
 MUTATIONS = (
     ("host", "local passwd_mounts=0", "local passwd_mounts=1"),
+    ("host", '{{end}}{{printf "end"}}', "{{end}}"),
+    ("host", '[ "$source" = "$BUILD_OUTPUT" ] && [ "$writable" = false ]', "true # output mount unbound"),
+    ("host", '*) die "$label receives an unexpected mount destination: $destination" ;;', "*) true ;;"),
     ("host", "--pull=never --network=none --read-only", "--pull=never --network=host --read-only"),
     ("host", '--network="container:$SERVER_CID" --read-only', "--network=bridge --read-only"),
     ("host", 'run_input_check "$WORKSPACE/input-post.cid"', "true # persistent input postcheck removed"),

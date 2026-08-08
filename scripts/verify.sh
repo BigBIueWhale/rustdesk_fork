@@ -613,6 +613,8 @@ readonly VERIFY_VENDOR_PARENT="$VERIFY_TMP/vendor-input"
 readonly VERIFY_VENDOR="$VERIFY_VENDOR_PARENT/subtree"
 readonly VERIFY_TARGET="$VERIFY_TMP/target"
 readonly VERIFY_CARGO_CONFIG="$VERIFY_TMP/cargo-config.toml"
+readonly VERIFY_FRB_ONLINE_PARENT="$VERIFY_TMP/frb-online-input"
+readonly VERIFY_FRB_OUTPUT="$VERIFY_TMP/frb-output"
 install -d -m 0700 "$VERIFY_SOURCE" "$VERIFY_TARGET"
 archive_current_source >"$VERIFY_SOURCE_ARCHIVE"
 SOURCE_DIGEST="$(sha256sum "$VERIFY_SOURCE_ARCHIVE" | awk '{print $1}')"
@@ -634,6 +636,28 @@ chmod 0400 "$VERIFY_CARGO_CONFIG"
   || { echo "verify: private Cargo target has invalid metadata" >&2; exit 1; }
 [ "$(stat -c '%u:%g:%a:%h' "$VERIFY_CARGO_CONFIG")" = "$VERIFY_UID:$VERIFY_GID:400:1" ] \
   || { echo "verify: private Cargo config has invalid metadata" >&2; exit 1; }
+
+# The generated Rust bridge is intentionally gitignored. Generate it from this exact immutable
+# source snapshot before any Flutter-feature Rust compile, then expose only the two required Rust
+# outputs as read-only submounts. This prevents both a missing bridge in canonical archives and a
+# stale ignored bridge in a developer checkout from influencing the verifier verdict.
+create_private_online_snapshot "$VERIFY_FRB_ONLINE_PARENT"
+verify_private_online_snapshot "$VERIFY_FRB_ONLINE_PARENT"
+ONLINE_DIR="$VERIFY_FRB_ONLINE_PARENT/online" FRB_IMAGE_ID="$DEB_BUILDER_IMAGE_ID" \
+  /usr/bin/bash "$VERIFY_SOURCE/scripts/frb-codegen.sh" \
+    --source-root "$VERIFY_SOURCE" \
+    --online-root "$VERIFY_FRB_ONLINE_PARENT/online" \
+    --output-root "$VERIFY_FRB_OUTPUT"
+verify_private_online_snapshot "$VERIFY_FRB_ONLINE_PARENT"
+(
+  cd "$VERIFY_FRB_OUTPUT"
+  sha256sum --check .frb-manifest.sha256
+)
+for generated_bridge in src/bridge_generated.rs src/bridge_generated.io.rs; do
+  [ "$(stat -c '%u:%g:%a:%h' "$VERIFY_FRB_OUTPUT/$generated_bridge")" = \
+      "$VERIFY_UID:$VERIFY_GID:644:1" ] \
+    || { echo "verify: generated Rust bridge has invalid metadata: $generated_bridge" >&2; exit 1; }
+done
 
 readonly IMAGE_PREFLIGHT_OUT="$VERIFY_TMP/image-preflight.out"
 readonly IMAGE_PREFLIGHT_ERR="$VERIFY_TMP/image-preflight.err"
@@ -682,6 +706,8 @@ RUN=(local_docker run --rm --pull=never --network=none --read-only
   --mount "type=bind,source=$VERIFY_VENDOR,target=/vendor,readonly"
   --mount "type=bind,source=$VERIFY_TARGET,target=/build"
   --mount "type=bind,source=$VERIFY_CARGO_CONFIG,target=/tmp/cargo-config.toml,readonly"
+  --mount "type=bind,source=$VERIFY_FRB_OUTPUT/src/bridge_generated.rs,target=/work/src/bridge_generated.rs,readonly"
+  --mount "type=bind,source=$VERIFY_FRB_OUTPUT/src/bridge_generated.io.rs,target=/work/src/bridge_generated.io.rs,readonly"
   --env HOME=/tmp/verify-home
   --env CARGO_HOME=/tmp/cargo-home
   --env CARGO_TARGET_DIR=/build

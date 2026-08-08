@@ -120,6 +120,15 @@ def validate_contract(sources):
             '--expected "$SHA256_CARGO_VENDOR_CLOSURE_V1"',
             "sed 's#directory = .*#directory = \"/vendor\"#' online/cargo-vendor-config.toml",
             'chmod 0400 "$VERIFY_CARGO_CONFIG"',
+            'create_private_online_snapshot "$VERIFY_FRB_ONLINE_PARENT"',
+            'ONLINE_DIR="$VERIFY_FRB_ONLINE_PARENT/online" FRB_IMAGE_ID="$DEB_BUILDER_IMAGE_ID"',
+            '/usr/bin/bash "$VERIFY_SOURCE/scripts/frb-codegen.sh"',
+            '--source-root "$VERIFY_SOURCE"',
+            '--online-root "$VERIFY_FRB_ONLINE_PARENT/online"',
+            '--output-root "$VERIFY_FRB_OUTPUT"',
+            'verify_private_online_snapshot "$VERIFY_FRB_ONLINE_PARENT"',
+            'sha256sum --check .frb-manifest.sha256',
+            '"$VERIFY_UID:$VERIFY_GID:644:1"',
             'SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum',
             '[ "$SOURCE_DIGEST_AFTER" = "$SOURCE_DIGEST" ]',
             'FINAL_IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$IMAGE_ID"',
@@ -157,12 +166,18 @@ def validate_contract(sources):
     require(
         shell.index('archive_current_source >"$VERIFY_SOURCE_ARCHIVE"')
         < shell.index("snapshot-subtree-create")
+        < shell.index('create_private_online_snapshot "$VERIFY_FRB_ONLINE_PARENT"')
+        < shell.index('/usr/bin/bash "$VERIFY_SOURCE/scripts/frb-codegen.sh"')
         < shell.index("RUN=(local_docker run "),
-        "private source/vendor setup does not precede ordinary execution",
+        "private source/vendor/bridge setup does not precede ordinary execution",
     )
     require(
         shell.count('--expected "$SHA256_CARGO_VENDOR_CLOSURE_V1"') == 2,
         "vendor closure must be pinned at snapshot creation and final verification",
+    )
+    require(
+        shell.count('verify_private_online_snapshot "$VERIFY_FRB_ONLINE_PARENT"') == 2,
+        "fresh-bridge online snapshot must be verified before and after generation",
     )
     require(
         shell.rindex("verify-subtree")
@@ -274,6 +289,8 @@ def validate_contract(sources):
             '--mount "type=bind,source=$VERIFY_VENDOR,target=/vendor,readonly"',
             '--mount "type=bind,source=$VERIFY_TARGET,target=/build"',
             '--mount "type=bind,source=$VERIFY_CARGO_CONFIG,target=/tmp/cargo-config.toml,readonly"',
+            '--mount "type=bind,source=$VERIFY_FRB_OUTPUT/src/bridge_generated.rs,target=/work/src/bridge_generated.rs,readonly"',
+            '--mount "type=bind,source=$VERIFY_FRB_OUTPUT/src/bridge_generated.io.rs,target=/work/src/bridge_generated.io.rs,readonly"',
             "--env CARGO_HOME=/tmp/cargo-home",
             "--env CARGO_INCREMENTAL=0",
             "--env CARGO_NET_OFFLINE=true",
@@ -282,7 +299,7 @@ def validate_contract(sources):
         ),
         "ordinary verifier container",
     )
-    require(ordinary.count("--mount ") == 4, "ordinary verifier mount inventory differs")
+    require(ordinary.count("--mount ") == 6, "ordinary verifier mount inventory differs")
     forbid_docker_authority(ordinary, "ordinary verifier container")
 
     fixture = extract(
@@ -702,6 +719,12 @@ MUTATIONS = (
     Mutation("shell", 'source=$VERIFY_VENDOR,target=/vendor,readonly', 'source=$PWD/online,target=/vendor', "private vendor mount"),
     Mutation("shell", 'source=$VERIFY_TARGET,target=/build', 'source=$PWD,target=/build', "private target mount"),
     Mutation("shell", 'source=$VERIFY_CARGO_CONFIG,target=/tmp/cargo-config.toml,readonly', 'source=$PWD/.cargo/config.toml,target=/tmp/cargo-config.toml', "exact Cargo config mount"),
+    Mutation("shell", 'source=$VERIFY_FRB_OUTPUT/src/bridge_generated.rs,target=/work/src/bridge_generated.rs,readonly', 'source=$PWD/src/bridge_generated.rs,target=/work/src/bridge_generated.rs', "fresh generated Rust bridge mount"),
+    Mutation("shell", 'source=$VERIFY_FRB_OUTPUT/src/bridge_generated.io.rs,target=/work/src/bridge_generated.io.rs,readonly', 'source=$PWD/src/bridge_generated.io.rs,target=/work/src/bridge_generated.io.rs', "fresh generated Rust IO bridge mount"),
+    Mutation("shell", 'create_private_online_snapshot "$VERIFY_FRB_ONLINE_PARENT"', 'cp -a online "$VERIFY_FRB_ONLINE_PARENT"', "fresh bridge private online snapshot"),
+    Mutation("shell", '/usr/bin/bash "$VERIFY_SOURCE/scripts/frb-codegen.sh"', '/usr/bin/bash scripts/frb-codegen.sh', "exact-snapshot bridge generator"),
+    Mutation("shell", 'verify_private_online_snapshot "$VERIFY_FRB_ONLINE_PARENT"', 'true # fresh bridge online verification removed', "fresh bridge online postcondition"),
+    Mutation("shell", 'sha256sum --check .frb-manifest.sha256', 'true # fresh bridge manifest verification removed', "fresh bridge manifest verification"),
     Mutation("shell", 'target=/tmp/cargo-config.toml,readonly', 'target=/cargo-config.toml,readonly', "Cargo 1.75-safe config path"),
     Mutation("shell", "--env CARGO_INCREMENTAL=0", "--env CARGO_INCREMENTAL=1", "nonincremental build"),
     Mutation("shell", "--env CARGO_NET_OFFLINE=true", "--env CARGO_NET_OFFLINE=false", "Cargo offline environment"),

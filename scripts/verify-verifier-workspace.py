@@ -62413,7 +62413,7 @@ def run_source_mutations(sources):
             "verify",
             '>"$fixture/scripts/verify-desktop-texture-lifecycle.py" || return 1',
             '>"$fixture/scripts/verify-desktop-texture.py" || return 1',
-            "software-codec exact texture-verifier fixture",
+            "software-codec behavioral fixture",
         ),
         (
             "verify",

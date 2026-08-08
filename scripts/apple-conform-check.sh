@@ -2760,8 +2760,8 @@ check_apple_r_s11e34_helper_contract() {
   local helper_policy_line helper_execution_line
   grep -qF "$helper_policy" <<<"$helper_source" || r_s11e34="$r_s11e34 macos-helper-policy-missing"
   grep -qF "$helper_execution" <<<"$helper_source" || r_s11e34="$r_s11e34 macos-helper-execution-missing"
-  helper_policy_line=$(grep -nF "$helper_policy" <<<"$helper_source" | head -n1 | cut -d: -f1)
-  helper_execution_line=$(grep -nF "$helper_execution" <<<"$helper_source" | head -n1 | cut -d: -f1)
+  helper_policy_line=$(grep -nF "$helper_policy" <<<"$helper_source" | head -n1 | cut -d: -f1 || true)
+  helper_execution_line=$(grep -nF "$helper_execution" <<<"$helper_source" | head -n1 | cut -d: -f1 || true)
   if [ -z "$helper_policy_line" ] || [ -z "$helper_execution_line" ] \
     || [ "$helper_policy_line" -ge "$helper_execution_line" ]; then
     r_s11e34="$r_s11e34 macos-helper-policy-order-invalid"

@@ -6313,8 +6313,8 @@ check_r_s11e34_helper_contract() {
   local helper_policy_line helper_execution_line
   grep -qF "$helper_policy" <<<"$helper_source" || r_s11e34="$r_s11e34 macos-helper-policy-missing"
   grep -qF "$helper_execution" <<<"$helper_source" || r_s11e34="$r_s11e34 macos-helper-execution-missing"
-  helper_policy_line=$(grep -nF "$helper_policy" <<<"$helper_source" | head -n1 | cut -d: -f1)
-  helper_execution_line=$(grep -nF "$helper_execution" <<<"$helper_source" | head -n1 | cut -d: -f1)
+  helper_policy_line=$(grep -nF "$helper_policy" <<<"$helper_source" | head -n1 | cut -d: -f1 || true)
+  helper_execution_line=$(grep -nF "$helper_execution" <<<"$helper_source" | head -n1 | cut -d: -f1 || true)
   if [ -z "$helper_policy_line" ] || [ -z "$helper_execution_line" ] \
     || [ "$helper_policy_line" -ge "$helper_execution_line" ]; then
     r_s11e34="$r_s11e34 macos-helper-policy-order-invalid"
@@ -6324,7 +6324,7 @@ check_r_s11e34_helper_contract "$macos_checked_command" 'configure_command_close
 check_r_s11e34_helper_contract "$macos_launchctl_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.status()'
 check_r_s11e34_helper_contract "$macos_uninstall" 'configure_command_close_nonstdio_on_exec(' 'command.spawn()'
 check_r_s11e34_helper_contract "$macos_lock_query" 'configure_command_close_nonstdio_on_exec(' 'command.output()'
-check_r_s11e34_helper_contract "$macos_service_snapshot_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'command.output()'
+check_r_s11e34_helper_contract "$macos_service_snapshot_query" 'configure_command_close_nonstdio_on_exec(&mut command)' 'run_macos_bounded_child_stdout('
 check_r_s11e34_helper_contract "$macos_run_me" 'platform::macos::configure_command_close_nonstdio_on_exec(&mut cmd)' 'let result = cmd.args(&args).spawn();'
 check_r_s11e34_helper_contract "$macos_hwcodec_check" 'platform::macos::configure_command_close_nonstdio_on_exec(' 'command.spawn()'
 [ "$(grep -cF 'command.status()' <<<"$macos_platform_source")" = 2 ] \

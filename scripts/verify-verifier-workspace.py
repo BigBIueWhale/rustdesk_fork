@@ -7216,6 +7216,40 @@ def validate_macos_descriptor_contract(sources):
     for source_key, text, label in (
         (
             "verify",
+            "check_r_s11e34_helper_contract \"$macos_service_snapshot_query\" "
+            "'configure_command_close_nonstdio_on_exec(&mut command)' "
+            "'run_macos_bounded_child_stdout('",
+            "main verifier bounded macOS service snapshot execution",
+        ),
+        (
+            "apple",
+            "check_apple_r_s11e34_helper_contract \"$macos_service_snapshot_query\" "
+            "'configure_command_close_nonstdio_on_exec(&mut command)' "
+            "'run_macos_bounded_child_stdout('",
+            "Apple verifier bounded macOS service snapshot execution",
+        ),
+        (
+            "verify",
+            'helper_policy_line=$(grep -nF "$helper_policy" <<<"$helper_source" | head -n1 | cut -d: -f1 || true)',
+            "main verifier missing macOS helper policy diagnostic",
+        ),
+        (
+            "verify",
+            'helper_execution_line=$(grep -nF "$helper_execution" <<<"$helper_source" | head -n1 | cut -d: -f1 || true)',
+            "main verifier missing macOS helper execution diagnostic",
+        ),
+        (
+            "apple",
+            'helper_policy_line=$(grep -nF "$helper_policy" <<<"$helper_source" | head -n1 | cut -d: -f1 || true)',
+            "Apple verifier missing macOS helper policy diagnostic",
+        ),
+        (
+            "apple",
+            'helper_execution_line=$(grep -nF "$helper_execution" <<<"$helper_source" | head -n1 | cut -d: -f1 || true)',
+            "Apple verifier missing macOS helper execution diagnostic",
+        ),
+        (
+            "verify",
             'echo "== (3b-iii-d13) macOS child inherited descriptor authority (R-S11t/R-S11e-34) =="',
             "macOS descriptor source gate",
         ),
@@ -47858,6 +47892,48 @@ def run_source_mutations(sources):
             "portable-pty-regression-binding-missing",
             "portable-pty-regression-binding-ignored",
             "Apple-conformance portable PTY runtime-regression binding",
+        ),
+        (
+            "verify",
+            "check_r_s11e34_helper_contract \"$macos_service_snapshot_query\" "
+            "'configure_command_close_nonstdio_on_exec(&mut command)' "
+            "'run_macos_bounded_child_stdout('",
+            "check_r_s11e34_helper_contract \"$macos_service_snapshot_query\" "
+            "'configure_command_close_nonstdio_on_exec(&mut command)' 'command.output()'",
+            "main verifier bounded macOS service snapshot execution",
+        ),
+        (
+            "apple",
+            "check_apple_r_s11e34_helper_contract \"$macos_service_snapshot_query\" "
+            "'configure_command_close_nonstdio_on_exec(&mut command)' "
+            "'run_macos_bounded_child_stdout('",
+            "check_apple_r_s11e34_helper_contract \"$macos_service_snapshot_query\" "
+            "'configure_command_close_nonstdio_on_exec(&mut command)' 'command.output()'",
+            "Apple verifier bounded macOS service snapshot execution",
+        ),
+        (
+            "verify",
+            'helper_policy_line=$(grep -nF "$helper_policy" <<<"$helper_source" | head -n1 | cut -d: -f1 || true)',
+            'helper_policy_line=$(grep -nF "$helper_policy" <<<"$helper_source" | head -n1 | cut -d: -f1)',
+            "main verifier missing macOS helper policy diagnostic",
+        ),
+        (
+            "verify",
+            'helper_execution_line=$(grep -nF "$helper_execution" <<<"$helper_source" | head -n1 | cut -d: -f1 || true)',
+            'helper_execution_line=$(grep -nF "$helper_execution" <<<"$helper_source" | head -n1 | cut -d: -f1)',
+            "main verifier missing macOS helper execution diagnostic",
+        ),
+        (
+            "apple",
+            'helper_policy_line=$(grep -nF "$helper_policy" <<<"$helper_source" | head -n1 | cut -d: -f1 || true)',
+            'helper_policy_line=$(grep -nF "$helper_policy" <<<"$helper_source" | head -n1 | cut -d: -f1)',
+            "Apple verifier missing macOS helper policy diagnostic",
+        ),
+        (
+            "apple",
+            'helper_execution_line=$(grep -nF "$helper_execution" <<<"$helper_source" | head -n1 | cut -d: -f1 || true)',
+            'helper_execution_line=$(grep -nF "$helper_execution" <<<"$helper_source" | head -n1 | cut -d: -f1)',
+            "Apple verifier missing macOS helper execution diagnostic",
         ),
         (
             "verify",

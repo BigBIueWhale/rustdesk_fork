@@ -46,6 +46,8 @@ WORKSPACE_BLOCKS = (
             'VERIFY_TMP=""',
             'VERIFY_TMP_ID=""',
             'VERIFY_SUCCESS_MESSAGE=""',
+            'IPC_FIXTURE_ROOT=""',
+            'IPC_FIXTURE_CLEANED=1',
             "cleanup_verify_tmp() {",
             "  local status=$? cleanup_failed=0",
             "  trap - EXIT",
@@ -41088,6 +41090,10 @@ def validate_main_verifier_authority_contract(sources):
         ('--mount "type=bind,source=$IPC_FIXTURE_ROOT,target=/fixture"', "main verifier writable IPC fixture mount"),
         ('--env RUSTDESK_NONROOT_IPC_FS_FIXTURE=/fixture', "main verifier exact IPC fixture root"),
         ('--env RUSTDESK_FOREIGN_IPC_UID="$IPC_FOREIGN_UID"', "main verifier foreign IPC UID receipt"),
+        ('[ -n "$IPC_FIXTURE_ROOT" ] && [ "$IPC_FIXTURE_CLEANED" -eq 0 ]', "main verifier retained-fixture cleanup trigger"),
+        ('run_nonroot_ipc_command "$VERIFY_UID" "$VERIFY_GID" cleanup', "main verifier actor-owned fixture cleanup"),
+        ('--foreign-uid "$IPC_FOREIGN_UID" --foreign-gid "$IPC_FOREIGN_GID"', "main verifier cleanup foreign identity"),
+        ('IPC_FIXTURE_CLEANED=1', "main verifier fixture cleanup finality"),
         ('SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum', "main verifier source postcondition"),
         ('FINAL_IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$IMAGE_ID"', "main verifier fixed final image inspection"),
     ):
@@ -41134,8 +41140,8 @@ def validate_main_verifier_authority_contract(sources):
     )
     require_order(
         cleanup,
-        ("remove_local_docker_authority", "verify-private-tree-closure.py"),
-        "main verifier Docker-before-workspace cleanup",
+        ("cleanup_nonroot_ipc_fixture", "remove_local_docker_authority", "verify-private-tree-closure.py"),
+        "main verifier fixture-before-Docker-before-workspace cleanup",
     )
     require_text(
         cleanup,
@@ -41208,18 +41214,23 @@ def validate_main_verifier_authority_contract(sources):
         require_text(helper, text, label)
     for text, label in (
         ('root == Path("/fixture")', "main verifier exact foreign-fixture root"),
-        ('metadata.st_nlink == 2', "main verifier empty foreign-fixture root"),
-        ('metadata.st_uid == actor_uid', "main verifier foreign-fixture actor ownership"),
+        ('require(metadata.st_nlink == 2, "fixture root must begin without child directories")', "main verifier empty foreign-fixture root"),
+        ('require(metadata.st_uid == actor_uid, "fixture root owner differs")', "main verifier foreign-fixture actor ownership"),
         ('flags = os.O_PATH | os.O_DIRECTORY | os.O_CLOEXEC', "main verifier non-reading fixture-root descriptor"),
         ('root_fd = open_directory(root, path_only=True)', "main verifier fixture-root O_PATH use"),
-        ('foreign_uid != 0 and foreign_gid != 0', "main verifier foreign fixture nonroot principal"),
-        ('foreign_uid != actor_uid', "main verifier distinct foreign-fixture principal"),
+        ('require(foreign_uid != 0 and foreign_gid != 0, "fixture preparer must be non-root")', "main verifier foreign fixture nonroot principal"),
+        ('require(foreign_uid != actor_uid, "fixture preparer and actor UIDs must differ")', "main verifier distinct foreign-fixture principal"),
         ('acl = foreign_access_acl(foreign_uid, actor_uid)', "main verifier actor directory-write ACL surrogate"),
         ('sorted((foreign_uid, actor_uid))', "main verifier canonical two-user ACL order"),
         ('create_regular_at(child_fd, "attacker-junk", b"x", mode=0o644)', "main verifier readable preservation marker"),
         ('os.setxattr(child_fd, ACL_XATTR, acl, 0)', "main verifier required foreign POSIX ACL"),
         ('require(os.getxattr(child_fd, ACL_XATTR) == acl', "main verifier exact foreign POSIX ACL"),
-        ('require(checks == 5', "main verifier foreign-fixture helper behavioral inventory"),
+        ('require(os.geteuid() == actor_uid, "fixture cleanup must run as the actor UID")', "main verifier actor cleanup identity"),
+        ('require(entries.issubset(allowed), "fixture cleanup found an unknown entry")', "main verifier cleanup entry allowlist"),
+        ('os.unlink(entry_name, dir_fd=child_fd)', "main verifier descriptor-relative cleanup unlink"),
+        ('os.rmdir(name, dir_fd=root_fd)', "main verifier descriptor-relative cleanup directory removal"),
+        ('os.fchmod(root_fd, 0o700)', "main verifier descriptor-bound fixture-root restoration"),
+        ('require(checks == 7', "main verifier foreign-fixture helper behavioral inventory"),
     ):
         require_text(fixture_helper, text, label)
     require_exact_count(
@@ -41227,6 +41238,12 @@ def validate_main_verifier_authority_contract(sources):
         "os.getxattr(child_fd, ACL_XATTR) == acl",
         2,
         "main verifier foreign ACL readback inventory",
+    )
+    require_exact_count(
+        fixture_helper,
+        "acl = foreign_access_acl(foreign_uid, actor_uid)",
+        2,
+        "main verifier foreign ACL construction inventory",
     )
     for text, label in (
         ('def create_subtree_snapshot(', "main verifier subtree snapshot implementation"),
@@ -41337,6 +41354,10 @@ def validate_main_verifier_authority_contract(sources):
         ('Mutation("fixture_helper", "root_fd = open_directory(root, path_only=True)"', "main verifier fixture-root descriptor mutation"),
         ('Mutation("fixture_helper", "acl = foreign_access_acl(foreign_uid, actor_uid)"', "main verifier actor-ACL mutation"),
         ('Mutation("fixture_helper", \'create_regular_at(child_fd, "attacker-junk", b"x", mode=0o644)\'', "main verifier preservation-marker mutation"),
+        ('Mutation("shell", "&& ! cleanup_nonroot_ipc_fixture; then"', "main verifier failure-path cleanup mutation"),
+        ('Mutation("shell", \'run_nonroot_ipc_command "$VERIFY_UID" "$VERIFY_GID" cleanup\'', "main verifier actor cleanup mutation"),
+        ('Mutation("fixture_helper", "os.unlink(entry_name, dir_fd=child_fd)"', "main verifier descriptor-relative cleanup mutation"),
+        ('Mutation("fixture_helper", "os.fchmod(root_fd, 0o700)"', "main verifier fixture-root restoration mutation"),
         ('Mutation("filesystem", "expected_uid == 0"', "main verifier root-service predicate mutation"),
         ('Mutation("image_provenance", "expected_tags = spec.archive_tags"', "main verifier archive-tag mutation"),
         ('Mutation("image_provenance", "RENAME_NOREPLACE = 1"', "main verifier archive publication mutation"),
@@ -55596,7 +55617,7 @@ def run_source_mutations(sources):
             "foreign_ipc_fixture_helper",
             "acl = foreign_access_acl(foreign_uid, actor_uid)",
             "acl = foreign_access_acl(foreign_uid, foreign_uid)",
-            "main verifier actor directory-write ACL surrogate",
+            "main verifier foreign ACL construction inventory",
         ),
         (
             "foreign_ipc_fixture_helper",

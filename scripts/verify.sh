@@ -68,15 +68,24 @@ verify_scan_preflight
 VERIFY_TMP=""
 VERIFY_TMP_ID=""
 VERIFY_SUCCESS_MESSAGE=""
+IPC_FIXTURE_ROOT=""
+IPC_FIXTURE_CLEANED=1
 cleanup_verify_tmp() {
   local status=$? cleanup_failed=0
   trap - EXIT
   trap '' HUP INT TERM
   if [ -n "$VERIFY_TMP" ]; then
+    if [ -n "$IPC_FIXTURE_ROOT" ] && [ "$IPC_FIXTURE_CLEANED" -eq 0 ] \
+      && ! cleanup_nonroot_ipc_fixture; then
+      echo "verify: preserving unclean non-root IPC fixture: $IPC_FIXTURE_ROOT" >&2
+      cleanup_failed=1
+    fi
     if [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ] \
       && ! remove_local_docker_authority; then
       echo "verify: preserving changed private Docker authority: $VERIFY_TMP" >&2
       cleanup_failed=1
+    elif [ "$cleanup_failed" -ne 0 ]; then
+      :
     elif [ -z "$VERIFY_TMP_ID" ] || [ ! -d "$VERIFY_TMP" ] || [ -L "$VERIFY_TMP" ] \
       || [ "$(stat -c '%d:%i' -- "$VERIFY_TMP" 2>/dev/null)" != "$VERIFY_TMP_ID" ]; then
       echo "verify: private workspace identity is unavailable or changed: $VERIFY_TMP" >&2
@@ -742,11 +751,31 @@ run_nonroot_ipc_command() {
     "$IMAGE_ID" "$@" >"$output" 2>"$error"
   status=$?
   set -e
-  [ "$status" -eq 0 ] || { echo "verify: non-root IPC command failed: $label" >&2; cat "$output" "$error" >&2; exit 1; }
+  [ "$status" -eq 0 ] || { echo "verify: non-root IPC command failed: $label" >&2; cat "$output" "$error" >&2; return 1; }
   [ "$(stat -c '%s' "$output")" -le 65536 ] && [ "$(stat -c '%s' "$error")" -le 65536 ] \
-    || { echo "verify: non-root IPC command output exceeded its bound: $label" >&2; exit 1; }
+    || { echo "verify: non-root IPC command output exceeded its bound: $label" >&2; return 1; }
 }
 
+cleanup_nonroot_ipc_fixture() {
+  local expected_receipt
+  [ "$IPC_FIXTURE_CLEANED" -eq 0 ] || return 0
+  expected_receipt="prepare-foreign-ipc-fixture: cleanup ok actor=$VERIFY_UID:$VERIFY_GID foreign=$IPC_FOREIGN_UID:$IPC_FOREIGN_GID dirs=2 root=0700"
+  if ! run_nonroot_ipc_command "$VERIFY_UID" "$VERIFY_GID" cleanup \
+    /usr/bin/python3 -I -S /prepare-foreign-ipc-fixture.py \
+    --cleanup --root /fixture \
+    --actor-uid "$VERIFY_UID" --actor-gid "$VERIFY_GID" \
+    --foreign-uid "$IPC_FOREIGN_UID" --foreign-gid "$IPC_FOREIGN_GID"; then
+    return 1
+  fi
+  if [ "$(cat "$VERIFY_TMP/nonroot-ipc-cleanup.out")" != "$expected_receipt" ] \
+    || [ -s "$VERIFY_TMP/nonroot-ipc-cleanup.err" ]; then
+    echo "verify: foreign IPC fixture cleanup receipt differs" >&2
+    return 1
+  fi
+  IPC_FIXTURE_CLEANED=1
+}
+
+IPC_FIXTURE_CLEANED=0
 run_nonroot_ipc_command "$IPC_FOREIGN_UID" "$IPC_FOREIGN_GID" prepare \
   /usr/bin/python3 -I -S /prepare-foreign-ipc-fixture.py \
   --root /fixture --actor-uid "$VERIFY_UID" --actor-gid "$VERIFY_GID"
@@ -776,6 +805,7 @@ run_nonroot_ipc_test \
   ipc::ipc_fs::tests::test_recreate_foreign_service_ipc_parent_dir_drops_foreign_acl_nonroot recreate
 run_nonroot_ipc_test \
   ipc::ipc_fs::tests::test_recreate_foreign_service_ipc_parent_dir_nonempty_fails_closed_nonroot nonempty
+cleanup_nonroot_ipc_fixture
 
 # (3b-i) IPC service-socket peer-uid AUTHORIZATION policy (R-S11a / §17 root box): the Linux `_service`
 # IPC socket is 0666 (world-connectable so the active non-root user process can reach it), gated at

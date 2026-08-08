@@ -10470,6 +10470,16 @@ network configuration was inspected or changed.
   owner-executable artifact, the read-only private fixture helper, and the writable private fixture root; it receives
   no vendor, target, Cargo config, Docker socket, port, host namespace, or broad source mount.
 
+  The same invoking actor now owns an explicit fixture-finality phase. Before either the ordinary success path or
+  the global failure trap releases Docker authority, the helper reopens the exact fixture root and both admitted
+  child names without following links; validates the complete prepared or post-test ownership, mode, ACL, link,
+  regular-entry, and size inventories; rejects unknown or partial states; and retains descriptors across every
+  descriptor-relative unlink and directory removal. It then restores the actor-owned root to mode 0700 through its
+  retained descriptor, synchronizes it, and emits one exact receipt. Refusal preserves the private workspace and
+  suppresses green. This is necessary because the outer uniform-owner private-tree eraser must continue to reject
+  the intentionally foreign-owned fail-closed fixture; cleanup does not weaken that independent boundary and does
+  not acquire UID 0 or a capability.
+
   This is a deliberate proof decomposition, not an installed-root-service claim. The kernel-backed tests cover the
   exact removal/recreation and ACL-destruction mechanism under real distinct filesystem ownership, while the ordinary
   production-predicate regression and source/mutation gates bind the root-service-only integration edge. Native
@@ -10479,6 +10489,7 @@ network configuration was inspected or changed.
   image ID are rechecked. Identity-bound private-tree cleanup owns every output and suppresses the deferred green
   marker on failure. The artifact helper has ten behavioral checks, including rejection of the package name
   or a generic `lib` kind in place of the exact `librustdesk` `cdylib`/`staticlib`/`rlib` target; the
+  foreign-fixture helper has seven pure checks plus its exact kernel-backed create/test/cleanup transaction; the
   online-provenance helper tests the
   subtree snapshot; the image-provenance helper exercises 16 archive checks, including a real tagged-archive
   rejection and both successful and colliding `renameat2(RENAME_NOREPLACE)` publication; and the focused semantic
@@ -10496,12 +10507,18 @@ network configuration was inspected or changed.
   UID/GID 65534:65534 prepared the real foreign ownership/ACL fixture, and both exact ignored tests ran separately
   as UID/GID 1000:1000 with 1 passed, 0 failed, 0 ignored. The replacement result was actor-owned mode 0711 with
   the foreign grant absent; the fail-closed result retained the foreign inode, ACL, and one-byte unknown marker.
-  The helper behavioral suites passed, the focused validator rejected 103 deliberate mutations, the independent
+  The pre-cleanup helper behavioral suites passed, the focused validator rejected 103 deliberate mutations, the independent
   baseline passed, and a fresh complete unsliced independent source-mutation catalog exited zero with terminal
   `verify-verifier-workspace: ok`. Precursor runs that exposed the impossible `O_RDONLY` mode-0733 grandparent,
   missing actor directory-write surrogate, unreadable preservation marker, and two stale expected diagnostic labels
-  remain failures and are not counted. A complete current `scripts/verify.sh` transaction remains pending at this
-  ledger point; installed-root-service and release-platform evidence remain separate open obligations.
+  remain failures and are not counted. The first clean committed full transaction at
+  `6155cdc71a46ec2fe13fc5baacf26c7593d37202` passed every gate through R-S11e-33, including both exact
+  two-principal filesystem tests and the subsequently reached Linux IPC/supervisor/session/lifecycle suites, but
+  failed on exit before R-S11e-34 could be decided: the outer uniform-owner private-tree eraser correctly refused
+  the deliberately retained UID-65534 fail-closed directory with `private-tree directory changed during cleanup`.
+  No Cargo, Rust, verifier, or container child survived. That transaction is not green. The exact non-root
+  fixture-finality correction described above remains to be validated by focused, independent, and complete clean
+  reruns; installed-root-service and release-platform evidence remain separate open obligations.
 
   Prior superseded root-exception runtime evidence: from clean candidate
   `a576ce296e6d22b8bef4781966819ede7556587a`, the complete
@@ -22514,7 +22531,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-a85318fcfeab14cc1b30a2e2df9c051a9332d87d461f2f7dd6841815a6272e62  requirements.html
+3792de96ed80b096133dc185d277492da58482e5900ce71f66778772d13cf8a3  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

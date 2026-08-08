@@ -17299,6 +17299,15 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   exact-current committed full-peer build/runtime result is intentionally still pending at this
   ledger point.
 
+  The first exact committed attempt at `f6d788a345a23575cb9360d9ecd361c49786416f` passed both
+  persistent-input validators, acquired and verified the exact five-package Xvfb closure, and copied
+  and sealed the exact Pub cache. It then failed before the build container started because Docker
+  could not create the nested LLVM file mountpoint below the already read-only empty `/online` root.
+  No compiler, RustDesk process, X server for a peer, or product listener started. The correction
+  pre-creates the seven empty directory/file mountpoints in the private workspace and seals that
+  skeleton before Docker overlays the exact read-only sources; it does not broaden the mounted
+  inputs or make the namespace writable.
+
 - **Exact Linux Flutter texture/X11 presentation recovery — EXECUTABLE EVIDENCE GREEN;
   ANDROID/WINDOWS/NATIVE END-TO-END EVIDENCE OPEN.** Platform: confined Linux X11 with Flutter
   3.24.5 and software rendering. Endpoint/action: the repository's production Linux

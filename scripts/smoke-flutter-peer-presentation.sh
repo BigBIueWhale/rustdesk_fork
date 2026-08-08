@@ -117,7 +117,13 @@ readonly VIEWER_PASSWD_ENTRY="rustdesk-evidence:x:$HOST_UID:$HOST_GID:RustDesk p
 BUILD_WORK="$WORKSPACE/build-work"
 mkdir "$SOURCE_SNAPSHOT" "$BUILD_OUTPUT" "$XVFB_DEBS" "$XVFB_ROOT" \
   "$COORD" "$EVIDENCE_ONLINE" "$BUILD_INPUT_ROOT" "$BUILD_WORK"
-mkdir -p "$BUILD_INPUT_ROOT/frb-tool/bin" "$BUILD_INPUT_ROOT/vcpkg/installed"
+mkdir -p "$BUILD_INPUT_ROOT/cargo-vendor" "$BUILD_INPUT_ROOT/frb-tool/bin" \
+  "$BUILD_INPUT_ROOT/vcpkg/installed/x64-linux"
+touch "$BUILD_INPUT_ROOT/rust-${RUST_VERSION}.tar.xz" \
+  "$BUILD_INPUT_ROOT/flutter-${FLUTTER_VERSION}.tar.xz" \
+  "$BUILD_INPUT_ROOT/llvm-${LLVM_VERSION}.tar.xz" \
+  "$BUILD_INPUT_ROOT/cargo-vendor-config.toml" \
+  "$BUILD_INPUT_ROOT/frb-tool/bin/flutter_rust_bridge_codegen"
 chmod -R a-w "$BUILD_INPUT_ROOT"
 printf '%s\n' "$VIEWER_PASSWD_ENTRY" > "$VIEWER_PASSWD.tmp"
 chmod 0400 "$VIEWER_PASSWD.tmp"

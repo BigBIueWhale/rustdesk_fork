@@ -229,6 +229,18 @@ def validate(sources: dict[str, str]) -> None:
         'source=$BUILD_INPUT_ROOT,target=/online,readonly,bind-recursive=disabled',
         "empty build-input namespace root",
     )
+    require_order(
+        host,
+        (
+            'mkdir -p "$BUILD_INPUT_ROOT/cargo-vendor" "$BUILD_INPUT_ROOT/frb-tool/bin"',
+            '"$BUILD_INPUT_ROOT/vcpkg/installed/x64-linux"',
+            'touch "$BUILD_INPUT_ROOT/rust-${RUST_VERSION}.tar.xz"',
+            '"$BUILD_INPUT_ROOT/frb-tool/bin/flutter_rust_bridge_codegen"',
+            'chmod -R a-w "$BUILD_INPUT_ROOT"',
+            'source=$BUILD_INPUT_ROOT,target=/online,readonly,bind-recursive=disabled',
+        ),
+        "sealed exact nested-mount namespace skeleton",
+    )
     for relative in (
         "rust-${RUST_VERSION}.tar.xz",
         "flutter-${FLUTTER_VERSION}.tar.xz",
@@ -1346,6 +1358,8 @@ MUTATIONS = (
     ("host", 'run_input_check "$WORKSPACE/input-post.cid"', "true # persistent input postcheck removed"),
     ("host", 'require_exact_local_image deb-builder "$DEB_BUILDER_IMAGE_ID"', "true # exact builder image omitted"),
     ("host", 'source=$ONLINE_DIR/cargo-vendor,target=/online/cargo-vendor,readonly,bind-recursive=disabled', 'source=$ONLINE_DIR,target=/online,readonly,bind-recursive=disabled'),
+    ("host", '"$BUILD_INPUT_ROOT/vcpkg/installed/x64-linux"', '"$BUILD_INPUT_ROOT/vcpkg/installed"'),
+    ("host", 'touch "$BUILD_INPUT_ROOT/rust-${RUST_VERSION}.tar.xz"', 'true # exact file mountpoints omitted'),
     ("host", 'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache,readonly', 'source=$EVIDENCE_PUB_CACHE,target=/evidence-pub-cache'),
     ("host", '"$HOST_UID:$HOST_GID:500"', '"$HOST_UID:$HOST_GID:700"'),
     ("host", "[ \"$ports\" = null ] || [ \"$ports\" = '{}' ]", "true"),

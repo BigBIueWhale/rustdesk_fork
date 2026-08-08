@@ -310,6 +310,16 @@ fn recreate_foreign_service_ipc_parent_dir(parent_dir: &Path, postfix: &str) -> 
     Ok(new_fd)
 }
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[inline]
+fn should_recreate_foreign_service_ipc_parent(
+    owner_uid: u32,
+    expected_uid: u32,
+    postfix: &str,
+) -> bool {
+    owner_uid != expected_uid && expected_uid == 0 && config::is_service_ipc_postfix(postfix)
+}
+
 // Purpose:
 // - Harden the IPC parent directory before creating/listening socket files.
 // - Prevent symlink/path-race abuse and reject unsafe owner/mode.
@@ -317,8 +327,8 @@ fn recreate_foreign_service_ipc_parent_dir(parent_dir: &Path, postfix: &str) -> 
 // Approach:
 // - Open parent dir with O_NOFOLLOW/O_DIRECTORY and operate on that fd.
 // - Validate inode type/owner/mode via fstat.
-// - For protected service postfix, optionally adopt owner (root only), then scrub stale
-//   rustdesk IPC artifacts when directory trust boundary changed.
+// - For a protected root-service postfix, replace a foreign-owned parent on a fresh inode, then
+//   scrub stale RustDesk IPC artifacts when the directory trust boundary changed.
 //
 // Main steps:
 // 1) Resolve parent path and open/create directory securely.
@@ -331,8 +341,9 @@ fn recreate_foreign_service_ipc_parent_dir(parent_dir: &Path, postfix: &str) -> 
 //   https://man7.org/linux/man-pages/man2/open.2.html
 // - fstat(2): verify file type/metadata on opened fd
 //   https://man7.org/linux/man-pages/man2/fstat.2.html
-// - fchown(2): adopt ownership when running as root
-//   https://man7.org/linux/man-pages/man2/chown.2.html
+// - unlinkat(2)/mkdirat(2): replace a foreign directory relative to its opened grandparent
+//   https://man7.org/linux/man-pages/man2/unlinkat.2.html
+//   https://man7.org/linux/man-pages/man2/mkdir.2.html
 // - fchmod(2): enforce exact mode on opened fd
 //   https://man7.org/linux/man-pages/man2/fchmod.2.html
 pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultType<bool> {
@@ -440,7 +451,7 @@ pub(crate) fn ensure_secure_ipc_parent_dir(path: &str, postfix: &str) -> ResultT
     // granting the foreign user write SURVIVES the chown+chmod and could race-inject a socket after the
     // scrub. REJECT-AND-RECREATE on a fresh inode instead (no surviving ACL). The helper removes exactly
     // this dir via its grandparent fd and fails closed on any race/non-empty/error — never an adopt.
-    if owner_uid != expected_uid && expected_uid == 0 && config::is_service_ipc_postfix(postfix) {
+    if should_recreate_foreign_service_ipc_parent(owner_uid, expected_uid, postfix) {
         // Close the foreign parent fd before its directory is removed, then re-open the fresh one.
         drop(fd_guard);
         fd = recreate_foreign_service_ipc_parent_dir(parent_dir, postfix)?;
@@ -997,105 +1008,130 @@ mod tests {
         std::fs::remove_dir_all(&base).ok();
     }
 
-    // R-S11a(b): a root service MUST NOT fchown-ADOPT a foreign-owned `_service` IPC parent dir; it must
-    // REJECT-AND-RECREATE it on a FRESH inode (so a pre-set foreign ACL/xattr cannot survive a chown).
-    // Creating the foreign-owned scenario needs root (chown to another uid), so this is a no-op unless
-    // run as root — the docker harness runs root, which is where it actually exercises the branch.
     #[test]
-    fn test_ensure_secure_ipc_parent_dir_recreates_foreign_service_dir() {
-        use std::ffi::CString;
-        use std::os::unix::ffi::OsStrExt;
+    fn test_foreign_service_parent_recreation_policy_is_root_service_only() {
+        assert!(super::should_recreate_foreign_service_ipc_parent(
+            1001, 0, "_service"
+        ));
+        assert!(!super::should_recreate_foreign_service_ipc_parent(
+            0, 0, "_service"
+        ));
+        assert!(!super::should_recreate_foreign_service_ipc_parent(
+            1001, 1000, "_service"
+        ));
+        assert!(!super::should_recreate_foreign_service_ipc_parent(
+            1001, 0, ""
+        ));
+    }
+
+    fn required_nonroot_foreign_fixture(name: &str) -> (std::path::PathBuf, u32) {
         use std::os::unix::fs::{MetadataExt, PermissionsExt};
 
-        let euid = unsafe { hbb_common::libc::geteuid() };
-        let root_harness_required =
-            std::env::var_os("RUSTDESK_ROOT_IPC_FS_HARNESS").as_deref()
-                == Some(std::ffi::OsStr::new("1"));
-        if euid != 0 {
-            assert!(
-                !root_harness_required,
-                "RUSTDESK_ROOT_IPC_FS_HARNESS requires effective UID 0"
-            );
-            eprintln!(
-                "skip recreate-foreign-service test: not root, cannot create a foreign-owned dir"
-            );
-            return;
-        }
-
-        let unique = format!(
-            "rustdesk-ipc-recreate-test-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        );
-        let base = std::env::temp_dir().join(&unique);
-        // The `_service` IPC parent dir; its grandparent is `base` (the recreate operates via that).
-        let parent_dir = base.join("rustdesk-svc-service");
-        std::fs::create_dir_all(&parent_dir).unwrap();
-
-        // Make it FOREIGN-owned (uid/gid 1000) so the reject-and-recreate branch triggers.
-        let parent_c = CString::new(parent_dir.as_os_str().as_bytes().to_vec()).unwrap();
-        let rc = unsafe { hbb_common::libc::chown(parent_c.as_ptr(), 1000, 1000) };
-        assert_eq!(rc, 0, "chown to uid 1000 failed (need root)");
-        let before = std::fs::metadata(&parent_dir).unwrap();
+        let euid = unsafe { hbb_common::libc::geteuid() as u32 };
+        let egid = unsafe { hbb_common::libc::getegid() as u32 };
         assert_ne!(
-            before.uid(),
-            euid,
-            "precondition: dir must start foreign-owned"
+            euid, 0,
+            "non-root IPC filesystem fixture forbids effective UID 0"
         );
-        let foreign_ino = before.ino();
+        assert_ne!(
+            egid, 0,
+            "non-root IPC filesystem fixture forbids effective GID 0"
+        );
+        let fixture_root = std::env::var_os("RUSTDESK_NONROOT_IPC_FS_FIXTURE")
+            .map(std::path::PathBuf::from)
+            .expect("non-root IPC filesystem fixture root is required");
+        assert_eq!(
+            fixture_root,
+            std::path::Path::new("/fixture"),
+            "non-root IPC filesystem fixture root must be the exact isolated mount"
+        );
+        let foreign_uid = std::env::var("RUSTDESK_FOREIGN_IPC_UID")
+            .expect("foreign IPC fixture UID is required")
+            .parse::<u32>()
+            .expect("foreign IPC fixture UID must be numeric");
+        assert_ne!(foreign_uid, 0, "foreign IPC fixture UID must be non-root");
+        assert_ne!(foreign_uid, euid, "foreign IPC fixture owner must differ");
 
-        // Pre-set a POSIX ACL granting the foreign uid 1000 rwx. This models the EXACT R-S11a(b)
-        // threat: an attacker's pre-set ACL that a naive fchown+chmod ADOPT would preserve (mode bits
-        // do not clear ACLs), letting them race-inject a socket after the scrub. Root holds CAP_FOWNER,
-        // so it can set the ACL on the foreign-owned dir, and the ACL survives the later chown by design.
-        // Encoding (little-endian): version=2; USER_OBJ rwx, USER:1000 rwx, GROUP_OBJ r-x, MASK rwx,
-        // OTHER r-x — a valid, canonically-ordered ACL.
-        let acl_name = CString::new("system.posix_acl_access").unwrap();
-        #[rustfmt::skip]
-        let acl: [u8; 44] = [
-            0x02, 0x00, 0x00, 0x00,                         // ACL_EA_VERSION = 2
-            0x01, 0x00, 0x07, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, // USER_OBJ  rwx
-            0x02, 0x00, 0x07, 0x00, 0xE8, 0x03, 0x00, 0x00, // USER:1000 rwx  (the attacker grant)
-            0x04, 0x00, 0x05, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, // GROUP_OBJ r-x
-            0x10, 0x00, 0x07, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, // MASK      rwx
-            0x20, 0x00, 0x05, 0x00, 0xFF, 0xFF, 0xFF, 0xFF, // OTHER     r-x
-        ];
-        let set_rc = unsafe {
-            hbb_common::libc::setxattr(
+        let root_metadata = std::fs::metadata(&fixture_root).expect("fixture root metadata");
+        assert!(root_metadata.is_dir(), "fixture root must be a directory");
+        assert_eq!(root_metadata.uid(), euid, "fixture root owner differs");
+        assert_eq!(root_metadata.gid(), egid, "fixture root group differs");
+        assert_eq!(
+            root_metadata.permissions().mode() & 0o7777,
+            0o0733,
+            "fixture root mode differs"
+        );
+
+        let parent_dir = fixture_root.join(name);
+        let parent_metadata = std::fs::symlink_metadata(&parent_dir)
+            .expect("foreign IPC parent metadata is required");
+        assert!(
+            parent_metadata.is_dir(),
+            "foreign IPC parent must be a directory"
+        );
+        assert_eq!(
+            parent_metadata.uid(),
+            foreign_uid,
+            "foreign IPC parent owner differs"
+        );
+        (parent_dir, foreign_uid)
+    }
+
+    fn named_user_acl_entry(uid: u32) -> [u8; 8] {
+        let mut entry = [0x02, 0x00, 0x07, 0x00, 0, 0, 0, 0];
+        entry[4..].copy_from_slice(&uid.to_le_bytes());
+        entry
+    }
+
+    fn foreign_named_user_acl_is_present(parent_dir: &std::path::Path, foreign_uid: u32) -> bool {
+        use std::os::unix::ffi::OsStrExt;
+
+        let parent_c = std::ffi::CString::new(parent_dir.as_os_str().as_bytes().to_vec()).unwrap();
+        let acl_name = std::ffi::CString::new("system.posix_acl_access").unwrap();
+        let mut buffer = [0u8; 256];
+        let got = unsafe {
+            hbb_common::libc::getxattr(
                 parent_c.as_ptr(),
                 acl_name.as_ptr(),
-                acl.as_ptr() as *const _,
-                acl.len(),
-                0,
+                buffer.as_mut_ptr() as *mut _,
+                buffer.len(),
             )
         };
-        if root_harness_required {
-            assert_eq!(
-                set_rc,
-                0,
-                "root IPC filesystem harness requires POSIX ACL support: {}",
-                std::io::Error::last_os_error()
-            );
-        }
-        // The threat-accurate check only runs where the FS supports POSIX ACLs; if setxattr is
-        // unsupported (e.g. a noacl mount) we fall back to the uid/mode assertions below — never a
-        // false failure.
-        let acl_supported = set_rc == 0;
+        got > 0
+            && buffer[..got as usize]
+                .windows(8)
+                .any(|window| window == named_user_acl_entry(foreign_uid))
+    }
 
-        // Must REJECT-AND-RECREATE (return Ok with the dir recreated), not adopt or error.
-        let ipc_path = parent_dir.join("ipc_service");
-        super::ensure_secure_ipc_parent_dir(ipc_path.to_string_lossy().as_ref(), "_service")
-            .unwrap();
+    // R-S11a(b): exercise the exact descriptor-relative replacement mechanism without granting
+    // root to the verifier. A separate non-root numeric principal owns and ACL-tags this fixture;
+    // the invoking non-root principal owns its grandparent and can therefore remove/recreate the
+    // child through unlinkat(AT_REMOVEDIR) + mkdirat, exactly as the service helper does.
+    #[test]
+    #[ignore = "requires a foreign non-root fixture prepared by the confined verifier"]
+    fn test_recreate_foreign_service_ipc_parent_dir_drops_foreign_acl_nonroot() {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+
+        let euid = unsafe { hbb_common::libc::geteuid() as u32 };
+        let (parent_dir, foreign_uid) = required_nonroot_foreign_fixture("recreate-service");
+        let before = std::fs::metadata(&parent_dir).unwrap();
+        assert_eq!(before.uid(), foreign_uid);
+        let foreign_ino = before.ino();
+        assert!(
+            foreign_named_user_acl_is_present(&parent_dir, foreign_uid),
+            "required foreign POSIX ACL fixture is absent"
+        );
+
+        let recreated_fd =
+            super::recreate_foreign_service_ipc_parent_dir(&parent_dir, "_service").unwrap();
+        let _recreated_guard = super::FdGuard(recreated_fd);
 
         let after = std::fs::metadata(&parent_dir).unwrap();
         assert!(after.is_dir());
         assert_eq!(
             after.uid(),
             euid,
-            "recreated dir must be root-owned, NOT the adopted foreign owner"
+            "recreated dir must be owned by the recreating principal"
         );
         assert_eq!(
             after.permissions().mode() & 0o777,
@@ -1103,30 +1139,18 @@ mod tests {
             "recreated dir must be 0o711"
         );
 
-        // The DECISIVE, threat-accurate check: the attacker's pre-set ACL_USER:1000 entry MUST be gone.
+        // The decisive check: the attacker's pre-set named-user ACL entry must be gone.
         // reject-and-recreate rmdir's the foreign inode (destroying its ACL) and mkdir's a fresh one, so
         // the named-user grant cannot survive; an fchown-ADOPT keeps the inode and the grant survives.
         // This is robust to inode-NUMBER reuse — a freed inode number may be recycled by rmdir+mkdir on
         // some filesystems, so the old `assert_ne!(ino)` was environment-flaky; the ACL is the real
         // security property R-S11a(b) protects.
-        if acl_supported {
-            let mut buf = [0u8; 256];
-            let got = unsafe {
-                hbb_common::libc::getxattr(
-                    parent_c.as_ptr(),
-                    acl_name.as_ptr(),
-                    buf.as_mut_ptr() as *mut _,
-                    buf.len(),
-                )
-            };
-            let named_user_1000: [u8; 8] = [0x02, 0x00, 0x07, 0x00, 0xE8, 0x03, 0x00, 0x00];
-            let grant_survived =
-                got > 0 && buf[..got as usize].windows(8).any(|w| w == named_user_1000);
-            assert!(
-                !grant_survived,
-                "reject-and-RECREATE must drop the pre-set foreign POSIX ACL (uid-1000 grant); an fchown-ADOPT would preserve it (R-S11a(b))"
-            );
-        }
+        assert!(
+            !foreign_named_user_acl_is_present(&parent_dir, foreign_uid),
+            "reject-and-recreate must drop the pre-set foreign POSIX ACL; inode adoption would preserve it"
+        );
+        assert!(!parent_dir.join("ipc_service").exists());
+        assert!(!parent_dir.join("ipc_service.pid").exists());
         // A fresh inode number is the common case but not guaranteed (rmdir+mkdir may recycle the number
         // on some filesystems), so this is a non-fatal hint, not a hard assertion.
         if after.ino() == foreign_ino {
@@ -1135,57 +1159,38 @@ mod tests {
                 foreign_ino
             );
         }
-
-        std::fs::remove_dir_all(&base).ok();
     }
 
     // R-S11a(b) fail-closed: if the foreign-owned `_service` dir holds a leftover non-ipc entry (so it
     // cannot be emptied + rmdir'd), the service MUST refuse (Err) rather than adopt the foreign inode.
     #[test]
-    fn test_ensure_secure_ipc_parent_dir_foreign_nonempty_fails_closed() {
-        use std::ffi::CString;
-        use std::os::unix::ffi::OsStrExt;
+    #[ignore = "requires a foreign non-root fixture prepared by the confined verifier"]
+    fn test_recreate_foreign_service_ipc_parent_dir_nonempty_fails_closed_nonroot() {
+        use std::os::unix::fs::MetadataExt;
 
-        let euid = unsafe { hbb_common::libc::geteuid() };
-        let root_harness_required =
-            std::env::var_os("RUSTDESK_ROOT_IPC_FS_HARNESS").as_deref()
-                == Some(std::ffi::OsStr::new("1"));
-        if euid != 0 {
-            assert!(
-                !root_harness_required,
-                "RUSTDESK_ROOT_IPC_FS_HARNESS requires effective UID 0"
-            );
-            eprintln!("skip foreign-nonempty fail-closed test: not root");
-            return;
-        }
-        let unique = format!(
-            "rustdesk-ipc-failclosed-test-{}-{}",
-            std::process::id(),
-            std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_nanos()
-        );
-        let base = std::env::temp_dir().join(&unique);
-        let parent_dir = base.join("rustdesk-svc-service");
-        std::fs::create_dir_all(&parent_dir).unwrap();
-        // A leftover the scrub does not know about → rmdir fails ENOTEMPTY → fail-closed.
-        std::fs::write(parent_dir.join("attacker-junk"), b"x").unwrap();
-        let parent_c = CString::new(parent_dir.as_os_str().as_bytes().to_vec()).unwrap();
+        let (parent_dir, foreign_uid) = required_nonroot_foreign_fixture("nonempty-service");
+        let before = std::fs::metadata(&parent_dir).unwrap();
+        assert_eq!(before.uid(), foreign_uid);
+        assert!(foreign_named_user_acl_is_present(&parent_dir, foreign_uid));
         assert_eq!(
-            unsafe { hbb_common::libc::chown(parent_c.as_ptr(), 1000, 1000) },
-            0
+            std::fs::read(parent_dir.join("attacker-junk")).unwrap(),
+            b"x"
         );
 
-        let ipc_path = parent_dir.join("ipc_service");
-        let res =
-            super::ensure_secure_ipc_parent_dir(ipc_path.to_string_lossy().as_ref(), "_service");
+        let res = super::recreate_foreign_service_ipc_parent_dir(&parent_dir, "_service");
         assert!(
             res.is_err(),
             "must FAIL-CLOSED on a non-emptyable foreign dir, never adopt"
         );
-
-        std::fs::remove_dir_all(&base).ok();
+        let after = std::fs::metadata(&parent_dir).unwrap();
+        assert_eq!(after.dev(), before.dev());
+        assert_eq!(after.ino(), before.ino());
+        assert_eq!(after.uid(), foreign_uid);
+        assert!(foreign_named_user_acl_is_present(&parent_dir, foreign_uid));
+        assert_eq!(
+            std::fs::read(parent_dir.join("attacker-junk")).unwrap(),
+            b"x"
+        );
     }
 
     #[test]

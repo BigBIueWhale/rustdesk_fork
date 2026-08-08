@@ -189,8 +189,11 @@ fi
 
 echo "== (0c) main verifier immutable-container and fixed local Docker authority (R-S11bg/R-S11dh) =="
 r_s11bg=
-if ! /usr/bin/python3 -I -S scripts/prepare-root-ipc-test.py --self-test; then
-  r_s11bg="$r_s11bg root-artifact-helper-self-test-failed"
+if ! /usr/bin/python3 -I -S scripts/prepare-ipc-test-artifact.py --self-test; then
+  r_s11bg="$r_s11bg ipc-artifact-helper-self-test-failed"
+fi
+if ! /usr/bin/python3 -I -S scripts/prepare-foreign-ipc-fixture.py --self-test; then
+  r_s11bg="$r_s11bg foreign-ipc-fixture-helper-self-test-failed"
 fi
 if ! /usr/bin/python3 -I -S scripts/offline-image-provenance.py --self-test; then
   r_s11bg="$r_s11bg image-archive-helper-self-test-failed"
@@ -202,7 +205,7 @@ if [ -n "$r_s11bg" ]; then
   echo "  FAIL R-S11bg/R-S11dh main verifier authority:$r_s11bg"
   rc=1
 else
-  echo "  ok  R-S11bg/R-S11dh exact fixed local Docker authority + immutable local image + private source/vendor/output state + non-root ordinary execution + isolated minimal-capability root tests"
+  echo "  ok  R-S11bg/R-S11dh exact fixed local Docker authority + immutable local image + private source/vendor/output state + all-nonroot execution including two-principal foreign-owner IPC fixtures"
 fi
 
 echo "== (0d) Debian builder source/container, Docker, and result-publication authority (R-S11cf/R-S11dk/R-S11dv) =="
@@ -683,53 +686,96 @@ RUN=(local_docker run --rm --pull=never --network=none --read-only
 echo "== (1-3) KAT + handshake + policy funnel + R-A4 surface + R-S7 frame/decompress (pinned 1.75) =="
 "${RUN[@]}" cargo test -p pake -p cpace_it -p config_it -p surface_it -p compress_it -p address_it --color never
 
-# (3b) The complete module first runs under the ordinary non-root authority. The two cases that must
-# create a foreign-owned directory are then compiled non-root, copied/hash-checked into private state,
-# and executed by exact name in isolated root containers with no writable host mount and only
-# CAP_CHOWN/CAP_FOWNER. The harness-required environment makes a root or POSIX-ACL skip a hard failure.
-echo "== (3b) IPC parent-dir hardening behavior tests (R-S11a/R-S11a(b), split authority) =="
+# (3b) The complete module first runs under the ordinary non-root authority. The two foreign-owner
+# cases are then decomposed without root: one distinct numeric non-root principal creates and ACL-tags
+# the hostile directories it owns; the invoking non-root principal owns the grandparent and runs the
+# exact descriptor-relative remove/recreate helper. The production predicate is exercised in the
+# ordinary module and remains root-service-only. ACL absence/support and every exact test are mandatory.
+echo "== (3b) IPC parent-dir hardening behavior tests (R-S11a/R-S11a(b), two non-root principals) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config ipc::ipc_fs::tests --color never
-ROOT_IPC_MESSAGES="$VERIFY_TMP/root-ipc-build.json"
+IPC_TEST_MESSAGES="$VERIFY_TMP/ipc-test-build.json"
 "${RUN[@]}" cargo test --lib --features linux-pkg-config --no-run --message-format=json --color never \
-  >"$ROOT_IPC_MESSAGES"
-chmod 0600 "$ROOT_IPC_MESSAGES"
-ROOT_IPC_ARTIFACT="$VERIFY_TMP/root-ipc-test"
-/usr/bin/python3 -I -S scripts/prepare-root-ipc-test.py \
-  --messages "$ROOT_IPC_MESSAGES" \
+  >"$IPC_TEST_MESSAGES"
+chmod 0600 "$IPC_TEST_MESSAGES"
+IPC_TEST_ARTIFACT="$VERIFY_TMP/ipc-test-artifact"
+/usr/bin/python3 -I -S scripts/prepare-ipc-test-artifact.py \
+  --messages "$IPC_TEST_MESSAGES" \
   --target-root "$VERIFY_TARGET" \
-  --output "$ROOT_IPC_ARTIFACT"
+  --output "$IPC_TEST_ARTIFACT"
 
-run_root_ipc_test() {
-  local test_name="$1" label="$2" output error status
-  output="$VERIFY_TMP/root-ipc-$label.out"
-  error="$VERIFY_TMP/root-ipc-$label.err"
+if [ "$VERIFY_UID" -ne 65534 ]; then
+  IPC_FOREIGN_UID=65534
+else
+  IPC_FOREIGN_UID=65533
+fi
+if [ "$VERIFY_GID" -ne 65534 ]; then
+  IPC_FOREIGN_GID=65534
+else
+  IPC_FOREIGN_GID=65533
+fi
+readonly IPC_FOREIGN_UID IPC_FOREIGN_GID
+[ "$IPC_FOREIGN_UID" -ne 0 ] && [ "$IPC_FOREIGN_GID" -ne 0 ] \
+  && [ "$IPC_FOREIGN_UID" -ne "$VERIFY_UID" ] \
+  || { echo "verify: foreign IPC fixture principal selection failed" >&2; exit 1; }
+
+IPC_FIXTURE_ROOT="$VERIFY_TMP/foreign-ipc-fixture"
+install -d -m 0733 "$IPC_FIXTURE_ROOT"
+[ "$(stat -c '%u:%g:%a:%h' "$IPC_FIXTURE_ROOT")" = "$VERIFY_UID:$VERIFY_GID:733:2" ] \
+  || { echo "verify: foreign IPC fixture root metadata differs" >&2; exit 1; }
+
+run_nonroot_ipc_command() {
+  local run_uid="$1" run_gid="$2" label="$3" output error status
+  shift 3
+  output="$VERIFY_TMP/nonroot-ipc-$label.out"
+  error="$VERIFY_TMP/nonroot-ipc-$label.err"
   set +e
   local_docker run --rm --pull=never --network=none --read-only \
-    --user 0:0 \
-    --cap-drop=ALL --cap-add=CHOWN --cap-add=FOWNER \
-    --security-opt=no-new-privileges \
+    --user "$run_uid:$run_gid" \
+    --cap-drop=ALL --security-opt=no-new-privileges \
     --pids-limit=64 --memory=1g --memory-swap=1g --cpus=1 \
-    --tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=128m \
-    --mount "type=bind,source=$ROOT_IPC_ARTIFACT,target=/root-ipc-test,readonly" \
-    --env RUSTDESK_ROOT_IPC_FS_HARNESS=1 \
-    "$IMAGE_ID" /root-ipc-test "$test_name" --exact --nocapture --test-threads=1 \
-    >"$output" 2>"$error"
+    --tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=32m \
+    --mount "type=bind,source=$IPC_TEST_ARTIFACT,target=/ipc-test-artifact,readonly" \
+    --mount "type=bind,source=$VERIFY_SOURCE/scripts/prepare-foreign-ipc-fixture.py,target=/prepare-foreign-ipc-fixture.py,readonly" \
+    --mount "type=bind,source=$IPC_FIXTURE_ROOT,target=/fixture" \
+    --env RUSTDESK_NONROOT_IPC_FS_FIXTURE=/fixture \
+    --env RUSTDESK_FOREIGN_IPC_UID="$IPC_FOREIGN_UID" \
+    "$IMAGE_ID" "$@" >"$output" 2>"$error"
   status=$?
   set -e
-  [ "$status" -eq 0 ] || { echo "verify: root IPC test failed: $test_name" >&2; cat "$output" "$error" >&2; exit 1; }
+  [ "$status" -eq 0 ] || { echo "verify: non-root IPC command failed: $label" >&2; cat "$output" "$error" >&2; exit 1; }
   [ "$(stat -c '%s' "$output")" -le 65536 ] && [ "$(stat -c '%s' "$error")" -le 65536 ] \
-    || { echo "verify: root IPC test output exceeded its bound" >&2; exit 1; }
+    || { echo "verify: non-root IPC command output exceeded its bound: $label" >&2; exit 1; }
+}
+
+run_nonroot_ipc_command "$IPC_FOREIGN_UID" "$IPC_FOREIGN_GID" prepare \
+  /usr/bin/python3 -I -S /prepare-foreign-ipc-fixture.py \
+  --root /fixture --actor-uid "$VERIFY_UID" --actor-gid "$VERIFY_GID"
+[ "$(cat "$VERIFY_TMP/nonroot-ipc-prepare.out")" = \
+  "prepare-foreign-ipc-fixture: ok actor=$VERIFY_UID:$VERIFY_GID foreign=$IPC_FOREIGN_UID:$IPC_FOREIGN_GID dirs=2 acl=required" ] \
+  && [ ! -s "$VERIFY_TMP/nonroot-ipc-prepare.err" ] \
+  || { echo "verify: foreign IPC fixture preparation receipt differs" >&2; exit 1; }
+
+run_nonroot_ipc_test() {
+  local test_name="$1" label="$2" output error status
+  output="$VERIFY_TMP/nonroot-ipc-$label.out"
+  error="$VERIFY_TMP/nonroot-ipc-$label.err"
+  set +e
+  run_nonroot_ipc_command "$VERIFY_UID" "$VERIFY_GID" "$label" \
+    /ipc-test-artifact "$test_name" --ignored --exact --nocapture --test-threads=1
+  status=$?
+  set -e
+  [ "$status" -eq 0 ] || { echo "verify: non-root IPC test failed: $test_name" >&2; cat "$output" "$error" >&2; exit 1; }
   ! grep -qi 'skip' "$output" "$error" \
-    || { echo "verify: root IPC test skipped required behavior: $test_name" >&2; exit 1; }
+    || { echo "verify: non-root IPC test skipped required behavior: $test_name" >&2; exit 1; }
   [ "$(grep -c '^running 1 test$' "$output")" -eq 1 ] \
     && [ "$(grep -cF "test $test_name ... ok" "$output")" -eq 1 ] \
     && [ "$(grep -cE '^test result: ok[.] 1 passed; 0 failed; 0 ignored; 0 measured; [0-9]+ filtered out; finished in ' "$output")" -eq 1 ] \
-    || { echo "verify: root IPC test result is not the exact one-test verdict: $test_name" >&2; cat "$output" "$error" >&2; exit 1; }
+    || { echo "verify: non-root IPC test result is not the exact one-test verdict: $test_name" >&2; cat "$output" "$error" >&2; exit 1; }
 }
-run_root_ipc_test \
-  ipc::ipc_fs::tests::test_ensure_secure_ipc_parent_dir_recreates_foreign_service_dir recreate
-run_root_ipc_test \
-  ipc::ipc_fs::tests::test_ensure_secure_ipc_parent_dir_foreign_nonempty_fails_closed nonempty
+run_nonroot_ipc_test \
+  ipc::ipc_fs::tests::test_recreate_foreign_service_ipc_parent_dir_drops_foreign_acl_nonroot recreate
+run_nonroot_ipc_test \
+  ipc::ipc_fs::tests::test_recreate_foreign_service_ipc_parent_dir_nonempty_fails_closed_nonroot nonempty
 
 # (3b-i) IPC service-socket peer-uid AUTHORIZATION policy (R-S11a / §17 root box): the Linux `_service`
 # IPC socket is 0666 (world-connectable so the active non-root user process can reach it), gated at

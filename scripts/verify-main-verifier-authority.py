@@ -36,7 +36,7 @@ def extract(source, start, end, label):
     return source[begin:finish]
 
 
-def forbid_docker_authority(block, label, allow_capabilities=False):
+def forbid_docker_authority(block, label):
     forbidden = (
         "docker.sock",
         "--privileged",
@@ -58,8 +58,7 @@ def forbid_docker_authority(block, label, allow_capabilities=False):
     )
     for token in forbidden:
         require(token not in block, "{} retained forbidden authority {!r}".format(label, token))
-    if not allow_capabilities:
-        require("--cap-add" not in block, "{} adds a capability".format(label))
+    require("--cap-add" not in block, "{} adds a capability".format(label))
     require(re.search(r"(?:^|\s)-p(?:\s|=)", block) is None, "{} publishes a port".format(label))
 
 
@@ -68,6 +67,7 @@ def validate_contract(sources):
     lib = sources["lib"]
     wrapper = sources["wrapper"]
     helper = sources["helper"]
+    fixture_helper = sources["fixture_helper"]
     filesystem = sources["filesystem"]
     pins = sources["pins"]
     provenance = sources["provenance"]
@@ -285,48 +285,62 @@ def validate_contract(sources):
     require(ordinary.count("--mount ") == 4, "ordinary verifier mount inventory differs")
     forbid_docker_authority(ordinary, "ordinary verifier container")
 
-    root = extract(
+    fixture = extract(
         shell,
-        'local_docker run --rm --pull=never --network=none --read-only \\\n    --user 0:0',
-        '>"$output" 2>"$error"',
-        "root IPC container",
+        "run_nonroot_ipc_command() {",
+        '\n}\n\nrun_nonroot_ipc_command "$IPC_FOREIGN_UID"',
+        "two-principal IPC fixture container",
     )
     require_all(
-        root,
+        fixture,
         (
-            "--user 0:0",
-            "--cap-drop=ALL --cap-add=CHOWN --cap-add=FOWNER",
+            '--user "$run_uid:$run_gid"',
+            "--cap-drop=ALL",
             "--security-opt=no-new-privileges",
             "--pids-limit=64",
             "--memory=1g",
             "--memory-swap=1g",
             "--cpus=1",
-            "--tmpfs /tmp:rw,exec,nosuid,nodev,mode=1777,size=128m",
-            '--mount "type=bind,source=$ROOT_IPC_ARTIFACT,target=/root-ipc-test,readonly"',
-            "--env RUSTDESK_ROOT_IPC_FS_HARNESS=1",
-            '"$IMAGE_ID" /root-ipc-test "$test_name" --exact --nocapture --test-threads=1',
+            "--tmpfs /tmp:rw,noexec,nosuid,nodev,mode=1777,size=32m",
+            '--mount "type=bind,source=$IPC_TEST_ARTIFACT,target=/ipc-test-artifact,readonly"',
+            '--mount "type=bind,source=$VERIFY_SOURCE/scripts/prepare-foreign-ipc-fixture.py,target=/prepare-foreign-ipc-fixture.py,readonly"',
+            '--mount "type=bind,source=$IPC_FIXTURE_ROOT,target=/fixture"',
+            "--env RUSTDESK_NONROOT_IPC_FS_FIXTURE=/fixture",
+            '--env RUSTDESK_FOREIGN_IPC_UID="$IPC_FOREIGN_UID"',
+            '"$IMAGE_ID" "$@"',
         ),
-        "root IPC container",
+        "two-principal IPC fixture container",
     )
-    require(root.count("--mount ") == 1, "root IPC container mount inventory differs")
-    require(root.count("--cap-add=") == 2, "root IPC capability inventory differs")
-    for token in ("$VERIFY_SOURCE", "$VERIFY_VENDOR", "$VERIFY_TARGET", "$VERIFY_CARGO_CONFIG", "/work", "/vendor", "/build"):
-        require(token not in root, "root IPC container received forbidden input {!r}".format(token))
-    forbid_docker_authority(root, "root IPC container", allow_capabilities=True)
-    require(shell.count("run_root_ipc_test \\\n  ipc::ipc_fs::tests::") == 2, "root IPC test call inventory differs")
+    require(fixture.count("--mount ") == 3, "two-principal IPC fixture mount inventory differs")
+    for token in ("$VERIFY_VENDOR", "$VERIFY_TARGET", "$VERIFY_CARGO_CONFIG", "/work", "/vendor", "/build"):
+        require(token not in fixture, "IPC fixture container received forbidden input {!r}".format(token))
+    forbid_docker_authority(fixture, "two-principal IPC fixture container")
+    require("--user 0:0" not in shell, "main verifier retained a UID-0 container")
+    require(shell.count("run_nonroot_ipc_test \\\n  ipc::ipc_fs::tests::") == 2, "non-root IPC test call inventory differs")
     require_all(
         shell,
         (
             '"${RUN[@]}" cargo test --lib --features linux-pkg-config --no-run --message-format=json',
-            "/usr/bin/python3 -I -S scripts/prepare-root-ipc-test.py",
+            "/usr/bin/python3 -I -S scripts/prepare-ipc-test-artifact.py",
             '--target-root "$VERIFY_TARGET"',
-            '--output "$ROOT_IPC_ARTIFACT"',
+            '--output "$IPC_TEST_ARTIFACT"',
+            "IPC_FOREIGN_UID=65534",
+            "IPC_FOREIGN_UID=65533",
+            "IPC_FOREIGN_GID=65534",
+            "IPC_FOREIGN_GID=65533",
+            '[ "$IPC_FOREIGN_UID" -ne 0 ] && [ "$IPC_FOREIGN_GID" -ne 0 ]',
+            'install -d -m 0733 "$IPC_FIXTURE_ROOT"',
+            'run_nonroot_ipc_command "$IPC_FOREIGN_UID" "$IPC_FOREIGN_GID" prepare',
+            "/usr/bin/python3 -I -S /prepare-foreign-ipc-fixture.py",
+            '--root /fixture --actor-uid "$VERIFY_UID" --actor-gid "$VERIFY_GID"',
+            "dirs=2 acl=required",
+            "/ipc-test-artifact \"$test_name\" --ignored --exact --nocapture --test-threads=1",
             "! grep -qi 'skip' \"$output\" \"$error\"",
             'grep -cF "test $test_name ... ok"',
-            "test_ensure_secure_ipc_parent_dir_recreates_foreign_service_dir recreate",
-            "test_ensure_secure_ipc_parent_dir_foreign_nonempty_fails_closed nonempty",
+            "test_recreate_foreign_service_ipc_parent_dir_drops_foreign_acl_nonroot recreate",
+            "test_recreate_foreign_service_ipc_parent_dir_nonempty_fails_closed_nonroot nonempty",
         ),
-        "root IPC result finality",
+        "two-principal IPC result finality",
     )
 
     require_all(
@@ -369,21 +383,66 @@ def validate_contract(sources):
             'metadata.st_nlink == 1',
             'metadata.st_mode & 0o022 == 0',
             "os.O_EXCL",
-            "os.fchmod(output_fd, 0o555)",
+            "os.fchmod(output_fd, 0o500)",
             'require(checks == 10',
         ),
-        "root artifact preparation helper",
+        "IPC artifact preparation helper",
+    )
+    require_all(
+        fixture_helper,
+        (
+            'root == Path("/fixture")',
+            'metadata.st_nlink == 2',
+            'metadata.st_uid == actor_uid',
+            'stat.S_IMODE(metadata.st_mode) == 0o733',
+            'flags = os.O_PATH | os.O_DIRECTORY | os.O_CLOEXEC',
+            'root_fd = open_directory(root, path_only=True)',
+            'foreign_uid != 0 and foreign_gid != 0',
+            'foreign_uid != actor_uid',
+            'acl = foreign_access_acl(foreign_uid, actor_uid)',
+            'sorted((foreign_uid, actor_uid))',
+            'os.O_EXCL',
+            'create_regular_at(child_fd, "attacker-junk", b"x", mode=0o644)',
+            'os.setxattr(child_fd, ACL_XATTR, acl, 0)',
+            'raise FixtureError(\n                "required non-root POSIX ACL fixture is unavailable: {}"',
+            'require(os.getxattr(child_fd, ACL_XATTR) == acl',
+            'require(checks == 5',
+        ),
+        "foreign IPC fixture helper",
+    )
+    require(
+        fixture_helper.count("os.getxattr(child_fd, ACL_XATTR) == acl") == 2,
+        "foreign IPC fixture ACL readback inventory differs",
+    )
+    recreation_predicate = extract(
+        filesystem,
+        "fn should_recreate_foreign_service_ipc_parent(",
+        "\n}\n\n// Purpose:",
+        "foreign service-parent recreation predicate",
+    )
+    require_all(
+        recreation_predicate,
+        (
+            "owner_uid != expected_uid",
+            "expected_uid == 0",
+            "config::is_service_ipc_postfix(postfix)",
+        ),
+        "foreign service-parent recreation predicate",
     )
     require_all(
         filesystem,
         (
-            'std::env::var_os("RUSTDESK_ROOT_IPC_FS_HARNESS")',
-            '"RUSTDESK_ROOT_IPC_FS_HARNESS requires effective UID 0"',
-            '"root IPC filesystem harness requires POSIX ACL support: {}"',
+            "if should_recreate_foreign_service_ipc_parent(owner_uid, expected_uid, postfix)",
+            'std::env::var_os("RUSTDESK_NONROOT_IPC_FS_FIXTURE")',
+            '"non-root IPC filesystem fixture forbids effective UID 0"',
+            '"required foreign POSIX ACL fixture is absent"',
+            "super::recreate_foreign_service_ipc_parent_dir(&parent_dir, \"_service\")",
+            '"reject-and-recreate must drop the pre-set foreign POSIX ACL; inode adoption would preserve it"',
         ),
-        "root IPC source behavior",
+        "non-root IPC source behavior",
     )
-    require(filesystem.count("RUSTDESK_ROOT_IPC_FS_HARNESS requires effective UID 0") == 2, "both root tests must reject a non-root required harness")
+    require("RUSTDESK_ROOT_IPC_FS_HARNESS" not in filesystem, "obsolete root IPC harness remains")
+    require("libc::chown" not in filesystem[filesystem.index("mod tests {") :], "IPC tests retain chown")
     require_all(
         provenance,
         (
@@ -487,16 +546,35 @@ def validate_contract(sources):
     require_all(
         verify,
         (
-            "/usr/bin/python3 -I -S scripts/prepare-root-ipc-test.py --self-test",
+            "/usr/bin/python3 -I -S scripts/prepare-ipc-test-artifact.py --self-test",
+            "/usr/bin/python3 -I -S scripts/prepare-foreign-ipc-fixture.py --self-test",
             "/usr/bin/python3 -I -S scripts/offline-image-provenance.py --self-test",
             "/usr/bin/python3 -I -S scripts/verify-main-verifier-authority.py --repo . --self-test",
         ),
         "shared verifier wiring",
     )
     require('<span class="id">R-S11bg</span>' in requirements, "requirements are missing R-S11bg")
+    main_requirement = extract(
+        requirements,
+        '<div class="req"><span class="id">R-S11bg</span>',
+        "</div></div>",
+        "main verifier authority requirement",
+    )
+    require_all(
+        main_requirement,
+        (
+            "immutable, all-non-root build and fixture authority",
+            "two distinct numeric non-root principals",
+            "<code>unlinkat(AT_REMOVEDIR)</code>",
+            "mode 0500",
+            "exactly three mounts",
+            "not installed root-service runtime evidence",
+        ),
+        "main verifier authority requirement",
+    )
     require("<tr><td>184</td>" in requirements, "requirements are missing Appendix C #184")
     require(
-        "R-S11bg/R-S11e-73 — main verifier container, root-test, and recoverable image authority" in hardening,
+        "R-S11bg/R-S11e-73 — main verifier all-nonroot container and recoverable image authority" in hardening,
         "hardening ledger is missing the main verifier authority closure",
     )
     require("recoverable archive distribution" in hardening, "hardening ledger hides image archive closure")
@@ -533,13 +611,15 @@ def validate_contract(sources):
         (
             'Mutation("shell", "--network=none", "--network=bridge"',
             'Mutation("shell", \'--user "$VERIFY_UID:$VERIFY_GID"\'',
-            'Mutation("shell", "--cap-drop=ALL --cap-add=CHOWN --cap-add=FOWNER"',
+            'Mutation("shell", \'--user "$run_uid:$run_gid"\'',
+            'Mutation("shell", \'--mount "type=bind,source=$IPC_FIXTURE_ROOT,target=/fixture"\'',
             'Mutation("wrapper", "exec cargo --config /tmp/cargo-config.toml --offline --locked"',
             'Mutation("helper", \'metadata.st_nlink == 1\'',
             'Mutation("helper", \'target.get("name") == "librustdesk"\'',
             'Mutation("helper", \'target.get("kind") == ["cdylib", "staticlib", "rlib"]\'',
-            'Mutation("helper", "os.fchmod(output_fd, 0o555)"',
-            'Mutation("filesystem", \'"root IPC filesystem harness requires POSIX ACL support: {}"\'',
+            'Mutation("helper", "os.fchmod(output_fd, 0o500)"',
+            'Mutation("fixture_helper", "os.setxattr(child_fd, ACL_XATTR, acl, 0)"',
+            'Mutation("filesystem", "expected_uid == 0"',
             'Mutation("provenance", "def create_subtree_snapshot("',
             'Mutation("image_provenance", "expected_tags = spec.archive_tags"',
             'Mutation("image_provenance", "save_ref = spec.image_id"',
@@ -553,7 +633,7 @@ def validate_contract(sources):
             'Mutation(\n        "lib",\n        "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS"',
             'Mutation("requirements", \'<span class="id">R-S11bg</span>\'',
             'Mutation("requirements", \'<span class="id">R-S11dh</span>\'',
-            'Mutation("hardening", "R-S11bg/R-S11e-73 — main verifier container, root-test, and recoverable image authority"',
+            'Mutation("hardening", "R-S11bg/R-S11e-73 — main verifier all-nonroot container and recoverable image authority"',
             'Mutation(\n        "hardening",\n        "R-S11dh/R-S11e-126 — main verifier Docker client, daemon, and configuration authority"',
         ),
         "main verifier mutation coverage",
@@ -607,15 +687,17 @@ MUTATIONS = (
     Mutation("shell", 'target=/tmp/cargo-config.toml,readonly', 'target=/cargo-config.toml,readonly', "Cargo 1.75-safe config path"),
     Mutation("shell", "--env CARGO_INCREMENTAL=0", "--env CARGO_INCREMENTAL=1", "nonincremental build"),
     Mutation("shell", "--env CARGO_NET_OFFLINE=true", "--env CARGO_NET_OFFLINE=false", "Cargo offline environment"),
-    Mutation("shell", "--user 0:0", '--user "$(id -u):$(id -g)"', "root test euid"),
-    Mutation("shell", "--cap-drop=ALL --cap-add=CHOWN --cap-add=FOWNER", "--cap-add=SYS_ADMIN", "minimal root capabilities"),
-    Mutation("shell", "--pids-limit=64", "--pids-limit=-1", "root PID bound"),
-    Mutation("shell", "--memory=1g", "--memory=0", "root memory bound"),
-    Mutation("shell", 'source=$ROOT_IPC_ARTIFACT,target=/root-ipc-test,readonly', 'source=$VERIFY_SOURCE,target=/work', "root mount inventory"),
-    Mutation("shell", "--env RUSTDESK_ROOT_IPC_FS_HARNESS=1", "--env RUSTDESK_ROOT_IPC_FS_HARNESS=0", "root required-harness flag"),
-    Mutation("shell", "! grep -qi 'skip'", "grep -qi 'skip'", "root skip refusal"),
-    Mutation("shell", 'grep -cF "test $test_name ... ok"', 'grep -cF "test result: ok"', "exact root test identity"),
-    Mutation("shell", "test_ensure_secure_ipc_parent_dir_recreates_foreign_service_dir recreate", "test_ensure_secure_ipc_parent_dir_creates_parent_with_expected_mode recreate", "root recreate case"),
+    Mutation("shell", '--user "$run_uid:$run_gid"', '--user 0:0', "IPC fixture nonroot user"),
+    Mutation("shell", "--pids-limit=64", "--pids-limit=-1", "IPC fixture PID bound"),
+    Mutation("shell", "--memory=1g", "--memory=0", "IPC fixture memory bound"),
+    Mutation("shell", 'source=$IPC_TEST_ARTIFACT,target=/ipc-test-artifact,readonly', 'source=$VERIFY_SOURCE,target=/work', "IPC fixture artifact mount"),
+    Mutation("shell", '--mount "type=bind,source=$IPC_FIXTURE_ROOT,target=/fixture"', '--mount "type=bind,source=$VERIFY_SOURCE,target=/fixture"', "IPC writable fixture mount"),
+    Mutation("shell", "--env RUSTDESK_NONROOT_IPC_FS_FIXTURE=/fixture", "--env RUSTDESK_NONROOT_IPC_FS_FIXTURE=/tmp", "IPC exact fixture root"),
+    Mutation("shell", "IPC_FOREIGN_UID=65534", "IPC_FOREIGN_UID=0", "foreign nonroot UID"),
+    Mutation("shell", 'install -d -m 0733 "$IPC_FIXTURE_ROOT"', 'install -d -m 0777 "$IPC_FIXTURE_ROOT"', "fixture root mode"),
+    Mutation("shell", "! grep -qi 'skip'", "grep -qi 'skip'", "IPC skip refusal"),
+    Mutation("shell", 'grep -cF "test $test_name ... ok"', 'grep -cF "test result: ok"', "exact IPC test identity"),
+    Mutation("shell", "test_recreate_foreign_service_ipc_parent_dir_drops_foreign_acl_nonroot recreate", "test_ensure_secure_ipc_parent_dir_creates_parent_with_expected_mode recreate", "foreign ACL recreation case"),
     Mutation("shell", "RUN=(local_docker run", "docker build -t rd-devcheck .\nRUN=(local_docker run", "image build absence"),
     Mutation(
         "lib",
@@ -654,10 +736,28 @@ MUTATIONS = (
     Mutation("helper", 'target.get("kind") == ["cdylib", "staticlib", "rlib"]', 'target.get("kind") == ["lib"]', "exact library kind selection"),
     Mutation("helper", "ARTIFACT_RE.fullmatch(values[0])", "values[0].startswith('/build')", "artifact path grammar"),
     Mutation("helper", "os.O_EXCL", "0", "exclusive artifact output"),
-    Mutation("helper", "os.fchmod(output_fd, 0o555)", "os.fchmod(output_fd, 0o500)", "capability-minimal artifact execution mode"),
+    Mutation("helper", "os.fchmod(output_fd, 0o500)", "os.fchmod(output_fd, 0o555)", "owner-only artifact execution mode"),
     Mutation("helper", 'require(checks == 10', 'require(checks >= 0', "artifact helper self-test count"),
-    Mutation("filesystem", '"RUSTDESK_ROOT_IPC_FS_HARNESS requires effective UID 0"', '"root check disabled"', "root-required behavior"),
-    Mutation("filesystem", '"root IPC filesystem harness requires POSIX ACL support: {}"', '"optional POSIX ACL: {}"', "required ACL behavior"),
+    Mutation("fixture_helper", "metadata.st_nlink == 2", "metadata.st_nlink >= 2", "empty fixture root"),
+    Mutation("fixture_helper", "metadata.st_uid == actor_uid", "metadata.st_uid >= 0", "fixture actor ownership"),
+    Mutation("fixture_helper", "foreign_uid != 0 and foreign_gid != 0", "foreign_uid >= 0 and foreign_gid >= 0", "foreign principal nonroot"),
+    Mutation("fixture_helper", "foreign_uid != actor_uid", "foreign_uid == actor_uid", "distinct fixture principals"),
+    Mutation("fixture_helper", "root_fd = open_directory(root, path_only=True)", "root_fd = open_directory(root)", "non-reading fixture-root descriptor"),
+    Mutation("fixture_helper", "acl = foreign_access_acl(foreign_uid, actor_uid)", "acl = foreign_access_acl(foreign_uid, foreign_uid)", "actor directory-write surrogate"),
+    Mutation("fixture_helper", "os.O_EXCL", "0", "exclusive fixture entries"),
+    Mutation("fixture_helper", 'create_regular_at(child_fd, "attacker-junk", b"x", mode=0o644)', 'create_regular_at(child_fd, "attacker-junk", b"x")', "readable preservation marker"),
+    Mutation("fixture_helper", "os.setxattr(child_fd, ACL_XATTR, acl, 0)", "True # POSIX ACL omitted", "required ACL fixture"),
+    Mutation("fixture_helper", 'require(os.getxattr(child_fd, ACL_XATTR) == acl', 'require(True', "exact ACL bytes"),
+    Mutation("fixture_helper", 'require(checks == 5', 'require(checks >= 0', "fixture helper self-test count"),
+    Mutation("filesystem", "owner_uid != expected_uid", "owner_uid == expected_uid", "foreign-owner predicate"),
+    Mutation("filesystem", "expected_uid == 0", "expected_uid >= 0", "root-service predicate"),
+    Mutation(
+        "filesystem",
+        "owner_uid != expected_uid && expected_uid == 0 && config::is_service_ipc_postfix(postfix)",
+        "owner_uid != expected_uid && expected_uid == 0 && true",
+        "service-postfix predicate",
+    ),
+    Mutation("filesystem", '"required foreign POSIX ACL fixture is absent"', '"optional foreign POSIX ACL fixture"', "required ACL behavior"),
     Mutation("provenance", "def create_subtree_snapshot(", "def ignored_subtree_snapshot(", "subtree snapshot implementation"),
     Mutation("provenance", "source_after = verify_subtree(source, expected)", "source_after = before", "subtree source stability"),
     Mutation("pins", 'DEV_CHECK_IMAGE_ID="sha256:da876c1f', 'DEV_CHECK_IMAGE_ID="rd-devcheck-', "image content pin"),
@@ -675,7 +775,7 @@ MUTATIONS = (
     Mutation("verify", "/usr/bin/python3 -I -S scripts/verify-main-verifier-authority.py --repo . --self-test", "/usr/bin/python3 -I -S scripts/verify-main-verifier-authority.py --repo .", "shared mutation gate"),
     Mutation("requirements", '<span class="id">R-S11bg</span>', '<span class="id">R-S11bg-disabled</span>', "normative requirement"),
     Mutation("requirements", "<tr><td>184</td>", "<tr><td>184-disabled</td>", "Appendix disposition"),
-    Mutation("hardening", "R-S11bg/R-S11e-73 — main verifier container, root-test, and recoverable image authority", "R-S11bg/R-S11e-73 — verifier authority deferred", "hardening ledger"),
+    Mutation("hardening", "R-S11bg/R-S11e-73 — main verifier all-nonroot container and recoverable image authority", "R-S11bg/R-S11e-73 — verifier authority deferred", "hardening ledger"),
     Mutation("requirements", '<span class="id">R-S11dh</span>', '<span class="id">R-S11dh-disabled</span>', "Docker authority normative requirement"),
     Mutation("requirements", "<tr><td>261</td>", "<tr><td>261-disabled</td>", "Docker authority Appendix disposition"),
     Mutation(
@@ -700,7 +800,8 @@ def load_sources(repo):
         "shell": (repo / "scripts/verify.sh").read_text(encoding="utf-8"),
         "lib": (repo / "scripts/lib.sh").read_text(encoding="utf-8"),
         "wrapper": (repo / "scripts/verify-container-command.sh").read_text(encoding="utf-8"),
-        "helper": (repo / "scripts/prepare-root-ipc-test.py").read_text(encoding="utf-8"),
+        "helper": (repo / "scripts/prepare-ipc-test-artifact.py").read_text(encoding="utf-8"),
+        "fixture_helper": (repo / "scripts/prepare-foreign-ipc-fixture.py").read_text(encoding="utf-8"),
         "filesystem": (repo / "src/ipc/fs.rs").read_text(encoding="utf-8"),
         "pins": (repo / "scripts/pins.env").read_text(encoding="utf-8"),
         "provenance": (repo / "scripts/online-input-provenance.py").read_text(encoding="utf-8"),

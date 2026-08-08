@@ -7086,7 +7086,7 @@ def validate_macos_descriptor_contract(sources):
             "current rustdesk-org Git requirement inventory",
         ),
         (
-            "884 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 77 files",
+            "882 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 77 files",
             "current Rust unsafe requirement inventory",
         ),
         (
@@ -41047,7 +41047,8 @@ def validate_main_verifier_authority_contract(sources):
     shell = sources["verify"]
     lib = sources["lib"]
     wrapper = sources["verifier_command_wrapper"]
-    helper = sources["root_ipc_artifact_helper"]
+    helper = sources["ipc_test_artifact_helper"]
+    fixture_helper = sources["foreign_ipc_fixture_helper"]
     authority = sources["main_verifier_authority_validator"]
     provenance = sources["online_input_provenance"]
     image_provenance = sources["offline_image_provenance"]
@@ -41081,9 +41082,12 @@ def validate_main_verifier_authority_contract(sources):
         ('--mount "type=bind,source=$VERIFY_VENDOR,target=/vendor,readonly"', "main verifier private vendor mount"),
         ('--mount "type=bind,source=$VERIFY_TARGET,target=/build"', "main verifier private target mount"),
         ('--mount "type=bind,source=$VERIFY_CARGO_CONFIG,target=/tmp/cargo-config.toml,readonly"', "main verifier private Cargo config mount"),
-        ('--cap-drop=ALL --cap-add=CHOWN --cap-add=FOWNER', "main verifier root capability inventory"),
-        ('--mount "type=bind,source=$ROOT_IPC_ARTIFACT,target=/root-ipc-test,readonly"', "main verifier root artifact-only mount"),
-        ('--env RUSTDESK_ROOT_IPC_FS_HARNESS=1', "main verifier root behavior requirement"),
+        ('--user "$run_uid:$run_gid"', "main verifier IPC fixture numeric principal"),
+        ('--mount "type=bind,source=$IPC_TEST_ARTIFACT,target=/ipc-test-artifact,readonly"', "main verifier IPC artifact mount"),
+        ('--mount "type=bind,source=$VERIFY_SOURCE/scripts/prepare-foreign-ipc-fixture.py,target=/prepare-foreign-ipc-fixture.py,readonly"', "main verifier foreign-fixture helper mount"),
+        ('--mount "type=bind,source=$IPC_FIXTURE_ROOT,target=/fixture"', "main verifier writable IPC fixture mount"),
+        ('--env RUSTDESK_NONROOT_IPC_FS_FIXTURE=/fixture', "main verifier exact IPC fixture root"),
+        ('--env RUSTDESK_FOREIGN_IPC_UID="$IPC_FOREIGN_UID"', "main verifier foreign IPC UID receipt"),
         ('SOURCE_DIGEST_AFTER="$(archive_current_source | sha256sum', "main verifier source postcondition"),
         ('FINAL_IMAGE_ID="$(local_docker image inspect --format \'{{.Id}}\' "$IMAGE_ID"', "main verifier fixed final image inspection"),
     ):
@@ -41091,13 +41095,14 @@ def validate_main_verifier_authority_contract(sources):
     require_exact_count(shell, "RUN=(local_docker run ", 1, "main verifier ordinary container inventory")
     require_exact_count(shell, "local_docker image inspect --format", 2, "main verifier fixed image-inspection inventory")
     require_absent(shell, '"$DOCKER_BIN" run ', "main verifier direct ambient Docker launch")
+    require_absent(shell, "--user 0:0", "main verifier UID-0 container")
     if re.search(r"(?m)^readonly DOCKER_BIN=/usr/bin/docker$", shell):
         raise VerificationError("main verifier obsolete direct Docker client remains present")
     require_exact_count(
         shell,
-        'run_root_ipc_test \\\n  ipc::ipc_fs::tests::',
+        'run_nonroot_ipc_test \\\n  ipc::ipc_fs::tests::',
         2,
-        "main verifier exact root-test inventory",
+        "main verifier exact nonroot IPC-test inventory",
     )
     for text, label in (
         ('docker build -q -t "$IMG" -f scripts/Dockerfile.devcheck scripts', "main verifier image build"),
@@ -41190,17 +41195,39 @@ def validate_main_verifier_authority_contract(sources):
         "main verifier wrapper shell allowlist",
     )
     for text, label in (
-        ('metadata.st_nlink == 1', "main verifier root artifact hardlink refusal"),
-        ('profile.get("test") is True', "main verifier root artifact test-profile selection"),
+        ('metadata.st_nlink == 1', "main verifier IPC artifact hardlink refusal"),
+        ('profile.get("test") is True', "main verifier IPC artifact test-profile selection"),
         ('target.get("name") == "librustdesk"', "main verifier exact library target selection"),
         ('target.get("kind") == ["cdylib", "staticlib", "rlib"]', "main verifier exact library kind selection"),
         ('target.get("crate_types") == ["cdylib", "staticlib", "rlib"]', "main verifier exact library crate-type selection"),
-        ('ARTIFACT_RE.fullmatch(values[0])', "main verifier root artifact path grammar"),
-        ('os.O_EXCL', "main verifier root artifact exclusive copy"),
-        ('os.fchmod(output_fd, 0o555)', "main verifier capability-minimal artifact execution mode"),
-        ('require(checks == 10', "main verifier root artifact behavioral inventory"),
+        ('ARTIFACT_RE.fullmatch(values[0])', "main verifier IPC artifact path grammar"),
+        ('os.O_EXCL', "main verifier IPC artifact exclusive copy"),
+        ('os.fchmod(output_fd, 0o500)', "main verifier owner-only artifact execution mode"),
+        ('require(checks == 10', "main verifier IPC artifact behavioral inventory"),
     ):
         require_text(helper, text, label)
+    for text, label in (
+        ('root == Path("/fixture")', "main verifier exact foreign-fixture root"),
+        ('metadata.st_nlink == 2', "main verifier empty foreign-fixture root"),
+        ('metadata.st_uid == actor_uid', "main verifier foreign-fixture actor ownership"),
+        ('flags = os.O_PATH | os.O_DIRECTORY | os.O_CLOEXEC', "main verifier non-reading fixture-root descriptor"),
+        ('root_fd = open_directory(root, path_only=True)', "main verifier fixture-root O_PATH use"),
+        ('foreign_uid != 0 and foreign_gid != 0', "main verifier foreign fixture nonroot principal"),
+        ('foreign_uid != actor_uid', "main verifier distinct foreign-fixture principal"),
+        ('acl = foreign_access_acl(foreign_uid, actor_uid)', "main verifier actor directory-write ACL surrogate"),
+        ('sorted((foreign_uid, actor_uid))', "main verifier canonical two-user ACL order"),
+        ('create_regular_at(child_fd, "attacker-junk", b"x", mode=0o644)', "main verifier readable preservation marker"),
+        ('os.setxattr(child_fd, ACL_XATTR, acl, 0)', "main verifier required foreign POSIX ACL"),
+        ('require(os.getxattr(child_fd, ACL_XATTR) == acl', "main verifier exact foreign POSIX ACL"),
+        ('require(checks == 5', "main verifier foreign-fixture helper behavioral inventory"),
+    ):
+        require_text(fixture_helper, text, label)
+    require_exact_count(
+        fixture_helper,
+        "os.getxattr(child_fd, ACL_XATTR) == acl",
+        2,
+        "main verifier foreign ACL readback inventory",
+    )
     for text, label in (
         ('def create_subtree_snapshot(', "main verifier subtree snapshot implementation"),
         ('source_after = verify_subtree(source, expected)', "main verifier subtree source stability"),
@@ -41255,17 +41282,25 @@ def validate_main_verifier_authority_contract(sources):
         ("--devcheck-image", "main verifier recovery entry point"),
     ):
         require_text(online_fetch, text, label)
-    require_exact_count(
+    recreation_predicate = extract_between(
         ipc_fs,
-        "RUSTDESK_ROOT_IPC_FS_HARNESS requires effective UID 0",
-        2,
-        "main verifier root-required source behavior",
+        "fn should_recreate_foreign_service_ipc_parent(",
+        "\n}\n\n// Purpose:",
+        "main verifier production recreation predicate",
     )
-    require_text(
-        ipc_fs,
-        '"root IPC filesystem harness requires POSIX ACL support: {}"',
-        "main verifier required ACL behavior",
-    )
+    for text, label in (
+        ("owner_uid != expected_uid", "main verifier foreign-owner predicate"),
+        ("expected_uid == 0", "main verifier root-service predicate"),
+        ("config::is_service_ipc_postfix(postfix)", "main verifier service-postfix predicate"),
+    ):
+        require_text(recreation_predicate, text, label)
+    for text, label in (
+        ('std::env::var_os("RUSTDESK_NONROOT_IPC_FS_FIXTURE")', "main verifier nonroot fixture requirement"),
+        ('"required foreign POSIX ACL fixture is absent"', "main verifier mandatory ACL behavior"),
+        ('super::recreate_foreign_service_ipc_parent_dir(&parent_dir, "_service")', "main verifier exact recreation helper execution"),
+    ):
+        require_text(ipc_fs, text, label)
+    require_absent(ipc_fs, "RUSTDESK_ROOT_IPC_FS_HARNESS", "obsolete root IPC harness")
 
     authority_mutations = extract_between(
         authority,
@@ -41291,12 +41326,18 @@ def validate_main_verifier_authority_contract(sources):
             'Mutation(\n        "lib",\n        "DOCKER_HOST DOCKER_CONTEXT DOCKER_CONFIG DOCKER_CERT_PATH DOCKER_TLS_VERIFY DOCKER_TLS"',
             "main verifier ambient Docker input mutation",
         ),
-        ('Mutation("shell", "--cap-drop=ALL --cap-add=CHOWN --cap-add=FOWNER"', "main verifier root capability mutation"),
+        ('Mutation("shell", \'--user "$run_uid:$run_gid"\'', "main verifier nonroot fixture-user mutation"),
+        ('Mutation("shell", \'--mount "type=bind,source=$IPC_FIXTURE_ROOT,target=/fixture"\'', "main verifier fixture-mount mutation"),
         ('Mutation("wrapper", "exec cargo --config /tmp/cargo-config.toml --offline --locked"', "main verifier wrapper mutation"),
         ('Mutation("helper", \'metadata.st_nlink == 1\'', "main verifier artifact mutation"),
         ('Mutation("helper", \'target.get("name") == "librustdesk"\'', "main verifier library-target mutation"),
         ('Mutation("helper", \'target.get("kind") == ["cdylib", "staticlib", "rlib"]\'', "main verifier library-kind mutation"),
-        ('Mutation("helper", "os.fchmod(output_fd, 0o555)"', "main verifier artifact-mode mutation"),
+        ('Mutation("helper", "os.fchmod(output_fd, 0o500)"', "main verifier artifact-mode mutation"),
+        ('Mutation("fixture_helper", "os.setxattr(child_fd, ACL_XATTR, acl, 0)"', "main verifier required-ACL mutation"),
+        ('Mutation("fixture_helper", "root_fd = open_directory(root, path_only=True)"', "main verifier fixture-root descriptor mutation"),
+        ('Mutation("fixture_helper", "acl = foreign_access_acl(foreign_uid, actor_uid)"', "main verifier actor-ACL mutation"),
+        ('Mutation("fixture_helper", \'create_regular_at(child_fd, "attacker-junk", b"x", mode=0o644)\'', "main verifier preservation-marker mutation"),
+        ('Mutation("filesystem", "expected_uid == 0"', "main verifier root-service predicate mutation"),
         ('Mutation("image_provenance", "expected_tags = spec.archive_tags"', "main verifier archive-tag mutation"),
         ('Mutation("image_provenance", "RENAME_NOREPLACE = 1"', "main verifier archive publication mutation"),
         ('Mutation("online_fetch", \'--archive-size "$SIZE_DEV_CHECK_IMAGE_ARCHIVE"\'', "main verifier archive-size mutation"),
@@ -41323,19 +41364,19 @@ def validate_main_verifier_authority_contract(sources):
         sources["requirements"], "R-S11bg", "main verifier authority requirement"
     )
     for text in (
-        "immutable, non-root build authority",
+        "immutable, all-non-root build and fixture authority",
         "--pull=never",
         "--network=none",
         "Recoverable archive distribution",
-        "CHOWN",
-        "FOWNER",
+        "two distinct numeric non-root principals",
+        "POSIX access ACL",
         "MUST NOT",
     ):
         require_text(requirement, text, "main verifier authority requirement")
     require_text(sources["requirements"], "<tr><td>184</td>", "main verifier Appendix C row")
     require_text(
         sources["hardening"],
-        "R-S11bg/R-S11e-73 — main verifier container, root-test, and recoverable image authority",
+        "R-S11bg/R-S11e-73 — main verifier all-nonroot container and recoverable image authority",
         "main verifier authority hardening ledger",
     )
     docker_requirement = extract_html_requirement(
@@ -47763,7 +47804,7 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            "884 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 77 files",
+            "882 lexical <code>unsafe {</code> blocks across 251 tracked Rust files, with at least one match in 77 files",
             "802 lexical <code>unsafe {</code> blocks across 243 tracked Rust files, with at least one match in 67 files",
             "current Rust unsafe requirement inventory",
         ),
@@ -55438,28 +55479,28 @@ def run_source_mutations(sources):
             "main verifier locked/offline Cargo wrapper",
         ),
         (
-            "root_ipc_artifact_helper",
+            "ipc_test_artifact_helper",
             "metadata.st_nlink == 1",
             "metadata.st_nlink >= 1",
-            "main verifier root artifact hardlink refusal",
+            "main verifier IPC artifact hardlink refusal",
         ),
         (
-            "root_ipc_artifact_helper",
+            "ipc_test_artifact_helper",
             'target.get("name") == "librustdesk"',
             'target.get("name") == "rustdesk"',
             "main verifier exact library target selection",
         ),
         (
-            "root_ipc_artifact_helper",
+            "ipc_test_artifact_helper",
             'target.get("kind") == ["cdylib", "staticlib", "rlib"]',
             'target.get("kind") == ["lib"]',
             "main verifier exact library kind selection",
         ),
         (
-            "root_ipc_artifact_helper",
-            "os.fchmod(output_fd, 0o555)",
+            "ipc_test_artifact_helper",
             "os.fchmod(output_fd, 0o500)",
-            "main verifier capability-minimal artifact execution mode",
+            "os.fchmod(output_fd, 0o555)",
+            "main verifier owner-only artifact execution mode",
         ),
         (
             "main_verifier_authority_validator",
@@ -55540,10 +55581,34 @@ def run_source_mutations(sources):
             "Dart audit archive shared-gate wiring",
         ),
         (
+            "foreign_ipc_fixture_helper",
+            "os.setxattr(child_fd, ACL_XATTR, acl, 0)",
+            "True # required ACL fixture omitted",
+            "main verifier required foreign POSIX ACL",
+        ),
+        (
+            "foreign_ipc_fixture_helper",
+            "root_fd = open_directory(root, path_only=True)",
+            "root_fd = open_directory(root)",
+            "main verifier fixture-root O_PATH use",
+        ),
+        (
+            "foreign_ipc_fixture_helper",
+            "acl = foreign_access_acl(foreign_uid, actor_uid)",
+            "acl = foreign_access_acl(foreign_uid, foreign_uid)",
+            "main verifier actor directory-write ACL surrogate",
+        ),
+        (
+            "foreign_ipc_fixture_helper",
+            'create_regular_at(child_fd, "attacker-junk", b"x", mode=0o644)',
+            'create_regular_at(child_fd, "attacker-junk", b"x")',
+            "main verifier readable preservation marker",
+        ),
+        (
             "ipc_fs_source",
-            '"root IPC filesystem harness requires POSIX ACL support: {}"',
-            '"optional POSIX ACL support: {}"',
-            "main verifier required ACL behavior",
+            "expected_uid == 0",
+            "expected_uid >= 0",
+            "main verifier root-service predicate",
         ),
         (
             "verify",
@@ -55565,7 +55630,7 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11bg/R-S11e-73 — main verifier container, root-test, and recoverable image authority",
+            "R-S11bg/R-S11e-73 — main verifier all-nonroot container and recoverable image authority",
             "R-S11bg/R-S11e-73 — main verifier authority deferred",
             "main verifier authority hardening ledger",
         ),
@@ -71293,8 +71358,11 @@ def main():
             "verifier_command_wrapper": (
                 repo / "scripts/verify-container-command.sh"
             ).read_text(encoding="utf-8"),
-            "root_ipc_artifact_helper": (
-                repo / "scripts/prepare-root-ipc-test.py"
+            "ipc_test_artifact_helper": (
+                repo / "scripts/prepare-ipc-test-artifact.py"
+            ).read_text(encoding="utf-8"),
+            "foreign_ipc_fixture_helper": (
+                repo / "scripts/prepare-foreign-ipc-fixture.py"
             ).read_text(encoding="utf-8"),
             "main_verifier_authority_validator": (
                 repo / "scripts/verify-main-verifier-authority.py"

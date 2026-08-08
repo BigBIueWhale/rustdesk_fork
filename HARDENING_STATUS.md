@@ -491,7 +491,7 @@ history remains the traceability record for that intermediate work.
 zero enabled definitions, seven inert `.disabled` reference definitions, one documentation file, and eight
 regular files total; Debian, Android, and Windows releases are script-owned targets, not CI jobs. `build.py`
 has 531 lines and the tree has six tracked `build.rs` files. The legacy root Docker builder is absent;
-there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 884 lexical `unsafe {`
+there is no root `Dockerfile`, root `entrypoint.sh`, or translated upstream README build path. The Rust inventory has 882 lexical `unsafe {`
 blocks across 251 tracked Rust files, 77 of which contain at least one; this is explicitly not AST proof.
 
 **Status: the cryptographic/transport core and the direct-IP-only posture are in
@@ -10384,9 +10384,9 @@ network configuration was inspected or changed.
   archived, provenance-verified distribution of this image are closed; exact clean R-B2/R-B10 release artifacts,
   installed-platform behavior, independent release-artifact reproduction, and R-V3 external review remain open.
   Neither this item nor the overall release is claimed complete.
-- **R-S11bg/R-S11e-73 — main verifier container, root-test, and recoverable image authority — SOURCE
-  IMPLEMENTED/GATED; CONFINED FULL-GATE EXECUTION VERIFIED 2026-07-20; RECOVERABLE ARCHIVE DISTRIBUTION
-  VERIFIED 2026-07-25; FRESH INDEPENDENT REBUILD AND BROADER RELEASE EVIDENCE OPEN.** Platform:
+- **R-S11bg/R-S11e-73 — main verifier all-nonroot container and recoverable image authority — SOURCE
+  IMPLEMENTED/GATED; PRIOR ROOT-CONTAINER EXCEPTION REMOVED 2026-08-08; CURRENT CONFINED FULL-GATE RERUN
+  PENDING; FRESH INDEPENDENT REBUILD AND BROADER RELEASE EVIDENCE OPEN.** Platform:
   the Linux Docker build host used by the primary `scripts/verify.sh` source/behavior/compile gate. Endpoint/action:
   117 Cargo test/check/clean invocations and the two IPC filesystem tests that construct a foreign-owned service
   directory. Boundary: build scripts, test binaries, mutable build outputs, image/tag/cache state, and Docker
@@ -10395,10 +10395,9 @@ network configuration was inspected or changed.
   daemon-global Cargo registry/Git/target volumes, rebuilt the mutable `rd-devcheck` tag from live image/APT inputs
   on every invocation, and ran every Cargo command by tag under Docker default UID 0, default bridge, implicit
   missing-image pull policy, and a writable root. The checkout bind was read-only and no port was published. Only
-  `test_ensure_secure_ipc_parent_dir_recreates_foreign_service_dir` and
-  `test_ensure_secure_ipc_parent_dir_foreign_nonempty_fails_closed` needed euid 0 to `chown` a private fixture;
-  the ACL branch additionally needs `CAP_FOWNER`. That narrow fixture need did not justify ambient root for all
-  builds and tests. This was high-frequency build-host/supply-chain, persistent-state, and verdict-authority debt,
+  the two foreign-owner cases were originally implemented by making the verifier itself UID 0, using `chown` to
+  manufacture a second owner, and adding `CHOWN`/`FOWNER`. That narrow fixture design did not justify root in any
+  verifier container. This was high-frequency build-host/supply-chain, persistent-state, and verdict-authority debt,
   not evidence of a public listener, host RustDesk execution, host service/configuration/firewall mutation, Docker
   escape, exploitation, host privilege escalation, or compromise.
 
@@ -10444,30 +10443,68 @@ network configuration was inspected or changed.
   and Cargo config read-only. It receives no real checkout, Git/signing state, named volume, Docker socket, port,
   or host namespace.
 
-  The complete IPC filesystem module first runs nonroot. A separate nonroot `--no-run` emits bounded Cargo JSON;
-  `scripts/prepare-root-ipc-test.py` selects exactly the root crate library-test artifact, rejects duplicate,
-  non-test, noncanonical, linked, or writable inputs, then descriptor-stably copies and hashes it into a private
-  mode-0555 file beneath the mode-0700 workspace. The non-owner execute bits are required because the isolated UID-0
-  container intentionally lacks `CAP_DAC_OVERRIDE`; the private parent and read-only bind retain host confidentiality
-  and immutability. Each root-required test runs by exact name in a fresh container whose sole host mount is that file
-  read-only. The root container has no pull/network/port/host-namespace authority, a read-only root,
-  no-new-privileges, all capabilities dropped then exactly `CHOWN`/`FOWNER` added, bounded resources, and private
-  tmpfs fixtures. It has no source, vendor, target, Cargo config, or other writable host mount.
-  `RUSTDESK_ROOT_IPC_FS_HARNESS=1` makes a wrong euid or unavailable POSIX-ACL exercise fail instead of silently
-  taking the ordinary skip path. Status, output bounds, skip absence, exact test name, and one-pass result agree.
+  The complete IPC filesystem module first runs nonroot, including a production predicate regression proving that
+  replacement is selected only for a foreign owner, effective UID 0, and the protected service postfix. A separate
+  nonroot `--no-run` emits bounded Cargo JSON; `scripts/prepare-ipc-test-artifact.py` selects exactly the root-crate
+  library-test artifact, rejects duplicate, non-test, noncanonical, linked, or writable inputs, then descriptor-
+  stably copies and hashes it into a private owner-executable mode-0500 file. No group/other execute permission is
+  needed because the invoking numeric UID is also the exact test-artifact owner.
+
+  The foreign-owner mechanism is exercised through two distinct ordinary numeric principals. The invoking UID owns
+  one private mode-0733 grandparent that is unreachable through its enclosing mode-0700 host workspace. A distinct
+  nonzero UID, in a networkless/read-only-root/capability-free container, runs
+  `scripts/prepare-foreign-ipc-fixture.py`. Because mode 0733 deliberately denies that foreign principal directory
+  read permission, the helper binds the grandparent through `O_PATH|O_DIRECTORY|O_NOFOLLOW`, then creates exactly two
+  directories it owns. Each receives one exact access ACL with sorted named-user `rwx` entries for the foreign owner
+  whose surviving grant is under test and the invoking actor. The actor entry is the narrow nonroot surrogate for
+  production root's authority to remove known entries inside the foreign directory; it does not authorize the code
+  to discover or remove arbitrary names. The fixture adds the two known mode-0600 stale IPC entries plus one
+  readable mode-0644 unknown marker only in the fail-closed case, so the actor can prove the marker bytes survive
+  without root or file-read capability. The invoking UID then runs the exact Rust library tests against that same
+  mounted grandparent. Linux authorizes `unlinkat(AT_REMOVEDIR)` through the writable/searchable grandparent, so the
+  tests execute the production descriptor-relative `openat`/known-entry scrub/`unlinkat`/`mkdirat` mechanism without
+  root: the emptyable foreign inode is replaced, its ACL is absent from the fresh mode-0711 actor-owned directory,
+  and the unknown-entry case preserves the foreign inode and fails closed. ACL creation/readback is mandatory; lack
+  of filesystem ACL support is a hard fixture failure. Both tests run by exact ignored-test name with bounded output,
+  skip refusal, and one-pass result parsing. The one special launch definition adds no capability and mounts only the private
+  owner-executable artifact, the read-only private fixture helper, and the writable private fixture root; it receives
+  no vendor, target, Cargo config, Docker socket, port, host namespace, or broad source mount.
+
+  This is a deliberate proof decomposition, not an installed-root-service claim. The kernel-backed tests cover the
+  exact removal/recreation and ACL-destruction mechanism under real distinct filesystem ownership, while the ordinary
+  production-predicate regression and source/mutation gates bind the root-service-only integration edge. Native
+  installed-service startup remains part of the separate release evidence gap and is not inferred from this test.
 
   Before green, the private vendor closure, normalized real-source digest, source-map and recipe hashes, and local
   image ID are rechecked. Identity-bound private-tree cleanup owns every output and suppresses the deferred green
-  marker on failure. The root-artifact helper has ten behavioral checks, including rejection of the package name
+  marker on failure. The artifact helper has ten behavioral checks, including rejection of the package name
   or a generic `lib` kind in place of the exact `librustdesk` `cdylib`/`staticlib`/`rlib` target; the
   online-provenance helper tests the
   subtree snapshot; the image-provenance helper exercises 16 archive checks, including a real tagged-archive
   rejection and both successful and colliding `renameat2(RENAME_NOREPLACE)` publication; and the focused semantic
   validator deliberately mutates the image/build/tag/volume absence,
-  private inputs, ordinary/root Docker inventories, exact capabilities, wrapper, artifact selection, required ACL
+  private inputs, ordinary/two-principal Docker inventories, zero added capabilities, wrapper, artifact selection, required ACL
   coverage, postconditions, R-S11bg, Appendix C #184, and this ledger.
 
-  Confined runtime evidence: from clean candidate `a576ce296e6d22b8bef4781966819ede7556587a`, the complete
+  Current confined targeted evidence on 2026-08-08: a fresh canonical `/build` target in immutable
+  devcheck image `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
+  ran as UID/GID 1000:1000 with no network, read-only root/source/vendor/config, all capabilities dropped,
+  no-new-privileges, fixed resource limits, no Docker socket, and no published port. The focused IPC filesystem
+  module reported 10 passed, 0 failed, and the two mandatory external-fixture cases explicitly ignored before
+  exact execution. Bounded Cargo JSON then selected one mode-0500 owner-only test artifact, SHA-256
+  `2f74f50b433094f3b846efaff32dd48d4625e0e98e4db3ee7a8fff10eb066e15`, 283,381,640 bytes.
+  UID/GID 65534:65534 prepared the real foreign ownership/ACL fixture, and both exact ignored tests ran separately
+  as UID/GID 1000:1000 with 1 passed, 0 failed, 0 ignored. The replacement result was actor-owned mode 0711 with
+  the foreign grant absent; the fail-closed result retained the foreign inode, ACL, and one-byte unknown marker.
+  The helper behavioral suites passed, the focused validator rejected 103 deliberate mutations, the independent
+  baseline passed, and a fresh complete unsliced independent source-mutation catalog exited zero with terminal
+  `verify-verifier-workspace: ok`. Precursor runs that exposed the impossible `O_RDONLY` mode-0733 grandparent,
+  missing actor directory-write surrogate, unreadable preservation marker, and two stale expected diagnostic labels
+  remain failures and are not counted. A complete current `scripts/verify.sh` transaction remains pending at this
+  ledger point; installed-root-service and release-platform evidence remain separate open obligations.
+
+  Prior superseded root-exception runtime evidence: from clean candidate
+  `a576ce296e6d22b8bef4781966819ede7556587a`, the complete
   `scripts/verify.sh` transaction exited zero with
   `VERIFY: all required source, behavior, compile, policy, inventory, and excision gates green`. The exact
   `librustdesk` test artifact was selected from bounded Cargo JSON, descriptor-stably copied and hash-checked, and
@@ -22477,7 +22514,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-bdd378bdc9f1881c71fee1fd234edbb78b8c8efdd45d0e89e2eecaf1369f7d24  requirements.html
+a85318fcfeab14cc1b30a2e2df9c051a9332d87d461f2f7dd6841815a6272e62  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

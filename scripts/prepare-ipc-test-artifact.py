@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Select and privately copy the exact Rust lib-test artifact for the root IPC tests."""
+"""Select and privately copy the exact Rust lib-test artifact for IPC fixture tests."""
 
 import argparse
 import hashlib
@@ -133,17 +133,15 @@ def copy_artifact(messages, target_root, output):
                 written = os.write(output_fd, view)
                 require(written > 0, "artifact copy made no progress")
                 view = view[written:]
-        # The isolated container deliberately lacks CAP_DAC_OVERRIDE. The file
-        # remains inside a mode-0700 host parent and is mounted read-only, but
-        # needs an ordinary non-owner execute bit because its host owner is the
-        # invoking UID rather than container UID 0.
-        os.fchmod(output_fd, 0o555)
+        # The fixture-test container runs as this exact owner and receives the
+        # file as a read-only bind, so no group/other execute authority is needed.
+        os.fchmod(output_fd, 0o500)
         os.fsync(output_fd)
         copied = os.fstat(output_fd)
         require(copied.st_size == source_before.st_size, "artifact copy size differs")
         require(copied.st_nlink == 1, "artifact copy is hardlinked")
         require(copied.st_uid == os.geteuid() and copied.st_gid == os.getegid(), "artifact copy owner differs")
-        require(stat.S_IMODE(copied.st_mode) == 0o555, "artifact copy mode differs")
+        require(stat.S_IMODE(copied.st_mode) == 0o500, "artifact copy mode differs")
         source_after = os.fstat(source_fd)
         require(
             (
@@ -201,7 +199,7 @@ def fixture_message(
 
 def self_test():
     checks = 0
-    with tempfile.TemporaryDirectory(prefix="root-ipc-artifact-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="ipc-test-artifact-") as temporary:
         root = Path(temporary)
         root.chmod(0o700)
         target = root / "target"
@@ -216,7 +214,7 @@ def self_test():
         output = root / "output"
         digest, size = copy_artifact(messages, target, output)
         require(digest == hashlib.sha256(artifact.read_bytes()).hexdigest(), "self-test digest differs")
-        require(size == artifact.stat().st_size and output.stat().st_mode & 0o777 == 0o555, "self-test copy differs")
+        require(size == artifact.stat().st_size and output.stat().st_mode & 0o777 == 0o500, "self-test copy differs")
         checks += 1
 
         def expect_failure(label, operation):
@@ -287,7 +285,7 @@ def self_test():
         invalid.chmod(0o600)
         expect_failure("invalid JSON", lambda: copy_artifact(invalid, target, root / "invalid-output"))
     require(checks == 10, "self-test check count differs")
-    print("prepare-root-ipc-test: self-test ok (10 checks)")
+    print("prepare-ipc-test-artifact: self-test ok (10 checks)")
 
 
 def main(argv=None):
@@ -311,5 +309,5 @@ if __name__ == "__main__":
     try:
         sys.exit(main())
     except (PreparationError, OSError, UnicodeError, ValueError) as error:
-        print("prepare-root-ipc-test: {}".format(error), file=sys.stderr)
+        print("prepare-ipc-test-artifact: {}".format(error), file=sys.stderr)
         sys.exit(1)

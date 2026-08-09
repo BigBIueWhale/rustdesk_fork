@@ -29,6 +29,19 @@ readonly PROCESS_ADMISSION_SECONDS=10
 readonly PROCESS_STOP_SECONDS=10
 readonly WINDOW_SIZE_COMMIT=eb3964990cf19629c89ff8cb4a37640c7b3d5601
 readonly WINDOW_SIZE_TREE=c1b4ec4f759387d00f1024ce539487242cd7ae1a
+readonly PRESENTATION_PUB_CACHE="$ONLINE_DIR/pub-cache"
+readonly PRESENTATION_PUB_CACHE_SHA256="$SHA256_WINDOWS_PRESENTATION_PUB_CACHE_CLOSURE_V1"
+readonly PRESENTATION_PUB_CACHE_PROJECTION_SHA256="$SHA256_WINDOWS_PRESENTATION_PUB_CACHE_PROJECTION_V1"
+readonly -a PRESENTATION_HOSTED_PACKAGES=(
+    "characters-1.3.0:04a925763edad70e8443c99234dc3328f442e811f1d8fd1a72f1c8ad0f69a605"
+    "collection-1.18.0:ee67cb0715911d28db6bf4af1026078bd6f0128b07a5f66fb2ed94ec6783c09a"
+    "material_color_utilities-0.11.1:f7142bb1154231d7ea5f96bc7bde4bda2a0945d2806bb11670e30b850d56bdec"
+    "meta-1.15.0:bdb68674043280c3428e9ec998512fb681678676b3c54e773629ffe74419f8c7"
+    "plugin_platform_interface-2.1.8:4820fbfdb9478b1ebae27888254d445073732dae3d6ea81f0b7e06d5dedc3f02"
+    "url_launcher_platform_interface-2.3.2:552f8a1e663569be95a8190206a38187b531910283c3e982193e4f2733f01029"
+    "url_launcher_windows-3.1.4:3284b6d2ac454cf34f114e1d3319866fdd1e19cdc329999057e44ffe936cfa77"
+    "vector_math-2.1.4:80b3257d1492ce4d091729e3a67a60407d227c27241d6927be0130c98e741803"
+)
 
 RUN_ROOT=""
 RUN_ROOT_ID=""
@@ -50,6 +63,7 @@ CLEANUP_ACTIVE=0
 CLEANUP_FAILED=0
 RUN_COMPLETE=0
 GOLDEN_BEFORE=""
+PRESENTATION_PUB_CACHE_ID=""
 LISTENERS_BEFORE=""
 LISTENERS_DURING=""
 NEW_LISTENERS=""
@@ -347,6 +361,55 @@ golden_has_contract() {
             /authority/windows-golden-inspect.sh marker
 }
 
+project_presentation_pub_cache() {
+    local authority_receipt="$RUN_ROOT/presentation-pub-cache-authority-receipt.txt"
+    local projection_receipt="$RUN_ROOT/presentation-pub-cache-projection-receipt.txt"
+    local projection="$SOURCE_ROOT/pub-cache"
+    local specification package expected_hash source hash_source observed_hash
+    windows_helper_small_run \
+        --mount "type=bind,source=$SOURCE_ROOT,target=/source,readonly" \
+        --mount "type=bind,source=$ONLINE_DIR,target=/online,readonly" \
+        -- /usr/bin/python3 -I -B /source/scripts/online-pub-cache-output.py \
+            check-complete --online /online \
+            --uid "$WINDOWS_HELPER_BUILD_UID" --gid "$WINDOWS_HELPER_BUILD_GID" \
+        >"$authority_receipt"
+    [ "$(<"$authority_receipt")" = "sha256=$PRESENTATION_PUB_CACHE_SHA256" ] \
+        || die "Windows presentation source Pub-cache authority differs"
+
+    mkdir -m 0700 -p \
+        "$projection/hosted/pub.dev" "$projection/hosted-hashes/pub.dev"
+    for specification in "${PRESENTATION_HOSTED_PACKAGES[@]}"; do
+        package="${specification%%:*}"
+        expected_hash="${specification#*:}"
+        source="$PRESENTATION_PUB_CACHE/hosted/pub.dev/$package"
+        hash_source="$PRESENTATION_PUB_CACHE/hosted-hashes/pub.dev/$package.sha256"
+        [ -d "$source" ] && [ ! -L "$source" ] \
+            || die "Windows presentation hosted package is absent or symlinked: $package"
+        [ -f "$hash_source" ] && [ ! -L "$hash_source" ] \
+            && [ "$(stat -c '%h' "$hash_source")" = 1 ] \
+            || die "Windows presentation hosted hash is not one regular file: $package"
+        observed_hash="$(tr -d '\r\n' <"$hash_source")"
+        [ "$observed_hash" = "$expected_hash" ] \
+            || die "Windows presentation hosted hash differs: $package"
+        cp -a -- "$source" "$projection/hosted/pub.dev/$package"
+        cp -- "$hash_source" "$projection/hosted-hashes/pub.dev/$package.sha256"
+    done
+    windows_helper_small_run \
+        --mount "type=bind,source=$SOURCE_ROOT,target=/source,readonly" \
+        -- /usr/bin/python3 -I -B \
+            /source/scripts/windows-presentation-pub-cache.py \
+            --root /source/pub-cache \
+            --expected-digest "$PRESENTATION_PUB_CACHE_PROJECTION_SHA256" \
+            --uid "$WINDOWS_HELPER_BUILD_UID" --gid "$WINDOWS_HELPER_BUILD_GID" \
+        >"$projection_receipt"
+    [ "$(<"$projection_receipt")" = \
+        "windows-presentation-pub-cache: verified sha256=$PRESENTATION_PUB_CACHE_PROJECTION_SHA256 files=346 directories=82 symlinks=0 size=5666684 packages=8" ] \
+        || die "Windows presentation projected Pub-cache identity differs"
+    printf 'source_sha256=%s projection_sha256=%s packages=8 semantics=exact-probe-lock\n' \
+        "$PRESENTATION_PUB_CACHE_SHA256" "$PRESENTATION_PUB_CACHE_PROJECTION_SHA256" \
+        >"$SOURCE_ROOT/pub-cache.identity"
+}
+
 preflight() {
     require_cmd git tar python3 qemu-img virt-install virsh ss timeout setsid awk sha256sum stat
     assert_no_build_host_network_residual
@@ -364,6 +427,15 @@ preflight() {
     GOLDEN_BEFORE="$(sha256sum "$GOLDEN" | awk '{print $1}')"
     [ -d "$ONLINE_DIR" ] && [ ! -L "$ONLINE_DIR" ] \
         || die "canonical offline input directory is absent"
+    [ -n "$PRESENTATION_PUB_CACHE_SHA256" ] \
+        || die "Windows presentation Pub-cache authority pin is absent"
+    [ -n "$PRESENTATION_PUB_CACHE_PROJECTION_SHA256" ] \
+        || die "Windows presentation Pub-cache projection pin is absent"
+    [ -d "$PRESENTATION_PUB_CACHE" ] && [ ! -L "$PRESENTATION_PUB_CACHE" ] \
+        && [ "$(stat -c '%u:%g:%a' "$PRESENTATION_PUB_CACHE")" = \
+            "$WINDOWS_HELPER_BUILD_UID:$WINDOWS_HELPER_BUILD_GID:500" ] \
+        || die "Windows presentation source Pub cache is unavailable or has changed metadata"
+    PRESENTATION_PUB_CACHE_ID="$(stat -c '%d:%i:%u:%g:%a' "$PRESENTATION_PUB_CACHE")"
     [ -f "$ONLINE_DIR/build-images/win-helper.docker.tar.gz" ] \
         && [ ! -L "$ONLINE_DIR/build-images/win-helper.docker.tar.gz" ] \
         || die "pinned Windows helper archive is absent"
@@ -400,8 +472,11 @@ materialize_source() {
         scripts/flutter-presentation-d3d11-preflight-windows.cpp \
         scripts/flutter-presentation-probe-windows.dart \
         scripts/flutter-presentation-probe-windows-pubspec.yaml \
+        scripts/flutter-presentation-probe-windows-pubspec.lock \
         scripts/flutter-presentation-probe-desktop-multi-window-pubspec.yaml \
         scripts/flutter-presentation-probe-window-size-pubspec.yaml \
+        scripts/online-pub-cache-output.py \
+        scripts/windows-presentation-pub-cache.py \
         scripts/windows-presentation-source-manifest.py \
         flutter/lib/models/presentation_recovery.dart \
         flutter/third_party/desktop_multi_window \
@@ -412,6 +487,9 @@ materialize_source() {
     cmp -s -- "$SOURCE_ROOT/run-build.ps1" \
         "$SOURCE_ROOT/scripts/run-flutter-presentation-windows.ps1" \
         || die "generated presentation root runner differs from its source"
+    verify_sha256 \
+        "$SOURCE_ROOT/scripts/flutter-presentation-probe-windows-pubspec.lock" \
+        "$SHA256_WINDOWS_PRESENTATION_PUBSPEC_LOCK"
     vendored_window_source="$SOURCE_ROOT/flutter/third_party/desktop_multi_window"
     [ -d "$vendored_window_source" ] && [ ! -L "$vendored_window_source" ] \
         || die "exact-commit vendored desktop_multi_window source is absent or symlinked"
@@ -443,6 +521,8 @@ materialize_source() {
     printf '{"commit":"%s","tree":"%s"}\n' \
         "$WINDOW_SIZE_COMMIT" "$WINDOW_SIZE_TREE" \
         >"$SOURCE_ROOT/third_party/window_size/.rustdesk-source-identity.json"
+
+    project_presentation_pub_cache
 
     windows_helper_small_run \
         --mount "type=bind,source=$SOURCE_ROOT,target=/source" \
@@ -613,14 +693,16 @@ extract_and_validate() {
             rm -rf -- "$extracted/$system_dir"
         fi
     done
-    python3 - "$extracted" "$SOURCE_COMMIT" "$SOURCE_TREE" <<'PY'
+    python3 - "$extracted" "$SOURCE_COMMIT" "$SOURCE_TREE" \
+        "$SHA256_WINDOWS_PRESENTATION_PUBSPEC_LOCK" <<'PY'
+import hashlib
 import json
 import pathlib
 import re
 import sys
 
 root = pathlib.Path(sys.argv[1])
-commit, tree = sys.argv[2:]
+commit, tree, expected_lock_sha256 = sys.argv[2:]
 diagnostic_required = {
     "windows-presentation-progress.txt",
     "windows-presentation-source-verify.stdout.txt",
@@ -730,6 +812,10 @@ if cycles[1].get("pointer_down_delivered") is not True:
 lock_lines = (root / "windows-presentation-pubspec.lock").read_text(
     encoding="utf-8-sig"
 ).splitlines()
+if hashlib.sha256(
+    (root / "windows-presentation-pubspec.lock").read_bytes()
+).hexdigest() != expected_lock_sha256:
+    raise SystemExit("presentation pubspec lock digest differs")
 try:
     package_start = lock_lines.index("packages:") + 1
     package_end = lock_lines.index("sdks:")
@@ -841,14 +927,18 @@ PY
     cp -- "$RUN_ROOT/domain.xml" "$EVIDENCE_DIR/domain.xml"
     cp -- "$NEW_LISTENERS" "$EVIDENCE_DIR/new-host-listeners.txt"
     python3 - "$EVIDENCE_DIR" "$SOURCE_COMMIT" "$SOURCE_TREE" \
-        "$SHA256_WIN11_GOLDEN_QCOW2" "$SOURCE_ISO" "$RUN_ROOT/domain.xml" <<'PY'
+        "$SHA256_WIN11_GOLDEN_QCOW2" \
+        "$SHA256_WINDOWS_PRESENTATION_PUB_CACHE_CLOSURE_V1" \
+        "$SHA256_WINDOWS_PRESENTATION_PUB_CACHE_PROJECTION_V1" \
+        "$SHA256_WINDOWS_PRESENTATION_PUBSPEC_LOCK" \
+        "$SOURCE_ISO" "$RUN_ROOT/domain.xml" <<'PY'
 import hashlib
 import json
 import pathlib
 import sys
 
 evidence = pathlib.Path(sys.argv[1])
-commit, tree, golden, source_iso, domain_xml = sys.argv[2:]
+commit, tree, golden, pub_cache, pub_cache_projection, pubspec_lock, source_iso, domain_xml = sys.argv[2:]
 
 def digest(path):
     value = hashlib.sha256()
@@ -862,6 +952,9 @@ record = {
     "source_commit": commit,
     "source_tree": tree,
     "golden_sha256": golden,
+    "presentation_pub_cache_sha256": pub_cache,
+    "presentation_pub_cache_projection_sha256": pub_cache_projection,
+    "presentation_pubspec_lock_sha256": pubspec_lock,
     "source_iso_sha256": digest(source_iso),
     "domain_xml_sha256": digest(domain_xml),
     "guest_d3d11_preflight_sha256": digest(
@@ -884,6 +977,9 @@ verify_unchanged_inputs() {
     [ "$(git -C "$REPO_ROOT" rev-parse HEAD)" = "$SOURCE_COMMIT" ] \
         && [ "$(git -C "$REPO_ROOT" rev-parse 'HEAD^{tree}')" = "$SOURCE_TREE" ] \
         || die "exact source identity changed during presentation evidence"
+    [ "$(stat -c '%d:%i:%u:%g:%a' "$PRESENTATION_PUB_CACHE")" = \
+        "$PRESENTATION_PUB_CACHE_ID" ] \
+        || die "Windows presentation source Pub-cache identity changed"
     assert_clean_worktree
 }
 

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 from pathlib import Path
 
 
@@ -37,11 +38,15 @@ PATHS = {
     "d3d11": "scripts/flutter-presentation-d3d11-preflight-windows.cpp",
     "dart": "scripts/flutter-presentation-probe-windows.dart",
     "pubspec": "scripts/flutter-presentation-probe-windows-pubspec.yaml",
+    "pubspec_lock": "scripts/flutter-presentation-probe-windows-pubspec.lock",
     "window_pubspec": (
         "scripts/flutter-presentation-probe-desktop-multi-window-pubspec.yaml"
     ),
     "size_pubspec": "scripts/flutter-presentation-probe-window-size-pubspec.yaml",
     "manifest": "scripts/windows-presentation-source-manifest.py",
+    "pub_cache_output": "scripts/online-pub-cache-output.py",
+    "pub_cache_projection": "scripts/windows-presentation-pub-cache.py",
+    "pins": "scripts/pins.env",
     "provision": "scripts/provision-windows-vm.sh",
     "guest_setup": "scripts/win-guest-setup.ps1",
     "golden_inspector": "scripts/windows-golden-inspect.sh",
@@ -69,6 +74,10 @@ def validate(sources: dict[str, str]) -> None:
     d3d11 = sources["d3d11"]
     dart = sources["dart"]
     manifest = sources["manifest"]
+    pubspec_lock = sources["pubspec_lock"]
+    pub_cache_output = sources["pub_cache_output"]
+    pub_cache_projection = sources["pub_cache_projection"]
+    pins = sources["pins"]
     provision = sources["provision"]
     guest_setup = sources["guest_setup"]
     golden_inspector = sources["golden_inspector"]
@@ -127,6 +136,143 @@ def validate(sources: dict[str, str]) -> None:
         host,
         "/authority/windows-golden-inspect.sh marker",
         "fixed golden receipt inspector",
+    )
+    require(
+        pins,
+        'SHA256_WINDOWS_PRESENTATION_PUB_CACHE_CLOSURE_V1="fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4"',
+        "dedicated Windows presentation Pub-cache authority pin",
+    )
+    require(
+        pins,
+        'SHA256_WINDOWS_PRESENTATION_PUBSPEC_LOCK="e1fbe433a385594ed67dfd0bfd9b65be5f9cd07865e6ee190c9193a737648038"',
+        "exact Windows presentation lock pin",
+    )
+    require(
+        pins,
+        'SHA256_WINDOWS_PRESENTATION_PUB_CACHE_PROJECTION_V1="29c1e79175d4331ff406662a758d2ae7804afc402fd1f96a30b96f0153c53dd0"',
+        "exact Windows presentation projected Pub-cache pin",
+    )
+    require(
+        pub_cache_output,
+        "def check_complete(online: Path, uid: int, gid: int) -> TreeSummary:",
+        "read-only complete Pub-cache validator",
+    )
+    require_order(
+        host,
+        (
+            'check-complete --online /online',
+            '"sha256=$PRESENTATION_PUB_CACHE_SHA256"',
+            'mkdir -m 0700 -p',
+            'for specification in "${PRESENTATION_HOSTED_PACKAGES[@]}"; do',
+            'observed_hash="$(tr -d \'\\r\\n\' <"$hash_source")"',
+            'cp -a -- "$source" "$projection/hosted/pub.dev/$package"',
+            "/source/scripts/windows-presentation-pub-cache.py",
+            '--expected-digest "$PRESENTATION_PUB_CACHE_PROJECTION_SHA256"',
+            "files=346 directories=82 symlinks=0 size=5666684 packages=8",
+            "source_sha256=%s projection_sha256=%s packages=8 semantics=exact-probe-lock",
+        ),
+        "exact read-only app-cache projection",
+    )
+    require_order(
+        host,
+        (
+            '"$WINDOWS_HELPER_BUILD_UID:$WINDOWS_HELPER_BUILD_GID:500"',
+            'PRESENTATION_PUB_CACHE_ID="$(stat -c \'%d:%i:%u:%g:%a\' "$PRESENTATION_PUB_CACHE")"',
+            'windows_helper_authority_open',
+            'windows_helper_runtime_resolve "$ONLINE_DIR/build-images/win-helper.docker.tar.gz"',
+            "golden_has_contract",
+        ),
+        "presentation input authority before materialization",
+    )
+    require_order(
+        host,
+        (
+            "scripts/flutter-presentation-probe-windows-pubspec.lock",
+            "scripts/online-pub-cache-output.py",
+            "scripts/windows-presentation-pub-cache.py",
+            "verify_sha256",
+            '"$SOURCE_ROOT/scripts/flutter-presentation-probe-windows-pubspec.lock"',
+            "project_presentation_pub_cache",
+            "windows-presentation-source-manifest.py",
+        ),
+        "pinned lock and cache projection before source manifest",
+    )
+    require_order(
+        host,
+        (
+            "verify_unchanged_inputs() {",
+            'stat -c \'%d:%i:%u:%g:%a\' "$PRESENTATION_PUB_CACHE"',
+            '"$PRESENTATION_PUB_CACHE_ID"',
+            'die "Windows presentation source Pub-cache identity changed"',
+            "assert_clean_worktree",
+        ),
+        "post-run app-cache identity check",
+    )
+    require(
+        host,
+        '"presentation_pub_cache_sha256": pub_cache',
+        "host evidence app-cache identity",
+    )
+    require(
+        host,
+        '"presentation_pub_cache_projection_sha256": pub_cache_projection',
+        "host evidence projected app-cache identity",
+    )
+    require(
+        host,
+        '"presentation_pubspec_lock_sha256": pubspec_lock',
+        "host evidence exact-lock identity",
+    )
+    if host.count("SHA256_WINDOWS_PRESENTATION_PUBSPEC_LOCK") != 3:
+        raise VerificationError("Windows presentation exact-lock pin use is not exact")
+    presentation_package_identities = (
+        "characters-1.3.0:04a925763edad70e8443c99234dc3328f442e811f1d8fd1a72f1c8ad0f69a605",
+        "collection-1.18.0:ee67cb0715911d28db6bf4af1026078bd6f0128b07a5f66fb2ed94ec6783c09a",
+        "material_color_utilities-0.11.1:f7142bb1154231d7ea5f96bc7bde4bda2a0945d2806bb11670e30b850d56bdec",
+        "meta-1.15.0:bdb68674043280c3428e9ec998512fb681678676b3c54e773629ffe74419f8c7",
+        "plugin_platform_interface-2.1.8:4820fbfdb9478b1ebae27888254d445073732dae3d6ea81f0b7e06d5dedc3f02",
+        "url_launcher_platform_interface-2.3.2:552f8a1e663569be95a8190206a38187b531910283c3e982193e4f2733f01029",
+        "url_launcher_windows-3.1.4:3284b6d2ac454cf34f114e1d3319866fdd1e19cdc329999057e44ffe936cfa77",
+        "vector_math-2.1.4:80b3257d1492ce4d091729e3a67a60407d227c27241d6927be0130c98e741803",
+    )
+    if len(presentation_package_identities) != 8:
+        raise VerificationError("Windows presentation package identity inventory is not exact")
+    for identity in presentation_package_identities:
+        require(host, identity, f"projected hosted package identity {identity.split(':', 1)[0]}")
+        require(
+            pub_cache_projection,
+            identity.split(":", 1)[0],
+            f"independent projected package identity {identity.split(':', 1)[0]}",
+        )
+    require(
+        pub_cache_projection,
+        "summary.digest != expected_digest",
+        "projected cache digest validation",
+    )
+    require(
+        pub_cache_projection,
+        "summary.files != EXPECTED_FILES",
+        "projected cache file cardinality validation",
+    )
+    require(
+        pub_cache_projection,
+        "summary.directories != EXPECTED_DIRECTORIES",
+        "projected cache directory cardinality validation",
+    )
+    require(
+        pub_cache_projection,
+        "summary.symlinks != 0",
+        "projected cache symlink validation",
+    )
+    require(
+        pub_cache_projection,
+        "summary.size != EXPECTED_SIZE",
+        "projected cache byte cardinality validation",
+    )
+    require(
+        pub_cache_projection,
+        'exact_names(root, {"hosted", "hosted-hashes"}, "projection root", True)',
+        "projected cache exact-root validation",
     )
     require(host, "WINDOW_SIZE_COMMIT=eb3964990cf19629c89ff8cb4a37640c7b3d5601", "window-size commit")
     require(host, "WINDOW_SIZE_TREE=c1b4ec4f759387d00f1024ce539487242cd7ae1a", "window-size subtree")
@@ -235,13 +381,24 @@ def validate(sources: dict[str, str]) -> None:
             "Get-OneOutputRoot",
             "windows-presentation-source-manifest.py",
             "--verify",
+            "$sourcePubCache = Join-Path $sourceRoot 'pub-cache'",
+            "$expectedPubCacheIdentity = 'source_sha256=fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4 projection_sha256=29c1e79175d4331ff406662a758d2ae7804afc402fd1f96a30b96f0153c53dd0 packages=8 semantics=exact-probe-lock'",
+            "Get-ChildItem -LiteralPath $sourcePubCache -Force",
+            "'hosted,hosted-hashes'",
+            "$env:PUB_CACHE = Join-Path $workRoot 'pub-cache'",
+            "foreach ($cacheRoot in @('hosted', 'hosted-hashes'))",
+            "$expectedPackages = [ordered]@{",
+            "foreach ($package in $expectedPackages.Keys)",
             "flutter-presentation-probe-windows.dart",
             "presentation_recovery.dart",
             "flutter-presentation-probe-windows-pubspec.yaml",
+            "flutter-presentation-probe-windows-pubspec.lock",
+            "$probeLockBefore = (Get-FileHash -LiteralPath $probeLock -Algorithm SHA256).Hash.ToLowerInvariant()",
             "flutter-presentation-d3d11-preflight-windows.cpp",
             r"third_party\window_size",
             "$resolve = Start-Process -FilePath $flutter",
-            "'get', '--offline'",
+            "'get', '--offline', '--enforce-lockfile'",
+            "presentation Pub lock changed during enforced offline resolution",
             "'build', 'windows', '--release', '--no-pub'",
             "rustdesk_d3d11_preflight.exe",
             "windows-presentation-d3d11-preflight.json",
@@ -259,10 +416,21 @@ def validate(sources: dict[str, str]) -> None:
         ),
         "guest exact-source offline build order",
     )
-    require(runner, "$env:PUB_CACHE = Join-Path $env:LOCALAPPDATA 'Pub\\Cache'", "pinned golden pub cache")
-    require(runner, "url_launcher_windows-3.1.4", "pinned URL-launcher cache")
-    require(runner, "url_launcher_platform_interface-2.3.2", "pinned URL-launcher interface cache")
-    require(runner, "plugin_platform_interface-2.1.8", "pinned plugin interface cache")
+    forbid(runner, "Join-Path $env:LOCALAPPDATA 'Pub\\Cache'", "golden app-cache authority")
+    forbid(runner, "pinned golden pub cache", "retired golden app-cache diagnostic")
+    require(runner, "url_launcher_windows-3.1.4' = '3284b6d2ac454cf34f114e1d3319866fdd1e19cdc329999057e44ffe936cfa77'", "pinned URL-launcher cache")
+    require(runner, "url_launcher_platform_interface-2.3.2' = '552f8a1e663569be95a8190206a38187b531910283c3e982193e4f2733f01029'", "pinned URL-launcher interface cache")
+    require(runner, "plugin_platform_interface-2.1.8' = '4820fbfdb9478b1ebae27888254d445073732dae3d6ea81f0b7e06d5dedc3f02'", "pinned plugin interface cache")
+    require(
+        runner,
+        "if ($probeLockBefore -cne 'e1fbe433a385594ed67dfd0bfd9b65be5f9cd07865e6ee190c9193a737648038')",
+        "guest exact committed lock digest",
+    )
+    require(
+        runner,
+        "(Get-FileHash -LiteralPath $probeLock -Algorithm SHA256).Hash.ToLowerInvariant() -cne",
+        "guest enforced-lock postcondition",
+    )
     require(runner, "windows-presentation-pubspec.lock", "resolved graph receipt")
     require(runner, "Stop-Computer -Force", "disposable guest shutdown")
     require(runner, "'window_hresult'", "guest window outcome validation")
@@ -388,6 +556,26 @@ def validate(sources: dict[str, str]) -> None:
     require(sources["pubspec"], "path: third_party/window_size", "local window-size plugin")
     forbid(sources["pubspec"], "git:", "runtime dependency fetch")
     forbid(sources["pubspec"], "hosted:", "runtime hosted override")
+    if hashlib.sha256(pubspec_lock.encode("utf-8")).hexdigest() != (
+        "e1fbe433a385594ed67dfd0bfd9b65be5f9cd07865e6ee190c9193a737648038"
+    ):
+        raise VerificationError("committed Windows presentation lock digest differs")
+    for package in (
+        "characters",
+        "collection",
+        "desktop_multi_window",
+        "flutter",
+        "material_color_utilities",
+        "meta",
+        "plugin_platform_interface",
+        "sky_engine",
+        "texture_rgba_renderer",
+        "url_launcher_platform_interface",
+        "url_launcher_windows",
+        "vector_math",
+        "window_size",
+    ):
+        require(pubspec_lock, f"  {package}:\n", f"committed lock package {package}")
     require(sources["window_pubspec"], "sdk: '>=2.17.0 <4.0.0'", "legacy listener language mode")
     require(sources["size_pubspec"], "sdk: '>=2.12.0-0 <4.0.0'", "legacy window-size language mode")
     require(sources["size_pubspec"], "pluginClass: WindowSizePlugin", "window-size native plugin")
@@ -555,6 +743,86 @@ def self_test(sources: dict[str, str]) -> int:
         ),
         ("host", "assert_clean_worktree", "true # worktree check removed"),
         (
+            "pins",
+            'SHA256_WINDOWS_PRESENTATION_PUB_CACHE_CLOSURE_V1="fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4"',
+            'SHA256_WINDOWS_PRESENTATION_PUB_CACHE_CLOSURE_V1="0000000000000000000000000000000000000000000000000000000000000000"',
+        ),
+        (
+            "pins",
+            'SHA256_WINDOWS_PRESENTATION_PUBSPEC_LOCK="e1fbe433a385594ed67dfd0bfd9b65be5f9cd07865e6ee190c9193a737648038"',
+            'SHA256_WINDOWS_PRESENTATION_PUBSPEC_LOCK="0000000000000000000000000000000000000000000000000000000000000000"',
+        ),
+        (
+            "pins",
+            'SHA256_WINDOWS_PRESENTATION_PUB_CACHE_PROJECTION_V1="29c1e79175d4331ff406662a758d2ae7804afc402fd1f96a30b96f0153c53dd0"',
+            'SHA256_WINDOWS_PRESENTATION_PUB_CACHE_PROJECTION_V1="0000000000000000000000000000000000000000000000000000000000000000"',
+        ),
+        (
+            "pubspec_lock",
+            'version: "1.3.0"',
+            'version: "1.3.1"',
+        ),
+        (
+            "pub_cache_output",
+            "def check_complete(online: Path, uid: int, gid: int) -> TreeSummary:",
+            "def check_complete_removed(online: Path, uid: int, gid: int) -> TreeSummary:",
+        ),
+        (
+            "pub_cache_projection",
+            "summary.digest != expected_digest",
+            "False",
+        ),
+        (
+            "pub_cache_projection",
+            "summary.files != EXPECTED_FILES",
+            "False",
+        ),
+        (
+            "pub_cache_projection",
+            'exact_names(root, {"hosted", "hosted-hashes"}, "projection root", True)',
+            "# exact root validation removed",
+        ),
+        (
+            "host",
+            "check-complete --online /online",
+            "self-test # complete cache validation removed",
+        ),
+        (
+            "host",
+            "    project_presentation_pub_cache\n",
+            "    project_unverified_presentation_pub_cache\n",
+        ),
+        (
+            "host",
+            "        scripts/flutter-presentation-probe-windows-pubspec.lock \\\n",
+            "",
+        ),
+        (
+            "host",
+            "        scripts/online-pub-cache-output.py \\\n",
+            "",
+        ),
+        (
+            "host",
+            "        scripts/windows-presentation-pub-cache.py \\\n",
+            "",
+        ),
+        (
+            "host",
+            '--expected-digest "$PRESENTATION_PUB_CACHE_PROJECTION_SHA256"',
+            '--expected-digest "$PRESENTATION_PUB_CACHE_SHA256"',
+        ),
+        (
+            "host",
+            '"presentation_pub_cache_projection_sha256": pub_cache_projection',
+            '"presentation_pub_cache_projection_sha256_removed": pub_cache_projection',
+        ),
+        (
+            "host",
+            'die "Windows presentation source Pub-cache identity changed"',
+            "true # source Pub-cache postcondition removed",
+        ),
+        (
             "host",
             "WINDOW_SIZE_COMMIT=eb3964990cf19629c89ff8cb4a37640c7b3d5601",
             "WINDOW_SIZE_COMMIT=0000000000000000000000000000000000000000",
@@ -664,7 +932,46 @@ def self_test(sources: dict[str, str]) -> int:
             'print("windows presentation D3D11 preflight: validated")',
             'print("windows presentation D3D11 preflight: unchecked")',
         ),
-        ("runner", "'get', '--offline'", "'get'"),
+        (
+            "runner",
+            "$sourcePubCache = Join-Path $sourceRoot 'pub-cache'",
+            "$sourcePubCache = Join-Path $env:LOCALAPPDATA 'Pub\\Cache'",
+        ),
+        (
+            "runner",
+            "source_sha256=fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4 projection_sha256=29c1e79175d4331ff406662a758d2ae7804afc402fd1f96a30b96f0153c53dd0 packages=8 semantics=exact-probe-lock",
+            "source_sha256=fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4 projection_sha256=0000000000000000000000000000000000000000000000000000000000000000 packages=8 semantics=exact-probe-lock",
+        ),
+        (
+            "runner",
+            "'hosted,hosted-hashes'",
+            "'hosted,hosted-hashes,git'",
+        ),
+        (
+            "runner",
+            "foreach ($cacheRoot in @('hosted', 'hosted-hashes'))",
+            "foreach ($cacheRoot in @('hosted'))",
+        ),
+        (
+            "runner",
+            "flutter-presentation-probe-windows-pubspec.lock",
+            "removed-presentation-probe.lock",
+        ),
+        (
+            "runner",
+            "if ($probeLockBefore -cne 'e1fbe433a385594ed67dfd0bfd9b65be5f9cd07865e6ee190c9193a737648038')",
+            "if ($false)",
+        ),
+        (
+            "runner",
+            "presentation Pub lock changed during enforced offline resolution",
+            "presentation Pub lock postcondition removed",
+        ),
+        (
+            "runner",
+            "'get', '--offline', '--enforce-lockfile'",
+            "'get', '--offline'",
+        ),
         ("runner", "'build', 'windows', '--release', '--no-pub'", "'build', 'windows'"),
         (
             "runner",

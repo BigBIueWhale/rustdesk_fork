@@ -16676,6 +16676,53 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   behavior ran; the unchanged zero-interface native presentation transaction and every broader stop-ship gap
   remain required.
 
+  The first exact v3 presentation invocation from pushed pin commit
+  `fe31205ee0ad1154eccc1753be443884aaae2f21`, tree
+  `4621074aafeb714f39803b9a099a017caec80264`, failed closed after verifying its exact 159-file
+  source manifest and before Flutter version, dependency resolution, build, D3D11 preflight, app launch,
+  window, pixel, focus/minimize, pointer, or latency work. Its unprivileged session domain UUID
+  `6c5f5888-f283-4e7c-ab7f-fc8aa8e820f3` had zero network interfaces, zero host-device/filesystem
+  passthroughs, and VNC parent/child plus the sole new listener exactly on `127.0.0.1:5900`. It shut down
+  and was undefined; no scoped QEMU/wrapper process or listener survived. The exact guest failure was
+  `pinned golden pub cache lacks characters-1.3.0`.
+
+  That failure exposed a wrong input abstraction rather than a corrupt golden or single missing download.
+  R-S11cy's current 95-package golden input is deliberately the exact `flutter_tools` lock projection and
+  excludes every app-only package. Six of the presentation probe's eight hosted packages are therefore
+  correctly absent from the v3 golden, while prior v2 presentation runs happened to inherit a historical
+  broader cache. The presentation runner must not make the persistent golden tool cache app dependency
+  authority.
+
+  The pending correction gives the probe its own exact, disposable dependency boundary. The exact
+  13-package lock reproduced byte-identically by four prior native runs is now committed and pinned at
+  SHA-256 `e1fbe433a385594ed67dfd0bfd9b65be5f9cd07865e6ee190c9193a737648038`.
+  The host first validates the existing read-only current app Pub-cache at structural digest
+  `fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4`, then projects only the
+  lock-selected eight hosted package trees and their exact publisher hashes onto the bounded source ISO.
+  Two fresh networkless projections independently produced exact SHA-256
+  `29c1e79175d4331ff406662a758d2ae7804afc402fd1f96a30b96f0153c53dd0`, 346 files, 82 directories,
+  zero symlinks, and 5,666,684 bytes. A separate read-only validator binds those exact bytes,
+  cardinalities, roots, eight package directories, and eight hash records after copying and before source-
+  manifest creation. The guest's exact source-manifest verdict covers every projected byte and its identity
+  binds both the full source-cache and projection pins. It copies only those two cache roots into private
+  per-run state, never consults `%LOCALAPPDATA%` for app dependencies, installs the committed lock before
+  resolution, runs `flutter pub get --offline --enforce-lockfile`, and rejects any lock-byte change afterward.
+  The golden remains unchanged and correctly owns only toolchain/tool-cache readiness.
+
+  Source verification of this correction is green but is not native evidence. The focused verifier rejects
+  108 deliberate mutations, Bash parses, and the runner parses in exact PowerShell image
+  `sha256:810c4f1e0c9d23022c3ec18c50a6205ee4b60766f1739d329b2948df1fd7d5b0`.
+  The exact Windows helper independently returned the full-cache digest. A numeric-nonroot, capability-free,
+  no-new-privileges, read-only-input, `--network=none` replay admitted exact Debian-builder image
+  `sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`, resolved the separate
+  95-package Flutter-tools lock, then resolved the probe from only the eight-package projection with the exact
+  app lock unchanged and hosted metadata still absent. The real source-manifest writer/verifier independently
+  accepted a 350-file projection fixture. A fresh networkless semantic check accepted the exact projected tree
+  and rejected a changed hash record; the pinned production Windows-helper image independently accepted the
+  same exact projection. A clean committed rerun of the unchanged zero-interface native
+  presentation transaction remains mandatory; none of these source/input results establishes Windows pixels
+  or closes the reported cross-platform display-freshness risk.
+
 - **R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence — HARNESS SOURCE
   IMPLEMENTED; EXACT COMMITTED GREEN EXECUTION PENDING; ALL NON-LINUX/NATIVE/RELEASE GAPS REMAIN
   STOP-SHIP.** The user explicitly requires the connection flow to be correct and performant as a

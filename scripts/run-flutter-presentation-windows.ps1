@@ -88,24 +88,51 @@ try {
     $env:FLUTTER_SUPPRESS_ANALYTICS = 'true'
     $env:PUB_ENVIRONMENT = 'rustdesk_windows_presentation_probe'
     $env:PATH = "C:\flutter\bin;C:\Program Files\Git\cmd;$env:PATH"
-    $env:PUB_CACHE = Join-Path $env:LOCALAPPDATA 'Pub\Cache'
-    foreach ($package in @(
-        'characters-1.3.0',
-        'collection-1.18.0',
-        'material_color_utilities-0.11.1',
-        'meta-1.15.0',
-        'plugin_platform_interface-2.1.8',
-        'url_launcher_platform_interface-2.3.2',
-        'url_launcher_windows-3.1.4',
-        'vector_math-2.1.4'
-    )) {
+    $sourcePubCache = Join-Path $sourceRoot 'pub-cache'
+    $sourcePubCacheIdentity = Join-Path $sourceRoot 'pub-cache.identity'
+    $expectedPubCacheIdentity = 'source_sha256=fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4 projection_sha256=29c1e79175d4331ff406662a758d2ae7804afc402fd1f96a30b96f0153c53dd0 packages=8 semantics=exact-probe-lock'
+    if (([IO.File]::ReadAllText($sourcePubCacheIdentity, [Text.Encoding]::ASCII).Trim()) -cne
+        $expectedPubCacheIdentity) {
+        Fail 'exact-manifested presentation Pub-cache identity differs'
+    }
+    $sourceCacheRoots = @(
+        Get-ChildItem -LiteralPath $sourcePubCache -Force |
+            Sort-Object -Property Name |
+            ForEach-Object { $_.Name }
+    )
+    if (($sourceCacheRoots -join ',') -cne 'hosted,hosted-hashes') {
+        Fail 'exact-manifested presentation Pub-cache roots differ'
+    }
+    $env:PUB_CACHE = Join-Path $workRoot 'pub-cache'
+    New-Item -ItemType Directory -Path $env:PUB_CACHE | Out-Null
+    foreach ($cacheRoot in @('hosted', 'hosted-hashes')) {
+        Copy-Item -LiteralPath (Join-Path $sourcePubCache $cacheRoot) `
+            -Destination (Join-Path $env:PUB_CACHE $cacheRoot) -Recurse -Force
+    }
+    $expectedPackages = [ordered]@{
+        'characters-1.3.0' = '04a925763edad70e8443c99234dc3328f442e811f1d8fd1a72f1c8ad0f69a605'
+        'collection-1.18.0' = 'ee67cb0715911d28db6bf4af1026078bd6f0128b07a5f66fb2ed94ec6783c09a'
+        'material_color_utilities-0.11.1' = 'f7142bb1154231d7ea5f96bc7bde4bda2a0945d2806bb11670e30b850d56bdec'
+        'meta-1.15.0' = 'bdb68674043280c3428e9ec998512fb681678676b3c54e773629ffe74419f8c7'
+        'plugin_platform_interface-2.1.8' = '4820fbfdb9478b1ebae27888254d445073732dae3d6ea81f0b7e06d5dedc3f02'
+        'url_launcher_platform_interface-2.3.2' = '552f8a1e663569be95a8190206a38187b531910283c3e982193e4f2733f01029'
+        'url_launcher_windows-3.1.4' = '3284b6d2ac454cf34f114e1d3319866fdd1e19cdc329999057e44ffe936cfa77'
+        'vector_math-2.1.4' = '80b3257d1492ce4d091729e3a67a60407d227c27241d6927be0130c98e741803'
+    }
+    foreach ($package in $expectedPackages.Keys) {
         $packagePath = Join-Path $env:PUB_CACHE "hosted\pub.dev\$package"
         if (-not (Test-Path -LiteralPath $packagePath -PathType Container)) {
-            Fail "pinned golden pub cache lacks $package"
+            Fail "exact-manifested presentation Pub cache lacks $package"
         }
         $packageItem = Get-Item -LiteralPath $packagePath -Force
         if (($packageItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
-            Fail "pinned golden pub-cache package is a reparse point: $package"
+            Fail "exact-manifested presentation Pub-cache package is a reparse point: $package"
+        }
+        $hashPath = Join-Path $env:PUB_CACHE "hosted-hashes\pub.dev\$package.sha256"
+        if (-not (Test-Path -LiteralPath $hashPath -PathType Leaf) -or
+            ([IO.File]::ReadAllText($hashPath, [Text.Encoding]::ASCII).Trim()) -cne
+                $expectedPackages[$package]) {
+            Fail "exact-manifested presentation Pub-cache hash differs: $package"
         }
     }
 
@@ -139,6 +166,13 @@ try {
         -Destination (Join-Path $appRoot 'lib\presentation_recovery.dart') -Force
     Copy-Item -LiteralPath (Join-Path $sourceRoot 'scripts\flutter-presentation-probe-windows-pubspec.yaml') `
         -Destination (Join-Path $appRoot 'pubspec.yaml') -Force
+    $probeLock = Join-Path $appRoot 'pubspec.lock'
+    Copy-Item -LiteralPath (Join-Path $sourceRoot 'scripts\flutter-presentation-probe-windows-pubspec.lock') `
+        -Destination $probeLock -Force
+    $probeLockBefore = (Get-FileHash -LiteralPath $probeLock -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($probeLockBefore -cne 'e1fbe433a385594ed67dfd0bfd9b65be5f9cd07865e6ee190c9193a737648038') {
+        Fail 'committed presentation Pub lock digest differs'
+    }
     Copy-Item -LiteralPath (Join-Path $sourceRoot 'scripts\flutter-presentation-d3d11-preflight-windows.cpp') `
         -Destination (Join-Path $appRoot 'windows\runner\d3d11_preflight.cpp') -Force
     Add-Content -LiteralPath (Join-Path $appRoot 'windows\runner\CMakeLists.txt') -Encoding ASCII -Value @'
@@ -161,14 +195,19 @@ install(TARGETS rustdesk_d3d11_preflight RUNTIME DESTINATION "${CMAKE_INSTALL_PR
     Copy-Item -LiteralPath (Join-Path $sourceRoot 'third_party\window_size') `
         -Destination (Join-Path $thirdParty 'window_size') -Recurse -Force
 
-    $resolve = Start-Process -FilePath $flutter -ArgumentList @('pub', 'get', '--offline') `
+    $resolve = Start-Process -FilePath $flutter `
+        -ArgumentList @('pub', 'get', '--offline', '--enforce-lockfile') `
         -WorkingDirectory $appRoot -Wait -PassThru -NoNewWindow `
         -RedirectStandardOutput (Join-Path $outputRoot 'windows-presentation-pub.stdout.txt') `
         -RedirectStandardError (Join-Path $outputRoot 'windows-presentation-pub.stderr.txt')
     if ($resolve.ExitCode -ne 0) {
         Fail "offline Flutter dependency resolution failed with exit $($resolve.ExitCode)"
     }
-    Copy-Item -LiteralPath (Join-Path $appRoot 'pubspec.lock') `
+    if ((Get-FileHash -LiteralPath $probeLock -Algorithm SHA256).Hash.ToLowerInvariant() -cne
+        $probeLockBefore) {
+        Fail 'presentation Pub lock changed during enforced offline resolution'
+    }
+    Copy-Item -LiteralPath $probeLock `
         -Destination (Join-Path $outputRoot 'windows-presentation-pubspec.lock') -Force
 
     $build = Start-Process -FilePath $flutter -ArgumentList @('build', 'windows', '--release', '--no-pub') `

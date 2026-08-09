@@ -234,6 +234,7 @@ install(TARGETS rustdesk_d3d11_preflight RUNTIME DESTINATION "${CMAKE_INSTALL_PR
         -WorkingDirectory $releaseRoot `
         -RedirectStandardOutput $d3d11PreflightOutput `
         -RedirectStandardError (Join-Path $outputRoot 'windows-presentation-d3d11-preflight.stderr.txt')
+    [void]$d3d11PreflightRun.Handle
     $d3d11PreflightExit = $null
     try {
         if (-not $d3d11PreflightRun.WaitForExit(30000)) {
@@ -253,8 +254,8 @@ install(TARGETS rustdesk_d3d11_preflight RUNTIME DESTINATION "${CMAKE_INSTALL_PR
     } finally {
         $d3d11PreflightRun.Dispose()
     }
-    if ($null -eq $d3d11PreflightExit) {
-        Fail 'native D3D11 preflight produced no exit status'
+    if ($null -eq $d3d11PreflightExit -or $d3d11PreflightExit -isnot [int]) {
+        Fail 'native D3D11 preflight produced no typed exit status'
     }
     if ($d3d11PreflightExit -ne 0) {
         Fail "native D3D11 preflight failed with exit $d3d11PreflightExit"

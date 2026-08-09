@@ -16716,7 +16716,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   The golden remains unchanged and correctly owns only toolchain/tool-cache readiness.
 
   Source verification of this correction is green but is not native evidence. The focused verifier rejects
-  108 deliberate mutations, Bash parses, and the runner parses in exact PowerShell image
+  109 deliberate mutations, Bash parses, and the runner parses in exact PowerShell image
   `sha256:810c4f1e0c9d23022c3ec18c50a6205ee4b60766f1739d329b2948df1fd7d5b0`.
   The exact Windows helper independently returned the full-cache digest. A numeric-nonroot, capability-free,
   no-new-privileges, read-only-input, `--network=none` replay admitted exact Debian-builder image
@@ -16743,6 +16743,17 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   30-second bound, exact-process kill/wait finality, refresh, disposal, null rejection, and nonzero rejection.
   A new clean committed native run remains required; no app pixel, focus/minimize, pointer, or recovery-latency
   evidence exists yet.
+
+  The next clean run from pushed commit `79ec923f4f250d93d0c63636ff14cda5f81fe900` proved the relaxed
+  wrapper-type predicate was not the cause: after another exact offline build and complete D3D envelope, the
+  captured exit value was still null. The behavior matches PowerShell's upstream `Start-Process -PassThru`
+  defect: its Windows P/Invoke path could return a fetched `Process` without initializing the underlying
+  handle, so `ExitCode` stayed null; upstream fixed it by reading `process.Handle` to trigger
+  `SetProcessHandle` ([PowerShell #20749](https://github.com/PowerShell/PowerShell/pull/20749/files/d86c58fba9ab15909fb232d7fe4191f83b39b413)).
+  The exact one-line handle acquisition is now mirrored before the bounded wait, and the strict null-or-non-
+  `[int]` rejection is restored. All timeout, kill/wait, refresh, disposal, and nonzero checks remain. Cleanup
+  again left no VM, process, or listener. A clean committed native run remains required; the controller/app
+  still has not launched and no product presentation verdict exists.
 
 - **R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence — HARNESS SOURCE
   IMPLEMENTED; EXACT COMMITTED GREEN EXECUTION PENDING; ALL NON-LINUX/NATIVE/RELEASE GAPS REMAIN

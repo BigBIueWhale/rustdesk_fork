@@ -402,13 +402,14 @@ def validate(sources: dict[str, str]) -> None:
             "'build', 'windows', '--release', '--no-pub'",
             "rustdesk_d3d11_preflight.exe",
             "windows-presentation-d3d11-preflight.json",
+            "[void]$d3d11PreflightRun.Handle",
             "$d3d11PreflightRun.WaitForExit(30000)",
             "$d3d11PreflightRun.Kill()",
             "$d3d11PreflightRun.WaitForExit(5000)",
             "$d3d11PreflightRun.WaitForExit()",
             "$d3d11PreflightRun.Refresh()",
             "$d3d11PreflightRun.Dispose()",
-            "native D3D11 preflight produced no exit status",
+            "native D3D11 preflight produced no typed exit status",
             "'format,default_adapter,warp'",
             "'rustdesk-windows-d3d11-preflight-v1'",
             "'^0x[0-9A-F]{8}$'",
@@ -438,8 +439,8 @@ def validate(sources: dict[str, str]) -> None:
     require(runner, "$attempt.pixel_matches -isnot [bool]", "guest pixel-verdict type validation")
     require(
         runner,
-        "if ($null -eq $d3d11PreflightExit)",
-        "guest non-null diagnostic exit status",
+        "if ($null -eq $d3d11PreflightExit -or $d3d11PreflightExit -isnot [int])",
+        "guest typed diagnostic exit status",
     )
     if runner.count("'^0x[0-9A-F]{8}$'") != 3:
         raise VerificationError("D3D11 guest HRESULT validators are not exact")
@@ -1005,7 +1006,12 @@ def self_test(sources: dict[str, str]) -> int:
         ),
         (
             "runner",
-            "if ($null -eq $d3d11PreflightExit)",
+            "[void]$d3d11PreflightRun.Handle",
+            "# process handle acquisition removed",
+        ),
+        (
+            "runner",
+            "if ($null -eq $d3d11PreflightExit -or $d3d11PreflightExit -isnot [int])",
             "if ($false)",
         ),
         (

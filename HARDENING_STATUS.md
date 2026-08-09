@@ -9,16 +9,18 @@ history remains the traceability record for that intermediate work.
 
 ## Current Verdict
 
-> **STOP-SHIP EVIDENCE STATUS (2026-08-05).** The current tree is not release-ready merely because
+> **STOP-SHIP EVIDENCE STATUS (2026-08-09).** The current tree is not release-ready merely because
 > its source, semantic, mutation, compile, and confined protocol gates are extensive. The user has
 > explicitly identified the accumulated change volume without current native end-to-end testing as
 > a release risk, and that assessment is correct. Recent evidence proves many individual source
 > invariants and includes a real Linux controlled-server protocol/runtime smoke at the exact older
-> product parent named in the R-S11b/R-B4 record below. It does **not** prove the current Android app
-> lifecycle on a device; current Windows viewer focus/minimize/texture behavior; current macOS/iOS
-> behavior; a real capture-through-decode-through-presentation session; an installed current Linux
-> service across the required desktops/init systems; sustained reconnect/focus/performance behavior;
-> or the clean exact-commit Debian/Android/Windows R-B2/R-B10 artifact transaction. Those are
+> product parent named in the R-S11b/R-B4 record below. Exact-current confined Linux/X11 evidence now
+> proves one real capture-through-encode-through-keyed-transport-through-decode-through-Flutter-texture
+> presentation session, including a bounded focus-loss cycle and joined teardown. It does **not** prove
+> the current Android app lifecycle on a device; current Windows viewer focus/minimize/native-texture
+> behavior; current macOS/iOS behavior; analogous native presentation on those platforms; an installed
+> current Linux service across the required desktops/init systems; sustained reconnect/focus/performance
+> behavior; or the clean exact-commit Debian/Android/Windows R-B2/R-B10 artifact transaction. Those are
 > release-blocking evidence gaps, not details that source reasoning may waive.
 >
 > The exact product/source candidate at the start of this evidence audit was clean pushed commit
@@ -473,6 +475,20 @@ history remains the traceability record for that intermediate work.
 > exact release artifacts, independent reproduction, or external review. It therefore narrows but
 > does not reproduce or close the user's Android/Windows display-only delay, and the tree remains
 > STOP-SHIP.
+>
+> The later exact-current full-peer transaction at clean pushed commit
+> `11b20830f5d1c5354cbcee872557b28b6923f8a1` closes the Linux-only composition gap left by
+> those two separate probes. Its real viewer authenticated through the accessible password prompt,
+> consumed live controlled-side capture/encode/keyed-transport/decode output through the production
+> Flutter texture into X11 pixels, remained connected across 2,000 ms of externally induced focus loss,
+> observed a real pointer operation, and joined viewer, server, capture source, and both Xvfb owners.
+> First fresh pixels arrived in 163 ms; maximum measured age was 286 ms, blurred age was 82 ms, and
+> focus-return recovery was 0 ms. The controlled peer exposed only `127.0.0.1:21118` inside its
+> external-interface-free `--network=none` namespace, had zero UDP sockets and no published port, and
+> closed that listener before retirement. This is exact-current Linux/X11 software-renderer evidence,
+> not Android task-swipe/Force-Stop, Windows native focus/minimize, Apple, native device/VM, repeated
+> reconnect/soak, installed service, cross-version, release-artifact, independent, or external-review
+> evidence. The reported Android/Windows delayed-presentation risk and broader release remain STOP-SHIP.
 >
 > **Continuation rule:** prioritize exact-current evidence and test-harness/input closure over
 > additional product behavior changes. A further product change requires a separately source-proven
@@ -17495,6 +17511,33 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   through `online-vcpkg-native-output.py check-complete`. The evidence-only pin and focused mutation
   gate now bind that checked projection. This is harness-input drift and correction, not a product
   failure or pass; another exact committed full-peer transaction remains required after the correction.
+
+  The corrected exact committed transaction then ran pushed commit
+  `11b20830f5d1c5354cbcee872557b28b6923f8a1`, tree
+  `53cc48bbd8991e153fce9bcdd519f864b0830811`, from canonical source archive SHA-256
+  `003ae61ec95769560f7f35f4d8c57867fc342ef707e841a76069406f515b2a38`. Both persistent-input
+  checks accepted the current vcpkg projection and every other consumed input around the complete
+  transaction. The fresh networkless release Rust build finished in 5m11s with the existing 65-warning
+  application inventory; Flutter produced the exact 79-file bundle. The viewer authenticated through
+  the real accessible password prompt via XTest with no password argument, observed first fresh pixels
+  in 163 ms, reached four distinct current frames, and stayed on the same connection through 2,000 ms
+  of externally induced focus loss. Blurred age was 82 ms, focus-return recovery was 0 ms, total maximum
+  age was 286 ms, and a real pointer operation was observed. The actual capture, encode, keyed transport,
+  decode, Flutter texture, X11 pixels, viewer/server/source/Xvfb joins, and listener retirement all
+  reached their terminal receipts. `dbus-run-session` emitted one `ignoring unknown child process`
+  diagnostic during teardown, so no warning-free or diagnostic-clean claim is made; the viewer and
+  server nevertheless reached their exact joined terminal results and the transaction exited zero.
+
+  Runtime confinement was re-observed at the exact commit: numeric nonroot, read-only roots/source,
+  dropped capabilities, no-new-privileges, bounded resources, no device, Docker-socket mount, host
+  namespace, or published port. The server had only interface `lo`, exactly
+  `127.0.0.1:21118`, and zero UDP; the viewer shared only that owned network-none namespace and the
+  listener was closed before retirement. The separately disposable five-package Xvfb producer ended
+  with zero listening TCP and zero UDP sockets. No host RustDesk process/service/configuration/listener,
+  display, firewall, route, or network state was inspected or changed. This advances exact-current
+  Linux/X11 evidence only. Android task-swipe/persistent-service/Force-Stop/reopen, native Windows
+  focus/minimize, repeated reconnect/resource soak, file-transfer coexistence, installed service,
+  macOS/iOS, cold R-B2 artifacts, independent reproduction, and external review remain release blockers.
 
 - **R-B10 exact-current canonical online-input reconciliation — OPERATIONAL ACQUISITION,
   PRESERVATION-FIRST REPLACEMENT, AND COMPLETE CLOSURE VERIFICATION GREEN 2026-08-08;

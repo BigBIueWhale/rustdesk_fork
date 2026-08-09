@@ -253,8 +253,8 @@ install(TARGETS rustdesk_d3d11_preflight RUNTIME DESTINATION "${CMAKE_INSTALL_PR
     } finally {
         $d3d11PreflightRun.Dispose()
     }
-    if ($null -eq $d3d11PreflightExit -or $d3d11PreflightExit -isnot [int]) {
-        Fail 'native D3D11 preflight produced no typed exit status'
+    if ($null -eq $d3d11PreflightExit) {
+        Fail 'native D3D11 preflight produced no exit status'
     }
     if ($d3d11PreflightExit -ne 0) {
         Fail "native D3D11 preflight failed with exit $d3d11PreflightExit"

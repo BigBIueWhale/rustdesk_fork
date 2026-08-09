@@ -16725,9 +16725,24 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   app lock unchanged and hosted metadata still absent. The real source-manifest writer/verifier independently
   accepted a 350-file projection fixture. A fresh networkless semantic check accepted the exact projected tree
   and rejected a changed hash record; the pinned production Windows-helper image independently accepted the
-  same exact projection. A clean committed rerun of the unchanged zero-interface native
-  presentation transaction remains mandatory; none of these source/input results establishes Windows pixels
-  or closes the reported cross-platform display-freshness risk.
+  same exact projection. At that source checkpoint, a clean committed rerun of the unchanged zero-interface
+  native presentation transaction remained mandatory; none of those source/input results established Windows
+  pixels or closed the reported cross-platform display-freshness risk.
+
+  The clean rerun from pushed corrected-pin commit
+  `879749916259ca63ed367e022def8906f3cdc2df`, tree
+  `685de2129a755dd60df24b9ecaab93afd740732a`, passed the production projection check and exact 509-file
+  source manifest, admitted zero NIC/host-device/filesystem passthrough, exposed only VNC on
+  `127.0.0.1:5900`, resolved the exact lock offline, and built the native release Flutter probe in 57.8
+  seconds. It then stopped before controller/app launch because the D3D child wrote a complete diagnostic
+  envelope but the runner's combined null-or-exact-PowerShell-`[int]` wrapper check rejected its captured
+  exit status. The retained D3D result reported successful window/factory/device/swap-chain construction for
+  default and WARP attempts, `Present` status `0x087A0001`, and no matching desktop pixel for either attempt;
+  this is diagnostic evidence, not a passing compositor transaction. Exact cleanup left no VM, process, or
+  listener. The narrow correction removes only the redundant exact-wrapper-type predicate and retains the
+  30-second bound, exact-process kill/wait finality, refresh, disposal, null rejection, and nonzero rejection.
+  A new clean committed native run remains required; no app pixel, focus/minimize, pointer, or recovery-latency
+  evidence exists yet.
 
 - **R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence — HARNESS SOURCE
   IMPLEMENTED; EXACT COMMITTED GREEN EXECUTION PENDING; ALL NON-LINUX/NATIVE/RELEASE GAPS REMAIN

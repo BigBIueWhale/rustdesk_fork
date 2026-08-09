@@ -127,22 +127,17 @@ tar -xf (Join-Path $tc 'flutter-pub-cache.tar.gz') -C $pc
 if (-not (Test-Path (Join-Path $pc 'hosted\pub.dev\test-1.25.7'))) { Die 'flutter_tools pub cache extraction failed -- test-1.25.7 absent after tar; the offline resolve would fail "version solving failed"' }
 Log "flutter_tools pub cache extracted to $pc"
 
-# STAMP the staged advisory cache FRESH. The staged flutter-pub-cache.tar.gz includes pub's metadata cache
-# (hosted\pub.dev\.cache\), incl. the security-ADVISORY cache (archive-advisories.json + http-advisories.json).
-# `dart pub get` refreshes the advisory cache whenever it is older than pub's TTL -- and the deterministic
-# staging tar pins EVERY file's mtime to 2023-11 (R-B12 byte-reproducibility), so the extracted advisory cache
-# reads as EXPIRED. dart then re-fetches it from pub.dev, and a fresh-Win11 guest's HTTPS handshake to pub.dev
-# FAILS ("Handshake error in client (OS Error: ...)") -> the resolve dies (exit 69). This ONE fatal advisory
-# fetch killed EVERY provision at the flutter_tools resolve. FIX: stamp the advisory cache to NOW so dart treats
-# it as fresh and NEVER reaches pub.dev. VERIFIED in the rdwinvm SSH VM: extract + touch .cache + :443 blocked
-# -> "Got dependencies!", rc=0 (touching only *-advisories.json suffices -- the *-versions.json listings are
-# tolerated stale under --offline -- but stamping the whole .cache dir is belt-and-suspenders + cheap).
-$advCache = Join-Path $pc 'hosted\pub.dev\.cache'
-if (-not (Test-Path $advCache)) { Die 'staged pub cache lacks hosted\pub.dev\.cache -- the advisory cache is absent; dart would re-fetch it and the fresh-Win11 TLS to pub.dev would kill the resolve' }
-Get-ChildItem $advCache -File | ForEach-Object { $_.LastWriteTime = Get-Date }
-Log 'stamped the staged advisory cache fresh (severs the resolve from pub.dev''s advisory fetch)'
+# The exact 95-package projection deliberately excludes hosted\pub.dev\.cache. That metadata is
+# time-varying and an old-but-present advisory response can make Pub apply its TTL and attempt a
+# refresh even during an offline resolve. Absence is therefore part of the pinned archive contract,
+# and the separate networkless semantic replay proves this exact package/hash closure resolves the
+# flutter_tools lock without it. Reject ambient or reintroduced metadata instead of manufacturing
+# freshness by changing timestamps inside the golden.
+$metadataCache = Join-Path $pc 'hosted\pub.dev\.cache'
+if (Test-Path -LiteralPath $metadataCache) { Die 'staged flutter_tools Pub cache unexpectedly contains hosted metadata; exact metadata-free projection required' }
+Log 'verified the staged flutter_tools Pub cache is metadata-free'
 
-Log 'resolving flutter_tools OFFLINE (0 pub.dev traffic: complete staged cache + fresh advisory stamp)'
+Log 'resolving flutter_tools OFFLINE (0 pub.dev traffic: complete staged package closure, no hosted metadata cache)'
 # Run dart via Start-Process: a CHILD process whose stderr goes to the console, never this script's `*>&1 | Tee`
 # pipeline (where, under ErrorActionPreference=Stop, a native stderr line becomes a FATAL NativeCommandError --
 # the original provision killer; a command-level 2>&1 does NOT prevent it, Start-Process does). -Wait is

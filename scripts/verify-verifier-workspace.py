@@ -34655,6 +34655,7 @@ def validate_online_fetch_flutter_pub_cache_output_authority_contract(sources):
     ]
     helper = sources["online_flutter_pub_cache_output_helper"]
     online = sources["online_fetch"]
+    win_guest = sources["win_guest_setup"]
     try:
         focused_module = ast.parse(focused)
         ast.parse(helper)
@@ -34871,6 +34872,34 @@ def validate_online_fetch_flutter_pub_cache_output_authority_contract(sources):
         ),
     ):
         require_text(helper, text, label)
+    for text, label in (
+        (
+            "$metadataCache = Join-Path $pc 'hosted\\pub.dev\\.cache'",
+            "Windows metadata-cache identity",
+        ),
+        (
+            "if (Test-Path -LiteralPath $metadataCache) { Die 'staged flutter_tools Pub cache unexpectedly contains hosted metadata; exact metadata-free projection required' }",
+            "Windows metadata-free postcondition",
+        ),
+        (
+            "'pub','get','--offline','--enforce-lockfile'",
+            "Windows exact offline resolution",
+        ),
+        (
+            'if ($pg.ExitCode -ne 0) { Die "flutter_tools offline pub get failed',
+            "Windows offline-resolution status",
+        ),
+    ):
+        require_text(win_guest, text, label)
+    for text, label in (
+        ("$advCache", "obsolete Windows advisory-cache authority"),
+        ("LastWriteTime = Get-Date", "Windows time-based cache authority"),
+        (
+            "stamped the staged advisory cache fresh",
+            "Windows advisory-cache freshness claim",
+        ),
+    ):
+        require_absent(win_guest, text, label)
     require_text(
         sources["verify"],
         "/usr/bin/python3 -I -S "
@@ -68257,6 +68286,18 @@ def run_source_mutations(sources):
             "metadata-free projection roots",
         ),
         (
+            "win_guest_setup",
+            "if (Test-Path -LiteralPath $metadataCache) { Die 'staged flutter_tools Pub cache unexpectedly contains hosted metadata; exact metadata-free projection required' }",
+            "if (-not (Test-Path -LiteralPath $metadataCache)) { Die 'staged flutter_tools Pub cache unexpectedly lacks hosted metadata' }",
+            "Windows metadata-free postcondition",
+        ),
+        (
+            "win_guest_setup",
+            "'pub','get','--offline','--enforce-lockfile'",
+            "'pub','get','--enforce-lockfile'",
+            "Windows exact offline resolution",
+        ),
+        (
             "online_flutter_pub_cache_output_helper",
             'mutable[100:108] = b"0000754\\0"',
             'mutable[100:108] = b"0000755\\0"',
@@ -71838,6 +71879,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "online_flutter_pub_cache_output_helper": (
                 repo / "scripts/online-flutter-pub-cache-output.py"
+            ).read_text(encoding="utf-8"),
+            "win_guest_setup": (
+                repo / "scripts/win-guest-setup.ps1"
             ).read_text(encoding="utf-8"),
             "online_fetch_cargo_tool_output_authority_verifier": (
                 repo / "scripts/verify-online-fetch-cargo-tool-output-authority.py"

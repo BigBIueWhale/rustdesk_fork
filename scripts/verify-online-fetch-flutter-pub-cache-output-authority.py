@@ -80,6 +80,7 @@ def validate(sources: Dict[str, str]) -> None:
     hardening = sources["hardening"]
     workspace = sources["workspace"]
     focused = sources["focused"]
+    win_guest = sources["win_guest"]
     try:
         ast.parse(helper)
         focused_module = ast.parse(focused)
@@ -371,6 +372,50 @@ def validate(sources: Dict[str, str]) -> None:
 
     for token, label in (
         (
+            "$metadataCache = Join-Path $pc 'hosted\\pub.dev\\.cache'",
+            "Windows metadata-cache identity",
+        ),
+        (
+            "if (Test-Path -LiteralPath $metadataCache) { Die 'staged flutter_tools Pub cache unexpectedly contains hosted metadata; exact metadata-free projection required' }",
+            "Windows metadata-free postcondition",
+        ),
+        (
+            "Log 'verified the staged flutter_tools Pub cache is metadata-free'",
+            "Windows metadata-free receipt",
+        ),
+        (
+            "'pub','get','--offline','--enforce-lockfile'",
+            "Windows exact offline resolver",
+        ),
+        (
+            'if ($pg.ExitCode -ne 0) { Die "flutter_tools offline pub get failed',
+            "Windows offline resolver status",
+        ),
+    ):
+        require(win_guest, token, label)
+    for token, label in (
+        ("$advCache", "obsolete Windows advisory-cache authority"),
+        ("LastWriteTime = Get-Date", "Windows time-based cache authority"),
+        (
+            "stamped the staged advisory cache fresh",
+            "Windows advisory-cache freshness claim",
+        ),
+    ):
+        require_absent(win_guest, token, label)
+    require_order(
+        win_guest,
+        (
+            "tar -xf (Join-Path $tc 'flutter-pub-cache.tar.gz') -C $pc",
+            "$metadataCache = Join-Path $pc 'hosted\\pub.dev\\.cache'",
+            "if (Test-Path -LiteralPath $metadataCache)",
+            "'pub','get','--offline','--enforce-lockfile'",
+            "if ($pg.ExitCode -ne 0)",
+        ),
+        "Windows metadata-free extraction and offline resolution",
+    )
+
+    for token, label in (
+        (
             "/usr/bin/python3 -I -S scripts/online-flutter-pub-cache-output.py self-test",
             "transaction self-test wiring",
         ),
@@ -549,6 +594,18 @@ def mutations() -> Tuple[Mutation, ...]:
             "metadata-free projection roots",
         ),
         Mutation(
+            "win_guest",
+            "if (Test-Path -LiteralPath $metadataCache) { Die 'staged flutter_tools Pub cache unexpectedly contains hosted metadata; exact metadata-free projection required' }",
+            "if (-not (Test-Path -LiteralPath $metadataCache)) { Die 'staged flutter_tools Pub cache unexpectedly lacks hosted metadata' }",
+            "Windows metadata-free postcondition",
+        ),
+        Mutation(
+            "win_guest",
+            "'pub','get','--offline','--enforce-lockfile'",
+            "'pub','get','--enforce-lockfile'",
+            "Windows offline resolution",
+        ),
+        Mutation(
             "helper",
             'mutable[100:108] = b"0000754\\0"',
             'mutable[100:108] = b"0000755\\0"',
@@ -618,6 +675,9 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
         "workspace": (
             repo / "scripts/verify-verifier-workspace.py"
         ).read_text(encoding="utf-8"),
+        "win_guest": (repo / "scripts/win-guest-setup.ps1").read_text(
+            encoding="utf-8"
+        ),
         "focused": pathlib.Path(__file__).read_text(encoding="utf-8"),
     }
 

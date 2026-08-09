@@ -16595,6 +16595,58 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   release artifacts, independent reproduction, or external review. The accumulated-change risk and every one
   of those release gaps remain stop-ship.
 
+  The first v3 golden-regeneration attempt from clean pushed commit
+  `2c46892cd8be887736fe0a94a16b501f0db6504f`, tree
+  `514ae4e686d334f7f38fc5fb6bd8223e3ad4e5cc`, is uncounted product evidence and failed closed before
+  the interactive-task correction could be exercised. The provision preflight verified canonical
+  `online/` closure `eacb4d0fadb044f2f38520ad5263470a89c286bed69927ce2c32babcbc01ab24` and every
+  pinned Windows input. Unprivileged session domain UUID
+  `4358b7c9-228e-4d57-b55d-9f64dd251598` had one `type=user`/`e1000e` provisioning NIC with no
+  host-forward rule, no host-device/filesystem passthrough, and VNC parent/child plus the only new
+  listener exactly on `127.0.0.1:5900`. The v2 golden was first re-hashed as
+  `2fa5560f6bbc1f90559f12328af269f316fed19a9620ffcbf9b74da37d1936c2` and preserved, not
+  overwritten. After the unchanged 130-minute post-Setup bound expired without the exact v3 receipt,
+  the provisioner rejected success and exact cleanup left no session domain, QEMU/provisioner process,
+  or VNC listener. The failed candidate is preserved as
+  `.harness-state/win11-golden-failed-pub-metadata-973c26bd9f2d.qcow2`, full SHA-256
+  `973c26bd9f2d6697c5047a145563032cf221772fd9242b7a1971682e4b48bd0f`.
+
+  Independent read-only post-mortem through the pinned numeric-nonroot, networkless, read-only-root,
+  capability-free Windows helper found all three staged Flutter engine variants but no warmed vcpkg
+  natives and no completion receipt. The transcript stopped at the old
+  `hosted\pub.dev\.cache` existence assertion. That assertion predated R-S11cy's exact 95-package
+  projection: the current pinned archive deliberately excludes every time-varying hosted metadata
+  record, and R-S11cy explicitly requires locked offline resolution with no hosted metadata cache
+  present. The timeout therefore exposed stale Windows-consumer logic, not a malformed current archive,
+  guest compromise, Flutter/RustDesk presentation result, or public-listener event.
+
+  The correction deletes the timestamp-manufacturing abstraction rather than reintroducing volatile
+  metadata. Windows provisioning now rejects an ambient/reintroduced metadata cache, retains
+  `dart pub get --offline --enforce-lockfile`, and still judges the child by its typed exit status. A
+  fresh network-namespace-absent semantic replay verified the exact 18,771,131-byte archive, proved
+  `.cache` absent before and after resolution, preserved the exact flutter_tools lock bytes, and returned
+  `Got dependencies!`. The focused R-S11cy gate rejects all 32 mutations, the broader Pub-cache consumer
+  gate rejects 70, the independent workspace baseline passes, the changed PowerShell parses in the exact
+  recorded immutable PowerShell image, and diff hygiene is green. All counted containers were numeric
+  nonroot, no-pull, networkless, read-only-root/source, capability-free, no-new-privileges, resource-bounded,
+  and had no Docker socket, device, host namespace, or published port.
+
+  The first complete independent source-mutation catalog is uncounted because its bookkeeping required
+  the label `Windows offline resolution` while the rejecting runtime diagnostic was the more specific
+  `Windows exact offline resolution`; the bad source mutation was rejected, but the catalog correctly
+  refused to count a rejection it could not bind to its declared diagnostic. After making those labels
+  exact, both fast mutation suites and the independent baseline passed again. A fresh complete unsliced
+  catalog then ran from mutation one to terminal `verify-verifier-workspace: ok` with exit zero. This was a
+  verifier-fixture label correction only; the Windows provisioning correction did not change.
+
+  These are source, archive-semantic, and failed-provision diagnostics only. A new clean committed v3
+  provision must complete, its qcow2 must be independently inspected and deliberately SHA-256-pinned, and
+  the unchanged zero-interface Windows presentation transaction must then reach real compositor pixels.
+  No Flutter app, controller, production RustDesk peer, window, frame, focus/minimize cycle, pointer event,
+  or latency sample ran here; Windows, Android lifecycle, full peer/connection flow, installed services,
+  packaged artifacts, cross-version behavior, soak, independent reproduction, and external review all
+  remain stop-ship.
+
 - **R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence — HARNESS SOURCE
   IMPLEMENTED; EXACT COMMITTED GREEN EXECUTION PENDING; ALL NON-LINUX/NATIVE/RELEASE GAPS REMAIN
   STOP-SHIP.** The user explicitly requires the connection flow to be correct and performant as a

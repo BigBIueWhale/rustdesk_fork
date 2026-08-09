@@ -41510,6 +41510,11 @@ def validate_universal_software_codec_build_gate(sources):
         ),
         "software-codec build-path scan inputs",
     )
+    require_text(
+        gate,
+        "--exclude-dir='.git' --exclude-dir='target' --exclude-dir='.harness-state'",
+        "software-codec ignored evidence boundary",
+    )
     exclusion_lines = tuple(
         line.strip()
         for line in gate.splitlines()
@@ -41530,9 +41535,11 @@ def validate_universal_software_codec_build_gate(sources):
         gate,
         (
             "software_codec_build_gate_self_test() {",
+            '"$fixture/.harness-state/evidence"',
             '>"$fixture/scripts/verify-android-voice-call-ownership.py"',
             '>"$fixture/scripts/verify-verifier-workspace.py"',
             '>"$fixture/scripts/verify-desktop-texture-lifecycle.py"',
+            '>"$fixture/.harness-state/evidence/build.py"',
             '>"$fixture/build.py"',
             "'default = []'",
             '[ -z "$hits" ] || return 1',
@@ -62412,6 +62419,12 @@ def run_source_mutations(sources):
             "grep -rInE 'hwcodec|vram|mediacodec'",
             "grep -RInE 'hwcodec|vram|mediacodec'",
             "software-codec build-path scan inputs",
+        ),
+        (
+            "verify",
+            "--exclude-dir='.git' --exclude-dir='target' --exclude-dir='.harness-state'",
+            "--exclude-dir='.git' --exclude-dir='target'",
+            "software-codec ignored evidence boundary",
         ),
         (
             "verify",

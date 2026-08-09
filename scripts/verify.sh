@@ -13292,11 +13292,14 @@ fi
 #
 # Two exact verifier programs carry forbidden-token strings solely as source and
 # mutation fixtures. They are not build drivers. Exclude those exact paths rather
-# than a verify-* class, so every new script remains scanned by default.
+# than a verify-* class, so every new script remains scanned by default. The
+# repository's ignored .harness-state/ root contains retained exact-source evidence
+# trees, not release inputs; scanning those copies makes the live verdict depend on
+# local evidence retention instead of the build paths in the current source tree.
 software_codec_build_hits() (
   cd -- "$1" || return 1
   grep -rInE 'hwcodec|vram|mediacodec' \
-      --exclude-dir='.git' --exclude-dir='target' \
+      --exclude-dir='.git' --exclude-dir='target' --exclude-dir='.harness-state' \
       --include='*.sh' --include='*.py' --include='*.yml' --include='*.yaml' --include='*.ps1' . 2>/dev/null \
     | grep -vE '^\./scripts/(verify-android-voice-call-ownership|verify-desktop-texture-lifecycle|verify-verifier-workspace)\.py:[0-9]+:' \
     | grep -vE '/target/|requirements\.html|scripts/verify\.sh' \
@@ -13309,13 +13312,15 @@ software_codec_default_feature_is_forbidden() {
 }
 software_codec_build_gate_self_test() {
   local fixture="$VERIFY_TMP/software-codec-build-gate" hits
-  install -d -m 0700 "$fixture/scripts" || return 1
+  install -d -m 0700 "$fixture/scripts" "$fixture/.harness-state/evidence" || return 1
   printf '%s\n' 'screenshot.request.restore_vram = true' \
     >"$fixture/scripts/verify-android-voice-call-ownership.py" || return 1
   printf '%s\n' 'mediacodec = ["ndk"]' \
     >"$fixture/scripts/verify-verifier-workspace.py" || return 1
   printf '%s\n' 'forbid(flutter, '\''feature = "vram"'\'', "Flutter VRAM feature branch")' \
     >"$fixture/scripts/verify-desktop-texture-lifecycle.py" || return 1
+  printf '%s\n' 'features.append("hwcodec")' \
+    >"$fixture/.harness-state/evidence/build.py" || return 1
   printf '%s\n' '# features.append("hwcodec"); vram dropped' >"$fixture/build.py" || return 1
   printf '%s\n' '[features]' 'default = []' >"$fixture/Cargo.toml" || return 1
   hits="$(software_codec_build_hits "$fixture")" || return 1

@@ -16647,6 +16647,35 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   packaged artifacts, cross-version behavior, soak, independent reproduction, and external review all
   remain stop-ship.
 
+  The clean repeat from pushed correction commit
+  `eeaaabe72860a2706f780fc0a0c01e68c196beed` completed v3 provisioning. Its unprivileged session
+  domain `rustdesk-fork-harness-win-golden`, UUID
+  `f007c7ba-fcd5-4f5e-8941-5b596eb7b4ca`, again had one `type=user`/`e1000e` provisioning NIC,
+  no host forward, no host-device/filesystem passthrough, and VNC parent/child plus the only new listener
+  exactly on `127.0.0.1:5900`. The guest wrote the exact v3 receipt only after the metadata-free
+  flutter_tools resolve, vcpkg native warm, non-expiring-password check, and interactive-task principal
+  validation, then powered off. The host intentionally failed at the old v2 SHA pin after recognizing that
+  receipt; exact cleanup left no domain, QEMU/provisioner process, or listener.
+
+  Independent read-only inspection then confirmed the exact v3 receipt, non-expiring builder assertion,
+  interactive logon task, all three Flutter Windows engine variants, and warmed CPU-features, JPEG, Opus,
+  libvpx, and libyuv libraries. A separate full-file digest independently matched the provisioner's candidate
+  digest. The immutable golden is now pinned as
+  `af6b88b9198f0e02c8ea55f3b8e891c5571a5c8dda535cc0d7eb40c98492d91b`; the previous v2 and failed
+  metadata-consumer candidates remain preserved under their hash-bearing names rather than silently reused.
+  The canonical golden verifier then recomputed that full-file digest and independently returned the exact
+  v3 verdict. The normal provision entry point reverified the complete online closure and every pinned
+  Windows input, accepted the exact golden plus receipt, and exited before creating a VM. Focused
+  golden-domain, helper-authority, and Windows-presentation verifier suites rejected 45, 81, and 85
+  deliberate mutations respectively; the independent workspace baseline also passed. Those source gates
+  ran as the invoking numeric user in an exact pinned, no-pull, `--network=none`, read-only-root/source,
+  capability-free, no-new-privileges, bounded container with no device, Docker socket, host namespace, or
+  published port.
+  This validates the v3 template only. No Windows Flutter app, controller, compositor pixel, focus/minimize
+  cycle, pointer event, latency sample, production RustDesk peer, packaged release, or installed-service
+  behavior ran; the unchanged zero-interface native presentation transaction and every broader stop-ship gap
+  remain required.
+
 - **R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence — HARNESS SOURCE
   IMPLEMENTED; EXACT COMMITTED GREEN EXECUTION PENDING; ALL NON-LINUX/NATIVE/RELEASE GAPS REMAIN
   STOP-SHIP.** The user explicitly requires the connection flow to be correct and performant as a

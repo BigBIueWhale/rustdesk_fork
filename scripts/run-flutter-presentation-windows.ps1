@@ -90,7 +90,7 @@ try {
     $env:PATH = "C:\flutter\bin;C:\Program Files\Git\cmd;$env:PATH"
     $sourcePubCache = Join-Path $sourceRoot 'pub-cache'
     $sourcePubCacheIdentity = Join-Path $sourceRoot 'pub-cache.identity'
-    $expectedPubCacheIdentity = 'source_sha256=fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4 projection_sha256=29c1e79175d4331ff406662a758d2ae7804afc402fd1f96a30b96f0153c53dd0 packages=8 semantics=exact-probe-lock'
+    $expectedPubCacheIdentity = 'source_sha256=fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4 projection_sha256=949ad80194975f2a64253a4b59cad9051105cada07137b5e7de39d034f4cc1ea packages=8 semantics=exact-probe-lock'
     if (([IO.File]::ReadAllText($sourcePubCacheIdentity, [Text.Encoding]::ASCII).Trim()) -cne
         $expectedPubCacheIdentity) {
         Fail 'exact-manifested presentation Pub-cache identity differs'

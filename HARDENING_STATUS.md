@@ -16699,9 +16699,15 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   The host first validates the existing read-only current app Pub-cache at structural digest
   `fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4`, then projects only the
   lock-selected eight hosted package trees and their exact publisher hashes onto the bounded source ISO.
-  Two fresh networkless projections independently produced exact SHA-256
-  `29c1e79175d4331ff406662a758d2ae7804afc402fd1f96a30b96f0153c53dd0`, 346 files, 82 directories,
-  zero symlinks, and 5,666,684 bytes. A separate read-only validator binds those exact bytes,
+  The first two networkless projection reproductions accidentally inherited container `umask 0022` and
+  produced SHA-256 `29c1e79175d4331ff406662a758d2ae7804afc402fd1f96a30b96f0153c53dd0`.
+  The first committed correction, `d67612ebb43e3dc3f092e1bcc180cce3870a5746`, was pushed and its clean
+  exact rerun failed closed before VM creation because the production harness correctly enforces `umask 0077`.
+  Read-only comparison proved all 346 files, 82 directories, zero symlinks, 5,666,684 content bytes, paths,
+  hashes, and file modes identical; only the two `mkdir -p` parent directories were `0755` in the faulty
+  reproduction and safer `0700` in production. Two fresh networkless replicas with explicit `umask 0077`
+  and the retained production tree independently agreed on corrected SHA-256
+  `949ad80194975f2a64253a4b59cad9051105cada07137b5e7de39d034f4cc1ea`. A separate read-only validator binds those exact bytes,
   cardinalities, roots, eight package directories, and eight hash records after copying and before source-
   manifest creation. The guest's exact source-manifest verdict covers every projected byte and its identity
   binds both the full source-cache and projection pins. It copies only those two cache roots into private

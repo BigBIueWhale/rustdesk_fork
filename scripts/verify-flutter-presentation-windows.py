@@ -149,7 +149,7 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(
         pins,
-        'SHA256_WINDOWS_PRESENTATION_PUB_CACHE_PROJECTION_V1="29c1e79175d4331ff406662a758d2ae7804afc402fd1f96a30b96f0153c53dd0"',
+        'SHA256_WINDOWS_PRESENTATION_PUB_CACHE_PROJECTION_V1="949ad80194975f2a64253a4b59cad9051105cada07137b5e7de39d034f4cc1ea"',
         "exact Windows presentation projected Pub-cache pin",
     )
     require(
@@ -382,7 +382,7 @@ def validate(sources: dict[str, str]) -> None:
             "windows-presentation-source-manifest.py",
             "--verify",
             "$sourcePubCache = Join-Path $sourceRoot 'pub-cache'",
-            "$expectedPubCacheIdentity = 'source_sha256=fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4 projection_sha256=29c1e79175d4331ff406662a758d2ae7804afc402fd1f96a30b96f0153c53dd0 packages=8 semantics=exact-probe-lock'",
+            "$expectedPubCacheIdentity = 'source_sha256=fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4 projection_sha256=949ad80194975f2a64253a4b59cad9051105cada07137b5e7de39d034f4cc1ea packages=8 semantics=exact-probe-lock'",
             "Get-ChildItem -LiteralPath $sourcePubCache -Force",
             "'hosted,hosted-hashes'",
             "$env:PUB_CACHE = Join-Path $workRoot 'pub-cache'",
@@ -754,7 +754,7 @@ def self_test(sources: dict[str, str]) -> int:
         ),
         (
             "pins",
-            'SHA256_WINDOWS_PRESENTATION_PUB_CACHE_PROJECTION_V1="29c1e79175d4331ff406662a758d2ae7804afc402fd1f96a30b96f0153c53dd0"',
+            'SHA256_WINDOWS_PRESENTATION_PUB_CACHE_PROJECTION_V1="949ad80194975f2a64253a4b59cad9051105cada07137b5e7de39d034f4cc1ea"',
             'SHA256_WINDOWS_PRESENTATION_PUB_CACHE_PROJECTION_V1="0000000000000000000000000000000000000000000000000000000000000000"',
         ),
         (
@@ -939,7 +939,7 @@ def self_test(sources: dict[str, str]) -> int:
         ),
         (
             "runner",
-            "source_sha256=fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4 projection_sha256=29c1e79175d4331ff406662a758d2ae7804afc402fd1f96a30b96f0153c53dd0 packages=8 semantics=exact-probe-lock",
+            "source_sha256=fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4 projection_sha256=949ad80194975f2a64253a4b59cad9051105cada07137b5e7de39d034f4cc1ea packages=8 semantics=exact-probe-lock",
             "source_sha256=fe81f679a0a1acd8291472162e867a566f33a50c813d27775125cee4644736b4 projection_sha256=0000000000000000000000000000000000000000000000000000000000000000 packages=8 semantics=exact-probe-lock",
         ),
         (

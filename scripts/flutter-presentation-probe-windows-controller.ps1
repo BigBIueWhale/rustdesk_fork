@@ -51,6 +51,9 @@ public static class PresentationProbeNative {
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int GetClassName(IntPtr hwnd, StringBuilder className, int maximumCount);
+
     [DllImport("user32.dll")]
     public static extern bool SetCursorPos(int x, int y);
 
@@ -99,6 +102,14 @@ public static class PresentationProbeNative {
             }
         }
     }
+
+    public static string WindowClass(IntPtr hwnd) {
+        var value = new StringBuilder(256);
+        if (GetClassName(hwnd, value, value.Capacity) == 0) {
+            throw new InvalidOperationException("GetClassName returned zero");
+        }
+        return value.ToString();
+    }
 }
 '@
 
@@ -117,10 +128,18 @@ function Get-MarkerPath([string]$Name) {
     return Join-Path $StateDirectory $Name
 }
 
-function Wait-Marker([string]$Name, [string]$Expected, [int]$TimeoutMilliseconds = 30000) {
+function Wait-Marker(
+    [string]$Name,
+    [string]$Expected,
+    [int]$TimeoutMilliseconds = 30000,
+    [Diagnostics.Process]$OwnedProcess = $null
+) {
     $path = Get-MarkerPath $Name
     $deadline = (Get-MonotonicMilliseconds) + $TimeoutMilliseconds
     while ((Get-MonotonicMilliseconds) -lt $deadline) {
+        if ($null -ne $OwnedProcess -and $OwnedProcess.HasExited) {
+            Fail "owned process $($OwnedProcess.Id) exited while waiting for marker $Name"
+        }
         if (Test-Path -LiteralPath $path -PathType Leaf) {
             $value = [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8)
             if ($value -cne $Expected) {
@@ -153,7 +172,12 @@ function Wait-ProcessWindow([Diagnostics.Process]$Process, [int]$TimeoutMillisec
         }
         $windows = @([PresentationProbeNative]::VisibleWindowsForProcess([uint32]$Process.Id))
         if ($windows.Count -eq 1) {
-            return [IntPtr]$windows[0]
+            $window = [IntPtr]$windows[0]
+            $windowClass = [PresentationProbeNative]::WindowClass($window)
+            if ($windowClass -cne 'RustdeskMultiWindow') {
+                Fail "visible probe window class is $windowClass, expected RustdeskMultiWindow"
+            }
+            return $window
         }
         if ($windows.Count -gt 1) {
             Fail "process $($Process.Id) owns more than one visible top-level window"
@@ -295,6 +319,8 @@ try {
     $app = Start-Process -FilePath $Executable -ArgumentList @($StateDirectory) `
         -WorkingDirectory (Split-Path -Parent $Executable) -PassThru `
         -RedirectStandardOutput $appStdout -RedirectStandardError $appStderr
+    Wait-Marker 'window-role' "desktop-multi-window-subwindow`n" -OwnedProcess $app
+    Wait-Marker 'window-admitted' "secondary-visible`n" -OwnedProcess $app
     $window = Wait-ProcessWindow $app
     Wait-Marker 'initial-submitted' "white`n"
     $initial = Require-Color $window 'white' 15000
@@ -375,6 +401,8 @@ try {
         source_commit = $SourceCommit
         source_tree = $SourceTree
         real_windows_flutter_engine = $true
+        production_event_window_class = 'RustdeskMultiWindow'
+        real_desktop_multi_window_events = $true
         real_desktop_compositor_pixels = $true
         real_guest_pointer_input = $true
         no_guest_network_interface_expected = $true

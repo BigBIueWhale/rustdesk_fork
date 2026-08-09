@@ -20711,6 +20711,26 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "independent native Windows vendored window-plugin binding",
     )
     require_text(
+        sources["windows_presentation_verifier"],
+        '"flutter/third_party/desktop_multi_window/windows/flutter_window.cc"',
+        "independent native Windows event-window implementation binding",
+    )
+    require_text(
+        sources["windows_presentation_verifier"],
+        '"flutter/third_party/desktop_multi_window/windows/multi_window_manager.cc"',
+        "independent native Windows primary-window wrapper binding",
+    )
+    require_text(
+        sources["windows_presentation_verifier"],
+        '"production_window_manager": "flutter/lib/utils/multi_window_manager.dart"',
+        "independent production secondary-window creation binding",
+    )
+    require_text(
+        sources["windows_presentation_verifier"],
+        '"production_remote_page": "flutter/lib/desktop/pages/remote_page.dart"',
+        "independent production remote listener binding",
+    )
+    require_text(
         sources["verify"],
         "/usr/bin/python3 -I -S scripts/verify-flutter-peer-presentation.py --repo . --self-test",
         "full-peer Linux presentation shared focused-verifier wiring",
@@ -59340,6 +59360,30 @@ def run_source_mutations(sources):
             '"multi_window_upstream": "flutter/third_party/desktop_multi_window/UPSTREAM.md"',
             '"multi_window_upstream": "flutter/third_party/desktop_multi_window/REMOVED.md"',
             "independent native Windows vendored window-plugin binding",
+        ),
+        (
+            "windows_presentation_verifier",
+            '"flutter/third_party/desktop_multi_window/windows/flutter_window.cc"',
+            '"flutter/third_party/desktop_multi_window/windows/removed_window.cc"',
+            "independent native Windows event-window implementation binding",
+        ),
+        (
+            "windows_presentation_verifier",
+            '"flutter/third_party/desktop_multi_window/windows/multi_window_manager.cc"',
+            '"flutter/third_party/desktop_multi_window/windows/removed_manager.cc"',
+            "independent native Windows primary-window wrapper binding",
+        ),
+        (
+            "windows_presentation_verifier",
+            '"production_window_manager": "flutter/lib/utils/multi_window_manager.dart"',
+            '"production_window_manager": "flutter/lib/utils/removed_window_manager.dart"',
+            "independent production secondary-window creation binding",
+        ),
+        (
+            "windows_presentation_verifier",
+            '"production_remote_page": "flutter/lib/desktop/pages/remote_page.dart"',
+            '"production_remote_page": "flutter/lib/desktop/pages/removed_remote_page.dart"',
+            "independent production remote listener binding",
         ),
         (
             "verify",

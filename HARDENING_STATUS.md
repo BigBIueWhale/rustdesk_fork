@@ -16258,8 +16258,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   review ran. This closes one source/bridge-verdict defect and one target compile-integration check only; the
   user's accumulated-change risk assessment and every native/end-to-end stop-ship gap remain in force.
 
-- **R-S11gb/R-S11e-215 native Windows presentation transaction — NATIVE RELEASE BUILD, APP WINDOW, AND
-  INITIAL FRAME SUBMISSION REACHED; IDLE-DISPLAY-CONTAMINATED PIXEL FAILURE; WINDOWS REMAINS STOP-SHIP.** Platform: a
+- **R-S11gb/R-S11e-215 native Windows presentation transaction — NATIVE D3D11 PRESENT AND INITIAL
+  FLUTTER PIXELS REACHED; EVENTLESS PRIMARY-WINDOW RUN INVALID; PRODUCTION-EQUIVALENT SUBWINDOW RERUN
+  PENDING; WINDOWS REMAINS STOP-SHIP.** Platform: a
   disposable Windows 11 overlay derived from the existing SHA-256-pinned golden. Endpoint/action: the
   repository-owned Windows <code>texture_rgba_renderer</code> plugin and direct C ABI used by Rust, exact
   production <code>PresentationRecovery</code>, the pinned RustDesk desktop window-event implementation and
@@ -16274,7 +16275,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   release builder. It accepts only a clean committed tree, exact-manifests every source input, materializes
   the already-pinned desktop event plugin and window-size dependency by exact commit/tree, resolves the exact
   thirteen-package Flutter graph offline, and builds a minimal native Windows app against the production texture plugin and exact recovery
-  state machine. One real cycle minimizes and restores the app. A second gives focus to a separate visible
+  state machine. The probe must run in the plugin's exact event-emitting secondary
+  `RustdeskMultiWindow` class used by production desktop-control sessions, with its primary bootstrap window
+  hidden and rejected by native class identity if it remains the visible target. One real cycle minimizes and restores the app. A second gives focus to a separate visible
   WinForms window and returns through an injected guest mouse down. Each queues 128 direct-ABI frames, ends
   in a red/blue-channel-swap-invariant color, gates explicit re-notification, samples four DWM/GDI interior
   desktop pixels, and requires a three-sample majority within 2500 ms after re-arm. The result separately
@@ -16797,6 +16800,66 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `verify-verifier-workspace: ok` on the pre-receipt tracked bytes. Adding this receipt changes the tracked
   ledger, so that pass is explicitly preliminary; the required fresh final-byte catalog result is retained
   out of tree to avoid recursively changing the bytes it validates.
+
+  The clean zero-interface rerun from pushed keep-awake commit
+  `7c2a1d7b02eb1e3233c8479b09533867e2854b95` proved that correction at its intended boundary and then
+  exposed a different harness defect. The exact 509-file source manifest and offline dependency graph
+  verified, `execution-state-held` was recorded before the build, and the native release probe completed.
+  Both default-adapter and explicit-WARP D3D11 preflights returned `Present` HRESULT `0x00000000`; their
+  sampled desktop pixels exactly matched the submitted red and green frames. The Flutter app then submitted
+  white and the controller observed those composed white pixels. This retires the earlier idle-display
+  contamination as the cause of that run's first-pixel failure; it is still not a complete presentation pass.
+
+  The controller next performed a real minimize and restore. Flutter recorded lifecycle transitions
+  `inactive`, `hidden`, `inactive`, and `resumed`, while the queued final frames and marker protocol remained
+  live. The transaction then deadlocked at an exact boundary: the controller waited for
+  `rearm-requested-1`, while the app waited for `displayed-1`. Its event log contained no
+  `window-minimize`, `window-restore`, `window-blur`, or `window-focus` recovery callback. The retained
+  diagnostic is `.harness-state/windows-presentation-run.rfzrYugq`. This is not evidence that the current
+  product recovery state machine failed; source review proves the app was placed in the wrong native window
+  class for the event source it was testing.
+
+  The pinned Windows plugin attaches window ID 0 as `FlutterMainWindow`, a thin `BaseFlutterWindow` wrapper
+  that provides controller operations but does not own the plugin's event-emitting window procedure. The
+  plugin-created secondary `FlutterWindow` instead receives `WM_SIZE` and `WM_NCACTIVATE` and emits the
+  minimize/restore and focus/blur events consumed by `MultiWindowListener`. Production remote sessions call
+  `DesktopMultiWindow.createWindow` and their `RemotePage` registers that listener inside the resulting
+  secondary engine. The old probe ran its listener directly in the primary generated-runner window, so
+  Flutter lifecycle notifications arrived but the expected plugin events could not. Treating that
+  topology-induced marker timeout as a product verdict—or adding lifecycle recovery merely to make that
+  invalid topology pass—would be a false correction.
+
+  The pending narrow fix changes only the evidence topology. The primary engine creates a positive-ID
+  secondary window, fixes its frame/title, hides and verifies the primary wrapper is hidden, and shows the
+  secondary. Only then does the parent publish a secondary-admission receipt; controller startup waits are
+  bound to the still-live owned process. The probe texture and recovery listener initialize only in the `multi_window` engine. The
+  Win32 controller accepts the sole visible app HWND only when `GetClassNameW` returns exactly
+  `RustdeskMultiWindow`, the child writes an exact secondary-role receipt, and the strict result envelope
+  records that production event-window identity. The focused and independent gates bind this launch order,
+  native class refusal, plugin `WM_SIZE`/`WM_NCACTIVATE` emission, production secondary-window creation, and
+  production listener registration. A fresh exact-commit native rerun remains mandatory before either
+  recovery cycle or latency bound counts.
+
+  Confined source verification of that corrected topology is green. The focused Windows-presentation gate
+  passes its baseline and rejects all 134 deliberate mutations. The independent workspace baseline, the
+  81-mutation Windows-helper authority gate, the 45-mutation golden-domain gate, and the native-codec
+  integrity check plus its adversarial self-test pass. The exact eight-package offline probe projection
+  resolves with the committed lock unchanged and Dart analysis reports no issues; Dart formatting, Bash
+  syntax, all three PowerShell parsers in the exact immutable PowerShell image, requirements-digest
+  synchronization, and diff hygiene are green. Every counted checker ran with numeric nonroot identity,
+  no network, read-only root/source/input, dropped capabilities, no-new-privileges, finite resources, and no
+  Docker socket, device, host namespace, or published port. These are source/analyzer results only; they do
+  not substitute for the required clean committed native rerun.
+
+  The failed run remained unprivileged and cleanup removed its exact session domain, QEMU/wrapper process,
+  and loopback VNC listener. It had zero guest network interfaces and did not use root, sudo, a privileged
+  container, a Docker socket, a published container port, a host namespace, or any host device/filesystem
+  passthrough. No host RustDesk process/service/configuration, display, firewall/UFW/nftables/iptables,
+  routing, or host network state was changed. Even after the corrected narrow transaction becomes green,
+  the real full RustDesk peer pipeline, the user's older deployed Windows focus-delay reproduction, Android
+  task-swipe/persistent-service/Force-Stop behavior, cross-version operation, concurrent control/file/audio,
+  repeated reconnect/focus and resource/performance soak, release artifacts, independent reproduction, and
+  external review remain separate stop-ship work.
 
 - **R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence — HARNESS SOURCE
   IMPLEMENTED; EXACT COMMITTED GREEN EXECUTION PENDING; ALL NON-LINUX/NATIVE/RELEASE GAPS REMAIN
@@ -22853,7 +22916,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-3792de96ed80b096133dc185d277492da58482e5900ce71f66778772d13cf8a3  requirements.html
+cbd2bbaed9016953fbbf4673ab43e6c76a570c87932d4034934e91c464dc3d39  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

@@ -373,25 +373,76 @@ class _ProbeAppState extends State<_ProbeApp>
   }
 }
 
-Future<void> main(List<String> arguments) async {
-  WidgetsFlutterBinding.ensureInitialized();
-  if (arguments.length != 1) {
-    stderr.writeln('expected one absolute state-directory argument');
-    exit(64);
-  }
-  final directory = Directory(arguments.single);
+Future<Directory> _stateDirectory(String path) async {
+  final directory = Directory(path);
   if (!directory.isAbsolute || !await directory.exists()) {
-    stderr.writeln('state directory is absent or not absolute');
-    exit(64);
+    throw ArgumentError('state directory is absent or not absolute');
+  }
+  return directory;
+}
+
+Future<void> _launchPresentationWindow(Directory directory) async {
+  DesktopMultiWindow.setMethodHandler((call, fromWindowId) async => null);
+  final presentationWindow =
+      await DesktopMultiWindow.createWindow(directory.path);
+  if (presentationWindow.windowId <= 0) {
+    throw StateError('presentation window did not receive a subwindow id');
+  }
+  await presentationWindow.setFrame(
+    const Rect.fromLTWH(80, 80, 800, 600),
+  );
+  await presentationWindow.setTitle('RustDesk Windows Presentation Probe');
+
+  final parentWindow = WindowController.main();
+  await parentWindow.hide();
+  if (!await parentWindow.isHidden()) {
+    throw StateError('primary bootstrap window remained visible');
+  }
+  await presentationWindow.show();
+  await _Markers(directory).publish(
+    'window-admitted',
+    'secondary-visible\n',
+  );
+}
+
+Future<void> _runPresentationWindow(
+  Directory directory,
+  int windowId,
+) async {
+  if (windowId <= 0) {
+    throw ArgumentError('presentation window id is not positive');
   }
   DesktopMultiWindow.setMethodHandler((call, fromWindowId) async => null);
   final markers = _Markers(directory);
+  await markers.publish('window-role', 'desktop-multi-window-subwindow\n');
+  final texture = await _NativeTexture.create();
+  runApp(_ProbeApp(markers: markers, texture: texture));
+}
+
+Future<void> main(List<String> arguments) async {
+  WidgetsFlutterBinding.ensureInitialized();
   try {
-    final texture = await _NativeTexture.create();
-    runApp(_ProbeApp(markers: markers, texture: texture));
+    if (arguments.length == 1) {
+      await _launchPresentationWindow(
+        await _stateDirectory(arguments.single),
+      );
+      return;
+    }
+    if (arguments.length == 3 && arguments.first == 'multi_window') {
+      final windowId = int.tryParse(arguments[1]);
+      if (windowId == null) {
+        throw ArgumentError('presentation window id is malformed');
+      }
+      await _runPresentationWindow(
+        await _stateDirectory(arguments[2]),
+        windowId,
+      );
+      return;
+    }
+    throw ArgumentError('unexpected presentation probe arguments');
   } catch (error, stackTrace) {
     stderr.writeln('WINDOWS_PRESENTATION_PROBE_START_FAILURE=$error');
     stderr.writeln(stackTrace);
-    exit(1);
+    exit(error is ArgumentError ? 64 : 1);
   }
 }

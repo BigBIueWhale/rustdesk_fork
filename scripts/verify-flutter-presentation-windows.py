@@ -53,6 +53,14 @@ PATHS = {
     "libyuv_port": "res/vcpkg/libyuv/portfile.cmake",
     "recovery": "flutter/lib/models/presentation_recovery.dart",
     "multi_window_upstream": "flutter/third_party/desktop_multi_window/UPSTREAM.md",
+    "multi_window_windows": (
+        "flutter/third_party/desktop_multi_window/windows/flutter_window.cc"
+    ),
+    "multi_window_manager": (
+        "flutter/third_party/desktop_multi_window/windows/multi_window_manager.cc"
+    ),
+    "production_window_manager": "flutter/lib/utils/multi_window_manager.dart",
+    "production_remote_page": "flutter/lib/desktop/pages/remote_page.dart",
     "verify": "scripts/verify.sh",
     "workspace": "scripts/verify-verifier-workspace.py",
     "requirements": "requirements.html",
@@ -82,6 +90,10 @@ def validate(sources: dict[str, str]) -> None:
     guest_setup = sources["guest_setup"]
     golden_inspector = sources["golden_inspector"]
     libyuv_port = sources["libyuv_port"]
+    multi_window_windows = sources["multi_window_windows"]
+    multi_window_manager = sources["multi_window_manager"]
+    production_window_manager = sources["production_window_manager"]
+    production_remote_page = sources["production_remote_page"]
 
     require_order(
         host,
@@ -558,10 +570,45 @@ def validate(sources: dict[str, str]) -> None:
         "native transition, pointer, and compositor transaction",
     )
     require(controller, "real_windows_flutter_engine = $true", "Windows engine result")
+    require(
+        controller,
+        "production_event_window_class = 'RustdeskMultiWindow'",
+        "production event-window identity result",
+    )
+    require(
+        controller,
+        "real_desktop_multi_window_events = $true",
+        "real desktop window-event result",
+    )
     require(controller, "real_desktop_compositor_pixels = $true", "pixel result")
     require(controller, "real_guest_pointer_input = $true", "pointer result")
     require(controller, "recovery_limit_ms = 2500", "latency result")
     require(controller, "queued_frames = 128", "coalesced frame result")
+    require(
+        host,
+        '"production_event_window_class",',
+        "host result event-window envelope",
+    )
+    require(
+        host,
+        '"real_desktop_multi_window_events", "real_desktop_compositor_pixels",',
+        "host desktop-event verdict",
+    )
+    require(
+        host,
+        'if result["production_event_window_class"] != "RustdeskMultiWindow":',
+        "host event-window identity check",
+    )
+    require(
+        host,
+        '"window-role": "desktop-multi-window-subwindow\\n",',
+        "host secondary-window state receipt",
+    )
+    require(
+        host,
+        '"window-admitted": "secondary-visible\\n",',
+        "host secondary-window admission receipt",
+    )
 
     require_order(
         dart,
@@ -581,6 +628,105 @@ def validate(sources: dict[str, str]) -> None:
             "_resume('pointer-down-fallback');",
         ),
         "exact recovery event ownership",
+    )
+    require_order(
+        dart,
+        (
+            "DesktopMultiWindow.createWindow(directory.path)",
+            "if (presentationWindow.windowId <= 0)",
+            "await parentWindow.hide();",
+            "if (!await parentWindow.isHidden())",
+            "await presentationWindow.show();",
+            "await _Markers(directory).publish(",
+            "'window-admitted',",
+            "'secondary-visible\\n',",
+        ),
+        "production-equivalent secondary-window launch",
+    )
+    require_order(
+        dart,
+        (
+            "await markers.publish('window-role', 'desktop-multi-window-subwindow\\n');",
+            "final texture = await _NativeTexture.create();",
+            "runApp(_ProbeApp(markers: markers, texture: texture));",
+            "arguments.length == 3 && arguments.first == 'multi_window'",
+            "await _runPresentationWindow(",
+        ),
+        "secondary-engine-only probe initialization",
+    )
+    require(
+        controller,
+        "[PresentationProbeNative]::WindowClass($window)",
+        "native event-window class query",
+    )
+    require(
+        controller,
+        "if ($windowClass -cne 'RustdeskMultiWindow')",
+        "native event-window class refusal",
+    )
+    require(
+        controller,
+        "Wait-Marker 'window-role' \"desktop-multi-window-subwindow`n\"",
+        "secondary-window role receipt",
+    )
+    require(
+        controller,
+        "Wait-Marker 'window-admitted' \"secondary-visible`n\" -OwnedProcess $app",
+        "secondary-window admission receipt",
+    )
+    require_order(
+        controller,
+        (
+            "[Diagnostics.Process]$OwnedProcess = $null",
+            "if ($null -ne $OwnedProcess -and $OwnedProcess.HasExited)",
+            'Fail "owned process $($OwnedProcess.Id) exited while waiting for marker $Name"',
+        ),
+        "process-bound startup marker wait",
+    )
+    require_order(
+        controller,
+        (
+            "$app = Start-Process -FilePath $Executable",
+            "Wait-Marker 'window-role' \"desktop-multi-window-subwindow`n\" -OwnedProcess $app",
+            "Wait-Marker 'window-admitted' \"secondary-visible`n\" -OwnedProcess $app",
+            "$window = Wait-ProcessWindow $app",
+            "Wait-Marker 'initial-submitted' \"white`n\"",
+        ),
+        "secondary role before exact native window admission",
+    )
+    require_order(
+        multi_window_windows,
+        (
+            'project.set_dart_entrypoint_arguments({"multi_window",',
+            "RustDeskRegisterPlugins(flutter_controller_->engine());",
+            "case WM_SIZE:",
+            'EmitEvent("minimize");',
+            'EmitEvent("restore");',
+            "case WM_NCACTIVATE:",
+            'eventName = "focus";',
+            'eventName = "blur";',
+        ),
+        "production secondary-window engine and events",
+    )
+    require(
+        multi_window_manager,
+        "class FlutterMainWindow : public BaseFlutterWindow",
+        "eventless primary bootstrap wrapper",
+    )
+    require(
+        production_window_manager,
+        "final windowController = await DesktopMultiWindow.createWindow(msg);",
+        "production remote-session secondary-window creation",
+    )
+    require(
+        production_remote_page,
+        "with\n        AutomaticKeepAliveClientMixin,\n        MultiWindowListener,",
+        "production remote-page window listener",
+    )
+    require(
+        production_remote_page,
+        "DesktopMultiWindow.addListener(this);",
+        "production remote-page listener registration",
     )
     require(dart, "const _queuedFrameCount = 128;", "latest-wins load")
     require(dart, "FlutterRgbaRendererPluginTryOnRgba", "production C ABI")
@@ -775,6 +921,21 @@ def self_test(sources: dict[str, str]) -> int:
         ("host", "--graphics vnc,listen=127.0.0.1", "--graphics vnc"),
         ("host", "virsh --connect qemu:///session", "virsh --connect qemu:///system"),
         ("host", "if not parsed.is_loopback:", "if False:"),
+        (
+            "host",
+            '"production_event_window_class",',
+            '"removed_event_window_class",',
+        ),
+        (
+            "host",
+            '"window-role": "desktop-multi-window-subwindow\\n",',
+            '"window-role": "primary-window\\n",',
+        ),
+        (
+            "host",
+            '"window-admitted": "secondary-visible\\n",',
+            '"window-admitted": "unchecked\\n",',
+        ),
         ("host", "windows_helper_guestfish_run", "windows_helper_kvm_guestfish_run"),
         (
             "host",
@@ -1154,6 +1315,26 @@ def self_test(sources: dict[str, str]) -> int:
             "[void][PresentationProbeNative]::DwmFlush()",
             "# DWM synchronization removed",
         ),
+        (
+            "controller",
+            "if ($windowClass -cne 'RustdeskMultiWindow')",
+            "if ($false)",
+        ),
+        (
+            "controller",
+            "Wait-Marker 'window-role' \"desktop-multi-window-subwindow`n\"",
+            "# secondary-window receipt removed",
+        ),
+        (
+            "controller",
+            "Wait-Marker 'window-admitted' \"secondary-visible`n\" -OwnedProcess $app",
+            "# secondary-window admission removed",
+        ),
+        (
+            "controller",
+            "if ($null -ne $OwnedProcess -and $OwnedProcess.HasExited)",
+            "if ($false)",
+        ),
         ("controller", "mouse_event(0x0002", "mouse_event(0x0000"),
         (
             "d3d11",
@@ -1175,8 +1356,63 @@ def self_test(sources: dict[str, str]) -> int:
         ("controller", "Require-Color $window 'green' 2500", "Start-Sleep -Seconds 10"),
         ("controller", "Require-Color $window 'magenta' 2500", "Start-Sleep -Seconds 10"),
         ("dart", "FlutterRgbaRendererPluginTryNotifyPending", "NotifierRemoved"),
+        (
+            "dart",
+            "DesktopMultiWindow.createWindow(directory.path)",
+            "WindowController.main()",
+        ),
+        (
+            "dart",
+            "await parentWindow.hide();",
+            "await parentWindow.show();",
+        ),
+        (
+            "dart",
+            "'window-admitted',",
+            "'window-admission-removed',",
+        ),
+        (
+            "dart",
+            "arguments.length == 3 && arguments.first == 'multi_window'",
+            "arguments.length == 1",
+        ),
+        (
+            "dart",
+            "await markers.publish('window-role', 'desktop-multi-window-subwindow\\n');",
+            "// secondary-window role removed",
+        ),
         ("dart", "_resume('pointer-down-fallback');", "// pointer recovery removed"),
         ("dart", "await widget.texture.close();", "// texture close removed"),
+        (
+            "multi_window_windows",
+            'project.set_dart_entrypoint_arguments({"multi_window",',
+            'project.set_dart_entrypoint_arguments({"main_window",',
+        ),
+        (
+            "multi_window_windows",
+            'EmitEvent("minimize");',
+            '// minimize event removed',
+        ),
+        (
+            "multi_window_windows",
+            'eventName = "focus";',
+            'eventName = "unknown";',
+        ),
+        (
+            "multi_window_manager",
+            "class FlutterMainWindow : public BaseFlutterWindow",
+            "class FlutterMainWindowRemoved : public BaseFlutterWindow",
+        ),
+        (
+            "production_window_manager",
+            "final windowController = await DesktopMultiWindow.createWindow(msg);",
+            "final windowController = WindowController.main();",
+        ),
+        (
+            "production_remote_page",
+            "DesktopMultiWindow.addListener(this);",
+            "// listener registration removed",
+        ),
         ("manifest", "metadata.st_nlink != 1", "False"),
         ("manifest", "actual != manifest[\"files\"]", "False"),
         (

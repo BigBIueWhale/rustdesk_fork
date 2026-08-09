@@ -775,7 +775,8 @@ if progress != [*diagnostic_progress, "probe-passed"]:
 result = json.loads((root / "windows-presentation-result.json").read_text(encoding="utf-8-sig"))
 if sorted(result) != sorted([
     "format", "verdict", "source_commit", "source_tree",
-    "real_windows_flutter_engine", "real_desktop_compositor_pixels",
+    "real_windows_flutter_engine", "production_event_window_class",
+    "real_desktop_multi_window_events", "real_desktop_compositor_pixels",
     "real_guest_pointer_input", "no_guest_network_interface_expected",
     "recovery_limit_ms", "initial", "cycles",
 ]):
@@ -785,11 +786,14 @@ if result["format"] != "rustdesk-windows-presentation-result-v1" or result["verd
 if result["source_commit"] != commit or result["source_tree"] != tree:
     raise SystemExit("presentation source identity differs")
 for field in (
-    "real_windows_flutter_engine", "real_desktop_compositor_pixels",
+    "real_windows_flutter_engine", "real_desktop_multi_window_events",
+    "real_desktop_compositor_pixels",
     "real_guest_pointer_input", "no_guest_network_interface_expected",
 ):
     if result[field] is not True:
         raise SystemExit(f"presentation fact is not true: {field}")
+if result["production_event_window_class"] != "RustdeskMultiWindow":
+    raise SystemExit("presentation event window class differs")
 if result["recovery_limit_ms"] != 2500:
     raise SystemExit("presentation recovery limit differs")
 cycles = result["cycles"]
@@ -902,6 +906,8 @@ if lock_lines[package_end:] != [
     raise SystemExit("presentation pubspec SDK envelope differs")
 state = root / "windows-presentation-state"
 for name, expected in {
+    "window-role": "desktop-multi-window-subwindow\n",
+    "window-admitted": "secondary-visible\n",
     "app-finished": "ok\n",
     "rearm-requested-1": "requested\n",
     "renotified-1": "accepted\n",

@@ -16258,8 +16258,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   review ran. This closes one source/bridge-verdict defect and one target compile-integration check only; the
   user's accumulated-change risk assessment and every native/end-to-end stop-ship gap remain in force.
 
-- **R-S11gb/R-S11e-215 native Windows presentation transaction — NATIVE RELEASE BUILD AND APP PROCESS
-  REACHED; VM GRAPHICS SURFACE FAILED BEFORE WINDOW/PIXELS; WINDOWS REMAINS STOP-SHIP.** Platform: a
+- **R-S11gb/R-S11e-215 native Windows presentation transaction — NATIVE RELEASE BUILD, APP WINDOW, AND
+  INITIAL FRAME SUBMISSION REACHED; IDLE-DISPLAY-CONTAMINATED PIXEL FAILURE; WINDOWS REMAINS STOP-SHIP.** Platform: a
   disposable Windows 11 overlay derived from the existing SHA-256-pinned golden. Endpoint/action: the
   repository-owned Windows <code>texture_rgba_renderer</code> plugin and direct C ABI used by Rust, exact
   production <code>PresentationRecovery</code>, the pinned RustDesk desktop window-event implementation and
@@ -16754,6 +16754,49 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `[int]` rejection is restored. All timeout, kill/wait, refresh, disposal, and nonzero checks remain. Cleanup
   again left no VM, process, or listener. A clean committed native run remains required; the controller/app
   still has not launched and no product presentation verdict exists.
+
+  The clean run from pushed handle-acquisition commit
+  `8fe18d00290a078e32d9f4633bd00126431dc028`, tree
+  `e1b7b40db256408ad646f693b637b8c1d89e4ebc`, proved that correction: the exact 509-file source
+  manifest and offline dependency graph verified, the native release probe built, and the D3D child produced
+  a typed exit value accepted by the strict gate. Unprivileged session domain
+  `rustdesk-presentation-8fe18d00-09b641de`, UUID
+  `09b641de-dbe3-4115-b0a8-7caca734527a`, again had zero network interfaces, host-device passthroughs,
+  or filesystem passthroughs, and its VNC parent/child plus sole new listener were exactly
+  `127.0.0.1:5900`. The real Flutter app then launched, owned exactly one visible top-level window, and
+  wrote `initial-submitted: white`. The controller nevertheless timed out before seeing white desktop
+  pixels. Both default-adapter and explicit-WARP preflights created their window, factory, adapter, D3D11
+  device, HWND swap chain, back buffer, and render target successfully, but `Present` returned
+  `0x087A0001` (`DXGI_STATUS_OCCLUDED`) and the sampled desktop pixel remained the wallpaper color. Thus
+  no minimize/restore, focus-loss/real-pointer-return, recovery-latency, or exact texture-close phase ran.
+  Exact cleanup again left no domain, scoped QEMU/wrapper process, or project listener. The failed evidence
+  is retained at `.harness-state/windows-presentation-run.z4V0Zaos`; it is not a product pass.
+
+  Read-only offline post-mortem found a transaction-validity defect before attributing that result to the
+  product or changing the VM adapter. The disposable guest used the Balanced power scheme
+  `381b4222-f694-41f0-9685-ff5bb260df2e`, had no per-scheme display-timeout override, and therefore inherited
+  its exact AC display-off default `0x258` = 600 seconds. The `builder` user hive also recorded
+  `ScreenSaveActive=1`; the machine policy contained no `InactivityTimeoutSecs` override. The native build
+  reaches D3D/app presentation roughly 17–18 minutes after interactive logon, after that 10-minute display
+  idle boundary. Those facts and `DXGI_STATUS_OCCLUDED` do not independently prove that no later graphics
+  defect exists, but they make this run unable to distinguish a powered-off/secured presentation desktop
+  from a product compositor failure. It therefore cannot count as Windows product evidence.
+
+  The narrow correction changes only the disposable runner's lifetime. Before source verification or build,
+  it must successfully acquire the documented thread-scoped
+  `ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED` execution state; final cleanup must reset that
+  same thread to `ES_CONTINUOUS`, and acquisition or reset failure must leave a runner-failure receipt. It
+  does not edit the golden, power plan, registry, screen-saver policy, service, or host, and it does not inject
+  synthetic keep-awake input. The host validator requires an `execution-state-held` progress receipt. The
+  focused verifier passes and rejects 116 deliberate mutations, including removal of display-required,
+  acquisition failure handling, lease ownership, reset failure handling, and reset diagnostics; all three
+  PowerShell files parse in the exact immutable PowerShell image. These remain source checks. A clean
+  committed zero-interface native rerun must still prove initial pixels and then the real minimize, focus,
+  pointer, close, and 2500-ms recovery phases before any Windows presentation claim changes.
+  One complete unsliced independent `--source-mutations-only` catalog ran from mutation one to terminal
+  `verify-verifier-workspace: ok` on the pre-receipt tracked bytes. Adding this receipt changes the tracked
+  ledger, so that pass is explicitly preliminary; the required fresh final-byte catalog result is retained
+  out of tree to avoid recursively changing the bytes it validates.
 
 - **R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence — HARNESS SOURCE
   IMPLEMENTED; EXACT COMMITTED GREEN EXECUTION PENDING; ALL NON-LINUX/NATIVE/RELEASE GAPS REMAIN

@@ -361,6 +361,11 @@ def validate(sources: dict[str, str]) -> None:
         ),
         "host D3D11 diagnostic evidence binding",
     )
+    require(
+        host,
+        '"source-found", "execution-state-held", "source-verified", "probe-built",',
+        "host execution-state progress binding",
+    )
     for unsafe in (
         "sudo ",
         "--privileged",
@@ -379,6 +384,16 @@ def validate(sources: dict[str, str]) -> None:
         (
             "Get-OneSourceRoot",
             "Get-OneOutputRoot",
+            "$executionStateHeld = $false",
+            "$esContinuous = [uint32]2147483648 # ES_CONTINUOUS (0x80000000)",
+            "$esSystemRequired = [uint32]1 # ES_SYSTEM_REQUIRED",
+            "$esDisplayRequired = [uint32]2 # ES_DISPLAY_REQUIRED",
+            'public static extern uint SetThreadExecutionState(uint executionState);',
+            "$esContinuous -bor $esSystemRequired -bor $esDisplayRequired",
+            "$executionStateResult = [PresentationExecutionStateNative]::SetThreadExecutionState(",
+            "if ($executionStateResult -eq 0)",
+            "$executionStateHeld = $true",
+            "-Value 'execution-state-held' -Encoding ASCII",
             "windows-presentation-source-manifest.py",
             "--verify",
             "$sourcePubCache = Join-Path $sourceRoot 'pub-cache'",
@@ -417,6 +432,30 @@ def validate(sources: dict[str, str]) -> None:
         ),
         "guest exact-source offline build order",
     )
+    require_order(
+        runner,
+        (
+            "if ($executionStateHeld)",
+            "$executionStateReset = [PresentationExecutionStateNative]::SetThreadExecutionState(",
+            "$esContinuous",
+            "if ($executionStateReset -eq 0)",
+            "$executionStateResetFailure =",
+            "$runnerSucceeded = $false",
+            "windows-presentation-runner-failure.txt",
+            "Write-Error $executionStateResetFailure -ErrorAction Continue",
+            "Stop-Computer -Force",
+        ),
+        "guest display execution-state cleanup",
+    )
+    if runner.count("SetThreadExecutionState(") != 3:
+        raise VerificationError("guest display execution-state calls are not exact")
+    for mutation in (
+        "SystemParametersInfo",
+        "powercfg",
+        "ScreenSaveActive",
+        "SendInput",
+    ):
+        forbid(runner, mutation, "persistent-policy or synthetic-input keep-awake")
     forbid(runner, "Join-Path $env:LOCALAPPDATA 'Pub\\Cache'", "golden app-cache authority")
     forbid(runner, "pinned golden pub cache", "retired golden app-cache diagnostic")
     require(runner, "url_launcher_windows-3.1.4' = '3284b6d2ac454cf34f114e1d3319866fdd1e19cdc329999057e44ffe936cfa77'", "pinned URL-launcher cache")
@@ -920,6 +959,11 @@ def self_test(sources: dict[str, str]) -> int:
         ),
         (
             "host",
+            '"source-found", "execution-state-held", "source-verified", "probe-built",',
+            '"source-found", "source-verified", "probe-built",',
+        ),
+        (
+            "host",
             '"guest_d3d11_preflight_sha256": digest(',
             '"guest_d3d11_preflight_sha256_removed": digest(',
         ),
@@ -1013,6 +1057,36 @@ def self_test(sources: dict[str, str]) -> int:
             "runner",
             "if ($null -eq $d3d11PreflightExit -or $d3d11PreflightExit -isnot [int])",
             "if ($false)",
+        ),
+        (
+            "runner",
+            "$esDisplayRequired = [uint32]2 # ES_DISPLAY_REQUIRED",
+            "$esDisplayRequired = [uint32]0 # display lease removed",
+        ),
+        (
+            "runner",
+            "$esContinuous -bor $esSystemRequired -bor $esDisplayRequired",
+            "$esContinuous -bor $esSystemRequired",
+        ),
+        (
+            "runner",
+            "if ($executionStateResult -eq 0)",
+            "if ($false)",
+        ),
+        (
+            "runner",
+            "$executionStateHeld = $true",
+            "$executionStateHeld = $false # lease ownership removed",
+        ),
+        (
+            "runner",
+            "if ($executionStateReset -eq 0)",
+            "if ($false)",
+        ),
+        (
+            "runner",
+            "Write-Error $executionStateResetFailure -ErrorAction Continue",
+            "# execution-state cleanup failure suppressed",
         ),
         (
             "runner",

@@ -50,10 +50,36 @@ $outputRoot = $null
 $workRoot = $null
 $stateDirectory = $null
 $runnerSucceeded = $false
+$executionStateHeld = $false
+$esContinuous = [uint32]2147483648 # ES_CONTINUOUS (0x80000000)
+$esSystemRequired = [uint32]1 # ES_SYSTEM_REQUIRED
+$esDisplayRequired = [uint32]2 # ES_DISPLAY_REQUIRED
 try {
     $sourceRoot = Get-OneSourceRoot
     $outputRoot = Get-OneOutputRoot
     Write-Ascii (Join-Path $outputRoot 'windows-presentation-progress.txt') "source-found`r`n"
+
+    Add-Type @'
+using System.Runtime.InteropServices;
+
+public static class PresentationExecutionStateNative {
+    [DllImport("kernel32.dll", SetLastError = true)]
+    public static extern uint SetThreadExecutionState(uint executionState);
+}
+'@
+    $requiredExecutionState = [uint32](
+        $esContinuous -bor $esSystemRequired -bor $esDisplayRequired
+    )
+    $executionStateResult = [PresentationExecutionStateNative]::SetThreadExecutionState(
+        $requiredExecutionState
+    )
+    if ($executionStateResult -eq 0) {
+        $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        Fail "could not hold the presentation display execution state: Win32 error $errorCode"
+    }
+    $executionStateHeld = $true
+    Add-Content -LiteralPath (Join-Path $outputRoot 'windows-presentation-progress.txt') `
+        -Value 'execution-state-held' -Encoding ASCII
 
     $manifestPath = Join-Path $sourceRoot '.presentation-source-manifest.json'
     $manifestHelper = Join-Path $sourceRoot 'scripts\windows-presentation-source-manifest.py'
@@ -350,6 +376,37 @@ install(TARGETS rustdesk_d3d11_preflight RUNTIME DESTINATION "${CMAKE_INSTALL_PR
     }
     Write-Error $_
 } finally {
+    $executionStateResetFailure = $null
+    if ($executionStateHeld) {
+        try {
+            $executionStateReset = [PresentationExecutionStateNative]::SetThreadExecutionState(
+                $esContinuous
+            )
+            if ($executionStateReset -eq 0) {
+                $errorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+                $executionStateResetFailure =
+                    "could not release the presentation display execution state: Win32 error $errorCode"
+            }
+        } catch {
+            $executionStateResetFailure =
+                "could not release the presentation display execution state: $($_.Exception.Message)"
+        }
+    }
+    if ($null -ne $executionStateResetFailure) {
+        $runnerSucceeded = $false
+        if ($null -ne $outputRoot) {
+            try {
+                [IO.File]::AppendAllText(
+                    (Join-Path $outputRoot 'windows-presentation-runner-failure.txt'),
+                    "System.InvalidOperationException: [windows-presentation-runner:FATAL] $executionStateResetFailure`r`n",
+                    [Text.Encoding]::ASCII
+                )
+            } catch {
+                Write-Error 'could not persist the execution-state cleanup failure' -ErrorAction Continue
+            }
+        }
+        Write-Error $executionStateResetFailure -ErrorAction Continue
+    }
     if ($runnerSucceeded -and $null -ne $workRoot -and (Test-Path -LiteralPath $workRoot)) {
         Remove-Item -LiteralPath $workRoot -Recurse -Force
     }

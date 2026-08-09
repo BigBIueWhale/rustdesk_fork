@@ -714,7 +714,8 @@ if missing:
     raise SystemExit(f"presentation diagnostic evidence is missing: {missing!r}")
 progress = (root / "windows-presentation-progress.txt").read_text(encoding="ascii").splitlines()
 diagnostic_progress = [
-    "source-found", "source-verified", "probe-built", "d3d11-preflight"
+    "source-found", "execution-state-held", "source-verified", "probe-built",
+    "d3d11-preflight"
 ]
 preflight = json.loads(
     (root / "windows-presentation-d3d11-preflight.json").read_text(

@@ -9844,6 +9844,22 @@ def validate_ipc_listener_failure_outcome_contract(sources):
     ):
         require_text(source, heading, label)
 
+    listener_gate = extract_between(
+        verify,
+        "shutdown_policy=$(awk '/static SHUTDOWN_FAILURE_LATCHED/,/pub struct Server/' src/server.rs)",
+        "python3 - src/ipc.rs <<'PY'",
+        "IPC listener failure ordering gate",
+    )
+    require_text(
+        listener_gate,
+        "listener_failure_policy=$(awk '",
+        "listener-failure ordering gate scope",
+    )
+    if listener_gate.count('<<<"$listener_failure_policy"') != 2:
+        raise VerificationError(
+            "listener-failure ordering gate does not inspect the exact producer twice"
+        )
+
     shutdown_policy = extract_between(
         server_source,
         "pub fn is_shutting_down() -> bool {",
@@ -49242,6 +49258,18 @@ def run_source_mutations(sources):
             'echo "== (3b-iii-d9cc) authority-bearing IPC listener failure outcome (R-S11am/R-S11e-53) =="',
             'echo "== (3b-iii-d9cc) successful IPC listener loss (R-S11am/R-S11e-53) =="',
             "IPC listener failure source gate",
+        ),
+        (
+            "verify",
+            "listener_failure_policy=$(awk '",
+            "listener_failure_policy=$shutdown_policy # formerly scoped awk",
+            "listener-failure ordering gate scope",
+        ),
+        (
+            "verify",
+            '<<<"$listener_failure_policy"',
+            '<<<"$shutdown_policy"',
+            "listener-failure ordering gate does not inspect the exact producer twice",
         ),
         (
             "apple",

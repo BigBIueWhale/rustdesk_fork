@@ -5234,6 +5234,11 @@ echo "== (3b-iii-d9cc) authority-bearing IPC listener failure outcome (R-S11am/R
 "${RUN[@]}" cargo test --offline --locked --lib --features linux-pkg-config r_s11e53_ --color never
 r_s11e53=
 shutdown_policy=$(awk '/static SHUTDOWN_FAILURE_LATCHED/,/pub struct Server/' src/server.rs)
+listener_failure_policy=$(awk '
+  /^pub\(crate\) fn request_graceful_shutdown_after_listener_failure\(\) \{$/ { capture = 1 }
+  capture { print }
+  capture && /^}$/ { exit }
+' <<<"$shutdown_policy")
 for binding in \
   'static SHUTDOWN_FAILURE_LATCHED: AtomicBool = AtomicBool::new(false);' \
   'fn graceful_shutdown_exit_code(failure_latched: bool) -> i32 {' \
@@ -5247,8 +5252,8 @@ for binding in \
   'assert_eq!(graceful_shutdown_exit_code(true), 1);'; do
   grep -qF "$binding" <<<"$shutdown_policy" || r_s11e53="$r_s11e53 shutdown-outcome-binding-missing"
 done
-store_line=$(grep -nF 'SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Release);' <<<"$shutdown_policy" | cut -d: -f1 || true)
-cancel_line=$(grep -nF 'request_graceful_shutdown();' <<<"$shutdown_policy" | head -n1 | cut -d: -f1 || true)
+store_line=$(grep -nF 'SHUTDOWN_FAILURE_LATCHED.store(true, Ordering::Release);' <<<"$listener_failure_policy" | cut -d: -f1 || true)
+cancel_line=$(grep -nF 'request_graceful_shutdown();' <<<"$listener_failure_policy" | cut -d: -f1 || true)
 load_line=$(grep -nF 'SHUTDOWN_FAILURE_LATCHED.load(Ordering::Acquire)' <<<"$shutdown_policy" | cut -d: -f1 || true)
 exit_line=$(grep -nF 'std::process::exit(exit_code);' <<<"$shutdown_policy" | cut -d: -f1 || true)
 if [ -z "$store_line" ] || [ -z "$cancel_line" ] \

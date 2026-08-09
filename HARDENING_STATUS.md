@@ -17481,6 +17481,21 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   cold cross-platform R-B2 artifacts, full R-B10 online-closure equality, independent reproduction,
   or external review. Those remain explicit release blockers.
 
+  A later exact-current rerun at clean pushed commit
+  `94bbfbabc5362dcda27d79e9b90015063207c1a6`, tree
+  `2206ccd6a6c7eea6330dbb58e3a831b4e30fff41`, stopped in its first read-only persistent-input
+  check before compilation, Xvfb acquisition, or any RustDesk process/listener. The full-peer pin still
+  described the retired broad x64-Linux vcpkg tree at
+  `24a2295145b04938abed637daac104252c4374a119db19749451a8fc69858436`; R-B10 had replaced that
+  consumer with the current narrow projection. A fresh numeric-nonroot, networkless, read-only
+  verifier independently recomputed the live projection as 52 files, 6 directories, zero symlinks,
+  9,713,973 content bytes, and closure
+  `9564b164d4c6d4a9b3d7540a1655505009af34a9e610eadaf076e4807f63cf2c`, then accepted its exact
+  output key, libvpx key, builder identity, closed inventory, archive framing, and x86-64 object ABI
+  through `online-vcpkg-native-output.py check-complete`. The evidence-only pin and focused mutation
+  gate now bind that checked projection. This is harness-input drift and correction, not a product
+  failure or pass; another exact committed full-peer transaction remains required after the correction.
+
 - **R-B10 exact-current canonical online-input reconciliation — OPERATIONAL ACQUISITION,
   PRESERVATION-FIRST REPLACEMENT, AND COMPLETE CLOSURE VERIFICATION GREEN 2026-08-08;
   COLD RELEASE/DOUBLE-BUILD AND NATIVE DEVICE/VM EVIDENCE OPEN.** Exact source authority:

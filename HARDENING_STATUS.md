@@ -10516,9 +10516,70 @@ network configuration was inspected or changed.
   two-principal filesystem tests and the subsequently reached Linux IPC/supervisor/session/lifecycle suites, but
   failed on exit before R-S11e-34 could be decided: the outer uniform-owner private-tree eraser correctly refused
   the deliberately retained UID-65534 fail-closed directory with `private-tree directory changed during cleanup`.
-  No Cargo, Rust, verifier, or container child survived. That transaction is not green. The exact non-root
-  fixture-finality correction described above remains to be validated by focused, independent, and complete clean
-  reruns; installed-root-service and release-platform evidence remain separate open obligations.
+  No Cargo, Rust, verifier, or container child survived. That transaction is not green.
+
+  Closure completed on 2026-08-09 without relaxing the non-root or host boundary. Commit
+  `c267cc4d09ad15eef95dfb7f67b3ed07d08c594f` added the exact actor-owned fixture-finality phase; its
+  seven helper cases and the then-current 111-mutation main-verifier authority suite passed. The subsequent
+  clean-commit transactions were deliberately fail-closed and are retained rather than represented as green:
+  `9b654263c5e2ecd1034eefb448df723c1abfecfe` reconciled the old fixture assertions and reached R-S11e-34 before
+  exposing a stale macOS descriptor gate; `0388dc212858acc941353fee1b749b9b19587b04` corrected that gate and then
+  exposed the absence of a fresh generated-bridge comparison; `c2360f01ebad394e173b7aa74c5e656d900982e7`
+  added real FRB generation/comparison and exposed missing read-only submount placeholders;
+  `c9b3377b3aa98cc3fe8fcc0ad552c5321bc8017d` prepared those placeholders and then exposed nine late stale or
+  contradictory source gates; `b5032020b9c9fed067cb75a90afa4e36e2a89223` reconciled those gates and exposed
+  mutation-diagnostic bookkeeping drift; and `f004946352d88b6630622a7c2e6c9ebbdaefcdcf` corrected that diagnostic,
+  passed the rest of the functional transaction, and exposed the verifier's stale extensionless Android ProGuard
+  path. Commit `24fb4f93638b926458e1d379454c46683091046f` bound the active
+  `flutter/android/app/proguard-rules.pro` file and added two deliberate mutations; its source matrix passed and its
+  full functional gates passed, but the final codec scan falsely ingested ignored retained exact-source evidence
+  beneath `.harness-state/`. That was verifier drift, not evidence that the active Android artifact lacked its keep
+  rules or that a live build enabled hardware codecs.
+
+  Commit `cb539561ec394d37dd6f7ae30bd92952d628f3a4` excluded only the already-ignored retained-evidence root from
+  the live codec-input scan, added a behavioral retained-evidence fixture and a deletion mutation, passed the
+  semantic baseline, a complete unsliced source-mutation matrix, and a direct scan with the real retained evidence
+  present. Its complete canonical transaction reached the nominal green banner and exit zero, but emitted
+  `integer expression expected` at the R-S11e-53 listener-failure ordering gate: two legitimate fatal-shutdown
+  producers yielded two line numbers where the shell assumed one scalar. That transaction is rejected as green
+  evidence even though the independently parsed Rust ordering and all product tests passed. Commit
+  `8b3c333e57d967cabf28d113bfe4b06cb7b0c1d9` scopes the shell ordering check to the exact listener-failure
+  producer it claims to inspect and adds three effective source mutations covering loss of the scoped extraction
+  and rebinding of either lookup to the broader multi-function block. The confined semantic baseline and one fresh
+  complete unsliced source-mutation matrix both exited zero with terminal `verify-verifier-workspace: ok`.
+
+  The final exact clean-commit `8b3c333e57d967cabf28d113bfe4b06cb7b0c1d9` canonical transaction then
+  completed with no arithmetic warning, no failure marker, terminal
+  `VERIFY: all required source, behavior, compile, policy, inventory, and excision gates green`, and exit zero.
+  Stage 0 passed the independent workspace suite and the 136-mutation main-verifier authority suite. Fresh FRB
+  generation in builder image `sha256:607278bc16cf12eadaa41f8fa63a5a160a34b1a980be8cb2a772c4c3b7d3fdb2`
+  matched all four tracked Rust/Dart outputs. The private vendor snapshot
+  `fb63f7daefc2c26fb73c04a7d77e9cb8a7658e3c899352e851bb1ebbacdc8c04` and broader online snapshot
+  `eacb4d0fadb044f2f38520ad5263470a89c286bed69927ce2c32babcbc01ab24` were reverified. Relevant deliberate
+  mutation suites passed for viewer voice ownership (63), Android voice/resource ownership (529), Android client
+  lifecycle drain (39), Android builder authority (178), viewer video mailbox (49), viewer RGBA mailbox (55),
+  desktop texture lifecycle (202), Android listener generation (39), and Android raw-frame generation (68).
+  The exact selected Linux test artifact was SHA-256
+  `5052d83e489bdaaceeda04e3d984c76772eecf8bf799d015e9144e3e65d7f0e2`, 283,146,680 bytes. The private
+  verifier workspace was removed and no scoped child survived. Repeated main-library filters still emit the known
+  128-warning inventory; FRB also retains its documented unresolved-module/C-declaration warnings and pinned Dart
+  packages report discontinued/outdated notices. None is represented as corrected by this closure.
+
+  This result is confined source, generation, Linux compile/behavior, namespace, and mutation evidence. The release
+  remains **STOP-SHIP** until exact-current physical Android task-swipe/foreground-service/Force-Stop/reopen and
+  repeated reconnect/resource-soak evidence, native Windows focus/minimize display-latency evidence on the same
+  connection, current signed Android and native Windows artifacts, native macOS execution, installed root-service
+  execution, R-B2/R-B10 artifact closure, and R-V3 external review exist. The user's observed cross-platform defect
+  remains explicit: an older operational Android client could preserve incoherent display-control state in its
+  persistent service until Force Stop while file transfer still worked, and an older operational Windows viewer
+  could accumulate up to approximately ten seconds of display-only latency after focus loss while control stayed
+  responsive; reconnect cleared it. Unit/mutation evidence does not substitute for reproducing those native paths
+  with these exact bytes. No host RustDesk process/service/binary/configuration/listener, display, firewall/UFW/
+  nftables/iptables, route, or network state was inspected or changed; no port was published and no UID-0 project
+  container or added capability was used. One post-patch host-side Bash parse and Python byte-compilation check was
+  mistakenly invoked contrary to the container-only execution rule; it was not counted, created only one user-owned
+  `.pyc` that was immediately removed, and used no root, network, listener, service, or product process. All counted
+  correction evidence ran in the pinned non-root, networkless, read-only-root/source container boundary.
 
   Prior superseded root-exception runtime evidence: from clean candidate
   `a576ce296e6d22b8bef4781966819ede7556587a`, the complete

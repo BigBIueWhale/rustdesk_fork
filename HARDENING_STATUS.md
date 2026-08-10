@@ -4770,9 +4770,45 @@ without reconnect. Android task-swipe/reopen and Windows focus/minimize/tab beha
 release blockers, along with current Debian controlled-side execution, cross-version disposition,
 clean cold artifacts, independent reproduction, and external review.
 
-No host RustDesk process/service/binary/configuration, host listener, firewall/UFW/nftables/iptables
-state, Docker image, or host network setting was inspected or changed. No root, sudo, privileged
-container, installed product, capture source, renderer, emulator, VM, or physical device ran.
+A later exact-source one-viewer integration run on 2026-08-10 used clean pushed parent commit
+`a98290a192ed5e6961c295f0b4d66f551d0f2c8c`, Git tree
+`8d371977825de6c1dacd553069a3d482f300e885`, canonical source-archive SHA-256
+`bad39bd9220e9112d7432076fc7d84cec60b4affae129e60e750ea667f21a1bc`, and harness tree digest
+`76e3e59fbedbdc1a0c28ba188f7e7e1294ff7dc95025eb37ebff64fe72dcf1d7`. The fresh offline
+build reverified Cargo-vendor closure
+`fb63f7daefc2c26fb73c04a7d77e9cb8a7658e3c899352e851bb1ebbacdc8c04`, linked the real Linux
+server and production library-test path, and produced the latter at SHA-256
+`36fb9b6855781df00598c3bd79c6922d041cf27c34feeba6db35b55752f189c9`. Existing compiler
+warnings remain; this is not a warning-free claim.
+
+The real X11 run captured a changing 640x480 display, software-encoded VP9, completed CPace/keyed
+loopback transport, returned every exact generation receipt before software decode, and reported 33
+frames, 33 distinct decoded images, 33 receipts, 108 ms to first decode, a 4,480 ms PTS span,
+4,725 us maximum decode, 1,149 us mean decode, and zero receive-backlog drift. A second connection
+used the production `Session`, client I/O loop, exact receipt tracker, bounded `VideoMailbox`, owned
+decoder worker, and RGBA publication callback. Its first publication deliberately stalled for
+1,500 ms; without reconnect, it recovered in 30 ms, published 20 distinct frames, observed a live
+connection and `PeerInfo`, and completed exactly one successful `close_and_join` with I/O and media
+owners joined. Server, motion fixture, and Xvfb were identity-bound, stopped, and joined.
+
+The product build and runtime were numeric non-root and networkless with read-only roots/source,
+all capabilities dropped, `no-new-privileges`, bounded resources, no published port, device,
+Docker-socket mount, host namespace, or privileged flag. Xvfb used only its private Unix socket;
+before product startup the runtime had zero TCP listeners and zero UDP sockets. The only product
+listener was `127.0.0.1:21118` inside the `--network=none` namespace and it closed during exact
+teardown. A separate disposable numeric-nonroot acquisition container used bridge egress only to
+fetch the five exact size/SHA-256-pinned Debian Xvfb packages; it published no port, installed
+nothing, ended with zero TCP listeners and zero UDP sockets, and its private outputs were removed.
+No host RustDesk process, service, binary, configuration, listener, display, firewall, route, or
+network state was inspected or changed.
+
+This materially advances exact-current Linux core-path evidence, but it still does not satisfy the
+two-viewer R-S11fl matrix or release the branch. It bypasses Flutter/Dart texture and compositor
+presentation; does not background Android, unfocus/minimize Windows, run an installed service or
+packaged artifact, exercise the weeks-old deployed binaries, test cross-version behavior or file/
+audio/control coexistence, or perform sustained reconnect/resource/performance soak. Native
+Android/Windows/macOS/iOS execution, current Debian artifact execution, cold R-B2/R-B10 artifacts,
+independent reproduction, and external review remain explicit stop-ship gaps.
 
 **R-S11fm/R-S11e-200 desktop texture activation finality — SOURCE IMPLEMENTED 2026-08-02;
 CONFINED FORMAT, 10/10 DART BEHAVIORS, TARGETED ANALYSIS WITH ZERO ERRORS, TWO

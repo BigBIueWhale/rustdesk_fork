@@ -20717,8 +20717,18 @@ def validate_desktop_texture_lifecycle_contract(sources):
     )
     require_text(
         sources["windows_presentation_verifier"],
+        '"flutter/third_party/desktop_multi_window/windows/desktop_multi_window_plugin.cpp"',
+        "independent native Windows main-view registrar binding",
+    )
+    require_text(
+        sources["windows_presentation_verifier"],
         '"flutter/third_party/desktop_multi_window/windows/multi_window_manager.cc"',
         "independent native Windows primary-window wrapper binding",
+    )
+    require_text(
+        sources["windows_presentation_verifier"],
+        '"windows_runner_window": "flutter/windows/runner/flutter_window.cpp"',
+        "independent native Windows runner parenting-order binding",
     )
     require_text(
         sources["windows_presentation_verifier"],
@@ -59369,9 +59379,21 @@ def run_source_mutations(sources):
         ),
         (
             "windows_presentation_verifier",
+            '"flutter/third_party/desktop_multi_window/windows/desktop_multi_window_plugin.cpp"',
+            '"flutter/third_party/desktop_multi_window/windows/removed_plugin.cpp"',
+            "independent native Windows main-view registrar binding",
+        ),
+        (
+            "windows_presentation_verifier",
             '"flutter/third_party/desktop_multi_window/windows/multi_window_manager.cc"',
             '"flutter/third_party/desktop_multi_window/windows/removed_manager.cc"',
             "independent native Windows primary-window wrapper binding",
+        ),
+        (
+            "windows_presentation_verifier",
+            '"windows_runner_window": "flutter/windows/runner/flutter_window.cpp"',
+            '"windows_runner_window": "flutter/windows/runner/removed_window.cpp"',
+            "independent native Windows runner parenting-order binding",
         ),
         (
             "windows_presentation_verifier",

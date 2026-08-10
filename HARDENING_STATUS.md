@@ -23145,12 +23145,46 @@ every claim must be verified against source. Tiers 1–2 are the priority (a use
 mis-pin); Tiers 3–4 are the coherence work that lets this tree finally read as
 correct-from-the-first-place. This section supersedes the "Inert dead-code leftovers" sample above.
 
+### R-S11gg/R-S11e-219 Windows main-window identity is resolved after parenting (2026-08-09)
+
+- A clean native rerun from pushed commit `1ba57ce66930fc70f608d699b376bde8e2286c72`, tree
+  `da695f4f4dcfec34717d8c675c96063d5d157aee`, again completed both production-secondary
+  presentation cycles. It observed the minimize/restore and real focus-loss/pointer-return events, delivered
+  128 direct-ABI frames per cycle, accepted both explicit re-notifications, matched both final composed colors,
+  delivered the second pointer-down, retired the probe resources, and durably published `app-finished=ok` with
+  exactly empty stdout and stderr. The exact process nevertheless remained alive for the controller's 15-second
+  exit bound, so the strict result correctly remained `fail`; no pass evidence was published. The retained run is
+  `.harness-state/windows-presentation-run.whDlDbe8`.
+- Source tracing corrects the prior quit-owner assumption. The runner calls
+  `RegisterPlugins(flutter_controller_->engine())` before
+  `SetChildContent(flutter_controller_->view()->GetNativeWindow())`. During registration, the vendored Windows
+  plugin obtained the Flutter view HWND and immediately cached `GetAncestor(hwnd, GA_ROOT)` as main window ID 0.
+  Because the view was not parented yet, that call returned the view itself. Later
+  `WindowController.main().close()` therefore posted `SC_CLOSE` to the child instead of the outer
+  `Win32Window`; the outer `quit_on_close_` `WM_DESTROY` path never posted `WM_QUIT`. The same cached identity
+  was wrong for every other ID-0 window operation. The plugin logic came from upstream commit
+  `b47e8385e5a75d38319ad706a64b0ead3108b093` and became locally tracked when the dependency was vendored in
+  commit `1603c0fe3457e38c677fcac573eac9c1447ce79c`; that attribution does not imply the defect was authored by
+  the vendoring commit.
+- The narrow production correction retains the exact registrar view handle, checks that it is still a live HWND,
+  and resolves `GetAncestor(view_handle_, GA_ROOT)` inside `FlutterMainWindow::GetWindowHandle()` when an
+  operation occurs. It does not reorder all plugin registration and does not add a probe-only termination path.
+  `UPSTREAM.md` records the deviation. The focused verifier binds the real registration-before-parenting trigger,
+  raw-view attachment, validity guard, operation-time resolution, and requirements/ledger contract and rejects
+  173 deliberate mutations. This is source verification only until a fresh exact-commit native rerun proves app
+  exit, strict pass publication, guest shutdown, and exact owned cleanup.
+- The failed `1ba57ce` domain remained an unprivileged `qemu:///session` transaction with no NIC, host device, or
+  filesystem passthrough and only temporary VNC on `127.0.0.1:5900`. Exact cleanup removed its domain,
+  QEMU/wrapper, and listener. No root or sudo was used, and no host RustDesk process, service, configuration,
+  firewall, route, or network setting was changed. This correction does not close the separate response-bound
+  Windows subwindow-destruction defect or any Android/real-peer/cross-version/performance/release obligation.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-f8221e29b3d035301ebbc881c48eb993078cdce88b56a07b4fb5904fc977df3a  requirements.html
+5721aef0fd159c572d32b92d751d360f07719c60e1e3751742eff25188dcfa08  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -23200,3 +23234,4 @@ The same identity additionally binds R-S11gb and Appendix C #337.
 The same identity additionally binds R-S11gc and Appendix C #338.
 The same identity additionally binds R-S11gd and Appendix C #339.
 The same identity additionally binds R-S11ge and Appendix C #340.
+The same identity additionally binds R-S11gg and Appendix C #342.

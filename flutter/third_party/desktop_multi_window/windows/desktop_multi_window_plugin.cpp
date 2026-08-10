@@ -212,7 +212,7 @@ void DesktopMultiWindowPluginRegisterWithRegistrar(
   // Attach MainWindow for
   auto hwnd = FlutterDesktopViewGetHWND(FlutterDesktopPluginRegistrarGetView(registrar));
   auto channel = WindowChannel::RegisterWithRegistrar(registrar, 0);
-  MultiWindowManager::Instance()->AttachFlutterMainWindow(GetAncestor(hwnd, GA_ROOT),
+  MultiWindowManager::Instance()->AttachFlutterMainWindow(hwnd,
                                                           std::move(channel));
 }
 

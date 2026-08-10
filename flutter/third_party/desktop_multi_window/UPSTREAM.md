@@ -31,6 +31,14 @@ names, and replaces deprecated `describeEnum(edge)` with the equivalent
 `edge.name` wire value. These are deliberate recorded deviations from the exact
 upstream commit, not an unrecorded refresh.
 
+The vendored Windows implementation retains the registrar's Flutter view handle
+for main window ID 0 and resolves its `GA_ROOT` ancestor when an operation is
+performed. RustDesk's runner registers plugins before `SetChildContent` parents
+that view, so resolving and caching the root during registration permanently
+mistook the child view for the top-level runner HWND. The lazy resolution keeps
+ID-0 show, hide, focus, frame, and close operations attached to the actual native
+window after runner initialization.
+
 The original Apache-2.0 license is retained in `LICENSE`. Do not refresh this
 directory from upstream without reviewing and recording the exact new commit,
 reapplying or retiring the local lifetime correction, regenerating the Flutter

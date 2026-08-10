@@ -56,9 +56,13 @@ PATHS = {
     "multi_window_windows": (
         "flutter/third_party/desktop_multi_window/windows/flutter_window.cc"
     ),
+    "multi_window_plugin": (
+        "flutter/third_party/desktop_multi_window/windows/desktop_multi_window_plugin.cpp"
+    ),
     "multi_window_manager": (
         "flutter/third_party/desktop_multi_window/windows/multi_window_manager.cc"
     ),
+    "windows_runner_window": "flutter/windows/runner/flutter_window.cpp",
     "production_window_manager": "flutter/lib/utils/multi_window_manager.dart",
     "production_remote_page": "flutter/lib/desktop/pages/remote_page.dart",
     "verify": "scripts/verify.sh",
@@ -91,7 +95,9 @@ def validate(sources: dict[str, str]) -> None:
     golden_inspector = sources["golden_inspector"]
     libyuv_port = sources["libyuv_port"]
     multi_window_windows = sources["multi_window_windows"]
+    multi_window_plugin = sources["multi_window_plugin"]
     multi_window_manager = sources["multi_window_manager"]
+    windows_runner_window = sources["windows_runner_window"]
     production_window_manager = sources["production_window_manager"]
     production_remote_page = sources["production_remote_page"]
 
@@ -807,6 +813,40 @@ def validate(sources: dict[str, str]) -> None:
         "class FlutterMainWindow : public BaseFlutterWindow",
         "eventless primary bootstrap wrapper",
     )
+    require_order(
+        windows_runner_window,
+        (
+            "RegisterPlugins(flutter_controller_->engine());",
+            "SetChildContent(flutter_controller_->view()->GetNativeWindow());",
+        ),
+        "plugin registration before Flutter-view parenting",
+    )
+    require(
+        multi_window_plugin,
+        "AttachFlutterMainWindow(hwnd,",
+        "unresolved main Flutter-view attachment",
+    )
+    forbid(
+        multi_window_plugin,
+        "AttachFlutterMainWindow(GetAncestor(hwnd, GA_ROOT),",
+        "registration-time main-window root snapshot",
+    )
+    require_order(
+        multi_window_manager,
+        (
+            "FlutterMainWindow(HWND view_handle,",
+            ": view_handle_(view_handle),",
+            "HWND GetWindowHandle() override {",
+            "if (!IsWindow(view_handle_)) {",
+            "return GetAncestor(view_handle_, GA_ROOT);",
+        ),
+        "operation-time main-window root resolution",
+    )
+    require(
+        sources["multi_window_upstream"],
+        "resolves its `GA_ROOT` ancestor when an operation is\nperformed",
+        "recorded Windows main-window identity deviation",
+    )
     require(
         production_window_manager,
         "final windowController = await DesktopMultiWindow.createWindow(msg);",
@@ -1038,6 +1078,21 @@ def validate(sources: dict[str, str]) -> None:
         sources["hardening"],
         "R-S11gb/R-S11e-215 native Windows presentation transaction",
         "native Windows presentation ledger",
+    )
+    require(
+        sources["requirements"],
+        '<span class="id">R-S11gg</span>',
+        "main-window identity requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>342</td>",
+        "main-window identity disposition",
+    )
+    require(
+        sources["hardening"],
+        "R-S11gg/R-S11e-219 Windows main-window identity is resolved after parenting",
+        "main-window identity hardening record",
     )
 
 
@@ -1691,6 +1746,26 @@ def self_test(sources: dict[str, str]) -> int:
             "class FlutterMainWindowRemoved : public BaseFlutterWindow",
         ),
         (
+            "multi_window_plugin",
+            "AttachFlutterMainWindow(hwnd,",
+            "AttachFlutterMainWindow(GetAncestor(hwnd, GA_ROOT),",
+        ),
+        (
+            "multi_window_manager",
+            "if (!IsWindow(view_handle_)) {",
+            "if (false) {",
+        ),
+        (
+            "multi_window_manager",
+            "return GetAncestor(view_handle_, GA_ROOT);",
+            "return view_handle_;",
+        ),
+        (
+            "windows_runner_window",
+            "RegisterPlugins(flutter_controller_->engine());",
+            "RegisterPluginsRemoved(flutter_controller_->engine());",
+        ),
+        (
             "production_window_manager",
             "final windowController = await DesktopMultiWindow.createWindow(msg);",
             "final windowController = WindowController.main();",
@@ -1706,6 +1781,11 @@ def self_test(sources: dict[str, str]) -> int:
             "multi_window_upstream",
             "b47e8385e5a75d38319ad706a64b0ead3108b093",
             "unreviewed-window-plugin-upstream",
+        ),
+        (
+            "multi_window_upstream",
+            "resolves its `GA_ROOT` ancestor when an operation is\nperformed",
+            "caches its `GA_ROOT` ancestor during registration",
         ),
         (
             "provision",
@@ -1783,9 +1863,28 @@ def self_test(sources: dict[str, str]) -> int:
             "builder-logon-task=unchecked",
         ),
         ("verify", "/usr/bin/python3 -I -S scripts/verify-flutter-presentation-windows.py --repo . --self-test", "true # verifier removed"),
-        ("requirements", '<span class="id">R-S11gb</span>', '<span class="id">R-S11gb-disabled</span>'),
+        (
+            "requirements",
+            '<span class="id">R-S11gb</span>',
+            '<span class="id">R-S11gb-disabled</span>',
+        ),
         ("requirements", "<tr><td>337</td>", "<tr><td>337-disabled</td>"),
-        ("hardening", "R-S11gb/R-S11e-215 native Windows presentation transaction", "R-S11gb-disabled/R-S11e-215 native Windows presentation transaction"),
+        (
+            "requirements",
+            '<span class="id">R-S11gg</span>',
+            '<span class="id">R-S11gg-disabled</span>',
+        ),
+        ("requirements", "<tr><td>342</td>", "<tr><td>342-disabled</td>"),
+        (
+            "hardening",
+            "R-S11gb/R-S11e-215 native Windows presentation transaction",
+            "R-S11gb-disabled/R-S11e-215 native Windows presentation transaction",
+        ),
+        (
+            "hardening",
+            "R-S11gg/R-S11e-219 Windows main-window identity is resolved after parenting",
+            "R-S11gg-disabled/R-S11e-219 Windows main-window identity is resolved after parenting",
+        ),
     )
     for index, (key, old, new) in enumerate(mutations, start=1):
         if old not in sources[key]:

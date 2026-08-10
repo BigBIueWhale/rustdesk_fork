@@ -21,7 +21,7 @@ class MultiWindowManager : public std::enable_shared_from_this<MultiWindowManage
 
   int64_t Create(std::string args);
 
-  void AttachFlutterMainWindow(HWND main_window_handle, std::unique_ptr<WindowChannel> window_channel);
+  void AttachFlutterMainWindow(HWND main_view_handle, std::unique_ptr<WindowChannel> window_channel);
 
   void Show(int64_t id);
 

@@ -15,8 +15,8 @@ class FlutterMainWindow : public BaseFlutterWindow {
 
  public:
 
-  FlutterMainWindow(HWND hwnd, std::unique_ptr<WindowChannel> window_channel)
-      : hwnd_(hwnd), channel_(std::move(window_channel)) {
+  FlutterMainWindow(HWND view_handle, std::unique_ptr<WindowChannel> window_channel)
+      : view_handle_(view_handle), channel_(std::move(window_channel)) {
 
   }
 
@@ -29,12 +29,18 @@ class FlutterMainWindow : public BaseFlutterWindow {
  protected:
 
   HWND GetWindowHandle() override {
-    return hwnd_;
+    // Plugin registration runs before the RustDesk runner parents the Flutter
+    // view. Resolve its top-level ancestor when the controller operation is
+    // performed instead of permanently caching the then-unparented view.
+    if (!IsWindow(view_handle_)) {
+      return nullptr;
+    }
+    return GetAncestor(view_handle_, GA_ROOT);
   }
 
  private:
 
-  HWND hwnd_;
+  HWND view_handle_;
 
   std::unique_ptr<WindowChannel> channel_;
 
@@ -70,7 +76,7 @@ int64_t MultiWindowManager::Create(std::string args) {
 }
 
 void MultiWindowManager::AttachFlutterMainWindow(
-    HWND main_window_handle,
+    HWND main_view_handle,
     std::unique_ptr<WindowChannel> window_channel) {
   if (windows_.count(0) != 0) {
     std::cout << "Error: main window already exists" << std::endl;
@@ -84,7 +90,7 @@ void MultiWindowManager::AttachFlutterMainWindow(
              std::unique_ptr<flutter::MethodResult<flutter::EncodableValue>> result) {
         HandleWindowChannelCall(from_window_id, target_window_id, call, arguments, std::move(result));
       });
-  windows_[0] = std::make_unique<FlutterMainWindow>(main_window_handle, std::move(window_channel));
+  windows_[0] = std::make_unique<FlutterMainWindow>(main_view_handle, std::move(window_channel));
 }
 
 void MultiWindowManager::Show(int64_t id) {

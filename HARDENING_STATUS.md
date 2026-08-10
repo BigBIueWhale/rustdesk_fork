@@ -17029,11 +17029,20 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `DesktopMultiWindow` listener, removes its own Flutter binding observer, clears its own method handler,
   publishes the durable `app-finished` marker, and calls direct process exit with no intervening asynchronous
   diagnostic operation. The focused verifier binds that exact order, rejects any `stdout.` use, and rejects
-  removal of each owned-resource retirement; all 162 deliberate mutations pass. The exact pinned Dart SDK
+  removal of each owned-resource retirement; all 163 deliberate mutations pass. The exact pinned Dart SDK
   resolves the unchanged 13-package lock offline, reports no analyzer issues for the two probe sources, and
   reports both formatter-clean. These are source checks only. A fresh clean-commit native rerun must still
   prove actual app exit, strict pass publication, guest shutdown, domain/process/listener cleanup, and source
   postconditions before the narrow transaction may be called green.
+
+  No VM was started from first pushed correction commit
+  `c9eb883dd388919d5dfdfc20ce43484ac3fb96ce`. Read-only preflight review caught that the host-side
+  success validator still required the removed `WINDOWS_PRESENTATION_PROBE_OK` stdout line, so the harness
+  could not have accepted even a correct app exit. The host validator now retains the redirected app-stdout
+  file in its exact success inventory but requires it to be zero bytes before evidence publication, and the
+  focused verifier both forbids the obsolete marker and mutates away that empty-file verdict. This correction
+  aligns the host result consumer with the already-normative no-stdout liveness rule; it produces no new native
+  evidence, and the clean-commit rerun remains mandatory.
 
   This probe correction deliberately does not close a separate production Windows lifetime defect found
   during the teardown review. The vendored Windows `desktop_multi_window` `WM_DESTROY` path calls

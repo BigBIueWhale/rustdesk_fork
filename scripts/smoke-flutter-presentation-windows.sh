@@ -921,10 +921,8 @@ if "WINDOWS_PRESENTATION_CONTROLLER_OK" not in (
     root / "windows-presentation-controller.stdout.txt"
 ).read_text(encoding="utf-8-sig"):
     raise SystemExit("presentation controller success marker is absent")
-if "WINDOWS_PRESENTATION_PROBE_OK" not in (
-    root / "windows-presentation-app.stdout.txt"
-).read_text(encoding="utf-8-sig"):
-    raise SystemExit("presentation app success marker is absent")
+if (root / "windows-presentation-app.stdout.txt").read_bytes():
+    raise SystemExit("presentation app stdout is not empty")
 PY
     EVIDENCE_DIR="$STATE_DIR/windows-presentation-evidence-${SOURCE_COMMIT:0:12}"
     [ ! -e "$EVIDENCE_DIR" ] && [ ! -L "$EVIDENCE_DIR" ] \

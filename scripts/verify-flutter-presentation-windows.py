@@ -114,6 +114,17 @@ def validate(sources: dict[str, str]) -> None:
     require_order(
         host,
         (
+            '"windows-presentation-app.stdout.txt",',
+            'if (root / "windows-presentation-app.stdout.txt").read_bytes():',
+            'raise SystemExit("presentation app stdout is not empty")',
+            'EVIDENCE_DIR="$STATE_DIR/windows-presentation-evidence-${SOURCE_COMMIT:0:12}"',
+        ),
+        "empty probe stdout before evidence publication",
+    )
+    forbid(host, "WINDOWS_PRESENTATION_PROBE_OK", "obsolete probe stdout receipt")
+    require_order(
+        host,
+        (
             "CURRENT_DOMAIN_CREATION_STARTED=1",
             "setsid --wait virt-install --connect qemu:///session",
             '--network none --graphics vnc,listen=127.0.0.1',
@@ -1618,6 +1629,11 @@ def self_test(sources: dict[str, str]) -> int:
             "dart",
             "exit(0);",
             "await stdout.flush(); exit(0);",
+        ),
+        (
+            "host",
+            'if (root / "windows-presentation-app.stdout.txt").read_bytes():',
+            "if False:",
         ),
         (
             "multi_window_windows",

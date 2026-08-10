@@ -585,6 +585,8 @@ def validate(sources: dict[str, str]) -> None:
             "$focusSink = Start-Process -FilePath 'powershell.exe'",
             "-NoNewWindow -PassThru",
             "$focusWindow = Wait-ProcessWindow $focusSink",
+            "$focusWindowClass = [PresentationProbeNative]::WindowClass($focusWindow)",
+            "if (-not $focusWindowClass.StartsWith('WindowsForms10.Window.', [StringComparison]::Ordinal))",
             "Wait-Foreground $focusWindow",
             "Publish-Marker 'hidden-2'",
             "SetCursorPos",
@@ -765,10 +767,16 @@ def validate(sources: dict[str, str]) -> None:
             "Wait-Marker 'window-role' \"desktop-multi-window-subwindow`n\" -OwnedProcess $app",
             "Wait-Marker 'window-admitted' \"secondary-visible`n\" -OwnedProcess $app",
             "$window = Wait-ProcessWindow $app",
+            "$windowClass = [PresentationProbeNative]::WindowClass($window)",
+            "if ($windowClass -cne 'RustdeskMultiWindow')",
             "Wait-Marker 'initial-submitted' \"white`n\"",
         ),
         "secondary role before exact native window admission",
     )
+    window_waiter = controller.split("function Wait-ProcessWindow", 1)[1].split(
+        "function Wait-Iconic", 1
+    )[0]
+    forbid(window_waiter, "WindowClass(", "role-specific class in generic window waiter")
     require_order(
         multi_window_windows,
         (
@@ -1484,6 +1492,16 @@ def self_test(sources: dict[str, str]) -> int:
             "controller",
             "-NoNewWindow -PassThru",
             "-WindowStyle Hidden -PassThru",
+        ),
+        (
+            "controller",
+            "if (-not $focusWindowClass.StartsWith('WindowsForms10.Window.', [StringComparison]::Ordinal))",
+            "if ($false)",
+        ),
+        (
+            "controller",
+            "return [IntPtr]$windows[0]",
+            "[void][PresentationProbeNative]::WindowClass([IntPtr]$windows[0]); return [IntPtr]$windows[0]",
         ),
         ("controller", "mouse_event(0x0002", "mouse_event(0x0000"),
         (

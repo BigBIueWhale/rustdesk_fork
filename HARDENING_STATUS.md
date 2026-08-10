@@ -16259,8 +16259,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   user's accumulated-change risk assessment and every native/end-to-end stop-ship gap remain in force.
 
 - **R-S11gb/R-S11e-215 native Windows presentation transaction — PRODUCTION SUBWINDOW MINIMIZE/RESTORE
-  PIXELS REACHED; FORCED-HIDDEN FOCUS FIXTURE INVALID; CORRECTED RERUN PENDING; WINDOWS REMAINS
-  STOP-SHIP.** Platform: a
+  PIXELS REACHED; FOCUS FIXTURE VISIBLE; ROLE-CONFLATED CLASS CHECK INVALID; CORRECTED RERUN PENDING;
+  WINDOWS REMAINS STOP-SHIP.** Platform: a
   disposable Windows 11 overlay derived from the existing SHA-256-pinned golden. Endpoint/action: the
   repository-owned Windows <code>texture_rgba_renderer</code> plugin and direct C ABI used by Rust, exact
   production <code>PresentationRecovery</code>, the pinned RustDesk desktop window-event implementation and
@@ -16969,6 +16969,38 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   container, Docker socket, published test port, host namespace/device, host RustDesk process/service/config,
   firewall/UFW/nftables/iptables, routing, or host network state was changed. Windows presentation and every
   broader cross-platform/reconnect/resource/performance/release stop-ship obligation remain open.
+
+  The clean exact-commit rerun from pushed commit
+  `469677e29931b5650edeb98add5bd0d5275e2313`, tree
+  `abacce0a6a36dc929f38a778c0ab831ad224aeea`, again verified the exact 509-file source, built the release
+  probe, passed both D3D11 pixel preflights, and completed the production-subwindow minimize/restore path
+  through `displayed-1`. The `-NoNewWindow` focus-fixture correction worked: cycle 2 armed, the WinForms form
+  became the one visible top-level window owned by its exact PowerShell process, and production emitted a
+  real blur event. The fixture was no longer hidden.
+
+  The controller then failed immediately because the generic `Wait-ProcessWindow` helper still required the
+  sole visible window of every owned process to have exact class `RustdeskMultiWindow`. The now-correctly
+  visible focus form instead had native class `WindowsForms10.Window.8.app.0.1bd655e_r8_ad1`, so the helper
+  rejected it before `Wait-Foreground`, `hidden-2`, frame queuing, pointer input, or cycle-2 pixel observation.
+  Cleanup of the focus process returned focus to the production window and produced its real focus event. This
+  is a role-conflated observer predicate, not a RustDesk class regression or product presentation result.
+
+  The narrow correction makes `Wait-ProcessWindow` responsible only for exact process ownership plus exactly
+  one visible top-level HWND. The production app call site separately queries that HWND and still requires
+  exact class `RustdeskMultiWindow`. The focus-fixture call site separately queries its owned HWND and requires
+  an ordinal `WindowsForms10.Window.` prefix, which admits the runtime-generated WinForms suffix but rejects a
+  console or arbitrary window class. Thus neither identity edge is weakened to an untyped visible window. The
+  focused verifier rejects all 158 deliberate mutations, including removal of the role-specific focus class
+  check and reintroduction of a class query inside the generic waiter, and all three PowerShell sources parse
+  in the exact pinned image. A fresh complete source catalog, commit, and exact native rerun remain mandatory.
+
+  The failed run is retained at `.harness-state/windows-presentation-run.KK9oG252`. Its unprivileged session
+  domain `rustdesk-presentation-469677e2-cec43107`, UUID
+  `cec43107-832d-4174-b598-e39244488c41`, had zero network interfaces, zero host-device/filesystem
+  passthroughs, and only new listener `127.0.0.1:5900`. Exact cleanup removed the domain, QEMU/wrapper, and
+  listener; the worktree remained clean before this evidence-led correction. No root, host RustDesk/service,
+  firewall, routing, or network configuration changed. Windows presentation and all broader stop-ship gaps
+  remain open.
 
 - **R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence — HARNESS SOURCE
   IMPLEMENTED; EXACT COMMITTED GREEN EXECUTION PENDING; ALL NON-LINUX/NATIVE/RELEASE GAPS REMAIN
@@ -23025,7 +23057,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-f9ca7778a482924451e78152cd5b2502989650163f53f390d69057cb097707d2  requirements.html
+596e902de9fcad8c187b78b9961b25e5cea2cca4fa2459b73dd98bf1371ba705  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

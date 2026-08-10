@@ -187,12 +187,7 @@ function Wait-ProcessWindow([Diagnostics.Process]$Process, [int]$TimeoutMillisec
         }
         $windows = @([PresentationProbeNative]::VisibleWindowsForProcess([uint32]$Process.Id))
         if ($windows.Count -eq 1) {
-            $window = [IntPtr]$windows[0]
-            $windowClass = [PresentationProbeNative]::WindowClass($window)
-            if ($windowClass -cne 'RustdeskMultiWindow') {
-                Fail "visible probe window class is $windowClass, expected RustdeskMultiWindow"
-            }
-            return $window
+            return [IntPtr]$windows[0]
         }
         if ($windows.Count -gt 1) {
             Fail "process $($Process.Id) owns more than one visible top-level window"
@@ -337,6 +332,10 @@ try {
     Wait-Marker 'window-role' "desktop-multi-window-subwindow`n" -OwnedProcess $app
     Wait-Marker 'window-admitted' "secondary-visible`n" -OwnedProcess $app
     $window = Wait-ProcessWindow $app
+    $windowClass = [PresentationProbeNative]::WindowClass($window)
+    if ($windowClass -cne 'RustdeskMultiWindow') {
+        Fail "visible probe window class is $windowClass, expected RustdeskMultiWindow"
+    }
     Wait-Marker 'initial-submitted' "white`n"
     $initial = Require-Color $window 'white' 15000
 
@@ -372,6 +371,10 @@ try {
         -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $FocusSinkScript) `
         -NoNewWindow -PassThru
     $focusWindow = Wait-ProcessWindow $focusSink
+    $focusWindowClass = [PresentationProbeNative]::WindowClass($focusWindow)
+    if (-not $focusWindowClass.StartsWith('WindowsForms10.Window.', [StringComparison]::Ordinal)) {
+        Fail "visible focus-sink window class is $focusWindowClass, expected WindowsForms10.Window.*"
+    }
     Wait-Foreground $focusWindow
     Publish-Marker 'hidden-2' "hidden`n"
     Wait-Marker 'updated-2' "frames=128`n"

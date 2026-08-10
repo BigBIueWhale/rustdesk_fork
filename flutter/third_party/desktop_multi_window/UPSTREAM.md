@@ -39,6 +39,20 @@ mistook the child view for the top-level runner HWND. The lazy resolution keeps
 ID-0 show, hide, focus, frame, and close operations attached to the actual native
 window after runner initialization.
 
+The vendored Windows secondary-window close path also retains the HWND, Flutter
+engine, method channel, and manager-owned window until RustDesk's asynchronous
+Dart `onDestroy` handler returns. The method result covers success, error, and
+not-implemented completion, and schedules native destruction on a later window
+message so the result callback and its channel have unwound before the owner is
+erased. `WM_DESTROY` records terminal state without deleting the C++ owner;
+`WM_NCDESTROY` completes Flutter/default handling, clears the exact HWND user-data
+pointer and channel admission, and records native finality. Only after
+`DestroyWindow` returns to the registered-message handler does that handler erase
+the manager owner. Repeated close requests cannot start a second teardown. This
+mirrors the existing Linux response-bound lifetime correction instead of
+destroying the engine while remote, camera, or terminal session cleanup is still
+awaiting.
+
 The original Apache-2.0 license is retained in `LICENSE`. Do not refresh this
 directory from upstream without reviewing and recording the exact new commit,
 reapplying or retiring the local lifetime correction, regenerating the Flutter

@@ -37,6 +37,9 @@ public static class PresentationProbeNative {
     public static extern bool IsWindowVisible(IntPtr hwnd);
 
     [DllImport("user32.dll")]
+    public static extern bool IsWindow(IntPtr hwnd);
+
+    [DllImport("user32.dll")]
     public static extern bool IsIconic(IntPtr hwnd);
 
     [DllImport("user32.dll")]
@@ -208,6 +211,17 @@ function Wait-Iconic([IntPtr]$Window, [bool]$Expected, [int]$TimeoutMilliseconds
     Fail "window iconic state did not become $Expected"
 }
 
+function Wait-WindowRetired([IntPtr]$Window, [int]$TimeoutMilliseconds = 15000) {
+    $deadline = (Get-MonotonicMilliseconds) + $TimeoutMilliseconds
+    while ((Get-MonotonicMilliseconds) -lt $deadline) {
+        if (-not [PresentationProbeNative]::IsWindow($Window)) {
+            return
+        }
+        Start-Sleep -Milliseconds 20
+    }
+    Fail 'response-complete subwindow did not retire'
+}
+
 function Wait-Foreground([IntPtr]$Window, [int]$TimeoutMilliseconds = 15000) {
     $deadline = (Get-MonotonicMilliseconds) + $TimeoutMilliseconds
     while ((Get-MonotonicMilliseconds) -lt $deadline) {
@@ -252,6 +266,7 @@ function Test-Color([object[]]$Colors, [string]$Expected) {
             'white' { $color.red -ge 220 -and $color.green -ge 220 -and $color.blue -ge 220 }
             'green' { $color.red -le 40 -and $color.green -ge 220 -and $color.blue -le 40 }
             'magenta' { $color.red -ge 220 -and $color.green -le 40 -and $color.blue -ge 220 }
+            'blue' { $color.red -le 40 -and $color.green -le 40 -and $color.blue -ge 220 }
             default { Fail "unknown expected color: $Expected" }
         }
         if ($matchesCurrent) {
@@ -406,6 +421,31 @@ try {
         Fail 'focus-return presentation recovery exceeded 2500ms'
     }
     Publish-Marker 'displayed-2' "displayed`n"
+    Wait-Marker 'close-requested' "requested`n"
+    Wait-Marker 'destroy-started' "started`n"
+    if (-not [PresentationProbeNative]::IsWindow($window) -or
+        -not [PresentationProbeNative]::IsWindowVisible($window) -or
+        [PresentationProbeNative]::WindowClass($window) -cne 'RustdeskMultiWindow') {
+        Fail 'subwindow owner disappeared before Dart destroy completion'
+    }
+    Wait-Marker 'destroy-frame-submitted' "blue`n"
+    $destroyHeldFrame = Require-Color $window 'blue' 2500
+    $destroyHoldStartedAt = Get-MonotonicMilliseconds
+    Start-Sleep -Milliseconds 1000
+    $destroyHeldMs = (Get-MonotonicMilliseconds) - $destroyHoldStartedAt
+    if ($destroyHeldMs -lt 1000) {
+        Fail 'Dart destroy response was not held for the required interval'
+    }
+    $destroyHeldColors = @(Get-WindowColors $window)
+    if (-not [PresentationProbeNative]::IsWindow($window) -or
+        -not [PresentationProbeNative]::IsWindowVisible($window) -or
+        -not (Test-Color $destroyHeldColors 'blue')) {
+        Fail 'subwindow engine or composed frame retired while Dart onDestroy was blocked'
+    }
+    Publish-Marker 'allow-destroy-completion' "allow`n"
+    Wait-Marker 'destroy-cleanup-complete' "complete`n"
+    Wait-WindowRetired $window
+    Wait-Marker 'subwindow-retired' "retired`n"
     Wait-Marker 'app-finished' "ok`n"
     if (-not $app.WaitForExit(15000)) {
         Fail 'probe app did not exit after reporting completion'
@@ -430,9 +470,17 @@ try {
         real_desktop_multi_window_events = $true
         real_desktop_compositor_pixels = $true
         real_guest_pointer_input = $true
+        response_bound_subwindow_destroy = $true
         no_guest_network_interface_expected = $true
         recovery_limit_ms = 2500
         initial = $initial
+        destroy_while_response_pending = [ordered]@{
+            held_ms = $destroyHeldMs
+            window_retained = $true
+            engine_frame_visible = $true
+            cleanup_completed_before_retirement = $true
+            observed_frame = $destroyHeldFrame
+        }
         cycles = @(
             [ordered]@{
                 name = 'minimize-restore'

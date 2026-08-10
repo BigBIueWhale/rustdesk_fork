@@ -9,15 +9,17 @@ history remains the traceability record for that intermediate work.
 
 ## Current Verdict
 
-> **STOP-SHIP EVIDENCE STATUS (2026-08-09).** The current tree is not release-ready merely because
+> **STOP-SHIP EVIDENCE STATUS (2026-08-10).** The current tree is not release-ready merely because
 > its source, semantic, mutation, compile, and confined protocol gates are extensive. The user has
 > explicitly identified the accumulated change volume without current native end-to-end testing as
 > a release risk, and that assessment is correct. Recent evidence proves many individual source
 > invariants and includes a real Linux controlled-server protocol/runtime smoke at the exact older
 > product parent named in the R-S11b/R-B4 record below. Exact-current confined Linux/X11 evidence now
 > proves one real capture-through-encode-through-keyed-transport-through-decode-through-Flutter-texture
-> presentation session, including a bounded focus-loss cycle and joined teardown. It does **not** prove
-> the current Android app lifecycle on a device; current Windows viewer focus/minimize/native-texture
+> presentation session, including a bounded focus-loss cycle and joined teardown. A zero-interface Windows VM
+> also proves a narrow production-class secondary Flutter-engine/compositor focus/minimize transaction and
+> process finality; it does not prove a real RustDesk peer. The evidence does **not** prove
+> the current Android app lifecycle on a device; current full Windows viewer-to-peer focus/minimize/native-texture
 > behavior; current macOS/iOS behavior; analogous native presentation on those platforms; an installed
 > current Linux service across the required desktops/init systems; sustained reconnect/focus/performance
 > behavior; or the clean exact-commit Debian/Android/Windows R-B2/R-B10 artifact transaction. Those are
@@ -23224,12 +23226,52 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   production response-bound secondary-window destruction, cross-version behavior, latency/performance soak,
   release artifacts, independent reproduction, or external review; all remain stop-ship.
 
+### R-S11gh/R-S11e-220 Windows secondary-window destruction waits for Dart cleanup (2026-08-10)
+
+- The source defect is concrete. The vendored Windows `desktop_multi_window` close path sent Dart
+  `onDestroy` without a result callback and then, from `WM_DESTROY`, cleared the channel and asked
+  `MultiWindowManager` to erase the `FlutterWindow`. Erasing that entry destroys its Flutter engine.
+  Production remote-control and camera handlers await `tabController.closeAll()`, and the terminal handler awaits
+  `_closeAllTabs()`, so the native owner could disappear while the engine-dependent cleanup continuation was still
+  suspended. Erasing the object from `WM_DESTROY` also left `GWLP_USERDATA` pointing at it while Windows could
+  still deliver the terminal `WM_NCDESTROY`, creating a separate potential use-after-free edge. The corresponding
+  Linux path already retains its owner until the Dart response and retires it from a later GTK idle callback. This
+  proves Windows engine/session and HWND/object lifetime errors in current source; it does not prove causation for
+  the user's older Windows display-delay observation or Android stale-service reproduction.
+- The narrow correction makes ordinary `WM_CLOSE` idempotently pending and invokes `onDestroy` with one owned
+  `MethodResultFunctions` completion. Success, error, and not-implemented outcomes all release that completion
+  exactly once, with non-success outcomes reported. Its callback captures only the immutable HWND and ID and posts
+  a collision-resistant registered Windows message. Only the later message validates the exact ID/pending/live
+  state and calls `DestroyWindow`. `WM_DESTROY` records terminal state without erasing the owner. `WM_NCDESTROY`
+  first completes Flutter/default handling, clears and verifies the exact `GWLP_USERDATA` owner, closes native
+  handle/channel admission, and records exact native finality. Only after `DestroyWindow` has returned to the
+  registered-message handler does that handler erase the manager owner. Destructor-owned shutdown has no such
+  erasure step and therefore cannot recursively mutate an owner map already being destroyed. Failure to clear the
+  exact user-data owner prevents the finality flag and retains the manager entry rather than risking a stale native
+  pointer. The old fire-and-forget and in-destroy-message erasure paths are absent. `UPSTREAM.md` records the
+  deviation.
+- The existing Windows presentation transaction is extended only as a focused ownership witness. Its secondary
+  isolate submits a new blue texture frame and deliberately withholds the Dart method response for at least 1000
+  measured monotonic milliseconds. The
+  native controller must prove throughout that interval that the exact production-class `RustdeskMultiWindow`
+  HWND is still visible and that the engine composes the new blue frame. It then authorizes Dart cleanup and
+  requires the cleanup receipt before native HWND retirement, manager-entry retirement, primary-window close,
+  typed-zero app exit, strict result publication, guest shutdown, and exact host cleanup. Until that exact clean,
+  committed, zero-interface VM run succeeds, this section records a source candidate and a pending native gate,
+  not native evidence.
+- The user's accumulated-change risk assessment remains binding. Even a green run here proves only this one
+  production Windows engine-versus-Dart teardown boundary. It does not run a real RustDesk peer, identify or repair
+  the weeks-old operational artifact, validate Android Activity/foreground-service/task-swipe/Force-Stop recovery,
+  establish cross-version interoperability, exercise concurrent control/file/audio, supply sustained reconnect/
+  focus/latency/resource soak, produce cold release artifacts, provide independent reproduction, or substitute for
+  external review. Those remain explicit release-blocking evidence gaps.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-5721aef0fd159c572d32b92d751d360f07719c60e1e3751742eff25188dcfa08  requirements.html
+4e4664309067ff08221f65a5811d99e7f345f2f947e42d5d5fdf4fce0c376e76  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -23280,3 +23322,4 @@ The same identity additionally binds R-S11gc and Appendix C #338.
 The same identity additionally binds R-S11gd and Appendix C #339.
 The same identity additionally binds R-S11ge and Appendix C #340.
 The same identity additionally binds R-S11gg and Appendix C #342.
+The same identity additionally binds R-S11gh and Appendix C #343.

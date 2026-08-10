@@ -246,10 +246,15 @@ class _NativeTexture {
 }
 
 class _ProbeApp extends StatefulWidget {
-  const _ProbeApp({required this.markers, required this.texture});
+  const _ProbeApp({
+    required this.markers,
+    required this.texture,
+    required this.windowId,
+  });
 
   final _Markers markers;
   final _NativeTexture texture;
+  final int windowId;
 
   @override
   State<_ProbeApp> createState() => _ProbeAppState();
@@ -261,12 +266,20 @@ class _ProbeAppState extends State<_ProbeApp>
   int _activeCycle = 0;
   bool _windowBlurred = false;
   bool _finished = false;
+  bool _bindingsRetired = false;
+  Future<void>? _destroyFuture;
 
   @override
   void initState() {
     super.initState();
     DesktopMultiWindow.addListener(this);
     WidgetsBinding.instance.addObserver(this);
+    DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {
+      if (call.method == 'onDestroy') {
+        await _beginResponseBoundDestroy();
+      }
+      return null;
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_run().catchError(_fatal));
     });
@@ -310,14 +323,32 @@ class _ProbeAppState extends State<_ProbeApp>
     await _runCycle(1, 0, 255, 0);
     await _runCycle(2, 255, 0, 255);
     _activeCycle = 0;
+    await widget.markers.publish('close-requested', 'requested\n');
+    await WindowController.fromWindowId(widget.windowId).close();
+  }
+
+  Future<void> _beginResponseBoundDestroy() {
+    return _destroyFuture ??= _completeResponseBoundDestroy();
+  }
+
+  Future<void> _completeResponseBoundDestroy() async {
+    await widget.markers.publish('destroy-started', 'started\n');
+    widget.texture.submit(0, 0, 255);
+    await widget.markers.publish('destroy-frame-submitted', 'blue\n');
+    await widget.markers.waitFor('allow-destroy-completion', 'allow\n');
     _finished = true;
     _recovery.retire();
     await widget.texture.close();
+    _retireBindings();
+    await widget.markers.publish('destroy-cleanup-complete', 'complete\n');
+  }
+
+  void _retireBindings() {
+    if (_bindingsRetired) return;
+    _bindingsRetired = true;
     DesktopMultiWindow.removeListener(this);
     WidgetsBinding.instance.removeObserver(this);
     DesktopMultiWindow.setMethodHandler(null);
-    await widget.markers.publish('app-finished', 'ok\n');
-    await WindowController.main().close();
   }
 
   void _suspend(String reason) {
@@ -408,8 +439,7 @@ class _ProbeAppState extends State<_ProbeApp>
   void dispose() {
     _finished = true;
     _recovery.retire();
-    DesktopMultiWindow.removeListener(this);
-    WidgetsBinding.instance.removeObserver(this);
+    _retireBindings();
     super.dispose();
   }
 
@@ -461,6 +491,28 @@ Future<void> _launchPresentationWindow(Directory directory) async {
     'window-admitted',
     'secondary-visible\n',
   );
+  final markers = _Markers(directory);
+  final initialIds = await DesktopMultiWindow.getAllSubWindowIds();
+  if (initialIds.length != 1 ||
+      initialIds.single != presentationWindow.windowId) {
+    throw StateError('initial subwindow ownership differs');
+  }
+  await markers.waitFor('destroy-cleanup-complete', 'complete\n');
+  final deadline = DateTime.now().add(const Duration(seconds: 15));
+  while (DateTime.now().isBefore(deadline)) {
+    final ids = await DesktopMultiWindow.getAllSubWindowIds();
+    if (ids.isEmpty) {
+      await markers.publish('subwindow-retired', 'retired\n');
+      await markers.publish('app-finished', 'ok\n');
+      await WindowController.main().close();
+      return;
+    }
+    if (ids.length != 1 || ids.single != presentationWindow.windowId) {
+      throw StateError('subwindow ownership changed before retirement');
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+  }
+  throw TimeoutException('subwindow owner did not retire after Dart cleanup');
 }
 
 Future<void> _runPresentationWindow(
@@ -474,7 +526,11 @@ Future<void> _runPresentationWindow(
   final markers = _Markers(directory);
   await markers.publish('window-role', 'desktop-multi-window-subwindow\n');
   final texture = await _NativeTexture.create();
-  runApp(_ProbeApp(markers: markers, texture: texture));
+  runApp(_ProbeApp(
+    markers: markers,
+    texture: texture,
+    windowId: windowId,
+  ));
 }
 
 Future<void> main(List<String> arguments) async {

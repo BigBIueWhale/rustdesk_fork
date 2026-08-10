@@ -6,6 +6,7 @@
 #define DESKTOP_MULTI_WINDOW_WINDOW_CHANNEL_H
 
 #include <cstdint>
+#include <functional>
 #include <memory>
 
 #include "flutter/event_channel.h"
@@ -32,6 +33,14 @@ public:
             const std::string &method,
             Argument *arguments,
             std::unique_ptr<flutter::MethodResult<Argument>> result = nullptr
+    );
+
+    using CompletionHandler = std::function<void()>;
+
+    void InvokeMethodSelf(
+            const std::string &method,
+            Argument *arguments,
+            CompletionHandler completion
     );
 
     using MethodCallHandler = std::function<void(

@@ -63,6 +63,12 @@ TCHAR kFlutterWindowClassName[] = _T("RustdeskMultiWindow");
 
 int32_t class_registered_ = 0;
 
+UINT DestroyAfterDartResponseMessage() {
+  static const UINT message = RegisterWindowMessageW(
+      L"RustDesk.DesktopMultiWindow.DestroyAfterDartResponse");
+  return message;
+}
+
 void RegisterWindowClass(WNDPROC wnd_proc) {
   if (class_registered_ == 0) {
     WNDCLASS window_class{};
@@ -187,6 +193,64 @@ LRESULT CALLBACK FlutterWindow::WndProc(HWND window, UINT message, WPARAM wparam
 }
 
 LRESULT FlutterWindow::MessageHandler(HWND hwnd, UINT message, WPARAM wparam, LPARAM lparam) {
+  const auto destroy_message = DestroyAfterDartResponseMessage();
+  if (destroy_message != 0 && message == destroy_message) {
+    if (static_cast<int64_t>(wparam) != id_ || !destroy_pending_ || destroyed_) {
+      return 0;
+    }
+    if (!DestroyWindow(window_handle_)) {
+      std::cerr << "Failed to destroy response-complete Flutter window."
+                << std::endl;
+      return 0;
+    }
+    if (!native_destroy_complete_) {
+      std::cerr << "Flutter window destruction did not reach exact native finality."
+                << std::endl;
+      return 0;
+    }
+    if (auto callback = callback_.lock()) {
+      callback->OnWindowDestroy(id_);
+    }
+    return 0;
+  }
+
+  if (message == WM_DESTROY) {
+    std::optional<LRESULT> result;
+    if (flutter_controller_) {
+      result = flutter_controller_->HandleTopLevelWindowProc(
+          hwnd, message, wparam, lparam);
+    }
+    if (!destroyed_) {
+      destroyed_ = true;
+    }
+    return result.value_or(0);
+  }
+
+  if (message == WM_NCDESTROY) {
+    std::optional<LRESULT> result;
+    if (flutter_controller_) {
+      result = flutter_controller_->HandleTopLevelWindowProc(
+          hwnd, message, wparam, lparam);
+    }
+    const auto native_result =
+        result.has_value() ? *result : DefWindowProc(hwnd, message, wparam, lparam);
+    const auto prior_user_data =
+        SetWindowLongPtr(hwnd, GWLP_USERDATA, static_cast<LONG_PTR>(0));
+    const bool user_data_cleared =
+        prior_user_data == reinterpret_cast<LONG_PTR>(this);
+    if (!user_data_cleared) {
+      std::cerr << "Failed to clear the exact Flutter window user-data owner."
+                << std::endl;
+    }
+    window_handle_ = nullptr;
+    if (window_channel_) {
+      window_channel_->SetMethodCallHandler(nullptr);
+      window_channel_.reset();
+    }
+    native_destroy_complete_ = user_data_cleared;
+    return native_result;
+  }
+
   // Give Flutter, including plugins, an opportunity to handle window messages.
   if (flutter_controller_) {
     std::optional<LRESULT> result = flutter_controller_->HandleTopLevelWindowProc(hwnd, message, wparam, lparam);
@@ -258,26 +322,16 @@ LRESULT FlutterWindow::MessageHandler(HWND hwnd, UINT message, WPARAM wparam, LP
       flutter_controller_->engine()->ReloadSystemFonts();
       break;
     }
-    case WM_DESTROY:
-      // prevent crash
-      if (!destroyed_) {
-        destroyed_ = true;
-        // Give onDestroy callback to Flutter to close window gracefully
-        tryInvokeChannelOnDestroy();
-        if (auto callback = callback_.lock()) {
-          callback->OnWindowDestroy(id_);
-        }
-      }
-      return 0;
     case WM_CLOSE: {
-      EmitEvent("close");
+      if (destroy_pending_) {
+        return 0;
+      }
       if (this->IsPreventClose()) {
+        EmitEvent("close");
         return -1;
       }
-      if (auto callback = callback_.lock()) {
-        callback->OnWindowClose(id_);
-      }
-      break;
+      BeginDestroy();
+      return 0;
     }
     case WM_DPICHANGED: {
       auto newRectSize = reinterpret_cast<RECT *>(lparam);
@@ -380,14 +434,31 @@ LRESULT FlutterWindow::MessageHandler(HWND hwnd, UINT message, WPARAM wparam, LP
   return DefWindowProc(window_handle_, message, wparam, lparam);
 }
 
-void FlutterWindow::tryInvokeChannelOnDestroy()
-{
-  if (window_channel_) {
-      auto args = flutter::EncodableValue(flutter::EncodableMap());
-      window_channel_->InvokeMethod(0, "onDestroy", &args);
-      window_channel_->SetMethodCallHandler(nullptr);
-      window_channel_.reset();
+void FlutterWindow::BeginDestroy() {
+  if (destroyed_ || destroy_pending_) {
+    return;
   }
+  destroy_pending_ = true;
+  EmitEvent("close");
+  if (auto callback = callback_.lock()) {
+    callback->OnWindowClose(id_);
+  }
+  const auto window = window_handle_;
+  const auto id = id_;
+  auto completion = [window, id]() {
+    const auto message = DestroyAfterDartResponseMessage();
+    if (message == 0 ||
+        !PostMessage(window, message, static_cast<WPARAM>(id), 0)) {
+      std::cerr << "Failed to schedule response-complete Flutter window destruction."
+                << std::endl;
+    }
+  };
+  if (!window_channel_) {
+    completion();
+    return;
+  }
+  auto args = flutter::EncodableValue(flutter::EncodableMap());
+  window_channel_->InvokeMethodSelf("onDestroy", &args, std::move(completion));
 }
 
 void FlutterWindow::EmitEvent(const char* eventName)
@@ -399,17 +470,16 @@ void FlutterWindow::EmitEvent(const char* eventName)
 }
 
 void FlutterWindow::Destroy() {
-  tryInvokeChannelOnDestroy();
-  if (window_channel_) {
-    window_channel_ = nullptr;
-  }
-  if (flutter_controller_) {
-    flutter_controller_ = nullptr;
-  }
   if (window_handle_) {
+    destroyed_ = true;
     DestroyWindow(window_handle_);
     window_handle_ = nullptr;
   }
+  if (window_channel_) {
+    window_channel_->SetMethodCallHandler(nullptr);
+    window_channel_.reset();
+  }
+  flutter_controller_.reset();
 }
 
 FlutterWindow::~FlutterWindow() {

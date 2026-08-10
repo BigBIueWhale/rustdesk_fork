@@ -20717,6 +20717,21 @@ def validate_desktop_texture_lifecycle_contract(sources):
     )
     require_text(
         sources["windows_presentation_verifier"],
+        '"flutter/third_party/desktop_multi_window/windows/flutter_window.h"',
+        "independent native Windows event-window state binding",
+    )
+    require_text(
+        sources["windows_presentation_verifier"],
+        '"flutter/third_party/desktop_multi_window/windows/window_channel.cc"',
+        "independent native Windows result-channel implementation binding",
+    )
+    require_text(
+        sources["windows_presentation_verifier"],
+        '"flutter/third_party/desktop_multi_window/windows/window_channel.h"',
+        "independent native Windows result-channel API binding",
+    )
+    require_text(
+        sources["windows_presentation_verifier"],
         '"flutter/third_party/desktop_multi_window/windows/desktop_multi_window_plugin.cpp"',
         "independent native Windows main-view registrar binding",
     )
@@ -20739,6 +20754,21 @@ def validate_desktop_texture_lifecycle_contract(sources):
         sources["windows_presentation_verifier"],
         '"production_remote_page": "flutter/lib/desktop/pages/remote_page.dart"',
         "independent production remote listener binding",
+    )
+    require_text(
+        sources["windows_presentation_verifier"],
+        '"production_remote_tab_page": "flutter/lib/desktop/pages/remote_tab_page.dart"',
+        "independent production remote cleanup-response binding",
+    )
+    require_text(
+        sources["windows_presentation_verifier"],
+        '"flutter/lib/desktop/pages/view_camera_tab_page.dart"',
+        "independent production camera cleanup-response binding",
+    )
+    require_text(
+        sources["windows_presentation_verifier"],
+        '"flutter/lib/desktop/pages/terminal_tab_page.dart"',
+        "independent production terminal cleanup-response binding",
     )
     require_text(
         sources["verify"],
@@ -59379,6 +59409,24 @@ def run_source_mutations(sources):
         ),
         (
             "windows_presentation_verifier",
+            '"flutter/third_party/desktop_multi_window/windows/flutter_window.h"',
+            '"flutter/third_party/desktop_multi_window/windows/removed_window.h"',
+            "independent native Windows event-window state binding",
+        ),
+        (
+            "windows_presentation_verifier",
+            '"flutter/third_party/desktop_multi_window/windows/window_channel.cc"',
+            '"flutter/third_party/desktop_multi_window/windows/removed_channel.cc"',
+            "independent native Windows result-channel implementation binding",
+        ),
+        (
+            "windows_presentation_verifier",
+            '"flutter/third_party/desktop_multi_window/windows/window_channel.h"',
+            '"flutter/third_party/desktop_multi_window/windows/removed_channel.h"',
+            "independent native Windows result-channel API binding",
+        ),
+        (
+            "windows_presentation_verifier",
             '"flutter/third_party/desktop_multi_window/windows/desktop_multi_window_plugin.cpp"',
             '"flutter/third_party/desktop_multi_window/windows/removed_plugin.cpp"',
             "independent native Windows main-view registrar binding",
@@ -59406,6 +59454,24 @@ def run_source_mutations(sources):
             '"production_remote_page": "flutter/lib/desktop/pages/remote_page.dart"',
             '"production_remote_page": "flutter/lib/desktop/pages/removed_remote_page.dart"',
             "independent production remote listener binding",
+        ),
+        (
+            "windows_presentation_verifier",
+            '"production_remote_tab_page": "flutter/lib/desktop/pages/remote_tab_page.dart"',
+            '"production_remote_tab_page": "flutter/lib/desktop/pages/removed_remote_tab_page.dart"',
+            "independent production remote cleanup-response binding",
+        ),
+        (
+            "windows_presentation_verifier",
+            '"flutter/lib/desktop/pages/view_camera_tab_page.dart"',
+            '"flutter/lib/desktop/pages/removed_camera_tab_page.dart"',
+            "independent production camera cleanup-response binding",
+        ),
+        (
+            "windows_presentation_verifier",
+            '"flutter/lib/desktop/pages/terminal_tab_page.dart"',
+            '"flutter/lib/desktop/pages/removed_terminal_tab_page.dart"',
+            "independent production terminal cleanup-response binding",
         ),
         (
             "verify",

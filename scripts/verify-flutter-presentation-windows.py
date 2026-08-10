@@ -56,6 +56,15 @@ PATHS = {
     "multi_window_windows": (
         "flutter/third_party/desktop_multi_window/windows/flutter_window.cc"
     ),
+    "multi_window_windows_header": (
+        "flutter/third_party/desktop_multi_window/windows/flutter_window.h"
+    ),
+    "multi_window_channel": (
+        "flutter/third_party/desktop_multi_window/windows/window_channel.cc"
+    ),
+    "multi_window_channel_header": (
+        "flutter/third_party/desktop_multi_window/windows/window_channel.h"
+    ),
     "multi_window_plugin": (
         "flutter/third_party/desktop_multi_window/windows/desktop_multi_window_plugin.cpp"
     ),
@@ -65,6 +74,13 @@ PATHS = {
     "windows_runner_window": "flutter/windows/runner/flutter_window.cpp",
     "production_window_manager": "flutter/lib/utils/multi_window_manager.dart",
     "production_remote_page": "flutter/lib/desktop/pages/remote_page.dart",
+    "production_remote_tab_page": "flutter/lib/desktop/pages/remote_tab_page.dart",
+    "production_camera_tab_page": (
+        "flutter/lib/desktop/pages/view_camera_tab_page.dart"
+    ),
+    "production_terminal_tab_page": (
+        "flutter/lib/desktop/pages/terminal_tab_page.dart"
+    ),
     "verify": "scripts/verify.sh",
     "workspace": "scripts/verify-verifier-workspace.py",
     "requirements": "requirements.html",
@@ -95,11 +111,17 @@ def validate(sources: dict[str, str]) -> None:
     golden_inspector = sources["golden_inspector"]
     libyuv_port = sources["libyuv_port"]
     multi_window_windows = sources["multi_window_windows"]
+    multi_window_windows_header = sources["multi_window_windows_header"]
+    multi_window_channel = sources["multi_window_channel"]
+    multi_window_channel_header = sources["multi_window_channel_header"]
     multi_window_plugin = sources["multi_window_plugin"]
     multi_window_manager = sources["multi_window_manager"]
     windows_runner_window = sources["windows_runner_window"]
     production_window_manager = sources["production_window_manager"]
     production_remote_page = sources["production_remote_page"]
+    production_remote_tab_page = sources["production_remote_tab_page"]
+    production_camera_tab_page = sources["production_camera_tab_page"]
+    production_terminal_tab_page = sources["production_terminal_tab_page"]
 
     require_order(
         host,
@@ -615,6 +637,44 @@ def validate(sources: dict[str, str]) -> None:
         ),
         "native transition, pointer, and compositor transaction",
     )
+    require_order(
+        controller,
+        (
+            "Wait-Marker 'close-requested' \"requested`n\"",
+            "Wait-Marker 'destroy-started' \"started`n\"",
+            "[PresentationProbeNative]::IsWindow($window)",
+            "[PresentationProbeNative]::IsWindowVisible($window)",
+            "[PresentationProbeNative]::WindowClass($window) -cne 'RustdeskMultiWindow'",
+            "Wait-Marker 'destroy-frame-submitted' \"blue`n\"",
+            "$destroyHeldFrame = Require-Color $window 'blue' 2500",
+            "$destroyHoldStartedAt = Get-MonotonicMilliseconds",
+            "Start-Sleep -Milliseconds 1000",
+            "$destroyHeldMs = (Get-MonotonicMilliseconds) - $destroyHoldStartedAt",
+            "if ($destroyHeldMs -lt 1000)",
+            "$destroyHeldColors = @(Get-WindowColors $window)",
+            "Test-Color $destroyHeldColors 'blue'",
+            "Publish-Marker 'allow-destroy-completion' \"allow`n\"",
+            "Wait-Marker 'destroy-cleanup-complete' \"complete`n\"",
+            "Wait-WindowRetired $window",
+            "Wait-Marker 'subwindow-retired' \"retired`n\"",
+            "Wait-Marker 'app-finished' \"ok`n\"",
+        ),
+        "response-bound secondary-window destruction transaction",
+    )
+    require_order(
+        controller,
+        (
+            "function Wait-WindowRetired",
+            "[PresentationProbeNative]::IsWindow($Window)",
+            "Fail 'response-complete subwindow did not retire'",
+        ),
+        "bounded native HWND-retirement observer",
+    )
+    require(
+        controller,
+        "public static extern bool IsWindow(IntPtr hwnd);",
+        "native HWND-liveness API",
+    )
     forbid(controller, "-WindowStyle Hidden", "forced-hidden focus fixture")
     require_order(
         controller,
@@ -649,6 +709,23 @@ def validate(sources: dict[str, str]) -> None:
     )
     require(controller, "real_desktop_compositor_pixels = $true", "pixel result")
     require(controller, "real_guest_pointer_input = $true", "pointer result")
+    require(
+        controller,
+        "response_bound_subwindow_destroy = $true",
+        "response-bound destruction result",
+    )
+    require(controller, "held_ms = $destroyHeldMs", "measured Dart response hold result")
+    require(controller, "window_retained = $true", "pending HWND result")
+    require(
+        controller,
+        "engine_frame_visible = $true",
+        "pending engine-frame result",
+    )
+    require(
+        controller,
+        "cleanup_completed_before_retirement = $true",
+        "cleanup-before-retirement result",
+    )
     require(controller, "recovery_limit_ms = 2500", "latency result")
     require(controller, "queued_frames = 128", "coalesced frame result")
     require(
@@ -676,6 +753,43 @@ def validate(sources: dict[str, str]) -> None:
         '"window-admitted": "secondary-visible\\n",',
         "host secondary-window admission receipt",
     )
+    require(
+        host,
+        '"real_guest_pointer_input", "response_bound_subwindow_destroy",',
+        "host response-bound result envelope",
+    )
+    if host.count(
+        '"real_guest_pointer_input", "response_bound_subwindow_destroy",'
+    ) != 2:
+        raise VerificationError("host response-bound result binding count is not exact")
+    require_order(
+        host,
+        (
+            'destroy = result["destroy_while_response_pending"]',
+            'not isinstance(destroy["held_ms"], int)',
+            'isinstance(destroy["held_ms"], bool)',
+            'destroy["held_ms"] < 1000',
+            'destroy["window_retained"] is not True',
+            'destroy["engine_frame_visible"] is not True',
+            'destroy["cleanup_completed_before_retirement"] is not True',
+            'observed_destroy_frame = destroy["observed_frame"]',
+            'observed_destroy_frame.get("visible") is not True',
+        ),
+        "host response-bound ownership verdict",
+    )
+    for marker, value in (
+        ("close-requested", "requested"),
+        ("destroy-started", "started"),
+        ("destroy-frame-submitted", "blue"),
+        ("allow-destroy-completion", "allow"),
+        ("destroy-cleanup-complete", "complete"),
+        ("subwindow-retired", "retired"),
+    ):
+        require(
+            host,
+            f'"{marker}": "{value}\\n",',
+            f"host {marker} state receipt",
+        )
 
     require_order(
         dart,
@@ -715,7 +829,10 @@ def validate(sources: dict[str, str]) -> None:
         (
             "await markers.publish('window-role', 'desktop-multi-window-subwindow\\n');",
             "final texture = await _NativeTexture.create();",
-            "runApp(_ProbeApp(markers: markers, texture: texture));",
+            "runApp(_ProbeApp(",
+            "markers: markers,",
+            "texture: texture,",
+            "windowId: windowId,",
             "arguments.length == 3 && arguments.first == 'multi_window'",
             "await _runPresentationWindow(",
         ),
@@ -834,6 +951,170 @@ def validate(sources: dict[str, str]) -> None:
         ),
         "production secondary-window engine and events",
     )
+    require_order(
+        multi_window_channel_header,
+        (
+            "#include <functional>",
+            "using CompletionHandler = std::function<void()>;",
+            "void InvokeMethodSelf(",
+            "CompletionHandler completion",
+        ),
+        "Windows self-method completion API",
+    )
+    require_order(
+        multi_window_channel,
+        (
+            "class CompletionState",
+            "explicit CompletionState(WindowChannel::CompletionHandler completion)",
+            "completion_(std::move(completion))",
+            "if (!completion_)",
+            "auto completion = std::move(completion_);",
+            "completion();",
+            "void WindowChannel::InvokeMethodSelf(",
+            "std::make_shared<CompletionState>(std::move(completion))",
+            "flutter::MethodResultFunctions<Argument>",
+            "[state](const Argument *) { state->Complete(); }",
+            "[state, method](const std::string &code, const std::string &message,",
+            'std::cerr << "Window method " << method << " failed with " << code',
+            "state->Complete();",
+            "[state, method]()",
+            'std::cerr << "Window method " << method << " is not implemented."',
+            "state->Complete();",
+            "InvokeMethod(0, method, arguments, std::move(result));",
+        ),
+        "exactly-once Windows method-result completion",
+    )
+    require_order(
+        multi_window_windows_header,
+        (
+            "bool destroyed_ = false;",
+            "bool destroy_pending_ = false;",
+            "bool native_destroy_complete_ = false;",
+            "void BeginDestroy();",
+        ),
+        "idempotent Windows destroy state",
+    )
+    require_order(
+        multi_window_windows,
+        (
+            "UINT DestroyAfterDartResponseMessage()",
+            "RegisterWindowMessageW(",
+            'L"RustDesk.DesktopMultiWindow.DestroyAfterDartResponse"',
+            "const auto destroy_message = DestroyAfterDartResponseMessage();",
+            "destroy_message != 0 && message == destroy_message",
+            "static_cast<int64_t>(wparam) != id_ || !destroy_pending_ || destroyed_",
+            "DestroyWindow(window_handle_)",
+            "if (!native_destroy_complete_)",
+            "callback->OnWindowDestroy(id_);",
+            "if (message == WM_DESTROY)",
+            "flutter_controller_->HandleTopLevelWindowProc(",
+            "if (!destroyed_)",
+            "destroyed_ = true;",
+            "return result.value_or(0);",
+            "if (message == WM_NCDESTROY)",
+            "flutter_controller_->HandleTopLevelWindowProc(",
+            "result.has_value() ? *result : DefWindowProc(hwnd, message, wparam, lparam)",
+            "SetWindowLongPtr(hwnd, GWLP_USERDATA, static_cast<LONG_PTR>(0))",
+            "prior_user_data == reinterpret_cast<LONG_PTR>(this)",
+            "window_handle_ = nullptr;",
+            "window_channel_->SetMethodCallHandler(nullptr);",
+            "window_channel_.reset();",
+            "native_destroy_complete_ = user_data_cleared;",
+            "return native_result;",
+            "case WM_CLOSE:",
+            "if (destroy_pending_)",
+            "if (this->IsPreventClose())",
+            'EmitEvent("close");',
+            "BeginDestroy();",
+            "return 0;",
+        ),
+        "response-bound Windows destruction and nonclient finality ordering",
+    )
+    if multi_window_windows.count("callback->OnWindowDestroy(id_);") != 1:
+        raise VerificationError("Windows manager-retirement callback count is not exact")
+    require(
+        multi_window_windows,
+        "// Give Flutter, including plugins, an opportunity to handle window messages.",
+        "general Flutter message-dispatch boundary",
+    )
+    terminal_destroy = multi_window_windows.split("if (message == WM_DESTROY)", 1)[1].split(
+        "// Give Flutter, including plugins, an opportunity to handle window messages.", 1
+    )[0]
+    forbid(
+        terminal_destroy,
+        "OnWindowDestroy",
+        "manager owner erasure before DestroyWindow returns",
+    )
+    require_order(
+        multi_window_windows,
+        (
+            "LRESULT FlutterWindow::MessageHandler",
+            "const auto destroy_message = DestroyAfterDartResponseMessage();",
+            "destroy_message != 0 && message == destroy_message",
+            "DestroyWindow(window_handle_)",
+            "// Give Flutter, including plugins, an opportunity to handle window messages.",
+            "flutter_controller_->HandleTopLevelWindowProc",
+        ),
+        "private destroy dispatch before Flutter/plugin message handling",
+    )
+    require(
+        multi_window_windows,
+        "void FlutterWindow::BeginDestroy()",
+        "Windows deferred destroy implementation",
+    )
+    begin_destroy = multi_window_windows.split("void FlutterWindow::BeginDestroy()", 1)[1].split(
+        "void FlutterWindow::EmitEvent", 1
+    )[0]
+    require_order(
+        begin_destroy,
+        (
+            "if (destroyed_ || destroy_pending_)",
+            "destroy_pending_ = true;",
+            'EmitEvent("close");',
+            "callback->OnWindowClose(id_);",
+            "const auto window = window_handle_;",
+            "const auto id = id_;",
+            "auto completion = [window, id]()",
+            "const auto message = DestroyAfterDartResponseMessage();",
+            "message == 0 ||",
+            "!PostMessage(window, message, static_cast<WPARAM>(id), 0)",
+            "if (!window_channel_)",
+            "completion();",
+            "window_channel_->InvokeMethodSelf(\"onDestroy\", &args, std::move(completion));",
+        ),
+        "primitive-only deferred destroy completion",
+    )
+    forbid(begin_destroy, "[this", "destroy completion capture of FlutterWindow owner")
+    forbid(begin_destroy, "OnWindowDestroy", "manager erase inside method-result callback")
+    forbid(
+        multi_window_windows,
+        "tryInvokeChannelOnDestroy",
+        "obsolete fire-and-forget Windows onDestroy path",
+    )
+    forbid(
+        multi_window_windows,
+        'InvokeMethod(0, "onDestroy"',
+        "result-less Windows onDestroy invocation",
+    )
+    if multi_window_manager.count("windows_.erase(id);") != 1:
+        raise VerificationError("Windows manager retirement count is not exact")
+    require(
+        production_remote_tab_page,
+        'call.method == "onDestroy") {\n      await tabController.closeAll();',
+        "production remote-session cleanup response",
+    )
+    require(
+        production_camera_tab_page,
+        'call.method == "onDestroy") {\n      await tabController.closeAll();',
+        "production camera-session cleanup response",
+    )
+    require(
+        production_terminal_tab_page,
+        'call.method == "onDestroy") {\n'
+        "        // Clean up sessions before window destruction (bounded wait)\n"
+        "        await _closeAllTabs();",
+        "production terminal-session cleanup response",
+    )
     require(
         multi_window_manager,
         "class FlutterMainWindow : public BaseFlutterWindow",
@@ -872,6 +1153,21 @@ def validate(sources: dict[str, str]) -> None:
         sources["multi_window_upstream"],
         "resolves its `GA_ROOT` ancestor when an operation is\nperformed",
         "recorded Windows main-window identity deviation",
+    )
+    require_order(
+        sources["multi_window_upstream"],
+        (
+            "Windows secondary-window close path also retains the HWND, Flutter",
+            "Dart `onDestroy` handler returns",
+            "success, error, and\nnot-implemented completion",
+            "schedules native destruction on a later window\nmessage",
+            "`WM_DESTROY` records terminal state without deleting the C++ owner",
+            "`WM_NCDESTROY` completes Flutter/default handling",
+            "clears the exact HWND user-data\npointer and channel admission",
+            "records native finality. Only after\n`DestroyWindow` returns",
+            "Repeated close requests cannot start a second teardown",
+        ),
+        "recorded Windows response-bound destruction deviation",
     )
     require(
         production_window_manager,
@@ -913,15 +1209,50 @@ def validate(sources: dict[str, str]) -> None:
     require_order(
         dart,
         (
+            "DesktopMultiWindow.setMethodHandler((call, fromWindowId) async {",
+            "if (call.method == 'onDestroy')",
+            "await _beginResponseBoundDestroy();",
+            "return null;",
+            "await widget.markers.publish('close-requested', 'requested\\n');",
+            "await WindowController.fromWindowId(widget.windowId).close();",
+            "return _destroyFuture ??= _completeResponseBoundDestroy();",
+            "await widget.markers.publish('destroy-started', 'started\\n');",
+            "widget.texture.submit(0, 0, 255);",
+            "await widget.markers.publish('destroy-frame-submitted', 'blue\\n');",
+            "await widget.markers.waitFor('allow-destroy-completion', 'allow\\n');",
             "_recovery.retire();",
             "await widget.texture.close();",
+            "_retireBindings();",
+            "await widget.markers.publish('destroy-cleanup-complete', 'complete\\n');",
+        ),
+        "Dart response-bound resource retirement",
+    )
+    require_order(
+        dart,
+        (
+            "void _retireBindings()",
+            "if (_bindingsRetired) return;",
+            "_bindingsRetired = true;",
             "DesktopMultiWindow.removeListener(this);",
             "WidgetsBinding.instance.removeObserver(this);",
             "DesktopMultiWindow.setMethodHandler(null);",
-            "await widget.markers.publish('app-finished', 'ok\\n');",
+        ),
+        "idempotent secondary-engine binding retirement",
+    )
+    require_order(
+        dart,
+        (
+            "final initialIds = await DesktopMultiWindow.getAllSubWindowIds();",
+            "initialIds.length != 1 ||\n"
+            "      initialIds.single != presentationWindow.windowId",
+            "await markers.waitFor('destroy-cleanup-complete', 'complete\\n');",
+            "final ids = await DesktopMultiWindow.getAllSubWindowIds();",
+            "if (ids.isEmpty)",
+            "await markers.publish('subwindow-retired', 'retired\\n');",
+            "await markers.publish('app-finished', 'ok\\n');",
             "await WindowController.main().close();",
         ),
-        "secondary-engine owned-resource retirement and native quit-owner close",
+        "primary observation of manager retirement before native quit-owner close",
     )
     forbid(dart, "stdout.", "secondary-engine stdout liveness dependency")
     forbid(dart, "exit(", "secondary-engine direct process exit")
@@ -1119,6 +1450,21 @@ def validate(sources: dict[str, str]) -> None:
         sources["hardening"],
         "R-S11gg/R-S11e-219 Windows main-window identity is resolved after parenting",
         "main-window identity hardening record",
+    )
+    require(
+        sources["requirements"],
+        '<span class="id">R-S11gh</span>',
+        "response-bound Windows destruction requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>343</td>",
+        "response-bound Windows destruction disposition",
+    )
+    require(
+        sources["hardening"],
+        "R-S11gh/R-S11e-220 Windows secondary-window destruction waits for Dart cleanup",
+        "response-bound Windows destruction hardening record",
     )
 
 
@@ -1664,6 +2010,63 @@ def self_test(sources: dict[str, str]) -> int:
         ),
         ("controller", "mouse_event(0x0002", "mouse_event(0x0000"),
         (
+            "controller",
+            "public static extern bool IsWindow(IntPtr hwnd);",
+            "public static extern bool IsWindowRemoved(IntPtr hwnd);",
+        ),
+        (
+            "controller",
+            "Wait-Marker 'close-requested' \"requested`n\"",
+            "# close request witness removed",
+        ),
+        (
+            "controller",
+            "$destroyHeldFrame = Require-Color $window 'blue' 2500",
+            "$destroyHeldFrame = @{ visible = $true }",
+        ),
+        (
+            "controller",
+            "$destroyHoldStartedAt = Get-MonotonicMilliseconds\n"
+            "    Start-Sleep -Milliseconds 1000",
+            "$destroyHoldStartedAt = Get-MonotonicMilliseconds\n"
+            "    Start-Sleep -Milliseconds 0",
+        ),
+        (
+            "controller",
+            "if ($destroyHeldMs -lt 1000)",
+            "if ($false)",
+        ),
+        (
+            "controller",
+            "$destroyHeldColors = @(Get-WindowColors $window)",
+            "$destroyHeldColors = @()",
+        ),
+        (
+            "controller",
+            "Publish-Marker 'allow-destroy-completion' \"allow`n\"",
+            "# destroy completion gate removed",
+        ),
+        (
+            "controller",
+            "Wait-Marker 'destroy-cleanup-complete' \"complete`n\"",
+            "# cleanup completion witness removed",
+        ),
+        (
+            "controller",
+            "Wait-WindowRetired $window",
+            "# HWND retirement witness removed",
+        ),
+        (
+            "controller",
+            "response_bound_subwindow_destroy = $true",
+            "response_bound_subwindow_destroy = $false",
+        ),
+        (
+            "controller",
+            "cleanup_completed_before_retirement = $true",
+            "cleanup_completed_before_retirement = $false",
+        ),
+        (
             "d3d11",
             "warp ? D3D_DRIVER_TYPE_WARP : D3D_DRIVER_TYPE_UNKNOWN",
             "D3D_DRIVER_TYPE_UNKNOWN",
@@ -1762,10 +2165,56 @@ def self_test(sources: dict[str, str]) -> int:
         ),
         (
             "dart",
-            "await widget.markers.publish('app-finished', 'ok\\n');\n"
-            "    await WindowController.main().close();",
-            "await widget.markers.publish('app-finished', 'ok\\n');\n"
-            "    exit(0);",
+            "await markers.publish('app-finished', 'ok\\n');\n"
+            "      await WindowController.main().close();",
+            "await markers.publish('app-finished', 'ok\\n');\n"
+            "      exit(0);",
+        ),
+        (
+            "dart",
+            "if (call.method == 'onDestroy')",
+            "if (call.method == 'destroyRemoved')",
+        ),
+        (
+            "dart",
+            "return _destroyFuture ??= _completeResponseBoundDestroy();",
+            "return _completeResponseBoundDestroy();",
+        ),
+        (
+            "dart",
+            "await WindowController.fromWindowId(widget.windowId).close();",
+            "await WindowController.main().close();",
+        ),
+        (
+            "dart",
+            "widget.texture.submit(0, 0, 255);",
+            "// pending-response frame removed",
+        ),
+        (
+            "dart",
+            "await widget.markers.waitFor('allow-destroy-completion', 'allow\\n');",
+            "// destroy response hold removed",
+        ),
+        (
+            "dart",
+            "await widget.markers.publish('destroy-cleanup-complete', 'complete\\n');",
+            "// cleanup receipt removed",
+        ),
+        (
+            "dart",
+            "initialIds.length != 1 ||\n"
+            "      initialIds.single != presentationWindow.windowId",
+            "initialIds.isEmpty",
+        ),
+        (
+            "dart",
+            "if (ids.isEmpty)",
+            "if (ids.isNotEmpty)",
+        ),
+        (
+            "dart",
+            "await markers.publish('subwindow-retired', 'retired\\n');",
+            "// manager retirement receipt removed",
         ),
         (
             "dart",
@@ -1800,6 +2249,156 @@ def self_test(sources: dict[str, str]) -> int:
             "multi_window_windows",
             'eventName = "focus";',
             'eventName = "unknown";',
+        ),
+        (
+            "multi_window_channel_header",
+            "using CompletionHandler = std::function<void()>;",
+            "using CompletionHandler = std::function<void(int)>;",
+        ),
+        (
+            "multi_window_channel",
+            "auto completion = std::move(completion_);",
+            "auto completion = completion_;",
+        ),
+        (
+            "multi_window_channel",
+            "[state](const Argument *) { state->Complete(); }",
+            "[state](const Argument *) {}",
+        ),
+        (
+            "multi_window_channel",
+            'std::cerr << "Window method " << method << " failed with " << code',
+            'std::cerr << "ignored method failure"',
+        ),
+        (
+            "multi_window_channel",
+            'std::cerr << "Window method " << method << " is not implemented."',
+            'std::cerr << "ignored missing method"',
+        ),
+        (
+            "multi_window_channel",
+            "InvokeMethod(0, method, arguments, std::move(result));",
+            "InvokeMethod(0, method, arguments);",
+        ),
+        (
+            "multi_window_windows_header",
+            "bool destroy_pending_ = false;",
+            "bool destroy_pending_removed_ = false;",
+        ),
+        (
+            "multi_window_windows_header",
+            "bool native_destroy_complete_ = false;",
+            "bool native_destroy_complete_ = true;",
+        ),
+        (
+            "multi_window_windows",
+            "RegisterWindowMessageW(",
+            "WM_APP +",
+        ),
+        (
+            "multi_window_windows",
+            "static_cast<int64_t>(wparam) != id_ || !destroy_pending_ || destroyed_",
+            "false",
+        ),
+        (
+            "multi_window_windows",
+            "case WM_CLOSE: {\n      if (destroy_pending_)",
+            "case WM_CLOSE: {\n      if (false)",
+        ),
+        (
+            "multi_window_windows",
+            "if (message == WM_DESTROY)",
+            "if (message == WM_CLOSE)",
+        ),
+        (
+            "multi_window_windows",
+            "native_destroy_complete_ = user_data_cleared;",
+            "native_destroy_complete_ = true;",
+        ),
+        (
+            "multi_window_windows",
+            "if (message == WM_NCDESTROY)",
+            "if (message == WM_NULL)",
+        ),
+        (
+            "multi_window_windows",
+            "result.has_value() ? *result : DefWindowProc(hwnd, message, wparam, lparam)",
+            "result.value_or(0)",
+        ),
+        (
+            "multi_window_windows",
+            "SetWindowLongPtr(hwnd, GWLP_USERDATA, static_cast<LONG_PTR>(0))",
+            "GetWindowLongPtr(hwnd, GWLP_USERDATA)",
+        ),
+        (
+            "multi_window_windows",
+            "prior_user_data == reinterpret_cast<LONG_PTR>(this)",
+            "prior_user_data != 0",
+        ),
+        (
+            "multi_window_windows",
+            "if (!native_destroy_complete_)",
+            "if (false)",
+        ),
+        (
+            "multi_window_windows",
+            "// Give Flutter, including plugins, an opportunity to handle window messages.",
+            "// Flutter handling order is unchecked.",
+        ),
+        (
+            "multi_window_windows",
+            "auto completion = [window, id]()",
+            "auto completion = [this, window, id]()",
+        ),
+        (
+            "multi_window_windows",
+            "callback->OnWindowClose(id_);",
+            "// close callback removed",
+        ),
+        (
+            "multi_window_windows",
+            'destroy_pending_ = true;\n  EmitEvent("close");',
+            'EmitEvent("close");\n  destroy_pending_ = true;',
+        ),
+        (
+            "multi_window_windows",
+            "callback->OnWindowDestroy(id_);",
+            "// manager retirement callback removed",
+        ),
+        (
+            "multi_window_windows",
+            "!PostMessage(window, message, static_cast<WPARAM>(id), 0)",
+            "!SendMessage(window, message, static_cast<WPARAM>(id), 0)",
+        ),
+        (
+            "multi_window_windows",
+            'window_channel_->InvokeMethodSelf("onDestroy", &args, std::move(completion));',
+            'window_channel_->InvokeMethod(0, "onDestroy", &args);',
+        ),
+        (
+            "multi_window_windows",
+            "window_channel_->SetMethodCallHandler(nullptr);",
+            "// method admission left open",
+        ),
+        (
+            "multi_window_manager",
+            "windows_.erase(id);",
+            "// manager owner retained",
+        ),
+        (
+            "production_remote_tab_page",
+            'call.method == "onDestroy") {\n      await tabController.closeAll();',
+            'call.method == "onDestroy") {\n      tabController.clear();',
+        ),
+        (
+            "production_camera_tab_page",
+            'call.method == "onDestroy") {\n      await tabController.closeAll();',
+            'call.method == "onDestroy") {\n      tabController.clear();',
+        ),
+        (
+            "production_terminal_tab_page",
+            'call.method == "onDestroy") {\n        // Clean up sessions before window destruction (bounded wait)\n        await _closeAllTabs();',
+            'call.method == "onDestroy") {\n        // cleanup removed',
         ),
         (
             "multi_window_manager",
@@ -1847,6 +2446,16 @@ def self_test(sources: dict[str, str]) -> int:
             "multi_window_upstream",
             "resolves its `GA_ROOT` ancestor when an operation is\nperformed",
             "caches its `GA_ROOT` ancestor during registration",
+        ),
+        (
+            "multi_window_upstream",
+            "Dart `onDestroy` handler returns",
+            "Dart `onDestroy` handler starts",
+        ),
+        (
+            "multi_window_upstream",
+            "`WM_NCDESTROY` completes Flutter/default handling",
+            "`WM_NCDESTROY` erases the owner immediately",
         ),
         (
             "provision",
@@ -1946,6 +2555,37 @@ def self_test(sources: dict[str, str]) -> int:
             "R-S11gg/R-S11e-219 Windows main-window identity is resolved after parenting",
             "R-S11gg-disabled/R-S11e-219 Windows main-window identity is resolved after parenting",
         ),
+        (
+            "host",
+            '"real_guest_pointer_input", "response_bound_subwindow_destroy",',
+            '"real_guest_pointer_input", "destroy_result_removed",',
+        ),
+        (
+            "host",
+            'destroy["held_ms"] < 1000',
+            'destroy["held_ms"] < 0',
+        ),
+        (
+            "host",
+            'destroy["cleanup_completed_before_retirement"] is not True',
+            'False',
+        ),
+        (
+            "host",
+            '"destroy-cleanup-complete": "complete\\n",',
+            '"destroy-cleanup-complete": "unchecked\\n",',
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11gh</span>',
+            '<span class="id">R-S11gh-disabled</span>',
+        ),
+        ("requirements", "<tr><td>343</td>", "<tr><td>343-disabled</td>"),
+        (
+            "hardening",
+            "R-S11gh/R-S11e-220 Windows secondary-window destruction waits for Dart cleanup",
+            "R-S11gh-disabled/R-S11e-220 Windows secondary-window destruction waits for Dart cleanup",
+        ),
     )
     for index, (key, old, new) in enumerate(mutations, start=1):
         if old not in sources[key]:
@@ -1956,7 +2596,9 @@ def self_test(sources: dict[str, str]) -> int:
             validate(mutated)
         except VerificationError:
             continue
-        raise VerificationError(f"self-test mutation {index} was accepted")
+        raise VerificationError(
+            f"self-test mutation {index} was accepted: {key} {old!r}"
+        )
     return len(mutations)
 
 

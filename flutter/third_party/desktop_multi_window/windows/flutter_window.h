@@ -63,6 +63,10 @@ class FlutterWindow : public BaseFlutterWindow {
 
   bool destroyed_ = false;
 
+  bool destroy_pending_ = false;
+
+  bool native_destroy_complete_ = false;
+
   static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
   static FlutterWindow *GetThisFromHandle(HWND window) noexcept;
@@ -73,7 +77,7 @@ class FlutterWindow : public BaseFlutterWindow {
 
   void EmitEvent(const char* eventName);
 
-  void tryInvokeChannelOnDestroy();
+  void BeginDestroy();
 
   void adjustNCCALCSIZE(HWND hwnd, NCCALCSIZE_PARAMS *sz) {
     LONG l = 8;

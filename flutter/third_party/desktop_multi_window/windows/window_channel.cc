@@ -3,9 +3,34 @@
 //
 
 #include "window_channel.h"
+#include "flutter/method_result_functions.h"
 #include "flutter/standard_method_codec.h"
 
+#include <iostream>
+#include <memory>
+#include <utility>
 #include <variant>
+
+namespace {
+
+class CompletionState {
+ public:
+  explicit CompletionState(WindowChannel::CompletionHandler completion)
+      : completion_(std::move(completion)) {}
+
+  void Complete() {
+    if (!completion_) {
+      return;
+    }
+    auto completion = std::move(completion_);
+    completion();
+  }
+
+ private:
+  WindowChannel::CompletionHandler completion_;
+};
+
+}
 
 std::unique_ptr<WindowChannel>
 WindowChannel::RegisterWithRegistrar(FlutterDesktopPluginRegistrarRef registrar, int64_t window_id) {
@@ -47,5 +72,27 @@ void WindowChannel::InvokeMethod(
           {flutter::EncodableValue("arguments"), *arguments},
       }
   ), std::move(result));
+}
+
+void WindowChannel::InvokeMethodSelf(
+    const std::string &method,
+    WindowChannel::Argument *arguments,
+    CompletionHandler completion
+) {
+  auto state = std::make_shared<CompletionState>(std::move(completion));
+  auto result = std::make_unique<flutter::MethodResultFunctions<Argument>>(
+      [state](const Argument *) { state->Complete(); },
+      [state, method](const std::string &code, const std::string &message,
+                      const Argument *) {
+        std::cerr << "Window method " << method << " failed with " << code
+                  << ": " << message << std::endl;
+        state->Complete();
+      },
+      [state, method]() {
+        std::cerr << "Window method " << method << " is not implemented."
+                  << std::endl;
+        state->Complete();
+      });
+  InvokeMethod(0, method, arguments, std::move(result));
 }
 

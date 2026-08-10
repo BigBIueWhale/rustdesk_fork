@@ -777,8 +777,9 @@ if sorted(result) != sorted([
     "format", "verdict", "source_commit", "source_tree",
     "real_windows_flutter_engine", "production_event_window_class",
     "real_desktop_multi_window_events", "real_desktop_compositor_pixels",
-    "real_guest_pointer_input", "no_guest_network_interface_expected",
-    "recovery_limit_ms", "initial", "cycles",
+    "real_guest_pointer_input", "response_bound_subwindow_destroy",
+    "no_guest_network_interface_expected", "recovery_limit_ms", "initial",
+    "destroy_while_response_pending", "cycles",
 ]):
     raise SystemExit("presentation result envelope is not exact")
 if result["format"] != "rustdesk-windows-presentation-result-v1" or result["verdict"] != "pass":
@@ -788,7 +789,8 @@ if result["source_commit"] != commit or result["source_tree"] != tree:
 for field in (
     "real_windows_flutter_engine", "real_desktop_multi_window_events",
     "real_desktop_compositor_pixels",
-    "real_guest_pointer_input", "no_guest_network_interface_expected",
+    "real_guest_pointer_input", "response_bound_subwindow_destroy",
+    "no_guest_network_interface_expected",
 ):
     if result[field] is not True:
         raise SystemExit(f"presentation fact is not true: {field}")
@@ -814,6 +816,24 @@ for cycle in cycles:
         raise SystemExit("presentation compositor did not show the post-rearm frame")
 if cycles[1].get("pointer_down_delivered") is not True:
     raise SystemExit("presentation guest pointer-down was not delivered")
+destroy = result["destroy_while_response_pending"]
+if not isinstance(destroy, dict) or sorted(destroy) != [
+    "cleanup_completed_before_retirement", "engine_frame_visible", "held_ms",
+    "observed_frame", "window_retained",
+]:
+    raise SystemExit("response-bound destroy result envelope is not exact")
+if (
+    not isinstance(destroy["held_ms"], int)
+    or isinstance(destroy["held_ms"], bool)
+    or destroy["held_ms"] < 1000
+    or destroy["window_retained"] is not True
+    or destroy["engine_frame_visible"] is not True
+    or destroy["cleanup_completed_before_retirement"] is not True
+):
+    raise SystemExit("response-bound destroy ownership facts differ")
+observed_destroy_frame = destroy["observed_frame"]
+if not isinstance(observed_destroy_frame, dict) or observed_destroy_frame.get("visible") is not True:
+    raise SystemExit("response-bound destroy frame was not observed")
 lock_lines = (root / "windows-presentation-pubspec.lock").read_text(
     encoding="utf-8-sig"
 ).splitlines()
@@ -908,6 +928,12 @@ state = root / "windows-presentation-state"
 for name, expected in {
     "window-role": "desktop-multi-window-subwindow\n",
     "window-admitted": "secondary-visible\n",
+    "close-requested": "requested\n",
+    "destroy-started": "started\n",
+    "destroy-frame-submitted": "blue\n",
+    "allow-destroy-completion": "allow\n",
+    "destroy-cleanup-complete": "complete\n",
+    "subwindow-retired": "retired\n",
     "app-finished": "ok\n",
     "rearm-requested-1": "requested\n",
     "renotified-1": "accepted\n",

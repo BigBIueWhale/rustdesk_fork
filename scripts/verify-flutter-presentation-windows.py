@@ -582,6 +582,9 @@ def validate(sources: dict[str, str]) -> None:
             "Publish-Marker 'allow-rearm-1'",
             "Require-Color $window 'green' 2500",
             "Publish-Marker 'arm-2'",
+            "$focusSink = Start-Process -FilePath 'powershell.exe'",
+            "-NoNewWindow -PassThru",
+            "$focusWindow = Wait-ProcessWindow $focusSink",
             "Wait-Foreground $focusWindow",
             "Publish-Marker 'hidden-2'",
             "SetCursorPos",
@@ -593,6 +596,7 @@ def validate(sources: dict[str, str]) -> None:
         ),
         "native transition, pointer, and compositor transaction",
     )
+    forbid(controller, "-WindowStyle Hidden", "forced-hidden focus fixture")
     require_order(
         controller,
         (
@@ -1475,6 +1479,11 @@ def self_test(sources: dict[str, str]) -> int:
             "controller",
             "if (-not $published -and (Test-Path -LiteralPath $temporary -PathType Leaf))",
             "if ($false)",
+        ),
+        (
+            "controller",
+            "-NoNewWindow -PassThru",
+            "-WindowStyle Hidden -PassThru",
         ),
         ("controller", "mouse_event(0x0002", "mouse_event(0x0000"),
         (

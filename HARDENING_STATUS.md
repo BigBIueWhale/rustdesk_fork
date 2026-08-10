@@ -16258,8 +16258,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   review ran. This closes one source/bridge-verdict defect and one target compile-integration check only; the
   user's accumulated-change risk assessment and every native/end-to-end stop-ship gap remain in force.
 
-- **R-S11gb/R-S11e-215 native Windows presentation transaction — PRODUCTION-EQUIVALENT SUBWINDOW AND
-  INITIAL PIXELS REACHED; NON-ATOMIC MARKER RACE INVALID; CORRECTED RERUN PENDING; WINDOWS REMAINS
+- **R-S11gb/R-S11e-215 native Windows presentation transaction — PRODUCTION SUBWINDOW MINIMIZE/RESTORE
+  PIXELS REACHED; FORCED-HIDDEN FOCUS FIXTURE INVALID; CORRECTED RERUN PENDING; WINDOWS REMAINS
   STOP-SHIP.** Platform: a
   disposable Windows 11 overlay derived from the existing SHA-256-pinned golden. Endpoint/action: the
   repository-owned Windows <code>texture_rgba_renderer</code> plugin and direct C ABI used by Rust, exact
@@ -16925,6 +16925,50 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `echo` argument and stopped before reading; the corrected read-only invocation returned the exact files
   above. No host RustDesk process/service/configuration/display, firewall/UFW/nftables/iptables, routing, or
   host network state was changed. Windows presentation and every broader stop-ship gap remain open.
+
+  The next exact clean-commit native run used pushed commit
+  `cec7a4dae2c8de625d52ed5b40c2e1959d517b02`, tree
+  `b7e9fee5cc9d77e522af21b13d2eccd5e297add3`, and the verified 509-file source manifest. The exact
+  13-package graph resolved offline without lock drift, the native release probe built in 56.5 seconds, and
+  both default-adapter and WARP D3D11 preflights returned successful `Present`, `DwmFlush`, and matching
+  desktop pixels. The corrected no-clobber marker protocol did not reproduce sharing error 32, and the
+  finite controller owner returned a typed failure instead of consuming the one-hour VM deadline.
+
+  That run completed the intended production-secondary minimize/restore path through `displayed-1`. Its
+  retained state proves `arm-1`, `armed-1`, `hidden-1`, 128 queued frames, production minimize/blur and
+  focus/restore events, `rearm-requested-1`, explicit `allow-rearm-1`, accepted re-notification, and
+  `displayed-1`. In controller order, that final marker occurs only after green composed pixels are observed
+  within the 2500-ms recovery bound. This is useful partial native evidence, but it is deliberately not an
+  accepted transaction: the strict result is a failure and contains no complete cycle/result/cleanup
+  envelope.
+
+  The run then armed cycle 2 and observed the real production blur event, but the separately owned focus
+  fixture never exposed a visible top-level window. The controller timed out waiting for the still-live
+  PowerShell process 6696; the app consequently timed out waiting for `hidden-2`. Source tracing identifies
+  the exact fixture contradiction: `Start-Process -WindowStyle Hidden` places `SW_HIDE` in the child's
+  Win32 startup show state, and Windows applies that state to the process's first top-level window. It
+  therefore hid the very WinForms form required as the visible focus target. This is not a product focus,
+  pointer, texture, or presentation failure.
+
+  The narrow source correction replaces that forced-hidden launch with `-NoNewWindow`. The focus fixture
+  reuses the controller's existing console, so it creates no competing console top-level window, while its
+  WinForms form receives normal show behavior. The controller still binds the exact process, requires exactly
+  one visible top-level window, moves real foreground focus to it, and admits no title-only or timing-only
+  substitute. The focused verifier rejects all 156 deliberate mutations, including reintroduction of
+  `-WindowStyle Hidden`, and all three PowerShell sources parse in the exact pinned PowerShell image. Those
+  counted checks were numeric-nonroot, networkless, read-only-root/source, capability-free,
+  no-new-privileges, process-bounded, private-tmpfs, and had no device, Docker socket, host namespace, or
+  published port. All prior pixel, event, pointer, process, and latency criteria remain unchanged. The full
+  independent source-mutation catalog and a clean exact-commit native rerun remain mandatory.
+
+  The failed run is retained at `.harness-state/windows-presentation-run.VQJP5XV4`. Its unprivileged session
+  domain `rustdesk-presentation-cec7a4da-32c55ef9`, UUID
+  `32c55ef9-df82-4798-9331-d714cd69f3e1`, had zero network interfaces, zero host-device/filesystem
+  passthroughs, and only `127.0.0.1:5900` as a new listener. Exact cleanup removed the domain, QEMU/wrapper,
+  and listener; the worktree remained clean before this evidence-led correction. No root, sudo, privileged
+  container, Docker socket, published test port, host namespace/device, host RustDesk process/service/config,
+  firewall/UFW/nftables/iptables, routing, or host network state was changed. Windows presentation and every
+  broader cross-platform/reconnect/resource/performance/release stop-ship obligation remain open.
 
 - **R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence — HARNESS SOURCE
   IMPLEMENTED; EXACT COMMITTED GREEN EXECUTION PENDING; ALL NON-LINUX/NATIVE/RELEASE GAPS REMAIN
@@ -22981,7 +23025,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-01ffb0c7c24ab27bea53487b98472f2a3bc8706bffdf4d81932c48f989d6e7f4  requirements.html
+f9ca7778a482924451e78152cd5b2502989650163f53f390d69057cb097707d2  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

@@ -370,7 +370,7 @@ try {
     Wait-Marker 'armed-2' "armed`n"
     $focusSink = Start-Process -FilePath 'powershell.exe' `
         -ArgumentList @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $FocusSinkScript) `
-        -WindowStyle Hidden -PassThru
+        -NoNewWindow -PassThru
     $focusWindow = Wait-ProcessWindow $focusSink
     Wait-Foreground $focusWindow
     Publish-Marker 'hidden-2' "hidden`n"

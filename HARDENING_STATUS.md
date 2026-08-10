@@ -4799,8 +4799,14 @@ listener was `127.0.0.1:21118` inside the `--network=none` namespace and it clos
 teardown. A separate disposable numeric-nonroot acquisition container used bridge egress only to
 fetch the five exact size/SHA-256-pinned Debian Xvfb packages; it published no port, installed
 nothing, ended with zero TCP listeners and zero UDP sockets, and its private outputs were removed.
-No host RustDesk process, service, binary, configuration, listener, display, firewall, route, or
-network state was inspected or changed.
+No host RustDesk process, service, binary, configuration, listener, or display was inspected or
+changed. The host firewall and routing configuration were not inspected, so this run makes no
+byte-for-byte host-network-state claim: Docker necessarily created and retired the producer's
+ephemeral network namespace, veth, and default-bridge attachment and may have exercised its own
+managed networking rules. The security postcondition is narrower and observable from the launch
+contract and producer namespace: no host port was published, the producer had no TCP listener and
+retained no UDP socket, every product process remained under `--network=none`, and the scoped
+containers and private workspace were removed.
 
 This materially advances exact-current Linux core-path evidence, but it still does not satisfy the
 two-viewer R-S11fl matrix or release the branch. It bypasses Flutter/Dart texture and compositor

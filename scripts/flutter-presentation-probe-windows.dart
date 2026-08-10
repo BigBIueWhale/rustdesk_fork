@@ -272,7 +272,7 @@ class _ProbeAppState extends State<_ProbeApp>
     });
   }
 
-  Never _fatal(Object error, StackTrace stackTrace) {
+  Future<void> _fatal(Object error, StackTrace stackTrace) async {
     stderr.writeln('WINDOWS_PRESENTATION_PROBE_FAILURE=$error');
     stderr.writeln(stackTrace);
     stderr.flush();
@@ -283,7 +283,7 @@ class _ProbeAppState extends State<_ProbeApp>
     } catch (_) {
       // The original failure remains the authoritative result.
     }
-    exit(1);
+    await WindowController.main().close();
   }
 
   Future<void> _runCycle(
@@ -317,7 +317,7 @@ class _ProbeAppState extends State<_ProbeApp>
     WidgetsBinding.instance.removeObserver(this);
     DesktopMultiWindow.setMethodHandler(null);
     await widget.markers.publish('app-finished', 'ok\n');
-    exit(0);
+    await WindowController.main().close();
   }
 
   void _suspend(String reason) {
@@ -501,6 +501,6 @@ Future<void> main(List<String> arguments) async {
   } catch (error, stackTrace) {
     stderr.writeln('WINDOWS_PRESENTATION_PROBE_START_FAILURE=$error');
     stderr.writeln(stackTrace);
-    exit(error is ArgumentError ? 64 : 1);
+    await WindowController.main().close();
   }
 }

@@ -17029,11 +17029,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   `DesktopMultiWindow` listener, removes its own Flutter binding observer, clears its own method handler,
   publishes the durable `app-finished` marker, and calls direct process exit with no intervening asynchronous
   diagnostic operation. The focused verifier binds that exact order, rejects any `stdout.` use, and rejects
-  removal of each owned-resource retirement; all 163 deliberate mutations pass. The exact pinned Dart SDK
-  resolves the unchanged 13-package lock offline, reports no analyzer issues for the two probe sources, and
-  reports both formatter-clean. These are source checks only. A fresh clean-commit native rerun must still
-  prove actual app exit, strict pass publication, guest shutdown, domain/process/listener cleanup, and source
-  postconditions before the narrow transaction may be called green.
+  removal of each owned-resource retirement; at that stage all 162 deliberate mutations passed. The exact
+  pinned Dart SDK resolves the unchanged 13-package lock offline, reports no analyzer issues for the two probe
+  sources, and reports both formatter-clean. These are source checks only. A fresh clean-commit native rerun
+  must still prove actual app exit, strict pass publication, guest shutdown, domain/process/listener cleanup,
+  and source postconditions before the narrow transaction may be called green.
 
   No VM was started from first pushed correction commit
   `c9eb883dd388919d5dfdfc20ce43484ac3fb96ce`. Read-only preflight review caught that the host-side
@@ -17043,6 +17043,37 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   focused verifier both forbids the obsolete marker and mutates away that empty-file verdict. This correction
   aligns the host result consumer with the already-normative no-stdout liveness rule; it produces no new native
   evidence, and the clean-commit rerun remains mandatory.
+
+  The resulting clean exact-commit native rerun from pushed commit
+  `dd318c83b80d7f9d0925d69448fb3eda79d50d17`, tree
+  `0b4db8abafa03b572d02616af19d7d6172d6ea7c`, disproved stdout as the exit cause. It again passed the
+  exact 509-file manifest and both D3D11 preflights, completed both production-secondary recovery cycles,
+  recorded the real minimize/restore and focus-loss/pointer-return events, queued 128 frames per cycle,
+  accepted both explicit re-notifications, observed both bounded composed colors, and published
+  `pointer-down-2=delivered` plus `app-finished=ok`. The app stdout file was exactly zero bytes. Nonetheless,
+  the same exact app process remained alive for the controller's 15-second exit bound, so the strict result
+  was again `fail` with `probe app did not exit after reporting completion`. No pass envelope or evidence
+  directory was published.
+
+  Source tracing now identifies the actual ownership mismatch. RustDesk's Windows runner returns only after
+  its native message loop receives `WM_QUIT`; the primary runner HWND has `quit_on_close` enabled and posts
+  that message from its `WM_DESTROY` path. The probe's lifecycle and texture work intentionally run inside a
+  separately created secondary Flutter engine. Returning from that asynchronous secondary task—or attempting
+  Dart direct process exit there—did not destroy the primary native quit owner in either exact native run.
+  The corrected success path keeps the established recovery/texture/listener/observer/handler retirement and
+  durable final marker, then calls `WindowController.main().close()` through the production multi-window
+  channel. Fatal and startup-failure paths use the same native quit owner; `exit(` is forbidden throughout
+  the probe. The focused verifier binds all three close paths and rejects 165 deliberate mutations. Exact
+  offline resolution retains the 13-package lock unchanged, Dart analysis reports no issues, and both probe
+  sources remain formatter-clean. These are source checks only; the corrected native rerun remains mandatory.
+
+  The failed `dd318c83` run is retained at
+  `.harness-state/windows-presentation-run.keuD4GJw`. Its unprivileged session domain
+  `rustdesk-presentation-dd318c83-2d20b0e8`, UUID
+  `2d20b0e8-f3f3-4555-bcdc-d218a03a7ab5`, had zero network interfaces, zero host-device/filesystem
+  passthroughs, and only new listener `127.0.0.1:5900`. Exact cleanup removed the domain, QEMU/wrapper, and
+  listener; the worktree remained clean. No root, host RustDesk/service/configuration, firewall, routing, or
+  host network state changed.
 
   This probe correction deliberately does not close a separate production Windows lifetime defect found
   during the teardown review. The vendored Windows `desktop_multi_window` `WM_DESTROY` path calls
@@ -23119,7 +23150,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-40de13a4adf6c369ca3fc8e1ce5a8f719fbbdd8a1fd7defcad2650958ea9f650  requirements.html
+f8221e29b3d035301ebbc881c48eb993078cdce88b56a07b4fb5904fc977df3a  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

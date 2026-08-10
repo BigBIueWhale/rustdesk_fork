@@ -829,17 +829,36 @@ def validate(sources: dict[str, str]) -> None:
     require_order(
         dart,
         (
+            "Future<void> _fatal(Object error, StackTrace stackTrace) async {",
+            "writeAsStringSync('${error.runtimeType}\\n', flush: true);",
+            "await WindowController.main().close();",
+            "Future<void> _runCycle(",
+        ),
+        "fatal probe receipt before native quit-owner close",
+    )
+    require_order(
+        dart,
+        (
+            "WINDOWS_PRESENTATION_PROBE_START_FAILURE=$error",
+            "await WindowController.main().close();",
+        ),
+        "startup failure native quit-owner close",
+    )
+    require_order(
+        dart,
+        (
             "_recovery.retire();",
             "await widget.texture.close();",
             "DesktopMultiWindow.removeListener(this);",
             "WidgetsBinding.instance.removeObserver(this);",
             "DesktopMultiWindow.setMethodHandler(null);",
             "await widget.markers.publish('app-finished', 'ok\\n');",
-            "exit(0);",
+            "await WindowController.main().close();",
         ),
-        "secondary-engine owned-resource retirement and direct process exit",
+        "secondary-engine owned-resource retirement and native quit-owner close",
     )
     forbid(dart, "stdout.", "secondary-engine stdout liveness dependency")
+    forbid(dart, "exit(", "secondary-engine direct process exit")
     forbid(dart, "Socket", "probe socket")
     forbid(dart, "HttpClient", "probe HTTP client")
 
@@ -1627,8 +1646,24 @@ def self_test(sources: dict[str, str]) -> int:
         ),
         (
             "dart",
-            "exit(0);",
-            "await stdout.flush(); exit(0);",
+            "await widget.markers.publish('app-finished', 'ok\\n');\n"
+            "    await WindowController.main().close();",
+            "await widget.markers.publish('app-finished', 'ok\\n');\n"
+            "    exit(0);",
+        ),
+        (
+            "dart",
+            "await WindowController.main().close();\n  }\n\n  Future<void> _runCycle(",
+            "exit(1);\n  }\n\n  Future<void> _runCycle(",
+        ),
+        (
+            "dart",
+            "WINDOWS_PRESENTATION_PROBE_START_FAILURE=$error');\n"
+            "    stderr.writeln(stackTrace);\n"
+            "    await WindowController.main().close();",
+            "WINDOWS_PRESENTATION_PROBE_START_FAILURE=$error');\n"
+            "    stderr.writeln(stackTrace);\n"
+            "    exit(1);",
         ),
         (
             "host",

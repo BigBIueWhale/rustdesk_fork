@@ -329,6 +329,7 @@ try {
     $app = Start-Process -FilePath $Executable -ArgumentList @($StateDirectory) `
         -WorkingDirectory (Split-Path -Parent $Executable) -PassThru `
         -RedirectStandardOutput $appStdout -RedirectStandardError $appStderr
+    [void]$app.Handle
     Wait-Marker 'window-role' "desktop-multi-window-subwindow`n" -OwnedProcess $app
     Wait-Marker 'window-admitted' "secondary-visible`n" -OwnedProcess $app
     $window = Wait-ProcessWindow $app
@@ -409,8 +410,14 @@ try {
     if (-not $app.WaitForExit(15000)) {
         Fail 'probe app did not exit after reporting completion'
     }
-    if ($app.ExitCode -ne 0) {
-        Fail "probe app exited with code $($app.ExitCode)"
+    $app.WaitForExit()
+    $app.Refresh()
+    if ($null -eq $app.ExitCode -or $app.ExitCode -isnot [int]) {
+        Fail 'probe app exit status is unavailable or malformed'
+    }
+    $appExitCode = [int]$app.ExitCode
+    if ($appExitCode -ne 0) {
+        Fail "probe app exited with code $appExitCode"
     }
 
     $result = [ordered]@{
@@ -467,4 +474,10 @@ try {
 } finally {
     Stop-OwnedProcess $focusSink
     Stop-OwnedProcess $app
+    if ($null -ne $focusSink) {
+        [void]$focusSink.Dispose()
+    }
+    if ($null -ne $app) {
+        [void]$app.Dispose()
+    }
 }

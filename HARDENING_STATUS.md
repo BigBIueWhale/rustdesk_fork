@@ -23178,6 +23178,29 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   QEMU/wrapper, and listener. No root or sudo was used, and no host RustDesk process, service, configuration,
   firewall, route, or network setting was changed. This correction does not close the separate response-bound
   Windows subwindow-destruction defect or any Android/real-peer/cross-version/performance/release obligation.
+- The first clean native run of the operation-time handle correction used pushed commit
+  `5c597fd2792261f1f846ac9065f119eaeb1ac249`, tree
+  `67469429390910930840cf4ca5521894968c9b7e`, and is retained at
+  `.harness-state/windows-presentation-run.DRM8NH6m`. It again completed both lifecycle/pixel cycles, both
+  re-notifications, the real pointer return, texture/resource retirement, and `app-finished=ok` with empty app
+  stdout/stderr. Unlike every prior run, the exact app process then exited inside the unchanged 15-second bound.
+  This natively proves that the corrected ID-0 operation reached the outer quit-on-close HWND and retired the old
+  process-hang boundary. The strict transaction nevertheless remained `fail`: Windows PowerShell returned a blank
+  `Process.ExitCode`, and the controller correctly refused to publish a pass without an exact zero status.
+- The new failure is a controller process-object provenance defect. Unlike the already-hardened D3D-preflight and
+  outer-controller launchers, the app launcher did not materialize its native `Process.Handle` immediately, did
+  not perform the parameterless completion wait and `Refresh()` after the bounded wait, and neither retained a
+  typed integer status before cleanup nor disposed its two owned `Process` objects. The narrow harness correction
+  now mirrors the established pattern: retain the exact handle immediately; preserve the 15-second bound; complete
+  the wait; refresh; reject null/non-integer status; copy the integer before pass publication; and dispose the app
+  and focus-fixture process objects in `finally`. The focused verifier rejects 180 deliberate mutations, including
+  every one of those ownership/status edges. This is not an accepted native transaction until another clean pushed
+  commit produces an exact zero status, strict pass envelope, guest shutdown, and exact cleanup.
+- The failed `5c597fd` domain also had zero NICs and passthroughs and only temporary VNC on
+  `127.0.0.1:5900`. Read-only post-run inspection found no session domain, owned QEMU/virt-install process, or
+  listener on port 5900. No root/sudo or host RustDesk/service/configuration/firewall/routing/network mutation
+  occurred. The successful app exit does not close any broader real-peer, Android, cross-version, performance,
+  production secondary-window destruction, artifact, independent-reproduction, or release obligation.
 
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in

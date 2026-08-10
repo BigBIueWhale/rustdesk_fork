@@ -781,6 +781,7 @@ def validate(sources: dict[str, str]) -> None:
         controller,
         (
             "$app = Start-Process -FilePath $Executable",
+            "[void]$app.Handle",
             "Wait-Marker 'window-role' \"desktop-multi-window-subwindow`n\" -OwnedProcess $app",
             "Wait-Marker 'window-admitted' \"secondary-visible`n\" -OwnedProcess $app",
             "$window = Wait-ProcessWindow $app",
@@ -789,6 +790,31 @@ def validate(sources: dict[str, str]) -> None:
             "Wait-Marker 'initial-submitted' \"white`n\"",
         ),
         "secondary role before exact native window admission",
+    )
+    require_order(
+        controller,
+        (
+            "Wait-Marker 'app-finished' \"ok`n\"",
+            "if (-not $app.WaitForExit(15000))",
+            "$app.WaitForExit()",
+            "$app.Refresh()",
+            "if ($null -eq $app.ExitCode -or $app.ExitCode -isnot [int])",
+            "$appExitCode = [int]$app.ExitCode",
+            "if ($appExitCode -ne 0)",
+            "Write-Json $resultPath $result",
+        ),
+        "bounded app exit and typed status before pass publication",
+    )
+    controller_finally = controller.rsplit("} finally {", 1)[1]
+    require_order(
+        controller_finally,
+        (
+            "Stop-OwnedProcess $focusSink",
+            "Stop-OwnedProcess $app",
+            "[void]$focusSink.Dispose()",
+            "[void]$app.Dispose()",
+        ),
+        "owned controller-process object finality",
     )
     window_waiter = controller.split("function Wait-ProcessWindow", 1)[1].split(
         "function Wait-Iconic", 1
@@ -1555,6 +1581,41 @@ def self_test(sources: dict[str, str]) -> int:
             "controller",
             "if ($null -ne $OwnedProcess -and $OwnedProcess.HasExited)",
             "if ($false)",
+        ),
+        (
+            "controller",
+            "[void]$app.Handle",
+            "# app process handle retention removed",
+        ),
+        (
+            "controller",
+            "$app.WaitForExit()",
+            "# complete app process wait removed",
+        ),
+        (
+            "controller",
+            "$app.Refresh()",
+            "# app process status refresh removed",
+        ),
+        (
+            "controller",
+            "if ($null -eq $app.ExitCode -or $app.ExitCode -isnot [int])",
+            "if ($false)",
+        ),
+        (
+            "controller",
+            "$appExitCode = [int]$app.ExitCode",
+            "$appExitCode = 0",
+        ),
+        (
+            "controller",
+            "[void]$focusSink.Dispose()",
+            "# focus process object disposal removed",
+        ),
+        (
+            "controller",
+            "[void]$app.Dispose()",
+            "# app process object disposal removed",
         ),
         (
             "controller",

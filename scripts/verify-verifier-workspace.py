@@ -41679,6 +41679,24 @@ def validate_universal_software_codec_build_gate(sources):
     )
 
 
+def validate_windows_native_credential_evidence_scope_contract(sources):
+    for source, token, label in (
+        ("verify", "grep -Fiq 'current-worktree native evidence' HARDENING_STATUS.md", "stale current-worktree native-evidence rejection"),
+        ("hardening", "HISTORIC NATIVE WINDOWS TEST-SUITE AND BUILD EVIDENCE RECORDED AT A NAMED TREE", "historic native-Windows evidence scope"),
+        ("hardening", "EXACT-CURRENT NATIVE WINDOWS AND CLEAN COMMITTED COLD RELEASE EVIDENCE PENDING", "exact-current native-Windows evidence gap"),
+        ("hardening", "TEST-SUITE EVIDENCE RECORDED VIA R-S11b-2d; EXACT-CURRENT NATIVE AND EXACT-COMMIT R-B2 EVIDENCE PENDING", "R-S11e-11 exact-current evidence gap"),
+        ("hardening", "native evidence for current `master`: later commits changed all five authority-critical production files", "later-source-change invalidation statement"),
+        ("hardening", "not installed-SCM\n  end-to-end password-mutation evidence", "installed-SCM evidence exclusion"),
+        ("hardening", "it did not rerun the native\n  service/credential/SAS/password-finality suites", "presentation/credential evidence distinction"),
+    ):
+        require_text(sources[source], token, label)
+    if any(stale in sources["hardening"].lower() for stale in (
+        "current-worktree native evidence",
+        "worktree validated via r-s11b-2d",
+    )):
+        raise VerificationError("hardening ledger overclaims current native-Windows evidence")
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -41716,6 +41734,7 @@ def validate_sources(sources):
     validate_macos_helper_build_binding_contract(sources)
     validate_macos_variadic_open_mode_contract(sources)
     validate_windows_ipc_dacl_coverage_contract(sources)
+    validate_windows_native_credential_evidence_scope_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -45654,6 +45673,24 @@ def python_mutation_scopes(source, offsets):
 
 def run_source_mutations(sources):
     mutations = (
+        (
+            "hardening",
+            "HISTORIC NATIVE WINDOWS TEST-SUITE AND BUILD EVIDENCE RECORDED AT A NAMED TREE",
+            "CURRENT NATIVE WINDOWS WORKTREE VALIDATED",
+            "historic native-Windows evidence scope",
+        ),
+        (
+            "hardening",
+            "native evidence for current `master`: later commits changed all five authority-critical production files",
+            "native evidence for current `master`",
+            "later-source-change invalidation statement",
+        ),
+        (
+            "verify",
+            "grep -Fiq 'current-worktree native evidence' HARDENING_STATUS.md",
+            "grep -Fiq 'definitely absent stale evidence claim' HARDENING_STATUS.md",
+            "stale current-worktree native-evidence rejection",
+        ),
         (
             "verify",
             "grep -qF -- '-keep class com.carriez.flutter_hbb.MainApplication { *; }' "

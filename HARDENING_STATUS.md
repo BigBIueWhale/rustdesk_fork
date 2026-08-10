@@ -5680,7 +5680,7 @@ independent reproduction, and external review remain open. No root/sudo, privile
 published port, Docker socket, device, host namespace, RustDesk host process/configuration,
 firewall/UFW/nftables/iptables, or host network state was used or inspected for this slice.
 
-**R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; RECORDED NATIVE WINDOWS CREDENTIAL EVIDENCE; CURRENT CLEAN COMMITTED COLD RELEASE BUILD PENDING.**
+**R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; HISTORIC NATIVE WINDOWS TEST-SUITE AND BUILD EVIDENCE RECORDED AT A NAMED TREE; EXACT-CURRENT NATIVE WINDOWS AND CLEAN COMMITTED COLD RELEASE EVIDENCE PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
 `_service_password` protocols. Ordinary main and `_service` IPC contain no password-bearing request, generic
@@ -5865,8 +5865,9 @@ network configuration was inspected or changed.
   the same generation-bound proof and supplies the root PRS-or-empty snapshot. Post-persistence divergence
   fail-stops the service generation. Ordinary main IPC carries no password fallback. A nonsecret status query is
   used only for admitted uncertainty. The packaged polkit policy remains administrator-authenticated.
-- **R-S11b-2d/R-S11c-1e — Windows service-owned unattended password authority — SOURCE IMPLEMENTED; NATIVE
-  CREDENTIAL-PATH EVIDENCE RECORDED AT THE NAMED TREE.** The stable LocalSystem SCM service is the sole durable credential
+- **R-S11b-2d/R-S11c-1e — Windows service-owned unattended password authority — SOURCE IMPLEMENTED; HISTORIC
+  NATIVE WINDOWS TEST-SUITE AND BUILD EVIDENCE RECORDED AT THE NAMED TREE; EXACT-CURRENT NATIVE EVIDENCE
+  PENDING.** The stable LocalSystem SCM service is the sole durable credential
   writer and replay/finality owner. Mutation enters through raw `_service_password`, not `_service` or an old
   service-main credential endpoint. One `FILE_FLAG_FIRST_PIPE_INSTANCE`, `PIPE_REJECT_REMOTE_CLIENTS`,
   max-instances-one message pipe is held for process life and serially reused. The service DACL admits Interactive
@@ -5891,8 +5892,15 @@ network configuration was inspected or changed.
   `{6C338D23-A4FA-5F24-B182-47F4526233A8}`. The host equality gate published setup SHA-256
   `66326a7aac84de392268e5cd743adcaa0c1b0c6d880435c80145593c0d7ad2f9` and MSI SHA-256
   `8220ef94cc59bb01fb8c23754d801aaee58648c7ac15d3a864af515addd583ec`; both PTY-driven passes completed with
-  no cleanup prompt. This is current-worktree native evidence, not the clean committed R-B2 cold-release transaction;
-  the evidence-only ledger wording added afterward does not alter the validated executable inputs.
+  no cleanup prompt. This is native test-suite and build evidence for exactly that staged tree, not installed-SCM
+  end-to-end password-mutation evidence and not the clean committed R-B2 cold-release transaction. It also is not
+  native evidence for current `master`: later commits changed all five authority-critical production files
+  `src/platform/windows.rs`, `src/ipc.rs`, `src/ipc/auth.rs`, `src/ipc/password.rs`, and
+  `libs/hbb_common/src/config.rs`. Those later changes have source and unit/model verification, but a native run of
+  the earlier bytes cannot validate them. The 2026-08-10 current-source Windows presentation transaction exercised
+  secondary-window Flutter/D3D11 teardown and focus/minimize behavior only; it did not rerun the native
+  service/credential/SAS/password-finality suites or an installed SCM credential transaction. Exact-current native
+  Windows credential-path evidence therefore remains open.
 - **R-S11b-2e/R-S11c-1f — macOS service-owned unattended password provisioning — SOURCE IMPLEMENTED; APPLE
   SOURCE-CONFORMANCE GATE AVAILABLE.** Generic `_service` proof and password `_service_password` proof use separate
   fixed capacities. The accepted socket's uid, effective-pid metadata, and `LOCAL_PEERTOKEN` audit token are
@@ -7257,18 +7265,19 @@ network configuration was inspected or changed.
   No ordinary-user-to-root path was proved in the old fixed call sites. Verification now gates the explicit IOKit
   link/native activity path, both subprocess deletions, the fail-closed service topology, and the superseding
   requirements/ledger disposition.
-- **R-S11e-11 — Windows service-owned password receiver proof — SOURCE IMPLEMENTED; CURRENT NATIVE WINDOWS
-  WORKTREE VALIDATED VIA R-S11b-2d; EXACT-COMMIT R-B2 EVIDENCE PENDING.** Mutation terminates directly in the
+- **R-S11e-11 — Windows service-owned password receiver proof — SOURCE IMPLEMENTED; HISTORIC NATIVE WINDOWS
+  TEST-SUITE EVIDENCE RECORDED VIA R-S11b-2d; EXACT-CURRENT NATIVE AND EXACT-COMMIT R-B2 EVIDENCE PENDING.** Mutation terminates directly in the
   stable LocalSystem SCM service on raw `_service_password`. The client authenticates the fixed service image, LocalSystem token, exact service role,
   and process generation before sending. The process-lifetime first-instance listener preauthorizes the exact
   active-principal RustDesk role before header wait, proves the header message by impersonation before body read,
   and revalidates the body message plus fresh process/token/session identity immediately before nonblocking
   admission. The retained child is never a durable commit receiver; `_service_credential` supplies only its
-  generation-bound read-only replica. This row is the receiver-proof slice of the same current-worktree native
-  Windows evidence recorded in R-S11b-2d/R-S11c-1e above: retry 15 of staged tree
+  generation-bound read-only replica. This row is the receiver-proof slice of the same historic native Windows
+  test-suite evidence recorded in R-S11b-2d/R-S11c-1e above: retry 15 of staged tree
   `ad2dd37c3698945d1071e091c68d26d64bc32b54` passed the native service/credential/SAS/password-finality/input
-  suites in two fresh networkless Windows guests. That remains current-worktree native evidence only; exact
-  committed cold-release artifact evidence still belongs to R-B2.
+  suites in two fresh networkless Windows guests. Subsequent changes to the authority-critical production files
+  mean that evidence does not validate current `master`; exact-current native reruns remain required independently
+  of the exact committed cold-release artifact evidence owned by R-B2.
 - **R-S11e-12 — macOS clipboard-file paste no-follow finalize — CLOSED 2026-07-11.**
   Platform: macOS desktop with `unix-file-copy-paste`. Endpoint/action: CLIPRDR file paste after a local
   Finder/pasteboard paste operation asks the authenticated peer for `FILEDESCRIPTOR` metadata and file contents.

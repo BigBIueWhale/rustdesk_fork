@@ -23201,6 +23201,28 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   listener on port 5900. No root/sudo or host RustDesk/service/configuration/firewall/routing/network mutation
   occurred. The successful app exit does not close any broader real-peer, Android, cross-version, performance,
   production secondary-window destruction, artifact, independent-reproduction, or release obligation.
+- The clean exact-commit rerun from pushed harness commit
+  `fd1d6d8f2d06f42f8c421d08a25f89185db0cf9c`, tree
+  `411984b952233a33c8a35169bafc26ee83c4af98`, then completed the strict transaction and retained accepted
+  evidence at `.harness-state/windows-presentation-evidence-fd1d6d8f2d06`. The 509-file source manifest,
+  pinned golden/helper/cache/lock identities, both default-adapter and WARP D3D11 preflights, exact production
+  `RustdeskMultiWindow` event class, real minimize/restore and focus-loss/pointer-return events, two 128-frame
+  direct-ABI queues, both explicit re-notifications, composed pixels, pointer delivery, texture/resource
+  retirement, durable `app-finished`, typed zero app status, pass envelope, guest shutdown, and host extraction
+  all succeeded. The final green frame was already visible before explicit re-arm and appeared 312 ms after
+  minimize/restore authorization; the final magenta frame was visible while blurred and before explicit re-arm
+  and appeared 172 ms after focus-return authorization, both inside the unchanged 2500-ms limit. App
+  stdout/stderr and controller stderr were empty.
+- The accepted domain `rustdesk-presentation-fd1d6d8f-dd6047e7`, UUID
+  `dd6047e7-b320-49bd-8b04-36a257b76c5b`, had zero network interfaces, no host-device/filesystem passthrough,
+  and VNC parent/child listen records only at `127.0.0.1`; its only new listener was `127.0.0.1:5900`.
+  Independent read-only postconditions found no session domain, QEMU/virt-install process, or 5900 listener, and
+  the tracked worktree remained clean. No root/sudo or host RustDesk/service/configuration/firewall/routing/
+  network mutation occurred. This closes only R-S11gb's narrow native Windows Flutter texture/presentation and
+  process-finality transaction. It does not establish the full RustDesk peer/capture/transport/decode/control
+  flow, cause or repair of an older deployed Windows artifact, Android service/task-swipe/Force-Stop recovery,
+  production response-bound secondary-window destruction, cross-version behavior, latency/performance soak,
+  release artifacts, independent reproduction, or external review; all remain stop-ship.
 
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in

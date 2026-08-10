@@ -16258,9 +16258,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   review ran. This closes one source/bridge-verdict defect and one target compile-integration check only; the
   user's accumulated-change risk assessment and every native/end-to-end stop-ship gap remain in force.
 
-- **R-S11gb/R-S11e-215 native Windows presentation transaction — NATIVE D3D11 PRESENT AND INITIAL
-  FLUTTER PIXELS REACHED; EVENTLESS PRIMARY-WINDOW RUN INVALID; PRODUCTION-EQUIVALENT SUBWINDOW RERUN
-  PENDING; WINDOWS REMAINS STOP-SHIP.** Platform: a
+- **R-S11gb/R-S11e-215 native Windows presentation transaction — PRODUCTION-EQUIVALENT SUBWINDOW AND
+  INITIAL PIXELS REACHED; NON-ATOMIC MARKER RACE INVALID; CORRECTED RERUN PENDING; WINDOWS REMAINS
+  STOP-SHIP.** Platform: a
   disposable Windows 11 overlay derived from the existing SHA-256-pinned golden. Endpoint/action: the
   repository-owned Windows <code>texture_rgba_renderer</code> plugin and direct C ABI used by Rust, exact
   production <code>PresentationRecovery</code>, the pinned RustDesk desktop window-event implementation and
@@ -16860,6 +16860,71 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   task-swipe/persistent-service/Force-Stop behavior, cross-version operation, concurrent control/file/audio,
   repeated reconnect/focus and resource/performance soak, release artifacts, independent reproduction, and
   external review remain separate stop-ship work.
+
+  The clean exact-commit subwindow rerun from pushed commit
+  `4d415120591e1b9953895ad27cc410da5c76af90`, tree
+  `4464cb22a67050aa6fe00643eaf64b75d845bd83`, created the intended secondary engine and reached its
+  initial composed pixels, but exposed another exact evidence-protocol defect before minimize/restore.
+  The guest verified the exact 509-file manifest and offline dependency graph, recorded
+  `execution-state-held`, completed the release build and D3D11 preflight, accepted the exact
+  `RustdeskMultiWindow` class plus child-role and parent-admission receipts, submitted the initial texture,
+  and progressed far enough for the controller to publish `arm-1`. It then failed before `armed-1`, so no
+  minimize, restore, blur, focus, pointer, recovery-latency, texture-close, or pass verdict counts.
+
+  The retained controller/app evidence is unambiguous. PowerShell `Publish-Marker` created the final
+  `arm-1` pathname first and held it with `FileShare.None` while writing. Dart observed that final name and
+  immediately attempted `readAsString`, receiving Windows sharing error 32. The app correctly treated the
+  unexpected I/O failure as fatal; the controller then timed out waiting for `armed-1`. This race was latent
+  in the earlier topology and happened to lose in the faster secondary-engine run. It is not a
+  `PresentationRecovery`, texture, Flutter lifecycle, or RustDesk product failure.
+
+  The guest runner also failed its own prompt-finality obligation. Controller/result/app failure files were
+  durably present by the first output-disk write interval, but the guest remained powered on until the
+  unchanged outer one-hour deadline destroyed it. No copied state directory, runner-failure receipt, or
+  `probe-passed` marker appeared. The exact internal hang point cannot be recovered from a powered-off
+  snapshot, but the runner's controller launch used unbounded `Start-Process -Wait`, leaving the host's
+  one-hour VM deadline as its only independent liveness owner. A failed controller transaction must not be
+  able to retain the disposable VM for that hour.
+
+  The source correction makes marker publication correct by construction: write a same-directory private
+  temporary file with no sharing, flush it durably, close it, and atomically move it without overwrite to the
+  final marker name. The exact pinned Dart SDK documents that `File.rename` removes an existing destination,
+  so the Dart publisher's precheck plus generic rename was not a true no-clobber primitive. It now creates its
+  temporary exclusively, writes and closes it, calls Windows `MoveFileW` without replacement through its
+  existing `dart:ffi` boundary, frees both UTF-16 path allocations, and removes only its own unpublished
+  temporary on failure. PowerShell uses `FileMode.CreateNew`, durable flush/close, and same-directory
+  `File.Move`, with exact unpublished-temp cleanup. The runner separately acquires the controller process
+  handle, waits only a finite controller-specific interval without `Start-Process -Wait`, kills and reaps
+  that exact primary process on expiry, rejects null or non-integer exit status, and then reaches its existing
+  failure receipt plus unconditional `Stop-Computer` path. This does not loosen any pixel, event, latency,
+  process, source, domain, listener, or cleanup verdict.
+
+  Counted confined source checks for that correction are green: the focused gate rejects 155 deliberate
+  mutations; the independent workspace baseline, 81-mutation Windows-helper authority gate, 45-mutation
+  golden-domain gate, native-codec normal/self-test, Bash syntax, requirements hash synchronization, and
+  diff hygiene pass in the exact pinned verifier image. The exact 13-package probe lock resolves offline and
+  unchanged from only the retained exact eight-package projection; analysis of the two probe Dart sources
+  reports no issues and both are formatter-clean in the pinned Flutter-check image. All three PowerShell
+  sources parse in the exact pinned PowerShell image. Every counted image ran as numeric UID:GID 1000:1000
+  with no network, read-only root and source/input, dropped capabilities, no-new-privileges, finite process
+  limits, private tmpfs state, and no device, Docker socket, host namespace, or published port. Earlier quick
+  host-interpreter invocations were read-only diagnostics but are explicitly excluded from counted evidence
+  under the user's container-only execution rule. Two preliminary Flutter-tool analyzer attempts are also
+  excluded: the first stopped before resolution at the immutable SDK lockfile, and the second stopped at
+  unrelated immutable iOS-artifact stamps. The counted invocation used the pinned Dart executable directly,
+  so it needed no writable SDK or artifact updater. These results establish only source/checker consistency.
+  The corrected native rerun has not happened, so Windows recovery remains unproven and stop-ship.
+
+  The timed-out run is retained at `.harness-state/windows-presentation-run.JXfkvKWt`. Its unprivileged
+  session domain `rustdesk-presentation-4d415120-ddbdfe17`, UUID
+  `ddbdfe17-05a7-47ce-b645-2e8abd1c07ea`, had zero network interfaces and zero host-device/filesystem
+  passthroughs; its only new listener was `127.0.0.1:5900`. Exact timeout cleanup removed the domain,
+  QEMU/wrapper process, and listener. Read-only post-mortem used the already-pinned helper as numeric nonroot,
+  networkless, read-only-root/input, capability-free, no-new-privileges, with no device, Docker socket, host
+  namespace, or published port. The first attempted multi-file guestfish display used an invalid diagnostic
+  `echo` argument and stopped before reading; the corrected read-only invocation returned the exact files
+  above. No host RustDesk process/service/configuration/display, firewall/UFW/nftables/iptables, routing, or
+  host network state was changed. Windows presentation and every broader stop-ship gap remain open.
 
 - **R-S11gc/R-S11e-216 exact Linux full-peer Flutter presentation evidence — HARNESS SOURCE
   IMPLEMENTED; EXACT COMMITTED GREEN EXECUTION PENDING; ALL NON-LINUX/NATIVE/RELEASE GAPS REMAIN
@@ -22916,7 +22981,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-cbd2bbaed9016953fbbf4673ab43e6c76a570c87932d4034934e91c464dc3d39  requirements.html
+01ffb0c7c24ab27bea53487b98472f2a3bc8706bffdf4d81932c48f989d6e7f4  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

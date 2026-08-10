@@ -30,6 +30,13 @@ typedef _MallocNative = Pointer<Void> Function(UintPtr);
 typedef _Malloc = Pointer<Void> Function(int);
 typedef _FreeNative = Void Function(Pointer<Void>);
 typedef _Free = void Function(Pointer<Void>);
+typedef _MoveFileNative = Int32 Function(
+  Pointer<Uint16>,
+  Pointer<Uint16>,
+);
+typedef _MoveFile = int Function(Pointer<Uint16>, Pointer<Uint16>);
+typedef _GetLastErrorNative = Uint32 Function();
+typedef _GetLastError = int Function();
 
 const _textureKey = 0x52535750;
 const _width = 400;
@@ -40,9 +47,53 @@ const _queuedFrameCount = 128;
 class _Markers {
   _Markers(this.directory);
 
+  static final _runtime = DynamicLibrary.open('ucrtbase.dll');
+  static final _malloc =
+      _runtime.lookupFunction<_MallocNative, _Malloc>('malloc');
+  static final _free = _runtime.lookupFunction<_FreeNative, _Free>('free');
+  static final _kernel32 = DynamicLibrary.open('kernel32.dll');
+  static final _moveFile =
+      _kernel32.lookupFunction<_MoveFileNative, _MoveFile>('MoveFileW');
+  static final _getLastError = _kernel32
+      .lookupFunction<_GetLastErrorNative, _GetLastError>('GetLastError');
+
   final Directory directory;
 
   File _file(String name) => File('${directory.path}/$name');
+
+  static Pointer<Uint16> _widePath(String value) {
+    final units = value.codeUnits;
+    final pointer =
+        _malloc((units.length + 1) * sizeOf<Uint16>()).cast<Uint16>();
+    if (pointer.address == 0) {
+      throw StateError('ucrtbase malloc returned null for marker path');
+    }
+    final buffer = pointer.asTypedList(units.length + 1);
+    buffer.setRange(0, units.length, units);
+    buffer[units.length] = 0;
+    return pointer;
+  }
+
+  static void _moveFileNoReplace(String sourcePath, String destinationPath) {
+    final source = _widePath(sourcePath);
+    try {
+      final destination = _widePath(destinationPath);
+      try {
+        if (_moveFile(source, destination) == 0) {
+          final error = _getLastError();
+          throw FileSystemException(
+            'MoveFileW failed without replacement',
+            sourcePath,
+            OSError('Win32 error', error),
+          );
+        }
+      } finally {
+        _free(destination.cast<Void>());
+      }
+    } finally {
+      _free(source.cast<Void>());
+    }
+  }
 
   Future<void> waitFor(String name, String expected) async {
     final file = _file(name);
@@ -66,8 +117,17 @@ class _Markers {
       throw StateError('$name already exists');
     }
     final temporary = _file('.$name.$pid.tmp');
-    await temporary.writeAsString(value, flush: true);
-    await temporary.rename(destination.path);
+    var published = false;
+    try {
+      await temporary.create(exclusive: true);
+      await temporary.writeAsString(value, flush: true);
+      _moveFileNoReplace(temporary.path, destination.path);
+      published = true;
+    } finally {
+      if (!published && await temporary.exists()) {
+        await temporary.delete();
+      }
+    }
   }
 
   void event(String value) {

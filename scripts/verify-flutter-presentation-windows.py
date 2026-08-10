@@ -447,6 +447,30 @@ def validate(sources: dict[str, str]) -> None:
     require_order(
         runner,
         (
+            "$controllerTimeoutMilliseconds = 180000",
+            "$controllerRun = Start-Process -FilePath 'powershell.exe'",
+            ") -PassThru -NoNewWindow",
+            "[void]$controllerRun.Handle",
+            "if (-not $controllerRun.WaitForExit($controllerTimeoutMilliseconds))",
+            "$controllerRun.Kill()",
+            "if (-not $controllerRun.WaitForExit(10000))",
+            "Fail 'native Windows presentation controller exceeded three minutes'",
+            "$controllerRun.Refresh()",
+            "if ($null -eq $controllerRun.ExitCode -or $controllerRun.ExitCode -isnot [int])",
+            "$controllerExitCode = [int]$controllerRun.ExitCode",
+            "$controllerRun.Dispose()",
+            "Copy-ProbeState $stateDirectory $outputRoot",
+            "if ($controllerExitCode -ne 0)",
+        ),
+        "bounded controller process and typed result",
+    )
+    controller_launch = runner.split(
+        "$controllerRun = Start-Process -FilePath 'powershell.exe'", 1
+    )[1].split("[void]$controllerRun.Handle", 1)[0]
+    forbid(controller_launch, "-Wait", "unbounded controller descendant-tree wait")
+    require_order(
+        runner,
+        (
             "if ($executionStateHeld)",
             "$executionStateReset = [PresentationExecutionStateNative]::SetThreadExecutionState(",
             "$esContinuous",
@@ -569,6 +593,26 @@ def validate(sources: dict[str, str]) -> None:
         ),
         "native transition, pointer, and compositor transaction",
     )
+    require_order(
+        controller,
+        (
+            "function Publish-Marker([string]$Name, [string]$Value)",
+            '$temporary = Join-Path $StateDirectory ".$Name.$PID.tmp"',
+            "$published = $false",
+            "$stream = [IO.File]::Open(",
+            "$temporary,",
+            "[IO.FileMode]::CreateNew",
+            "[IO.FileShare]::None",
+            "$stream.Write($bytes, 0, $bytes.Length)",
+            "$stream.Flush($true)",
+            "$stream.Dispose()",
+            "[IO.File]::Move($temporary, $path)",
+            "$published = $true",
+            "if (-not $published -and (Test-Path -LiteralPath $temporary -PathType Leaf))",
+            "Remove-Item -LiteralPath $temporary -Force",
+        ),
+        "atomic complete-before-visible controller marker publication",
+    )
     require(controller, "real_windows_flutter_engine = $true", "Windows engine result")
     require(
         controller,
@@ -653,6 +697,33 @@ def validate(sources: dict[str, str]) -> None:
             "await _runPresentationWindow(",
         ),
         "secondary-engine-only probe initialization",
+    )
+    require_order(
+        dart,
+        (
+            "typedef _MoveFileNative = Int32 Function(",
+            "static final _kernel32 = DynamicLibrary.open('kernel32.dll');",
+            "lookupFunction<_MoveFileNative, _MoveFile>('MoveFileW')",
+            "lookupFunction<_GetLastErrorNative, _GetLastError>('GetLastError')",
+            "static void _moveFileNoReplace(String sourcePath, String destinationPath)",
+            "final source = _widePath(sourcePath);",
+            "final destination = _widePath(destinationPath);",
+            "if (_moveFile(source, destination) == 0)",
+            "final error = _getLastError();",
+            "_free(destination.cast<Void>());",
+            "_free(source.cast<Void>());",
+            "Future<void> publish(String name, String value) async",
+            "final destination = _file(name);",
+            "if (await destination.exists())",
+            "final temporary = _file('.$name.$pid.tmp');",
+            "await temporary.create(exclusive: true);",
+            "await temporary.writeAsString(value, flush: true);",
+            "_moveFileNoReplace(temporary.path, destination.path);",
+            "published = true;",
+            "if (!published && await temporary.exists())",
+            "await temporary.delete();",
+        ),
+        "atomic complete-before-visible Dart marker publication",
     )
     require(
         controller,
@@ -1251,6 +1322,46 @@ def self_test(sources: dict[str, str]) -> int:
         ),
         (
             "runner",
+            "$controllerTimeoutMilliseconds = 180000",
+            "$controllerTimeoutMilliseconds = 3600000",
+        ),
+        (
+            "runner",
+            ") -PassThru -NoNewWindow `\n        -RedirectStandardOutput (Join-Path $outputRoot 'windows-presentation-controller.stdout.txt')",
+            ") -Wait -PassThru -NoNewWindow `\n        -RedirectStandardOutput (Join-Path $outputRoot 'windows-presentation-controller.stdout.txt')",
+        ),
+        (
+            "runner",
+            "[void]$controllerRun.Handle",
+            "# controller process handle acquisition removed",
+        ),
+        (
+            "runner",
+            "if (-not $controllerRun.WaitForExit($controllerTimeoutMilliseconds))",
+            "if ($false)",
+        ),
+        (
+            "runner",
+            "$controllerRun.Kill()",
+            "# timed-out controller kill removed",
+        ),
+        (
+            "runner",
+            "if (-not $controllerRun.WaitForExit(10000))",
+            "if ($false)",
+        ),
+        (
+            "runner",
+            "if ($null -eq $controllerRun.ExitCode -or $controllerRun.ExitCode -isnot [int])",
+            "if ($false)",
+        ),
+        (
+            "runner",
+            "$controllerRun.Dispose()",
+            "# controller process handle disposal removed",
+        ),
+        (
+            "runner",
             "'format,default_adapter,warp'",
             "'format,default_adapter'",
         ),
@@ -1335,6 +1446,36 @@ def self_test(sources: dict[str, str]) -> int:
             "if ($null -ne $OwnedProcess -and $OwnedProcess.HasExited)",
             "if ($false)",
         ),
+        (
+            "controller",
+            '$temporary = Join-Path $StateDirectory ".$Name.$PID.tmp"',
+            '$temporary = Get-MarkerPath $Name',
+        ),
+        (
+            "controller",
+            "[IO.FileMode]::CreateNew",
+            "[IO.FileMode]::Create",
+        ),
+        (
+            "controller",
+            "$stream.Dispose()",
+            "# marker stream close removed",
+        ),
+        (
+            "controller",
+            "[IO.File]::Move($temporary, $path)",
+            "[IO.File]::Copy($temporary, $path)",
+        ),
+        (
+            "controller",
+            "$stream.Flush($true)",
+            "$stream.Flush($false)",
+        ),
+        (
+            "controller",
+            "if (-not $published -and (Test-Path -LiteralPath $temporary -PathType Leaf))",
+            "if ($false)",
+        ),
         ("controller", "mouse_event(0x0002", "mouse_event(0x0000"),
         (
             "d3d11",
@@ -1380,6 +1521,41 @@ def self_test(sources: dict[str, str]) -> int:
             "dart",
             "await markers.publish('window-role', 'desktop-multi-window-subwindow\\n');",
             "// secondary-window role removed",
+        ),
+        (
+            "dart",
+            "await temporary.writeAsString(value, flush: true);",
+            "await temporary.writeAsString(value, flush: false);",
+        ),
+        (
+            "dart",
+            "await temporary.create(exclusive: true);",
+            "await temporary.create();",
+        ),
+        (
+            "dart",
+            "if (_moveFile(source, destination) == 0)",
+            "if (false)",
+        ),
+        (
+            "dart",
+            "_free(destination.cast<Void>());",
+            "// destination path free removed",
+        ),
+        (
+            "dart",
+            "_free(source.cast<Void>());",
+            "// source path free removed",
+        ),
+        (
+            "dart",
+            "_moveFileNoReplace(temporary.path, destination.path);",
+            "await temporary.rename(destination.path);",
+        ),
+        (
+            "dart",
+            "if (!published && await temporary.exists())",
+            "if (false)",
         ),
         ("dart", "_resume('pointer-down-fallback');", "// pointer recovery removed"),
         ("dart", "await widget.texture.close();", "// texture close removed"),

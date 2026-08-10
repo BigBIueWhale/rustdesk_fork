@@ -154,13 +154,28 @@ function Wait-Marker(
 
 function Publish-Marker([string]$Name, [string]$Value) {
     $path = Get-MarkerPath $Name
+    $temporary = Join-Path $StateDirectory ".$Name.$PID.tmp"
     $bytes = [Text.Encoding]::ASCII.GetBytes($Value)
-    $stream = [IO.File]::Open($path, [IO.FileMode]::CreateNew, [IO.FileAccess]::Write, [IO.FileShare]::None)
+    $published = $false
     try {
-        $stream.Write($bytes, 0, $bytes.Length)
-        $stream.Flush($true)
+        $stream = [IO.File]::Open(
+            $temporary,
+            [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write,
+            [IO.FileShare]::None
+        )
+        try {
+            $stream.Write($bytes, 0, $bytes.Length)
+            $stream.Flush($true)
+        } finally {
+            $stream.Dispose()
+        }
+        [IO.File]::Move($temporary, $path)
+        $published = $true
     } finally {
-        $stream.Dispose()
+        if (-not $published -and (Test-Path -LiteralPath $temporary -PathType Leaf)) {
+            Remove-Item -LiteralPath $temporary -Force
+        }
     }
 }
 

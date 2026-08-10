@@ -54,6 +54,7 @@ $executionStateHeld = $false
 $esContinuous = [uint32]2147483648 # ES_CONTINUOUS (0x80000000)
 $esSystemRequired = [uint32]1 # ES_SYSTEM_REQUIRED
 $esDisplayRequired = [uint32]2 # ES_DISPLAY_REQUIRED
+$controllerTimeoutMilliseconds = 180000
 try {
     $sourceRoot = Get-OneSourceRoot
     $outputRoot = Get-OneOutputRoot
@@ -348,12 +349,37 @@ install(TARGETS rustdesk_d3d11_preflight RUNTIME DESTINATION "${CMAKE_INSTALL_PR
             '-OutputDirectory', $outputRoot,
             '-SourceCommit', [string]$manifest.source_commit,
             '-SourceTree', [string]$manifest.source_tree
-        ) -Wait -PassThru -NoNewWindow `
+        ) -PassThru -NoNewWindow `
         -RedirectStandardOutput (Join-Path $outputRoot 'windows-presentation-controller.stdout.txt') `
         -RedirectStandardError (Join-Path $outputRoot 'windows-presentation-controller.stderr.txt')
+    $controllerExitCode = $null
+    try {
+        [void]$controllerRun.Handle
+        if (-not $controllerRun.WaitForExit($controllerTimeoutMilliseconds)) {
+            try {
+                $controllerRun.Kill()
+            } catch {
+                $controllerRun.Refresh()
+                if (-not $controllerRun.HasExited) {
+                    Fail "could not stop timed-out native Windows presentation controller: $($_.Exception.Message)"
+                }
+            }
+            if (-not $controllerRun.WaitForExit(10000)) {
+                Fail 'timed-out native Windows presentation controller did not exit after Kill'
+            }
+            Fail 'native Windows presentation controller exceeded three minutes'
+        }
+        $controllerRun.Refresh()
+        if ($null -eq $controllerRun.ExitCode -or $controllerRun.ExitCode -isnot [int]) {
+            Fail 'native Windows presentation controller exit status is unavailable or malformed'
+        }
+        $controllerExitCode = [int]$controllerRun.ExitCode
+    } finally {
+        $controllerRun.Dispose()
+    }
     Copy-ProbeState $stateDirectory $outputRoot
-    if ($controllerRun.ExitCode -ne 0) {
-        Fail "native Windows presentation controller failed with exit $($controllerRun.ExitCode)"
+    if ($controllerExitCode -ne 0) {
+        Fail "native Windows presentation controller failed with exit $controllerExitCode"
     }
     $result = Join-Path $outputRoot 'windows-presentation-result.json'
     if (-not (Test-Path -LiteralPath $result -PathType Leaf)) {

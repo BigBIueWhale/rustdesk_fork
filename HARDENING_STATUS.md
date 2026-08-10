@@ -23256,9 +23256,21 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   native controller must prove throughout that interval that the exact production-class `RustdeskMultiWindow`
   HWND is still visible and that the engine composes the new blue frame. It then authorizes Dart cleanup and
   requires the cleanup receipt before native HWND retirement, manager-entry retirement, primary-window close,
-  typed-zero app exit, strict result publication, guest shutdown, and exact host cleanup. Until that exact clean,
-  committed, zero-interface VM run succeeds, this section records a source candidate and a pending native gate,
-  not native evidence.
+  typed-zero app exit, strict result publication, guest shutdown, and exact host cleanup.
+- That exact transaction passed at commit `7ad3e34f2eed70711a31e7880302b4047524dac3`, tree
+  `2abc30f594cfaa5a4d4b50f519b698f1e744d580`, with the repository's 509-file source manifest reverified in the
+  guest. The real `RustdeskMultiWindow` HWND and Flutter engine remained live while Dart withheld its method result
+  for 1013 measured monotonic milliseconds and composed the newly submitted blue frame in 139 ms; cleanup then
+  completed before HWND and manager retirement, and the app exited zero with empty app/controller stderr. The
+  existing real minimize/restore and focus-loss/guest-pointer-return cycles also remained green at 301 ms and
+  223 ms respectively. Result SHA-256 `6f791d8b890abb5cfcfc122cf8d46ef8f3b3fda40ea559a19303ecc03d7862c7`,
+  domain XML SHA-256 `34be4d0915ba89c204ecc3bd2e22cd4c0f8ecf138088d9c28581143b0fb1e630`,
+  and D3D11 preflight SHA-256 `3d90936efc61865bda667869edc36eb19bdc077e446fecf45ba33ee1f785e621`
+  are retained under `.harness-state/windows-presentation-evidence-7ad3e34f2eed/`. Host validation proved zero
+  domain network interfaces, VNC parent/child listen records only at `127.0.0.1`, and an exact listener delta of
+  only `127.0.0.1:5900`; independent postconditions found no session domain, QEMU process, or VNC listener and the
+  tracked tree remained clean. No root/sudo or host RustDesk/service/configuration/firewall/routing/network
+  mutation occurred. This closes only R-S11gh's narrow native Windows engine/Dart/HWND ownership transaction.
 - The user's accumulated-change risk assessment remains binding. Even a green run here proves only this one
   production Windows engine-versus-Dart teardown boundary. It does not run a real RustDesk peer, identify or repair
   the weeks-old operational artifact, validate Android Activity/foreground-service/task-swipe/Force-Stop recovery,

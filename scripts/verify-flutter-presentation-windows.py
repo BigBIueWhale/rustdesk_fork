@@ -815,7 +815,20 @@ def validate(sources: dict[str, str]) -> None:
     require(dart, "FlutterRgbaRendererPluginTryOnRgba", "production C ABI")
     require(dart, "FlutterRgbaRendererPluginTryNotifyPending", "production notifier")
     require(dart, "DynamicLibrary.open('texture_rgba_renderer_plugin.dll')", "production DLL")
-    require(dart, "await widget.texture.close();", "texture close finality")
+    require_order(
+        dart,
+        (
+            "_recovery.retire();",
+            "await widget.texture.close();",
+            "DesktopMultiWindow.removeListener(this);",
+            "WidgetsBinding.instance.removeObserver(this);",
+            "DesktopMultiWindow.setMethodHandler(null);",
+            "await widget.markers.publish('app-finished', 'ok\\n');",
+            "exit(0);",
+        ),
+        "secondary-engine owned-resource retirement and direct process exit",
+    )
+    forbid(dart, "stdout.", "secondary-engine stdout liveness dependency")
     forbid(dart, "Socket", "probe socket")
     forbid(dart, "HttpClient", "probe HTTP client")
 
@@ -1586,6 +1599,26 @@ def self_test(sources: dict[str, str]) -> int:
         ),
         ("dart", "_resume('pointer-down-fallback');", "// pointer recovery removed"),
         ("dart", "await widget.texture.close();", "// texture close removed"),
+        (
+            "dart",
+            "DesktopMultiWindow.removeListener(this);",
+            "// explicit multi-window listener retirement removed",
+        ),
+        (
+            "dart",
+            "WidgetsBinding.instance.removeObserver(this);",
+            "// explicit binding observer retirement removed",
+        ),
+        (
+            "dart",
+            "DesktopMultiWindow.setMethodHandler(null);",
+            "// explicit method-handler retirement removed",
+        ),
+        (
+            "dart",
+            "exit(0);",
+            "await stdout.flush(); exit(0);",
+        ),
         (
             "multi_window_windows",
             'project.set_dart_entrypoint_arguments({"multi_window",',

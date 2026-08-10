@@ -313,12 +313,10 @@ class _ProbeAppState extends State<_ProbeApp>
     _finished = true;
     _recovery.retire();
     await widget.texture.close();
+    DesktopMultiWindow.removeListener(this);
+    WidgetsBinding.instance.removeObserver(this);
+    DesktopMultiWindow.setMethodHandler(null);
     await widget.markers.publish('app-finished', 'ok\n');
-    stdout.writeln(
-      'WINDOWS_PRESENTATION_PROBE_OK cycles=2 '
-      'queued_frames=$_queuedFrameCount texture_closed=true',
-    );
-    await stdout.flush();
     exit(0);
   }
 

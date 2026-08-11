@@ -716,10 +716,12 @@ if [ "$SMOKE_MODE" = video-pipeline-rootless ]; then
     || { echo '  FAIL video pipeline: the real decode transcript is missing or outside its bounds'; exit 1; }
   grep -Eq '^PRODUCTION_VIEWER_PIPELINE_OK dimensions=640x480 frames=[0-9]+ distinct=[0-9]+ stall_ms=[0-9]+ recovery_ms=[0-9]+ connected=true peer_info=true close_successes=[0-9]+ teardown=io-and-media-joined$' <<<"$video_pipeline_out" \
     || { echo '  FAIL video pipeline: production viewer integration/recovery evidence is missing'; exit 1; }
-  grep -q '^VIDEO_PIPELINE_CLEANUP=server,motion,xvfb-joined$' <<<"$video_pipeline_out" \
+  grep -q '^TWO_VIEWER_CAPTURE_ISOLATION=healthy-active,slow-receipt-withheld,no-reconnect$' <<<"$video_pipeline_out" \
+    || { echo '  FAIL video pipeline: stalled-peer isolation evidence is missing'; exit 1; }
+  grep -q '^VIDEO_PIPELINE_CLEANUP=server,stalled-peer,motion,xvfb-joined$' <<<"$video_pipeline_out" \
     || { echo '  FAIL video pipeline: exact runtime owners were not joined'; exit 1; }
   verify_smoke_source_snapshot || exit 1
-  echo "SMOKE VIDEO PIPELINE OK: exact committed RustDesk server captured a changing 640x480 Xvfb display, software-encoded it, and carried it over keyed 127.0.0.1:21118 sessions with exact generation receipts. The dedicated probe software-decoded changing frames under finite bounds; the actual production Session/Client I/O, receipt, mailbox, decoder-worker, and RGBA-publication path recovered from a deliberate 1.5-second publication stall without reconnect and then joined its exact I/O/media ownership. Xvfb used only a private Unix socket; the runtime container had no network, capabilities, host namespaces, devices, published ports, Docker socket, Flutter/compositor presentation, native Windows/Android lifecycle, installed-service, sustained performance/soak, or release-artifact coverage."
+  echo "SMOKE VIDEO PIPELINE OK: exact committed RustDesk server captured a changing 640x480 Xvfb display, software-encoded it, and carried it over keyed 127.0.0.1:21118 sessions with exact generation receipts. One exact keyed Remote remained alive after intentionally withholding its first frame receipt while the concurrent production Session/Client I/O, receipt, mailbox, decoder-worker, and RGBA-publication path recovered from a deliberate 1.5-second publication stall without reconnect and joined its exact I/O/media ownership; the stalled peer was then identity-bound and reaped. The dedicated probe also software-decoded changing frames under finite bounds. Xvfb used only a private Unix socket; the runtime container had no network, capabilities, host namespaces, devices, published ports, Docker socket, Flutter/compositor presentation, native Windows/Android lifecycle, installed-service, sustained performance/soak, or release-artifact coverage."
   exit 0
 fi
 

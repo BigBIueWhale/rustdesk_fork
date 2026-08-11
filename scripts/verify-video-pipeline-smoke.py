@@ -76,8 +76,36 @@ def validate(sources):
         require(probe, needle, label)
     if "std::thread::sleep" in probe or "0.0.0.0:21118" in probe.split("#[cfg(test)]", 1)[0]:
         fail("probe contains blocking sleep or a non-loopback runtime endpoint")
-    frame_branch = scoped(
+    stalled_peer = scoped(
         probe,
+        "async fn hold_stalled_peer(",
+        "\nasync fn run_pipeline(",
+        "stalled-peer function",
+    )
+    for needle, label in (
+        ('connect_and_login(endpoint, prs, "video-pipeline-stalled-peer")', "stalled keyed Remote login"),
+        ("validate_peer_info(&peer)?", "stalled exact PeerInfo admission"),
+        ("let withheld_receipt = receipts.admit(&frame)?;", "stalled exact frame identity"),
+        ("if !contains_keyframe", "stalled leading-keyframe admission"),
+        ("VIDEO_PIPELINE_STALLED_READY receipt=withheld", "stalled readiness transcript"),
+        ("hbb_common::tokio::time::sleep(STALLED_PEER_HOLD).await", "finite asynchronous stalled hold"),
+        ("stalled peer reached its hold deadline without exact harness retirement", "stalled hold fail-closed terminal"),
+    ):
+        require(stalled_peer, needle, label)
+    if "stream.send(" in stalled_peer or ".send(&receipt_message)" in stalled_peer:
+        fail("stalled peer sends the deliberately withheld receipt")
+    for needle, label in (
+        ('const STALLED_PEER_MODE_ENV: &str = "RUSTDESK_VIDEO_PIPELINE_STALLED_PEER";', "closed stalled-peer mode"),
+        ("const STALLED_PEER_HOLD: Duration = Duration::from_secs(30);", "bounded stalled-peer lifetime"),
+        ("match std::env::var(STALLED_PEER_MODE_ENV)", "explicit stalled-mode selection"),
+        ('Ok(value) if value == "1"', "exact stalled-mode value"),
+        ("runtime.block_on(hold_stalled_peer(endpoint, prs.as_str()))?", "top-level stalled-peer execution"),
+    ):
+        require(probe, needle, label)
+
+    pipeline = scoped(probe, "async fn run_pipeline(", "\nfn run()", "healthy pipeline function")
+    frame_branch = scoped(
+        pipeline,
         "Some(message::Union::VideoFrame(frame)) => {",
         "\n            Some(_) => {}",
         "video-frame branch",
@@ -158,8 +186,13 @@ def validate(sources):
         ("RUSTDESK_PRODUCTION_VIEWER_PIPELINE_SMOKE=1", "production viewer runtime gate"),
         ("viewer_pipeline_smoke_tests::production_viewer_pipeline_recovers_after_stalled_publication_without_reconnect", "exact production viewer test"),
         ("^PRODUCTION_VIEWER_PIPELINE_OK dimensions=640x480", "production viewer stage verdict"),
-        ("VIDEO_PIPELINE_CLEANUP=server,motion,xvfb-joined", "joined-owner transcript"),
+        ("RUSTDESK_VIDEO_PIPELINE_STALLED_PEER=1", "stalled exact-receipt peer launch"),
+        ("VIDEO_PIPELINE_STALLED_READY receipt=withheld display=0 generation=", "stalled-peer readiness proof"),
+        ("$READY\" --is-running \"$STALLED_PID\" \"$STALLED_START\"", "stalled-peer concurrent liveness proof"),
+        ("TWO_VIEWER_CAPTURE_ISOLATION=healthy-active,slow-receipt-withheld,no-reconnect", "two-viewer isolation verdict"),
+        ("VIDEO_PIPELINE_CLEANUP=server,stalled-peer,motion,xvfb-joined", "joined-owner transcript"),
         ("trap cleanup_video_pipeline EXIT", "failure cleanup"),
+        ("$READY\" --stop \"$STALLED_PID\" \"$STALLED_START\"", "exact stalled-peer retirement"),
         ("$READY\" --terminate-server", "exact server termination"),
         ("$READY\" --stop \"$MOTION_PID\"", "exact motion termination"),
         ("$READY\" --stop \"$XVFB_PID\"", "exact Xvfb termination"),
@@ -167,6 +200,21 @@ def validate(sources):
         ("[ \"$xvfb_file_count\" -eq 5 ]", "runtime tool cardinality"),
     ):
         require(video_stage, needle, label)
+    ordered_video_steps = (
+        "RUSTDESK_VIDEO_PIPELINE_STALLED_PEER=1",
+        "stalled exact-receipt peer readiness",
+        "if VIEWER_OUT=",
+        "^PRODUCTION_VIEWER_PIPELINE_OK dimensions=640x480",
+        '"$READY" --is-running "$STALLED_PID" "$STALLED_START"',
+        "^VIDEO_PIPELINE_STALLED_READY receipt=withheld",
+        '"$READY" --stop "$STALLED_PID" "$STALLED_START"',
+        "TWO_VIEWER_CAPTURE_ISOLATION=healthy-active,slow-receipt-withheld,no-reconnect",
+    )
+    cursor = -1
+    for step in ordered_video_steps:
+        cursor = video_stage.find(step, cursor + 1)
+        if cursor < 0:
+            fail("two-viewer video stage order is missing {!r}".format(step))
     if re.search(r'\$VIDEO_PROBE[^\n<]*Str0ng-Test-Pw', video_stage):
         fail("video probe password appears in its process arguments")
     require(
@@ -238,6 +286,8 @@ def validate(sources):
         '"${VIDEO_RUN[@]}"',
         "smoke-server-stage.sh video-pipeline",
         "production viewer integration/recovery evidence is missing",
+        "TWO_VIEWER_CAPTURE_ISOLATION=healthy-active,slow-receipt-withheld,no-reconnect",
+        "VIDEO_PIPELINE_CLEANUP=server,stalled-peer,motion,xvfb-joined",
         "SMOKE VIDEO PIPELINE OK:",
     ):
         require(smoke, needle, "opt-in orchestration {}".format(needle))
@@ -357,6 +407,9 @@ def self_test(sources):
         ("probe", ".send(&receipt_message)", ".send(&Message::new())"),
         ("probe", "const MIN_DECODED_FRAMES: usize = 30;", "const MIN_DECODED_FRAMES: usize = 1;"),
         ("probe", "const MIN_PTS_SPAN_MS: i64 = 4_000;", "const MIN_PTS_SPAN_MS: i64 = 0;"),
+        ("probe", "const STALLED_PEER_HOLD: Duration = Duration::from_secs(30);", "const STALLED_PEER_HOLD: Duration = Duration::from_secs(1);"),
+        ("probe", "hbb_common::tokio::time::sleep(STALLED_PEER_HOLD).await;", "return Ok(());"),
+        ("probe", "let withheld_receipt = receipts.admit(&frame)?;", "let withheld_receipt = receipts.admit(&frame)?;\n                stream.send(&Message::new()).await?;"),
         ("viewer", 'const EXACT_PEER: &str = "127.0.0.1:21118";', 'const EXACT_PEER: &str = "0.0.0.0:21118";'),
         ("viewer", 'current_executable.as_path()', 'Path::new(EXACT_TEST_EXECUTABLE)'),
         ("viewer", "const PUBLICATION_STALL: Duration = Duration::from_millis(1_500);", "const PUBLICATION_STALL: Duration = Duration::ZERO;"),
@@ -371,6 +424,10 @@ def self_test(sources):
         ("stage", "cargo test --locked --offline --features linux-pkg-config --example video_pipeline_probe", "true # video probe tests removed"),
         ("stage", "cargo test --locked --offline --features linux-pkg-config --lib --no-run --color never", "true # production viewer tests removed"),
         ("stage", "RUSTDESK_PRODUCTION_VIEWER_PIPELINE_SMOKE=1", "RUSTDESK_PRODUCTION_VIEWER_PIPELINE_SMOKE=0"),
+        ("stage", "RUSTDESK_VIDEO_PIPELINE_STALLED_PEER=1", "RUSTDESK_VIDEO_PIPELINE_STALLED_PEER=0"),
+        ("stage", '"$READY" --is-running "$STALLED_PID" "$STALLED_START"\n    grep -Eq', "true\n    grep -Eq"),
+        ("stage", '"$READY" --stop "$STALLED_PID" "$STALLED_START"\n    wait', "true\n    wait"),
+        ("stage", "TWO_VIEWER_CAPTURE_ISOLATION=healthy-active,slow-receipt-withheld,no-reconnect", "TWO_VIEWER_CAPTURE_ISOLATION=disabled"),
         ("smoke", "VIDEO_RUN=(smoke_docker run --rm --network none", "VIDEO_RUN=(smoke_docker run --rm --network host"),
         ("smoke", "VIDEO_RUN=(smoke_docker run --rm --network none --pull=never --read-only", "VIDEO_RUN=(smoke_docker run --rm --network none --pull=never"),
         ("smoke", "--pids-limit=1024", "--pids-limit=4096"),
@@ -378,6 +435,7 @@ def self_test(sources):
         ("smoke", "--memory-swap=4g", "--memory-swap=8g"),
         ("smoke", "--cpus=2", "--cpus=8"),
         ("smoke", "--tmpfs /tmp/.X11-unix:rw,nosuid,nodev,noexec", "--tmpfs /tmp/x11:rw,nosuid,nodev,noexec"),
+        ("smoke", "TWO_VIEWER_CAPTURE_ISOLATION=healthy-active,slow-receipt-withheld,no-reconnect", "TWO_VIEWER_CAPTURE_ISOLATION=disabled"),
         ("prepare", "[ \"$(id -u)\" -ne 0 ]", "[ \"$(id -u)\" -ge 0 ]"),
         ("prepare", "[ \"$tcp_listeners\" -eq 0 ]", "[ \"$tcp_listeners\" -ge 0 ]"),
         ("packages", "7f98f5ddc39593249330fa2612949b629", "0f98f5ddc39593249330fa2612949b629"),

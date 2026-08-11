@@ -3,9 +3,11 @@
 //! This is deliberately narrower than a UI or device test. It proves that a real keyed Remote
 //! session can receive frames produced by the controlled side's capture + software encode path,
 //! acknowledge each exact `{display, generation}` before decoding (the production viewer order),
-//! and decode those frames with `scrap::codec::Decoder`. It does not exercise Flutter/compositor
-//! presentation, application focus, Android lifecycle, native Windows behavior, or an installed
-//! service.
+//! and decode those frames with `scrap::codec::Decoder`. Its separately gated stalled-peer mode
+//! completes the same keyed Remote admission, receives and validates one exact generation, then
+//! withholds its receipt under a finite asynchronous hold so the rootless smoke can prove another
+//! production viewer remains healthy. It does not exercise Flutter/compositor presentation,
+//! application focus, Android lifecycle, native Windows behavior, or an installed service.
 //!
 //! The only admitted endpoint is exactly `127.0.0.1:21118`. The password is read from bounded
 //! standard input so it never appears in the probe's process arguments.
@@ -28,13 +30,12 @@ use scrap::{
 use sha2::{Digest, Sha256};
 use std::{
     collections::{HashMap, HashSet},
-    io::Read,
+    io::{Read, Write},
     net::{IpAddr, Ipv4Addr, SocketAddr},
     time::{Duration, Instant},
 };
 
-const LOOPBACK_ENDPOINT: SocketAddr =
-    SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 21_118);
+const LOOPBACK_ENDPOINT: SocketAddr = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), 21_118);
 const MAX_PASSWORD_BYTES: usize = 1_024;
 const MAX_PEER_VIDEO_DISPLAYS: usize = 16;
 const MAX_PEER_DISPLAY_DIMENSION: usize = 32_768;
@@ -49,6 +50,8 @@ const MAX_FIRST_DECODE_LATENCY: Duration = Duration::from_secs(15);
 const MAX_SINGLE_DECODE_LATENCY: Duration = Duration::from_secs(2);
 const MAX_RECEIVE_BACKLOG_DRIFT_MS: i64 = 2_000;
 const MAX_SESSION_MESSAGES: usize = 1_024;
+const STALLED_PEER_MODE_ENV: &str = "RUSTDESK_VIDEO_PIPELINE_STALLED_PEER";
+const STALLED_PEER_HOLD: Duration = Duration::from_secs(30);
 
 struct SensitiveBytes(Vec<u8>);
 
@@ -152,7 +155,10 @@ fn read_password() -> ResultType<SensitiveBytes> {
     if bytes.len() > MAX_PASSWORD_BYTES {
         bail!("password input exceeds the bounded length");
     }
-    if bytes.iter().any(|byte| matches!(byte, b'\0' | b'\r' | b'\n')) {
+    if bytes
+        .iter()
+        .any(|byte| matches!(byte, b'\0' | b'\r' | b'\n'))
+    {
         bail!("password input contains an embedded terminator");
     }
     std::str::from_utf8(&bytes).context("password input is not valid UTF-8")?;
@@ -249,7 +255,7 @@ fn decoded_image_bytes(rgb: &ImageRgb) -> ResultType<usize> {
     Ok(expected)
 }
 
-fn make_login(endpoint: SocketAddr) -> ResultType<Message> {
+fn make_login(endpoint: SocketAddr, client_name: &str) -> ResultType<Message> {
     let mut supported = Decoder::supported_decodings(None, false, None, &Vec::new());
     if supported.ability_vp8 != 1
         || supported.ability_vp9 != 1
@@ -267,8 +273,8 @@ fn make_login(endpoint: SocketAddr) -> ResultType<Message> {
     };
     let login = LoginRequest {
         username: endpoint.to_string(),
-        my_id: "video-pipeline-probe".to_owned(),
-        my_name: "video-pipeline-probe".to_owned(),
+        my_id: client_name.to_owned(),
+        my_name: client_name.to_owned(),
         option: Some(option).into(),
         version: librustdesk::VERSION.to_owned(),
         my_platform: "Linux".to_owned(),
@@ -280,8 +286,11 @@ fn make_login(endpoint: SocketAddr) -> ResultType<Message> {
     Ok(message)
 }
 
-async fn run_pipeline(endpoint: SocketAddr, prs: &str) -> ResultType<PipelineMetrics> {
-    let started = Instant::now();
+async fn connect_and_login(
+    endpoint: SocketAddr,
+    prs: &str,
+    client_name: &str,
+) -> ResultType<FramedStream> {
     let mut stream = FramedStream::new(&endpoint.to_string(), None, 5_000)
         .await
         .context("failed to connect to the loopback RustDesk server")?;
@@ -290,9 +299,88 @@ async fn run_pipeline(endpoint: SocketAddr, prs: &str) -> ResultType<PipelineMet
         .map_err(|error| anyhow!("CPace key confirmation failed: {error:?}"))?;
     stream.set_session_keys(keys);
     stream
-        .send(&make_login(endpoint)?)
+        .send(&make_login(endpoint, client_name)?)
         .await
         .context("failed to send the keyed Remote login")?;
+    Ok(stream)
+}
+
+async fn hold_stalled_peer(endpoint: SocketAddr, prs: &str) -> ResultType<()> {
+    let started = Instant::now();
+    let mut stream = connect_and_login(endpoint, prs, "video-pipeline-stalled-peer").await?;
+    let deadline = started + SESSION_DEADLINE;
+    let mut peer_admitted = false;
+    let mut receipts = ReceiptTracker::default();
+
+    for message_index in 0..MAX_SESSION_MESSAGES {
+        let now = Instant::now();
+        if now >= deadline {
+            bail!("stalled peer exceeded its finite admission deadline");
+        }
+        let timeout = NEXT_FRAME_TIMEOUT.min(deadline.saturating_duration_since(now));
+        let timeout_ms = u64::try_from(timeout.as_millis())
+            .unwrap_or(u64::MAX)
+            .max(1);
+        let bytes = match stream.next_timeout(timeout_ms).await {
+            Some(Ok(bytes)) => bytes,
+            Some(Err(error)) => return Err(error).context("stalled peer keyed stream failed"),
+            None => bail!("stalled peer made no progress before its receive timeout"),
+        };
+        let message = Message::parse_from_bytes(&bytes)
+            .with_context(|| format!("malformed stalled-peer message at index {message_index}"))?;
+        match message.union {
+            Some(message::Union::TestDelay(_)) => {}
+            Some(message::Union::LoginResponse(response)) => match response.union {
+                Some(login_response::Union::PeerInfo(peer)) => {
+                    if peer_admitted {
+                        bail!("controlled peer sent duplicate stalled-peer admission");
+                    }
+                    validate_peer_info(&peer)?;
+                    peer_admitted = true;
+                }
+                Some(login_response::Union::Error(error)) => {
+                    bail!("controlled peer rejected the stalled Remote login: {error}");
+                }
+                Some(_) => bail!("controlled peer sent an unsupported stalled login response"),
+                None => bail!("controlled peer sent an empty stalled login response"),
+            },
+            Some(message::Union::VideoFrame(frame)) => {
+                if !peer_admitted {
+                    bail!("controlled peer sent stalled-peer video before exact Remote admission");
+                }
+                if frame.display != 0 {
+                    bail!(
+                        "controlled peer sent the stalled peer display {} instead of display 0",
+                        frame.display
+                    );
+                }
+                let withheld_receipt = receipts.admit(&frame)?;
+                let (_format, _pts, contains_keyframe) = encoded_frame_pts(&frame)?;
+                if !contains_keyframe {
+                    bail!("stalled peer's first encoded generation did not contain a keyframe");
+                }
+                println!(
+                    "VIDEO_PIPELINE_STALLED_READY receipt=withheld display={} generation={} hold_ms={}",
+                    withheld_receipt.display,
+                    withheld_receipt.generation,
+                    STALLED_PEER_HOLD.as_millis()
+                );
+                std::io::stdout()
+                    .flush()
+                    .context("failed to publish stalled-peer readiness")?;
+                hbb_common::tokio::time::sleep(STALLED_PEER_HOLD).await;
+                bail!("stalled peer reached its hold deadline without exact harness retirement");
+            }
+            Some(_) => {}
+            None => bail!("controlled peer sent the stalled peer an empty keyed message"),
+        }
+    }
+    bail!("stalled peer exhausted its bounded message inventory before video admission")
+}
+
+async fn run_pipeline(endpoint: SocketAddr, prs: &str) -> ResultType<PipelineMetrics> {
+    let started = Instant::now();
+    let mut stream = connect_and_login(endpoint, prs, "video-pipeline-probe").await?;
 
     let deadline = started + SESSION_DEADLINE;
     let mut peer_admitted = false;
@@ -321,7 +409,9 @@ async fn run_pipeline(endpoint: SocketAddr, prs: &str) -> ResultType<PipelineMet
             bail!("video pipeline exceeded its finite session deadline");
         }
         let timeout = NEXT_FRAME_TIMEOUT.min(deadline.saturating_duration_since(now));
-        let timeout_ms = u64::try_from(timeout.as_millis()).unwrap_or(u64::MAX).max(1);
+        let timeout_ms = u64::try_from(timeout.as_millis())
+            .unwrap_or(u64::MAX)
+            .max(1);
         let bytes = match stream.next_timeout(timeout_ms).await {
             Some(Ok(bytes)) => bytes,
             Some(Err(error)) => return Err(error).context("keyed video stream failed"),
@@ -353,7 +443,10 @@ async fn run_pipeline(endpoint: SocketAddr, prs: &str) -> ResultType<PipelineMet
                     bail!("controlled peer sent video before exact Remote admission");
                 }
                 if frame.display != 0 {
-                    bail!("controlled peer sent the single-display fixture as display {}", frame.display);
+                    bail!(
+                        "controlled peer sent the single-display fixture as display {}",
+                        frame.display
+                    );
                 }
                 let receipt = receipts.admit(&frame)?;
                 let mut receipt_message = Message::new();
@@ -420,14 +513,16 @@ async fn run_pipeline(endpoint: SocketAddr, prs: &str) -> ResultType<PipelineMet
                     max_decode_us = max_decode_us.max(decode_us);
                     first_decode_ms.get_or_insert_with(|| started.elapsed().as_millis());
 
-                    let base_pts = first_pts.ok_or_else(|| anyhow!("first PTS ownership disappeared"))?;
+                    let base_pts =
+                        first_pts.ok_or_else(|| anyhow!("first PTS ownership disappeared"))?;
                     let base_received = first_received_at
                         .ok_or_else(|| anyhow!("first receive timestamp ownership disappeared"))?;
                     let pts_span = pts
                         .checked_sub(base_pts)
                         .ok_or_else(|| anyhow!("video PTS span underflowed"))?;
-                    let receive_span = i64::try_from(received_at.duration_since(base_received).as_millis())
-                        .map_err(|_| anyhow!("video receive duration is not representable"))?;
+                    let receive_span =
+                        i64::try_from(received_at.duration_since(base_received).as_millis())
+                            .map_err(|_| anyhow!("video receive duration is not representable"))?;
                     max_receive_backlog_drift_ms =
                         max_receive_backlog_drift_ms.max(receive_span.saturating_sub(pts_span));
 
@@ -519,6 +614,17 @@ fn run() -> ResultType<PipelineMetrics> {
 
     let runtime = hbb_common::tokio::runtime::Runtime::new()
         .context("failed to create the test-only Tokio runtime")?;
+    match std::env::var(STALLED_PEER_MODE_ENV) {
+        Ok(value) if value == "1" => {
+            runtime.block_on(hold_stalled_peer(endpoint, prs.as_str()))?;
+            bail!("stalled-peer hold returned unexpectedly");
+        }
+        Ok(value) => bail!("invalid stalled-peer mode value: {value:?}"),
+        Err(std::env::VarError::NotPresent) => {}
+        Err(std::env::VarError::NotUnicode(_)) => {
+            bail!("stalled-peer mode value is not valid Unicode")
+        }
+    }
     runtime.block_on(run_pipeline(endpoint, prs.as_str()))
 }
 

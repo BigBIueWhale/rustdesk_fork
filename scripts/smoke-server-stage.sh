@@ -420,10 +420,18 @@ EOS
     XVFB_START=
     MOTION_PID=
     MOTION_START=
+    STALLED_PID=
+    STALLED_START=
     cleanup_video_pipeline() {
       status=$?
       trap - EXIT HUP INT TERM
       cleanup_status=0
+      if [ -n "$STALLED_PID" ] && [ -n "$STALLED_START" ]; then
+        if "$READY" --is-running "$STALLED_PID" "$STALLED_START"; then
+          "$READY" --stop "$STALLED_PID" "$STALLED_START" || cleanup_status=$?
+        fi
+        wait "$STALLED_PID" 2>/dev/null || true
+      fi
       if [ -n "$SRV" ] && [ -n "$SRV_START" ] && "$READY" --is-running "$SRV" "$SRV_START"; then
         "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/video-server.log \
           || cleanup_status=$?
@@ -515,6 +523,15 @@ EOS
     [ "$VIDEO_STATUS" -eq 0 ] || exit "$VIDEO_STATUS"
     grep -Eq '^VIDEO_PIPELINE_OK codec=VP(8|9) dimensions=640x480 frames=[0-9]+ distinct=[0-9]+ receipts=[0-9]+ first_decode_ms=[0-9]+ pts_span_ms=[0-9]+ max_decode_us=[0-9]+ mean_decode_us=[0-9]+ max_receive_backlog_drift_ms=[0-9]+$' \
       <<<"$VIDEO_OUT"
+    [ ! -e /tmp/video-stalled-peer.log ] && [ ! -L /tmp/video-stalled-peer.log ]
+    RUSTDESK_VIDEO_PIPELINE_STALLED_PEER=1 \
+      "$VIDEO_PROBE" 127.0.0.1:21118 <<<'Str0ng-Test-Pw-123' \
+      >/tmp/video-stalled-peer.log 2>&1 &
+    STALLED_PID=$!
+    STALLED_START=$($READY --identity "$STALLED_PID")
+    "$READY" --wait-log "$STALLED_PID" "$STALLED_START" /tmp/video-stalled-peer.log \
+      'VIDEO_PIPELINE_STALLED_READY receipt=withheld display=0 generation=' \
+      'stalled exact-receipt peer readiness'
     if VIEWER_OUT=$(RUSTDESK_PRODUCTION_VIEWER_PIPELINE_SMOKE=1 \
       timeout --signal=TERM --kill-after=5s 35s "$VIEWER_PIPELINE_TESTS" \
       --exact --ignored --nocapture --test-threads=1 \
@@ -528,6 +545,14 @@ EOS
     [ "$VIEWER_STATUS" -eq 0 ] || exit "$VIEWER_STATUS"
     grep -Eq '^PRODUCTION_VIEWER_PIPELINE_OK dimensions=640x480 frames=[0-9]+ distinct=[0-9]+ stall_ms=[0-9]+ recovery_ms=[0-9]+ connected=true peer_info=true close_successes=[0-9]+ teardown=io-and-media-joined$' \
       <<<"$VIEWER_OUT"
+    "$READY" --is-running "$STALLED_PID" "$STALLED_START"
+    grep -Eq '^VIDEO_PIPELINE_STALLED_READY receipt=withheld display=0 generation=[1-9][0-9]* hold_ms=30000$' \
+      /tmp/video-stalled-peer.log
+    "$READY" --stop "$STALLED_PID" "$STALLED_START"
+    wait "$STALLED_PID" 2>/dev/null || true
+    STALLED_PID=
+    STALLED_START=
+    echo 'TWO_VIEWER_CAPTURE_ISOLATION=healthy-active,slow-receipt-withheld,no-reconnect'
     "$READY" --terminate-server "$SRV" "$SRV_START" /tmp/video-server.log
     wait "$SRV"
     SRV=
@@ -542,7 +567,7 @@ EOS
     XVFB_START=
     grep -F 'X11_MOTION_READY' /tmp/x11-motion.log
     [ ! -s /tmp/xvfb.log ] || { echo 'Xvfb emitted unexpected diagnostics:' >&2; cat /tmp/xvfb.log >&2; exit 1; }
-    echo 'VIDEO_PIPELINE_CLEANUP=server,motion,xvfb-joined'
+    echo 'VIDEO_PIPELINE_CLEANUP=server,stalled-peer,motion,xvfb-joined'
     trap - EXIT HUP INT TERM
     ;;
   port-forward)

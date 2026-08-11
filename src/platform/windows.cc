@@ -277,6 +277,77 @@ static std::vector<wchar_t> merge_environment_blocks(LPVOID baseEnvironment, LPC
     return merged;
 }
 
+class ProcessCreationJobAttributes
+{
+public:
+    ProcessCreationJobAttributes() : job_(NULL), list_(NULL) {}
+
+    ~ProcessCreationJobAttributes()
+    {
+        reset();
+    }
+
+    bool initialize(HANDLE job)
+    {
+        if (job == NULL)
+        {
+            SetLastError(ERROR_INVALID_PARAMETER);
+            return false;
+        }
+
+        job_ = job;
+        SIZE_T size = 0;
+        BOOL sized = InitializeProcThreadAttributeList(NULL, 1, 0, &size);
+        DWORD sizeError = GetLastError();
+        if (sized || sizeError != ERROR_INSUFFICIENT_BUFFER || size == 0)
+        {
+            SetLastError(sizeError != ERROR_SUCCESS ? sizeError : ERROR_INVALID_DATA);
+            return false;
+        }
+
+        storage_.resize(size);
+        list_ = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage_.data());
+        if (!InitializeProcThreadAttributeList(list_, 1, 0, &size))
+        {
+            DWORD error = GetLastError();
+            list_ = NULL;
+            storage_.clear();
+            SetLastError(error);
+            return false;
+        }
+        if (!UpdateProcThreadAttribute(list_, 0, PROC_THREAD_ATTRIBUTE_JOB_LIST,
+                                       &job_, sizeof job_, NULL, NULL))
+        {
+            DWORD error = GetLastError();
+            reset();
+            SetLastError(error);
+            return false;
+        }
+        return true;
+    }
+
+    LPPROC_THREAD_ATTRIBUTE_LIST get() const
+    {
+        return list_;
+    }
+
+    void reset()
+    {
+        if (list_ != NULL)
+        {
+            DeleteProcThreadAttributeList(list_);
+            list_ = NULL;
+        }
+        storage_.clear();
+        job_ = NULL;
+    }
+
+private:
+    HANDLE job_;
+    LPPROC_THREAD_ATTRIBUTE_LIST list_;
+    std::vector<unsigned char> storage_;
+};
+
 // START the app as system
 extern "C"
 {
@@ -373,24 +444,10 @@ extern "C"
             {
                 dwCreationFlags |= CREATE_UNICODE_ENVIRONMENT;
             }
-            std::vector<unsigned char> attributeListStorage;
-            HANDLE jobList[] = {hJob};
+            ProcessCreationJobAttributes jobAttributes;
             if (hJob != NULL)
             {
-                SIZE_T attributeListSize = 0;
-                BOOL sizedAttributeList = InitializeProcThreadAttributeList(NULL, 1, 0, &attributeListSize);
-                DWORD sizeError = GetLastError();
-                if (sizedAttributeList || sizeError != ERROR_INSUFFICIENT_BUFFER || attributeListSize == 0)
-                {
-                    CloseHandle(hToken);
-                    if (lpEnvironment)
-                        DestroyEnvironmentBlock(lpEnvironment);
-                    SetLastError(sizeError != ERROR_SUCCESS ? sizeError : ERROR_INVALID_DATA);
-                    return hProcess;
-                }
-                attributeListStorage.resize(attributeListSize);
-                si.lpAttributeList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(attributeListStorage.data());
-                if (!InitializeProcThreadAttributeList(si.lpAttributeList, 1, 0, &attributeListSize))
+                if (!jobAttributes.initialize(hJob))
                 {
                     DWORD error = GetLastError();
                     CloseHandle(hToken);
@@ -399,17 +456,7 @@ extern "C"
                     SetLastError(error);
                     return hProcess;
                 }
-                if (!UpdateProcThreadAttribute(si.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_JOB_LIST,
-                                               jobList, sizeof jobList, NULL, NULL))
-                {
-                    DWORD error = GetLastError();
-                    DeleteProcThreadAttributeList(si.lpAttributeList);
-                    CloseHandle(hToken);
-                    if (lpEnvironment)
-                        DestroyEnvironmentBlock(lpEnvironment);
-                    SetLastError(error);
-                    return hProcess;
-                }
+                si.lpAttributeList = jobAttributes.get();
                 dwCreationFlags |= EXTENDED_STARTUPINFO_PRESENT;
             }
             if (CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE,
@@ -421,14 +468,80 @@ extern "C"
                 CloseHandle(pi.hThread);
             }
             DWORD launchError = GetLastError();
-            if (si.lpAttributeList)
-                DeleteProcThreadAttributeList(si.lpAttributeList);
+            jobAttributes.reset();
             CloseHandle(hToken);
             if (lpEnvironment)
                 DestroyEnvironmentBlock(lpEnvironment);
             if (hProcess == NULL)
                 SetLastError(launchError);
         }
+        return hProcess;
+    }
+
+    HANDLE LaunchProcessCurrentWin(LPCWSTR application,
+                                   LPCWSTR cmd,
+                                   LPCWSTR currentDirectory,
+                                   LPCWSTR extraEnvironment,
+                                   HANDLE hJob,
+                                   DWORD *pProcessId)
+    {
+        HANDLE hProcess = NULL;
+        if (application == NULL || application[0] == L'\0' || cmd == NULL || cmd[0] == L'\0' ||
+            currentDirectory == NULL || currentDirectory[0] == L'\0' ||
+            extraEnvironment == NULL || extraEnvironment[0] == L'\0' ||
+            hJob == NULL || pProcessId == NULL)
+        {
+            SetLastError(ERROR_INVALID_PARAMETER);
+            return hProcess;
+        }
+        *pProcessId = 0;
+
+        std::vector<wchar_t> commandLine(wcslen(cmd) + 1);
+        if (wcscpy_s(commandLine.data(), commandLine.size(), cmd) != 0)
+        {
+            SetLastError(ERROR_INVALID_PARAMETER);
+            return hProcess;
+        }
+
+        LPWCH currentEnvironment = GetEnvironmentStringsW();
+        if (currentEnvironment == NULL)
+        {
+            return hProcess;
+        }
+        std::vector<wchar_t> mergedEnvironment =
+            merge_environment_blocks(currentEnvironment, extraEnvironment);
+
+        STARTUPINFOEXW si;
+        ZeroMemory(&si, sizeof si);
+        si.StartupInfo.cb = sizeof si;
+        si.StartupInfo.dwFlags = STARTF_USESHOWWINDOW;
+        ProcessCreationJobAttributes jobAttributes;
+        if (!jobAttributes.initialize(hJob))
+        {
+            DWORD error = GetLastError();
+            FreeEnvironmentStringsW(currentEnvironment);
+            SetLastError(error);
+            return hProcess;
+        }
+        si.lpAttributeList = jobAttributes.get();
+
+        PROCESS_INFORMATION pi;
+        ZeroMemory(&pi, sizeof pi);
+        DWORD creationFlags =
+            CREATE_NO_WINDOW | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT;
+        if (CreateProcessW(application, commandLine.data(), NULL, NULL, FALSE,
+                           creationFlags, mergedEnvironment.data(), currentDirectory,
+                           reinterpret_cast<LPSTARTUPINFOW>(&si), &pi))
+        {
+            hProcess = pi.hProcess;
+            *pProcessId = pi.dwProcessId;
+            CloseHandle(pi.hThread);
+        }
+        DWORD launchError = GetLastError();
+        jobAttributes.reset();
+        FreeEnvironmentStringsW(currentEnvironment);
+        if (hProcess == NULL)
+            SetLastError(launchError);
         return hProcess;
     }
 

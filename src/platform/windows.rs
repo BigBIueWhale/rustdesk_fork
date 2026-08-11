@@ -27,7 +27,6 @@ use std::{
             ffi::OsStrExt,
             ffi::OsStringExt,
             fs::{MetadataExt, OpenOptionsExt},
-            io::AsRawHandle,
             process::CommandExt,
         },
     },
@@ -597,6 +596,14 @@ extern "C" {
         job: HANDLE,
         process_id: LPDWORD,
         token_pid: &mut DWORD,
+    ) -> HANDLE;
+    fn LaunchProcessCurrentWin(
+        application: *const u16,
+        cmd: *const u16,
+        current_directory: *const u16,
+        extra_env: *const u16,
+        job: HANDLE,
+        process_id: LPDWORD,
     ) -> HANDLE;
     fn GetSessionUserTokenWin(
         lphUserToken: LPHANDLE,
@@ -3750,12 +3757,9 @@ struct WindowsLaunchedProcess {
     token_pid: DWORD,
 }
 
-enum WindowsConnectionManagerProcessHandle {
-    Direct(std::process::Child),
-    Session {
-        job: ServiceOwnedWindowsHandle,
-        process: ServiceOwnedWindowsHandle,
-    },
+struct WindowsConnectionManagerProcessHandle {
+    _job: ServiceOwnedWindowsHandle,
+    process: ServiceOwnedWindowsHandle,
 }
 
 pub(crate) struct WindowsConnectionManagerProcess {
@@ -3769,26 +3773,18 @@ impl WindowsConnectionManagerProcess {
     }
 
     pub(crate) fn try_reap_exited(&mut self) -> ResultType<bool> {
-        match &mut self.handle {
-            WindowsConnectionManagerProcessHandle::Direct(child) => child
-                .try_wait()
-                .map(|status| status.is_some())
-                .map_err(|err| anyhow!("Failed to reap connection-manager child: {err}")),
-            WindowsConnectionManagerProcessHandle::Session { process, .. } => {
-                match unsafe { WaitForSingleObject(process.raw(), 0) } {
-                    WAIT_TIMEOUT => Ok(false),
-                    WAIT_OBJECT_0 => Ok(true),
-                    WAIT_FAILED => bail!(
-                        "WaitForSingleObject failed for connection-manager child {}: {}",
-                        self.identity.pid,
-                        io::Error::last_os_error()
-                    ),
-                    status => bail!(
-                        "WaitForSingleObject returned unexpected status {status:#x} for connection-manager child {}",
-                        self.identity.pid
-                    ),
-                }
-            }
+        match unsafe { WaitForSingleObject(self.handle.process.raw(), 0) } {
+            WAIT_TIMEOUT => Ok(false),
+            WAIT_OBJECT_0 => Ok(true),
+            WAIT_FAILED => bail!(
+                "WaitForSingleObject failed for connection-manager child {}: {}",
+                self.identity.pid,
+                io::Error::last_os_error()
+            ),
+            status => bail!(
+                "WaitForSingleObject returned unexpected status {status:#x} for connection-manager child {}",
+                self.identity.pid
+            ),
         }
     }
 }
@@ -3843,6 +3839,49 @@ where
     })
 }
 
+fn launch_current_process_with_env_and_job<I, K, V>(
+    exe: &Path,
+    arg: &[&str],
+    envs: I,
+    job: HANDLE,
+) -> ResultType<WindowsLaunchedProcess>
+where
+    I: IntoIterator<Item = (K, V)>,
+    K: AsRef<OsStr>,
+    V: AsRef<OsStr>,
+{
+    if job.is_null() || job == INVALID_HANDLE_VALUE {
+        bail!("current-token Windows launch requires an owned process job");
+    }
+    let exe = launch_executable_path(exe)?;
+    let current_dir = exe
+        .parent()
+        .ok_or_else(|| anyhow!("Windows launch executable has no parent: {}", exe.display()))?;
+    let application = null_terminated_wide(exe.as_os_str(), "application path")?;
+    let command_line = windows_command_line(exe, arg)?;
+    let current_directory = null_terminated_wide(current_dir.as_os_str(), "current directory")?;
+    let extra_env = windows_env_block(envs)?;
+    if extra_env.len() <= 1 {
+        bail!("current-token Windows launch requires an explicit environment overlay");
+    }
+    let mut process_id = 0;
+    let process = unsafe {
+        LaunchProcessCurrentWin(
+            application.as_ptr(),
+            command_line.as_ptr(),
+            current_directory.as_ptr(),
+            extra_env.as_ptr(),
+            job,
+            &mut process_id,
+        )
+    };
+    Ok(WindowsLaunchedProcess {
+        process,
+        process_id,
+        token_pid: 0,
+    })
+}
+
 pub(crate) fn run_user_helper(
     launch: WindowsUserHelperLaunch<'_>,
 ) -> ResultType<Option<std::process::Child>> {
@@ -3870,14 +3909,21 @@ pub(crate) fn run_user_helper(
 pub(crate) fn run_connection_manager_user_helper(
     launch_token: &str,
 ) -> ResultType<WindowsConnectionManagerProcess> {
-    let parent = ipc::current_windows_process_identity_key()?;
-    let envs = windows_connection_manager_launch_environment(launch_token, parent)?;
-    if is_root() {
+    let parent = ipc::current_windows_process_identity_key().map_err(|err| {
+        anyhow!("Failed to identify the Windows connection-manager owner: {err:#}")
+    })?;
+    let envs =
+        windows_connection_manager_launch_environment(launch_token, parent).map_err(|err| {
+            anyhow!("Failed to prepare the Windows connection-manager launch proof: {err:#}")
+        })?;
+    let job = create_windows_service_process_job()?;
+    let launched = if is_root() {
         let Some(session_id) = get_current_process_session_id() else {
             bail!("Failed to get current process session id");
         };
-        let exe = std::env::current_exe()?;
-        let job = create_windows_service_process_job()?;
+        let exe = std::env::current_exe().map_err(|err| {
+            anyhow!("Failed to resolve the LocalSystem connection-manager executable: {err}")
+        })?;
         let launched = launch_process_in_session_with_env(
             &exe,
             &["--cm"],
@@ -3902,48 +3948,40 @@ pub(crate) fn run_connection_manager_user_helper(
                 io::Error::last_os_error()
             );
         }
-        if launched.process_id == 0 {
-            let process = ServiceOwnedWindowsHandle::new(
-                launched.process,
-                "connection-manager child process",
-            )?;
-            drop(process);
-            bail!("CreateProcessAsUserW returned a connection manager without a process id");
+        launched
+    } else {
+        let exe = std::env::current_exe().map_err(|err| {
+            anyhow!("Failed to resolve the same-user connection-manager executable: {err}")
+        })?;
+        let launched = launch_current_process_with_env_and_job(
+            &exe,
+            &["--cm"],
+            envs.iter().map(|(key, value)| (key, value)),
+            job.raw(),
+        )?;
+        if launched.process.is_null() || launched.process == INVALID_HANDLE_VALUE {
+            require_windows_job_empty_before_launch_failure(
+                &job,
+                "Windows same-user connection-manager launch failure",
+            );
+            bail!(
+                "Failed to launch same-user connection manager: {}",
+                io::Error::last_os_error()
+            );
         }
+        launched
+    };
+    if launched.process_id == 0 {
         let process =
             ServiceOwnedWindowsHandle::new(launched.process, "connection-manager child process")?;
-        let identity = windows_process_identity(launched.process_id, process.raw())?;
-        return Ok(WindowsConnectionManagerProcess {
-            handle: WindowsConnectionManagerProcessHandle::Session { job, process },
-            identity,
-        });
+        drop(process);
+        bail!("Windows process creation returned a connection manager without a process id");
     }
-
-    let exe = std::env::current_exe()?;
-    let mut command = std::process::Command::new(exe);
-    command
-        .envs(envs.iter().map(|(key, value)| (key, value)))
-        .arg("--cm")
-        .creation_flags(CREATE_NO_WINDOW);
-    let mut child = command
-        .spawn()
-        .map_err(|err| anyhow!("Failed to start connection-manager process: {err}"))?;
-    let identity = match windows_process_identity(child.id(), child.as_raw_handle() as HANDLE) {
-        Ok(identity) => identity,
-        Err(identity_err) => {
-            let kill_err = child.kill().err();
-            match child.wait() {
-                Ok(_) => return Err(identity_err),
-                Err(wait_err) => {
-                    bail!(
-                        "Failed to bind connection-manager process identity: {identity_err}; kill_error={kill_err:?}; wait_error={wait_err}"
-                    )
-                }
-            }
-        }
-    };
+    let process =
+        ServiceOwnedWindowsHandle::new(launched.process, "connection-manager child process")?;
+    let identity = windows_process_identity(launched.process_id, process.raw())?;
     Ok(WindowsConnectionManagerProcess {
-        handle: WindowsConnectionManagerProcessHandle::Direct(child),
+        handle: WindowsConnectionManagerProcessHandle { _job: job, process },
         identity,
     })
 }

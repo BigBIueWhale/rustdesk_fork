@@ -2155,15 +2155,21 @@ echo "$windows_run_user_helper" | grep -Fq 'return run_current_exe_in_current_se
 echo "$windows_run_user_helper" | grep -Fq 'let exe = std::env::current_exe()?' || r_s11e35="$r_s11e35 non-system-current-image-route-missing"
 echo "$windows_run_user_helper" | grep -Fq 'std::process::Command::new(exe)' || r_s11e35="$r_s11e35 non-system-current-image-spawn-missing"
 windows_run_cm_helper=$(awk '/^pub\(crate\) fn run_connection_manager_user_helper\(/,/^fn windows_env_block/' src/platform/windows.rs)
-echo "$windows_run_cm_helper" | grep -Fq 'windows_connection_manager_launch_environment(launch_token, parent)?' || r_s11e35="$r_s11e35 cm-dedicated-policy-not-enforced"
-echo "$windows_run_cm_helper" | grep -Fq 'create_windows_service_process_job()?' || r_s11e35="$r_s11e35 cm-localsystem-job-owner-missing"
-echo "$windows_run_cm_helper" | grep -Fq 'WindowsConnectionManagerProcessHandle::Session { job, process }' || r_s11e35="$r_s11e35 cm-localsystem-process-owner-missing"
-echo "$windows_run_cm_helper" | grep -Fq 'WindowsConnectionManagerProcessHandle::Direct(child)' || r_s11e35="$r_s11e35 cm-same-user-process-owner-missing"
+echo "$windows_run_cm_helper" | grep -Fq 'windows_connection_manager_launch_environment(launch_token, parent)' || r_s11e35="$r_s11e35 cm-dedicated-policy-not-enforced"
+echo "$windows_run_cm_helper" | grep -Fq 'create_windows_service_process_job()?' || r_s11e35="$r_s11e35 cm-unified-job-owner-missing"
+echo "$windows_run_cm_helper" | grep -Fq 'launch_process_in_session_with_env(' || r_s11e35="$r_s11e35 cm-localsystem-atomic-job-launch-missing"
+echo "$windows_run_cm_helper" | grep -Fq 'launch_current_process_with_env_and_job(' || r_s11e35="$r_s11e35 cm-same-user-atomic-job-launch-missing"
+echo "$windows_run_cm_helper" | grep -Fq 'WindowsConnectionManagerProcessHandle { _job: job, process }' || r_s11e35="$r_s11e35 cm-unified-process-job-owner-missing"
+if echo "$windows_run_cm_helper" | grep -Fq 'std::process::Command'; then
+  r_s11e35="$r_s11e35 cm-jobless-same-user-spawn-remains"
+fi
 if grep -Fq 'WindowsUserHelperLaunch::ConnectionManager' src/platform/windows.rs src/server/connection.rs; then
   r_s11e35="$r_s11e35 generic-cm-helper-role-remains"
 fi
 grep -Fq 'fn windows_user_helper_launch_shape_is_typed_and_exact()' src/platform/windows.rs || r_s11e35="$r_s11e35 closed-launch-shape-test-missing"
 grep -Fq 'CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE,' src/platform/windows.cc || r_s11e35="$r_s11e35 token-launch-handle-inheritance-not-disabled"
+grep -Fq 'CreateProcessW(application, commandLine.data(), NULL, NULL, FALSE,' src/platform/windows.cc || r_s11e35="$r_s11e35 current-token-launch-handle-inheritance-not-disabled"
+grep -Fq 'PROC_THREAD_ATTRIBUTE_JOB_LIST' src/platform/windows.cc || r_s11e35="$r_s11e35 cm-creation-time-job-list-missing"
 for obsolete in \
   'fn run_exe_direct' \
   'fn run_exe_in_cur_session' \

@@ -17,14 +17,19 @@ class VerificationError(RuntimeError):
 
 
 FILES = (
+    "Cargo.toml",
+    "build.py",
+    "examples/windows_cm_lifecycle_probe.rs",
     "src/common.rs",
     "src/ipc.rs",
     "src/ipc/auth.rs",
+    "src/lib.rs",
     "src/platform/windows.cc",
     "src/platform/windows.rs",
     "src/privacy_mode.rs",
     "src/server/clipboard_service.rs",
     "src/server/connection.rs",
+    "src/windows_cm_lifecycle_probe.rs",
     "requirements.html",
     "HARDENING_STATUS.md",
     "scripts/verify.sh",
@@ -88,14 +93,19 @@ def ordered(block: str, needles: tuple[str, ...], label: str) -> None:
 
 
 def verify(files: Mapping[str, str]) -> None:
+    cargo = files["Cargo.toml"]
+    build_py = files["build.py"]
+    probe_example = files["examples/windows_cm_lifecycle_probe.rs"]
     common = files["src/common.rs"]
     ipc = files["src/ipc.rs"]
     auth = files["src/ipc/auth.rs"]
+    lib = files["src/lib.rs"]
     windows_native = files["src/platform/windows.cc"]
     windows = files["src/platform/windows.rs"]
     privacy = files["src/privacy_mode.rs"]
     clipboard = files["src/server/clipboard_service.rs"]
     connection = files["src/server/connection.rs"]
+    lifecycle_probe = files["src/windows_cm_lifecycle_probe.rs"]
     requirements = files["requirements.html"]
     ledger = files["HARDENING_STATUS.md"]
     shared_gate = files["scripts/verify.sh"]
@@ -322,39 +332,99 @@ def verify(files: Mapping[str, str]) -> None:
         "limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;",
         "Windows CM kill-on-close job policy",
     )
+    job_attributes = function_block(windows_native, "class ProcessCreationJobAttributes")
+    ordered(
+        job_attributes,
+        (
+            "job_ = job;",
+            "InitializeProcThreadAttributeList(NULL, 1, 0, &size)",
+            "InitializeProcThreadAttributeList(list_, 1, 0, &size)",
+            "PROC_THREAD_ATTRIBUTE_JOB_LIST",
+            "&job_, sizeof job_",
+        ),
+        "persistent Windows process-creation job attribute",
+    )
+    require(job_attributes, "HANDLE job_;", "retained job-list attribute value")
+    require(
+        job_attributes,
+        "DeleteProcThreadAttributeList(list_);",
+        "process-creation attribute cleanup",
+    )
+
     native_launch = function_block(windows_native, "HANDLE LaunchProcessWin(")
     ordered(
         native_launch,
         (
-            "HANDLE jobList[] = {hJob};",
+            "ProcessCreationJobAttributes jobAttributes;",
             "if (hJob != NULL)",
-            "PROC_THREAD_ATTRIBUTE_JOB_LIST",
+            "jobAttributes.initialize(hJob)",
+            "si.lpAttributeList = jobAttributes.get();",
             "dwCreationFlags |= EXTENDED_STARTUPINFO_PRESENT;",
             "CreateProcessAsUserW(",
         ),
-        "Windows job-at-process-creation launch",
+        "Windows token-switched job-at-process-creation launch",
+    )
+    current_native_launch = function_block(windows_native, "HANDLE LaunchProcessCurrentWin(")
+    ordered(
+        current_native_launch,
+        (
+            "hJob == NULL || pProcessId == NULL",
+            "GetEnvironmentStringsW()",
+            "merge_environment_blocks(currentEnvironment, extraEnvironment)",
+            "ProcessCreationJobAttributes jobAttributes;",
+            "jobAttributes.initialize(hJob)",
+            "si.lpAttributeList = jobAttributes.get();",
+            "EXTENDED_STARTUPINFO_PRESENT",
+            "CreateProcessW(",
+        ),
+        "Windows current-token job-at-process-creation launch",
+    )
+    require(
+        current_native_launch,
+        "CreateProcessW(application, commandLine.data(), NULL, NULL, FALSE,",
+        "same-user launch disables handle inheritance",
     )
     require(
         windows,
-        "Session {\n        job: ServiceOwnedWindowsHandle,\n        process: ServiceOwnedWindowsHandle,",
-        "kill-on-close Windows session CM job",
+        "struct WindowsConnectionManagerProcessHandle {\n    _job: ServiceOwnedWindowsHandle,\n    process: ServiceOwnedWindowsHandle,",
+        "unified retained Windows CM process job",
+    )
+    forbid(
+        windows,
+        "enum WindowsConnectionManagerProcessHandle",
+        "branch-specific Windows CM ownership",
+    )
+    current_launch = function_block(windows, "fn launch_current_process_with_env_and_job")
+    ordered(
+        current_launch,
+        (
+            "current-token Windows launch requires an owned process job",
+            "windows_command_line(exe, arg)?",
+            "windows_env_block(envs)?",
+            "LaunchProcessCurrentWin(",
+            "job,",
+        ),
+        "same-user Windows atomic-job launch wrapper",
     )
     launch = function_block(windows, "pub(crate) fn run_connection_manager_user_helper")
     ordered(
         launch,
         (
-            "current_windows_process_identity_key()?",
+            "current_windows_process_identity_key()",
             "windows_connection_manager_launch_environment",
             "create_windows_service_process_job()?",
+            "if is_root()",
             "launch_process_in_session_with_env",
             "job.raw()",
+            "launch_current_process_with_env_and_job(",
+            "job.raw()",
             "windows_process_identity(launched.process_id, process.raw())?",
-            "WindowsConnectionManagerProcessHandle::Session { job, process }",
+            "WindowsConnectionManagerProcessHandle { _job: job, process }",
         ),
-        "privileged Windows CM launch ownership",
+        "unified Windows CM launch ownership",
     )
-    require(launch, "child.kill().err()", "same-user identity-failure kill")
-    require(launch, "child.wait()", "same-user identity-failure reap")
+    forbid(launch, "std::process::Command", "jobless same-user CM launch")
+    forbid(launch, "WindowsConnectionManagerProcessHandle::Direct", "direct CM child ownership")
     generic_launch = function_block(windows, "pub(crate) fn run_user_helper")
     forbid(generic_launch, "connection-manager", "generic Windows helper CM authority")
     forbid(
@@ -381,12 +451,154 @@ def verify(files: Mapping[str, str]) -> None:
             f"{label} direct Windows CM connector",
         )
 
+    if cargo.count("windows-cm-lifecycle-probe") != 2:
+        raise VerificationError(
+            "Windows CM lifecycle feature must appear only in its declaration and example requirement"
+        )
+    require(
+        cargo,
+        'required-features = ["windows-cm-lifecycle-probe"]',
+        "Windows CM lifecycle example feature gate",
+    )
+    require(
+        cargo,
+        "artifact compilation never enables it",
+        "Windows CM lifecycle non-artifact intent",
+    )
+    forbid(
+        build_py,
+        "windows-cm-lifecycle-probe",
+        "Windows CM lifecycle probe in artifact compiler",
+    )
+    require(
+        lib,
+        '#[cfg(all(target_os = "windows", feature = "windows-cm-lifecycle-probe"))]',
+        "Windows-only lifecycle probe module",
+    )
+    require(
+        connection,
+        "pub fn windows_cm_lifecycle_probe_lease(",
+        "feature-confined production CM lease probe edge",
+    )
+    require(
+        probe_example,
+        "librustdesk::windows_cm_lifecycle_probe::run()",
+        "Windows lifecycle probe example entrypoint",
+    )
+    for token, label in (
+        ("TcpListener", "TCP listener"),
+        ("TcpStream", "TCP stream"),
+        ("UdpSocket", "UDP socket"),
+        ("0.0.0.0", "wildcard listener"),
+    ):
+        forbid(lifecycle_probe, token, f"Windows CM lifecycle probe {label}")
+    probe_server = function_block(lifecycle_probe, "fn run_server_worker()")
+    ordered(
+        probe_server,
+        (
+            "windows_cm_lifecycle_probe_lease()",
+            "windows_cm_lifecycle_probe_lease()",
+            "first_identity != second_identity || first_token != second_token",
+            "connect_exact_cm_pipe_until_ready(&runtime, first_identity)?",
+            "authenticate_cm_endpoint_launch_proof(",
+            "&wrong_token",
+            "if wrong.is_ok()",
+            "drop(wrong_stream)",
+            "for attempt in 1..=2",
+            "connect_authenticated_cm_until_ready(&runtime, attempt)?",
+            "close_authenticated_cm(stream)",
+            "READY_PREFIX",
+        ),
+        "native CM lease, wrong-token, and authenticated reconnect probe",
+    )
+    probe_pipe_ready = function_block(
+        lifecycle_probe, "fn connect_exact_cm_pipe_until_ready"
+    )
+    ordered(
+        probe_pipe_ready,
+        (
+            'runtime.block_on(ipc::connect(',
+            '"_cm"',
+            'authenticate_windows_cm_endpoint(&stream, "--cm", expected_identity)',
+            "return Ok(stream)",
+        ),
+        "native exact CM pipe readiness probe",
+    )
+    probe_child = function_block(lifecycle_probe, "fn run_cm_child()")
+    require(
+        probe_child,
+        "crate::ui_cm_interface::start_ipc(cm);",
+        "production named-pipe CM listener probe edge",
+    )
+    probe_launch = function_block(lifecycle_probe, "fn launch_worker()")
+    ordered(
+        probe_launch,
+        (
+            "std::env::current_exe()",
+            '.arg("--server")',
+            "parse_ready(&receipt)",
+            "OwnedProcessHandle::open(cm_identity)",
+            "cm_process.require_running()",
+        ),
+        "exact same-image CM owner probe",
+    )
+    probe_parent_death = function_block(
+        lifecycle_probe, "fn terminate_owner_and_require_cm_exit"
+    )
+    ordered(
+        probe_parent_death,
+        (
+            "cm_process.require_running()",
+            "stop_worker(&mut worker.child)",
+            "cm_process.wait_for_exit()",
+            "cm_process.force_terminate_and_wait()",
+        ),
+        "CM owner-death and stale-child cleanup probe",
+    )
+    probe_controller = function_block(lifecycle_probe, "fn run_controller()")
+    ordered(
+        probe_controller,
+        (
+            "let mut first = launch_worker()?;",
+            "terminate_owner_and_require_cm_exit(&mut first)?;",
+            "let mut replacement = launch_worker()?;",
+            "replacement.cm_identity == first.cm_identity",
+            "terminate_owner_and_require_cm_exit(&mut replacement)?;",
+        ),
+        "CM fresh-generation replacement probe",
+    )
+    probe_dispatch = function_block(lifecycle_probe, "pub fn run()")
+    ordered(
+        probe_dispatch,
+        (
+            "[] => run_controller()",
+            '[role] if role == "--server" => run_server_worker()',
+            '[role] if role == "--cm" => run_cm_child()',
+        ),
+        "closed Windows lifecycle probe role inventory",
+    )
+
     require(requirements, '<span class="id">R-S11gi</span>', "R-S11gi requirement")
     require(requirements, "Appendix C #344", "R-S11gi Appendix binding")
+    require(
+        requirements,
+        "both same-user and LocalSystem launches",
+        "both Windows CM launch branches in the normative job contract",
+    )
+    require(
+        requirements,
+        "Closing the final server-owned job handle",
+        "abrupt Windows CM owner-death contract",
+    )
     require(
         ledger,
         "- **R-S11gi/R-S11e-221 — macOS/Windows exact connection-manager process ownership",
         "R-S11gi hardening record",
+    )
+    require(
+        ledger,
+        "Both the LocalSystem token-switched launch and the same-user current-token",
+        "both Windows CM job-owned launch branches in the ledger",
     )
     require(
         shared_gate,
@@ -417,6 +629,11 @@ def verify(files: Mapping[str, str]) -> None:
         windows_build,
         "cargo test --offline --locked --lib --features flutter --color never cm_process_generation_tests",
         "native Windows CM generation tests",
+    )
+    require(
+        windows_build,
+        'cargo run --offline --locked --example windows_cm_lifecycle_probe --features "flutter,windows-cm-lifecycle-probe" --color never',
+        "native Windows CM lifecycle probe",
     )
 
 
@@ -471,17 +688,33 @@ MUTATIONS = (
     ),
     Mutation(
         "src/platform/windows.rs",
-        "let job = create_windows_service_process_job()?;\n        let launched = "
-        "launch_process_in_session_with_env(\n            &exe,\n            &[\"--cm\"],",
-        "let job = ServiceOwnedWindowsHandle::new(NULL, \"disabled\")?;\n        let launched = "
-        "launch_process_in_session_with_env(\n            &exe,\n            &[\"--cm\"],",
+        "let job = create_windows_service_process_job()?;\n    let launched = if is_root() {",
+        "let job = ServiceOwnedWindowsHandle::new(NULL, \"disabled\")?;\n    let launched = if is_root() {",
         "Windows kill-on-close job removal",
     ),
     Mutation(
         "src/platform/windows.cc",
         "if (hJob != NULL)",
         "if (false)",
-        "Windows job-at-creation bypass",
+        "Windows token-switched job-at-creation bypass",
+    ),
+    Mutation(
+        "src/platform/windows.cc",
+        "CreateProcessW(application, commandLine.data(), NULL, NULL, FALSE,",
+        "CreateProcessW(application, commandLine.data(), NULL, NULL, TRUE,",
+        "Windows same-user handle-inheritance bypass",
+    ),
+    Mutation(
+        "src/platform/windows.cc",
+        "PROC_THREAD_ATTRIBUTE_JOB_LIST",
+        "PROC_THREAD_ATTRIBUTE_PARENT_PROCESS",
+        "Windows atomic process-job attribute removal",
+    ),
+    Mutation(
+        "src/platform/windows.rs",
+        "WindowsConnectionManagerProcessHandle { _job: job, process }",
+        "WindowsConnectionManagerProcessHandle { process }",
+        "Windows retained CM ownership-job removal",
     ),
     Mutation(
         "src/platform/windows.rs",
@@ -514,10 +747,46 @@ MUTATIONS = (
         "native Windows CM launch gate removal",
     ),
     Mutation(
+        "scripts/build-windows.ps1",
+        'cargo run --offline --locked --example windows_cm_lifecycle_probe --features "flutter,windows-cm-lifecycle-probe" --color never',
+        "Write-Host 'native Windows CM lifecycle probe disabled'",
+        "native Windows CM lifecycle probe removal",
+    ),
+    Mutation(
+        "src/windows_cm_lifecycle_probe.rs",
+        "worker.cm_process.wait_for_exit()",
+        "Ok(())",
+        "Windows CM parent-death observation removal",
+    ),
+    Mutation(
+        "src/windows_cm_lifecycle_probe.rs",
+        "if wrong.is_ok()",
+        "if false",
+        "Windows CM wrong-token rejection bypass",
+    ),
+    Mutation(
+        "src/windows_cm_lifecycle_probe.rs",
+        'ipc::authenticate_windows_cm_endpoint(&stream, "--cm", expected_identity)',
+        'ipc::authenticate_windows_cm_endpoint_bypassed(&stream, "--cm", expected_identity)',
+        "Windows CM wrong-token endpoint-identity bypass",
+    ),
+    Mutation(
+        "Cargo.toml",
+        'default = ["use_dasp"]',
+        'default = ["use_dasp", "windows-cm-lifecycle-probe"]',
+        "Windows CM lifecycle probe enabled in default artifacts",
+    ),
+    Mutation(
         "requirements.html",
         '<span class="id">R-S11gi</span>',
         '<span class="id">R-S11gi-disabled</span>',
         "requirement removal",
+    ),
+    Mutation(
+        "requirements.html",
+        "both same-user and LocalSystem launches",
+        "only LocalSystem launches",
+        "same-user Windows CM job requirement removal",
     ),
     Mutation(
         "HARDENING_STATUS.md",

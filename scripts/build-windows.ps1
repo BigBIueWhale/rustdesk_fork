@@ -1096,6 +1096,10 @@ if /I "%~1"=="build" (
     cargo test --offline --locked --lib --features flutter --color never cm_process_generation_tests
     if ($LASTEXITCODE -ne 0) { Die "Exact CM generation ownership suite failed (exit $LASTEXITCODE) -- generation selection and retirement tests must pass before build.py --flutter" }
 
+    Write-Host "[harness] probing same-user CM authentication, reconnect, parent-death, and replacement lifecycle -- Windows x64, named pipe only"
+    cargo run --offline --locked --example windows_cm_lifecycle_probe --features "flutter,windows-cm-lifecycle-probe" --color never
+    if ($LASTEXITCODE -ne 0) { Die "Windows CM lifecycle probe failed (exit $LASTEXITCODE) -- exact generation authentication and kill-on-owner-close must pass before build.py --flutter" }
+
     cargo test --offline --locked --lib --features flutter --color never windows_credential_
     if ($LASTEXITCODE -ne 0) { Die "Windows credential state-machine suite failed (exit $LASTEXITCODE) -- Windows runtime tests must pass before build.py --flutter" }
     cargo test --offline --locked --lib --features flutter --color never windows_replica_

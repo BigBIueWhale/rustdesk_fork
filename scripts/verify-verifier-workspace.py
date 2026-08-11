@@ -8147,26 +8147,23 @@ def validate_windows_helper_launch_contract(sources):
     require_order(
         cm_launch,
         (
-            "current_windows_process_identity_key()?",
-            "windows_connection_manager_launch_environment(launch_token, parent)?",
+            "current_windows_process_identity_key()",
+            "windows_connection_manager_launch_environment(launch_token, parent)",
             "create_windows_service_process_job()?",
+            "if is_root()",
             "launch_process_in_session_with_env(",
+            "job.raw()",
+            "launch_current_process_with_env_and_job(",
+            "job.raw()",
             "windows_process_identity(launched.process_id, process.raw())?",
-            "WindowsConnectionManagerProcessHandle::Session { job, process }",
+            "WindowsConnectionManagerProcessHandle { _job: job, process }",
         ),
-        "Windows LocalSystem CM exact process ownership",
+        "unified Windows CM exact process and job ownership",
     )
-    require_order(
+    require_absent(
         cm_launch,
-        (
-            "std::process::Command::new(exe)",
-            ".spawn()",
-            "windows_process_identity(child.id(), child.as_raw_handle() as HANDLE)",
-            "child.kill().err()",
-            "child.wait()",
-            "WindowsConnectionManagerProcessHandle::Direct(child)",
-        ),
-        "Windows same-user CM exact process ownership",
+        "std::process::Command",
+        "jobless Windows same-user CM launch",
     )
     for text, label in (
         ("CM_LAUNCH_TOKEN_ENV", "Windows CM launch token environment"),
@@ -8205,6 +8202,27 @@ def validate_windows_helper_launch_contract(sources):
         native,
         "CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE,",
         "Windows token launch disables handle inheritance",
+    )
+    require_order(
+        native,
+        (
+            "class ProcessCreationJobAttributes",
+            "PROC_THREAD_ATTRIBUTE_JOB_LIST",
+            "HANDLE LaunchProcessWin(",
+            "jobAttributes.initialize(hJob)",
+            "CreateProcessAsUserW(",
+            "HANDLE LaunchProcessCurrentWin(",
+            "GetEnvironmentStringsW()",
+            "merge_environment_blocks(currentEnvironment, extraEnvironment)",
+            "jobAttributes.initialize(hJob)",
+            "CreateProcessW(",
+        ),
+        "Windows token-switched and same-user atomic job assignment",
+    )
+    require_text(
+        native,
+        "CreateProcessW(application, commandLine.data(), NULL, NULL, FALSE,",
+        "Windows same-user CM launch disables handle inheritance",
     )
     native_launch = extract_between(
         native,
@@ -8336,6 +8354,46 @@ def validate_windows_helper_launch_contract(sources):
         (
             "native Windows CM launch gate removal",
             "Windows CM native launch-test mutation",
+        ),
+        (
+            "Windows same-user handle-inheritance bypass",
+            "Windows CM current-token handle-inheritance mutation",
+        ),
+        (
+            "Windows atomic process-job attribute removal",
+            "Windows CM atomic job-list mutation",
+        ),
+        (
+            "native Windows CM lifecycle probe removal",
+            "Windows CM native lifecycle mutation",
+        ),
+        (
+            "Windows CM parent-death observation removal",
+            "Windows CM parent-death mutation",
+        ),
+        (
+            "Windows CM wrong-token rejection bypass",
+            "Windows CM wrong-token mutation",
+        ),
+        (
+            "Windows CM wrong-token endpoint-identity bypass",
+            "Windows CM wrong-token endpoint-identity mutation",
+        ),
+        (
+            "Windows CM lifecycle probe enabled in default artifacts",
+            "Windows CM probe artifact-separation mutation",
+        ),
+        (
+            "same-user Windows CM job requirement removal",
+            "Windows same-user CM normative job mutation",
+        ),
+        (
+            "fn run_server_worker()",
+            "Windows CM native lifecycle server gate",
+        ),
+        (
+            "fn terminate_owner_and_require_cm_exit",
+            "Windows CM native parent-death gate",
         ),
         (
             "run_self_test(files)",
@@ -48727,6 +48785,30 @@ def run_source_mutations(sources):
             "Windows CM retained-handle cross-thread ownership",
         ),
         (
+            "windows_source",
+            "WindowsConnectionManagerProcessHandle { _job: job, process }",
+            "WindowsConnectionManagerProcessHandle { process }",
+            "unified Windows CM exact process and job ownership",
+        ),
+        (
+            "windows_source",
+            "        let launched = launch_current_process_with_env_and_job(",
+            "        let launched = launch_process_without_job(",
+            "unified Windows CM exact process and job ownership",
+        ),
+        (
+            "windows_native",
+            "PROC_THREAD_ATTRIBUTE_JOB_LIST",
+            "PROC_THREAD_ATTRIBUTE_PARENT_PROCESS",
+            "Windows token-switched and same-user atomic job assignment",
+        ),
+        (
+            "windows_native",
+            "CreateProcessW(application, commandLine.data(), NULL, NULL, FALSE,",
+            "CreateProcessW(application, commandLine.data(), NULL, NULL, TRUE,",
+            "Windows same-user CM launch disables handle inheritance",
+        ),
+        (
             "connection_source",
             "Refusing root-to-user connection-manager launch; the user-context service must own it",
             "Attempting root-to-user connection-manager launch",
@@ -72039,6 +72121,12 @@ def main():
             ).read_text(encoding="utf-8"),
             "cm_process_ownership_verifier": (
                 repo / "scripts/verify-cm-process-ownership.py"
+            ).read_text(encoding="utf-8"),
+            "windows_cm_lifecycle_probe_source": (
+                repo / "src/windows_cm_lifecycle_probe.rs"
+            ).read_text(encoding="utf-8"),
+            "windows_cm_lifecycle_probe_example": (
+                repo / "examples/windows_cm_lifecycle_probe.rs"
             ).read_text(encoding="utf-8"),
             "unix_helper_process_role_verifier": (
                 repo / "scripts/verify-unix-helper-process-role.py"

@@ -6835,8 +6835,8 @@ network configuration was inspected or changed.
   launch-token and process-shape authentication but did not retain the exact macOS/Windows helper generation;
   R-S11gi/R-S11e-221 below supersedes that narrower endpoint-identity claim.
 - **R-S11gi/R-S11e-221 — macOS/Windows exact connection-manager process ownership — SOURCE IMPLEMENTED;
-  NATIVE WINDOWS COMPILE/POLICY TESTS GREEN 2026-08-11; REAL macOS/WINDOWS CM LAUNCH,
-  INSTALLED-SERVICE, AND EXACT-COMMIT RELEASE EVIDENCE PENDING.** Platforms: macOS and Windows
+  NATIVE SAME-USER WINDOWS CM LIFECYCLE GREEN 2026-08-11; LOCALSYSTEM, macOS,
+  INSTALLED-SERVICE, CONCURRENT-RACE, AND EXACT-COMMIT RELEASE EVIDENCE PENDING.** Platforms: macOS and Windows
   desktop controlled-side connection-manager paths; Linux retains its independently closed direct-child,
   PID/UID/proc-start-time, role-token, and parent-death model. Endpoint/action: selection and launch of the fixed
   `_cm` listener before `Data::Login`, `cm_auth_token`, file/clipboard authority, chat, voice state, or any future
@@ -6863,8 +6863,10 @@ network configuration was inspected or changed.
   the sole references. A concurrent lease, live child, or uncertain liveness preserves the generation and prevents
   parallel fallback launch. macOS retains the unreaped `Child` and requires the socket peer PID to equal it before
   and after executable/complete-role proof. Its CM listener requires both current kernel parent and connected peer
-  PID to equal the launch parent. Windows retains PID, creation time, and process handle for both launch modes; the
-  LocalSystem path also assigns the child at creation to a retained kill-on-close job. The named-pipe server PID,
+  PID to equal the launch parent. Windows retains PID, creation time, process handle, and a fresh unnamed
+  kill-on-close job for both launch modes. Both the LocalSystem token-switched launch and the same-user current-token
+  launch use creation-time `PROC_THREAD_ATTRIBUTE_JOB_LIST` assignment, so no helper initial thread can run outside
+  its exact server-owned job. The named-pipe server PID,
   opened process creation time, liveness, executable, and exact role must match the retained owner before mutual
   token proof. The Windows CM listener requires the connected server PID/creation-time generation from the launch
   environment, liveness, executable, exact ordinary/service-owned server role, and stable pipe client PID. The
@@ -6889,7 +6891,7 @@ network configuration was inspected or changed.
   `cm_process_generation_tests` successfully (`4 passed; 0 failed; 462 filtered out`). The source tree and canonical
   Cargo vendor closure were read-only; the numeric-UID container had `--network none`, no published ports or host PID
   namespace, a read-only root, all capabilities dropped, and `no-new-privileges`. The focused verifier passes both
-  normal mode and all 17 deliberate mutations; the adjacent Linux nondumpable-CM and Unix helper-role verifiers pass
+  normal mode and all 26 deliberate mutations; the adjacent Linux nondumpable-CM and Unix helper-role verifiers pass
   71 and 20 mutations respectively. Rust 1.75 `rustfmt --emit stdout` parsed every modified Rust unit, the synchronized
   requirements digest and native-codec watch pass, and the full pinned Dart/Flutter verifier passes generated-bridge
   equality, analysis, its selected lifecycle/presentation tests, native Linux callback tests, and the shipped-feature
@@ -6912,11 +6914,46 @@ network configuration was inspected or changed.
 
   This native run type-checks the real Windows retained-handle/job/process-identity code and executes the Windows
   command-line/current-process-identity/environment policy tests plus the pure generation-ownership state machine.
-  It does not launch a real `--cm` child through the same-user or LocalSystem path, assign and kill a real CM through
-  the service job, authenticate a real named-pipe CM/server pair, or exercise CM exit/relaunch, parent crash, stale
-  incumbent, copied environment, or concurrent reconnect races. macOS `LOCAL_PEERPID`/parent transitions likewise
-  remain unexecuted. Those native runtime obligations, an installed service/package, an exact final committed-tree
-  double build, independent reproduction, and external review remain open.
+  That full-build transaction itself did not launch a real `--cm` child through the same-user or LocalSystem path,
+  assign and kill a real CM through the service job, authenticate a real named-pipe CM/server pair, or exercise CM
+  exit/relaunch or parent crash.
+
+  Follow-up exact-worktree native lifecycle evidence (2026-08-11) closes the narrower same-user Windows runtime gap.
+  An ordinary UID/GID 1000 host transaction captured exact Git tree
+  `a4a8db1d01162f1d5223b9b4ca226ccf2bf792bf`, staged it read-only, and used the existing offline Windows VM with
+  zero guest network interfaces. The only listener added on the host was VNC on `127.0.0.1:5900`; the complete TCP
+  listener inventory returned exactly to its pre-VM state after guest shutdown, the session domain was undefined,
+  and the exact private run root was removed. The pre-existing unrelated `127.0.0.1:5939` listener remained in the
+  before/after baseline and was not touched. The guest transcript identifies the same-user principal as
+  `RUSTDESK-BUILD\builder`; it was not the LocalSystem branch. Cargo compiled and ran only the Windows lifecycle
+  example with `windows-cm-lifecycle-probe` and the offline locked graph, not a release build and not Flutter. The
+  example used the production same-user `CreateProcessW` launcher with creation-time
+  `PROC_THREAD_ATTRIBUTE_JOB_LIST`, the production `_cm` named pipe, exact retained PID/creation-time endpoint proof,
+  and the server-owned generation facade. It leased one generation twice, connected to the exact endpoint before
+  attempting the wrong generation token, required that token exchange to fail, and then completed two authenticated
+  reconnect/close round trips. Its controller opened the exact CM process object, abruptly terminated the owning
+  `--server`, and required CM exit from final job-handle closure; it then launched a distinct replacement generation
+  and repeated owner-death closure. The canonical guest receipt was:
+  `first=2340:134309375531328298`, `replacement=5260:134309375531990664`, `wrong-token=refused`,
+  `reconnects=2`, `parent-death=closed`; Cargo, guest, and host validation all returned zero. The retained evidence
+  records result SHA-256 `d04f1a03516c4341baa94a6d186a1e204f6638347cfeda78720ab8066b07e3ce`, zero guest
+  interfaces, loopback-only VNC, and exact listener restoration.
+
+  Four earlier attempts are excluded from positive evidence: two staging/compile attempts respectively exposed a
+  wrong WinAPI import plus absent generated bridges and then stale forced-in bridges; two compiled runtime attempts
+  exposed that the first probe version mistook a pre-listener file-not-found error for wrong-token refusal. The probe
+  was corrected to wait with a deadline for a real named pipe, prove that pipe's exact process generation, and only
+  then perform the wrong-token exchange. A first corrected product run emitted a valid PASS receipt but its wrapper
+  failed while deleting deliberately read-only staging; that evidence is retained under a `cleanup-failed` name and
+  is excluded from the fully green transaction. The cleanup was corrected and the identical source tree then passed
+  end to end with zero run-root residue. None of these transactions used host root, launched or stopped host
+  RustDesk, changed a host service or RustDesk configuration, changed firewall/network settings, or exposed a
+  wildcard/public listener.
+
+  This is real native same-user process/job/named-pipe lifecycle evidence, but not LocalSystem
+  `CreateProcessAsUserW`, an installed service, a concurrent launch/reconnect race or soak, stale-incumbent recovery,
+  copied-environment substitution, macOS `LOCAL_PEERPID`/parent transitions, Flutter presentation, an exact final
+  committed-tree package, cold R-B2, independent reproduction, or external review. Those obligations remain open.
 
   A pinned Apple cross-check compiled through `hbb_common` and then stopped at the documented Linux-cross Apple SDK
   boundary (`AudioUnit/AudioUnit.h` unavailable). It produced no Rust error before that boundary, but it is not a
@@ -6926,12 +6963,11 @@ network configuration was inspected or changed.
   only execution rule and is excluded; the same syntax checks were rerun in the confined container. None of these
   actions used root, altered a host service/configuration/firewall, launched RustDesk on the host, or opened a port.
 
-  Availability/lifecycle remains explicit debt: retaining a macOS `Child` or same-user Windows `Child` proves the
-  selected generation while the server is alive, but child-handle drop or abrupt parent exit does not itself kill
-  those helpers (only the LocalSystem Windows job has kill-on-close). Native restart/crash testing must prove that an
-  orphaned fixed `_cm` incumbent exits or is recovered without endpoint ambiguity; if it does not, exact parent-death
-  ownership and stale-incumbent retirement must be fixed before release. This is not closed by token rejection or by
-  the platform-neutral state-machine tests.
+  Availability/lifecycle remains partially open. Retaining a macOS `Child` proves the selected generation while the
+  server is alive, but child-handle drop or abrupt parent exit does not itself kill that helper. Same-user Windows
+  abrupt-owner cleanup and replacement now have the native proof above; the LocalSystem branch has the same atomic
+  source design but still lacks native installed-service execution. Native macOS and LocalSystem restart/crash plus
+  stale-incumbent and concurrent-race testing must still prove recovery without endpoint ambiguity before release.
 - **R-S11c-8 — `_whiteboard` helper ambient same-UID trust — CLOSED 2026-07-09.** Platforms: Windows,
   Linux, and macOS desktop whiteboard helper paths. Endpoint/action: `_whiteboard` overlay helper IPC formerly
   accepted `Data::Whiteboard((String, CustomEvent))` drawing events and `Exit` on a fixed endpoint.
@@ -23489,7 +23525,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-ae39ee27424d0368a7939a703506520d65e6cfe5894fa5bc1202e1060db7e7aa  requirements.html
+4ce8724dfe6275825104af03f930a71af6537f65c14145faced599d0e1cfee18  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

@@ -19,6 +19,11 @@ crate-type = ["cdylib", "staticlib", "rlib"]
 name = "service"
 path = "src/service.rs"
 
+[[example]]
+name = "windows_cm_lifecycle_probe"
+path = "examples/windows_cm_lifecycle_probe.rs"
+required-features = ["windows-cm-lifecycle-probe"]
+
 [features]
 inline = []
 cli = []
@@ -26,6 +31,9 @@ use_samplerate = ["samplerate"]
 use_rubato = ["rubato"]
 use_dasp = ["dasp"]
 flutter = ["flutter_rust_bridge", "dart-sys"]
+# Native Windows-only integration probe. The pre-build gate enables it for a same-image
+# `--server`/`--cm` pair; artifact compilation never enables it.
+windows-cm-lifecycle-probe = []
 # The `lockdown` build-split feature has been RETIRED (spec R-R2b; R-S16(a): the
 # controlled-side policy is "enforced by every artifact, never behind a feature
 # flag"). The fork is ONE binary, both roles, hardening UNCONDITIONAL: the

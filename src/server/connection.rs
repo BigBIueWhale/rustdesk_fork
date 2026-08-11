@@ -10419,6 +10419,13 @@ fn lease_or_launch_platform_cm(
     })
 }
 
+#[cfg(all(target_os = "windows", feature = "windows-cm-lifecycle-probe"))]
+pub fn windows_cm_lifecycle_probe_lease(
+) -> ResultType<(crate::ipc::WindowsProcessIdentityKey, String)> {
+    let generation = lease_or_launch_platform_cm("--cm")?;
+    Ok((generation.identity, generation.launch_token.clone()))
+}
+
 #[cfg(target_os = "linux")]
 async fn connect_authenticated_cm(
     ms_timeout: u64,

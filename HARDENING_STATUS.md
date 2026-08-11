@@ -7167,6 +7167,23 @@ network configuration was inspected or changed.
   already-bounded diagnostics on this credential-free setup call's failure path. This changes no installer,
   RustDesk product, authorization, SCM assertion, or pass criterion; installed-SCM success remains unproven.
 
+  Diagnostic commit `05b67bd5f5a53ca54fd0e5dea2eee060e6d14a7a`, tree
+  `3c635af1bdf75922efabb707c11e27c2635e8e9d`, and run
+  `40867932-370c-4017-9645-a6770eccc53b-A` again completed the native build and retained the exact setup failure:
+  `MsiInstallProductW` returned 1603. Read-only extraction of the powered-off guest's Application event log through
+  the pinned non-root helper then identified Windows Installer error 1939: service `RustDesk` could not be
+  configured. The package's sole extended service-configuration row was WiX `ServiceConfigFailureActions`; Microsoft
+  documents the underlying `MsiConfigureServices` failure-action facility as not working as expected. The package
+  removes that optional row and the 5/10/30-second recovery claim, and the verifier forbids its return. It does not
+  adopt Microsoft's `sc.exe` custom-action workaround because that would reintroduce elevated custom action and
+  nontransactional machine-state authority. `ServiceInstall`, auto-start, `ServiceControl`, and every installed-SCM
+  probe assertion remain unchanged. The confined XML parse, normal harness validator, all 240 harness mutations and
+  six bounded behavioral suites, normal independent workspace verifier, its complete in-memory source-mutation
+  matrix, native-codec ledger gate, and diff hygiene pass. The managed-lifecycle portion of the broader independent-
+  workspace self-test is not claimed because its scratch fixture requires `/run/user/1000`, absent in the outer
+  container; a direct full `verify.sh` run is likewise not claimed because its trusted Docker client is intentionally
+  unavailable inside that confinement. A fresh native run is still required.
+
   No native installed-SCM success is claimed yet. Only a passing exact-current zero-interface VM transaction may
   change this row and Appendix C #345 from pending to native green. Even then the claim is limited to the exact
   installed Windows credential path: cold two-pass R-B2 equality, LocalSystem CM generation behavior, graphical
@@ -7850,9 +7867,12 @@ network configuration was inspected or changed.
   creates a dedicated one-file setup payload from those final MSI bytes, hash-checks it, packs it offline/locked,
   removes staging in `finally`, and emits only exact output paths.
   The MSI alone creates and ACLs `ProgramData\<Product>\config`; runtime code has no authority to create or
-  repair that machine credential root. WiX `ServiceInstall` with the documented null-StartName LocalSystem default, `ServiceControl`, nested
-  `ServiceConfigFailureActions` preserving 5/10/30-second restart backoff, and a file-bound inbound TCP/21118
-  `fire:FirewallException` transactionally own service and firewall state. The basename process killer and custom
+  repair that machine credential root. WiX `ServiceInstall` with the documented null-StartName LocalSystem default,
+  `ServiceControl`, and a file-bound inbound TCP/21118 `fire:FirewallException` transactionally own service and
+  firewall state. Native installation proved Windows Installer error 1939 in the sole authored
+  `MsiServiceConfigFailureActions` row; Microsoft documents that facility as not working as expected. It is removed
+  rather than replaced by an elevated `sc.exe` custom action, so 5/10/30-second crash-restart backoff is no longer
+  claimed. The basename process killer and custom
   service/firewall source, exports, and schedules are deleted. The package creates no certificate-store state, and
   R-S11e-88 deletes its inherited LocalSystem cross-user certificate scanner instead of retaining an unowned legacy
   cleanup heuristic. The package also creates and owns no exact Amyuni device instance; R-S11e-89 deletes the
@@ -23733,7 +23753,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-30b8f88e491775a44f4a1947738edc8a62d88468fa98ad36b2e92a7697458a96  requirements.html
+4f8dd35bf23e35ba0a65c9317cf4d307a4592e4d5b74b6fe0d0fb1b56ff57f5b  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

@@ -2450,10 +2450,6 @@ for required in \
   'Start="auto"' \
   'Arguments="--service"' \
   'Vital="yes">' \
-  '<ServiceConfigFailureActions OnInstall="yes" OnReinstall="yes" ResetPeriod="86400">' \
-  '<Failure Action="restartService" Delay="5000" />' \
-  '<Failure Action="restartService" Delay="10000" />' \
-  '<Failure Action="restartService" Delay="30000" />' \
   '<ServiceControl Id="App.Service.Control"' \
   'Start="install"' \
   'Stop="both"' \
@@ -2462,6 +2458,9 @@ for required in \
 done
 if printf '%s\n' "$service_install" | grep -Eq 'Account=|Password='; then
   r_s11e20="$r_s11e20 service-start-name-not-null-localsystem"
+fi
+if grep -R -Eq --include='*.wxs' 'ServiceConfigFailureActions|<Failure[[:space:]]' res/msi/Package; then
+  r_s11e20="$r_s11e20 broken-msi-service-failure-action-leftover"
 fi
 for forbidden_app_launch in \
   'Id="LaunchApp"' \

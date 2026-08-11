@@ -20653,7 +20653,9 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "& $cmakeExe --build $flutterBuildRoot --config Release --target texture_rgba_renderer_windows_core_test -- /p:BuildProjectReferences=false",
             "if (-not (Test-Path -LiteralPath $textureCoreTest -PathType Leaf))",
             "[void](Get-OrdinaryPathItem $textureCoreTest $true)",
-            "& $textureCoreTest",
+            "$textureCoreExit = Invoke-BoundedNativeProcess",
+            "-Path $textureCoreTest",
+            "-TimeoutSeconds 60",
             'Die "native Windows texture callback-core test failed',
         ),
         "independent stale-safe native Windows pinned-wrapper test gate",
@@ -60812,8 +60814,8 @@ def run_source_mutations(sources):
         ),
         (
             "build_windows_source",
-            "& $textureCoreTest\n    if ($LASTEXITCODE -ne 0)",
-            "true # native Windows texture callback-core execution disabled\n    if ($LASTEXITCODE -ne 0)",
+            "-TimeoutSeconds 60 `\n        -Description 'native Windows texture callback-core test'",
+            "-TimeoutSeconds 1800 `\n        -Description 'native Windows texture callback-core test'",
             "independent stale-safe native Windows pinned-wrapper test gate",
         ),
         (

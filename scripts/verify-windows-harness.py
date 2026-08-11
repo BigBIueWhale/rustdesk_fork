@@ -1513,7 +1513,8 @@ def validate_sources(sources: dict[str, str]) -> None:
         ('SOURCE_COMPONENTS = ("pass-A", "result")', "exact source components"),
         ('ARTIFACTS = ("rustdesk-setup.exe", "rustdesk.msi")', "closed artifact inventory"),
         (
-            '"domain.xml",\n    "run-build-progress.txt",\n'
+            '"build-windows.stderr.txt",\n    "build-windows.stdout.txt",\n'
+            '    "domain.xml",\n    "run-build-progress.txt",\n'
             '    "windows-installed-service-probe.stderr.txt",\n'
             '    "windows-installed-service-probe.stdout.txt",\n'
             '    "windows-installed-service-result.json",',
@@ -1912,6 +1913,10 @@ def validate_sources(sources: dict[str, str]) -> None:
     require_order(
         guest,
         (
+            "build-windows.stdout.txt",
+            "build-windows.stderr.txt",
+            "1> $buildStdout",
+            "2> $buildStderr",
             "build-windows.ps1 exit=$buildExit",
             "windows-installed-service-probe.stdout.txt",
             "windows-installed-service-probe.stderr.txt",
@@ -1923,9 +1928,14 @@ def validate_sources(sources: dict[str, str]) -> None:
         "guest build, installed-SCM transaction, and artifact-copy order",
     )
     for literal, description in (
+        ("Assert-BoundedOrdinaryDiagnostic $buildStdout (64 * 1024 * 1024)", "bounded Windows build stdout"),
+        ("Assert-BoundedOrdinaryDiagnostic $buildStderr (64 * 1024 * 1024)", "bounded Windows build stderr"),
+    ):
+        require(guest, literal, description)
+    for literal, description in (
         ("1> $installedServiceStdout", "installed-SCM stdout capture"),
         ("2> $installedServiceStderr", "installed-SCM stderr capture"),
-        ("$diagnosticItem.Length -gt 65536", "installed-SCM diagnostic size bound"),
+        ("Assert-BoundedOrdinaryDiagnostic $diagnostic 65536", "installed-SCM diagnostic size bound"),
         ("[IO.FileAttributes]::ReparsePoint", "installed-SCM diagnostic reparse rejection"),
     ):
         require(guest, literal, description)
@@ -1935,11 +1945,32 @@ def validate_sources(sources: dict[str, str]) -> None:
         "installed-SCM guest completion marker",
     )
     for diagnostic in (
+        "build-windows.stdout.txt",
+        "build-windows.stderr.txt",
         "windows-installed-service-probe.stdout.txt",
         "windows-installed-service-probe.stderr.txt",
     ):
         require(host, diagnostic, f"retained {diagnostic}")
         require(publication, diagnostic, f"published {diagnostic}")
+
+    bounded_native = powershell_function(build, "Invoke-BoundedNativeProcess")
+    for literal, description in (
+        ("$process.WaitForExit($TimeoutSeconds * 1000)", "bounded native Windows process wait"),
+        ("System32\\taskkill.exe", "exact timed-out process-tree termination tool"),
+        ("/PID ([string]$process.Id) /T /F", "owned process-tree termination"),
+        ("$process.WaitForExit(10000)", "bounded native termination drain"),
+    ):
+        require(bounded_native, literal, description)
+    for literal, description in (
+        ("-Path $textureCoreTest", "bounded native texture-core execution"),
+        ("$env:MSBUILDDISABLENODEREUSE = '1'", "MSBuild node-reuse disablement"),
+        ("-Path $msbuildExe", "bounded exact MSBuild execution"),
+        ("/nodeReuse:false", "per-invocation MSBuild node-reuse disablement"),
+        ("/maxCpuCount:1", "single-node deterministic MSI build"),
+        ("-Description 'locked offline WiX restore'", "bounded locked WiX restore"),
+        ("-Description 'WiX MSI build'", "bounded WiX compile"),
+    ):
+        require(build, literal, description)
 
     installed_main = powershell_function(installed_probe, "Invoke-MainProbe")
     installed_limited = powershell_function(

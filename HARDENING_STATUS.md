@@ -7128,6 +7128,19 @@ network configuration was inspected or changed.
   changes no product behavior or pass criterion. Its confined normal validator and all 240 deliberate mutations
   plus six bounded behavioral suites pass after that repair. The retry must be a new clean named-commit transaction.
 
+  That clean retry, commit `45af60fd25c3b45fb5a9492e3f89f1c929c784e1`, tree
+  `6c159473f0c4d67c490dccb06b22b836ff2ffd64`, and run
+  `c68df028-67e4-4d0e-8f19-5b6fed6d4461-A`, failed closed at the monotonic two-hour VM deadline before the
+  installed-service probe began. Read-only extraction of the powered-off output disk proved source/offline identity
+  completion but no `build-windows.ps1` exit marker. Read-only inspection of the retained CoW overlay then proved
+  the main Flutter release and native texture-core executable existed; the run-scoped WiX global-package tree and
+  locked-restore assets existed; WiX `CoreCompile` had created its input cache and extension directories; but no
+  MSI, WiX PDB, portable packer, `dist`, or release probe existed. Thus this is an unbounded WiX/MSBuild-stage build
+  stall, not installed-SCM evidence. Both MSBuild calls are now exact-path, non-node-reusing, single-node, and
+  individually bounded with exact process-tree termination; the native texture test is bounded too. Nested Windows
+  build stdout/stderr are retained directly as bounded offline diagnostics so an outer hard stop cannot again leave
+  only an unflushed parent transcript. No product or installed-service pass criterion changed.
+
   No native installed-SCM success is claimed yet. Only a passing exact-current zero-interface VM transaction may
   change this row and Appendix C #345 from pending to native green. Even then the claim is limited to the exact
   installed Windows credential path: cold two-pass R-B2 equality, LocalSystem CM generation behavior, graphical

@@ -338,6 +338,15 @@ function Mark([string]$Message) {
         Out-File -LiteralPath (Join-Path $out 'run-build-progress.txt') -Append -Encoding ascii
 }
 
+function Assert-BoundedOrdinaryDiagnostic([string]$Path, [Int64]$MaximumBytes) {
+    $diagnosticItem = Get-Item -LiteralPath $Path -Force
+    if ($diagnosticItem.PSIsContainer -or
+        ($diagnosticItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+        $diagnosticItem.Length -gt $MaximumBytes) {
+        Fail "guest diagnostic is not one bounded ordinary file: $Path"
+    }
+}
+
 try {
     $outputRoots = @(
         Get-Volume |
@@ -473,8 +482,14 @@ try {
     Mark "source-verified commit=$($identity.source_commit) tree=$($identity.source_tree) manifest=$($identity.source_manifest_sha256)"
 
     Set-Location $source
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'scripts\build-windows.ps1')
+    $buildStdout = Join-Path $out 'build-windows.stdout.txt'
+    $buildStderr = Join-Path $out 'build-windows.stderr.txt'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'scripts\build-windows.ps1') `
+        1> $buildStdout `
+        2> $buildStderr
     $buildExit = $LASTEXITCODE
+    Assert-BoundedOrdinaryDiagnostic $buildStdout (64 * 1024 * 1024)
+    Assert-BoundedOrdinaryDiagnostic $buildStderr (64 * 1024 * 1024)
     Mark "build-windows.ps1 exit=$buildExit"
     if ($buildExit -ne 0) {
         Fail "build-windows.ps1 failed with exit $buildExit"
@@ -492,12 +507,7 @@ try {
         2> $installedServiceStderr
     $installedServiceExit = $LASTEXITCODE
     foreach ($diagnostic in @($installedServiceStdout, $installedServiceStderr)) {
-        $diagnosticItem = Get-Item -LiteralPath $diagnostic -Force
-        if ($diagnosticItem.PSIsContainer -or
-            ($diagnosticItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
-            $diagnosticItem.Length -gt 65536) {
-            Fail "installed-service probe diagnostic is not one bounded ordinary file: $diagnostic"
-        }
+        Assert-BoundedOrdinaryDiagnostic $diagnostic 65536
     }
     Mark "windows-installed-service-probe.ps1 exit=$installedServiceExit"
     if ($installedServiceExit -ne 0) {

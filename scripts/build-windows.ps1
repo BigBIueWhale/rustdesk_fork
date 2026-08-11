@@ -99,6 +99,60 @@ function Get-OrdinaryPathItem([string]$Path, [bool]$RequireLeaf) {
     return $result
 }
 
+function Invoke-BoundedNativeProcess {
+    param(
+        [string]$Path,
+        [string[]]$ArgumentList,
+        [string]$WorkingDirectory,
+        [int]$TimeoutSeconds,
+        [string]$Description
+    )
+    $executable = (Get-OrdinaryPathItem ([IO.Path]::GetFullPath($Path)) $true).FullName
+    $working = (Get-OrdinaryPathItem ([IO.Path]::GetFullPath($WorkingDirectory)) $false).FullName
+    if ($TimeoutSeconds -lt 1 -or $TimeoutSeconds -gt 1800) {
+        Die "$Description timeout is outside the build bound"
+    }
+    foreach ($argument in $ArgumentList) {
+        if ($null -eq $argument -or $argument.Length -eq 0 -or
+            $argument.IndexOfAny([char[]]@(0, 9, 10, 13, 32, 34)) -ge 0) {
+            Die "$Description contains an argument that requires ambiguous command-line quoting"
+        }
+    }
+    $start = [Diagnostics.ProcessStartInfo]::new()
+    $start.FileName = $executable
+    $start.Arguments = $ArgumentList -join ' '
+    $start.WorkingDirectory = $working
+    $start.UseShellExecute = $false
+    $start.CreateNoWindow = $true
+    $process = [Diagnostics.Process]::new()
+    $process.StartInfo = $start
+    $timedOut = $false
+    $taskkillExit = $null
+    $exitCode = $null
+    try {
+        if (-not $process.Start()) { Die "$Description did not start" }
+        if (-not $process.WaitForExit($TimeoutSeconds * 1000)) {
+            $timedOut = $true
+            $taskkill = Join-Path $env:SystemRoot 'System32\taskkill.exe'
+            [void](Get-OrdinaryPathItem $taskkill $true)
+            & $taskkill /PID ([string]$process.Id) /T /F
+            $taskkillExit = $LASTEXITCODE
+            if (-not $process.WaitForExit(10000)) {
+                $process.Kill()
+                [void]$process.WaitForExit(10000)
+            }
+        } else {
+            $exitCode = [int]$process.ExitCode
+        }
+    } finally {
+        $process.Dispose()
+    }
+    if ($timedOut) {
+        Die "$Description exceeded its ${TimeoutSeconds}-second deadline (taskkill exit=$taskkillExit)"
+    }
+    return $exitCode
+}
+
 function Assert-WixPackageSource([string]$Path) {
     [void](Get-OrdinaryPathItem $Path $false)
     $actual = @(Get-ChildItem -LiteralPath $Path -Force | Sort-Object -Property Name)
@@ -1153,8 +1207,13 @@ if /I "%~1"=="build" (
         Die "native Windows texture callback-core test was not produced at $textureCoreTest"
     }
     [void](Get-OrdinaryPathItem $textureCoreTest $true)
-    & $textureCoreTest
-    if ($LASTEXITCODE -ne 0) { Die "native Windows texture callback-core test failed (exit $LASTEXITCODE)" }
+    $textureCoreExit = Invoke-BoundedNativeProcess `
+        -Path $textureCoreTest `
+        -ArgumentList ([string[]]@()) `
+        -WorkingDirectory (Split-Path -Parent $textureCoreTest) `
+        -TimeoutSeconds 60 `
+        -Description 'native Windows texture callback-core test'
+    if ($textureCoreExit -ne 0) { Die "native Windows texture callback-core test failed (exit $textureCoreExit)" }
     Write-Host '[harness] native Windows texture callback core passed against the pinned Flutter wrapper'
 
     $applicationResource = Get-SingleCompiledWindowsResource 'rustdesk'
@@ -1247,13 +1306,25 @@ if /I "%~1"=="build" (
     # msbuild lives in the same already-validated VS install dir, NOT on PATH by default (the golden
     # has no CI "Add MSBuild to PATH" step). Prepend only its exact directory.
     $msbuildDir = Join-Path $vsPath 'MSBuild\Current\Bin'
-    if (-not (Test-Path (Join-Path $msbuildDir 'MSBuild.exe'))) { Die ".msi: MSBuild.exe not under $msbuildDir" }
+    $msbuildExe = Join-Path $msbuildDir 'MSBuild.exe'
+    if (-not (Test-Path $msbuildExe -PathType Leaf)) { Die ".msi: MSBuild.exe not under $msbuildDir" }
+    [void](Get-OrdinaryPathItem $msbuildExe $true)
     $env:PATH = "$msbuildDir;$env:PATH"
+    $env:MSBUILDDISABLENODEREUSE = '1'
     Push-Location (Join-Path $SRC 'res\msi')
     & $PYTHON_EXE preprocess.py --arp -d $msiDist
     if ($LASTEXITCODE -ne 0) { Pop-Location; Die "res/msi/preprocess.py --arp failed ($LASTEXITCODE)" }
-    msbuild msi.sln -t:restore -p:RestoreConfigFile=$nugetCfg -p:RestoreLockedMode=true -p:RestorePackagesWithLockFile=true -p:RestoreNoCache=true -p:NuGetAudit=false -p:Configuration=Release -p:Platform=x64
-    if ($LASTEXITCODE -ne 0) { Pop-Location; Die "msbuild -t:restore (signed WiX NuGet, OFFLINE from $wixSrc) failed ($LASTEXITCODE) -- local source, package signature, or lock authority did not validate" }
+    $restoreExit = Invoke-BoundedNativeProcess `
+        -Path $msbuildExe `
+        -ArgumentList @(
+            'msi.sln', '-t:restore', "-p:RestoreConfigFile=$nugetCfg", '-p:RestoreLockedMode=true',
+            '-p:RestorePackagesWithLockFile=true', '-p:RestoreNoCache=true', '-p:NuGetAudit=false',
+            '-p:Configuration=Release', '-p:Platform=x64', '/nodeReuse:false', '/maxCpuCount:1'
+        ) `
+        -WorkingDirectory (Get-Location).Path `
+        -TimeoutSeconds 600 `
+        -Description 'locked offline WiX restore'
+    if ($restoreExit -ne 0) { Pop-Location; Die "msbuild -t:restore (signed WiX NuGet, OFFLINE from $wixSrc) failed ($restoreExit) -- local source, package signature, or lock authority did not validate" }
     Assert-WixPackageSource $wixSrc
     Assert-WixGlobalPackages $wixPkgs
     $nugetCfgAfter = (Get-FileHash -LiteralPath $nugetCfg -Algorithm SHA256).Hash
@@ -1266,8 +1337,16 @@ if /I "%~1"=="build" (
         Pop-Location
         Die '.msi: committed NuGet lock file changed during locked offline restore'
     }
-    msbuild msi.sln -p:RestoreConfigFile=$nugetCfg -p:Configuration=Release -p:Platform=x64 /p:TargetVersion=Windows10
-    if ($LASTEXITCODE -ne 0) { Pop-Location; Die "msbuild msi.sln (WiX .msi build) failed ($LASTEXITCODE)" }
+    $msiBuildExit = Invoke-BoundedNativeProcess `
+        -Path $msbuildExe `
+        -ArgumentList @(
+            'msi.sln', "-p:RestoreConfigFile=$nugetCfg", '-p:Configuration=Release', '-p:Platform=x64',
+            '/p:TargetVersion=Windows10', '/nodeReuse:false', '/maxCpuCount:1'
+        ) `
+        -WorkingDirectory (Get-Location).Path `
+        -TimeoutSeconds 600 `
+        -Description 'WiX MSI build'
+    if ($msiBuildExit -ne 0) { Pop-Location; Die "msbuild msi.sln (WiX .msi build) failed ($msiBuildExit)" }
     Pop-Location
     if (-not (Test-Path -LiteralPath $msiBuiltOut -PathType Leaf)) { Die ".msi: expected output not produced at $msiBuiltOut" }
     $msiBuiltItem = Get-OrdinaryPathItem $msiBuiltOut $true

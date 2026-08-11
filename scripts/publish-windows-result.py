@@ -24,6 +24,8 @@ CHECKSUMS = {
 }
 DIAGNOSTICS = (
     "build-log.txt",
+    "build-windows.stderr.txt",
+    "build-windows.stdout.txt",
     "domain.xml",
     "run-build-progress.txt",
     "windows-installed-service-probe.stderr.txt",

@@ -169,17 +169,25 @@ def validate(sources: Dict[str, str]) -> None:
         "pub(crate) fn authorize_cm_ipc_connection",
         "CM listener admission",
     )
-    ordered(
+    linux_cm_listener = region(
         cm_listener,
+        '#[cfg(target_os = "linux")]',
+        '#[cfg(target_os = "macos")]',
+        "Linux CM listener admission",
+    )
+    ordered(
+        linux_cm_listener,
         (
-            '#[cfg(target_os = "linux")]',
             "authenticate_linux_cm_owner_stream(stream)",
             "return false",
             "return true",
-            '#[cfg(not(target_os = "linux"))]',
-            "ensure_peer_executable_matches_current_by_pid_opt",
         ),
-        "Linux parent proof before non-Linux executable policy",
+        "Linux CM parent proof",
+    )
+    absent(
+        linux_cm_listener,
+        "ensure_peer_executable_matches_current_by_pid_opt",
+        "Linux CM ptrace-gated executable policy",
     )
 
     whiteboard_owner = block(
@@ -541,14 +549,18 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         launch,
-        "crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?",
+        "crate::common::run_me_with_env_and_parent_death(",
         "all Linux CM launches parent-death bound",
     )
     require(
         launch,
-        '#[cfg(any(target_os = "macos", target_os = "windows"))]\n'
-        "                let child = crate::run_me_with_env(args, cm_launch_env())?;",
-        "plain helper launch confined to macOS/Windows",
+        "cm_launch_env(cm_launch_token())",
+        "Linux CM launch carries its exact token and parent",
+    )
+    require(
+        launch,
+        'lease_or_launch_platform_cm("--cm")?;',
+        "macOS/Windows CM launch uses the retained process owner",
     )
 
     fs_source = sources["fs"]
@@ -1030,8 +1042,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "connection",
-        "crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?",
-        "crate::run_me_with_env(args, cm_launch_env())?",
+        "cm_launch_env(cm_launch_token())",
+        'cm_launch_env("unbound")',
         "Linux CM parent-death launch",
     ),
     (

@@ -6831,7 +6831,107 @@ network configuration was inspected or changed.
   launch-token environment propagation,
   authenticated Windows clipboard/privacy `_cm` clients, absence of the old generic theme/language `_cm`
   notification channel, and absence of raw Linux/macOS/Windows `_cm` connects;
-  `scripts/apple-conform-check.sh` mirrors the macOS source assertions.
+  `scripts/apple-conform-check.sh` mirrors the macOS source assertions. This original closure proved mutual
+  launch-token and process-shape authentication but did not retain the exact macOS/Windows helper generation;
+  R-S11gi/R-S11e-221 below supersedes that narrower endpoint-identity claim.
+- **R-S11gi/R-S11e-221 — macOS/Windows exact connection-manager process ownership — SOURCE IMPLEMENTED;
+  NATIVE WINDOWS COMPILE/POLICY TESTS GREEN 2026-08-11; REAL macOS/WINDOWS CM LAUNCH,
+  INSTALLED-SERVICE, AND EXACT-COMMIT RELEASE EVIDENCE PENDING.** Platforms: macOS and Windows
+  desktop controlled-side connection-manager paths; Linux retains its independently closed direct-child,
+  PID/UID/proc-start-time, role-token, and parent-death model. Endpoint/action: selection and launch of the fixed
+  `_cm` listener before `Data::Login`, `cm_auth_token`, file/clipboard authority, chat, voice state, or any future
+  helper capability is disclosed. Boundary: a server-owned helper process generation ↔ same-principal genuine
+  RustDesk processes that can copy a legitimate helper's environment.
+
+  Proven old path: macOS and Windows used one server-process-lifetime `CM_LAUNCH_TOKEN` for every CM launch. The
+  server authenticated the fixed endpoint's executable and exact role plus mutual HMAC possession, but did not
+  compare the endpoint to the process returned by its own launch. Ordinary macOS/Windows children were moved into
+  the unlabelled global `CHILD_PROCESS` reaper. More importantly, the Windows LocalSystem path received the exact
+  `CreateProcessAsUserW` process handle and PID through `LaunchProcessWin`, immediately closed the handle, and
+  returned `Ok(None)`. The CM listener likewise accepted any exact-role current-image server process that knew the
+  token; it did not bind the connected server to the launching parent generation. A copied token plus a qualifying
+  genuine process could therefore substitute for either endpoint on macOS/Windows. Typed CM capabilities still
+  constrained post-login actions, so this was local helper authority/process-generation debt, not a remote path,
+  a demonstrated root/SYSTEM escalation, evidence of exploitation, or evidence of host service, firewall, or
+  network-state modification.
+
+  Source closure: `src/server/connection.rs` now owns one macOS/Windows `CmProcessGeneration` containing a fresh
+  per-generation token, exact role, immutable launched identity, and retained native process object. Synchronous
+  selection/launch is serialized under a standard mutex; no lock crosses `.await`. Every endpoint authentication
+  takes an `Arc` lease. An exited generation can be reaped/replaced only while the global owner is its sole
+  reference, and a failed authentication can retire it only when the global owner plus that exact failed lease are
+  the sole references. A concurrent lease, live child, or uncertain liveness preserves the generation and prevents
+  parallel fallback launch. macOS retains the unreaped `Child` and requires the socket peer PID to equal it before
+  and after executable/complete-role proof. Its CM listener requires both current kernel parent and connected peer
+  PID to equal the launch parent. Windows retains PID, creation time, and process handle for both launch modes; the
+  LocalSystem path also assigns the child at creation to a retained kill-on-close job. The named-pipe server PID,
+  opened process creation time, liveness, executable, and exact role must match the retained owner before mutual
+  token proof. The Windows CM listener requires the connected server PID/creation-time generation from the launch
+  environment, liveness, executable, exact ordinary/service-owned server role, and stable pipe client PID. The
+  generic `WindowsUserHelperLaunch::ConnectionManager` variant is deleted. Clipboard and privacy reconnects call
+  only the server-owned exact-generation facade; neither can read the token or call the token-taking IPC connector.
+
+  The retained Windows process-object design follows Microsoft's contracts that
+  [`GetNamedPipeServerProcessId`](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getnamedpipeserverprocessid)
+  identifies the named-pipe server process and that a process kernel object remains valid while another process
+  retains an open handle. The macOS child owner follows Apple's `waitpid(2)` contract: the launched child remains an
+  existing unwaited-for child until its exact owner reaps it. Four pure Rust regressions prove that an active
+  authentication lease prevents reap/replacement, concurrent selectors launch one generation, uncertain liveness
+  preserves the exact owner, and failed authentication retires only the unshared exited generation.
+  `scripts/verify-cm-process-ownership.py` binds both native source branches, launch/retirement ordering,
+  secondary-client containment, requirements/ledger identity, and deliberate mutations; the shared and Apple gates
+  run its normal path and self-test. This is source plus platform-neutral state-machine evidence only. It does not
+  execute `LOCAL_PEERPID`/parent transitions on macOS, `CreateProcessAsUserW`, job assignment, process creation-time
+  queries, named-pipe identity, same-user/LocalSystem exit and relaunch races on Windows, an installed service, an
+  exact package, a cold R-B2 transaction, independent reproduction, or external review. All remain open.
+
+  Current confined evidence (2026-08-10): a clean Rust 1.75.0 build from an empty disposable target ran the four
+  `cm_process_generation_tests` successfully (`4 passed; 0 failed; 462 filtered out`). The source tree and canonical
+  Cargo vendor closure were read-only; the numeric-UID container had `--network none`, no published ports or host PID
+  namespace, a read-only root, all capabilities dropped, and `no-new-privileges`. The focused verifier passes both
+  normal mode and all 17 deliberate mutations; the adjacent Linux nondumpable-CM and Unix helper-role verifiers pass
+  71 and 20 mutations respectively. Rust 1.75 `rustfmt --emit stdout` parsed every modified Rust unit, the synchronized
+  requirements digest and native-codec watch pass, and the full pinned Dart/Flutter verifier passes generated-bridge
+  equality, analysis, its selected lifecycle/presentation tests, native Linux callback tests, and the shipped-feature
+  Rust check. This includes model-level focus/background presentation recovery, but no Android device, Windows peer,
+  native CM launch, or installed service. The Windows offline VM build gate now explicitly runs both
+  `process_launch_tests` and `cm_process_generation_tests` before the release build.
+
+  Current native Windows evidence (2026-08-11): one fresh unprivileged `DOUBLE_BUILD=0` worktree transaction built
+  base commit `82673eb9c2b6e0c633062243300dbe7abc26bf0d` at exact captured tree
+  `58c3125332b13a00950cee990d4f16be5d9d4a24`. The guest reverified source manifest
+  `8330a1adbbfab9af5041dca2d0864c1b053098fc855389d3565f2f30c8f4b4f3`, ran
+  `build-windows.ps1`, recorded exact status zero, and copied the artifacts. The build script invokes the Windows
+  `process_launch_tests` and platform-neutral `cm_process_generation_tests` with an immediate fatal check after
+  each command; reaching all later test, application, WiX, installer, copy, and `exit=0` markers therefore proves
+  both commands returned zero. The retained PowerShell transcript begins during a later Rust invocation, however,
+  so it does not retain those two modules' individual test lines. They are recorded as checked-exit/progression
+  evidence, not misreported as a per-test transcript. The same retained log independently shows later Windows
+  groups with `1`, `2`, `2`, `8`, and `29` tests passing and zero failures, plus the native MSVC
+  `texture_rgba_windows_core_test: PASS`.
+
+  This native run type-checks the real Windows retained-handle/job/process-identity code and executes the Windows
+  command-line/current-process-identity/environment policy tests plus the pure generation-ownership state machine.
+  It does not launch a real `--cm` child through the same-user or LocalSystem path, assign and kill a real CM through
+  the service job, authenticate a real named-pipe CM/server pair, or exercise CM exit/relaunch, parent crash, stale
+  incumbent, copied environment, or concurrent reconnect races. macOS `LOCAL_PEERPID`/parent transitions likewise
+  remain unexecuted. Those native runtime obligations, an installed service/package, an exact final committed-tree
+  double build, independent reproduction, and external review remain open.
+
+  A pinned Apple cross-check compiled through `hbb_common` and then stopped at the documented Linux-cross Apple SDK
+  boundary (`AudioUnit/AudioUnit.h` unavailable). It produced no Rust error before that boundary, but it is not a
+  macOS compile or runtime pass and is excluded from closure. Three setup-only Rust rerun attempts are likewise
+  excluded: one selected a login-shell PATH without Cargo and two mounted the disposable Cargo target `noexec`; no
+  Rust test ran in those attempts. An earlier normal-user host `py_compile` syntax check also violated the container-
+  only execution rule and is excluded; the same syntax checks were rerun in the confined container. None of these
+  actions used root, altered a host service/configuration/firewall, launched RustDesk on the host, or opened a port.
+
+  Availability/lifecycle remains explicit debt: retaining a macOS `Child` or same-user Windows `Child` proves the
+  selected generation while the server is alive, but child-handle drop or abrupt parent exit does not itself kill
+  those helpers (only the LocalSystem Windows job has kill-on-close). Native restart/crash testing must prove that an
+  orphaned fixed `_cm` incumbent exits or is recovered without endpoint ambiguity; if it does not, exact parent-death
+  ownership and stale-incumbent retirement must be fixed before release. This is not closed by token rejection or by
+  the platform-neutral state-machine tests.
 - **R-S11c-8 — `_whiteboard` helper ambient same-UID trust — CLOSED 2026-07-09.** Platforms: Windows,
   Linux, and macOS desktop whiteboard helper paths. Endpoint/action: `_whiteboard` overlay helper IPC formerly
   accepted `Data::Whiteboard((String, CustomEvent))` drawing events and `Exit` on a fixed endpoint.
@@ -19057,8 +19157,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   distribution, and R-V3 external review remain open.
 - **R-S11cz/R-S11e-118 — exact signed WiX package acquisition and locked offline restore
   authority — SOURCE, TRANSACTION, SCOPED COLD ACQUISITION, LEGACY RETIREMENT, SIGNATURE,
-  LOCKED-RESTORE, AND MUTATION VERIFIED 2026-07-25; CLEAN WINDOWS RELEASE, NATIVE MSI TABLE,
-  AND INSTALLED LIFECYCLE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux
+  LOCKED-RESTORE, MUTATION, AND NETWORKLESS NATIVE MSI BUILD VERIFIED; CLEAN DOUBLE-BUILD,
+  NATIVE MSI TABLE, AND INSTALLED LIFECYCLE EVIDENCE REMAIN OPEN.** Platform: the unprivileged Linux
   acquisition host, manifest-bound offline UDF media, and networkless ephemeral Windows build
   guest. Endpoint/action: `scripts/online-fetch.sh::stage_windows_wix_nuget`, Linux-side
   `build_offline_media`, and the WiX restore in `scripts/build-windows.ps1`. Boundary:
@@ -19171,6 +19271,31 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   dates printed by verification are historical, but the packages carry signed timestamp
   evidence and the offline restore under the pinned exact bytes/signers passed; no live network
   or moving publisher state participated.
+
+  Native Windows diagnosis and correction (2026-08-11) remained fail-closed across successive fresh guest
+  attempts. One run established that bare `cmake` was absent from the Windows PATH; the build now resolves the exact
+  Visual Studio CMake executable. A second run showed that building the isolated callback target still traversed a
+  phony Flutter assembly dependency; the native target now explicitly disables project-reference rebuilding. A
+  third run passed the callback test but proved a temporary-directory `NuGet.Config` was not SDK-resolver authority:
+  restore attempted `nuget.org` and was rejected. Moving the already locked, signer-pinned configuration to the
+  solution directory made source discovery exact. The next networkless guest used only the offline UDF feed but
+  correctly failed locked restore with `NU1004`: the evaluated project requested `win`, `win-arm64`, `win-x64`, and
+  `win-x86`, while the lock had no runtime target graphs. The project now names that exact `RuntimeIdentifiers` set,
+  and the lock adds exactly four empty `native,Version=v0.0/<rid>` graphs. All five direct package identities and
+  content hashes are unchanged. A network-disabled, numeric-UID, read-only-root .NET SDK replay independently
+  generated and then restored that exact lock with only the pre-existing signed local packages. The focused WiX
+  verifier passes and rejects all 27 deliberate mutations, including project/lock runtime-graph and SDK-resolver
+  configuration mutations; the independent workspace binding passes.
+
+  The final fresh Windows guest at tree `58c3125332b13a00950cee990d4f16be5d9d4a24` had zero network interfaces and
+  restored with only `C:\rustdesk-build\source\res\msi\NuGet.Config` and feed `F:\wix-nuget-packages`.
+  The log records all five direct 4.0.5 packages installed from that feed, restore success with zero warnings/errors,
+  the native MSI build succeeding with ten documented WiX/ICE warnings and zero errors, canonical MSI package code
+  `{6D52FC07-14FE-543E-A63D-6A6449DD7FA8}`, and successful setup packaging. The finally published MSI is
+  18,308,615 bytes at SHA-256 `6692c36a11489d1ba1c79f87044970b3926a3067b09f9bbdb28226b3b9ec4b39`.
+  This is real networkless WiX restore/compile/package evidence, but it is one worktree build rather than the exact
+  committed R-B2 double build. It does not inspect every native MSI table against policy or exercise
+  install/repair/upgrade/uninstall and service lifecycle; those remain open.
 
   Confined Bash/Python checks, the fixed-archive and retirement executable fixtures, offline
   manifest fixture, fixed-archive 63-mutation gate, online-container 39-mutation gate, Windows
@@ -21627,8 +21752,8 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   broader Ralph-loop goal remain open. Exact publication evidence will be
   added only after the verified tree is committed and pushed.
 - **R-S11du/R-S11e-139 — Windows result publication is exact-object and authority-terminal —
-  SOURCE AND CONFINED SOURCE/MUTATION/FILESYSTEM VERIFICATION COMPLETE 2026-07-26;
-  EXACT COLD WINDOWS ARTIFACT EVIDENCE PENDING.**
+  SOURCE/MUTATION/FILESYSTEM VERIFIED; FRESH NATIVE SINGLE-PASS PUBLICATION GREEN 2026-08-11;
+  EXACT-COMMIT COLD DOUBLE-BUILD EVIDENCE PENDING.**
   Platform: the unprivileged Linux Windows-build host. Endpoint/action:
   `scripts/build-windows-vm.sh::publish_result` moving the validated pass-A
   `.exe`/`.msi`, checksum records, and optional diagnostics from private build
@@ -21715,7 +21840,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   state, or any host service/network operation.
 
   Confined verification: the focused Windows harness baseline and complete
-  self-test pass from mutation one, rejecting all 209 deliberate source
+  self-test pass from mutation one, rejecting all 226 deliberate source
   weakenings and passing five bounded behavioral suites. The separate
   workspace semantic baseline passes and its complete 2,466-entry in-memory
   source-mutation catalog passes from mutation one. The shared private-tree
@@ -21773,6 +21898,36 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   source slice. No host RustDesk/service/configuration/firewall/network state
   was inspected or mutated. Those obligations and the broader Ralph-loop
   goal remain open.
+
+  Native publication evidence (2026-08-11) includes the failure that made the final run meaningful. The preceding
+  fresh Windows guest had already returned `build-windows.ps1 exit=0`, passed native tests, restored and built WiX,
+  and produced both artifacts, but the publisher refused its result with
+  `source checksum rustdesk-setup.exe.sha256 metadata is invalid`. Read-only inspection proved both freshly emitted
+  checksum records were mode 0600: `extract_and_validate` inherited the harness's private `umask 077`, while the
+  publisher correctly required every source file to be mode 0644. No result was published. The smallest correction
+  explicitly sets only those two new checksum records to 0644 after creation. The focused verifier binds their
+  creation-before-normalization order and rejects a deliberate 0600 regression; its normal path, all 226 mutations,
+  and five bounded behavioral suites pass in a non-root, read-only, network-disabled container. The independent
+  workspace binding also passes.
+
+  A completely fresh run then captured exact tree `58c3125332b13a00950cee990d4f16be5d9d4a24`, reverified private offline
+  closure `eacb4d0fadb044f2f38520ad5263470a89c286bed69927ce2c32babcbc01ab24` before and after the guest,
+  completed the native Windows build, canonical-form validation, helper retirement, publication preparation,
+  exact run-root retirement, and final no-clobber commit. It reported `publish-windows-result: committed` and
+  `Windows artifacts complete`. The destination `/home/user/rustdesk-windows-cm-publish-20260811-result` is mode
+  0700 and contains only the two mode-0644, single-link artifacts, their mode-0644 checksum records, and the two
+  bounded mode-0644 diagnostics. Independent checksum verification passes. `rustdesk-setup.exe` is 18,528,256 bytes
+  at SHA-256 `2d59e6c668c0e6add53c50588544b0823fc33653319888bf63543c24a73d3572`; `rustdesk.msi` is
+  18,308,615 bytes at SHA-256 `6692c36a11489d1ba1c79f87044970b3926a3067b09f9bbdb28226b3b9ec4b39`.
+  The exact private run root is absent after publication.
+
+  The transaction used current-user `qemu:///session`, never root or sudo. Its exact domain had zero network
+  interfaces and only a temporary QEMU listener on `127.0.0.1:5900`; after completion the domain, QEMU process,
+  harness process, and 5900 listener were all absent. No host RustDesk process, service, configuration, firewall,
+  UFW/nftables/iptables, route, or host network setting was inspected or changed. This closes the native
+  single-pass publication boundary only. `DOUBLE_BUILD=0`, a dirty captured worktree rather than a final commit,
+  lack of independent reproduction, lack of installation/runtime service exercise, and lack of cross-target cold
+  R-B2/R-B10 publication keep the release obligation open.
 - **R-S11dv/R-S11e-140 — Debian result publication is private-until-verified,
   exact-object, no-clobber, and authority-terminal — SOURCE AND CONFINED
   SOURCE/MUTATION/FILESYSTEM VERIFICATION COMPLETE 2026-07-26; COLD RELEASE,
@@ -23334,7 +23489,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-4e4664309067ff08221f65a5811d99e7f345f2f947e42d5d5fdf4fce0c376e76  requirements.html
+ae39ee27424d0368a7939a703506520d65e6cfe5894fa5bc1202e1060db7e7aa  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

@@ -29,6 +29,7 @@ FILES = {
 }
 
 VERSION = "4.0.5"
+RUNTIME_IDENTIFIERS = ("win", "win-arm64", "win-x64", "win-x86")
 AUTHOR_CERT = "0DB368BC1A5A9E19CC9E036B490B7C4A4D3DFB941C0781B4F22F218BE0B54986"
 REPOSITORY_CERT = "5A2901D6ADA3D18260B9C6DFE2133C95D74B9EEF6AE0E5DC334C8454D1477DF4"
 LEGACY_SIX = (
@@ -123,11 +124,18 @@ def verify_lock(text: str) -> None:
     )
     require(lock["version"] == 1, "WiX lock file version changed")
     dependencies = lock["dependencies"]
+    expected_targets = {"native,Version=v0.0"} | {
+        f"native,Version=v0.0/{runtime}" for runtime in RUNTIME_IDENTIFIERS
+    }
     require(
-        isinstance(dependencies, dict)
-        and set(dependencies) == {"native,Version=v0.0"},
+        isinstance(dependencies, dict) and set(dependencies) == expected_targets,
         "WiX lock target schema changed",
     )
+    for runtime in RUNTIME_IDENTIFIERS:
+        require(
+            dependencies[f"native,Version=v0.0/{runtime}"] == {},
+            f"WiX lock runtime graph changed: {runtime}",
+        )
     records = dependencies["native,Version=v0.0"]
     expected_names = {
         {
@@ -406,7 +414,7 @@ def verify_sources(sources: Mapping[str, str]) -> None:
             "$env:NUGET_PACKAGES = $wixPkgs",
             "$env:NUGET_CERT_REVOCATION_MODE = 'offline'",
             "$env:DOTNET_NUGET_SIGNATURE_VERIFICATION = 'true'",
-            '$nugetCfg = Join-Path $env:TEMP "rustdesk-wix-nuget-$($env:RUSTDESK_BUILD_RUN_ID).config"',
+            "$nugetCfg = Join-Path $SRC 'res\\msi\\NuGet.Config'",
             'if (Test-Path -LiteralPath $nugetCfg) {\n'
             '        Die ".msi: run-scoped WiX NuGet config path is already occupied: $nugetCfg"\n'
             "    }",
@@ -461,6 +469,13 @@ def verify_sources(sources: Mapping[str, str]) -> None:
         project.count("<RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>") == 1
         and project.count("<RestoreLockedMode>true</RestoreLockedMode>") == 1,
         "WiX project does not require its lock",
+    )
+    require(
+        project.count(
+            "<RuntimeIdentifiers>win;win-arm64;win-x64;win-x86</RuntimeIdentifiers>"
+        )
+        == 1,
+        "WiX project runtime graph is not exact",
     )
     for package, _, _, _, content_hash in PACKAGES:
         if content_hash is None:
@@ -612,6 +627,12 @@ MUTATIONS = (
     ),
     Mutation(
         "guest",
+        "$nugetCfg = Join-Path $SRC 'res\\msi\\NuGet.Config'",
+        '$nugetCfg = Join-Path $env:TEMP "rustdesk-wix-nuget.config"',
+        "solution-level SDK resolver config",
+    ),
+    Mutation(
+        "guest",
         "[IO.FileMode]::CreateNew",
         "[IO.FileMode]::Create",
         "no-clobber run-scoped config creation",
@@ -635,10 +656,22 @@ MUTATIONS = (
         "exact PackageReference",
     ),
     Mutation(
+        "project",
+        "<RuntimeIdentifiers>win;win-arm64;win-x64;win-x86</RuntimeIdentifiers>",
+        "<RuntimeIdentifiers>win-x64</RuntimeIdentifiers>",
+        "exact Windows runtime graph",
+    ),
+    Mutation(
         "lock",
         '"resolved": "4.0.5"',
         '"resolved": "4.0.4"',
         "lock resolution",
+    ),
+    Mutation(
+        "lock",
+        '"native,Version=v0.0/win-x64": {}',
+        '"native,Version=v0.0/linux-x64": {}',
+        "Windows runtime lock graph",
     ),
     Mutation(
         "verify",

@@ -141,10 +141,13 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         macos_cm,
         (
+            "expected_pid: u32",
+            "peer_pid != expected_pid",
             'ensure_peer_executable_matches_current_by_pid(peer_pid, "_cm")?',
             "let args = macos_process_cmdline_args(peer_pid)?;",
             "if !cm_process_argv_is_expected(&args, expected_arg)",
             'bail!("_cm endpoint mode mismatch: expected {}", expected_arg)',
+            "stream.peer_pid() != Some(expected_pid)",
         ),
         "macOS executable and exact CM role checks",
     )
@@ -247,6 +250,18 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "Ok(args) => helper_server_argv_is_expected(&args)",
         "Ok(_args) => true",
         "server role enforcement",
+    ),
+    (
+        "auth",
+        "peer_pid != expected_pid",
+        "false",
+        "macOS exact CM process identity",
+    ),
+    (
+        "auth",
+        "stream.peer_pid() != Some(expected_pid)",
+        "false",
+        "macOS stable CM process identity",
     ),
     (
         "auth",

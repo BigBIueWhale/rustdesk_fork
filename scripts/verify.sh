@@ -1542,10 +1542,9 @@ if echo "$common_conn_lazy_static" | grep -Eq 'CM_PEER_IDENTITIES|CM_LAUNCH_TOKE
   r_s11c7="$r_s11c7 platform-cm-state-inside-shared-lazy-static"
 fi
 grep -B2 'static ref CM_PEER_IDENTITIES' src/server/connection.rs | grep -Fq '#[cfg(target_os = "linux")]' || r_s11c7="$r_s11c7 cm-peer-identities-not-linux-outer-cfg"
-grep -B2 'static ref CM_LAUNCH_TOKEN' src/server/connection.rs | grep -Fq '#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]' || r_s11c7="$r_s11c7 cm-launch-token-not-desktop-outer-cfg"
-grep -q 'fn cm_launch_env()' src/server/connection.rs || r_s11c7="$r_s11c7 cm-launch-env-helper-missing"
-grep -q 'run_me_with_env(args, cm_launch_env())' src/server/connection.rs || r_s11c7="$r_s11c7 same-user-cm-launch-not-tokenized"
-grep -q 'cm_launch_env()' src/server/connection.rs || r_s11c7="$r_s11c7 cm-launch-env-not-used"
+grep -B2 'static ref CM_LAUNCH_TOKEN' src/server/connection.rs | grep -Fq '#[cfg(target_os = "linux")]' || r_s11c7="$r_s11c7 cm-launch-token-not-linux-outer-cfg"
+grep -q 'fn cm_launch_env(launch_token: &str)' src/server/connection.rs || r_s11c7="$r_s11c7 cm-launch-env-helper-missing"
+grep -q 'cm_launch_env(cm_launch_token())' src/server/connection.rs || r_s11c7="$r_s11c7 same-user-cm-launch-not-tokenized"
 grep -q 'fn connect_authenticated_cm' src/server/connection.rs || r_s11c7="$r_s11c7 authenticated-cm-connect-missing"
 grep -q 'connect_authenticated_cm(1000, current_euid(), "--cm")' src/server/connection.rs || r_s11c7="$r_s11c7 default-cm-connect-not-authenticated"
 grep -q 'connect_authenticated_cm(1000, uid, "--cm-no-ui")' src/server/connection.rs || r_s11c7="$r_s11c7 uid-cm-connect-not-authenticated"
@@ -2141,22 +2140,28 @@ r_s11e35=
 windows_run_user_helper=$(awk '/^pub\(crate\) fn run_user_helper\(/,/^fn windows_env_block/' src/platform/windows.rs)
 grep -Fq "pub(crate) enum WindowsUserHelperLaunch<'a>" src/platform/windows.rs || r_s11e35="$r_s11e35 typed-helper-role-policy-missing"
 grep -Fq 'Tray,' src/platform/windows.rs || r_s11e35="$r_s11e35 tray-typed-role-missing"
-grep -Fq "ConnectionManager { launch_token: &'a str }" src/platform/windows.rs || r_s11e35="$r_s11e35 cm-typed-role-missing"
 grep -Fq "Whiteboard { launch_token: &'a str }" src/platform/windows.rs || r_s11e35="$r_s11e35 whiteboard-typed-role-missing"
 grep -Fq 'let mut decoded = crate::decode64(launch_token)' src/platform/windows.rs || r_s11e35="$r_s11e35 helper-token-base64-validation-missing"
 grep -Fq '== hbb_common::sodiumoxide::crypto::auth::hmacsha256::KEYBYTES;' src/platform/windows.rs || r_s11e35="$r_s11e35 helper-token-length-validation-missing"
 grep -Fq 'decoded.fill(0);' src/platform/windows.rs || r_s11e35="$r_s11e35 decoded-helper-token-not-zeroed"
 grep -Fq 'let parent = OsString::from(std::process::id().to_string());' src/platform/windows.rs || r_s11e35="$r_s11e35 helper-parent-not-receiver-derived"
 grep -Fq 'WindowsUserHelperLaunch::Tray => Ok(("--tray", Vec::new()))' src/platform/windows.rs || r_s11e35="$r_s11e35 tray-exact-role-missing"
-grep -Fq 'WindowsUserHelperLaunch::ConnectionManager { launch_token } =>' src/platform/windows.rs || r_s11e35="$r_s11e35 cm-exact-role-missing"
 grep -Fq 'WindowsUserHelperLaunch::Whiteboard { launch_token } =>' src/platform/windows.rs || r_s11e35="$r_s11e35 whiteboard-exact-role-missing"
-for key in CM_LAUNCH_TOKEN_ENV CM_LAUNCH_PARENT_ENV WHITEBOARD_LAUNCH_TOKEN_ENV WHITEBOARD_LAUNCH_PARENT_ENV; do
+for key in CM_LAUNCH_TOKEN_ENV CM_LAUNCH_PARENT_ENV CM_LAUNCH_PARENT_CREATION_ENV WHITEBOARD_LAUNCH_TOKEN_ENV WHITEBOARD_LAUNCH_PARENT_ENV; do
   grep -Fq "crate::common::$key" src/platform/windows.rs || r_s11e35="$r_s11e35 helper-environment-key-missing:$key"
 done
 echo "$windows_run_user_helper" | grep -Fq 'windows_user_helper_launch_parts(&launch)?' || r_s11e35="$r_s11e35 typed-helper-policy-not-enforced"
 echo "$windows_run_user_helper" | grep -Fq 'return run_current_exe_in_current_session_with_env(' || r_s11e35="$r_s11e35 localsystem-current-image-route-missing"
 echo "$windows_run_user_helper" | grep -Fq 'let exe = std::env::current_exe()?' || r_s11e35="$r_s11e35 non-system-current-image-route-missing"
 echo "$windows_run_user_helper" | grep -Fq 'std::process::Command::new(exe)' || r_s11e35="$r_s11e35 non-system-current-image-spawn-missing"
+windows_run_cm_helper=$(awk '/^pub\(crate\) fn run_connection_manager_user_helper\(/,/^fn windows_env_block/' src/platform/windows.rs)
+echo "$windows_run_cm_helper" | grep -Fq 'windows_connection_manager_launch_environment(launch_token, parent)?' || r_s11e35="$r_s11e35 cm-dedicated-policy-not-enforced"
+echo "$windows_run_cm_helper" | grep -Fq 'create_windows_service_process_job()?' || r_s11e35="$r_s11e35 cm-localsystem-job-owner-missing"
+echo "$windows_run_cm_helper" | grep -Fq 'WindowsConnectionManagerProcessHandle::Session { job, process }' || r_s11e35="$r_s11e35 cm-localsystem-process-owner-missing"
+echo "$windows_run_cm_helper" | grep -Fq 'WindowsConnectionManagerProcessHandle::Direct(child)' || r_s11e35="$r_s11e35 cm-same-user-process-owner-missing"
+if grep -Fq 'WindowsUserHelperLaunch::ConnectionManager' src/platform/windows.rs src/server/connection.rs; then
+  r_s11e35="$r_s11e35 generic-cm-helper-role-remains"
+fi
 grep -Fq 'fn windows_user_helper_launch_shape_is_typed_and_exact()' src/platform/windows.rs || r_s11e35="$r_s11e35 closed-launch-shape-test-missing"
 grep -Fq 'CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE,' src/platform/windows.cc || r_s11e35="$r_s11e35 token-launch-handle-inheritance-not-disabled"
 for obsolete in \
@@ -2179,7 +2184,7 @@ grep -Fq '<span class="id">R-S11u</span>' requirements.html || r_s11e35="$r_s11e
 grep -Fq '<tr><td>143</td>' requirements.html || r_s11e35="$r_s11e35 appendix-disposition-missing"
 grep -Fq 'R-S11e-35 — Windows dormant generic process-launch authority' HARDENING_STATUS.md || r_s11e35="$r_s11e35 hardening-ledger-missing"
 if [ -n "$r_s11e35" ]; then echo "  FAIL R-S11e-35 Windows helper launch authority:$r_s11e35"; rc=1; else
-  echo "  ok  R-S11e-35 Windows user helpers launch only the current RustDesk image in the receiver-selected session under exact CM/tray/whiteboard role and environment shapes; generic executable/session/ShellExecute surfaces are absent"; fi
+  echo "  ok  R-S11e-35 Windows tray/whiteboard helpers retain typed current-image launch policy; CM uses a dedicated exact-process owner and LocalSystem kill-on-close job; generic executable/session/ShellExecute surfaces are absent"; fi
 
 echo "== (3b-iii-a5d2c) Cross-platform root-to-user helper authority is closed (R-S11x/R-S11e-38) =="
 r_s11e38=
@@ -2195,16 +2200,16 @@ for obsolete in 'fn run_as_user' 'fn run_as_user_with_env' 'command.arg("asuser"
 done
 grep -Fq 'Refusing root-to-user connection-manager launch; the user-context service must own it' src/server/connection.rs || r_s11e38="$r_s11e38 cm-root-transition-not-fail-closed"
 grep -Fq 'Refusing root-to-user whiteboard launch; the user-context service must own it' src/whiteboard/client.rs || r_s11e38="$r_s11e38 whiteboard-root-transition-not-fail-closed"
-grep -Fq 'WindowsUserHelperLaunch::ConnectionManager {' src/server/connection.rs || r_s11e38="$r_s11e38 typed-windows-cm-launch-missing"
+grep -Fq 'crate::platform::run_connection_manager_user_helper(launch_token)' src/server/connection.rs || r_s11e38="$r_s11e38 owned-windows-cm-launch-missing"
 grep -Fq 'WindowsUserHelperLaunch::Whiteboard {' src/whiteboard/client.rs || r_s11e38="$r_s11e38 typed-windows-whiteboard-launch-missing"
 grep -Fq 'WindowsUserHelperLaunch::Tray' src/server/connection.rs || r_s11e38="$r_s11e38 typed-windows-tray-launch-missing"
 same_user_cm_launch=$(awk '/if stream.is_none\(\) \{/,/for _ in 0\.\.20/' src/server/connection.rs)
-grep -Fq 'let child = crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?;' <<<"$same_user_cm_launch" \
+grep -Fq 'cm_launch_env(cm_launch_token())' <<<"$same_user_cm_launch" \
   || r_s11e38="$r_s11e38 linux-same-user-cm-parent-bound-launch-missing"
-grep -Fq 'let child = crate::run_me_with_env(args, cm_launch_env())?;' <<<"$same_user_cm_launch" \
-  || r_s11e38="$r_s11e38 macos-windows-same-user-cm-launch-missing"
+grep -Fq 'lease_or_launch_platform_cm("--cm")?;' <<<"$same_user_cm_launch" \
+  || r_s11e38="$r_s11e38 macos-windows-owned-cm-launch-missing"
 grep -Fq 'super::CHILD_PROCESS.lock().unwrap().push(child);' <<<"$same_user_cm_launch" \
-  || r_s11e38="$r_s11e38 same-user-cm-child-ownership-missing"
+  || r_s11e38="$r_s11e38 linux-same-user-cm-child-ownership-missing"
 grep -Fq 'whiteboard_launch_env(&launch_token)' src/whiteboard/client.rs || r_s11e38="$r_s11e38 same-user-whiteboard-launch-missing"
 grep -Fq '<span class="id">R-S11x</span>' requirements.html || r_s11e38="$r_s11e38 normative-requirement-missing"
 grep -Fq '<tr><td>146</td>' requirements.html || r_s11e38="$r_s11e38 appendix-disposition-missing"
@@ -4363,7 +4368,7 @@ if [ -z "$parent_death_hook_line" ] || [ -z "$descriptor_hook_line" ] || [ "$par
 fi
 connection_manager_launch_compact=$(printf '%s' "$connection_manager_launch" | tr -d '[:space:]')
 case "$connection_manager_launch_compact" in
-  *'#[cfg(target_os="linux")]letchild=crate::common::run_me_with_env_and_parent_death(args,cm_launch_env())?;#[cfg(any(target_os="macos",target_os="windows"))]letchild=crate::run_me_with_env(args,cm_launch_env())?;'*) ;;
+  *'#[cfg(target_os="linux")]letchild=crate::common::run_me_with_env_and_parent_death(args,cm_launch_env(cm_launch_token()),)?;#[cfg(target_os="linux")]super::CHILD_PROCESS.lock().unwrap().push(child);#[cfg(target_os="macos")]lease_or_launch_platform_cm("--cm")?;#[cfg(target_os="windows")]lease_or_launch_platform_cm("--cm")?;'*) ;;
   *) r_s11e44="$r_s11e44 linux-parent-bound-call-site-missing" ;;
 esac
 for forbidden in \
@@ -4494,7 +4499,7 @@ for binding in \
   grep -qF "$binding" <<<"$cm_headless_user_wait" || r_s11c27t="$r_s11c27t closed-readiness-terminal-branch-missing"
 done
 launch_owner_line=$(grep -nF -m 1 'connection owner closed before connection-manager launch' <<<"$cm_launch_boundary" | cut -d: -f1)
-launch_exec_line=$(grep -nF -m 1 'run_me_with_env_and_parent_death(args, cm_launch_env())?' <<<"$cm_launch_boundary" | cut -d: -f1)
+launch_exec_line=$(grep -nF -m 1 'run_me_with_env_and_parent_death(' <<<"$cm_launch_boundary" | cut -d: -f1)
 if [ -z "$launch_owner_line" ] || [ -z "$launch_exec_line" ] || [ "$launch_owner_line" -ge "$launch_exec_line" ]; then
   r_s11c27t="$r_s11c27t owner-check-not-before-cm-launch"
 fi
@@ -6185,7 +6190,8 @@ for runtime_binding in \
   'inherited.is_none()'; do
   grep -qF "$runtime_binding" <<<"$run_me_descriptor_test" || r_s11e31="$r_s11e31 actual-child-proof-missing"
 done
-grep -qF 'crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?' <<<"$headless_cm_launch" \
+grep -qF 'crate::common::run_me_with_env_and_parent_death(' <<<"$headless_cm_launch" \
+  && grep -qF 'cm_launch_env(cm_launch_token())' <<<"$headless_cm_launch" \
   || r_s11e31="$r_s11e31 service-owned-headless-cm-consumer-missing"
 grep -qF '<span class="id">R-S11q</span>' requirements.html                         || r_s11e31="$r_s11e31 normative-requirement-missing"
 grep -qF 'Linux same-executable child inherited descriptor authority' requirements.html || r_s11e31="$r_s11e31 appendix-disposition-missing"
@@ -6880,6 +6886,12 @@ if [ -n "$r_s11c22" ]; then echo "  FAIL R-S11c-22 Windows CM non-file clipboard
 echo "== (3b-iii-f2) Desktop CM endpoint selection requires launch-bound proof (R-S11c-11) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config cm_endpoint_proof --color never
 r_s11c11=
+if ! python3 scripts/verify-cm-process-ownership.py --self-test; then
+  r_s11c11="$r_s11c11 exact-process-verifier-self-test-failed"
+fi
+if ! python3 scripts/verify-cm-process-ownership.py .; then
+  r_s11c11="$r_s11c11 exact-process-verifier-failed"
+fi
 grep -q 'CmEndpointChallenge {' src/ipc.rs || r_s11c11="$r_s11c11 no-cm-endpoint-challenge"
 grep -q 'CmEndpointProof {' src/ipc.rs || r_s11c11="$r_s11c11 no-cm-endpoint-proof"
 grep -q 'CmServerChallenge {' src/ipc.rs || r_s11c11="$r_s11c11 no-cm-server-challenge"
@@ -6888,28 +6900,27 @@ grep -q 'hmacsha256::authenticate' src/ipc.rs || r_s11c11="$r_s11c11 no-hmac-pro
 grep -q 'hmacsha256::verify' src/ipc.rs || r_s11c11="$r_s11c11 no-hmac-verify"
 grep -q 'CM_SERVER_PROOF_CONTEXT' src/ipc.rs || r_s11c11="$r_s11c11 no-directional-server-proof-context"
 grep -q 'verify_cm_server_proof' src/ipc.rs || r_s11c11="$r_s11c11 no-cm-server-proof-verify"
-grep -q 'authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token(), expected_arg)' src/server/connection.rs || r_s11c11="$r_s11c11 server-does-not-authenticate-role-bound-cm-launch-proof"
+grep -q '&generation.launch_token' src/server/connection.rs || r_s11c11="$r_s11c11 server-does-not-use-generation-bound-cm-launch-proof"
 grep -q 'answer_cm_endpoint_challenge(&mut stream).await' src/ui_cm_interface.rs || r_s11c11="$r_s11c11 cm-listener-does-not-answer-launch-proof"
-grep -q 'authenticate_macos_cm_endpoint(&stream, expected_arg)' src/server/connection.rs || r_s11c11="$r_s11c11 macos-cm-process-shape-not-checked"
+grep -q 'authenticate_macos_cm_endpoint(&stream, expected_arg, generation.identity)' src/server/connection.rs || r_s11c11="$r_s11c11 macos-cm-exact-process-not-checked"
 grep -q 'pub(crate) fn authenticate_macos_cm_endpoint' src/ipc/auth.rs || r_s11c11="$r_s11c11 macos-cm-auth-helper-missing"
 grep -q 'pub(crate) fn authenticate_windows_cm_endpoint' src/ipc/auth.rs || r_s11c11="$r_s11c11 windows-cm-auth-helper-missing"
 grep -q 'windows_named_pipe_server_pid(stream.inner.get_ref())' src/ipc/auth.rs || r_s11c11="$r_s11c11 windows-cm-pipe-server-pid-not-checked"
 grep -q 'let args = macos_process_cmdline_args(peer_pid)?;' src/ipc/auth.rs || r_s11c11="$r_s11c11 macos-cm-process-argv-not-read"
 grep -q 'if !cm_process_argv_is_expected(&args, expected_arg)' src/ipc/auth.rs || r_s11c11="$r_s11c11 macos-cm-process-role-not-exact"
-grep -q 'connect_authenticated_windows_cm(ms_timeout, expected_arg, cm_launch_token()).await' src/server/connection.rs || r_s11c11="$r_s11c11 windows-server-cm-connect-not-authenticated"
-grep -q 'connect_authenticated_windows_cm(' src/server/clipboard_service.rs || r_s11c11="$r_s11c11 windows-clipboard-cm-connect-not-authenticated"
-grep -q 'connect_authenticated_windows_cm(' src/privacy_mode.rs || r_s11c11="$r_s11c11 windows-privacy-cm-connect-not-authenticated"
+grep -q 'generation.identity' src/server/connection.rs || r_s11c11="$r_s11c11 windows-server-cm-connect-not-generation-bound"
+grep -q 'crate::server::connect_authenticated_cm(100, "--cm")' src/server/clipboard_service.rs || r_s11c11="$r_s11c11 windows-clipboard-cm-not-server-owner-routed"
+grep -q 'crate::server::connect_authenticated_cm(ms_timeout, "--cm")' src/privacy_mode.rs || r_s11c11="$r_s11c11 windows-privacy-cm-not-server-owner-routed"
 if grep -q 'pub(crate) async fn send_to_cm' src/ui_interface.rs || grep -q 'ipc::connect(1000, "_cm")' src/ui_interface.rs; then
   r_s11c11="$r_s11c11 raw-cm-ui-notification-helper-present"
 fi
 if grep -R -n -E 'Data::Theme|Data::Language|Theme\(String\)|Language\(String\)' src >/dev/null; then
   r_s11c11="$r_s11c11 cm-theme-language-ipc-side-channel-present"
 fi
-grep -q 'match main_server_cmdline_args(peer_pid)' src/ipc/auth.rs || r_s11c11="$r_s11c11 cm-listener-peer-argv-not-read"
-grep -q 'Ok(args) => helper_server_argv_is_expected(&args)' src/ipc/auth.rs || r_s11c11="$r_s11c11 cm-listener-peer-not-exact-server-role-bound"
+grep -q 'libc::getppid()' src/ipc/auth.rs || r_s11c11="$r_s11c11 macos-cm-listener-live-parent-not-checked"
+grep -q 'windows_cm_launch_parent_identity_from_env()' src/ipc/auth.rs || r_s11c11="$r_s11c11 windows-cm-listener-parent-generation-not-checked"
 grep -q 'Refusing root-to-user connection-manager launch; the user-context service must own it' src/server/connection.rs || r_s11c11="$r_s11c11 unix-root-to-user-cm-not-fail-closed"
-grep -q 'WindowsUserHelperLaunch::ConnectionManager {' src/server/connection.rs || r_s11c11="$r_s11c11 windows-typed-cm-launch-missing"
-grep -q 'pub(crate) fn run_user_helper(' src/platform/windows.rs || r_s11c11="$r_s11c11 windows-typed-helper-launcher-missing"
+grep -q 'pub(crate) fn run_connection_manager_user_helper(' src/platform/windows.rs || r_s11c11="$r_s11c11 windows-owned-cm-launcher-missing"
 grep -q 'CM_LAUNCH_TOKEN_ENV' src/common.rs || r_s11c11="$r_s11c11 cm-launch-token-env-constant-missing"
 cm_launch_token_cfg=$(awk '/pub const CM_LAUNCH_TOKEN_ENV/ { print prev; exit } { prev=$0 }' src/common.rs)
 cm_launch_parent_cfg=$(awk '/pub const CM_LAUNCH_PARENT_ENV/ { print prev; exit } { prev=$0 }' src/common.rs)
@@ -6940,13 +6951,13 @@ server_endpoint_challenge_line=$(awk -v start="$server_auth_fn_line" 'NR > start
 if [ -z "$server_auth_fn_line" ] || [ -z "$server_proof_send_line" ] || [ -z "$server_endpoint_challenge_line" ] || [ "$server_proof_send_line" -ge "$server_endpoint_challenge_line" ]; then
   r_s11c11="$r_s11c11 server-peer-proof-not-before-endpoint-challenge"
 fi
-macos_process_line=$(grep -n 'authenticate_macos_cm_endpoint(&stream, expected_arg)' src/server/connection.rs | head -1 | cut -d: -f1)
-macos_proof_line=$(awk -v start="$macos_process_line" 'NR > start && /authenticate_cm_endpoint_launch_proof\(&mut stream, cm_launch_token\(\), expected_arg\)/ { print NR; exit }' src/server/connection.rs)
+macos_process_line=$(grep -n 'authenticate_macos_cm_endpoint(&stream, expected_arg, generation.identity)' src/server/connection.rs | head -1 | cut -d: -f1)
+macos_proof_line=$(awk -v start="$macos_process_line" 'NR > start && /&generation.launch_token/ { print NR; exit }' src/server/connection.rs)
 if [ -z "$macos_process_line" ] || [ -z "$macos_proof_line" ] || [ "$macos_process_line" -ge "$macos_proof_line" ]; then
   r_s11c11="$r_s11c11 macos-cm-proof-not-after-process-shape-check"
 fi
 windows_auth_fn_line=$(grep -n 'pub(crate) async fn connect_authenticated_windows_cm' src/ipc.rs | head -1 | cut -d: -f1)
-windows_process_line=$(awk -v start="$windows_auth_fn_line" 'NR > start && /authenticate_windows_cm_endpoint\(&stream, expected_arg\)/ { print NR; exit }' src/ipc.rs)
+windows_process_line=$(awk -v start="$windows_auth_fn_line" 'NR > start && /authenticate_windows_cm_endpoint\(&stream, expected_arg, expected_identity\)/ { print NR; exit }' src/ipc.rs)
 windows_proof_line=$(awk -v start="$windows_auth_fn_line" 'NR > start && /authenticate_cm_endpoint_launch_proof\(&mut stream, launch_token, expected_arg\)\.await/ { print NR; exit }' src/ipc.rs)
 if [ -z "$windows_auth_fn_line" ] || [ -z "$windows_process_line" ] || [ -z "$windows_proof_line" ] || [ "$windows_process_line" -ge "$windows_proof_line" ]; then
   r_s11c11="$r_s11c11 windows-cm-proof-not-after-process-shape-check"
@@ -6958,7 +6969,7 @@ for line in $(grep -n 'crate::ipc::connect(1000, "_cm")' src/server/connection.r
   fi
 done
 if [ -n "$r_s11c11" ]; then echo "  FAIL R-S11c-11 desktop CM endpoint-selection authority:$r_s11c11"; rc=1; else
-  echo "  ok  R-S11c-11 Linux/macOS/Windows CM selection proves launch-bound endpoint authority before disclosing CM connection tokens; raw fixed-path _cm connects are not used on the primary desktop platforms"; fi
+  echo "  ok  R-S11c-11/R-S11gi Linux uses direct-child identity; macOS/Windows retain and lease the exact launched process generation before mutual proof and token disclosure; secondary clients use the server-owned facade"; fi
 
 echo "== R-S11b/R-S11c ledger consistency =="
 r_s11_docs=

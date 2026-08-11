@@ -4,6 +4,7 @@
     </IncludeSearchPaths>
     <Configurations>Release</Configurations>
     <Platforms>x64</Platforms>
+    <RuntimeIdentifiers>win;win-arm64;win-x64;win-x86</RuntimeIdentifiers>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
     <RestoreLockedMode>true</RestoreLockedMode>
   </PropertyGroup>

@@ -1336,6 +1336,15 @@ def validate_sources(sources: dict[str, str]) -> None:
         ),
         "confined invoking-UID host MSI canonical-form validation",
     )
+    require_order(
+        extract_and_validate,
+        (
+            "sha256sum rustdesk-setup.exe >rustdesk-setup.exe.sha256",
+            "sha256sum rustdesk.msi >rustdesk.msi.sha256",
+            "chmod 0644 -- rustdesk-setup.exe.sha256 rustdesk.msi.sha256",
+        ),
+        "canonical publication checksum source modes",
+    )
     for temporary_cleanup in (
         'rm -f -- "$extracted/rustdesk-setup.exe"',
         'rm -f -- "$setup_input"',
@@ -2672,6 +2681,12 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "publication",
             "if actual != parsed[artifact][0]:",
             "if actual != actual:",
+        ),
+        (
+            "canonical publication checksum source modes",
+            "host",
+            "chmod 0644 -- rustdesk-setup.exe.sha256 rustdesk.msi.sha256",
+            "chmod 0600 -- rustdesk-setup.exe.sha256 rustdesk.msi.sha256",
         ),
         (
             "publication candidate synchronization",

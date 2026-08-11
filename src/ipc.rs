@@ -4636,9 +4636,10 @@ pub(crate) async fn connect_authenticated_windows_cm(
     ms_timeout: u64,
     expected_arg: &str,
     launch_token: &str,
+    expected_identity: ipc_auth::WindowsProcessIdentityKey,
 ) -> ResultType<ConnectionTmpl<ConnClient>> {
     let mut stream = connect(ms_timeout, "_cm").await?;
-    authenticate_windows_cm_endpoint(&stream, expected_arg)?;
+    authenticate_windows_cm_endpoint(&stream, expected_arg, expected_identity)?;
     authenticate_cm_endpoint_launch_proof(&mut stream, launch_token, expected_arg).await?;
     Ok(stream)
 }

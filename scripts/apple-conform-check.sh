@@ -1894,6 +1894,12 @@ fi
 
 echo "== (2b-iii-b) R-S11c-11 macOS CM endpoint-selection proof =="
 r_s11c11=
+if ! python3 "$REPO/scripts/verify-cm-process-ownership.py" --self-test; then
+  r_s11c11="$r_s11c11 exact-process-verifier-self-test-failed"
+fi
+if ! python3 "$REPO/scripts/verify-cm-process-ownership.py" "$REPO"; then
+  r_s11c11="$r_s11c11 exact-process-verifier-failed"
+fi
 grep -q 'CmEndpointChallenge {' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-cm-endpoint-challenge"
 grep -q 'CmEndpointProof {' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-cm-endpoint-proof"
 grep -q 'CmServerChallenge {' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-cm-server-challenge"
@@ -1902,9 +1908,9 @@ grep -q 'hmacsha256::authenticate' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-
 grep -q 'hmacsha256::verify' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-hmac-verify"
 grep -q 'CM_SERVER_PROOF_CONTEXT' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-directional-server-proof-context"
 grep -q 'verify_cm_server_proof' "$REPO/src/ipc.rs" || r_s11c11="$r_s11c11 no-cm-server-proof-verify"
-grep -q 'authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token(), expected_arg)' "$REPO/src/server/connection.rs" || r_s11c11="$r_s11c11 server-does-not-authenticate-role-bound-cm-launch-proof"
+grep -q '&generation.launch_token' "$REPO/src/server/connection.rs" || r_s11c11="$r_s11c11 server-does-not-use-generation-bound-cm-launch-proof"
 grep -q 'answer_cm_endpoint_challenge(&mut stream).await' "$REPO/src/ui_cm_interface.rs" || r_s11c11="$r_s11c11 cm-listener-does-not-answer-launch-proof"
-grep -q 'authenticate_macos_cm_endpoint(&stream, expected_arg)' "$REPO/src/server/connection.rs" || r_s11c11="$r_s11c11 macos-cm-process-shape-not-checked"
+grep -q 'authenticate_macos_cm_endpoint(&stream, expected_arg, generation.identity)' "$REPO/src/server/connection.rs" || r_s11c11="$r_s11c11 macos-cm-exact-process-not-checked"
 grep -q 'pub(crate) fn authenticate_macos_cm_endpoint' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 macos-cm-auth-helper-missing"
 grep -q 'let args = macos_process_cmdline_args(peer_pid)?;' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 macos-cm-process-argv-not-read"
 grep -q 'if !cm_process_argv_is_expected(&args, expected_arg)' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 macos-cm-process-role-not-exact"
@@ -1914,8 +1920,8 @@ fi
 if grep -R -n -E 'Data::Theme|Data::Language|Theme\(String\)|Language\(String\)' "$REPO/src" >/dev/null; then
   r_s11c11="$r_s11c11 cm-theme-language-ipc-side-channel-present"
 fi
-grep -q 'match main_server_cmdline_args(peer_pid)' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 cm-listener-peer-argv-not-read"
-grep -q 'Ok(args) => helper_server_argv_is_expected(&args)' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 cm-listener-peer-not-exact-server-role-bound"
+grep -q 'libc::getppid()' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 macos-cm-listener-live-parent-not-checked"
+grep -q 'peer_pid != Some(expected_parent_pid)' "$REPO/src/ipc/auth.rs" || r_s11c11="$r_s11c11 macos-cm-listener-exact-parent-peer-not-checked"
 grep -q 'Refusing root-to-user connection-manager launch; the user-context service must own it' "$REPO/src/server/connection.rs" || r_s11c11="$r_s11c11 macos-root-to-user-cm-not-fail-closed"
 if grep -q 'fn run_as_user' "$REPO/src/platform/macos.rs"; then
   r_s11c11="$r_s11c11 macos-root-to-user-launcher-present"
@@ -1939,8 +1945,8 @@ server_endpoint_challenge_line=$(awk -v start="$server_auth_fn_line" 'NR > start
 if [ -z "$server_auth_fn_line" ] || [ -z "$server_proof_send_line" ] || [ -z "$server_endpoint_challenge_line" ] || [ "$server_proof_send_line" -ge "$server_endpoint_challenge_line" ]; then
   r_s11c11="$r_s11c11 server-peer-proof-not-before-endpoint-challenge"
 fi
-macos_process_line=$(grep -n 'authenticate_macos_cm_endpoint(&stream, expected_arg)' "$REPO/src/server/connection.rs" | head -1 | cut -d: -f1 || true)
-macos_proof_line=$(awk -v start="$macos_process_line" 'NR > start && /authenticate_cm_endpoint_launch_proof\(&mut stream, cm_launch_token\(\), expected_arg\)/ { print NR; exit }' "$REPO/src/server/connection.rs")
+macos_process_line=$(grep -n 'authenticate_macos_cm_endpoint(&stream, expected_arg, generation.identity)' "$REPO/src/server/connection.rs" | head -1 | cut -d: -f1 || true)
+macos_proof_line=$(awk -v start="$macos_process_line" 'NR > start && /&generation.launch_token/ { print NR; exit }' "$REPO/src/server/connection.rs")
 if [ -z "$macos_process_line" ] || [ -z "$macos_proof_line" ] || [ "$macos_process_line" -ge "$macos_proof_line" ]; then
   r_s11c11="$r_s11c11 macos-cm-proof-not-after-process-shape-check"
 fi
@@ -1954,7 +1960,7 @@ if [ -n "$r_s11c11" ]; then
   echo "  FAIL R-S11c-11 macOS CM endpoint-selection proof:$r_s11c11"
   rc=1
 else
-  note "ok  R-S11c-11 macOS CM endpoint selection requires launch-bound proof before token-bearing CM login"
+  note "ok  R-S11c-11/R-S11gi macOS CM selection retains and leases the exact launched child and proves its live launch parent before token-bearing login"
 fi
 
 echo "== (2b-iii-c) R-S11c-8/R-S11dz macOS whiteboard helper authority and resource finality =="

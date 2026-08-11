@@ -27,6 +27,7 @@ use std::{
             ffi::OsStrExt,
             ffi::OsStringExt,
             fs::{MetadataExt, OpenOptionsExt},
+            io::AsRawHandle,
             process::CommandExt,
         },
     },
@@ -1786,6 +1787,10 @@ struct ServiceOwnedWindowsHandle {
     handle: HANDLE,
     label: &'static str,
 }
+
+// This wrapper uniquely owns a kernel handle and only closes it on drop. Moving that ownership to
+// another thread does not change the underlying Windows object or introduce concurrent access.
+unsafe impl Send for ServiceOwnedWindowsHandle {}
 
 impl ServiceOwnedWindowsHandle {
     fn new(handle: HANDLE, label: &'static str) -> ResultType<Self> {
@@ -3580,7 +3585,6 @@ fn windows_command_line(exe: &Path, arg: &[&str]) -> ResultType<Vec<u16>> {
 
 pub(crate) enum WindowsUserHelperLaunch<'a> {
     Tray,
-    ConnectionManager { launch_token: &'a str },
     Whiteboard { launch_token: &'a str },
 }
 
@@ -3601,19 +3605,6 @@ fn windows_user_helper_launch_parts(
     let parent = OsString::from(std::process::id().to_string());
     match launch {
         WindowsUserHelperLaunch::Tray => Ok(("--tray", Vec::new())),
-        WindowsUserHelperLaunch::ConnectionManager { launch_token } => {
-            validate_windows_user_helper_launch_token("connection-manager", launch_token)?;
-            Ok((
-                "--cm",
-                vec![
-                    (
-                        OsString::from(crate::common::CM_LAUNCH_TOKEN_ENV),
-                        OsString::from(launch_token),
-                    ),
-                    (OsString::from(crate::common::CM_LAUNCH_PARENT_ENV), parent),
-                ],
-            ))
-        }
         WindowsUserHelperLaunch::Whiteboard { launch_token } => {
             validate_windows_user_helper_launch_token("whiteboard", launch_token)?;
             Ok((
@@ -3631,6 +3622,27 @@ fn windows_user_helper_launch_parts(
             ))
         }
     }
+}
+
+fn windows_connection_manager_launch_environment(
+    launch_token: &str,
+    parent: ipc::WindowsProcessIdentityKey,
+) -> ResultType<Vec<(OsString, OsString)>> {
+    validate_windows_user_helper_launch_token("connection-manager", launch_token)?;
+    Ok(vec![
+        (
+            OsString::from(crate::common::CM_LAUNCH_TOKEN_ENV),
+            OsString::from(launch_token),
+        ),
+        (
+            OsString::from(crate::common::CM_LAUNCH_PARENT_ENV),
+            OsString::from(parent.pid.to_string()),
+        ),
+        (
+            OsString::from(crate::common::CM_LAUNCH_PARENT_CREATION_ENV),
+            OsString::from(parent.creation_time.to_string()),
+        ),
+    ])
 }
 
 #[cfg(test)]
@@ -3677,12 +3689,9 @@ mod process_launch_tests {
         let launch_token = crate::encode64([7u8; 32]);
         let parent = OsString::from(std::process::id().to_string());
 
-        let (role, environment) =
-            windows_user_helper_launch_parts(&WindowsUserHelperLaunch::ConnectionManager {
-                launch_token: &launch_token,
-            })
-            .unwrap();
-        assert_eq!(role, "--cm");
+        let parent_identity = ipc::current_windows_process_identity_key().unwrap();
+        let environment =
+            windows_connection_manager_launch_environment(&launch_token, parent_identity).unwrap();
         assert_eq!(
             environment,
             vec![
@@ -3692,7 +3701,11 @@ mod process_launch_tests {
                 ),
                 (
                     OsString::from(crate::common::CM_LAUNCH_PARENT_ENV),
-                    parent.clone(),
+                    OsString::from(parent_identity.pid.to_string()),
+                ),
+                (
+                    OsString::from(crate::common::CM_LAUNCH_PARENT_CREATION_ENV),
+                    OsString::from(parent_identity.creation_time.to_string()),
                 ),
             ]
         );
@@ -3721,12 +3734,7 @@ mod process_launch_tests {
             windows_user_helper_launch_parts(&WindowsUserHelperLaunch::Tray).unwrap(),
             ("--tray", Vec::new())
         );
-        assert!(
-            windows_user_helper_launch_parts(&WindowsUserHelperLaunch::ConnectionManager {
-                launch_token: ""
-            })
-            .is_err()
-        );
+        assert!(windows_connection_manager_launch_environment("", parent_identity).is_err());
         assert!(
             windows_user_helper_launch_parts(&WindowsUserHelperLaunch::Whiteboard {
                 launch_token: &crate::encode64([0u8; 31]),
@@ -3740,6 +3748,49 @@ struct WindowsLaunchedProcess {
     process: HANDLE,
     process_id: DWORD,
     token_pid: DWORD,
+}
+
+enum WindowsConnectionManagerProcessHandle {
+    Direct(std::process::Child),
+    Session {
+        job: ServiceOwnedWindowsHandle,
+        process: ServiceOwnedWindowsHandle,
+    },
+}
+
+pub(crate) struct WindowsConnectionManagerProcess {
+    handle: WindowsConnectionManagerProcessHandle,
+    identity: ipc::WindowsProcessIdentityKey,
+}
+
+impl WindowsConnectionManagerProcess {
+    pub(crate) fn identity(&self) -> ipc::WindowsProcessIdentityKey {
+        self.identity
+    }
+
+    pub(crate) fn try_reap_exited(&mut self) -> ResultType<bool> {
+        match &mut self.handle {
+            WindowsConnectionManagerProcessHandle::Direct(child) => child
+                .try_wait()
+                .map(|status| status.is_some())
+                .map_err(|err| anyhow!("Failed to reap connection-manager child: {err}")),
+            WindowsConnectionManagerProcessHandle::Session { process, .. } => {
+                match unsafe { WaitForSingleObject(process.raw(), 0) } {
+                    WAIT_TIMEOUT => Ok(false),
+                    WAIT_OBJECT_0 => Ok(true),
+                    WAIT_FAILED => bail!(
+                        "WaitForSingleObject failed for connection-manager child {}: {}",
+                        self.identity.pid,
+                        io::Error::last_os_error()
+                    ),
+                    status => bail!(
+                        "WaitForSingleObject returned unexpected status {status:#x} for connection-manager child {}",
+                        self.identity.pid
+                    ),
+                }
+            }
+        }
+    }
 }
 
 fn launch_process_in_session_with_env<I, K, V>(
@@ -3814,6 +3865,87 @@ pub(crate) fn run_user_helper(
         .spawn()
         .map(Some)
         .map_err(|err| anyhow!("Failed to start current RustDesk process: {err}"))
+}
+
+pub(crate) fn run_connection_manager_user_helper(
+    launch_token: &str,
+) -> ResultType<WindowsConnectionManagerProcess> {
+    let parent = ipc::current_windows_process_identity_key()?;
+    let envs = windows_connection_manager_launch_environment(launch_token, parent)?;
+    if is_root() {
+        let Some(session_id) = get_current_process_session_id() else {
+            bail!("Failed to get current process session id");
+        };
+        let exe = std::env::current_exe()?;
+        let job = create_windows_service_process_job()?;
+        let launched = launch_process_in_session_with_env(
+            &exe,
+            &["--cm"],
+            session_id,
+            TRUE,
+            FALSE,
+            envs.iter().map(|(key, value)| (key, value)),
+            job.raw(),
+        )?;
+        if launched.process.is_null() || launched.process == INVALID_HANDLE_VALUE {
+            require_windows_job_empty_before_launch_failure(
+                &job,
+                "Windows connection-manager launch failure",
+            );
+            if launched.token_pid == 0 {
+                bail!(
+                    "Failed to launch connection manager in session {session_id}: no trusted logged-on user token"
+                );
+            }
+            bail!(
+                "Failed to launch connection manager in session {session_id}: {}",
+                io::Error::last_os_error()
+            );
+        }
+        if launched.process_id == 0 {
+            let process = ServiceOwnedWindowsHandle::new(
+                launched.process,
+                "connection-manager child process",
+            )?;
+            drop(process);
+            bail!("CreateProcessAsUserW returned a connection manager without a process id");
+        }
+        let process =
+            ServiceOwnedWindowsHandle::new(launched.process, "connection-manager child process")?;
+        let identity = windows_process_identity(launched.process_id, process.raw())?;
+        return Ok(WindowsConnectionManagerProcess {
+            handle: WindowsConnectionManagerProcessHandle::Session { job, process },
+            identity,
+        });
+    }
+
+    let exe = std::env::current_exe()?;
+    let mut command = std::process::Command::new(exe);
+    command
+        .envs(envs.iter().map(|(key, value)| (key, value)))
+        .arg("--cm")
+        .creation_flags(CREATE_NO_WINDOW);
+    let mut child = command
+        .spawn()
+        .map_err(|err| anyhow!("Failed to start connection-manager process: {err}"))?;
+    let identity = match windows_process_identity(child.id(), child.as_raw_handle() as HANDLE) {
+        Ok(identity) => identity,
+        Err(identity_err) => {
+            let kill_err = child.kill().err();
+            match child.wait() {
+                Ok(_) => return Err(identity_err),
+                Err(wait_err) => {
+                    bail!(
+                        "Failed to bind connection-manager process identity: {identity_err}; kill_error={kill_err:?}; wait_error={wait_err}"
+                    )
+                }
+            }
+        }
+    };
+    Ok(WindowsConnectionManagerProcess {
+        handle: WindowsConnectionManagerProcessHandle::Direct(child),
+        identity,
+    })
 }
 
 fn windows_env_block<I, K, V>(envs: I) -> ResultType<Vec<u16>>

@@ -8074,10 +8074,6 @@ def validate_windows_helper_launch_contract(sources):
     for text, label in (
         ("Tray,", "Windows tray typed launch shape"),
         (
-            "ConnectionManager { launch_token: &'a str }",
-            "Windows CM typed launch shape",
-        ),
-        (
             "Whiteboard { launch_token: &'a str }",
             "Windows whiteboard typed launch shape",
         ),
@@ -8099,15 +8095,9 @@ def validate_windows_helper_launch_contract(sources):
             "Windows tray exact role generation",
         ),
         (
-            "WindowsUserHelperLaunch::ConnectionManager { launch_token } =>",
-            "Windows CM exact role generation",
-        ),
-        (
             "WindowsUserHelperLaunch::Whiteboard { launch_token } =>",
             "Windows whiteboard exact role generation",
         ),
-        ("CM_LAUNCH_TOKEN_ENV", "Windows CM launch token environment"),
-        ("CM_LAUNCH_PARENT_ENV", "Windows CM launch parent environment"),
         ("WHITEBOARD_LAUNCH_TOKEN_ENV", "Windows whiteboard launch token environment"),
         ("WHITEBOARD_LAUNCH_PARENT_ENV", "Windows whiteboard launch parent environment"),
     ):
@@ -8137,6 +8127,60 @@ def validate_windows_helper_launch_contract(sources):
             ".spawn()",
         ),
         "Windows typed helper policy before same-principal current-image launch",
+    )
+    require_absent(
+        platform,
+        "WindowsUserHelperLaunch::ConnectionManager",
+        "generic Windows connection-manager launch role",
+    )
+    cm_launch = extract_between(
+        platform,
+        "pub(crate) fn run_connection_manager_user_helper(",
+        "\nfn windows_env_block",
+        "Windows exact-process connection-manager launcher",
+    )
+    require_text(
+        sources["connection_source"],
+        "trait CmOwnedProcess: Send",
+        "CM retained process-owner thread-transfer bound",
+    )
+    require_order(
+        cm_launch,
+        (
+            "current_windows_process_identity_key()?",
+            "windows_connection_manager_launch_environment(launch_token, parent)?",
+            "create_windows_service_process_job()?",
+            "launch_process_in_session_with_env(",
+            "windows_process_identity(launched.process_id, process.raw())?",
+            "WindowsConnectionManagerProcessHandle::Session { job, process }",
+        ),
+        "Windows LocalSystem CM exact process ownership",
+    )
+    require_order(
+        cm_launch,
+        (
+            "std::process::Command::new(exe)",
+            ".spawn()",
+            "windows_process_identity(child.id(), child.as_raw_handle() as HANDLE)",
+            "child.kill().err()",
+            "child.wait()",
+            "WindowsConnectionManagerProcessHandle::Direct(child)",
+        ),
+        "Windows same-user CM exact process ownership",
+    )
+    for text, label in (
+        ("CM_LAUNCH_TOKEN_ENV", "Windows CM launch token environment"),
+        ("CM_LAUNCH_PARENT_ENV", "Windows CM launch parent environment"),
+        (
+            "CM_LAUNCH_PARENT_CREATION_ENV",
+            "Windows CM launch parent creation-time environment",
+        ),
+    ):
+        require_text(platform, text, label)
+    require_text(
+        platform,
+        "unsafe impl Send for ServiceOwnedWindowsHandle {}",
+        "Windows CM retained-handle cross-thread ownership",
     )
 
     system_launch = extract_between(
@@ -8243,6 +8287,83 @@ def validate_windows_helper_launch_contract(sources):
     ):
         require_text(sources[source_key], text, label)
 
+    focused = sources["cm_process_ownership_verifier"]
+    for text, label in (
+        (
+            "Arc::strong_count(generation) == 1",
+            "CM generation sole-owner reap contract",
+        ),
+        (
+            "CM process-owner Send bound removal",
+            "CM retained process-owner Send mutation",
+        ),
+        (
+            "Arc::strong_count(current) != 2",
+            "CM failed-authentication lease contract",
+        ),
+        (
+            "process.key != expected_identity",
+            "Windows CM endpoint generation mutation",
+        ),
+        (
+            "actual_parent_pid as u32 != expected_parent_pid",
+            "macOS CM launch-parent mutation",
+        ),
+        (
+            "process.key != expected_parent",
+            "Windows CM launch-parent generation mutation",
+        ),
+        (
+            "create_windows_service_process_job()?",
+            "Windows CM kill-on-close job mutation",
+        ),
+        (
+            "PROC_THREAD_ATTRIBUTE_JOB_LIST",
+            "Windows CM job-at-creation mutation",
+        ),
+        (
+            "limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;",
+            "Windows CM job-limit mutation",
+        ),
+        (
+            "bypass dedicated Windows CM launcher",
+            "Windows CM dedicated-launch mutation",
+        ),
+        (
+            "Windows retained-handle Send ownership removal",
+            "Windows CM retained-handle Send mutation",
+        ),
+        (
+            "native Windows CM launch gate removal",
+            "Windows CM native launch-test mutation",
+        ),
+        (
+            "run_self_test(files)",
+            "CM exact-process verifier mutation runner",
+        ),
+    ):
+        require_text(focused, text, label)
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-cm-process-ownership.py --self-test",
+        "shared CM exact-process verifier self-test",
+    )
+    require_text(
+        sources["verify"],
+        "python3 scripts/verify-cm-process-ownership.py .",
+        "shared CM exact-process verifier normal path",
+    )
+    require_text(
+        sources["apple"],
+        'python3 "$REPO/scripts/verify-cm-process-ownership.py" --self-test',
+        "Apple CM exact-process verifier self-test",
+    )
+    require_text(
+        sources["apple"],
+        'python3 "$REPO/scripts/verify-cm-process-ownership.py" "$REPO"',
+        "Apple CM exact-process verifier normal path",
+    )
+
 
 def validate_cross_platform_user_helper_contract(sources):
     for source_key, tokens in (
@@ -8279,13 +8400,18 @@ def validate_cross_platform_user_helper_contract(sources):
         connection,
         (
             "if crate::platform::is_root() && !headless_service_user {",
-            "WindowsUserHelperLaunch::ConnectionManager {",
+            'lease_or_launch_platform_cm("--cm")',
             "Refusing root-to-user connection-manager launch; the user-context service must own it",
-            "let child = crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?;",
-            "let child = crate::run_me_with_env(args, cm_launch_env())?;",
+            "cm_launch_env(cm_launch_token())",
             "super::CHILD_PROCESS.lock().unwrap().push(child);",
+            'lease_or_launch_platform_cm("--cm")?;',
         ),
         "connection-manager typed/fail-closed/same-user launch topology",
+    )
+    require_text(
+        connection,
+        "crate::platform::run_connection_manager_user_helper(launch_token)",
+        "connection-manager dedicated Windows process-owner launch edge",
     )
     require_text(
         connection,
@@ -8318,12 +8444,12 @@ def validate_cross_platform_user_helper_contract(sources):
         ),
         (
             "verify",
-            "macos-windows-same-user-cm-launch-missing",
+            "macos-windows-owned-cm-launch-missing",
             "cross-platform macOS/Windows same-user CM source gate",
         ),
         (
             "verify",
-            "same-user-cm-child-ownership-missing",
+            "linux-same-user-cm-child-ownership-missing",
             "cross-platform same-user CM child-ownership source gate",
         ),
         (
@@ -8706,6 +8832,11 @@ def validate_linux_headless_cm_parent_contract(sources):
         "Linux headless CM parent authority (R-S11ad/R-S11e-44)",
         "headless CM parent source gate",
     )
+    require_text(
+        verify,
+        '#[cfg(target_os="linux")]letchild=crate::common::run_me_with_env_and_parent_death(args,cm_launch_env(cm_launch_token()),)?;#[cfg(target_os="linux")]super::CHILD_PROCESS.lock().unwrap().push(child);#[cfg(target_os="macos")]lease_or_launch_platform_cm("--cm")?;#[cfg(target_os="windows")]lease_or_launch_platform_cm("--cm")?;',
+        "headless CM retained-owner call-site source gate",
+    )
     parent_authority = extract_between(
         linux_source,
         "fn arm_linux_child_parent_death(",
@@ -8778,11 +8909,16 @@ def validate_linux_headless_cm_parent_contract(sources):
         "connection-manager child launch",
     )
     cm_launch_compact = re.sub(r"\s+", "", cm_launch)
-    require_text(
+    require_order(
         cm_launch_compact,
-        '#[cfg(target_os="linux")]letchild=crate::common::run_me_with_env_and_parent_death(args,cm_launch_env())?;'
-        '#[cfg(any(target_os="macos",target_os="windows"))]letchild=crate::run_me_with_env(args,cm_launch_env())?;',
-        "all-Linux parent-bound launch selection",
+        (
+            '#[cfg(target_os="linux")]letchild=crate::common::run_me_with_env_and_parent_death(',
+            'args,cm_launch_env(cm_launch_token()),)?;',
+            '#[cfg(target_os="linux")]super::CHILD_PROCESS.lock().unwrap().push(child);',
+            '#[cfg(target_os="macos")]lease_or_launch_platform_cm("--cm")?;',
+            '#[cfg(target_os="windows")]lease_or_launch_platform_cm("--cm")?;',
+        ),
+        "Linux parent-bound and macOS/Windows retained-owner CM launch selection",
     )
     for forbidden in (
         "fn stop_headless_connection_manager_processes",
@@ -8839,7 +8975,7 @@ def validate_linux_headless_cm_parent_contract(sources):
     startup_lifecycle = extract_between(
         connection_source,
         "enum LinuxDesktopReadyWait {",
-        "\n#[cfg(any(target_os = \"linux\", target_os = \"macos\", target_os = \"windows\"))]",
+        "\n#[cfg(target_os = \"linux\")]\npub(crate) fn cm_launch_token",
         "Linux CM bootstrap readiness lifecycle",
     )
     for text, label in (
@@ -9023,7 +9159,8 @@ def validate_linux_headless_cm_parent_contract(sources):
             "if rx_to_cm.is_closed() {",
             "connection owner closed before connection-manager launch",
             "The headless path and ordinary user-owned server start the CM",
-            "run_me_with_env_and_parent_death(args, cm_launch_env())?",
+            "run_me_with_env_and_parent_death(",
+            "cm_launch_env(cm_launch_token())",
         ),
         "owner-loss-before-CM-launch ordering",
     )
@@ -15221,7 +15358,7 @@ def validate_linux_nondumpable_cm_contract(sources):
             "role-bound mutual proof contract",
         ),
         (
-            '"crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?"',
+            '"crate::common::run_me_with_env_and_parent_death("',
             "parent-death launch contract",
         ),
         (
@@ -18965,7 +19102,7 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "native Windows pinned-wrapper test isolation contract",
         ),
         (
-            '"& cmake --build $flutterBuildRoot --config Release --target texture_rgba_renderer_windows_core_test"',
+            '"& $cmakeExe --build $flutterBuildRoot --config Release --target texture_rgba_renderer_windows_core_test -- /p:BuildProjectReferences=false"',
             "native Windows pinned-wrapper build gate contract",
         ),
         (
@@ -20449,7 +20586,13 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "$textureCoreTest = Join-Path $flutterBuildRoot",
             "$textureCoreTest,",
             "& $PYTHON_EXE build.py --flutter",
-            "& cmake --build $flutterBuildRoot --config Release --target texture_rgba_renderer_windows_core_test",
+            "$vsw = 'C:\\Program Files (x86)\\Microsoft Visual Studio\\Installer\\vswhere.exe'",
+            "[void](Get-OrdinaryPathItem $vsw $true)",
+            "$vsPath = (& $vsw -products * -latest -property installationPath",
+            "[void](Get-OrdinaryPathItem $vsPath $false)",
+            "$cmakeExe = Join-Path $vsPath 'Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\bin\\cmake.exe'",
+            "[void](Get-OrdinaryPathItem $cmakeExe $true)",
+            "& $cmakeExe --build $flutterBuildRoot --config Release --target texture_rgba_renderer_windows_core_test -- /p:BuildProjectReferences=false",
             "if (-not (Test-Path -LiteralPath $textureCoreTest -PathType Leaf))",
             "[void](Get-OrdinaryPathItem $textureCoreTest $true)",
             "& $textureCoreTest",
@@ -30494,6 +30637,12 @@ def validate_windows_build_domain_authority_contract(sources):
         "\n}\n\nrun_root_cleanup_self_test()",
         "Windows build result-publication shell boundary",
     )
+    extract_and_validate = extract_between(
+        build,
+        "extract_and_validate() {\n",
+        "\n}\n\nrun_pass()",
+        "Windows build artifact-extraction shell boundary",
+    )
     for text, label in (
         ("export LC_ALL=C", "Windows build fixed control locale"),
         (
@@ -30678,6 +30827,15 @@ def validate_windows_build_domain_authority_contract(sources):
         ),
     ):
         require_text(publish_result, text, label)
+    require_order(
+        extract_and_validate,
+        (
+            "sha256sum rustdesk-setup.exe >rustdesk-setup.exe.sha256",
+            "sha256sum rustdesk.msi >rustdesk.msi.sha256",
+            "chmod 0644 -- rustdesk-setup.exe.sha256 rustdesk.msi.sha256",
+        ),
+        "Windows build canonical publication checksum source modes",
+    )
 
     process_identity = extract_between(
         build,
@@ -31225,6 +31383,10 @@ def validate_windows_build_domain_authority_contract(sources):
             "Windows build focused publication finality binding",
         ),
         (
+            "canonical publication checksum source modes",
+            "Windows build focused publication checksum-mode binding",
+        ),
+        (
             "Appendix C #274 disposition",
             "Windows build focused publication Appendix mutation",
         ),
@@ -31414,6 +31576,10 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             "Windows publication source checksum proof",
             "Windows build publication checksum mutation",
+        ),
+        (
+            "Windows build canonical publication checksum source modes",
+            "Windows build publication checksum-mode mutation",
         ),
         (
             "Windows build prepare/run-state-retirement/commit order",
@@ -33710,6 +33876,7 @@ def validate_wix_nuget_authority_contract(sources):
         ("AUTHOR_CERT =", "WiX focused author-signer authority"),
         ("REPOSITORY_CERT =", "WiX focused repository-signer authority"),
         ("PACKAGES = (", "WiX focused exact package inventory"),
+        ("solution-level SDK resolver config", "WiX focused SDK-resolver config mutation"),
         ("def verify_lock(", "WiX focused lock verifier"),
         ("run_mutations(sources)", "WiX focused mutation dispatch"),
     ):
@@ -33727,6 +33894,21 @@ def validate_wix_nuget_authority_contract(sources):
         lock,
         '"contentHash": "Ec4D2SNJVOy415p1twmQ5qGdInRz48SzRZTbBKTLF/NWSlueo4pcHPKLiHVSH7Kc4++vK4aAG2PYohkkySosYg=="',
         "exact WiX package lock",
+    )
+    require_text(
+        lock,
+        '"native,Version=v0.0/win-x64": {}',
+        "exact WiX Windows runtime lock graphs",
+    )
+    require_text(
+        sources["windows_package_project"],
+        "<RuntimeIdentifiers>win;win-arm64;win-x64;win-x86</RuntimeIdentifiers>",
+        "exact WiX project runtime graph",
+    )
+    require_text(
+        sources["windows_build_script"],
+        "$nugetCfg = Join-Path $SRC 'res\\msi\\NuGet.Config'",
+        "WiX solution-level SDK resolver config",
     )
     require_text(
         sources["verify"],
@@ -33763,7 +33945,10 @@ def validate_wix_nuget_authority_contract(sources):
         ("WiX focused author-signer authority", "focused signer mutation"),
         ("WiX retirement no-clobber primitive", "retirement mutation"),
         ("exact WiX package lock", "lock mutation"),
+        ("exact WiX Windows runtime lock graphs", "runtime-lock mutation"),
+        ("exact WiX project runtime graph", "project-runtime mutation"),
         ("WiX focused verifier wiring", "focused-gate mutation"),
+        ("WiX solution-level SDK resolver config", "SDK-resolver config mutation"),
         ("WiX retirement self-test wiring", "retirement-gate mutation"),
         ("WiX signed-package normative requirement", "requirement mutation"),
         ("WiX signed-package Appendix C row", "Appendix mutation"),
@@ -48525,9 +48710,21 @@ def run_source_mutations(sources):
         ),
         (
             "connection_source",
-            "WindowsUserHelperLaunch::ConnectionManager {",
-            "WindowsUserHelperLaunch::Tray {",
-            "connection-manager typed/fail-closed/same-user launch topology",
+            "crate::platform::run_connection_manager_user_helper(launch_token)",
+            "crate::platform::run_user_helper(WindowsUserHelperLaunch::Tray)",
+            "connection-manager dedicated Windows process-owner launch edge",
+        ),
+        (
+            "connection_source",
+            "trait CmOwnedProcess: Send",
+            "trait CmOwnedProcess",
+            "CM retained process-owner thread-transfer bound",
+        ),
+        (
+            "windows_source",
+            "unsafe impl Send for ServiceOwnedWindowsHandle {}",
+            "// retained handle is not transferable across the CM owner",
+            "Windows CM retained-handle cross-thread ownership",
         ),
         (
             "connection_source",
@@ -48537,9 +48734,9 @@ def run_source_mutations(sources):
         ),
         (
             "connection_source",
-            "let child = crate::run_me_with_env(args, cm_launch_env())?;",
-            "let child = crate::run_me(args)?;",
-            "connection-manager typed/fail-closed/same-user launch topology",
+            '#[cfg(target_os = "macos")]\n                lease_or_launch_platform_cm("--cm")?;',
+            '#[cfg(target_os = "macos")]\n                crate::run_me(vec!["--cm"])?;',
+            "Linux parent-bound and macOS/Windows retained-owner CM launch selection",
         ),
         (
             "whiteboard_client",
@@ -48561,14 +48758,14 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            "macos-windows-same-user-cm-launch-missing",
-            "macos-windows-same-user-cm-gate-disabled",
+            "macos-windows-owned-cm-launch-missing",
+            "macos-windows-owned-cm-gate-disabled",
             "cross-platform macOS/Windows same-user CM source gate",
         ),
         (
             "verify",
-            "same-user-cm-child-ownership-missing",
-            "same-user-cm-child-ownership-gate-disabled",
+            "linux-same-user-cm-child-ownership-missing",
+            "linux-same-user-cm-child-ownership-gate-disabled",
             "cross-platform same-user CM child-ownership source gate",
         ),
         (
@@ -51408,9 +51605,15 @@ def run_source_mutations(sources):
         ),
         (
             "connection_source",
-            "crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?",
-            "crate::run_me_with_env(args, cm_launch_env())?",
+            "cm_launch_env(cm_launch_token()),",
+            "cm_launch_env(\"unbound\"),",
             "connection-manager typed/fail-closed/same-user launch topology",
+        ),
+        (
+            "verify",
+            '#[cfg(target_os="linux")]letchild=crate::common::run_me_with_env_and_parent_death(args,cm_launch_env(cm_launch_token()),)?;#[cfg(target_os="linux")]super::CHILD_PROCESS.lock().unwrap().push(child);#[cfg(target_os="macos")]lease_or_launch_platform_cm("--cm")?;#[cfg(target_os="windows")]lease_or_launch_platform_cm("--cm")?;',
+            '#[cfg(target_os="linux")]letchild=crate::common::run_me_with_env_and_parent_death(args,cm_launch_env())?;#[cfg(any(target_os="macos",target_os="windows"))]letchild=crate::run_me_with_env(args,cm_launch_env())?;',
+            "headless CM retained-owner call-site source gate",
         ),
         (
             "common_source",
@@ -51744,8 +51947,20 @@ def run_source_mutations(sources):
         ),
         (
             "windows_source",
-            "drop(process);",
-            "drop(candidate_path.clone());",
+            "let is_trusted_candidate = trusted_system_process_candidate_matches(\n"
+            "                            &expected_path,\n"
+            "                            expected_session_id,\n"
+            "                            &candidate_path,\n"
+            "                            pinned_session_id,\n"
+            "                        );\n"
+            "                        drop(process);",
+            "let is_trusted_candidate = trusted_system_process_candidate_matches(\n"
+            "                            &expected_path,\n"
+            "                            expected_session_id,\n"
+            "                            &candidate_path,\n"
+            "                            pinned_session_id,\n"
+            "                        );\n"
+            "                        drop(candidate_path.clone());",
             "Windows UAC candidate discovery before exact image/session admission",
         ),
         (
@@ -56369,9 +56584,9 @@ def run_source_mutations(sources):
         ),
         (
             "windows_build_script",
-            '    $nugetCfg = Join-Path $env:TEMP "rustdesk-wix-nuget-$($env:RUSTDESK_BUILD_RUN_ID).config"',
+            "    $nugetCfg = Join-Path $SRC 'res\\msi\\NuGet.Config'",
             '    $customActionsProject = \'CustomActions.vcxproj\'\n'
-            '    $nugetCfg = Join-Path $env:TEMP "rustdesk-wix-nuget-$($env:RUSTDESK_BUILD_RUN_ID).config"',
+            "    $nugetCfg = Join-Path $SRC 'res\\msi\\NuGet.Config'",
             "Windows custom-action build path absence",
         ),
         (
@@ -60485,7 +60700,7 @@ def run_source_mutations(sources):
         ),
         (
             "build_windows_source",
-            "& cmake --build $flutterBuildRoot --config Release --target texture_rgba_renderer_windows_core_test",
+            "& $cmakeExe --build $flutterBuildRoot --config Release --target texture_rgba_renderer_windows_core_test -- /p:BuildProjectReferences=false",
             "true # native Windows texture callback-core build disabled",
             "independent stale-safe native Windows pinned-wrapper test gate",
         ),
@@ -65852,6 +66067,12 @@ def run_source_mutations(sources):
         ),
         (
             "windows_build",
+            "chmod 0644 -- rustdesk-setup.exe.sha256 rustdesk.msi.sha256",
+            "chmod 0600 -- rustdesk-setup.exe.sha256 rustdesk.msi.sha256",
+            "Windows build canonical publication checksum source modes",
+        ),
+        (
+            "windows_build",
             "remove_completed_run_root \\\n"
             '        || die "Windows private run state could not retire before final publication"',
             "true # private run state not retired before final publication",
@@ -67648,6 +67869,12 @@ def run_source_mutations(sources):
             "WiX focused author-signer authority",
         ),
         (
+            "windows_build_script",
+            "$nugetCfg = Join-Path $SRC 'res\\msi\\NuGet.Config'",
+            '$nugetCfg = Join-Path $env:TEMP "rustdesk-wix-nuget.config"',
+            "WiX solution-level SDK resolver config",
+        ),
+        (
             "online_wix_nuget_retire_helper",
             "RENAME_NOREPLACE = 1",
             "RENAME_NOREPLACE = 0",
@@ -67658,6 +67885,18 @@ def run_source_mutations(sources):
             '"contentHash": "Ec4D2SNJVOy415p1twmQ5qGdInRz48SzRZTbBKTLF/NWSlueo4pcHPKLiHVSH7Kc4++vK4aAG2PYohkkySosYg=="',
             '"contentHash": "BAD"',
             "exact WiX package lock",
+        ),
+        (
+            "windows_wix_lock",
+            '"native,Version=v0.0/win-x64": {}',
+            '"native,Version=v0.0/linux-x64": {}',
+            "exact WiX Windows runtime lock graphs",
+        ),
+        (
+            "windows_package_project",
+            "<RuntimeIdentifiers>win;win-arm64;win-x64;win-x86</RuntimeIdentifiers>",
+            "<RuntimeIdentifiers>win-x64</RuntimeIdentifiers>",
+            "exact WiX project runtime graph",
         ),
         (
             "verify",
@@ -71797,6 +72036,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "linux_nondumpable_cm_verifier": (
                 repo / "scripts/verify-linux-nondumpable-cm.py"
+            ).read_text(encoding="utf-8"),
+            "cm_process_ownership_verifier": (
+                repo / "scripts/verify-cm-process-ownership.py"
             ).read_text(encoding="utf-8"),
             "unix_helper_process_role_verifier": (
                 repo / "scripts/verify-unix-helper-process-role.py"

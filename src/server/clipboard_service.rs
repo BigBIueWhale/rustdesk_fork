@@ -235,11 +235,7 @@ impl Handler {
             };
         }
         if !is_sent {
-            let mut stream = rt.block_on(crate::ipc::connect_authenticated_windows_cm(
-                100,
-                "--cm",
-                crate::server::cm_launch_token(),
-            ))?;
+            let mut stream = rt.block_on(crate::server::connect_authenticated_cm(100, "--cm"))?;
             rt.block_on(stream.send(&authorized_clipboard_non_file_request(&authority)))?;
             self.stream = Some(stream);
         }

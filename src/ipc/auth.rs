@@ -4052,6 +4052,7 @@ fn windows_service_owned_main_server_args() -> [&'static str; 2] {
 pub(crate) fn authenticate_macos_cm_endpoint<T>(
     stream: &ConnectionTmpl<T>,
     expected_arg: &str,
+    expected_pid: u32,
 ) -> ResultType<()>
 where
     T: AsyncRead + AsyncWrite + std::marker::Unpin + std::os::unix::io::AsRawFd,
@@ -4059,10 +4060,20 @@ where
     let peer_pid = stream
         .peer_pid()
         .ok_or_else(|| anyhow::anyhow!("Failed to resolve peer pid on ipc channel '_cm'"))?;
+    if expected_pid == 0 || peer_pid != expected_pid {
+        bail!(
+            "_cm endpoint process mismatch: expected {}, got {}",
+            expected_pid,
+            peer_pid
+        );
+    }
     ensure_peer_executable_matches_current_by_pid(peer_pid, "_cm")?;
     let args = macos_process_cmdline_args(peer_pid)?;
     if !cm_process_argv_is_expected(&args, expected_arg) {
         bail!("_cm endpoint mode mismatch: expected {}", expected_arg);
+    }
+    if stream.peer_pid() != Some(expected_pid) {
+        bail!("_cm endpoint process changed during authentication");
     }
     Ok(())
 }
@@ -4071,9 +4082,28 @@ where
 pub(crate) fn authenticate_windows_cm_endpoint(
     stream: &ConnectionTmpl<parity_tokio_ipc::ConnectionClient>,
     expected_arg: &str,
+    expected_identity: WindowsProcessIdentityKey,
 ) -> ResultType<()> {
     let peer_pid = windows_named_pipe_server_pid(stream.inner.get_ref())?;
-    let identity = WindowsPeerProcess::open(peer_pid)?.immutable_identity()?;
+    if peer_pid != expected_identity.pid {
+        bail!(
+            "_cm endpoint process mismatch: expected {}, got {}",
+            expected_identity.pid,
+            peer_pid
+        );
+    }
+    let process = WindowsPeerProcess::open(peer_pid)?;
+    if process.key != expected_identity {
+        bail!(
+            "_cm endpoint process generation mismatch: expected {}:{}, got {}:{}",
+            expected_identity.pid,
+            expected_identity.creation_time,
+            process.key.pid,
+            process.key.creation_time
+        );
+    }
+    process.require_running("connection-manager endpoint")?;
+    let identity = process.immutable_identity()?;
     ensure_windows_identity_matches_current(&identity, "_cm")?;
     if !windows_identity_has_exact_role(&identity, &[expected_arg]) {
         bail!("_cm endpoint mode mismatch: expected {}", expected_arg);
@@ -4081,7 +4111,37 @@ pub(crate) fn authenticate_windows_cm_endpoint(
     if windows_named_pipe_server_pid(stream.inner.get_ref())? != peer_pid {
         bail!("_cm endpoint named-pipe server pid changed during authentication");
     }
+    process.require_running("connection-manager endpoint")?;
     Ok(())
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+fn cm_launch_parent_pid_from_env() -> ResultType<u32> {
+    let pid = std::env::var(crate::common::CM_LAUNCH_PARENT_ENV)
+        .map_err(|err| anyhow::anyhow!("missing connection-manager launch parent: {err}"))?
+        .parse::<u32>()
+        .map_err(|err| anyhow::anyhow!("invalid connection-manager launch parent: {err}"))?;
+    if pid == 0 {
+        bail!("invalid zero connection-manager launch parent");
+    }
+    Ok(pid)
+}
+
+#[cfg(target_os = "windows")]
+fn windows_cm_launch_parent_identity_from_env() -> ResultType<WindowsProcessIdentityKey> {
+    let pid = cm_launch_parent_pid_from_env()?;
+    let creation_time = std::env::var(crate::common::CM_LAUNCH_PARENT_CREATION_ENV)
+        .map_err(|err| {
+            anyhow::anyhow!("missing connection-manager launch parent creation time: {err}")
+        })?
+        .parse::<u64>()
+        .map_err(|err| {
+            anyhow::anyhow!("invalid connection-manager launch parent creation time: {err}")
+        })?;
+    if creation_time == 0 {
+        bail!("invalid zero connection-manager launch parent creation time");
+    }
+    Ok(WindowsProcessIdentityKey { pid, creation_time })
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -4096,9 +4156,33 @@ pub(crate) fn authorize_cm_ipc_connection(stream: &Connection) -> bool {
         }
         return true;
     }
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "macos")]
     {
+        let expected_parent_pid = match cm_launch_parent_pid_from_env() {
+            Ok(pid) => pid,
+            Err(err) => {
+                log::warn!("Rejected _cm IPC peer without launch-parent authority: {err}");
+                return false;
+            }
+        };
+        let actual_parent_pid = unsafe { libc::getppid() };
+        if actual_parent_pid <= 0 || actual_parent_pid as u32 != expected_parent_pid {
+            log::warn!(
+                "Rejected _cm IPC peer after launch parent changed: expected {}, got {}",
+                expected_parent_pid,
+                actual_parent_pid
+            );
+            return false;
+        }
         let peer_pid = stream.peer_pid();
+        if peer_pid != Some(expected_parent_pid) {
+            log::warn!(
+                "Rejected _cm IPC peer outside the exact launch-parent process: expected {}, got {:?}",
+                expected_parent_pid,
+                peer_pid
+            );
+            return false;
+        }
         if let Err(err) = ensure_peer_executable_matches_current_by_pid_opt(peer_pid, "_cm") {
             log::warn!(
                 "Rejected unauthorized connection on _cm IPC channel due to executable mismatch: peer_pid={:?}, err={}",
@@ -4107,22 +4191,82 @@ pub(crate) fn authorize_cm_ipc_connection(stream: &Connection) -> bool {
             );
             return false;
         }
-        #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-        {
-            let Some(peer_pid) = peer_pid else {
-                log::warn!(
-                    "Rejected unauthorized connection on _cm IPC channel: peer pid unavailable"
-                );
-                return false;
-            };
-            if !peer_process_is_current_exe_server(peer_pid) {
-                log::warn!(
-                    "Rejected unauthorized connection on _cm IPC channel: peer is not the current executable's --server process, peer_pid={}",
-                    peer_pid
-                );
+        if !peer_process_is_current_exe_server(expected_parent_pid) {
+            log::warn!(
+                "Rejected unauthorized connection on _cm IPC channel: launch parent is not the current executable's --server process, peer_pid={}",
+                expected_parent_pid
+            );
+            return false;
+        }
+        return true;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        let expected_parent = match windows_cm_launch_parent_identity_from_env() {
+            Ok(identity) => identity,
+            Err(err) => {
+                log::warn!("Rejected _cm IPC peer without launch-parent authority: {err}");
                 return false;
             }
+        };
+        let peer_pid = stream.peer_pid();
+        if peer_pid != Some(expected_parent.pid) {
+            log::warn!(
+                "Rejected _cm IPC peer outside the exact launch-parent process: expected {}, got {:?}",
+                expected_parent.pid,
+                peer_pid
+            );
+            return false;
         }
+        let process = match WindowsPeerProcess::open(expected_parent.pid) {
+            Ok(process) => process,
+            Err(err) => {
+                log::warn!("Rejected _cm IPC launch-parent process: {err}");
+                return false;
+            }
+        };
+        if process.key != expected_parent {
+            log::warn!(
+                "Rejected _cm IPC launch-parent generation: expected {}:{}, got {}:{}",
+                expected_parent.pid,
+                expected_parent.creation_time,
+                process.key.pid,
+                process.key.creation_time
+            );
+            return false;
+        }
+        if let Err(err) = process.require_running("connection-manager launch parent") {
+            log::warn!("Rejected _cm IPC launch-parent liveness: {err}");
+            return false;
+        }
+        let identity = match process.immutable_identity() {
+            Ok(identity) => identity,
+            Err(err) => {
+                log::warn!("Rejected _cm IPC launch-parent identity: {err}");
+                return false;
+            }
+        };
+        if let Err(err) = ensure_windows_identity_matches_current(&identity, "_cm") {
+            log::warn!("Rejected _cm IPC launch-parent executable: {err}");
+            return false;
+        }
+        if !windows_identity_has_exact_role(&identity, &["--server"])
+            && !windows_identity_has_exact_role(
+                &identity,
+                &["--server", crate::common::SERVICE_OWNED_SERVER_ARG],
+            )
+        {
+            log::warn!("Rejected _cm IPC launch parent with the wrong server role");
+            return false;
+        }
+        if stream.peer_pid() != Some(expected_parent.pid) {
+            log::warn!("Rejected _cm IPC peer after named-pipe client pid changed");
+            return false;
+        }
+        return true;
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
+    {
         true
     }
 }

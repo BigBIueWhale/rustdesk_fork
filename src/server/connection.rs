@@ -27,6 +27,8 @@ use crate::{
 };
 #[cfg(any(target_os = "android", target_os = "ios"))]
 use crate::{common::DEVICE_NAME, flutter::connection_manager::start_channel};
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
+use hbb_common::anyhow::anyhow;
 #[cfg(target_os = "android")]
 use hbb_common::protobuf::EnumOrUnknown;
 use hbb_common::tokio::sync::oneshot;
@@ -484,9 +486,162 @@ lazy_static::lazy_static! {
     static ref CM_PEER_IDENTITIES: Arc::<Mutex<Vec<(i32, crate::ipc::LinuxProcessIdentity)>>> = Default::default();
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(target_os = "linux")]
 lazy_static::lazy_static! {
     static ref CM_LAUNCH_TOKEN: String = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
+trait CmOwnedProcess: Send {
+    type Identity: Copy + Eq + fmt::Debug;
+
+    fn identity(&self) -> Self::Identity;
+    fn try_reap_exited(&mut self) -> ResultType<bool>;
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
+struct CmProcessGeneration<P: CmOwnedProcess> {
+    role: &'static str,
+    launch_token: String,
+    identity: P::Identity,
+    process: StdMutex<P>,
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
+fn lease_existing_cm_process<P: CmOwnedProcess>(
+    state: &StdMutex<Option<Arc<CmProcessGeneration<P>>>>,
+    expected_role: &'static str,
+) -> ResultType<Arc<CmProcessGeneration<P>>> {
+    let state = state
+        .lock()
+        .map_err(|_| anyhow!("connection-manager process state lock poisoned"))?;
+    let generation = state
+        .as_ref()
+        .ok_or_else(|| anyhow!("no server-owned connection-manager generation"))?;
+    if generation.role != expected_role {
+        bail!(
+            "connection-manager role mismatch: expected {}, retained {}",
+            expected_role,
+            generation.role
+        );
+    }
+    Ok(generation.clone())
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
+fn lease_or_launch_cm_process<P, F>(
+    state: &StdMutex<Option<Arc<CmProcessGeneration<P>>>>,
+    role: &'static str,
+    launch: F,
+) -> ResultType<Arc<CmProcessGeneration<P>>>
+where
+    P: CmOwnedProcess,
+    F: FnOnce(&str) -> ResultType<P>,
+{
+    let mut state = state
+        .lock()
+        .map_err(|_| anyhow!("connection-manager process state lock poisoned"))?;
+    if let Some(generation) = state.as_ref() {
+        if generation.role != role {
+            bail!(
+                "connection-manager role mismatch: requested {}, retained {}",
+                role,
+                generation.role
+            );
+        }
+        let exited = if Arc::strong_count(generation) == 1 {
+            generation
+                .process
+                .lock()
+                .map_err(|_| anyhow!("connection-manager child lock poisoned"))?
+                .try_reap_exited()?
+        } else {
+            false
+        };
+        if !exited {
+            return Ok(generation.clone());
+        }
+        state.take();
+    }
+
+    let launch_token = crate::encode64(hbb_common::rand::random::<[u8; 32]>());
+    let process = launch(&launch_token)?;
+    let generation = Arc::new(CmProcessGeneration {
+        role,
+        launch_token,
+        identity: process.identity(),
+        process: StdMutex::new(process),
+    });
+    *state = Some(generation.clone());
+    Ok(generation)
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows", test))]
+fn retire_failed_cm_process_if_exited<P: CmOwnedProcess>(
+    state: &StdMutex<Option<Arc<CmProcessGeneration<P>>>>,
+    failed: &Arc<CmProcessGeneration<P>>,
+) -> ResultType<()> {
+    let mut state = state
+        .lock()
+        .map_err(|_| anyhow!("connection-manager process state lock poisoned"))?;
+    let Some(current) = state.as_ref() else {
+        return Ok(());
+    };
+    if !Arc::ptr_eq(current, failed) || Arc::strong_count(current) != 2 {
+        return Ok(());
+    }
+    let exited = current
+        .process
+        .lock()
+        .map_err(|_| anyhow!("connection-manager child lock poisoned"))?
+        .try_reap_exited()?;
+    if exited {
+        state.take();
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
+struct MacosCmProcess(std::process::Child);
+
+#[cfg(target_os = "macos")]
+impl CmOwnedProcess for MacosCmProcess {
+    type Identity = u32;
+
+    fn identity(&self) -> Self::Identity {
+        self.0.id()
+    }
+
+    fn try_reap_exited(&mut self) -> ResultType<bool> {
+        self.0
+            .try_wait()
+            .map(|status| status.is_some())
+            .map_err(|err| anyhow!("failed to reap connection-manager child: {err}"))
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl CmOwnedProcess for crate::platform::WindowsConnectionManagerProcess {
+    type Identity = crate::ipc::WindowsProcessIdentityKey;
+
+    fn identity(&self) -> Self::Identity {
+        crate::platform::WindowsConnectionManagerProcess::identity(self)
+    }
+
+    fn try_reap_exited(&mut self) -> ResultType<bool> {
+        crate::platform::WindowsConnectionManagerProcess::try_reap_exited(self)
+    }
+}
+
+#[cfg(target_os = "macos")]
+type PlatformCmProcess = MacosCmProcess;
+#[cfg(target_os = "windows")]
+type PlatformCmProcess = crate::platform::WindowsConnectionManagerProcess;
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+lazy_static::lazy_static! {
+    static ref OWNED_CM_PROCESS: StdMutex<Option<Arc<CmProcessGeneration<PlatformCmProcess>>>> =
+        StdMutex::new(None);
 }
 
 #[cfg(target_os = "linux")]
@@ -3472,6 +3627,167 @@ impl Subscriber for ConnInner {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod cm_process_generation_tests {
+    use super::*;
+
+    struct FakeCmProcess {
+        identity: u64,
+        exited: bool,
+        reap_error: bool,
+        reap_count: Arc<AtomicUsize>,
+    }
+
+    impl CmOwnedProcess for FakeCmProcess {
+        type Identity = u64;
+
+        fn identity(&self) -> Self::Identity {
+            self.identity
+        }
+
+        fn try_reap_exited(&mut self) -> ResultType<bool> {
+            self.reap_count.fetch_add(1, Ordering::SeqCst);
+            if self.reap_error {
+                bail!("synthetic process liveness query failed");
+            }
+            Ok(self.exited)
+        }
+    }
+
+    #[test]
+    fn active_authentication_lease_prevents_reap_and_generation_replacement() {
+        let state = StdMutex::new(None);
+        let launches = AtomicUsize::new(0);
+        let reaps = Arc::new(AtomicUsize::new(0));
+        let launch = |_: &str| {
+            let identity = launches.fetch_add(1, Ordering::SeqCst) as u64 + 1;
+            Ok(FakeCmProcess {
+                identity,
+                exited: false,
+                reap_error: false,
+                reap_count: reaps.clone(),
+            })
+        };
+
+        let first = lease_or_launch_cm_process(&state, "--cm", launch).unwrap();
+        let second = lease_or_launch_cm_process(&state, "--cm", launch).unwrap();
+        assert!(Arc::ptr_eq(&first, &second));
+        assert_eq!(launches.load(Ordering::SeqCst), 1);
+
+        first.process.lock().unwrap().exited = true;
+        let third = lease_or_launch_cm_process(&state, "--cm", launch).unwrap();
+        assert!(Arc::ptr_eq(&first, &third));
+        assert_eq!(reaps.load(Ordering::SeqCst), 0);
+        assert_eq!(launches.load(Ordering::SeqCst), 1);
+
+        drop(second);
+        drop(third);
+        drop(first);
+        let replacement = lease_or_launch_cm_process(&state, "--cm", launch).unwrap();
+        assert_eq!(replacement.identity, 2);
+        assert_eq!(reaps.load(Ordering::SeqCst), 1);
+        assert_eq!(launches.load(Ordering::SeqCst), 2);
+    }
+
+    #[test]
+    fn failed_authentication_retires_only_the_unshared_exited_generation() {
+        let state = StdMutex::new(None);
+        let reaps = Arc::new(AtomicUsize::new(0));
+        let generation = lease_or_launch_cm_process(&state, "--cm", |_| {
+            Ok(FakeCmProcess {
+                identity: 7,
+                exited: true,
+                reap_error: false,
+                reap_count: reaps.clone(),
+            })
+        })
+        .unwrap();
+        let other_authentication = generation.clone();
+
+        retire_failed_cm_process_if_exited(&state, &generation).unwrap();
+        assert_eq!(reaps.load(Ordering::SeqCst), 0);
+        assert!(lease_existing_cm_process(&state, "--cm").is_ok());
+
+        drop(other_authentication);
+        retire_failed_cm_process_if_exited(&state, &generation).unwrap();
+        assert_eq!(reaps.load(Ordering::SeqCst), 1);
+        assert!(lease_existing_cm_process(&state, "--cm").is_err());
+        assert!(lease_existing_cm_process(&state, "--cm-no-ui").is_err());
+    }
+
+    #[test]
+    fn concurrent_selection_launches_one_generation() {
+        let state = Arc::new(StdMutex::new(None));
+        let launches = Arc::new(AtomicUsize::new(0));
+        let reaps = Arc::new(AtomicUsize::new(0));
+        let start = Arc::new(std::sync::Barrier::new(9));
+
+        std::thread::scope(|scope| {
+            let mut workers = Vec::new();
+            for _ in 0..8 {
+                let state = state.clone();
+                let launches = launches.clone();
+                let reaps = reaps.clone();
+                let start = start.clone();
+                workers.push(scope.spawn(move || {
+                    start.wait();
+                    lease_or_launch_cm_process(&state, "--cm", |_| {
+                        let identity = launches.fetch_add(1, Ordering::SeqCst) as u64 + 1;
+                        Ok(FakeCmProcess {
+                            identity,
+                            exited: false,
+                            reap_error: false,
+                            reap_count: reaps,
+                        })
+                    })
+                    .unwrap()
+                }));
+            }
+            start.wait();
+            for worker in workers {
+                assert_eq!(worker.join().unwrap().identity, 1);
+            }
+        });
+
+        assert_eq!(launches.load(Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn uncertain_liveness_preserves_the_exact_generation() {
+        let state = StdMutex::new(None);
+        let launches = AtomicUsize::new(0);
+        let reaps = Arc::new(AtomicUsize::new(0));
+        let generation = lease_or_launch_cm_process(&state, "--cm", |_| {
+            launches.fetch_add(1, Ordering::SeqCst);
+            Ok(FakeCmProcess {
+                identity: 11,
+                exited: false,
+                reap_error: true,
+                reap_count: reaps.clone(),
+            })
+        })
+        .unwrap();
+        drop(generation);
+
+        assert!(lease_or_launch_cm_process(&state, "--cm", |_| {
+            launches.fetch_add(1, Ordering::SeqCst);
+            Ok(FakeCmProcess {
+                identity: 12,
+                exited: false,
+                reap_error: false,
+                reap_count: reaps.clone(),
+            })
+        })
+        .is_err());
+        assert_eq!(launches.load(Ordering::SeqCst), 1);
+        assert_eq!(reaps.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            lease_existing_cm_process(&state, "--cm").unwrap().identity,
+            11
+        );
     }
 }
 
@@ -10065,23 +10381,42 @@ mod cm_startup_lifecycle_tests {
     }
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+#[cfg(target_os = "linux")]
 pub(crate) fn cm_launch_token() -> &'static str {
     &CM_LAUNCH_TOKEN
 }
 
-#[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
-fn cm_launch_env() -> Vec<(&'static str, String)> {
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+fn cm_launch_env(launch_token: &str) -> Vec<(&'static str, String)> {
     vec![
-        (
-            crate::common::CM_LAUNCH_TOKEN_ENV,
-            cm_launch_token().to_owned(),
-        ),
+        (crate::common::CM_LAUNCH_TOKEN_ENV, launch_token.to_owned()),
         (
             crate::common::CM_LAUNCH_PARENT_ENV,
             std::process::id().to_string(),
         ),
     ]
+}
+
+#[cfg(target_os = "macos")]
+fn lease_or_launch_platform_cm(
+    expected_role: &'static str,
+) -> ResultType<Arc<CmProcessGeneration<PlatformCmProcess>>> {
+    lease_or_launch_cm_process(&OWNED_CM_PROCESS, expected_role, |launch_token| {
+        let child = crate::run_me_with_env(vec![expected_role], cm_launch_env(launch_token))?;
+        Ok(MacosCmProcess(child))
+    })
+}
+
+#[cfg(target_os = "windows")]
+fn lease_or_launch_platform_cm(
+    expected_role: &'static str,
+) -> ResultType<Arc<CmProcessGeneration<PlatformCmProcess>>> {
+    if expected_role != "--cm" {
+        bail!("unsupported Windows connection-manager role {expected_role}");
+    }
+    lease_or_launch_cm_process(&OWNED_CM_PROCESS, expected_role, |launch_token| {
+        crate::platform::run_connection_manager_user_helper(launch_token)
+    })
 }
 
 #[cfg(target_os = "linux")]
@@ -10101,23 +10436,50 @@ async fn connect_authenticated_cm(
 }
 
 #[cfg(target_os = "macos")]
-async fn connect_authenticated_cm(
+async fn connect_authenticated_cm_inner(
     ms_timeout: u64,
-    expected_arg: &str,
+    expected_arg: &'static str,
 ) -> ResultType<ipc::ConnectionTmpl<parity_tokio_ipc::ConnectionClient>> {
+    let generation = lease_existing_cm_process(&OWNED_CM_PROCESS, expected_arg)?;
     let mut stream = crate::ipc::connect(ms_timeout, "_cm").await?;
-    crate::ipc::authenticate_macos_cm_endpoint(&stream, expected_arg)?;
-    crate::ipc::authenticate_cm_endpoint_launch_proof(&mut stream, cm_launch_token(), expected_arg)
-        .await?;
+    crate::ipc::authenticate_macos_cm_endpoint(&stream, expected_arg, generation.identity)?;
+    crate::ipc::authenticate_cm_endpoint_launch_proof(
+        &mut stream,
+        &generation.launch_token,
+        expected_arg,
+    )
+    .await?;
     Ok(stream)
 }
 
 #[cfg(target_os = "windows")]
-async fn connect_authenticated_cm(
+async fn connect_authenticated_cm_inner(
     ms_timeout: u64,
-    expected_arg: &str,
+    expected_arg: &'static str,
 ) -> ResultType<ipc::ConnectionTmpl<parity_tokio_ipc::ConnectionClient>> {
-    crate::ipc::connect_authenticated_windows_cm(ms_timeout, expected_arg, cm_launch_token()).await
+    let generation = lease_existing_cm_process(&OWNED_CM_PROCESS, expected_arg)?;
+    crate::ipc::connect_authenticated_windows_cm(
+        ms_timeout,
+        expected_arg,
+        &generation.launch_token,
+        generation.identity,
+    )
+    .await
+}
+
+#[cfg(any(target_os = "macos", target_os = "windows"))]
+pub(crate) async fn connect_authenticated_cm(
+    ms_timeout: u64,
+    expected_arg: &'static str,
+) -> ResultType<ipc::ConnectionTmpl<parity_tokio_ipc::ConnectionClient>> {
+    let generation = lease_existing_cm_process(&OWNED_CM_PROCESS, expected_arg)?;
+    let result = connect_authenticated_cm_inner(ms_timeout, expected_arg).await;
+    if result.is_err() {
+        if let Err(err) = retire_failed_cm_process_if_exited(&OWNED_CM_PROCESS, &generation) {
+            log::warn!("Failed to retire exited connection-manager generation: {err}");
+        }
+    }
+    result
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -10265,22 +10627,23 @@ async fn start_ipc(
             if crate::platform::is_root() && !headless_service_user {
                 #[cfg(target_os = "windows")]
                 {
-                    let mut res = Ok(None);
+                    let mut res = None;
                     for _ in 0..10 {
                         log::debug!("Start cm");
-                        res = crate::platform::run_user_helper(
-                            crate::platform::WindowsUserHelperLaunch::ConnectionManager {
-                                launch_token: cm_launch_token(),
-                            },
-                        );
-                        if res.is_ok() {
-                            break;
+                        match lease_or_launch_platform_cm("--cm") {
+                            Ok(_) => {
+                                res = None;
+                                break;
+                            }
+                            Err(err) => {
+                                log::error!("Failed to run cm: {err}");
+                                res = Some(err);
+                            }
                         }
-                        log::error!("Failed to run cm: {res:?}");
                         sleep(1.).await;
                     }
-                    if let Some(task) = res? {
-                        super::CHILD_PROCESS.lock().unwrap().push(task);
+                    if let Some(err) = res {
+                        return Err(err);
                     }
                 }
                 #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -10292,11 +10655,16 @@ async fn start_ipc(
             } else {
                 log::debug!("Start cm");
                 #[cfg(target_os = "linux")]
-                let child = crate::common::run_me_with_env_and_parent_death(args, cm_launch_env())?;
-                #[cfg(any(target_os = "macos", target_os = "windows"))]
-                let child = crate::run_me_with_env(args, cm_launch_env())?;
-                #[cfg(any(target_os = "linux", target_os = "macos", target_os = "windows"))]
+                let child = crate::common::run_me_with_env_and_parent_death(
+                    args,
+                    cm_launch_env(cm_launch_token()),
+                )?;
+                #[cfg(target_os = "linux")]
                 super::CHILD_PROCESS.lock().unwrap().push(child);
+                #[cfg(target_os = "macos")]
+                lease_or_launch_platform_cm("--cm")?;
+                #[cfg(target_os = "windows")]
+                lease_or_launch_platform_cm("--cm")?;
                 #[cfg(not(any(target_os = "linux", target_os = "macos", target_os = "windows")))]
                 super::CHILD_PROCESS
                     .lock()

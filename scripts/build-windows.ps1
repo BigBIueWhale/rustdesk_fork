@@ -1090,6 +1090,12 @@ if /I "%~1"=="build" (
     cargo test --offline --locked --lib --features flutter --color never windows_service_
     if ($LASTEXITCODE -ne 0) { Die "Windows service supervision Rust library suite failed (exit $LASTEXITCODE) -- Windows runtime tests must pass before build.py --flutter" }
 
+    Write-Host "[harness] testing Windows helper launch and exact CM generation ownership -- Windows x64, cargo $RUST_VERSION, offline/locked, features flutter"
+    cargo test --offline --locked --lib --features flutter --color never process_launch_tests
+    if ($LASTEXITCODE -ne 0) { Die "Windows helper launch suite failed (exit $LASTEXITCODE) -- native process identity and exact CM launch tests must pass before build.py --flutter" }
+    cargo test --offline --locked --lib --features flutter --color never cm_process_generation_tests
+    if ($LASTEXITCODE -ne 0) { Die "Exact CM generation ownership suite failed (exit $LASTEXITCODE) -- generation selection and retirement tests must pass before build.py --flutter" }
+
     cargo test --offline --locked --lib --features flutter --color never windows_credential_
     if ($LASTEXITCODE -ne 0) { Die "Windows credential state-machine suite failed (exit $LASTEXITCODE) -- Windows runtime tests must pass before build.py --flutter" }
     cargo test --offline --locked --lib --features flutter --color never windows_replica_
@@ -1118,7 +1124,22 @@ if /I "%~1"=="build" (
     # registrar shim. Build and execute the same production source and test body
     # against this artifact build's pinned Flutter Windows wrapper before any
     # package can be emitted. EXCLUDE_FROM_ALL keeps the test out of the product.
-    & cmake --build $flutterBuildRoot --config Release --target texture_rgba_renderer_windows_core_test
+    # CMake is supplied by the pinned Visual Studio Build Tools installation, but it is not on the
+    # golden guest's PATH. Resolve that exact installation just as the later MSI step resolves
+    # MSBuild; do not fall back to an ambient executable with the same name.
+    $vsw = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
+    [void](Get-OrdinaryPathItem $vsw $true)
+    $vsPath = (& $vsw -products * -latest -property installationPath 2>$null | Select-Object -First 1)
+    if (-not $vsPath) { Die "vswhere found no VS install (need VS BuildTools with CMake and MSBuild)" }
+    [void](Get-OrdinaryPathItem $vsPath $false)
+    $cmakeExe = Join-Path $vsPath 'Common7\IDE\CommonExtensions\Microsoft\CMake\CMake\bin\cmake.exe'
+    [void](Get-OrdinaryPathItem $cmakeExe $true)
+    # Flutter's generated flutter_assemble target is deliberately phony. The complete product build
+    # above has already built its exact DLL/import library and wrapper in this same tree; asking
+    # MSBuild to rebuild project references here would rerun asset assembly and collide with its own
+    # existing flutter_assets. Compile/link only the excluded test project against those completed
+    # pinned outputs.
+    & $cmakeExe --build $flutterBuildRoot --config Release --target texture_rgba_renderer_windows_core_test -- /p:BuildProjectReferences=false
     if ($LASTEXITCODE -ne 0) { Die "native Windows texture callback-core build failed (exit $LASTEXITCODE) -- the production core must compile against the pinned Flutter wrapper" }
     if (-not (Test-Path -LiteralPath $textureCoreTest -PathType Leaf)) {
         Die "native Windows texture callback-core test was not produced at $textureCoreTest"
@@ -1154,7 +1175,12 @@ if /I "%~1"=="build" (
     $env:NUGET_PACKAGES = $wixPkgs
     $env:NUGET_CERT_REVOCATION_MODE = 'offline'
     $env:DOTNET_NUGET_SIGNATURE_VERIFICATION = 'true'
-    $nugetCfg = Join-Path $env:TEMP "rustdesk-wix-nuget-$($env:RUSTDESK_BUILD_RUN_ID).config"
+    # WixToolset.Sdk is itself a NuGet-resolved MSBuild SDK. Its resolver evaluates the project
+    # before RestoreConfigFile can affect the ordinary restore target, so the exact signed-source
+    # configuration must be discoverable through NuGet's solution-directory hierarchy. This source
+    # tree is one run-scoped throwaway guest copy; the occupied-path check and CreateNew below keep
+    # the fixed resolver filename fail-closed.
+    $nugetCfg = Join-Path $SRC 'res\msi\NuGet.Config'
     if (Test-Path -LiteralPath $nugetCfg) {
         Die ".msi: run-scoped WiX NuGet config path is already occupied: $nugetCfg"
     }
@@ -1210,11 +1236,8 @@ if /I "%~1"=="build" (
     if ($wixLockItem.Length -le 0) { Die '.msi: committed NuGet lock file is empty' }
     $wixLockBefore = (Get-FileHash -LiteralPath $wixLock -Algorithm SHA256).Hash
     if (-not (Test-Path (Join-Path $msiDist 'rustdesk.exe') -PathType Leaf)) { Die ".msi: flutter dist (rustdesk.exe) not at $msiDist -- build.py --flutter should produce it" }
-    # msbuild lives in the VS install dir, NOT on PATH by default (the golden has no CI "Add MSBuild to
-    # PATH" step). Locate it via vswhere (-products * so it finds BuildTools, not just full VS) + prepend.
-    $vsw = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\vswhere.exe'
-    $vsPath = (& $vsw -products * -latest -property installationPath 2>$null | Select-Object -First 1)
-    if (-not $vsPath) { Die ".msi: vswhere found no VS install (need VS BuildTools with MSBuild)" }
+    # msbuild lives in the same already-validated VS install dir, NOT on PATH by default (the golden
+    # has no CI "Add MSBuild to PATH" step). Prepend only its exact directory.
     $msbuildDir = Join-Path $vsPath 'MSBuild\Current\Bin'
     if (-not (Test-Path (Join-Path $msbuildDir 'MSBuild.exe'))) { Die ".msi: MSBuild.exe not under $msbuildDir" }
     $env:PATH = "$msbuildDir;$env:PATH"

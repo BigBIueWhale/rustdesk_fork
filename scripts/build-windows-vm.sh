@@ -1342,6 +1342,7 @@ extract_and_validate() {
         cd "$result"
         sha256sum rustdesk-setup.exe >rustdesk-setup.exe.sha256
         sha256sum rustdesk.msi >rustdesk.msi.sha256
+        chmod 0644 -- rustdesk-setup.exe.sha256 rustdesk.msi.sha256
     )
     for diagnostic in build-log.txt run-build-progress.txt; do
         if [ -f "$extracted/$diagnostic" ] && [ ! -L "$extracted/$diagnostic" ]; then

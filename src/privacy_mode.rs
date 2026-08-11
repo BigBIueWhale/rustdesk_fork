@@ -313,12 +313,7 @@ async fn set_privacy_mode_state(
     impl_key: String,
     ms_timeout: u64,
 ) -> ResultType<()> {
-    let mut c = crate::ipc::connect_authenticated_windows_cm(
-        ms_timeout,
-        "--cm",
-        crate::server::cm_launch_token(),
-    )
-    .await?;
+    let mut c = crate::server::connect_authenticated_cm(ms_timeout, "--cm").await?;
     c.send(&Data::PrivacyModeState((conn_id, state, impl_key)))
         .await
 }

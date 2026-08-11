@@ -5772,7 +5772,7 @@ independent reproduction, and external review remain open. No root/sudo, privile
 published port, Docker socket, device, host namespace, RustDesk host process/configuration,
 firewall/UFW/nftables/iptables, or host network state was used or inspected for this slice.
 
-**R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; HISTORIC NATIVE WINDOWS TEST-SUITE AND BUILD EVIDENCE RECORDED AT A NAMED TREE; EXACT-CURRENT NATIVE WINDOWS AND CLEAN COMMITTED COLD RELEASE EVIDENCE PENDING.**
+**R-S11b/R-S11c/R-S11i — service-owned IPC authority — SOURCE IMPLEMENTED; EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM, CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING.**
 Installed-service unattended credentials and machine remote-access policy are owned by the root,
 LocalSystem, or LaunchDaemon authority that enforces them. Password bodies use only the raw `_password` and
 `_service_password` protocols. Ordinary main and `_service` IPC contain no password-bearing request, generic
@@ -5957,9 +5957,9 @@ network configuration was inspected or changed.
   the same generation-bound proof and supplies the root PRS-or-empty snapshot. Post-persistence divergence
   fail-stops the service generation. Ordinary main IPC carries no password fallback. A nonsecret status query is
   used only for admitted uncertainty. The packaged polkit policy remains administrator-authenticated.
-- **R-S11b-2d/R-S11c-1e — Windows service-owned unattended password authority — SOURCE IMPLEMENTED; HISTORIC
-  NATIVE WINDOWS TEST-SUITE AND BUILD EVIDENCE RECORDED AT THE NAMED TREE; EXACT-CURRENT NATIVE EVIDENCE
-  PENDING.** The stable LocalSystem SCM service is the sole durable credential
+- **R-S11b-2d/R-S11c-1e — Windows service-owned unattended password authority — SOURCE IMPLEMENTED;
+  EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT THE NAMED CLEAN PUSHED
+  COMMIT; INSTALLED-SCM AND COLD DOUBLE-BUILD EVIDENCE PENDING.** The stable LocalSystem SCM service is the sole durable credential
   writer and replay/finality owner. Mutation enters through raw `_service_password`, not `_service` or an old
   service-main credential endpoint. One `FILE_FLAG_FIRST_PIPE_INSTANCE`, `PIPE_REJECT_REMOTE_CLIENTS`,
   max-instances-one message pipe is held for process life and serially reused. The service DACL admits Interactive
@@ -5991,8 +5991,47 @@ network configuration was inspected or changed.
   `libs/hbb_common/src/config.rs`. Those later changes have source and unit/model verification, but a native run of
   the earlier bytes cannot validate them. The 2026-08-10 current-source Windows presentation transaction exercised
   secondary-window Flutter/D3D11 teardown and focus/minimize behavior only; it did not rerun the native
-  service/credential/SAS/password-finality suites or an installed SCM credential transaction. Exact-current native
-  Windows credential-path evidence therefore remains open.
+  service/credential/SAS/password-finality suites or an installed SCM credential transaction.
+
+  The exact-current native gap was subsequently rerun from clean pushed commit
+  `f0ff7532721da0ccccf3ba186274db5ade8cdb8e`, Git tree
+  `5310e240d752edcd0913d085175ab078073504a6`, source manifest
+  `c2493e1422da0862390d2ba2d94bc07424f4917f9bc5db5eea224cd0a0ed750e`, and guest offline manifest
+  `5f73c336c9ff43f850a0d9643fb76b97f2cfe9a81c8bd37f4b94ed68c6f0687a`. The unprivileged host harness
+  independently verified canonical online closure
+  `eacb4d0fadb044f2f38520ad5263470a89c286bed69927ce2c32babcbc01ab24`, copied and rehashed the pinned
+  35-GiB Windows golden, generated the exact bridge in the immutable networkless Debian builder, and ran one fresh
+  Windows pass with `DOUBLE_BUILD=0`. Domain `rustdesk-fork-harness-win-ddfef964-A`, UUID
+  `59291406-0b53-4827-9203-77e921d12f82`, had zero network interfaces; its sole added listener was QEMU VNC on
+  `127.0.0.1:5900`. After controlled guest shutdown, the domain, QEMU/virt-install processes, loopback listener,
+  and exact private run root were absent; the complete host listener inventory and Git inventory were byte-for-byte
+  identical to their pre-run baselines. No root, sudo, privileged container, host RustDesk process/service/config,
+  firewall, routing, or host-network-setting mutation was used.
+
+  The exact source-bound guest script unconditionally ran, with an immediate fatal check after each command, the
+  `terminal_`, `windows_service_`, `process_launch_tests`, `cm_process_generation_tests`, real named-pipe
+  `windows_cm_lifecycle_probe`, `windows_credential_`, `windows_replica_`, `windows_service_owned_root`,
+  `windows_sas_`, `password_mutation`, and `desktop_input_queue_tests` native filters before the Windows
+  application/package build. `run-build-progress.txt` records exact source/offline verification followed by
+  `build-windows.ps1 exit=0`, artifact copy, and controlled shutdown. The nested PowerShell transcript begins
+  mid-warning after the early filters, so those commands are checked-exit/progression evidence rather than falsely
+  claimed per-test transcript evidence. It directly retains later native groups of 1, 2, 2, 8, and 29 tests passing
+  with zero failures plus `texture_rgba_windows_core_test: PASS`. The build retained the existing Rust warnings;
+  WiX validation retained ten warnings and zero errors, so no warning-free or diagnostic-clean claim is made.
+
+  Host canonical validation accepted the guest PE and MSI. The 18,533,888-byte setup SHA-256 is
+  `3411ca5afb38bc66537aaaba34f845949be7d0df889863396a64d5f101199330`; the 18,308,615-byte MSI SHA-256 is
+  `6700853f3d99a8b6e1e982c4e62d22d659e65400f0f437384d4b8f79d8a94265`, with package code
+  `{69AA4CC3-A484-5264-A4B8-3458E9293A4A}`. The complete 119,313-byte transcript SHA-256 is
+  `4ee6b0a1cc3e73aaf616431e7fce19f8d4c2a67937666a925487ba6badd0d070`; the canonical progress-record
+  SHA-256 is `8445388e2e79f973b92938a6151183b0f3d09e58e78634c488cbc0aaee5a509a`.
+
+  This closes exact-current native Windows compilation, fail-closed test/probe execution, and one clean-commit
+  package-build pass for this credential-authority source. It does not install the MSI, run the credential receiver
+  as LocalSystem under SCM, perform a real UAC/admin-authorized password change, prove durable store/replica behavior
+  across service restart, or exercise service stop during an admitted real mutation. It is also not a second fresh
+  build, byte-equality proof, full cold R-B2/R-B10 transaction, independent reproduction, or external review. Those
+  remain release-blocking.
 - **R-S11b-2e/R-S11c-1f — macOS service-owned unattended password provisioning — SOURCE IMPLEMENTED; APPLE
   SOURCE-CONFORMANCE GATE AVAILABLE.** Generic `_service` proof and password `_service_password` proof use separate
   fixed capacities. The accepted socket's uid, effective-pid metadata, and `LOCAL_PEERTOKEN` audit token are
@@ -7493,8 +7532,8 @@ network configuration was inspected or changed.
   No ordinary-user-to-root path was proved in the old fixed call sites. Verification now gates the explicit IOKit
   link/native activity path, both subprocess deletions, the fail-closed service topology, and the superseding
   requirements/ledger disposition.
-- **R-S11e-11 — Windows service-owned password receiver proof — SOURCE IMPLEMENTED; HISTORIC NATIVE WINDOWS
-  TEST-SUITE EVIDENCE RECORDED VIA R-S11b-2d; EXACT-CURRENT NATIVE AND EXACT-COMMIT R-B2 EVIDENCE PENDING.** Mutation terminates directly in the
+- **R-S11e-11 — Windows service-owned password receiver proof — SOURCE IMPLEMENTED; EXACT-CURRENT NATIVE WINDOWS
+  TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN VIA R-S11b-2d; INSTALLED-SCM AND COLD R-B2 EVIDENCE PENDING.** Mutation terminates directly in the
   stable LocalSystem SCM service on raw `_service_password`. The client authenticates the fixed service image, LocalSystem token, exact service role,
   and process generation before sending. The process-lifetime first-instance listener preauthorizes the exact
   active-principal RustDesk role before header wait, proves the header message by impersonation before body read,
@@ -7504,8 +7543,12 @@ network configuration was inspected or changed.
   test-suite evidence recorded in R-S11b-2d/R-S11c-1e above: retry 15 of staged tree
   `ad2dd37c3698945d1071e091c68d26d64bc32b54` passed the native service/credential/SAS/password-finality/input
   suites in two fresh networkless Windows guests. Subsequent changes to the authority-critical production files
-  mean that evidence does not validate current `master`; exact-current native reruns remain required independently
-  of the exact committed cold-release artifact evidence owned by R-B2.
+  mean that evidence does not validate current `master`. The later clean pushed `f0ff7532721da0ccccf3ba186274db5ade8cdb8e`
+  transaction recorded in R-S11b-2d reran the exact source-bound Windows service/credential/SAS/password-finality/
+  input filters and one full package build in a fresh zero-interface guest, with final exit zero, exact cleanup, and
+  byte-for-byte host-listener restoration. That closes the exact-current native suite/build gap only. Installed SCM/
+  LocalSystem mutation behavior and the exact committed cold double-build/reproducibility evidence owned by R-B2
+  remain open.
 - **R-S11e-12 — macOS clipboard-file paste no-follow finalize — CLOSED 2026-07-11.**
   Platform: macOS desktop with `unix-file-copy-paste`. Endpoint/action: CLIPRDR file paste after a local
   Finder/pasteboard paste operation asks the authenticated peer for `FILEDESCRIPTOR` metadata and file contents.

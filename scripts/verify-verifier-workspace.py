@@ -41925,9 +41925,27 @@ def validate_universal_software_codec_build_gate(sources):
 def validate_windows_native_credential_evidence_scope_contract(sources):
     for source, token, label in (
         ("verify", "grep -Fiq 'current-worktree native evidence' HARDENING_STATUS.md", "stale current-worktree native-evidence rejection"),
-        ("hardening", "HISTORIC NATIVE WINDOWS TEST-SUITE AND BUILD EVIDENCE RECORDED AT A NAMED TREE", "historic native-Windows evidence scope"),
-        ("hardening", "EXACT-CURRENT NATIVE WINDOWS AND CLEAN COMMITTED COLD RELEASE EVIDENCE PENDING", "exact-current native-Windows evidence gap"),
-        ("hardening", "TEST-SUITE EVIDENCE RECORDED VIA R-S11b-2d; EXACT-CURRENT NATIVE AND EXACT-COMMIT R-B2 EVIDENCE PENDING", "R-S11e-11 exact-current evidence gap"),
+        (
+            "verify",
+            "grep -Fq 'EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM, CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING' HARDENING_STATUS.md",
+            "exact-current native-Windows verifier boundary",
+        ),
+        (
+            "hardening",
+            "EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM, CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING",
+            "exact-current native-Windows evidence boundary",
+        ),
+        (
+            "hardening",
+            "TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN VIA R-S11b-2d; INSTALLED-SCM AND COLD R-B2 EVIDENCE PENDING",
+            "R-S11e-11 exact-current evidence boundary",
+        ),
+        (
+            "hardening",
+            "This closes exact-current native Windows compilation, fail-closed test/probe execution, and one clean-commit\n  package-build pass for this credential-authority source. It does not install the MSI, run the credential receiver",
+            "exact-current native-Windows execution scope",
+        ),
+        ("hardening", "This is native test-suite and build evidence for exactly that staged tree, not installed-SCM", "historic native-Windows evidence scope"),
         ("hardening", "native evidence for current `master`: later commits changed all five authority-critical production files", "later-source-change invalidation statement"),
         ("hardening", "not installed-SCM\n  end-to-end password-mutation evidence", "installed-SCM evidence exclusion"),
         ("hardening", "it did not rerun the native\n  service/credential/SAS/password-finality suites", "presentation/credential evidence distinction"),
@@ -45918,9 +45936,15 @@ def run_source_mutations(sources):
     mutations = (
         (
             "hardening",
-            "HISTORIC NATIVE WINDOWS TEST-SUITE AND BUILD EVIDENCE RECORDED AT A NAMED TREE",
-            "CURRENT NATIVE WINDOWS WORKTREE VALIDATED",
-            "historic native-Windows evidence scope",
+            "EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM, CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING",
+            "EXACT-CURRENT NATIVE WINDOWS RELEASE, INSTALLED-SCM, AND EXTERNAL-REVIEW EVIDENCE COMPLETE",
+            "exact-current native-Windows evidence boundary",
+        ),
+        (
+            "verify",
+            "grep -Fq 'EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM, CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING' HARDENING_STATUS.md",
+            "grep -Fq 'EXACT-CURRENT NATIVE WINDOWS RELEASE, INSTALLED-SCM, AND EXTERNAL-REVIEW EVIDENCE COMPLETE' HARDENING_STATUS.md",
+            "exact-current native-Windows verifier boundary",
         ),
         (
             "hardening",

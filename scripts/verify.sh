@@ -3244,14 +3244,18 @@ if grep -Fiq 'current-worktree native evidence' HARDENING_STATUS.md \
     || grep -Fq 'WORKTREE VALIDATED VIA R-S11b-2d' HARDENING_STATUS.md; then
   r_s11b2="$r_s11b2 stale-windows-current-native-evidence-claim"
 fi
-grep -Fq 'HISTORIC NATIVE WINDOWS TEST-SUITE AND BUILD EVIDENCE RECORDED AT A NAMED TREE' HARDENING_STATUS.md ||
+grep -Fq 'This is native test-suite and build evidence for exactly that staged tree, not installed-SCM' HARDENING_STATUS.md ||
   r_s11b2="$r_s11b2 windows-historic-native-scope-missing"
-grep -Fq 'EXACT-CURRENT NATIVE WINDOWS AND CLEAN COMMITTED COLD RELEASE EVIDENCE PENDING' HARDENING_STATUS.md ||
-  r_s11b2="$r_s11b2 windows-exact-current-native-gap-missing"
-grep -Fq 'R-S11e-11 — Windows service-owned password receiver proof — SOURCE IMPLEMENTED; HISTORIC NATIVE WINDOWS' HARDENING_STATUS.md ||
+grep -Fq 'EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM, CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING' HARDENING_STATUS.md ||
+  r_s11b2="$r_s11b2 windows-exact-current-native-boundary-missing"
+grep -Fq 'R-S11e-11 — Windows service-owned password receiver proof — SOURCE IMPLEMENTED; EXACT-CURRENT NATIVE WINDOWS' HARDENING_STATUS.md ||
   r_s11b2="$r_s11b2 r-s11e-11-status-prefix-missing"
-grep -Fq 'TEST-SUITE EVIDENCE RECORDED VIA R-S11b-2d; EXACT-CURRENT NATIVE AND EXACT-COMMIT R-B2 EVIDENCE PENDING' HARDENING_STATUS.md ||
+grep -Fq 'TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN VIA R-S11b-2d; INSTALLED-SCM AND COLD R-B2 EVIDENCE PENDING' HARDENING_STATUS.md ||
   r_s11b2="$r_s11b2 r-s11e-11-validation-scope-missing"
+grep -Fq 'This closes exact-current native Windows compilation, fail-closed test/probe execution, and one clean-commit' HARDENING_STATUS.md ||
+  r_s11b2="$r_s11b2 windows-exact-current-native-scope-missing"
+grep -Fq 'It does not install the MSI, run the credential receiver' HARDENING_STATUS.md ||
+  r_s11b2="$r_s11b2 windows-installed-scm-gap-missing"
 grep -Fq 'native evidence for current `master`: later commits changed all five authority-critical production files' HARDENING_STATUS.md ||
   r_s11b2="$r_s11b2 windows-native-evidence-invalidation-missing"
 grep -Fq 'not installed-SCM' HARDENING_STATUS.md ||

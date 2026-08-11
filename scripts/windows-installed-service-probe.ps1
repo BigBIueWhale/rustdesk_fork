@@ -691,7 +691,14 @@ function Invoke-MainProbe {
     $msiSha256 = Get-FileSha256 $msi
 
     $install = Invoke-RedirectedProcess $canonicalSetup '--silent-install' $null 300
-    if ($install.ExitCode -ne 0) { Fail "canonical setup installation failed with exit $($install.ExitCode)" }
+    if ($install.ExitCode -ne 0) {
+        # This process receives no credential input. Preserve its already-bounded
+        # diagnostics so an MSI/staging failure is actionable without weakening
+        # the installed-service verdict or rerunning an unobserved transaction.
+        $installStdout = $install.Stdout.Replace("`r", '\r').Replace("`n", '\n')
+        $installStderr = $install.Stderr.Replace("`r", '\r').Replace("`n", '\n')
+        Fail "canonical setup installation failed with exit $($install.ExitCode); stdout=$installStdout; stderr=$installStderr"
+    }
 
     $programFiles = [Environment]::GetFolderPath([Environment+SpecialFolder]::ProgramFiles)
     if ([string]::IsNullOrWhiteSpace($programFiles)) { Fail 'Program Files known folder is empty' }

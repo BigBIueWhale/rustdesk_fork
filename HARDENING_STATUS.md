@@ -7156,6 +7156,17 @@ network configuration was inspected or changed.
   verifier passes, and the complete harness self-test passes all 240 deliberate mutations and six bounded
   behavioral suites after the correction. No product or installed-service pass criterion changed.
 
+  Clean commit `6a2b8a97885f9fee7f86f0b720a5078c34d05108`, tree
+  `6f7d9923fb237c0a20d9dd19a66451fa8913e0c1`, and run
+  `00404c8f-a44c-4d53-8d2c-e71148742873-A` proved that correction: the native Rust suites, Flutter build, callback-
+  core test, locked WiX/MSI build, setup build, redirected-input regression, and release probe all completed, and
+  `build-windows.ps1 exit=0` was retained. The installed-service probe then canonicalized the final setup but its
+  `--silent-install` process returned exit 1 before any SCM assertion. Its bounded child stdout/stderr were captured
+  in memory but the probe's failure message retained only the exit code, so the evidence cannot yet distinguish a
+  Windows Installer status from protected-staging or cleanup rejection. The probe now escapes and retains those
+  already-bounded diagnostics on this credential-free setup call's failure path. This changes no installer,
+  RustDesk product, authorization, SCM assertion, or pass criterion; installed-SCM success remains unproven.
+
   No native installed-SCM success is claimed yet. Only a passing exact-current zero-interface VM transaction may
   change this row and Appendix C #345 from pending to native green. Even then the claim is limited to the exact
   installed Windows credential path: cold two-pass R-B2 equality, LocalSystem CM generation behavior, graphical

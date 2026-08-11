@@ -2046,6 +2046,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     for literal, description in (
         ("canonicalize-pe.py", "final setup-byte canonicalization"),
         ("Invoke-RedirectedProcess $canonicalSetup '--silent-install'", "canonical setup execution"),
+        ("stdout=$installStdout; stderr=$installStderr", "bounded canonical setup failure diagnostics"),
         ("$installedSha256 -cne $builtSha256", "installed executable byte proof"),
         ("Invoke-LimitedTask $installed", "same-principal least-token rejection"),
         ("$wrongExe $WrongImageFixture $false", "copied-image rejection"),

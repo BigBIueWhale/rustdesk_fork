@@ -1915,18 +1915,32 @@ def validate_sources(sources: dict[str, str]) -> None:
         (
             "build-windows.stdout.txt",
             "build-windows.stderr.txt",
+            "$savedErrorActionPreference = $ErrorActionPreference",
+            "$ErrorActionPreference = 'Continue'",
             "1> $buildStdout",
             "2> $buildStderr",
+            "$buildExit = $LASTEXITCODE",
+            "$ErrorActionPreference = $savedErrorActionPreference",
             "build-windows.ps1 exit=$buildExit",
             "windows-installed-service-probe.stdout.txt",
             "windows-installed-service-probe.stderr.txt",
+            "$savedErrorActionPreference = $ErrorActionPreference",
+            "$ErrorActionPreference = 'Continue'",
             "windows-installed-service-probe.ps1",
+            "1> $installedServiceStdout",
+            "2> $installedServiceStderr",
+            "$installedServiceExit = $LASTEXITCODE",
+            "$ErrorActionPreference = $savedErrorActionPreference",
             "windows-installed-service-probe.ps1 exit=$installedServiceExit",
             "installed-service probe did not publish its exact result receipt",
             "foreach ($name in @('rustdesk-setup.exe'",
         ),
         "guest build, installed-SCM transaction, and artifact-copy order",
     )
+    if guest.count("$savedErrorActionPreference = $ErrorActionPreference") != 2:
+        fail("guest must isolate both native PowerShell diagnostic-capture boundaries")
+    if guest.count("$ErrorActionPreference = $savedErrorActionPreference") != 2:
+        fail("guest must restore fail-loud behavior after both diagnostic-capture boundaries")
     for literal, description in (
         ("Assert-BoundedOrdinaryDiagnostic $buildStdout (64 * 1024 * 1024)", "bounded Windows build stdout"),
         ("Assert-BoundedOrdinaryDiagnostic $buildStderr (64 * 1024 * 1024)", "bounded Windows build stderr"),

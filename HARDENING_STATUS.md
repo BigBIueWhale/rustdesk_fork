@@ -7141,6 +7141,21 @@ network configuration was inspected or changed.
   build stdout/stderr are retained directly as bounded offline diagnostics so an outer hard stop cannot again leave
   only an unflushed parent transcript. No product or installed-service pass criterion changed.
 
+  The next clean retry, commit `27cbbbf0806ec7cfad32defcd8ccbd25504acfdc`, tree
+  `f19facbdcc5844bccde94bbc72b60fdf0776f341`, and run
+  `b9ec3852-7a4c-43d6-a848-dceebe1883b2-A`, also failed before installation. The disposable domain passed the
+  zero-interface/loopback-VNC launch gates, and source/offline identity reverified. Direct output retention then
+  exposed a diagnostic-boundary defect immediately after the first Cargo test began: Windows PowerShell 5.1
+  represented Cargo's ordinary native-stderr `Compiling proc-macro2 v1.0.93` progress as a non-terminating error in
+  the parent redirection pipeline; the parent's global `ErrorActionPreference = Stop` promoted it to termination
+  before `$LASTEXITCODE` could be checked. The guest shut down and the host rejected the missing completion marker.
+  This is neither a RustDesk test failure nor installed-SCM evidence; Rust compilation did not complete and the
+  installed probe never began. The minimal correction sets `ErrorActionPreference = Continue` only around each
+  outer child-PowerShell stdout/stderr capture, captures the exact child exit, and restores `Stop` unconditionally
+  in `finally`; both child scripts remain fail-loud and every nonzero exit remains terminal. The confined normal
+  verifier passes, and the complete harness self-test passes all 240 deliberate mutations and six bounded
+  behavioral suites after the correction. No product or installed-service pass criterion changed.
+
   No native installed-SCM success is claimed yet. Only a passing exact-current zero-interface VM transaction may
   change this row and Appendix C #345 from pending to native green. Even then the claim is limited to the exact
   installed Windows credential path: cold two-pass R-B2 equality, LocalSystem CM generation behavior, graphical

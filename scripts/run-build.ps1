@@ -484,10 +484,22 @@ try {
     Set-Location $source
     $buildStdout = Join-Path $out 'build-windows.stdout.txt'
     $buildStderr = Join-Path $out 'build-windows.stderr.txt'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'scripts\build-windows.ps1') `
-        1> $buildStdout `
-        2> $buildStderr
-    $buildExit = $LASTEXITCODE
+    # Windows PowerShell 5.1 represents a native child's redirected stderr as
+    # non-terminating ErrorRecord objects.  With this parent script's fail-loud
+    # preference, ordinary Cargo progress on stderr would otherwise abort the
+    # parent before $LASTEXITCODE can be checked.  Relax only this capture
+    # boundary, restore it unconditionally, and retain the child's exact exit as
+    # the authority for success.
+    $savedErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'scripts\build-windows.ps1') `
+            1> $buildStdout `
+            2> $buildStderr
+        $buildExit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $savedErrorActionPreference
+    }
     Assert-BoundedOrdinaryDiagnostic $buildStdout (64 * 1024 * 1024)
     Assert-BoundedOrdinaryDiagnostic $buildStderr (64 * 1024 * 1024)
     Mark "build-windows.ps1 exit=$buildExit"
@@ -498,14 +510,20 @@ try {
     $installedServiceReceipt = Join-Path $out 'windows-installed-service-result.json'
     $installedServiceStdout = Join-Path $out 'windows-installed-service-probe.stdout.txt'
     $installedServiceStderr = Join-Path $out 'windows-installed-service-probe.stderr.txt'
-    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'scripts\windows-installed-service-probe.ps1') `
-        -Mode Main `
-        -ReceiptPath $installedServiceReceipt `
-        -ProbeExe (Join-Path $source 'target\release\examples\probe_client.exe') `
-        -PythonExe 'C:\Program Files\Python311\python.exe' `
-        1> $installedServiceStdout `
-        2> $installedServiceStderr
-    $installedServiceExit = $LASTEXITCODE
+    $savedErrorActionPreference = $ErrorActionPreference
+    try {
+        $ErrorActionPreference = 'Continue'
+        & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'scripts\windows-installed-service-probe.ps1') `
+            -Mode Main `
+            -ReceiptPath $installedServiceReceipt `
+            -ProbeExe (Join-Path $source 'target\release\examples\probe_client.exe') `
+            -PythonExe 'C:\Program Files\Python311\python.exe' `
+            1> $installedServiceStdout `
+            2> $installedServiceStderr
+        $installedServiceExit = $LASTEXITCODE
+    } finally {
+        $ErrorActionPreference = $savedErrorActionPreference
+    }
     foreach ($diagnostic in @($installedServiceStdout, $installedServiceStderr)) {
         Assert-BoundedOrdinaryDiagnostic $diagnostic 65536
     }

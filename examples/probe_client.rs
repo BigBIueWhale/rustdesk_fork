@@ -25,11 +25,78 @@
 //! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
 //!
-//! Usage: `probe_client <addr> <password> <ok|fail> [read|login|inject|portforward|filetransfer] [local_addr]`  (exit 0 = matched)
+//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer] [local_addr]`  (exit 0 = matched)
 use hbb_common::cpace::run_initiator;
 use hbb_common::message_proto::{login_response, message, Message};
 use hbb_common::protobuf::Message as _; // parse_from_bytes / write_to_bytes
 use hbb_common::tcp::FramedStream;
+use std::io::{BufRead, IsTerminal as _};
+
+const PROBE_PASSWORD_MAX_BYTES: usize = 4096;
+
+struct ProbePassword(Vec<u8>);
+
+impl ProbePassword {
+    fn as_bytes(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl Drop for ProbePassword {
+    fn drop(&mut self) {
+        hbb_common::sodiumoxide::utils::memzero(&mut self.0);
+    }
+}
+
+fn read_probe_password_line(reader: &mut impl BufRead) -> Result<ProbePassword, String> {
+    let mut bytes = Vec::with_capacity(PROBE_PASSWORD_MAX_BYTES + 2);
+    let mut bounded = std::io::Read::take(reader, (PROBE_PASSWORD_MAX_BYTES + 2) as u64);
+    let read = bounded
+        .read_until(b'\n', &mut bytes)
+        .map_err(|err| format!("failed to read probe password from stdin: {err}"))?;
+    if read == 0 {
+        return Err("stdin ended before a probe password line was read".to_owned());
+    }
+    if bytes.last() == Some(&b'\n') {
+        bytes.pop();
+        if bytes.last() == Some(&b'\r') {
+            bytes.pop();
+        }
+    }
+    if bytes.len() > PROBE_PASSWORD_MAX_BYTES {
+        hbb_common::sodiumoxide::utils::memzero(&mut bytes);
+        return Err(format!(
+            "probe password exceeds {PROBE_PASSWORD_MAX_BYTES} bytes"
+        ));
+    }
+    if std::str::from_utf8(&bytes).is_err() {
+        hbb_common::sodiumoxide::utils::memzero(&mut bytes);
+        return Err("probe password is not valid UTF-8".to_owned());
+    }
+    Ok(ProbePassword(bytes))
+}
+
+fn probe_password(args: &mut [String]) -> Result<ProbePassword, String> {
+    let value = args
+        .get_mut(2)
+        .ok_or_else(|| "password or --password-stdin is required".to_owned())?;
+    if value == "--password-stdin" {
+        let stdin = std::io::stdin();
+        if stdin.is_terminal() {
+            return Err("--password-stdin requires redirected standard input".to_owned());
+        }
+        read_probe_password_line(&mut stdin.lock())
+    } else {
+        let mut bytes = std::mem::take(value).into_bytes();
+        if bytes.len() > PROBE_PASSWORD_MAX_BYTES {
+            hbb_common::sodiumoxide::utils::memzero(&mut bytes);
+            return Err(format!(
+                "probe password exceeds {PROBE_PASSWORD_MAX_BYTES} bytes"
+            ));
+        }
+        Ok(ProbePassword(bytes))
+    }
+}
 
 fn remote_login_admission(response: &login_response::Union) -> Option<&'static str> {
     match response {
@@ -46,12 +113,18 @@ fn remote_login_admission(response: &login_response::Union) -> Option<&'static s
 }
 
 fn main() {
-    let a: Vec<String> = std::env::args().collect();
+    let mut a: Vec<String> = std::env::args().collect();
     let addr = a
         .get(1)
         .cloned()
-        .expect("usage: probe_client <addr> <password> <ok|fail> [read|login]");
-    let pw = a.get(2).cloned().expect("password");
+        .expect("usage: probe_client <addr> <password|--password-stdin> <ok|fail> [read|login]");
+    let pw = match probe_password(&mut a) {
+        Ok(password) => password,
+        Err(err) => {
+            eprintln!("probe_client: {err}");
+            std::process::exit(2);
+        }
+    };
     let expect = a.get(3).map(String::as_str).unwrap_or("ok").to_string();
     let mode = a.get(4).map(String::as_str).unwrap_or("").to_string();
     let do_read = mode == "read"
@@ -70,7 +143,16 @@ fn main() {
     // config dir ($HOME) and derives the SAME PRS the server stored at provisioning. A WRONG password
     // derives a DIFFERENT PRS ⇒ CPace key-confirmation fails (the `fail` path) — exactly as for a real
     // viewer. This is the decisive two-process keying proof: viewer-derived PRS == server-stored PRS.
-    let prs = hbb_common::config::derive_cpace_prs(&pw).unwrap_or_default();
+    let password_text = match std::str::from_utf8(pw.as_bytes()) {
+        Ok(password) => password,
+        Err(_) => {
+            drop(pw);
+            eprintln!("probe_client: probe password is not valid UTF-8");
+            std::process::exit(2);
+        }
+    };
+    let prs = hbb_common::config::derive_cpace_prs(password_text).unwrap_or_default();
+    drop(pw);
 
     let rt = hbb_common::tokio::runtime::Runtime::new().expect("tokio runtime");
     let (keyed, postkey, file_transfer_ok, remote_login_ok) = rt.block_on(async {
@@ -406,6 +488,20 @@ fn main() {
 mod tests {
     use super::*;
     use hbb_common::message_proto::PeerInfo;
+    use std::io::Cursor;
+
+    #[test]
+    fn redirected_probe_password_is_bounded_and_line_framed() {
+        let mut input = Cursor::new(b"fixture-password\r\ntrailing".to_vec());
+        let password = read_probe_password_line(&mut input).unwrap();
+        assert_eq!(password.as_bytes(), b"fixture-password");
+
+        let mut oversized = Cursor::new(vec![b'x'; PROBE_PASSWORD_MAX_BYTES + 1]);
+        assert!(read_probe_password_line(&mut oversized).is_err());
+
+        let mut empty = Cursor::new(Vec::<u8>::new());
+        assert!(read_probe_password_line(&mut empty).is_err());
+    }
 
     #[test]
     fn remote_login_admission_requires_current_protocol_or_exact_headless_error() {

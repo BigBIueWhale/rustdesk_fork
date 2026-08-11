@@ -177,7 +177,11 @@ function Get-JsonInt64([object]$Value, [string]$Description) {
 }
 
 function Assert-PowerShellSourceParsing {
-    foreach ($relative in @('scripts\run-build.ps1', 'scripts\build-windows.ps1')) {
+    foreach ($relative in @(
+        'scripts\run-build.ps1',
+        'scripts\build-windows.ps1',
+        'scripts\windows-installed-service-probe.ps1'
+    )) {
         $path = Join-Path $SRC $relative
         $tokens = $null
         $errors = $null
@@ -1434,6 +1438,18 @@ if /I "%~1"=="build" (
     $portableResourceHash = (Get-FileHash -LiteralPath $portableResource -Algorithm SHA256).Hash
     if ($applicationVersion -cne $portableVersion -or $applicationResourceHash -cne $portableResourceHash) {
         Die 'root and portable crates did not emit one exact compiled Windows resource'
+    }
+
+    Write-Host '[harness] testing redirected, bounded CPace probe credential ingress -- Windows x64, offline/locked'
+    cargo test --offline --locked --example probe_client --features flutter --color never redirected_probe_password_is_bounded_and_line_framed
+    if ($LASTEXITCODE -ne 0) { Die "redirected CPace probe credential-ingress test failed (exit $LASTEXITCODE)" }
+    Write-Host '[harness] building release CPace probe for the disposable installed-SCM transaction -- Windows x64, offline/locked'
+    cargo build --offline --locked --release --example probe_client --features flutter --color never
+    if ($LASTEXITCODE -ne 0) { Die "release CPace probe build failed (exit $LASTEXITCODE)" }
+    $installedServiceProbe = Join-Path $SRC 'target\release\examples\probe_client.exe'
+    if (-not (Test-Path -LiteralPath $installedServiceProbe -PathType Leaf) -or
+        (Get-OrdinaryPathItem $installedServiceProbe $true).Length -le 0) {
+        Die "release CPace probe is absent or empty: $installedServiceProbe"
     }
     Write-Host "[harness] setup bootstrapper built with embedded MSI: $setupOut"
 }

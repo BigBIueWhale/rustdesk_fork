@@ -1120,6 +1120,16 @@ if root.findtext("name") != expected_name or root.findtext("uuid") != expected_u
     raise SystemExit("domain name/UUID identity mismatch")
 if root.findall("./devices/interface"):
     raise SystemExit("Windows build domain unexpectedly has a network interface")
+graphics = root.findall("./devices/graphics")
+if len(graphics) != 1:
+    raise SystemExit("Windows build domain does not have exactly one graphics device")
+graphic = graphics[0]
+if graphic.get("type") != "vnc" or graphic.get("listen") != "127.0.0.1":
+    raise SystemExit("Windows build domain VNC graphics is not bound to 127.0.0.1")
+listeners = graphic.findall("./listen")
+if (len(listeners) != 1 or listeners[0].get("type") != "address"
+        or listeners[0].get("address") != "127.0.0.1"):
+    raise SystemExit("Windows build domain VNC listen child is not exactly loopback-addressed")
 actual = []
 for disk in root.findall("./devices/disk"):
     source = disk.find("source")
@@ -1253,6 +1263,11 @@ if len(offline_markers) != 1:
     raise SystemExit("guest OFFLINE-verification marker count is not exactly one")
 if offline_markers[0] != expected_offline:
     raise SystemExit("guest OFFLINE-verification marker is incorrect")
+installed_markers = [payload for payload in payloads if payload.startswith("windows-installed-service-probe.ps1 exit=")]
+if len(installed_markers) != 1:
+    raise SystemExit("guest installed-service marker count is not exactly one")
+if installed_markers[0] != "windows-installed-service-probe.ps1 exit=0":
+    raise SystemExit(f"guest installed-service probe failed: {installed_markers[0]}")
 PY
 }
 
@@ -1284,6 +1299,10 @@ extract_and_validate() {
         [ -f "$extracted/$artifact" ] && [ ! -L "$extracted/$artifact" ] && [ -s "$extracted/$artifact" ] \
             || die "guest artifact is missing or invalid: $artifact"
     done
+    [ -f "$extracted/windows-installed-service-result.json" ] \
+        && [ ! -L "$extracted/windows-installed-service-result.json" ] \
+        && [ -s "$extracted/windows-installed-service-result.json" ] \
+        || die "guest installed-service result is missing or invalid"
     local setup_input="$extracted/.canonicalize-input-rustdesk-setup.exe"
     [ ! -e "$setup_input" ] && [ ! -L "$setup_input" ] \
         || die "private PE canonicalizer input path is occupied"
@@ -1335,6 +1354,17 @@ extract_and_validate() {
     mv -- "$msi_output" "$extracted/rustdesk.msi"
     rm -f -- "$msi_input" "$msi_contract"
     rmdir -- "$msi_stage"
+    windows_helper_small_run \
+        --mount "type=bind,source=$SOURCE_SNAPSHOT/scripts/verify-windows-installed-service-result.py,target=/authority/verify.py,readonly" \
+        --mount "type=bind,source=$extracted,target=/evidence,readonly" \
+        --mount "type=bind,source=$CURRENT_PASS_ROOT/source-media/.source-identity.json,target=/authority/source-identity.json,readonly" \
+        --mount "type=bind,source=$CURRENT_PASS_ROOT/domain.xml,target=/authority/domain.xml,readonly" \
+        -- /usr/bin/python3 /authority/verify.py \
+            --result /evidence/windows-installed-service-result.json \
+            --identity /authority/source-identity.json \
+            --setup /evidence/rustdesk-setup.exe \
+            --msi /evidence/rustdesk.msi \
+            --domain-xml /authority/domain.xml
     mkdir "$result"
     install -m 0644 "$extracted/rustdesk-setup.exe" "$result/rustdesk-setup.exe"
     install -m 0644 "$extracted/rustdesk.msi" "$result/rustdesk.msi"
@@ -1344,7 +1374,8 @@ extract_and_validate() {
         sha256sum rustdesk.msi >rustdesk.msi.sha256
         chmod 0644 -- rustdesk-setup.exe.sha256 rustdesk.msi.sha256
     )
-    for diagnostic in build-log.txt run-build-progress.txt; do
+    install -m 0644 "$CURRENT_PASS_ROOT/domain.xml" "$result/domain.xml"
+    for diagnostic in build-log.txt run-build-progress.txt windows-installed-service-result.json; do
         if [ -f "$extracted/$diagnostic" ] && [ ! -L "$extracted/$diagnostic" ]; then
             install -m 0644 "$extracted/$diagnostic" "$result/$diagnostic"
         fi
@@ -1485,14 +1516,24 @@ harness_self_test() {
     local expected_marker='source-verified commit=1111111111111111111111111111111111111111 tree=2222222222222222222222222222222222222222 manifest=3333333333333333333333333333333333333333333333333333333333333333'
     local expected_offline_marker='offline-verified manifest=4444444444444444444444444444444444444444444444444444444444444444'
     local progress="$RUN_ROOT/progress.txt"
-    printf '2026-07-16T12:00:00.0000000+00:00 %s\r\n2026-07-16T12:00:01.0000000+00:00 %s\r\n2026-07-16T12:00:02.0000000+00:00 build-windows.ps1 exit=0\r\n' \
+    printf '2026-07-16T12:00:00.0000000+00:00 %s\r\n2026-07-16T12:00:01.0000000+00:00 %s\r\n2026-07-16T12:00:02.0000000+00:00 build-windows.ps1 exit=0\r\n2026-07-16T12:00:03.0000000+00:00 windows-installed-service-probe.ps1 exit=0\r\n' \
         "$expected_marker" "$expected_offline_marker" >"$progress"
     validate_guest_progress "$progress" "$expected_marker" "$expected_offline_marker"
-    printf '2026-07-16T12:00:03.0000000+00:00 build-windows.ps1 exit=0\r\n' >>"$progress"
+    printf '2026-07-16T12:00:04.0000000+00:00 build-windows.ps1 exit=0\r\n' >>"$progress"
     if (validate_guest_progress "$progress" "$expected_marker" "$expected_offline_marker") >/dev/null 2>&1; then
         die "duplicate guest completion self-test was accepted"
     fi
-    printf '2026-07-16T12:00:00.0000000+00:00 %s\n2026-07-16T12:00:01.0000000+00:00 %s\n2026-07-16T12:00:02.0000000+00:00 build-windows.ps1 exit=0\n' \
+    printf '2026-07-16T12:00:00.0000000+00:00 %s\r\n2026-07-16T12:00:01.0000000+00:00 %s\r\n2026-07-16T12:00:02.0000000+00:00 build-windows.ps1 exit=0\r\n' \
+        "$expected_marker" "$expected_offline_marker" >"$progress"
+    if (validate_guest_progress "$progress" "$expected_marker" "$expected_offline_marker") >/dev/null 2>&1; then
+        die "missing installed-service completion self-test was accepted"
+    fi
+    printf '2026-07-16T12:00:00.0000000+00:00 %s\r\n2026-07-16T12:00:01.0000000+00:00 %s\r\n2026-07-16T12:00:02.0000000+00:00 build-windows.ps1 exit=0\r\n2026-07-16T12:00:03.0000000+00:00 windows-installed-service-probe.ps1 exit=1\r\n' \
+        "$expected_marker" "$expected_offline_marker" >"$progress"
+    if (validate_guest_progress "$progress" "$expected_marker" "$expected_offline_marker") >/dev/null 2>&1; then
+        die "failed installed-service completion self-test was accepted"
+    fi
+    printf '2026-07-16T12:00:00.0000000+00:00 %s\n2026-07-16T12:00:01.0000000+00:00 %s\n2026-07-16T12:00:02.0000000+00:00 build-windows.ps1 exit=0\n2026-07-16T12:00:03.0000000+00:00 windows-installed-service-probe.ps1 exit=0\n' \
         "$expected_marker" "$expected_offline_marker" >"$progress"
     if (validate_guest_progress "$progress" "$expected_marker" "$expected_offline_marker") >/dev/null 2>&1; then
         die "non-CRLF guest progress self-test was accepted"

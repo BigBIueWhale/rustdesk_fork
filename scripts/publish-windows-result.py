@@ -22,7 +22,12 @@ CHECKSUMS = {
     "rustdesk-setup.exe": "rustdesk-setup.exe.sha256",
     "rustdesk.msi": "rustdesk.msi.sha256",
 }
-DIAGNOSTICS = ("build-log.txt", "run-build-progress.txt")
+DIAGNOSTICS = (
+    "build-log.txt",
+    "domain.xml",
+    "run-build-progress.txt",
+    "windows-installed-service-result.json",
+)
 MAX_ARTIFACT_BYTES = 2 * 1024 * 1024 * 1024
 MAX_DIAGNOSTIC_BYTES = 64 * 1024 * 1024
 MAX_CHECKSUM_BYTES = 256

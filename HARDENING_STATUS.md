@@ -7057,6 +7057,71 @@ network configuration was inspected or changed.
   abrupt-owner cleanup and replacement now have the native proof above; the LocalSystem branch has the same atomic
   source design but still lacks native installed-service execution. Native macOS and LocalSystem restart/crash plus
   stale-incumbent and concurrent-race testing must still prove recovery without endpoint ambiguity before release.
+- **R-S11gj/R-S11e-222 — exact installed Windows SCM credential authority — HARNESS IMPLEMENTED;
+  EXACT-CURRENT NATIVE TRANSACTION PENDING.** Platform: the final Windows x86_64 setup/MSI and its installed
+  LocalSystem service inside the existing disposable Windows build VM. Endpoint/action: installation of the
+  canonical setup, SCM registration/start, raw `_service_password` mutation from the exact installed CLI, live
+  runtime-replica rotation, CPace admission/refusal over guest loopback, SCM stop, and durable reload after restart.
+  Boundary: an active interactive administrator's elevated or least-privilege token and executable identity ↔ the
+  LocalSystem service's typed password receiver, durable ProgramData credential store, and retained
+  `--server --service-owned-server` child generation.
+
+  The release-risk gap was evidence, not another inferred source defect. Current production source already requires
+  the active principal, the exact complete CLI role, the fixed installed image, a live process token plus named-pipe
+  impersonation token, equality of those token proofs, and elevation for `_service_password`; the service owner and
+  durable writer must be LocalSystem. Existing native Windows evidence compiled and ran the unit/model suites and
+  built the package but deliberately did not install it. It therefore could not establish WiX/SCM configuration,
+  actual filtered-versus-elevated token behavior, installed-image admission, LocalSystem process/child identity,
+  live replica convergence, stop finality, or machine-store reload. Treating the green source/build result as that
+  proof would be exactly the accumulated-change shortcut the user prohibited.
+
+  The new transaction runs only after `build-windows.ps1` has produced the setup, canonical MSI, and a release
+  CPace probe in a fresh CoW guest. It canonicalizes a private setup copy with the same bounded PE canonicalizer
+  used by host publication, then executes that exact final-byte setup with `--silent-install`. The installed
+  `C:\Program Files\RustDesk\RustDesk.exe` must hash exactly to the packaged Flutter runner. A typed Win32 probe
+  uses `QueryServiceConfigW`, `QueryServiceStatusEx`, `QueryFullProcessImageNameW`, `OpenProcessToken`,
+  `GetTokenInformation(TokenElevation)`, and `GetProcessTimes` to require an auto-start own-process SCM entry with
+  the exact quoted installed image plus only `--service`, `LocalSystem`, live SID `S-1-5-18`, elevation, and one
+  direct exact-image/elevated-LocalSystem child with complete `--server --service-owned-server` argv and retained
+  PID/creation-time identity.
+
+  A successful exact-image mutation establishes a known first credential and proves it keys before either negative
+  caller runs, so a missing receiver cannot masquerade as a negative authority verdict. A temporary Task Scheduler
+  definition uses the same interactive user and session with `TASK_LOGON_INTERACTIVE_TOKEN` and
+  `TASK_RUNLEVEL_LUA`; its own kernel token proof must report non-elevated, and the exact installed CLI must return a
+  conclusive nonzero mutation result. The task action carries only fixed mode and canonical paths, never a
+  credential, and is deleted on every outcome. The first credential must still key and the limited fixture must
+  fail. An elevated byte-identical copied installation outside the fixed Program Files root must likewise return
+  nonzero, after which the first credential must again key and the copied-image fixture must fail. Thus a caller
+  that mutates and then reports failure cannot produce a false-green refusal verdict.
+
+  The exact elevated installed image then receives two synthetic fixture credentials only through bounded
+  redirected `--password-stdin`. The test-only CPace initiator gained the same redirected-input option, refuses a
+  terminal, bounds input at the production 4096-byte limit, and wipes its owned buffer before it creates the
+  runtime/network transaction; the historical argv form remains solely for existing smoke fixtures. After the two
+  rejection-preservation proofs, the second rotation must apply, then the second must key and the first must fail
+  against the live service-owned child. SCM stop must retire both exact pre-stop supervisor and child generations.
+  Restart must create distinct generations, after which the second still keys and the first still fails. This
+  composes live replica convergence, receiver refusal, service stop finality, and durable machine-store reload
+  without inventing a test-only product bypass.
+
+  The VM definition rejects every `<interface>` and now additionally proves both the VNC graphics listener and its
+  child listen record are exactly `127.0.0.1`. The build continues to use `--network none`; there is no guest NIC,
+  host port publication, Docker-published port, host RustDesk execution, or host root. The result is one BOM-free,
+  LF-terminated, closed-schema JSON receipt containing no credential or raw stderr/stdout, bound to source
+  commit/tree/build-run ID, final setup/MSI hashes, installed/build executable hashes, SCM/child process generations,
+  and every Boolean verdict. `domain.xml` and the receipt are retained as bounded diagnostics. A separate Python
+  verifier runs in the existing networkless helper container after host canonical-form validation, independently
+  binds exact hashes/source identity/schema/generations and rejects a NIC or non-loopback VNC record. Its behavioral
+  self-test and the Windows harness mutation catalog cover least-token, stdin, canonical setup, generation-retirement,
+  loopback, confined-verifier, schema/hash, and receipt-result weakening.
+
+  No native success is claimed yet. The PowerShell source, guest/host wiring, strict receipt verifier, confined
+  structural verifier, and deliberate mutations must pass first, followed by one exact-current zero-interface VM
+  transaction. Only that result may change this row and Appendix C #345 from pending to native green. Even then the
+  claim is limited to the exact installed Windows credential path: cold two-pass R-B2 equality, LocalSystem CM
+  generation behavior, graphical remote control, concurrency/reconnect/focus/resource soak, macOS/Android/iOS,
+  independent reproduction, and external review remain release-blocking.
 - **R-S11c-8 — `_whiteboard` helper ambient same-UID trust — CLOSED 2026-07-09.** Platforms: Windows,
   Linux, and macOS desktop whiteboard helper paths. Endpoint/action: `_whiteboard` overlay helper IPC formerly
   accepted `Data::Whiteboard((String, CustomEvent))` drawing events and `Exit` on a fixed endpoint.
@@ -23618,7 +23683,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-4ce8724dfe6275825104af03f930a71af6537f65c14145faced599d0e1cfee18  requirements.html
+30b8f88e491775a44f4a1947738edc8a62d88468fa98ad36b2e92a7697458a96  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -23670,3 +23735,4 @@ The same identity additionally binds R-S11gd and Appendix C #339.
 The same identity additionally binds R-S11ge and Appendix C #340.
 The same identity additionally binds R-S11gg and Appendix C #342.
 The same identity additionally binds R-S11gh and Appendix C #343.
+The same identity additionally binds R-S11gj and Appendix C #345.

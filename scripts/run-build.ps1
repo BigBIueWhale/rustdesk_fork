@@ -480,6 +480,20 @@ try {
         Fail "build-windows.ps1 failed with exit $buildExit"
     }
     $dist = Join-Path $source 'dist'
+    $installedServiceReceipt = Join-Path $out 'windows-installed-service-result.json'
+    & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'scripts\windows-installed-service-probe.ps1') `
+        -Mode Main `
+        -ReceiptPath $installedServiceReceipt `
+        -ProbeExe (Join-Path $source 'target\release\examples\probe_client.exe') `
+        -PythonExe 'C:\Program Files\Python311\python.exe'
+    $installedServiceExit = $LASTEXITCODE
+    Mark "windows-installed-service-probe.ps1 exit=$installedServiceExit"
+    if ($installedServiceExit -ne 0) {
+        Fail "windows-installed-service-probe.ps1 failed with exit $installedServiceExit"
+    }
+    if (-not (Test-Path -LiteralPath $installedServiceReceipt -PathType Leaf)) {
+        Fail 'installed-service probe did not publish its exact result receipt'
+    }
     foreach ($name in @('rustdesk-setup.exe', 'rustdesk-setup.exe.sha256', 'rustdesk.msi', 'rustdesk.msi.sha256')) {
         $artifact = Join-Path $dist $name
         if (-not (Test-Path -LiteralPath $artifact -PathType Leaf)) {

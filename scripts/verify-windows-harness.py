@@ -32,6 +32,9 @@ FILES = {
     "frb": "scripts/frb-codegen.sh",
     "guest": "scripts/run-build.ps1",
     "build": "scripts/build-windows.ps1",
+    "installed_probe": "scripts/windows-installed-service-probe.ps1",
+    "installed_result": "scripts/verify-windows-installed-service-result.py",
+    "probe_client": "examples/probe_client.rs",
     "orchestrator": "build.py",
     "pe": "scripts/canonicalize-pe.py",
     "msi": "scripts/canonicalize-msi.py",
@@ -315,6 +318,9 @@ def validate_sources(sources: dict[str, str]) -> None:
     frb = sources["frb"]
     guest = sources["guest"]
     build = sources["build"]
+    installed_probe = sources["installed_probe"]
+    installed_result = sources["installed_result"]
+    probe_client = sources["probe_client"]
     orchestrator = sources["orchestrator"]
     pe = sources["pe"]
     msi = sources["msi"]
@@ -329,6 +335,9 @@ def validate_sources(sources: dict[str, str]) -> None:
     offline_tree = parse_python(offline, "scripts/windows-offline-manifest.py")
     pe_tree = parse_python(pe, "scripts/canonicalize-pe.py")
     msi_tree = parse_python(msi, "scripts/canonicalize-msi.py")
+    installed_result_tree = parse_python(
+        installed_result, "scripts/verify-windows-installed-service-result.py"
+    )
 
     for manifest in (cargo, portable_cargo):
         reject(manifest, r"(?m)^\[package[.]metadata[.]winres\]$", "HashMap-generated Windows version metadata")
@@ -808,6 +817,13 @@ def validate_sources(sources: dict[str, str]) -> None:
         'virsh_bounded dumpxml "$CURRENT_DOMAIN_UUID"',
         "UUID-addressed domain XML proof",
     )
+    for literal, description in (
+        ('root.findall("./devices/interface")', "zero-interface domain XML proof"),
+        ('graphic.get("type") != "vnc"', "exact VNC graphics type proof"),
+        ('graphic.get("listen") != "127.0.0.1"', "loopback VNC graphics proof"),
+        ('listeners[0].get("address") != "127.0.0.1"', "loopback VNC listen-child proof"),
+    ):
+        require(verify_domain_xml, literal, description)
     require_count(
         host,
         'virsh_bounded domstate "$CURRENT_DOMAIN_UUID"',
@@ -1339,6 +1355,22 @@ def validate_sources(sources: dict[str, str]) -> None:
     require_order(
         extract_and_validate,
         (
+            'mv -- "$msi_output" "$extracted/rustdesk.msi"',
+            'source=$SOURCE_SNAPSHOT/scripts/verify-windows-installed-service-result.py,target=/authority/verify.py,readonly',
+            'source=$extracted,target=/evidence,readonly',
+            "/usr/bin/python3 /authority/verify.py",
+            "--result /evidence/windows-installed-service-result.json",
+            "--identity /authority/source-identity.json",
+            "--setup /evidence/rustdesk-setup.exe",
+            "--msi /evidence/rustdesk.msi",
+            "--domain-xml /authority/domain.xml",
+            'install -m 0644 "$CURRENT_PASS_ROOT/domain.xml" "$result/domain.xml"',
+        ),
+        "canonical-artifact installed-SCM receipt validation and domain retention",
+    )
+    require_order(
+        extract_and_validate,
+        (
             "sha256sum rustdesk-setup.exe >rustdesk-setup.exe.sha256",
             "sha256sum rustdesk.msi >rustdesk.msi.sha256",
             "chmod 0644 -- rustdesk-setup.exe.sha256 rustdesk.msi.sha256",
@@ -1480,7 +1512,7 @@ def validate_sources(sources: dict[str, str]) -> None:
         ),
         ('SOURCE_COMPONENTS = ("pass-A", "result")', "exact source components"),
         ('ARTIFACTS = ("rustdesk-setup.exe", "rustdesk.msi")', "closed artifact inventory"),
-        ('DIAGNOSTICS = ("build-log.txt", "run-build-progress.txt")', "bounded diagnostic inventory"),
+        ('"domain.xml",\n    "run-build-progress.txt",\n    "windows-installed-service-result.json",', "bounded installed-SCM diagnostic inventory"),
         ("system.posix_acl_access", "output authority ACL rejection"),
         ("source artifact {artifact} does not match its checksum", "source checksum binding"),
         ("published Windows output edge is not the authenticated candidate", "published-edge identity proof"),
@@ -1850,6 +1882,212 @@ def validate_sources(sources: dict[str, str]) -> None:
     require(build, "path traverses a reparse point", "Windows ancestor reparse rejection")
     require(build, "[Management.Automation.Language.Parser]::ParseFile", "native PowerShell parser proof")
     require(build, "$errors.Count -ne 0", "native PowerShell parse error rejection")
+    require(
+        build,
+        "'scripts\\windows-installed-service-probe.ps1'",
+        "native installed-service PowerShell parse coverage",
+    )
+    for literal, description in (
+        (
+            "cargo test --offline --locked --example probe_client --features flutter --color never redirected_probe_password_is_bounded_and_line_framed",
+            "native redirected probe credential test",
+        ),
+        (
+            "cargo build --offline --locked --release --example probe_client --features flutter --color never",
+            "release installed-SCM CPace probe build",
+        ),
+        (
+            "target\\release\\examples\\probe_client.exe",
+            "exact release CPace probe output",
+        ),
+    ):
+        require(build, literal, description)
+
+    require_order(
+        guest,
+        (
+            "build-windows.ps1 exit=$buildExit",
+            "windows-installed-service-probe.ps1",
+            "windows-installed-service-probe.ps1 exit=$installedServiceExit",
+            "installed-service probe did not publish its exact result receipt",
+            "foreach ($name in @('rustdesk-setup.exe'",
+        ),
+        "guest build, installed-SCM transaction, and artifact-copy order",
+    )
+    require(
+        shell_function(host, "validate_guest_progress"),
+        'installed_markers[0] != "windows-installed-service-probe.ps1 exit=0"',
+        "installed-SCM guest completion marker",
+    )
+
+    installed_main = powershell_function(installed_probe, "Invoke-MainProbe")
+    installed_limited = powershell_function(
+        installed_probe, "Invoke-LimitedCredentialAttempt"
+    )
+    installed_task = powershell_function(installed_probe, "Invoke-LimitedTask")
+    installed_process = powershell_function(installed_probe, "Invoke-RedirectedProcess")
+    installed_service = powershell_function(installed_probe, "Get-ExactServiceProof")
+    installed_child = powershell_function(installed_probe, "Get-ExactServiceChild")
+    for literal, description in (
+        ("QueryServiceConfigW", "typed SCM configuration query"),
+        ("QueryServiceStatusEx", "typed SCM status/PID query"),
+        ("QueryFullProcessImageNameW", "live process-image proof"),
+        ("GetTokenInformation", "live token-elevation proof"),
+        ("GetProcessTimes", "PID-reuse-resistant process generation proof"),
+        ("CommandLineToArgvW", "exact service-child argv parser"),
+        ("rustdesk-windows-installed-service-probe-v1", "versioned installed-SCM receipt"),
+        ("R-S11gj-Limited-Must-Fail-7x!", "synthetic least-privilege fixture"),
+        ("R-S11gj-Wrong-Image-Must-Fail-8y!", "synthetic wrong-image fixture"),
+        ("R-S11gj-First-Rotation-9z!", "synthetic first rotation fixture"),
+        ("R-S11gj-Second-Rotation-A0!", "synthetic second rotation fixture"),
+    ):
+        require(installed_probe, literal, description)
+    for literal, description in (
+        ("$start.UseShellExecute = $false", "direct process creation"),
+        ("$start.RedirectStandardInput = $true", "redirected credential ingress"),
+        ("$process.StandardInput.WriteLine($InputLine)", "stdin-only fixture delivery"),
+        ("$process.WaitForExit($TimeoutSeconds * 1000)", "bounded exact-process wait"),
+        ("$process.Kill()", "deadline-owned exact child cleanup"),
+    ):
+        require(installed_process, literal, description)
+    require(installed_task, "$definition.Principal.LogonType = 3", "interactive-token task context")
+    require(installed_task, "$definition.Principal.RunLevel = 0", "least-privilege Task Scheduler token")
+    require(installed_task, "-Mode',\n        'LimitedCredentialAttempt'", "typed limited helper mode")
+    reject(installed_task, r"R-S11gj-(?:Limited|Wrong|First|Second)", "credential fixture in Task Scheduler arguments")
+    require(installed_limited, "if ($token.Elevated)", "limited-token fail-closed proof")
+    require(installed_limited, "$LimitedFixture $false", "limited mutation rejection transaction")
+    require(
+        installed_probe,
+        "Invoke-RedirectedProcess $Executable '--password-stdin' $Password 60",
+        "password mutation fixture confined to redirected stdin",
+    )
+    for literal, description in (
+        ("$proof.ServiceType -ne 0x10", "SCM own-process proof"),
+        ("$proof.StartType -ne 2", "SCM automatic-start proof"),
+        ("$proof.StartName -cne 'LocalSystem'", "SCM LocalSystem proof"),
+        ("$proof.State -ne 4", "SCM running-state proof"),
+        ("Assert-SystemProcess $proof.Process", "SCM live process-token/image proof"),
+    ):
+        require(installed_service, literal, description)
+    for literal, description in (
+        ("ParentProcessId = $($ServiceProof.ProcessId)", "SCM direct-child selection"),
+        ("$arguments.Count -ne 3", "complete service-child role arity"),
+        ("$arguments[1] -cne '--server'", "exact child server role"),
+        ("$arguments[2] -cne '--service-owned-server'", "exact service-owned marker"),
+        ("$matches.Count -gt 1", "duplicate child refusal"),
+    ):
+        require(installed_child, literal, description)
+    for literal, description in (
+        ("canonicalize-pe.py", "final setup-byte canonicalization"),
+        ("Invoke-RedirectedProcess $canonicalSetup '--silent-install'", "canonical setup execution"),
+        ("$installedSha256 -cne $builtSha256", "installed executable byte proof"),
+        ("Invoke-LimitedTask $installed", "same-principal least-token rejection"),
+        ("$wrongExe $WrongImageFixture $false", "copied-image rejection"),
+        ("$installed $FirstFixture $true", "first installed-image mutation"),
+        ("$installed $SecondFixture $true", "rotated installed-image mutation"),
+        ("Invoke-KeyProbe $SecondFixture 'ok'", "new credential CPace proof"),
+        ("Invoke-KeyProbe $FirstFixture 'fail'", "old credential CPace refusal"),
+        (
+            "IsSameProcessGenerationLive(\n                [uint32]$servicePreRestart.ProcessId",
+            "SCM supervisor generation retirement proof",
+        ),
+        (
+            "IsSameProcessGenerationLive(\n                [uint32]$childPreRestart.ProcessId",
+            "SCM child generation retirement proof",
+        ),
+        ("$controller.Start()", "SCM restart transaction"),
+        ("second_credential_keyed_after_restart = $true", "durable credential reload receipt"),
+    ):
+        require(installed_main, literal, description)
+    require_order(
+        installed_main,
+        (
+            "$installed $FirstFixture $true",
+            "Invoke-KeyProbe $FirstFixture 'ok'",
+            "Invoke-LimitedTask $installed",
+            "Invoke-KeyProbe $FirstFixture 'ok'",
+            "Invoke-KeyProbe $LimitedFixture 'fail'",
+            "$wrongExe $WrongImageFixture $false",
+            "Invoke-KeyProbe $FirstFixture 'ok'",
+            "Invoke-KeyProbe $WrongImageFixture 'fail'",
+            "$installed $SecondFixture $true",
+        ),
+        "baseline, rejection-preservation, rotation transaction order",
+    )
+    for literal, description in (
+        (
+            "first_credential_preserved_after_limited_rejection = $true",
+            "limited rejection preservation receipt",
+        ),
+        ("limited_fixture_rejected = $true", "limited fixture refusal receipt"),
+        (
+            "first_credential_preserved_after_copied_image_rejection = $true",
+            "copied-image rejection preservation receipt",
+        ),
+        ("copied_image_fixture_rejected = $true", "copied-image fixture refusal receipt"),
+    ):
+        require(installed_main, literal, description)
+
+    for literal, description in (
+        ("--password-stdin requires redirected standard input", "CPace probe terminal refusal"),
+        ("if stdin.is_terminal()", "CPace probe live terminal check"),
+        ("PROBE_PASSWORD_MAX_BYTES: usize = 4096", "CPace probe credential bound"),
+        ("sodiumoxide::utils::memzero", "CPace probe input erasure"),
+        ("std::mem::take(value).into_bytes()", "argv compatibility value ownership"),
+        ("drop(pw);", "pre-network CPace password retirement"),
+    ):
+        require(probe_client, literal, description)
+
+    installed_validate = ast.get_source_segment(
+        installed_result, python_function(installed_result_tree, "validate")
+    ) or ""
+    installed_validate_domain = ast.get_source_segment(
+        installed_result, python_function(installed_result_tree, "validate_domain")
+    ) or ""
+    installed_self_test = ast.get_source_segment(
+        installed_result, python_function(installed_result_tree, "self_test")
+    ) or ""
+    for literal, description in (
+        ("set(result) != RESULT_FIELDS", "closed installed-SCM receipt schema"),
+        ('result["setup_sha256"] != sha256(setup_path', "canonical setup hash binding"),
+        ('result["msi_sha256"] != sha256(msi_path', "canonical MSI hash binding"),
+        ('result["installed_exe_sha256"] != result["built_exe_sha256"]', "installed image hash equality"),
+        ('result["domain_network_interfaces"] != 0', "zero-interface receipt requirement"),
+        ('require_exact_bool(result, "limited_token_elevated", False)', "limited token receipt proof"),
+        ("SCM restart did not change the supervisor generation", "supervisor-generation result proof"),
+        ("SCM restart did not change the service-owned child generation", "child-generation result proof"),
+    ):
+        require(installed_validate, literal, description)
+    require(installed_validate_domain, 'root.findall("./devices/interface")', "result verifier zero-interface XML proof")
+    require(installed_validate_domain, 'graphic.get("listen") != "127.0.0.1"', "result verifier loopback VNC proof")
+    for fixture in (
+        "limited rejection",
+        "limited rejection preservation",
+        "copied-image fixture refusal",
+        "setup binding",
+        "closed schema",
+        "SCM generation",
+    ):
+        require(installed_self_test, f'("{fixture}", changed)', f"installed-SCM result mutation {fixture}")
+    installed_requirement = html_requirement(requirements, "R-S11gj")
+    for literal, description in (
+        ("zero virtual network interfaces", "zero-interface installed-SCM requirement"),
+        ("TASK_RUNLEVEL_LUA", "least-privilege installed-SCM requirement"),
+        ("bounded redirected stdin", "stdin-only installed-SCM requirement"),
+        (
+            "Thus neither negative may pass merely because a caller mutated state and then reported failure.",
+            "negative rejection-preservation requirement",
+        ),
+        ("distinct supervisor and child generations", "restart-generation installed-SCM requirement"),
+        ("strict secret-free receipt", "secret-free installed-SCM receipt requirement"),
+    ):
+        require(installed_requirement, literal, description)
+    require(requirements, "<tr><td>345</td>", "installed-SCM Appendix C row")
+    require(
+        hardening,
+        "R-S11gj/R-S11e-222 — exact installed Windows SCM credential authority",
+        "installed-SCM hardening ledger",
+    )
     require(
         host,
         'verify_sha256 "$ONLINE_DIR/olefile-${OLEFILE_VERSION}-py2.py3-none-any.whl" "$SHA256_OLEFILE_0_47"',
@@ -2254,6 +2492,12 @@ def run_behavioral_self_tests(repo: pathlib.Path) -> None:
             [sys.executable, "scripts/canonicalize-msi.py", "--self-test"],
             "canonicalize-msi self-test: ok",
             "MSI canonicalizer behavioral self-test",
+            20,
+        ),
+        (
+            [sys.executable, "scripts/verify-windows-installed-service-result.py", "--self-test"],
+            "verify-windows-installed-service-result self-test: ok",
+            "installed Windows SCM result behavioral self-test",
             20,
         ),
     )
@@ -3489,6 +3733,90 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             '() if os.name == "nt" else ("st_mode", "st_ctime_ns")',
             '("st_mode", "st_ctime_ns")',
         ),
+        (
+            "installed-SCM least-privilege task token",
+            "installed_probe",
+            "$definition.Principal.RunLevel = 0",
+            "$definition.Principal.RunLevel = 1",
+        ),
+        (
+            "installed-SCM redirected credential ingress",
+            "installed_probe",
+            "Invoke-RedirectedProcess $Executable '--password-stdin' $Password 60",
+            "Invoke-RedirectedProcess $Executable '--password' $Password 60",
+        ),
+        (
+            "installed-SCM canonical setup execution",
+            "installed_probe",
+            "Invoke-RedirectedProcess $canonicalSetup '--silent-install'",
+            "Invoke-RedirectedProcess $setupInput '--silent-install'",
+        ),
+        (
+            "installed-SCM limited-fixture refusal",
+            "installed_probe",
+            "Invoke-KeyProbe $LimitedFixture 'fail'",
+            "Invoke-KeyProbe $LimitedFixture 'ok'",
+        ),
+        (
+            "installed-SCM copied-image fixture refusal",
+            "installed_probe",
+            "Invoke-KeyProbe $WrongImageFixture 'fail'",
+            "Invoke-KeyProbe $WrongImageFixture 'ok'",
+        ),
+        (
+            "installed-SCM preservation receipt",
+            "installed_probe",
+            "first_credential_preserved_after_limited_rejection = $true",
+            "first_credential_preserved_after_limited_rejection = $false",
+        ),
+        (
+            "installed-SCM normative rejection preservation",
+            "requirements",
+            "Thus neither negative may pass merely because a caller mutated state and then reported failure.",
+            "A negative may pass merely because a caller mutated state and then reported failure.",
+        ),
+        (
+            "installed-SCM service-generation retirement",
+            "installed_probe",
+            "IsSameProcessGenerationLive(\n                [uint32]$servicePreRestart.ProcessId",
+            "IsSameProcessGenerationLive(\n                [uint32]$serviceAfter.ProcessId",
+        ),
+        (
+            "Windows VM VNC loopback binding proof",
+            "host",
+            'graphic.get("listen") != "127.0.0.1"',
+            'graphic.get("listen") != "0.0.0.0"',
+        ),
+        (
+            "installed-SCM confined result verifier",
+            "host",
+            "--result /evidence/windows-installed-service-result.json",
+            "--result /evidence/build-log.txt",
+        ),
+        (
+            "installed-SCM limited-token result proof",
+            "installed_result",
+            'require_exact_bool(result, "limited_token_elevated", False)',
+            'require_exact_bool(result, "limited_token_elevated", True)',
+        ),
+        (
+            "CPace probe terminal-input refusal",
+            "probe_client",
+            "if stdin.is_terminal()",
+            "if false",
+        ),
+        (
+            "installed-SCM normative zero-interface boundary",
+            "requirements",
+            "zero virtual network interfaces",
+            "one virtual network interface",
+        ),
+        (
+            "installed-SCM hardening ledger",
+            "hardening",
+            "R-S11gj/R-S11e-222 — exact installed Windows SCM credential authority",
+            "R-S11gj/R-S11e-999 — exact installed Windows SCM credential authority",
+        ),
         ("watch patch reorder", "watch", "patch-block-reorder", "patch-order-ignored"),
         (
             "port patch order",
@@ -3511,7 +3839,7 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
     run_behavioral_self_tests(repo)
     print(
         "verify-windows-harness self-test: ok "
-        f"({len(mutations)} mutations, 5 bounded behavioral suites)"
+        f"({len(mutations)} mutations, 6 bounded behavioral suites)"
     )
 
 

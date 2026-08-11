@@ -7184,6 +7184,27 @@ network configuration was inspected or changed.
   container; a direct full `verify.sh` run is likewise not claimed because its trusted Docker client is intentionally
   unavailable inside that confinement. A fresh native run is still required.
 
+  Clean commit `97f1fe07089c57822927fb8cdadd91f6ffa336d0`, tree
+  `58308811f564fcf91f319ddd1870c581a267b96a`, and run
+  `87dd072c-bc28-4c43-9eeb-52abb3869ded-A` proved that the 1939 correction reached the next native boundary. The
+  source/offline identities, native Rust suites, Flutter build, callback-core test, locked WiX/MSI build, setup
+  build, redirected-input regression, and release probe passed again. Setup then failed with Windows Installer 1603.
+  Read-only extraction from the powered-off guest identified the new exact event as error 1920: the `RustDesk`
+  service failed to start. Its retained service log records that the ordinary and SAS IPC listeners started, after
+  which the raw `_service_password` listener failed closed because the kernel DACL serialization did not equal its
+  creation-descriptor serialization.
+
+  The DACL principals and intended access were not widened; the comparison was structurally wrong. The creation
+  SDDL used generic `GA` for NETWORK deny, LocalSystem, and server ACEs. Windows maps generic rights to the
+  named-pipe/file object-specific rights when creating the kernel object, so `GetSecurityInfo` correctly returned
+  the mapped masks and the textual equality check rejected an equivalent DACL. The source correction authors those
+  ACEs with explicit `FILE_ALL_ACCESS` value `0x001f01ff` before `CreateNamedPipeW`, while preserving the protected
+  DACL, NETWORK deny, exact principals, narrow `0x0012019b` client mask, first-instance/local-only pipe, and exact
+  post-creation/read-before-use kernel comparison. The focused confined semantic validator passes all 36 deliberate
+  DACL mutations; the normal independent workspace verifier and its complete in-memory source-mutation catalog pass
+  as well. This remains source-only until a new clean named-commit VM transaction passes the complete installed-SCM
+  probe.
+
   No native installed-SCM success is claimed yet. Only a passing exact-current zero-interface VM transaction may
   change this row and Appendix C #345 from pending to native green. Even then the claim is limited to the exact
   installed Windows credential path: cold two-pass R-B2 equality, LocalSystem CM generation behavior, graphical
@@ -23753,7 +23774,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-4f8dd35bf23e35ba0a65c9317cf4d307a4592e4d5b74b6fe0d0fb1b56ff57f5b  requirements.html
+b14e3b39f4a344fb216e05a0fedaec66afbfdd05adc3b5f6fb317531778567d2  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

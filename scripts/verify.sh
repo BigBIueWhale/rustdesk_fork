@@ -1591,7 +1591,8 @@ grep -q 'SecurityAttributes::from_sddl' src/ipc/auth.rs                         
 if awk '/pub\(crate\) fn windows_ipc_listener_security_attributes\(/,/^}/' src/ipc/auth.rs | grep -q 'SecurityAttributes::empty'; then
   r_s11c6="$r_s11c6 default-windows-listener-security-present"
 fi
-grep -q 'String::from("D:P(D;;GA;;;NU)(A;;GA;;;SY)")' src/ipc/auth.rs             || r_s11c6="$r_s11c6 base-dacl-not-system-only"
+grep -q 'WINDOWS_NAMED_PIPE_FULL_ACCESS_MASK: u32 = 0x001f_01ff' src/ipc/auth.rs  || r_s11c6="$r_s11c6 object-specific-full-access-mask-missing"
+grep -q '"D:P(D;;0x{:08x};;;NU)(A;;0x{:08x};;;SY)"' src/ipc/auth.rs             || r_s11c6="$r_s11c6 base-dacl-not-system-only"
 grep -q 'WINDOWS_NAMED_PIPE_CLIENT_ACCESS_MASK: u32 = 0x0012_019b' src/ipc/auth.rs || r_s11c6="$r_s11c6 narrow-client-mask-missing"
 grep -q 'FILE_CREATE_PIPE_INSTANCE' src/ipc/auth.rs                                || r_s11c6="$r_s11c6 create-instance-negative-test-missing"
 grep -q 'open_windows_named_pipe_client' src/ipc.rs                                || r_s11c6="$r_s11c6 custom-client-open-missing"

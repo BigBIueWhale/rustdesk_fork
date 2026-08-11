@@ -316,8 +316,12 @@ def validate(sources: Dict[str, str]) -> None:
         dacl,
         (
             (
-                'String::from("D:P(D;;GA;;;NU)(A;;GA;;;SY)")',
+                '"D:P(D;;0x{:08x};;;NU)(A;;0x{:08x};;;SY)"',
                 "protected System-only DACL base",
+            ),
+            (
+                "WINDOWS_NAMED_PIPE_FULL_ACCESS_MASK",
+                "object-specific named-pipe full-access mask",
             ),
             (
                 '"(A;;0x{:08x};;;{})"',
@@ -326,6 +330,15 @@ def validate(sources: Dict[str, str]) -> None:
             (
                 "WINDOWS_NAMED_PIPE_CLIENT_ACCESS_MASK",
                 "narrow client access mask use",
+            ),
+        ),
+    )
+    require_all(
+        sources["auth"],
+        (
+            (
+                "WINDOWS_NAMED_PIPE_FULL_ACCESS_MASK: u32 = 0x001f_01ff",
+                "exact object-specific named-pipe full-access mask",
             ),
         ),
     )
@@ -732,9 +745,15 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "auth",
-        'String::from("D:P(D;;GA;;;NU)(A;;GA;;;SY)")',
-        'String::from("D:P(D;;GA;;;NU)(A;;GA;;;SY)(A;;GR;;;WD)")',
+        '"D:P(D;;0x{:08x};;;NU)(A;;0x{:08x};;;SY)"',
+        '"D:P(D;;0x{:08x};;;NU)(A;;0x{:08x};;;SY)(A;;GR;;;WD)"',
         "Everyone-free DACL",
+    ),
+    (
+        "auth",
+        "WINDOWS_NAMED_PIPE_FULL_ACCESS_MASK: u32 = 0x001f_01ff",
+        "WINDOWS_NAMED_PIPE_FULL_ACCESS_MASK: u32 = 0x101f_01ff",
+        "object-specific named-pipe full-access mask",
     ),
     (
         "auth",

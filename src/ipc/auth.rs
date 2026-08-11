@@ -105,6 +105,8 @@ pub(crate) fn windows_ipc_postfix_uses_restricted_dacl(postfix: &str) -> bool {
 #[cfg(windows)]
 pub(crate) const WINDOWS_NAMED_PIPE_CLIENT_ACCESS_MASK: u32 = 0x0012_019b;
 #[cfg(windows)]
+const WINDOWS_NAMED_PIPE_FULL_ACCESS_MASK: u32 = 0x001f_01ff;
+#[cfg(windows)]
 const SE_GROUP_LOGON_ID: u32 = 0xc000_0000;
 #[cfg(windows)]
 const LOCAL_SYSTEM_SID: &str = "S-1-5-18";
@@ -1373,9 +1375,18 @@ fn is_numeric_sid_string(sid: &str) -> bool {
 
 #[cfg(windows)]
 fn windows_restricted_ipc_sddl(sids: &WindowsIpcDaclSids) -> String {
-    let mut sddl = String::from("D:P(D;;GA;;;NU)(A;;GA;;;SY)");
+    // CreateNamedPipeW maps generic rights before retaining the kernel DACL.
+    // Author FILE_ALL_ACCESS explicitly so the creation descriptor and the
+    // GetSecurityInfo readback have the same object-specific access masks.
+    let mut sddl = format!(
+        "D:P(D;;0x{:08x};;;NU)(A;;0x{:08x};;;SY)",
+        WINDOWS_NAMED_PIPE_FULL_ACCESS_MASK, WINDOWS_NAMED_PIPE_FULL_ACCESS_MASK
+    );
     for sid in &sids.server_sids {
-        sddl.push_str(&format!("(A;;GA;;;{})", sid));
+        sddl.push_str(&format!(
+            "(A;;0x{:08x};;;{})",
+            WINDOWS_NAMED_PIPE_FULL_ACCESS_MASK, sid
+        ));
     }
     for sid in &sids.client_sids {
         sddl.push_str(&format!(
@@ -4872,7 +4883,10 @@ mod tests {
             assert!(sids.server_sids.is_empty());
             assert!(sids.client_sids.is_empty());
             let sddl = super::windows_restricted_ipc_sddl(&sids);
-            assert_eq!(sddl, "D:P(D;;GA;;;NU)(A;;GA;;;SY)");
+            assert_eq!(
+                sddl,
+                "D:P(D;;0x001f01ff;;;NU)(A;;0x001f01ff;;;SY)"
+            );
         }
     }
 
@@ -4883,9 +4897,11 @@ mod tests {
             server_sids: vec!["S-1-5-5-100-200".to_owned()],
             client_sids: vec!["S-1-5-21-1-2-3-1001".to_owned()],
         });
-        assert!(sddl.starts_with("D:P(D;;GA;;;NU)(A;;GA;;;SY)"));
+        assert!(sddl.starts_with(
+            "D:P(D;;0x001f01ff;;;NU)(A;;0x001f01ff;;;SY)"
+        ));
         assert_eq!(sddl.matches(";;;NU").count(), 1);
-        assert!(sddl.contains("(A;;GA;;;S-1-5-5-100-200)"));
+        assert!(sddl.contains("(A;;0x001f01ff;;;S-1-5-5-100-200)"));
         assert!(sddl.contains("(A;;0x0012019b;;;S-1-5-21-1-2-3-1001)"));
         assert!(!sddl.contains(";;;BA"));
         assert!(!sddl.contains(";;;WD"));
@@ -4894,7 +4910,10 @@ mod tests {
             server_sids: Vec::new(),
             client_sids: Vec::new(),
         });
-        assert_eq!(system_only, "D:P(D;;GA;;;NU)(A;;GA;;;SY)");
+        assert_eq!(
+            system_only,
+            "D:P(D;;0x001f01ff;;;NU)(A;;0x001f01ff;;;SY)"
+        );
 
         let interactive_client = super::windows_restricted_ipc_sddl(&super::WindowsIpcDaclSids {
             server_sids: Vec::new(),
@@ -4902,7 +4921,16 @@ mod tests {
         });
         assert_eq!(
             interactive_client,
-            "D:P(D;;GA;;;NU)(A;;GA;;;SY)(A;;0x0012019b;;;S-1-5-4)"
+            "D:P(D;;0x001f01ff;;;NU)(A;;0x001f01ff;;;SY)(A;;0x0012019b;;;S-1-5-4)"
+        );
+        const WINDOWS_GENERIC_ACCESS_BITS: u32 = 0xf000_0000;
+        assert_eq!(
+            super::WINDOWS_NAMED_PIPE_FULL_ACCESS_MASK & WINDOWS_GENERIC_ACCESS_BITS,
+            0
+        );
+        assert_eq!(
+            super::WINDOWS_NAMED_PIPE_CLIENT_ACCESS_MASK & WINDOWS_GENERIC_ACCESS_BITS,
+            0
         );
     }
 

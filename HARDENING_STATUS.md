@@ -4674,7 +4674,8 @@ container, installed product, capture source, renderer, emulator, VM, or physica
 
 **R-S11fl/R-S11e-199 controlled-video shared capture pacing — PARTIAL / RELEASE-BLOCKING;
 SOURCE STATE MACHINE AND FOCUSED COMPILED REGRESSIONS IMPLEMENTED 2026-08-02; EXACT-CURRENT
-ANDROID/WINDOWS/DEBIAN TWO-VIEWER FOCUS/BACKGROUND EXECUTION, CAPTURE-THROUGH-RENDER
+PORTABLE LINUX TWO-VIEWER CAPTURE/TRANSPORT/DECODE/PUBLICATION CORE RUNTIME GREEN 2026-08-11;
+NATIVE ANDROID/WINDOWS/DEBIAN FOCUS/BACKGROUND AND COMPOSITOR EXECUTION, CAPTURE-THROUGH-RENDER
 TIMESTAMPS, LATENCY/QUEUE BUDGETS, COLD RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW
 PENDING.** Platforms: shared controlled-side monitor/camera capture on Android and desktop servers,
 affecting every outgoing viewer platform. Endpoint/action: one source/display capture generation →
@@ -4808,13 +4809,62 @@ contract and producer namespace: no host port was published, the producer had no
 retained no UDP socket, every product process remained under `--network=none`, and the scoped
 containers and private workspace were removed.
 
-This materially advances exact-current Linux core-path evidence, but it still does not satisfy the
-two-viewer R-S11fl matrix or release the branch. It bypasses Flutter/Dart texture and compositor
-presentation; does not background Android, unfocus/minimize Windows, run an installed service or
-packaged artifact, exercise the weeks-old deployed binaries, test cross-version behavior or file/
-audio/control coexistence, or perform sustained reconnect/resource/performance soak. Native
-Android/Windows/macOS/iOS execution, current Debian artifact execution, cold R-B2/R-B10 artifacts,
-independent reproduction, and external review remain explicit stop-ship gaps.
+A later exact-current two-viewer execution on 2026-08-11 used unpushed candidate commit
+`c88fa9cfcc8db44d78498763f3fa853f8499dcd3`, Git tree
+`fd9a766545a4cda64f1955056e750018f0cb9777`, and canonical `git archive` SHA-256
+`01345f3c8348e14560717d268be752bcd9fde0c28f74761479d5313ad8d8c118`. The clean archive, not the
+live worktree, was mounted read-only. The fresh offline Rust 1.75 build reverified Cargo-vendor
+closure `fb63f7daefc2c26fb73c04a7d77e9cb8a7658e3c899352e851bb1ebbacdc8c04`, compiled the real Linux
+server and both viewer paths, passed the probe's Rust tests, and produced the server at SHA-256
+`aea718a4c57d6cd121fd52bdf16e4ebc7958de152ec99d7c635a7ba08787f5b3`, exact-receipt probe at
+`3944f3eac44812c17d60a72983cc4906b26b35f1aa7fec9d02d40769164ee779`, and production viewer test
+artifact at `2245f4c3cef6ac0bc96bb0409dfe420de811e2289bcaff664a26cec540a13f9e`. Existing compiler warnings
+remain; this is not a warning-free or release-profile artifact claim.
+
+The runtime first repeated the real keyed one-viewer baseline over an animated 640x480 X11 source:
+VP9, 33 frames, 33 distinct decoded images, 33 exact receipts, 96 ms to first decode, 4,479 ms PTS
+span, 3,905 us maximum decode, 739 us mean decode, and zero receive-backlog drift. It then admitted
+a second real keyed `Remote` as an exact current-version desktop peer, validated `PeerInfo`, display
+zero, the first exact generation, and its keyframe, emitted the exact readiness receipt, deliberately
+withheld that frame receipt, and remained alive. While that peer was still alive and non-progressing,
+a concurrent production `Session` viewer traversed the real client I/O loop, receipt tracker,
+bounded video mailbox, decoder owner, and RGBA publication callback. After an externally forced
+1,500 ms publication stall, that healthy viewer recovered in 21 ms without reconnect, published 20
+distinct 640x480 frames, remained connected with `PeerInfo`, and completed exactly one successful
+close with I/O and media owners joined. The harness rechecked the stalled peer's exact PID/start-time
+identity after the healthy viewer passed, required its full `receipt=withheld` readiness marker,
+stopped it explicitly, and emitted
+`TWO_VIEWER_CAPTURE_ISOLATION=healthy-active,slow-receipt-withheld,no-reconnect`. Server, stalled
+peer, motion producer, and Xvfb all stopped and joined before
+`VIDEO_PIPELINE_CLEANUP=server,stalled-peer,motion,xvfb-joined`.
+
+All project compilation, tests, probes, and product execution occurred as numeric UID/GID 1000:1000
+inside immutable containers. Build and product runtime used `--network=none`, read-only roots and
+source/input mounts, all capabilities dropped, `no-new-privileges`, finite PID/CPU/memory limits,
+private tmpfs/output, no host namespace, device, Docker-socket mount, privileged flag, or published
+port. Xvfb used only its private Unix socket and the runtime proved zero TCP/UDP surface before
+product startup. The bind shim constrained the product's sole listener to `127.0.0.1:21118` inside
+the networkless namespace. A separate nonroot acquisition container used bridge egress only for the
+same five exact size/SHA-256-pinned Xvfb packages, published no port, and proved zero TCP listeners
+and zero UDP sockets before exit. Host orchestration executed only ordinary Git archive, temporary
+directory, hashing, and Docker-client operations; repository programs ran only in the containers.
+No root/sudo, host RustDesk process/service/binary/configuration/display, host listener, installed
+application, firewall/UFW/nftables/iptables inspection or mutation, or host routing/network-setting
+mutation occurred. Docker did necessarily create and retire the acquisition container's private
+network namespace, veth, and default-bridge attachment; no byte-for-byte host-network-state claim is
+made.
+
+This closes the earlier missing exact-current portable Linux two-viewer capture/transport/decode/
+publication core execution, but it does not close R-S11fl or release the branch. The production
+viewer witness terminates at the RGBA publication callback and therefore does not exercise Flutter/
+Dart texture or compositor presentation. The stalled peer is deliberately non-reading after one
+frame, not a native Android background/task-swipe/Force-Stop transition or a Windows focus/minimize
+transition. The run does not exercise an installed Debian service or packaged artifact, the weeks-old
+deployed binaries, cross-version behavior, simultaneous reverse-direction input, file/audio/control
+coexistence, repeated focus/reconnect cycles, or sustained queue/latency/memory/resource soak. Native
+Android/Windows/macOS/iOS execution, current Debian artifact execution, capture-through-compositor
+timing, explicit latency/queue budgets, cold R-B2/R-B10 artifacts, independent reproduction, and
+external review remain explicit stop-ship gaps.
 
 **R-S11fm/R-S11e-200 desktop texture activation finality — SOURCE IMPLEMENTED 2026-08-02;
 CONFINED FORMAT, 10/10 DART BEHAVIORS, TARGETED ANALYSIS WITH ZERO ERRORS, TWO

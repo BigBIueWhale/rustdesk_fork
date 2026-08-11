@@ -3201,6 +3201,22 @@ need(
         )
     ),
 )
+windows_service_password_entry = between(
+    ipc,
+    "fn set_windows_service_owned_unattended_password(v: SensitivePassword)",
+    "#[cfg(target_os = \"macos\")]",
+)
+need(
+    "windows-service-password-client-fixed-image-preflight-missing",
+    ordered(
+        windows_service_password_entry,
+        (
+            "validate_unattended_password_value(&v)?;",
+            "require_current_exe_is_fixed_service_runtime()?;",
+            "set_windows_service_owned_unattended_password_with_ack(v)?",
+        ),
+    ),
+)
 
 for failure in failures:
     print(failure)

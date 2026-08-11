@@ -44,6 +44,7 @@ FILES = {
     "requirements": "requirements.html",
     "hardening": "HARDENING_STATUS.md",
     "verify": "scripts/verify.sh",
+    "ipc": "src/ipc.rs",
     "windows": "src/platform/windows.rs",
 }
 
@@ -328,6 +329,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     requirements = sources["requirements"]
     hardening = sources["hardening"]
     verify = sources["verify"]
+    ipc = sources["ipc"]
     windows = sources["windows"]
 
     orchestrator_tree = parse_python(orchestrator, "build.py")
@@ -2027,6 +2029,24 @@ def validate_sources(sources: dict[str, str]) -> None:
     reject(installed_task, r"R-S11gj-(?:Limited|Wrong|First|Second)", "credential fixture in Task Scheduler arguments")
     require(installed_limited, "if ($token.Elevated)", "limited-token fail-closed proof")
     require(installed_limited, "$LimitedFixture $false", "limited mutation rejection transaction")
+    windows_password_start = ipc.find(
+        "fn set_windows_service_owned_unattended_password(v: SensitivePassword)"
+    )
+    windows_password_end = ipc.find(
+        '#[cfg(target_os = "macos")]', windows_password_start + 1
+    )
+    if windows_password_start < 0 or windows_password_end < 0:
+        raise VerificationError("missing bounded Windows service-password client entry point")
+    windows_password_entry = ipc[windows_password_start:windows_password_end]
+    require_order(
+        windows_password_entry,
+        (
+            "validate_unattended_password_value(&v)?;",
+            "require_current_exe_is_fixed_service_runtime()?;",
+            "set_windows_service_owned_unattended_password_with_ack(v)?",
+        ),
+        "fixed-image preflight before Windows service-password transport",
+    )
     require(
         installed_probe,
         "Invoke-RedirectedProcess $Executable '--password-stdin' $Password 60",
@@ -2149,6 +2169,10 @@ def validate_sources(sources: dict[str, str]) -> None:
         (
             "Thus neither negative may pass merely because a caller mutated state and then reported failure.",
             "negative rejection-preservation requirement",
+        ),
+        (
+            "The Windows client <span class=\"kw\">MUST</span> prove its own current executable is the fixed installed runtime before it opens the service-password transport",
+            "client fixed-image preflight requirement",
         ),
         ("distinct supervisor and child generations", "restart-generation installed-SCM requirement"),
         ("strict secret-free receipt", "secret-free installed-SCM receipt requirement"),
@@ -3852,6 +3876,18 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "requirements",
             "Thus neither negative may pass merely because a caller mutated state and then reported failure.",
             "A negative may pass merely because a caller mutated state and then reported failure.",
+        ),
+        (
+            "installed-SCM client fixed-image preflight",
+            "ipc",
+            "crate::platform::windows::require_current_exe_is_fixed_service_runtime()?;",
+            "",
+        ),
+        (
+            "installed-SCM normative client preflight",
+            "requirements",
+            "The Windows client <span class=\"kw\">MUST</span> prove its own current executable is the fixed installed runtime before it opens the service-password transport",
+            "The Windows client may open the service-password transport before proving its own executable",
         ),
         (
             "installed-SCM service-generation retirement",

@@ -7216,6 +7216,40 @@ network configuration was inspected or changed.
   run ID. No task was registered in the failed run, no authority assertion was weakened, and a fresh clean native
   transaction remains required.
 
+  Clean commit `7d9442ffe170f387cda57e620d3e260623525418`, tree
+  `aa2385f285a63ae5f28345cdf39d9d5145899282`, and run
+  `3495d42d-5f66-41bc-a0cd-2b3db361d813-A` passed the complete native build, installed the canonical setup, started
+  the LocalSystem service, applied and keyed the first credential, and completed the same-principal
+  least-privilege refusal plus its preservation checks. The next elevated copied-image negative did not return:
+  its byte-identical `RustDesk.exe --password-stdin` exceeded the probe's 60-second child deadline. The service
+  remained healthy until guest shutdown and no copied-image credential was accepted, but a timeout is not the
+  required conclusive nonzero refusal.
+
+  Source tracing found a product-side pre-admission finality defect. The receiver authenticates the pipe client
+  against its own fixed Program Files image before reading the password body and disconnects a copied caller. Named
+  pipe buffering can nevertheless let that caller complete one or both writes before observing the disconnect, so
+  it conservatively classifies the transport result as uncertain and enters the ten-minute recovery loop reserved
+  for operations that might have been admitted. The client can prove this case locally before transport: the
+  Windows service-owned password entry now requires its own current executable to be the no-reparse fixed installed
+  runtime before opening `_service_password`. The LocalSystem receiver retains every independent live process,
+  executable, token, principal, role, session, generation, DACL, impersonation, and pre-body/final-admission proof;
+  this adds prompt fail-closed classification and removes none of the server authority. The focused Windows harness
+  verifier binds the call order and norm, and deliberate mutations remove both the product preflight and its
+  requirement. Its confined baseline, all 243 deliberate mutations, and six bounded behavioral suites pass; the
+  normal independent workspace verifier, requirements HTML parse, exact requirements digest, native-codec ledger,
+  Python syntax rerun with its bytecode cache on owned tmpfs, and diff hygiene pass as well. An earlier confined
+  `py_compile` invocation omitted the tmpfs bytecode path and failed against the intentionally read-only source bind;
+  it is excluded. A fresh clean native transaction must still prove the refusal and all later rotation/restart
+  steps.
+
+  The failed guest was inspected only after shutdown through the pinned non-root, networkless helper and read-only
+  overlay/golden mounts. Its service log contains normal listener startup and final preshutdown, with no crash or
+  authority-failure entry. The first helper invocation used an incomplete immutable-archive path and failed before
+  container execution; the corrected invocation resolved the pinned image, and a later host-side `rg` lookup failed
+  because the helper wrapper's closed environment had no `rg`. Neither attempt touched a live guest, host RustDesk,
+  host root, host service/configuration/firewall/network state, a public listener, a Docker-published port, or a VM
+  NIC.
+
   No native installed-SCM success is claimed yet. Only a passing exact-current zero-interface VM transaction may
   change this row and Appendix C #345 from pending to native green. Even then the claim is limited to the exact
   installed Windows credential path: cold two-pass R-B2 equality, LocalSystem CM generation behavior, graphical
@@ -23785,7 +23819,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-b14e3b39f4a344fb216e05a0fedaec66afbfdd05adc3b5f6fb317531778567d2  requirements.html
+c2472ca11df2e2632e205db5acaa7f5856b0734c9a0a7c89a1c7dfd749f86aac  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

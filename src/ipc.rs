@@ -7464,6 +7464,12 @@ fn set_service_owned_unattended_password_sensitive(v: SensitivePassword) -> Resu
 #[cfg(target_os = "windows")]
 fn set_windows_service_owned_unattended_password(v: SensitivePassword) -> ResultType<()> {
     validate_unattended_password_value(&v)?;
+    // The service independently authenticates the live pipe peer before it
+    // reads the password body. Reject a copied/portable caller here as well:
+    // otherwise a server-side pre-admission disconnect can become an
+    // indeterminate buffered-pipe write and enter the admitted-operation
+    // recovery loop even though this image can never be authorized.
+    crate::platform::windows::require_current_exe_is_fixed_service_runtime()?;
     if set_windows_service_owned_unattended_password_with_ack(v)? {
         Ok(())
     } else {

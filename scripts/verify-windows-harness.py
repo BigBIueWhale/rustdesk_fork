@@ -2018,6 +2018,11 @@ def validate_sources(sources: dict[str, str]) -> None:
         require(installed_process, literal, description)
     require(installed_task, "$definition.Principal.LogonType = 3", "interactive-token task context")
     require(installed_task, "$definition.Principal.RunLevel = 0", "least-privilege Task Scheduler token")
+    require(
+        installed_task,
+        "^RustDeskInstalledProbe-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-[AB]$",
+        "exact run-bound temporary Task Scheduler name",
+    )
     require(installed_task, "-Mode',\n        'LimitedCredentialAttempt'", "typed limited helper mode")
     reject(installed_task, r"R-S11gj-(?:Limited|Wrong|First|Second)", "credential fixture in Task Scheduler arguments")
     require(installed_limited, "if ($token.Elevated)", "limited-token fail-closed proof")
@@ -3805,6 +3810,12 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "installed_probe",
             "$definition.Principal.RunLevel = 0",
             "$definition.Principal.RunLevel = 1",
+        ),
+        (
+            "installed-SCM run-bound temporary task name",
+            "installed_probe",
+            "^RustDeskInstalledProbe-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-[AB]$",
+            "^RustDeskInstalledProbe-[0-9a-f-]{38}$",
         ),
         (
             "installed-SCM redirected credential ingress",

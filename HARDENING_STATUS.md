@@ -7205,6 +7205,17 @@ network configuration was inspected or changed.
   as well. This remains source-only until a new clean named-commit VM transaction passes the complete installed-SCM
   probe.
 
+  Clean commit `260c2a75a2985859302a9ae38a21e8aedd046e7e`, tree
+  `6f1ac5e8d5ff78193c27c2c764be1e3e9aaaab3a`, and run
+  `72a0411f-2514-4280-ae3b-a3207b0fc9a1-A` natively proved the DACL correction. The complete build again exited
+  zero, canonical setup installed successfully, and the LocalSystem service passed the former kernel-DACL startup
+  failure. The probe then stopped before registering its least-privilege task because its own task-name validator
+  rejected the valid run ID: the generator appended the uppercase pass suffix `-A`, while the validator's compact
+  character class admitted only lowercase hexadecimal and hyphen. The correction retains a run-bound task name but
+  replaces the ambiguous length class with the same exact UUIDv4-plus-`[AB]` grammar already required for the build
+  run ID. No task was registered in the failed run, no authority assertion was weakened, and a fresh clean native
+  transaction remains required.
+
   No native installed-SCM success is claimed yet. Only a passing exact-current zero-interface VM transaction may
   change this row and Appendix C #345 from pending to native green. Even then the claim is limited to the exact
   installed Windows credential path: cold two-pass R-B2 equality, LocalSystem CM generation behavior, graphical

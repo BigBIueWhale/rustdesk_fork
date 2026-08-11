@@ -542,7 +542,7 @@ function Invoke-LimitedTask([string]$ExpectedExecutable, [object]$MainToken, [st
     $userName = [Security.Principal.WindowsIdentity]::GetCurrent().Name
     if ([string]::IsNullOrWhiteSpace($userName)) { Fail 'current interactive account name is empty' }
     $taskName = "RustDeskInstalledProbe-$($env:RUSTDESK_BUILD_RUN_ID)"
-    if ($taskName -cnotmatch '^RustDeskInstalledProbe-[0-9a-f-]{38}$') {
+    if ($taskName -cnotmatch '^RustDeskInstalledProbe-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}-[AB]$') {
         Fail 'temporary Task Scheduler name is malformed'
     }
     $taskService = New-Object -ComObject 'Schedule.Service'

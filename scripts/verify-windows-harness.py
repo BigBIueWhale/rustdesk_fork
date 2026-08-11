@@ -1512,7 +1512,13 @@ def validate_sources(sources: dict[str, str]) -> None:
         ),
         ('SOURCE_COMPONENTS = ("pass-A", "result")', "exact source components"),
         ('ARTIFACTS = ("rustdesk-setup.exe", "rustdesk.msi")', "closed artifact inventory"),
-        ('"domain.xml",\n    "run-build-progress.txt",\n    "windows-installed-service-result.json",', "bounded installed-SCM diagnostic inventory"),
+        (
+            '"domain.xml",\n    "run-build-progress.txt",\n'
+            '    "windows-installed-service-probe.stderr.txt",\n'
+            '    "windows-installed-service-probe.stdout.txt",\n'
+            '    "windows-installed-service-result.json",',
+            "bounded installed-SCM diagnostic inventory",
+        ),
         ("system.posix_acl_access", "output authority ACL rejection"),
         ("source artifact {artifact} does not match its checksum", "source checksum binding"),
         ("published Windows output edge is not the authenticated candidate", "published-edge identity proof"),
@@ -1907,6 +1913,8 @@ def validate_sources(sources: dict[str, str]) -> None:
         guest,
         (
             "build-windows.ps1 exit=$buildExit",
+            "windows-installed-service-probe.stdout.txt",
+            "windows-installed-service-probe.stderr.txt",
             "windows-installed-service-probe.ps1",
             "windows-installed-service-probe.ps1 exit=$installedServiceExit",
             "installed-service probe did not publish its exact result receipt",
@@ -1914,11 +1922,24 @@ def validate_sources(sources: dict[str, str]) -> None:
         ),
         "guest build, installed-SCM transaction, and artifact-copy order",
     )
+    for literal, description in (
+        ("1> $installedServiceStdout", "installed-SCM stdout capture"),
+        ("2> $installedServiceStderr", "installed-SCM stderr capture"),
+        ("$diagnosticItem.Length -gt 65536", "installed-SCM diagnostic size bound"),
+        ("[IO.FileAttributes]::ReparsePoint", "installed-SCM diagnostic reparse rejection"),
+    ):
+        require(guest, literal, description)
     require(
         shell_function(host, "validate_guest_progress"),
         'installed_markers[0] != "windows-installed-service-probe.ps1 exit=0"',
         "installed-SCM guest completion marker",
     )
+    for diagnostic in (
+        "windows-installed-service-probe.stdout.txt",
+        "windows-installed-service-probe.stderr.txt",
+    ):
+        require(host, diagnostic, f"retained {diagnostic}")
+        require(publication, diagnostic, f"published {diagnostic}")
 
     installed_main = powershell_function(installed_probe, "Invoke-MainProbe")
     installed_limited = powershell_function(

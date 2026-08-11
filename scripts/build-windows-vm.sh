@@ -1375,7 +1375,9 @@ extract_and_validate() {
         chmod 0644 -- rustdesk-setup.exe.sha256 rustdesk.msi.sha256
     )
     install -m 0644 "$CURRENT_PASS_ROOT/domain.xml" "$result/domain.xml"
-    for diagnostic in build-log.txt run-build-progress.txt windows-installed-service-result.json; do
+    for diagnostic in build-log.txt run-build-progress.txt \
+        windows-installed-service-probe.stdout.txt windows-installed-service-probe.stderr.txt \
+        windows-installed-service-result.json; do
         if [ -f "$extracted/$diagnostic" ] && [ ! -L "$extracted/$diagnostic" ]; then
             install -m 0644 "$extracted/$diagnostic" "$result/$diagnostic"
         fi

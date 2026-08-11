@@ -7116,12 +7116,23 @@ network configuration was inspected or changed.
   self-test and the Windows harness mutation catalog cover least-token, stdin, canonical setup, generation-retirement,
   loopback, confined-verifier, schema/hash, and receipt-result weakening.
 
-  No native success is claimed yet. The PowerShell source, guest/host wiring, strict receipt verifier, confined
-  structural verifier, and deliberate mutations must pass first, followed by one exact-current zero-interface VM
-  transaction. Only that result may change this row and Appendix C #345 from pending to native green. Even then the
-  claim is limited to the exact installed Windows credential path: cold two-pass R-B2 equality, LocalSystem CM
-  generation behavior, graphical remote control, concurrency/reconnect/focus/resource soak, macOS/Android/iOS,
-  independent reproduction, and external review remain release-blocking.
+  The first clean named-commit transaction did not pass. Commit
+  `a5f7b9fb7ce1ee1f209ee93142caf526865e29dc`, tree `f201fe43512b093765fdd48677d70d08653a6eb6`, and run
+  `29165a77-aa9d-45af-94be-f1ceec5fa12f-A` passed the source/offline identities, exact zero-interface and
+  loopback-VNC gates, native release build, one-test redirected-input probe regression, release probe build, MSI,
+  and setup construction. The guest then recorded `windows-installed-service-probe.ps1 exit=1` about two seconds
+  after the build completed, emitted no success receipt, and published no artifacts. The parent transcript failed
+  to retain the nested probe's error stream, so that run cannot honestly distinguish an embedded-helper/pre-install
+  failure from an immediate installer/SCM invariant failure. The harness now captures nested probe stdout/stderr as
+  separate bounded ordinary offline-output diagnostics and structurally requires their retention/publication; this
+  changes no product behavior or pass criterion. Its confined normal validator and all 240 deliberate mutations
+  plus six bounded behavioral suites pass after that repair. The retry must be a new clean named-commit transaction.
+
+  No native installed-SCM success is claimed yet. Only a passing exact-current zero-interface VM transaction may
+  change this row and Appendix C #345 from pending to native green. Even then the claim is limited to the exact
+  installed Windows credential path: cold two-pass R-B2 equality, LocalSystem CM generation behavior, graphical
+  remote control, concurrency/reconnect/focus/resource soak, macOS/Android/iOS, independent reproduction, and
+  external review remain release-blocking.
 - **R-S11c-8 — `_whiteboard` helper ambient same-UID trust — CLOSED 2026-07-09.** Platforms: Windows,
   Linux, and macOS desktop whiteboard helper paths. Endpoint/action: `_whiteboard` overlay helper IPC formerly
   accepted `Data::Whiteboard((String, CustomEvent))` drawing events and `Exit` on a fixed endpoint.

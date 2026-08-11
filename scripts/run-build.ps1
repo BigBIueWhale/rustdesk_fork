@@ -481,12 +481,24 @@ try {
     }
     $dist = Join-Path $source 'dist'
     $installedServiceReceipt = Join-Path $out 'windows-installed-service-result.json'
+    $installedServiceStdout = Join-Path $out 'windows-installed-service-probe.stdout.txt'
+    $installedServiceStderr = Join-Path $out 'windows-installed-service-probe.stderr.txt'
     & powershell.exe -NoProfile -ExecutionPolicy Bypass -File (Join-Path $source 'scripts\windows-installed-service-probe.ps1') `
         -Mode Main `
         -ReceiptPath $installedServiceReceipt `
         -ProbeExe (Join-Path $source 'target\release\examples\probe_client.exe') `
-        -PythonExe 'C:\Program Files\Python311\python.exe'
+        -PythonExe 'C:\Program Files\Python311\python.exe' `
+        1> $installedServiceStdout `
+        2> $installedServiceStderr
     $installedServiceExit = $LASTEXITCODE
+    foreach ($diagnostic in @($installedServiceStdout, $installedServiceStderr)) {
+        $diagnosticItem = Get-Item -LiteralPath $diagnostic -Force
+        if ($diagnosticItem.PSIsContainer -or
+            ($diagnosticItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+            $diagnosticItem.Length -gt 65536) {
+            Fail "installed-service probe diagnostic is not one bounded ordinary file: $diagnostic"
+        }
+    }
     Mark "windows-installed-service-probe.ps1 exit=$installedServiceExit"
     if ($installedServiceExit -ne 0) {
         Fail "windows-installed-service-probe.ps1 failed with exit $installedServiceExit"

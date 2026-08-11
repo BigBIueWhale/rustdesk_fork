@@ -26,6 +26,8 @@ DIAGNOSTICS = (
     "build-log.txt",
     "domain.xml",
     "run-build-progress.txt",
+    "windows-installed-service-probe.stderr.txt",
+    "windows-installed-service-probe.stdout.txt",
     "windows-installed-service-result.json",
 )
 MAX_ARTIFACT_BYTES = 2 * 1024 * 1024 * 1024

@@ -6125,8 +6125,14 @@ def validate_smoke_contract(
         ("FT-READDIR-SERIALIZE-ERROR", "file-transfer ReadDir serialization-error propagation"),
         ("let login_bytes = match msg.write_to_bytes()", "file-transfer login serialization result"),
         ("let readdir_bytes = match m.write_to_bytes()", "file-transfer ReadDir serialization result"),
-        ('mode != "filetransfer" || file_transfer_ok', "file-transfer semantic pass condition"),
-        ("if !peer_username_nonempty || !readdir_send_ok", "missing/empty PeerInfo failure"),
+        (
+            '(mode != "filetransfer" && mode != "cmfiletransfer") || file_transfer_ok',
+            "file-transfer semantic pass condition",
+        ),
+        (
+            "if !peer_username_nonempty\n                            || !readdir_send_ok",
+            "missing/empty PeerInfo failure",
+        ),
     ):
         require_text(session_probe, text, label)
     require_order(
@@ -8148,11 +8154,15 @@ def validate_windows_helper_launch_contract(sources):
         cm_launch,
         (
             "current_windows_process_identity_key()",
-            "windows_connection_manager_launch_environment(launch_token, parent)",
+            "create_inheritable_current_process_proof()",
+            "windows_connection_manager_launch_environment(",
             "create_windows_service_process_job()?",
             "if is_root()",
             "launch_process_in_session_with_env(",
             "job.raw()",
+            "ServiceOwnedWindowsHandle::raw",
+            "drop(inherited_parent);",
+            "let launched = launch_result?;",
             "launch_current_process_with_env_and_job(",
             "job.raw()",
             "windows_process_identity(launched.process_id, process.raw())?",
@@ -8171,6 +8181,10 @@ def validate_windows_helper_launch_contract(sources):
         (
             "CM_LAUNCH_PARENT_CREATION_ENV",
             "Windows CM launch parent creation-time environment",
+        ),
+        (
+            "CM_LAUNCH_PARENT_HANDLE_ENV",
+            "Windows CM launch parent process-handle environment",
         ),
     ):
         require_text(platform, text, label)
@@ -8200,21 +8214,27 @@ def validate_windows_helper_launch_contract(sources):
     )
     require_text(
         native,
-        "CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE,",
-        "Windows token launch disables handle inheritance",
+        "PROC_THREAD_ATTRIBUTE_HANDLE_LIST",
+        "Windows token launch explicitly allowlists inherited handles",
+    )
+    require_text(
+        native,
+        "hInheritedHandle != NULL,\n                                     dwCreationFlags",
+        "Windows token launch enables inheritance only for an explicit handle list",
     )
     require_order(
         native,
         (
             "class ProcessCreationJobAttributes",
             "PROC_THREAD_ATTRIBUTE_JOB_LIST",
+            "PROC_THREAD_ATTRIBUTE_HANDLE_LIST",
             "HANDLE LaunchProcessWin(",
-            "jobAttributes.initialize(hJob)",
+            "jobAttributes.initialize(hJob, hInheritedHandle)",
             "CreateProcessAsUserW(",
             "HANDLE LaunchProcessCurrentWin(",
             "GetEnvironmentStringsW()",
             "merge_environment_blocks(currentEnvironment, extraEnvironment)",
-            "jobAttributes.initialize(hJob)",
+            "jobAttributes.initialize(hJob, NULL)",
             "CreateProcessW(",
         ),
         "Windows token-switched and same-user atomic job assignment",
@@ -8338,6 +8358,26 @@ def validate_windows_helper_launch_contract(sources):
         (
             "PROC_THREAD_ATTRIBUTE_JOB_LIST",
             "Windows CM job-at-creation mutation",
+        ),
+        (
+            "PROC_THREAD_ATTRIBUTE_HANDLE_LIST",
+            "Windows CM parent-handle-at-creation mutation",
+        ),
+        (
+            "Windows inherited launch-parent capability bypass",
+            "Windows CM inherited parent capability mutation",
+        ),
+        (
+            "Windows inherited parent handle resealing removal",
+            "Windows CM inherited parent handle sealing mutation",
+        ),
+        (
+            "Windows parent-proof prompt-close removal",
+            "Windows CM parent proof prompt-close mutation",
+        ),
+        (
+            "Windows headless-CM early parent-handle sealing removal",
+            "Windows CM startup-time parent handle sealing mutation",
         ),
         (
             "limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;",
@@ -48536,9 +48576,9 @@ def run_source_mutations(sources):
         ),
         (
             "windows_native",
-            "CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE,",
-            "CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, TRUE,",
-            "Windows token launch disables handle inheritance",
+            "hInheritedHandle != NULL,\n                                     dwCreationFlags",
+            "FALSE,\n                                     dwCreationFlags",
+            "Windows token launch enables inheritance only for an explicit handle list",
         ),
         (
             "windows_native",
@@ -53009,8 +53049,8 @@ def run_source_mutations(sources):
         ),
         (
             "session_probe",
-            'mode != "filetransfer" || file_transfer_ok',
-            'mode != "filetransfer" || true',
+            '(mode != "filetransfer" && mode != "cmfiletransfer") || file_transfer_ok',
+            '(mode != "filetransfer" && mode != "cmfiletransfer") || true',
             "file-transfer semantic pass condition",
         ),
         (
@@ -53021,8 +53061,8 @@ def run_source_mutations(sources):
         ),
         (
             "session_probe",
-            "if !peer_username_nonempty || !readdir_send_ok",
-            "if !readdir_send_ok",
+            "if !peer_username_nonempty\n                            || !readdir_send_ok",
+            "if false\n                            || !readdir_send_ok",
             "missing/empty PeerInfo failure",
         ),
         (

@@ -55,8 +55,9 @@ use windows::{
     core::{PCWSTR, PWSTR},
     Win32::{
         Foundation::{
-            CloseHandle, DuplicateHandle, LocalFree, DUPLICATE_SAME_ACCESS, FILETIME, HANDLE,
-            HLOCAL, UNICODE_STRING, WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
+            CloseHandle, DuplicateHandle, LocalFree, SetHandleInformation, DUPLICATE_SAME_ACCESS,
+            FILETIME, HANDLE, HANDLE_FLAGS, HANDLE_FLAG_INHERIT, HLOCAL, UNICODE_STRING,
+            WAIT_FAILED, WAIT_OBJECT_0, WAIT_TIMEOUT,
         },
         Security::{
             Authorization::ConvertSidToStringSidW, GetTokenInformation, RevertToSelf,
@@ -69,10 +70,10 @@ use windows::{
                 ImpersonateNamedPipeClient,
             },
             Threading::{
-                ExitThread, GetCurrentProcess, GetCurrentThread, GetProcessTimes, OpenProcess,
-                OpenProcessToken, OpenThreadToken, QueryFullProcessImageNameW, WaitForSingleObject,
-                INFINITE, PROCESS_NAME_FORMAT, PROCESS_QUERY_LIMITED_INFORMATION,
-                PROCESS_SYNCHRONIZE,
+                ExitThread, GetCurrentProcess, GetCurrentThread, GetProcessId, GetProcessTimes,
+                OpenProcess, OpenProcessToken, OpenThreadToken, QueryFullProcessImageNameW,
+                WaitForSingleObject, INFINITE, PROCESS_NAME_FORMAT,
+                PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_SYNCHRONIZE,
             },
         },
         UI::Shell::CommandLineToArgvW,
@@ -590,6 +591,32 @@ impl WindowsSasPipeDispatch {
 impl WindowsPeerProcess {
     fn open(pid: u32) -> ResultType<Self> {
         Self::open_with_access(pid, PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_SYNCHRONIZE)
+    }
+
+    fn from_inherited_handle(pid: u32, handle: HANDLE) -> ResultType<Self> {
+        if pid == 0 {
+            bail!("Refused inherited Windows IPC peer process with pid 0");
+        }
+        let handle = duplicate_windows_handle(handle, "connection-manager launch-parent process")?;
+        let handle_pid = unsafe { GetProcessId(handle.0) };
+        if handle_pid == 0 {
+            bail!(
+                "Failed to resolve inherited connection-manager launch-parent process id: {}",
+                std::io::Error::last_os_error()
+            );
+        }
+        if handle_pid != pid {
+            bail!(
+                "Inherited connection-manager launch-parent handle mismatch: expected {}, got {}",
+                pid,
+                handle_pid
+            );
+        }
+        let creation_time = windows_process_creation_time(handle.0)?;
+        Ok(Self {
+            key: WindowsProcessIdentityKey { pid, creation_time },
+            handle,
+        })
     }
 
     fn open_for_sas_dispatch(pid: u32) -> ResultType<Self> {
@@ -4155,6 +4182,30 @@ fn windows_cm_launch_parent_identity_from_env() -> ResultType<WindowsProcessIden
     Ok(WindowsProcessIdentityKey { pid, creation_time })
 }
 
+#[cfg(target_os = "windows")]
+fn windows_cm_launch_parent_handle_from_env() -> ResultType<Option<HANDLE>> {
+    let value = std::env::var(crate::common::CM_LAUNCH_PARENT_HANDLE_ENV)
+        .map_err(|err| anyhow::anyhow!("missing connection-manager launch parent handle: {err}"))?;
+    if value == crate::common::CM_LAUNCH_PARENT_HANDLE_NONE {
+        return Ok(None);
+    }
+    let value = value
+        .parse::<usize>()
+        .map_err(|err| anyhow::anyhow!("invalid connection-manager launch parent handle: {err}"))?;
+    let handle = HANDLE(value as *mut c_void);
+    if handle.is_invalid() {
+        bail!("invalid connection-manager launch parent handle value");
+    }
+    unsafe { SetHandleInformation(handle, HANDLE_FLAG_INHERIT.0, HANDLE_FLAGS(0)) }
+        .map_err(|err| anyhow::anyhow!("failed to seal inherited launch-parent handle: {err}"))?;
+    Ok(Some(handle))
+}
+
+#[cfg(target_os = "windows")]
+pub(crate) fn seal_windows_cm_launch_parent_handle() -> ResultType<()> {
+    windows_cm_launch_parent_handle_from_env().map(|_| ())
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) fn authorize_cm_ipc_connection(stream: &Connection) -> bool {
     #[cfg(target_os = "linux")]
@@ -4229,7 +4280,18 @@ pub(crate) fn authorize_cm_ipc_connection(stream: &Connection) -> bool {
             );
             return false;
         }
-        let process = match WindowsPeerProcess::open(expected_parent.pid) {
+        let inherited_parent = match windows_cm_launch_parent_handle_from_env() {
+            Ok(handle) => handle,
+            Err(err) => {
+                log::warn!("Rejected _cm IPC launch-parent handle: {err}");
+                return false;
+            }
+        };
+        let process = match inherited_parent {
+            Some(handle) => WindowsPeerProcess::from_inherited_handle(expected_parent.pid, handle),
+            None => WindowsPeerProcess::open(expected_parent.pid),
+        };
+        let process = match process {
             Ok(process) => process,
             Err(err) => {
                 log::warn!("Rejected _cm IPC launch-parent process: {err}");

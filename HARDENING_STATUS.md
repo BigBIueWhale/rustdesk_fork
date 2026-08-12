@@ -6924,8 +6924,9 @@ network configuration was inspected or changed.
   launch-token and process-shape authentication but did not retain the exact macOS/Windows helper generation;
   R-S11gi/R-S11e-221 below supersedes that narrower endpoint-identity claim.
 - **R-S11gi/R-S11e-221 — macOS/Windows exact connection-manager process ownership — SOURCE IMPLEMENTED;
-  NATIVE SAME-USER WINDOWS CM LIFECYCLE GREEN 2026-08-11; LOCALSYSTEM, macOS,
-  INSTALLED-SERVICE, CONCURRENT-RACE, AND EXACT-COMMIT RELEASE EVIDENCE PENDING.** Platforms: macOS and Windows
+  NATIVE SAME-USER WINDOWS CM LIFECYCLE GREEN 2026-08-11; INSTALLED LOCALSYSTEM DEFECT REPRODUCED
+  2026-08-12 AND SOURCE-CORRECTED BUT NATIVE RETEST PENDING; macOS, CONCURRENT-RACE, AND EXACT-COMMIT RELEASE
+  EVIDENCE PENDING.** Platforms: macOS and Windows
   desktop controlled-side connection-manager paths; Linux retains its independently closed direct-child,
   PID/UID/proc-start-time, role-token, and parent-death model. Endpoint/action: selection and launch of the fixed
   `_cm` listener before `Data::Login`, `cm_auth_token`, file/clipboard authority, chat, voice state, or any future
@@ -6955,17 +6956,28 @@ network configuration was inspected or changed.
   PID to equal the launch parent. Windows retains PID, creation time, process handle, and a fresh unnamed
   kill-on-close job for both launch modes. Both the LocalSystem token-switched launch and the same-user current-token
   launch use creation-time `PROC_THREAD_ATTRIBUTE_JOB_LIST` assignment, so no helper initial thread can run outside
-  its exact server-owned job. The named-pipe server PID,
+  its exact server-owned job. For the LocalSystem-to-interactive-user launch only, the parent also opens itself with
+  exactly `PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE`, marks that handle inheritable, and allowlists that one
+  capability through the same creation-time `STARTUPINFOEXW` transaction using
+  `PROC_THREAD_ATTRIBUTE_HANDLE_LIST`. The LocalSystem launcher closes its temporarily inheritable source handle
+  immediately when the native process-creation call returns, before inspecting the result; the child clears the
+  inherited flag at `--cm`/`--cm-no-ui` dispatch, before UI or headless startup, and authorization duplicates its
+  local capability before inspection. This is not
+  ambient handle inheritance and does not depend on the interactive account receiving `SeImpersonatePrivilege` or
+  on weakening the LocalSystem process DACL. The named-pipe server PID,
   opened process creation time, liveness, executable, and exact role must match the retained owner before mutual
   token proof. The Windows CM listener requires the connected server PID/creation-time generation from the launch
-  environment, liveness, executable, exact ordinary/service-owned server role, and stable pipe client PID. The
+  environment, liveness, executable, exact ordinary/service-owned server role, and stable pipe client PID. A
+  same-user CM opens that parent normally; a LocalSystem-launched CM duplicates and inspects only the inherited
+  least-right process handle, then applies the identical PID/creation/liveness/image/argv checks. The
   generic `WindowsUserHelperLaunch::ConnectionManager` variant is deleted. Clipboard and privacy reconnects call
   only the server-owned exact-generation facade; neither can read the token or call the token-taking IPC connector.
 
   The retained Windows process-object design follows Microsoft's contracts that
   [`GetNamedPipeServerProcessId`](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getnamedpipeserverprocessid)
-  identifies the named-pipe server process and that a process kernel object remains valid while another process
-  retains an open handle. The macOS child owner follows Apple's `waitpid(2)` contract: the launched child remains an
+  identifies the named-pipe server process, that a process kernel object remains valid while another process
+  retains an open handle, and that `PROC_THREAD_ATTRIBUTE_HANDLE_LIST` confines inheritance to the explicit handle
+  list when process creation enables inheritance. The macOS child owner follows Apple's `waitpid(2)` contract: the launched child remains an
   existing unwaited-for child until its exact owner reaps it. Four pure Rust regressions prove that an active
   authentication lease prevents reap/replacement, concurrent selectors launch one generation, uncertain liveness
   preserves the exact owner, and failed authentication retires only the unshared exited generation.
@@ -7027,6 +7039,19 @@ network configuration was inspected or changed.
   `reconnects=2`, `parent-death=closed`; Cargo, guest, and host validation all returned zero. The retained evidence
   records result SHA-256 `d04f1a03516c4341baa94a6d186a1e204f6638347cfeda78720ab8066b07e3ce`, zero guest
   interfaces, loopback-only VNC, and exact listener restoration.
+
+  The first exact installed LocalSystem CM lifecycle attempt (2026-08-12) is negative evidence, not a pass. Exact
+  commit `d9b7a3f2609c06e9ae70e0a100f1d8de3955f5b4`, tree
+  `0e4794c6502c07f3a8c6183a82b1e776f25b0e6c`, source manifest
+  `ef9a177b5ca74c93e23bbeabcb42b17fe1944b4a60486d986689f3d0e471efd7`, and run
+  `101c0dbd-3cc1-46ef-9feb-8897725086f8-A` built successfully in the zero-interface guest, then failed the first
+  strict CM file round trip. Retained machine/user logs proved repeated `_cm` admission failure: the interactive
+  CM could not open its LocalSystem launch parent with `PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE`
+  (`Access is denied`, `0x80070005`). That is a real cross-integrity source defect exposed by the new installed
+  transaction, not a probe-directory failure. The failed run supplies no positive lifecycle receipt. The source
+  correction described above transfers a least-right exact process-object capability at process creation; it is not
+  green until a fresh exact installed transaction passes the full reuse, stale-CM recovery, abrupt-owner cleanup,
+  credential-rotation preservation, SCM-stop finality, restart-generation, and strict file-round-trip sequence.
 
   Four earlier attempts are excluded from positive evidence: two staging/compile attempts respectively exposed a
   wrong WinAPI import plus absent generated bridges and then stale forced-in bridges; two compiled runtime attempts
@@ -23842,7 +23867,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-57122d58d4254878c2dc092efd0b86ca8bf374081fc70962081333648ae86dfe  requirements.html
+f71a9fd8d1ab2176979841a209123125e92950aa5cd878bf0bd94957a673ed92  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

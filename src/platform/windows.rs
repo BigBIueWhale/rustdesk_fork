@@ -49,7 +49,7 @@ use winapi::{
         fileapi::{
             CreateFileW, GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION, OPEN_EXISTING,
         },
-        handleapi::{CloseHandle, INVALID_HANDLE_VALUE},
+        handleapi::{CloseHandle, SetHandleInformation, INVALID_HANDLE_VALUE},
         jobapi2::{
             CreateJobObjectW, QueryInformationJobObject, SetInformationJobObject,
             TerminateJobObject,
@@ -70,8 +70,8 @@ use winapi::{
             FILE_ATTRIBUTE_DIRECTORY, FILE_ATTRIBUTE_TEMPORARY, FILE_READ_ATTRIBUTES,
             FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, HANDLE,
             JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
-            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, PROCESS_QUERY_LIMITED_INFORMATION, TOKEN_ELEVATION,
-            TOKEN_QUERY,
+            JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE, PROCESS_QUERY_LIMITED_INFORMATION, SYNCHRONIZE,
+            TOKEN_ELEVATION, TOKEN_QUERY,
         },
         winreg::HKEY_CURRENT_USER,
         winuser::*,
@@ -594,6 +594,7 @@ extern "C" {
         show: BOOL,
         extra_env: *const u16,
         job: HANDLE,
+        inherited_handle: HANDLE,
         process_id: LPDWORD,
         token_pid: &mut DWORD,
     ) -> HANDLE;
@@ -2426,6 +2427,26 @@ fn create_windows_service_process_job() -> ResultType<ServiceOwnedWindowsHandle>
     Ok(job)
 }
 
+fn create_inheritable_current_process_proof() -> ResultType<ServiceOwnedWindowsHandle> {
+    let raw = unsafe {
+        OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE,
+            FALSE,
+            GetCurrentProcessId(),
+        )
+    };
+    let process = ServiceOwnedWindowsHandle::new(raw, "connection-manager parent proof")?;
+    if unsafe { SetHandleInformation(process.raw(), HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT) }
+        == FALSE
+    {
+        bail!(
+            "SetHandleInformation failed for connection-manager parent proof: {}",
+            io::Error::last_os_error()
+        );
+    }
+    Ok(process)
+}
+
 fn windows_process_identity(
     process_id: DWORD,
     process: HANDLE,
@@ -2476,6 +2497,7 @@ fn launch_windows_service_server(session_id: DWORD) -> ResultType<WindowsService
             ),
         ],
         job.raw(),
+        NULL,
     )?;
     if launched.process.is_null() || launched.process == INVALID_HANDLE_VALUE {
         require_windows_job_empty_before_launch_failure(
@@ -3634,9 +3656,10 @@ fn windows_user_helper_launch_parts(
 fn windows_connection_manager_launch_environment(
     launch_token: &str,
     parent: ipc::WindowsProcessIdentityKey,
+    parent_handle: Option<HANDLE>,
 ) -> ResultType<Vec<(OsString, OsString)>> {
     validate_windows_user_helper_launch_token("connection-manager", launch_token)?;
-    Ok(vec![
+    let mut environment = vec![
         (
             OsString::from(crate::common::CM_LAUNCH_TOKEN_ENV),
             OsString::from(launch_token),
@@ -3649,7 +3672,21 @@ fn windows_connection_manager_launch_environment(
             OsString::from(crate::common::CM_LAUNCH_PARENT_CREATION_ENV),
             OsString::from(parent.creation_time.to_string()),
         ),
-    ])
+    ];
+    let parent_handle = match parent_handle {
+        Some(parent_handle) => {
+            if parent_handle.is_null() || parent_handle == INVALID_HANDLE_VALUE {
+                bail!("Invalid inherited Windows connection-manager parent handle");
+            }
+            OsString::from((parent_handle as usize).to_string())
+        }
+        None => OsString::from(crate::common::CM_LAUNCH_PARENT_HANDLE_NONE),
+    };
+    environment.push((
+        OsString::from(crate::common::CM_LAUNCH_PARENT_HANDLE_ENV),
+        parent_handle,
+    ));
+    Ok(environment)
 }
 
 #[cfg(test)]
@@ -3698,7 +3735,8 @@ mod process_launch_tests {
 
         let parent_identity = ipc::current_windows_process_identity_key().unwrap();
         let environment =
-            windows_connection_manager_launch_environment(&launch_token, parent_identity).unwrap();
+            windows_connection_manager_launch_environment(&launch_token, parent_identity, None)
+                .unwrap();
         assert_eq!(
             environment,
             vec![
@@ -3714,7 +3752,25 @@ mod process_launch_tests {
                     OsString::from(crate::common::CM_LAUNCH_PARENT_CREATION_ENV),
                     OsString::from(parent_identity.creation_time.to_string()),
                 ),
+                (
+                    OsString::from(crate::common::CM_LAUNCH_PARENT_HANDLE_ENV),
+                    OsString::from(crate::common::CM_LAUNCH_PARENT_HANDLE_NONE),
+                ),
             ]
+        );
+        let inherited_parent = 7usize as HANDLE;
+        let inherited_environment = windows_connection_manager_launch_environment(
+            &launch_token,
+            parent_identity,
+            Some(inherited_parent),
+        )
+        .unwrap();
+        assert_eq!(
+            inherited_environment.last(),
+            Some(&(
+                OsString::from(crate::common::CM_LAUNCH_PARENT_HANDLE_ENV),
+                OsString::from("7"),
+            ))
         );
 
         let (role, environment) =
@@ -3797,12 +3853,16 @@ fn launch_process_in_session_with_env<I, K, V>(
     show: BOOL,
     envs: I,
     job: HANDLE,
+    inherited_handle: HANDLE,
 ) -> ResultType<WindowsLaunchedProcess>
 where
     I: IntoIterator<Item = (K, V)>,
     K: AsRef<OsStr>,
     V: AsRef<OsStr>,
 {
+    if !inherited_handle.is_null() && job.is_null() {
+        bail!("Windows inherited-handle launch requires an atomic process-creation job");
+    }
     let exe = launch_executable_path(exe)?;
     let current_dir = exe
         .parent()
@@ -3828,6 +3888,7 @@ where
             show,
             extra_env,
             job,
+            inherited_handle,
             &mut process_id,
             &mut token_pid,
         )
@@ -3912,10 +3973,23 @@ pub(crate) fn run_connection_manager_user_helper(
     let parent = ipc::current_windows_process_identity_key().map_err(|err| {
         anyhow!("Failed to identify the Windows connection-manager owner: {err:#}")
     })?;
-    let envs =
-        windows_connection_manager_launch_environment(launch_token, parent).map_err(|err| {
-            anyhow!("Failed to prepare the Windows connection-manager launch proof: {err:#}")
-        })?;
+    let inherited_parent = if is_root() {
+        Some(create_inheritable_current_process_proof().map_err(|err| {
+            anyhow!("Failed to create the Windows connection-manager parent proof: {err:#}")
+        })?)
+    } else {
+        None
+    };
+    let envs = windows_connection_manager_launch_environment(
+        launch_token,
+        parent,
+        inherited_parent
+            .as_ref()
+            .map(ServiceOwnedWindowsHandle::raw),
+    )
+    .map_err(|err| {
+        anyhow!("Failed to prepare the Windows connection-manager launch proof: {err:#}")
+    })?;
     let job = create_windows_service_process_job()?;
     let launched = if is_root() {
         let Some(session_id) = get_current_process_session_id() else {
@@ -3924,7 +3998,7 @@ pub(crate) fn run_connection_manager_user_helper(
         let exe = std::env::current_exe().map_err(|err| {
             anyhow!("Failed to resolve the LocalSystem connection-manager executable: {err}")
         })?;
-        let launched = launch_process_in_session_with_env(
+        let launch_result = launch_process_in_session_with_env(
             &exe,
             &["--cm"],
             session_id,
@@ -3932,7 +4006,16 @@ pub(crate) fn run_connection_manager_user_helper(
             FALSE,
             envs.iter().map(|(key, value)| (key, value)),
             job.raw(),
-        )?;
+            inherited_parent
+                .as_ref()
+                .map(ServiceOwnedWindowsHandle::raw)
+                .unwrap_or(NULL),
+        );
+        // The child has its own explicitly allowlisted copy after process creation. Close the
+        // temporarily inheritable service-side copy before inspecting the launch result so no
+        // subsequent child launch can inherit this capability.
+        drop(inherited_parent);
+        let launched = launch_result?;
         if launched.process.is_null() || launched.process == INVALID_HANDLE_VALUE {
             require_windows_job_empty_before_launch_failure(
                 &job,
@@ -4025,7 +4108,7 @@ where
     };
     let exe = std::env::current_exe()?;
     let launched =
-        launch_process_in_session_with_env(&exe, &arg, session_id, TRUE, FALSE, envs, NULL)?;
+        launch_process_in_session_with_env(&exe, &arg, session_id, TRUE, FALSE, envs, NULL, NULL)?;
     if launched.process.is_null() {
         if launched.token_pid == 0 {
             bail!(

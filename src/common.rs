@@ -108,6 +108,10 @@ pub const CM_LAUNCH_TOKEN_ENV: &str = "RUSTDESK_CM_LAUNCH_TOKEN";
 pub const CM_LAUNCH_PARENT_ENV: &str = "RUSTDESK_CM_LAUNCH_PARENT";
 #[cfg(target_os = "windows")]
 pub const CM_LAUNCH_PARENT_CREATION_ENV: &str = "RUSTDESK_CM_LAUNCH_PARENT_CREATION";
+#[cfg(target_os = "windows")]
+pub const CM_LAUNCH_PARENT_HANDLE_ENV: &str = "RUSTDESK_CM_LAUNCH_PARENT_HANDLE";
+#[cfg(target_os = "windows")]
+pub const CM_LAUNCH_PARENT_HANDLE_NONE: &str = "none";
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub const WHITEBOARD_LAUNCH_TOKEN_ENV: &str = "RUSTDESK_WHITEBOARD_LAUNCH_TOKEN";
 #[cfg(not(any(target_os = "android", target_os = "ios")))]

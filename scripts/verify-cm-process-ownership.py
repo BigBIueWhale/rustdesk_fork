@@ -22,6 +22,7 @@ FILES = (
     "examples/probe_client.rs",
     "examples/windows_cm_lifecycle_probe.rs",
     "src/common.rs",
+    "src/core_main.rs",
     "src/ipc.rs",
     "src/ipc/auth.rs",
     "src/lib.rs",
@@ -30,6 +31,7 @@ FILES = (
     "src/privacy_mode.rs",
     "src/server/clipboard_service.rs",
     "src/server/connection.rs",
+    "src/ui_cm_interface.rs",
     "src/windows_cm_lifecycle_probe.rs",
     "requirements.html",
     "HARDENING_STATUS.md",
@@ -101,6 +103,7 @@ def verify(files: Mapping[str, str]) -> None:
     probe_client = files["examples/probe_client.rs"]
     probe_example = files["examples/windows_cm_lifecycle_probe.rs"]
     common = files["src/common.rs"]
+    core_main = files["src/core_main.rs"]
     ipc = files["src/ipc.rs"]
     auth = files["src/ipc/auth.rs"]
     lib = files["src/lib.rs"]
@@ -109,6 +112,7 @@ def verify(files: Mapping[str, str]) -> None:
     privacy = files["src/privacy_mode.rs"]
     clipboard = files["src/server/clipboard_service.rs"]
     connection = files["src/server/connection.rs"]
+    ui_cm = files["src/ui_cm_interface.rs"]
     lifecycle_probe = files["src/windows_cm_lifecycle_probe.rs"]
     requirements = files["requirements.html"]
     ledger = files["HARDENING_STATUS.md"]
@@ -122,6 +126,38 @@ def verify(files: Mapping[str, str]) -> None:
         common,
         'pub const CM_LAUNCH_PARENT_CREATION_ENV: &str = "RUSTDESK_CM_LAUNCH_PARENT_CREATION";',
         "Windows parent-generation environment name",
+    )
+    require(
+        common,
+        'pub const CM_LAUNCH_PARENT_HANDLE_ENV: &str = "RUSTDESK_CM_LAUNCH_PARENT_HANDLE";',
+        "Windows inherited parent-process capability environment name",
+    )
+    require(
+        common,
+        'pub const CM_LAUNCH_PARENT_HANDLE_NONE: &str = "none";',
+        "Windows explicit same-user parent-handle sentinel",
+    )
+    require(
+        ipc,
+        "pub(crate) use ipc_auth::seal_windows_cm_launch_parent_handle;",
+        "Windows early CM parent-capability sealing export",
+    )
+    if core_main.count("crate::ipc::seal_windows_cm_launch_parent_handle()") != 2:
+        raise VerificationError(
+            "Windows CM launch roles must each seal the inherited parent capability exactly once"
+        )
+    core_dispatch = function_block(core_main, "pub fn core_main()")
+    ordered(
+        core_dispatch,
+        (
+            'args[0] == "--cm"',
+            "crate::ipc::seal_windows_cm_launch_parent_handle()",
+            "crate::ui_interface::start_main_status_sync();",
+            'args[0] == "--cm-no-ui"',
+            "crate::ipc::seal_windows_cm_launch_parent_handle()",
+            "crate::ui_interface::start_main_status_sync();",
+        ),
+        "Windows CM capability sealing before UI or headless startup",
     )
 
     require(connection, "trait CmOwnedProcess: Send", "thread-transferable CM process owner")
@@ -295,6 +331,32 @@ def verify(files: Mapping[str, str]) -> None:
         ),
         "Windows CM endpoint identity",
     )
+    inherited_parent = function_block(auth, "fn from_inherited_handle")
+    ordered(
+        inherited_parent,
+        (
+            "duplicate_windows_handle(handle",
+            "GetProcessId(handle.0)",
+            "handle_pid != pid",
+            "windows_process_creation_time(handle.0)?",
+            "WindowsProcessIdentityKey { pid, creation_time }",
+        ),
+        "Windows inherited launch-parent process capability",
+    )
+    inherited_parent_env = function_block(
+        auth, "fn windows_cm_launch_parent_handle_from_env"
+    )
+    ordered(
+        inherited_parent_env,
+        (
+            "CM_LAUNCH_PARENT_HANDLE_ENV",
+            "CM_LAUNCH_PARENT_HANDLE_NONE",
+            "return Ok(None)",
+            "handle.is_invalid()",
+            "SetHandleInformation(handle, HANDLE_FLAG_INHERIT.0, HANDLE_FLAGS(0))",
+        ),
+        "Windows inherited launch-parent capability parsing and sealing",
+    )
     listener = function_block(auth, "pub(crate) fn authorize_cm_ipc_connection")
     for needle, label in (
         ("cm_launch_parent_pid_from_env()", "macOS launch-parent PID"),
@@ -305,11 +367,34 @@ def verify(files: Mapping[str, str]) -> None:
         ),
         ("peer_pid != Some(expected_parent_pid)", "macOS exact server peer"),
         ("windows_cm_launch_parent_identity_from_env()", "Windows launch-parent generation"),
+        (
+            "windows_cm_launch_parent_handle_from_env()",
+            "Windows optional inherited parent process capability",
+        ),
+        (
+            "WindowsPeerProcess::from_inherited_handle(expected_parent.pid, handle)",
+            "Windows inherited parent process inspection",
+        ),
         ("process.key != expected_parent", "Windows exact server generation"),
         ('process.require_running("connection-manager launch parent")', "Windows parent liveness"),
         ("stream.peer_pid() != Some(expected_parent.pid)", "Windows stable named-pipe client PID"),
     ):
         require(listener, needle, label)
+    cm_listener = function_block(ui_cm, "pub async fn start_ipc<T: InvokeUiCM>")
+    require(
+        cm_listener,
+        "if !ipc::authorize_cm_ipc_connection(&stream) {",
+        "CM listener fail-closed parent admission",
+    )
+    ordered(
+        cm_listener,
+        (
+            "authorize_cm_ipc_connection(&stream)",
+            "answer_cm_endpoint_challenge(&mut stream).await",
+            "tokio::spawn(IpcTaskRunner::<T>::ipc_task(stream, cm.clone()))",
+        ),
+        "CM parent admission before mandatory launch-secret proof and task dispatch",
+    )
 
     win_connect = function_block(ipc, "pub(crate) async fn connect_authenticated_windows_cm")
     ordered(
@@ -338,19 +423,39 @@ def verify(files: Mapping[str, str]) -> None:
         "limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;",
         "Windows CM kill-on-close job policy",
     )
+    parent_proof = function_block(windows, "fn create_inheritable_current_process_proof")
+    ordered(
+        parent_proof,
+        (
+            "PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE",
+            "GetCurrentProcessId()",
+            'ServiceOwnedWindowsHandle::new(raw, "connection-manager parent proof")?',
+            "SetHandleInformation(process.raw(), HANDLE_FLAG_INHERIT, HANDLE_FLAG_INHERIT)",
+        ),
+        "least-right inheritable current-process proof",
+    )
     job_attributes = function_block(windows_native, "class ProcessCreationJobAttributes")
     ordered(
         job_attributes,
         (
             "job_ = job;",
-            "InitializeProcThreadAttributeList(NULL, 1, 0, &size)",
-            "InitializeProcThreadAttributeList(list_, 1, 0, &size)",
+            "inheritedHandle_ = inheritedHandle;",
+            "attributeCount = inheritedHandle_ == NULL ? 1 : 2",
+            "InitializeProcThreadAttributeList(NULL, attributeCount, 0, &size)",
+            "InitializeProcThreadAttributeList(list_, attributeCount, 0, &size)",
             "PROC_THREAD_ATTRIBUTE_JOB_LIST",
             "&job_, sizeof job_",
+            "PROC_THREAD_ATTRIBUTE_HANDLE_LIST",
+            "&inheritedHandle_, sizeof inheritedHandle_",
         ),
-        "persistent Windows process-creation job attribute",
+        "persistent Windows job and explicit inherited-handle attributes",
     )
     require(job_attributes, "HANDLE job_;", "retained job-list attribute value")
+    require(
+        job_attributes,
+        "HANDLE inheritedHandle_;",
+        "retained inherited-handle-list attribute value",
+    )
     require(
         job_attributes,
         "DeleteProcThreadAttributeList(list_);",
@@ -363,12 +468,13 @@ def verify(files: Mapping[str, str]) -> None:
         (
             "ProcessCreationJobAttributes jobAttributes;",
             "if (hJob != NULL)",
-            "jobAttributes.initialize(hJob)",
+            "jobAttributes.initialize(hJob, hInheritedHandle)",
             "si.lpAttributeList = jobAttributes.get();",
             "dwCreationFlags |= EXTENDED_STARTUPINFO_PRESENT;",
             "CreateProcessAsUserW(",
+            "hInheritedHandle != NULL",
         ),
-        "Windows token-switched job-at-process-creation launch",
+        "Windows token-switched job and explicit-handle-at-process-creation launch",
     )
     current_native_launch = function_block(windows_native, "HANDLE LaunchProcessCurrentWin(")
     ordered(
@@ -378,7 +484,7 @@ def verify(files: Mapping[str, str]) -> None:
             "GetEnvironmentStringsW()",
             "merge_environment_blocks(currentEnvironment, extraEnvironment)",
             "ProcessCreationJobAttributes jobAttributes;",
-            "jobAttributes.initialize(hJob)",
+            "jobAttributes.initialize(hJob, NULL)",
             "si.lpAttributeList = jobAttributes.get();",
             "EXTENDED_STARTUPINFO_PRESENT",
             "CreateProcessW(",
@@ -412,16 +518,36 @@ def verify(files: Mapping[str, str]) -> None:
         ),
         "same-user Windows atomic-job launch wrapper",
     )
+    cm_launch_environment = function_block(
+        windows, "fn windows_connection_manager_launch_environment"
+    )
+    ordered(
+        cm_launch_environment,
+        (
+            "parent_handle: Option<HANDLE>",
+            "CM_LAUNCH_PARENT_CREATION_ENV",
+            "let parent_handle = match parent_handle",
+            "parent_handle as usize",
+            "CM_LAUNCH_PARENT_HANDLE_NONE",
+            "CM_LAUNCH_PARENT_HANDLE_ENV",
+            "parent_handle,",
+        ),
+        "Windows optional inherited parent capability environment",
+    )
     launch = function_block(windows, "pub(crate) fn run_connection_manager_user_helper")
     ordered(
         launch,
         (
             "current_windows_process_identity_key()",
+            "create_inheritable_current_process_proof()",
             "windows_connection_manager_launch_environment",
             "create_windows_service_process_job()?",
             "if is_root()",
             "launch_process_in_session_with_env",
             "job.raw()",
+            "ServiceOwnedWindowsHandle::raw",
+            "drop(inherited_parent);",
+            "let launched = launch_result?;",
             "launch_current_process_with_env_and_job(",
             "job.raw()",
             "windows_process_identity(launched.process_id, process.raw())?",
@@ -597,6 +723,16 @@ def verify(files: Mapping[str, str]) -> None:
         "abrupt Windows CM owner-death contract",
     )
     require(
+        requirements,
+        "atomically allowlist that one inheritable capability",
+        "LocalSystem CM exact parent-process capability contract",
+    )
+    require(
+        requirements,
+        "MUST NOT</span> depend on granting the desktop user <code>SeImpersonatePrivilege</code>",
+        "LocalSystem CM privilege-independent parent proof",
+    )
+    require(
         ledger,
         "- **R-S11gi/R-S11e-221 — macOS/Windows exact connection-manager process ownership",
         "R-S11gi hardening record",
@@ -721,6 +857,30 @@ MUTATIONS = (
         "Windows server-generation bypass",
     ),
     Mutation(
+        "src/ipc/auth.rs",
+        "WindowsPeerProcess::from_inherited_handle(expected_parent.pid, handle)",
+        "WindowsPeerProcess::open(expected_parent.pid)",
+        "Windows inherited launch-parent capability bypass",
+    ),
+    Mutation(
+        "src/ipc/auth.rs",
+        "SetHandleInformation(handle, HANDLE_FLAG_INHERIT.0, HANDLE_FLAGS(0))",
+        "Ok(())",
+        "Windows inherited parent handle resealing removal",
+    ),
+    Mutation(
+        "src/platform/windows.rs",
+        "None => OsString::from(crate::common::CM_LAUNCH_PARENT_HANDLE_NONE)",
+        "None => OsString::new()",
+        "Windows same-user parent-handle ambient override removal",
+    ),
+    Mutation(
+        "src/ui_cm_interface.rs",
+        "if !ipc::authorize_cm_ipc_connection(&stream) {",
+        "if false && !ipc::authorize_cm_ipc_connection(&stream) {",
+        "CM listener parent-admission bypass",
+    ),
+    Mutation(
         "src/platform/windows.rs",
         "let job = create_windows_service_process_job()?;\n    let launched = if is_root() {",
         "let job = ServiceOwnedWindowsHandle::new(NULL, \"disabled\")?;\n    let launched = if is_root() {",
@@ -743,6 +903,36 @@ MUTATIONS = (
         "PROC_THREAD_ATTRIBUTE_JOB_LIST",
         "PROC_THREAD_ATTRIBUTE_PARENT_PROCESS",
         "Windows atomic process-job attribute removal",
+    ),
+    Mutation(
+        "src/platform/windows.cc",
+        "PROC_THREAD_ATTRIBUTE_HANDLE_LIST",
+        "PROC_THREAD_ATTRIBUTE_PARENT_PROCESS",
+        "Windows explicit parent-handle inheritance removal",
+    ),
+    Mutation(
+        "src/platform/windows.cc",
+        "hInheritedHandle != NULL,\n                                     dwCreationFlags",
+        "FALSE,\n                                     dwCreationFlags",
+        "Windows explicit handle inheritance disablement",
+    ),
+    Mutation(
+        "src/platform/windows.rs",
+        "PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE",
+        "PROCESS_QUERY_LIMITED_INFORMATION",
+        "Windows parent-proof liveness right removal",
+    ),
+    Mutation(
+        "src/platform/windows.rs",
+        "drop(inherited_parent);",
+        "// inherited parent proof retained until CM owner teardown",
+        "Windows parent-proof prompt-close removal",
+    ),
+    Mutation(
+        "src/core_main.rs",
+        '} else if args[0] == "--cm-no-ui" {\n            #[cfg(target_os = "windows")]\n            if let Err(err) = crate::ipc::seal_windows_cm_launch_parent_handle() {',
+        '} else if args[0] == "--cm-no-ui" {\n            #[cfg(target_os = "windows")]\n            if let Err(err) = Ok::<(), &str>(()) {',
+        "Windows headless-CM early parent-handle sealing removal",
     ),
     Mutation(
         "src/platform/windows.rs",
@@ -857,6 +1047,12 @@ MUTATIONS = (
         "both same-user and LocalSystem launches",
         "only LocalSystem launches",
         "same-user Windows CM job requirement removal",
+    ),
+    Mutation(
+        "requirements.html",
+        "atomically allowlist that one inheritable capability",
+        "optionally pass one inheritable capability",
+        "LocalSystem Windows CM parent-capability requirement weakening",
     ),
     Mutation(
         "HARDENING_STATUS.md",

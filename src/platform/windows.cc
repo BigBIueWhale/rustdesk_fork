@@ -280,24 +280,26 @@ static std::vector<wchar_t> merge_environment_blocks(LPVOID baseEnvironment, LPC
 class ProcessCreationJobAttributes
 {
 public:
-    ProcessCreationJobAttributes() : job_(NULL), list_(NULL) {}
+    ProcessCreationJobAttributes() : job_(NULL), inheritedHandle_(NULL), list_(NULL) {}
 
     ~ProcessCreationJobAttributes()
     {
         reset();
     }
 
-    bool initialize(HANDLE job)
+    bool initialize(HANDLE job, HANDLE inheritedHandle)
     {
-        if (job == NULL)
+        if (job == NULL || inheritedHandle == INVALID_HANDLE_VALUE)
         {
             SetLastError(ERROR_INVALID_PARAMETER);
             return false;
         }
 
         job_ = job;
+        inheritedHandle_ = inheritedHandle;
+        DWORD attributeCount = inheritedHandle_ == NULL ? 1 : 2;
         SIZE_T size = 0;
-        BOOL sized = InitializeProcThreadAttributeList(NULL, 1, 0, &size);
+        BOOL sized = InitializeProcThreadAttributeList(NULL, attributeCount, 0, &size);
         DWORD sizeError = GetLastError();
         if (sized || sizeError != ERROR_INSUFFICIENT_BUFFER || size == 0)
         {
@@ -307,7 +309,7 @@ public:
 
         storage_.resize(size);
         list_ = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(storage_.data());
-        if (!InitializeProcThreadAttributeList(list_, 1, 0, &size))
+        if (!InitializeProcThreadAttributeList(list_, attributeCount, 0, &size))
         {
             DWORD error = GetLastError();
             list_ = NULL;
@@ -317,6 +319,15 @@ public:
         }
         if (!UpdateProcThreadAttribute(list_, 0, PROC_THREAD_ATTRIBUTE_JOB_LIST,
                                        &job_, sizeof job_, NULL, NULL))
+        {
+            DWORD error = GetLastError();
+            reset();
+            SetLastError(error);
+            return false;
+        }
+        if (inheritedHandle_ != NULL &&
+            !UpdateProcThreadAttribute(list_, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                                       &inheritedHandle_, sizeof inheritedHandle_, NULL, NULL))
         {
             DWORD error = GetLastError();
             reset();
@@ -340,10 +351,12 @@ public:
         }
         storage_.clear();
         job_ = NULL;
+        inheritedHandle_ = NULL;
     }
 
 private:
     HANDLE job_;
+    HANDLE inheritedHandle_;
     LPPROC_THREAD_ATTRIBUTE_LIST list_;
     std::vector<unsigned char> storage_;
 };
@@ -384,6 +397,7 @@ extern "C"
                             BOOL show,
                             LPCWSTR extraEnvironment,
                             HANDLE hJob,
+                            HANDLE hInheritedHandle,
                             DWORD *pProcessId,
                             DWORD *pDwTokenPid)
     {
@@ -391,7 +405,8 @@ extern "C"
         HANDLE hToken = NULL;
         if (application == NULL || application[0] == L'\0' || cmd == NULL || cmd[0] == L'\0' ||
             currentDirectory == NULL || currentDirectory[0] == L'\0' || pProcessId == NULL ||
-            pDwTokenPid == NULL)
+            pDwTokenPid == NULL || hInheritedHandle == INVALID_HANDLE_VALUE ||
+            (hInheritedHandle != NULL && hJob == NULL))
         {
             SetLastError(ERROR_INVALID_PARAMETER);
             return hProcess;
@@ -447,7 +462,7 @@ extern "C"
             ProcessCreationJobAttributes jobAttributes;
             if (hJob != NULL)
             {
-                if (!jobAttributes.initialize(hJob))
+                if (!jobAttributes.initialize(hJob, hInheritedHandle))
                 {
                     DWORD error = GetLastError();
                     CloseHandle(hToken);
@@ -459,7 +474,8 @@ extern "C"
                 si.lpAttributeList = jobAttributes.get();
                 dwCreationFlags |= EXTENDED_STARTUPINFO_PRESENT;
             }
-            if (CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL, FALSE,
+            if (CreateProcessAsUserW(hToken, application, commandLine.data(), NULL, NULL,
+                                     hInheritedHandle != NULL,
                                      dwCreationFlags, processEnvironment, currentDirectory,
                                      reinterpret_cast<LPSTARTUPINFOW>(&si), &pi))
             {
@@ -516,7 +532,7 @@ extern "C"
         si.StartupInfo.cb = sizeof si;
         si.StartupInfo.dwFlags = STARTF_USESHOWWINDOW;
         ProcessCreationJobAttributes jobAttributes;
-        if (!jobAttributes.initialize(hJob))
+        if (!jobAttributes.initialize(hJob, NULL))
         {
             DWORD error = GetLastError();
             FreeEnvironmentStringsW(currentEnvironment);

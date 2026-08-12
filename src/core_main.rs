@@ -534,8 +534,18 @@ pub fn core_main() -> Option<Vec<String>> {
         } else if args[0] == "--cm" {
             // call connection manager to establish connections
             // meanwhile, return true to call flutter window to show control panel
+            #[cfg(target_os = "windows")]
+            if let Err(err) = crate::ipc::seal_windows_cm_launch_parent_handle() {
+                log::error!("Failed to seal the connection-manager parent capability: {err}");
+                return None;
+            }
             crate::ui_interface::start_main_status_sync();
         } else if args[0] == "--cm-no-ui" {
+            #[cfg(target_os = "windows")]
+            if let Err(err) = crate::ipc::seal_windows_cm_launch_parent_handle() {
+                log::error!("Failed to seal the connection-manager parent capability: {err}");
+                return None;
+            }
             #[cfg(feature = "flutter")]
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             {

@@ -6945,7 +6945,7 @@ network configuration was inspected or changed.
   launch-token and process-shape authentication but did not retain the exact macOS/Windows helper generation;
   R-S11gi/R-S11e-221 below supersedes that narrower endpoint-identity claim.
 - **R-S11gi/R-S11e-221 — macOS/Windows exact connection-manager process ownership — SOURCE IMPLEMENTED;
-  NATIVE SAME-USER WINDOWS CM LIFECYCLE GREEN 2026-08-11; TWO INSTALLED LOCALSYSTEM INTEGRATION DEFECTS
+  NATIVE SAME-USER WINDOWS CM LIFECYCLE GREEN 2026-08-11; THREE INSTALLED LOCALSYSTEM INTEGRATION DEFECTS
   REPRODUCED 2026-08-12 AND SOURCE-CORRECTED BUT NATIVE RETEST PENDING; macOS, CONCURRENT-RACE, AND EXACT-COMMIT RELEASE
   EVIDENCE PENDING.** Platforms: macOS and Windows
   desktop controlled-side connection-manager paths; Linux retains its independently closed direct-child,
@@ -7151,6 +7151,57 @@ network configuration was inspected or changed.
   for PID, creation-time, liveness, executable, exact-role, and stable-pipe proof. It does not weaken the process
   DACL, grant privilege, accept PID/token alone, or bypass the server-side per-connection token validation. This
   correction remains release-blocking until a new exact clean commit passes the entire installed transaction.
+
+  The first inherited-main-IPC native retry proves both authenticated directory round trips and exposes the next
+  lifecycle defect; it is still negative evidence for the complete transaction, not a pass. Clean pushed commit
+  `0ad170758609b39db18aa4edaa8854a872a554bb`, tree
+  `6c5f431b1851be39b5061b7125e11551812e9f12`, source manifest
+  `56819e27d4fdd6e3d18637c2712b60c458f0e3e277ff8d520c17c18d03897de4`, offline-input manifest
+  `5f73c336c9ff43f850a0d9643fb76b97f2cfe9a81c8bd37f4b94ed68c6f0687a`, and run
+  `bf5ec1f2-e610-4ae2-a26e-8d48c25871b9-A` passed exact-source, immutable-offline-input, zero-interface, native
+  build, packaging, and installation boundaries. Its Windows library binary passed all 57 selected tests in 0.44s,
+  and `build-windows.ps1` returned zero. Unlike the preceding failures, the installed probe completed its first and
+  second authenticated CM directory operations. This is positive native evidence that `_cm` admission, FIFO Login
+  ordering, and the dedicated inherited-capability main-IPC validator all work across the LocalSystem-to-interactive
+  boundary.
+
+  The probe then failed its exact-generation equality check: the two successful sequential sessions used different
+  CM process generations. Read-only inspection after guest shutdown used the pinned immutable Windows helper image
+  as numeric non-root with networking disabled, a read-only root, no host namespace, device, capability, or Docker
+  socket, and the output image mounted read-only. The LocalSystem server log records connection `#1519`, no retained
+  server-owned generation, CM launch, successful session close, then connection `#1520` finding the `_cm` pipe absent
+  and launching another CM. The active-user CM log records the replacement's authenticated `conn_id: 1520` and
+  normal IPC close. There is no live first generation for the server owner to replace or mistakenly distrust: the
+  first graphical process actually exited as its last connection disappeared. After these exact identities and logs
+  were recorded, the failed run root was owner-mode-normalized and removed through the descriptor-bound private-tree
+  remover in a numeric-non-root, capability-free, network-disabled immutable container; the separately retained
+  authenticated offline snapshot was not touched.
+
+  Source inspection identifies the exact immediate transition. `ServerModel.onClientRemove` correctly removes the
+  client and asks to hide the window, but `DesktopTabController.remove` synchronously invokes the desktop server
+  page's `onRemoved` callback; when that removal empties the tabs, `onRemoveId` called `windowManager.close()`. The
+  CM window-close listener then closes all sessions and the FFI before exiting the window process. A second legacy
+  path in the half-second model timer also called `windowManager.close()` after 12 zero-client observations (six
+  seconds). Both paths contradict the retained-generation contract and make reuse impossible even though endpoint
+  authentication is correct. R-S11gic removes the idle counter and the last-tab close callback; the existing
+  backend last-client transition remains responsible for clearing connection state and hiding the window.
+  Per-connection removal and state clearing remain in place; explicit user close, Windows job owner-death, failed or
+  exited-generation recovery, and Linux `--cm-no-ui` last-client exit are unchanged. The focused verifier binds both
+  former automatic exits with deliberate regressions. A fresh installed native transaction remains mandatory before
+  retained reuse or the complete lifecycle can be called green.
+
+  Current-source verification is positive but deliberately narrower than that native requirement. The focused
+  process-ownership verifier and all 52 deliberate mutations pass, as does the complete independent verifier
+  workspace catalog. A pinned numeric-non-root, network-disabled, capability-free, read-only-root container first
+  regenerated all FRB outputs from a read-only exact working-tree snapshot and the reverified canonical offline
+  closure, then ran `flutter analyze lib/` with status zero and zero error diagnostics and passed
+  `test/server_model_test.dart`. Generated output stayed in an identity-bound disposable workspace and was not
+  written into the repository. A preceding full `dart-verify.sh` attempt was intentionally interrupted during its
+  authenticated offline-tree copy when the disposable copy reached 25 GB and host free space reached the declared
+  40 GB safety margin; its cleanup restored the space, and it supplies no verdict. A pinned Dart formatter capture
+  found no formatting rewrite at either lifecycle edit but did expose unrelated pre-existing formatting drift
+  elsewhere in the two files; that drift was not absorbed into this change, and no whole-file formatting pass is
+  claimed. None of these source checks substitutes for a fresh exact installed LocalSystem lifecycle transaction.
 
   Four earlier attempts are excluded from positive evidence: two staging/compile attempts respectively exposed a
   wrong WinAPI import plus absent generated bridges and then stale forced-in bridges; two compiled runtime attempts
@@ -23966,7 +24017,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-4b685dbac08a6c90b913c7475e74f6804b62241f50984526b946ff2769ec8cce  requirements.html
+fe466f0f9c2bd8428b89e9b1799bb83e43f6bd7a95d4ff9adf2610eee9ad81bf  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

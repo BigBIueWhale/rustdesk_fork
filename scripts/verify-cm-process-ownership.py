@@ -21,6 +21,8 @@ FILES = (
     "build.py",
     "examples/probe_client.rs",
     "examples/windows_cm_lifecycle_probe.rs",
+    "flutter/lib/desktop/pages/server_page.dart",
+    "flutter/lib/models/server_model.dart",
     "src/common.rs",
     "src/core_main.rs",
     "src/ipc.rs",
@@ -102,6 +104,8 @@ def verify(files: Mapping[str, str]) -> None:
     build_py = files["build.py"]
     probe_client = files["examples/probe_client.rs"]
     probe_example = files["examples/windows_cm_lifecycle_probe.rs"]
+    desktop_server_page = files["flutter/lib/desktop/pages/server_page.dart"]
+    server_model = files["flutter/lib/models/server_model.dart"]
     common = files["src/common.rs"]
     core_main = files["src/core_main.rs"]
     ipc = files["src/ipc.rs"]
@@ -121,6 +125,40 @@ def verify(files: Mapping[str, str]) -> None:
     windows_build = files["scripts/build-windows.ps1"]
     installed_result = files["scripts/verify-windows-installed-service-result.py"]
     installed_probe = files["scripts/windows-installed-service-probe.ps1"]
+
+    forbid(
+        server_model,
+        "_zeroClientLengthCounter",
+        "timer-driven graphical CM process retirement",
+    )
+    timer_callback = function_block(server_model, "timerCallback() async")
+    idle_timer_branch = function_block(timer_callback, "if (_clients.isEmpty)")
+    require(
+        idle_timer_branch,
+        "hideCmWindow();",
+        "idle graphical CM window hiding",
+    )
+    forbid(
+        idle_timer_branch,
+        "windowManager.close();",
+        "idle graphical CM process close",
+    )
+    client_removal = function_block(server_model, "void onClientRemove")
+    require(
+        client_removal,
+        "if (desktopType == DesktopType.cm && _clients.isEmpty) {\n        hideCmWindow();",
+        "backend CM last-client window hiding",
+    )
+    forbid(
+        desktop_server_page,
+        "tabController.onRemoved =",
+        "CM backend-tab-removal window callback",
+    )
+    forbid(
+        desktop_server_page,
+        "void onRemoveId(String id)",
+        "CM last-tab process-close handler",
+    )
 
     require(
         common,
@@ -780,6 +818,16 @@ def verify(files: Mapping[str, str]) -> None:
     )
     require(
         requirements,
+        '<span class="id">R-S11gic</span>',
+        "graphical CM retained-idle requirement",
+    )
+    require(
+        requirements,
+        "Backend-driven last-session removal and periodic zero-client checks",
+        "graphical CM automatic-exit prohibition",
+    )
+    require(
+        requirements,
         "reuse that same sealed process capability when it connects to the launching server's main IPC",
         "LocalSystem CM main-IPC exact parent-process capability contract",
     )
@@ -802,6 +850,11 @@ def verify(files: Mapping[str, str]) -> None:
         ledger,
         "that dedicated connector requires the pipe server PID to equal the",
         "Windows CM main-IPC exact-parent connector in the ledger",
+    )
+    require(
+        ledger,
+        "The first inherited-main-IPC native retry proves both authenticated directory round trips",
+        "native graphical CM idle-exit finding in the ledger",
     )
     require(
         shared_gate,
@@ -869,6 +922,18 @@ def verify(files: Mapping[str, str]) -> None:
 
 
 MUTATIONS = (
+    Mutation(
+        "flutter/lib/models/server_model.dart",
+        "defeats exact reuse.\n            hideCmWindow();",
+        "defeats exact reuse.\n            windowManager.close();",
+        "graphical CM timer idle-process close restoration",
+    ),
+    Mutation(
+        "flutter/lib/desktop/pages/server_page.dart",
+        "Get.put<DesktopTabController>(tabController);",
+        "Get.put<DesktopTabController>(tabController);\n    tabController.onRemoved = (_, __) {\n      windowManager.close();\n    };",
+        "graphical CM last-tab process close restoration",
+    ),
     Mutation(
         "src/server/connection.rs",
         "Arc::strong_count(generation) == 1",
@@ -1150,6 +1215,18 @@ MUTATIONS = (
         "reuse that same sealed process capability when it connects to the launching server's main IPC",
         "use generic process discovery when it connects to the launching server's main IPC",
         "LocalSystem Windows CM main-IPC capability-reuse requirement weakening",
+    ),
+    Mutation(
+        "requirements.html",
+        '<span class="id">R-S11gic</span>',
+        '<span class="id">R-S11gic-disabled</span>',
+        "graphical CM retained-idle requirement removal",
+    ),
+    Mutation(
+        "HARDENING_STATUS.md",
+        "The first inherited-main-IPC native retry proves both authenticated directory round trips",
+        "The undocumented native retry proves both authenticated directory round trips",
+        "graphical CM retained-idle ledger removal",
     ),
     Mutation(
         "HARDENING_STATUS.md",

@@ -8336,6 +8336,14 @@ def validate_windows_helper_launch_contract(sources):
             "CM retained process-owner Send mutation",
         ),
         (
+            "graphical CM timer idle-process close restoration",
+            "graphical CM timer-retirement mutation",
+        ),
+        (
+            "graphical CM last-tab process close restoration",
+            "graphical CM last-tab retirement mutation",
+        ),
+        (
             "Arc::strong_count(current) != 2",
             "CM failed-authentication lease contract",
         ),
@@ -8402,6 +8410,14 @@ def validate_windows_helper_launch_contract(sources):
         (
             "LocalSystem Windows CM main-IPC capability-reuse requirement weakening",
             "Windows CM main-IPC normative mutation",
+        ),
+        (
+            "graphical CM retained-idle requirement removal",
+            "graphical CM retained-idle normative mutation",
+        ),
+        (
+            "graphical CM retained-idle ledger removal",
+            "graphical CM retained-idle ledger mutation",
         ),
         (
             "limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;",

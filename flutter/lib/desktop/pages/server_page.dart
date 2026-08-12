@@ -36,9 +36,6 @@ class _DesktopServerPageState extends State<DesktopServerPage>
   _DesktopServerPageState() {
     gFFI.ffiModel.updateEventListener(gFFI.sessionId, "");
     Get.put<DesktopTabController>(tabController);
-    tabController.onRemoved = (_, id) {
-      onRemoveId(id);
-    };
   }
 
   @override
@@ -64,12 +61,6 @@ class _DesktopServerPageState extends State<DesktopServerPage>
       }
     });
     super.onWindowClose();
-  }
-
-  void onRemoveId(String id) {
-    if (tabController.state.value.tabs.isEmpty) {
-      windowManager.close();
-    }
   }
 
   @override

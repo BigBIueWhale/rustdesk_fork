@@ -39,7 +39,6 @@ class ServerModel with ChangeNotifier {
   // length / numeric-mode state and the OTP-refresh sync are removed from this model; the
   // permanent password is the box's sole credential.
   String _approveMode = "";
-  int _zeroClientLengthCounter = 0;
 
   final _serverPasswd =
       TextEditingController(text: translate("Generating ..."));
@@ -105,13 +104,10 @@ class ServerModel with ChangeNotifier {
           updateClientState(res);
         } else {
           if (_clients.isEmpty) {
+            // R-S11gic: the server owns this CM generation across sessions. Keep its UI hidden
+            // while idle; closing the window here exits the process and defeats exact reuse.
             hideCmWindow();
-            if (_zeroClientLengthCounter++ == 12) {
-              // 6 second
-              windowManager.close();
-            }
           } else {
-            _zeroClientLengthCounter = 0;
             if (!hideCm) showCmWindow();
           }
         }

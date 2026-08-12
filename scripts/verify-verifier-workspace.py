@@ -8372,6 +8372,10 @@ def validate_windows_helper_launch_contract(sources):
             "Windows CM inherited parent handle sealing mutation",
         ),
         (
+            "Windows CM launch-environment regression signature rollback",
+            "Windows CM launch-environment call-inventory mutation",
+        ),
+        (
             "Windows parent-proof prompt-close removal",
             "Windows CM parent proof prompt-close mutation",
         ),

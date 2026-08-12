@@ -3797,7 +3797,9 @@ mod process_launch_tests {
             windows_user_helper_launch_parts(&WindowsUserHelperLaunch::Tray).unwrap(),
             ("--tray", Vec::new())
         );
-        assert!(windows_connection_manager_launch_environment("", parent_identity).is_err());
+        assert!(
+            windows_connection_manager_launch_environment("", parent_identity, None).is_err()
+        );
         assert!(
             windows_user_helper_launch_parts(&WindowsUserHelperLaunch::Whiteboard {
                 launch_token: &crate::encode64([0u8; 31]),

@@ -534,6 +534,15 @@ def verify(files: Mapping[str, str]) -> None:
         ),
         "Windows optional inherited parent capability environment",
     )
+    if windows.count("windows_connection_manager_launch_environment(") != 5:
+        raise VerificationError(
+            "Windows CM launch-environment function/call inventory is not exactly five"
+        )
+    require(
+        windows,
+        'windows_connection_manager_launch_environment("", parent_identity, None).is_err()',
+        "Windows invalid CM token regression uses the explicit same-user handle sentinel",
+    )
     launch = function_block(windows, "pub(crate) fn run_connection_manager_user_helper")
     ordered(
         launch,
@@ -873,6 +882,12 @@ MUTATIONS = (
         "None => OsString::from(crate::common::CM_LAUNCH_PARENT_HANDLE_NONE)",
         "None => OsString::new()",
         "Windows same-user parent-handle ambient override removal",
+    ),
+    Mutation(
+        "src/platform/windows.rs",
+        'windows_connection_manager_launch_environment("", parent_identity, None).is_err()',
+        'windows_connection_manager_launch_environment("", parent_identity).is_err()',
+        "Windows CM launch-environment regression signature rollback",
     ),
     Mutation(
         "src/ui_cm_interface.rs",

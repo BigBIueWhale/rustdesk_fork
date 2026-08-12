@@ -7053,6 +7053,16 @@ network configuration was inspected or changed.
   green until a fresh exact installed transaction passes the full reuse, stale-CM recovery, abrupt-owner cleanup,
   credential-rotation preservation, SCM-stop finality, restart-generation, and strict file-round-trip sequence.
 
+  The first inherited-capability native attempt is also negative compile evidence, not a lifecycle result. Exact
+  commit `2f5def6da376d1f0e2eb2025c56e59a4dde7f49d`, tree
+  `657f40d93a4792e7d79160022b1f8b9f4fcfa8ab`, source manifest
+  `9abbf047fc1a2cdb7de0314bdec4ac410c413073ad84f0dc4798fe544bea5840`, and run
+  `d61ba44f-3365-4691-a31e-1c26f0f467c9-A` passed offline/source verification but stopped in the terminal native
+  Windows Rust test compile: one invalid-token regression still called the extended launch-environment helper with
+  its old two-argument signature (`E0061`). Installation and the LocalSystem CM transaction never ran, so this
+  attempt supplies no positive runtime evidence. The source correction passes explicit `None` for that same-user
+  test and makes the focused verifier bind the complete function/call inventory before the next native attempt.
+
   Four earlier attempts are excluded from positive evidence: two staging/compile attempts respectively exposed a
   wrong WinAPI import plus absent generated bridges and then stale forced-in bridges; two compiled runtime attempts
   exposed that the first probe version mistook a pre-listener file-not-found error for wrong-token refusal. The probe

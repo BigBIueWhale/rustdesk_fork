@@ -42034,6 +42034,146 @@ def validate_windows_native_credential_evidence_scope_contract(sources):
         raise VerificationError("hardening ledger overclaims current native-Windows evidence")
 
 
+def validate_windows_terminal_synchronous_io_cancellation_contract(sources):
+    helper = sources["terminal_helper"]
+    verify = sources["verify"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+
+    cancellation = extract_between(
+        helper,
+        "fn cancel_pending_synchronous_io<T>(",
+        "\nfn join_cancelled_io_thread",
+        "Windows terminal synchronous-I/O cancellation",
+    )
+    for text, label in (
+        ("let mut cancellation_accepted = false;", "accepted-cancellation state"),
+        ("if !cancellation_accepted {", "pre-acceptance retry guard"),
+        (
+            "Ok(()) => cancellation_accepted = true,",
+            "accepted native cancellation transition",
+        ),
+        (
+            "Err(err) if is_windows_error(&err, ERROR_NOT_FOUND) => {}",
+            "no-pending-operation retry race",
+        ),
+        ("if worker.is_finished()", "observable worker completion"),
+        ("Instant::now() >= deadline", "bounded cancellation deadline"),
+    ):
+        require_text(cancellation, text, label)
+    if cancellation.count("CancelSynchronousIo(thread_handle)") != 1:
+        raise VerificationError(
+            "Windows terminal cancellation has ambiguous native call ownership"
+        )
+    if "Ok(()) => {}" in cancellation:
+        raise VerificationError(
+            "Windows terminal cancellation discards the accepted-cancellation transition"
+        )
+    require_order(
+        cancellation,
+        (
+            "if worker.is_finished()",
+            "if !cancellation_accepted {",
+            "CancelSynchronousIo(thread_handle)",
+            "Ok(()) => cancellation_accepted = true,",
+            "if Instant::now() >= deadline",
+        ),
+        "Windows terminal cancellation state transition",
+    )
+
+    delayed_test = extract_between(
+        helper,
+        "fn delayed_synchronous_read_is_cancelled_after_not_found_race()",
+        "\n    #[test]\n",
+        "Windows terminal delayed-I/O cancellation regression",
+    )
+    for text, label in (
+        (
+            "thread::sleep(Duration::from_millis(50));",
+            "delayed I/O admission fixture",
+        ),
+        (
+            'cancel_pending_synchronous_io(&reader_thread, "delayed test pipe reader")',
+            "delayed I/O cancellation invocation",
+        ),
+        (
+            "assert!(entered_read.load(Ordering::Acquire));",
+            "delayed read actually entered",
+        ),
+    ):
+        require_text(delayed_test, text, label)
+
+    latched_test = extract_between(
+        helper,
+        "fn shutdown_latch_prevents_read_reentry_after_accepted_cancellation()",
+        "\n    #[test]\n",
+        "Windows terminal shutdown-latch cancellation regression",
+    )
+    for text, label in (
+        (
+            "if worker_exiting.load(Ordering::Acquire)",
+            "worker shutdown-latch check",
+        ),
+        ("exiting.store(true, Ordering::Release);", "shutdown-before-cancel ordering"),
+        (
+            'cancel_pending_synchronous_io(&reader_thread, "latched test pipe reader")',
+            "latched cancellation invocation",
+        ),
+        (
+            "assert!(!entered_second_read.load(Ordering::Acquire));",
+            "post-cancellation read-reentry refusal",
+        ),
+    ):
+        require_text(latched_test, text, label)
+    require_order(
+        latched_test,
+        (
+            "exiting.store(true, Ordering::Release);",
+            'cancel_pending_synchronous_io(&reader_thread, "latched test pipe reader")',
+            "assert!(!entered_second_read.load(Ordering::Acquire));",
+        ),
+        "Windows terminal shutdown latch before cancellation",
+    )
+
+    for text, label in (
+        (
+            '"let mut cancellation_accepted = false;"',
+            "shared-gate accepted-cancellation state",
+        ),
+        (
+            '"Ok(()) => cancellation_accepted = true"',
+            "shared-gate accepted-cancellation transition",
+        ),
+        (
+            "delayed_synchronous_read_is_cancelled_after_not_found_race",
+            "shared-gate delayed-I/O regression",
+        ),
+        (
+            "shutdown_latch_prevents_read_reentry_after_accepted_cancellation",
+            "shared-gate shutdown-latch regression",
+        ),
+    ):
+        require_text(verify, text, label)
+    for source, text, label in (
+        (
+            requirements,
+            "once Windows accepts cancellation, it issues no further cancellation request",
+            "normative accepted-cancellation finality",
+        ),
+        (
+            hardening,
+            "once Windows accepts cancellation, the caller stops issuing cancellation requests",
+            "hardening accepted-cancellation finality",
+        ),
+        (
+            hardening,
+            "bccffc79-efca-48d4-a92e-f0f4c195720b-A",
+            "exact failed native-run evidence",
+        ),
+    ):
+        require_text(source, text, label)
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -42072,6 +42212,7 @@ def validate_sources(sources):
     validate_macos_variadic_open_mode_contract(sources)
     validate_windows_ipc_dacl_coverage_contract(sources)
     validate_windows_native_credential_evidence_scope_contract(sources)
+    validate_windows_terminal_synchronous_io_cancellation_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -46010,6 +46151,72 @@ def python_mutation_scopes(source, offsets):
 
 def run_source_mutations(sources):
     mutations = (
+        (
+            "terminal_helper",
+            "let mut cancellation_accepted = false;",
+            "let mut cancellation_accepted = true;",
+            "accepted-cancellation state",
+        ),
+        (
+            "terminal_helper",
+            "if !cancellation_accepted {",
+            "if true {",
+            "pre-acceptance retry guard",
+        ),
+        (
+            "terminal_helper",
+            "Ok(()) => cancellation_accepted = true,",
+            "Ok(()) => {},",
+            "accepted native cancellation transition",
+        ),
+        (
+            "terminal_helper",
+            "Err(err) if is_windows_error(&err, ERROR_NOT_FOUND) => {}",
+            "Err(err) if is_windows_error(&err, ERROR_NOT_FOUND) => return Ok(()),",
+            "no-pending-operation retry race",
+        ),
+        (
+            "terminal_helper",
+            "fn delayed_synchronous_read_is_cancelled_after_not_found_race()",
+            "fn delayed_synchronous_read_is_not_cancelled_after_not_found_race()",
+            "Windows terminal delayed-I/O cancellation regression",
+        ),
+        (
+            "terminal_helper",
+            "fn shutdown_latch_prevents_read_reentry_after_accepted_cancellation()",
+            "fn shutdown_latch_allows_read_reentry_after_accepted_cancellation()",
+            "Windows terminal shutdown-latch cancellation regression",
+        ),
+        (
+            "terminal_helper",
+            "        exiting.store(true, Ordering::Release);\n        cancel_pending_synchronous_io(&reader_thread, \"latched test pipe reader\").unwrap();",
+            "        exiting.store(false, Ordering::Release);\n        cancel_pending_synchronous_io(&reader_thread, \"latched test pipe reader\").unwrap();",
+            "shutdown-before-cancel ordering",
+        ),
+        (
+            "terminal_helper",
+            "assert!(!entered_second_read.load(Ordering::Acquire));",
+            "assert!(entered_second_read.load(Ordering::Acquire));",
+            "post-cancellation read-reentry refusal",
+        ),
+        (
+            "verify",
+            '"Ok(()) => cancellation_accepted = true"',
+            '"Ok(()) => {}"',
+            "shared-gate accepted-cancellation transition",
+        ),
+        (
+            "requirements",
+            "once Windows accepts cancellation, it issues no further cancellation request",
+            "once Windows accepts cancellation, it may issue another cancellation request",
+            "normative accepted-cancellation finality",
+        ),
+        (
+            "hardening",
+            "bccffc79-efca-48d4-a92e-f0f4c195720b-A",
+            "bccffc79-efca-48d4-a92e-f0f4c195720b-B",
+            "exact failed native-run evidence",
+        ),
         (
             "hardening",
             "EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM CREDENTIAL EVIDENCE GREEN VIA R-S11gj; CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING",
@@ -72680,6 +72887,7 @@ def main():
             "portable_pty_cargo": (repo / "libs/portable_pty/Cargo.toml").read_text(encoding="utf-8"),
             "portable_pty_provenance": (repo / "libs/portable_pty/RUSTDESK_PROVENANCE.md").read_text(encoding="utf-8"),
             "terminal_service": (repo / "src/server/terminal_service.rs").read_text(encoding="utf-8"),
+            "terminal_helper": (repo / "src/server/terminal_helper.rs").read_text(encoding="utf-8"),
             "system_message_example_state": (
                 "system-message-example-present"
                 if (repo / "libs/hbb_common/examples/system_message.rs").exists()

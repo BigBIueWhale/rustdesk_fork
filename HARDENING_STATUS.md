@@ -6557,9 +6557,10 @@ network configuration was inspected or changed.
   that process object and rechecks the helper process token's session, user SID, logon SID, and `AuthenticationId`.
   Pipe connection uses non-overlapped `PIPE_NOWAIT` polling with a timeout-and-authority-cancellable joined worker,
   then restores `PIPE_WAIT` before synchronous I/O; no pending stack `OVERLAPPED` exists. On helper shutdown,
-  `CancelSynchronousIo` repeatedly targets both retained worker thread handles until each worker is observably
-  finished before join, with only the documented `ERROR_NOT_FOUND` no-pending-operation race accepted; every framed
-  input read also checks the shutdown latch before issuing another synchronous operation. An unexpected cancellation
+  `CancelSynchronousIo` targets both retained worker thread handles before join. Each worker first observes the
+  shutdown latch before it may issue another synchronous operation. Cancellation retries only the documented
+  `ERROR_NOT_FOUND` pre-I/O race; once Windows accepts cancellation, the caller stops issuing cancellation requests
+  and waits only for observable worker completion under the same deadline. An unexpected cancellation or completion
   failure terminates the dedicated helper process while both join handles remain owned; it never detaches a worker and
   continues. The helper receives a
   non-inherited user environment and the same token's
@@ -6581,7 +6582,8 @@ network configuration was inspected or changed.
   permanent fatal-output quiescence, fatal persistence/action propagation, and nonblocking
   input/action backpressure. Windows-only helper
   tests create both real pipe directions, prove blocking round trips after `PIPE_WAIT` restoration, exercise external
-  opening cancellation and pending synchronous-read cancellation across read re-entry, and cover exact client masks, principal comparison,
+  opening cancellation, a delayed-read `ERROR_NOT_FOUND` race, accepted cancellation, and shutdown-latched read-reentry
+  refusal, and cover exact client masks, principal comparison,
   and job ABI layout. `scripts/build-windows.ps1` runs the terminal suite natively, offline and locked, before every
   artifact build; `scripts/verify.sh` runs the Linux-visible suite and gates that native-Windows step plus the source
   contracts above. The committed Windows VM double build remains the platform runtime and deterministic-artifact proof.
@@ -7062,6 +7064,26 @@ network configuration was inspected or changed.
   its old two-argument signature (`E0061`). Installation and the LocalSystem CM transaction never ran, so this
   attempt supplies no positive runtime evidence. The source correction passes explicit `None` for that same-user
   test and makes the focused verifier bind the complete function/call inventory before the next native attempt.
+
+  The corrected-call native retry is likewise negative evidence, not a CM lifecycle result. Exact commit
+  `2cd698c49d74b2d09362bd1b932513e2b15ce017`, tree
+  `e47e54842be3ed5c5fe441bd06518e2eeb4859de`, source manifest
+  `8fb9d3b0548ba9bd9f9484fb1b410f2732b637ab40a20ecffb444d27eff6f87c`, and run
+  `bccffc79-efca-48d4-a92e-f0f4c195720b-A` passed the zero-interface/offline/source checks, compiled the native
+  Windows library-test binary in 7m45s, and completed 55 of its 56 selected tests. It then exceeded the fixed
+  two-hour VM deadline while
+  `server::terminal_helper::tests::repeated_synchronous_reads_are_cancelled_before_join` remained blocked; no setup,
+  MSI, installed-service result, or CM lifecycle probe was produced. Read-only extraction from the stopped output
+  disk used the pinned numeric-non-root, networkless Windows helper container. The failure exposed an older terminal
+  shutdown defect from commit `3d89b49`: after Windows had accepted cancellation, the caller continued entering
+  `CancelSynchronousIo` while the synthetic worker transitioned into a second blocking read, so the asserted
+  two-second boundary was not real. The correction retries only the documented `ERROR_NOT_FOUND` pre-I/O race;
+  after one accepted cancellation it waits boundedly for a shutdown-latched worker which is forbidden to issue a
+  second operation. Native tests now separately cover delayed I/O admission and refusal of post-cancellation read
+  re-entry. The shared verifier and independent source-mutation catalog bind the acceptance state, retry guard,
+  transition, both native regressions, normative wording, and this exact negative run identity. This attempt supplies
+  no positive installer, LocalSystem, CM, terminal-runtime, or artifact evidence;
+  both the terminal correction and inherited-capability CM correction remain native-retest blockers.
 
   Four earlier attempts are excluded from positive evidence: two staging/compile attempts respectively exposed a
   wrong WinAPI import plus absent generated bridges and then stale forced-in bridges; two compiled runtime attempts
@@ -23877,7 +23899,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-f71a9fd8d1ab2176979841a209123125e92950aa5cd878bf0bd94957a673ed92  requirements.html
+9cd09aa63d06e068dd21542e620bb3e38677493f582ca26bc69cb6e0f45b1ee5  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

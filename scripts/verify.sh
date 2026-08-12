@@ -1889,6 +1889,16 @@ if "std::process::exit(1)" not in helper_shutdown:
 cancel_io = rust_block(helper, "fn cancel_pending_synchronous_io")
 if "worker.is_finished()" not in cancel_io or "Ok(()) => return Ok(())" in cancel_io:
     raise SystemExit("terminal helper cancellation returns before the worker is observably finished")
+for required in (
+    "let mut cancellation_accepted = false;",
+    "if !cancellation_accepted",
+    "Ok(()) => cancellation_accepted = true",
+    "Err(err) if is_windows_error(&err, ERROR_NOT_FOUND) => {}",
+):
+    if required not in cancel_io:
+        raise SystemExit(f"terminal helper cancellation acceptance protocol missing {required}")
+if cancel_io.count("CancelSynchronousIo(thread_handle)") != 1:
+    raise SystemExit("terminal helper cancellation has ambiguous native call ownership")
 framed_read = rust_block(helper, "fn read_exact_or_eof")
 if "exiting.load(Ordering::Acquire)" not in framed_read:
     raise SystemExit("terminal helper framed input can issue another read after shutdown")
@@ -2006,7 +2016,8 @@ for test_name in \
   synchronous_pipe_directions_restore_blocking_io \
   external_opening_cancellation_stops_pipe_polling \
   synchronous_read_is_cancelled_before_join \
-  repeated_synchronous_reads_are_cancelled_before_join; do
+  delayed_synchronous_read_is_cancelled_after_not_found_race \
+  shutdown_latch_prevents_read_reentry_after_accepted_cancellation; do
   grep -Fq "fn $test_name" src/server/terminal_helper.rs || r_s11c25="$r_s11c25 test-$test_name-missing"
 done
 grep -Fq 'cargo test --offline --locked --lib --features flutter --color never terminal_' scripts/build-windows.ps1 || r_s11c25="$r_s11c25 native-windows-runtime-gate-missing"

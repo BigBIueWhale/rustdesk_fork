@@ -1332,19 +1332,22 @@ fn cancel_pending_synchronous_io<T>(
     worker_name: &str,
 ) -> Result<()> {
     let deadline = Instant::now() + SYNCHRONOUS_IO_CANCELLATION_TIMEOUT;
+    let mut cancellation_accepted = false;
     loop {
         if worker.is_finished() {
             return Ok(());
         }
 
-        let thread_handle = HANDLE(worker.as_raw_handle() as _);
-        match unsafe { CancelSynchronousIo(thread_handle) } {
-            Ok(()) => {}
-            Err(err) if is_windows_error(&err, ERROR_NOT_FOUND) => {}
-            Err(err) => {
-                return Err(anyhow!(
-                    "CancelSynchronousIo failed for {worker_name}: {err}"
-                ));
+        if !cancellation_accepted {
+            let thread_handle = HANDLE(worker.as_raw_handle() as _);
+            match unsafe { CancelSynchronousIo(thread_handle) } {
+                Ok(()) => cancellation_accepted = true,
+                Err(err) if is_windows_error(&err, ERROR_NOT_FOUND) => {}
+                Err(err) => {
+                    return Err(anyhow!(
+                        "CancelSynchronousIo failed for {worker_name}: {err}"
+                    ));
+                }
             }
         }
         if Instant::now() >= deadline {
@@ -1979,10 +1982,33 @@ mod tests {
     }
 
     #[test]
-    fn repeated_synchronous_reads_are_cancelled_before_join() {
+    fn delayed_synchronous_read_is_cancelled_after_not_found_race() {
         let (mut service_reader, _helper_writer) = connected_test_pipe(true).unwrap();
         let (started_tx, started_rx) = mpsc::sync_channel(1);
+        let entered_read = Arc::new(AtomicBool::new(false));
+        let worker_entered_read = Arc::clone(&entered_read);
+        let reader_thread = thread::spawn(move || {
+            let mut byte = [0u8; 1];
+            started_tx.send(()).unwrap();
+            thread::sleep(Duration::from_millis(50));
+            worker_entered_read.store(true, Ordering::Release);
+            service_reader.read(&mut byte).map(|_| ())
+        });
+
+        started_rx.recv_timeout(Duration::from_secs(1)).unwrap();
+        cancel_pending_synchronous_io(&reader_thread, "delayed test pipe reader").unwrap();
+        assert!(entered_read.load(Ordering::Acquire));
+        let error = reader_thread.join().unwrap().unwrap_err();
+        assert_eq!(error.raw_os_error(), Some(ERROR_OPERATION_ABORTED.0 as i32));
+    }
+
+    #[test]
+    fn shutdown_latch_prevents_read_reentry_after_accepted_cancellation() {
+        let (mut service_reader, _helper_writer) = connected_test_pipe(true).unwrap();
+        let (started_tx, started_rx) = mpsc::sync_channel(1);
+        let exiting = Arc::new(AtomicBool::new(false));
         let entered_second_read = Arc::new(AtomicBool::new(false));
+        let worker_exiting = Arc::clone(&exiting);
         let worker_entered_second_read = Arc::clone(&entered_second_read);
         let reader_thread = thread::spawn(move || {
             let mut byte = [0u8; 1];
@@ -1992,13 +2018,17 @@ mod tests {
                 first_error.raw_os_error(),
                 Some(ERROR_OPERATION_ABORTED.0 as i32)
             );
+            if worker_exiting.load(Ordering::Acquire) {
+                return Err(first_error);
+            }
             worker_entered_second_read.store(true, Ordering::Release);
             service_reader.read(&mut byte).map(|_| ())
         });
 
         started_rx.recv_timeout(Duration::from_secs(1)).unwrap();
-        cancel_pending_synchronous_io(&reader_thread, "repeating test pipe reader").unwrap();
-        assert!(entered_second_read.load(Ordering::Acquire));
+        exiting.store(true, Ordering::Release);
+        cancel_pending_synchronous_io(&reader_thread, "latched test pipe reader").unwrap();
+        assert!(!entered_second_read.load(Ordering::Acquire));
         let error = reader_thread.join().unwrap().unwrap_err();
         assert_eq!(error.raw_os_error(), Some(ERROR_OPERATION_ABORTED.0 as i32));
     }

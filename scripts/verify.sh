@@ -3262,12 +3262,20 @@ if grep -Fiq 'current-worktree native evidence' HARDENING_STATUS.md \
 fi
 grep -Fq 'This is native test-suite and build evidence for exactly that staged tree, not installed-SCM' HARDENING_STATUS.md ||
   r_s11b2="$r_s11b2 windows-historic-native-scope-missing"
-grep -Fq 'EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM, CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING' HARDENING_STATUS.md ||
+grep -Fq 'EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM CREDENTIAL EVIDENCE GREEN VIA R-S11gj; CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING' HARDENING_STATUS.md ||
   r_s11b2="$r_s11b2 windows-exact-current-native-boundary-missing"
 grep -Fq 'R-S11e-11 — Windows service-owned password receiver proof — SOURCE IMPLEMENTED; EXACT-CURRENT NATIVE WINDOWS' HARDENING_STATUS.md ||
   r_s11b2="$r_s11b2 r-s11e-11-status-prefix-missing"
-grep -Fq 'TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN VIA R-S11b-2d; INSTALLED-SCM AND COLD R-B2 EVIDENCE PENDING' HARDENING_STATUS.md ||
+grep -Fq 'TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN VIA R-S11b-2d; INSTALLED-SCM CREDENTIAL EVIDENCE GREEN VIA' HARDENING_STATUS.md ||
   r_s11b2="$r_s11b2 r-s11e-11-validation-scope-missing"
+grep -Fq 'EXACT-COMMIT NATIVE TRANSACTION GREEN AT `0a12ed407e63129cac4065f4418911ab71adf3ca`' HARDENING_STATUS.md ||
+  r_s11b2="$r_s11b2 installed-scm-native-green-status-missing"
+grep -Fq '`0018db4b-b79a-4cff-88a0-3f7adf949ec8-A`' HARDENING_STATUS.md ||
+  r_s11b2="$r_s11b2 installed-scm-native-run-identity-missing"
+grep -Fq '<span class="pill p-harden">EXACT-COMMIT NATIVE TRANSACTION GREEN</span>' requirements.html ||
+  r_s11b2="$r_s11b2 installed-scm-appendix-native-green-missing"
+grep -Fq '<code>0a12ed407e63129cac4065f4418911ab71adf3ca</code>' requirements.html ||
+  r_s11b2="$r_s11b2 installed-scm-appendix-native-commit-missing"
 grep -Fq 'This closes exact-current native Windows compilation, fail-closed test/probe execution, and one clean-commit' HARDENING_STATUS.md ||
   r_s11b2="$r_s11b2 windows-exact-current-native-scope-missing"
 grep -Fq 'It does not install the MSI, run the credential receiver' HARDENING_STATUS.md ||

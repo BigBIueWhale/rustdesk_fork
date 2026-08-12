@@ -41929,18 +41929,48 @@ def validate_windows_native_credential_evidence_scope_contract(sources):
         ("verify", "grep -Fiq 'current-worktree native evidence' HARDENING_STATUS.md", "stale current-worktree native-evidence rejection"),
         (
             "verify",
-            "grep -Fq 'EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM, CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING' HARDENING_STATUS.md",
+            "grep -Fq 'EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM CREDENTIAL EVIDENCE GREEN VIA R-S11gj; CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING' HARDENING_STATUS.md",
             "exact-current native-Windows verifier boundary",
         ),
         (
             "hardening",
-            "EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM, CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING",
+            "EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM CREDENTIAL EVIDENCE GREEN VIA R-S11gj; CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING",
             "exact-current native-Windows evidence boundary",
         ),
         (
             "hardening",
-            "TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN VIA R-S11b-2d; INSTALLED-SCM AND COLD R-B2 EVIDENCE PENDING",
+            "TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN VIA R-S11b-2d; INSTALLED-SCM CREDENTIAL EVIDENCE GREEN VIA",
             "R-S11e-11 exact-current evidence boundary",
+        ),
+        (
+            "verify",
+            "grep -Fq 'EXACT-COMMIT NATIVE TRANSACTION GREEN AT `0a12ed407e63129cac4065f4418911ab71adf3ca`' HARDENING_STATUS.md",
+            "installed-SCM exact-commit verifier binding",
+        ),
+        (
+            "verify",
+            "grep -Fq '`0018db4b-b79a-4cff-88a0-3f7adf949ec8-A`' HARDENING_STATUS.md",
+            "installed-SCM exact-run verifier binding",
+        ),
+        (
+            "verify",
+            "grep -Fq '<span class=\"pill p-harden\">EXACT-COMMIT NATIVE TRANSACTION GREEN</span>' requirements.html",
+            "installed-SCM Appendix status verifier binding",
+        ),
+        (
+            "hardening",
+            "EXACT-COMMIT NATIVE TRANSACTION GREEN AT `0a12ed407e63129cac4065f4418911ab71adf3ca`",
+            "installed-SCM exact-commit evidence boundary",
+        ),
+        (
+            "hardening",
+            "`0018db4b-b79a-4cff-88a0-3f7adf949ec8-A`",
+            "installed-SCM exact-run evidence boundary",
+        ),
+        (
+            "requirements",
+            '<span class="pill p-harden">EXACT-COMMIT NATIVE TRANSACTION GREEN</span>',
+            "installed-SCM Appendix native status",
         ),
         (
             "hardening",
@@ -45938,15 +45968,33 @@ def run_source_mutations(sources):
     mutations = (
         (
             "hardening",
-            "EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM, CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING",
+            "EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM CREDENTIAL EVIDENCE GREEN VIA R-S11gj; CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING",
             "EXACT-CURRENT NATIVE WINDOWS RELEASE, INSTALLED-SCM, AND EXTERNAL-REVIEW EVIDENCE COMPLETE",
             "exact-current native-Windows evidence boundary",
         ),
         (
             "verify",
-            "grep -Fq 'EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM, CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING' HARDENING_STATUS.md",
+            "grep -Fq 'EXACT-CURRENT NATIVE WINDOWS TEST-SUITE AND SINGLE-PASS BUILD EVIDENCE GREEN AT A NAMED CLEAN PUSHED COMMIT; INSTALLED-SCM CREDENTIAL EVIDENCE GREEN VIA R-S11gj; CLEAN COMMITTED COLD RELEASE, INDEPENDENT-REPRODUCTION, AND EXTERNAL-REVIEW EVIDENCE PENDING' HARDENING_STATUS.md",
             "grep -Fq 'EXACT-CURRENT NATIVE WINDOWS RELEASE, INSTALLED-SCM, AND EXTERNAL-REVIEW EVIDENCE COMPLETE' HARDENING_STATUS.md",
             "exact-current native-Windows verifier boundary",
+        ),
+        (
+            "hardening",
+            "EXACT-COMMIT NATIVE TRANSACTION GREEN AT `0a12ed407e63129cac4065f4418911ab71adf3ca`",
+            "EXACT-CURRENT NATIVE TRANSACTION PENDING",
+            "installed-SCM exact-commit evidence boundary",
+        ),
+        (
+            "hardening",
+            "`0018db4b-b79a-4cff-88a0-3f7adf949ec8-A`",
+            "`0018db4b-b79a-4cff-88a0-3f7adf949ec8-B`",
+            "installed-SCM exact-run evidence boundary",
+        ),
+        (
+            "requirements",
+            '<span class="pill p-harden">EXACT-COMMIT NATIVE TRANSACTION GREEN</span>',
+            '<span class="pill p-open">EXACT-CURRENT NATIVE RUN PENDING</span>',
+            "installed-SCM Appendix native status",
         ),
         (
             "hardening",

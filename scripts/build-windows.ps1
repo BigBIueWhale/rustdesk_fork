@@ -1594,7 +1594,9 @@ function Build-FullPeerPresentationProbe {
         'rustdesk.msi',
         'rustdesk.msi.sha256'
     )
-    if ((@($distBefore.Keys) -join ',') -cne ($expectedDistNames -join ',')) {
+    $actualDistNames = @($distBefore.Keys | Sort-Object -CaseSensitive)
+    $canonicalDistNames = @($expectedDistNames | Sort-Object -CaseSensitive)
+    if (($actualDistNames -join ',') -cne ($canonicalDistNames -join ',')) {
         Die "full-peer presentation release dist inventory is not exact: $(@($distBefore.Keys) -join ',')"
     }
     $lockBefore = (Get-FileHash -LiteralPath $cargoLock -Algorithm SHA256).Hash.ToLowerInvariant()

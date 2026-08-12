@@ -378,6 +378,18 @@ def validate_sources(sources: dict[str, str]) -> None:
         ("--features 'flutter,windows-full-peer-presentation-probe'", "exact probe feature build"),
         ("build.py --flutter --skip-cargo", "probe Flutter bundle build against exact probe DLL"),
         ("probe_listener_policy = '127.0.0.1:21118'", "probe receipt loopback policy"),
+        (
+            "$actualDistNames = @($distBefore.Keys | Sort-Object -CaseSensitive)",
+            "order-independent case-sensitive actual release-dist set",
+        ),
+        (
+            "$canonicalDistNames = @($expectedDistNames | Sort-Object -CaseSensitive)",
+            "order-independent case-sensitive expected release-dist set",
+        ),
+        (
+            "if (($actualDistNames -join ',') -cne ($canonicalDistNames -join ',')) {",
+            "case-sensitive canonical release-dist set comparison",
+        ),
     ):
         require(build, literal, description)
     for literal, description in (
@@ -2816,6 +2828,24 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "direct_service",
             "std::net::SocketAddr::from(([127, 0, 0, 1], port as u16))",
             "std::net::SocketAddr::from(([0, 0, 0, 0], port as u16))",
+        ),
+        (
+            "Windows full-peer release inventory actual ordering",
+            "build",
+            "$actualDistNames = @($distBefore.Keys | Sort-Object -CaseSensitive)",
+            "$actualDistNames = @($distBefore.Keys)",
+        ),
+        (
+            "Windows full-peer release inventory canonical ordering",
+            "build",
+            "$canonicalDistNames = @($expectedDistNames | Sort-Object -CaseSensitive)",
+            "$canonicalDistNames = @($expectedDistNames)",
+        ),
+        (
+            "Windows full-peer release inventory exact comparison",
+            "build",
+            "if (($actualDistNames -join ',') -cne ($canonicalDistNames -join ',')) {",
+            "if (($actualDistNames -join ',') -ceq ($canonicalDistNames -join ',')) {",
         ),
         (
             "Windows full-peer sustained frame count",

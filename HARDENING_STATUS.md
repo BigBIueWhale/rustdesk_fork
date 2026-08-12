@@ -24080,11 +24080,25 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   run and prove cleanup before installation. The independent host verifier binds source identity, unchanged artifacts,
   exact listener/TCP rows, latency/count/order/measured-duration, remote input, and zero-interface/loopback-VNC domain
   XML. Its behavioral self-test rejects wildcard-listener, >2500-ms, deficient minimized duration,
-  artifact-substitution, and VM-NIC mutations. Confined static Windows harness verification, all 264 deliberate
-  mutations, seven bounded behavioral suites, Bash parsing, and PowerShell parsing pass. The pinned Rust 1.75
-  container lacks an offline `rustfmt` component; no network/toolchain mutation was permitted to conceal that gap.
-- **Current verdict: native execution pending.** No real Windows peer result exists yet, no focus-delay cause or repair
-  is claimed, and no release-readiness claim is made. Even a future pass remains narrower than the user's complete
+  artifact-substitution, and VM-NIC mutations. Confined static Windows harness verification, all 267 deliberate
+  mutations, seven bounded behavioral suites, Bash parsing, and PowerShell lexical parsing pass. The native Windows
+  parser remains the first guest build preflight. The pinned Rust 1.75 container lacks an offline `rustfmt` component;
+  no network/toolchain mutation was permitted to conceal that gap.
+- **First exact native attempt: failed before peer runtime.** Zero-interface run
+  `8d440dc1-c367-4702-bdeb-93963389d2e1-A` used clean commit
+  `c85c792e0172ceee1a2313370398baf66cc05ddc`, tree
+  `2dcd6c0d5dcdb6e601b0601f34df369ffb413cee`, source manifest
+  `a62d02b9106661251339af410fc41a1f611417a41e6dcf2e2282c9a34ccbb7b5`, and offline manifest
+  `5f73c336c9ff43f850a0d9643fb76b97f2cfe9a81c8bd37f4b94ed68c6f0687a`. Source/offline identity,
+  selected Rust tests, ordinary Flutter build, native texture-core tests, setup/MSI construction, CPace probe
+  construction, and the probe-feature Rust library build passed. The harness then rejected the exact four-file
+  release inventory because Windows returned the same set in MSI-first order and the check compared it to a
+  hardcoded order. No private probe bundle, server, or viewer launched. The retained domain XML SHA-256 is
+  `fb2420356d2d10fc41248cb7032ccd5f566bbcea9a0f698548a870999387d81a` and contains no network interface.
+  This is negative harness evidence only. The corrected check sorts both sides case-sensitively while retaining the
+  exact count and complete size/SHA-256 equality gate. Therefore native peer execution remains pending; no real
+  Windows peer result, focus-delay cause, repair, or release-readiness claim exists. Even a future pass remains
+  narrower than the user's complete
   request: Android Activity/foreground-service/task-swipe/reopen/Force-Stop behavior, the weeks-old deployed Windows
   artifact, cross-version interoperability, packaged-byte presentation, macOS/iOS, concurrent feature interaction,
   long reconnect/resource/performance soak, cold R-B2 equality, independent reproduction, and external review remain
@@ -24095,7 +24109,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-7e4dffa749fe3c201b60a2b8a009b272f0ebd1191cc016b8cdae4354451c9d61  requirements.html
+4f686ebc8852f3c7622b196e893974d2add2e794bb6d43134448dea8e7584073  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

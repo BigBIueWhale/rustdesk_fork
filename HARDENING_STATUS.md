@@ -24080,7 +24080,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   run and prove cleanup before installation. The independent host verifier binds source identity, unchanged artifacts,
   exact listener/TCP rows, latency/count/order/measured-duration, remote input, and zero-interface/loopback-VNC domain
   XML. Its behavioral self-test rejects wildcard-listener, >2500-ms, deficient minimized duration,
-  artifact-substitution, and VM-NIC mutations. Confined static Windows harness verification, all 263 deliberate
+  artifact-substitution, and VM-NIC mutations. Confined static Windows harness verification, all 264 deliberate
   mutations, seven bounded behavioral suites, Bash parsing, and PowerShell parsing pass. The pinned Rust 1.75
   container lacks an offline `rustfmt` component; no network/toolchain mutation was permitted to conceal that gap.
 - **Current verdict: native execution pending.** No real Windows peer result exists yet, no focus-delay cause or repair

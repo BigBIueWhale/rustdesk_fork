@@ -443,14 +443,24 @@ assert_offline() {
 assert_no_build_host_network_residual() {
     require_cmd ip ss
     local dirty=()
-    local listeners harness_libvirt_net=0
+    local listeners tcp_dns udp_dns udp_dhcp harness_libvirt_net=0
 
     if ip link show virbr0 >/dev/null 2>&1; then
         dirty+=("virbr0 exists")
         harness_libvirt_net=1
     fi
 
-    listeners="$(ss -ltnup 2>/dev/null | grep -E '192[.]168[.]122[.]1:53|0[.]0[.]0[.]0%virbr0:67' || true)"
+    # Query only the two libvirt DNS/DHCP ports and never request process ownership. An unfiltered
+    # `ss -p` dump would incidentally inspect unrelated host services (including RustDesk), which is
+    # outside this harness's authority even when a later grep discards those rows.
+    tcp_dns="$(ss -H -ltn 'sport = :53' 2>/dev/null)" \
+        || die "cannot inspect the exact host TCP/53 preflight surface"
+    udp_dns="$(ss -H -lun 'sport = :53' 2>/dev/null)" \
+        || die "cannot inspect the exact host UDP/53 preflight surface"
+    udp_dhcp="$(ss -H -lun 'sport = :67' 2>/dev/null)" \
+        || die "cannot inspect the exact host UDP/67 preflight surface"
+    listeners="$(printf '%s\n%s\n%s\n' "$tcp_dns" "$udp_dns" "$udp_dhcp" \
+        | grep -E '192[.]168[.]122[.]1:53|0[.]0[.]0[.]0%virbr0:67' || true)"
     if [ -n "$listeners" ]; then
         dirty+=("libvirt default-network DNS/DHCP listener active")
         harness_libvirt_net=1

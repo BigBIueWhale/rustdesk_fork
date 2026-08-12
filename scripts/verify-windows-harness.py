@@ -25,6 +25,7 @@ FILES = {
     "portable_cargo": "libs/portable/Cargo.toml",
     "resource": "res/windows_resource.rs",
     "host": "scripts/build-windows-vm.sh",
+    "lib": "scripts/lib.sh",
     "runtime": "scripts/windows-helper-runtime.sh",
     "closure": "scripts/verify-private-tree-closure.py",
     "publication": "scripts/publish-windows-result.py",
@@ -316,6 +317,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     portable_cargo = sources["portable_cargo"]
     resource = sources["resource"]
     host = sources["host"]
+    lib = sources["lib"]
     runtime = sources["runtime"]
     closure = sources["closure"]
     publication = sources["publication"]
@@ -636,6 +638,18 @@ def validate_sources(sources: dict[str, str]) -> None:
         "owned session/process-group virt-install",
     )
     require(host, "VM_TIMEOUT_SECONDS=7200", "two-hour VM bound")
+    for literal, description in (
+        ("ss -H -ltn 'sport = :53'", "host preflight scoped TCP DNS query"),
+        ("ss -H -lun 'sport = :53'", "host preflight scoped UDP DNS query"),
+        ("ss -H -lun 'sport = :67'", "host preflight scoped UDP DHCP query"),
+        ("never request process ownership", "host preflight process-metadata exclusion"),
+    ):
+        require(lib, literal, description)
+    reject(
+        lib,
+        r"(?m)^[^#\n]*\$\(ss\s+-\S*p\S*(?:\s|$)",
+        "host listener process-ownership inspection",
+    )
     require(host, "IFS=' ' read -r uptime _ </proc/uptime", "monotonic clock")
     require(host, "trap cleanup EXIT", "EXIT cleanup")
     for status in (129, 130, 143):
@@ -2785,6 +2799,12 @@ def run_behavioral_self_tests(repo: pathlib.Path) -> None:
 
 def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
     mutations = [
+        (
+            "Windows host preflight process-metadata exclusion",
+            "lib",
+            "ss -H -ltn 'sport = :53'",
+            "ss -H -ltnp 'sport = :53'",
+        ),
         (
             "Windows full-peer probe non-default feature",
             "cargo",

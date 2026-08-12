@@ -21,11 +21,13 @@
 //!                report the `PeerInfo` (its `username` MUST be NON-EMPTY on a headless unix
 //!                `--server` — the process-owner fallback — never the "No active console user"
 //!                refusal) plus any directory `FileResponse`.
+//!   - `cmfiletransfer` : strict installed-service CM lifecycle probe — the same exchange, but PASS
+//!                additionally requires an actual directory `FileResponse` from the CM bridge.
 //!
 //! 5th arg (optional) = local source address, e.g. `127.0.0.2:0`, to connect as a DIFFERENT source
 //! for the R-A8.2 owner-safe-limiter test (a guess-flood from one source must not block another).
 //!
-//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer] [local_addr]`  (exit 0 = matched)
+//! Usage: `probe_client <addr> <password|--password-stdin> <ok|fail> [read|login|inject|portforward|filetransfer|cmfiletransfer] [local_addr]`  (exit 0 = matched)
 use hbb_common::cpace::run_initiator;
 use hbb_common::message_proto::{login_response, message, Message};
 use hbb_common::protobuf::Message as _; // parse_from_bytes / write_to_bytes
@@ -131,7 +133,8 @@ fn main() {
         || mode == "login"
         || mode == "inject"
         || mode == "portforward"
-        || mode == "filetransfer";
+        || mode == "filetransfer"
+        || mode == "cmfiletransfer";
     // Optional local source address (6th arg) — e.g. 127.0.0.2:0 to connect as a DIFFERENT source,
     // for the R-A8.2 owner-safe limiter test (a flood from one source must not block another).
     let local = a
@@ -275,7 +278,7 @@ fn main() {
                             return (true, pk, true, false);
                         }
                     }
-                    if mode == "filetransfer" {
+                    if mode == "filetransfer" || mode == "cmfiletransfer" {
                         // R-F1/R-F2 END-TO-END against a headless unix --server. Before the fix this box
                         // (no logind/console session) reported an EMPTY PeerInfo.username and the viewer
                         // refused file transfer with "No active console user logged on". The server now
@@ -311,6 +314,7 @@ fn main() {
                         let mut sent_readdir = false;
                         let mut peer_username_nonempty = false;
                         let mut readdir_send_ok = true;
+                        let mut received_directory = false;
                         for _ in 0..10 {
                             let bytes = match stream.next_timeout(4000).await {
                                 Some(Ok(b)) => b,
@@ -362,6 +366,7 @@ fn main() {
                                 },
                                 Ok(Some(message::Union::FileResponse(fr))) => match fr.union {
                                     Some(file_response::Union::Dir(d)) => {
+                                        received_directory = true;
                                         pk.push_str(&format!(
                                             "[FT-DIR-RESPONSE path={:?} entries={}] ",
                                             d.path,
@@ -378,7 +383,10 @@ fn main() {
                                 _ => {}
                             }
                         }
-                        if !peer_username_nonempty || !readdir_send_ok {
+                        if !peer_username_nonempty
+                            || !readdir_send_ok
+                            || (mode == "cmfiletransfer" && !received_directory)
+                        {
                             return (true, pk, false, true);
                         }
                     }
@@ -386,7 +394,10 @@ fn main() {
                     // tunnel already did its round-trip above, and its post-PeerInfo bytes are RAW
                     // relay data (not Messages), so skip the dump there.
                     for i in 0..6 {
-                        if mode == "portforward" || mode == "filetransfer" {
+                        if mode == "portforward"
+                            || mode == "filetransfer"
+                            || mode == "cmfiletransfer"
+                        {
                             break;
                         }
                         match stream.next_timeout(3000).await {
@@ -474,7 +485,7 @@ fn main() {
         _ => false,
     };
     let pass = keying_matches
-        && (mode != "filetransfer" || file_transfer_ok)
+        && ((mode != "filetransfer" && mode != "cmfiletransfer") || file_transfer_ok)
         && (mode != "login" || remote_login_ok);
     if pass {
         println!("probe_client: PASS");

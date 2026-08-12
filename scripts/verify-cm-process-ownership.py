@@ -19,6 +19,7 @@ class VerificationError(RuntimeError):
 FILES = (
     "Cargo.toml",
     "build.py",
+    "examples/probe_client.rs",
     "examples/windows_cm_lifecycle_probe.rs",
     "src/common.rs",
     "src/ipc.rs",
@@ -35,6 +36,8 @@ FILES = (
     "scripts/verify.sh",
     "scripts/apple-conform-check.sh",
     "scripts/build-windows.ps1",
+    "scripts/verify-windows-installed-service-result.py",
+    "scripts/windows-installed-service-probe.ps1",
 )
 
 
@@ -95,6 +98,7 @@ def ordered(block: str, needles: tuple[str, ...], label: str) -> None:
 def verify(files: Mapping[str, str]) -> None:
     cargo = files["Cargo.toml"]
     build_py = files["build.py"]
+    probe_client = files["examples/probe_client.rs"]
     probe_example = files["examples/windows_cm_lifecycle_probe.rs"]
     common = files["src/common.rs"]
     ipc = files["src/ipc.rs"]
@@ -111,6 +115,8 @@ def verify(files: Mapping[str, str]) -> None:
     shared_gate = files["scripts/verify.sh"]
     apple_gate = files["scripts/apple-conform-check.sh"]
     windows_build = files["scripts/build-windows.ps1"]
+    installed_result = files["scripts/verify-windows-installed-service-result.py"]
+    installed_probe = files["scripts/windows-installed-service-probe.ps1"]
 
     require(
         common,
@@ -635,6 +641,34 @@ def verify(files: Mapping[str, str]) -> None:
         'cargo run --offline --locked --example windows_cm_lifecycle_probe --features "flutter,windows-cm-lifecycle-probe" --color never',
         "native Windows CM lifecycle probe",
     )
+    for needle, label in (
+        ('mode == "cmfiletransfer" && !received_directory', "strict CM directory-response probe"),
+        ("$arguments.Count -ne 2", "installed CM complete role arity"),
+        ("$arguments[1] -cne '--cm'", "installed CM exact role"),
+        ("$process.UserSid -cne $InteractiveToken.UserSid", "installed CM interactive principal"),
+        ("$process.SessionId -ne $InteractiveToken.SessionId", "installed CM interactive session"),
+        (
+            "TerminateExactProcessGeneration(\n        [uint32]$Generation.ProcessId",
+            "installed exact CM termination",
+        ),
+        ("if (wait == WAIT_OBJECT_0) { return false; }", "installed signaled-process liveness refusal"),
+        ("Wait-ExactProcessGenerationGone $cmAfterStaleRecovery", "installed abrupt-owner CM retirement"),
+        ("Wait-ExactProcessGenerationGone $cmPreRestart", "installed SCM-stop CM retirement"),
+        ("rustdesk-windows-installed-service-probe-v2", "installed CM lifecycle receipt"),
+    ):
+        require(
+            probe_client if needle.startswith('mode ==') else installed_probe,
+            needle,
+            label,
+        )
+    for needle, label in (
+        ('result["cm_roundtrip_count"] != 6', "installed six-CM-round-trip result"),
+        ("stale CM recovery did not change the CM generation", "installed stale-CM result relation"),
+        ("abrupt owner recovery did not change the CM generation", "installed owner-death result relation"),
+        ("retained CM generation was not reused before SCM restart", "installed retained-CM result relation"),
+        ("SCM restart did not change the CM generation", "installed SCM-restart result relation"),
+    ):
+        require(installed_result, needle, label)
 
 
 MUTATIONS = (
@@ -751,6 +785,42 @@ MUTATIONS = (
         'cargo run --offline --locked --example windows_cm_lifecycle_probe --features "flutter,windows-cm-lifecycle-probe" --color never',
         "Write-Host 'native Windows CM lifecycle probe disabled'",
         "native Windows CM lifecycle probe removal",
+    ),
+    Mutation(
+        "examples/probe_client.rs",
+        'mode == "cmfiletransfer" && !received_directory',
+        'mode == "cmfiletransfer" && false',
+        "installed CM directory-response requirement removal",
+    ),
+    Mutation(
+        "scripts/windows-installed-service-probe.ps1",
+        "$process.SessionId -ne $InteractiveToken.SessionId",
+        "$process.SessionId -eq $InteractiveToken.SessionId",
+        "installed CM interactive-session proof bypass",
+    ),
+    Mutation(
+        "scripts/windows-installed-service-probe.ps1",
+        "TerminateExactProcessGeneration(\n        [uint32]$Generation.ProcessId",
+        "TerminateExactProcessGeneration(\n        [uint32]0",
+        "installed exact-generation termination bypass",
+    ),
+    Mutation(
+        "scripts/windows-installed-service-probe.ps1",
+        "if (wait == WAIT_OBJECT_0) { return false; }",
+        "if (wait == WAIT_OBJECT_0) { return true; }",
+        "installed signaled-process liveness bypass",
+    ),
+    Mutation(
+        "scripts/windows-installed-service-probe.ps1",
+        "Wait-ExactProcessGenerationGone $cmAfterStaleRecovery 'CM generation owned by the abruptly terminated server'",
+        "Write-Host 'CM owner retirement skipped'",
+        "installed abrupt-owner CM retirement removal",
+    ),
+    Mutation(
+        "scripts/verify-windows-installed-service-result.py",
+        'result["cm_roundtrip_count"] != 6',
+        'result["cm_roundtrip_count"] < 0',
+        "installed CM round-trip result bypass",
     ),
     Mutation(
         "src/windows_cm_lifecycle_probe.rs",

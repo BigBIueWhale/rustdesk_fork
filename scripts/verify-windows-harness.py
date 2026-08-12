@@ -1994,16 +1994,23 @@ def validate_sources(sources: dict[str, str]) -> None:
     )
     installed_task = powershell_function(installed_probe, "Invoke-LimitedTask")
     installed_process = powershell_function(installed_probe, "Invoke-RedirectedProcess")
+    installed_cm_roundtrip = powershell_function(installed_probe, "Invoke-CmFileRoundTrip")
+    installed_exact_stop = powershell_function(installed_probe, "Stop-ExactProcessGeneration")
     installed_service = powershell_function(installed_probe, "Get-ExactServiceProof")
     installed_child = powershell_function(installed_probe, "Get-ExactServiceChild")
+    installed_cm = powershell_function(installed_probe, "Get-ExactConnectionManager")
     for literal, description in (
         ("QueryServiceConfigW", "typed SCM configuration query"),
         ("QueryServiceStatusEx", "typed SCM status/PID query"),
         ("QueryFullProcessImageNameW", "live process-image proof"),
         ("GetTokenInformation", "live token-elevation proof"),
         ("GetProcessTimes", "PID-reuse-resistant process generation proof"),
+        ("ProcessIdToSessionId", "live process-session proof"),
+        ("TerminateProcess", "exact-generation termination primitive"),
+        ("WaitForSingleObject", "exact-generation termination finality"),
+        ("if (wait == WAIT_OBJECT_0) { return false; }", "signaled-process liveness refusal"),
         ("CommandLineToArgvW", "exact service-child argv parser"),
-        ("rustdesk-windows-installed-service-probe-v1", "versioned installed-SCM receipt"),
+        ("rustdesk-windows-installed-service-probe-v2", "versioned installed-SCM receipt"),
         ("R-S11gj-Limited-Must-Fail-7x!", "synthetic least-privilege fixture"),
         ("R-S11gj-Wrong-Image-Must-Fail-8y!", "synthetic wrong-image fixture"),
         ("R-S11gj-First-Rotation-9z!", "synthetic first rotation fixture"),
@@ -2069,6 +2076,31 @@ def validate_sources(sources: dict[str, str]) -> None:
     ):
         require(installed_child, literal, description)
     for literal, description in (
+        ("ParentProcessId = $($ServiceChild.ProcessId)", "CM direct-owner selection"),
+        ("$arguments.Count -ne 2", "complete CM role arity"),
+        ("$arguments[1] -cne '--cm'", "exact CM role"),
+        ("$process.UserSid -cne $InteractiveToken.UserSid", "interactive CM principal proof"),
+        ("$process.SessionId -ne $InteractiveToken.SessionId", "interactive CM session proof"),
+        ("$matches.Count -gt 1", "duplicate CM refusal"),
+    ):
+        require(installed_cm, literal, description)
+    for literal, description in (
+        ("--password-stdin ok cmfiletransfer", "strict CM probe mode"),
+        ("[FT-DIR-RESPONSE ", "CM directory-response requirement"),
+        ("probe_client: PASS", "strict probe terminal PASS"),
+    ):
+        require(installed_cm_roundtrip, literal, description)
+    require(
+        installed_exact_stop,
+        "TerminateExactProcessGeneration(\n        [uint32]$Generation.ProcessId",
+        "handle-bound exact-generation termination",
+    )
+    require(
+        installed_exact_stop,
+        "Wait-ExactProcessGenerationGone $Generation $Label",
+        "terminated-generation finality",
+    )
+    for literal, description in (
         ("canonicalize-pe.py", "final setup-byte canonicalization"),
         ("Invoke-RedirectedProcess $canonicalSetup '--silent-install'", "canonical setup execution"),
         ("stdout=$installStdout; stderr=$installStderr", "bounded canonical setup failure diagnostics"),
@@ -2079,14 +2111,9 @@ def validate_sources(sources: dict[str, str]) -> None:
         ("$installed $SecondFixture $true", "rotated installed-image mutation"),
         ("Invoke-KeyProbe $SecondFixture 'ok'", "new credential CPace proof"),
         ("Invoke-KeyProbe $FirstFixture 'fail'", "old credential CPace refusal"),
-        (
-            "IsSameProcessGenerationLive(\n                [uint32]$servicePreRestart.ProcessId",
-            "SCM supervisor generation retirement proof",
-        ),
-        (
-            "IsSameProcessGenerationLive(\n                [uint32]$childPreRestart.ProcessId",
-            "SCM child generation retirement proof",
-        ),
+        ("Wait-ExactProcessGenerationGone $servicePreRestart.Process", "SCM supervisor generation retirement proof"),
+        ("Wait-ExactProcessGenerationGone $childPreRestart", "SCM child generation retirement proof"),
+        ("Wait-ExactProcessGenerationGone $cmPreRestart", "SCM CM generation retirement proof"),
         ("$controller.Start()", "SCM restart transaction"),
         ("second_credential_keyed_after_restart = $true", "durable credential reload receipt"),
     ):
@@ -2105,6 +2132,32 @@ def validate_sources(sources: dict[str, str]) -> None:
             "$installed $SecondFixture $true",
         ),
         "baseline, rejection-preservation, rotation transaction order",
+    )
+    require_order(
+        installed_main,
+        (
+            "Invoke-CmFileRoundTrip $FirstFixture 'initial installed LocalSystem CM round-trip'",
+            "$cmInitial = Get-ExactConnectionManager",
+            "Invoke-CmFileRoundTrip $FirstFixture 'reused installed LocalSystem CM round-trip'",
+            "$cmReused = Get-ExactConnectionManager",
+            "Stop-ExactProcessGeneration $cmInitial",
+            "Invoke-CmFileRoundTrip $FirstFixture 'stale-generation recovery CM round-trip'",
+            "$cmAfterStaleRecovery = Get-ExactConnectionManager",
+            "Stop-ExactProcessGeneration $childBefore",
+            "Wait-ExactProcessGenerationGone $cmAfterStaleRecovery",
+            "$childAfterAbrupt = Get-ExactServiceChild",
+            "Invoke-CmFileRoundTrip $FirstFixture 'abrupt-owner recovery CM round-trip'",
+            "$cmAfterAbrupt = Get-ExactConnectionManager",
+            "Invoke-LimitedTask $installed",
+            "Invoke-CmFileRoundTrip $SecondFixture 'pre-SCM-stop retained CM round-trip'",
+            "$cmPreRestart = Get-ExactConnectionManager",
+            "$controller.Stop()",
+            "Wait-ExactProcessGenerationGone $cmPreRestart",
+            "$controller.Start()",
+            "Invoke-CmFileRoundTrip $SecondFixture 'post-SCM-restart CM round-trip'",
+            "$cmAfterRestart = Get-ExactConnectionManager",
+        ),
+        "installed LocalSystem CM lifecycle transaction order",
     )
     for literal, description in (
         (
@@ -2127,6 +2180,9 @@ def validate_sources(sources: dict[str, str]) -> None:
         ("sodiumoxide::utils::memzero", "CPace probe input erasure"),
         ("std::mem::take(value).into_bytes()", "argv compatibility value ownership"),
         ("drop(pw);", "pre-network CPace password retirement"),
+        ('mode == "cmfiletransfer"', "strict CM file-transfer mode"),
+        ("received_directory = true", "strict CM directory-response observation"),
+        ('mode == "cmfiletransfer" && !received_directory', "strict CM directory-response refusal"),
     ):
         require(probe_client, literal, description)
 
@@ -2148,6 +2204,11 @@ def validate_sources(sources: dict[str, str]) -> None:
         ('require_exact_bool(result, "limited_token_elevated", False)', "limited token receipt proof"),
         ("SCM restart did not change the supervisor generation", "supervisor-generation result proof"),
         ("SCM restart did not change the service-owned child generation", "child-generation result proof"),
+        ("abrupt owner recovery did not change the service-owned child generation", "abrupt-owner child result proof"),
+        ("stale CM recovery did not change the CM generation", "stale CM result proof"),
+        ("retained CM generation was not reused before SCM restart", "retained CM reuse result proof"),
+        ("SCM restart did not change the CM generation", "SCM CM-generation result proof"),
+        ('result["cm_roundtrip_count"] != 6', "six-round-trip result proof"),
     ):
         require(installed_validate, literal, description)
     require(installed_validate_domain, 'root.findall("./devices/interface")', "result verifier zero-interface XML proof")
@@ -2159,6 +2220,11 @@ def validate_sources(sources: dict[str, str]) -> None:
         "setup binding",
         "closed schema",
         "SCM generation",
+        "abrupt owner generation",
+        "stale CM generation",
+        "retained CM reuse",
+        "SCM CM generation",
+        "CM round-trip count",
     ):
         require(installed_self_test, f'("{fixture}", changed)', f"installed-SCM result mutation {fixture}")
     installed_requirement = html_requirement(requirements, "R-S11gj")
@@ -3926,8 +3992,44 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
         (
             "installed-SCM service-generation retirement",
             "installed_probe",
-            "IsSameProcessGenerationLive(\n                [uint32]$servicePreRestart.ProcessId",
-            "IsSameProcessGenerationLive(\n                [uint32]$serviceAfter.ProcessId",
+            "Wait-ExactProcessGenerationGone $servicePreRestart.Process 'SCM supervisor generation'",
+            "Wait-ExactProcessGenerationGone $serviceAfter.Process 'SCM supervisor generation'",
+        ),
+        (
+            "installed-SCM exact CM termination",
+            "installed_probe",
+            "TerminateExactProcessGeneration(\n        [uint32]$Generation.ProcessId",
+            "TerminateExactProcessGeneration(\n        [uint32]0",
+        ),
+        (
+            "installed-SCM signaled-process liveness",
+            "installed_probe",
+            "if (wait == WAIT_OBJECT_0) { return false; }",
+            "if (wait == WAIT_OBJECT_0) { return true; }",
+        ),
+        (
+            "installed-SCM strict CM directory response",
+            "installed_probe",
+            "$last.Stdout.Contains('[FT-DIR-RESPONSE ')",
+            "$last.Stdout.Contains('[FT-PEERINFO ')",
+        ),
+        (
+            "installed-SCM v2 lifecycle receipt",
+            "installed_probe",
+            "rustdesk-windows-installed-service-probe-v2",
+            "rustdesk-windows-installed-service-probe-v1",
+        ),
+        (
+            "installed-SCM CM result relation",
+            "installed_result",
+            'result["cm_roundtrip_count"] != 6',
+            'result["cm_roundtrip_count"] < 0',
+        ),
+        (
+            "strict CPace CM directory requirement",
+            "probe_client",
+            'mode == "cmfiletransfer" && !received_directory',
+            'mode == "cmfiletransfer" && false',
         ),
         (
             "Windows VM VNC loopback binding proof",

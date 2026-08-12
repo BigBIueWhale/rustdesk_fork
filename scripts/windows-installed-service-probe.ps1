@@ -100,6 +100,7 @@ namespace RustDeskInstalledServiceProbe {
         public uint ProcessId;
         public string ImagePath;
         public string UserSid;
+        public uint SessionId;
         public bool Elevated;
         public ulong CreationTime;
     }
@@ -156,11 +157,15 @@ namespace RustDeskInstalledServiceProbe {
         private const uint SERVICE_QUERY_CONFIG = 0x0001;
         private const uint SERVICE_QUERY_STATUS = 0x0004;
         private const int SC_STATUS_PROCESS_INFO = 0;
+        private const uint PROCESS_TERMINATE = 0x0001;
         private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+        private const uint SYNCHRONIZE = 0x00100000;
         private const uint TOKEN_QUERY = 0x0008;
         private const int TOKEN_ELEVATION_CLASS = 20;
         private const int ERROR_INSUFFICIENT_BUFFER = 122;
         private const int ERROR_INVALID_PARAMETER = 87;
+        private const uint WAIT_OBJECT_0 = 0;
+        private const uint WAIT_TIMEOUT = 258;
 
         [DllImport("advapi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
         private static extern IntPtr OpenSCManagerW(string machineName, string databaseName, uint desiredAccess);
@@ -220,6 +225,17 @@ namespace RustDeskInstalledServiceProbe {
 
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool ProcessIdToSessionId(uint processId, out uint sessionId);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool TerminateProcess(IntPtr process, uint exitCode);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern uint WaitForSingleObject(IntPtr handle, uint milliseconds);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool CloseHandle(IntPtr handle);
 
         [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
@@ -259,6 +275,10 @@ namespace RustDeskInstalledServiceProbe {
                 if (!GetProcessTimes(process, out creation, out exit, out kernel, out user)) {
                     throw new Win32Exception(Marshal.GetLastWin32Error(), "GetProcessTimes");
                 }
+                uint sessionId;
+                if (!ProcessIdToSessionId(processId, out sessionId)) {
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "ProcessIdToSessionId");
+                }
                 if (!OpenProcessToken(process, TOKEN_QUERY, out token)) {
                     throw new Win32Exception(Marshal.GetLastWin32Error(), "OpenProcessToken");
                 }
@@ -283,6 +303,7 @@ namespace RustDeskInstalledServiceProbe {
                     ProcessId = processId,
                     ImagePath = image.ToString(),
                     UserSid = sid,
+                    SessionId = sessionId,
                     Elevated = elevation.TokenIsElevated != 0,
                     CreationTime = FileTime(creation),
                 };
@@ -297,11 +318,62 @@ namespace RustDeskInstalledServiceProbe {
         }
 
         public static bool IsSameProcessGenerationLive(uint processId, ulong creationTime) {
+            IntPtr process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE, false, processId);
+            if (process == IntPtr.Zero || process == new IntPtr(-1)) {
+                int error = Marshal.GetLastWin32Error();
+                if (error == ERROR_INVALID_PARAMETER) { return false; }
+                throw new Win32Exception(error, "OpenProcess(check exact generation)");
+            }
             try {
-                return QueryProcess(processId).CreationTime == creationTime;
-            } catch (Win32Exception error) {
-                if (error.NativeErrorCode == ERROR_INVALID_PARAMETER) { return false; }
-                throw;
+                FILETIME_VALUE creation;
+                FILETIME_VALUE exit;
+                FILETIME_VALUE kernel;
+                FILETIME_VALUE user;
+                if (!GetProcessTimes(process, out creation, out exit, out kernel, out user)) {
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "GetProcessTimes(check exact generation)");
+                }
+                if (FileTime(creation) != creationTime) { return false; }
+                uint wait = WaitForSingleObject(process, 0);
+                if (wait == WAIT_OBJECT_0) { return false; }
+                if (wait == WAIT_TIMEOUT) { return true; }
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "WaitForSingleObject(check exact generation)");
+            } finally {
+                CloseHandle(process);
+            }
+        }
+
+        public static void TerminateExactProcessGeneration(
+            uint processId,
+            ulong creationTime,
+            uint timeoutMilliseconds) {
+            IntPtr process = OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | SYNCHRONIZE,
+                false,
+                processId);
+            RequireHandle(process, "OpenProcess(terminate exact generation)");
+            try {
+                FILETIME_VALUE creation;
+                FILETIME_VALUE exit;
+                FILETIME_VALUE kernel;
+                FILETIME_VALUE user;
+                if (!GetProcessTimes(process, out creation, out exit, out kernel, out user)) {
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "GetProcessTimes(terminate exact generation)");
+                }
+                if (FileTime(creation) != creationTime) {
+                    throw new InvalidOperationException("refusing to terminate a reused process identifier");
+                }
+                if (!TerminateProcess(process, 0x5253444B)) {
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "TerminateProcess(exact generation)");
+                }
+                uint wait = WaitForSingleObject(process, timeoutMilliseconds);
+                if (wait == WAIT_TIMEOUT) {
+                    throw new TimeoutException("terminated process generation did not reach signaled finality");
+                }
+                if (wait != WAIT_OBJECT_0) {
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "WaitForSingleObject(exact generation)");
+                }
+            } finally {
+                CloseHandle(process);
             }
         }
 
@@ -472,6 +544,54 @@ function Invoke-KeyProbe([string]$Password, [ValidateSet('ok', 'fail')][string]$
     Fail "CPace $Expectation probe did not reach its expected result (last exit=$($last.ExitCode))"
 }
 
+function Invoke-CmFileRoundTrip([string]$Password, [string]$Label) {
+    [void](Get-OrdinaryPathItem $ProbeExe $true)
+    $deadline = [DateTime]::UtcNow.AddSeconds(45)
+    $last = $null
+    do {
+        $last = Invoke-RedirectedProcess $ProbeExe '127.0.0.1:21118 --password-stdin ok cmfiletransfer' $Password 15
+        Assert-NoFixtureEcho $last $Password $Label
+        if ($last.ExitCode -eq 0 -and
+            $last.Stdout.Contains('[FT-DIR-RESPONSE ') -and
+            $last.Stdout.Contains('probe_client: PASS')) {
+            return
+        }
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $deadline)
+    Fail "$Label did not complete an authenticated CM directory round-trip (last exit=$($last.ExitCode))"
+}
+
+function Test-SameProcessGeneration([object]$Left, [object]$Right) {
+    return $Left.ProcessId -eq $Right.ProcessId -and $Left.CreationTime -eq $Right.CreationTime
+}
+
+function Assert-DifferentProcessGeneration([object]$Left, [object]$Right, [string]$Label) {
+    if (Test-SameProcessGeneration $Left $Right) {
+        Fail "$Label reused an old process generation"
+    }
+}
+
+function Wait-ExactProcessGenerationGone([object]$Generation, [string]$Label) {
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    do {
+        if (-not [RustDeskInstalledServiceProbe.Native]::IsSameProcessGenerationLive(
+                [uint32]$Generation.ProcessId,
+                [uint64]$Generation.CreationTime)) {
+            return
+        }
+        Start-Sleep -Milliseconds 100
+    } while ([DateTime]::UtcNow -lt $deadline)
+    Fail "$Label remained alive past its retirement deadline"
+}
+
+function Stop-ExactProcessGeneration([object]$Generation, [string]$Label) {
+    [RustDeskInstalledServiceProbe.Native]::TerminateExactProcessGeneration(
+        [uint32]$Generation.ProcessId,
+        [uint64]$Generation.CreationTime,
+        [uint32]30000)
+    Wait-ExactProcessGenerationGone $Generation $Label
+}
+
 function Assert-SystemProcess([object]$Proof, [string]$ExpectedImage, [string]$Label) {
     if ($null -eq $Proof) { Fail "$Label has no process proof" }
     if (-not [string]::Equals($Proof.ImagePath, $ExpectedImage, [StringComparison]::OrdinalIgnoreCase)) {
@@ -523,6 +643,40 @@ function Get-ExactServiceChild([object]$ServiceProof, [string]$ExpectedExecutabl
         Start-Sleep -Milliseconds 250
     } while ([DateTime]::UtcNow -lt $deadline)
     Fail 'SCM supervisor did not retain one exact service-owned server child'
+}
+
+function Get-ExactConnectionManager([object]$ServiceChild, [string]$ExpectedExecutable, [object]$InteractiveToken) {
+    $deadline = [DateTime]::UtcNow.AddSeconds(30)
+    do {
+        $matches = @()
+        foreach ($candidate in @(Get-CimInstance -ClassName Win32_Process -Filter "ParentProcessId = $($ServiceChild.ProcessId)")) {
+            if ([string]::IsNullOrEmpty([string]$candidate.CommandLine)) { continue }
+            $arguments = [RustDeskInstalledServiceProbe.Native]::ParseCommandLine([string]$candidate.CommandLine)
+            if ($arguments.Count -ne 2 -or
+                -not [string]::Equals($arguments[0], $ExpectedExecutable, [StringComparison]::OrdinalIgnoreCase) -or
+                $arguments[1] -cne '--cm') {
+                continue
+            }
+            $process = [RustDeskInstalledServiceProbe.Native]::QueryProcess([uint32]$candidate.ProcessId)
+            if (-not [string]::Equals($process.ImagePath, $ExpectedExecutable, [StringComparison]::OrdinalIgnoreCase) -or
+                $process.UserSid -cne $InteractiveToken.UserSid -or
+                $process.UserSid -ceq 'S-1-5-18' -or
+                $process.SessionId -ne $InteractiveToken.SessionId -or
+                $process.CreationTime -eq 0) {
+                Fail 'connection manager is not the exact installed image in the interactive principal/session'
+            }
+            $matches += [PSCustomObject]@{
+                ProcessId = [uint32]$candidate.ProcessId
+                ParentProcessId = [uint32]$candidate.ParentProcessId
+                CreationTime = [uint64]$process.CreationTime
+                SessionId = [uint32]$process.SessionId
+            }
+        }
+        if ($matches.Count -eq 1) { return $matches[0] }
+        if ($matches.Count -gt 1) { Fail 'service-owned server has multiple exact connection-manager children' }
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $deadline)
+    Fail 'service-owned server did not retain one exact interactive connection-manager child'
 }
 
 function Quote-TaskArgument([string]$Value) {
@@ -670,8 +824,11 @@ function Invoke-MainProbe {
     $probe = (Get-OrdinaryPathItem ([IO.Path]::GetFullPath($ProbeExe)) $true).FullName
     $script:ProbeExe = $probe
     $mainToken = [RustDeskInstalledServiceProbe.Native]::QueryCurrentProcess()
-    if (-not $mainToken.Elevated -or $mainToken.CreationTime -eq 0) {
-        Fail 'main installed-service probe is not running with the existing elevated builder token'
+    if (-not $mainToken.Elevated -or
+        $mainToken.CreationTime -eq 0 -or
+        $mainToken.SessionId -eq 0 -or
+        $mainToken.UserSid -ceq 'S-1-5-18') {
+        Fail 'main installed-service probe is not running with the existing elevated interactive builder token'
     }
 
     $dist = (Get-OrdinaryPathItem (Join-Path $source 'dist') $false).FullName
@@ -717,6 +874,31 @@ function Invoke-MainProbe {
     [void](Invoke-PasswordMutation $installed $FirstFixture $true 'first exact installed-image mutation')
     Invoke-KeyProbe $FirstFixture 'ok'
 
+    Invoke-CmFileRoundTrip $FirstFixture 'initial installed LocalSystem CM round-trip'
+    $cmInitial = Get-ExactConnectionManager $childBefore $installed $mainToken
+    Invoke-CmFileRoundTrip $FirstFixture 'reused installed LocalSystem CM round-trip'
+    $cmReused = Get-ExactConnectionManager $childBefore $installed $mainToken
+    if (-not (Test-SameProcessGeneration $cmInitial $cmReused)) {
+        Fail 'two sequential authenticated CM sessions did not reuse one retained generation'
+    }
+
+    Stop-ExactProcessGeneration $cmInitial 'deliberately stale connection-manager generation'
+    Invoke-CmFileRoundTrip $FirstFixture 'stale-generation recovery CM round-trip'
+    $cmAfterStaleRecovery = Get-ExactConnectionManager $childBefore $installed $mainToken
+    Assert-DifferentProcessGeneration $cmInitial $cmAfterStaleRecovery 'stale CM recovery'
+
+    Stop-ExactProcessGeneration $childBefore 'abruptly terminated service-owned server generation'
+    Wait-ExactProcessGenerationGone $cmAfterStaleRecovery 'CM generation owned by the abruptly terminated server'
+    $serviceAfterAbrupt = Get-ExactServiceProof $installed
+    if (-not (Test-SameProcessGeneration $serviceBefore.Process $serviceAfterAbrupt.Process)) {
+        Fail 'abrupt service-child termination unexpectedly replaced the SCM supervisor generation'
+    }
+    $childAfterAbrupt = Get-ExactServiceChild $serviceAfterAbrupt $installed
+    Assert-DifferentProcessGeneration $childBefore $childAfterAbrupt 'service-owned server recovery'
+    Invoke-CmFileRoundTrip $FirstFixture 'abrupt-owner recovery CM round-trip'
+    $cmAfterAbrupt = Get-ExactConnectionManager $childAfterAbrupt $installed $mainToken
+    Assert-DifferentProcessGeneration $cmAfterStaleRecovery $cmAfterAbrupt 'abrupt-owner CM recovery'
+
     $limited = Invoke-LimitedTask $installed $mainToken $probeRoot
     Invoke-KeyProbe $FirstFixture 'ok'
     Invoke-KeyProbe $LimitedFixture 'fail'
@@ -742,6 +924,11 @@ function Invoke-MainProbe {
 
     $servicePreRestart = Get-ExactServiceProof $installed
     $childPreRestart = Get-ExactServiceChild $servicePreRestart $installed
+    Invoke-CmFileRoundTrip $SecondFixture 'pre-SCM-stop retained CM round-trip'
+    $cmPreRestart = Get-ExactConnectionManager $childPreRestart $installed $mainToken
+    if (-not (Test-SameProcessGeneration $cmAfterAbrupt $cmPreRestart)) {
+        Fail 'credential rotation or intervening probes unexpectedly replaced the retained CM generation'
+    }
     $controller = [System.ServiceProcess.ServiceController]::new($ServiceName)
     try {
         $controller.Refresh()
@@ -754,14 +941,9 @@ function Invoke-MainProbe {
         if ($controller.Status -ne [System.ServiceProcess.ServiceControllerStatus]::Stopped) {
             Fail 'SCM service did not reach stopped finality'
         }
-        if ([RustDeskInstalledServiceProbe.Native]::IsSameProcessGenerationLive(
-                [uint32]$servicePreRestart.ProcessId,
-                [uint64]$servicePreRestart.Process.CreationTime) -or
-            [RustDeskInstalledServiceProbe.Native]::IsSameProcessGenerationLive(
-                [uint32]$childPreRestart.ProcessId,
-                [uint64]$childPreRestart.CreationTime)) {
-            Fail 'SCM stop left the exact supervisor or retained child generation alive'
-        }
+        Wait-ExactProcessGenerationGone $servicePreRestart.Process 'SCM supervisor generation'
+        Wait-ExactProcessGenerationGone $childPreRestart 'service-owned server generation at SCM stop'
+        Wait-ExactProcessGenerationGone $cmPreRestart 'connection-manager generation at SCM stop'
         $controller.Start()
         $controller.WaitForStatus([System.ServiceProcess.ServiceControllerStatus]::Running, [TimeSpan]::FromSeconds(30))
     } finally {
@@ -776,11 +958,14 @@ function Invoke-MainProbe {
             $childAfter.CreationTime -eq $childPreRestart.CreationTime)) {
         Fail 'SCM restart reused an old supervisor or service-owned child generation'
     }
+    Invoke-CmFileRoundTrip $SecondFixture 'post-SCM-restart CM round-trip'
+    $cmAfterRestart = Get-ExactConnectionManager $childAfter $installed $mainToken
+    Assert-DifferentProcessGeneration $cmPreRestart $cmAfterRestart 'SCM-restart CM launch'
     Invoke-KeyProbe $SecondFixture 'ok'
     Invoke-KeyProbe $FirstFixture 'fail'
 
     $result = [ordered]@{
-        format = 'rustdesk-windows-installed-service-probe-v1'
+        format = 'rustdesk-windows-installed-service-probe-v2'
         source_commit = [string]$env:RUSTDESK_SOURCE_COMMIT
         source_tree = [string]$env:RUSTDESK_SOURCE_TREE
         build_run_id = [string]$env:RUSTDESK_BUILD_RUN_ID
@@ -804,6 +989,22 @@ function Invoke-MainProbe {
         service_creation_after = [uint64]$serviceAfter.Process.CreationTime
         child_pid_after = [int64]$childAfter.ProcessId
         child_creation_after = [uint64]$childAfter.CreationTime
+        interactive_session_id = [int64]$mainToken.SessionId
+        child_pid_before_abrupt = [int64]$childBefore.ProcessId
+        child_creation_before_abrupt = [uint64]$childBefore.CreationTime
+        child_pid_after_abrupt = [int64]$childAfterAbrupt.ProcessId
+        child_creation_after_abrupt = [uint64]$childAfterAbrupt.CreationTime
+        cm_pid_initial = [int64]$cmInitial.ProcessId
+        cm_creation_initial = [uint64]$cmInitial.CreationTime
+        cm_pid_after_stale_recovery = [int64]$cmAfterStaleRecovery.ProcessId
+        cm_creation_after_stale_recovery = [uint64]$cmAfterStaleRecovery.CreationTime
+        cm_pid_after_abrupt_owner = [int64]$cmAfterAbrupt.ProcessId
+        cm_creation_after_abrupt_owner = [uint64]$cmAfterAbrupt.CreationTime
+        cm_pid_before_restart = [int64]$cmPreRestart.ProcessId
+        cm_creation_before_restart = [uint64]$cmPreRestart.CreationTime
+        cm_pid_after_restart = [int64]$cmAfterRestart.ProcessId
+        cm_creation_after_restart = [uint64]$cmAfterRestart.CreationTime
+        cm_roundtrip_count = 6
         service_process_system = $true
         service_process_elevated = $true
         child_process_system = $true
@@ -826,9 +1027,20 @@ function Invoke-MainProbe {
         scm_restart_created_new_generations = $true
         second_credential_keyed_after_restart = $true
         first_credential_rejected_after_restart = $true
+        cm_exact_installed_image_and_role = $true
+        cm_interactive_principal_and_session = $true
+        cm_reused_one_generation = $true
+        cm_authenticated_file_roundtrips = $true
+        cm_stale_exit_recovered = $true
+        cm_stale_generation_replaced = $true
+        cm_abrupt_owner_exit_retired_generation = $true
+        cm_abrupt_owner_replaced_service_child = $true
+        cm_scm_stop_retired_generation = $true
+        cm_scm_restart_created_new_generation = $true
+        cm_authenticated_after_restart = $true
     }
     Write-CanonicalJson $receipt $result
-    Write-Host '[installed-service-probe] exact installed SCM credential transaction passed'
+    Write-Host '[installed-service-probe] exact installed SCM credential and connection-manager lifecycle transaction passed'
 }
 
 try {

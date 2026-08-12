@@ -45,6 +45,22 @@ RESULT_FIELDS = {
     "service_creation_after",
     "child_pid_after",
     "child_creation_after",
+    "interactive_session_id",
+    "child_pid_before_abrupt",
+    "child_creation_before_abrupt",
+    "child_pid_after_abrupt",
+    "child_creation_after_abrupt",
+    "cm_pid_initial",
+    "cm_creation_initial",
+    "cm_pid_after_stale_recovery",
+    "cm_creation_after_stale_recovery",
+    "cm_pid_after_abrupt_owner",
+    "cm_creation_after_abrupt_owner",
+    "cm_pid_before_restart",
+    "cm_creation_before_restart",
+    "cm_pid_after_restart",
+    "cm_creation_after_restart",
+    "cm_roundtrip_count",
     "service_process_system",
     "service_process_elevated",
     "child_process_system",
@@ -67,6 +83,17 @@ RESULT_FIELDS = {
     "scm_restart_created_new_generations",
     "second_credential_keyed_after_restart",
     "first_credential_rejected_after_restart",
+    "cm_exact_installed_image_and_role",
+    "cm_interactive_principal_and_session",
+    "cm_reused_one_generation",
+    "cm_authenticated_file_roundtrips",
+    "cm_stale_exit_recovered",
+    "cm_stale_generation_replaced",
+    "cm_abrupt_owner_exit_retired_generation",
+    "cm_abrupt_owner_replaced_service_child",
+    "cm_scm_stop_retired_generation",
+    "cm_scm_restart_created_new_generation",
+    "cm_authenticated_after_restart",
 }
 TRUE_FIELDS = {
     "service_process_system",
@@ -90,6 +117,17 @@ TRUE_FIELDS = {
     "scm_restart_created_new_generations",
     "second_credential_keyed_after_restart",
     "first_credential_rejected_after_restart",
+    "cm_exact_installed_image_and_role",
+    "cm_interactive_principal_and_session",
+    "cm_reused_one_generation",
+    "cm_authenticated_file_roundtrips",
+    "cm_stale_exit_recovered",
+    "cm_stale_generation_replaced",
+    "cm_abrupt_owner_exit_retired_generation",
+    "cm_abrupt_owner_replaced_service_child",
+    "cm_scm_stop_retired_generation",
+    "cm_scm_restart_created_new_generation",
+    "cm_authenticated_after_restart",
 }
 INTEGER_FIELDS = {
     "domain_network_interfaces",
@@ -103,6 +141,22 @@ INTEGER_FIELDS = {
     "service_creation_after",
     "child_pid_after",
     "child_creation_after",
+    "interactive_session_id",
+    "child_pid_before_abrupt",
+    "child_creation_before_abrupt",
+    "child_pid_after_abrupt",
+    "child_creation_after_abrupt",
+    "cm_pid_initial",
+    "cm_creation_initial",
+    "cm_pid_after_stale_recovery",
+    "cm_creation_after_stale_recovery",
+    "cm_pid_after_abrupt_owner",
+    "cm_creation_after_abrupt_owner",
+    "cm_pid_before_restart",
+    "cm_creation_before_restart",
+    "cm_pid_after_restart",
+    "cm_creation_after_restart",
+    "cm_roundtrip_count",
 }
 
 
@@ -193,7 +247,7 @@ def validate(
     identity = read_json(identity_path, "source identity")
     if set(result) != RESULT_FIELDS:
         fail("installed-service result schema is not exact")
-    if result.get("format") != "rustdesk-windows-installed-service-probe-v1":
+    if result.get("format") != "rustdesk-windows-installed-service-probe-v2":
         fail("installed-service result format is incorrect")
     if identity.get("format") != "rustdesk-windows-source-identity-v1":
         fail("source identity format is incorrect")
@@ -245,6 +299,33 @@ def validate(
         and result["child_creation_before"] == result["child_creation_after"]
     ):
         fail("SCM restart did not change the service-owned child generation")
+    if result["cm_roundtrip_count"] != 6:
+        fail("installed-service result does not bind all six CM round-trips")
+    if (
+        result["child_pid_before_abrupt"] == result["child_pid_after_abrupt"]
+        and result["child_creation_before_abrupt"] == result["child_creation_after_abrupt"]
+    ):
+        fail("abrupt owner recovery did not change the service-owned child generation")
+    if (
+        result["cm_pid_initial"] == result["cm_pid_after_stale_recovery"]
+        and result["cm_creation_initial"] == result["cm_creation_after_stale_recovery"]
+    ):
+        fail("stale CM recovery did not change the CM generation")
+    if (
+        result["cm_pid_after_stale_recovery"] == result["cm_pid_after_abrupt_owner"]
+        and result["cm_creation_after_stale_recovery"] == result["cm_creation_after_abrupt_owner"]
+    ):
+        fail("abrupt owner recovery did not change the CM generation")
+    if (
+        result["cm_pid_after_abrupt_owner"] != result["cm_pid_before_restart"]
+        or result["cm_creation_after_abrupt_owner"] != result["cm_creation_before_restart"]
+    ):
+        fail("retained CM generation was not reused before SCM restart")
+    if (
+        result["cm_pid_before_restart"] == result["cm_pid_after_restart"]
+        and result["cm_creation_before_restart"] == result["cm_creation_after_restart"]
+    ):
+        fail("SCM restart did not change the CM generation")
 
     for field in TRUE_FIELDS:
         require_exact_bool(result, field, True)
@@ -257,7 +338,7 @@ def synthetic_result(setup: Path, msi: Path) -> dict[str, object]:
     tree = "2" * 40
     executable = r"C:\Program Files\RustDesk\RustDesk.exe"
     result: dict[str, object] = {
-        "format": "rustdesk-windows-installed-service-probe-v1",
+        "format": "rustdesk-windows-installed-service-probe-v2",
         "source_commit": commit,
         "source_tree": tree,
         "build_run_id": "12345678-1234-4123-8123-123456789abc-A",
@@ -281,6 +362,22 @@ def synthetic_result(setup: Path, msi: Path) -> dict[str, object]:
         "service_creation_after": 2000,
         "child_pid_after": 201,
         "child_creation_after": 2001,
+        "interactive_session_id": 1,
+        "child_pid_before_abrupt": 101,
+        "child_creation_before_abrupt": 1001,
+        "child_pid_after_abrupt": 102,
+        "child_creation_after_abrupt": 1002,
+        "cm_pid_initial": 110,
+        "cm_creation_initial": 1010,
+        "cm_pid_after_stale_recovery": 111,
+        "cm_creation_after_stale_recovery": 1011,
+        "cm_pid_after_abrupt_owner": 112,
+        "cm_creation_after_abrupt_owner": 1012,
+        "cm_pid_before_restart": 112,
+        "cm_creation_before_restart": 1012,
+        "cm_pid_after_restart": 210,
+        "cm_creation_after_restart": 2010,
+        "cm_roundtrip_count": 6,
         "limited_token_elevated": False,
     }
     for field in TRUE_FIELDS:
@@ -340,6 +437,24 @@ def self_test() -> None:
         changed["service_pid_after"] = changed["service_pid_before"]
         changed["service_creation_after"] = changed["service_creation_before"]
         mutations.append(("SCM generation", changed))
+        changed = copy.deepcopy(result)
+        changed["child_pid_after_abrupt"] = changed["child_pid_before_abrupt"]
+        changed["child_creation_after_abrupt"] = changed["child_creation_before_abrupt"]
+        mutations.append(("abrupt owner generation", changed))
+        changed = copy.deepcopy(result)
+        changed["cm_pid_after_stale_recovery"] = changed["cm_pid_initial"]
+        changed["cm_creation_after_stale_recovery"] = changed["cm_creation_initial"]
+        mutations.append(("stale CM generation", changed))
+        changed = copy.deepcopy(result)
+        changed["cm_pid_before_restart"] = 999
+        mutations.append(("retained CM reuse", changed))
+        changed = copy.deepcopy(result)
+        changed["cm_pid_after_restart"] = changed["cm_pid_before_restart"]
+        changed["cm_creation_after_restart"] = changed["cm_creation_before_restart"]
+        mutations.append(("SCM CM generation", changed))
+        changed = copy.deepcopy(result)
+        changed["cm_roundtrip_count"] = 5
+        mutations.append(("CM round-trip count", changed))
         for label, mutation in mutations:
             write_json(result_path, mutation)
             try:

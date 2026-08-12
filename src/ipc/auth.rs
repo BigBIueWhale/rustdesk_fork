@@ -1467,6 +1467,46 @@ pub(crate) fn ensure_windows_ipc_server_matches_current(
 }
 
 #[cfg(target_os = "windows")]
+pub(crate) fn authenticate_windows_cm_main_server(
+    client: &parity_tokio_ipc::ConnectionClient,
+) -> ResultType<()> {
+    let expected_parent = windows_cm_launch_parent_identity_from_env()?;
+    let server_pid = windows_named_pipe_server_pid(client)?;
+    if server_pid != expected_parent.pid {
+        bail!(
+            "connection-manager main IPC server mismatch: expected {}, got {}",
+            expected_parent.pid,
+            server_pid
+        );
+    }
+    let inherited_parent = windows_cm_launch_parent_handle_from_env()?;
+    let process = match inherited_parent {
+        Some(handle) => WindowsPeerProcess::from_inherited_handle(server_pid, handle)?,
+        None => WindowsPeerProcess::open(expected_parent.pid)?,
+    };
+    if process.key != expected_parent {
+        bail!(
+            "connection-manager main IPC server generation mismatch: expected {}:{}, got {}:{}",
+            expected_parent.pid,
+            expected_parent.creation_time,
+            process.key.pid,
+            process.key.creation_time
+        );
+    }
+    process.require_running("connection-manager main IPC server")?;
+    let identity = process.immutable_identity()?;
+    ensure_windows_identity_matches_current(&identity, "connection-manager main IPC")?;
+    if !windows_identity_is_main_server(&identity) {
+        bail!("connection-manager main IPC server has the wrong exact process role");
+    }
+    if windows_named_pipe_server_pid(client)? != expected_parent.pid {
+        bail!("connection-manager main IPC server pid changed during authentication");
+    }
+    process.require_running("connection-manager main IPC server")?;
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
 pub(crate) fn ensure_windows_service_main_server_pid(
     stream: &ConnectionTmpl<parity_tokio_ipc::ConnectionClient>,
     expected_identity: WindowsProcessIdentityKey,

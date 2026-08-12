@@ -331,6 +331,26 @@ def verify(files: Mapping[str, str]) -> None:
         ),
         "Windows CM endpoint identity",
     )
+    win_main_auth = function_block(
+        auth, "pub(crate) fn authenticate_windows_cm_main_server"
+    )
+    ordered(
+        win_main_auth,
+        (
+            "windows_cm_launch_parent_identity_from_env()?",
+            "windows_named_pipe_server_pid(client)?",
+            "server_pid != expected_parent.pid",
+            "windows_cm_launch_parent_handle_from_env()?",
+            "WindowsPeerProcess::from_inherited_handle(server_pid, handle)?",
+            "process.key != expected_parent",
+            'process.require_running("connection-manager main IPC server")?',
+            "ensure_windows_identity_matches_current",
+            "windows_identity_is_main_server",
+            "windows_named_pipe_server_pid(client)? != expected_parent.pid",
+            'process.require_running("connection-manager main IPC server")?',
+        ),
+        "Windows CM main-IPC exact launch-parent authentication",
+    )
     inherited_parent = function_block(auth, "fn from_inherited_handle")
     ordered(
         inherited_parent,
@@ -406,6 +426,23 @@ def verify(files: Mapping[str, str]) -> None:
             "authenticate_cm_endpoint_launch_proof",
         ),
         "Windows exact-generation authenticated connect",
+    )
+    win_main_connect = function_block(ipc, "async fn connect_windows_cm_main")
+    ordered(
+        win_main_connect,
+        (
+            'Config::ipc_path("")',
+            "connect_windows_named_pipe(&path)",
+            "authenticate_windows_cm_main_server(&client)?",
+            "ConnectionTmpl::new_main(client)",
+        ),
+        "Windows CM dedicated main-IPC connector",
+    )
+    cm_validation = function_block(ipc, "pub(crate) async fn validate_cm_connection_authority")
+    require(
+        cm_validation,
+        "let stream = connect_windows_cm_main(1_000).await?;",
+        "Windows CM authority validation through exact-parent connector",
     )
 
     require(
@@ -738,6 +775,16 @@ def verify(files: Mapping[str, str]) -> None:
     )
     require(
         requirements,
+        '<span class="id">R-S11gib</span>',
+        "Windows CM main-IPC capability-reuse requirement",
+    )
+    require(
+        requirements,
+        "reuse that same sealed process capability when it connects to the launching server's main IPC",
+        "LocalSystem CM main-IPC exact parent-process capability contract",
+    )
+    require(
+        requirements,
         "MUST NOT</span> depend on granting the desktop user <code>SeImpersonatePrivilege</code>",
         "LocalSystem CM privilege-independent parent proof",
     )
@@ -750,6 +797,11 @@ def verify(files: Mapping[str, str]) -> None:
         ledger,
         "Both the LocalSystem token-switched launch and the same-user current-token",
         "both Windows CM job-owned launch branches in the ledger",
+    )
+    require(
+        ledger,
+        "that dedicated connector requires the pipe server PID to equal the",
+        "Windows CM main-IPC exact-parent connector in the ledger",
     )
     require(
         shared_gate,
@@ -861,8 +913,8 @@ MUTATIONS = (
     ),
     Mutation(
         "src/ipc/auth.rs",
-        "process.key != expected_parent",
-        "false",
+        'if process.key != expected_parent {\n            log::warn!(\n                "Rejected _cm IPC launch-parent generation',
+        'if false {\n            log::warn!(\n                "Rejected _cm IPC launch-parent generation',
         "Windows server-generation bypass",
     ),
     Mutation(
@@ -870,6 +922,30 @@ MUTATIONS = (
         "WindowsPeerProcess::from_inherited_handle(expected_parent.pid, handle)",
         "WindowsPeerProcess::open(expected_parent.pid)",
         "Windows inherited launch-parent capability bypass",
+    ),
+    Mutation(
+        "src/ipc/auth.rs",
+        "WindowsPeerProcess::from_inherited_handle(server_pid, handle)?",
+        "WindowsPeerProcess::open(server_pid)?",
+        "Windows CM main-IPC inherited capability bypass",
+    ),
+    Mutation(
+        "src/ipc/auth.rs",
+        "if server_pid != expected_parent.pid {\n        bail!(\n            \"connection-manager main IPC server mismatch",
+        "if false {\n        bail!(\n            \"connection-manager main IPC server mismatch",
+        "Windows CM main-IPC launch-parent PID bypass",
+    ),
+    Mutation(
+        "src/ipc/auth.rs",
+        'if process.key != expected_parent {\n        bail!(\n            "connection-manager main IPC server generation mismatch',
+        'if false {\n        bail!(\n            "connection-manager main IPC server generation mismatch',
+        "Windows CM main-IPC launch-parent generation bypass",
+    ),
+    Mutation(
+        "src/ipc.rs",
+        "let stream = connect_windows_cm_main(1_000).await?;",
+        'let stream = connect(1_000, "").await?;',
+        "Windows CM main-IPC dedicated connector bypass",
     ),
     Mutation(
         "src/ipc/auth.rs",
@@ -1068,6 +1144,12 @@ MUTATIONS = (
         "atomically allowlist that one inheritable capability",
         "optionally pass one inheritable capability",
         "LocalSystem Windows CM parent-capability requirement weakening",
+    ),
+    Mutation(
+        "requirements.html",
+        "reuse that same sealed process capability when it connects to the launching server's main IPC",
+        "use generic process discovery when it connects to the launching server's main IPC",
+        "LocalSystem Windows CM main-IPC capability-reuse requirement weakening",
     ),
     Mutation(
         "HARDENING_STATUS.md",

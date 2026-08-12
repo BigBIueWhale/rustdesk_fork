@@ -8372,6 +8372,22 @@ def validate_windows_helper_launch_contract(sources):
             "Windows CM inherited parent handle sealing mutation",
         ),
         (
+            "Windows CM main-IPC inherited capability bypass",
+            "Windows CM main-IPC parent-capability mutation",
+        ),
+        (
+            "Windows CM main-IPC launch-parent PID bypass",
+            "Windows CM main-IPC PID mutation",
+        ),
+        (
+            "Windows CM main-IPC launch-parent generation bypass",
+            "Windows CM main-IPC generation mutation",
+        ),
+        (
+            "Windows CM main-IPC dedicated connector bypass",
+            "Windows CM main-IPC connector mutation",
+        ),
+        (
             "Windows CM launch-environment regression signature rollback",
             "Windows CM launch-environment call-inventory mutation",
         ),
@@ -8382,6 +8398,10 @@ def validate_windows_helper_launch_contract(sources):
         (
             "Windows headless-CM early parent-handle sealing removal",
             "Windows CM startup-time parent handle sealing mutation",
+        ),
+        (
+            "LocalSystem Windows CM main-IPC capability-reuse requirement weakening",
+            "Windows CM main-IPC normative mutation",
         ),
         (
             "limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;",

@@ -6350,6 +6350,16 @@ async fn main_ipc_request_on_stream_deadline(
         .ok_or_else(|| hbb_common::anyhow::anyhow!("main IPC returned a malformed response"))
 }
 
+#[cfg(target_os = "windows")]
+async fn connect_windows_cm_main(
+    ms_timeout: u64,
+) -> ResultType<ConnectionTmpl<ConnClient>> {
+    let path = Config::ipc_path("");
+    let client = timeout(ms_timeout, connect_windows_named_pipe(&path)).await??;
+    ipc_auth::authenticate_windows_cm_main_server(&client)?;
+    Ok(ConnectionTmpl::new_main(client))
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub(crate) async fn validate_cm_connection_authority(
     id: i32,
@@ -6374,7 +6384,12 @@ pub(crate) async fn validate_cm_connection_authority(
         ipc_auth::authenticate_linux_cm_owner_stream(&stream)?;
         main_ipc_request_on_stream(stream, request, 1_000).await?
     };
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(target_os = "windows")]
+    let response = {
+        let stream = connect_windows_cm_main(1_000).await?;
+        main_ipc_request_on_stream(stream, request, 1_000).await?
+    };
+    #[cfg(not(any(target_os = "linux", target_os = "windows")))]
     let response = main_ipc_request(request, 1_000).await?;
     match response {
         MainIpcResponse::CmConnectionValidation(result) => Ok(result),

@@ -6446,7 +6446,7 @@ network configuration was inspected or changed.
   and Android pre-`handle_fs` gating; `scripts/apple-conform-check.sh` mirrors the desktop source
   assertion for macOS.
 - **R-S11c-4c — CM login publication precedes initial file work — SOURCE IMPLEMENTED / GATED;
-  EXACT-CURRENT INSTALLED-WINDOWS RETEST PENDING (2026-08-12).** Platform: every controlled-side
+  EXACT-CURRENT INSTALLED-WINDOWS ORDERING GREEN, FULL TRANSACTION BLOCKED LATER (2026-08-12).** Platform: every controlled-side
   FileTransfer producer; natively exposed by the installed LocalSystem Windows service and its active-user CM.
   The receiver's fail-closed authority gate was correct, but the producer violated it deterministically:
   `send_logon_response_and_keep_alive` queued the initial `Data::AuthorizedFS(ReadDir)` before its caller
@@ -6458,8 +6458,12 @@ network configuration was inspected or changed.
   every pre-login filesystem operation. `scripts/verify.sh` gates the absence of `read_dir` from response
   construction and exact Login→follow-up→ReadDir ordering. The independent semantic verifier checks the same
   structure and deliberately mutates the pre-login send, login publication, Windows delayed state, shared gate,
-  normative requirement, and this disposition. The installed transaction below is the causal evidence for the
-  defect, not evidence that this correction has passed natively; a fresh exact clean-commit run remains mandatory.
+  normative requirement, and this disposition. Exact commit `1f54b5adb565b50695e00ae853fed33f989fb7a8`
+  subsequently proved the corrected native ordering: active-user CM logs received `Data::Login` with real positive
+  connection IDs and no longer received pre-login `AuthorizedFS` with `conn_id=0`. That run then failed inside the
+  Login authority check on the separate cross-integrity main-IPC connection, before CM could admit the login or
+  consume the queued directory continuation. This is positive evidence for the FIFO ordering edge only, not a
+  positive file round trip or installed lifecycle result; the full exact installed transaction remains mandatory.
 - **R-S11c-22 — Windows CM non-file clipboard authority — CLOSED 2026-07-11.**
   Platform: Windows installed/root server mode. Endpoint/action: the root clipboard service's helper
   request to `_cm` for non-file host clipboard content. Boundary: authenticated helper endpoint proof
@@ -6941,8 +6945,8 @@ network configuration was inspected or changed.
   launch-token and process-shape authentication but did not retain the exact macOS/Windows helper generation;
   R-S11gi/R-S11e-221 below supersedes that narrower endpoint-identity claim.
 - **R-S11gi/R-S11e-221 — macOS/Windows exact connection-manager process ownership — SOURCE IMPLEMENTED;
-  NATIVE SAME-USER WINDOWS CM LIFECYCLE GREEN 2026-08-11; INSTALLED LOCALSYSTEM DEFECT REPRODUCED
-  2026-08-12 AND SOURCE-CORRECTED BUT NATIVE RETEST PENDING; macOS, CONCURRENT-RACE, AND EXACT-COMMIT RELEASE
+  NATIVE SAME-USER WINDOWS CM LIFECYCLE GREEN 2026-08-11; TWO INSTALLED LOCALSYSTEM INTEGRATION DEFECTS
+  REPRODUCED 2026-08-12 AND SOURCE-CORRECTED BUT NATIVE RETEST PENDING; macOS, CONCURRENT-RACE, AND EXACT-COMMIT RELEASE
   EVIDENCE PENDING.** Platforms: macOS and Windows
   desktop controlled-side connection-manager paths; Linux retains its independently closed direct-child,
   PID/UID/proc-start-time, role-token, and parent-death model. Endpoint/action: selection and launch of the fixed
@@ -6986,7 +6990,11 @@ network configuration was inspected or changed.
   token proof. The Windows CM listener requires the connected server PID/creation-time generation from the launch
   environment, liveness, executable, exact ordinary/service-owned server role, and stable pipe client PID. A
   same-user CM opens that parent normally; a LocalSystem-launched CM duplicates and inspects only the inherited
-  least-right process handle, then applies the identical PID/creation/liveness/image/argv checks. The
+  least-right process handle, then applies the identical PID/creation/liveness/image/argv checks. The sealed handle
+  remains the exact child's reusable proof when CM makes the separate main-IPC request that validates a Login's
+  `(conn_id, AuthConnType, cm_auth_token)`: that dedicated connector requires the pipe server PID to equal the
+  recorded launcher, duplicates the same handle instead of reopening LocalSystem, and rechecks creation time,
+  liveness, executable, exact server role, and stable pipe server PID before sending the request. The
   generic `WindowsUserHelperLaunch::ConnectionManager` variant is deleted. Clipboard and privacy reconnects call
   only the server-owned exact-generation facade; neither can read the token or call the token-taking IPC connector.
 
@@ -7124,6 +7132,25 @@ network configuration was inspected or changed.
   public-listener interference. R-S11c-4c above records the narrow source correction. Until a later clean commit
   passes the installed probe, this run supplies positive native build and 57/57 terminal-suite evidence only—not a
   positive CM/file-transfer, installed-service lifecycle, graphical, focus/recovery, or release result.
+
+  The next exact installed LocalSystem attempt proves the R-S11c-4c ordering correction and exposes a second,
+  narrower use-site omission in the inherited-capability design; it is negative lifecycle evidence, not a pass.
+  Clean pushed commit `1f54b5adb565b50695e00ae853fed33f989fb7a8`, tree
+  `e3c9031958df113881ad860c80e74b34286cd724`, source manifest
+  `0071aa1d7e7ee397a624ef1ce928a84877eea7ba1412d1dfc9392bd865b9ac00`, offline-input manifest
+  `5f73c336c9ff43f850a0d9643fb76b97f2cfe9a81c8bd37f4b94ed68c6f0687a`, and run
+  `4fddc68b-b4ca-4710-b2f6-aaec7840f675-A` passed exact-source/offline/zero-interface admission, all 57 selected
+  Windows library tests, native build, packaging, and installation. The installed probe again failed its initial CM
+  directory round trip and emitted no positive lifecycle receipt. Read-only extraction from the stopped guest shows
+  the former pre-login `AuthorizedFS`/`conn_id=0` rejection is gone: every attempt first logs `Data::Login` with a
+  real connection ID. Login then fails when `validate_cm_connection_authority` opens ordinary main IPC through the
+  generic Windows client authenticator, which tries to reopen the LocalSystem server PID and receives
+  `Access is denied (0x80070005)`. The inherited capability was correctly used for `_cm` listener admission but not
+  for this second CM-to-launching-server pipe. The source correction adds a dedicated main-IPC connector that
+  requires the pipe server to be the recorded launch-parent generation and uses the same sealed least-right handle
+  for PID, creation-time, liveness, executable, exact-role, and stable-pipe proof. It does not weaken the process
+  DACL, grant privilege, accept PID/token alone, or bypass the server-side per-connection token validation. This
+  correction remains release-blocking until a new exact clean commit passes the entire installed transaction.
 
   Four earlier attempts are excluded from positive evidence: two staging/compile attempts respectively exposed a
   wrong WinAPI import plus absent generated bridges and then stale forced-in bridges; two compiled runtime attempts
@@ -23939,7 +23966,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-9ca0c6b48c230d9eabb5c333194e331160d14df7b90947f5a57fa395f5bbc561  requirements.html
+4b685dbac08a6c90b913c7475e74f6804b62241f50984526b946ff2769ec8cce  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

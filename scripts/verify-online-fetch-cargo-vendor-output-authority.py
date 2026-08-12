@@ -90,7 +90,7 @@ def validate(sources: Mapping[str, str]) -> None:
 
     expected_pins = {
         "SHA256_ONLINE_CLOSURE_V1": (
-            "eacb4d0fadb044f2f38520ad5263470a89c286bed69927ce2c32babcbc01ab24"
+            "07ab1dc7151619b6a1b212ee888332a6aba7386b3a890b610b043125e6658028"
         ),
         "SHA256_CARGO_VENDOR_CLOSURE_V1": (
             "fb63f7daefc2c26fb73c04a7d77e9cb8a7658e3c899352e851bb1ebbacdc8c04"

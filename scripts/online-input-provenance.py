@@ -541,11 +541,13 @@ def self_test() -> None:
         mutation("executable mode", lambda: executable.chmod(0o644), lambda: executable.chmod(0o755))
         mutation("extra", lambda: (tree / "extra").write_bytes(b"x"), lambda: (tree / "extra").unlink())
         retired = tree / "dir" / ".rustdesk-retired-fixture"
-        mutation(
+        retired.write_bytes(b"historical")
+        expect_failure(
+            lambda: calculate(tree),
             "preservation-only retired input",
-            lambda: retired.write_bytes(b"historical"),
-            lambda: retired.unlink(),
         )
+        retired.unlink()
+        verify(tree, original.root)
         mutation("deletion", content.unlink, lambda: os.link(tree / "hardlink", content))
         mutation("path", lambda: executable.rename(tree / "Tool"), lambda: (tree / "Tool").rename(executable))
         mutation("case collision", lambda: (tree / "TOOL").write_bytes(b"x"), lambda: (tree / "TOOL").unlink())

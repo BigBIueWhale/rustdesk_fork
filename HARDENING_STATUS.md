@@ -24233,8 +24233,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 
 ### R-B10 reproducible consumer-only online closure after cleanup regression (2026-08-13)
 
-- **SOURCE GUARD IMPLEMENTED; LIVE CLOSURE REMAINS RED PENDING CLEAN-COMMIT REACQUISITION AND
-  REPIN.** The cleanup above removed objects that were in fact members of pinned closure
+- **SOURCE GUARD AND OPERATIONAL CONSUMER-ONLY CLOSURE GREEN; COLD R-B2/R-B10 RELEASE EQUALITY,
+  NATIVE PLATFORM EVIDENCE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW OPEN.** The cleanup above
+  removed objects that were in fact members of pinned closure
   `eacb4d0fadb044f2f38520ad5263470a89c286bed69927ce2c32babcbc01ab24`. That pin deliberately
   included preservation-only `.rustdesk-retired-*` historical objects: 266,866 files, 80,019 directories,
   76 symlinks, and 38,967,060,125 logical regular-file bytes. The surviving tree plus its final 65-byte
@@ -24242,8 +24243,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   `73fd7b5b095995e57f7b67e9b35864d7677c57877ab28e94b4af791d10c676b6`; after exact Docker removal
   of that marker it calculates as
   `07ab1dc7151619b6a1b212ee888332a6aba7386b3a890b610b043125e6658028`, with 152,793 files,
-  43,971 directories, 35 symlinks, and 29,979,415,022 logical regular-file bytes. The stale record was not
-  rewritten and the pin was not changed on the strength of either measurement.
+  43,971 directories, 35 symlinks, and 29,979,415,022 logical regular-file bytes. The stale record and pin
+  were not changed on the strength of either initial measurement; the independently replayed acquisition and
+  final publication evidence below now authenticate the same consumer-only result.
 - This exposed a closure-design defect as well as an inaccurate cleanup claim. R-B10 requires the ignored input
   cache to be re-creatable from `pins.env`; a closure whose digest depends on historical displaced outputs cannot
   satisfy that contract. `online-input-provenance.py` now rejects every path component beginning
@@ -24258,11 +24260,29 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   baseline is presently red on a separate Windows-harness clean-completion contract and is not claimed green.
 - The first canonical reacquisition attempt reverified all seven exact offline image archives plus the fixed Dart
   advisory and toolchain archives, then correctly stopped before Gradle warming because the closure-guard source
-  changes were uncommitted. No clean-source gate was bypassed, no pin/record was rewritten, and no build or runtime
-  result follows. A clean commit of this guard is required before the one authorized networked transaction can
-  revalidate/reconstruct every named consumer input. Only a terminal old-pin mismatch followed by two agreeing
-  full-tree calculations, an atomically written self-excluded record, and exact verification may authorize a new
-  consumer-only closure pin. Cold R-B2/R-B10 artifact equality and every native/platform gap remain open.
+  changes were uncommitted. No clean-source gate was bypassed. Guard commit
+  `d9bd7c652dbd30d9bd6261b63ffa0f2c4fa4416f` was then pushed to `master`, and the canonical acquisition reran
+  from that exact clean source. It passed Cargo vendor/source-map and installed-tool semantics, both Pub lock
+  replays, libvpx/libyuv plus x64/ARM64 native projections, exact NDK/SDK closures, Gradle 8.7 semantics, Windows
+  engine/Flutter-tools cache, WiX, every fixed SHA-256 archive, and the libyuv SHA-512. It stopped only at the
+  expected obsolete whole-tree pin: old `eacb4d0...ab24` versus new `07ab1dc7...8028`.
+- Two fresh, separate, networkless full-tree calculations after that transaction agreed on the complete root and all
+  seven counters. A numeric-nonroot container with only `online/` writable atomically replaced the self-excluded
+  record; a separate read-only full-tree pass verified it. The record is current-user-owned, mode 0600, and
+  single-link. `pins.env` and its focused Cargo-vendor authority contract now name the exact new root.
+  `scripts/online-fetch.sh --verify-offline-inputs` then reverified every fixed archive, all seven image archives,
+  the SHA-512 input, the canonical record, and the complete tree, exiting zero. This proves current operational
+  input coherence only. It does not build Debian, Android, or Windows release artifacts, prove cold A==B equality,
+  execute a native client/service, resolve the separate independent-workspace failure, supply independent
+  reproduction/external review, or close any display/lifecycle/performance gap.
+- Final negative-control review found that the first retired-object self-test used `verify` against the pre-mutation
+  root. Any added file therefore produced an ordinary root mismatch even with the dedicated rule neutralized. That
+  false-positive test shape was not accepted. The regression now calls raw `calculate`: with the guard present the
+  retired component is rejected before a root exists; with only the guard condition neutralized the calculation
+  succeeds and the self-test fails with `self-test mutation was accepted: preservation-only retired input`. The
+  corrected positive self-test, exact guard-neutralization negative, focused authority baseline, and all 23 focused
+  mutations pass in the pinned numeric-nonroot, networkless devcheck image. The broad independent workspace baseline
+  remains separately red and is not inferred green from these focused results.
 
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in

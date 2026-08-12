@@ -41746,7 +41746,7 @@ def validate_main_verifier_authority_contract(sources):
         ('RETIRED_INPUT_PREFIX = b".rustdesk-retired-"', "canonical online retired-input namespace"),
         ('if name.startswith(RETIRED_INPUT_PREFIX):', "canonical online retired-input refusal"),
         ('preservation-only retired input is not canonical', "canonical online retired-input diagnostic"),
-        ('"preservation-only retired input",', "canonical online retired-input regression"),
+        ('lambda: calculate(tree),\n            "preservation-only retired input",', "canonical online retired-input regression"),
     ):
         require_text(provenance, text, label)
     require_text(

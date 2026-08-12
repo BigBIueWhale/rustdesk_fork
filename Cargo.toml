@@ -34,6 +34,10 @@ flutter = ["flutter_rust_bridge", "dart-sys"]
 # Native Windows-only integration probe. The pre-build gate enables it for a same-image
 # `--server`/`--cm` pair; artifact compilation never enables it.
 windows-cm-lifecycle-probe = []
+# Native Windows full-peer presentation probe. The release-artifact build never enables this
+# feature; its sole effect is to constrain the probe server's direct listener to 127.0.0.1 inside
+# the disposable zero-interface VM while the real Flutter viewer/server media path is exercised.
+windows-full-peer-presentation-probe = []
 # The `lockdown` build-split feature has been RETIRED (spec R-R2b; R-S16(a): the
 # controlled-side policy is "enforced by every artifact, never behind a feature
 # flag"). The fork is ONE binary, both roles, hardening UNCONDITIONAL: the

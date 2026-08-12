@@ -24051,12 +24051,51 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   focus/latency/resource soak, produce cold release artifacts, provide independent reproduction, or substitute for
   external review. Those remain explicit release-blocking evidence gaps.
 
+### R-S11gk/R-S11e-223 real Windows full-peer focus/presentation transaction (2026-08-12)
+
+- The user's request is binding: connection establishment, recovery, teardown, and presentation must be correct and
+  performant in general, not merely patched around individual complaints. In particular, the reported Windows case is
+  display-only delay after focus loss while input stays responsive and reconnect clears the delay. The existing exact
+  Windows texture/compositor transaction and Linux full-peer transaction are relevant but do not jointly prove one real
+  native Windows viewer-to-controlled-peer session. That evidence gap remains release-blocking.
+- The new transaction deliberately separates artifact and runtime authority. `build-windows.ps1` first completes the
+  ordinary Windows setup/MSI and freezes the exact four-file `dist` size/SHA-256 inventory. A non-default
+  `windows-full-peer-presentation-probe` feature then changes only the Windows probe build's existing direct listener to
+  an exclusive `127.0.0.1:21118` bind and produces a private full Flutter bundle. A post-build assertion requires the
+  release `dist` inventory and `Cargo.lock` to remain byte-identical. The probe is not a release artifact and a future
+  pass cannot be credited as packaged-byte or cold R-B2 evidence.
+- The zero-interface Windows guest will run a controlled top-left fixture, a real portable RustDesk `--server`, and a
+  real RustDesk `--connect 127.0.0.1` viewer. The server starts parked and receives a random credential through bounded
+  redirected stdin; the viewer receives it through its actual CPace password dialog using checked Unicode input. The
+  controller requires real composed remote pixels, one hundred twenty ordered color changes over at least sixty
+  seconds while a separate window continuously retains foreground focus, twenty-one changes over at least ten
+  minimized seconds, the
+  queued final frame and a newly generated post-restore frame within 2500 ms each, and a mapped pointer movement from a
+  local viewer-only coordinate into the non-overlapping source fixture. This avoids treating a same-desktop click as
+  remote-input proof. It rechecks the exact loopback TCP owner rows after every observation and refuses any reconnect
+  or process/port replacement. Cleanup visits all owned trees and requires no live listener/established row before the installed
+  LocalSystem transaction begins.
+- The release build and installed-SCM order was corrected during pre-run review: the installed transaction deliberately
+  leaves its LocalSystem listener alive until the disposable VM powers off, so the portable full-peer transaction must
+  run and prove cleanup before installation. The independent host verifier binds source identity, unchanged artifacts,
+  exact listener/TCP rows, latency/count/order/measured-duration, remote input, and zero-interface/loopback-VNC domain
+  XML. Its behavioral self-test rejects wildcard-listener, >2500-ms, deficient minimized duration,
+  artifact-substitution, and VM-NIC mutations. Confined static Windows harness verification, all 263 deliberate
+  mutations, seven bounded behavioral suites, Bash parsing, and PowerShell parsing pass. The pinned Rust 1.75
+  container lacks an offline `rustfmt` component; no network/toolchain mutation was permitted to conceal that gap.
+- **Current verdict: native execution pending.** No real Windows peer result exists yet, no focus-delay cause or repair
+  is claimed, and no release-readiness claim is made. Even a future pass remains narrower than the user's complete
+  request: Android Activity/foreground-service/task-swipe/reopen/Force-Stop behavior, the weeks-old deployed Windows
+  artifact, cross-version interoperability, packaged-byte presentation, macOS/iOS, concurrent feature interaction,
+  long reconnect/resource/performance soak, cold R-B2 equality, independent reproduction, and external review remain
+  explicit stop-ship work.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-82b71be133ce1075b36cc0c53a7de76d60c318feaf3551aa4c75e6378cacedd6  requirements.html
+7e4dffa749fe3c201b60a2b8a009b272f0ebd1191cc016b8cdae4354451c9d61  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -24109,3 +24148,4 @@ The same identity additionally binds R-S11ge and Appendix C #340.
 The same identity additionally binds R-S11gg and Appendix C #342.
 The same identity additionally binds R-S11gh and Appendix C #343.
 The same identity additionally binds R-S11gj and Appendix C #345.
+The same identity additionally binds R-S11gk and Appendix C #346.

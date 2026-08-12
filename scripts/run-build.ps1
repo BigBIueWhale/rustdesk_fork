@@ -507,6 +507,112 @@ try {
         Fail "build-windows.ps1 failed with exit $buildExit"
     }
     $dist = Join-Path $source 'dist'
+    $fullPeerBundle = Join-Path $source 'target\windows-full-peer-presentation-probe'
+    $fullPeerBuildReceipt = Join-Path $fullPeerBundle 'probe-build-receipt.json'
+    if (-not (Test-Path -LiteralPath $fullPeerBuildReceipt -PathType Leaf)) {
+        Fail 'full-peer presentation probe build receipt is absent'
+    }
+    $publishedFullPeerBuildReceipt = Join-Path $out 'windows-full-peer-probe-build-receipt.json'
+    Copy-Item -LiteralPath $fullPeerBuildReceipt -Destination $publishedFullPeerBuildReceipt
+    Assert-BoundedOrdinaryDiagnostic $publishedFullPeerBuildReceipt 65536
+
+    $fullPeerState = "C:\RustDeskFullPeerState-$([Guid]::NewGuid().ToString('N'))"
+    New-Item -ItemType Directory -Path $fullPeerState | Out-Null
+    $fullPeerStdout = Join-Path $out 'windows-full-peer-presentation.stdout.txt'
+    $fullPeerStderr = Join-Path $out 'windows-full-peer-presentation.stderr.txt'
+    $fullPeerResult = Join-Path $out 'windows-full-peer-presentation-result.json'
+    $fullPeerController = Join-Path $source 'scripts\windows-full-peer-presentation-controller.ps1'
+    $fullPeerFixture = Join-Path $source 'scripts\windows-full-peer-presentation-fixture.ps1'
+    $fullPeerFocusSink = Join-Path $source 'scripts\flutter-presentation-probe-windows-focus-sink.ps1'
+    foreach ($path in @($fullPeerController, $fullPeerFixture, $fullPeerFocusSink)) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            Fail "full-peer presentation script is absent: $path"
+        }
+    }
+    $fullPeerStart = [Diagnostics.ProcessStartInfo]::new()
+    $fullPeerStart.FileName = 'powershell.exe'
+    # All paths are generated beneath the fixed no-space build/output roots; source identities are
+    # canonical hex. Keep Windows PowerShell 5.1 compatibility by using the native Arguments string
+    # instead of the .NET Core-only ProcessStartInfo.ArgumentList collection.
+    $fullPeerArguments = @(
+        '-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $fullPeerController,
+        '-ProbeBundle', $fullPeerBundle,
+        '-FixtureScript', $fullPeerFixture,
+        '-FocusSinkScript', $fullPeerFocusSink,
+        '-StateDirectory', $fullPeerState,
+        '-OutputDirectory', $out,
+        '-SourceCommit', [string]$identity.source_commit,
+        '-SourceTree', [string]$identity.source_tree
+    )
+    foreach ($argument in $fullPeerArguments) {
+        if ([string]::IsNullOrEmpty($argument) -or $argument.IndexOfAny([char[]]@(0, 9, 10, 13, 32, 34)) -ge 0) {
+            Fail "full-peer presentation controller argument requires ambiguous quoting: $argument"
+        }
+    }
+    $fullPeerStart.Arguments = $fullPeerArguments -join ' '
+    $fullPeerStart.UseShellExecute = $false
+    $fullPeerStart.CreateNoWindow = $true
+    $fullPeerStart.RedirectStandardOutput = $true
+    $fullPeerStart.RedirectStandardError = $true
+    $fullPeerProcess = [Diagnostics.Process]::new()
+    $fullPeerProcess.StartInfo = $fullPeerStart
+    $fullPeerTimedOut = $false
+    $fullPeerTaskkillExit = $null
+    try {
+        if (-not $fullPeerProcess.Start()) {
+            Fail 'full-peer presentation controller did not start'
+        }
+        $fullPeerStdoutTask = $fullPeerProcess.StandardOutput.ReadToEndAsync()
+        $fullPeerStderrTask = $fullPeerProcess.StandardError.ReadToEndAsync()
+        if (-not $fullPeerProcess.WaitForExit(300000)) {
+            $taskkill = Join-Path $env:SystemRoot 'System32\taskkill.exe'
+            & $taskkill /PID ([string]$fullPeerProcess.Id) /T /F | Out-Null
+            $fullPeerTaskkillExit = $LASTEXITCODE
+            if (-not $fullPeerProcess.WaitForExit(10000)) {
+                Fail "full-peer presentation controller exceeded five minutes and survived exact tree termination (taskkill exit=$fullPeerTaskkillExit)"
+            }
+            $fullPeerTimedOut = $true
+        }
+        $fullPeerStdoutText = $fullPeerStdoutTask.GetAwaiter().GetResult()
+        $fullPeerStderrText = $fullPeerStderrTask.GetAwaiter().GetResult()
+        [IO.File]::WriteAllText($fullPeerStdout, $fullPeerStdoutText, [Text.Encoding]::UTF8)
+        [IO.File]::WriteAllText($fullPeerStderr, $fullPeerStderrText, [Text.Encoding]::UTF8)
+        $fullPeerExit = [int]$fullPeerProcess.ExitCode
+    } finally {
+        $fullPeerProcess.Dispose()
+    }
+    foreach ($diagnostic in @($fullPeerStdout, $fullPeerStderr)) {
+        Assert-BoundedOrdinaryDiagnostic $diagnostic 65536
+    }
+    Mark "windows-full-peer-presentation-controller.ps1 exit=$fullPeerExit"
+    if ($fullPeerTimedOut) {
+        Fail "full-peer presentation controller exceeded five minutes (taskkill exit=$fullPeerTaskkillExit)"
+    }
+    foreach ($diagnostic in @(
+        (Join-Path $out 'windows-full-peer-server.stdout.txt'),
+        (Join-Path $out 'windows-full-peer-server.stderr.txt'),
+        (Join-Path $out 'windows-full-peer-viewer.stdout.txt'),
+        (Join-Path $out 'windows-full-peer-viewer.stderr.txt')
+    )) {
+        if (Test-Path -LiteralPath $diagnostic -PathType Leaf) {
+            Assert-BoundedOrdinaryDiagnostic $diagnostic 65536
+        } elseif ($fullPeerExit -eq 0) {
+            Fail "successful full-peer presentation controller omitted diagnostic: $diagnostic"
+        }
+    }
+    if ($fullPeerExit -ne 0) {
+        Fail "full-peer presentation controller failed with exit $fullPeerExit"
+    }
+    if (-not (Test-Path -LiteralPath $fullPeerResult -PathType Leaf)) {
+        Fail 'full-peer presentation controller did not publish its exact result receipt'
+    }
+    Assert-BoundedOrdinaryDiagnostic $fullPeerResult 65536
+    if (Test-Path -LiteralPath $fullPeerState -PathType Container) {
+        Remove-Item -LiteralPath $fullPeerState -Recurse -Force
+    }
+    # The installed-SCM transaction intentionally leaves its LocalSystem service listening on the
+    # pinned port until the disposable VM shuts down. Run it only after the portable full-peer
+    # transaction has completely retired its exact process trees and loopback listener.
     $installedServiceReceipt = Join-Path $out 'windows-installed-service-result.json'
     $installedServiceStdout = Join-Path $out 'windows-installed-service-probe.stdout.txt'
     $installedServiceStderr = Join-Path $out 'windows-installed-service-probe.stderr.txt'

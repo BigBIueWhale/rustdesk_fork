@@ -234,7 +234,10 @@ function Assert-PowerShellSourceParsing {
     foreach ($relative in @(
         'scripts\run-build.ps1',
         'scripts\build-windows.ps1',
-        'scripts\windows-installed-service-probe.ps1'
+        'scripts\windows-installed-service-probe.ps1',
+        'scripts\windows-full-peer-presentation-controller.ps1',
+        'scripts\windows-full-peer-presentation-fixture.ps1',
+        'scripts\flutter-presentation-probe-windows-focus-sink.ps1'
     )) {
         $path = Join-Path $SRC $relative
         $tokens = $null
@@ -1554,6 +1557,111 @@ function Emit-Artifacts {
     Write-Host "[harness] build-windows.ps1 complete: $out"
 }
 
+function Build-FullPeerPresentationProbe {
+    # This is runtime evidence, not an artifact candidate. Build the normal setup/MSI first, retain
+    # an exact inventory of their published bytes, then replace only the disposable target/Flutter
+    # build state with a loopback-confined probe-feature DLL. The copied probe bundle is kept under
+    # target/ and the dist inventory must remain byte-for-byte unchanged.
+    $dist = Join-Path $SRC 'dist'
+    $releaseDll = Join-Path $SRC 'target\release\librustdesk.dll'
+    $cargoLock = Join-Path $SRC 'Cargo.lock'
+    $flutterRelease = Join-Path $SRC 'flutter\build\windows\x64\runner\Release'
+    $probeOut = Join-Path $SRC 'target\windows-full-peer-presentation-probe'
+    $receiptPath = Join-Path $probeOut 'probe-build-receipt.json'
+    foreach ($path in @($dist, $cargoLock, $releaseDll, $flutterRelease)) {
+        if (-not (Test-Path -LiteralPath $path)) {
+            Die "full-peer presentation prerequisite is absent: $path"
+        }
+    }
+    if (Test-Path -LiteralPath $probeOut) {
+        Die "full-peer presentation output already exists: $probeOut"
+    }
+
+    $distBefore = [ordered]@{}
+    foreach ($file in @(Get-ChildItem -LiteralPath $dist -Recurse -File -Force | Sort-Object -Property FullName)) {
+        $relative = $file.FullName.Substring($dist.TrimEnd('\').Length + 1).Replace('\', '/')
+        $distBefore[$relative] = [ordered]@{
+            size = [Int64]$file.Length
+            sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+    }
+    if ($distBefore.Count -ne 4) {
+        Die "full-peer presentation expected exactly four release dist files, found $($distBefore.Count)"
+    }
+    $expectedDistNames = @(
+        'rustdesk-setup.exe',
+        'rustdesk-setup.exe.sha256',
+        'rustdesk.msi',
+        'rustdesk.msi.sha256'
+    )
+    if ((@($distBefore.Keys) -join ',') -cne ($expectedDistNames -join ',')) {
+        Die "full-peer presentation release dist inventory is not exact: $(@($distBefore.Keys) -join ',')"
+    }
+    $lockBefore = (Get-FileHash -LiteralPath $cargoLock -Algorithm SHA256).Hash.ToLowerInvariant()
+    $normalDllHash = (Get-FileHash -LiteralPath $releaseDll -Algorithm SHA256).Hash.ToLowerInvariant()
+
+    Write-Host '[harness] building non-artifact Windows full-peer presentation bundle -- loopback-only listener, offline/locked'
+    cargo build --offline --locked --release --lib --features 'flutter,windows-full-peer-presentation-probe' --color never
+    if ($LASTEXITCODE -ne 0) {
+        Die "full-peer presentation Rust library build failed (exit $LASTEXITCODE)"
+    }
+    $probeTargetDllHash = (Get-FileHash -LiteralPath $releaseDll -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($probeTargetDllHash -ceq $normalDllHash) {
+        Die 'full-peer presentation feature build did not replace the normal target DLL'
+    }
+    & $PYTHON_EXE build.py --flutter --skip-cargo
+    if ($LASTEXITCODE -ne 0) {
+        Die "full-peer presentation Flutter bundle build failed (exit $LASTEXITCODE)"
+    }
+    foreach ($path in @(
+        (Join-Path $flutterRelease 'rustdesk.exe'),
+        (Join-Path $flutterRelease 'librustdesk.dll')
+    )) {
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf) -or
+            (Get-OrdinaryPathItem ([IO.Path]::GetFullPath($path)) $true).Length -le 0) {
+            Die "full-peer presentation bundle output is absent or empty: $path"
+        }
+    }
+    New-Item -ItemType Directory -Path $probeOut | Out-Null
+    Get-ChildItem -LiteralPath $flutterRelease -Force |
+        Copy-Item -Destination $probeOut -Recurse -Force
+
+    $distAfter = [ordered]@{}
+    foreach ($file in @(Get-ChildItem -LiteralPath $dist -Recurse -File -Force | Sort-Object -Property FullName)) {
+        $relative = $file.FullName.Substring($dist.TrimEnd('\').Length + 1).Replace('\', '/')
+        $distAfter[$relative] = [ordered]@{
+            size = [Int64]$file.Length
+            sha256 = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+        }
+    }
+    if (($distBefore | ConvertTo-Json -Depth 4 -Compress) -cne
+        ($distAfter | ConvertTo-Json -Depth 4 -Compress)) {
+        Die 'full-peer presentation build changed the release dist inventory or bytes'
+    }
+    $lockAfter = (Get-FileHash -LiteralPath $cargoLock -Algorithm SHA256).Hash.ToLowerInvariant()
+    if ($lockAfter -cne $lockBefore) {
+        Die 'Cargo.lock changed during the full-peer presentation probe build'
+    }
+    $receipt = [ordered]@{
+        format = 'rustdesk-windows-full-peer-probe-build-v1'
+        source_commit = [string]$env:RUSTDESK_SOURCE_COMMIT
+        source_tree = [string]$env:RUSTDESK_SOURCE_TREE
+        probe_features = 'flutter,windows-full-peer-presentation-probe'
+        probe_listener_policy = '127.0.0.1:21118'
+        release_artifacts_unchanged = $true
+        cargo_lock_sha256 = $lockAfter
+        normal_target_dll_sha256 = $normalDllHash
+        probe_target_dll_sha256 = $probeTargetDllHash
+        probe_bundle_exe_sha256 = (Get-FileHash -LiteralPath (Join-Path $probeOut 'rustdesk.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
+        probe_bundle_dll_sha256 = (Get-FileHash -LiteralPath (Join-Path $probeOut 'librustdesk.dll') -Algorithm SHA256).Hash.ToLowerInvariant()
+        release_dist = $distAfter
+    }
+    $json = ($receipt | ConvertTo-Json -Depth 6 -Compress) + "`n"
+    [IO.File]::WriteAllText($receiptPath, $json, (New-Object Text.UTF8Encoding($false)))
+    Write-Host "[harness] full-peer presentation probe bundle built separately: $probeOut"
+}
+
 Preflight
 Build
 Emit-Artifacts
+Build-FullPeerPresentationProbe

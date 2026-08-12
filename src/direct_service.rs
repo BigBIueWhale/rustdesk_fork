@@ -953,7 +953,26 @@ async fn direct_server(server: ServerPtr, android_generation: Option<u64>) {
         // the port as the compile-time constant get_direct_port() → 21118, never a runtime option.
         if listener.is_none() {
             port = get_direct_port();
-            match hbb_common::tcp::listen_any_v4(port as _).await {
+            // The native Windows full-peer presentation transaction runs the REAL Flutter
+            // viewer/server stack in a disposable zero-interface VM. Its non-default probe build
+            // is additionally compile-confined to an exclusive loopback listener, so the runtime
+            // evidence can never create a wildcard bind. Release-artifact compilation never
+            // enables this feature; the shipped direct-only service retains the audited v4 public
+            // bind immediately below.
+            #[cfg(all(
+                target_os = "windows",
+                feature = "windows-full-peer-presentation-probe"
+            ))]
+            let bind_result = hbb_common::tcp::new_exclusive_listener(
+                std::net::SocketAddr::from(([127, 0, 0, 1], port as u16)),
+            )
+            .await;
+            #[cfg(not(all(
+                target_os = "windows",
+                feature = "windows-full-peer-presentation-probe"
+            )))]
+            let bind_result = hbb_common::tcp::listen_any_v4(port as _).await;
+            match bind_result {
                 Ok(l) => {
                     bind_err_streak = 0; // a successful bind resets the retry back-off
                     // R-G1 (verify-ground-truth): the listener is bound — store it WITH a fresh

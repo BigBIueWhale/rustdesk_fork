@@ -1268,6 +1268,15 @@ if len(installed_markers) != 1:
     raise SystemExit("guest installed-service marker count is not exactly one")
 if installed_markers[0] != "windows-installed-service-probe.ps1 exit=0":
     raise SystemExit(f"guest installed-service probe failed: {installed_markers[0]}")
+full_peer_markers = [payload for payload in payloads if payload.startswith("windows-full-peer-presentation-controller.ps1 exit=")]
+if len(full_peer_markers) != 1:
+    raise SystemExit("guest full-peer presentation marker count is not exactly one")
+if full_peer_markers[0] != "windows-full-peer-presentation-controller.ps1 exit=0":
+    raise SystemExit(f"guest full-peer presentation probe failed: {full_peer_markers[0]}")
+ordered_markers = [expected_source, expected_offline, exit_markers[0], full_peer_markers[0], installed_markers[0]]
+positions = [payloads.index(marker) for marker in ordered_markers]
+if positions != sorted(positions) or len(set(positions)) != len(positions):
+    raise SystemExit("guest source/offline/build/full-peer/installed markers are not in canonical order")
 PY
 }
 
@@ -1303,6 +1312,13 @@ extract_and_validate() {
         && [ ! -L "$extracted/windows-installed-service-result.json" ] \
         && [ -s "$extracted/windows-installed-service-result.json" ] \
         || die "guest installed-service result is missing or invalid"
+    for full_peer_evidence in windows-full-peer-probe-build-receipt.json \
+        windows-full-peer-presentation-result.json; do
+        [ -f "$extracted/$full_peer_evidence" ] \
+            && [ ! -L "$extracted/$full_peer_evidence" ] \
+            && [ -s "$extracted/$full_peer_evidence" ] \
+            || die "guest full-peer presentation evidence is missing or invalid: $full_peer_evidence"
+    done
     local setup_input="$extracted/.canonicalize-input-rustdesk-setup.exe"
     [ ! -e "$setup_input" ] && [ ! -L "$setup_input" ] \
         || die "private PE canonicalizer input path is occupied"
@@ -1365,6 +1381,18 @@ extract_and_validate() {
             --setup /evidence/rustdesk-setup.exe \
             --msi /evidence/rustdesk.msi \
             --domain-xml /authority/domain.xml
+    windows_helper_small_run \
+        --mount "type=bind,source=$SOURCE_SNAPSHOT/scripts/verify-windows-full-peer-presentation-result.py,target=/authority/verify.py,readonly" \
+        --mount "type=bind,source=$extracted,target=/evidence,readonly" \
+        --mount "type=bind,source=$CURRENT_PASS_ROOT/source-media/.source-identity.json,target=/authority/source-identity.json,readonly" \
+        --mount "type=bind,source=$CURRENT_PASS_ROOT/domain.xml,target=/authority/domain.xml,readonly" \
+        -- /usr/bin/python3 -I -S /authority/verify.py \
+            --result /evidence/windows-full-peer-presentation-result.json \
+            --build-receipt /evidence/windows-full-peer-probe-build-receipt.json \
+            --identity /authority/source-identity.json \
+            --setup /evidence/rustdesk-setup.exe \
+            --msi /evidence/rustdesk.msi \
+            --domain-xml /authority/domain.xml
     mkdir "$result"
     install -m 0644 "$extracted/rustdesk-setup.exe" "$result/rustdesk-setup.exe"
     install -m 0644 "$extracted/rustdesk.msi" "$result/rustdesk.msi"
@@ -1378,7 +1406,12 @@ extract_and_validate() {
     for diagnostic in build-log.txt build-windows.stdout.txt build-windows.stderr.txt \
         run-build-progress.txt \
         windows-installed-service-probe.stdout.txt windows-installed-service-probe.stderr.txt \
-        windows-installed-service-result.json; do
+        windows-installed-service-result.json \
+        windows-full-peer-presentation.stdout.txt windows-full-peer-presentation.stderr.txt \
+        windows-full-peer-server.stdout.txt windows-full-peer-server.stderr.txt \
+        windows-full-peer-viewer.stdout.txt windows-full-peer-viewer.stderr.txt \
+        windows-full-peer-probe-build-receipt.json \
+        windows-full-peer-presentation-result.json; do
         if [ -f "$extracted/$diagnostic" ] && [ ! -L "$extracted/$diagnostic" ]; then
             install -m 0644 "$extracted/$diagnostic" "$result/$diagnostic"
         fi
@@ -1519,10 +1552,10 @@ harness_self_test() {
     local expected_marker='source-verified commit=1111111111111111111111111111111111111111 tree=2222222222222222222222222222222222222222 manifest=3333333333333333333333333333333333333333333333333333333333333333'
     local expected_offline_marker='offline-verified manifest=4444444444444444444444444444444444444444444444444444444444444444'
     local progress="$RUN_ROOT/progress.txt"
-    printf '2026-07-16T12:00:00.0000000+00:00 %s\r\n2026-07-16T12:00:01.0000000+00:00 %s\r\n2026-07-16T12:00:02.0000000+00:00 build-windows.ps1 exit=0\r\n2026-07-16T12:00:03.0000000+00:00 windows-installed-service-probe.ps1 exit=0\r\n' \
+    printf '2026-07-16T12:00:00.0000000+00:00 %s\r\n2026-07-16T12:00:01.0000000+00:00 %s\r\n2026-07-16T12:00:02.0000000+00:00 build-windows.ps1 exit=0\r\n2026-07-16T12:00:03.0000000+00:00 windows-full-peer-presentation-controller.ps1 exit=0\r\n2026-07-16T12:00:04.0000000+00:00 windows-installed-service-probe.ps1 exit=0\r\n' \
         "$expected_marker" "$expected_offline_marker" >"$progress"
     validate_guest_progress "$progress" "$expected_marker" "$expected_offline_marker"
-    printf '2026-07-16T12:00:04.0000000+00:00 build-windows.ps1 exit=0\r\n' >>"$progress"
+    printf '2026-07-16T12:00:05.0000000+00:00 build-windows.ps1 exit=0\r\n' >>"$progress"
     if (validate_guest_progress "$progress" "$expected_marker" "$expected_offline_marker") >/dev/null 2>&1; then
         die "duplicate guest completion self-test was accepted"
     fi
@@ -1536,7 +1569,17 @@ harness_self_test() {
     if (validate_guest_progress "$progress" "$expected_marker" "$expected_offline_marker") >/dev/null 2>&1; then
         die "failed installed-service completion self-test was accepted"
     fi
-    printf '2026-07-16T12:00:00.0000000+00:00 %s\n2026-07-16T12:00:01.0000000+00:00 %s\n2026-07-16T12:00:02.0000000+00:00 build-windows.ps1 exit=0\n2026-07-16T12:00:03.0000000+00:00 windows-installed-service-probe.ps1 exit=0\n' \
+    printf '2026-07-16T12:00:00.0000000+00:00 %s\r\n2026-07-16T12:00:01.0000000+00:00 %s\r\n2026-07-16T12:00:02.0000000+00:00 build-windows.ps1 exit=0\r\n2026-07-16T12:00:03.0000000+00:00 windows-installed-service-probe.ps1 exit=0\r\n2026-07-16T12:00:04.0000000+00:00 windows-full-peer-presentation-controller.ps1 exit=0\r\n' \
+        "$expected_marker" "$expected_offline_marker" >"$progress"
+    if (validate_guest_progress "$progress" "$expected_marker" "$expected_offline_marker") >/dev/null 2>&1; then
+        die "out-of-order full-peer completion self-test was accepted"
+    fi
+    printf '2026-07-16T12:00:00.0000000+00:00 %s\r\n2026-07-16T12:00:01.0000000+00:00 %s\r\n2026-07-16T12:00:02.0000000+00:00 build-windows.ps1 exit=0\r\n2026-07-16T12:00:03.0000000+00:00 windows-full-peer-presentation-controller.ps1 exit=1\r\n2026-07-16T12:00:04.0000000+00:00 windows-installed-service-probe.ps1 exit=0\r\n' \
+        "$expected_marker" "$expected_offline_marker" >"$progress"
+    if (validate_guest_progress "$progress" "$expected_marker" "$expected_offline_marker") >/dev/null 2>&1; then
+        die "failed full-peer completion self-test was accepted"
+    fi
+    printf '2026-07-16T12:00:00.0000000+00:00 %s\n2026-07-16T12:00:01.0000000+00:00 %s\n2026-07-16T12:00:02.0000000+00:00 build-windows.ps1 exit=0\n2026-07-16T12:00:03.0000000+00:00 windows-full-peer-presentation-controller.ps1 exit=0\n2026-07-16T12:00:04.0000000+00:00 windows-installed-service-probe.ps1 exit=0\n' \
         "$expected_marker" "$expected_offline_marker" >"$progress"
     if (validate_guest_progress "$progress" "$expected_marker" "$expected_offline_marker") >/dev/null 2>&1; then
         die "non-CRLF guest progress self-test was accepted"

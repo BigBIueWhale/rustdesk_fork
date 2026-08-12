@@ -31,6 +31,14 @@ DIAGNOSTICS = (
     "windows-installed-service-probe.stderr.txt",
     "windows-installed-service-probe.stdout.txt",
     "windows-installed-service-result.json",
+    "windows-full-peer-presentation.stderr.txt",
+    "windows-full-peer-presentation.stdout.txt",
+    "windows-full-peer-server.stderr.txt",
+    "windows-full-peer-server.stdout.txt",
+    "windows-full-peer-viewer.stderr.txt",
+    "windows-full-peer-viewer.stdout.txt",
+    "windows-full-peer-probe-build-receipt.json",
+    "windows-full-peer-presentation-result.json",
 )
 MAX_ARTIFACT_BYTES = 2 * 1024 * 1024 * 1024
 MAX_DIAGNOSTIC_BYTES = 64 * 1024 * 1024

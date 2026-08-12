@@ -34,6 +34,9 @@ FILES = {
     "build": "scripts/build-windows.ps1",
     "installed_probe": "scripts/windows-installed-service-probe.ps1",
     "installed_result": "scripts/verify-windows-installed-service-result.py",
+    "full_peer_result": "scripts/verify-windows-full-peer-presentation-result.py",
+    "full_peer_controller": "scripts/windows-full-peer-presentation-controller.ps1",
+    "full_peer_fixture": "scripts/windows-full-peer-presentation-fixture.ps1",
     "probe_client": "examples/probe_client.rs",
     "orchestrator": "build.py",
     "pe": "scripts/canonicalize-pe.py",
@@ -46,6 +49,7 @@ FILES = {
     "verify": "scripts/verify.sh",
     "ipc": "src/ipc.rs",
     "windows": "src/platform/windows.rs",
+    "direct_service": "src/direct_service.rs",
 }
 
 
@@ -321,6 +325,9 @@ def validate_sources(sources: dict[str, str]) -> None:
     build = sources["build"]
     installed_probe = sources["installed_probe"]
     installed_result = sources["installed_result"]
+    full_peer_result = sources["full_peer_result"]
+    full_peer_controller = sources["full_peer_controller"]
+    full_peer_fixture = sources["full_peer_fixture"]
     probe_client = sources["probe_client"]
     orchestrator = sources["orchestrator"]
     pe = sources["pe"]
@@ -331,6 +338,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     verify = sources["verify"]
     ipc = sources["ipc"]
     windows = sources["windows"]
+    direct_service = sources["direct_service"]
 
     orchestrator_tree = parse_python(orchestrator, "build.py")
     publication_tree = parse_python(publication, "scripts/publish-windows-result.py")
@@ -340,6 +348,84 @@ def validate_sources(sources: dict[str, str]) -> None:
     installed_result_tree = parse_python(
         installed_result, "scripts/verify-windows-installed-service-result.py"
     )
+    parse_python(
+        full_peer_result, "scripts/verify-windows-full-peer-presentation-result.py"
+    )
+
+    require(cargo, "windows-full-peer-presentation-probe = []", "non-default Windows full-peer probe feature")
+    default_feature_line = re.search(r'(?m)^default\s*=\s*\[(.*)\]$', cargo)
+    if default_feature_line is None or "windows-full-peer-presentation-probe" in default_feature_line.group(1):
+        fail("Windows full-peer presentation probe feature is absent from or present in the default feature line")
+    for source, description in (
+        (direct_service, "direct listener"),
+        (build, "Windows build"),
+    ):
+        require(source, "windows-full-peer-presentation-probe", f"{description} probe-feature binding")
+    require(
+        direct_service,
+        "std::net::SocketAddr::from(([127, 0, 0, 1], port as u16))",
+        "compile-time exact-loopback full-peer listener",
+    )
+    require_order(
+        build,
+        ("function Emit-Artifacts", "function Build-FullPeerPresentationProbe", "Emit-Artifacts\nBuild-FullPeerPresentationProbe"),
+        "release artifact completion before separate full-peer bundle build",
+    )
+    for literal, description in (
+        ("release dist inventory or bytes", "release-dist post-probe hash assertion"),
+        ("--features 'flutter,windows-full-peer-presentation-probe'", "exact probe feature build"),
+        ("build.py --flutter --skip-cargo", "probe Flutter bundle build against exact probe DLL"),
+        ("probe_listener_policy = '127.0.0.1:21118'", "probe receipt loopback policy"),
+    ):
+        require(build, literal, description)
+    for literal, description in (
+        ("GetExtendedTcpTable", "native TCP owner-table observation"),
+        ("Assert-TcpSessionUnchanged", "uninterrupted TCP session gate"),
+        ("$liveRows.Count -ne 3", "exact one-listener/one-session TCP surface"),
+        ("$preexistingPortRows.Count -ne 0", "initially empty probe port"),
+        ("the real viewer window process is not the exact TCP-owning process generation", "viewer window/TCP process generation binding"),
+        ("probe bundle process survived exact cleanup", "exact-bundle process retirement"),
+        ("Find-PasswordEdit", "real password-dialog automation"),
+        ("for ($index = 0; $index -lt 120; $index++)", "one-hundred-twenty-frame focus stimulus"),
+        ("$unfocusedDuration -lt 60000", "sixty-second focus stimulus duration"),
+        ("$minimizedDuration -lt 10000", "ten-second minimized stimulus duration"),
+        ("minimized_duration_ms = $minimizedDuration", "measured minimized-duration receipt"),
+        ("Wait-FileIntegerAtLeast $movePath ($moveBefore + 1)", "non-overlapping mapped-pointer proof"),
+        ("unfocused_updates", "unfocused visual freshness evidence"),
+        ("minimize_restore", "minimize/restore freshness evidence"),
+        ("remote_input_delivered", "real remote-input evidence"),
+    ):
+        require(full_peer_controller, literal, description)
+    reject(full_peer_controller, r"(?<!127\.)0\.0\.0\.0:21118", "wildcard full-peer listener")
+    reject(full_peer_controller, r"mouse_event", "same-desktop click as remote-input evidence")
+    require(full_peer_fixture, "$form.TopMost = $true", "unoccluded controlled-screen fixture")
+    require(full_peer_fixture, "$panel.Add_MouseMove($mouseMoveHandler)", "source-side remote pointer observation")
+    require(
+        host,
+        "source=$SOURCE_SNAPSHOT/scripts/verify-windows-full-peer-presentation-result.py,target=/authority/verify.py,readonly",
+        "immutable host-side full-peer result verifier",
+    )
+    require(
+        shell_function(host, "validate_guest_progress"),
+        'full_peer_markers[0] != "windows-full-peer-presentation-controller.ps1 exit=0"',
+        "full-peer guest completion marker",
+    )
+    require_order(
+        guest,
+        (
+            'Mark "windows-full-peer-presentation-controller.ps1 exit=$fullPeerExit"',
+            "installed-SCM transaction intentionally leaves its LocalSystem service listening",
+            'Mark "windows-installed-service-probe.ps1 exit=$installedServiceExit"',
+        ),
+        "portable full-peer listener retirement before installed LocalSystem listener",
+    )
+    for literal, description in (
+        ("range(120)", "closed verifier frame inventory"),
+        ('len(updates) != 120', "closed verifier exact frame count"),
+        ('60_000,\n        300_000,', "closed verifier sustained-duration floor"),
+        ('typed_int(restore["minimized_duration_ms"], 10_000, 300_000', "closed verifier minimized-duration floor"),
+    ):
+        require(full_peer_result, literal, description)
 
     for manifest in (cargo, portable_cargo):
         reject(manifest, r"(?m)^\[package[.]metadata[.]winres\]$", "HashMap-generated Windows version metadata")
@@ -1519,8 +1605,16 @@ def validate_sources(sources: dict[str, str]) -> None:
             '    "domain.xml",\n    "run-build-progress.txt",\n'
             '    "windows-installed-service-probe.stderr.txt",\n'
             '    "windows-installed-service-probe.stdout.txt",\n'
-            '    "windows-installed-service-result.json",',
-            "bounded installed-SCM diagnostic inventory",
+            '    "windows-installed-service-result.json",\n'
+            '    "windows-full-peer-presentation.stderr.txt",\n'
+            '    "windows-full-peer-presentation.stdout.txt",\n'
+            '    "windows-full-peer-server.stderr.txt",\n'
+            '    "windows-full-peer-server.stdout.txt",\n'
+            '    "windows-full-peer-viewer.stderr.txt",\n'
+            '    "windows-full-peer-viewer.stdout.txt",\n'
+            '    "windows-full-peer-probe-build-receipt.json",\n'
+            '    "windows-full-peer-presentation-result.json",',
+            "bounded installed-SCM and full-peer diagnostic inventory",
         ),
         ("system.posix_acl_access", "output authority ACL rejection"),
         ("source artifact {artifact} does not match its checksum", "source checksum binding"),
@@ -2678,6 +2772,12 @@ def run_behavioral_self_tests(repo: pathlib.Path) -> None:
             "installed Windows SCM result behavioral self-test",
             20,
         ),
+        (
+            [sys.executable, "scripts/verify-windows-full-peer-presentation-result.py", "--self-test"],
+            "verify-windows-full-peer-presentation-result self-test: ok",
+            "Windows full-peer presentation result behavioral self-test",
+            20,
+        ),
     )
     for command, marker, description, timeout_seconds in tests:
         run_bounded_self_test(repo, command, marker, description, timeout_seconds)
@@ -2685,6 +2785,72 @@ def run_behavioral_self_tests(repo: pathlib.Path) -> None:
 
 def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
     mutations = [
+        (
+            "Windows full-peer probe non-default feature",
+            "cargo",
+            "windows-full-peer-presentation-probe = []",
+            "windows-full-peer-presentation-probe-retired = []",
+        ),
+        (
+            "Windows full-peer exact loopback bind",
+            "direct_service",
+            "std::net::SocketAddr::from(([127, 0, 0, 1], port as u16))",
+            "std::net::SocketAddr::from(([0, 0, 0, 0], port as u16))",
+        ),
+        (
+            "Windows full-peer sustained frame count",
+            "full_peer_controller",
+            "for ($index = 0; $index -lt 120; $index++)",
+            "for ($index = 0; $index -lt 12; $index++)",
+        ),
+        (
+            "Windows full-peer sustained duration",
+            "full_peer_controller",
+            "$unfocusedDuration -lt 60000",
+            "$unfocusedDuration -lt 6000",
+        ),
+        (
+            "Windows full-peer minimized duration",
+            "full_peer_controller",
+            "$minimizedDuration -lt 10000",
+            "$minimizedDuration -lt 1000",
+        ),
+        (
+            "Windows full-peer minimized-duration receipt",
+            "full_peer_controller",
+            "minimized_duration_ms = $minimizedDuration",
+            "minimized_duration_ms = 10000",
+        ),
+        (
+            "Windows full-peer exact live TCP surface",
+            "full_peer_controller",
+            "$liveRows.Count -ne 3",
+            "$liveRows.Count -eq 3",
+        ),
+        (
+            "Windows full-peer window/TCP process binding",
+            "full_peer_controller",
+            "the real viewer window process is not the exact TCP-owning process generation",
+            "viewer process binding skipped",
+        ),
+        (
+            "Windows full-peer non-overlapping pointer observation",
+            "full_peer_fixture",
+            "$panel.Add_MouseMove($mouseMoveHandler)",
+            "$panel.Add_MouseDown($mouseMoveHandler)",
+        ),
+        (
+            "Windows full-peer closed verifier frame count",
+            "full_peer_result",
+            "len(updates) != 120",
+            "len(updates) != 12",
+        ),
+        (
+            "Windows full-peer closed verifier minimized-duration floor",
+            "full_peer_result",
+            'typed_int(restore["minimized_duration_ms"], 10_000, 300_000',
+            'typed_int(restore["minimized_duration_ms"], 1_000, 300_000',
+        ),
         (
             "pinned LLVM Windows resource input",
             "resource",
@@ -4089,7 +4255,7 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
     run_behavioral_self_tests(repo)
     print(
         "verify-windows-harness self-test: ok "
-        f"({len(mutations)} mutations, 6 bounded behavioral suites)"
+        f"({len(mutations)} mutations, 7 bounded behavioral suites)"
     )
 
 

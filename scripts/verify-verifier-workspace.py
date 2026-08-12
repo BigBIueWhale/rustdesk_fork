@@ -8420,6 +8420,14 @@ def validate_windows_helper_launch_contract(sources):
             "graphical CM retained-idle ledger mutation",
         ),
         (
+            "installed graphical CM lifecycle requirements evidence removal",
+            "installed graphical CM lifecycle requirements-evidence mutation",
+        ),
+        (
+            "installed graphical CM lifecycle ledger evidence removal",
+            "installed graphical CM lifecycle ledger-evidence mutation",
+        ),
+        (
             "limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;",
             "Windows CM job-limit mutation",
         ),

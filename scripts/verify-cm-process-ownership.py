@@ -857,6 +857,16 @@ def verify(files: Mapping[str, str]) -> None:
         "native graphical CM idle-exit finding in the ledger",
     )
     require(
+        requirements,
+        "Appendix C #344 installed lifecycle pass (2026-08-12)",
+        "installed graphical CM lifecycle pass in requirements",
+    )
+    require(
+        ledger,
+        "Exact installed LocalSystem lifecycle evidence is now green for the correction commit",
+        "installed graphical CM lifecycle pass in the ledger",
+    )
+    require(
         shared_gate,
         'python3 scripts/verify-cm-process-ownership.py --self-test',
         "shared verifier self-test",
@@ -1227,6 +1237,18 @@ MUTATIONS = (
         "The first inherited-main-IPC native retry proves both authenticated directory round trips",
         "The undocumented native retry proves both authenticated directory round trips",
         "graphical CM retained-idle ledger removal",
+    ),
+    Mutation(
+        "requirements.html",
+        "Appendix C #344 installed lifecycle pass (2026-08-12)",
+        "Appendix C #344 installed lifecycle pending (2026-08-12)",
+        "installed graphical CM lifecycle requirements evidence removal",
+    ),
+    Mutation(
+        "HARDENING_STATUS.md",
+        "Exact installed LocalSystem lifecycle evidence is now green for the correction commit",
+        "Exact installed LocalSystem lifecycle evidence is still pending for the correction commit",
+        "installed graphical CM lifecycle ledger evidence removal",
     ),
     Mutation(
         "HARDENING_STATUS.md",

@@ -6944,10 +6944,10 @@ network configuration was inspected or changed.
   `scripts/apple-conform-check.sh` mirrors the macOS source assertions. This original closure proved mutual
   launch-token and process-shape authentication but did not retain the exact macOS/Windows helper generation;
   R-S11gi/R-S11e-221 below supersedes that narrower endpoint-identity claim.
-- **R-S11gi/R-S11e-221 — macOS/Windows exact connection-manager process ownership — SOURCE IMPLEMENTED;
-  NATIVE SAME-USER WINDOWS CM LIFECYCLE GREEN 2026-08-11; THREE INSTALLED LOCALSYSTEM INTEGRATION DEFECTS
-  REPRODUCED 2026-08-12 AND SOURCE-CORRECTED BUT NATIVE RETEST PENDING; macOS, CONCURRENT-RACE, AND EXACT-COMMIT RELEASE
-  EVIDENCE PENDING.** Platforms: macOS and Windows
+- **R-S11gi/R-S11e-221 — macOS/Windows exact connection-manager process ownership — EXACT INSTALLED
+  LOCALSYSTEM WINDOWS CM LIFECYCLE GREEN 2026-08-12; NATIVE SAME-USER WINDOWS LIFECYCLE GREEN 2026-08-11;
+  macOS, CONCURRENT-RACE/SOAK, COLD DOUBLE-BUILD RELEASE, INDEPENDENT REPRODUCTION, AND EXTERNAL REVIEW EVIDENCE
+  PENDING.** Platforms: macOS and Windows
   desktop controlled-side connection-manager paths; Linux retains its independently closed direct-child,
   PID/UID/proc-start-time, role-token, and parent-death model. Endpoint/action: selection and launch of the fixed
   `_cm` listener before `Data::Login`, `cm_auth_token`, file/clipboard authority, chat, voice state, or any future
@@ -7150,7 +7150,8 @@ network configuration was inspected or changed.
   requires the pipe server to be the recorded launch-parent generation and uses the same sealed least-right handle
   for PID, creation-time, liveness, executable, exact-role, and stable-pipe proof. It does not weaken the process
   DACL, grant privilege, accept PID/token alone, or bypass the server-side per-connection token validation. This
-  correction remains release-blocking until a new exact clean commit passes the entire installed transaction.
+  correction remained release-blocking until the later exact clean transaction recorded below passed the entire
+  installed lifecycle.
 
   The first inherited-main-IPC native retry proves both authenticated directory round trips and exposes the next
   lifecycle defect; it is still negative evidence for the complete transaction, not a pass. Clean pushed commit
@@ -7191,7 +7192,7 @@ network configuration was inspected or changed.
   retained reuse or the complete lifecycle can be called green.
 
   Current-source verification is positive but deliberately narrower than that native requirement. The focused
-  process-ownership verifier and all 52 deliberate mutations pass, as does the complete independent verifier
+  process-ownership verifier and all 54 deliberate mutations pass, as does the complete independent verifier
   workspace catalog. A pinned numeric-non-root, network-disabled, capability-free, read-only-root container first
   regenerated all FRB outputs from a read-only exact working-tree snapshot and the reverified canonical offline
   closure, then ran `flutter analyze lib/` with status zero and zero error diagnostics and passed
@@ -7202,6 +7203,44 @@ network configuration was inspected or changed.
   found no formatting rewrite at either lifecycle edit but did expose unrelated pre-existing formatting drift
   elsewhere in the two files; that drift was not absorbed into this change, and no whole-file formatting pass is
   claimed. None of these source checks substitutes for a fresh exact installed LocalSystem lifecycle transaction.
+
+  Exact installed LocalSystem lifecycle evidence is now green for the correction commit. Clean pushed commit
+  `032c2f622b324f92b183a1ae37fb13f65523ada0`, tree
+  `9f0241272b13d74cf39f09b6ad16372a1fb9d851`, source manifest
+  `28a2eef085dd77348420f16aa089aaa23b4633fef5b698d5610b48966af801db`, offline-input manifest
+  `5f73c336c9ff43f850a0d9643fb76b97f2cfe9a81c8bd37f4b94ed68c6f0687a`, and run
+  `55dd3ca9-f8ee-4ed4-9886-7924d4d73e4b-A` passed exact-source, immutable-offline-input, zero-interface, native
+  test/build/package/install, and installed-service verification. `build-windows.ps1` and
+  `windows-installed-service-probe.ps1` both returned zero. The selected Windows library binary passed all 57 tests
+  in 0.67s, and the native same-user CM process/job probe independently passed wrong-token refusal, two reconnects,
+  parent-death cleanup, and distinct replacement.
+
+  The closed secret-free installed receipt records six authenticated CM file-directory round trips and every CM
+  lifecycle relation true. Two sequential sessions reused initial generation
+  `6356:134310612138198767`; intentional stale-process retirement produced replacement
+  `1252:134310612147783222`; abrupt owning-server termination retired that generation and produced
+  `4384:134310612155042601`; the exact `4384` generation was retained through later live work until SCM stop; and
+  restart created `3132:134310612223005253`, which authenticated again. The same receipt proves the exact installed
+  image and `--cm` role, interactive principal/session, abrupt-owner service-child replacement, SCM-stop finality,
+  SCM-restart generation change, and all credential mutation/preservation/reload relations. Installed and built
+  executable SHA-256 both equal `c08f1adc193e5d5d2959e9d794699d3802e751b9acd8fedf8584c4376784c6a2`.
+
+  The canonical published setup SHA-256 is
+  `4ab6b3a5bf001f8d6fee486aa724e5e7da7669864be9ffdee15240e24acba88f`; MSI SHA-256 is
+  `26a542118478aa7bd09a527f2f32bd191f3edb485abb56551c44111972655984`; receipt SHA-256 is
+  `68ea448dc053da20b9689fb69c4d8105d2e9313cdf80097fba0b79a71c9c6e4a`; domain XML SHA-256 is
+  `79ff6393e6bd28fcd4220e88e9c447b110c4cdd80fa354a762eef40e74a7bb70`. The domain verifier proved zero guest
+  network interfaces and VNC `127.0.0.1`; canonical PE/MSI validation passed; the private golden and authenticated
+  offline snapshot reverified unchanged after shutdown. The outer harness retired its helper authority, atomically
+  published the result, removed the exact private run root, left no matching libvirt domain or VM process, restored
+  its listener postcondition, and exited zero. No host RustDesk process/service/configuration, firewall, route,
+  public listener, host root, Docker-published port, or guest NIC was involved.
+
+  This pass closes the installed Windows LocalSystem CM admission/main-IPC/order/retained-idle/recovery/owner-death/
+  service-restart gap for that exact single-build package. It does not establish native macOS process/socket
+  behavior, a real remote-control capture/display/focus session, the user's Android/Windows background-presentation
+  delay, cross-version interoperability, concurrent launch/reconnect races or long resource/performance soak, cold
+  R-B2 double-build equality, independent reproduction, external review, or release readiness.
 
   Four earlier attempts are excluded from positive evidence: two staging/compile attempts respectively exposed a
   wrong WinAPI import plus absent generated bridges and then stale forced-in bridges; two compiled runtime attempts
@@ -24017,7 +24056,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-fe466f0f9c2bd8428b89e9b1799bb83e43f6bd7a95d4ff9adf2610eee9ad81bf  requirements.html
+82b71be133ce1075b36cc0c53a7de76d60c318feaf3551aa4c75e6378cacedd6  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

@@ -31,6 +31,11 @@ CREATE_TIMEOUT_SECONDS=300
 CONTROL_TIMEOUT_SECONDS=30
 PROCESS_ADMISSION_SECONDS=10
 PROCESS_STOP_SECONDS=10
+FAILURE_EVIDENCE_MAX_BYTES=$((64 * 1024 * 1024))
+FAILURE_EVIDENCE_FILE_MAX_BYTES=$((16 * 1024 * 1024))
+RUN_STORAGE_FIXED_ALLOWANCE_BYTES=$((24 * 1024 * 1024 * 1024))
+RUN_STORAGE_EMERGENCY_RESERVE_BYTES=$((32 * 1024 * 1024 * 1024))
+SHARED_ONLINE_SNAPSHOT_ALLOWANCE_BYTES=$((48 * 1024 * 1024 * 1024))
 TARGET_ID="windows-x86_64"
 FRB_OUTPUTS=(
     src/bridge_generated.rs
@@ -41,6 +46,8 @@ FRB_OUTPUTS=(
 
 RUN_ROOT=""
 RUN_ROOT_ID=""
+BUILD_LEASE=""
+BUILD_LEASE_ID=""
 OUT_PARENT=""
 OUT_PARENT_ID=""
 RUN_ID=""
@@ -52,8 +59,14 @@ FORK_VERSION_VALUE=""
 BASE_MANIFEST_SHA256=""
 OFFLINE_MANIFEST_SHA256=""
 DEB_BUILDER_IMAGE=""
-PRIVATE_GOLDEN=""
+GOLDEN_IDENTITY=""
+GOLDEN_EDGE=""
 ONLINE_SNAPSHOT_PARENT=""
+ONLINE_SNAPSHOT_CREATION_REQUIRED=0
+ONLINE_SNAPSHOT_TRANSACTION=""
+ONLINE_SNAPSHOT_TRANSACTION_ID=""
+FAILURE_EVIDENCE_TRANSACTION=""
+FAILURE_EVIDENCE_TRANSACTION_ID=""
 CURRENT_DOMAIN=""
 CURRENT_DOMAIN_UUID=""
 CURRENT_DOMAIN_CREATION_STARTED=0
@@ -66,6 +79,7 @@ RUN_COMPLETE=0
 CLEANUP_ACTIVE=0
 CLEANUP_FAILED=0
 FRB_REFERENCE=""
+RUN_PHASE="startup"
 
 assert_safe_path() {
     local value="$1" label="$2"
@@ -151,6 +165,41 @@ remove_completed_run_root() {
     { [ ! -e "$RUN_ROOT" ] && [ ! -L "$RUN_ROOT" ]; } || return 1
     RUN_ROOT=""
     RUN_ROOT_ID=""
+}
+
+acquire_build_lease() {
+    [ -z "$BUILD_LEASE" ] && [ -z "$BUILD_LEASE_ID" ] \
+        || die "Windows build lease is already held"
+    BUILD_LEASE="$STATE_DIR/windows-build.lease"
+    mkdir -m 0700 -- "$BUILD_LEASE" \
+        || die "another Windows build may be active or unreconciled: $BUILD_LEASE"
+    BUILD_LEASE_ID="$(/usr/bin/stat -c '%d:%i' -- "$BUILD_LEASE")" \
+        || die "cannot bind the Windows build-lease identity"
+    [[ "$BUILD_LEASE_ID" =~ ^(0|[1-9][0-9]*):[1-9][0-9]*$ ]] \
+        || die "Windows build-lease identity is malformed"
+}
+
+release_build_lease() {
+    [ -z "$BUILD_LEASE" ] && [ -z "$BUILD_LEASE_ID" ] && return 0
+    [ -n "$BUILD_LEASE" ] && [ -n "$BUILD_LEASE_ID" ] || return 1
+    /usr/bin/env -i PATH=/usr/bin:/bin \
+        /usr/bin/python3 -I -S "$LIB_DIR/verify-private-tree-closure.py" \
+            --remove-empty-private-root "$BUILD_LEASE" \
+            --expected-identity "$BUILD_LEASE_ID" \
+        || return 1
+    { [ ! -e "$BUILD_LEASE" ] && [ ! -L "$BUILD_LEASE" ]; } || return 1
+    BUILD_LEASE=""
+    BUILD_LEASE_ID=""
+}
+
+require_no_retained_windows_runs() {
+    local retained
+    retained="$(find "$STATE_DIR" -mindepth 1 -maxdepth 1 \
+        \( -name 'windows-build-*' -o -name '.windows-failure-*' \
+            -o -name '.windows-online-snapshot-*' \) -print -quit)" \
+        || die "cannot inspect prior Windows build state"
+    [ -z "$retained" ] \
+        || die "prior Windows build state or transaction must be explicitly reconciled before another allocation: $retained"
 }
 
 verify_wix_nuget_packages() {
@@ -451,8 +500,207 @@ stop_and_undefine_owned_domain() {
     fi
 }
 
+FAILURE_EVIDENCE_BYTES=0
+
+copy_failure_evidence_file() {
+    local source="$1" destination="$2" outcome size
+    [ -e "$source" ] || [ -L "$source" ] || return 0
+    [ ! -e "$destination" ] && [ ! -L "$destination" ] || return 0
+    outcome="$(python3 - "$source" "$destination" \
+        "$WINDOWS_HELPER_BUILD_UID" "$FAILURE_EVIDENCE_FILE_MAX_BYTES" \
+        "$((FAILURE_EVIDENCE_MAX_BYTES - FAILURE_EVIDENCE_BYTES))" <<'PY'
+import os
+import stat
+import sys
+
+source, destination, uid_text, file_limit_text, remaining_text = sys.argv[1:]
+uid = int(uid_text)
+file_limit = int(file_limit_text)
+remaining = int(remaining_text)
+flags = os.O_RDONLY | os.O_CLOEXEC
+if hasattr(os, "O_NOFOLLOW"):
+    flags |= os.O_NOFOLLOW
+descriptor = os.open(source, flags)
+try:
+    before = os.fstat(descriptor)
+    if not stat.S_ISREG(before.st_mode) or before.st_uid != uid or before.st_nlink != 1:
+        raise SystemExit("failure-evidence source is not a current-UID single-link regular file")
+    if before.st_size > file_limit or before.st_size > remaining:
+        print(f"omitted:{before.st_size}")
+        raise SystemExit(0)
+    output = os.open(
+        destination,
+        os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC
+        | (os.O_NOFOLLOW if hasattr(os, "O_NOFOLLOW") else 0),
+        0o400,
+    )
+    try:
+        copied = 0
+        while copied < before.st_size:
+            chunk = os.read(descriptor, min(1024 * 1024, before.st_size - copied))
+            if not chunk:
+                raise SystemExit("failure-evidence source ended before its recorded size")
+            view = memoryview(chunk)
+            while view:
+                written = os.write(output, view)
+                if written <= 0:
+                    raise SystemExit("failure-evidence copy made no progress")
+                view = view[written:]
+            copied += len(chunk)
+        if os.read(descriptor, 1):
+            raise SystemExit("failure-evidence source grew during its bounded copy")
+        after = os.fstat(descriptor)
+        fields = (
+            "st_dev",
+            "st_ino",
+            "st_mode",
+            "st_uid",
+            "st_gid",
+            "st_nlink",
+            "st_size",
+            "st_mtime_ns",
+            "st_ctime_ns",
+        )
+        if any(getattr(before, field) != getattr(after, field) for field in fields):
+            raise SystemExit("failure-evidence source identity changed during copy")
+        os.fchmod(output, 0o400)
+        os.fsync(output)
+    finally:
+        os.close(output)
+    print(f"copied:{before.st_size}")
+finally:
+    os.close(descriptor)
+PY
+)" || return 1
+    case "$outcome" in
+        copied:[0-9]*)
+            size="${outcome#copied:}"
+            [[ "$size" =~ ^[0-9]+$ ]] || return 1
+            FAILURE_EVIDENCE_BYTES=$((FAILURE_EVIDENCE_BYTES + size))
+            ;;
+        omitted:[0-9]*)
+            warn "omitting oversized bounded failure diagnostic: $source (${outcome#omitted:} bytes)"
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+preserve_failure_evidence() {
+    [ -n "$RUN_ID" ] && [ -n "$RUN_ROOT" ] && [ -n "$RUN_ROOT_ID" ] \
+        || return 1
+    local pending final pending_id pass root diagnostic
+    local -a extracted=()
+    FAILURE_EVIDENCE_BYTES=0
+    pending="$(mktemp -d "$STATE_DIR/.windows-failure-$RUN_ID.XXXXXXXX")" \
+        || return 1
+    chmod 0700 "$pending" || return 1
+    pending_id="$(stat -c '%d:%i' -- "$pending")" || return 1
+    FAILURE_EVIDENCE_TRANSACTION="$pending"
+    FAILURE_EVIDENCE_TRANSACTION_ID="$pending_id"
+    final="$STATE_DIR/windows-failure-$RUN_ID"
+    { [ ! -e "$final" ] && [ ! -L "$final" ]; } || return 1
+
+    copy_failure_evidence_file \
+        "$RUN_ROOT/base-source-manifest.json" "$pending/base-source-manifest.json" || return 1
+    copy_failure_evidence_file \
+        "$RUN_ROOT/offline-input-manifest.json" "$pending/offline-input-manifest.json" || return 1
+    for pass in A B; do
+        copy_failure_evidence_file \
+            "$RUN_ROOT/pass-$pass/domain.xml" "$pending/pass-$pass-domain.xml" || return 1
+        copy_failure_evidence_file \
+            "$RUN_ROOT/pass-$pass/source-media/.source-identity.json" \
+            "$pending/pass-$pass-source-identity.json" || return 1
+        extracted=()
+        if [ -d "$RUN_ROOT/pass-$pass" ] && [ ! -L "$RUN_ROOT/pass-$pass" ]; then
+            mapfile -d '' extracted < <(find "$RUN_ROOT/pass-$pass" \
+                -mindepth 1 -maxdepth 1 -type d -name 'extract.*' -print0)
+        fi
+        [ "${#extracted[@]}" -le 1 ] || return 1
+        for root in "$RUN_ROOT/pass-$pass/result" "${extracted[@]}"; do
+            [ -d "$root" ] && [ ! -L "$root" ] || continue
+            for diagnostic in build-log.txt build-windows.stdout.txt build-windows.stderr.txt \
+                run-build-progress.txt \
+                windows-installed-service-probe.stdout.txt windows-installed-service-probe.stderr.txt \
+                windows-installed-service-result.json \
+                windows-full-peer-presentation.stdout.txt windows-full-peer-presentation.stderr.txt \
+                windows-full-peer-server.stdout.txt windows-full-peer-server.stderr.txt \
+                windows-full-peer-viewer.stdout.txt windows-full-peer-viewer.stderr.txt \
+                windows-full-peer-probe-build-receipt.json \
+                windows-full-peer-presentation-result.json; do
+                copy_failure_evidence_file \
+                    "$root/$diagnostic" "$pending/pass-$pass-$diagnostic" || return 1
+            done
+        done
+    done
+    python3 - "$pending/failure.json" "$RUN_ID" "$RUN_PHASE" "$SOURCE_COMMIT" \
+        "$SOURCE_TREE" "$FAILURE_EVIDENCE_BYTES" <<'PY'
+import json
+import os
+import sys
+
+output, run_id, phase, source_commit, source_tree, copied_text = sys.argv[1:]
+payload = {
+    "format": "rustdesk-windows-failure-evidence-v1",
+    "run_id": run_id,
+    "phase": phase,
+    "source_commit": source_commit,
+    "source_tree": source_tree,
+    "copied_bytes": int(copied_text),
+    "bulk_run_state_retirement_required": True,
+}
+descriptor = os.open(
+    output,
+    os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC,
+    0o400,
+)
+try:
+    data = (json.dumps(payload, sort_keys=True, separators=(",", ":")) + "\n").encode()
+    view = memoryview(data)
+    while view:
+        written = os.write(descriptor, view)
+        if written <= 0:
+            raise SystemExit("failure-evidence receipt write made no progress")
+        view = view[written:]
+    os.fchmod(descriptor, 0o400)
+    os.fsync(descriptor)
+finally:
+    os.close(descriptor)
+PY
+    [ "$(stat -c '%u:%g:%a:%d:%i' -- "$pending")" = \
+        "$WINDOWS_HELPER_BUILD_UID:$WINDOWS_HELPER_BUILD_GID:700:$pending_id" ] \
+        || return 1
+    mv -T -- "$pending" "$final" || return 1
+    FAILURE_EVIDENCE_TRANSACTION=""
+    FAILURE_EVIDENCE_TRANSACTION_ID=""
+    python3 - "$STATE_DIR" <<'PY'
+import os
+import sys
+
+descriptor = os.open(sys.argv[1], os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+try:
+    os.fsync(descriptor)
+finally:
+    os.close(descriptor)
+PY
+    log "bounded Windows failure evidence retained at $final ($FAILURE_EVIDENCE_BYTES copied bytes)"
+}
+
+remove_failure_evidence_transaction() {
+    [ -z "$FAILURE_EVIDENCE_TRANSACTION" ] \
+        && [ -z "$FAILURE_EVIDENCE_TRANSACTION_ID" ] && return 0
+    [ -n "$FAILURE_EVIDENCE_TRANSACTION" ] \
+        && [ -n "$FAILURE_EVIDENCE_TRANSACTION_ID" ] || return 1
+    remove_private_root_exact \
+        "$FAILURE_EVIDENCE_TRANSACTION" "$FAILURE_EVIDENCE_TRANSACTION_ID" || return 1
+    { [ ! -e "$FAILURE_EVIDENCE_TRANSACTION" ] \
+        && [ ! -L "$FAILURE_EVIDENCE_TRANSACTION" ]; } || return 1
+    FAILURE_EVIDENCE_TRANSACTION=""
+    FAILURE_EVIDENCE_TRANSACTION_ID=""
+}
+
 cleanup() {
     local status=$?
+    local bounded_transaction_failed=0
     [ "$CLEANUP_ACTIVE" = 0 ] || exit "$status"
     CLEANUP_ACTIVE=1
     trap - EXIT HUP INT TERM
@@ -467,13 +715,37 @@ cleanup() {
     if ! windows_helper_authority_close; then
         CLEANUP_FAILED=1
     fi
-    if [ "$RUN_COMPLETE" = 1 ] && [ "$CLEANUP_FAILED" = 0 ] && [ -n "$RUN_ROOT" ]; then
+    if [ "$CLEANUP_FAILED" = 0 ] && [ "$RUN_COMPLETE" != 1 ] && [ -n "$RUN_ROOT" ]; then
+        if ! preserve_failure_evidence; then
+            warn "bounded Windows failure evidence could not be retained; bulk run state will still retire"
+        fi
+    fi
+    if ! remove_failure_evidence_transaction; then
+        bounded_transaction_failed=1
+        warn "bounded Windows failure-evidence transaction could not be retired"
+    fi
+    if [ "$CLEANUP_FAILED" = 0 ] && [ -n "$RUN_ROOT" ]; then
         if ! remove_completed_run_root; then
             CLEANUP_FAILED=1
             warn "preserving Windows harness state because exact private-tree cleanup failed"
         fi
     elif [ -n "$RUN_ROOT" ]; then
-        warn "retaining failed or unreconciled Windows harness state at $RUN_ROOT"
+        warn "retaining unreconciled Windows harness state at $RUN_ROOT; the persistent lease blocks another run"
+    fi
+    if [ "$bounded_transaction_failed" != 0 ]; then
+        CLEANUP_FAILED=1
+    fi
+    if [ "$CLEANUP_FAILED" = 0 ]; then
+        if ! remove_online_snapshot_transaction; then
+            CLEANUP_FAILED=1
+            warn "Windows shared-snapshot transaction could not be retired"
+        fi
+    fi
+    if [ "$CLEANUP_FAILED" = 0 ]; then
+        if ! release_build_lease; then
+            CLEANUP_FAILED=1
+            warn "Windows build lease could not be retired"
+        fi
     fi
     if [ "$CLEANUP_FAILED" != 0 ] && [ "$status" = 0 ]; then
         status=1
@@ -553,9 +825,124 @@ verify_active_online_snapshot() {
     verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
 }
 
+select_shared_online_snapshot() {
+    [ -n "$SHA256_ONLINE_CLOSURE_V1" ] \
+        || die "Windows shared online snapshot digest is unavailable"
+    ONLINE_SNAPSHOT_PARENT="$STATE_DIR/windows-online-snapshot-$SHA256_ONLINE_CLOSURE_V1"
+    if [ -e "$ONLINE_SNAPSHOT_PARENT" ] || [ -L "$ONLINE_SNAPSHOT_PARENT" ]; then
+        [ -d "$ONLINE_SNAPSHOT_PARENT" ] && [ ! -L "$ONLINE_SNAPSHOT_PARENT" ] \
+            || die "Windows shared online snapshot path is occupied by a non-directory"
+        ONLINE_DIR="$ONLINE_SNAPSHOT_PARENT/online"
+        verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
+        ONLINE_SNAPSHOT_CREATION_REQUIRED=0
+    else
+        ONLINE_SNAPSHOT_CREATION_REQUIRED=1
+    fi
+}
+
+materialize_shared_online_snapshot() {
+    [ "$ONLINE_SNAPSHOT_CREATION_REQUIRED" = 1 ] \
+        || die "Windows shared online snapshot creation was not authorized"
+    local canonical_online="$ONLINE_DIR" candidate
+    ONLINE_SNAPSHOT_TRANSACTION="$(mktemp -d \
+        "$STATE_DIR/.windows-online-snapshot-$SHA256_ONLINE_CLOSURE_V1.XXXXXXXX")" \
+        || die "cannot create the Windows shared-snapshot transaction"
+    ONLINE_SNAPSHOT_TRANSACTION_ID="$(stat -c '%d:%i' -- "$ONLINE_SNAPSHOT_TRANSACTION")" \
+        || die "cannot bind the Windows shared-snapshot transaction identity"
+    candidate="$ONLINE_SNAPSHOT_TRANSACTION/snapshot"
+    create_private_online_snapshot "$candidate"
+    verify_private_online_snapshot "$candidate"
+    python3 - "$candidate" "$ONLINE_SNAPSHOT_PARENT" "$STATE_DIR" <<'PY' \
+        || die "Windows shared online snapshot no-clobber publication failed"
+import ctypes
+import os
+import sys
+
+source, destination, state_dir = sys.argv[1:]
+libc = ctypes.CDLL(None, use_errno=True)
+renameat2 = libc.renameat2
+renameat2.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
+renameat2.restype = ctypes.c_int
+if renameat2(-100, os.fsencode(source), -100, os.fsencode(destination), 1) != 0:
+    error = ctypes.get_errno()
+    raise OSError(error, os.strerror(error), destination)
+descriptor = os.open(state_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+try:
+    os.fsync(descriptor)
+finally:
+    os.close(descriptor)
+PY
+    remove_private_root_exact \
+        "$ONLINE_SNAPSHOT_TRANSACTION" "$ONLINE_SNAPSHOT_TRANSACTION_ID" \
+        || die "Windows shared-snapshot transaction could not retire after publication"
+    ONLINE_SNAPSHOT_TRANSACTION=""
+    ONLINE_SNAPSHOT_TRANSACTION_ID=""
+    ONLINE_DIR="$ONLINE_SNAPSHOT_PARENT/online"
+    export ONLINE_DIR
+    verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
+    ONLINE_SNAPSHOT_CREATION_REQUIRED=0
+    [ "$canonical_online" != "$ONLINE_DIR" ] \
+        || die "Windows shared online snapshot did not separate canonical and private paths"
+}
+
+remove_online_snapshot_transaction() {
+    [ -z "$ONLINE_SNAPSHOT_TRANSACTION" ] \
+        && [ -z "$ONLINE_SNAPSHOT_TRANSACTION_ID" ] && return 0
+    [ -n "$ONLINE_SNAPSHOT_TRANSACTION" ] \
+        && [ -n "$ONLINE_SNAPSHOT_TRANSACTION_ID" ] || return 1
+    remove_private_root_exact \
+        "$ONLINE_SNAPSHOT_TRANSACTION" "$ONLINE_SNAPSHOT_TRANSACTION_ID" || return 1
+    { [ ! -e "$ONLINE_SNAPSHOT_TRANSACTION" ] \
+        && [ ! -L "$ONLINE_SNAPSHOT_TRANSACTION" ]; } || return 1
+    ONLINE_SNAPSHOT_TRANSACTION=""
+    ONLINE_SNAPSHOT_TRANSACTION_ID=""
+}
+
+golden_virtual_size() {
+    qemu-img info --output=json "$GOLDEN" \
+        | python3 -c 'import json,sys; value=json.load(sys.stdin).get("virtual-size"); raise SystemExit(1) if type(value) is not int or value <= 0 else print(value)'
+}
+
+available_storage_bytes() {
+    python3 - "$STATE_DIR" <<'PY'
+import os
+import sys
+
+stats = os.statvfs(sys.argv[1])
+print(stats.f_bavail * stats.f_frsize)
+PY
+}
+
+require_available_storage_bytes() {
+    local required="$1" available
+    [[ "$required" =~ ^[1-9][0-9]*$ ]] \
+        || die "Windows harness required-byte count is malformed"
+    available="$(available_storage_bytes)" \
+        || die "cannot determine unprivileged Windows harness free space"
+    [[ "$available" =~ ^[0-9]+$ ]] \
+        || die "Windows harness available-byte count is malformed"
+    [ "$available" -ge "$required" ] \
+        || die "Windows harness storage preflight requires $required available bytes but found $available"
+    log "Windows harness storage preflight OK: available=$available required=$required"
+}
+
+require_storage_capacity() {
+    local virtual required snapshot_allowance=0
+    virtual="$(golden_virtual_size)" \
+        || die "cannot determine the Windows golden virtual size"
+    [[ "$virtual" =~ ^[1-9][0-9]*$ ]] \
+        || die "Windows golden virtual size is malformed"
+    if [ "$ONLINE_SNAPSHOT_CREATION_REQUIRED" = 1 ]; then
+        snapshot_allowance="$SHARED_ONLINE_SNAPSHOT_ALLOWANCE_BYTES"
+    fi
+    required=$((virtual + RUN_STORAGE_FIXED_ALLOWANCE_BYTES \
+        + RUN_STORAGE_EMERGENCY_RESERVE_BYTES + snapshot_allowance))
+    require_available_storage_bytes "$required"
+}
+
 preflight() {
     local planned_state planned_output
-    require_cmd qemu-img virt-install virsh xorriso git python3 realpath sha256sum sha512sum timeout setsid awk
+    require_cmd qemu-img virt-install virsh xorriso git python3 realpath sha256sum sha512sum timeout setsid awk find
     assert_no_build_host_network_residual
     [ "$SOURCE_DATE_EPOCH" = "$SOURCE_DATE_EPOCH_PIN" ] \
         || die "SOURCE_DATE_EPOCH must equal the pinned canonical value $SOURCE_DATE_EPOCH_PIN"
@@ -580,14 +967,18 @@ preflight() {
     STATE_DIR="$(realpath -e "$STATE_DIR")"
     [ "$(stat -c '%u:%a' "$STATE_DIR")" = "$(id -u):700" ] \
         || die "Windows harness state directory must be current-UID mode 0700"
+    acquire_build_lease
+    require_no_retained_windows_runs
     GOLDEN="$(realpath -e "$GOLDEN")"
+    record_golden_identity
     if activate_release_online_snapshot; then
-        :
+        ONLINE_SNAPSHOT_CREATION_REQUIRED=0
     else
         [ -z "${RUSTDESK_RELEASE_ONLINE_SNAPSHOT+x}" ] \
             || die "release online snapshot must not be empty"
         ONLINE_DIR="$(realpath -e "$ONLINE_DIR")"
         require_online_complete
+        select_shared_online_snapshot
     fi
     export ONLINE_DIR
     OUT_PARENT="$(dirname "$OUT_DIR")"
@@ -601,8 +992,12 @@ preflight() {
     assert_disjoint_paths "$STATE_DIR" "Windows harness state" "$OUT_DIR" "Windows output"
     { [ ! -e "$OUT_DIR" ] && [ ! -L "$OUT_DIR" ]; } \
         || die "Windows output directory must be absent for atomic publication: $OUT_DIR"
-    [ -f "$GOLDEN" ] && [ ! -L "$GOLDEN" ] || die "golden image is not a regular file"
-    verify_sha256 "$GOLDEN" "$SHA256_WIN11_GOLDEN_QCOW2"
+    require_storage_capacity
+    if [ "$ONLINE_SNAPSHOT_CREATION_REQUIRED" = 1 ]; then
+        RUN_PHASE="shared-online-snapshot"
+        materialize_shared_online_snapshot
+    fi
+    verify_golden_backing
     [ -d "$ONLINE_DIR/cargo-vendor" ] && [ ! -L "$ONLINE_DIR/cargo-vendor" ] || die "cargo-vendor cache is missing"
     [ -d "$ONLINE_DIR/pub-cache" ] && [ ! -L "$ONLINE_DIR/pub-cache" ] || die "pub-cache is missing"
     verify_wix_nuget_packages
@@ -618,91 +1013,90 @@ preflight() {
     DEB_BUILDER_IMAGE="$DEB_BUILDER_IMAGE_ID"
 }
 
-snapshot_golden() {
-    [ -n "$RUN_ROOT" ] || die "private run root is not initialized"
-    PRIVATE_GOLDEN="$RUN_ROOT/golden.qcow2"
-    python3 - "$GOLDEN" "$PRIVATE_GOLDEN" "$SHA256_WIN11_GOLDEN_QCOW2" "$(id -u)" <<'PY'
-import errno
-import fcntl
+golden_identity() {
+    [ "$#" -eq 1 ] || die "golden_identity requires one path"
+    python3 - "$1" "$WINDOWS_HELPER_BUILD_UID" "$WINDOWS_HELPER_BUILD_GID" <<'PY'
 import hashlib
 import os
 import stat
 import sys
 
-source, destination, expected, uid_text = sys.argv[1:]
+source, uid_text, gid_text = sys.argv[1:]
 uid = int(uid_text)
+gid = int(gid_text)
 flags = os.O_RDONLY | os.O_CLOEXEC
 if hasattr(os, "O_NOFOLLOW"):
     flags |= os.O_NOFOLLOW
 source_fd = os.open(source, flags)
-destination_fd = -1
 try:
     before = os.fstat(source_fd)
-    if (not stat.S_ISREG(before.st_mode) or before.st_uid != uid or before.st_nlink != 1
-            or stat.S_IMODE(before.st_mode) & 0o022):
-        raise SystemExit("golden source is not a current-UID, non-hardlinked, non-group/world-writable regular file")
-    destination_fd = os.open(
-        destination,
-        os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC,
-        0o400,
-    )
-    try:
-        fcntl.ioctl(destination_fd, 0x40049409, source_fd)
-    except OSError as error:
-        if error.errno not in (errno.EXDEV, errno.EINVAL, errno.ENOTTY, errno.EOPNOTSUPP):
-            raise
-        os.lseek(source_fd, 0, os.SEEK_SET)
-        while True:
-            chunk = os.read(source_fd, 8 * 1024 * 1024)
-            if not chunk:
-                break
-            view = memoryview(chunk)
-            while view:
-                written = os.write(destination_fd, view)
-                if written <= 0:
-                    raise OSError("short write while copying golden image")
-                view = view[written:]
-    os.fsync(destination_fd)
-    after = os.fstat(source_fd)
-    stable_fields = ("st_dev", "st_ino", "st_mode", "st_uid", "st_gid", "st_nlink",
-                     "st_size", "st_mtime_ns", "st_ctime_ns")
-    if any(getattr(before, field) != getattr(after, field) for field in stable_fields):
-        raise SystemExit("golden source changed while its private snapshot was created")
-    copied = os.fstat(destination_fd)
-    if (not stat.S_ISREG(copied.st_mode) or copied.st_uid != uid
-            or copied.st_nlink != 1 or copied.st_size != before.st_size):
-        raise SystemExit("private golden snapshot metadata is invalid")
-    os.lseek(destination_fd, 0, os.SEEK_SET)
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or before.st_uid != uid
+        or before.st_gid != gid
+        or before.st_nlink != 1
+        or stat.S_IMODE(before.st_mode) != 0o400
+    ):
+        raise SystemExit(
+            "golden backing must be a current-principal mode-0400 single-link regular file"
+        )
     digest = hashlib.sha256()
     while True:
-        chunk = os.read(destination_fd, 8 * 1024 * 1024)
+        chunk = os.read(source_fd, 8 * 1024 * 1024)
         if not chunk:
             break
         digest.update(chunk)
-    if digest.hexdigest() != expected:
-        raise SystemExit("private golden snapshot does not match its pinned SHA-256")
-    os.fchmod(destination_fd, 0o400)
-    os.fsync(destination_fd)
+    after = os.fstat(source_fd)
+    fields = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_uid",
+        "st_gid",
+        "st_nlink",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+    if any(getattr(before, field) != getattr(after, field) for field in fields):
+        raise SystemExit("golden backing changed while its identity was sampled")
+    values = [str(getattr(after, field)) for field in fields]
+    values.append(digest.hexdigest())
+    print(":".join(values))
 finally:
-    if destination_fd >= 0:
-        os.close(destination_fd)
     os.close(source_fd)
-directory_fd = os.open(os.path.dirname(destination), os.O_RDONLY | os.O_CLOEXEC)
-try:
-    os.fsync(directory_fd)
-finally:
-    os.close(directory_fd)
 PY
-    verify_private_golden
 }
 
-verify_private_golden() {
-    [ -n "$PRIVATE_GOLDEN" ] || die "private golden snapshot is not initialized"
-    [ -f "$PRIVATE_GOLDEN" ] && [ ! -L "$PRIVATE_GOLDEN" ] \
-        || die "private golden snapshot is not a regular file"
-    [ "$(stat -c '%u:%a:%h' "$PRIVATE_GOLDEN")" = "$(id -u):400:1" ] \
-        || die "private golden snapshot ownership, mode, or link count changed"
-    verify_sha256 "$PRIVATE_GOLDEN" "$SHA256_WIN11_GOLDEN_QCOW2"
+record_golden_identity() {
+    GOLDEN_IDENTITY="$(golden_identity "$GOLDEN")" \
+        || die "cannot record the sealed Windows golden identity"
+    [ "${GOLDEN_IDENTITY##*:}" = "$SHA256_WIN11_GOLDEN_QCOW2" ] \
+        || die "sealed Windows golden does not match its pinned SHA-256"
+}
+
+bind_golden_backing() {
+    [ -n "$RUN_ROOT" ] || die "private run root is not initialized"
+    [ -n "$GOLDEN_IDENTITY" ] || die "sealed Windows golden identity is not recorded"
+    GOLDEN_EDGE="$RUN_ROOT/golden.qcow2"
+    ln -s -- "$GOLDEN" "$GOLDEN_EDGE"
+    [ "$(readlink -- "$GOLDEN_EDGE")" = "$GOLDEN" ] \
+        || die "private golden backing edge does not target the sealed golden"
+    verify_golden_backing
+}
+
+verify_golden_backing() {
+    local current
+    [ -n "$GOLDEN_IDENTITY" ] || die "sealed Windows golden identity is not recorded"
+    current="$(golden_identity "$GOLDEN")" \
+        || die "cannot revalidate the sealed Windows golden"
+    [ "$current" = "$GOLDEN_IDENTITY" ] \
+        || die "sealed Windows golden identity or bytes changed during the transaction"
+    if [ -n "$RUN_ROOT" ]; then
+        [ -n "$GOLDEN_EDGE" ] && [ -L "$GOLDEN_EDGE" ] \
+            && [ "$(readlink -- "$GOLDEN_EDGE")" = "$GOLDEN" ] \
+            || die "private golden backing edge changed"
+    fi
 }
 
 write_manifest() {
@@ -1089,14 +1483,14 @@ create_output_disk() {
 }
 
 prepare_overlay() {
-    verify_private_golden
+    verify_golden_backing
     (
         cd "$CURRENT_PASS_ROOT"
         qemu-img create -f qcow2 -F qcow2 -b ../golden.qcow2 overlay.qcow2 >/dev/null
     )
     windows_helper_guestfish_run \
         --mount "type=bind,source=$CURRENT_PASS_ROOT/overlay.qcow2,target=/authority/pass/overlay.qcow2" \
-        --mount "type=bind,source=$PRIVATE_GOLDEN,target=/authority/golden.qcow2,readonly" \
+        --mount "type=bind,source=$GOLDEN,target=/authority/golden.qcow2,readonly" \
         -- /usr/bin/guestfish --rw -a /authority/pass/overlay.qcow2 run : \
             mount /dev/sda1 / : \
             mkdir-p /EFI/BOOT : \
@@ -1495,10 +1889,30 @@ run_root_cleanup_self_test() {
 }
 
 harness_self_test() {
-    require_cmd python3 sha256sum setsid timeout
+    require_cmd python3 qemu-img sha256sum setsid timeout
     RUN_ROOT="$(mktemp -d /tmp/rustdesk-windows-harness-test.XXXXXXXX)"
     chmod 0700 "$RUN_ROOT"
     record_run_root_identity
+
+    STATE_DIR="$RUN_ROOT/failure-state"
+    mkdir -m 0700 "$STATE_DIR"
+    require_no_retained_windows_runs
+    mkdir -m 0700 "$STATE_DIR/windows-build-retained.fixture"
+    if (require_no_retained_windows_runs) >/dev/null 2>&1; then
+        die "Windows retained-run self-test accepted prior bulk state"
+    fi
+    rmdir -- "$STATE_DIR/windows-build-retained.fixture"
+    acquire_build_lease
+    if (BUILD_LEASE="" BUILD_LEASE_ID="" acquire_build_lease) >/dev/null 2>&1; then
+        die "Windows build-lease self-test accepted a concurrent invocation"
+    fi
+    release_build_lease || die "Windows build-lease self-test could not retire its exact lease"
+    require_available_storage_bytes 1
+    local self_test_available
+    self_test_available="$(available_storage_bytes)"
+    if (require_available_storage_bytes "$((self_test_available + 1))") >/dev/null 2>&1; then
+        die "Windows storage-capacity self-test accepted an unavailable byte budget"
+    fi
 
     assert_disjoint_paths "$RUN_ROOT/state" "state" "$RUN_ROOT/output" "output"
     if (assert_disjoint_paths "$RUN_ROOT/state" "state" "$RUN_ROOT/state" "output") >/dev/null 2>&1; then
@@ -1538,15 +1952,15 @@ harness_self_test() {
     fi
 
     GOLDEN="$RUN_ROOT/golden-source.qcow2"
-    printf 'synthetic golden bytes\n' >"$GOLDEN"
-    chmod 0600 "$GOLDEN"
+    qemu-img create -f qcow2 "$GOLDEN" 1M >/dev/null
+    chmod 0400 "$GOLDEN"
     SHA256_WIN11_GOLDEN_QCOW2="$(sha256sum "$GOLDEN" | awk '{print $1}')"
-    snapshot_golden
-    chmod 0600 "$PRIVATE_GOLDEN"
-    printf 'mutation\n' >>"$PRIVATE_GOLDEN"
-    chmod 0400 "$PRIVATE_GOLDEN"
-    if (verify_private_golden) >/dev/null 2>&1; then
-        die "private golden mutation self-test was accepted"
+    record_golden_identity
+    bind_golden_backing
+    verify_golden_backing
+    chmod 0600 "$GOLDEN"
+    if (verify_golden_backing) >/dev/null 2>&1; then
+        die "sealed golden mutation self-test was accepted"
     fi
 
     local expected_marker='source-verified commit=1111111111111111111111111111111111111111 tree=2222222222222222222222222222222222222222 manifest=3333333333333333333333333333333333333333333333333333333333333333'
@@ -1610,6 +2024,29 @@ harness_self_test() {
     [ -z "$CURRENT_VIRT_PID" ] && [ -z "$CURRENT_VIRT_START" ] \
         || die "owned process-group deadline self-test retained stale identity"
 
+    printf '{"fixture":true}\n' >"$RUN_ROOT/base-source-manifest.json"
+    mkdir -m 0700 "$RUN_ROOT/pass-A" "$RUN_ROOT/pass-A/extract.fixture"
+    printf 'bounded diagnostic\n' >"$RUN_ROOT/pass-A/extract.fixture/build-windows.stderr.txt"
+    printf 'artifact must not survive\n' >"$RUN_ROOT/pass-A/extract.fixture/rustdesk-setup.exe"
+    truncate -s $((FAILURE_EVIDENCE_FILE_MAX_BYTES + 1)) \
+        "$RUN_ROOT/pass-A/extract.fixture/windows-full-peer-viewer.stderr.txt"
+    RUN_ID="11111111-1111-4111-8111-111111111111"
+    RUN_PHASE="self-test"
+    SOURCE_COMMIT="2222222222222222222222222222222222222222"
+    SOURCE_TREE="3333333333333333333333333333333333333333"
+    preserve_failure_evidence \
+        || die "bounded Windows failure-evidence self-test could not publish"
+    local failure_fixture="$STATE_DIR/windows-failure-$RUN_ID"
+    [ -f "$failure_fixture/failure.json" ] \
+        && [ -f "$failure_fixture/pass-A-build-windows.stderr.txt" ] \
+        && [ ! -e "$failure_fixture/pass-A-rustdesk-setup.exe" ] \
+        && [ ! -e "$failure_fixture/pass-A-windows-full-peer-viewer.stderr.txt" ] \
+        || die "bounded Windows failure-evidence self-test inventory is incorrect"
+    local failure_fixture_id
+    failure_fixture_id="$(stat -c '%d:%i' -- "$failure_fixture")"
+    remove_private_root_exact "$failure_fixture" "$failure_fixture_id" \
+        || die "bounded Windows failure-evidence self-test could not retire its fixture"
+
     run_root_cleanup_self_test
     RUN_COMPLETE=1
     printf 'build-windows-vm self-test: ok\n'
@@ -1617,27 +2054,26 @@ harness_self_test() {
 
 main() {
     windows_helper_authority_open
+    RUN_PHASE="preflight"
     preflight
     RUN_ID="$(</proc/sys/kernel/random/uuid)"
     assert_uuid "$RUN_ID"
     RUN_ROOT="$(mktemp -d "$STATE_DIR/windows-build-$RUN_ID.XXXXXXXX")"
     record_run_root_identity
     assert_safe_path "$RUN_ROOT" "private Windows run state"
-    snapshot_golden
-    if [ -z "$ONLINE_SNAPSHOT_PARENT" ]; then
-        ONLINE_SNAPSHOT_PARENT="$RUN_ROOT/online-snapshot"
-        create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
-    fi
-    ONLINE_DIR="$ONLINE_SNAPSHOT_PARENT/online"
-    export ONLINE_DIR
+    bind_golden_backing
     verify_active_online_snapshot
+    RUN_PHASE="source-snapshot"
     materialize_source_snapshot
+    RUN_PHASE="offline-media"
     build_offline_media
+    RUN_PHASE="pass-A"
     run_pass A
-    verify_private_golden
+    verify_golden_backing
     if [ "${DOUBLE_BUILD:-1}" = "1" ]; then
+        RUN_PHASE="pass-B"
         run_pass B
-        verify_private_golden
+        verify_golden_backing
         local exe_a exe_b msi_a msi_b
         exe_a="$(awk '{print $1}' "$RUN_ROOT/pass-A/result/rustdesk-setup.exe.sha256")"
         exe_b="$(awk '{print $1}' "$RUN_ROOT/pass-B/result/rustdesk-setup.exe.sha256")"
@@ -1649,9 +2085,10 @@ main() {
         die "DOUBLE_BUILD must be 0 or 1"
     fi
     verify_active_online_snapshot
-    verify_private_golden
+    verify_golden_backing
     windows_helper_authority_close \
         || die "Windows helper authority could not retire before artifact publication"
+    RUN_PHASE="publication"
     publish_result "$RUN_ROOT/pass-A/result"
     RUN_COMPLETE=1
     log "Windows artifacts complete: $OUT_DIR"

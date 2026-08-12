@@ -25,6 +25,7 @@ FILES = {
     "portable_cargo": "libs/portable/Cargo.toml",
     "resource": "res/windows_resource.rs",
     "host": "scripts/build-windows-vm.sh",
+    "provision": "scripts/provision-windows-vm.sh",
     "lib": "scripts/lib.sh",
     "runtime": "scripts/windows-helper-runtime.sh",
     "closure": "scripts/verify-private-tree-closure.py",
@@ -317,6 +318,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     portable_cargo = sources["portable_cargo"]
     resource = sources["resource"]
     host = sources["host"]
+    provision = sources["provision"]
     lib = sources["lib"]
     runtime = sources["runtime"]
     closure = sources["closure"]
@@ -612,8 +614,10 @@ def validate_sources(sources: dict[str, str]) -> None:
     wait_for_domain = shell_function(host, "wait_for_domain")
     path_disjointness = shell_function(host, "assert_disjoint_paths")
     preflight = shell_function(host, "preflight")
-    snapshot_golden = shell_function(host, "snapshot_golden")
-    verify_private_golden = shell_function(host, "verify_private_golden")
+    golden_identity = shell_function(host, "golden_identity")
+    record_golden_identity = shell_function(host, "record_golden_identity")
+    bind_golden_backing = shell_function(host, "bind_golden_backing")
+    verify_golden_backing = shell_function(host, "verify_golden_backing")
     write_manifest = shell_function(host, "write_manifest")
     write_offline_manifest = shell_function(host, "write_offline_manifest")
     verify_wix_nuget_packages = shell_function(host, "verify_wix_nuget_packages")
@@ -628,6 +632,25 @@ def validate_sources(sources: dict[str, str]) -> None:
     completed_run_root_removal = shell_function(host, "remove_completed_run_root")
     publish_result = shell_function(host, "publish_result")
     cleanup = shell_function(host, "cleanup")
+    acquire_build_lease = shell_function(host, "acquire_build_lease")
+    release_build_lease = shell_function(host, "release_build_lease")
+    require_no_retained_windows_runs = shell_function(
+        host, "require_no_retained_windows_runs"
+    )
+    require_storage_capacity = shell_function(host, "require_storage_capacity")
+    preserve_failure_evidence = shell_function(host, "preserve_failure_evidence")
+    copy_failure_evidence_file = shell_function(host, "copy_failure_evidence_file")
+    remove_failure_evidence_transaction = shell_function(
+        host, "remove_failure_evidence_transaction"
+    )
+    select_shared_online_snapshot = shell_function(
+        host, "select_shared_online_snapshot"
+    )
+    materialize_shared_online_snapshot = shell_function(
+        host, "materialize_shared_online_snapshot"
+    )
+    seal_golden_read_only = shell_function(provision, "seal_golden_read_only")
+    provision_build_golden = shell_function(provision, "build_golden")
     harness_self_test = shell_function(host, "harness_self_test")
     run_root_cleanup_self_test = shell_function(host, "run_root_cleanup_self_test")
 
@@ -639,7 +662,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     require(
         preflight,
         "require_cmd qemu-img virt-install virsh xorriso git python3 realpath "
-        "sha256sum sha512sum timeout setsid awk",
+        "sha256sum sha512sum timeout setsid awk find",
         "exact Windows domain lifecycle command preflight",
     )
     require(host, 'RUN_ROOT="$(mktemp -d "$STATE_DIR/windows-build-$RUN_ID.XXXXXXXX")"', "unique private run state")
@@ -962,9 +985,13 @@ def validate_sources(sources: dict[str, str]) -> None:
             "stop_owned_process",
             "stop_and_undefine_owned_domain",
             "windows_helper_authority_close",
+            "preserve_failure_evidence",
+            "remove_failure_evidence_transaction",
             "remove_completed_run_root",
+            "remove_online_snapshot_transaction",
+            "release_build_lease",
         ),
-        "process-before-domain-before-helper-before-state terminal cleanup",
+        "process-before-domain-before-helper-before-bounded-evidence-before-bulk-state terminal cleanup",
     )
     require(
         cleanup,
@@ -973,8 +1000,23 @@ def validate_sources(sources: dict[str, str]) -> None:
     )
     require(
         cleanup,
-        '[ "$RUN_COMPLETE" = 1 ] && [ "$CLEANUP_FAILED" = 0 ]',
-        "completed clean transaction before run-state cleanup",
+        '[ "$CLEANUP_FAILED" = 0 ] && [ "$RUN_COMPLETE" != 1 ] && [ -n "$RUN_ROOT" ]',
+        "reconciled failure before bounded evidence collection",
+    )
+    require(
+        cleanup,
+        '[ "$CLEANUP_FAILED" = 0 ] && [ -n "$RUN_ROOT" ]',
+        "every reconciled outcome before bulk run-state retirement",
+    )
+    require(
+        cleanup,
+        "bounded Windows failure evidence could not be retained; bulk run state will still retire",
+        "diagnostic failure cannot authorize unbounded bulk retention",
+    )
+    require(
+        cleanup,
+        "retaining unreconciled Windows harness state at $RUN_ROOT; the persistent lease blocks another run",
+        "only unreconciled state may retain its bulk run root",
     )
     require(
         cleanup,
@@ -987,6 +1029,82 @@ def validate_sources(sources: dict[str, str]) -> None:
     ):
         if forbidden in cleanup:
             raise VerificationError(f"forbidden {description}: {forbidden}")
+    for literal, description in (
+        ('BUILD_LEASE="$STATE_DIR/windows-build.lease"', "fixed private build lease"),
+        ('mkdir -m 0700 -- "$BUILD_LEASE"', "atomic build-lease acquisition"),
+        ('--remove-empty-private-root "$BUILD_LEASE"', "empty exact-identity build-lease retirement"),
+        ("-name 'windows-build-*'", "prior bulk run-state detection"),
+        ("-name '.windows-failure-*'", "prior bounded-evidence transaction detection"),
+        ("-name '.windows-online-snapshot-*'", "prior shared-snapshot transaction detection"),
+        ("prior Windows build state or transaction must be explicitly reconciled", "prior run fail-closed diagnostic"),
+    ):
+        source = acquire_build_lease if literal.startswith("BUILD_LEASE=") or "mkdir" in literal else (
+            release_build_lease if "remove-empty" in literal else require_no_retained_windows_runs
+        )
+        require(source, literal, description)
+    require_order(
+        preflight,
+        ("acquire_build_lease", "require_no_retained_windows_runs", "require_storage_capacity"),
+        "exclusive lease and stale-state refusal before capacity-authorized allocation",
+    )
+    for literal, description in (
+        ("FAILURE_EVIDENCE_MAX_BYTES=$((64 * 1024 * 1024))", "64-MiB failure-evidence aggregate cap"),
+        ("FAILURE_EVIDENCE_FILE_MAX_BYTES=$((16 * 1024 * 1024))", "16-MiB failure-evidence file cap"),
+        ("RUN_STORAGE_FIXED_ALLOWANCE_BYTES=$((24 * 1024 * 1024 * 1024))", "fixed active-run storage allowance"),
+        ("RUN_STORAGE_EMERGENCY_RESERVE_BYTES=$((32 * 1024 * 1024 * 1024))", "post-allocation emergency reserve"),
+        ("SHARED_ONLINE_SNAPSHOT_ALLOWANCE_BYTES=$((48 * 1024 * 1024 * 1024))", "one-time shared-snapshot allowance"),
+    ):
+        require(host, literal, description)
+    for literal, description in (
+        ("stats.f_bavail * stats.f_frsize", "unprivileged available-byte calculation"),
+        ("virtual + RUN_STORAGE_FIXED_ALLOWANCE_BYTES", "golden virtual-size capacity component"),
+        ("+ RUN_STORAGE_EMERGENCY_RESERVE_BYTES + snapshot_allowance", "emergency/shared-snapshot capacity components"),
+        ('[ "$available" -ge "$required" ]', "available capacity floor"),
+    ):
+        require(host, literal, description)
+    for literal, description in (
+        ("before.st_size > file_limit or before.st_size > remaining", "per-file and aggregate diagnostic size admission"),
+        ("os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC", "exclusive bounded diagnostic output"),
+        ("failure-evidence source identity changed during copy", "stable diagnostic source identity"),
+        ("os.fchmod(output, 0o400)", "read-only diagnostic output"),
+    ):
+        require(copy_failure_evidence_file, literal, description)
+    for literal, description in (
+        ('pending="$(mktemp -d "$STATE_DIR/.windows-failure-$RUN_ID.XXXXXXXX")"', "private failure-evidence transaction"),
+        ('final="$STATE_DIR/windows-failure-$RUN_ID"', "run-ID-bound bounded failure evidence"),
+        ('"bulk_run_state_retirement_required": True', "failure receipt requires bulk retirement"),
+        ('mv -T -- "$pending" "$final"', "bounded failure-evidence publication"),
+    ):
+        require(preserve_failure_evidence, literal, description)
+    for forbidden, description in (
+        ("rustdesk-setup.exe", "release setup artifact in failure retention allowlist"),
+        ("rustdesk.msi", "release MSI artifact in failure retention allowlist"),
+        ("overlay.qcow2", "VM overlay in failure retention allowlist"),
+        ("output.img", "VM output disk in failure retention allowlist"),
+        ("offline.iso", "offline ISO in failure retention allowlist"),
+    ):
+        reject(preserve_failure_evidence, re.escape(forbidden), description)
+    for literal, description in (
+        ('FAILURE_EVIDENCE_TRANSACTION="$pending"', "retained failure-evidence transaction path"),
+        ('FAILURE_EVIDENCE_TRANSACTION_ID="$pending_id"', "retained failure-evidence transaction identity"),
+        (
+            '"$FAILURE_EVIDENCE_TRANSACTION" "$FAILURE_EVIDENCE_TRANSACTION_ID"',
+            "identity-bound failed evidence-transaction cleanup",
+        ),
+    ):
+        source = preserve_failure_evidence if "pending" in literal else remove_failure_evidence_transaction
+        require(source, literal, description)
+    require_order(
+        cleanup,
+        (
+            "preserve_failure_evidence",
+            "remove_failure_evidence_transaction",
+            "remove_completed_run_root",
+            'if [ "$bounded_transaction_failed" != 0 ]; then',
+            "remove_online_snapshot_transaction",
+        ),
+        "bounded evidence cleanup cannot prevent bulk run-state retirement",
+    )
     for literal, description in (
         ('resolved="$(/usr/bin/readlink -f -- "$RUN_ROOT" 2>/dev/null)"',
          "canonical run-root proof"),
@@ -1205,6 +1323,7 @@ def validate_sources(sources: dict[str, str]) -> None:
         "R-S11dt hardening-ledger disposition",
     )
     publication_requirement = html_requirement(requirements, "R-S11du")
+    storage_requirement = html_requirement(requirements, "R-S11gl")
     for literal, description in (
         (
             "Windows result publication is exact-object, same-filesystem, no-clobber, durable, and authority-terminal",
@@ -1235,63 +1354,102 @@ def validate_sources(sources: dict[str, str]) -> None:
         "R-S11du/R-S11e-139 — Windows result publication is exact-object and authority-terminal",
         "R-S11du hardening-ledger disposition",
     )
+    for literal, description in (
+        ("fixed current-principal mode-0700 directory lease", "normative singleton lease"),
+        ("per-run reflink, full golden copy, or copy fallback is forbidden", "normative zero-copy golden"),
+        ("at most one private shared snapshot named by its closure digest", "normative shared online snapshot"),
+        ("32-GiB emergency reserve", "normative storage reserve"),
+        ("no file larger than 16 MiB and no more than 64 MiB", "normative bounded failure evidence"),
+        ("failure, timeout, and signal", "normative failure bulk-state retirement"),
+        ("does not authorize cleanup of pre-existing roots", "normative historical-state preservation"),
+    ):
+        require(storage_requirement, literal, description)
+    require(requirements, "<tr><td>347</td>", "Appendix C #347 disposition")
+    require(
+        hardening,
+        "R-S11gl/R-S11e-224 bounded Windows harness storage lifecycle",
+        "R-S11gl hardening-ledger disposition",
+    )
 
-    require(preflight, '[ -f "$GOLDEN" ] && [ ! -L "$GOLDEN" ]', "regular golden source")
-    require(preflight, 'verify_sha256 "$GOLDEN" "$SHA256_WIN11_GOLDEN_QCOW2"', "golden pre-snapshot hash")
-    require(snapshot_golden, 'PRIVATE_GOLDEN="$RUN_ROOT/golden.qcow2"', "private golden path")
-    require(snapshot_golden, "os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC", "exclusive private golden creation")
-    require(snapshot_golden, "before = os.fstat(source_fd)", "golden pre-copy state")
+    require(preflight, "record_golden_identity", "sealed golden identity preflight")
+    for literal, description in (
+        ("os.O_RDONLY | os.O_CLOEXEC", "read-only golden descriptor"),
+        ("stat.S_IMODE(before.st_mode) != 0o400", "exact read-only golden mode"),
+        ("before.st_uid != uid", "golden owner proof"),
+        ("before.st_gid != gid", "golden group proof"),
+        ("before.st_nlink != 1", "golden single-link proof"),
+        ("st_mtime_ns", "golden nanosecond modification identity"),
+        ("st_ctime_ns", "golden nanosecond metadata identity"),
+        ("digest.hexdigest()", "golden complete-byte identity"),
+        ("golden backing changed while its identity was sampled", "golden stable-read proof"),
+    ):
+        require(golden_identity, literal, description)
     require(
-        snapshot_golden,
-        "not stat.S_ISREG(before.st_mode) or before.st_uid != uid or before.st_nlink != 1",
-        "golden source ownership/type/link proof",
+        record_golden_identity,
+        '[ "${GOLDEN_IDENTITY##*:}" = "$SHA256_WIN11_GOLDEN_QCOW2" ]',
+        "golden pinned digest comparison",
     )
+    for literal, description in (
+        ('GOLDEN_EDGE="$RUN_ROOT/golden.qcow2"', "per-run golden path edge"),
+        ('ln -s -- "$GOLDEN" "$GOLDEN_EDGE"', "zero-copy golden edge"),
+        ('[ "$(readlink -- "$GOLDEN_EDGE")" = "$GOLDEN" ]', "exact golden edge target"),
+    ):
+        require(bind_golden_backing, literal, description)
     require(
-        snapshot_golden,
-        "stat.S_IMODE(before.st_mode) & 0o022",
-        "golden source group/world write rejection",
+        verify_golden_backing,
+        '[ "$current" = "$GOLDEN_IDENTITY" ]',
+        "stable golden identity revalidation",
     )
-    require(snapshot_golden, "after = os.fstat(source_fd)", "golden post-copy state")
+    for forbidden, description in (
+        ("PRIVATE_GOLDEN", "per-run full golden copy authority"),
+        ("FICLONE", "per-run golden reflink/copy fallback"),
+        ("short write while copying golden image", "per-run golden byte-copy fallback"),
+    ):
+        reject(host, re.escape(forbidden), description)
+    require(prepare_overlay, "verify_golden_backing", "pre-overlay golden identity validation")
     require(
-        snapshot_golden,
-        "if any(getattr(before, field) != getattr(after, field) for field in stable_fields):",
-        "golden source stability proof",
+        prepare_overlay,
+        "qemu-img create -f qcow2 -F qcow2 -b ../golden.qcow2 overlay.qcow2",
+        "throwaway CoW overlay over the sealed golden edge",
     )
-    require(snapshot_golden, "if digest.hexdigest() != expected:", "private golden creation hash proof")
-    require(
-        snapshot_golden,
-        "not stat.S_ISREG(copied.st_mode) or copied.st_uid != uid",
-        "private golden ownership/type proof",
-    )
-    require(snapshot_golden, "copied.st_nlink != 1", "private golden link-count proof")
-    require(snapshot_golden, "os.fchmod(destination_fd, 0o400)", "immutable private golden mode")
-    require(snapshot_golden, "verify_private_golden", "private golden snapshot postcondition")
-    require(
-        verify_private_golden,
-        '"$(stat -c \'%u:%a:%h\' "$PRIVATE_GOLDEN")" = "$(id -u):400:1"',
-        "private golden ownership/mode/link proof",
-    )
-    require(
-        verify_private_golden,
-        'verify_sha256 "$PRIVATE_GOLDEN" "$SHA256_WIN11_GOLDEN_QCOW2"',
-        "private golden rehash",
-    )
-    require(prepare_overlay, "verify_private_golden", "pre-overlay golden hash validation")
-    require_count(host_main, "verify_private_golden", 3, "post-pass/pre-publication golden validation")
+    require_count(host_main, "verify_golden_backing", 3, "post-pass/pre-publication golden validation")
     require_order(
         host_main,
         (
-            "snapshot_golden",
+            "bind_golden_backing",
             "run_pass A",
-            "verify_private_golden",
+            "verify_golden_backing",
             "run_pass B",
-            "verify_private_golden",
+            "verify_golden_backing",
             "verify_active_online_snapshot",
-            "verify_private_golden",
+            "verify_golden_backing",
             "windows_helper_authority_close",
             'publish_result "$RUN_ROOT/pass-A/result"',
         ),
-        "golden validation and helper retirement before publication",
+        "zero-copy golden validation and helper retirement before publication",
+    )
+    for literal, description in (
+        ("os.O_RDONLY | os.O_CLOEXEC", "provision-time no-follow golden descriptor"),
+        ("before.st_uid != uid", "provision-time golden owner proof"),
+        ("before.st_gid != gid", "provision-time golden group proof"),
+        ("before.st_nlink != 1", "provision-time golden single-link proof"),
+        ("stat.S_IMODE(before.st_mode) not in (0o400, 0o600)", "provision-time seal input mode"),
+        ("digest.hexdigest() != expected", "provision-time pre-seal pinned digest"),
+        ("golden identity changed while its pre-seal digest was sampled", "provision-time stable pre-seal read"),
+        ("os.fchmod(descriptor, 0o400)", "provision-time exact read-only seal"),
+        ("after.st_dev != before.st_dev", "provision-time golden device preservation"),
+        ("after.st_ino != before.st_ino", "provision-time golden inode preservation"),
+        ("after.st_size != before.st_size", "provision-time golden size preservation"),
+        ("after.st_mtime_ns != before.st_mtime_ns", "provision-time golden content-time preservation"),
+        ("sealed_digest.hexdigest() != expected", "provision-time post-seal pinned digest"),
+        ("os.fsync(directory)", "durable provision-time golden seal"),
+    ):
+        require(seal_golden_read_only, literal, description)
+    require_count(
+        provision_build_golden,
+        "seal_golden_read_only",
+        2,
+        "existing and newly provisioned golden sealing",
     )
     require(
         host,
@@ -1418,19 +1576,38 @@ def validate_sources(sources: dict[str, str]) -> None:
     )
     require(host, 'require_pinned_builder_image deb-builder "$DEB_BUILDER_IMAGE_ID"', "pinned FRB builder image")
     require(
-        host_main,
-        'ONLINE_SNAPSHOT_PARENT="$RUN_ROOT/online-snapshot"',
-        "private per-run online snapshot path",
+        select_shared_online_snapshot,
+        'ONLINE_SNAPSHOT_PARENT="$STATE_DIR/windows-online-snapshot-$SHA256_ONLINE_CLOSURE_V1"',
+        "content-addressed shared online snapshot path",
     )
     require(
-        host_main,
-        'create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
-        "private online snapshot creation",
+        select_shared_online_snapshot,
+        'verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
+        "shared online snapshot reuse verification",
     )
+    for literal, description in (
+        (
+            '"$STATE_DIR/.windows-online-snapshot-$SHA256_ONLINE_CLOSURE_V1.XXXXXXXX"',
+            "private shared-snapshot transaction",
+        ),
+        ('create_private_online_snapshot "$candidate"', "shared online snapshot creation"),
+        ('verify_private_online_snapshot "$candidate"', "pre-publication shared snapshot verification"),
+        ("renameat2(-100, os.fsencode(source), -100, os.fsencode(destination), 1)", "shared snapshot no-clobber publication"),
+        ('"$ONLINE_SNAPSHOT_TRANSACTION" "$ONLINE_SNAPSHOT_TRANSACTION_ID"', "identity-bound shared-snapshot transaction retirement"),
+        ('verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"', "published shared snapshot verification"),
+    ):
+        require(materialize_shared_online_snapshot, literal, description)
     require(
         shell_function(host, "verify_active_online_snapshot"),
         'verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
         "active online snapshot postcondition",
+    )
+    reject(host, re.escape('ONLINE_SNAPSHOT_PARENT="$RUN_ROOT/online-snapshot"'), "per-run bulk online snapshot")
+    require_count(
+        host_main,
+        "verify_active_online_snapshot",
+        2,
+        "pre-use and pre-publication shared online snapshot verification",
     )
     require(host, 'FRB_IMAGE_ID="$DEB_BUILDER_IMAGE"', "immutable FRB image handoff")
     require(build_pass_media, '--online-root "$ONLINE_DIR"', "private FRB online handoff")
@@ -3224,12 +3401,10 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
         (
             "helper retirement before publication",
             "host",
-            "windows_helper_authority_close \\\n"
-            '        || die "Windows helper authority could not retire before artifact publication"\n'
-            '    publish_result "$RUN_ROOT/pass-A/result"',
+            "    windows_helper_authority_close \\\n"
+            '        || die "Windows helper authority could not retire before artifact publication"',
             "retire_windows_helper_authority \\\n"
-            '        || die "Windows helper authority could not retire before artifact publication"\n'
-            '    publish_result "$RUN_ROOT/pass-A/result"',
+            '        || die "Windows helper authority could not retire before artifact publication"',
         ),
         (
             "isolated Windows publication prepare helper",
@@ -3400,6 +3575,36 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "R-S11du/R-S11e-139 — Windows result publication is pathname-owned",
         ),
         (
+            "R-S11gl requirement",
+            "requirements",
+            '<span class="id">R-S11gl</span>',
+            '<span class="id">R-S11gl-disabled</span>',
+        ),
+        (
+            "normative zero-copy Windows golden",
+            "requirements",
+            "A per-run reflink, full golden copy, or copy fallback is forbidden",
+            "A per-run full golden copy is permitted",
+        ),
+        (
+            "normative bounded Windows failure evidence",
+            "requirements",
+            "no file larger than 16 MiB and no more than 64 MiB",
+            "no file larger than 160 MiB and no more than 640 MiB",
+        ),
+        (
+            "Appendix C #347 disposition",
+            "requirements",
+            "<tr><td>347</td>",
+            "<tr><td>347-disabled</td>",
+        ),
+        (
+            "R-S11gl hardening-ledger disposition",
+            "hardening",
+            "R-S11gl/R-S11e-224 bounded Windows harness storage lifecycle",
+            "R-S11gl/R-S11e-224 unbounded Windows harness storage lifecycle",
+        ),
+        (
             "identity-bound run-root removal",
             "host",
             '--remove-private-root "$1" --expected-identity "$2"',
@@ -3537,46 +3742,123 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             'die "Windows build timed out"',
         ),
         ("private state", "host", "windows-build-$RUN_ID.XXXXXXXX", "windows-build-fixed"),
+        (
+            "atomic Windows build lease",
+            "host",
+            'mkdir -m 0700 -- "$BUILD_LEASE"',
+            'mkdir -p -m 0700 -- "$BUILD_LEASE"',
+        ),
+        (
+            "prior bulk run-state refusal",
+            "host",
+            "-name 'windows-build-*'",
+            "-name 'ignored-windows-build-*'",
+        ),
+        (
+            "prior failure-transaction refusal",
+            "host",
+            "-name '.windows-failure-*'",
+            "-name '.ignored-windows-failure-*'",
+        ),
+        (
+            "failure-evidence aggregate cap",
+            "host",
+            "FAILURE_EVIDENCE_MAX_BYTES=$((64 * 1024 * 1024))",
+            "FAILURE_EVIDENCE_MAX_BYTES=$((640 * 1024 * 1024))",
+        ),
+        (
+            "failure-evidence file cap",
+            "host",
+            "FAILURE_EVIDENCE_FILE_MAX_BYTES=$((16 * 1024 * 1024))",
+            "FAILURE_EVIDENCE_FILE_MAX_BYTES=$((160 * 1024 * 1024))",
+        ),
+        (
+            "Windows storage emergency reserve",
+            "host",
+            "RUN_STORAGE_EMERGENCY_RESERVE_BYTES=$((32 * 1024 * 1024 * 1024))",
+            "RUN_STORAGE_EMERGENCY_RESERVE_BYTES=0",
+        ),
+        (
+            "Windows available-capacity floor",
+            "host",
+            '[ "$available" -ge "$required" ]',
+            '[ "$available" -le "$required" ]',
+        ),
+        (
+            "reconciled failure bulk retirement",
+            "host",
+            '[ "$CLEANUP_FAILED" = 0 ] && [ -n "$RUN_ROOT" ]; then',
+            '[ "$CLEANUP_FAILED" = 0 ] && [ "$RUN_COMPLETE" = 1 ] && [ -n "$RUN_ROOT" ]; then',
+        ),
+        (
+            "bounded evidence transaction retirement",
+            "host",
+            "if ! remove_failure_evidence_transaction; then",
+            "if false; then # bounded transaction retained",
+        ),
+        (
+            "failure evidence requires bulk retirement",
+            "host",
+            '"bulk_run_state_retirement_required": True',
+            '"bulk_run_state_retirement_required": False',
+        ),
         ("zombie reap", "host", '[ "$state" != Z ] && [ "$state" != X ]', "true"),
         (
-            "golden exclusive snapshot",
+            "sealed golden exact read-only mode",
             "host",
-            "os.O_RDWR | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC",
-            "os.O_RDWR | os.O_CREAT | os.O_TRUNC | os.O_CLOEXEC",
+            "stat.S_IMODE(before.st_mode) != 0o400",
+            "stat.S_IMODE(before.st_mode) != 0o600",
         ),
         (
-            "golden source ownership",
+            "sealed golden stable identity",
             "host",
-            "not stat.S_ISREG(before.st_mode) or before.st_uid != uid or before.st_nlink != 1",
-            "not stat.S_ISREG(before.st_mode)",
+            'raise SystemExit("golden backing changed while its identity was sampled")',
+            'raise SystemExit("golden backing stability ignored")',
         ),
         (
-            "golden source stability",
+            "sealed golden pinned digest",
             "host",
-            "if any(getattr(before, field) != getattr(after, field) for field in stable_fields):",
-            "if all(getattr(before, field) != getattr(after, field) for field in stable_fields):",
+            '[ "${GOLDEN_IDENTITY##*:}" = "$SHA256_WIN11_GOLDEN_QCOW2" ]',
+            '[ -n "${GOLDEN_IDENTITY##*:}" ]',
         ),
         (
-            "golden snapshot hash",
+            "zero-copy sealed golden edge",
             "host",
-            "if digest.hexdigest() != expected:",
-            "if not digest.hexdigest():",
+            'ln -s -- "$GOLDEN" "$GOLDEN_EDGE"',
+            'cp -- "$GOLDEN" "$GOLDEN_EDGE"',
         ),
-        ("golden immutable mode", "host", "os.fchmod(destination_fd, 0o400)", "os.fchmod(destination_fd, 0o600)"),
         (
-            "golden pre-overlay rehash",
+            "golden pre-overlay revalidation",
             "host",
-            "prepare_overlay() {\n    verify_private_golden",
+            "prepare_overlay() {\n    verify_golden_backing",
             "prepare_overlay() {\n    :",
         ),
         (
-            "golden pre-publication rehash",
+            "golden pre-publication revalidation",
             "host",
             "verify_active_online_snapshot\n"
-            "    verify_private_golden\n"
+            "    verify_golden_backing\n"
             "    windows_helper_authority_close",
             "verify_active_online_snapshot\n"
             "    windows_helper_authority_close",
+        ),
+        (
+            "provisioned golden read-only seal",
+            "provision",
+            "os.fchmod(descriptor, 0o400)",
+            "os.fchmod(descriptor, 0o600)",
+        ),
+        (
+            "provisioned golden post-seal digest",
+            "provision",
+            "sealed_digest.hexdigest() != expected",
+            "sealed_digest.hexdigest() == expected",
+        ),
+        (
+            "provision flow invokes golden seal",
+            "provision",
+            "            seal_golden_read_only\n",
+            "            true # golden seal omitted\n",
         ),
         (
             "worktree capture",
@@ -3715,10 +3997,22 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "/wix-nuget-packages=/online/pub-cache",
         ),
         (
-            "online snapshot",
+            "content-addressed shared online snapshot",
             "host",
+            'ONLINE_SNAPSHOT_PARENT="$STATE_DIR/windows-online-snapshot-$SHA256_ONLINE_CLOSURE_V1"',
+            'ONLINE_SNAPSHOT_PARENT="$RUN_ROOT/online-snapshot"',
+        ),
+        (
+            "shared online snapshot candidate",
+            "host",
+            'create_private_online_snapshot "$candidate"',
             'create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
-            "require_online_complete",
+        ),
+        (
+            "shared online snapshot no-clobber publication",
+            "host",
+            "renameat2(-100, os.fsencode(source), -100, os.fsencode(destination), 1)",
+            "renameat2(-100, os.fsencode(source), -100, os.fsencode(destination), 0)",
         ),
         (
             "offline link materialization",

@@ -24104,12 +24104,72 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   long reconnect/resource/performance soak, cold R-B2 equality, independent reproduction, and external review remain
   explicit stop-ship work.
 
+### R-S11gl/R-S11e-224 bounded Windows harness storage lifecycle (2026-08-12)
+
+- The user's storage concern was correct. Read-only accounting measured `.harness-state` at exactly
+  `1,657,673,850,880` bytes. Sixteen retained `windows-build-*` roots created between 2026-08-10 and
+  2026-08-12 accounted for `1,152,846,229,504` bytes. Individual roots occupied roughly 48–98 GB:
+  each contained an implicit approximately 35-GiB private golden copy, most contained an 8–17-GB pass-A tree,
+  and many contained an approximately 38-GiB private online snapshot. The implementation attempted a reflink
+  but fell back to a complete golden byte copy; every non-green exit then preserved the complete private run
+  root. Repeated negative native attempts therefore accumulated more than a terabyte. This is confirmed harness
+  lifecycle breakage, not speculation.
+- The attribution is confined. Docker accounting found 246.7 GB of images, 178.9 GB of container writable
+  layers, 79.96 GB of volumes, and 275.9 GB of build cache, but the largest 151-GB writable layer belonged to the
+  user's running `haggai_computer` container and is not attributed to this Windows harness. No Docker object was
+  removed. The storage audit did not inspect or mutate host RustDesk, services, configuration, firewall, routing,
+  or network state and did not use root or sudo. No public listener or compromise evidence follows from these
+  measurements.
+- The outer harness now owns exactly one fixed private directory lease. It refuses a second invocation and
+  refuses allocation while any retained `windows-build-*`, unfinished `.windows-failure-*`, or unfinished
+  `.windows-online-snapshot-*` transaction exists. Consequently the 16 historical roots still present on this
+  host make a future main-path invocation fail before it creates another run root. They have not been auto-deleted
+  and remain subject to a separate explicit operator decision and identity-bound reconciliation.
+- The golden lifecycle is zero-copy. Provisioning seals only the same current-principal, single-link, pinned and
+  receipt-complete qcow2 inode from mode 0600/0400 to exact mode 0400. A build records stable device/inode/mode/
+  owner/group/link/size/nanosecond-time metadata plus a full SHA-256 through a no-follow read. Its run root contains
+  only a symbolic edge to that canonical read-only image, and each disposable overlay names that relative edge as
+  its CoW backing. Complete identity is revalidated before overlay creation, between passes, and before publication;
+  the former reflink/full-copy fallback is absent. The currently retained canonical golden was not chmodded by this
+  correction; an explicitly invoked future provisioning preflight owns that seal transition.
+- The canonical 38-GB-class online closure now has at most one content-addressed shared snapshot under the state
+  directory. An existing snapshot is completely verified on selection and again before/after use. Creation occurs
+  under the build lease inside an identity-bound private transaction, verifies the candidate, publishes with Linux
+  `renameat2(RENAME_NOREPLACE)`, fsyncs the state namespace, exact-removes the transaction, and verifies the published
+  tree. The per-run online snapshot path is absent.
+- Before snapshot or run-root allocation, the harness uses unprivileged `statvfs` available bytes and requires the
+  golden virtual size plus 24 GiB of fixed run/media/output allowance, 48 GiB when the shared snapshot must be
+  created, and a final 32-GiB emergency reserve. This makes low-space execution a fail-closed preflight condition
+  rather than a mid-build host exhaustion event.
+- Reconciled cleanup no longer treats failure as authority for bulk retention. After the exact owned process group,
+  UUID-bound session domain, and helper authority are conclusively retired, every success, failure, timeout, or
+  signal exact-removes the private run root. A failed run may transactionally retain only an explicit manifest,
+  domain/source-identity, build/progress, and peer-probe diagnostic allowlist, each no-follow copied as a stable
+  current-UID single-link regular file. Each file is capped at 16 MiB and aggregate copied diagnostics at 64 MiB;
+  setup/MSI artifacts, overlays, golden/output disks, ISO/source media, and online snapshots are excluded. A
+  diagnostic failure cannot preserve the bulk tree. Its unfinished bounded transaction is exact-retired first; if
+  that retirement is inconclusive, bulk cleanup still proceeds and the persistent lease blocks another invocation.
+  Only inconclusive process/domain/helper cleanup or exact-object removal may retain bulk state.
+- Confined verification is green: Bash parsing and Python compilation pass; the static verifier passes; and the
+  pinned immutable Windows-helper image ran networkless, read-only, capability-free, no-new-privileges, numeric-
+  nonroot verification that rejected all 286 deliberate mutations and passed all seven bounded behavioral suites.
+  The behavior suite uses only disposable tmpfs fixtures and a synthetic owned process group. It did not invoke the
+  builder main path, create a VM, start RustDesk, or create a network listener.
+- No fresh R-S11gk native result is claimed. The interrupted retry was stopped and its exact newly created disposable
+  state was retired before the later measure-only boundary; after that boundary no retained data was deleted. The 16
+  historical bulk roots and the separately retained small failure evidence remain untouched. A real native retry is
+  intentionally blocked until the operator separately authorizes historical-state reconciliation and explicitly
+  invokes provisioning to seal the canonical golden. The display-focus/session investigation, deployed weeks-old
+  artifact behavior, Android persistent-service task-swipe/reopen/Force-Stop recovery, cross-version behavior,
+  sustained performance/resource soak, cold release equality, independent reproduction, and external review remain
+  explicit stop-ship obligations.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-4f686ebc8852f3c7622b196e893974d2add2e794bb6d43134448dea8e7584073  requirements.html
+8cd663e265ef869315e0e3cf6bc71df5149181bbc50bc1470eab5b8c99b3e94e  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -24163,3 +24223,4 @@ The same identity additionally binds R-S11gg and Appendix C #342.
 The same identity additionally binds R-S11gh and Appendix C #343.
 The same identity additionally binds R-S11gj and Appendix C #345.
 The same identity additionally binds R-S11gk and Appendix C #346.
+The same identity additionally binds R-S11gl and Appendix C #347.

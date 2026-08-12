@@ -424,6 +424,85 @@ stop_and_undefine_owned_domain() {
     fi
 }
 
+seal_golden_read_only() {
+    python3 - "$GOLDEN" "$(id -u)" "$(id -g)" "$SHA256_WIN11_GOLDEN_QCOW2" <<'PY'
+import hashlib
+import os
+import stat
+import sys
+
+path, uid_text, gid_text, expected = sys.argv[1:]
+uid = int(uid_text)
+gid = int(gid_text)
+flags = os.O_RDONLY | os.O_CLOEXEC
+if hasattr(os, "O_NOFOLLOW"):
+    flags |= os.O_NOFOLLOW
+descriptor = os.open(path, flags)
+try:
+    before = os.fstat(descriptor)
+    if (
+        not stat.S_ISREG(before.st_mode)
+        or before.st_uid != uid
+        or before.st_gid != gid
+        or before.st_nlink != 1
+        or stat.S_IMODE(before.st_mode) not in (0o400, 0o600)
+    ):
+        raise SystemExit("golden is not a current-principal mode-0400/0600 single-link regular file")
+    digest = hashlib.sha256()
+    while True:
+        chunk = os.read(descriptor, 8 * 1024 * 1024)
+        if not chunk:
+            break
+        digest.update(chunk)
+    sampled = os.fstat(descriptor)
+    stable_fields = (
+        "st_dev",
+        "st_ino",
+        "st_mode",
+        "st_uid",
+        "st_gid",
+        "st_nlink",
+        "st_size",
+        "st_mtime_ns",
+        "st_ctime_ns",
+    )
+    if any(getattr(before, field) != getattr(sampled, field) for field in stable_fields):
+        raise SystemExit("golden identity changed while its pre-seal digest was sampled")
+    if digest.hexdigest() != expected:
+        raise SystemExit("golden pre-seal bytes do not match the pinned SHA-256")
+    os.fchmod(descriptor, 0o400)
+    os.fsync(descriptor)
+    os.lseek(descriptor, 0, os.SEEK_SET)
+    sealed_digest = hashlib.sha256()
+    while True:
+        chunk = os.read(descriptor, 8 * 1024 * 1024)
+        if not chunk:
+            break
+        sealed_digest.update(chunk)
+    after = os.fstat(descriptor)
+    if (
+        not stat.S_ISREG(after.st_mode)
+        or after.st_uid != uid
+        or after.st_gid != gid
+        or after.st_nlink != 1
+        or stat.S_IMODE(after.st_mode) != 0o400
+        or after.st_dev != before.st_dev
+        or after.st_ino != before.st_ino
+        or after.st_size != before.st_size
+        or after.st_mtime_ns != before.st_mtime_ns
+        or sealed_digest.hexdigest() != expected
+    ):
+        raise SystemExit("golden read-only seal did not preserve the exact pinned file")
+finally:
+    os.close(descriptor)
+directory = os.open(os.path.dirname(path), os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+try:
+    os.fsync(directory)
+finally:
+    os.close(directory)
+PY
+}
+
 build_golden() {
     mkdir -p "$STATE_DIR"
     # Reuse an existing golden ONLY if it actually finished with the exact v3 receipt. A qcow2 left behind by
@@ -433,6 +512,7 @@ build_golden() {
     if [ -f "$GOLDEN" ]; then
         verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"
         if golden_has_done_marker; then
+            seal_golden_read_only
             log "golden already exists + has the done-marker: $GOLDEN (delete to force a rebuild)"; return 0
         fi
         die "golden exists but lacks the exact v3 completion receipt (stale/failed/incompatible provision): $GOLDEN — delete it deliberately before rebuilding"
@@ -551,6 +631,7 @@ build_golden() {
                         verify_sha256 "$GOLDEN" "${SHA256_WIN11_GOLDEN_QCOW2}"
                         stop_and_undefine_owned_domain \
                             || die "completed golden domain could not be undefined safely"
+                        seal_golden_read_only
                         log "golden Win11 template built: $GOLDEN (exact v3 completion receipt present) — clone an overlay, never boot this"
                         break
                     fi

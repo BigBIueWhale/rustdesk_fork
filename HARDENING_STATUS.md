@@ -24184,7 +24184,8 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   `1,621,066,551,296` bytes. The survivors are the canonical golden, Android signing keystore, two presentation
   evidence roots, two CM-lifecycle evidence roots, and the bounded 13.7-MB first-attempt failure envelope.
 - Workspace-wide reconciliation additionally removed three current-principal retired `online` cache trees and one
-  unlinkable root-owned retired archive while preserving the canonical offline input closure, reducing `online` from
+  unlinkable root-owned retired archive. The cleanup initially claimed that the canonical offline input closure was
+  preserved; later full-closure verification contradicted that claim as recorded below. The removal reduced `online` from
   `39,981,027,328` to `32,283,910,144` bytes. Normal-user Git cleanup reduced the main Rust `target` from at least
   `30,607,900,672` to at least `227,487,744` visible bytes, removed generated `dist`, Python, Dart, JNI, and other
   accessible Flutter outputs, deleted the clean detached `/tmp/rd-hardening-candidate` worktree, and removed no unique
@@ -24227,7 +24228,41 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   Across this Docker-authorized phase, observed filesystem availability rose from `1,781,466,738,688` to
   `1,939,370,483,712` bytes, an observed increase of `157,903,745,024` bytes despite concurrent unrelated host use.
   The final repository scan finds none of the authenticated generated/root-owned victims and no root-owned path outside
-  the deliberately preserved canonical `online` and `.harness-state` input/evidence closures.
+  the deliberately retained `online` and `.harness-state` input/evidence trees. It is not evidence that the retained
+  `online` tree still matched its recorded canonical closure.
+
+### R-B10 reproducible consumer-only online closure after cleanup regression (2026-08-13)
+
+- **SOURCE GUARD IMPLEMENTED; LIVE CLOSURE REMAINS RED PENDING CLEAN-COMMIT REACQUISITION AND
+  REPIN.** The cleanup above removed objects that were in fact members of pinned closure
+  `eacb4d0fadb044f2f38520ad5263470a89c286bed69927ce2c32babcbc01ab24`. That pin deliberately
+  included preservation-only `.rustdesk-retired-*` historical objects: 266,866 files, 80,019 directories,
+  76 symlinks, and 38,967,060,125 logical regular-file bytes. The surviving tree plus its final 65-byte
+  retired libvpx-key marker instead calculated as
+  `73fd7b5b095995e57f7b67e9b35864d7677c57877ab28e94b4af791d10c676b6`; after exact Docker removal
+  of that marker it calculates as
+  `07ab1dc7151619b6a1b212ee888332a6aba7386b3a890b610b043125e6658028`, with 152,793 files,
+  43,971 directories, 35 symlinks, and 29,979,415,022 logical regular-file bytes. The stale record was not
+  rewritten and the pin was not changed on the strength of either measurement.
+- This exposed a closure-design defect as well as an inaccurate cleanup claim. R-B10 requires the ignored input
+  cache to be re-creatable from `pins.env`; a closure whose digest depends on historical displaced outputs cannot
+  satisfy that contract. `online-input-provenance.py` now rejects every path component beginning
+  `.rustdesk-retired-` before hashing it. Such an object is not silently ignored and cannot be blessed by
+  `maintenance-write-record`: preservation-first replacement may leave it temporarily, but canonical acquisition
+  remains fail-closed until the exact residue is separately reconciled. The self-test creates that forbidden shape
+  and requires rejection; the independent workspace validator and source-mutation catalog bind the guard.
+- A confined exact-marker negative control rejected the surviving marker with the new diagnostic. A one-shot
+  no-network, read-only-root Docker container then matched its device/inode, UID/GID, mode, link count, size, and
+  SHA-256 before unlinking only that file; no `.rustdesk-retired-*` entry remains under `online`. The focused
+  provenance self-test passed in the pinned numeric-nonroot devcheck image. The broader independent workspace
+  baseline is presently red on a separate Windows-harness clean-completion contract and is not claimed green.
+- The first canonical reacquisition attempt reverified all seven exact offline image archives plus the fixed Dart
+  advisory and toolchain archives, then correctly stopped before Gradle warming because the closure-guard source
+  changes were uncommitted. No clean-source gate was bypassed, no pin/record was rewritten, and no build or runtime
+  result follows. A clean commit of this guard is required before the one authorized networked transaction can
+  revalidate/reconstruct every named consumer input. Only a terminal old-pin mismatch followed by two agreeing
+  full-tree calculations, an atomically written self-excluded record, and exact verification may authorize a new
+  consumer-only closure pin. Cold R-B2/R-B10 artifact equality and every native/platform gap remain open.
 
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in

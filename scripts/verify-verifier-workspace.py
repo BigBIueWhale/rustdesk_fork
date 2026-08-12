@@ -41743,6 +41743,10 @@ def validate_main_verifier_authority_contract(sources):
         ('def create_subtree_snapshot(', "main verifier subtree snapshot implementation"),
         ('source_after = verify_subtree(source, expected)', "main verifier subtree source stability"),
         ('snapshot = verify_subtree(snapshot_tree, expected)', "main verifier subtree copy identity"),
+        ('RETIRED_INPUT_PREFIX = b".rustdesk-retired-"', "canonical online retired-input namespace"),
+        ('if name.startswith(RETIRED_INPUT_PREFIX):', "canonical online retired-input refusal"),
+        ('preservation-only retired input is not canonical', "canonical online retired-input diagnostic"),
+        ('"preservation-only retired input",', "canonical online retired-input regression"),
     ):
         require_text(provenance, text, label)
     require_text(
@@ -56585,6 +56589,12 @@ def run_source_mutations(sources):
             "def create_subtree_snapshot(",
             "def ignored_subtree_snapshot(",
             "main verifier subtree snapshot implementation",
+        ),
+        (
+            "online_input_provenance",
+            "if name.startswith(RETIRED_INPUT_PREFIX):",
+            "if False and name.startswith(RETIRED_INPUT_PREFIX):",
+            "canonical online retired-input refusal",
         ),
         (
             "pins",

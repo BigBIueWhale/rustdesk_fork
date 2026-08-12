@@ -21,6 +21,7 @@ from typing import Callable
 
 DOMAIN = b"rustdesk-online-closure-v1\0"
 RECORD_NAME = b".rustdesk-online-closure-v1"
+RETIRED_INPUT_PREFIX = b".rustdesk-retired-"
 HEX256 = re.compile(r"[0-9a-f]{64}\Z")
 FICLONE = 0x40049409
 
@@ -80,6 +81,8 @@ def validate_name(name: bytes, relative: bytes) -> None:
     shown = os.fsdecode(relative or name)
     if name in (b"", b".", b".."):
         fail(f"invalid path segment: {shown!r}")
+    if name.startswith(RETIRED_INPUT_PREFIX):
+        fail(f"preservation-only retired input is not canonical: {shown!r}")
     if any(byte < 0x20 or byte > 0x7E for byte in name):
         fail(f"unsupported non-printable or non-ASCII path bytes: {shown!r}")
     if b"/" in name or b"\\" in name or b":" in name:
@@ -537,6 +540,12 @@ def self_test() -> None:
         mutation("content", lambda: content.write_bytes(b"beta"), lambda: content.write_bytes(b"alpha"))
         mutation("executable mode", lambda: executable.chmod(0o644), lambda: executable.chmod(0o755))
         mutation("extra", lambda: (tree / "extra").write_bytes(b"x"), lambda: (tree / "extra").unlink())
+        retired = tree / "dir" / ".rustdesk-retired-fixture"
+        mutation(
+            "preservation-only retired input",
+            lambda: retired.write_bytes(b"historical"),
+            lambda: retired.unlink(),
+        )
         mutation("deletion", content.unlink, lambda: os.link(tree / "hardlink", content))
         mutation("path", lambda: executable.rename(tree / "Tool"), lambda: (tree / "Tool").rename(executable))
         mutation("case collision", lambda: (tree / "TOOL").write_bytes(b"x"), lambda: (tree / "TOOL").unlink())

@@ -24122,9 +24122,10 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   measurements.
 - The outer harness now owns exactly one fixed private directory lease. It refuses a second invocation and
   refuses allocation while any retained `windows-build-*`, unfinished `.windows-failure-*`, or unfinished
-  `.windows-online-snapshot-*` transaction exists. Consequently the 16 historical roots still present on this
-  host make a future main-path invocation fail before it creates another run root. They have not been auto-deleted
-  and remain subject to a separate explicit operator decision and identity-bound reconciliation.
+  `.windows-online-snapshot-*` transaction exists. At correction time, the 16 historical roots still present on
+  this host therefore blocked a future main-path invocation before it could create another run root. They were not
+  auto-deleted: the operator separately authorized historical-state cleanup on 2026-08-12/13, after which each
+  root was independently reconciled and removed by exact device/inode identity as recorded below.
 - The golden lifecycle is zero-copy. Provisioning seals only the same current-principal, single-link, pinned and
   receipt-complete qcow2 inode from mode 0600/0400 to exact mode 0400. A build records stable device/inode/mode/
   owner/group/link/size/nanosecond-time metadata plus a full SHA-256 through a no-follow read. Its run root contains
@@ -24156,20 +24157,53 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   The behavior suite uses only disposable tmpfs fixtures and a synthetic owned process group. It did not invoke the
   builder main path, create a VM, start RustDesk, or create a network listener.
 - No fresh R-S11gk native result is claimed. The interrupted retry was stopped and its exact newly created disposable
-  state was retired before the later measure-only boundary; after that boundary no retained data was deleted. The 16
-  historical bulk roots and the separately retained small failure evidence remain untouched. A real native retry is
-  intentionally blocked until the operator separately authorizes historical-state reconciliation and explicitly
-  invokes provisioning to seal the canonical golden. The display-focus/session investigation, deployed weeks-old
+  state was retired before the later measure-only boundary. At commit `a43310a`, the 16 historical bulk roots and
+  separately retained small failure evidence still remained untouched; the later explicitly authorized cleanup below
+  removed bulk history while retaining the bounded evidence. A real native retry still requires an explicit invocation
+  and provisioning preflight to seal the canonical golden. The display-focus/session investigation, deployed weeks-old
   artifact behavior, Android persistent-service task-swipe/reopen/Force-Stop recovery, cross-version behavior,
   sustained performance/resource soak, cold release equality, independent reproduction, and external review remain
   explicit stop-ship obligations.
+
+### Explicitly authorized historical storage cleanup (2026-08-12/13)
+
+- The operator explicitly expanded cleanup beyond the 16 obvious build roots to every attributable artifact that was
+  demonstrably disposable. No root, sudo, Docker, VM, host RustDesk/service, firewall/network, or unrelated host path
+  was used or modified. Before deletion, the 16 roots were current-principal mode-0700 directories with their canonical
+  device/inode identities, no lease, no live session domain, and no matching builder/QEMU process. Exact descriptor-
+  bound removal deleted all 16. The same closure remover then deleted 29 additional authenticated directories: all 19
+  `windows-presentation-run.*` roots, both VGA diagnostic roots, the obsolete `winvm`, the cloned
+  `windows-v3-authority-*`, two `r-s11gf-*` Rust target trees, the 42-GB Android current-evidence clone/cache, the old
+  Debian smoke image root, retired online-input receipts, and the WiX probe root.
+- Read-only `qemu-img --backing-chain` inspection established that all nine top-level qcow2 files were standalone; none
+  backed another. The cleanup retained only the pinned canonical `win11-golden.qcow2` inode and removed eight obsolete,
+  superseded, or failed goldens. It also exact-unlinked 137 legacy top-level APK/EXE/MSI/ISO/log/script/marker outputs
+  (145 legacy files including the eight qcow2 images), totaling `284,875,452,416` allocated bytes. `.harness-state`
+  therefore fell from `1,657,673,850,880` to `36,607,299,584` allocated bytes, an exact reduction of
+  `1,621,066,551,296` bytes. The survivors are the canonical golden, Android signing keystore, two presentation
+  evidence roots, two CM-lifecycle evidence roots, and the bounded 13.7-MB first-attempt failure envelope.
+- Workspace-wide reconciliation additionally removed three current-principal retired `online` cache trees and one
+  unlinkable root-owned retired archive while preserving the canonical offline input closure, reducing `online` from
+  `39,981,027,328` to `32,283,910,144` bytes. Normal-user Git cleanup reduced the main Rust `target` from at least
+  `30,607,900,672` to at least `227,487,744` visible bytes, removed generated `dist`, Python, Dart, JNI, and other
+  accessible Flutter outputs, deleted the clean detached `/tmp/rd-hardening-candidate` worktree, and removed no unique
+  source. The clean branch worktree with commit `de66fae` and the modified detached `/tmp/rustdesk-pf-verify` worktree
+  were preserved because each contains unique Git work, although the former's build cache could not be removed.
+- A prior privilege violation remains visible and was not concealed: at least `8,508,489,728` bytes of generated data
+  is trapped behind `root:root` ownership—`6,058,209,280` bytes in the clean branch worktree target (created 2026-07-02),
+  `490,438,656` bytes in Flutter build/ephemeral output (created/modified through 2026-07-12), `1,732,354,048` bytes in
+  three retired online cache directories (created 2026-06-22/23), and at least `227,487,744` bytes in the main Rust
+  target (root products created 2026-07-18; unreadable directories make this a lower bound). All predate the later
+  continuous loop. Normal-user deletion stopped on permission errors. Cleanup did not invoke privilege escalation,
+  change ownership, or use a container to bypass those permissions. From the post-16-root measurement to final
+  accounting, filesystem available space increased by `505,958,469,632` bytes despite unrelated concurrent host use.
 
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-8cd663e265ef869315e0e3cf6bc71df5149181bbc50bc1470eab5b8c99b3e94e  requirements.html
+f4ab362128913427f51a891142c5d44383618850047c2049ef78d76e43ca64c9  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

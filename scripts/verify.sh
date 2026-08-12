@@ -6808,6 +6808,21 @@ grep -q 'Rejected CM login without matching authorized server connection' src/ui
 grep -q 'Rejected CM AuthorizedFS without matching authorized file-capable login' src/ui_cm_interface.rs || r_s11c4="$r_s11c4 desktop-authorizedfs-reject-log-missing"
 grep -q 'Rejected unauthenticated CM Data::FS on desktop IPC' src/ui_cm_interface.rs || r_s11c4="$r_s11c4 desktop-plain-fs-reject-log-missing"
 grep -q 'Rejected Android CM Data::FS before authorized file-capable login' src/ui_cm_interface.rs || r_s11c4="$r_s11c4 android-reject-log-missing"
+grep -qF 'enum CmLoginFollowup {' src/server/connection.rs || r_s11c4="$r_s11c4 cm-login-followup-type-missing"
+grep -qF 'ReadInitialDirectory {' src/server/connection.rs || r_s11c4="$r_s11c4 initial-directory-followup-missing"
+logon_response_block=$(awk '/async fn send_logon_response_and_keep_alive/,/fn try_sub_camera_displays/' src/server/connection.rs)
+if echo "$logon_response_block" | grep -qF 'self.read_dir('; then
+  r_s11c4="$r_s11c4 initial-directory-still-enqueued-before-cm-login"
+fi
+cm_login_activation_block=$(awk '/let Some\(cm_login_followup\) =/,/self.send_login_error\(err_msg\).await;/' src/server/connection.rs)
+cm_login_publish_line=$(echo "$cm_login_activation_block" | grep -nF 'self.try_start_cm(' | head -1 | cut -d: -f1)
+cm_login_followup_line=$(echo "$cm_login_activation_block" | grep -nF 'if let CmLoginFollowup::ReadInitialDirectory' | head -1 | cut -d: -f1)
+cm_initial_read_line=$(echo "$cm_login_activation_block" | grep -nF 'self.read_dir(&path, include_hidden)' | head -1 | cut -d: -f1)
+if [ -z "$cm_login_publish_line" ] || [ -z "$cm_login_followup_line" ] || [ -z "$cm_initial_read_line" ] \
+    || [ "$cm_login_publish_line" -ge "$cm_login_followup_line" ] \
+    || [ "$cm_login_followup_line" -ge "$cm_initial_read_line" ]; then
+  r_s11c4="$r_s11c4 cm-login-not-published-before-initial-directory"
+fi
 desktop_cm_login_block=$(awk '/Data::Login{id/,/self.cm.add_connection/' src/ui_cm_interface.rs)
 desktop_validate_line=$(echo "$desktop_cm_login_block" | grep -n 'validate_cm_connection_authority' | head -1 | cut -d: -f1)
 desktop_add_line=$(echo "$desktop_cm_login_block" | grep -n 'self.cm.add_connection' | head -1 | cut -d: -f1)
@@ -6827,7 +6842,7 @@ if [ -z "$android_gate_line" ] || [ -z "$android_handle_line" ] || [ "$android_g
   r_s11c4="$r_s11c4 android-fs-gate-not-before-handle_fs"
 fi
 if [ -n "$r_s11c4" ]; then echo "  FAIL R-S11c-4 CM file IPC authority closure:$r_s11c4"; rc=1; else
-  echo "  ok  R-S11c-4 CM rejects forged desktop login/FS unless the main server validates the active connection id/type/token; Android in-process FS remains login-gated"; fi
+  echo "  ok  R-S11c-4 CM login authority is published before initial filesystem work; forged desktop login/FS remains rejected and Android in-process FS remains login-gated"; fi
 
 echo "== (3b-iii-f0) CM cannot select authenticated peer message types (R-S11e-17) =="
 r_s11e17=

@@ -42174,6 +42174,68 @@ def validate_windows_terminal_synchronous_io_cancellation_contract(sources):
         require_text(source, text, label)
 
 
+def validate_cm_file_login_order_contract(sources):
+    connection = sources["connection_source"]
+    response = extract_between(
+        connection,
+        "async fn send_logon_response_and_keep_alive(&mut self)",
+        "\n\n    fn try_sub_camera_displays",
+        "login response and CM follow-up planning",
+    )
+    for text, label in (
+        ("enum CmLoginFollowup", "typed CM-login follow-up"),
+        (
+            "CmLoginFollowup::ReadInitialDirectory",
+            "initial-directory CM-login follow-up",
+        ),
+        (
+            "self.delayed_read_dir = Some((dir.to_owned(), show_hidden));",
+            "Windows session-confirmed directory delay",
+        ),
+    ):
+        require_text(connection, text, label)
+    require_absent(
+        response,
+        "self.read_dir(",
+        "pre-CM-login initial-directory enqueue",
+    )
+
+    activation = extract_between(
+        connection,
+        "let Some(cm_login_followup) =",
+        "\n            } else {\n                self.send_login_error(err_msg).await;",
+        "CM login publication and initial-directory activation",
+    )
+    require_order(
+        activation,
+        (
+            "self.send_logon_response_and_keep_alive().await",
+            "self.try_start_cm(lr.my_id, lr.my_name, self.authorized);",
+            "if let CmLoginFollowup::ReadInitialDirectory",
+            "self.read_dir(&path, include_hidden)",
+        ),
+        "CM login publication before initial filesystem work",
+    )
+    for source, text, label in (
+        (
+            sources["verify"],
+            "cm-login-not-published-before-initial-directory",
+            "shared CM login-order gate",
+        ),
+        (
+            sources["requirements"],
+            "must enqueue its validated <code>Data::Login</code> before its first <code>Data::AuthorizedFS</code>",
+            "normative CM login-order requirement",
+        ),
+        (
+            sources["hardening"],
+            "R-S11c-4c — CM login publication precedes initial file work",
+            "CM login-order hardening ledger",
+        ),
+    ):
+        require_text(source, text, label)
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -42213,6 +42275,7 @@ def validate_sources(sources):
     validate_windows_ipc_dacl_coverage_contract(sources)
     validate_windows_native_credential_evidence_scope_contract(sources)
     validate_windows_terminal_synchronous_io_cancellation_contract(sources)
+    validate_cm_file_login_order_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -46216,6 +46279,42 @@ def run_source_mutations(sources):
             "bccffc79-efca-48d4-a92e-f0f4c195720b-A",
             "bccffc79-efca-48d4-a92e-f0f4c195720b-B",
             "exact failed native-run evidence",
+        ),
+        (
+            "connection_source",
+            "                cm_login_followup = CmLoginFollowup::ReadInitialDirectory {",
+            "                self.read_dir(dir, show_hidden).ok();\n                cm_login_followup = CmLoginFollowup::ReadInitialDirectory {",
+            "pre-CM-login initial-directory enqueue",
+        ),
+        (
+            "connection_source",
+            "                self.try_start_cm(lr.my_id, lr.my_name, self.authorized);",
+            "                // CM login publication removed",
+            "CM login publication before initial filesystem work",
+        ),
+        (
+            "connection_source",
+            "self.delayed_read_dir = Some((dir.to_owned(), show_hidden));",
+            "self.delayed_read_dir = None;",
+            "Windows session-confirmed directory delay",
+        ),
+        (
+            "verify",
+            "cm-login-not-published-before-initial-directory",
+            "cm-login-order-gate-disabled",
+            "shared CM login-order gate",
+        ),
+        (
+            "requirements",
+            "must enqueue its validated <code>Data::Login</code> before its first <code>Data::AuthorizedFS</code>",
+            "may enqueue filesystem work before its login authority",
+            "normative CM login-order requirement",
+        ),
+        (
+            "hardening",
+            "R-S11c-4c — CM login publication precedes initial file work",
+            "R-S11c-4c — CM login publication ordering deferred",
+            "CM login-order hardening ledger",
         ),
         (
             "hardening",

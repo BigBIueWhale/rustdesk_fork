@@ -6445,6 +6445,21 @@ network configuration was inspected or changed.
   before `add_connection`, desktop `AuthorizedFS` token matching, desktop legacy `Data::FS` rejection,
   and Android pre-`handle_fs` gating; `scripts/apple-conform-check.sh` mirrors the desktop source
   assertion for macOS.
+- **R-S11c-4c — CM login publication precedes initial file work — SOURCE IMPLEMENTED / GATED;
+  EXACT-CURRENT INSTALLED-WINDOWS RETEST PENDING (2026-08-12).** Platform: every controlled-side
+  FileTransfer producer; natively exposed by the installed LocalSystem Windows service and its active-user CM.
+  The receiver's fail-closed authority gate was correct, but the producer violated it deterministically:
+  `send_logon_response_and_keep_alive` queued the initial `Data::AuthorizedFS(ReadDir)` before its caller
+  queued `Data::Login`. The shared unbounded channel preserved precisely that incorrect FIFO order. CM therefore
+  saw `conn_id=0`, rejected the filesystem operation, closed the IPC task, and was relaunched for each retry.
+  The correction represents the initial directory as a typed `CmLoginFollowup`, queues `Data::Login` first, and
+  only then reserves/sends the directory request. The distinct Windows multi-session path retains
+  `delayed_read_dir` until `SelectedSid`; CM continues to reject, rather than buffer or infer authority for,
+  every pre-login filesystem operation. `scripts/verify.sh` gates the absence of `read_dir` from response
+  construction and exact Login→follow-up→ReadDir ordering. The independent semantic verifier checks the same
+  structure and deliberately mutates the pre-login send, login publication, Windows delayed state, shared gate,
+  normative requirement, and this disposition. The installed transaction below is the causal evidence for the
+  defect, not evidence that this correction has passed natively; a fresh exact clean-commit run remains mandatory.
 - **R-S11c-22 — Windows CM non-file clipboard authority — CLOSED 2026-07-11.**
   Platform: Windows installed/root server mode. Endpoint/action: the root clipboard service's helper
   request to `_cm` for non-file host clipboard content. Boundary: authenticated helper endpoint proof
@@ -7084,6 +7099,31 @@ network configuration was inspected or changed.
   transition, both native regressions, normative wording, and this exact negative run identity. This attempt supplies
   no positive installer, LocalSystem, CM, terminal-runtime, or artifact evidence;
   both the terminal correction and inherited-capability CM correction remain native-retest blockers.
+
+  The next exact installed LocalSystem attempt is also negative evidence, but it closes the terminal-cancellation
+  uncertainty and identifies the subsequent CM failure exactly. Clean pushed commit
+  `4caafdafa8770319d359608711f4407159c897bb`, tree
+  `37cdcea6f0c077d913176e9fa02c3caf8e2afd07`, source manifest
+  `db3203c73a88abc4c014db51006edcdca73235934a225bcf2be55599a4b31d2d`, and run
+  `d10e5aab-ff9e-4615-b634-3c66bb941f9a-A` passed the zero-interface, immutable-offline-input, exact-source,
+  and native build/package boundaries. The Windows library-test binary completed all 57 selected tests in 0.43s,
+  including the delayed `ERROR_NOT_FOUND` cancellation race, shutdown-latched no-reentry case, and the formerly
+  blocked synchronous-read test. The build and installer completed, but the installed-service probe failed its
+  first authenticated CM directory round trip and therefore emitted no positive installed lifecycle verdict.
+
+  Read-only extraction after the VM stopped used the authenticated pinned Windows helper image as numeric non-root,
+  with `--network=none`, a read-only root/run mount, no capability, device, Docker socket, or host namespace. The
+  active-user CM logs repeatedly show `_cm` admission succeeding, followed immediately by
+  `Rejected CM AuthorizedFS without matching authorized file-capable login: conn_id=0`; no `conn_id:` Login record
+  precedes it. The LocalSystem server logs show the corresponding pipe reset, connection close, and CM relaunch.
+  This proves that the inherited parent process capability and active-user launch work in the installed branch; the
+  failure is later protocol ordering. Source inspection identifies the exact producer sequence: the checked network
+  login response was followed by the initial `read_dir`, while `try_start_cm(Data::Login)` existed only in the
+  caller after that function returned. Because both messages use the same FIFO channel, this was deterministic, not
+  a queue race or stale copied configuration. It is also not evidence of host RustDesk, Docker-root, firewall, or
+  public-listener interference. R-S11c-4c above records the narrow source correction. Until a later clean commit
+  passes the installed probe, this run supplies positive native build and 57/57 terminal-suite evidence only—not a
+  positive CM/file-transfer, installed-service lifecycle, graphical, focus/recovery, or release result.
 
   Four earlier attempts are excluded from positive evidence: two staging/compile attempts respectively exposed a
   wrong WinAPI import plus absent generated bridges and then stale forced-in bridges; two compiled runtime attempts
@@ -23899,7 +23939,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-9cd09aa63d06e068dd21542e620bb3e38677493f582ca26bc69cb6e0f45b1ee5  requirements.html
+9ca0c6b48c230d9eabb5c333194e331160d14df7b90947f5a57fa395f5bbc561  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

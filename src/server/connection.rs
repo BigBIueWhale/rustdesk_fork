@@ -3397,6 +3397,14 @@ enum WindowsTerminalProcessAuthority {
     ActiveSessionUser,
 }
 
+enum CmLoginFollowup {
+    NoAction,
+    ReadInitialDirectory {
+        path: String,
+        include_hidden: bool,
+    },
+}
+
 #[cfg(any(target_os = "windows", test))]
 fn windows_terminal_process_authority(
     service_owned: bool,
@@ -5284,12 +5292,12 @@ impl Connection {
         true
     }
 
-    // Returns whether this connection should be kept alive.
-    // `true` does not necessarily mean authorization succeeded (a pending terminal
-    // login can keep the stream alive while still unauthorized).
-    async fn send_logon_response_and_keep_alive(&mut self) -> bool {
+    // Returns the action that may run only after the CM login has been queued. `None`
+    // closes the connection. A no-action result does not necessarily mean authorization
+    // succeeded (a pending terminal login can keep the stream alive while unauthorized).
+    async fn send_logon_response_and_keep_alive(&mut self) -> Option<CmLoginFollowup> {
         if self.authorized {
-            return true;
+            return Some(CmLoginFollowup::NoAction);
         }
         #[cfg(target_os = "macos")]
         if super::effective_permanent_password_credential_snapshot()
@@ -5299,14 +5307,14 @@ impl Connection {
         {
             self.send_login_error("Permanent password changed during authorization")
                 .await;
-            return false;
+            return None;
         }
         if Config::with_current_permanent_password_generation(self.credential_generation, || ())
             .is_none()
         {
             self.send_login_error("Permanent password changed during authorization")
                 .await;
-            return false;
+            return None;
         }
         // R-X7 / §18: the responder 2FA gate is removed. 2FA was pinned-off-dead
         // (`2fa` ∈ PINNED_SETTINGS = "" ⇒ `require_2fa` always None ⇒ this branch never
@@ -5317,14 +5325,14 @@ impl Connection {
         // field, src/auth_2fa.rs, the totp-rs dep, and the Sciter 2FA UI are now excised too —
         // R-X7 complete: no 2FA path survives on either side or on the wire.)
         if let Some(keep_alive) = self.prepare_terminal_authority_for_authorization().await {
-            return keep_alive;
+            return keep_alive.then_some(CmLoginFollowup::NoAction);
         }
         // R-F1/R-D6/R-S5: dial the peer-named LOCAL target of a port-forward/RDP tunnel NOW (the
         // funnel gate in the PortForward login arm already passed — enable-tunnel is pinned Y). A
         // dial failure fails the login CLOSED; on success self.port_forward_socket is Some and the
         // sealed relay (try_port_forward_loop) runs after the main loop. No-op for non-tunnel logins.
         if !self.connect_port_forward_if_needed().await {
-            return false;
+            return None;
         }
         #[cfg(target_os = "macos")]
         if super::effective_permanent_password_credential_snapshot()
@@ -5334,7 +5342,7 @@ impl Connection {
         {
             self.send_login_error("Permanent password changed during authorization")
                 .await;
-            return false;
+            return None;
         }
         if Config::with_current_permanent_password_generation(self.credential_generation, || {
             self.authorized = true;
@@ -5343,7 +5351,7 @@ impl Connection {
         {
             self.send_login_error("Permanent password changed during authorization")
                 .await;
-            return false;
+            return None;
         }
         let auth_conn_type = if self.file_transfer.is_some() {
             AuthConnType::FileTransfer
@@ -5368,7 +5376,7 @@ impl Connection {
             self.authorized = false;
             self.send_login_error("Remote input service is unavailable")
                 .await;
-            return false;
+            return None;
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let cm_file = self.file && auth_conn_type == AuthConnType::FileTransfer;
@@ -5517,7 +5525,7 @@ impl Connection {
                 let mut msg_out = Message::new();
                 msg_out.set_login_response(res);
                 self.send(msg_out).await;
-                return true;
+                return Some(CmLoginFollowup::NoAction);
             }
         }
         #[allow(unused_mut)]
@@ -5571,7 +5579,7 @@ impl Connection {
             let mut msg_out = Message::new();
             msg_out.set_login_response(res);
             self.send(msg_out).await;
-            return true;
+            return Some(CmLoginFollowup::NoAction);
         }
         if self.file_transfer.is_some() || self.terminal {
             res.set_peer_info(pi);
@@ -5649,7 +5657,7 @@ impl Connection {
         if self.terminal {
             let Some(lease) = self.terminal_service_lease.as_ref() else {
                 log::error!("Terminal service lease is missing before login response");
-                return false;
+                return None;
             };
             if let Err(err) = lease.validate_for_activation() {
                 log::warn!(
@@ -5658,7 +5666,7 @@ impl Connection {
                     self.inner.id(),
                     err
                 );
-                return false;
+                return None;
             }
         }
         let mut msg_out = Message::new();
@@ -5670,25 +5678,26 @@ impl Connection {
                 self.inner.id(),
                 err
             );
-            return false;
+            return None;
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         if self.terminal {
             let Some(lease) = self.terminal_service_lease.as_mut() else {
                 log::error!("Terminal service lease is missing after authorization");
-                return false;
+                return None;
             };
             if let Err(err) = lease.activate(self.inner.clone()) {
                 log::error!("Failed to activate terminal service lease: {}", err);
-                return false;
+                return None;
             }
         }
         if let Some(o) = self.options_in_login.take() {
             if let Err(err) = self.update_options(&o).await {
                 log::error!("Failed to apply login options: {}", err);
-                return false;
+                return None;
             }
         }
+        let mut cm_login_followup = CmLoginFollowup::NoAction;
         if let Some((dir, show_hidden)) = self.file_transfer.clone() {
             // R-S19 (CVE-2026-58056 / CWE-863, Appendix C #24): capability confinement for FileTransfer
             // (keyboard / block_input / privacy_mode / restart / audio cleared; clipboard + file kept
@@ -5703,13 +5712,14 @@ impl Connection {
                 ""
             };
             if !wait_session_id_confirm {
-                if let Err(error) = self.read_dir(dir, show_hidden) {
-                    log::error!(
-                        "Failed to reserve initial file directory request: {}",
-                        error
-                    );
-                    return false;
-                }
+                // The desktop CM validates its per-connection authority from Data::Login.
+                // Preserve FIFO authority by returning this operation to the caller, which
+                // queues Login first. Sending AuthorizedFS here made a fresh file-transfer
+                // connection deterministically fail before the CM could authenticate it.
+                cm_login_followup = CmLoginFollowup::ReadInitialDirectory {
+                    path: dir.to_owned(),
+                    include_hidden: show_hidden,
+                };
             } else {
                 self.delayed_read_dir = Some((dir.to_owned(), show_hidden));
             }
@@ -5727,7 +5737,7 @@ impl Connection {
                 self.try_sub_monitor_services();
             }
         }
-        true
+        Some(cm_login_followup)
     }
 
     fn try_sub_camera_displays(&mut self) {
@@ -6390,10 +6400,25 @@ impl Connection {
             if err_msg.is_empty() {
                 #[cfg(target_os = "linux")]
                 self.linux_headless_handle.wait_desktop_cm_ready().await;
-                if !self.send_logon_response_and_keep_alive().await {
+                let Some(cm_login_followup) =
+                    self.send_logon_response_and_keep_alive().await
+                else {
                     return false;
-                }
+                };
                 self.try_start_cm(lr.my_id, lr.my_name, self.authorized);
+                if let CmLoginFollowup::ReadInitialDirectory {
+                    path,
+                    include_hidden,
+                } = cm_login_followup
+                {
+                    if let Err(error) = self.read_dir(&path, include_hidden) {
+                        log::error!(
+                            "Failed to reserve initial file directory request after CM login: {}",
+                            error
+                        );
+                        return false;
+                    }
+                }
             } else {
                 self.send_login_error(err_msg).await;
             }

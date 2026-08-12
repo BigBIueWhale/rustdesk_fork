@@ -24168,8 +24168,9 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 ### Explicitly authorized historical storage cleanup (2026-08-12/13)
 
 - The operator explicitly expanded cleanup beyond the 16 obvious build roots to every attributable artifact that was
-  demonstrably disposable. No root, sudo, Docker, VM, host RustDesk/service, firewall/network, or unrelated host path
-  was used or modified. Before deletion, the 16 roots were current-principal mode-0700 directories with their canonical
+  demonstrably disposable. During that first phase, no root, sudo, Docker, VM, host RustDesk/service, firewall/network,
+  or unrelated host path was used or modified. Before deletion, the 16 roots were current-principal mode-0700
+  directories with their canonical
   device/inode identities, no lease, no live session domain, and no matching builder/QEMU process. Exact descriptor-
   bound removal deleted all 16. The same closure remover then deleted 29 additional authenticated directories: all 19
   `windows-presentation-run.*` roots, both VGA diagnostic roots, the obsolete `winvm`, the cloned
@@ -24197,6 +24198,36 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   continuous loop. Normal-user deletion stopped on permission errors. Cleanup did not invoke privilege escalation,
   change ownership, or use a container to bypass those permissions. From the post-16-root measurement to final
   accounting, filesystem available space increased by `505,958,469,632` bytes despite unrelated concurrent host use.
+- The operator then explicitly authorized Docker to remove that root-owned RustDesk residue. A one-shot container had
+  no network, a read-only container root, bounded memory/PIDs, no-new-privileges, only `DAC_OVERRIDE`/`FOWNER`, and ten
+  separate writable bind mounts naming the authenticated victim directories. It reverified every host device/inode
+  from inside the container before deleting anything. It removed the main and clean-worktree Rust `target` trees,
+  Flutter build/Gradle/Linux/macOS/Windows ephemeral trees, and the three retired online cache trees: exactly
+  `9,069,543,424` allocated bytes. A second identically confined pass removed the remaining root-owned generated
+  Android Kotlin/JNI/plugin registrant directories and empty log tree; the generated root-owned `.deb` was truncated
+  through an exact file bind and unlinked by its writable repository parent. No host RustDesk/service, VM, listener,
+  firewall/network state, `haggai_computer`, or path outside the authenticated RustDesk development objects was touched.
+- Docker-daemon reconciliation found 15 unused `rd-*` Cargo/Git/Pub/target volumes, all unreferenced by every container;
+  exact deletion removed `80,989,589,504` allocated bytes. It removed 31 RustDesk-prefixed tags naming 25 unused unique
+  images (`19,490,545,443` virtual bytes), then exact-removed eight dangling images carrying `org.rustdesk.*` labels and
+  three unlabelled legacy images whose layer histories exactly matched the retired Debian, Android, and Windows helper
+  recipes. Observed available space increased by `16,643,817,472` bytes for the tagged images and
+  `8,612,048,896` bytes for the dangling images after shared layers were accounted for. No running/stopped
+  RustDesk-development container, `rd-*` volume, RustDesk tag, or `org.rustdesk.*` image remains. The unrelated
+  `ab-*` Angry Birds images/container churn, live `haggai_computer`, VibeVoice, Benayahu/swing-scanner, audit containers,
+  their images/volumes, and generic images were explicitly excluded.
+- BuildKit cache cleanup used only exact record-ID filters derived from fork-specific provenance/toolchain paths and
+  exact retired Dockerfile command descriptions. Every selected cache-descendant closure was checked to reject Haggai,
+  Angry Birds, VibeVoice, Benayahu, and audit-task descriptions before deletion. Leaf-first scoped passes reclaimed
+  `18.79 GB`, `17.59 GB`, `6.163 GB`, and a final bounded metadata slice. Five immutable Dart-audit input records still
+  name the same shared 56.69-MB OSV-scanner layer; Docker reports them reclaimable but returns `0B` and retains them for
+  both exact-ID and exact-description `buildx prune --all`. No RustDesk image, container, active build, or named volume
+  references them. Removing those five records would therefore require daemon-wide BuildKit pruning/restart or direct
+  shared-daemon state manipulation, which was deliberately refused because it would cross into unrelated projects.
+  Across this Docker-authorized phase, observed filesystem availability rose from `1,781,466,738,688` to
+  `1,939,370,483,712` bytes, an observed increase of `157,903,745,024` bytes despite concurrent unrelated host use.
+  The final repository scan finds none of the authenticated generated/root-owned victims and no root-owned path outside
+  the deliberately preserved canonical `online` and `.harness-state` input/evidence closures.
 
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in

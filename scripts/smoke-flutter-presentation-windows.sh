@@ -18,6 +18,8 @@ readonly WINDOWS_HELPER_BUILD_GID="$(id -g)"
     || die "Windows presentation smoke refuses a root primary group"
 # shellcheck source=scripts/windows-helper-runtime.sh
 source "$SCRIPT_DIR/windows-helper-runtime.sh"
+# shellcheck source=scripts/windows-libvirt-storage-pools.sh
+source "$SCRIPT_DIR/windows-libvirt-storage-pools.sh"
 
 readonly GOLDEN="${WINDOWS_GOLDEN_IMAGE:-$REPO_ROOT/.harness-state/win11-golden.qcow2}"
 readonly STATE_DIR="${HARNESS_STATE_DIR:-$REPO_ROOT/.harness-state}"
@@ -174,9 +176,7 @@ stop_owned_process() {
 }
 
 virsh_bounded() {
-    setsid --wait \
-        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \
-        virsh --connect qemu:///session "$@" </dev/null
+    windows_libvirt_virsh_bounded "$@"
 }
 
 domain_name_is_listed() {
@@ -298,6 +298,9 @@ cleanup() {
     elif ! stop_and_undefine_owned_domain; then
         CLEANUP_FAILED=1
         warn "preserving presentation run state after inconclusive domain cleanup"
+    elif ! windows_libvirt_transaction_close; then
+        CLEANUP_FAILED=1
+        warn "preserving presentation run state after inconclusive transient-pool cleanup"
     fi
     if ! windows_helper_authority_close; then
         CLEANUP_FAILED=1
@@ -447,6 +450,8 @@ preflight() {
     RUN_ROOT="$(mktemp -d "$STATE_DIR/windows-presentation-run.XXXXXXXX")"
     chmod 0700 "$RUN_ROOT"
     RUN_ROOT_ID="$(stat -c '%d:%i' "$RUN_ROOT")"
+    windows_libvirt_transaction_open "$RUN_ROOT" \
+        || die "cannot create the private presentation libvirt transaction"
     SOURCE_ROOT="$RUN_ROOT/source"
     SOURCE_ISO="$RUN_ROOT/source.iso"
     OUTPUT_IMAGE="$RUN_ROOT/output.img"
@@ -611,8 +616,15 @@ launch_domain() {
     CURRENT_DOMAIN="$DOMAIN_PREFIX-${SOURCE_COMMIT:0:8}-${CURRENT_DOMAIN_UUID:0:8}"
     [ "${#CURRENT_DOMAIN}" -le 63 ] || die "presentation domain name is too long"
     require_domain_identity_absent
+    windows_libvirt_ensure_transient_pools "$RUN_ROOT" \
+        || die "cannot establish the presentation transient storage pool"
+    windows_libvirt_require_targets_owned "$RUN_ROOT" \
+        || die "presentation storage is not exclusively transaction-owned"
+    windows_libvirt_prepare_domain "$CURRENT_DOMAIN" "$CURRENT_DOMAIN_UUID" \
+        || die "cannot bind presentation-domain residue ownership"
     CURRENT_DOMAIN_CREATION_STARTED=1
-    setsid --wait virt-install --connect qemu:///session \
+    /usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}" \
+        /usr/bin/virt-install --connect qemu:///session \
         --name "$CURRENT_DOMAIN" --uuid "$CURRENT_DOMAIN_UUID" \
         --osinfo win11 --memory 8192 --vcpus 4 --import \
         --disk "path=$OVERLAY,format=qcow2,bus=sata" \
@@ -647,6 +659,8 @@ launch_domain() {
     prove_owned_domain || die "presentation domain identity cannot be proven"
     CURRENT_DOMAIN_OWNERSHIP_COMMITTED=1
     verify_domain_xml
+    windows_libvirt_require_targets_owned "$RUN_ROOT" \
+        || die "virt-install changed presentation storage-pool ownership"
     capture_listeners >"$LISTENERS_DURING"
     validate_new_listeners
     CURRENT_VM_DEADLINE=$(( $(monotonic_seconds) + VM_TIMEOUT_SECONDS ))
@@ -1020,6 +1034,8 @@ main() {
     prepare_disks
     launch_domain
     wait_for_domain
+    windows_libvirt_transaction_close \
+        || die "presentation libvirt authority did not retire after domain finality"
     extract_and_validate
     verify_unchanged_inputs
     RUN_COMPLETE=1

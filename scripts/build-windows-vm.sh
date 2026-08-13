@@ -16,6 +16,8 @@ source "$SCRIPT_DIR/lib.sh"
 load_pins
 # shellcheck source=scripts/windows-helper-runtime.sh
 source "$SCRIPT_DIR/windows-helper-runtime.sh"
+# shellcheck source=scripts/windows-libvirt-storage-pools.sh
+source "$SCRIPT_DIR/windows-libvirt-storage-pools.sh"
 
 STATE_DIR="${HARNESS_STATE_DIR:-$REPO_ROOT/.harness-state}"
 GOLDEN="${WINDOWS_GOLDEN_IMAGE:-$REPO_ROOT/.harness-state/win11-golden.qcow2}"
@@ -378,9 +380,7 @@ stop_owned_process() {
 }
 
 virsh_bounded() {
-    setsid --wait \
-        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \
-        virsh --connect qemu:///session "$@" </dev/null
+    windows_libvirt_virsh_bounded "$@"
 }
 
 domain_name_is_listed() {
@@ -714,6 +714,10 @@ cleanup() {
     elif ! stop_and_undefine_owned_domain; then
         CLEANUP_FAILED=1
         external_authority_reconciled=0
+    elif ! windows_libvirt_transaction_close; then
+        CLEANUP_FAILED=1
+        external_authority_reconciled=0
+        warn "preserving Windows harness state because exact transient libvirt cleanup failed"
     fi
 
     if ! windows_helper_authority_close; then
@@ -1537,9 +1541,16 @@ launch_domain() {
     [ "${#CURRENT_DOMAIN}" -le 63 ] || die "generated domain name is too long"
     CURRENT_VM_DEADLINE=$(( $(monotonic_seconds) + VM_TIMEOUT_SECONDS ))
     require_domain_identity_absent
+    windows_libvirt_ensure_transient_pools "$CURRENT_PASS_ROOT" "$RUN_ROOT" \
+        || die "cannot establish exact transient pools for Windows build storage"
+    windows_libvirt_require_targets_owned "$CURRENT_PASS_ROOT" "$RUN_ROOT" \
+        || die "Windows build storage is not exclusively transaction-owned"
+    windows_libvirt_prepare_domain "$CURRENT_DOMAIN" "$CURRENT_DOMAIN_UUID" \
+        || die "cannot bind Windows build domain residue ownership"
 
     CURRENT_DOMAIN_CREATION_STARTED=1
-    setsid --wait virt-install --connect qemu:///session --name "$CURRENT_DOMAIN" --uuid "$CURRENT_DOMAIN_UUID" \
+    /usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}" \
+        /usr/bin/virt-install --connect qemu:///session --name "$CURRENT_DOMAIN" --uuid "$CURRENT_DOMAIN_UUID" \
         --osinfo win11 --memory 16384 --vcpus 8 --import \
         --disk "path=$CURRENT_PASS_ROOT/overlay.qcow2,format=qcow2,bus=sata" \
         --disk "path=$CURRENT_PASS_ROOT/source.iso,device=cdrom" \
@@ -1574,6 +1585,8 @@ launch_domain() {
         || die "virt-install completed without the exact requested domain UUID"
     prove_owned_domain || die "virt-install did not create the exact UUID-bound domain"
     verify_domain_xml
+    windows_libvirt_require_targets_owned "$CURRENT_PASS_ROOT" "$RUN_ROOT" \
+        || die "virt-install changed Windows build storage-pool ownership"
     CURRENT_DOMAIN_OWNERSHIP_COMMITTED=1
     [ "$(virsh_bounded domstate "$CURRENT_DOMAIN_UUID")" = "running" ] \
         || die "created Windows domain is not running"
@@ -2092,7 +2105,9 @@ harness_self_test() {
     mkdir "$fake_bin"
     printf '#!/bin/sh\nsleep 5\n' >"$fake_bin/virsh"
     chmod 0700 "$fake_bin/virsh"
-    if PATH="$fake_bin:$PATH" CONTROL_TIMEOUT_SECONDS=1 virsh_bounded domstate test >/dev/null 2>&1; then
+    if CONTROL_TIMEOUT_SECONDS=1 \
+        windows_libvirt_run_bounded_control "$fake_bin/virsh" domstate test \
+        >/dev/null 2>&1; then
         die "bounded virsh self-test accepted an unbounded control call"
     fi
 
@@ -2150,6 +2165,8 @@ main() {
     RUN_ROOT="$(mktemp -d "$STATE_DIR/windows-build-$RUN_ID.XXXXXXXX")"
     record_run_root_identity
     assert_safe_path "$RUN_ROOT" "private Windows run state"
+    windows_libvirt_transaction_open "$RUN_ROOT" \
+        || die "cannot create the private Windows libvirt transaction"
     bind_golden_backing
     verify_active_online_snapshot
     RUN_PHASE="source-snapshot"
@@ -2175,6 +2192,8 @@ main() {
     fi
     verify_active_online_snapshot
     verify_golden_backing
+    windows_libvirt_transaction_close \
+        || die "Windows transient libvirt authority could not retire before artifact publication"
     windows_helper_authority_close \
         || die "Windows helper authority could not retire before artifact publication"
     RUN_PHASE="publication"

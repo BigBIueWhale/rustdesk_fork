@@ -29959,7 +29959,12 @@ def validate_windows_helper_authority_contract(sources):
     require_text(
         sources["windows_build"],
         "qemu-img create -f qcow2 -F qcow2 -b ../golden.qcow2 overlay.qcow2",
-        "Windows build relative private-golden backing identity",
+        "Windows build relative canonical-golden backing identity",
+    )
+    require_text(
+        sources["windows_build"],
+        'source=$GOLDEN,target=/authority/golden.qcow2,readonly',
+        "Windows build zero-copy canonical golden mount",
     )
     for source_name, label in (
         ("windows_provision", "Windows provision"),
@@ -30371,6 +30376,7 @@ def validate_cleanup_process_domain_path_authority_contract(sources):
 
 def validate_windows_golden_domain_authority_contract(sources):
     provision = sources["windows_provision"]
+    storage = sources["windows_libvirt_storage_library"]
     for text, label in (
         ("export LC_ALL=C", "Windows golden fixed control locale"),
         (
@@ -30407,26 +30413,22 @@ def validate_windows_golden_domain_authority_contract(sources):
             "Windows golden pre-existing-name refusal",
         ),
         (
-            "setsid --wait \\\n",
-            "Windows golden detached session-libvirt control",
+            'source "$SCRIPT_DIR/windows-libvirt-storage-pools.sh"',
+            "Windows golden shared private libvirt authority",
         ),
         (
-            'virsh --connect qemu:///session "$@" </dev/null',
-            "Windows golden closed session-libvirt control input",
-        ),
-        (
-            "setsid --wait \\\n"
-            '        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
-            "        virsh --connect qemu:///session \"$@\" </dev/null",
-            "Windows golden bounded fixed libvirt control",
+            'windows_libvirt_virsh_bounded "$@"',
+            "Windows golden private session-libvirt control delegation",
         ),
         (
             "PROVISION_DOMAIN_CREATION_STARTED=1",
             "Windows golden creation-intent commit",
         ),
         (
-            "setsid --wait virt-install",
-            "Windows golden retained process-group launch",
+            '/usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}" \\\n'
+            "        /usr/bin/virt-install \\\n"
+            "        --connect qemu:///session",
+            "Windows golden retained private-namespace process-group launch",
         ),
         (
             '--uuid "$PROVISION_DOMAIN_UUID"',
@@ -30515,6 +30517,13 @@ def validate_windows_golden_domain_authority_contract(sources):
         ),
     ):
         require_text(provision, text, label)
+    require_text(
+        storage,
+        "/usr/bin/setsid --wait \\\n"
+        '        /usr/bin/timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
+        '        "$@" </dev/null',
+        "Windows libvirt shared bounded closed-input control",
+    )
 
     require_exact_count(
         provision,
@@ -30566,7 +30575,8 @@ def validate_windows_golden_domain_authority_contract(sources):
             'qemu-img create -f qcow2 "$GOLDEN" 80G',
             "require_domain_identity_absent",
             "PROVISION_DOMAIN_CREATION_STARTED=1",
-            "setsid --wait virt-install",
+            '/usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}"',
+            "/usr/bin/virt-install",
             '--uuid "$PROVISION_DOMAIN_UUID"',
             'PROVISION_VIRT_START="$(process_start_time "$PROVISION_VIRT_PID")"',
             "wait_for_owned_virt_process_group",
@@ -30710,12 +30720,12 @@ def validate_windows_golden_domain_authority_contract(sources):
             "Windows golden focused admission binding",
         ),
         (
-            "detached session-libvirt control",
-            "Windows golden focused detached-control mutation",
+            "private session-libvirt control delegation",
+            "Windows golden focused private-control delegation mutation",
         ),
         (
-            "closed session-libvirt control input",
-            "Windows golden focused closed-input mutation",
+            "bounded closed-input libvirt control",
+            "Windows golden focused bounded-control mutation",
         ),
         (
             "Appendix C #336 disposition",
@@ -30809,12 +30819,12 @@ def validate_windows_golden_domain_authority_contract(sources):
             "Windows golden admission-ledger mutation",
         ),
         (
-            "Windows golden detached session-libvirt control",
-            "Windows golden detached-control mutation",
+            "Windows golden private session-libvirt control delegation",
+            "Windows golden private-control delegation mutation",
         ),
         (
-            "Windows golden closed session-libvirt control input",
-            "Windows golden closed-input mutation",
+            "Windows libvirt shared bounded closed-input control",
+            "Windows golden shared bounded-control mutation",
         ),
         (
             "Windows golden post-libvirt-10 virsh option absence",
@@ -30838,6 +30848,7 @@ def validate_windows_golden_domain_authority_contract(sources):
 
 def validate_windows_build_domain_authority_contract(sources):
     build = sources["windows_build"]
+    storage = sources["windows_libvirt_storage_library"]
     closure = sources["closure"]
     publication = sources["windows_publication"]
     cleanup = extract_between(
@@ -30935,18 +30946,12 @@ def validate_windows_build_domain_authority_contract(sources):
             "Windows build pre-existing-UUID refusal",
         ),
         (
-            "setsid --wait \\\n",
-            "Windows build detached session-libvirt control",
+            'source "$SCRIPT_DIR/windows-libvirt-storage-pools.sh"',
+            "Windows build shared private libvirt authority",
         ),
         (
-            'virsh --connect qemu:///session "$@" </dev/null',
-            "Windows build closed session-libvirt control input",
-        ),
-        (
-            "setsid --wait \\\n"
-            '        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
-            '        virsh --connect qemu:///session "$@" </dev/null',
-            "Windows build bounded fixed libvirt control",
+            'windows_libvirt_virsh_bounded "$@"',
+            "Windows build private session-libvirt control delegation",
         ),
         (
             "CURRENT_DOMAIN_CREATION_STARTED=1",
@@ -30957,8 +30962,9 @@ def validate_windows_build_domain_authority_contract(sources):
             "Windows build ownership commit",
         ),
         (
-            "setsid --wait virt-install",
-            "Windows build retained process-group launch",
+            '/usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}" \\\n'
+            "        /usr/bin/virt-install --connect qemu:///session",
+            "Windows build retained private-namespace process-group launch",
         ),
         (
             "owned_process_group_is_live() {",
@@ -31045,6 +31051,13 @@ def validate_windows_build_domain_authority_contract(sources):
         ),
     ):
         require_text(build, text, label)
+    require_text(
+        storage,
+        "/usr/bin/setsid --wait \\\n"
+        '        /usr/bin/timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
+        '        "$@" </dev/null',
+        "Windows libvirt shared bounded closed-input control",
+    )
     require_exact_count(
         publish_result,
         '/usr/bin/python3 -I -S "$SCRIPT_DIR/publish-windows-result.py"',
@@ -31166,7 +31179,8 @@ def validate_windows_build_domain_authority_contract(sources):
             '[[ "$CURRENT_DOMAIN" =~ ^[A-Za-z0-9._-]+$ ]]',
             "require_domain_identity_absent",
             "CURRENT_DOMAIN_CREATION_STARTED=1",
-            "setsid --wait virt-install",
+            '/usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}"',
+            "/usr/bin/virt-install",
             '--uuid "$CURRENT_DOMAIN_UUID"',
             'CURRENT_VIRT_START="$(process_start_time "$CURRENT_VIRT_PID")"',
             "wait_for_owned_process_group",
@@ -31222,8 +31236,8 @@ def validate_windows_build_domain_authority_contract(sources):
     require_exact_count(
         cleanup,
         "external_authority_reconciled=0",
-        3,
-        "Windows build process/domain/helper reconciliation failures",
+        4,
+        "Windows build process/domain/libvirt/helper reconciliation failures",
     )
     require_exact_count(
         cleanup,
@@ -32020,12 +32034,12 @@ def validate_windows_build_domain_authority_contract(sources):
             "Windows shared admission-ledger mutation",
         ),
         (
-            "Windows build detached session-libvirt control",
-            "Windows build detached-control mutation",
+            "Windows build private session-libvirt control delegation",
+            "Windows build private-control delegation mutation",
         ),
         (
-            "Windows build closed session-libvirt control input",
-            "Windows build closed-input mutation",
+            "Windows libvirt shared bounded closed-input control",
+            "Windows build shared bounded-control mutation",
         ),
         (
             "Windows build post-libvirt-10 virsh option absence",
@@ -32189,6 +32203,197 @@ def validate_windows_build_domain_authority_contract(sources):
         ),
     ):
         require_text(mutation_matrix, text, label)
+
+
+def validate_windows_libvirt_storage_authority_contract(sources):
+    focused = sources["windows_libvirt_storage_verifier"]
+    helper = sources["windows_libvirt_storage_helper"]
+    library = sources["windows_libvirt_storage_library"]
+    try:
+        focused_module = ast.parse(focused)
+    except SyntaxError as error:
+        raise VerificationError(
+            f"Windows libvirt focused verifier does not parse: {error}"
+        ) from error
+    focused_driver_values = []
+    for node in focused_module.body:
+        if not isinstance(node, ast.Assign) or len(node.targets) != 1:
+            continue
+        target = node.targets[0]
+        if not isinstance(target, ast.Name) or target.id != "SHELL_BEHAVIOR":
+            continue
+        if not isinstance(node.value, ast.Constant) or not isinstance(
+            node.value.value, str
+        ):
+            raise VerificationError(
+                "Windows libvirt focused SHELL_BEHAVIOR is not a string constant"
+            )
+        focused_driver_values.append(node.value.value)
+    if len(focused_driver_values) != 1:
+        raise VerificationError(
+            "Windows libvirt focused verifier must own exactly one SHELL_BEHAVIOR"
+        )
+    focused_driver = focused_driver_values[0]
+    for text, label in (
+        (
+            "/usr/bin/python3 -I -S scripts/verify-windows-libvirt-storage-pools.py --repo . --self-test",
+            "Windows libvirt focused verifier wiring",
+        ),
+        (
+            'virsh_bounded pool-create "$xml" >/dev/null || return 1',
+            "Windows libvirt transient pool creation",
+        ),
+        (
+            'virsh_bounded pool-destroy "$pool_uuid" >/dev/null || return 1',
+            "Windows libvirt exact pool destruction",
+        ),
+        (
+            "windows_libvirt_destroy_transient_pool \"$index\" || cleanup_failed=1",
+            "Windows libvirt visit-all pool cleanup",
+        ),
+    ):
+        require_text(sources["verify"] if "focused verifier" in label else library, text, label)
+    for text, label in (
+        ("MAX_XML_BYTES = 64 * 1024", "Windows libvirt bounded XML"),
+        ("require_private_primary_group(uid, gid)", "Windows libvirt private-group proof"),
+        ("actual_permissions != expected_permissions", "Windows libvirt live target-permissions binding"),
+        (
+            "            or before.st_nlink != 1\n"
+            "            or stat.S_IMODE(before.st_mode) != 0o600\n"
+            "            or before.st_size > MAX_XML_BYTES",
+            "Windows libvirt exact poolstate mode",
+        ),
+        (
+            "        require_exact_pool(\n"
+            "            root, args.name, args.uuid, args.target, target_metadata\n"
+            "        )",
+            "Windows libvirt exact poolstate binding",
+        ),
+        ("os.unlink(log_name, dir_fd=log_fd)", "Windows libvirt descriptor-relative log cleanup"),
+    ):
+        require_text(helper, text, label)
+    require_exact_count(
+        helper,
+        'add_argument("--target-identity", required=True)',
+        3,
+        "Windows libvirt complete target-identity helper API",
+    )
+    for text, label in (
+        ('[ -z "${XDG_CACHE_HOME:-}" ] && [ -z "${XDG_CONFIG_HOME:-}" ]',
+         "Windows libvirt ambient XDG refusal"),
+        ('[ -d "$runtime/libvirt" ] && [ ! -L "$runtime/libvirt" ] || return 1',
+         "Windows libvirt ambient runtime-symlink refusal"),
+        ('/usr/sbin/virtproxyd|/usr/sbin/virtlogd|/usr/sbin/virtlockd|\\',
+         "Windows libvirt ambient auxiliary-daemon refusal"),
+        ('"HOME=$private_home"', "Windows libvirt private HOME"),
+        ('"XDG_CACHE_HOME=$cache_root"', "Windows libvirt private cache"),
+        ('"XDG_CONFIG_HOME=$config_root"', "Windows libvirt private config"),
+        ('"XDG_DATA_HOME=$data_root"', "Windows libvirt private data"),
+        ('"XDG_RUNTIME_DIR=$runtime_root"', "Windows libvirt private runtime"),
+        ('"XDG_STATE_HOME=$state_root"', "Windows libvirt private state"),
+        ('"TMPDIR=$tmp_root"', "Windows libvirt private temporary directory"),
+        ("'listen_tls = 0'", "Windows libvirt TLS listener refusal"),
+        ("'listen_tcp = 0'", "Windows libvirt TCP listener refusal"),
+        ("'lock_manager = \"nop\"'", "Windows libvirt external lock-daemon exclusion"),
+        ("'stdio_handler = \"file\"'", "Windows libvirt external log-daemon exclusion"),
+        ('/usr/bin/setsid "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}"',
+         "Windows libvirt retained private daemon"),
+        ('/usr/sbin/libvirtd --config "$config" --pid-file "$pid_file"',
+         "Windows libvirt exact foreground daemon"),
+        ('/usr/bin/virsh --connect qemu:///session',
+         "Windows libvirt absolute private client"),
+        ('if [ "$WINDOWS_LIBVIRT_OBJECTS_RETIRED" = 0 ]; then',
+         "Windows libvirt retryable object phase"),
+        ("WINDOWS_LIBVIRT_OBJECTS_RETIRED=1",
+         "Windows libvirt object-retirement commit"),
+    ):
+        require_text(library, text, label)
+    require_exact_count(
+        library,
+        "8#$mode & 8#7022",
+        3,
+        "Windows libvirt parent/home/target special-bit and writable-mode refusal",
+    )
+    require_exact_count(
+        library,
+        '--target-identity "$target_id"',
+        3,
+        "Windows libvirt request/live-verification/poolstate target identity",
+    )
+    require_absent(
+        library,
+        "/usr/sbin/libvirtd --listen",
+        "Windows libvirt network-listening daemon launch",
+    )
+    require_order(
+        library,
+        (
+            "windows_libvirt_stop_private_daemon || return 1",
+            "windows_libvirt_require_ambient_session_quiescent \\\n",
+            '--remove-private-root "$WINDOWS_LIBVIRT_RUNTIME_ROOT"',
+            '--remove-private-root "$WINDOWS_LIBVIRT_CONTROL_ROOT"',
+        ),
+        "Windows libvirt daemon and private-tree finality",
+    )
+    for source_key, text, label in (
+        (
+            "windows_build",
+            'windows_libvirt_ensure_transient_pools "$CURRENT_PASS_ROOT" "$RUN_ROOT"',
+            "Windows build transient storage coverage",
+        ),
+        (
+            "windows_provision",
+            'windows_libvirt_ensure_transient_pools "$STATE_DIR" "$ONLINE_DIR"',
+            "Windows provision transient storage coverage",
+        ),
+        (
+            "windows_presentation",
+            'windows_libvirt_ensure_transient_pools "$RUN_ROOT"',
+            "Windows presentation transient storage coverage",
+        ),
+    ):
+        require_text(sources[source_key], text, label)
+        require_text(
+            sources[source_key],
+            '"${WINDOWS_LIBVIRT_CLIENT_ENV[@]}"',
+            label + " private client namespace",
+        )
+    for text, label in (
+        ("pre-call pool authority and post-create proof", "focused pre-call authority binding"),
+        ("domain-first, visit-all, authority-last cleanup", "focused cleanup-order binding"),
+        ("ambiguous pool-create failure was accepted", "focused ambiguous-create fixture"),
+        ("pre-managed target was adopted", "focused target-adoption fixture"),
+        ("persistent pool was destroyed as transaction-owned", "focused persistent-pool fixture"),
+        ("substituted-target pool was destroyed", "focused inode-substitution fixture"),
+        ("transaction-private temporary-directory injection", "focused temporary-directory binding"),
+        ("external lock-daemon exclusion", "focused lock-daemon binding"),
+        ("post-stop daemon quiescence", "focused escaped-daemon binding"),
+        ("group-writable runtime poolstate was removed",
+         "focused exact poolstate-mode fixture"),
+        ("Mutation(\"library\"", "focused library mutation inventory"),
+        ("Mutation(\"presentation\"", "focused presentation mutation inventory"),
+    ):
+        require_text(focused, text, label)
+    require_text(
+        focused_driver,
+        "external receipt hardlink was removed as private state",
+        "Windows libvirt focused retryable final-tree driver fixture",
+    )
+    require_text(
+        sources["requirements"],
+        '<span class="id">R-S11gn</span>',
+        "Windows libvirt normative requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>349</td>",
+        "Windows libvirt Appendix C #349 disposition",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11gn/R-S11e-226 — Windows harness transient libvirt storage ownership",
+        "Windows libvirt hardening-ledger disposition",
+    )
 
 
 def validate_apple_verifier_authority_contract(sources):
@@ -42807,6 +43012,7 @@ def validate_sources(sources):
     validate_cleanup_process_domain_path_authority_contract(sources)
     validate_windows_golden_domain_authority_contract(sources)
     validate_windows_build_domain_authority_contract(sources)
+    validate_windows_libvirt_storage_authority_contract(sources)
     validate_apple_verifier_authority_contract(sources)
     validate_online_fetch_container_authority_contract(sources)
     validate_online_fetch_gradle_source_authority_contract(sources)
@@ -66504,7 +66710,13 @@ def run_source_mutations(sources):
             "windows_build",
             "qemu-img create -f qcow2 -F qcow2 -b ../golden.qcow2 overlay.qcow2",
             'qemu-img create -f qcow2 -F qcow2 -b "$PRIVATE_GOLDEN" overlay.qcow2',
-            "Windows build relative private-golden backing identity",
+            "Windows build relative canonical-golden backing identity",
+        ),
+        (
+            "windows_build",
+            'source=$GOLDEN,target=/authority/golden.qcow2,readonly',
+            'source=$PRIVATE_GOLDEN,target=/authority/golden.qcow2,readonly',
+            "Windows build zero-copy canonical golden mount",
         ),
         (
             "windows_provision",
@@ -66630,16 +66842,18 @@ def run_source_mutations(sources):
         ),
         (
             "windows_provision",
-            "setsid --wait \\\n"
-            '        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
-            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
-            "Windows golden detached session-libvirt control",
+            'windows_libvirt_virsh_bounded "$@"',
+            'windows_libvirt_virsh_bounded "$DOMAIN"',
+            "Windows golden private session-libvirt control delegation",
         ),
         (
-            "windows_provision",
-            'virsh --connect qemu:///session "$@" </dev/null',
-            'virsh --connect qemu:///session "$@"',
-            "Windows golden closed session-libvirt control input",
+            "windows_libvirt_storage_library",
+            "/usr/bin/setsid --wait \\\n"
+            '        /usr/bin/timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
+            '        "$@" </dev/null',
+            '/usr/bin/timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
+            '        "$@" </dev/null',
+            "Windows libvirt shared bounded closed-input control",
         ),
         (
             "windows_provision",
@@ -66656,8 +66870,20 @@ def run_source_mutations(sources):
         (
             "windows_provision",
             "    require_domain_identity_absent\n"
+            "    windows_libvirt_ensure_transient_pools \"$STATE_DIR\" \"$ONLINE_DIR\" \\\n"
+            "        || die \"cannot establish exact transient pools for golden-provision storage\"\n"
+            "    windows_libvirt_require_targets_owned \"$STATE_DIR\" \"$ONLINE_DIR\" \\\n"
+            "        || die \"golden-provision storage is not exclusively transaction-owned\"\n"
+            "    windows_libvirt_prepare_domain \"$DOMAIN\" \"$PROVISION_DOMAIN_UUID\" \\\n"
+            "        || die \"cannot bind golden-provision domain residue ownership\"\n"
             "    # NB no --tpm:",
             "    # first identity-absence proof removed\n"
+            "    windows_libvirt_ensure_transient_pools \"$STATE_DIR\" \"$ONLINE_DIR\" \\\n"
+            "        || die \"cannot establish exact transient pools for golden-provision storage\"\n"
+            "    windows_libvirt_require_targets_owned \"$STATE_DIR\" \"$ONLINE_DIR\" \\\n"
+            "        || die \"golden-provision storage is not exclusively transaction-owned\"\n"
+            "    windows_libvirt_prepare_domain \"$DOMAIN\" \"$PROVISION_DOMAIN_UUID\" \\\n"
+            "        || die \"cannot bind golden-provision domain residue ownership\"\n"
             "    # NB no --tpm:",
             "Windows golden two absence proofs plus definition",
         ),
@@ -66669,9 +66895,12 @@ def run_source_mutations(sources):
         ),
         (
             "windows_provision",
-            "setsid --wait virt-install",
-            "virt-install",
-            "Windows golden retained process-group launch",
+            '/usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}" \\\n'
+            "        /usr/bin/virt-install \\\n"
+            "        --connect qemu:///session",
+            "/usr/bin/virt-install \\\n"
+            "        --connect qemu:///session",
+            "Windows golden retained private-namespace process-group launch",
         ),
         (
             "windows_provision",
@@ -66886,16 +67115,15 @@ def run_source_mutations(sources):
         ),
         (
             "windows_build",
-            "setsid --wait \\\n"
-            '        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
-            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
-            "Windows build detached session-libvirt control",
+            'windows_libvirt_virsh_bounded "$@"',
+            'windows_libvirt_virsh_bounded "$CURRENT_DOMAIN"',
+            "Windows build private session-libvirt control delegation",
         ),
         (
-            "windows_build",
-            'virsh --connect qemu:///session "$@" </dev/null',
-            'virsh --connect qemu:///session "$@"',
-            "Windows build closed session-libvirt control input",
+            "windows_libvirt_storage_library",
+            '        "$@" </dev/null',
+            '        "$@"',
+            "Windows libvirt shared bounded closed-input control",
         ),
         (
             "windows_build",
@@ -67293,6 +67521,170 @@ def run_source_mutations(sources):
             '        || die "Windows private run state could not retire before final publication"',
             "true # private run state not retired before final publication",
             "Windows build prepare/run-state-retirement/commit order",
+        ),
+        (
+            "verify",
+            "/usr/bin/python3 -I -S scripts/verify-windows-libvirt-storage-pools.py --repo . --self-test",
+            "true # Windows libvirt focused verifier removed",
+            "Windows libvirt focused verifier wiring",
+        ),
+        (
+            "windows_libvirt_storage_library",
+            'virsh_bounded pool-create "$xml" >/dev/null || return 1',
+            'virsh_bounded pool-define "$xml" >/dev/null || return 1',
+            "Windows libvirt transient pool creation",
+        ),
+        (
+            "windows_libvirt_storage_library",
+            'virsh_bounded pool-destroy "$pool_uuid" >/dev/null || return 1',
+            'virsh_bounded pool-destroy "$name" >/dev/null || return 1',
+            "Windows libvirt exact pool destruction",
+        ),
+        (
+            "windows_libvirt_storage_library",
+            'windows_libvirt_destroy_transient_pool "$index" || cleanup_failed=1',
+            'windows_libvirt_destroy_transient_pool "$index" || return 1',
+            "Windows libvirt visit-all pool cleanup",
+        ),
+        (
+            "windows_libvirt_storage_library",
+            '"HOME=$private_home"',
+            '"HOME=$pw_home"',
+            "Windows libvirt private HOME",
+        ),
+        (
+            "windows_libvirt_storage_library",
+            '"XDG_DATA_HOME=$data_root"',
+            '"XDG_DATA_HOME=$HOME/.local/share"',
+            "Windows libvirt private data",
+        ),
+        (
+            "windows_libvirt_storage_library",
+            '"XDG_STATE_HOME=$state_root"',
+            '"XDG_STATE_HOME=$HOME/.local/state"',
+            "Windows libvirt private state",
+        ),
+        (
+            "windows_libvirt_storage_library",
+            '"TMPDIR=$tmp_root"',
+            '"TMPDIR=/tmp"',
+            "Windows libvirt private temporary directory",
+        ),
+        (
+            "windows_libvirt_storage_library",
+            "'listen_tcp = 0'",
+            "'listen_tcp = 1'",
+            "Windows libvirt TCP listener refusal",
+        ),
+        (
+            "windows_libvirt_storage_library",
+            "'lock_manager = \"nop\"'",
+            "'lock_manager = \"lockd\"'",
+            "Windows libvirt external lock-daemon exclusion",
+        ),
+        (
+            "windows_libvirt_storage_library",
+            "'stdio_handler = \"file\"'",
+            "'stdio_handler = \"logd\"'",
+            "Windows libvirt external log-daemon exclusion",
+        ),
+        (
+            "windows_libvirt_storage_library",
+            'windows_libvirt_require_ambient_session_quiescent \\\n        "/run/user/$WINDOWS_HELPER_BUILD_UID" "$WINDOWS_LIBVIRT_USER_HOME"',
+            "true # escaped auxiliary daemon ignored",
+            "Windows libvirt daemon and private-tree finality",
+        ),
+        (
+            "windows_libvirt_storage_library",
+            'if [ "$WINDOWS_LIBVIRT_OBJECTS_RETIRED" = 0 ]; then',
+            "if true; then # retired libvirt objects re-queried",
+            "Windows libvirt retryable object phase",
+        ),
+        (
+            "windows_libvirt_storage_library",
+            "WINDOWS_LIBVIRT_OBJECTS_RETIRED=1",
+            "WINDOWS_LIBVIRT_OBJECTS_RETIRED=0",
+            "Windows libvirt object-retirement commit",
+        ),
+        (
+            "windows_libvirt_storage_library",
+            "8#$mode & 8#7022",
+            "8#$mode & 8#022",
+            "Windows libvirt parent/home/target special-bit and writable-mode refusal",
+        ),
+        (
+            "windows_libvirt_storage_library",
+            '--target-identity "$target_id"',
+            '--target-identity "0:1"',
+            "Windows libvirt request/live-verification/poolstate target identity",
+        ),
+        (
+            "windows_libvirt_storage_verifier",
+            '    echo "external receipt hardlink was removed as private state" >&2\n'
+            "    exit 1",
+            '    echo "external receipt hardlink was accepted" >&2\n'
+            "    exit 1",
+            "Windows libvirt focused retryable final-tree driver fixture",
+        ),
+        (
+            "windows_libvirt_storage_helper",
+            "actual_permissions != expected_permissions",
+            "False",
+            "Windows libvirt live target-permissions binding",
+        ),
+        (
+            "windows_libvirt_storage_helper",
+            "            or before.st_nlink != 1\n"
+            "            or stat.S_IMODE(before.st_mode) != 0o600\n"
+            "            or before.st_size > MAX_XML_BYTES",
+            "            or before.st_nlink != 1\n"
+            "            or False\n"
+            "            or before.st_size > MAX_XML_BYTES",
+            "Windows libvirt exact poolstate mode",
+        ),
+        (
+            "windows_libvirt_storage_helper",
+            "        require_exact_pool(\n"
+            "            root, args.name, args.uuid, args.target, target_metadata\n"
+            "        )",
+            "        pool_identity(root)",
+            "Windows libvirt exact poolstate binding",
+        ),
+        (
+            "windows_build",
+            'windows_libvirt_ensure_transient_pools "$CURRENT_PASS_ROOT" "$RUN_ROOT"',
+            "true # Windows build storage unmanaged",
+            "Windows build transient storage coverage",
+        ),
+        (
+            "windows_provision",
+            'windows_libvirt_ensure_transient_pools "$STATE_DIR" "$ONLINE_DIR"',
+            "true # Windows provision storage unmanaged",
+            "Windows provision transient storage coverage",
+        ),
+        (
+            "windows_presentation",
+            'windows_libvirt_ensure_transient_pools "$RUN_ROOT"',
+            "true # Windows presentation storage unmanaged",
+            "Windows presentation transient storage coverage",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11gn</span>',
+            '<span class="id">R-S11gn-disabled</span>',
+            "Windows libvirt normative requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>349</td>",
+            "<tr><td>349-disabled</td>",
+            "Windows libvirt Appendix C #349 disposition",
+        ),
+        (
+            "hardening",
+            "R-S11gn/R-S11e-226 — Windows harness transient libvirt storage ownership",
+            "R-S11gn/R-S11e-226 — Windows harness ambient libvirt storage",
+            "Windows libvirt hardening-ledger disposition",
         ),
         (
             "windows_build",
@@ -73447,6 +73839,15 @@ def main():
             "windows_harness_verifier": (
                 repo / "scripts/verify-windows-harness.py"
             ).read_text(encoding="utf-8"),
+            "windows_libvirt_storage_verifier": (
+                repo / "scripts/verify-windows-libvirt-storage-pools.py"
+            ).read_text(encoding="utf-8"),
+            "windows_libvirt_storage_helper": (
+                repo / "scripts/windows-libvirt-storage-pool.py"
+            ).read_text(encoding="utf-8"),
+            "windows_libvirt_storage_library": (
+                repo / "scripts/windows-libvirt-storage-pools.sh"
+            ).read_text(encoding="utf-8"),
             "apple_verifier_authority_verifier": (
                 repo / "scripts/verify-apple-verifier-authority.py"
             ).read_text(encoding="utf-8"),
@@ -73567,6 +73968,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "windows_provision": (
                 repo / "scripts/provision-windows-vm.sh"
+            ).read_text(encoding="utf-8"),
+            "windows_presentation": (
+                repo / "scripts/smoke-flutter-presentation-windows.sh"
             ).read_text(encoding="utf-8"),
             "windows_golden_verify": (
                 repo / "scripts/verify-windows-golden.sh"

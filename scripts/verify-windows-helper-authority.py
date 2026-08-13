@@ -346,8 +346,8 @@ def validate(sources: Dict[str, str]) -> None:
          "portable relative overlay backing path"),
         ('source=$CURRENT_PASS_ROOT/overlay.qcow2,target=/authority/pass/overlay.qcow2"',
          "exact writable overlay mount"),
-        ('source=$PRIVATE_GOLDEN,target=/authority/golden.qcow2,readonly',
-         "exact read-only private golden mount"),
+        ('source=$GOLDEN,target=/authority/golden.qcow2,readonly',
+         "exact read-only canonical golden mount"),
         ('source=$CURRENT_PASS_ROOT/output.img,target=/authority/output.img,readonly',
          "exact read-only artifact-disk extraction"),
         ('source=$msi_input,target=/authority/input.msi,readonly',
@@ -357,7 +357,7 @@ def validate(sources: Dict[str, str]) -> None:
         ('source=$msi_stage,target=/out"', "private MSI output"),
     ):
         require(build, token, label)
-    require_count(build, "windows_helper_small_run", 1, "one small helper operation")
+    require_count(build, "windows_helper_small_run", 3, "three small helper operations")
     require_count(build, "windows_helper_media_run", 1, "one media helper operation")
     require_count(build, "windows_helper_guestfish_run", 3, "three libguestfs operations")
     main = build[build.index("\nmain() {") :]
@@ -366,10 +366,12 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "windows_helper_authority_open",
             "preflight",
-            "snapshot_golden",
+            "bind_golden_backing",
             "build_offline_media",
             "run_pass A",
-            "verify_private_golden",
+            "verify_golden_backing",
+            "windows_libvirt_transaction_close",
+            "windows_helper_authority_close",
             "publish_result",
         ),
         "Windows build authority, immutable inputs, execution, and publication",
@@ -895,6 +897,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     Mutation("build", "qemu-img create -f qcow2 -F qcow2 -b ../golden.qcow2 overlay.qcow2",
              'qemu-img create -f qcow2 -F qcow2 -b "$PRIVATE_GOLDEN" overlay.qcow2',
              "relative overlay backing path"),
+    Mutation("build", 'source=$GOLDEN,target=/authority/golden.qcow2,readonly',
+             'source=$PRIVATE_GOLDEN,target=/authority/golden.qcow2,readonly',
+             "zero-copy canonical golden mount"),
     Mutation("build", 'source=$msi_input,target=/authority/input.msi,readonly',
              'source=$extracted,target=/out"', "narrow MSI input"),
     Mutation(

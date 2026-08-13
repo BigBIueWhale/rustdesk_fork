@@ -328,6 +328,18 @@ else
   echo "  ok  R-S11ds each Windows build pass commits one exact UUID only after client/name/XML proof, preserves ambiguous creation, uses UUID-only post-create control, and proves terminal retirement"
 fi
 
+echo "== (0f4) Windows harness transient libvirt storage ownership (R-S11gn/R-S11e-226) =="
+r_s11gn=
+if ! /usr/bin/python3 -I -S scripts/verify-windows-libvirt-storage-pools.py --repo . --self-test; then
+  r_s11gn="$r_s11gn source-behavior-or-mutation-self-test-failed"
+fi
+if [ -n "$r_s11gn" ]; then
+  echo "  FAIL R-S11gn Windows harness transient libvirt storage ownership:$r_s11gn"
+  rc=1
+else
+  echo "  ok  R-S11gn every Windows harness disk parent is exclusively covered by an exact transaction-owned transient non-autostart pool before virt-install, and domain-first teardown retires exact pools, poolstate, and QEMU logs before backing storage"
+fi
+
 echo "== (0g) Apple conformance verifier authority (R-S11ci/R-S11e-101) =="
 r_s11ci=
 if ! /usr/bin/python3 -I -S scripts/verify-apple-verifier-authority.py --repo . --self-test; then

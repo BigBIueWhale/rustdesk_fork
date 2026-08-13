@@ -24463,12 +24463,107 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   mutations pass in the pinned numeric-nonroot, networkless devcheck image. The broad independent workspace baseline
   remains separately red and is not inferred green from these focused results.
 
+### R-S11gn/R-S11e-226 — Windows harness transient libvirt storage ownership (2026-08-13)
+
+- **SOURCE CORRECTION, CONFINED SOURCE/FAKE-LIBVIRT, AND REAL NONROOT LIBVIRT DAEMON/POOL LIFECYCLE GREEN;
+  QEMU/VM EXECUTION OPEN; NO PRODUCT-RUNTIME RESULT CLAIMED.** Platform/surface: the Linux-hosted, per-user
+  `qemu:///session` launch paths in
+  `build-windows-vm.sh`, `provision-windows-vm.sh`, and
+  `smoke-flutter-presentation-windows.sh`. Boundary: private Windows build/golden/presentation disk parents and
+  their exact creating transaction ↔ user-session libvirt storage-pool/config/runtime/QEMU-log state. This is build
+  harness authority and resource-lifecycle work, not product IPC, host RustDesk, firewall, or public-listener work.
+- The old reachable path is concrete. All three launchers passed unmanaged absolute `--disk`/`--cdrom` paths to
+  host `virt-install 4.1.0` and owned only the resulting domain UUID and backing directory. The installed
+  `virtinst/diskbackend.py::manage_path()` checks whether each local path is already managed; when it is not, lines
+  156–167 take the exact parent directory, derive a basename pool name, create a `type=dir` pool, and call
+  `poolxml.install(build=False, create=True, autostart=True)`. Backing-tree cleanup could not retire that persistent
+  autostart definition, its runtime poolstate, or the per-domain QEMU log. Mutable/generated pool names also made a
+  filename-pattern cleanup incomplete.
+- The corrected model does not merely make pools explicit inside the same ambient daemon. Each harness invocation
+  refuses root UID/GID, passwd/`HOME` disagreement, caller XDG cache/config overrides, a standard user-session
+  libvirt socket/PID, any same-UID libvirt management/storage/proxy/log/lock daemon, nonempty ambient persistent-pool
+  configuration, or stale transaction. It creates private `HOME`, `TMPDIR`, and XDG cache/config/data/state roots
+  beneath one unpredictable control tree plus a separate short private runtime root. One foreground
+  `/usr/sbin/libvirtd` runs in the retained nonroot session/process group under an exact PID/start identity, without
+  `--listen`, with `listen_tcp=0` and `listen_tls=0`. Its private `qemu.conf` fixes `lock_manager="nop"` and
+  `stdio_handler="file"`; therefore `virtlockd` and `virtlogd` are not detached transaction authorities. All
+  `/usr/bin/virsh` and `/usr/bin/virt-install` calls receive one empty client environment naming only those private
+  roots and `qemu:///session`; neither daemon nor clients can fall back to the real user cache, home, or `/tmp`.
+- Inside that private daemon, the harness creates one random-name/random-version-4-UUID **transient** directory pool
+  for each distinct exact disk parent before any domain-create attempt, records the exclusive mode-0600 request and
+  target device/inode before `pool-create`, and refuses every pre-managed target rather than adopting it. It proves
+  bidirectional name/UUID identity, exact type/source/target XML—including any live target-permissions projection
+  exactly equal to the target's current mode, UID, and GID—the same target inode, unique target mapping, running
+  state, `Persistent: no`, `Autostart: no`, and private persistent-config absence before and after `virt-install`.
+- Domain/QEMU-log authority is separately receipt-bound before launch: the exact name/UUID, fixed log basename,
+  log-directory inode, and current numeric principal are recorded only while that log path is absent. Cleanup first
+  joins the creating process group and proves the exact domain absent. It then visits every independent pool even
+  after another pool failure, destroys only a still-exact transient UUID, proves live/config/target absence, removes
+  only a bounded no-follow, current-principal, single-link regular mode-0600 runtime poolstate whose bytes bind the
+  exact pool, and removes only a receipt-bound current-principal single-link non-writable QEMU log. Only after that
+  authority retires may backing trees,
+  build-scoped snapshots, helper authority, or leases retire. Ambiguous create/destroy, a live domain, changed
+  target/name/UUID/XML/inode, persistent/autostart state, pre-managed target, substituted receipt, symlink, hardlink,
+  or changed log directory preserves state and fails closed. After pool/log cleanup it stops, joins, and reaps the
+  exact private daemon, proves no same-UID libvirt auxiliary escaped, then descriptor-retires only the private
+  runtime and control trees. This is the closure that prevents another user-home cache residue from being created.
+- Historical cleanup was separately and explicitly authorized by the operator. Target-parsed reconciliation removed
+  152 inactive harness-attributable persistent autostart pools and 108 exact QEMU logs whose backing targets were
+  already absent. A subsequent target-based pass found and removed one generically named poolstate XML that a
+  filename filter missed. A later follow-up removed the per-user libvirt daemon cache subtrees and two QEMU
+  capability-cache XMLs, but its finality claim was itself incomplete: it missed the separate empty
+  `~/.cache/libvirt/qemu/cache` chain. Exact UID-1000 Docker `rmdir` removed that empty chain and its empty parents.
+  A still later user-directed inventory contradicted that second finality claim: it found 89 stale session-libvirt
+  runtime files, six harness-only `virt-install` logs, an empty `~/.config/libvirt` tree, and the empty task lock.
+  Exact UID-1000 Docker cleanup removed those objects—60,701 payload bytes of runtime state and 5,358,960 log
+  bytes—and final target assertions passed; unrelated inaccessible systemd state was not a cleanup target. The same
+  scoped cleanup history removed its own inspection outputs. The final loop-window residue sweep then found and
+  exact-Docker-removed one 17,594-byte verifier excerpt and five ignored bridge/plugin code-generation outputs
+  totalling 557,495 bytes; an ignored-file date sweep now returns zero. No attributable transaction receipt, private
+  runtime, poolstate, QEMU log, stopped/created test container, or RustDesk/libvirt/harness-named Docker object
+  remains. Live `/tmp/RustDesk*` IPC state and all Haggai, Angry Birds, VibeVoice, Swing/Benayahu, and other unrelated
+  Docker/filesystem state were deliberately preserved. The large remaining Docker cache graph was not globally
+  pruned because the RustDesk-bearing layers belong to Haggai, not this fork's verification.
+- Verification contract: `verify-windows-libvirt-storage-pools.py` structurally binds the helper, shared library,
+  all three launchers, requirements, hardening ledger, normal verifier, and independent workspace verifier. Its
+  bounded helper fixtures cover exact/dynamic XML, oversize and malformed XML, target matching, exclusive receipts,
+  pre-existing/symlink/hardlink/writable log refusal, exact log cleanup, exact/mismatched poolstate, and missing
+  runtime state. Its fake-libvirt shell suites cover visit-all retryable teardown, success-with-error pool creation,
+  pre-managed target refusal, persistent-state refusal, changed target refusal, and target-inode substitution. The
+  deliberate-mutation matrix rejects 68 weakenings. In local immutable image content ID
+  `sha256:786a8b558f7be160c6c8c4a54f9a57274f3b4fb1491cf65146521ae77ff1dc54`, numeric UID/GID 1000:1000,
+  network-none, read-only-root/source, all-capabilities-dropped, no-new-privileges, bounded-resource Docker, it passed
+  20 helper fixtures and 7 fake-libvirt shell scenarios. Adjacent source/behavior gates passed: the Windows
+  harness rejected 298 mutations and completed 7 bounded behavioral suites (including a real 1-MiB qcow2 operation
+  inside Docker, but no VM), golden-domain authority rejected 45 mutations, and helper authority rejected 82
+  mutations. The independent semantic baseline passed. The first complete unsliced independent source-mutation
+  catalog failed closed because its golden-provision absence mutation still expected the old adjacency between
+  `require_domain_identity_absent` and the TPM comment; the new storage-pool admission calls correctly separate
+  them. The fixture was rebound to the complete current admission block without weakening a product or verifier
+  check. The focused 20/7/68 gate and independent baseline passed again, then the complete catalog restarted at
+  mutation one and returned terminal `verify-verifier-workspace: ok`. The publication gate repeats that complete
+  catalog once more after this evidence-ledger edit and permits no later tracked-byte change.
+- A locked-down numeric-nonroot Docker transaction ran this host's installed libvirt 10.0.0 binaries through the
+  real private-daemon/transient-pool lifecycle. Its first attempt exposed libvirt's live `<target><permissions>`
+  projection; the source and regression fixture were corrected to require those exact current mode/UID/GID values.
+  The final transaction created and destroyed one exact transient directory pool, stopped and reaped the private
+  daemon, left no private runtime/control state, and preserved the before/during/after `/proc/net/tcp*` listener
+  count. Host `/usr`, `/lib`, and `/lib64` were read-only inside the networkless container; no QEMU process, domain,
+  VM, RustDesk process, public listener, or release build ran. Installed QEMU/domain/log/auxiliary-process cleanup
+  therefore remains open. This slice does not close the user's general connection-correctness/performance request or
+  the reported display-only delay. Exact cold
+  R-B2/R-B10 release equality; a fresh exact-current real Windows capture/encode/transport/decode/Flutter presentation
+  transaction through sustained focus loss and minimize/restore; physical Android persistent-service task-swipe,
+  reopen, and Force-Stop recovery; installed Apple/native behavior; deployed/cross-version behavior; concurrent
+  feature interaction; sustained reconnect/focus/resource/performance soak; independent reproduction; and external
+  review all remain explicit release blockers.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-eb84a78ce1233d9fb9fce0ff08dadfdc3d3631e393b2287b3129047867b68180  requirements.html
+130f5ad894ba0b41c5f8ce291d1af35a6d59ed201dca2eb52a95cf9c4dc0d319  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

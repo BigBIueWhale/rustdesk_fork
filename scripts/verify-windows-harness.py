@@ -28,6 +28,7 @@ FILES = {
     "provision": "scripts/provision-windows-vm.sh",
     "lib": "scripts/lib.sh",
     "runtime": "scripts/windows-helper-runtime.sh",
+    "storage": "scripts/windows-libvirt-storage-pools.sh",
     "closure": "scripts/verify-private-tree-closure.py",
     "publication": "scripts/publish-windows-result.py",
     "offline": "scripts/windows-offline-manifest.py",
@@ -320,6 +321,7 @@ def validate_sources(sources: dict[str, str]) -> None:
     host = sources["host"]
     provision = sources["provision"]
     lib = sources["lib"]
+    storage = sources["storage"]
     runtime = sources["runtime"]
     closure = sources["closure"]
     publication = sources["publication"]
@@ -674,8 +676,9 @@ def validate_sources(sources: dict[str, str]) -> None:
     require(host, 'CURRENT_DOMAIN_UUID="$(</proc/sys/kernel/random/uuid)"', "kernel domain UUID")
     require(
         launch_domain,
-        'setsid --wait virt-install --connect qemu:///session --name "$CURRENT_DOMAIN" --uuid "$CURRENT_DOMAIN_UUID"',
-        "owned session/process-group virt-install",
+        '/usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}" \\\n'
+        '        /usr/bin/virt-install --connect qemu:///session --name "$CURRENT_DOMAIN" --uuid "$CURRENT_DOMAIN_UUID"',
+        "owned private-namespace session/process-group virt-install",
     )
     require(host, "VM_TIMEOUT_SECONDS=7200", "two-hour VM bound")
     for literal, description in (
@@ -834,23 +837,28 @@ def validate_sources(sources: dict[str, str]) -> None:
         2,
         "TERM/KILL deadlines",
     )
-    require(virsh_bounded, "setsid --wait \\\n", "detached bounded virsh")
     require(
-        virsh_bounded,
-        'virsh --connect qemu:///session "$@" </dev/null',
-        "closed virsh input",
+        host,
+        'source "$SCRIPT_DIR/windows-libvirt-storage-pools.sh"',
+        "shared private libvirt authority",
     )
     require(
         virsh_bounded,
-        'setsid --wait \\\n'
-        '        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
-        '        virsh --connect qemu:///session "$@" </dev/null',
-        "bounded fixed-session noninteractive libvirt control wrapper",
+        'windows_libvirt_virsh_bounded "$@"',
+        "private libvirt control delegation",
+    )
+    bounded_control = shell_function(storage, "windows_libvirt_run_bounded_control")
+    require(
+        bounded_control,
+        '/usr/bin/setsid --wait \\\n'
+        '        /usr/bin/timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
+        '        "$@" </dev/null',
+        "bounded noninteractive private libvirt control wrapper",
     )
     direct_virsh = re.findall(r"(?m)^[ \t]*virsh(?:[ \t]|$)", host)
-    if len(direct_virsh) != 1:
+    if direct_virsh:
         raise VerificationError(
-            f"libvirt calls do not all pass through virsh_bounded: found {len(direct_virsh)} direct invocations"
+            f"libvirt calls do not all pass through private virsh authority: found {len(direct_virsh)} direct invocations"
         )
     require_order(
         launch_domain,
@@ -861,7 +869,8 @@ def validate_sources(sources: dict[str, str]) -> None:
             'CURRENT_VM_DEADLINE=$(( $(monotonic_seconds) + VM_TIMEOUT_SECONDS ))',
             "require_domain_identity_absent",
             "CURRENT_DOMAIN_CREATION_STARTED=1",
-            "setsid --wait virt-install",
+            '/usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}"',
+            "/usr/bin/virt-install",
             '--uuid "$CURRENT_DOMAIN_UUID"',
             "CURRENT_VIRT_PID=$!",
             'CURRENT_VIRT_START="$(process_start_time "$CURRENT_VIRT_PID")"',
@@ -3344,19 +3353,24 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "require_cmd qemu-img virt-install virsh xorriso git python3 realpath "
             "sha256sum sha512sum timeout setsid",
         ),
-        ("setsid wait", "host", "setsid --wait virt-install", "setsid virt-install"),
+        (
+            "setsid wait",
+            "host",
+            '/usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}"',
+            '/usr/bin/setsid "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}"',
+        ),
         (
             "detached bounded virsh",
-            "host",
-            'setsid --wait \\\n'
-            '        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
-            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
+            "storage",
+            '/usr/bin/setsid --wait \\\n'
+            '        /usr/bin/timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
+            '/usr/bin/timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
         ),
         (
             "closed virsh input",
-            "host",
-            'virsh --connect qemu:///session "$@" </dev/null',
-            'virsh --connect qemu:///session "$@"',
+            "storage",
+            '        "$@" </dev/null',
+            '        "$@"',
         ),
         (
             "post-libvirt-10 virsh option absence",
@@ -3964,9 +3978,10 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "host",
             "verify_active_online_snapshot\n"
             "    verify_golden_backing\n"
-            "    windows_helper_authority_close",
+            "    windows_libvirt_transaction_close",
             "verify_active_online_snapshot\n"
-            "    windows_helper_authority_close",
+            "    true # golden backing not revalidated before publication\n"
+            "    windows_libvirt_transaction_close",
         ),
         (
             "provisioned golden read-only seal",

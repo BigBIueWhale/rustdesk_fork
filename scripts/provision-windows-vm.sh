@@ -33,6 +33,8 @@ source "$SCRIPT_DIR/lib.sh"
 load_pins
 # shellcheck source=scripts/windows-helper-runtime.sh
 source "$SCRIPT_DIR/windows-helper-runtime.sh"
+# shellcheck source=scripts/windows-libvirt-storage-pools.sh
+source "$SCRIPT_DIR/windows-libvirt-storage-pools.sh"
 
 STATE_DIR="$REPO_ROOT/.harness-state"
 GOLDEN="$STATE_DIR/win11-golden.qcow2"
@@ -296,9 +298,7 @@ stop_owned_virt_process() {
 }
 
 virsh_bounded() {
-    setsid --wait \
-        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \
-        virsh --connect qemu:///session "$@" </dev/null
+    windows_libvirt_virsh_bounded "$@"
 }
 
 domain_name_is_listed() {
@@ -517,10 +517,18 @@ build_golden() {
         fi
         die "golden exists but lacks the exact v3 completion receipt (stale/failed/incompatible provision): $GOLDEN — delete it deliberately before rebuilding"
     fi
+    windows_libvirt_transaction_open "$STATE_DIR" \
+        || die "cannot create the private golden-provision libvirt transaction"
     build_media
     PROVISION_DOMAIN_UUID="$(</proc/sys/kernel/random/uuid)"
     assert_uuid "$PROVISION_DOMAIN_UUID"
     require_domain_identity_absent
+    windows_libvirt_ensure_transient_pools "$STATE_DIR" "$ONLINE_DIR" \
+        || die "cannot establish exact transient pools for golden-provision storage"
+    windows_libvirt_require_targets_owned "$STATE_DIR" "$ONLINE_DIR" \
+        || die "golden-provision storage is not exclusively transaction-owned"
+    windows_libvirt_prepare_domain "$DOMAIN" "$PROVISION_DOMAIN_UUID" \
+        || die "cannot bind golden-provision domain residue ownership"
     # NB no --tpm: this host's session libvirt offers only TPM 'passthrough' (a physical TPM),
     # not the swtpm 'emulator' backend, and qemu:///system is permission-denied. autounattend.xml
     # bypasses Win11 Setup's TPM/SecureBoot gates instead — fine for a throwaway BUILD VM (TPM is
@@ -545,7 +553,8 @@ build_golden() {
     # same slirp `-netdev user`, proving the model is the fix. (slirp NAT; the guest never LISTENS.)
     PROVISION_VM_DEADLINE=$(( $(monotonic_seconds) + VM_TIMEOUT_SECONDS ))
     PROVISION_DOMAIN_CREATION_STARTED=1
-    setsid --wait virt-install \
+    /usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}" \
+        /usr/bin/virt-install \
         --connect qemu:///session \
         --name "$DOMAIN" \
         --uuid "$PROVISION_DOMAIN_UUID" \
@@ -565,6 +574,8 @@ build_golden() {
     wait_for_owned_virt_process_group \
         || die "could not prove virt-install process-group admission"
     wait_for_owned_domain_creation
+    windows_libvirt_require_targets_owned "$STATE_DIR" "$ONLINE_DIR" \
+        || die "virt-install changed golden-provision storage-pool ownership"
     # Clear the UEFI "Press any key to boot from CD or DVD" prompt: headless, it otherwise falls
     # through to "BdsDxe: No bootable option or device was found" and the install never starts.
     # send-key ENTER (linux keycode 28) through its ~5s window. (This backgrounded script's own
@@ -652,6 +663,8 @@ main() {
     windows_helper_authority_open
     preflight
     build_golden
+    windows_libvirt_transaction_close \
+        || die "golden-provision libvirt authority did not retire after domain finality"
     log "Per-build usage (build-windows.ps1): create a CoW overlay and a transient"
     log "domain over \$GOLDEN, share C:\\src + C:\\online read-only, run the build,"
     log "copy out the .exe/.msi + SHA-256, then let the creating transaction retire it."
@@ -671,6 +684,9 @@ cleanup_provision() {
     elif ! stop_and_undefine_owned_domain; then
         cleanup_failed=1
         warn "could not prove exact terminal cleanup of the provision-owned domain"
+    elif ! windows_libvirt_transaction_close; then
+        cleanup_failed=1
+        warn "could not prove exact terminal cleanup of provision-owned transient libvirt state"
     fi
     windows_helper_authority_close || cleanup_failed=1
     if [ "$cleanup_failed" != 0 ] && [ "$status" = 0 ]; then

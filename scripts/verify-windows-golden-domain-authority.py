@@ -52,6 +52,7 @@ def extract_requirement(source, requirement_id):
 
 def validate(sources):
     provision = sources["provision"]
+    storage = sources["storage"]
 
     for text, label in (
         ("export LC_ALL=C", "fixed control-output locale"),
@@ -123,18 +124,12 @@ def validate(sources):
             "exact owned process-group terminal stop",
         ),
         (
-            "setsid --wait \\\n",
-            "detached session-libvirt control",
+            'source "$SCRIPT_DIR/windows-libvirt-storage-pools.sh"',
+            "shared private libvirt authority",
         ),
         (
-            'virsh --connect qemu:///session "$@" </dev/null',
-            "closed session-libvirt control input",
-        ),
-        (
-            "setsid --wait \\\n"
-            '        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
-            "        virsh --connect qemu:///session \"$@\" </dev/null",
-            "bounded fixed session-libvirt control",
+            'windows_libvirt_virsh_bounded "$@"',
+            "private session-libvirt control delegation",
         ),
         ('list --all --name', "fail-closed complete name enumeration"),
         ('list --all --uuid', "fail-closed complete UUID enumeration"),
@@ -165,9 +160,10 @@ def validate(sources):
             "UUID-addressed secondary name proof",
         ),
         (
-            'setsid --wait virt-install \\\n'
+            '/usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}" \\\n'
+            "        /usr/bin/virt-install \\\n"
             "        --connect qemu:///session",
-            "retained process-group launch",
+            "retained private-namespace process-group launch",
         ),
         ('--uuid "$PROVISION_DOMAIN_UUID"', "explicit libvirt UUID creation"),
         (
@@ -218,6 +214,21 @@ def validate(sources):
         ("trap 'signal_exit 143' TERM", "TERM cleanup routing"),
     ):
         require_text(provision, text, label)
+
+    for text, label in (
+        (
+            "/usr/bin/setsid --wait \\\n"
+            '        /usr/bin/timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS" \\\n'
+            '        "$@" </dev/null',
+            "bounded closed-input libvirt control",
+        ),
+        (
+            '"${WINDOWS_LIBVIRT_CLIENT_ENV[@]}" \\\n'
+            '        /usr/bin/virsh --connect qemu:///session "$@"',
+            "private environment and absolute libvirt client",
+        ),
+    ):
+        require_text(storage, text, label)
 
     require_count(
         provision,
@@ -274,7 +285,8 @@ def validate(sources):
             'qemu-img create -f qcow2 "$GOLDEN" 80G',
             "require_domain_identity_absent",
             "PROVISION_DOMAIN_CREATION_STARTED=1",
-            "setsid --wait virt-install",
+            '/usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}"',
+            "/usr/bin/virt-install",
             '--uuid "$PROVISION_DOMAIN_UUID"',
             'PROVISION_VIRT_START="$(process_start_time "$PROVISION_VIRT_PID")"',
             "wait_for_owned_virt_process_group",
@@ -466,17 +478,17 @@ def run_self_test(sources):
             "complete provision-client group drain",
         ),
         (
-            "provision",
-            "setsid --wait \\\n"
-            '        timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
-            'timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
-            "detached session-libvirt control",
+            "storage",
+            "/usr/bin/setsid --wait \\\n"
+            '        /usr/bin/timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
+            '/usr/bin/timeout --foreground --kill-after=2 "$CONTROL_TIMEOUT_SECONDS"',
+            "bounded closed-input libvirt control",
         ),
         (
-            "provision",
-            'virsh --connect qemu:///session "$@" </dev/null',
-            'virsh --connect qemu:///session "$@"',
-            "closed session-libvirt control input",
+            "storage",
+            '        "$@" </dev/null',
+            '        "$@"',
+            "bounded closed-input libvirt control",
         ),
         (
             "provision",
@@ -517,9 +529,9 @@ def run_self_test(sources):
         (
             "provision",
             "    require_domain_identity_absent\n"
-            "    # NB no --tpm:",
+            '    windows_libvirt_ensure_transient_pools "$STATE_DIR" "$ONLINE_DIR"',
             "    # first absence proof removed\n"
-            "    # NB no --tpm:",
+            '    windows_libvirt_ensure_transient_pools "$STATE_DIR" "$ONLINE_DIR"',
             "two absence proofs plus function definition",
         ),
         (
@@ -530,9 +542,9 @@ def run_self_test(sources):
         ),
         (
             "provision",
-            "setsid --wait virt-install",
-            "virt-install",
-            "retained process-group launch",
+            '/usr/bin/setsid --wait "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}"',
+            '/usr/bin/setsid "${WINDOWS_LIBVIRT_CLIENT_ENV[@]}"',
+            "retained private-namespace process-group launch",
         ),
         (
             "provision",
@@ -718,6 +730,7 @@ def run_self_test(sources):
 def load_sources(repo):
     paths = {
         "provision": "scripts/provision-windows-vm.sh",
+        "storage": "scripts/windows-libvirt-storage-pools.sh",
         "requirements": "requirements.html",
         "hardening": "HARDENING_STATUS.md",
         "verify": "scripts/verify.sh",

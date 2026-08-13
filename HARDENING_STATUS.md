@@ -24156,10 +24156,40 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   nonroot verification that rejected all 286 deliberate mutations and passed all seven bounded behavioral suites.
   The behavior suite uses only disposable tmpfs fixtures and a synthetic owned process group. It did not invoke the
   builder main path, create a VM, start RustDesk, or create a network listener.
+- The independent workspace verifier's later red result was verifier drift, not a regression of this cleanup
+  implementation. Its old global check still required bulk retirement only when
+  `RUN_COMPLETE=1 && CLEANUP_FAILED=0`, contradicting R-S11gl and the focused verifier: once the exact process group,
+  domain, and helper are reconciled, bulk run state must retire on every terminal outcome, independently of bounded
+  diagnostic publication. The corrected gate parses `cleanup`, bounded-evidence publication/retirement, and `main`
+  as separate shell functions; binds their complete process/domain/helper/evidence/bulk/transaction/lease order;
+  requires the failure receipt to demand bulk retirement; excludes setup/MSI, overlay, output/golden disk, and
+  offline-media retention; binds the 16-MiB file, 64-MiB aggregate, and 32-GiB reserve bounds; and binds R-S11gl,
+  Appendix C #347, and this ledger. Publication checking also follows the current stronger order through active
+  snapshot and golden revalidation, helper closure, publication phase entry, artifact publication, and only then
+  `RUN_COMPLETE=1`. The generic HTML requirement extractor now recognizes a final requirement followed by a
+  single-newline section heading, rather than falsely reporting R-S11gl's closing boundary absent.
+- Negative-proof maintenance found and corrected two unrelated stale fixtures instead of hiding them. The retired
+  mobile-rendezvous mutation had used `_zeroClientLengthCounter` as an insertion anchor after R-S11gic correctly
+  removed that graphical-CM idle-exit counter; it now inserts the same forbidden `_connectStatus` state beside the
+  still-live approval-mode field. The Windows Amyuni-excision mutation formerly matched both the artifact `Build`
+  call and the explicitly non-artifact full-peer probe call; it is now scoped to the artifact-build function and its
+  checked exit path. All 4,041 mutation anchors were present after correction. The positive independent workspace
+  gate and the unmodified complete 4,041-source-mutation run then exited zero in the pinned devcheck image with
+  numeric UID/GID 1000, no network, a read-only repository and container root, no capabilities, no-new-privileges,
+  bounded PIDs/memory/CPU, and tmpfs-only scratch. No builder main path, VM, RustDesk process, listener, host service,
+  firewall, or unrelated Docker object was exercised or changed.
+- The later operator-authorized Docker cleanup removed the previously retained 13.7-MB failed-build envelope and
+  duplicate `cleanup-failed` CM envelope as exact RustDesk residue. Current read-only accounting is
+  `36,588,786,660` apparent bytes and exactly five top-level entries: the canonical `win11-golden.qcow2`, Android
+  signing keystore, two successful Windows presentation evidence roots, and one successful CM-lifecycle evidence
+  root. There is no `windows-build-*`, `.windows-failure-*`, or failed CM bulk/evidence root left. This updates current
+  state without rewriting the earlier historical measurements or treating affirmative evidence/canonical input as
+  disposable residue.
 - No fresh R-S11gk native result is claimed. The interrupted retry was stopped and its exact newly created disposable
   state was retired before the later measure-only boundary. At commit `a43310a`, the 16 historical bulk roots and
-  separately retained small failure evidence still remained untouched; the later explicitly authorized cleanup below
-  removed bulk history while retaining the bounded evidence. A real native retry still requires an explicit invocation
+  separately retained small failure evidence still remained untouched; the first explicitly authorized cleanup phase
+  below removed bulk history while retaining the bounded evidence, and the subsequent exact RustDesk-residue cleanup
+  removed that envelope as recorded above. A real native retry still requires an explicit invocation
   and provisioning preflight to seal the canonical golden. The display-focus/session investigation, deployed weeks-old
   artifact behavior, Android persistent-service task-swipe/reopen/Force-Stop recovery, cross-version behavior,
   sustained performance/resource soak, cold release equality, independent reproduction, and external review remain

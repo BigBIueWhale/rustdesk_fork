@@ -622,6 +622,7 @@ def extract_html_requirement(source, requirement_id, label):
     end_candidates = (
         source.find('\n\n<div class="req"', content_start),
         source.find('\n\n<h2 ', content_start),
+        source.find('\n<h2 ', content_start),
     )
     ends = [end for end in end_candidates if end >= 0]
     if not ends:
@@ -14004,6 +14005,12 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
     service_wxs = sources["windows_service_wxs"]
     virtual_display = sources["virtual_display_manager_source"]
     windows_device = sources["windows_device_source"]
+    release_build = extract_between(
+        sources["windows_build_script"],
+        "function Build {\n",
+        "\n}\n\nfunction Emit-Artifacts",
+        "current Windows release build function boundary",
+    )
     active_surface = "\n".join(
         (
             service_wxs,
@@ -14050,9 +14057,10 @@ def validate_windows_amyuni_cleanup_excision_contract(sources):
         "available_features = {}",
         "current Windows release empty third-party resource catalog",
     )
-    require_text(
-        sources["windows_build_script"],
-        "& $PYTHON_EXE build.py --flutter",
+    require_exact_count(
+        release_build,
+        "    & $PYTHON_EXE build.py --flutter\n",
+        1,
         "current Windows release plain Flutter build invocation",
     )
     build_surface = "\n".join((sources["build_py"], sources["windows_build_script"]))
@@ -30779,6 +30787,30 @@ def validate_windows_build_domain_authority_contract(sources):
     build = sources["windows_build"]
     closure = sources["closure"]
     publication = sources["windows_publication"]
+    cleanup = extract_between(
+        build,
+        "cleanup() {\n",
+        "\n}\n\nsignal_exit()",
+        "Windows build terminal cleanup shell boundary",
+    )
+    preserve_failure_evidence = extract_between(
+        build,
+        "preserve_failure_evidence() {\n",
+        "\n}\n\nremove_failure_evidence_transaction()",
+        "Windows build bounded failure-evidence shell boundary",
+    )
+    remove_failure_evidence_transaction = extract_between(
+        build,
+        "remove_failure_evidence_transaction() {\n",
+        "\n}\n\ncleanup()",
+        "Windows build failure-evidence transaction cleanup shell boundary",
+    )
+    main = extract_between(
+        build,
+        "main() {\n",
+        '\n}\n\ncase "${1:-}"',
+        "Windows build main shell boundary",
+    )
     publish_result = extract_between(
         build,
         "publish_result() {\n",
@@ -31076,14 +31108,87 @@ def validate_windows_build_domain_authority_contract(sources):
         "Windows build identity/launch/ownership order",
     )
     require_order(
-        build,
+        cleanup,
         (
             "if ! stop_owned_process; then",
             "elif ! stop_and_undefine_owned_domain; then",
-            "windows_helper_authority_close",
-            "remove_completed_run_root",
+            "if ! windows_helper_authority_close; then",
+            '[ "$CLEANUP_FAILED" = 0 ] && [ "$RUN_COMPLETE" != 1 ] && [ -n "$RUN_ROOT" ]',
+            "if ! preserve_failure_evidence; then",
+            "if ! remove_failure_evidence_transaction; then",
+            '[ "$CLEANUP_FAILED" = 0 ] && [ -n "$RUN_ROOT" ]; then',
+            "if ! remove_completed_run_root; then",
+            'if [ "$bounded_transaction_failed" != 0 ]; then',
+            "if ! remove_online_snapshot_transaction; then",
+            "if ! release_build_lease; then",
         ),
-        "Windows build process/domain/helper/state cleanup order",
+        "Windows build process/domain/helper/evidence/bulk-state terminal cleanup order",
+    )
+    require_exact_count(
+        cleanup,
+        '[ "$CLEANUP_FAILED" = 0 ] && [ "$RUN_COMPLETE" != 1 ] && [ -n "$RUN_ROOT" ]; then',
+        1,
+        "Windows build reconciled failure before bounded evidence",
+    )
+    require_exact_count(
+        cleanup,
+        '[ "$CLEANUP_FAILED" = 0 ] && [ -n "$RUN_ROOT" ]; then',
+        1,
+        "Windows build every reconciled outcome before bulk run-state retirement",
+    )
+    require_exact_count(
+        cleanup,
+        '"$RUN_COMPLETE"',
+        1,
+        "Windows build completion state limited to failure-evidence selection",
+    )
+    for text, label in (
+        (
+            "bounded Windows failure evidence could not be retained; bulk run state will still retire",
+            "Windows build diagnostic failure cannot retain bulk state",
+        ),
+        (
+            "retaining unreconciled Windows harness state at $RUN_ROOT; the persistent lease blocks another run",
+            "Windows build only unreconciled bulk-state retention",
+        ),
+        (
+            "preserving Windows harness state because exact private-tree cleanup failed",
+            "Windows build exact-removal failure preservation",
+        ),
+    ):
+        require_text(cleanup, text, label)
+    require_absent(
+        cleanup,
+        '[ "$RUN_COMPLETE" = 1 ] && [ "$CLEANUP_FAILED" = 0 ]',
+        "Windows build obsolete success-only bulk retirement",
+    )
+    for text, label in (
+        (
+            '"bulk_run_state_retirement_required": True',
+            "Windows build failure receipt requires bulk retirement",
+        ),
+        (
+            'final="$STATE_DIR/windows-failure-$RUN_ID"',
+            "Windows build bounded run-ID failure envelope",
+        ),
+        (
+            'mv -T -- "$pending" "$final"',
+            "Windows build bounded failure-evidence publication",
+        ),
+    ):
+        require_text(preserve_failure_evidence, text, label)
+    for text, label in (
+        ("rustdesk-setup.exe", "Windows setup artifact failure retention"),
+        ("rustdesk.msi", "Windows MSI artifact failure retention"),
+        ("overlay.qcow2", "Windows overlay failure retention"),
+        ("output.img", "Windows output disk failure retention"),
+        ("offline.iso", "Windows offline media failure retention"),
+    ):
+        require_absent(preserve_failure_evidence, text, label)
+    require_text(
+        remove_failure_evidence_transaction,
+        '"$FAILURE_EVIDENCE_TRANSACTION" "$FAILURE_EVIDENCE_TRANSACTION_ID"',
+        "Windows build identity-bound failure transaction retirement",
     )
     for text, label in (
         (
@@ -31101,10 +31206,6 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             '--remove-private-root "$1" --expected-identity "$2"',
             "Windows build identity-bound private-tree removal",
-        ),
-        (
-            '[ "$RUN_COMPLETE" = 1 ] && [ "$CLEANUP_FAILED" = 0 ]',
-            "Windows build clean completion before run-state removal",
         ),
         (
             "preserving Windows harness state because exact private-tree cleanup failed",
@@ -31293,6 +31394,60 @@ def validate_windows_build_domain_authority_contract(sources):
         "Windows build run-state hardening-ledger disposition",
     )
 
+    storage_requirement = extract_html_requirement(
+        sources["requirements"],
+        "R-S11gl",
+        "Windows build bounded storage requirement",
+    )
+    for text, label in (
+        (
+            "Windows build evidence has one bounded, zero-copy, preservation-first storage transaction",
+            "Windows build bounded storage requirement title",
+        ),
+        (
+            "every success, failure, timeout, and signal",
+            "Windows build normative conclusive bulk retirement",
+        ),
+        (
+            "even when bounded diagnostic publication fails",
+            "Windows build normative diagnostic-independent retirement",
+        ),
+        (
+            "no file larger than 16 MiB and no more than 64 MiB",
+            "Windows build normative bounded failure evidence",
+        ),
+        (
+            "Only inconclusive process/domain/helper cleanup or exact-object removal may retain bulk state",
+            "Windows build normative exclusive bulk-retention boundary",
+        ),
+    ):
+        require_text(storage_requirement, text, label)
+    for text, label in (
+        (
+            "FAILURE_EVIDENCE_MAX_BYTES=$((64 * 1024 * 1024))",
+            "Windows build 64-MiB failure-evidence aggregate cap",
+        ),
+        (
+            "FAILURE_EVIDENCE_FILE_MAX_BYTES=$((16 * 1024 * 1024))",
+            "Windows build 16-MiB failure-evidence file cap",
+        ),
+        (
+            "RUN_STORAGE_EMERGENCY_RESERVE_BYTES=$((32 * 1024 * 1024 * 1024))",
+            "Windows build 32-GiB emergency storage reserve",
+        ),
+    ):
+        require_text(build, text, label)
+    require_text(
+        sources["requirements"],
+        "<tr><td>347</td>",
+        "Windows build bounded storage Appendix C #347 disposition",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11gl/R-S11e-224 bounded Windows harness storage lifecycle",
+        "Windows build bounded storage hardening-ledger disposition",
+    )
+
     for text, label in (
         (
             'OUT_PARENT_ID="$device:$inode"',
@@ -31315,14 +31470,26 @@ def validate_windows_build_domain_authority_contract(sources):
             '--output-parent-identity "$OUT_PARENT_ID"',
             "Windows build output-parent publication identity handoff",
         ),
-        (
-            "windows_helper_authority_close \\\n"
-            '        || die "Windows helper authority could not retire before artifact publication"\n'
-            '    publish_result "$RUN_ROOT/pass-A/result"',
-            "Windows build helper-before-publication order",
-        ),
     ):
         require_text(build, text, label)
+    require_order(
+        main,
+        (
+            "verify_active_online_snapshot",
+            "verify_golden_backing",
+            "windows_helper_authority_close",
+            'RUN_PHASE="publication"',
+            'publish_result "$RUN_ROOT/pass-A/result"',
+            "RUN_COMPLETE=1",
+        ),
+        "Windows build input/helper retirement before publication completion",
+    )
+    require_text(
+        main,
+        "windows_helper_authority_close \\\n"
+        '        || die "Windows helper authority could not retire before artifact publication"',
+        "Windows build helper retirement failure closure",
+    )
     for text, label in (
         (".windows-publish.XXXXXXXX", "Windows build external publication staging absence"),
         (
@@ -55161,8 +55328,8 @@ def run_source_mutations(sources):
         ),
         (
             "server_model_dart",
-            "  int _zeroClientLengthCounter = 0;",
-            "  int _connectStatus = 0;\n  int _zeroClientLengthCounter = 0;",
+            '  String _approveMode = "";',
+            '  int _connectStatus = 0;\n  String _approveMode = "";',
             "mobile rendezvous status state",
         ),
         (
@@ -57445,8 +57612,10 @@ def run_source_mutations(sources):
         ),
         (
             "windows_build_script",
-            "    & $PYTHON_EXE build.py --flutter",
-            "    & $PYTHON_EXE build.py --release",
+            "    & $PYTHON_EXE build.py --flutter\n"
+            '    if ($LASTEXITCODE -ne 0) { Die "build.py --flutter failed',
+            "    & $PYTHON_EXE build.py --release\n"
+            '    if ($LASTEXITCODE -ne 0) { Die "build.py --flutter failed',
             "current Windows release plain Flutter build invocation",
         ),
         (
@@ -66603,6 +66772,78 @@ def run_source_mutations(sources):
         ),
         (
             "windows_build",
+            '[ "$CLEANUP_FAILED" = 0 ] && [ "$RUN_COMPLETE" != 1 ] && [ -n "$RUN_ROOT" ]; then',
+            '[ "$CLEANUP_FAILED" = 0 ] && [ "$RUN_COMPLETE" = 1 ] && [ -n "$RUN_ROOT" ]; then',
+            "Windows build process/domain/helper/evidence/bulk-state terminal cleanup order",
+        ),
+        (
+            "windows_build",
+            '[ "$CLEANUP_FAILED" = 0 ] && [ -n "$RUN_ROOT" ]; then',
+            '[ "$CLEANUP_FAILED" = 0 ] && [ "$RUN_COMPLETE" = 1 ] && [ -n "$RUN_ROOT" ]; then',
+            "Windows build process/domain/helper/evidence/bulk-state terminal cleanup order",
+        ),
+        (
+            "windows_build",
+            "bounded Windows failure evidence could not be retained; bulk run state will still retire",
+            "bounded Windows failure evidence could not be retained; bulk run state may remain",
+            "Windows build diagnostic failure cannot retain bulk state",
+        ),
+        (
+            "windows_build",
+            "if ! remove_failure_evidence_transaction; then",
+            "if false; then # bounded evidence transaction retained",
+            "Windows build process/domain/helper/evidence/bulk-state terminal cleanup order",
+        ),
+        (
+            "windows_build",
+            '"bulk_run_state_retirement_required": True',
+            '"bulk_run_state_retirement_required": False',
+            "Windows build failure receipt requires bulk retirement",
+        ),
+        (
+            "windows_build",
+            "FAILURE_EVIDENCE_MAX_BYTES=$((64 * 1024 * 1024))",
+            "FAILURE_EVIDENCE_MAX_BYTES=$((640 * 1024 * 1024))",
+            "Windows build 64-MiB failure-evidence aggregate cap",
+        ),
+        (
+            "windows_build",
+            "FAILURE_EVIDENCE_FILE_MAX_BYTES=$((16 * 1024 * 1024))",
+            "FAILURE_EVIDENCE_FILE_MAX_BYTES=$((160 * 1024 * 1024))",
+            "Windows build 16-MiB failure-evidence file cap",
+        ),
+        (
+            "windows_build",
+            "RUN_STORAGE_EMERGENCY_RESERVE_BYTES=$((32 * 1024 * 1024 * 1024))",
+            "RUN_STORAGE_EMERGENCY_RESERVE_BYTES=0",
+            "Windows build 32-GiB emergency storage reserve",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11gl</span>',
+            '<span class="id">R-S11gl-disabled</span>',
+            "Windows build bounded storage requirement",
+        ),
+        (
+            "requirements",
+            "every success, failure, timeout, and signal",
+            "only clean success",
+            "Windows build normative conclusive bulk retirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>347</td>",
+            "<tr><td>347-disabled</td>",
+            "Windows build bounded storage Appendix C #347 disposition",
+        ),
+        (
+            "hardening",
+            "R-S11gl/R-S11e-224 bounded Windows harness storage lifecycle",
+            "R-S11gl/R-S11e-224 unbounded Windows harness storage lifecycle",
+            "Windows build bounded storage hardening-ledger disposition",
+        ),
+        (
+            "windows_build",
             'OUT_PARENT_ID="$device:$inode"',
             'OUT_PARENT_ID="$OUT_PARENT"',
             "Windows build retained output-parent device/inode",
@@ -66619,11 +66860,13 @@ def run_source_mutations(sources):
             "windows_build",
             "windows_helper_authority_close \\\n"
             '        || die "Windows helper authority could not retire before artifact publication"\n'
+            '    RUN_PHASE="publication"\n'
             '    publish_result "$RUN_ROOT/pass-A/result"',
-            "retire_windows_helper_authority \\\n"
-            '        || die "Windows helper authority could not retire before artifact publication"\n'
-            '    publish_result "$RUN_ROOT/pass-A/result"',
-            "Windows build helper-before-publication order",
+            'RUN_PHASE="publication"\n'
+            '    publish_result "$RUN_ROOT/pass-A/result"\n'
+            "    windows_helper_authority_close \\\n"
+            '        || die "Windows helper authority could not retire before artifact publication"',
+            "Windows build input/helper retirement before publication completion",
         ),
         (
             "windows_build",

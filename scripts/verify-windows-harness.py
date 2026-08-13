@@ -637,6 +637,8 @@ def validate_sources(sources: dict[str, str]) -> None:
     require_no_retained_windows_runs = shell_function(
         host, "require_no_retained_windows_runs"
     )
+    parse_golden_virtual_size = shell_function(host, "parse_golden_virtual_size")
+    golden_virtual_size = shell_function(host, "golden_virtual_size")
     require_storage_capacity = shell_function(host, "require_storage_capacity")
     preserve_failure_evidence = shell_function(host, "preserve_failure_evidence")
     copy_failure_evidence_file = shell_function(host, "copy_failure_evidence_file")
@@ -1062,6 +1064,27 @@ def validate_sources(sources: dict[str, str]) -> None:
         ('[ "$available" -ge "$required" ]', "available capacity floor"),
     ):
         require(host, literal, description)
+    for literal, description in (
+        ("document = json.load(sys.stdin)", "JSON virtual-size parser"),
+        ('type(document) is dict', "virtual-size object shape"),
+        ('type(value) is not int or value <= 0', "strict positive integer virtual size"),
+        ("except (UnicodeDecodeError, json.JSONDecodeError)", "malformed virtual-size rejection"),
+        ("print(value)", "validated virtual-size output"),
+    ):
+        require(parse_golden_virtual_size, literal, description)
+    require_order(
+        golden_virtual_size,
+        ('qemu-img info --output=json "$GOLDEN"', "parse_golden_virtual_size"),
+        "qemu-img JSON through strict virtual-size parser",
+    )
+    for literal, description in (
+        ('parsed_virtual_size="$(golden_virtual_size)"', "real qcow2 virtual-size behavior"),
+        ('[ "$parsed_virtual_size" = 1048576 ]', "exact one-MiB qcow2 byte count"),
+        ('{"virtual-size":true}', "boolean virtual-size rejection fixture"),
+        ('{"virtual-size":"1048576"}', "string virtual-size rejection fixture"),
+        ('| parse_golden_virtual_size >/dev/null 2>&1', "invalid virtual-size behavioral rejection"),
+    ):
+        require(harness_self_test, literal, description)
     for literal, description in (
         ("before.st_size > file_limit or before.st_size > remaining", "per-file and aggregate diagnostic size admission"),
         ("os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC", "exclusive bounded diagnostic output"),
@@ -3783,6 +3806,18 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "host",
             '[ "$available" -ge "$required" ]',
             '[ "$available" -le "$required" ]',
+        ),
+        (
+            "Windows strict positive virtual-size parser",
+            "host",
+            "type(value) is not int or value <= 0",
+            "value is None",
+        ),
+        (
+            "Windows real qcow2 virtual-size self-test",
+            "host",
+            'parsed_virtual_size="$(golden_virtual_size)"',
+            'parsed_virtual_size="1048576"',
         ),
         (
             "reconciled failure bulk retirement",

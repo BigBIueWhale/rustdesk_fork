@@ -898,9 +898,24 @@ remove_online_snapshot_transaction() {
     ONLINE_SNAPSHOT_TRANSACTION_ID=""
 }
 
+parse_golden_virtual_size() {
+    python3 -c '
+import json
+import sys
+
+try:
+    document = json.load(sys.stdin)
+except (UnicodeDecodeError, json.JSONDecodeError):
+    raise SystemExit(1)
+value = document.get("virtual-size") if type(document) is dict else None
+if type(value) is not int or value <= 0:
+    raise SystemExit(1)
+print(value)
+'
+}
+
 golden_virtual_size() {
-    qemu-img info --output=json "$GOLDEN" \
-        | python3 -c 'import json,sys; value=json.load(sys.stdin).get("virtual-size"); raise SystemExit(1) if type(value) is not int or value <= 0 else print(value)'
+    qemu-img info --output=json "$GOLDEN" | parse_golden_virtual_size
 }
 
 available_storage_bytes() {
@@ -1953,6 +1968,24 @@ harness_self_test() {
 
     GOLDEN="$RUN_ROOT/golden-source.qcow2"
     qemu-img create -f qcow2 "$GOLDEN" 1M >/dev/null
+    local parsed_virtual_size invalid_virtual_size
+    parsed_virtual_size="$(golden_virtual_size)" \
+        || die "Windows golden virtual-size self-test rejected a valid qcow2"
+    [ "$parsed_virtual_size" = 1048576 ] \
+        || die "Windows golden virtual-size self-test returned the wrong byte count"
+    for invalid_virtual_size in \
+        '{}' \
+        '{"virtual-size":0}' \
+        '{"virtual-size":-1}' \
+        '{"virtual-size":true}' \
+        '{"virtual-size":"1048576"}' \
+        '[]' \
+        'not-json'; do
+        if printf '%s\n' "$invalid_virtual_size" \
+            | parse_golden_virtual_size >/dev/null 2>&1; then
+            die "Windows golden virtual-size self-test accepted invalid JSON: $invalid_virtual_size"
+        fi
+    done
     chmod 0400 "$GOLDEN"
     SHA256_WIN11_GOLDEN_QCOW2="$(sha256sum "$GOLDEN" | awk '{print $1}')"
     record_golden_identity

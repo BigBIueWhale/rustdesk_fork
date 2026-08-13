@@ -24186,6 +24186,21 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   root. There is no `windows-build-*`, `.windows-failure-*`, or failed CM bulk/evidence root left. This updates current
   state without rewriting the earlier historical measurements or treating affirmative evidence/canonical input as
   disposable residue.
+- The first post-cleanup exact-current retry at clean pushed commit
+  `adda2eece59cf5824ca5ef6d537ca28ed7caf7ef` failed closed during storage admission, before shared-snapshot or run-root
+  allocation, VM creation, VNC, or product execution. `golden_virtual_size()` parsed valid `qemu-img` JSON with a
+  conditional expression used as the operand of `raise`; the valid branch printed the positive size and then tried
+  to raise the resulting `None`, producing `TypeError: exceptions must derive from BaseException`. The static storage
+  gate had required the capacity components but had not behaviorally exercised the size producer. Cleanup retired
+  the exact build lease and helper authority; no failure envelope, snapshot transaction, domain, listener, output,
+  or run root remained, and the host RustDesk listener was unchanged.
+- The corrected local surface separates `parse_golden_virtual_size` from `qemu-img` execution. It accepts only a JSON
+  object with a positive value whose exact Python type is `int`; missing, zero, negative, boolean, string, non-object,
+  malformed, and non-UTF-8 values fail. The shell self-test now reads a real one-MiB qcow2 and requires exactly
+  `1048576` bytes, then rejects seven malformed/type/value fixtures. The focused current-source gate passes 288
+  mutations and all seven bounded behavioral suites; deliberate parser weakening and replacement of the real qcow2
+  read with a constant are rejected. This corrects the executable storage gate but is not Windows peer evidence; a
+  clean committed retry remains required.
 - No fresh R-S11gk native result is claimed. The interrupted retry was stopped and its exact newly created disposable
   state was retired before the later measure-only boundary. At commit `a43310a`, the 16 historical bulk roots and
   separately retained small failure evidence still remained untouched; the first explicitly authorized cleanup phase

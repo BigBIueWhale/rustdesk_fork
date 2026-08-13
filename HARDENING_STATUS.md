@@ -24134,13 +24134,20 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   its CoW backing. Complete identity is revalidated before overlay creation, between passes, and before publication;
   the former reflink/full-copy fallback is absent. The currently retained canonical golden was not chmodded by this
   correction; an explicitly invoked future provisioning preflight owns that seal transition.
-- The canonical 38-GB-class online closure now has at most one content-addressed shared snapshot under the state
-  directory. An existing snapshot is completely verified on selection and again before/after use. Creation occurs
-  under the build lease inside an identity-bound private transaction, verifies the candidate, publishes with Linux
-  `renameat2(RENAME_NOREPLACE)`, fsyncs the state namespace, exact-removes the transaction, and verifies the published
-  tree. The per-run online snapshot path is absent.
+- The canonical 38-GB-class online closure now has one build-scoped snapshot transaction, not a persistent harness
+  cache. Under the build lease, the harness creates one digest-named identity-bound private transaction outside the
+  run root, verifies the snapshot there, and consumes it directly for both passes. It never publishes or moves that
+  tree into a reusable fixed path. After process, domain, and helper authority are conclusively retired, cleanup
+  independently attempts exact removal of the run root and build-snapshot transaction on success, failure, timeout,
+  and signal before releasing the lease. A bounded-evidence failure or failure to remove either exact bulk object
+  does not suppress the independent attempt to remove the other; any unresolved object keeps the lease. The same
+  transaction remover accepts the identity-bound partially materialized state, before `ONLINE_DIR` switches from the
+  canonical input, so a snapshot-copy failure does not strand its already-created transaction. A caller-provided
+  release snapshot is separately recognized as borrowed read-only input, reverified, and never removed by the child
+  Windows harness. Preflight also rejects any legacy fixed `windows-online-snapshot-*` root for explicit
+  reconciliation rather than silently reusing or deleting it.
 - Before snapshot or run-root allocation, the harness uses unprivileged `statvfs` available bytes and requires the
-  golden virtual size plus 24 GiB of fixed run/media/output allowance, 48 GiB when the shared snapshot must be
+  golden virtual size plus 24 GiB of fixed run/media/output allowance, 48 GiB when the build-scoped snapshot must be
   created, and a final 32-GiB emergency reserve. This makes low-space execution a fail-closed preflight condition
   rather than a mid-build host exhaustion event.
 - Reconciled cleanup no longer treats failure as authority for bulk retention. After the exact owned process group,
@@ -24201,6 +24208,43 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   mutations and all seven bounded behavioral suites; deliberate parser weakening and replacement of the real qcow2
   read with a constant are rejected. This corrects the executable storage gate but is not Windows peer evidence; a
   clean committed retry remains required.
+- **Persistent-snapshot recurrence found and removed before another native retry.** The second post-cleanup attempt
+  at clean pushed commit `99e6b7caba05157915ee57f7e2632d7e4dee48c9` passed the corrected capacity gate and
+  materialized the then-current fixed `windows-online-snapshot-<digest>` cache. Its zero-interface guest ran for
+  approximately 43 minutes and then recorded `build-windows.ps1 exit=1`, before either the real full-peer transaction
+  or installed-SCM transaction. The operator stopped the work and ordered cleanup before the bounded diagnostics were
+  causally classified, so no product, Windows-peer, focus, service, or package verdict survives from that run. Exact
+  operator-directed Docker cleanup removed the 29-GiB cache, 13.7-MiB failure envelope, and two exact temporary image
+  IDs, recovering `34,885,271,552` bytes without a global prune or any Haggai, unrelated Docker, or host RustDesk
+  mutation. Current `.harness-state` accounting is again exactly `36,588,786,660` apparent bytes and five intended
+  entries: the canonical golden, Android keystore, two successful presentation evidence roots, and one successful
+  CM-lifecycle evidence root.
+- Source review proved the recurrence rather than treating cleanup as the fix: `select_shared_online_snapshot`
+  reused the fixed cache, `materialize_shared_online_snapshot` moved the verified candidate out of its cleanup
+  transaction into that cache, and terminal cleanup could therefore retire only the now-empty transaction. The
+  replacement has no selection, publication, rename, or reuse surface. A standalone build creates one digest-named
+  identity-bound transaction, consumes its snapshot directly there for both passes, and exact-removes the transaction
+  on every conclusive terminal path. A release-orchestrator snapshot remains borrowed, reverified, and child-preserved;
+  a legacy fixed cache blocks for explicit reconciliation rather than being adopted or auto-deleted. Cleanup records
+  process/domain/helper reconciliation independently of later deletion results, attempts run-root and snapshot
+  retirement independently, and keeps the lease if either exact object remains. The snapshot remover also accepts the
+  already identity-bound partially materialized state, before `ONLINE_DIR` changes, closing copy-failure residue.
+- Current confined verification uses authenticated local Windows-helper archive SHA-256
+  `468f99ec23c4f3bc45599ee98c01163249f4d611f2f5545b45373455c3a5e795` and immutable image ID
+  `sha256:bfc0d46a9c3806e2ac44ab66337f42ee7c46ff0b5f3fd35c5a6768883d19791e`. Numeric UID/GID
+  1000, no network, read-only root/repository, all capabilities dropped, `no-new-privileges`, exact descriptor limit,
+  bounded PIDs/memory/CPU, and tmpfs-only writes are used. Bash parsing, Python compilation, both positive semantic
+  gates, the focused 298-mutation/seven-behavioral-suite gate, native-codec normal/self-test, requirements-hash
+  synchronization, and the complete unsliced 4,056-source-mutation catalog pass. These checks invoke neither the
+  builder main path nor a VM, RustDesk process, listener, host service, firewall, or unrelated Docker object.
+- Excluded attempts are recorded rather than credited. One read-only host `bash -n` invocation violated the user's
+  container-only code-execution rule but created no file or runtime state. A first focused container omitted the
+  exact `RLIMIT_NOFILE`; a combined positive invocation later lacked `git`; and two broad executable-workspace
+  self-test invocations respectively omitted required scratch and lacked `/run/user/1000`. The host user bus was not
+  mounted to force those fixtures. Three complete-catalog runs are also uncounted: they exposed one stale old cleanup
+  anchor and then two expected-failure routing ambiguities for terminal snapshot retirement and cleanup independence.
+  Each was corrected; the counted catalog restarted at mutation one against the final tracked candidate and exited
+  zero. All test containers were disposable and wrote only to tmpfs.
 - No fresh R-S11gk native result is claimed. The interrupted retry was stopped and its exact newly created disposable
   state was retired before the later measure-only boundary. At commit `a43310a`, the 16 historical bulk roots and
   separately retained small failure evidence still remained untouched; the first explicitly authorized cleanup phase
@@ -24371,7 +24415,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-f4ab362128913427f51a891142c5d44383618850047c2049ef78d76e43ca64c9  requirements.html
+cf46564be69f94db5735a036f2daed3793c30341a9090085489a8b36d8101aa5  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

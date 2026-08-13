@@ -30805,6 +30805,24 @@ def validate_windows_build_domain_authority_contract(sources):
         "\n}\n\ncleanup()",
         "Windows build failure-evidence transaction cleanup shell boundary",
     )
+    materialize_build_online_snapshot = extract_between(
+        build,
+        "materialize_build_online_snapshot() {\n",
+        "\n}\n\nremove_online_snapshot_transaction()",
+        "Windows build-scoped online-snapshot materialization shell boundary",
+    )
+    remove_online_snapshot_transaction = extract_between(
+        build,
+        "remove_online_snapshot_transaction() {\n",
+        "\n}\n\nparse_golden_virtual_size()",
+        "Windows build-scoped online-snapshot cleanup shell boundary",
+    )
+    online_snapshot_cleanup_self_test = extract_between(
+        build,
+        "online_snapshot_cleanup_self_test() {\n",
+        "\n}\n\nharness_self_test()",
+        "Windows build-scoped online-snapshot behavioral shell boundary",
+    )
     main = extract_between(
         build,
         "main() {\n",
@@ -31113,28 +31131,46 @@ def validate_windows_build_domain_authority_contract(sources):
             "if ! stop_owned_process; then",
             "elif ! stop_and_undefine_owned_domain; then",
             "if ! windows_helper_authority_close; then",
-            '[ "$CLEANUP_FAILED" = 0 ] && [ "$RUN_COMPLETE" != 1 ] && [ -n "$RUN_ROOT" ]',
+            '[ "$external_authority_reconciled" = 1 ] \\\n        && [ "$RUN_COMPLETE" != 1 ] && [ -n "$RUN_ROOT" ]',
             "if ! preserve_failure_evidence; then",
             "if ! remove_failure_evidence_transaction; then",
-            '[ "$CLEANUP_FAILED" = 0 ] && [ -n "$RUN_ROOT" ]; then',
+            '[ "$external_authority_reconciled" = 1 ] && [ -n "$RUN_ROOT" ]; then',
             "if ! remove_completed_run_root; then",
-            'if [ "$bounded_transaction_failed" != 0 ]; then',
+            'if [ "$external_authority_reconciled" = 1 ]; then',
             "if ! remove_online_snapshot_transaction; then",
+            'if [ "$bounded_transaction_failed" != 0 ]; then',
             "if ! release_build_lease; then",
         ),
         "Windows build process/domain/helper/evidence/bulk-state terminal cleanup order",
     )
     require_exact_count(
         cleanup,
-        '[ "$CLEANUP_FAILED" = 0 ] && [ "$RUN_COMPLETE" != 1 ] && [ -n "$RUN_ROOT" ]; then',
+        '[ "$external_authority_reconciled" = 1 ] \\\n        && [ "$RUN_COMPLETE" != 1 ] && [ -n "$RUN_ROOT" ]; then',
         1,
         "Windows build reconciled failure before bounded evidence",
     )
     require_exact_count(
         cleanup,
-        '[ "$CLEANUP_FAILED" = 0 ] && [ -n "$RUN_ROOT" ]; then',
+        '[ "$external_authority_reconciled" = 1 ] && [ -n "$RUN_ROOT" ]; then',
         1,
         "Windows build every reconciled outcome before bulk run-state retirement",
+    )
+    require_exact_count(
+        cleanup,
+        'if [ "$external_authority_reconciled" = 1 ]; then',
+        1,
+        "Windows build independent snapshot-retirement predicate",
+    )
+    require_text(
+        cleanup,
+        "local external_authority_reconciled=1",
+        "Windows build-scoped online-snapshot cleanup independence",
+    )
+    require_exact_count(
+        cleanup,
+        "external_authority_reconciled=0",
+        3,
+        "Windows build process/domain/helper reconciliation failures",
     )
     require_exact_count(
         cleanup,
@@ -31154,6 +31190,10 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             "preserving Windows harness state because exact private-tree cleanup failed",
             "Windows build exact-removal failure preservation",
+        ),
+        (
+            "retaining the unreconciled Windows build-scoped online-snapshot transaction; the persistent lease blocks another run",
+            "Windows build unreconciled snapshot retention",
         ),
     ):
         require_text(cleanup, text, label)
@@ -31190,6 +31230,84 @@ def validate_windows_build_domain_authority_contract(sources):
         '"$FAILURE_EVIDENCE_TRANSACTION" "$FAILURE_EVIDENCE_TRANSACTION_ID"',
         "Windows build identity-bound failure transaction retirement",
     )
+    for text, label in (
+        (
+            '"$STATE_DIR/.windows-online-snapshot-$SHA256_ONLINE_CLOSURE_V1.XXXXXXXX"',
+            "Windows build-scoped online-snapshot private transaction",
+        ),
+        (
+            'ONLINE_SNAPSHOT_PARENT="$ONLINE_SNAPSHOT_TRANSACTION/snapshot"',
+            "Windows build-scoped online-snapshot containment",
+        ),
+        (
+            'create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
+            "Windows build-scoped online-snapshot creation",
+        ),
+        (
+            'ONLINE_DIR="$ONLINE_SNAPSHOT_PARENT/online"',
+            "Windows build-scoped online-snapshot consumption",
+        ),
+    ):
+        require_text(materialize_build_online_snapshot, text, label)
+    for text, label in (
+        (
+            '[ "$ONLINE_SNAPSHOT_PARENT" = "$ONLINE_SNAPSHOT_TRANSACTION/snapshot" ]',
+            "Windows build-scoped online-snapshot transaction relation",
+        ),
+        (
+            '"$ONLINE_SNAPSHOT_TRANSACTION" "$ONLINE_SNAPSHOT_TRANSACTION_ID"',
+            "Windows build-scoped online-snapshot exact retirement",
+        ),
+        (
+            'ONLINE_SNAPSHOT_PARENT=""',
+            "Windows build-scoped online-snapshot parent retirement",
+        ),
+        (
+            'ONLINE_DIR=""',
+            "Windows build-scoped online-snapshot input retirement",
+        ),
+    ):
+        require_text(remove_online_snapshot_transaction, text, label)
+    require_absent(
+        remove_online_snapshot_transaction,
+        '[ "$ONLINE_DIR" = "$ONLINE_SNAPSHOT_PARENT/online" ]',
+        "Windows build active-input dependency in exact snapshot retirement",
+    )
+    for text, label in (
+        (
+            "build-scoped online-snapshot cleanup self-test retained its transaction",
+            "Windows build-snapshot retirement behavior",
+        ),
+        (
+            "partially materialized online-snapshot cleanup self-test retained its transaction",
+            "Windows partial build-snapshot retirement behavior",
+        ),
+        (
+            "build-scoped online-snapshot cleanup self-test deleted a substituted transaction",
+            "Windows build-snapshot replacement behavior",
+        ),
+        (
+            "release online-snapshot preservation self-test deleted borrowed input",
+            "Windows borrowed release-snapshot preservation behavior",
+        ),
+    ):
+        require_text(online_snapshot_cleanup_self_test, text, label)
+    require_text(
+        build,
+        "Windows retained-run self-test accepted a legacy persistent online snapshot",
+        "Windows legacy persistent snapshot behavioral refusal",
+    )
+    for text, label in (
+        (
+            'ONLINE_SNAPSHOT_PARENT="$STATE_DIR/windows-online-snapshot-',
+            "Windows persistent harness-snapshot absence",
+        ),
+        (
+            "select_shared_online_snapshot",
+            "Windows persistent snapshot-reuse helper absence",
+        ),
+    ):
+        require_absent(build, text, label)
     for text, label in (
         (
             'metadata="$(/usr/bin/stat -c \'%u:%g:%a:%d:%i\' -- "$RUN_ROOT" 2>/dev/null)"',
@@ -31409,7 +31527,23 @@ def validate_windows_build_domain_authority_contract(sources):
             "Windows build normative conclusive bulk retirement",
         ),
         (
-            "even when bounded diagnostic publication fails",
+            "one build-scoped private snapshot transaction named by its closure digest",
+            "Windows build normative build-scoped snapshot",
+        ),
+        (
+            "retain or reuse a harness-created snapshot after a conclusive outcome",
+            "Windows build normative persistent snapshot prohibition",
+        ),
+        (
+            "Caller-provided release snapshots are borrowed read-only authority",
+            "Windows build normative release-snapshot preservation",
+        ),
+        (
+            "Failure to remove either exact bulk object",
+            "Windows build normative independent bulk-object retirement",
+        ),
+        (
+            "even when bounded diagnostic publication or retirement fails",
             "Windows build normative diagnostic-independent retirement",
         ),
         (
@@ -31434,6 +31568,10 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             "RUN_STORAGE_EMERGENCY_RESERVE_BYTES=$((32 * 1024 * 1024 * 1024))",
             "Windows build 32-GiB emergency storage reserve",
+        ),
+        (
+            "BUILD_ONLINE_SNAPSHOT_ALLOWANCE_BYTES=$((48 * 1024 * 1024 * 1024))",
+            "Windows build 48-GiB snapshot allowance",
         ),
     ):
         require_text(build, text, label)
@@ -31875,6 +32013,58 @@ def validate_windows_build_domain_authority_contract(sources):
         (
             "Windows build run-state hardening-ledger disposition",
             "Windows build run-state ledger mutation",
+        ),
+        (
+            "Windows build 48-GiB snapshot allowance",
+            "Windows build snapshot-capacity mutation",
+        ),
+        (
+            "Windows build-scoped online-snapshot containment",
+            "Windows build snapshot-containment mutation",
+        ),
+        (
+            "Windows build-scoped online-snapshot creation",
+            "Windows build snapshot-creation mutation",
+        ),
+        (
+            "Windows build-scoped online-snapshot exact retirement",
+            "Windows build snapshot-retirement mutation",
+        ),
+        (
+            "Windows build-scoped online-snapshot cleanup independence",
+            "Windows build snapshot-cleanup-independence mutation",
+        ),
+        (
+            "Windows partial build-snapshot retirement behavior",
+            "Windows build partial-snapshot-retirement mutation",
+        ),
+        (
+            "Windows build-snapshot replacement behavior",
+            "Windows build snapshot-replacement mutation",
+        ),
+        (
+            "Windows borrowed release-snapshot preservation behavior",
+            "Windows build borrowed-snapshot mutation",
+        ),
+        (
+            "Windows legacy persistent snapshot behavioral refusal",
+            "Windows build legacy-snapshot refusal mutation",
+        ),
+        (
+            "Windows build normative build-scoped snapshot",
+            "Windows build snapshot-requirement mutation",
+        ),
+        (
+            "Windows build normative persistent snapshot prohibition",
+            "Windows build persistent-snapshot prohibition mutation",
+        ),
+        (
+            "Windows build normative release-snapshot preservation",
+            "Windows build borrowed-snapshot requirement mutation",
+        ),
+        (
+            "Windows build normative independent bulk-object retirement",
+            "Windows build independent-retirement requirement mutation",
         ),
         (
             "Windows build retained output-parent device/inode",
@@ -66772,14 +66962,14 @@ def run_source_mutations(sources):
         ),
         (
             "windows_build",
-            '[ "$CLEANUP_FAILED" = 0 ] && [ "$RUN_COMPLETE" != 1 ] && [ -n "$RUN_ROOT" ]; then',
-            '[ "$CLEANUP_FAILED" = 0 ] && [ "$RUN_COMPLETE" = 1 ] && [ -n "$RUN_ROOT" ]; then',
+            '[ "$external_authority_reconciled" = 1 ] \\\n        && [ "$RUN_COMPLETE" != 1 ] && [ -n "$RUN_ROOT" ]; then',
+            '[ "$external_authority_reconciled" = 1 ] \\\n        && [ "$RUN_COMPLETE" = 1 ] && [ -n "$RUN_ROOT" ]; then',
             "Windows build process/domain/helper/evidence/bulk-state terminal cleanup order",
         ),
         (
             "windows_build",
-            '[ "$CLEANUP_FAILED" = 0 ] && [ -n "$RUN_ROOT" ]; then',
-            '[ "$CLEANUP_FAILED" = 0 ] && [ "$RUN_COMPLETE" = 1 ] && [ -n "$RUN_ROOT" ]; then',
+            '[ "$external_authority_reconciled" = 1 ] && [ -n "$RUN_ROOT" ]; then',
+            '[ "$external_authority_reconciled" = 1 ] && [ "$RUN_COMPLETE" = 1 ] && [ -n "$RUN_ROOT" ]; then',
             "Windows build process/domain/helper/evidence/bulk-state terminal cleanup order",
         ),
         (
@@ -66819,6 +67009,72 @@ def run_source_mutations(sources):
             "Windows build 32-GiB emergency storage reserve",
         ),
         (
+            "windows_build",
+            "BUILD_ONLINE_SNAPSHOT_ALLOWANCE_BYTES=$((48 * 1024 * 1024 * 1024))",
+            "BUILD_ONLINE_SNAPSHOT_ALLOWANCE_BYTES=0",
+            "Windows build 48-GiB snapshot allowance",
+        ),
+        (
+            "windows_build",
+            'ONLINE_SNAPSHOT_PARENT="$ONLINE_SNAPSHOT_TRANSACTION/snapshot"',
+            'ONLINE_SNAPSHOT_PARENT="$STATE_DIR/windows-online-snapshot-$SHA256_ONLINE_CLOSURE_V1"',
+            "Windows build-scoped online-snapshot containment",
+        ),
+        (
+            "windows_build",
+            'create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
+            'create_private_online_snapshot "$ONLINE_DIR"',
+            "Windows build-scoped online-snapshot creation",
+        ),
+        (
+            "windows_build",
+            '"$ONLINE_SNAPSHOT_TRANSACTION" "$ONLINE_SNAPSHOT_TRANSACTION_ID" || return 1',
+            '"$ONLINE_SNAPSHOT_TRANSACTION" "0:1" || return 1',
+            "Windows build-scoped online-snapshot exact retirement",
+        ),
+        (
+            "windows_build",
+            "if ! remove_online_snapshot_transaction; then",
+            "if false; then # build snapshot retained",
+            "Windows build process/domain/helper/evidence/bulk-state terminal cleanup order",
+        ),
+        (
+            "windows_build",
+            'if [ "$external_authority_reconciled" = 1 ]; then',
+            'if [ "$CLEANUP_FAILED" = 0 ]; then',
+            "Windows build process/domain/helper/evidence/bulk-state terminal cleanup order",
+        ),
+        (
+            "windows_build",
+            "local external_authority_reconciled=1",
+            "local external_authority_reconciled=0",
+            "Windows build-scoped online-snapshot cleanup independence",
+        ),
+        (
+            "windows_build",
+            "partially materialized online-snapshot cleanup self-test retained its transaction",
+            "partially materialized online-snapshot cleanup self-test ignored its transaction",
+            "Windows partial build-snapshot retirement behavior",
+        ),
+        (
+            "windows_build",
+            "build-scoped online-snapshot cleanup self-test deleted a substituted transaction",
+            "build-scoped online-snapshot cleanup self-test accepted a substituted transaction",
+            "Windows build-snapshot replacement behavior",
+        ),
+        (
+            "windows_build",
+            "release online-snapshot preservation self-test deleted borrowed input",
+            "release online-snapshot preservation self-test ignored borrowed input deletion",
+            "Windows borrowed release-snapshot preservation behavior",
+        ),
+        (
+            "windows_build",
+            "Windows retained-run self-test accepted a legacy persistent online snapshot",
+            "Windows retained-run self-test ignored a legacy persistent online snapshot",
+            "Windows legacy persistent snapshot behavioral refusal",
+        ),
+        (
             "requirements",
             '<span class="id">R-S11gl</span>',
             '<span class="id">R-S11gl-disabled</span>',
@@ -66829,6 +67085,30 @@ def run_source_mutations(sources):
             "every success, failure, timeout, and signal",
             "only clean success",
             "Windows build normative conclusive bulk retirement",
+        ),
+        (
+            "requirements",
+            "one build-scoped private snapshot transaction named by its closure digest",
+            "one persistent shared snapshot named by its closure digest",
+            "Windows build normative build-scoped snapshot",
+        ),
+        (
+            "requirements",
+            "retain or reuse a harness-created snapshot after a conclusive outcome",
+            "retain and reuse a harness-created snapshot after a conclusive outcome",
+            "Windows build normative persistent snapshot prohibition",
+        ),
+        (
+            "requirements",
+            "Caller-provided release snapshots are borrowed read-only authority",
+            "Caller-provided release snapshots become harness-owned authority",
+            "Windows build normative release-snapshot preservation",
+        ),
+        (
+            "requirements",
+            "Failure to remove either exact bulk object",
+            "Removal of one exact bulk object may suppress",
+            "Windows build normative independent bulk-object retirement",
         ),
         (
             "requirements",

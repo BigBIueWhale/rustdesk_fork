@@ -35,7 +35,7 @@ FAILURE_EVIDENCE_MAX_BYTES=$((64 * 1024 * 1024))
 FAILURE_EVIDENCE_FILE_MAX_BYTES=$((16 * 1024 * 1024))
 RUN_STORAGE_FIXED_ALLOWANCE_BYTES=$((24 * 1024 * 1024 * 1024))
 RUN_STORAGE_EMERGENCY_RESERVE_BYTES=$((32 * 1024 * 1024 * 1024))
-SHARED_ONLINE_SNAPSHOT_ALLOWANCE_BYTES=$((48 * 1024 * 1024 * 1024))
+BUILD_ONLINE_SNAPSHOT_ALLOWANCE_BYTES=$((48 * 1024 * 1024 * 1024))
 TARGET_ID="windows-x86_64"
 FRB_OUTPUTS=(
     src/bridge_generated.rs
@@ -62,7 +62,7 @@ DEB_BUILDER_IMAGE=""
 GOLDEN_IDENTITY=""
 GOLDEN_EDGE=""
 ONLINE_SNAPSHOT_PARENT=""
-ONLINE_SNAPSHOT_CREATION_REQUIRED=0
+ONLINE_SNAPSHOT_MATERIALIZATION_REQUIRED=0
 ONLINE_SNAPSHOT_TRANSACTION=""
 ONLINE_SNAPSHOT_TRANSACTION_ID=""
 FAILURE_EVIDENCE_TRANSACTION=""
@@ -196,7 +196,8 @@ require_no_retained_windows_runs() {
     local retained
     retained="$(find "$STATE_DIR" -mindepth 1 -maxdepth 1 \
         \( -name 'windows-build-*' -o -name '.windows-failure-*' \
-            -o -name '.windows-online-snapshot-*' \) -print -quit)" \
+            -o -name '.windows-online-snapshot-*' \
+            -o -name 'windows-online-snapshot-*' \) -print -quit)" \
         || die "cannot inspect prior Windows build state"
     [ -z "$retained" ] \
         || die "prior Windows build state or transaction must be explicitly reconciled before another allocation: $retained"
@@ -701,21 +702,26 @@ remove_failure_evidence_transaction() {
 cleanup() {
     local status=$?
     local bounded_transaction_failed=0
+    local external_authority_reconciled=1
     [ "$CLEANUP_ACTIVE" = 0 ] || exit "$status"
     CLEANUP_ACTIVE=1
     trap - EXIT HUP INT TERM
 
     if ! stop_owned_process; then
         CLEANUP_FAILED=1
+        external_authority_reconciled=0
         warn "preserving the domain because the owned virt-install process group did not terminate conclusively"
     elif ! stop_and_undefine_owned_domain; then
         CLEANUP_FAILED=1
+        external_authority_reconciled=0
     fi
 
     if ! windows_helper_authority_close; then
         CLEANUP_FAILED=1
+        external_authority_reconciled=0
     fi
-    if [ "$CLEANUP_FAILED" = 0 ] && [ "$RUN_COMPLETE" != 1 ] && [ -n "$RUN_ROOT" ]; then
+    if [ "$external_authority_reconciled" = 1 ] \
+        && [ "$RUN_COMPLETE" != 1 ] && [ -n "$RUN_ROOT" ]; then
         if ! preserve_failure_evidence; then
             warn "bounded Windows failure evidence could not be retained; bulk run state will still retire"
         fi
@@ -724,7 +730,7 @@ cleanup() {
         bounded_transaction_failed=1
         warn "bounded Windows failure-evidence transaction could not be retired"
     fi
-    if [ "$CLEANUP_FAILED" = 0 ] && [ -n "$RUN_ROOT" ]; then
+    if [ "$external_authority_reconciled" = 1 ] && [ -n "$RUN_ROOT" ]; then
         if ! remove_completed_run_root; then
             CLEANUP_FAILED=1
             warn "preserving Windows harness state because exact private-tree cleanup failed"
@@ -732,14 +738,16 @@ cleanup() {
     elif [ -n "$RUN_ROOT" ]; then
         warn "retaining unreconciled Windows harness state at $RUN_ROOT; the persistent lease blocks another run"
     fi
-    if [ "$bounded_transaction_failed" != 0 ]; then
-        CLEANUP_FAILED=1
-    fi
-    if [ "$CLEANUP_FAILED" = 0 ]; then
+    if [ "$external_authority_reconciled" = 1 ]; then
         if ! remove_online_snapshot_transaction; then
             CLEANUP_FAILED=1
-            warn "Windows shared-snapshot transaction could not be retired"
+            warn "Windows build-scoped online-snapshot transaction could not be retired"
         fi
+    elif [ -n "$ONLINE_SNAPSHOT_TRANSACTION" ]; then
+        warn "retaining the unreconciled Windows build-scoped online-snapshot transaction; the persistent lease blocks another run"
+    fi
+    if [ "$bounded_transaction_failed" != 0 ]; then
+        CLEANUP_FAILED=1
     fi
     if [ "$CLEANUP_FAILED" = 0 ]; then
         if ! release_build_lease; then
@@ -818,6 +826,7 @@ activate_release_online_snapshot() {
     [ "$(stat -c '%u:%a' "$ONLINE_DIR")" = "$(id -u):500" ] \
         || die "release online snapshot tree is not current-UID mode 0500"
     verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
+    ONLINE_SNAPSHOT_MATERIALIZATION_REQUIRED=0
 }
 
 verify_active_online_snapshot() {
@@ -825,64 +834,32 @@ verify_active_online_snapshot() {
     verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
 }
 
-select_shared_online_snapshot() {
+materialize_build_online_snapshot() {
+    [ "$ONLINE_SNAPSHOT_MATERIALIZATION_REQUIRED" = 1 ] \
+        || die "Windows build-scoped online snapshot was not authorized"
+    [ -z "$ONLINE_SNAPSHOT_TRANSACTION" ] \
+        && [ -z "$ONLINE_SNAPSHOT_TRANSACTION_ID" ] \
+        && [ -z "$ONLINE_SNAPSHOT_PARENT" ] \
+        || die "Windows build-scoped online snapshot authority is already occupied"
     [ -n "$SHA256_ONLINE_CLOSURE_V1" ] \
-        || die "Windows shared online snapshot digest is unavailable"
-    ONLINE_SNAPSHOT_PARENT="$STATE_DIR/windows-online-snapshot-$SHA256_ONLINE_CLOSURE_V1"
-    if [ -e "$ONLINE_SNAPSHOT_PARENT" ] || [ -L "$ONLINE_SNAPSHOT_PARENT" ]; then
-        [ -d "$ONLINE_SNAPSHOT_PARENT" ] && [ ! -L "$ONLINE_SNAPSHOT_PARENT" ] \
-            || die "Windows shared online snapshot path is occupied by a non-directory"
-        ONLINE_DIR="$ONLINE_SNAPSHOT_PARENT/online"
-        verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
-        ONLINE_SNAPSHOT_CREATION_REQUIRED=0
-    else
-        ONLINE_SNAPSHOT_CREATION_REQUIRED=1
-    fi
-}
-
-materialize_shared_online_snapshot() {
-    [ "$ONLINE_SNAPSHOT_CREATION_REQUIRED" = 1 ] \
-        || die "Windows shared online snapshot creation was not authorized"
-    local canonical_online="$ONLINE_DIR" candidate
+        || die "Windows build-scoped online snapshot digest is unavailable"
+    local canonical_online="$ONLINE_DIR"
     ONLINE_SNAPSHOT_TRANSACTION="$(mktemp -d \
         "$STATE_DIR/.windows-online-snapshot-$SHA256_ONLINE_CLOSURE_V1.XXXXXXXX")" \
-        || die "cannot create the Windows shared-snapshot transaction"
+        || die "cannot create the Windows build-scoped online-snapshot transaction"
     ONLINE_SNAPSHOT_TRANSACTION_ID="$(stat -c '%d:%i' -- "$ONLINE_SNAPSHOT_TRANSACTION")" \
-        || die "cannot bind the Windows shared-snapshot transaction identity"
-    candidate="$ONLINE_SNAPSHOT_TRANSACTION/snapshot"
-    create_private_online_snapshot "$candidate"
-    verify_private_online_snapshot "$candidate"
-    python3 - "$candidate" "$ONLINE_SNAPSHOT_PARENT" "$STATE_DIR" <<'PY' \
-        || die "Windows shared online snapshot no-clobber publication failed"
-import ctypes
-import os
-import sys
-
-source, destination, state_dir = sys.argv[1:]
-libc = ctypes.CDLL(None, use_errno=True)
-renameat2 = libc.renameat2
-renameat2.argtypes = [ctypes.c_int, ctypes.c_char_p, ctypes.c_int, ctypes.c_char_p, ctypes.c_uint]
-renameat2.restype = ctypes.c_int
-if renameat2(-100, os.fsencode(source), -100, os.fsencode(destination), 1) != 0:
-    error = ctypes.get_errno()
-    raise OSError(error, os.strerror(error), destination)
-descriptor = os.open(state_dir, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
-try:
-    os.fsync(descriptor)
-finally:
-    os.close(descriptor)
-PY
-    remove_private_root_exact \
-        "$ONLINE_SNAPSHOT_TRANSACTION" "$ONLINE_SNAPSHOT_TRANSACTION_ID" \
-        || die "Windows shared-snapshot transaction could not retire after publication"
-    ONLINE_SNAPSHOT_TRANSACTION=""
-    ONLINE_SNAPSHOT_TRANSACTION_ID=""
+        || die "cannot bind the Windows build-scoped online-snapshot transaction identity"
+    [[ "$ONLINE_SNAPSHOT_TRANSACTION_ID" =~ ^(0|[1-9][0-9]*):[1-9][0-9]*$ ]] \
+        || die "Windows build-scoped online-snapshot transaction identity is malformed"
+    ONLINE_SNAPSHOT_PARENT="$ONLINE_SNAPSHOT_TRANSACTION/snapshot"
+    create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
+    verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
     ONLINE_DIR="$ONLINE_SNAPSHOT_PARENT/online"
     export ONLINE_DIR
     verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"
-    ONLINE_SNAPSHOT_CREATION_REQUIRED=0
+    ONLINE_SNAPSHOT_MATERIALIZATION_REQUIRED=0
     [ "$canonical_online" != "$ONLINE_DIR" ] \
-        || die "Windows shared online snapshot did not separate canonical and private paths"
+        || die "Windows build-scoped online snapshot did not separate canonical and private paths"
 }
 
 remove_online_snapshot_transaction() {
@@ -890,12 +867,16 @@ remove_online_snapshot_transaction() {
         && [ -z "$ONLINE_SNAPSHOT_TRANSACTION_ID" ] && return 0
     [ -n "$ONLINE_SNAPSHOT_TRANSACTION" ] \
         && [ -n "$ONLINE_SNAPSHOT_TRANSACTION_ID" ] || return 1
+    [ "$ONLINE_SNAPSHOT_PARENT" = "$ONLINE_SNAPSHOT_TRANSACTION/snapshot" ] \
+        || return 1
     remove_private_root_exact \
         "$ONLINE_SNAPSHOT_TRANSACTION" "$ONLINE_SNAPSHOT_TRANSACTION_ID" || return 1
     { [ ! -e "$ONLINE_SNAPSHOT_TRANSACTION" ] \
         && [ ! -L "$ONLINE_SNAPSHOT_TRANSACTION" ]; } || return 1
     ONLINE_SNAPSHOT_TRANSACTION=""
     ONLINE_SNAPSHOT_TRANSACTION_ID=""
+    ONLINE_SNAPSHOT_PARENT=""
+    ONLINE_DIR=""
 }
 
 parse_golden_virtual_size() {
@@ -947,8 +928,8 @@ require_storage_capacity() {
         || die "cannot determine the Windows golden virtual size"
     [[ "$virtual" =~ ^[1-9][0-9]*$ ]] \
         || die "Windows golden virtual size is malformed"
-    if [ "$ONLINE_SNAPSHOT_CREATION_REQUIRED" = 1 ]; then
-        snapshot_allowance="$SHARED_ONLINE_SNAPSHOT_ALLOWANCE_BYTES"
+    if [ "$ONLINE_SNAPSHOT_MATERIALIZATION_REQUIRED" = 1 ]; then
+        snapshot_allowance="$BUILD_ONLINE_SNAPSHOT_ALLOWANCE_BYTES"
     fi
     required=$((virtual + RUN_STORAGE_FIXED_ALLOWANCE_BYTES \
         + RUN_STORAGE_EMERGENCY_RESERVE_BYTES + snapshot_allowance))
@@ -986,14 +967,12 @@ preflight() {
     require_no_retained_windows_runs
     GOLDEN="$(realpath -e "$GOLDEN")"
     record_golden_identity
-    if activate_release_online_snapshot; then
-        ONLINE_SNAPSHOT_CREATION_REQUIRED=0
-    else
+    if ! activate_release_online_snapshot; then
         [ -z "${RUSTDESK_RELEASE_ONLINE_SNAPSHOT+x}" ] \
             || die "release online snapshot must not be empty"
         ONLINE_DIR="$(realpath -e "$ONLINE_DIR")"
         require_online_complete
-        select_shared_online_snapshot
+        ONLINE_SNAPSHOT_MATERIALIZATION_REQUIRED=1
     fi
     export ONLINE_DIR
     OUT_PARENT="$(dirname "$OUT_DIR")"
@@ -1008,9 +987,9 @@ preflight() {
     { [ ! -e "$OUT_DIR" ] && [ ! -L "$OUT_DIR" ]; } \
         || die "Windows output directory must be absent for atomic publication: $OUT_DIR"
     require_storage_capacity
-    if [ "$ONLINE_SNAPSHOT_CREATION_REQUIRED" = 1 ]; then
-        RUN_PHASE="shared-online-snapshot"
-        materialize_shared_online_snapshot
+    if [ "$ONLINE_SNAPSHOT_MATERIALIZATION_REQUIRED" = 1 ]; then
+        RUN_PHASE="build-online-snapshot"
+        materialize_build_online_snapshot
     fi
     verify_golden_backing
     [ -d "$ONLINE_DIR/cargo-vendor" ] && [ ! -L "$ONLINE_DIR/cargo-vendor" ] || die "cargo-vendor cache is missing"
@@ -1903,6 +1882,77 @@ run_root_cleanup_self_test() {
     rmdir -- "$fixture"
 }
 
+online_snapshot_cleanup_self_test() {
+    local saved_parent="$ONLINE_SNAPSHOT_PARENT"
+    local saved_online_dir="$ONLINE_DIR"
+    local saved_required="$ONLINE_SNAPSHOT_MATERIALIZATION_REQUIRED"
+    local transaction retained replacement_id external external_id
+
+    transaction="$STATE_DIR/.windows-online-snapshot-cleanup.XXXXXXXX"
+    transaction="$(mktemp -d "$transaction")"
+    ONLINE_SNAPSHOT_TRANSACTION="$transaction"
+    ONLINE_SNAPSHOT_TRANSACTION_ID="$(stat -c '%d:%i' -- "$transaction")"
+    ONLINE_SNAPSHOT_PARENT="$transaction/snapshot"
+    ONLINE_DIR="$ONLINE_SNAPSHOT_PARENT/online"
+    mkdir -m 0700 -- "$ONLINE_SNAPSHOT_PARENT"
+    mkdir -m 0500 -- "$ONLINE_DIR"
+    printf 'sealed fixture\n' >"$ONLINE_SNAPSHOT_PARENT/input.txt"
+    chmod 0400 -- "$ONLINE_SNAPSHOT_PARENT/input.txt"
+    remove_online_snapshot_transaction \
+        || die "build-scoped online-snapshot cleanup self-test could not retire its exact transaction"
+    [ ! -e "$transaction" ] && [ ! -L "$transaction" ] \
+        || die "build-scoped online-snapshot cleanup self-test retained its transaction"
+
+    transaction="$(mktemp -d "$STATE_DIR/.windows-online-snapshot-partial.XXXXXXXX")"
+    ONLINE_SNAPSHOT_TRANSACTION="$transaction"
+    ONLINE_SNAPSHOT_TRANSACTION_ID="$(stat -c '%d:%i' -- "$transaction")"
+    ONLINE_SNAPSHOT_PARENT="$transaction/snapshot"
+    ONLINE_DIR="$saved_online_dir"
+    mkdir -m 0700 -- "$ONLINE_SNAPSHOT_PARENT"
+    remove_online_snapshot_transaction \
+        || die "partially materialized online-snapshot cleanup self-test could not retire its exact transaction"
+    [ ! -e "$transaction" ] && [ ! -L "$transaction" ] \
+        || die "partially materialized online-snapshot cleanup self-test retained its transaction"
+
+    transaction="$(mktemp -d "$STATE_DIR/.windows-online-snapshot-substitution.XXXXXXXX")"
+    ONLINE_SNAPSHOT_TRANSACTION="$transaction"
+    ONLINE_SNAPSHOT_TRANSACTION_ID="$(stat -c '%d:%i' -- "$transaction")"
+    ONLINE_SNAPSHOT_PARENT="$transaction/snapshot"
+    ONLINE_DIR="$ONLINE_SNAPSHOT_PARENT/online"
+    mkdir -m 0700 -- "$ONLINE_SNAPSHOT_PARENT" "$ONLINE_DIR"
+    retained="$transaction.retained"
+    mv -- "$transaction" "$retained"
+    mkdir -m 0700 -- "$transaction" "$transaction/snapshot" "$transaction/snapshot/online"
+    if remove_online_snapshot_transaction >/dev/null 2>&1; then
+        die "build-scoped online-snapshot cleanup self-test deleted a substituted transaction"
+    fi
+    [ -d "$retained/snapshot/online" ] && [ -d "$transaction/snapshot/online" ] \
+        || die "build-scoped online-snapshot cleanup self-test did not preserve both transaction identities"
+    replacement_id="$(stat -c '%d:%i' -- "$transaction")"
+    remove_private_root_exact "$transaction" "$replacement_id" \
+        || die "build-scoped online-snapshot cleanup self-test could not retire the replacement"
+    remove_private_root_exact "$retained" "$ONLINE_SNAPSHOT_TRANSACTION_ID" \
+        || die "build-scoped online-snapshot cleanup self-test could not retire the original"
+    ONLINE_SNAPSHOT_TRANSACTION=""
+    ONLINE_SNAPSHOT_TRANSACTION_ID=""
+
+    external="$STATE_DIR/release-online-snapshot-fixture"
+    mkdir -m 0700 -- "$external" "$external/online"
+    external_id="$(stat -c '%d:%i' -- "$external")"
+    ONLINE_SNAPSHOT_PARENT="$external"
+    ONLINE_DIR="$external/online"
+    remove_online_snapshot_transaction \
+        || die "release online-snapshot preservation self-test returned an error"
+    [ -d "$external/online" ] \
+        || die "release online-snapshot preservation self-test deleted borrowed input"
+    remove_private_root_exact "$external" "$external_id" \
+        || die "release online-snapshot preservation self-test could not retire its fixture"
+
+    ONLINE_SNAPSHOT_PARENT="$saved_parent"
+    ONLINE_DIR="$saved_online_dir"
+    ONLINE_SNAPSHOT_MATERIALIZATION_REQUIRED="$saved_required"
+}
+
 harness_self_test() {
     require_cmd python3 qemu-img sha256sum setsid timeout
     RUN_ROOT="$(mktemp -d /tmp/rustdesk-windows-harness-test.XXXXXXXX)"
@@ -1917,11 +1967,17 @@ harness_self_test() {
         die "Windows retained-run self-test accepted prior bulk state"
     fi
     rmdir -- "$STATE_DIR/windows-build-retained.fixture"
+    mkdir -m 0700 "$STATE_DIR/windows-online-snapshot-retained.fixture"
+    if (require_no_retained_windows_runs) >/dev/null 2>&1; then
+        die "Windows retained-run self-test accepted a legacy persistent online snapshot"
+    fi
+    rmdir -- "$STATE_DIR/windows-online-snapshot-retained.fixture"
     acquire_build_lease
     if (BUILD_LEASE="" BUILD_LEASE_ID="" acquire_build_lease) >/dev/null 2>&1; then
         die "Windows build-lease self-test accepted a concurrent invocation"
     fi
     release_build_lease || die "Windows build-lease self-test could not retire its exact lease"
+    online_snapshot_cleanup_self_test
     require_available_storage_bytes 1
     local self_test_available
     self_test_available="$(available_storage_bytes)"

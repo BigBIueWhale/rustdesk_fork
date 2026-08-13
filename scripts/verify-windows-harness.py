@@ -645,16 +645,19 @@ def validate_sources(sources: dict[str, str]) -> None:
     remove_failure_evidence_transaction = shell_function(
         host, "remove_failure_evidence_transaction"
     )
-    select_shared_online_snapshot = shell_function(
-        host, "select_shared_online_snapshot"
+    materialize_build_online_snapshot = shell_function(
+        host, "materialize_build_online_snapshot"
     )
-    materialize_shared_online_snapshot = shell_function(
-        host, "materialize_shared_online_snapshot"
+    remove_online_snapshot_transaction = shell_function(
+        host, "remove_online_snapshot_transaction"
     )
     seal_golden_read_only = shell_function(provision, "seal_golden_read_only")
     provision_build_golden = shell_function(provision, "build_golden")
     harness_self_test = shell_function(host, "harness_self_test")
     run_root_cleanup_self_test = shell_function(host, "run_root_cleanup_self_test")
+    online_snapshot_cleanup_self_test = shell_function(
+        host, "online_snapshot_cleanup_self_test"
+    )
 
     require(host, "CREATE_TIMEOUT_SECONDS=300", "five-minute VM creation bound")
     require(host, "CONTROL_TIMEOUT_SECONDS=30", "bounded libvirt control timeout")
@@ -991,6 +994,7 @@ def validate_sources(sources: dict[str, str]) -> None:
             "remove_failure_evidence_transaction",
             "remove_completed_run_root",
             "remove_online_snapshot_transaction",
+            'if [ "$bounded_transaction_failed" != 0 ]; then',
             "release_build_lease",
         ),
         "process-before-domain-before-helper-before-bounded-evidence-before-bulk-state terminal cleanup",
@@ -1002,13 +1006,30 @@ def validate_sources(sources: dict[str, str]) -> None:
     )
     require(
         cleanup,
-        '[ "$CLEANUP_FAILED" = 0 ] && [ "$RUN_COMPLETE" != 1 ] && [ -n "$RUN_ROOT" ]',
+        '[ "$external_authority_reconciled" = 1 ] \\\n        && [ "$RUN_COMPLETE" != 1 ] && [ -n "$RUN_ROOT" ]',
         "reconciled failure before bounded evidence collection",
     )
     require(
         cleanup,
-        '[ "$CLEANUP_FAILED" = 0 ] && [ -n "$RUN_ROOT" ]',
+        '[ "$external_authority_reconciled" = 1 ] && [ -n "$RUN_ROOT" ]',
         "every reconciled outcome before bulk run-state retirement",
+    )
+    require_count(
+        cleanup,
+        'if [ "$external_authority_reconciled" = 1 ]; then',
+        1,
+        "independent build-snapshot retirement after external-authority reconciliation",
+    )
+    require(
+        cleanup,
+        "local external_authority_reconciled=1",
+        "reconciled external-authority cleanup default",
+    )
+    require_count(
+        cleanup,
+        "external_authority_reconciled=0",
+        3,
+        "process, domain, and helper reconciliation failures",
     )
     require(
         cleanup,
@@ -1025,6 +1046,11 @@ def validate_sources(sources: dict[str, str]) -> None:
         "preserving Windows harness state because exact private-tree cleanup failed",
         "run-state cleanup failure preservation",
     )
+    require(
+        cleanup,
+        "retaining the unreconciled Windows build-scoped online-snapshot transaction; the persistent lease blocks another run",
+        "unreconciled build-snapshot retention diagnostic",
+    )
     for forbidden, description in (
         ('chmod -R u+rwX "$RUN_ROOT"', "recursive run-state permission mutation"),
         ('rm -rf -- "$RUN_ROOT"', "recursive pathname run-state deletion"),
@@ -1037,7 +1063,8 @@ def validate_sources(sources: dict[str, str]) -> None:
         ('--remove-empty-private-root "$BUILD_LEASE"', "empty exact-identity build-lease retirement"),
         ("-name 'windows-build-*'", "prior bulk run-state detection"),
         ("-name '.windows-failure-*'", "prior bounded-evidence transaction detection"),
-        ("-name '.windows-online-snapshot-*'", "prior shared-snapshot transaction detection"),
+        ("-name '.windows-online-snapshot-*'", "prior build-snapshot transaction detection"),
+        ("-name 'windows-online-snapshot-*'", "legacy persistent snapshot detection"),
         ("prior Windows build state or transaction must be explicitly reconciled", "prior run fail-closed diagnostic"),
     ):
         source = acquire_build_lease if literal.startswith("BUILD_LEASE=") or "mkdir" in literal else (
@@ -1054,13 +1081,13 @@ def validate_sources(sources: dict[str, str]) -> None:
         ("FAILURE_EVIDENCE_FILE_MAX_BYTES=$((16 * 1024 * 1024))", "16-MiB failure-evidence file cap"),
         ("RUN_STORAGE_FIXED_ALLOWANCE_BYTES=$((24 * 1024 * 1024 * 1024))", "fixed active-run storage allowance"),
         ("RUN_STORAGE_EMERGENCY_RESERVE_BYTES=$((32 * 1024 * 1024 * 1024))", "post-allocation emergency reserve"),
-        ("SHARED_ONLINE_SNAPSHOT_ALLOWANCE_BYTES=$((48 * 1024 * 1024 * 1024))", "one-time shared-snapshot allowance"),
+        ("BUILD_ONLINE_SNAPSHOT_ALLOWANCE_BYTES=$((48 * 1024 * 1024 * 1024))", "one-build snapshot allowance"),
     ):
         require(host, literal, description)
     for literal, description in (
         ("stats.f_bavail * stats.f_frsize", "unprivileged available-byte calculation"),
         ("virtual + RUN_STORAGE_FIXED_ALLOWANCE_BYTES", "golden virtual-size capacity component"),
-        ("+ RUN_STORAGE_EMERGENCY_RESERVE_BYTES + snapshot_allowance", "emergency/shared-snapshot capacity components"),
+        ("+ RUN_STORAGE_EMERGENCY_RESERVE_BYTES + snapshot_allowance", "emergency/build-snapshot capacity components"),
         ('[ "$available" -ge "$required" ]', "available capacity floor"),
     ):
         require(host, literal, description)
@@ -1085,6 +1112,11 @@ def validate_sources(sources: dict[str, str]) -> None:
         ('| parse_golden_virtual_size >/dev/null 2>&1', "invalid virtual-size behavioral rejection"),
     ):
         require(harness_self_test, literal, description)
+    require(
+        harness_self_test,
+        "Windows retained-run self-test accepted a legacy persistent online snapshot",
+        "legacy persistent snapshot behavioral refusal",
+    )
     for literal, description in (
         ("before.st_size > file_limit or before.st_size > remaining", "per-file and aggregate diagnostic size admission"),
         ("os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_CLOEXEC", "exclusive bounded diagnostic output"),
@@ -1123,10 +1155,10 @@ def validate_sources(sources: dict[str, str]) -> None:
             "preserve_failure_evidence",
             "remove_failure_evidence_transaction",
             "remove_completed_run_root",
-            'if [ "$bounded_transaction_failed" != 0 ]; then',
             "remove_online_snapshot_transaction",
+            'if [ "$bounded_transaction_failed" != 0 ]; then',
         ),
-        "bounded evidence cleanup cannot prevent bulk run-state retirement",
+        "bounded evidence cleanup cannot prevent run-root or build-snapshot retirement",
     )
     for literal, description in (
         ('resolved="$(/usr/bin/readlink -f -- "$RUN_ROOT" 2>/dev/null)"',
@@ -1380,7 +1412,10 @@ def validate_sources(sources: dict[str, str]) -> None:
     for literal, description in (
         ("fixed current-principal mode-0700 directory lease", "normative singleton lease"),
         ("per-run reflink, full golden copy, or copy fallback is forbidden", "normative zero-copy golden"),
-        ("at most one private shared snapshot named by its closure digest", "normative shared online snapshot"),
+        ("one build-scoped private snapshot transaction named by its closure digest", "normative build-scoped online snapshot"),
+        ("MUST NOT</span> retain or reuse a harness-created snapshot after a conclusive outcome", "normative persistent snapshot prohibition"),
+        ("Caller-provided release snapshots are borrowed read-only authority", "normative borrowed release snapshot preservation"),
+        ("Failure to remove either exact bulk object", "normative independent bulk-object retirement"),
         ("32-GiB emergency reserve", "normative storage reserve"),
         ("no file larger than 16 MiB and no more than 64 MiB", "normative bounded failure evidence"),
         ("failure, timeout, and signal", "normative failure bulk-state retirement"),
@@ -1598,39 +1633,71 @@ def validate_sources(sources: dict[str, str]) -> None:
         "pinned Windows helper image",
     )
     require(host, 'require_pinned_builder_image deb-builder "$DEB_BUILDER_IMAGE_ID"', "pinned FRB builder image")
-    require(
-        select_shared_online_snapshot,
-        'ONLINE_SNAPSHOT_PARENT="$STATE_DIR/windows-online-snapshot-$SHA256_ONLINE_CLOSURE_V1"',
-        "content-addressed shared online snapshot path",
-    )
-    require(
-        select_shared_online_snapshot,
-        'verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
-        "shared online snapshot reuse verification",
-    )
     for literal, description in (
         (
             '"$STATE_DIR/.windows-online-snapshot-$SHA256_ONLINE_CLOSURE_V1.XXXXXXXX"',
-            "private shared-snapshot transaction",
+            "private build-scoped snapshot transaction",
         ),
-        ('create_private_online_snapshot "$candidate"', "shared online snapshot creation"),
-        ('verify_private_online_snapshot "$candidate"', "pre-publication shared snapshot verification"),
-        ("renameat2(-100, os.fsencode(source), -100, os.fsencode(destination), 1)", "shared snapshot no-clobber publication"),
-        ('"$ONLINE_SNAPSHOT_TRANSACTION" "$ONLINE_SNAPSHOT_TRANSACTION_ID"', "identity-bound shared-snapshot transaction retirement"),
-        ('verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"', "published shared snapshot verification"),
+        ('ONLINE_SNAPSHOT_PARENT="$ONLINE_SNAPSHOT_TRANSACTION/snapshot"', "snapshot containment in owned transaction"),
+        ('create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"', "build-scoped online snapshot creation"),
+        ('verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"', "build-scoped online snapshot verification"),
+        ('ONLINE_DIR="$ONLINE_SNAPSHOT_PARENT/online"', "snapshot-only build input"),
     ):
-        require(materialize_shared_online_snapshot, literal, description)
+        require(materialize_build_online_snapshot, literal, description)
+    for literal, description in (
+        (
+            '[ "$ONLINE_SNAPSHOT_PARENT" = "$ONLINE_SNAPSHOT_TRANSACTION/snapshot" ]',
+            "owned snapshot/transaction relation",
+        ),
+        (
+            '"$ONLINE_SNAPSHOT_TRANSACTION" "$ONLINE_SNAPSHOT_TRANSACTION_ID"',
+            "identity-bound build-snapshot retirement",
+        ),
+        ('ONLINE_SNAPSHOT_PARENT=""', "retired snapshot-parent authority"),
+        ('ONLINE_DIR=""', "retired snapshot-input authority"),
+    ):
+        require(remove_online_snapshot_transaction, literal, description)
+    reject(
+        remove_online_snapshot_transaction,
+        re.escape('[ "$ONLINE_DIR" = "$ONLINE_SNAPSHOT_PARENT/online" ]'),
+        "active-input-path dependency in exact build-snapshot retirement",
+    )
+    for literal, description in (
+        (
+            "build-scoped online-snapshot cleanup self-test retained its transaction",
+            "build-snapshot behavioral retirement",
+        ),
+        (
+            "partially materialized online-snapshot cleanup self-test retained its transaction",
+            "partial build-snapshot behavioral retirement",
+        ),
+        (
+            "build-scoped online-snapshot cleanup self-test deleted a substituted transaction",
+            "build-snapshot replacement-edge rejection",
+        ),
+        (
+            "release online-snapshot preservation self-test deleted borrowed input",
+            "borrowed release-snapshot preservation",
+        ),
+    ):
+        require(online_snapshot_cleanup_self_test, literal, description)
     require(
         shell_function(host, "verify_active_online_snapshot"),
         'verify_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
         "active online snapshot postcondition",
     )
-    reject(host, re.escape('ONLINE_SNAPSHOT_PARENT="$RUN_ROOT/online-snapshot"'), "per-run bulk online snapshot")
+    for forbidden, description in (
+        ('ONLINE_SNAPSHOT_PARENT="$RUN_ROOT/online-snapshot"', "run-root online snapshot"),
+        ('ONLINE_SNAPSHOT_PARENT="$STATE_DIR/windows-online-snapshot-', "persistent harness snapshot"),
+        ("renameat2(-100, os.fsencode(source), -100, os.fsencode(destination)", "published harness snapshot"),
+        ("select_shared_online_snapshot", "persistent snapshot reuse helper"),
+    ):
+        reject(host, re.escape(forbidden), description)
     require_count(
         host_main,
         "verify_active_online_snapshot",
         2,
-        "pre-use and pre-publication shared online snapshot verification",
+        "pre-use and pre-artifact-publication online snapshot verification",
     )
     require(host, 'FRB_IMAGE_ID="$DEB_BUILDER_IMAGE"', "immutable FRB image handoff")
     require(build_pass_media, '--online-root "$ONLINE_DIR"', "private FRB online handoff")
@@ -3610,6 +3677,30 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "A per-run full golden copy is permitted",
         ),
         (
+            "normative build-scoped online snapshot",
+            "requirements",
+            "one build-scoped private snapshot transaction named by its closure digest",
+            "one persistent shared snapshot named by its closure digest",
+        ),
+        (
+            "normative persistent snapshot prohibition",
+            "requirements",
+            "retain or reuse a harness-created snapshot after a conclusive outcome",
+            "retain and reuse a harness-created snapshot after a conclusive outcome",
+        ),
+        (
+            "normative borrowed release snapshot preservation",
+            "requirements",
+            "Caller-provided release snapshots are borrowed read-only authority",
+            "Caller-provided release snapshots become harness-owned authority",
+        ),
+        (
+            "normative independent bulk-object retirement",
+            "requirements",
+            "Failure to remove either exact bulk object",
+            "Removal of one exact bulk object may suppress",
+        ),
+        (
             "normative bounded Windows failure evidence",
             "requirements",
             "no file larger than 16 MiB and no more than 64 MiB",
@@ -3822,8 +3913,8 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
         (
             "reconciled failure bulk retirement",
             "host",
-            '[ "$CLEANUP_FAILED" = 0 ] && [ -n "$RUN_ROOT" ]; then',
-            '[ "$CLEANUP_FAILED" = 0 ] && [ "$RUN_COMPLETE" = 1 ] && [ -n "$RUN_ROOT" ]; then',
+            '[ "$external_authority_reconciled" = 1 ] && [ -n "$RUN_ROOT" ]; then',
+            '[ "$external_authority_reconciled" = 1 ] && [ "$RUN_COMPLETE" = 1 ] && [ -n "$RUN_ROOT" ]; then',
         ),
         (
             "bounded evidence transaction retirement",
@@ -4032,22 +4123,58 @@ def run_self_test(repo: pathlib.Path, sources: dict[str, str]) -> None:
             "/wix-nuget-packages=/online/pub-cache",
         ),
         (
-            "content-addressed shared online snapshot",
+            "build-scoped online snapshot containment",
             "host",
+            'ONLINE_SNAPSHOT_PARENT="$ONLINE_SNAPSHOT_TRANSACTION/snapshot"',
             'ONLINE_SNAPSHOT_PARENT="$STATE_DIR/windows-online-snapshot-$SHA256_ONLINE_CLOSURE_V1"',
-            'ONLINE_SNAPSHOT_PARENT="$RUN_ROOT/online-snapshot"',
         ),
         (
-            "shared online snapshot candidate",
+            "build-scoped online snapshot creation",
             "host",
-            'create_private_online_snapshot "$candidate"',
             'create_private_online_snapshot "$ONLINE_SNAPSHOT_PARENT"',
+            'create_private_online_snapshot "$ONLINE_DIR"',
         ),
         (
-            "shared online snapshot no-clobber publication",
+            "build-scoped online snapshot exact retirement",
             "host",
-            "renameat2(-100, os.fsencode(source), -100, os.fsencode(destination), 1)",
-            "renameat2(-100, os.fsencode(source), -100, os.fsencode(destination), 0)",
+            '"$ONLINE_SNAPSHOT_TRANSACTION" "$ONLINE_SNAPSHOT_TRANSACTION_ID" || return 1',
+            '"$ONLINE_SNAPSHOT_TRANSACTION" "0:1" || return 1',
+        ),
+        (
+            "build-scoped online snapshot terminal cleanup",
+            "host",
+            "if ! remove_online_snapshot_transaction; then",
+            "if false; then # build snapshot retained",
+        ),
+        (
+            "build-scoped online snapshot cleanup independence",
+            "host",
+            'if [ "$external_authority_reconciled" = 1 ]; then',
+            'if [ "$CLEANUP_FAILED" = 0 ]; then',
+        ),
+        (
+            "reconciled external-authority cleanup default",
+            "host",
+            "local external_authority_reconciled=1",
+            "local external_authority_reconciled=0",
+        ),
+        (
+            "partially materialized online snapshot retirement",
+            "host",
+            "partially materialized online-snapshot cleanup self-test retained its transaction",
+            "partially materialized online-snapshot cleanup self-test ignored its transaction",
+        ),
+        (
+            "legacy persistent online snapshot refusal",
+            "host",
+            "Windows retained-run self-test accepted a legacy persistent online snapshot",
+            "Windows retained-run self-test ignored a legacy persistent online snapshot",
+        ),
+        (
+            "borrowed release snapshot preservation fixture",
+            "host",
+            "release online-snapshot preservation self-test deleted borrowed input",
+            "release online-snapshot preservation self-test ignored borrowed input deletion",
         ),
         (
             "offline link materialization",

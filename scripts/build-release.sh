@@ -444,7 +444,7 @@ recorded_private_tree_identity() {
     esac
 }
 
-offline_normalize_exact_tree() {
+offline_normalize_owned_tree_modes() {
     local path="$1" expected_identity="$2" role="$3" resolved observed uid gid
     uid="$(id -u)"
     gid="$(id -g)"
@@ -456,10 +456,10 @@ offline_normalize_exact_tree() {
         || { warn "$role cannot be resolved: $path"; return 1; }
     [ "$resolved" = "$path" ] \
         || { warn "$role path is not canonical: $path"; return 1; }
-    observed="$(stat -c '%d:%i' -- "$path" 2>/dev/null)" \
+    observed="$(stat -c '%d:%i:%u:%g:%a' -- "$path" 2>/dev/null)" \
         || { warn "$role identity cannot be inspected: $path"; return 1; }
-    [ "$observed" = "$expected_identity" ] \
-        || { warn "$role identity changed: $path"; return 1; }
+    [ "$observed" = "$expected_identity:$uid:$gid:700" ] \
+        || { warn "$role identity or owner authority changed: $path"; return 1; }
     if ! run_private_tree_closure_from_descriptor --mount-root "$path"; then
         warn "$role contains a mount boundary: $path"
         return 1
@@ -471,23 +471,23 @@ offline_normalize_exact_tree() {
         return 1
     fi
     if ! (
-        local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \
-            --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \
+        local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \
+            --cap-drop=ALL \
             --security-opt no-new-privileges \
             --ulimit nofile=524544:524544 \
             --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled" \
             "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \
             "$PRIVATE_TREE_CLOSURE_HASH" \
-            --normalize-root /cleanup --expected-identity "$expected_identity" \
-            --owner "$uid" --group "$gid" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"
+            --normalize-owned-root /cleanup --expected-identity "$expected_identity" \
+            < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"
     ); then
-        warn "$role offline ownership/access normalization failed: $path"
+        warn "$role offline owner-only mode normalization failed: $path"
         return 1
     fi
-    observed="$(stat -c '%d:%i' -- "$path" 2>/dev/null)" \
+    observed="$(stat -c '%d:%i:%u:%g:%a' -- "$path" 2>/dev/null)" \
         || { warn "$role disappeared after normalization: $path"; return 1; }
-    [ "$observed" = "$expected_identity" ] \
-        || { warn "$role identity changed during normalization: $path"; return 1; }
+    [ "$observed" = "$expected_identity:$uid:$gid:700" ] \
+        || { warn "$role identity or owner authority changed during normalization: $path"; return 1; }
     if ! run_private_tree_closure_from_descriptor --mount-root "$path"; then
         warn "$role gained a mount boundary during normalization: $path"
         return 1
@@ -495,9 +495,12 @@ offline_normalize_exact_tree() {
 }
 
 verify_private_tree_authority_capacity() {
+    local uid gid
+    uid="$(id -u)"
+    gid="$(id -g)"
     run_private_tree_closure_from_descriptor --check-descriptor-budget \
         || { warn "release preflight cannot establish the host retained-authority budget"; return 1; }
-    local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \
+    local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \
         --cap-drop=ALL --security-opt no-new-privileges \
         --ulimit nofile=524544:524544 \
         "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \
@@ -536,7 +539,7 @@ run_private_tree_closure_from_descriptor() {
         "$PRIVATE_TREE_CLOSURE_HASH" "$@" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"
 }
 
-offline_remove_exact_tree_contents() {
+offline_remove_owned_tree_contents() {
     local path="$1" expected_identity="$2" role="$3" resolved observed uid gid
     uid="$(id -u)"
     gid="$(id -g)"
@@ -560,15 +563,15 @@ offline_remove_exact_tree_contents() {
         warn "$role removal image failed provenance verification"
         return 1
     fi
-    if ! local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \
-        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER \
+    if ! local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \
+        --cap-drop=ALL \
         --security-opt no-new-privileges \
         --ulimit nofile=524544:524544 \
         --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled" \
         "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \
         "$PRIVATE_TREE_CLOSURE_HASH" \
-        --remove-tree-contents /cleanup --expected-identity "$expected_identity" \
-        --owner "$uid" --group "$gid" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"; then
+        --remove-owned-tree-contents /cleanup --expected-identity "$expected_identity" \
+        < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"; then
         warn "$role descriptor-bound content removal failed: $path"
         return 1
     fi
@@ -578,7 +581,7 @@ offline_remove_exact_tree_contents() {
         || { warn "$role root authority changed during content removal: $path"; return 1; }
 }
 
-verify_private_tree_removal_capability() {
+verify_private_tree_owner_removal() {
     local fixture="$WORKSPACE/removal-capability-preflight" fixture_id observed uid gid
     uid="$(id -u)"
     gid="$(id -g)"
@@ -586,26 +589,26 @@ verify_private_tree_removal_capability() {
     install -d -m 1700 "$fixture/sticky" || return 1
     printf 'sticky-owner\n' > "$fixture/sticky/user-entry" || return 1
     fixture_id="$(stat -c '%d:%i' -- "$fixture")" || return 1
-    if ! local_docker run --rm --pull=never --network=none --read-only --user 0:0 \
-        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER \
+    if ! local_docker run --rm --pull=never --network=none --read-only --user "$uid:$gid" \
+        --cap-drop=ALL \
         --security-opt no-new-privileges \
         --ulimit nofile=524544:524544 \
         --mount "type=bind,src=$fixture,dst=/capability,bind-recursive=disabled" \
         "$DEBIAN_IMAGE_ID" /bin/sh -ceu '
-            printf root > /capability/root-entry
-            chmod 0000 /capability/root-entry
+            printf owner > /capability/owner-entry
+            chmod 0000 /capability/owner-entry
             mkdir /capability/locked
-            printf root > /capability/locked/root-entry
-            chmod 0000 /capability/locked
+            printf owner > /capability/locked/owner-entry
+            chmod 0500 /capability/locked
         '; then
-        warn "release preflight cannot prepare the exact terminal-removal capability fixture"
+        warn "release preflight cannot prepare the exact owner-only terminal-removal fixture"
         return 1
     fi
-    observed="$(stat -c '%u:%g:%a' -- "$fixture/root-entry" 2>/dev/null)" || return 1
-    [ "$observed" = "0:0:0" ] \
-        || { warn "release preflight terminal-removal fixture lacks root-owned mode-0000 state"; return 1; }
-    offline_remove_exact_tree_contents "$fixture" "$fixture_id" \
-        "terminal-removal capability preflight" || return 1
+    observed="$(stat -c '%u:%g:%a' -- "$fixture/owner-entry" 2>/dev/null)" || return 1
+    [ "$observed" = "$uid:$gid:0" ] \
+        || { warn "release preflight terminal-removal fixture lacks owner-only mode-0000 state"; return 1; }
+    offline_remove_owned_tree_contents "$fixture" "$fixture_id" \
+        "owner-only terminal-removal preflight" || return 1
     run_private_tree_closure_from_descriptor --remove-empty-private-root "$fixture" \
         --expected-identity "$fixture_id" || return 1
     [ ! -e "$fixture" ] && [ ! -L "$fixture" ] \
@@ -617,7 +620,7 @@ verify_private_tree_cleanup_preflight() {
     [ -n "$PRIVATE_TREE_CLOSURE_FD" ] || return 1
     verify_private_tree_authority_capacity || status=1
     if [ "$status" -eq 0 ]; then
-        verify_private_tree_removal_capability || status=1
+        verify_private_tree_owner_removal || status=1
     fi
     [ "$status" -eq 0 ]
 }
@@ -630,7 +633,7 @@ normalize_snapshot_access() {
     esac
     expected="$(recorded_private_tree_identity "$source")" \
         || die "$phase: snapshot identity is unavailable"
-    offline_normalize_exact_tree "$source" "$expected" "$phase snapshot" \
+    offline_normalize_owned_tree_modes "$source" "$expected" "$phase snapshot" \
         || die "$phase: cannot normalize generated snapshot ownership/access"
     [ "$(stat -c '%d:%i:%u:%g:%a' "$source")" = \
       "$expected:$(id -u):$(id -g):700" ] \
@@ -665,7 +668,7 @@ cleanup_release_workspace() {
             && [ "$cleanup_failed" -eq 0 ]; then
             if [ -n "$DEBIAN_IMAGE_ID" ] \
                 && [ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]; then
-                offline_remove_exact_tree_contents "$WORKSPACE" "$WORKSPACE_ID" \
+                offline_remove_owned_tree_contents "$WORKSPACE" "$WORKSPACE_ID" \
                     "release workspace" || cleanup_failed=1
             else
                 printf 'build-release: production cleanup lacks exact terminal-removal image/Docker authority; retained path: %s\n' \
@@ -1220,7 +1223,7 @@ run_reset_self_test() {
     ln "$sentinel" "$SOURCE_A/target/reset-hardlink/external-hardlink"
     source_identity="$(recorded_private_tree_identity "$SOURCE_A")" \
         || die "reset self-test cannot resolve snapshot identity"
-    if offline_normalize_exact_tree "$SOURCE_A" "$source_identity" "external-hardlink rejection fixture"; then
+    if offline_normalize_owned_tree_modes "$SOURCE_A" "$source_identity" "external-hardlink rejection fixture"; then
         die "reset self-test accepted an inode linked outside the snapshot"
     fi
     [ "$(stat -c '%d:%i:%u:%g:%a' "$sentinel"):$(sha256sum "$sentinel" | awk '{print $1}')" = "$sentinel_proof" ] \
@@ -1228,13 +1231,11 @@ run_reset_self_test() {
     rm -rf -- "$SOURCE_A/target"
     assert_snapshot_exact "$SOURCE_A" "external-hardlink rejection fixture"
     if ! (
-        local_docker run --rm --pull=never --network=none --read-only --user 0:0 \
-            --cap-drop=ALL --cap-add=CHOWN \
+        local_docker run --rm --pull=never --network=none --read-only --user "$(id -u):$(id -g)" \
+            --cap-drop=ALL \
             --security-opt no-new-privileges \
             --mount "type=bind,src=$SOURCE_A,dst=/fixture,bind-recursive=disabled" \
             "$DEBIAN_IMAGE_ID" /bin/sh -ceu '
-                /bin/chown --no-dereference 0:0 /fixture
-                /bin/chown --no-dereference 0:0 /fixture/flutter
                 /bin/mkdir -p /fixture/target/reset-proof/locked /fixture/flutter/.dart_tool/reset-proof/locked
                 printf target > /fixture/target/reset-proof/locked/marker
                 printf flutter > /fixture/flutter/.dart_tool/reset-proof/locked/marker
@@ -1243,12 +1244,11 @@ run_reset_self_test() {
                 printf special > /fixture/target/reset-proof/special-mode
                 /bin/chmod 6755 /fixture/target/reset-proof/special-mode
                 /bin/ln -s "$1" /fixture/target/reset-proof/external-link
-                /bin/chmod 0000 /fixture/target/reset-proof/locked /fixture/flutter/.dart_tool/reset-proof/locked
-                /bin/chown --no-dereference "$2" /fixture/flutter
-                /bin/chown --no-dereference "$2" /fixture
-            ' _ "$sentinel" "$(id -u):$(id -g)"
+                /bin/chmod 0000 /fixture/target/reset-proof/locked/marker /fixture/flutter/.dart_tool/reset-proof/locked/marker
+                /bin/chmod 0500 /fixture/target/reset-proof/locked /fixture/flutter/.dart_tool/reset-proof/locked
+            ' _ "$sentinel"
     ); then
-        die "reset self-test could not create root-owned hostile generated state"
+        die "reset self-test could not create current-owner hostile generated state"
     fi
     hostile_dir="$SOURCE_A/target/reset-proof/locked"
     /usr/bin/python3 - "$hostile_dir" "$SOURCE_A/flutter/.dart_tool/reset-proof/locked" <<'PY'
@@ -1258,22 +1258,27 @@ import sys
 
 for path in sys.argv[1:]:
     metadata = os.lstat(path)
-    if not stat.S_ISDIR(metadata.st_mode) or metadata.st_uid != 0 or stat.S_IMODE(metadata.st_mode) != 0:
-        raise SystemExit("reset self-test did not create both root-owned mode-0000 directories")
+    if (
+        not stat.S_ISDIR(metadata.st_mode)
+        or metadata.st_uid != os.geteuid()
+        or metadata.st_gid != os.getegid()
+        or stat.S_IMODE(metadata.st_mode) != 0o500
+    ):
+        raise SystemExit("reset self-test did not create both current-owner mode-0500 directories")
 PY
     git_closed -C "$SOURCE_A" check-ignore -q target/reset-proof/locked \
         || die "reset self-test target fixture is not ignored generated state"
     git_closed -C "$SOURCE_A" check-ignore -q flutter/.dart_tool/reset-proof/locked \
         || die "reset self-test Flutter fixture is not ignored generated state"
     if git_closed -C "$SOURCE_A" clean -ffdx >/dev/null 2>"$WORKSPACE/negative-clean.log"; then
-        die "reset self-test negative control removed inaccessible root-owned state"
+        die "reset self-test negative control removed inaccessible current-owner state"
     fi
     [ -d "$hostile_dir" ] \
         || die "reset self-test negative control did not preserve the hostile directory"
     [ -d "$SOURCE_A/flutter/.dart_tool/reset-proof/locked" ] \
         || die "reset self-test negative control did not preserve the hostile Flutter directory"
 
-    offline_normalize_exact_tree "$SOURCE_A" "$source_identity" \
+    offline_normalize_owned_tree_modes "$SOURCE_A" "$source_identity" \
         "retained-authority normalization transition fixture" \
         || die "reset self-test could not normalize hostile generated state"
     /usr/bin/python3 - "$SOURCE_A" "$hostile_dir" \
@@ -1300,15 +1305,15 @@ for path, mode in (
     ):
         raise SystemExit("reset self-test retained-authority normalization differs")
 PY
-    reset_snapshot_build_state "$SOURCE_A" "root-owned reset self-test"
+    reset_snapshot_build_state "$SOURCE_A" "owner-only reset self-test"
     [ ! -e "$SOURCE_A/target/reset-proof" ] \
         || die "reset self-test retained target generated state"
     [ ! -e "$SOURCE_A/flutter/.dart_tool/reset-proof" ] \
         || die "reset self-test retained Flutter generated state"
     [ "$(stat -c '%d:%i:%u:%g:%a' "$sentinel"):$(sha256sum "$sentinel" | awk '{print $1}')" = "$sentinel_proof" ] \
         || die "reset self-test followed or changed the external symlink target"
-    assert_snapshot_exact "$SOURCE_A" "root-owned reset self-test final proof"
-    RELEASE_SUCCESS_MESSAGE="build-release root-owned reset self-test: OK"
+    assert_snapshot_exact "$SOURCE_A" "owner-only reset self-test final proof"
+    RELEASE_SUCCESS_MESSAGE="build-release owner-only reset self-test: OK"
 }
 
 run_cleanup_missing_self_test() {

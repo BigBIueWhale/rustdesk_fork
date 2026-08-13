@@ -7972,7 +7972,7 @@ if [ -n "$r_s11dm" ]; then
   echo "  FAIL R-S11dm release-parent Docker authority:$r_s11dm"
   rc=1
 else
-  echo "  ok  R-S11e-131 release parent owns one exact fixed local Docker authority without sharing it with children, routes root fixtures through pre/post proof, and retires authority without an ambient fallback"
+  echo "  ok  R-S11e-131 release parent owns one exact fixed local Docker authority without sharing it with children, routes every writable bind as the invoking numeric non-root principal with no added capabilities, and retires authority without an ambient fallback"
 fi
 
 echo "== (3b-iii-h2n) installed Debian systemd lifecycle is isolated, exact, and noninterfering (R-S11c-27m) =="

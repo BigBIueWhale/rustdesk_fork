@@ -530,6 +530,14 @@ def require_absent(source, text, label):
         raise VerificationError(f"{label}: forbidden contract remains present")
 
 
+def require_no_root_docker_user(source, label):
+    if re.search(
+        r"(?<!\S)(?:--user|-u)(?:=|\s+)(?:[\"'])?0(?=[:\s\"'\\]|$)",
+        source,
+    ):
+        raise VerificationError(f"{label}: forbidden contract remains present")
+
+
 def require_order(source, tokens, label):
     positions = []
     cursor = 0
@@ -886,7 +894,7 @@ def validate_verify_workspace(source):
 def validate_build_release(source):
     normalizer = extract_between(
         source,
-        "offline_normalize_exact_tree() {",
+        "offline_normalize_owned_tree_modes() {",
         "\n}\n\nverify_private_tree_authority_capacity() {",
         "private-tree normalizer",
     )
@@ -911,18 +919,18 @@ def validate_build_release(source):
     descriptor_executor = extract_between(
         source,
         "run_private_tree_closure_from_descriptor() {",
-        "\n}\n\noffline_remove_exact_tree_contents() {",
+        "\n}\n\noffline_remove_owned_tree_contents() {",
         "private-tree descriptor executor",
     )
     tree_remover = extract_between(
         source,
-        "offline_remove_exact_tree_contents() {",
-        "\n}\n\nverify_private_tree_removal_capability() {",
+        "offline_remove_owned_tree_contents() {",
+        "\n}\n\nverify_private_tree_owner_removal() {",
         "private-tree terminal remover",
     )
     removal_capability = extract_between(
         source,
-        "verify_private_tree_removal_capability() {",
+        "verify_private_tree_owner_removal() {",
         "\n}\n\nverify_private_tree_cleanup_preflight() {",
         "private-tree removal-capability preflight",
     )
@@ -1002,7 +1010,7 @@ def validate_build_release(source):
         source,
         "run_reset_self_test() {",
         "\n}\n\nrun_self_test() {",
-        "root-owned reset self-test",
+        "owner-only reset self-test",
     )
     publication_self_test = extract_between(
         source,
@@ -1055,13 +1063,13 @@ def validate_build_release(source):
     main = extract_between(source, "main() {", "\n}\n\nmain\n", "release main transaction")
     normalization_command = extract_between(
         normalizer,
-        "local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\",
+        'local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \\',
         "\n    ); then",
         "descriptor-bound private-tree normalizer",
     )
     removal_command = extract_between(
         tree_remover,
-        "local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\",
+        'local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \\',
         "; then",
         "descriptor-bound private-tree terminal remover",
     )
@@ -1255,15 +1263,15 @@ def validate_build_release(source):
         "generated-state reset ordering",
     )
     expected_normalization_command = (
-        "local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
-        "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \\\n"
+        'local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \\\n'
+        "            --cap-drop=ALL \\\n"
         "            --security-opt no-new-privileges \\\n"
         "            --ulimit nofile=524544:524544 \\\n"
         '            --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled" \\\n'
         '            "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \\\n'
         '            "$PRIVATE_TREE_CLOSURE_HASH" \\\n'
-        '            --normalize-root /cleanup --expected-identity "$expected_identity" \\\n'
-        '            --owner "$uid" --group "$gid" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"'
+        '            --normalize-owned-root /cleanup --expected-identity "$expected_identity" \\\n'
+        '            < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"'
     )
     require_exact_count(normalizer, "local_docker run ", 1, "single descriptor-bound normalizer container")
     if normalization_command != expected_normalization_command:
@@ -1272,29 +1280,24 @@ def validate_build_release(source):
         ("--pull=never", "normalizer no-pull policy"),
         ("--network=none", "normalizer network isolation"),
         ("--read-only", "normalizer immutable container root"),
-        ("--user 0:0", "normalizer root identity"),
+        ('--user "$uid:$gid"', "normalizer invoking principal"),
         ("--cap-drop=ALL", "normalizer capability reset"),
-        ("--cap-add=DAC_READ_SEARCH", "normalizer read-only inspection capability"),
-        ("--cap-add=CHOWN", "normalizer chown capability"),
         ("--security-opt no-new-privileges", "normalizer privilege ceiling"),
         ("--ulimit nofile=524544:524544", "normalizer retained-authority descriptor budget"),
         ('"$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR"', "authenticated normalizer executor"),
         ('"$PRIVATE_TREE_CLOSURE_HASH"', "normalizer committed helper digest"),
-        ('--normalize-root /cleanup --expected-identity "$expected_identity"', "identity-bound normalization dispatch"),
-        ('--owner "$uid" --group "$gid"', "normalizer destination ownership"),
+        ('--normalize-owned-root /cleanup --expected-identity "$expected_identity"', "identity-bound owner-only normalization dispatch"),
         ('run_private_tree_closure_from_descriptor --mount-root "$path"', "normalizer mount closure proof"),
         ('< "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"', "descriptor-sourced normalizer implementation"),
         ("bind-recursive=disabled", "normalizer recursive-bind exclusion"),
-        ('[ "$observed" = "$expected_identity" ]', "normalizer identity postcondition"),
+        ('[ "$observed" = "$expected_identity:$uid:$gid:700" ]', "normalizer identity and owner postcondition"),
     ):
         require_text(normalizer, text, label)
-    if re.findall(r"--cap-add=([A-Z_]+)", normalizer) != ["DAC_READ_SEARCH", "CHOWN"]:
-        raise VerificationError("normalizer capability allowlist is not exact")
-    if re.findall(r"--cap-add=([A-Z_]+)", reset_self_test) != ["CHOWN"]:
-        raise VerificationError("reset fixture capability set is not exactly CHOWN")
+    if "--cap-add=" in normalizer or "--cap-add=" in reset_self_test:
+        raise VerificationError("owner-only normalization adds a Linux capability")
     require_exact_count(normalizer, "bind-recursive=disabled", 1, "normalizer recursive-bind exclusions")
     require_exact_count(normalizer, 'run_private_tree_closure_from_descriptor --mount-root "$path"', 2, "normalizer mount closure stages")
-    require_exact_count(normalizer, '[ "$observed" = "$expected_identity" ]', 2, "normalizer identity stages")
+    require_exact_count(normalizer, '[ "$observed" = "$expected_identity:$uid:$gid:700" ]', 2, "normalizer identity and owner stages")
     require_text(
         normalizer,
         'if ! (verify_release_builder_image deb-builder "$DEBIAN_IMAGE_ID"); then\n'
@@ -1307,14 +1310,14 @@ def validate_build_release(source):
         normalizer,
         (
             '[ "$resolved" = "$path" ]',
-            '[ "$observed" = "$expected_identity" ]',
+            '[ "$observed" = "$expected_identity:$uid:$gid:700" ]',
             'run_private_tree_closure_from_descriptor --mount-root "$path"',
             'verify_release_builder_image deb-builder "$DEBIAN_IMAGE_ID"',
-            "--cap-add=DAC_READ_SEARCH",
-            "--cap-add=CHOWN",
-            "--normalize-root /cleanup",
+            '--user "$uid:$gid"',
+            "--cap-drop=ALL",
+            "--normalize-owned-root /cleanup",
             "disappeared after normalization",
-            "identity changed during normalization",
+            "identity or owner authority changed during normalization",
             "gained a mount boundary during normalization",
         ),
         "private-tree authority ordering",
@@ -1398,30 +1401,27 @@ def validate_build_release(source):
     ):
         require_text(source, text, label)
     expected_removal_command = (
-        "local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
-        "        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER \\\n"
+        'local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \\\n'
+        "        --cap-drop=ALL \\\n"
         "        --security-opt no-new-privileges \\\n"
         "        --ulimit nofile=524544:524544 \\\n"
         '        --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled" \\\n'
         '        "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \\\n'
         '        "$PRIVATE_TREE_CLOSURE_HASH" \\\n'
-        '        --remove-tree-contents /cleanup --expected-identity "$expected_identity" \\\n'
-        '        --owner "$uid" --group "$gid" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"'
+        '        --remove-owned-tree-contents /cleanup --expected-identity "$expected_identity" \\\n'
+        '        < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"'
     )
     if removal_command != expected_removal_command:
         raise VerificationError("private-tree terminal remover command is not the exact authority allowlist")
-    if re.findall(r"--cap-add=([A-Z_]+)", tree_remover) != [
-        "DAC_OVERRIDE",
-        "FOWNER",
-    ]:
-        raise VerificationError("private-tree terminal remover capability allowlist is not exact")
+    if "--cap-add=" in tree_remover:
+        raise VerificationError("owner-only terminal remover adds a Linux capability")
     for text, label in (
         ('[ "$observed" = "$expected_identity:$uid:$gid:700" ]', "terminal-removal root metadata proof"),
         ('run_private_tree_closure_from_descriptor --mount-root "$path"', "terminal-removal mount closure"),
         ('verify_release_builder_image deb-builder "$DEBIAN_IMAGE_ID"', "terminal-removal image provenance"),
         ('"$PRIVATE_TREE_CLOSURE_HASH"', "terminal-removal helper digest"),
         ('< "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"', "descriptor-sourced terminal-removal helper"),
-        ('--remove-tree-contents /cleanup', "terminal content-removal operation"),
+        ('--remove-owned-tree-contents /cleanup', "owner-only terminal content-removal operation"),
         ('root authority changed during content removal', "terminal-removal root postcondition"),
     ):
         require_text(tree_remover, text, label)
@@ -1435,13 +1435,13 @@ def validate_build_release(source):
             raise VerificationError(
                 f"release transaction executes a mutable private-tree helper pathname: {forbidden}"
             )
-    for forbidden in ("--privileged", "--cap-add=ALL", "--cap-add=CHOWN", "--network=host"):
+    for forbidden in ("--privileged", "--cap-add=", "--user 0", "--network=host"):
         if forbidden in tree_remover:
             raise VerificationError(f"private-tree terminal remover retains forbidden authority: {forbidden}")
     require_text(snapshot_normalizer, '"$SOURCE_A"|"$SOURCE_B"', "snapshot normalizer scope")
     require_text(
         snapshot_normalizer,
-        'offline_normalize_exact_tree "$source" "$expected" "$phase snapshot"',
+        'offline_normalize_owned_tree_modes "$source" "$expected" "$phase snapshot"',
         "snapshot normalizer exact-tree call",
     )
     require_text(snapshot_normalizer, '"$expected:$(id -u):$(id -g):700"', "snapshot root metadata proof")
@@ -1451,7 +1451,7 @@ def validate_build_release(source):
             'if [ "$WINDOWS_UNSAFE" -eq 1 ] || [ "$KEEP_WORKSPACE" -eq 1 ]',
             "reconcile_final_publication",
             '[ -n "$PRIVATE_TREE_CLOSURE_FD" ] || cleanup_failed=1',
-            "offline_remove_exact_tree_contents",
+            "offline_remove_owned_tree_contents",
             "run_private_tree_closure_from_descriptor",
             '--remove-empty-private-root "$WORKSPACE"',
             "close_private_tree_closure_execution",
@@ -1514,26 +1514,24 @@ def validate_build_release(source):
         ('install -d -m 0700 "$fixture"', "capability fixture private root"),
         ('install -d -m 1700 "$fixture/sticky"', "capability fixture sticky directory"),
         ('printf \'sticky-owner\\n\' > "$fixture/sticky/user-entry"', "capability fixture foreign sticky entry"),
-        ('--cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER', "capability fixture exact capability set"),
-        ('chmod 0000 /capability/root-entry', "capability fixture inaccessible root-owned file"),
-        ('chmod 0000 /capability/locked', "capability fixture inaccessible root-owned directory"),
-        ('[ "$observed" = "0:0:0" ]', "capability fixture root ownership proof"),
-        ('offline_remove_exact_tree_contents "$fixture" "$fixture_id"', "capability fixture terminal removal"),
+        ('--user "$uid:$gid"', "owner fixture invoking principal"),
+        ('--cap-drop=ALL', "owner fixture capability removal"),
+        ('chmod 0000 /capability/owner-entry', "owner fixture inaccessible current-owner file"),
+        ('chmod 0500 /capability/locked', "owner fixture traversable current-owner directory"),
+        ('[ "$observed" = "$uid:$gid:0" ]', "owner fixture ownership proof"),
+        ('offline_remove_owned_tree_contents "$fixture" "$fixture_id"', "owner fixture terminal removal"),
         ('--remove-empty-private-root "$fixture"', "capability fixture empty-root removal"),
         ('[ ! -e "$fixture" ] && [ ! -L "$fixture" ]', "capability fixture absence proof"),
     ):
         require_text(removal_capability, text, label)
-    if re.findall(r"--cap-add=([A-Z_]+)", removal_capability) != [
-        "DAC_OVERRIDE",
-        "FOWNER",
-    ]:
-        raise VerificationError("terminal-removal capability preflight allowlist is not exact")
+    if "--cap-add=" in removal_capability or "--user 0" in removal_capability:
+        raise VerificationError("owner-only terminal-removal preflight gains privilege")
     require_order(
         cleanup_preflight,
         (
             '[ -n "$PRIVATE_TREE_CLOSURE_FD" ] || return 1',
             "verify_private_tree_authority_capacity",
-            "verify_private_tree_removal_capability",
+            "verify_private_tree_owner_removal",
         ),
         "complete terminal-cleanup preflight ordering",
     )
@@ -1595,7 +1593,7 @@ def validate_build_release(source):
         'log "RELEASE OK:',
         'log "DOCTOR OK:',
         'log "build-release self-test: OK"',
-        'log "build-release root-owned reset self-test: OK"',
+        'log "build-release owner-only reset self-test: OK"',
     ):
         if marker in source:
             raise VerificationError("a build-release success marker bypasses final cleanup")
@@ -1603,7 +1601,7 @@ def validate_build_release(source):
         'RELEASE_SUCCESS_MESSAGE="RELEASE OK:',
         'RELEASE_SUCCESS_MESSAGE="DOCTOR OK:',
         'RELEASE_SUCCESS_MESSAGE="build-release self-test: OK"',
-        'RELEASE_SUCCESS_MESSAGE="build-release root-owned reset self-test: OK"',
+        'RELEASE_SUCCESS_MESSAGE="build-release owner-only reset self-test: OK"',
     ):
         require_text(source, marker, "deferred build-release success marker")
     require_text(
@@ -1816,16 +1814,16 @@ def validate_build_release(source):
     require_text(source, "release self-test target outputs are not distinct", "output isolation fixture")
     for text, label in (
         ("verify_release_builder_image deb-builder", "reset fixture image provenance"),
-        ("negative control removed inaccessible root-owned state", "reset fixture negative control"),
-        ('reset_snapshot_build_state "$SOURCE_A" "root-owned reset self-test"', "reset fixture production-call proof"),
+        ("negative control removed inaccessible current-owner state", "reset fixture negative control"),
+        ('reset_snapshot_build_state "$SOURCE_A" "owner-only reset self-test"', "reset fixture production-call proof"),
         ("external symlink target", "reset fixture no-follow proof"),
         ("accepted an inode linked outside the snapshot", "reset fixture external-hardlink rejection"),
         ("internal-a", "reset fixture closed internal hardlink"),
         ("special-mode", "reset fixture special-mode input"),
-        ("both root-owned mode-0000 directories", "reset fixture dual hostile-mode proof"),
+        ("both current-owner mode-0500 directories", "reset fixture dual hostile-mode proof"),
         ("hostile Flutter directory", "reset fixture dual negative control"),
         ("retained-authority normalization differs", "reset fixture retained-authority postcondition"),
-        ("build-release root-owned reset self-test: OK", "reset fixture success marker"),
+        ("build-release owner-only reset self-test: OK", "reset fixture success marker"),
     ):
         require_text(reset_self_test, text, label)
     require_text(
@@ -1835,7 +1833,7 @@ def validate_build_release(source):
     )
     require_text(
         reset_self_test,
-        "metadata.st_uid != 0 or stat.S_IMODE(metadata.st_mode) != 0",
+        "metadata.st_uid != os.geteuid()",
         "reset fixture live hostile-mode predicate",
     )
     require_text(
@@ -1863,7 +1861,7 @@ def validate_build_release(source):
     require_order(
         reset_self_test,
         (
-            'offline_normalize_exact_tree "$SOURCE_A" "$source_identity" "external-hardlink rejection fixture"',
+            'offline_normalize_owned_tree_modes "$SOURCE_A" "$source_identity" "external-hardlink rejection fixture"',
             'rm -rf -- "$SOURCE_A/target"',
             'local_docker run --rm --pull=never',
             "for path in sys.argv[1:]",
@@ -1871,10 +1869,10 @@ def validate_build_release(source):
             'if git_closed -C "$SOURCE_A" clean -ffdx',
             "negative control did not preserve the hostile directory",
             "negative control did not preserve the hostile Flutter directory",
-            'offline_normalize_exact_tree "$SOURCE_A" "$source_identity"',
+            'offline_normalize_owned_tree_modes "$SOURCE_A" "$source_identity"',
             '"$SOURCE_A/target/reset-proof/special-mode"',
             "retained-authority normalization differs",
-            'reset_snapshot_build_state "$SOURCE_A" "root-owned reset self-test"',
+            'reset_snapshot_build_state "$SOURCE_A" "owner-only reset self-test"',
             '[ ! -e "$SOURCE_A/target/reset-proof" ]',
             '[ ! -e "$SOURCE_A/flutter/.dart_tool/reset-proof" ]',
             "external symlink target",
@@ -3937,7 +3935,7 @@ def validate_release_parent_docker_authority_contract(sources):
         ),
         (
             "pre-source root refusal, isolated "
-            '"\n        "fixed client/daemon/configuration, root-fixture funnel',
+            '"\n        "fixed client/daemon/configuration, non-root capability-free writable-bind funnel',
             "release-parent focused green disposition",
         ),
     ):
@@ -3987,14 +3985,22 @@ def validate_release_parent_docker_authority_contract(sources):
         5,
         "release-parent fixed Docker launch inventory",
     )
+    require_exact_count(
+        build,
+        "--cap-drop=ALL",
+        5,
+        "release-parent capability-free launch inventory",
+    )
     for forbidden, label in (
         ("docker_local() {", "bespoke release-parent Docker wrapper"),
         ("assert_release_docker_config() {", "bespoke release-parent config assertion"),
         ("DOCKER_HOST_URI=", "bespoke release-parent endpoint"),
         ("DOCKER_CONFIG_DIR=", "bespoke release-parent config"),
         ("command docker --host", "PATH-selected release-parent Docker client"),
+        ("--cap-add", "release-parent added Linux capability"),
     ):
         require_absent(build, forbidden, label)
+    require_no_root_docker_user(build, "release-parent container root principal")
 
     require_text(child, "/usr/bin/env -i", "release-child closed environment")
     for forbidden, label in (
@@ -4008,7 +4014,7 @@ def validate_release_parent_docker_authority_contract(sources):
         cleanup,
         (
             '[ "$LOCAL_DOCKER_AUTHORITY_INITIALIZED" -eq 1 ]',
-            'offline_remove_exact_tree_contents "$WORKSPACE" "$WORKSPACE_ID"',
+            'offline_remove_owned_tree_contents "$WORKSPACE" "$WORKSPACE_ID"',
             '--remove-empty-private-root "$WORKSPACE"',
             "close_private_tree_closure_execution",
             "retire_release_docker_authority || cleanup_failed=1",
@@ -4045,14 +4051,29 @@ def validate_release_parent_docker_authority_contract(sources):
     )
     require_text(
         sources["requirements"],
+        '<span class="id">R-S11gm</span>',
+        "release-parent owner-closed writable-bind requirement",
+    )
+    require_text(
+        sources["requirements"],
         "<tr><td>266</td>",
         "release-parent Docker authority Appendix C row",
     )
     require_text(
+        sources["requirements"],
+        "<tr><td>348</td>",
+        "release-parent writable-bind principal Appendix C row",
+    )
+    require_text(
         sources["hardening"],
         "R-S11dm/R-S11e-131 — release-parent Docker client, daemon,\n"
-        "  configuration, root-fixture, and cleanup authority",
+        "  configuration, writable-bind principal, and cleanup authority",
         "release-parent Docker authority hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "R-S11gm/R-S11e-225 release-parent writable-bind principal closure",
+        "release-parent writable-bind principal hardening ledger",
     )
 
 
@@ -6212,18 +6233,18 @@ def validate_faillo_contract(source):
     require_text(source, "verifier scanner rejects an operational error", "scanner error proof")
     require_text(
         source,
-        "pinned offline reset removes root-owned inaccessible generated state",
-        "root-owned reset behavioral proof",
+        "pinned offline reset removes current-owner inaccessible generated state",
+        "owner-only reset behavioral proof",
     )
     require_text(
         source,
-        '"build-release root-owned reset self-test: OK"',
-        "root-owned reset success marker",
+        '"build-release owner-only reset self-test: OK"',
+        "owner-only reset success marker",
     )
     require_text(
         source,
         'scripts/build-release.sh --self-test-reset',
-        "root-owned reset exact command",
+        "owner-only reset exact command",
     )
     for text, label in (
         ('run_script_die "verify_online_shas wrong SHA" "SHA-256 mismatch for " run_wrong_online_sha_probe', "independent wrong-SHA dispatch"),
@@ -6452,14 +6473,14 @@ def validate_private_tree_closure(source):
         source,
         module,
         "PrivateTreeRoot",
-        "for_tree_contents",
+        "for_owned_tree_contents",
         "terminal tree-contents authority acquisition",
     )
     tree_contents_removal = extract_python_method(
         source,
         module,
         "PrivateTreeRoot",
-        "remove_tree_contents",
+        "remove_owned_tree_contents",
         "terminal tree-contents removal",
     )
     empty_root_removal = extract_python_method(
@@ -6507,7 +6528,7 @@ def validate_private_tree_closure(source):
         ('stat.S_IMODE(metadata.st_mode) != 0o700', "closure fixture scratch mode proof"),
         ('modes.add_argument("--remove-private-root")', "closure private-root removal mode"),
         ('modes.add_argument("--remove-empty-private-root")', "terminal empty-root removal mode"),
-        ('modes.add_argument("--remove-tree-contents")', "terminal tree-contents removal mode"),
+        ('modes.add_argument("--remove-owned-tree-contents")', "owner-only tree-contents removal mode"),
         ('modes.add_argument("--check-descriptor-budget"', "host descriptor-budget preflight mode"),
         ('modes.add_argument("--check-exact-descriptor-budget"', "exact descriptor-budget preflight mode"),
         ('scratch.remove_root((int(match.group(1)), int(match.group(2))))', "closure recorded root identity dispatch"),
@@ -6518,9 +6539,9 @@ def validate_private_tree_closure(source):
         ('closure child leaked a descriptor after acquisition failure', "closure child descriptor inventory proof"),
         ('closure child acquisition failure did not preserve one ambiguous edge', "closure ambiguous-edge preservation proof"),
         ('preserved closure child acquisition state is not exact', "closure preserved-edge metadata proof"),
-        ('modes.add_argument("--normalize-root")', "normalization mode dispatch"),
-        ('parser.add_argument("--owner", type=int)', "normalization owner authority"),
-        ('parser.add_argument("--group", type=int)', "normalization group authority"),
+        ('modes.add_argument("--normalize-owned-root")', "owner-only normalization mode dispatch"),
+        ('def require_current_non_root_principal():', "private-tree non-root principal gate"),
+        ('private-tree mutation requires a non-root principal', "private-tree root-principal rejection"),
         ('PROTECTED_HARDLINKS = "/proc/sys/fs/protected_hardlinks"', "kernel hardlink-protection source"),
         ("TREE_ENTRY_LIMIT = 524288", "retained-authority exact entry bound"),
         ("MAX_DIRECTORY_DEPTH = 128", "retained-authority directory-depth bound"),
@@ -6537,6 +6558,12 @@ def validate_private_tree_closure(source):
         ('normalization constructor leaked a directory descriptor', "normalization descriptor-leak fixture"),
         ('normalization directory inventory changed', "normalization complete-inventory fixture"),
         ('normalization mode policy retained a special permission bit', "normalization special-mode fixture"),
+        ('os.chmod(nested, 0o500)', "owner-only locked-directory fixture"),
+        ('os.chmod(payload, 0o000)', "owner-only inaccessible-file fixture"),
+        ('authority.normalize()', "owner-only mode-normalization fixture"),
+        ('owner-only normalization postcondition differs', "owner-only normalization postcondition"),
+        ('os.geteuid = lambda: original_geteuid() + 1', "foreign-principal owner fixture"),
+        ('os.getegid = lambda: original_getegid() + 1', "foreign-principal group fixture"),
         ('exercise_cleanup_failure_accounting()', "descriptor cleanup-failure fixture dispatch"),
         ('exercise_authority_bounds(scratch)', "retained-authority bound fixture dispatch"),
         ('descriptor close failure fixture did not exhaust cleanup', "exhaustive descriptor-close fixture"),
@@ -6613,10 +6640,11 @@ def validate_private_tree_closure(source):
     require_order(
         normalization_dispatch,
         (
+            "require_current_non_root_principal()",
             "require_retained_descriptor_budget()",
             "require_protected_hardlinks()",
             "authority = TreeNormalizationAuthority(path, expected_identity)",
-            "authority.normalize(owner, group)",
+            "authority.normalize()",
             "authority.close(sys.exc_info()[1])",
         ),
         "normalization authority dispatch",
@@ -6648,13 +6676,24 @@ def validate_private_tree_closure(source):
         require_text(method, "elif stat.S_ISREG(metadata.st_mode) or stat.S_ISLNK(metadata.st_mode):", label)
         require_text(method, 'raise ClosureError("tree contains a special filesystem object")', label)
     for text, label in (
+        ("if self.require_uniform_owner and (", "terminal cleanup uniform-owner gate"),
+        ('raise ClosureError("private-tree cleanup found foreign ownership")', "terminal cleanup foreign-owner rejection"),
+        ("metadata.st_uid != self.owner", "terminal cleanup metadata owner proof"),
+        ("metadata.st_gid != self.group", "terminal cleanup metadata group proof"),
+    ):
+        require_text(inode_closure, text, label)
+    for text, label in (
         ("require_real_directory(path)", "terminal-removal canonical root"),
+        ("require_current_non_root_principal()", "terminal-removal non-root principal"),
+        ("owner = os.geteuid()", "terminal-removal current owner derivation"),
+        ("group = os.getegid()", "terminal-removal current group derivation"),
         ("identity(metadata) != expected_identity", "terminal-removal descriptor identity"),
         ("identity(edge) != expected_identity", "terminal-removal pathname identity"),
-        ("metadata.st_uid != owner", "terminal-removal root owner"),
-        ("metadata.st_gid != group", "terminal-removal root group"),
+        ("metadata.st_uid != owner", "terminal-removal current-principal root owner"),
+        ("metadata.st_gid != group", "terminal-removal current-principal root group"),
         ("stat.S_IMODE(metadata.st_mode) != 0o700", "terminal-removal private root mode"),
         ("mount_id = descriptor_mount_id(descriptor)", "terminal-removal mount authority"),
+        ("authority.require_uniform_owner = True", "terminal-removal uniform-owner policy"),
     ):
         require_text(tree_contents_acquisition, text, label)
     require_order(
@@ -6709,6 +6748,8 @@ def validate_private_tree_closure(source):
         ('"uid": root.st_uid', "normalization root owner acquisition"),
         ('"gid": root.st_gid', "normalization root group acquisition"),
         ('"nlink": root.st_nlink', "normalization root link-count acquisition"),
+        ("root.st_uid != self.owner", "normalization current-owner root proof"),
+        ("root.st_gid != self.group", "normalization current-group root proof"),
     ):
         require_text(normalization_init, text, label)
     for text, label in (
@@ -6717,6 +6758,9 @@ def validate_private_tree_closure(source):
         ('"nlink": metadata.st_nlink', "normalization child link-count acquisition"),
         ('inode["uid"] != metadata.st_uid', "normalization hardlink owner consistency"),
         ('inode["gid"] != metadata.st_gid', "normalization hardlink group consistency"),
+        ("normalization tree contains foreign ownership", "normalization foreign-owner rejection"),
+        ("current.st_uid != self.owner", "normalization retained owner reproof"),
+        ("current.st_gid != self.group", "normalization retained group reproof"),
     ):
         require_text(normalization_collect, text, label)
     require_exact_count(
@@ -6741,12 +6785,9 @@ def validate_private_tree_closure(source):
         normalization_mutation,
         (
             "self.assert_bound()",
-            'os.fchown(directory["fd"], 0, 0)',
-            "descriptor_chown(authority[\"fd\"], 0, 0",
-            "os.fchmod(descriptor, normalized_mode(authority[\"mode\"]))",
-            "os.fchown(descriptor, owner, group)",
-            'os.fchown(directory["fd"], owner, group)',
-            "self.assert_bound(owner, group)",
+            'os.fchmod(\n                directory["fd"]',
+            'os.chmod(\n                    f"/proc/self/fd/{authority[\'fd\']}"',
+            "self.assert_bound(normalized=True)",
         ),
         "retained-authority normalization ordering",
     )
@@ -6756,7 +6797,7 @@ def validate_private_tree_closure(source):
     ):
         require_text(normalization_init, text, label)
     for text, label in (
-        ("current.st_uid != owner or current.st_gid != group", "normalized inode ownership postcondition"),
+        ("current.st_uid != self.owner or current.st_gid != self.group", "normalized inode ownership postcondition"),
         ("normalization inode ownership postcondition differs", "normalized inode ownership rejection"),
         ('!= normalized_mode(authority["mode"])', "normalized inode mode postcondition"),
         ("normalization inode mode postcondition differs", "normalized inode mode rejection"),
@@ -6764,9 +6805,21 @@ def validate_private_tree_closure(source):
         require_text(normalization_mutation, text, label)
     require_text(
         closure_main,
-        "scratch.remove_tree_contents(expected)",
+        "scratch.remove_owned_tree_contents(expected)",
         "terminal tree-contents removal dispatch",
     )
+    for forbidden, label in (
+        ("import ctypes", "native ownership-changing bridge"),
+        ("os.chown", "pathname ownership-changing syscall"),
+        ("fchown", "ownership-changing syscall"),
+        ("descriptor_chown", "descriptor ownership-changing helper"),
+        ('modes.add_argument("--normalize-root")', "legacy ownership normalization CLI"),
+        ('modes.add_argument("--remove-tree-contents")', "legacy mixed-owner removal CLI"),
+        ('parser.add_argument("--owner"', "caller-selected owner authority"),
+        ('parser.add_argument("--group"', "caller-selected group authority"),
+    ):
+        if forbidden in source:
+            raise VerificationError(f"private-tree closure retains {label}")
     require_text(
         closure_main,
         "exercise_authority_bounds(scratch)",
@@ -45962,8 +46015,8 @@ def run_transaction_fixtures(repo):
         ("scripts/build-release.sh", "build-release self-test: OK", "release transaction fixture"),
         (
             "scripts/build-release.sh",
-            "build-release root-owned reset self-test: OK",
-            "root-owned reset transaction fixture",
+            "build-release owner-only reset self-test: OK",
+            "owner-only reset transaction fixture",
         ),
         (
             "scripts/publish-github-release.sh",
@@ -45972,7 +46025,7 @@ def run_transaction_fixtures(repo):
         ),
     ):
         path = repo / relative
-        mode = "--self-test-reset" if "root-owned reset" in label else "--self-test"
+        mode = "--self-test-reset" if "owner-only reset" in label else "--self-test"
         result = run_stateful_command([str(path), mode], repo, poison)
         require_success(result, label, marker)
         bypass = run_stateful_command(
@@ -47256,21 +47309,21 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            "local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n            --cap-drop=ALL --cap-add=DAC_READ_SEARCH",
-            "local_docker run --interactive --rm --pull=never --network=bridge --read-only --user 0:0 \\\n            --cap-drop=ALL --cap-add=DAC_READ_SEARCH",
+            'local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \\\n            --cap-drop=ALL',
+            'local_docker run --interactive --rm --pull=never --network=bridge --read-only --user "$uid:$gid" \\\n            --cap-drop=ALL',
             "descriptor-bound private-tree normalizer",
         ),
         (
             "build",
-            "--cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \\",
-            "--cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN --cap-add=FOWNER \\",
+            '--read-only --user "$uid:$gid" \\\n            --cap-drop=ALL \\\n            --security-opt no-new-privileges',
+            '--read-only --user "$uid:$gid" \\\n            --cap-drop=ALL --cap-add=CHOWN \\\n            --security-opt no-new-privileges',
             "private-tree normalizer command is not the exact authority allowlist",
         ),
         (
             "build",
-            "--cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \\",
-            "--cap-drop=ALL --cap-add=CHOWN \\",
-            "private-tree normalizer command is not the exact authority allowlist",
+            '--read-only --user "$uid:$gid" \\\n            --cap-drop=ALL \\\n            --security-opt no-new-privileges',
+            '--read-only --user 0:0 \\\n            --cap-drop=ALL \\\n            --security-opt no-new-privileges',
+            "descriptor-bound private-tree normalizer: opening token is absent",
         ),
         (
             "build",
@@ -47292,45 +47345,45 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            '"$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \\\n            "$PRIVATE_TREE_CLOSURE_HASH" \\\n            --normalize-root /cleanup',
-            '"$DEBIAN_IMAGE_ID" /bin/sh -ceu \'/usr/bin/find /cleanup\' -- \\\n            --normalize-root /cleanup',
+            '"$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" \\\n            "$PRIVATE_TREE_CLOSURE_HASH" \\\n            --normalize-owned-root /cleanup',
+            '"$DEBIAN_IMAGE_ID" /bin/sh -ceu \'/usr/bin/find /cleanup\' -- \\\n            --normalize-owned-root /cleanup',
             "private-tree normalizer command is not the exact authority allowlist",
         ),
         (
             "build",
-            '--normalize-root /cleanup --expected-identity "$expected_identity"',
-            '--normalize-root /cleanup',
+            '--normalize-owned-root /cleanup --expected-identity "$expected_identity"',
+            '--normalize-owned-root /cleanup',
             "private-tree normalizer command is not the exact authority allowlist",
         ),
         (
             "build",
-            '            --owner "$uid" --group "$gid" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"',
-            '            --owner 0 --group 0 < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"',
+            '            < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"',
+            '            < "$PRIVATE_TREE_CLOSURE_PROBE"',
             "private-tree normalizer command is not the exact authority allowlist",
         ),
         (
             "build",
-            "local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
-            "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \\",
-            "local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
-            "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH \\\n"
+            'local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \\\n'
+            "            --cap-drop=ALL \\",
+            'local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \\\n'
+            "            --cap-drop=ALL \\\n"
             "            --security-opt no-new-privileges \\\n"
             '            --mount "type=bind,src=$path,dst=/cleanup,bind-recursive=disabled,readonly" \\\n'
             '            "$DEBIAN_IMAGE_ID" /usr/bin/python3 -I -S -c "$PRIVATE_TREE_CLOSURE_EXECUTOR" "$PRIVATE_TREE_CLOSURE_HASH" --inode-root /cleanup\n'
-            "        local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n"
-            "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=CHOWN \\",
+            '        local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \\\n'
+            "            --cap-drop=ALL \\",
             "single descriptor-bound normalizer container",
         ),
         (
             "build",
-            'offline_remove_exact_tree_contents "$WORKSPACE" "$WORKSPACE_ID" \\\n                    "release workspace" || cleanup_failed=1',
+            'offline_remove_owned_tree_contents "$WORKSPACE" "$WORKSPACE_ID" \\\n                    "release workspace" || cleanup_failed=1',
             'true # descriptor-bound terminal removal removed',
             "descriptor-bound terminal workspace cleanup ordering",
         ),
         (
             "build",
-            'offline_remove_exact_tree_contents "$WORKSPACE" "$WORKSPACE_ID" \\\n                    "release workspace" || cleanup_failed=1',
-            'offline_normalize_exact_tree "$WORKSPACE" "$WORKSPACE_ID" \\\n                "release workspace" || cleanup_failed=1',
+            'offline_remove_owned_tree_contents "$WORKSPACE" "$WORKSPACE_ID" \\\n                    "release workspace" || cleanup_failed=1',
+            'offline_normalize_owned_tree_modes "$WORKSPACE" "$WORKSPACE_ID" \\\n                "release workspace" || cleanup_failed=1',
             "descriptor-bound terminal workspace cleanup ordering",
         ),
         (
@@ -47359,14 +47412,14 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            '--remove-tree-contents /cleanup --expected-identity "$expected_identity" \\\n        --owner "$uid" --group "$gid" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"',
-            '--remove-tree-contents /cleanup --expected-identity "$expected_identity" \\\n        --owner "$uid" --group "$gid" < "$PRIVATE_TREE_CLOSURE_PROBE"',
+            '--remove-owned-tree-contents /cleanup --expected-identity "$expected_identity" \\\n        < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"',
+            '--remove-owned-tree-contents /cleanup --expected-identity "$expected_identity" \\\n        < "$PRIVATE_TREE_CLOSURE_PROBE"',
             "private-tree terminal remover command is not the exact authority allowlist",
         ),
         (
             "build",
-            '--normalize-root /cleanup --expected-identity "$expected_identity" \\\n            --owner "$uid" --group "$gid" < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"',
-            '--normalize-root /cleanup --expected-identity "$expected_identity" \\\n            --owner "$uid" --group "$gid" < "$PRIVATE_TREE_CLOSURE_PROBE"',
+            '--normalize-owned-root /cleanup --expected-identity "$expected_identity" \\\n            < "/proc/self/fd/$PRIVATE_TREE_CLOSURE_FD"',
+            '--normalize-owned-root /cleanup --expected-identity "$expected_identity" \\\n            < "$PRIVATE_TREE_CLOSURE_PROBE"',
             "private-tree normalizer command is not the exact authority allowlist",
         ),
         (
@@ -47377,13 +47430,13 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            'local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER \\',
-            'local_docker run --interactive --rm --pull=never --network=none --read-only --user 0:0 \\\n        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER --cap-add=CHOWN \\',
+            'local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \\\n        --cap-drop=ALL \\',
+            'local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \\\n        --cap-drop=ALL --cap-add=FOWNER \\',
             "private-tree terminal remover command is not the exact authority allowlist",
         ),
         (
             "build",
-            '--remove-tree-contents /cleanup --expected-identity "$expected_identity"',
+            '--remove-owned-tree-contents /cleanup --expected-identity "$expected_identity"',
             '--inode-root /cleanup',
             "private-tree terminal remover command is not the exact authority allowlist",
         ),
@@ -47431,8 +47484,8 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            'verify_private_tree_removal_capability || status=1',
-            'true # terminal-removal capability proof removed',
+            'verify_private_tree_owner_removal || status=1',
+            'true # terminal-removal owner proof removed',
             "complete terminal-cleanup preflight ordering",
         ),
         (
@@ -47461,15 +47514,15 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            'chmod 0000 /capability/locked',
+            'chmod 0500 /capability/locked',
             'chmod 0700 /capability/locked',
-            "capability fixture inaccessible root-owned directory",
+            "owner fixture traversable current-owner directory",
         ),
         (
             "build",
-            'local_docker run --rm --pull=never --network=none --read-only --user 0:0 \\\n        --cap-drop=ALL --cap-add=DAC_OVERRIDE --cap-add=FOWNER \\',
-            'local_docker run --rm --pull=never --network=none --read-only --user 0:0 \\\n        --cap-drop=ALL --cap-add=DAC_READ_SEARCH --cap-add=DAC_OVERRIDE --cap-add=FOWNER \\',
-            "capability fixture exact capability set",
+            'local_docker run --rm --pull=never --network=none --read-only --user "$uid:$gid" \\\n        --cap-drop=ALL \\',
+            'local_docker run --rm --pull=never --network=none --read-only --user 0:0 \\\n        --cap-drop=ALL \\',
+            "owner fixture invoking principal",
         ),
         (
             "build",
@@ -47583,16 +47636,16 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            'offline_normalize_exact_tree "$source" "$expected" "$phase snapshot"',
-            'offline_normalize_exact_tree "$WORKSPACE" "$expected" "$phase snapshot"',
+            'offline_normalize_owned_tree_modes "$source" "$expected" "$phase snapshot"',
+            'offline_normalize_owned_tree_modes "$WORKSPACE" "$expected" "$phase snapshot"',
             "snapshot normalizer exact-tree call",
         ),
         (
             "build",
-            '[ "$observed" = "$expected_identity" ] \\\n'
-            '        || { warn "$role identity changed: $path"; return 1; }',
+            '[ "$observed" = "$expected_identity:$uid:$gid:700" ] \\\n'
+            '        || { warn "$role identity or owner authority changed: $path"; return 1; }',
             'true # pre-normalization identity proof removed',
-            "normalizer identity stages",
+            "normalizer identity and owner stages",
         ),
         (
             "build",
@@ -47610,7 +47663,7 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            'metadata.st_uid != 0 or stat.S_IMODE(metadata.st_mode) != 0',
+            'metadata.st_uid != os.geteuid()',
             'False',
             "reset fixture live hostile-mode predicate",
         ),
@@ -47624,7 +47677,7 @@ def run_source_mutations(sources):
             "faillo",
             'scripts/build-release.sh --self-test-reset',
             '/bin/true',
-            "root-owned reset exact command",
+            "owner-only reset exact command",
         ),
         (
             "closure",
@@ -47694,7 +47747,7 @@ def run_source_mutations(sources):
         ),
         (
             "closure",
-            "                scratch.remove_tree_contents(expected)",
+            "                scratch.remove_owned_tree_contents(expected)",
             "                scratch.assert_bound() # terminal removal removed",
             "terminal tree-contents removal dispatch",
         ),
@@ -47724,7 +47777,7 @@ def run_source_mutations(sources):
         ),
         (
             "closure",
-            "        self.assert_bound(owner, group)",
+            "        self.assert_bound(normalized=True)",
             "        self.assert_bound() # normalized metadata reproof removed",
             "retained-authority normalization ordering",
         ),
@@ -47748,9 +47801,57 @@ def run_source_mutations(sources):
         ),
         (
             "closure",
-            "        authority.normalize(owner, group)",
+            "def normalize_tree(path, expected_identity):\n"
+            "    require_current_non_root_principal()\n"
+            "    require_retained_descriptor_budget()\n"
+            "    require_protected_hardlinks()\n"
+            "    authority = TreeNormalizationAuthority(path, expected_identity)\n"
+            "    try:\n"
+            "        authority.normalize()",
+            "def normalize_tree(path, expected_identity):\n"
+            "    require_current_non_root_principal()\n"
+            "    require_retained_descriptor_budget()\n"
+            "    require_protected_hardlinks()\n"
+            "    authority = TreeNormalizationAuthority(path, expected_identity)\n"
+            "    try:\n"
             "        authority.assert_bound() # normalization mutation removed",
             "normalization authority dispatch",
+        ),
+        (
+            "closure",
+            "    def for_owned_tree_contents(cls, path, expected_identity):\n        require_current_non_root_principal()",
+            "    def for_owned_tree_contents(cls, path, expected_identity):\n        pass # non-root removal principal proof removed",
+            "terminal-removal non-root principal",
+        ),
+        (
+            "closure",
+            "def normalize_tree(path, expected_identity):\n    require_current_non_root_principal()",
+            "def normalize_tree(path, expected_identity):\n    pass # non-root normalization principal proof removed",
+            "normalization authority dispatch",
+        ),
+        (
+            "closure",
+            '            if metadata.st_uid != self.owner or metadata.st_gid != self.group:\n                raise ClosureError("normalization tree contains foreign ownership")',
+            "            if False: # foreign ownership accepted\n                pass",
+            "normalization foreign-owner rejection",
+        ),
+        (
+            "closure",
+            "        authority.require_uniform_owner = True",
+            "        authority.require_uniform_owner = False",
+            "terminal-removal uniform-owner policy",
+        ),
+        (
+            "closure",
+            '    modes.add_argument("--normalize-owned-root")',
+            '    modes.add_argument("--normalize-root")',
+            "owner-only normalization mode dispatch",
+        ),
+        (
+            "closure",
+            '    modes.add_argument("--remove-owned-tree-contents")',
+            '    modes.add_argument("--remove-tree-contents")',
+            "owner-only tree-contents removal mode",
         ),
         (
             "closure",
@@ -47760,7 +47861,7 @@ def run_source_mutations(sources):
         ),
         (
             "closure",
-            "            if current.st_uid != owner or current.st_gid != group:",
+            "            if current.st_uid != self.owner or current.st_gid != self.group:",
             "            if False: # normalized inode ownership postcondition removed",
             "normalized inode ownership postcondition",
         ),
@@ -47778,7 +47879,7 @@ def run_source_mutations(sources):
         ),
         (
             "build",
-            'reset_snapshot_build_state "$SOURCE_A" "root-owned reset self-test"',
+            'reset_snapshot_build_state "$SOURCE_A" "owner-only reset self-test"',
             'git_closed -C "$SOURCE_A" clean -ffdx',
             "reset fixture production-call proof",
         ),
@@ -65840,6 +65941,20 @@ def run_source_mutations(sources):
         ),
         (
             "build",
+            "        --cap-drop=ALL --security-opt no-new-privileges \\\n",
+            "        --cap-drop=ALL --cap-add CHOWN --security-opt no-new-privileges \\\n",
+            "release-parent added Linux capability",
+        ),
+        (
+            "build",
+            'local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \\\n'
+            "        --cap-drop=ALL --security-opt no-new-privileges",
+            'local_docker run --interactive --rm --pull=never --network=none --read-only --user=0:0 \\\n'
+            "        --cap-drop=ALL --security-opt no-new-privileges",
+            "release-parent container root principal",
+        ),
+        (
+            "build",
             '/usr/bin/rmdir -- "$DOCKER_AUTHORITY_ROOT"',
             "true # release-parent Docker-authority root retained",
             "exact release Docker-authority retirement",
@@ -65865,16 +65980,34 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
+            '<span class="id">R-S11gm</span>',
+            '<span class="id">R-S11gm-disabled</span>',
+            "release-parent owner-closed writable-bind requirement",
+        ),
+        (
+            "requirements",
             "<tr><td>266</td>",
             "<tr><td>266-disabled</td>",
             "release-parent Docker authority Appendix C row",
         ),
         (
+            "requirements",
+            "<tr><td>348</td>",
+            "<tr><td>348-disabled</td>",
+            "release-parent writable-bind principal Appendix C row",
+        ),
+        (
             "hardening",
             "R-S11dm/R-S11e-131 — release-parent Docker client, daemon,\n"
-            "  configuration, root-fixture, and cleanup authority",
+            "  configuration, writable-bind principal, and cleanup authority",
             "R-S11dm/R-S11e-XXX — release-parent Docker authority deferred",
             "release-parent Docker authority hardening ledger",
+        ),
+        (
+            "hardening",
+            "R-S11gm/R-S11e-225 release-parent writable-bind principal closure",
+            "R-S11gm/R-S11e-XXX writable-bind principal closure deferred",
+            "release-parent writable-bind principal hardening ledger",
         ),
         (
             "release_parent_authority",

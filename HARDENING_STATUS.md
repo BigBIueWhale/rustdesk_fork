@@ -21331,14 +21331,14 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   device behavior, and R-V3 external review remain separately open. The
   broader Ralph-loop goal remains active.
 - **R-S11dm/R-S11e-131 — release-parent Docker client, daemon,
-  configuration, root-fixture, and cleanup authority — SOURCE VERIFIED
+  configuration, writable-bind principal, and cleanup authority — SOURCE VERIFIED
   2026-07-26; EXACT COLD RELEASE/NATIVE/DEVICE/EXTERNAL EVIDENCE PENDING.**
   Platform: the unprivileged Linux release-tooling host. Endpoint/action:
   `scripts/build-release.sh` builder-image provenance, its four terminal
-  ownership/removal helper shapes, the reset fixture, and cleanup of the
-  release transaction's root-owned generated state. Boundary: invoking release
+  mode-normalization/removal helper shapes, the reset fixture, and cleanup of the
+  release transaction's generated state. Boundary: invoking release
   user and private exact-commit workspace ↔ Docker client/daemon/configuration,
-  artifact-only container root/capabilities, build-child isolation, and
+  writable-bind container principal/capabilities, build-child isolation, and
   terminal cleanup authority.
 
   The inherited release parent already closed its process environment, rejected
@@ -21404,11 +21404,11 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   configuration. Missing, substituted, or changed authority is preserved and
   fails with a retained path.
 
-  R-S11dm and Appendix C #266 make this source correction normative.
+  R-S11dm and Appendix C #266 make the fixed client/daemon/configuration correction normative.
   `scripts/verify-release-parent-docker-authority.py` binds the complete
   pre-source root refusal, closed environment, separate authority construction,
   shared client/socket/configuration/provenance implementation, five-launch
-  inventory, root-fixture confinement, child separation, no-fallback cleanup,
+  inventory, child separation, no-fallback cleanup,
   exact retirement, old-surface absence, requirements/Appendix/ledger state,
   and deliberate mutations. The independent workspace verifier and complete
   source-mutation catalog bind the same boundary.
@@ -21427,8 +21427,9 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   Docker-socket mount, bounded resources, and private empty host-client
   configuration.
 
-  This row does not claim execution of `scripts/build-release.sh`, any root
-  fixture, package/artifact builder, KVM guest, or exact cold release
+  R-S11gm/R-S11e-225 later supersedes this row's former allowance for UID-0/capability-bearing writable-bind
+  fixtures and mixed-owner cleanup. This row does not claim execution of `scripts/build-release.sh`, any
+  package/artifact builder, KVM guest, or exact cold release
   transaction. Exact cold committed R-B2/R-B10 artifacts, installed/native/
   device behavior, and R-V3 external review remain separately open. The
   broader Ralph-loop goal remains active.
@@ -24255,6 +24256,58 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   sustained performance/resource soak, cold release equality, independent reproduction, and external review remain
   explicit stop-ship obligations.
 
+### R-S11gm/R-S11e-225 release-parent writable-bind principal closure (2026-08-13)
+
+- **SOURCE IMPLEMENTED; TARGETED CONFINED SOURCE/BEHAVIOR/FOCUSED-MUTATION VERIFICATION GREEN; COMMIT
+  CONTINGENT ON A COMPLETE INDEPENDENT SOURCE-MUTATION CATALOG FROM MUTATION ONE.** Platform:
+  the unprivileged Linux release host. Endpoint/action: the five `local_docker run` sites in
+  `scripts/build-release.sh`, the authenticated descriptor-bound private-tree helper, generated-state reset, and
+  terminal release-workspace cleanup. Boundary: invoking numeric non-root release principal ↔ Docker's rootful
+  daemon applying a container principal/capability set to writable persistent host binds.
+- Proven old path: `offline_normalize_exact_tree` launched UID `0:0` with `DAC_READ_SEARCH` and `CHOWN`, then accepted
+  caller-selected destination ownership; `offline_remove_exact_tree_contents` launched UID `0:0` with
+  `DAC_OVERRIDE` and `FOWNER`; `verify_private_tree_removal_capability` deliberately created root-owned mode-0000
+  entries; `run_reset_self_test` used UID 0 plus `CHOWN` to manufacture root-owned ignored output; and the retained-
+  descriptor capacity check used UID 0 without needing it. Exact bind roots, authenticated helper bytes, mount/inode/
+  hardlink closure, no network, read-only container roots, dropped default capabilities, and no-new-privileges
+  constrained those operations, but the abstraction still converted persistent workspace ownership and made later
+  cleanup depend on repeating Docker-root authority. This is concrete release-host principal, cleanup, and residue-
+  lifecycle debt. It is not evidence that host RustDesk/service/configuration, a listener, firewall/network state,
+  or an unrelated project was changed, or that a container escaped.
+- Intended authority is now structural: every persistent release-workspace object remains owned by the invoking
+  numeric non-root UID/GID. Every one of the five release-parent launches uses that principal, drops all capabilities,
+  and has no `--cap-add`. The public helper API is `--normalize-owned-root` and
+  `--remove-owned-tree-contents`; caller-selected owner/group arguments, `ctypes` ownership bridges, `fchown`, and
+  mixed-owner cleanup are absent. Normalization changes only modes through retained descriptors. Terminal removal
+  acts only after exact root identity, same mount, bounded complete inventory, uniform current-principal ownership,
+  and complete internal hardlink closure are acquired and revalidated. Foreign/root-owned state, a non-traversable
+  directory, changed identity/owner, external hardlink, special object, or descendant mount is preserved and fails
+  closed for explicit operator reconciliation; it never authorizes privilege acquisition or a recursive pathname
+  fallback.
+- The preflight and reset fixtures now model hostile state without manufacturing foreign ownership: current-owner
+  mode-0000 regular files, mode-0500 traversable directories, internal hardlinks, stripped special modes, and an
+  external symlink. The negative `git clean` control still fails on the locked directories; owner-only normalization
+  restores only the access needed for exact cleanup. Requirements R-S11dm/R-S11gm and Appendix C #266/#348 bind this
+  model. The focused release-parent gate and independent workspace gate bind all five launch identities, capability
+  absence, renamed owner-only operations, foreign-principal rejection, descriptor/mount/inode/hardlink closure,
+  cleanup preservation, and deliberate mutations.
+- Counted targeted evidence used the already-present local `rust:1.84` image by its exact immutable content ID
+  `sha256:738ae99a3d75623f41e6882566b4ef37e38a9840244a47efd4a0ca22e9628b88`, with the repository read-only,
+  numeric invoking UID/GID, all capabilities dropped, no new privileges,
+  no network, a read-only container root, bounded resources, and disposable tmpfs only. Container-confined Bash
+  parsing and isolated Python compilation passed; the focused release-parent gate and its 38 deliberate mutations
+  passed; the independent workspace baseline passed; and the private-tree helper self-test passed with the exact
+  descriptor budget. A separate behavioral fixture proved current-owner normalization of a mode-0500 directory and
+  mode-0000 file, current-owner removal of the same hostile-mode shape, and preservation plus rejection of a mode-0000
+  non-traversable directory. No image was pulled or built. The commit remains forbidden unless
+  `verify-verifier-workspace.py --source-mutations-only` returns zero from mutation one against these exact candidate
+  bytes; any failure requires correction and a complete restart, so a resulting commit is itself contingent evidence
+  that the complete catalog was green.
+- No full release transaction, package build, VM, RustDesk process, listener, host service, firewall/network
+  inspection, root/sudo, privileged container, or unrelated Docker object is authorized or claimed by this source
+  slice. Exact cold committed R-B2/R-B10 artifacts, installed/native/device behavior, the reported Android/Windows
+  lifecycle and display-latency obligations, independent reproduction, and external review remain open.
+
 ### Explicitly authorized historical storage cleanup (2026-08-12/13)
 
 - The operator explicitly expanded cleanup beyond the 16 obvious build roots to every attributable artifact that was
@@ -24415,7 +24468,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-cf46564be69f94db5735a036f2daed3793c30341a9090085489a8b36d8101aa5  requirements.html
+eb84a78ce1233d9fb9fce0ff08dadfdc3d3631e393b2287b3129047867b68180  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -24470,3 +24523,4 @@ The same identity additionally binds R-S11gh and Appendix C #343.
 The same identity additionally binds R-S11gj and Appendix C #345.
 The same identity additionally binds R-S11gk and Appendix C #346.
 The same identity additionally binds R-S11gl and Appendix C #347.
+The same identity additionally binds R-S11gm and Appendix C #348.

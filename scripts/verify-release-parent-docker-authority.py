@@ -3,6 +3,7 @@
 
 import argparse
 import pathlib
+import re
 from typing import Dict, NamedTuple, Tuple
 
 
@@ -32,6 +33,14 @@ def require_count(source: str, token: str, count: int, label: str) -> None:
 
 def forbid(source: str, token: str, label: str) -> None:
     if token in source:
+        raise AuthorityError("forbidden {}".format(label))
+
+
+def forbid_root_docker_user(source: str, label: str) -> None:
+    if re.search(
+        r"(?<!\S)(?:--user|-u)(?:=|\s+)(?:[\"'])?0(?=[:\s\"'\\]|$)",
+        source,
+    ):
         raise AuthorityError("forbidden {}".format(label))
 
 
@@ -179,15 +188,119 @@ def validate_shared_authority(lib: str) -> None:
     )
 
 
+def validate_owner_only_helper(closure: str) -> None:
+    principal_gate = extract(
+        closure,
+        "def require_current_non_root_principal():",
+        "\n\ndef directory_is_empty(",
+        "private-tree non-root principal gate",
+    )
+    removal_acquisition = extract(
+        closure,
+        "    @classmethod\n    def for_owned_tree_contents(",
+        "\n\n    def assert_bound(",
+        "owner-only terminal-removal acquisition",
+    )
+    inode_acquisition = extract(
+        closure,
+        "    def collect_inode_links(",
+        "\n\n    def close_inode_authorities(",
+        "owner-only retained-inode acquisition",
+    )
+    removal = extract(
+        closure,
+        "    def remove_owned_tree_contents(",
+        "\n\n\nPROTECTED_HARDLINKS",
+        "owner-only terminal removal",
+    )
+    normalization = extract(
+        closure,
+        "class TreeNormalizationAuthority:",
+        "\n\ndef require_real_directory(",
+        "owner-only normalization authority",
+    )
+    for token, label in (
+        (
+            "if os.geteuid() == 0 or os.getegid() == 0:",
+            "private-tree root-principal refusal",
+        ),
+        (
+            'raise ClosureError("private-tree mutation requires a non-root principal")',
+            "private-tree root-principal diagnostic",
+        ),
+    ):
+        require(principal_gate, token, label)
+    for token, label in (
+        ("require_current_non_root_principal()", "terminal-removal non-root gate"),
+        ("owner = os.geteuid()", "terminal-removal current owner"),
+        ("group = os.getegid()", "terminal-removal current group"),
+        ("metadata.st_uid != owner", "terminal-removal root owner proof"),
+        ("metadata.st_gid != group", "terminal-removal root group proof"),
+        ("authority.require_uniform_owner = True", "terminal-removal uniform-owner policy"),
+    ):
+        require(removal_acquisition, token, label)
+    for token, label in (
+        (
+            "metadata.st_uid != self.owner or metadata.st_gid != self.group",
+            "terminal-removal foreign-owner rejection",
+        ),
+        (
+            'raise ClosureError("private-tree cleanup found foreign ownership")',
+            "terminal-removal foreign-owner diagnostic",
+        ),
+    ):
+        require(inode_acquisition, token, label)
+    require_order(
+        removal,
+        (
+            "self.acquire_inode_closure(self.fd)",
+            "self.remove_contents(self.fd, [TREE_ENTRY_LIMIT], authorities)",
+        ),
+        "complete owner acquisition before terminal mutation",
+    )
+    for token, label in (
+        ("require_current_non_root_principal()", "normalization non-root gate"),
+        ("self.owner = os.geteuid()", "normalization current owner"),
+        ("self.group = os.getegid()", "normalization current group"),
+        (
+            'raise ClosureError("normalization tree contains foreign ownership")',
+            "normalization foreign-owner rejection",
+        ),
+        ("self.assert_bound(normalized=True)", "normalized retained-authority reproof"),
+    ):
+        require(normalization, token, label)
+    for token, label in (
+        ("import ctypes", "native ownership-changing bridge"),
+        ("os.chown", "pathname ownership mutation"),
+        ("os.fchown", "descriptor ownership mutation"),
+        ("descriptor_chown", "ownership-changing helper"),
+        ('modes.add_argument("--normalize-root")', "legacy mixed-owner normalization mode"),
+        ('modes.add_argument("--remove-tree-contents")', "legacy mixed-owner removal mode"),
+        ('parser.add_argument("--owner"', "caller-selected owner authority"),
+        ('parser.add_argument("--group"', "caller-selected group authority"),
+    ):
+        forbid(closure, token, label)
+    for token, label in (
+        ('modes.add_argument("--normalize-owned-root")', "owner-only normalization mode"),
+        (
+            'modes.add_argument("--remove-owned-tree-contents")',
+            "owner-only removal mode",
+        ),
+    ):
+        require(closure, token, label)
+
+
 def validate(sources: Dict[str, str]) -> None:
     release = sources["release"]
     lib = sources["lib"]
+    closure = sources["closure"]
     verify = sources["verify"]
     workspace = sources["workspace"]
     requirements = sources["requirements"]
     hardening = sources["hardening"]
 
     validate_shared_authority(lib)
+    validate_owner_only_helper(closure)
 
     bootstrap = extract(
         release,
@@ -295,6 +408,9 @@ def validate(sources: Dict[str, str]) -> None:
         forbid(image_proof, token, label)
 
     require_count(release, "local_docker run ", 5, "complete release-parent launch inventory")
+    require_count(release, "--cap-drop=ALL", 5, "complete capability-free launch inventory")
+    forbid(release, "--cap-add", "release-parent added Linux capability")
+    forbid_root_docker_user(release, "release-parent container root identity")
     require_count(
         release,
         "local_docker version ",
@@ -314,9 +430,9 @@ def validate(sources: Dict[str, str]) -> None:
 
     for start, end, label in (
         (
-            "offline_normalize_exact_tree() {",
+            "offline_normalize_owned_tree_modes() {",
             "\n}\n\nverify_private_tree_authority_capacity() {",
-            "ownership normalization launch",
+            "owner-only mode-normalization launch",
         ),
         (
             "verify_private_tree_authority_capacity() {",
@@ -324,14 +440,14 @@ def validate(sources: Dict[str, str]) -> None:
             "retained-authority capacity launch",
         ),
         (
-            "offline_remove_exact_tree_contents() {",
-            "\n}\n\nverify_private_tree_removal_capability() {",
-            "terminal content-removal launch",
+            "offline_remove_owned_tree_contents() {",
+            "\n}\n\nverify_private_tree_owner_removal() {",
+            "owner-only terminal content-removal launch",
         ),
         (
-            "verify_private_tree_removal_capability() {",
+            "verify_private_tree_owner_removal() {",
             "\n}\n\nverify_private_tree_cleanup_preflight() {",
-            "removal-capability fixture launch",
+            "owner-removal fixture launch",
         ),
     ):
         block = extract(release, start, end, label)
@@ -340,7 +456,7 @@ def validate(sources: Dict[str, str]) -> None:
             ("--pull=never", "no implicit pull"),
             ("--network=none", "networkless container"),
             ("--read-only", "read-only container root"),
-            ("--user 0:0", "explicit artifact-only root identity"),
+            ('--user "$uid:$gid"', "invoking numeric user identity"),
             ("--cap-drop=ALL", "default capability removal"),
             ("--security-opt no-new-privileges", "no-new-privileges"),
         ):
@@ -360,7 +476,7 @@ def validate(sources: Dict[str, str]) -> None:
         release,
         "run_reset_self_test() {",
         "\n}\n\nrun_cleanup_missing_self_test() {",
-        "root-owned reset fixture",
+        "owner-only reset fixture",
     )
     for token, label in (
         ("local_docker version", "reset fixed-daemon check"),
@@ -369,8 +485,8 @@ def validate(sources: Dict[str, str]) -> None:
         ("--pull=never", "reset no-pull"),
         ("--network=none", "reset networkless launch"),
         ("--read-only", "reset read-only root"),
-        ("--user 0:0", "reset explicit root fixture"),
-        ("--cap-drop=ALL --cap-add=CHOWN", "reset narrow capability"),
+        ('--user "$(id -u):$(id -g)"', "reset invoking numeric user"),
+        ("--cap-drop=ALL", "reset capability removal"),
         ("--security-opt no-new-privileges", "reset no-new-privileges"),
         ("bind-recursive=disabled", "reset no recursive bind inclusion"),
     ):
@@ -392,7 +508,7 @@ def validate(sources: Dict[str, str]) -> None:
             "missing-authority preservation diagnostic",
         ),
         (
-            'offline_remove_exact_tree_contents "$WORKSPACE" "$WORKSPACE_ID"',
+            'offline_remove_owned_tree_contents "$WORKSPACE" "$WORKSPACE_ID"',
             "workspace removal through exact authority",
         ),
         (
@@ -408,7 +524,7 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         cleanup,
         (
-            'offline_remove_exact_tree_contents "$WORKSPACE" "$WORKSPACE_ID"',
+            'offline_remove_owned_tree_contents "$WORKSPACE" "$WORKSPACE_ID"',
             "--remove-empty-private-root",
             "close_private_tree_closure_execution",
             "retire_release_docker_authority || cleanup_failed=1",
@@ -490,12 +606,23 @@ def validate(sources: Dict[str, str]) -> None:
         '<span class="id">R-S11dm</span>',
         "R-S11dm normative requirement",
     )
+    require(
+        requirements,
+        '<span class="id">R-S11gm</span>',
+        "R-S11gm owner-closed writable-bind requirement",
+    )
     require(requirements, "<tr><td>266</td>", "Appendix C #266 disposition")
+    require(requirements, "<tr><td>348</td>", "Appendix C #348 disposition")
     require(
         hardening,
         "R-S11dm/R-S11e-131 — release-parent Docker client, daemon,\n"
-        "  configuration, root-fixture, and cleanup authority",
+        "  configuration, writable-bind principal, and cleanup authority",
         "R-S11e-131 hardening ledger",
+    )
+    require(
+        hardening,
+        "R-S11gm/R-S11e-225 release-parent writable-bind principal closure",
+        "R-S11e-225 hardening ledger",
     )
 
 
@@ -560,12 +687,76 @@ MUTATIONS = (
     Mutation(
         "release",
         "local_docker run --interactive --rm --pull=never --network=none "
-        "--read-only --user 0:0 \\\n"
-        "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH",
+        "--read-only --user \"$uid:$gid\" \\\n"
+        "            --cap-drop=ALL",
         "docker run --interactive --rm --pull=never --network=none "
-        "--read-only --user 0:0 \\\n"
-        "            --cap-drop=ALL --cap-add=DAC_READ_SEARCH",
+        "--read-only --user \"$uid:$gid\" \\\n"
+        "            --cap-drop=ALL",
         "shared Docker launch funnel",
+    ),
+    Mutation(
+        "release",
+        '--read-only --user "$uid:$gid" \\\n'
+        "            --cap-drop=ALL",
+        '--read-only --user 0:0 \\\n'
+        "            --cap-drop=ALL",
+        "writable-bind non-root principal",
+    ),
+    Mutation(
+        "release",
+        '--read-only --user "$(id -u):$(id -g)" \\\n'
+        "            --cap-drop=ALL \\\n"
+        "            --security-opt no-new-privileges",
+        '--read-only --user "$(id -u):$(id -g)" \\\n'
+        "            --cap-drop=ALL --cap-add=CHOWN \\\n"
+        "            --security-opt no-new-privileges",
+        "writable-bind capability absence",
+    ),
+    Mutation(
+        "release",
+        "        --cap-drop=ALL --security-opt no-new-privileges \\\n",
+        "        --cap-drop=ALL --cap-add CHOWN --security-opt no-new-privileges \\\n",
+        "space-form writable-bind capability absence",
+    ),
+    Mutation(
+        "release",
+        'local_docker run --interactive --rm --pull=never --network=none --read-only --user "$uid:$gid" \\\n'
+        "        --cap-drop=ALL --security-opt no-new-privileges",
+        'local_docker run --interactive --rm --pull=never --network=none --read-only --user=0:0 \\\n'
+        "        --cap-drop=ALL --security-opt no-new-privileges",
+        "equals-form container root principal",
+    ),
+    Mutation(
+        "closure",
+        "    def for_owned_tree_contents(cls, path, expected_identity):\n"
+        "        require_current_non_root_principal()",
+        "    def for_owned_tree_contents(cls, path, expected_identity):\n"
+        "        pass # non-root principal gate removed",
+        "terminal-removal non-root principal",
+    ),
+    Mutation(
+        "closure",
+        "        authority.group = group\n"
+        "        authority.require_uniform_owner = True\n"
+        "        authority.allow_retained_contents = True",
+        "        authority.group = group\n"
+        "        authority.require_uniform_owner = False\n"
+        "        authority.allow_retained_contents = True",
+        "terminal-removal uniform-owner policy",
+    ),
+    Mutation(
+        "closure",
+        '            if metadata.st_uid != self.owner or metadata.st_gid != self.group:\n'
+        '                raise ClosureError("normalization tree contains foreign ownership")',
+        "            if False: # foreign ownership accepted\n"
+        "                pass",
+        "normalization foreign-owner rejection",
+    ),
+    Mutation(
+        "closure",
+        "    def normalize(self):\n        self.assert_bound()",
+        "    def normalize(self):\n        os.chown(self.path, 0, 0)\n        self.assert_bound()",
+        "ownership-changing normalization",
     ),
     Mutation(
         "release",
@@ -664,16 +855,34 @@ MUTATIONS = (
     ),
     Mutation(
         "requirements",
+        '<span class="id">R-S11gm</span>',
+        '<span class="id">R-S11gm-disabled</span>',
+        "R-S11gm requirement",
+    ),
+    Mutation(
+        "requirements",
         "<tr><td>266</td>",
         "<tr><td>266-disabled</td>",
         "Appendix C #266",
     ),
     Mutation(
+        "requirements",
+        "<tr><td>348</td>",
+        "<tr><td>348-disabled</td>",
+        "Appendix C #348",
+    ),
+    Mutation(
         "hardening",
         "R-S11dm/R-S11e-131 — release-parent Docker client, daemon,\n"
-        "  configuration, root-fixture, and cleanup authority",
+        "  configuration, writable-bind principal, and cleanup authority",
         "R-S11dm/R-S11e-XXX — release-parent Docker authority deferred",
         "R-S11e-131 hardening ledger",
+    ),
+    Mutation(
+        "hardening",
+        "R-S11gm/R-S11e-225 release-parent writable-bind principal closure",
+        "R-S11gm/R-S11e-XXX writable-bind principal closure deferred",
+        "R-S11e-225 hardening ledger",
     ),
 )
 
@@ -708,6 +917,7 @@ def load_sources(repo: pathlib.Path) -> Dict[str, str]:
     return {
         "release": read_regular(repo, "scripts/build-release.sh"),
         "lib": read_regular(repo, "scripts/lib.sh"),
+        "closure": read_regular(repo, "scripts/verify-private-tree-closure.py"),
         "verify": read_regular(repo, "scripts/verify.sh"),
         "workspace": read_regular(repo, "scripts/verify-verifier-workspace.py"),
         "requirements": read_regular(repo, "requirements.html"),
@@ -726,7 +936,7 @@ def main() -> None:
         run_mutations(sources)
     print(
         "RELEASE-PARENT-DOCKER-AUTHORITY: pre-source root refusal, isolated "
-        "fixed client/daemon/configuration, root-fixture funnel, child "
+        "fixed client/daemon/configuration, non-root capability-free writable-bind funnel, child "
         "separation, and exact cleanup are GREEN ({} mutations)".format(
             len(MUTATIONS) if args.self_test else 0
         )

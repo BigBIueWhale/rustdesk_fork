@@ -294,8 +294,8 @@ run_script_die_reached_without_marker "build-release.sh rejects a missing record
   "build-release: cleanup failed; recorded private workspace state is absent" \
   "build-release cleanup-missing self-test: INVALID SUCCESS" \
   "${CLEAN_SCRIPT_ENV[@]}" scripts/build-release.sh --self-test-cleanup-missing
-run_script_ok_marker "pinned offline reset removes root-owned inaccessible generated state" \
-  "build-release root-owned reset self-test: OK" \
+run_script_ok_marker "pinned offline reset removes current-owner inaccessible generated state" \
+  "build-release owner-only reset self-test: OK" \
   "${CLEAN_SCRIPT_ENV[@]}" scripts/build-release.sh --self-test-reset
 run_script_ok_marker "exact source-state self-test accepts a clean checkout" \
   "build-release source-state self-test: OK" \

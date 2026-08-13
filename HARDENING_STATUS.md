@@ -14842,11 +14842,12 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   read-only, used no root/network/service/device/port authority, changed no file, and is not counted; normal mode and
   all 103 mutations were rerun in the confined container. Separately, an incorrect formatter toolchain mount caused
   Docker to create one empty named volume, `rust1.75.0-x86_64-unknown-linux-gnu`. No project process used it, it
-  contains no files, and it was left untouched rather than silently removed. Neither deviation touched RustDesk,
-  services, listeners, firewall state, or a device. No root container, host namespace, Docker socket mount, port
-  publication, host RustDesk process/service/configuration, listener, firewall, network, or device path was used,
-  inspected, or changed. The final exact-state review and publication identity are recorded in the external audit
-  ledger after publication; the source slice does not claim native
+  contained no files and was initially left untouched rather than silently removed. The operator's later explicit
+  residue-cleanup authorization removed that exact empty volume; see R-S11gl below. Neither deviation touched
+  RustDesk, services, listeners, firewall state, or a device. No root container, host namespace, Docker socket
+  mount, port publication, host RustDesk process/service/configuration, listener, firewall, network, or device path
+  was used, inspected, or changed. The final exact-state review and publication identity are recorded in the
+  external audit ledger after publication; the source slice does not claim native
   systemd/SysV/OpenRC/runit behavior, same-uid inspection-denial behavior, a built/installed Debian artifact, a
   clean exact-commit cold release, Android device behavior, native Apple/Windows behavior, or independent R-V3
   review.
@@ -24260,6 +24261,42 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   The final repository scan finds none of the authenticated generated/root-owned victims and no root-owned path outside
   the deliberately retained `online` and `.harness-state` input/evidence trees. It is not evidence that the retained
   `online` tree still matched its recorded canonical closure.
+
+### Explicitly authorized Codex/Docker residual cleanup (2026-08-13)
+
+- A follow-up inventory found additional task-attributable residue that the earlier RustDesk-prefix cleanup did not
+  include. Two stopped `claude-codex-usage-audit` containers each retained a 13.8-GB writable layer; one created
+  `exact-codex-audit-export` container, their two purpose-built images, a 13-GB host-side
+  `/tmp/claude-codex-usage-audit.*` snapshot, the temporary untagged pinned Windows-helper image, approximately
+  1.7 GB of old top-level `/tmp/rd-*` target/log/scratch state, and the accidentally created empty
+  `rust1.75.0-x86_64-unknown-linux-gnu` volume remained. These objects came from this Codex/RustDesk work and were
+  not treated as unrelated merely because two of the container names described the agent-usage audit rather than
+  RustDesk itself.
+- The operator explicitly directed Docker cleanup. Exact-ID/name deletion removed only the three stopped/created
+  audit containers, the two audit images, the untagged Windows-helper image, and the accidental empty volume. Scoped
+  BusyBox cleanup containers had no network, a read-only container root, bounded PIDs/CPU/memory, and only exact
+  temporary roots mounted writable. User-owned files were removed as UID/GID 1000. Three scratch roots contained
+  old UID-0 build output; their one-shot cleanup used container UID 0 with only `DAC_OVERRIDE`, no privileged mode,
+  no host/PID/network namespace, and only those three exact bind mounts. A final UID-1000 pass restored owner
+  traversal on one mode-000 child and removed the empty parent. Every cleanup container used `--rm`.
+- BuildKit reconciliation selected the usage-audit cache by exact record ID, audit-only timestamps/descriptions, and
+  `Shared: false`. Leaf-first exact-ID passes removed 27 unshared audit records, including the 1.191-GB
+  `cargo build --release --package exact-audit` cache leaf. One 28.23-MB record marked `Shared: true` was deliberately
+  preserved; no daemon-wide builder/image/container/volume prune ran. Docker's remaining 36.62-GB reclaimable cache
+  and 65.03-GB reclaimable image accounting mix live or unrelated Angry Birds, Haggai, VibeVoice, Benayahu, and other
+  projects and were not treated as cleanup authority.
+- Verification found no remaining top-level `rd-*`, `rustdesk-*`, audit-snapshot, or exact-audit temporary root; no
+  deleted container/image/volume ID; no Windows harness process or session-domain VM; and no generated repository
+  change. `HEAD` and `origin/master` both remained `ae2ee8c2d0f796f263633d4f6a838e540acf61d0` before this ledger-only
+  update. The pre-existing host RustDesk listener remained present at `0.0.0.0:21118`; it was not stopped,
+  reconfigured, rebuilt, or replaced. A concurrent unrelated container was positively identified as
+  `/home/user/original_angry_birds/apk-binary-analysis` running `ab-arm64x` and was left untouched, as were the live
+  Haggai, VibeVoice, and Swing/Benayahu containers.
+- Observed filesystem use fell from `1,656,125,480,960` to `1,605,678,878,720` bytes during the scoped cleanup, a
+  net recovery of `50,446,602,240` bytes (about 50.45 GB / 46.99 GiB) despite concurrent unrelated activity. The
+  canonical 35-GB-class Windows golden, Android signing keystore, and three successful Windows evidence roots remain
+  intentionally preserved under `.harness-state`: they are authenticated reusable input or affirmative evidence,
+  not failed-run/Docker residue. No fresh Windows transaction or native-result claim was started.
 
 ### R-B10 reproducible consumer-only online closure after cleanup regression (2026-08-13)
 

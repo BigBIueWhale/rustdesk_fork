@@ -257,6 +257,8 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/display_selection_queue_test.dart
     echo "  == R-S11gq flutter test: exact-session topology events are bounded and ordered =="
     flutter test --no-pub test/session_event_queue_test.dart
+    echo "  == R-S11gr flutter test: web frames are exact-owner, bounded, and latest-wins =="
+    flutter test --no-pub test/latest_frame_queue_test.dart
     echo "  == R-S11eo flutter test: expected close and unexpected stream failure stay distinct =="
     flutter test --no-pub test/session_stream_finality_test.dart
     echo "  == R-S11ex flutter test: desktop texture lifecycle exact finality =="

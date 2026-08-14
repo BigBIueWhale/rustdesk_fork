@@ -89,6 +89,8 @@ def load_sources(repo: Path) -> Dict[str, str]:
         "selection_queue_test": "flutter/test/display_selection_queue_test.dart",
         "session_queue_dart": "flutter/lib/models/session_event_queue.dart",
         "session_queue_test": "flutter/test/session_event_queue_test.dart",
+        "frame_queue_dart": "flutter/lib/models/latest_frame_queue.dart",
+        "frame_queue_test": "flutter/test/latest_frame_queue_test.dart",
         "toolbar_dart": "flutter/lib/desktop/widgets/remote_toolbar.dart",
         "remote_dart": "flutter/lib/mobile/pages/remote_page.dart",
         "camera_dart": "flutter/lib/mobile/pages/view_camera_page.dart",
@@ -546,6 +548,7 @@ def validate(sources: Dict[str, str]) -> None:
             "_sessionOwner = nextOwner;",
             "_displaySelections = DisplaySelectionQueue(nextOwner);",
             "_sessionEvents = SessionEventQueue(nextOwner);",
+            "_webRgbaFrames = LatestFrameQueue(nextOwner);",
         ),
         "fresh exact-pair queue installation",
     )
@@ -560,7 +563,10 @@ def validate(sources: Dict[str, str]) -> None:
             "_SessionOwner(retiringSessionId, clientOwnerId)",
             "_sessionEvents.retire(retiringOwner)",
             "_displaySelections.retire(retiringOwner)",
-            "if (!sessionEventsRetired || !displaySelectionsRetired)",
+            "_webRgbaFrames.retire(retiringOwner)",
+            "!sessionEventsRetired ||",
+            "!displaySelectionsRetired ||",
+            "!webRgbaFramesRetired",
             "throw StateError(",
         ),
         "fail-closed exact-pair queue retirement",
@@ -701,6 +707,51 @@ def validate(sources: Dict[str, str]) -> None:
             forbidden,
             "timer/worker recovery in the session topology queue",
         )
+    frame_queue = extract_braced_item(
+        sources["frame_queue_dart"],
+        "class LatestFrameQueue",
+        "bounded exact-owner per-display frame queue",
+    )
+    require_order(
+        frame_queue,
+        (
+            "LatestFrameQueue(this.owner, {this.maxKeys = 32})",
+            "final Owner owner;",
+            "final int maxKeys;",
+            "final Map<Key, _LatestFrameLane<Frame>> _lanes = {};",
+            "bool _retired = false;",
+            "if (_retired || expectedOwner != owner)",
+            "if (_lanes.length >= maxKeys)",
+            "_retireAll();",
+            "Future.error(StateError('frame display capacity exhausted'))",
+            "_lanes[key] = lane;",
+            "if (lane.running == null)",
+            "unawaited(_drain(key, lane));",
+            "lane.pending?.complete(LatestFrameDisposition.superseded);",
+            "lane.pending = entry;",
+            "bool retire(Owner expectedOwner)",
+            "await entry.present(entry.frame);",
+            "entry.completeError(error, stackTrace);",
+            "_retireAll();",
+            "lane.running = lane.pending;",
+            "lane.pending = null;",
+            "if (identical(_lanes[key], lane))",
+            "_lanes.remove(key);",
+        ),
+        "exact-owner one-running/one-latest per-display frame order",
+    )
+    for forbidden in (
+        "List<",
+        "Timer(",
+        "Future.delayed(",
+        "Isolate",
+        "compute(",
+    ):
+        forbid(
+            frame_queue,
+            forbidden,
+            "unbounded/timed/worker web-frame recovery",
+        )
     submit_session_event = extract_braced_item(
         sources["model_dart"],
         "Future<SessionEventDisposition> submitSessionEvent(",
@@ -830,6 +881,39 @@ def validate(sources: Dict[str, str]) -> None:
         "      () async {",
         "detached per-message async session callback",
     )
+    web_callback = extract_between(
+        stream_listener,
+        "if (isWeb) {",
+        "final cb = ffiModel.startEventListener(activeSessionId, peerId);",
+        "bounded live web RGBA callback",
+    )
+    require_order(
+        web_callback,
+        (
+            "final webRgbaFrames = _webRgbaFrames;",
+            "platformFFI.setRgbaCallback((int display, Uint8List data) {",
+            "final ownedData = Uint8List.fromList(data);",
+            "final frame = webRgbaFrames.submit(",
+            "streamOwner,",
+            "display,",
+            "ownedData,",
+            "(rgba) => _handleWebRgba(sessionEvents, streamOwner,",
+            "unawaited(frame.then<void>",
+            "_reportSessionStreamFailure(activeSessionId, peerId,",
+        ),
+        "synchronous buffer ownership before bounded asynchronous presentation",
+    )
+    for forbidden in (
+        "_WebRgbaFrame",
+        "_webRgbaList",
+        "_webDecodingRgba",
+        "webOnRgba(",
+    ):
+        forbid(
+            sources["model_dart"],
+            forbidden,
+            "obsolete alternate web RGBA backlog",
+        )
     topology_checkpoint = extract_braced_item(
         sources["model_dart"],
         "Future<int?> _displayTopologyAfterCheckpoint(",
@@ -945,6 +1029,23 @@ def validate(sources: Dict[str, str]) -> None:
         ),
     ):
         require(sources["session_queue_test"], needle, label)
+    for needle, label in (
+        (
+            "retains one running frame and only the latest successor per display",
+            "bounded latest-frame regression",
+        ),
+        ("different displays drain independently", "cross-display independence regression"),
+        ("a failed frame retires its retained successor", "frame-failure finality regression"),
+        (
+            "owner mismatch and display overflow refuse frames before invocation",
+            "frame owner/capacity regression",
+        ),
+        (
+            "exact retirement releases retained frames and cannot block replacement",
+            "frame retirement/replacement regression",
+        ),
+    ):
+        require(sources["frame_queue_test"], needle, label)
     require(
         sources["requirements"],
         '<div class="req"><span class="id">R-S11gq</span>',
@@ -964,6 +1065,26 @@ def validate(sources: Dict[str, str]) -> None:
         sources["dart_verify"],
         "flutter test --no-pub test/session_event_queue_test.dart",
         "generated-bridge session topology queue behavior gate",
+    )
+    require(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11gr</span>',
+        "R-S11gr normative bounded web-frame requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>353</td>",
+        "Appendix C #353 disposition",
+    )
+    require(
+        sources["hardening"],
+        "### R-S11gr/R-S11e-230 — bounded exact-session web frame ownership",
+        "R-S11gr hardening ledger",
+    )
+    require(
+        sources["dart_verify"],
+        "flutter test --no-pub test/latest_frame_queue_test.dart",
+        "generated-bridge bounded web-frame behavior gate",
     )
     require(
         sources["selection_queue_test"],
@@ -1330,8 +1451,17 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("session_queue_dart", "checkpoint.generation == _acceptedGeneration", "checkpoint.generation <= _acceptedGeneration", "stale media checkpoint rejection"),
     ("session_queue_dart", "_completedGeneration = entry.generation;", "_completedGeneration = _acceptedGeneration;", "exact completed topology generation"),
     ("session_queue_dart", "entry.completeError(error, stackTrace);\n          _retireCurrentAndPending();", "entry.completeError(error, stackTrace);", "session topology task-failure retirement"),
+    ("frame_queue_dart", "if (_retired || expectedOwner != owner)", "if (_retired)", "exact-owner web-frame admission"),
+    ("frame_queue_dart", "if (_lanes.length >= maxKeys) {\n        _retireAll();", "if (_lanes.length >= maxKeys) {", "terminal web-frame display bound"),
+    ("frame_queue_dart", "final Map<Key, _LatestFrameLane<Frame>> _lanes = {};", "final List<_LatestFrameLane<Frame>> _lanes = [];", "per-display bounded web-frame lanes"),
+    ("frame_queue_dart", "lane.pending?.complete(LatestFrameDisposition.superseded);", "lane.pending?.complete(LatestFrameDisposition.presented);", "superseded web-frame disposition"),
+    ("frame_queue_dart", "lane.pending = entry;", "lane.running = entry;", "one-latest-pending web-frame bound"),
+    ("frame_queue_dart", "entry.completeError(error, stackTrace);\n          _retireAll();", "entry.completeError(error, stackTrace);", "terminal web-frame operation failure"),
+    ("frame_queue_dart", "if (identical(_lanes[key], lane))", "if (false)", "exact per-display lane retirement"),
     ("model_dart", "_sessionEvents = SessionEventQueue(nextOwner);", "_sessionEvents = SessionEventQueue(_SessionOwner(Uuid().v4obj(), clientOwnerId));", "fresh session topology owner"),
     ("model_dart", "final sessionEventsRetired = _sessionEvents.retire(retiringOwner);", "final sessionEventsRetired = true;", "session topology owner retirement"),
+    ("model_dart", "_webRgbaFrames = LatestFrameQueue(nextOwner);", "_webRgbaFrames = LatestFrameQueue(_SessionOwner(Uuid().v4obj(), clientOwnerId));", "fresh exact-owner web-frame queue"),
+    ("model_dart", "final webRgbaFramesRetired = _webRgbaFrames.retire(retiringOwner);", "final webRgbaFramesRetired = true;", "exact web-frame queue retirement"),
     ("model_dart", "_orderedSessionTopologyEvents.contains(name)", "false", "ordered topology event admission"),
     ("model_dart", "await ffi.submitSessionEvent(\n              sessionId, expectedClientOwnerId, operation);", "await operation();", "session topology callback serialization"),
     ("model_dart", "final disposition = await ffi.submitSessionEvent(\n            sessionId, expectedClientOwnerId, () async {", "final disposition = SessionEventDisposition.completed;\n        if (true) {", "local display commit serialization"),
@@ -1340,6 +1470,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("model_dart", "final checkpoint = sessionEvents.checkpoint(streamOwner);", "final checkpoint = SessionEventCheckpoint.fake();", "media topology checkpoint"),
     ("model_dart", "!sessionEvents.isCurrent(checkpoint)", "false", "later topology invalidates media checkpoint"),
     ("model_dart", "return ffiModel.currentDisplayTopologyRevision(activeSessionId);", "return 0;", "media display-topology revision capture"),
+    ("model_dart", "final ownedData = Uint8List.fromList(data);", "final ownedData = data;", "synchronous web callback buffer ownership"),
+    ("model_dart", "final frame = webRgbaFrames.submit(", "final frame = Future.value(LatestFrameDisposition.presented);\n        _handleWebRgba(", "bounded live web-frame submission"),
+    ("model_dart", "_reportSessionStreamFailure(activeSessionId, peerId,\n              'The remote session presentation became inconsistent');", "debugPrint('web frame failure ignored');", "visible web-frame failure finality"),
     ("model_dart", "Future<bool> decodeAndUpdate(\n      SessionID expectedSessionId, int display, Uint8List rgba,\n      {RgbaPublicationAdmission<SessionID>? expectedRgbaPublication,\n      required int expectedDisplayTopologyRevision}", "Future<bool> decodeAndUpdate(\n      SessionID expectedSessionId, int display, Uint8List rgba,\n      {RgbaPublicationAdmission<SessionID>? expectedRgbaPublication,\n      int expectedDisplayTopologyRevision = 0}", "required frame topology revision"),
     ("model_dart", "parent.target?.ffiModel.isCurrentDisplayTopology(\n            expectedSessionId, expectedDisplayTopologyRevision) !=", "false &&", "pre-decode topology admission"),
     ("model_dart", "final inProgress = _firstImageInitialization;", "final inProgress = null;", "single first-image initialization"),
@@ -1350,6 +1483,11 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("session_queue_test", "task failure is terminal and does not run retained successors", "task failure runs retained successors", "session topology failure regression"),
     ("session_queue_test", "mismatched owners are refused before invocation", "mismatched owners may invoke work", "session topology exact-owner regression"),
     ("session_queue_test", "exact retirement cannot block a replacement session", "exact retirement blocks a replacement session", "session topology replacement regression"),
+    ("frame_queue_test", "retains one running frame and only the latest successor per display", "retains an unbounded frame backlog", "bounded latest-frame regression"),
+    ("frame_queue_test", "different displays drain independently", "different displays block each other", "cross-display frame regression"),
+    ("frame_queue_test", "a failed frame retires its retained successor", "a failed frame runs its retained successor", "frame-failure finality regression"),
+    ("frame_queue_test", "owner mismatch and display overflow refuse frames before invocation", "owner mismatch invokes frames", "frame owner/capacity regression"),
+    ("frame_queue_test", "exact retirement releases retained frames and cannot block replacement", "exact retirement retains frames", "frame retirement/replacement regression"),
     ("model_dart", "_retireSessionOwner(previousSessionId);\n      mobileReset(previousSessionId);", "mobileReset(previousSessionId);", "mobile predecessor queue retirement"),
     ("model_dart", "sessionId = Uuid().v4obj();\n      _installSessionOwner(sessionId);", "sessionId = Uuid().v4obj();", "mobile replacement queue installation"),
     ("model_dart", "closed = true;\n      _retireSessionOwner(closingSessionId);", "closed = true;", "current-session close queue retirement"),
@@ -1381,13 +1519,17 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", "<tr><td>351</td>", "<tr><td>351-disabled</td>", "exact queue lifetime Appendix disposition"),
     ("requirements", '<div class="req"><span class="id">R-S11gq</span>', '<div class="req"><span class="id">R-S11gq-disabled</span>', "session topology ordering requirement"),
     ("requirements", "<tr><td>352</td>", "<tr><td>352-disabled</td>", "session topology ordering Appendix disposition"),
+    ("requirements", '<div class="req"><span class="id">R-S11gr</span>', '<div class="req"><span class="id">R-S11gr-disabled</span>', "bounded web-frame requirement"),
+    ("requirements", "<tr><td>353</td>", "<tr><td>353-disabled</td>", "bounded web-frame Appendix disposition"),
     ("hardening", "### R-S11go/R-S11e-227 — ordered exact-owner display-selection finality", "### R-S11go-disabled/R-S11e-227 — ordered exact-owner display-selection finality", "hardening ledger"),
     ("hardening", "### R-S11gp/R-S11e-228 — exact-session display-selection queue lifetime", "### R-S11gp-disabled/R-S11e-228 — exact-session display-selection queue lifetime", "exact queue lifetime ledger"),
     ("hardening", "### R-S11gq/R-S11e-229 — exact-session topology and presentation ordering", "### R-S11gq-disabled/R-S11e-229 — exact-session topology and presentation ordering", "session topology ordering ledger"),
+    ("hardening", "### R-S11gr/R-S11e-230 — bounded exact-session web frame ownership", "### R-S11gr-disabled/R-S11e-230 — bounded exact-session web frame ownership", "bounded web-frame ledger"),
     ("verify", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "python3 scripts/verify-display-selection-finality.py --repo .", "shared gate"),
     ("dart_verify", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "python3 scripts/verify-display-selection-finality.py --repo .", "generated gate"),
     ("dart_verify", "flutter test --no-pub test/display_selection_queue_test.dart", "true # display selection queue test disabled", "generated bounded display-selection test gate"),
     ("dart_verify", "flutter test --no-pub test/session_event_queue_test.dart", "true # session event queue test disabled", "generated session topology queue test gate"),
+    ("dart_verify", "flutter test --no-pub test/latest_frame_queue_test.dart", "true # latest frame queue test disabled", "generated bounded web-frame test gate"),
     ("dart_verify", "display selection is not a normal worker-pool bridge call", "display selection worker mode is unchecked", "generated display-selection worker-mode gate"),
     ("apple", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "python3 scripts/verify-display-selection-finality.py --repo .", "Apple gate"),
     ("workspace", '"display_selection_finality_verifier": (', '"display_selection_finality_verifier_disabled": (', "independent source binding"),

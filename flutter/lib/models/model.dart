@@ -37,6 +37,7 @@ import '../utils/image.dart' as img;
 import '../common/widgets/dialog.dart';
 import 'display_selection_queue.dart';
 import 'input_model.dart';
+import 'latest_frame_queue.dart';
 import 'mobile_session_start_queue.dart';
 import 'platform_model.dart';
 import 'rgba_publication_order.dart';
@@ -1619,16 +1620,6 @@ class VirtualMouseMode with ChangeNotifier {
   }
 }
 
-class _WebRgbaFrame {
-  const _WebRgbaFrame(this.sessionId, this.display, this.rgba,
-      this.displayTopologyRevision);
-
-  final SessionID sessionId;
-  final int display;
-  final Uint8List rgba;
-  final int displayTopologyRevision;
-}
-
 class ImageModel with ChangeNotifier {
   ui.Image? _image;
   final ExactRgbaPublicationOrder<SessionID> _rgbaPublicationOrder =
@@ -1656,34 +1647,6 @@ class ImageModel with ChangeNotifier {
     _rgbaPublicationOrder.retire();
     _image?.dispose();
     _image = null;
-  }
-
-  bool _webDecodingRgba = false;
-  final List<_WebRgbaFrame> _webRgbaList = List.empty(growable: true);
-  webOnRgba(int display, Uint8List rgba) async {
-    final expectedSessionId = sessionId;
-    final topologyRevision = parent.target?.ffiModel
-        .currentDisplayTopologyRevision(expectedSessionId);
-    if (topologyRevision == null) return;
-    // deep copy needed, otherwise "instantiateCodec failed: TypeError: Cannot perform Construct on a detached ArrayBuffer"
-    _webRgbaList.add(_WebRgbaFrame(expectedSessionId, display,
-        Uint8List.fromList(rgba), topologyRevision));
-    if (_webDecodingRgba) {
-      return;
-    }
-    _webDecodingRgba = true;
-    try {
-      while (_webRgbaList.isNotEmpty) {
-        final frame = _webRgbaList.last;
-        _webRgbaList.clear();
-        await decodeAndUpdate(frame.sessionId, frame.display, frame.rgba,
-            expectedDisplayTopologyRevision:
-                frame.displayTopologyRevision);
-      }
-    } catch (e) {
-      debugPrint('onRgba error: $e');
-    }
-    _webDecodingRgba = false;
   }
 
   Future<bool> onRgba(
@@ -3688,6 +3651,7 @@ class FFI {
   late _SessionOwner _sessionOwner;
   late DisplaySelectionQueue<_SessionOwner> _displaySelections;
   late SessionEventQueue<_SessionOwner> _sessionEvents;
+  late LatestFrameQueue<_SessionOwner, int, Uint8List> _webRgbaFrames;
   Future<bool>? _firstImageInitialization;
 
   // Terminal model registry for multiple terminals
@@ -3733,6 +3697,7 @@ class FFI {
     _sessionOwner = nextOwner;
     _displaySelections = DisplaySelectionQueue(nextOwner);
     _sessionEvents = SessionEventQueue(nextOwner);
+    _webRgbaFrames = LatestFrameQueue(nextOwner);
     _firstImageInitialization = null;
   }
 
@@ -3741,7 +3706,10 @@ class FFI {
         _SessionOwner(retiringSessionId, clientOwnerId);
     final sessionEventsRetired = _sessionEvents.retire(retiringOwner);
     final displaySelectionsRetired = _displaySelections.retire(retiringOwner);
-    if (!sessionEventsRetired || !displaySelectionsRetired) {
+    final webRgbaFramesRetired = _webRgbaFrames.retire(retiringOwner);
+    if (!sessionEventsRetired ||
+        !displaySelectionsRetired ||
+        !webRgbaFramesRetired) {
       throw StateError('session owner changed before retirement');
     }
     _firstImageInitialization = null;
@@ -4018,12 +3986,24 @@ class FFI {
     }
     final sessionEvents = _sessionEvents;
     if (isWeb) {
+      final webRgbaFrames = _webRgbaFrames;
       platformFFI.setRgbaCallback((int display, Uint8List data) {
-        _observeSessionTask(
-            _handleWebRgba(sessionEvents, streamOwner, activeSessionId,
-                display, data),
-            activeSessionId,
-            'Web RGBA presentation');
+        // JS/Wasm may detach or reuse the callback buffer after this returns.
+        // Take ownership synchronously, then retain only one running and the
+        // latest pending frame for each display while topology work completes.
+        final ownedData = Uint8List.fromList(data);
+        final frame = webRgbaFrames.submit(
+            streamOwner,
+            display,
+            ownedData,
+            (rgba) => _handleWebRgba(sessionEvents, streamOwner,
+                activeSessionId, display, rgba));
+        unawaited(frame.then<void>((_) {},
+            onError: (Object error, StackTrace stackTrace) {
+          debugPrint('Web RGBA presentation failed: ${error.runtimeType}');
+          _reportSessionStreamFailure(activeSessionId, peerId,
+              'The remote session presentation became inconsistent');
+        }));
       });
       return;
     }

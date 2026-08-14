@@ -24743,12 +24743,59 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   independent reproduction; external review; and the user's broader requirement that the whole connection flow be
   correct and performant on every supported platform all remain open release obligations.
 
+### R-S11gr/R-S11e-230 — bounded exact-session web frame ownership (2026-08-14)
+
+- **SOURCE IMPLEMENTED; FOCUSED AND COMPLETE INDEPENDENT SOURCE/MUTATION VERIFICATION GREEN; EXACT
+  DART/WEB/NATIVE/RELEASE EVIDENCE OPEN.** Follow-up review of R-S11gq's media checkpoint path found that the live web
+  RGBA callback handed its
+  caller-owned `Uint8List` directly to an asynchronous handler which awaited topology completion before reading it.
+  The old, unused `ImageModel.webOnRgba` helper explicitly recorded that a browser callback buffer can be detached after
+  callback return and therefore deep-copied it, but the live callback never used that helper. The helper's growable list
+  was not a valid resource bound either. Every live web frame also created and detached a separate checkpoint/decode
+  continuation, so delayed topology or decode could retain an unbounded number of futures and full-frame buffers before
+  resuming them together. Rust's native software-RGBA path is not this defect: its exact session/display mailbox already
+  owns at most one active and one latest pending frame, and exact acknowledgement promotes the pending publication.
+  This is web buffer-lifetime and presentation-resource debt, not proof of the reported older Android/Windows delay, a
+  native mailbox failure, network exposure, privilege escalation, host mutation, exploitation, or compromise.
+- The live web callback now takes one synchronous `Uint8List.fromList` copy before any await and submits that owned frame
+  to a queue owned by the immutable `(session UUID, UI-owner UUID)`. Each display has an independent lane containing one
+  running frame and at most its latest pending successor; supersession resolves and releases the older pending frame
+  without invoking it. The queue admits at most 32 active display keys. Owner mismatch or retirement refuses work before
+  presentation. Capacity exhaustion and unexpected presentation failure retire every retained lane and are routed to
+  the existing visible exact-session failure path. Installation and fail-closed retirement occur with the topology and
+  display-selection queues, so task-swipe/reusable-mobile replacement, explicit close, expected close, stream failure,
+  and later replacement cannot share a frame queue. Running old work remains unable to commit because the existing
+  session/topology checks surround decode, first-image work, and image publication. The obsolete growable web backlog,
+  alternate helper, and frame wrapper are deleted.
+- This is a bounded ownership correction, not a recovery system. It adds no timer, retry, reconnect, poll, worker,
+  isolate, runtime, Android service restart, native transport queue, or cross-display head-of-line wait, and it does not
+  change or duplicate Rust's software-RGBA mailbox. Deterministic tests cover one-running/one-latest behavior,
+  cross-display independence, terminal task failure, owner/capacity refusal, exact retirement, and replacement-session
+  independence. R-S11gr and Appendix C #353 make the contract normative; the focused display/session verifier and the
+  independent workspace verifier bind the production topology, behavior gates, and deliberate mutations.
+- Numeric-nonroot, networkless, capability-free, read-only-source verification passed Python parsing, shell syntax,
+  requirements-hash consistency, the focused display/session self-test with all 142 deliberate mutations rejected,
+  and the independent workspace baseline. Preliminary complete-catalog runs are not counted as passes: the first
+  exposed that the new exact-owner mutation expected a narrower diagnostic than the existing whole-queue order check,
+  and the second exposed the same diagnostic collision for capacity retirement. The independent verifier now gives
+  owner admission, capacity retirement, pending supersession, one-latest retention, operation-failure retirement,
+  exact lane removal, exact queue installation/retirement, synchronous callback ownership, and bounded callback
+  submission distinct proof surfaces. After those corrections, the complete unsliced independent source-mutation
+  catalog restarted from mutation one and returned terminal `verify-verifier-workspace: ok`, exit zero. A final exact-
+  bytes catalog restart remains mandatory after this evidence-ledger freeze; no preliminary result authorizes commit.
+- No host service, process, listener, firewall, network namespace, persistent Android service, unrelated image, or OS
+  privilege boundary is changed by this source slice. Exact Flutter formatting/tests/analyzer, generated bridge, browser
+  execution, physical Android task-swipe/reopen/Force-Stop recovery, native Windows focus/minimize behavior,
+  Linux/macOS/iOS lifecycle, deployed/cross-version behavior, concurrent-feature interaction, capture-through-compositor
+  timestamps and budgets, sustained reconnect/focus/resource soak, cold R-B2/R-B10 equality, installed-service proof,
+  independent reproduction, and external review remain open.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-ff88365c99bc807078258b96bcaba76375120472cf32699f378ac50e0af3baa8  requirements.html
+720ae8c52b5b428623389e9164898c80e9eb312541ba5ac4b40fedb5b7ea447c  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -24808,3 +24855,4 @@ The same identity additionally binds R-S11gn and Appendix C #349.
 The same identity additionally binds R-S11go and Appendix C #350.
 The same identity additionally binds R-S11gp and Appendix C #351.
 The same identity additionally binds R-S11gq and Appendix C #352.
+The same identity additionally binds R-S11gr and Appendix C #353.

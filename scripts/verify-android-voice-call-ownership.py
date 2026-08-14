@@ -1502,7 +1502,7 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "if (!isCurrentSession(expectedSessionId))",
             "closed = true;",
-            "_retireDisplaySelectionOwner(expectedSessionId);",
+            "_retireSessionOwner(expectedSessionId);",
             "dialogManager.dismissAll();",
             "'title': 'Connection Error',",
             "'hasRetry': 'false',",
@@ -1522,11 +1522,13 @@ def validate(sources: Dict[str, str]) -> None:
             "final streamFinality = SessionStreamFinality();",
             "stream.listen((message)",
             "if (closed || sessionId != activeSessionId) return;",
-            'if (message.field0 == "close")',
+            "if (message.field0 == 'close')",
             "streamFinality.acceptExpectedClose();",
-            "if (sessionId == activeSessionId)",
+            "sessionEvents.retire(streamOwner);",
+            "if (isCurrentSessionOwner(",
+            "activeSessionId, streamOwner.clientOwnerId)",
             "closed = true;",
-            "_retireDisplaySelectionOwner(activeSessionId);",
+            "_retireSessionOwner(activeSessionId);",
             "onError: (Object error, StackTrace stackTrace)",
             "streamFinality.acceptUnexpectedTermination()",
             "_reportSessionStreamFailure(",
@@ -1544,7 +1546,9 @@ def validate(sources: Dict[str, str]) -> None:
     )
 
     dart_start_begin = dart_model.find("  SessionID start(")
-    dart_start_end = dart_model.find("\n  void onEvent2UIRgba(", dart_start_begin)
+    dart_start_end = dart_model.find(
+        "\n  Future<bool> onEvent2UIRgba(", dart_start_begin
+    )
     if dart_start_begin < 0 or dart_start_end < 0:
         raise VerificationError("missing Dart outgoing start")
     dart_start = dart_model[dart_start_begin:dart_start_end]
@@ -5811,12 +5815,12 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("dart_model", "await _closeNativeSession(request.sessionId);", "await _closeNativeSession(sessionId);", "stale preparation exact close"),
     ("dart_model", "_mobileSessionStarts.cancelPendingOrGetRunning(", "_mobileSessionStarts.cancelPending(", "exact pending-or-running close finality"),
     ("dart_model", "await _awaitMobileSessionStart(closingSessionId);", "// preparation finality omitted", "stale-entry mobile close preparation finality"),
-    ("dart_model", "if (!isCurrentSession(expectedSessionId)) {\n      return;\n    }\n    closed = true;\n    _retireDisplaySelectionOwner(expectedSessionId);\n    dialogManager.dismissAll();", "if (true) {\n      // stale stream failure accepted\n    }\n    closed = true;\n    _retireDisplaySelectionOwner(expectedSessionId);\n    dialogManager.dismissAll();", "stale stream-failure refusal"),
-    ("dart_model", "closed = true;\n    _retireDisplaySelectionOwner(expectedSessionId);", "closed = true;", "stream-failure display queue retirement"),
-    ("dart_model", "closed = true;\n              _retireDisplaySelectionOwner(activeSessionId);", "closed = true;", "expected-close display queue retirement"),
+    ("dart_model", "if (!isCurrentSession(expectedSessionId)) {\n      return;\n    }\n    closed = true;\n    _retireSessionOwner(expectedSessionId);\n    dialogManager.dismissAll();", "if (true) {\n      // stale stream failure accepted\n    }\n    closed = true;\n    _retireSessionOwner(expectedSessionId);\n    dialogManager.dismissAll();", "stale stream-failure refusal"),
+    ("dart_model", "closed = true;\n    _retireSessionOwner(expectedSessionId);", "closed = true;", "stream-failure session-owner retirement"),
+    ("dart_model", "closed = true;\n            _retireSessionOwner(activeSessionId);", "closed = true;", "expected-close session-owner retirement"),
     ("dart_model", "streamFinality.acceptExpectedClose();", "// expected close identity erased", "expected exact-close stream marker"),
-    ("dart_model", "}, onError: (Object error, StackTrace stackTrace) {\n      if (!streamFinality.acceptUnexpectedTermination())", "}, onErrorDisabled: (Object error, StackTrace stackTrace) {\n      if (!streamFinality.acceptUnexpectedTermination())", "session stream error handler"),
-    ("dart_model", "onDone: () {\n      if (!streamFinality.acceptUnexpectedTermination())", "onDone: () {\n      if (true)", "session stream end handler"),
+    ("dart_model", "}, onError: (Object error, StackTrace stackTrace) {\n      sessionEvents.retire(streamOwner);\n      if (!streamFinality.acceptUnexpectedTermination())", "}, onErrorDisabled: (Object error, StackTrace stackTrace) {\n      sessionEvents.retire(streamOwner);\n      if (!streamFinality.acceptUnexpectedTermination())", "session stream error handler"),
+    ("dart_model", "onDone: () {\n      sessionEvents.retire(streamOwner);\n      if (!streamFinality.acceptUnexpectedTermination())", "onDone: () {\n      sessionEvents.retire(streamOwner);\n      if (true)", "session stream end handler"),
     ("dart_model", "qualityMonitorModel.checkShowQualityMonitor(request.sessionId)", "qualityMonitorModel.checkShowQualityMonitor(sessionId)", "post-add quality-option ordering"),
     ("dart_model", "if (isMobile && isNewPeer)", "if (false && isNewPeer)", "mobile asynchronous start admission"),
     ("mobile_remote", "gFFI.inputModel.listenToMouse(true);", "gFFI.inputModel.listenToMouse(true);\n    gFFI.qualityMonitorModel.checkShowQualityMonitor(sessionId);", "remote pre-add quality-option refusal"),

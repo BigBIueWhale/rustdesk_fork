@@ -40,6 +40,7 @@ import 'input_model.dart';
 import 'mobile_session_start_queue.dart';
 import 'platform_model.dart';
 import 'rgba_publication_order.dart';
+import 'session_event_queue.dart';
 import 'session_stream_finality.dart';
 import 'package:flutter_hbb/utils/scale.dart';
 
@@ -54,15 +55,15 @@ typedef ReconnectHandle = Function(OverlayDialogManager, SessionID);
 // below; conflating the two lets a delayed dispose from an old route close its replacement.
 final _mobileClientOwnerId = Uuid().v4obj();
 
-class _DisplaySelectionOwner {
-  const _DisplaySelectionOwner(this.sessionId, this.clientOwnerId);
+class _SessionOwner {
+  const _SessionOwner(this.sessionId, this.clientOwnerId);
 
   final SessionID sessionId;
   final SessionID clientOwnerId;
 
   @override
   bool operator ==(Object other) =>
-      other is _DisplaySelectionOwner &&
+      other is _SessionOwner &&
       sessionId == other.sessionId &&
       clientOwnerId == other.clientOwnerId;
 
@@ -98,6 +99,14 @@ class _MobileSessionStartRequest {
 
 const int kMaxRemoteCursorPixels = 1024 * 1024;
 const int kMaxRemoteCursorRgbaBytes = kMaxRemoteCursorPixels * 4;
+const _orderedSessionTopologyEvents = <String>{
+  'peer_info',
+  'sync_peer_info',
+  'sync_platform_additions',
+  'switch_display',
+  'follow_current_display',
+  'use_texture_render',
+};
 
 int? _remoteCursorRgbaLen(int width, int height) {
   if (width <= 0 || height <= 0) {
@@ -162,6 +171,7 @@ class FfiModel with ChangeNotifier {
   CachedPeerData cachedPeerData = CachedPeerData();
   PeerInfo _pi = PeerInfo();
   Rect? _rect;
+  int _displayTopologyRevision = 0;
 
   var _inputBlocked = false;
   final _permissions = <String, bool>{};
@@ -224,6 +234,21 @@ class FfiModel with ChangeNotifier {
 
   bool _isCurrentSession(SessionID expectedSessionId) =>
       parent.target?.isCurrentSession(expectedSessionId) == true;
+
+  int? _beginDisplayTopologyMutation(SessionID expectedSessionId) {
+    if (!_isCurrentSession(expectedSessionId)) {
+      return null;
+    }
+    return ++_displayTopologyRevision;
+  }
+
+  int? currentDisplayTopologyRevision(SessionID expectedSessionId) =>
+      _isCurrentSession(expectedSessionId) ? _displayTopologyRevision : null;
+
+  bool isCurrentDisplayTopology(
+          SessionID expectedSessionId, int expectedRevision) =>
+      _isCurrentSession(expectedSessionId) &&
+      _displayTopologyRevision == expectedRevision;
 
   Rect? globalDisplaysRect() => _getDisplaysRect(_pi.displays, true);
   Rect? displaysRect() => _getDisplaysRect(_pi.getCurDisplays(), false);
@@ -293,6 +318,7 @@ class FfiModel with ChangeNotifier {
   bool get keyboard => _permissions['keyboard'] != false;
 
   clear() {
+    ++_displayTopologyRevision;
     cachedPeerData = CachedPeerData();
     _pi = PeerInfo();
     _rect = null;
@@ -388,143 +414,166 @@ class FfiModel with ChangeNotifier {
 
   // todo: why called by two position
   StreamEventHandler startEventListener(SessionID sessionId, String peerId) {
+    final expectedClientOwnerId = parent.target!.clientOwnerId;
     return (evt) async {
       if (!_isCurrentSession(sessionId)) return;
-      var name = evt['name'];
-      if (name == 'msgbox') {
-        handleMsgBox(evt, sessionId, peerId);
-      } else if (name == 'toast') {
-        handleToast(evt, sessionId, peerId);
-      } else if (name == 'set_multiple_windows_session') {
-        handleMultipleWindowsSession(evt, sessionId, peerId);
-      } else if (name == 'peer_info') {
-        await handlePeerInfo(evt, peerId, false, sessionId);
-      } else if (name == 'sync_peer_info') {
-        await handleSyncPeerInfo(evt, sessionId, peerId);
-      } else if (name == 'sync_platform_additions') {
-        handlePlatformAdditions(evt, sessionId, peerId);
-      } else if (name == 'connection_ready') {
-        // R-G3: the peer's secure/direct wire flags are ignored — the channel is always
-        // PAKE-keyed + direct, so only the stream type (badge suffix) is consumed.
-        setConnectionType(peerId, evt['stream_type'] ?? '');
-      } else if (name == 'switch_display') {
-        // switch display is kept for backward compatibility
-        handleSwitchDisplay(evt, sessionId, peerId);
-      } else if (name == 'cursor_data') {
-        updateLastCursorId(evt);
-        await handleCursorData(evt, sessionId);
-      } else if (name == 'cursor_id') {
-        updateLastCursorId(evt);
-        handleCursorId(evt);
-      } else if (name == 'cursor_position') {
-        await parent.target?.cursorModel
-            .updateCursorPosition(evt, peerId, sessionId);
-      } else if (name == 'clipboard') {
-        Clipboard.setData(ClipboardData(text: evt['content']));
-      } else if (name == 'permission') {
-        updatePermission(evt, peerId);
-      } else if (name == 'chat_client_mode') {
-        parent.target?.chatModel
-            .receive(ChatModel.clientModeID, evt['text'] ?? '');
-      } else if (name == 'chat_server_mode') {
-        parent.target?.chatModel
-            .receive(int.parse(evt['id'] as String), evt['text'] ?? '');
-      } else if (name == 'terminal_response') {
-        parent.target?.routeTerminalResponse(evt);
-      } else if (name == 'file_dir') {
-        parent.target?.fileModel.receiveFileDir(evt);
-      } else if (name == 'empty_dirs') {
-        parent.target?.fileModel.receiveEmptyDirs(evt);
-      } else if (name == 'job_progress') {
-        parent.target?.fileModel.jobController.tryUpdateJobProgress(evt);
-      } else if (name == 'job_done') {
-        bool? refresh =
-            await parent.target?.fileModel.jobController.jobDone(evt);
-        if (_isCurrentSession(sessionId) && refresh == true) {
-          // many job done for delete directory
-          // todo: refresh may not work when confirm delete local directory
-          parent.target?.fileModel.refreshAll();
+      final name = evt['name'];
+      final operation = () => _handleSessionEvent(evt, sessionId, peerId);
+      if (name is String && _orderedSessionTopologyEvents.contains(name)) {
+        final ffi = parent.target;
+        if (ffi == null) return;
+        try {
+          await ffi.submitSessionEvent(
+              sessionId, expectedClientOwnerId, operation);
+        } catch (error) {
+          debugPrint(
+              'Ordered session topology failed: ${error.runtimeType}');
+          ffi._reportSessionStreamFailure(sessionId, peerId,
+              'The remote session state became inconsistent');
         }
-      } else if (name == 'job_error') {
-        parent.target?.fileModel.handleJobError(evt);
-      } else if (name == 'override_file_confirm') {
-        parent.target?.fileModel.postOverrideFileConfirm(evt, sessionId);
-      } else if (name == 'load_last_job') {
-        parent.target?.fileModel.jobController.loadLastJob(evt);
-      } else if (name == 'update_folder_files') {
-        parent.target?.fileModel.jobController.updateFolderFiles(evt);
-      } else if (name == 'add_connection') {
-        parent.target?.serverModel.addConnection(evt);
-      } else if (name == 'on_client_remove') {
-        parent.target?.serverModel.onClientRemove(evt);
-      } else if (name == 'update_quality_status') {
-        parent.target?.qualityMonitorModel.updateQualityStatus(evt);
-      } else if (name == 'update_block_input_state') {
-        updateBlockInputState(evt, peerId);
-      } else if (name == 'update_privacy_mode') {
-        await updatePrivacyMode(evt, sessionId, peerId);
-      } else if (name == 'cancel_msgbox') {
-        cancelMsgBox(evt, sessionId);
-      } else if (name == 'on_url_scheme_received') {
-        // currently comes from desktop URL IPC
-        onUrlSchemeReceived(evt);
-      } else if (name == 'on_desktop_instance_activate_requested') {
-        onDesktopInstanceActivateRequested();
-      } else if (name == 'on_desktop_instances_close_requested') {
-        onDesktopInstancesCloseRequested();
-      } else if (name == 'on_voice_call_waiting') {
-        // Waiting for the response from the peer.
-        parent.target?.chatModel.onVoiceCallWaiting();
-      } else if (name == 'on_voice_call_started') {
-        // Voice call is connected.
-        parent.target?.chatModel.onVoiceCallStarted();
-      } else if (name == 'on_voice_call_closed') {
-        // Voice call is closed with reason.
-        final reason = evt['reason'].toString();
-        parent.target?.chatModel.onVoiceCallClosed(reason);
-      } else if (name == 'on_voice_call_incoming') {
-        // Voice call is requested by the peer.
-        parent.target?.chatModel.onVoiceCallIncoming();
-      } else if (name == 'update_voice_call_state') {
-        parent.target?.serverModel.updateVoiceCallState(evt);
-      } else if (name == "cm_file_transfer_log") {
-        if (isDesktop) {
-          gFFI.cmFileModel.onFileTransferLog(evt);
-        }
-      } else if (name == 'sync_peer_option') {
-        _handleSyncPeerOption(evt, peerId);
-      } else if (name == 'follow_current_display') {
-        await handleFollowCurrentDisplay(evt, sessionId, peerId);
-      } else if (name == 'use_texture_render') {
-        _handleUseTextureRender(evt, sessionId, peerId);
-      } else if (name == "selected_files") {
-        if (isWeb) {
-          parent.target?.fileModel.onSelectedFiles(evt);
-        }
-      } else if (name == "send_emptry_dirs") {
-        if (isWeb) {
-          final future = parent.target?.fileModel.sendEmptyDirs(evt);
-          if (future != null) {
-            unawaited(future.catchError((Object error) {
-              debugPrint('Failed to create remote empty directories: $error');
-            }));
-          }
-        }
-      } else if (name == "record_status") {
-        if (desktopType == DesktopType.remote ||
-            desktopType == DesktopType.viewCamera ||
-            isMobile) {
-          parent.target?.recordingModel.updateStatus(evt['start'] == 'true');
-        }
-      } else if (name == 'screenshot') {
-        _handleScreenshot(evt, sessionId, peerId);
-      } else if (name == 'exit_relative_mouse_mode') {
-        // Handle exit shortcut from rdev grab loop (Ctrl+Alt on Win/Linux, Cmd+G on macOS)
-        parent.target?.inputModel.exitRelativeMouseModeWithKeyRelease();
-      } else {
-        debugPrint('Event is not handled in the fixed branch: $name');
+        return;
       }
+      await operation();
     };
+  }
+
+  Future<void> _handleSessionEvent(Map<String, dynamic> evt,
+      SessionID sessionId, String peerId) async {
+    if (!_isCurrentSession(sessionId)) return;
+    var name = evt['name'];
+    if (name == 'msgbox') {
+      handleMsgBox(evt, sessionId, peerId);
+    } else if (name == 'toast') {
+      handleToast(evt, sessionId, peerId);
+    } else if (name == 'set_multiple_windows_session') {
+      handleMultipleWindowsSession(evt, sessionId, peerId);
+    } else if (name == 'peer_info') {
+      await handlePeerInfo(evt, peerId, false, sessionId);
+    } else if (name == 'sync_peer_info') {
+      await handleSyncPeerInfo(evt, sessionId, peerId);
+    } else if (name == 'sync_platform_additions') {
+      await handlePlatformAdditions(evt, sessionId, peerId);
+    } else if (name == 'connection_ready') {
+      // R-G3: the peer's secure/direct wire flags are ignored — the channel is always
+      // PAKE-keyed + direct, so only the stream type (badge suffix) is consumed.
+      setConnectionType(peerId, evt['stream_type'] ?? '');
+    } else if (name == 'switch_display') {
+      // switch display is kept for backward compatibility
+      await handleSwitchDisplay(evt, sessionId, peerId);
+    } else if (name == 'cursor_data') {
+      updateLastCursorId(evt);
+      await handleCursorData(evt, sessionId);
+    } else if (name == 'cursor_id') {
+      updateLastCursorId(evt);
+      handleCursorId(evt);
+    } else if (name == 'cursor_position') {
+      await parent.target?.cursorModel
+          .updateCursorPosition(evt, peerId, sessionId);
+    } else if (name == 'clipboard') {
+      Clipboard.setData(ClipboardData(text: evt['content']));
+    } else if (name == 'permission') {
+      updatePermission(evt, peerId);
+    } else if (name == 'chat_client_mode') {
+      parent.target?.chatModel
+          .receive(ChatModel.clientModeID, evt['text'] ?? '');
+    } else if (name == 'chat_server_mode') {
+      parent.target?.chatModel
+          .receive(int.parse(evt['id'] as String), evt['text'] ?? '');
+    } else if (name == 'terminal_response') {
+      parent.target?.routeTerminalResponse(evt);
+    } else if (name == 'file_dir') {
+      parent.target?.fileModel.receiveFileDir(evt);
+    } else if (name == 'empty_dirs') {
+      parent.target?.fileModel.receiveEmptyDirs(evt);
+    } else if (name == 'job_progress') {
+      parent.target?.fileModel.jobController.tryUpdateJobProgress(evt);
+    } else if (name == 'job_done') {
+      bool? refresh =
+          await parent.target?.fileModel.jobController.jobDone(evt);
+      if (_isCurrentSession(sessionId) && refresh == true) {
+        // many job done for delete directory
+        // todo: refresh may not work when confirm delete local directory
+        parent.target?.fileModel.refreshAll();
+      }
+    } else if (name == 'job_error') {
+      parent.target?.fileModel.handleJobError(evt);
+    } else if (name == 'override_file_confirm') {
+      parent.target?.fileModel.postOverrideFileConfirm(evt, sessionId);
+    } else if (name == 'load_last_job') {
+      parent.target?.fileModel.jobController.loadLastJob(evt);
+    } else if (name == 'update_folder_files') {
+      parent.target?.fileModel.jobController.updateFolderFiles(evt);
+    } else if (name == 'add_connection') {
+      parent.target?.serverModel.addConnection(evt);
+    } else if (name == 'on_client_remove') {
+      parent.target?.serverModel.onClientRemove(evt);
+    } else if (name == 'update_quality_status') {
+      parent.target?.qualityMonitorModel.updateQualityStatus(evt);
+    } else if (name == 'update_block_input_state') {
+      updateBlockInputState(evt, peerId);
+    } else if (name == 'update_privacy_mode') {
+      await updatePrivacyMode(evt, sessionId, peerId);
+    } else if (name == 'cancel_msgbox') {
+      cancelMsgBox(evt, sessionId);
+    } else if (name == 'on_url_scheme_received') {
+      // currently comes from desktop URL IPC
+      onUrlSchemeReceived(evt);
+    } else if (name == 'on_desktop_instance_activate_requested') {
+      onDesktopInstanceActivateRequested();
+    } else if (name == 'on_desktop_instances_close_requested') {
+      onDesktopInstancesCloseRequested();
+    } else if (name == 'on_voice_call_waiting') {
+      // Waiting for the response from the peer.
+      parent.target?.chatModel.onVoiceCallWaiting();
+    } else if (name == 'on_voice_call_started') {
+      // Voice call is connected.
+      parent.target?.chatModel.onVoiceCallStarted();
+    } else if (name == 'on_voice_call_closed') {
+      // Voice call is closed with reason.
+      final reason = evt['reason'].toString();
+      parent.target?.chatModel.onVoiceCallClosed(reason);
+    } else if (name == 'on_voice_call_incoming') {
+      // Voice call is requested by the peer.
+      parent.target?.chatModel.onVoiceCallIncoming();
+    } else if (name == 'update_voice_call_state') {
+      parent.target?.serverModel.updateVoiceCallState(evt);
+    } else if (name == "cm_file_transfer_log") {
+      if (isDesktop) {
+        gFFI.cmFileModel.onFileTransferLog(evt);
+      }
+    } else if (name == 'sync_peer_option') {
+      _handleSyncPeerOption(evt, peerId);
+    } else if (name == 'follow_current_display') {
+      await handleFollowCurrentDisplay(evt, sessionId, peerId);
+    } else if (name == 'use_texture_render') {
+      _handleUseTextureRender(evt, sessionId, peerId);
+    } else if (name == "selected_files") {
+      if (isWeb) {
+        parent.target?.fileModel.onSelectedFiles(evt);
+      }
+    } else if (name == "send_emptry_dirs") {
+      if (isWeb) {
+        final future = parent.target?.fileModel.sendEmptyDirs(evt);
+        if (future != null) {
+          unawaited(future.catchError((Object error) {
+            debugPrint('Failed to create remote empty directories: $error');
+          }));
+        }
+      }
+    } else if (name == "record_status") {
+      if (desktopType == DesktopType.remote ||
+          desktopType == DesktopType.viewCamera ||
+          isMobile) {
+        parent.target?.recordingModel.updateStatus(evt['start'] == 'true');
+      }
+    } else if (name == 'screenshot') {
+      _handleScreenshot(evt, sessionId, peerId);
+    } else if (name == 'exit_relative_mouse_mode') {
+      // Handle exit shortcut from rdev grab loop (Ctrl+Alt on Win/Linux, Cmd+G on macOS)
+      parent.target?.inputModel.exitRelativeMouseModeWithKeyRelease();
+    } else {
+      debugPrint('Event is not handled in the fixed branch: $name');
+    }
   }
 
   _handleScreenshot(
@@ -611,6 +660,7 @@ class FfiModel with ChangeNotifier {
 
   _handleUseTextureRender(
       Map<String, dynamic> evt, SessionID sessionId, String peerId) {
+    if (_beginDisplayTopologyMutation(sessionId) == null) return;
     parent.target?.imageModel.setUseTextureRender(evt['v'] == 'Y');
     waitForFirstImage.value = true;
     isRefreshing = true;
@@ -666,11 +716,15 @@ class FfiModel with ChangeNotifier {
     }
   }
 
-  Future<void> updateCurDisplay(SessionID sessionId,
+  Future<bool> updateCurDisplay(
+      SessionID sessionId, int expectedTopologyRevision,
       {updateCursorPos = false}) async {
+    if (!isCurrentDisplayTopology(sessionId, expectedTopologyRevision)) {
+      return false;
+    }
     final newRect = displaysRect();
     if (newRect == null) {
-      return;
+      return isCurrentDisplayTopology(sessionId, expectedTopologyRevision);
     }
     if (newRect != _rect) {
       if (newRect.left != _rect?.left || newRect.top != _rect?.top) {
@@ -682,8 +736,12 @@ class FfiModel with ChangeNotifier {
       // Await updateViewStyle to ensure view geometry is fully updated before
       // updating pointer lock center. This prevents stale center calculations.
       await parent.target?.canvasModel.updateViewStyle(
-          refreshMousePos: updateCursorPos, expectedSessionId: sessionId);
-      if (!_isCurrentSession(sessionId)) return;
+          refreshMousePos: updateCursorPos,
+          expectedSessionId: sessionId,
+          expectedDisplayTopologyRevision: expectedTopologyRevision);
+      if (!isCurrentDisplayTopology(sessionId, expectedTopologyRevision)) {
+        return false;
+      }
       _updateSessionWidthHeight(sessionId);
 
       // Keep pointer lock center in sync when using relative mouse mode.
@@ -694,10 +752,13 @@ class FfiModel with ChangeNotifier {
         inputModel.updatePointerLockCenter();
       }
     }
+    return isCurrentDisplayTopology(sessionId, expectedTopologyRevision);
   }
 
-  handleSwitchDisplay(
-      Map<String, dynamic> evt, SessionID sessionId, String peerId) {
+  Future<void> handleSwitchDisplay(
+      Map<String, dynamic> evt, SessionID sessionId, String peerId) async {
+    final topologyRevision = _beginDisplayTopologyMutation(sessionId);
+    if (topologyRevision == null) return;
     final display = int.parse(evt['display']);
 
     if (_pi.currentDisplay != kAllDisplayValue) {
@@ -731,7 +792,10 @@ class FfiModel with ChangeNotifier {
     _pi.displays[display] = newDisplay;
 
     if (!_pi.isSupportMultiUiSession || _pi.currentDisplay == display) {
-      updateCurDisplay(sessionId);
+      if (!await updateCurDisplay(sessionId, topologyRevision)) return;
+    }
+    if (!isCurrentDisplayTopology(sessionId, topologyRevision)) {
+      return;
     }
 
     if (!_pi.isSupportMultiUiSession) {
@@ -985,7 +1049,9 @@ class FfiModel with ChangeNotifier {
   /// Handle the peer info event based on [evt].
   Future<void> handlePeerInfo(Map<String, dynamic> evt, String peerId,
       bool isCache, SessionID expectedSessionId) async {
-    if (!_isCurrentSession(expectedSessionId)) return;
+    final topologyRevision =
+        _beginDisplayTopologyMutation(expectedSessionId);
+    if (topologyRevision == null) return;
     parent.target?.chatModel.voiceCallStatus.value = VoiceCallStatus.notStarted;
 
     // Map clone is required here, otherwise "evt" may be changed by other threads through the reference.
@@ -1049,7 +1115,8 @@ class FfiModel with ChangeNotifier {
       } else {
         final optSession = await bind.sessionGetOption(
             sessionId: expectedSessionId, arg: kOptionTouchMode);
-        if (!_isCurrentSession(expectedSessionId)) return;
+        if (!isCurrentDisplayTopology(
+            expectedSessionId, topologyRevision)) return;
         _touchMode = optSession != '';
       }
     }
@@ -1058,7 +1125,8 @@ class FfiModel with ChangeNotifier {
     }
     if (connType == ConnType.fileTransfer) {
       await parent.target?.fileModel.onReady(expectedSessionId);
-      if (!_isCurrentSession(expectedSessionId)) return;
+      if (!isCurrentDisplayTopology(
+          expectedSessionId, topologyRevision)) return;
     } else if (connType == ConnType.terminal) {
       // Call onReady on all registered terminal models
       final models = parent.target?._terminalModels.values ?? [];
@@ -1075,8 +1143,8 @@ class FfiModel with ChangeNotifier {
       _pi.displays.value = newDisplays;
       _pi.displaysCount.value = _pi.displays.length;
       if (_pi.currentDisplay < _pi.displays.length) {
-        // now replaced to _updateCurDisplay
-        updateCurDisplay(expectedSessionId);
+        if (!await updateCurDisplay(
+            expectedSessionId, topologyRevision)) return;
       }
       if (displays.isNotEmpty) {
         _reconnects = 1;
@@ -1114,19 +1182,24 @@ class FfiModel with ChangeNotifier {
 
     if (isDesktop || isWebDesktop) {
       await parent.target?.inputModel.updateKeyboardMode();
-      if (!_isCurrentSession(expectedSessionId)) return;
+      if (!isCurrentDisplayTopology(
+          expectedSessionId, topologyRevision)) return;
     }
 
     notifyListeners();
 
     if (!isCache) {
-      await tryUseAllMyDisplaysForTheRemoteSession(peerId, expectedSessionId);
+      await tryUseAllMyDisplaysForTheRemoteSession(
+          peerId, expectedSessionId, topologyRevision);
     }
   }
 
   Future<void> tryUseAllMyDisplaysForTheRemoteSession(
-      String peerId, SessionID expectedSessionId) async {
-    if (!_isCurrentSession(expectedSessionId)) return;
+      String peerId,
+      SessionID expectedSessionId,
+      int expectedTopologyRevision) async {
+    if (!isCurrentDisplayTopology(
+        expectedSessionId, expectedTopologyRevision)) return;
     if (bind.sessionGetUseAllMyDisplaysForTheRemoteSession(
             sessionId: expectedSessionId) !=
         'Y') {
@@ -1138,7 +1211,8 @@ class FfiModel with ChangeNotifier {
     }
 
     final screenRectList = await getScreenRectList();
-    if (!_isCurrentSession(expectedSessionId)) return;
+    if (!isCurrentDisplayTopology(
+        expectedSessionId, expectedTopologyRevision)) return;
     if (screenRectList.length <= 1) {
       return;
     }
@@ -1154,14 +1228,11 @@ class FfiModel with ChangeNotifier {
         !await selectRemoteDisplays(ffi, expectedSessionId, [0])) {
       return;
     }
-    _pi.currentDisplay = 0;
-    try {
-      CurrentDisplayState.find(peerId).value = _pi.currentDisplay;
-    } catch (e) {
-      //
-    }
+    if (!await switchToNewDisplay(0, expectedSessionId, peerId,
+        expectedTopologyRevision: expectedTopologyRevision)) return;
     await tryMoveToScreenAndSetFullscreen(screenRectList[0]);
-    if (!_isCurrentSession(expectedSessionId)) return;
+    if (!isCurrentDisplayTopology(
+        expectedSessionId, expectedTopologyRevision)) return;
 
     final length = _pi.displays.length < screenRectList.length
         ? _pi.displays.length
@@ -1264,9 +1335,12 @@ class FfiModel with ChangeNotifier {
   }
 
   /// Handle the peer info synchronization event based on [evt].
-  handleSyncPeerInfo(
+  Future<void> handleSyncPeerInfo(
       Map<String, dynamic> evt, SessionID sessionId, String peerId) async {
+    if (!_isCurrentSession(sessionId)) return;
     if (evt['displays'] != null) {
+      final topologyRevision = _beginDisplayTopologyMutation(sessionId);
+      if (topologyRevision == null) return;
       cachedPeerData.peerInfo['displays'] = evt['displays'];
       List<dynamic> displays = json.decode(evt['displays']);
       List<Display> newDisplays = [];
@@ -1277,12 +1351,12 @@ class FfiModel with ChangeNotifier {
       _pi.displaysCount.value = _pi.displays.length;
 
       if (_pi.currentDisplay == kAllDisplayValue) {
-        updateCurDisplay(sessionId);
+        if (!await updateCurDisplay(sessionId, topologyRevision)) return;
         // to-do: What if the displays are changed?
       } else {
         if (_pi.currentDisplay >= 0 &&
             _pi.currentDisplay < _pi.displays.length) {
-          updateCurDisplay(sessionId);
+          if (!await updateCurDisplay(sessionId, topologyRevision)) return;
         } else {
           if (_pi.displays.isNotEmpty) {
             // Notify to switch display
@@ -1298,11 +1372,15 @@ class FfiModel with ChangeNotifier {
                 !await selectRemoteDisplays(ffi, sessionId, [newDisplay])) {
               return;
             }
+            if (!isCurrentDisplayTopology(sessionId, topologyRevision)) {
+              return;
+            }
 
             if (_pi.isSupportMultiUiSession) {
               // If the peer supports multi-ui-session, no switch display message will be send back.
               // We need to update the display manually.
-              switchToNewDisplay(newDisplay, sessionId, peerId);
+              if (!await switchToNewDisplay(newDisplay, sessionId, peerId,
+                  expectedTopologyRevision: topologyRevision)) return;
             }
           } else {
             msgBox(sessionId, 'nocancel-error', 'Prompt', 'No Displays', '',
@@ -1310,14 +1388,20 @@ class FfiModel with ChangeNotifier {
           }
         }
       }
+      if (!isCurrentDisplayTopology(sessionId, topologyRevision)) return;
+      await parent.target!.canvasModel.tryUpdateScrollStyle(
+          Duration(milliseconds: 300), null,
+          expectedSessionId: sessionId,
+          expectedDisplayTopologyRevision: topologyRevision);
+      if (!isCurrentDisplayTopology(sessionId, topologyRevision)) return;
     }
-    parent.target!.canvasModel
-        .tryUpdateScrollStyle(Duration(milliseconds: 300), null);
     notifyListeners();
   }
 
-  handlePlatformAdditions(
+  Future<void> handlePlatformAdditions(
       Map<String, dynamic> evt, SessionID sessionId, String peerId) async {
+    final topologyRevision = _beginDisplayTopologyMutation(sessionId);
+    if (topologyRevision == null) return;
     final updateData = evt['platform_additions'] as String?;
     if (updateData == null) {
       return;
@@ -1326,16 +1410,12 @@ class FfiModel with ChangeNotifier {
     if (updateData.isEmpty) {
       _pi.platformAdditions.remove(kPlatformAdditionsAmyuniVirtualDisplays);
     } else {
-      try {
-        final updateJson = json.decode(updateData) as Map<String, dynamic>;
-        for (final key in updateJson.keys) {
-          _pi.platformAdditions[key] = updateJson[key];
-        }
-        if (!updateJson.containsKey(kPlatformAdditionsAmyuniVirtualDisplays)) {
-          _pi.platformAdditions.remove(kPlatformAdditionsAmyuniVirtualDisplays);
-        }
-      } catch (e) {
-        debugPrint('Failed to decode platformAdditions $e');
+      final updateJson = json.decode(updateData) as Map<String, dynamic>;
+      for (final key in updateJson.keys) {
+        _pi.platformAdditions[key] = updateJson[key];
+      }
+      if (!updateJson.containsKey(kPlatformAdditionsAmyuniVirtualDisplays)) {
+        _pi.platformAdditions.remove(kPlatformAdditionsAmyuniVirtualDisplays);
       }
     }
 
@@ -1343,39 +1423,72 @@ class FfiModel with ChangeNotifier {
         json.encode(_pi.platformAdditions);
   }
 
-  handleFollowCurrentDisplay(
+  Future<void> handleFollowCurrentDisplay(
       Map<String, dynamic> evt, SessionID sessionId, String peerId) async {
     if (evt['display_idx'] != null) {
       if (pi.currentDisplay == kAllDisplayValue) {
         return;
       }
+      final topologyRevision = _beginDisplayTopologyMutation(sessionId);
+      if (topologyRevision == null) return;
       final display = int.parse(evt['display_idx']);
       final ffi = parent.target;
       if (ffi == null ||
           !await selectRemoteDisplays(ffi, sessionId, [display])) {
         return;
       }
-      _pi.currentDisplay = display;
-      try {
-        CurrentDisplayState.find(peerId).value = _pi.currentDisplay;
-      } catch (e) {
-        //
-      }
+      if (!await switchToNewDisplay(display, sessionId, peerId,
+          expectedTopologyRevision: topologyRevision)) return;
     }
     notifyListeners();
   }
 
-  // Directly switch to the new display without waiting for the response.
-  switchToNewDisplay(int display, SessionID sessionId, String peerId,
-      {bool updateCursorPos = false}) {
-    // no need to wait for the response
+  Future<bool> switchToNewDisplay(
+      int display, SessionID sessionId, String peerId,
+      {bool updateCursorPos = false,
+      int? expectedTopologyRevision}) async {
+    if (expectedTopologyRevision == null) {
+      final ffi = parent.target;
+      if (ffi == null || !ffi.isCurrentSession(sessionId)) return false;
+      final expectedClientOwnerId = ffi.clientOwnerId;
+      var applied = false;
+      try {
+        final disposition = await ffi.submitSessionEvent(
+            sessionId, expectedClientOwnerId, () async {
+          applied = await _applyDisplaySwitch(
+              display, sessionId, peerId, updateCursorPos, null);
+        });
+        return disposition == SessionEventDisposition.completed &&
+            applied &&
+            ffi.isCurrentSessionOwner(sessionId, expectedClientOwnerId);
+      } catch (error) {
+        debugPrint('Local display topology failed: ${error.runtimeType}');
+        ffi._reportSessionStreamFailure(sessionId, peerId,
+            'The remote session state became inconsistent');
+        return false;
+      }
+    }
+    return _applyDisplaySwitch(display, sessionId, peerId, updateCursorPos,
+        expectedTopologyRevision);
+  }
+
+  Future<bool> _applyDisplaySwitch(int display, SessionID sessionId,
+      String peerId, bool updateCursorPos, int? expectedTopologyRevision) async {
+    final topologyRevision = expectedTopologyRevision ??
+        _beginDisplayTopologyMutation(sessionId);
+    if (topologyRevision == null ||
+        !isCurrentDisplayTopology(sessionId, topologyRevision)) {
+      return false;
+    }
     pi.currentDisplay = display;
-    updateCurDisplay(sessionId, updateCursorPos: updateCursorPos);
+    if (!await updateCurDisplay(sessionId, topologyRevision,
+        updateCursorPos: updateCursorPos)) return false;
     try {
       CurrentDisplayState.find(peerId).value = display;
     } catch (e) {
       //
     }
+    return isCurrentDisplayTopology(sessionId, topologyRevision);
   }
 
   updateBlockInputState(Map<String, dynamic> evt, String peerId) {
@@ -1506,6 +1619,16 @@ class VirtualMouseMode with ChangeNotifier {
   }
 }
 
+class _WebRgbaFrame {
+  const _WebRgbaFrame(this.sessionId, this.display, this.rgba,
+      this.displayTopologyRevision);
+
+  final SessionID sessionId;
+  final int display;
+  final Uint8List rgba;
+  final int displayTopologyRevision;
+}
+
 class ImageModel with ChangeNotifier {
   ui.Image? _image;
   final ExactRgbaPublicationOrder<SessionID> _rgbaPublicationOrder =
@@ -1536,19 +1659,26 @@ class ImageModel with ChangeNotifier {
   }
 
   bool _webDecodingRgba = false;
-  final List<Uint8List> _webRgbaList = List.empty(growable: true);
+  final List<_WebRgbaFrame> _webRgbaList = List.empty(growable: true);
   webOnRgba(int display, Uint8List rgba) async {
+    final expectedSessionId = sessionId;
+    final topologyRevision = parent.target?.ffiModel
+        .currentDisplayTopologyRevision(expectedSessionId);
+    if (topologyRevision == null) return;
     // deep copy needed, otherwise "instantiateCodec failed: TypeError: Cannot perform Construct on a detached ArrayBuffer"
-    _webRgbaList.add(Uint8List.fromList(rgba));
+    _webRgbaList.add(_WebRgbaFrame(expectedSessionId, display,
+        Uint8List.fromList(rgba), topologyRevision));
     if (_webDecodingRgba) {
       return;
     }
     _webDecodingRgba = true;
     try {
       while (_webRgbaList.isNotEmpty) {
-        final rgba2 = _webRgbaList.last;
+        final frame = _webRgbaList.last;
         _webRgbaList.clear();
-        await decodeAndUpdate(sessionId, display, rgba2);
+        await decodeAndUpdate(frame.sessionId, frame.display, frame.rgba,
+            expectedDisplayTopologyRevision:
+                frame.displayTopologyRevision);
       }
     } catch (e) {
       debugPrint('onRgba error: $e');
@@ -1556,24 +1686,30 @@ class ImageModel with ChangeNotifier {
     _webDecodingRgba = false;
   }
 
-  Future<void> onRgba(SessionID expectedSessionId, int display, Uint8List rgba,
-      [int? publication]) async {
+  Future<bool> onRgba(
+      SessionID expectedSessionId, int display, Uint8List rgba,
+      {int? publication, required int expectedDisplayTopologyRevision}) async {
     RgbaPublicationAdmission<SessionID>? admission;
     if (publication != null) {
-      if (parent.target?.isCurrentSession(expectedSessionId) == true) {
+      if (parent.target?.ffiModel.isCurrentDisplayTopology(
+              expectedSessionId, expectedDisplayTopologyRevision) ==
+          true) {
         admission = _rgbaPublicationOrder.admit(
             expectedSessionId, display, publication);
       }
       if (admission == null) {
         platformFFI.nextRgba(expectedSessionId, display, publication);
-        return;
+        return false;
       }
     }
     try {
-      await decodeAndUpdate(expectedSessionId, display, rgba,
-          expectedRgbaPublication: admission);
+      return await decodeAndUpdate(expectedSessionId, display, rgba,
+          expectedRgbaPublication: admission,
+          expectedDisplayTopologyRevision:
+              expectedDisplayTopologyRevision);
     } catch (e) {
       debugPrint('onRgba error: $e');
+      return false;
     } finally {
       if (publication != null) {
         platformFFI.nextRgba(expectedSessionId, display, publication);
@@ -1581,13 +1717,16 @@ class ImageModel with ChangeNotifier {
     }
   }
 
-  Future<void> decodeAndUpdate(
+  Future<bool> decodeAndUpdate(
       SessionID expectedSessionId, int display, Uint8List rgba,
-      {RgbaPublicationAdmission<SessionID>? expectedRgbaPublication}) async {
-    if (parent.target?.isCurrentSession(expectedSessionId) != true ||
+      {RgbaPublicationAdmission<SessionID>? expectedRgbaPublication,
+      required int expectedDisplayTopologyRevision}) async {
+    if (parent.target?.ffiModel.isCurrentDisplayTopology(
+            expectedSessionId, expectedDisplayTopologyRevision) !=
+        true ||
         (expectedRgbaPublication != null &&
             !_rgbaPublicationOrder.isCurrent(expectedRgbaPublication))) {
-      return;
+      return false;
     }
     final rect = parent.target?.ffiModel.pi.getDisplayRect(display);
     final image = await img.decodeImageFromPixels(
@@ -1599,23 +1738,27 @@ class ImageModel with ChangeNotifier {
           : ui.PixelFormat.bgra8888,
     );
     if (image == null) {
-      return;
+      return false;
     }
-    if (parent.target?.isCurrentSession(expectedSessionId) != true ||
+    if (parent.target?.ffiModel.isCurrentDisplayTopology(
+            expectedSessionId, expectedDisplayTopologyRevision) !=
+        true ||
         (expectedRgbaPublication != null &&
             !_rgbaPublicationOrder.isCurrent(expectedRgbaPublication))) {
       image.dispose();
-      return;
+      return false;
     }
-    await update(image,
+    return update(image,
         expectedSessionId: expectedSessionId,
-        expectedRgbaPublication: expectedRgbaPublication);
+        expectedRgbaPublication: expectedRgbaPublication,
+        expectedDisplayTopologyRevision: expectedDisplayTopologyRevision);
   }
 
-  Future<void> update(ui.Image? image,
+  Future<bool> update(ui.Image? image,
       {SessionID? expectedSessionId,
       bool allowClosedSession = false,
-      RgbaPublicationAdmission<SessionID>? expectedRgbaPublication}) async {
+      RgbaPublicationAdmission<SessionID>? expectedRgbaPublication,
+      int? expectedDisplayTopologyRevision}) async {
     bool acceptsExpectedImage() =>
         (expectedSessionId == null ||
             (allowClosedSession
@@ -1623,45 +1766,61 @@ class ImageModel with ChangeNotifier {
                 : parent.target?.isCurrentSession(expectedSessionId) ==
                     true)) &&
         (expectedRgbaPublication == null ||
-            _rgbaPublicationOrder.isCurrent(expectedRgbaPublication));
+            _rgbaPublicationOrder.isCurrent(expectedRgbaPublication)) &&
+        (expectedDisplayTopologyRevision == null ||
+            (expectedSessionId != null &&
+                parent.target?.ffiModel.isCurrentDisplayTopology(
+                        expectedSessionId,
+                        expectedDisplayTopologyRevision) ==
+                    true));
 
     if (!acceptsExpectedImage()) {
       image?.dispose();
-      return;
+      return false;
     }
     if (_image == null && image != null) {
       if (isDesktop || isWebDesktop) {
         await parent.target?.canvasModel
-            .updateViewStyle(expectedSessionId: expectedSessionId);
+            .updateViewStyle(
+                expectedSessionId: expectedSessionId,
+                expectedDisplayTopologyRevision:
+                    expectedDisplayTopologyRevision);
         if (!acceptsExpectedImage()) {
           image.dispose();
-          return;
+          return false;
         }
         await parent.target?.canvasModel
-            .updateScrollStyle(expectedSessionId: expectedSessionId);
+            .updateScrollStyle(
+                expectedSessionId: expectedSessionId,
+                expectedDisplayTopologyRevision:
+                    expectedDisplayTopologyRevision);
         if (!acceptsExpectedImage()) {
           image.dispose();
-          return;
+          return false;
         }
         await parent.target?.canvasModel.initializeEdgeScrollEdgeThickness(
-            expectedSessionId: expectedSessionId);
+            expectedSessionId: expectedSessionId,
+            expectedDisplayTopologyRevision:
+                expectedDisplayTopologyRevision);
         if (!acceptsExpectedImage()) {
           image.dispose();
-          return;
+          return false;
         }
       }
       if (parent.target != null) {
         await initializeCursorAndCanvas(parent.target!,
-            expectedSessionId: expectedSessionId);
+            expectedSessionId: expectedSessionId,
+            expectedDisplayTopologyRevision:
+                expectedDisplayTopologyRevision);
         if (!acceptsExpectedImage()) {
           image.dispose();
-          return;
+          return false;
         }
       }
     }
     if (!acceptsExpectedImage()) {
       image?.dispose();
-      return;
+      return false;
     }
     if (image == null) {
       _rgbaPublicationOrder.retire();
@@ -1669,6 +1828,7 @@ class ImageModel with ChangeNotifier {
     _image?.dispose();
     _image = image;
     if (image != null) notifyListeners();
+    return true;
   }
 
   // mobile only
@@ -2022,27 +2182,42 @@ class CanvasModel with ChangeNotifier {
 
   updateSize() => _size = getSize();
 
+  bool _acceptsExpectedDisplayTopology(SessionID? expectedSessionId,
+      int? expectedDisplayTopologyRevision) {
+    if (expectedSessionId == null) {
+      return expectedDisplayTopologyRevision == null;
+    }
+    if (parent.target?.isCurrentSession(expectedSessionId) != true) {
+      return false;
+    }
+    return expectedDisplayTopologyRevision == null ||
+        parent.target?.ffiModel.isCurrentDisplayTopology(
+                expectedSessionId, expectedDisplayTopologyRevision) ==
+            true;
+  }
+
   updateViewStyle(
       {refreshMousePos = true,
       notify = true,
-      SessionID? expectedSessionId}) async {
+      SessionID? expectedSessionId,
+      int? expectedDisplayTopologyRevision}) async {
+    if (!_acceptsExpectedDisplayTopology(
+        expectedSessionId, expectedDisplayTopologyRevision)) return;
     final selectedSessionId = expectedSessionId ?? sessionId;
     final style = await bind.sessionGetViewStyle(sessionId: selectedSessionId);
-    if (expectedSessionId != null &&
-        parent.target?.isCurrentSession(expectedSessionId) != true) {
-      return;
-    }
+    if (!_acceptsExpectedDisplayTopology(
+        expectedSessionId, expectedDisplayTopologyRevision)) return;
     if (style == null) {
       return;
     }
 
-    updateSize();
+    final nextSize = getSize();
     final displayWidth = getDisplayWidth();
     final displayHeight = getDisplayHeight();
     final viewStyle = ViewStyle(
       style: style,
-      width: size.width,
-      height: size.height,
+      width: nextSize.width,
+      height: nextSize.height,
       displayWidth: displayWidth,
       displayHeight: displayHeight,
     );
@@ -2055,26 +2230,27 @@ class CanvasModel with ChangeNotifier {
     if (_lastViewStyle == viewStyle && style != kRemoteViewStyleCustom) {
       return;
     }
-    if (_lastViewStyle.style != viewStyle.style) {
-      _resetScroll();
-    }
-    _lastViewStyle = viewStyle;
-    _scale = viewStyle.scale;
+    var nextScale = viewStyle.scale;
 
     // Apply custom scale percent when in Custom mode
     if (style == kRemoteViewStyleCustom) {
       try {
-        _scale = await getSessionCustomScale(selectedSessionId);
-        if (expectedSessionId != null &&
-            parent.target?.isCurrentSession(expectedSessionId) != true) {
-          return;
-        }
+        nextScale = await getSessionCustomScale(selectedSessionId);
       } catch (e, stack) {
         debugPrint('Error in getSessionCustomScale: $e');
         debugPrintStack(stackTrace: stack);
-        _scale = 1.0;
+        nextScale = 1.0;
       }
+      if (!_acceptsExpectedDisplayTopology(
+          expectedSessionId, expectedDisplayTopologyRevision)) return;
     }
+
+    if (_lastViewStyle.style != viewStyle.style) {
+      _resetScroll();
+    }
+    _size = nextSize;
+    _lastViewStyle = viewStyle;
+    _scale = nextScale;
 
     _devicePixelRatio = ui.window.devicePixelRatio;
     if (kIgnoreDpi) {
@@ -2096,7 +2272,8 @@ class CanvasModel with ChangeNotifier {
       parent.target?.inputModel.refreshMousePos();
     }
     tryUpdateScrollStyle(Duration.zero, style,
-        expectedSessionId: expectedSessionId);
+        expectedSessionId: expectedSessionId,
+        expectedDisplayTopologyRevision: expectedDisplayTopologyRevision);
   }
 
   _resetCanvasOffset(int displayWidth, int displayHeight) {
@@ -2108,14 +2285,15 @@ class CanvasModel with ChangeNotifier {
   }
 
   tryUpdateScrollStyle(Duration duration, String? style,
-      {SessionID? expectedSessionId}) async {
+      {SessionID? expectedSessionId,
+      int? expectedDisplayTopologyRevision}) async {
+    if (!_acceptsExpectedDisplayTopology(
+        expectedSessionId, expectedDisplayTopologyRevision)) return;
     if (_scrollStyle == ScrollStyle.scrollauto) return;
     style ??= await bind.sessionGetViewStyle(
         sessionId: expectedSessionId ?? sessionId);
-    if (expectedSessionId != null &&
-        parent.target?.isCurrentSession(expectedSessionId) != true) {
-      return;
-    }
+    if (!_acceptsExpectedDisplayTopology(
+        expectedSessionId, expectedDisplayTopologyRevision)) return;
     if (style != kRemoteViewStyleOriginal && style != kRemoteViewStyleCustom) {
       return;
     }
@@ -2123,21 +2301,21 @@ class CanvasModel with ChangeNotifier {
     _resetScroll();
 
     Future.delayed(duration, () async {
-      if (expectedSessionId != null &&
-          parent.target?.isCurrentSession(expectedSessionId) != true) {
-        return;
-      }
+      if (!_acceptsExpectedDisplayTopology(
+          expectedSessionId, expectedDisplayTopologyRevision)) return;
       updateScrollPercent();
     });
   }
 
-  Future<void> updateScrollStyle({SessionID? expectedSessionId}) async {
+  Future<void> updateScrollStyle(
+      {SessionID? expectedSessionId,
+      int? expectedDisplayTopologyRevision}) async {
+    if (!_acceptsExpectedDisplayTopology(
+        expectedSessionId, expectedDisplayTopologyRevision)) return;
     final style = await bind.sessionGetScrollStyle(
         sessionId: expectedSessionId ?? sessionId);
-    if (expectedSessionId != null &&
-        parent.target?.isCurrentSession(expectedSessionId) != true) {
-      return;
-    }
+    if (!_acceptsExpectedDisplayTopology(
+        expectedSessionId, expectedDisplayTopologyRevision)) return;
 
     _scrollStyle =
         style != null ? ScrollStyle.fromString(style) : ScrollStyle.scrollauto;
@@ -2150,13 +2328,14 @@ class CanvasModel with ChangeNotifier {
   }
 
   Future<void> initializeEdgeScrollEdgeThickness(
-      {SessionID? expectedSessionId}) async {
+      {SessionID? expectedSessionId,
+      int? expectedDisplayTopologyRevision}) async {
+    if (!_acceptsExpectedDisplayTopology(
+        expectedSessionId, expectedDisplayTopologyRevision)) return;
     final savedValue = await bind.sessionGetEdgeScrollEdgeThickness(
         sessionId: expectedSessionId ?? sessionId);
-    if (expectedSessionId != null &&
-        parent.target?.isCurrentSession(expectedSessionId) != true) {
-      return;
-    }
+    if (!_acceptsExpectedDisplayTopology(
+        expectedSessionId, expectedDisplayTopologyRevision)) return;
 
     if (savedValue != null) {
       _edgeScrollEdgeThickness = savedValue;
@@ -3506,8 +3685,10 @@ class FFI {
   late final Peers favoritePeersModel; // global
   late final MobileSessionStartQueue<_MobileSessionStartRequest>
       _mobileSessionStarts;
-  late _DisplaySelectionOwner _displaySelectionOwner;
-  late DisplaySelectionQueue<_DisplaySelectionOwner> _displaySelections;
+  late _SessionOwner _sessionOwner;
+  late DisplaySelectionQueue<_SessionOwner> _displaySelections;
+  late SessionEventQueue<_SessionOwner> _sessionEvents;
+  Future<bool>? _firstImageInitialization;
 
   // Terminal model registry for multiple terminals
   final Map<int, TerminalModel> _terminalModels = {};
@@ -3528,25 +3709,42 @@ class FFI {
       SessionID expectedClientOwnerId,
       Future<bool> Function() operation) {
     final expectedOwner =
-        _DisplaySelectionOwner(expectedSessionId, expectedClientOwnerId);
-    if (expectedOwner != _displaySelectionOwner) {
+        _SessionOwner(expectedSessionId, expectedClientOwnerId);
+    if (expectedOwner != _sessionOwner) {
       return Future.value(false);
     }
     return _displaySelections.submit(expectedOwner, operation);
   }
 
-  void _installDisplaySelectionOwner(SessionID nextSessionId) {
-    final nextOwner = _DisplaySelectionOwner(nextSessionId, clientOwnerId);
-    _displaySelectionOwner = nextOwner;
-    _displaySelections = DisplaySelectionQueue(nextOwner);
+  Future<SessionEventDisposition> submitSessionEvent(
+      SessionID expectedSessionId,
+      SessionID expectedClientOwnerId,
+      Future<void> Function() operation) {
+    final expectedOwner =
+        _SessionOwner(expectedSessionId, expectedClientOwnerId);
+    if (expectedOwner != _sessionOwner) {
+      return Future.value(SessionEventDisposition.retired);
+    }
+    return _sessionEvents.submit(expectedOwner, operation);
   }
 
-  void _retireDisplaySelectionOwner(SessionID retiringSessionId) {
+  void _installSessionOwner(SessionID nextSessionId) {
+    final nextOwner = _SessionOwner(nextSessionId, clientOwnerId);
+    _sessionOwner = nextOwner;
+    _displaySelections = DisplaySelectionQueue(nextOwner);
+    _sessionEvents = SessionEventQueue(nextOwner);
+    _firstImageInitialization = null;
+  }
+
+  void _retireSessionOwner(SessionID retiringSessionId) {
     final retiringOwner =
-        _DisplaySelectionOwner(retiringSessionId, clientOwnerId);
-    if (!_displaySelections.retire(retiringOwner)) {
-      throw StateError('display selection owner changed before retirement');
+        _SessionOwner(retiringSessionId, clientOwnerId);
+    final sessionEventsRetired = _sessionEvents.retire(retiringOwner);
+    final displaySelectionsRetired = _displaySelections.retire(retiringOwner);
+    if (!sessionEventsRetired || !displaySelectionsRetired) {
+      throw StateError('session owner changed before retirement');
     }
+    _firstImageInitialization = null;
   }
 
   FFI(SessionID? sId) {
@@ -3555,7 +3753,7 @@ class FFI {
     // UUID. The UI owner must still change so delayed work from the old view
     // cannot mutate the replacement handler.
     clientOwnerId = isMobile ? _mobileClientOwnerId : Uuid().v4obj();
-    _installDisplaySelectionOwner(sessionId);
+    _installSessionOwner(sessionId);
     imageModel = ImageModel(WeakReference(this));
     ffiModel = FfiModel(WeakReference(this));
     cursorModel = CursorModel(WeakReference(this));
@@ -3687,7 +3885,7 @@ class FFI {
       return;
     }
     closed = true;
-    _retireDisplaySelectionOwner(expectedSessionId);
+    _retireSessionOwner(expectedSessionId);
     dialogManager.dismissAll();
     ffiModel.handleMsgBox({
       'type': 'error',
@@ -3699,6 +3897,112 @@ class FFI {
     unawaited(_closeNativeSession(expectedSessionId));
   }
 
+  Future<int?> _displayTopologyAfterCheckpoint(
+      SessionEventQueue<_SessionOwner> sessionEvents,
+      _SessionOwner streamOwner,
+      SessionID activeSessionId) async {
+    final checkpoint = sessionEvents.checkpoint(streamOwner);
+    final disposition = await checkpoint.done;
+    if (disposition != SessionEventDisposition.completed ||
+        !sessionEvents.isCurrent(checkpoint) ||
+        !isCurrentSessionOwner(activeSessionId, streamOwner.clientOwnerId)) {
+      return null;
+    }
+    return ffiModel.currentDisplayTopologyRevision(activeSessionId);
+  }
+
+  Future<void> _handleSoftwareRgba(
+      SessionEventQueue<_SessionOwner> sessionEvents,
+      _SessionOwner streamOwner,
+      SessionID activeSessionId,
+      int display,
+      int publication) async {
+    final topologyRevision = await _displayTopologyAfterCheckpoint(
+        sessionEvents, streamOwner, activeSessionId);
+    if (topologyRevision == null) {
+      platformFFI.nextRgba(activeSessionId, display, publication);
+      return;
+    }
+
+    var imageOwnsAcknowledgement = false;
+    try {
+      // Copy the exact publication through the generated bridge. Flutter never
+      // borrows a pointer into a Rust mailbox across an asynchronous decode.
+      final rgba =
+          platformFFI.copyRgba(activeSessionId, display, publication);
+      if (rgba == null) {
+        platformFFI.nextRgba(activeSessionId, display, publication);
+        return;
+      }
+      imageOwnsAcknowledgement = true;
+      final presented = await imageModel.onRgba(
+          activeSessionId, display, rgba,
+          publication: publication,
+          expectedDisplayTopologyRevision: topologyRevision);
+      if (presented) {
+        await onEvent2UIRgba(activeSessionId, topologyRevision,
+            imageGeometryInitialized: true);
+      }
+    } catch (error) {
+      if (!imageOwnsAcknowledgement) {
+        platformFFI.nextRgba(activeSessionId, display, publication);
+      }
+      debugPrint('Software RGBA presentation failed: ${error.runtimeType}');
+    }
+  }
+
+  Future<void> _handleTextureRgba(
+      SessionEventQueue<_SessionOwner> sessionEvents,
+      _SessionOwner streamOwner,
+      SessionID activeSessionId,
+      int display) async {
+    final topologyRevision = await _displayTopologyAfterCheckpoint(
+        sessionEvents, streamOwner, activeSessionId);
+    if (topologyRevision == null) return;
+    debugPrint('EventToUI_Texture display:$display');
+    await onEvent2UIRgba(activeSessionId, topologyRevision,
+        imageGeometryInitialized: false);
+  }
+
+  Future<void> _handleWebRgba(
+      SessionEventQueue<_SessionOwner> sessionEvents,
+      _SessionOwner streamOwner,
+      SessionID activeSessionId,
+      int display,
+      Uint8List data) async {
+    final topologyRevision = await _displayTopologyAfterCheckpoint(
+        sessionEvents, streamOwner, activeSessionId);
+    if (topologyRevision == null) return;
+    final presented = await imageModel.onRgba(activeSessionId, display, data,
+        expectedDisplayTopologyRevision: topologyRevision);
+    if (presented) {
+      await onEvent2UIRgba(activeSessionId, topologyRevision,
+          imageGeometryInitialized: true);
+    }
+  }
+
+  void _observeSessionTask(
+      Future<void> task, SessionID activeSessionId, String description) {
+    unawaited(task.then<void>((_) {},
+        onError: (Object error, StackTrace stackTrace) {
+      if (isCurrentSession(activeSessionId)) {
+        debugPrint('$description failed: ${error.runtimeType}');
+      }
+    }));
+  }
+
+  void _observeQueuedSessionState(
+      Future<SessionEventDisposition> task,
+      SessionID activeSessionId,
+      String peerId) {
+    unawaited(task.then<void>((_) {},
+        onError: (Object error, StackTrace stackTrace) {
+      debugPrint('Queued session state failed: ${error.runtimeType}');
+      _reportSessionStreamFailure(activeSessionId, peerId,
+          'The remote session state became inconsistent');
+    }));
+  }
+
   void _listenToSessionStream(
     Stream<EventToUI> stream,
     SessionID activeSessionId,
@@ -3706,10 +4010,20 @@ class FFI {
     int? tabWindowId,
     int? display,
   ) {
+    final streamOwner = _SessionOwner(activeSessionId, clientOwnerId);
+    if (streamOwner != _sessionOwner) {
+      _reportSessionStreamFailure(activeSessionId, peerId,
+          'The remote session state became inconsistent');
+      return;
+    }
+    final sessionEvents = _sessionEvents;
     if (isWeb) {
       platformFFI.setRgbaCallback((int display, Uint8List data) {
-        onEvent2UIRgba(activeSessionId);
-        imageModel.onRgba(activeSessionId, display, data);
+        _observeSessionTask(
+            _handleWebRgba(sessionEvents, streamOwner, activeSessionId,
+                display, data),
+            activeSessionId,
+            'Web RGBA presentation');
       });
       return;
     }
@@ -3724,20 +4038,17 @@ class FFI {
       if (tabWindowId != null && !isToNewWindowNotified.value) {
         // Session is ready to be moved to a new window.
         // Get the cached data and handle the cached data.
-        Future.delayed(Duration.zero, () async {
+        final cachedState = sessionEvents.submit(streamOwner, () async {
           final args = jsonEncode({'id': peerId, 'close': display == null});
           final cachedData = await DesktopMultiWindow.invokeMethod(
               tabWindowId, kWindowEventGetCachedSessionData, args);
           if (!isCurrentSession(activeSessionId)) return;
           if (cachedData == null) {
-            // unreachable
-            debugPrint('Unreachable, the cached data is empty.');
-            return;
+            throw StateError('cached session state is empty');
           }
           final data = CachedPeerData.fromString(cachedData);
           if (data == null) {
-            debugPrint('Unreachable, the cached data cannot be decoded.');
-            return;
+            throw StateError('cached session state cannot be decoded');
           }
           ffiModel.setPermissions(data.permissions);
           await ffiModel.handleCachedPeerData(data, peerId, activeSessionId);
@@ -3748,50 +4059,48 @@ class FFI {
           await bind.sessionRequestNewDisplayInitMsgs(
               sessionId: activeSessionId, display: ffiModel.pi.currentDisplay);
         });
+        _observeQueuedSessionState(cachedState, activeSessionId, peerId);
         isToNewWindowNotified.value = true;
       }
-      () async {
-        if (message is EventToUI_Event) {
-          if (message.field0 == "close") {
-            streamFinality.acceptExpectedClose();
-            if (sessionId == activeSessionId) {
-              closed = true;
-              _retireDisplaySelectionOwner(activeSessionId);
-            }
-            debugPrint('Exit session event loop');
-            return;
+      if (message is EventToUI_Event) {
+        if (message.field0 == 'close') {
+          streamFinality.acceptExpectedClose();
+          sessionEvents.retire(streamOwner);
+          if (isCurrentSessionOwner(
+              activeSessionId, streamOwner.clientOwnerId)) {
+            closed = true;
+            _retireSessionOwner(activeSessionId);
           }
-
-          Map<String, dynamic>? event;
-          try {
-            event = json.decode(message.field0);
-          } catch (e) {
-            debugPrint('json.decode fail1(): $e, ${message.field0}');
-          }
-          if (event != null) {
-            await cb(event);
-          }
-        } else if (message is EventToUI_Rgba) {
-          final display = message.field0;
-          final publication = message.field1;
-          // Copy the exact publication through the generated bridge. Flutter never
-          // borrows a pointer into a Rust mailbox across an asynchronous decode.
-          final rgba =
-              platformFFI.copyRgba(activeSessionId, display, publication);
-          if (rgba != null) {
-            onEvent2UIRgba(activeSessionId);
-            await imageModel.onRgba(
-                activeSessionId, display, rgba, publication);
-          } else {
-            platformFFI.nextRgba(activeSessionId, display, publication);
-          }
-        } else if (message is EventToUI_Texture) {
-          final display = message.field0;
-          debugPrint("EventToUI_Texture display:$display");
-          onEvent2UIRgba(activeSessionId);
+          debugPrint('Exit session event loop');
+          return;
         }
-      }();
+
+        try {
+          final decoded = json.decode(message.field0);
+          if (decoded is! Map<String, dynamic>) {
+            throw FormatException('session event is not an object');
+          }
+          _observeSessionTask(cb(decoded), activeSessionId, 'Session event');
+        } catch (error) {
+          debugPrint('Session event decoding failed: ${error.runtimeType}');
+          _reportSessionStreamFailure(activeSessionId, peerId,
+              'The remote session state became inconsistent');
+        }
+      } else if (message is EventToUI_Rgba) {
+        _observeSessionTask(
+            _handleSoftwareRgba(sessionEvents, streamOwner, activeSessionId,
+                message.field0, message.field1),
+            activeSessionId,
+            'Software RGBA presentation');
+      } else if (message is EventToUI_Texture) {
+        _observeSessionTask(
+            _handleTextureRgba(sessionEvents, streamOwner, activeSessionId,
+                message.field0),
+            activeSessionId,
+            'Texture presentation');
+      }
     }, onError: (Object error, StackTrace stackTrace) {
+      sessionEvents.retire(streamOwner);
       if (!streamFinality.acceptUnexpectedTermination()) {
         return;
       }
@@ -3799,6 +4108,7 @@ class FFI {
       _reportSessionStreamFailure(
           activeSessionId, peerId, 'The connection could not be started');
     }, onDone: () {
+      sessionEvents.retire(streamOwner);
       if (!streamFinality.acceptUnexpectedTermination()) {
         return;
       }
@@ -3824,10 +4134,10 @@ class FFI {
   }) {
     if (isMobile) {
       final previousSessionId = sessionId;
-      _retireDisplaySelectionOwner(previousSessionId);
+      _retireSessionOwner(previousSessionId);
       mobileReset(previousSessionId);
       sessionId = Uuid().v4obj();
-      _installDisplaySelectionOwner(sessionId);
+      _installSessionOwner(sessionId);
     }
     final activeSessionId = sessionId;
     closed = false;
@@ -3927,6 +4237,11 @@ class FFI {
             activeSessionId, id, 'The connection could not be started');
         return activeSessionId;
       }
+      if (ffiModel._beginDisplayTopologyMutation(activeSessionId) == null) {
+        _reportSessionStreamFailure(
+            activeSessionId, id, 'The connection could not be started');
+        return activeSessionId;
+      }
       ffiModel.pi.currentDisplay = display;
     }
     if (isDesktop && connType == ConnType.defaultConn) {
@@ -3955,25 +4270,73 @@ class FFI {
     return activeSessionId;
   }
 
-  void onEvent2UIRgba(SessionID expectedSessionId) async {
-    if (!isCurrentSession(expectedSessionId)) return;
+  Future<bool> _initializeFirstImage(
+      SessionID expectedSessionId,
+      int expectedDisplayTopologyRevision,
+      bool imageGeometryInitialized) async {
+    bool acceptsTopology() => ffiModel.isCurrentDisplayTopology(
+        expectedSessionId, expectedDisplayTopologyRevision);
+
+    if (!acceptsTopology()) return false;
+    if (!imageGeometryInitialized) {
+      await canvasModel.updateViewStyle(
+          expectedSessionId: expectedSessionId,
+          expectedDisplayTopologyRevision:
+              expectedDisplayTopologyRevision);
+      if (!acceptsTopology()) return false;
+      await canvasModel.updateScrollStyle(
+          expectedSessionId: expectedSessionId,
+          expectedDisplayTopologyRevision:
+              expectedDisplayTopologyRevision);
+      if (!acceptsTopology()) return false;
+      await canvasModel.initializeEdgeScrollEdgeThickness(
+          expectedSessionId: expectedSessionId,
+          expectedDisplayTopologyRevision:
+              expectedDisplayTopologyRevision);
+      if (!acceptsTopology()) return false;
+    }
+
+    ffiModel.waitForFirstImage.value = false;
+    dialogManager.dismissAll();
+    for (final cb in imageModel.callbacksOnFirstImage) {
+      cb(id);
+    }
+    return true;
+  }
+
+  Future<bool> onEvent2UIRgba(SessionID expectedSessionId,
+      int expectedDisplayTopologyRevision,
+      {required bool imageGeometryInitialized}) async {
+    if (!ffiModel.isCurrentDisplayTopology(
+        expectedSessionId, expectedDisplayTopologyRevision)) return false;
     if (ffiModel.waitForImageDialogShow.isTrue) {
       ffiModel.waitForImageDialogShow.value = false;
       ffiModel.waitForImageTimer?.cancel();
       clearWaitingForImage(dialogManager, expectedSessionId);
     }
-    if (ffiModel.waitForFirstImage.value == true) {
-      ffiModel.waitForFirstImage.value = false;
-      dialogManager.dismissAll();
-      await canvasModel.updateViewStyle(expectedSessionId: expectedSessionId);
-      if (!isCurrentSession(expectedSessionId)) return;
-      await canvasModel.updateScrollStyle(expectedSessionId: expectedSessionId);
-      if (!isCurrentSession(expectedSessionId)) return;
-      await canvasModel.initializeEdgeScrollEdgeThickness(
-          expectedSessionId: expectedSessionId);
-      if (!isCurrentSession(expectedSessionId)) return;
-      for (final cb in imageModel.callbacksOnFirstImage) {
-        cb(id);
+
+    while (true) {
+      if (!ffiModel.isCurrentDisplayTopology(
+          expectedSessionId, expectedDisplayTopologyRevision)) return false;
+      if (ffiModel.waitForFirstImage.value != true) {
+        return true;
+      }
+
+      final inProgress = _firstImageInitialization;
+      if (inProgress != null) {
+        final completed = await inProgress;
+        if (completed) return true;
+        continue;
+      }
+      final initialization = _initializeFirstImage(expectedSessionId,
+          expectedDisplayTopologyRevision, imageGeometryInitialized);
+      _firstImageInitialization = initialization;
+      try {
+        return await initialization;
+      } finally {
+        if (identical(_firstImageInitialization, initialization)) {
+          _firstImageInitialization = null;
+        }
       }
     }
   }
@@ -3992,7 +4355,7 @@ class FFI {
     final closingSessionId = expectedSessionId ?? sessionId;
     if (closingSessionId == sessionId) {
       closed = true;
-      _retireDisplaySelectionOwner(closingSessionId);
+      _retireSessionOwner(closingSessionId);
     }
     if (sessionId != closingSessionId) {
       if (closeSession) {
@@ -4278,17 +4641,26 @@ Future<Map<String, dynamic>?> getCanvasConfig(SessionID sessionId) async {
 }
 
 Future<void> initializeCursorAndCanvas(FFI ffi,
-    {SessionID? expectedSessionId}) async {
+    {SessionID? expectedSessionId,
+    int? expectedDisplayTopologyRevision}) async {
+  bool acceptsExpectedTopology() =>
+      expectedSessionId == null
+          ? expectedDisplayTopologyRevision == null
+          : ffi.isCurrentSession(expectedSessionId) &&
+              (expectedDisplayTopologyRevision == null ||
+                  ffi.ffiModel.isCurrentDisplayTopology(
+                      expectedSessionId, expectedDisplayTopologyRevision));
+
+  if (!acceptsExpectedTopology()) return;
   final selectedSessionId = expectedSessionId ?? ffi.sessionId;
   var p = await getCanvasConfig(selectedSessionId);
-  if (expectedSessionId != null && !ffi.isCurrentSession(expectedSessionId)) {
-    return;
-  }
+  if (!acceptsExpectedTopology()) return;
   int currentDisplay = 0;
   if (p != null) {
     currentDisplay = p['currentDisplay'];
   }
   if (p == null || currentDisplay != ffi.ffiModel.pi.currentDisplay) {
+    if (!acceptsExpectedTopology()) return;
     ffi.cursorModel.updateDisplayOrigin(
         ffi.ffiModel.rect?.left ?? 0, ffi.ffiModel.rect?.top ?? 0);
     return;
@@ -4298,6 +4670,7 @@ Future<void> initializeCursorAndCanvas(FFI ffi,
   double xCanvas = p['xCanvas'];
   double yCanvas = p['yCanvas'];
   double scale = p['scale'];
+  if (!acceptsExpectedTopology()) return;
   ffi.cursorModel.updateDisplayOriginWithCursor(ffi.ffiModel.rect?.left ?? 0,
       ffi.ffiModel.rect?.top ?? 0, xCursor, yCursor);
   ffi.canvasModel.update(xCanvas, yCanvas, scale);

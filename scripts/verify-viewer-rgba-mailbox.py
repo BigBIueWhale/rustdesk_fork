@@ -429,43 +429,50 @@ def validate(sources: Dict[str, str]) -> None:
         forbid(native, forbidden, "borrowed native RGBA pointer path")
 
     model = sources["model"]
-    on_rgba = extract_braced_item(
-        model, "Future<void> onRgba(", "asynchronous RGBA decode"
+    on_rgba = extract_async_dart_item(
+        model, "Future<bool> onRgba(", "asynchronous RGBA decode"
     )
     require_order(
         on_rgba,
         (
+            "required int expectedDisplayTopologyRevision",
+            "isCurrentDisplayTopology(",
             "admission = _rgbaPublicationOrder.admit(",
             "if (admission == null)",
             "platformFFI.nextRgba(expectedSessionId, display, publication);",
-            "return;",
-            "await decodeAndUpdate(expectedSessionId, display, rgba,",
+            "return false;",
+            "return await decodeAndUpdate(expectedSessionId, display, rgba,",
             "expectedRgbaPublication: admission",
+            "expectedDisplayTopologyRevision:",
             "} finally {",
             "platformFFI.nextRgba(expectedSessionId, display, publication);",
         ),
         "stale refusal and exact acknowledgement after admitted decode finality",
     )
     decode = extract_async_dart_item(
-        model, "Future<void> decodeAndUpdate(", "ordered RGBA decode"
+        model, "Future<bool> decodeAndUpdate(", "ordered RGBA decode"
     )
     require_order(
         decode,
         (
+            "required int expectedDisplayTopologyRevision",
+            "isCurrentDisplayTopology(",
             "_rgbaPublicationOrder.isCurrent(expectedRgbaPublication)",
             "final image = await img.decodeImageFromPixels(",
+            "isCurrentDisplayTopology(",
             "_rgbaPublicationOrder.isCurrent(expectedRgbaPublication)",
             "image.dispose();",
             "expectedRgbaPublication: expectedRgbaPublication",
         ),
         "publication admission before and after asynchronous image decode",
     )
-    update = extract_async_dart_item(model, "Future<void> update(", "image commit")
+    update = extract_async_dart_item(model, "Future<bool> update(", "image commit")
     require_order(
         update,
         (
             "bool acceptsExpectedImage()",
             "_rgbaPublicationOrder.isCurrent(expectedRgbaPublication)",
+            "isCurrentDisplayTopology(",
             "await parent.target?.canvasModel",
             "if (!acceptsExpectedImage())",
             "await initializeCursorAndCanvas(",
@@ -515,21 +522,36 @@ def validate(sources: Dict[str, str]) -> None:
     )
     for forbidden in ("Timer", "Future", "Stream", "List<", "Queue"):
         forbid(publication_order, forbidden, "detached or queued publication owner")
-    listener = model[
-        model.index("} else if (message is EventToUI_Rgba)") :
-        model.index("} else if (message is EventToUI_Texture)")
-    ]
+    listener = extract_async_dart_item(
+        model,
+        "Future<void> _handleSoftwareRgba(",
+        "checkpointed exact RGBA event handling",
+    )
     require_order(
         listener,
         (
-            "final display = message.field0;",
-            "final publication = message.field1;",
-            "platformFFI.copyRgba(activeSessionId, display, publication)",
-            "await imageModel.onRgba(",
-            "activeSessionId, display, rgba, publication",
+            "await _displayTopologyAfterCheckpoint(",
             "platformFFI.nextRgba(activeSessionId, display, publication);",
+            "platformFFI.copyRgba(activeSessionId, display, publication)",
+            "imageOwnsAcknowledgement = true;",
+            "await imageModel.onRgba(",
+            "activeSessionId, display, rgba",
+            "publication: publication",
+            "expectedDisplayTopologyRevision: topologyRevision",
         ),
-        "exact event copy/decode/ack wiring",
+        "exact checkpoint/copy/decode ownership wiring",
+    )
+    stream_listener = extract_braced_item(
+        model, "void _listenToSessionStream(", "session RGBA event dispatch"
+    )
+    require_order(
+        stream_listener,
+        (
+            "message is EventToUI_Rgba",
+            "_handleSoftwareRgba(sessionEvents, streamOwner, activeSessionId,",
+            "message.field0, message.field1)",
+        ),
+        "exact session RGBA event token dispatch",
     )
     forbid(listener, "getRgbaSize", "size-then-pointer Dart protocol")
     forbid(listener, "getRgba(", "raw-pointer Dart protocol")
@@ -699,9 +721,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("ui_session", "fn update_record_status", "fn get_rgba(&self, display: usize) -> *const u8;\n    fn update_record_status", "display-only trait authority"),
     ("native_model", "Uint8List? copyRgba(", "Uint8List? getRgba(", "native owned copy"),
     ("native_model", "_ffiBind.sessionCopyRgba(", "_session_get_rgba!(", "generated bridge copy"),
-    ("model", "final publication = message.field1;", "final publication = 0;", "Dart event token"),
+    ("model", "message.field0, message.field1)", "message.field0, 0)", "Dart event token"),
     ("model", "platformFFI.copyRgba(activeSessionId, display, publication)", "platformFFI.copyRgba(activeSessionId, display, 0)", "Dart exact copy"),
-    ("model", "activeSessionId, display, rgba, publication", "activeSessionId, display, rgba, 0", "Dart exact decode acknowledgement"),
+    ("model", "publication: publication", "publication: 0", "Dart exact decode acknowledgement"),
     ("model", "admission = _rgbaPublicationOrder.admit(", "admission = null; // disabled ", "Dart publication admission"),
     ("model", "expectedRgbaPublication: admission", "expectedRgbaPublication: null", "Dart decode publication propagation"),
     ("model", "_rgbaPublicationOrder.retire();", "// publication owner retained", "Dart image retirement"),

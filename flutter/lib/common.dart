@@ -3236,9 +3236,9 @@ Future<bool> openMonitorInTheSameTab(int i, FFI ffi, PeerInfo pi,
   if (pi.forceTextureRender && i != kAllDisplayValue) {
     ffi.imageModel.clearImage();
   }
-  ffi.ffiModel.switchToNewDisplay(i, ffi.sessionId, ffi.id,
+  return ffi.ffiModel.switchToNewDisplay(
+      i, expectedSessionId, ffi.id,
       updateCursorPos: updateCursorPos);
-  return true;
 }
 
 // Open new tab or window to show this monitor.

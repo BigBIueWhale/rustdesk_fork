@@ -24682,12 +24682,73 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   user's broader requirement that the whole connection flow be correct and performant on every supported platform is
   unchanged.
 
+### R-S11gq/R-S11e-229 — exact-session topology and presentation ordering (2026-08-14)
+
+- **SOURCE IMPLEMENTED; FOCUSED 121-MUTATION, ADJACENT RGBA 55-MUTATION, ADJACENT ANDROID 532-MUTATION, AND COMPLETE
+  INDEPENDENT SOURCE EVIDENCE PASS; EXACT DART/NATIVE/RELEASE EVIDENCE OPEN.** The audit found that the
+  ordered native session stream was consumed by a synchronous `Stream.listen` callback which started and discarded one
+  asynchronous closure for every message. Any awaited `peer_info`, `sync_peer_info`, display switch/follow, cached
+  window-transfer, cursor, file, or privacy handler could therefore overlap later messages and complete out of wire
+  order. In the display path specifically, `handleSwitchDisplay`, `handlePeerInfo`, `handleSyncPeerInfo`, and
+  `switchToNewDisplay` also discarded `updateCurDisplay` futures. Native software-RGBA publication ordering prevented
+  one older publication from replacing a newer publication for the same display, but it did not bind decoded pixels or
+  first-image/canvas work to the peer/display topology from which their dimensions were read. A later topology event
+  could therefore complete while an earlier frame decode or geometry update was still in flight. This is a concrete
+  shared Flutter source defect consistent with display-only incoherence or delay while input remains responsive; it is
+  not proof that the weeks-old deployed Android, Windows, or Debian binaries exercised this exact mechanism.
+- The local authority model is now one immutable `(session UUID, UI-owner UUID)` shared by both bounded Dart lanes.
+  Cached window-transfer state and the closed low-rate topology set (`peer_info`, `sync_peer_info`, platform additions,
+  switch/follow display, and texture-render mode) enter one FIFO with one running operation and at most 32 pending
+  operations. Exact owner mismatch or retirement refuses work before invocation. Overflow or task failure retires the
+  running/pending callers and becomes a visible terminal connection error. Expected close, stream error/done, explicit
+  close, and reusable-mobile predecessor replacement retire the exact topology and display-selection lanes together.
+  Local UI display state commits enter this same topology lane only after the existing ordered native display-selection
+  admission returns; code already executing in the topology lane applies its captured revision directly and does not
+  recursively enqueue. Revision-sensitive geometry work in the lane is awaited through its commit. The existing 300 ms
+  scroll-settle callback remains outside the FIFO so it cannot add topology head-of-line delay; it consumes no lane
+  capacity and rechecks the captured exact session/topology revision immediately before mutation.
+- Media decode deliberately remains outside that FIFO. Each software RGBA, native texture, or web RGBA notification
+  captures a non-enqueuing checkpoint for all topology work observed before it. Checkpoints consume no pending capacity;
+  if later topology is accepted before the continuation resumes, the earlier checkpoint is stale and the frame is
+  refused. A checkpoint that remains current captures the exact display-topology revision. That session/revision is
+  checked before dimensions are read, after asynchronous pixel decode, after canvas/cursor initialization awaits, and
+  immediately before image commit. A later topology mutation therefore prevents an old decode or canvas continuation
+  from publishing into new state. Software RGBA acknowledges the exact native publication on stale, missing-copy,
+  decode, success, and pre-handoff failure paths. First-image preparation is shared through at most one exact in-flight
+  future; only a still-current session/revision marks it complete or runs callbacks. Malformed session-stream JSON is a
+  visible terminal inconsistency rather than log-and-continue behavior. High-rate cursor/file work is not added to the
+  topology FIFO, and frame decode never occupies it.
+- This is an ordering/lifetime correction, not a recovery mechanism. It adds no reconnect, retry, timer, polling loop,
+  isolate, worker, runtime, Android service restart, native transport queue, or decode head-of-line wait. Deterministic
+  Dart queue tests cover FIFO behavior, capacity-free checkpoints, later-state invalidation, overflow retirement, task
+  failure, exact retirement, and replacement-session independence. The focused display/session finality verifier and
+  independent workspace verifier bind the queue, exact owner lifecycle, topology event set, cached-state ordering,
+  malformed-event finality, local-commit serialization, checkpoint/revision guards, first-image finality, requirements,
+  ledger, and generated Dart gate wiring. In the locked numeric-nonroot, networkless, capability-free, read-only-source
+  verifier container, the focused display/session suite rejected all 121 mutations, the adjacent RGBA suite rejected all
+  55, and the adjacent Android lifecycle suite rejected all 532. The independent baseline returned
+  `verify-verifier-workspace: ok`, and the complete unsliced independent source-mutation catalog restarted at mutation
+  one and returned terminal `verify-verifier-workspace: ok`. Earlier catalog attempts are not counted as passes: they
+  exposed and then regression-fixed ambiguous duplicate queue/owner guard labels, an over-broad stale-first-image
+  diagnostic, one stale Android stream-error target after exact queue retirement was added, and one over-broad
+  platform-additions decode diagnostic. The independent harness now preflights every mutation target and runtime scope
+  before executing the catalog, so an absent or unreachable fixture fails before mutation one rather than after a long
+  partial run.
+- This source slice changes no host service, process, listener, firewall, network namespace, persistent Android service,
+  or OS privilege boundary. Exact Dart formatting/analyzer/test and generated-bridge execution have not yet been run in
+  this slice. Physical Android task-swipe/reopen/Force-Stop recovery; native Windows focus/minimize behavior;
+  Linux/macOS/iOS lifecycle; deployed and cross-version behavior; concurrent-feature interaction;
+  capture-through-compositor timestamps and explicit latency/queue budgets; sustained reconnect/focus/resource soak;
+  clean committed cold Debian/Android/Windows R-B2/R-B10 artifact equality; installed-service/release-child proofs;
+  independent reproduction; external review; and the user's broader requirement that the whole connection flow be
+  correct and performant on every supported platform all remain open release obligations.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-91064322264fd173f18dce533faa3861eca51024fc770e1e4e21375405b2eec5  requirements.html
+ff88365c99bc807078258b96bcaba76375120472cf32699f378ac50e0af3baa8  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -24746,3 +24807,4 @@ The same identity additionally binds R-S11gm and Appendix C #348.
 The same identity additionally binds R-S11gn and Appendix C #349.
 The same identity additionally binds R-S11go and Appendix C #350.
 The same identity additionally binds R-S11gp and Appendix C #351.
+The same identity additionally binds R-S11gq and Appendix C #352.

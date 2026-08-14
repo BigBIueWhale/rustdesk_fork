@@ -18924,7 +18924,7 @@ def validate_viewer_rgba_mailbox_contract(sources):
             "viewer RGBA raw-pointer deletion contract",
         ),
         (
-            '"final publication = message.field1;"',
+            '"message.field0, message.field1)"',
             "viewer RGBA Dart publication propagation contract",
         ),
         (
@@ -19005,8 +19005,8 @@ def validate_viewer_rgba_mailbox_contract(sources):
             "viewer RGBA owned generated-bridge result contract",
         ),
         (
-            '("model", "final publication = message.field1;", '
-            '"final publication = 0;", "Dart event token"),',
+            '("model", "message.field0, message.field1)", '
+            '"message.field0, 0)", "Dart event token"),',
             "viewer RGBA Dart publication propagation contract",
         ),
         (
@@ -19133,7 +19133,7 @@ def validate_viewer_rgba_mailbox_contract(sources):
             "admission = _rgbaPublicationOrder.admit(",
             "if (admission == null)",
             "platformFFI.nextRgba(expectedSessionId, display, publication);",
-            "return;",
+            "return false;",
             "expectedRgbaPublication: admission",
             "} finally {",
             "platformFFI.nextRgba(expectedSessionId, display, publication);",
@@ -19251,10 +19251,13 @@ def validate_display_selection_finality_contract(sources):
         ('"await bind.sessionSwitchDisplay("', "awaited Dart admission"),
         ('"if (_retired || expectedOwner != owner)"', "exact Dart queue owner"),
         ('"_running?.complete(false);"', "retired running caller completion"),
-        ('"_retireDisplaySelectionOwner(previousSessionId);"', "mobile predecessor queue retirement"),
-        ('"_installDisplaySelectionOwner(sessionId);"', "mobile replacement queue installation"),
-        ('"_retireDisplaySelectionOwner(expectedSessionId);"', "stream-failure queue retirement"),
-        ('"_retireDisplaySelectionOwner(activeSessionId);"', "expected stream-close queue retirement"),
+        ('"_retireSessionOwner(previousSessionId);"', "mobile predecessor queue retirement"),
+        ('"_installSessionOwner(sessionId);"', "mobile replacement queue installation"),
+        ('"_retireSessionOwner(expectedSessionId);"', "stream-failure queue retirement"),
+        ('"_retireSessionOwner(activeSessionId);"', "expected stream-close queue retirement"),
+        ('"SessionEventCheckpoint<Owner> checkpoint("', "capacity-free topology checkpoint"),
+        ('"await ffi.submitSessionEvent("', "exact-owner topology serialization"),
+        ('"required int expectedDisplayTopologyRevision"', "display-topology stale completion guard"),
         ("capture_display_has_exactly_one_operation", "controlled exact capture operation"),
         ('"return false;"', "controlled invalid-request finality"),
         ("MUTATIONS: Tuple[Mutation, ...]", "display-selection mutation inventory"),
@@ -19274,6 +19277,9 @@ def validate_display_selection_finality_contract(sources):
         ('"exact queue owner admission"', "exact queue owner mutation"),
         ('"mobile predecessor queue retirement"', "mobile predecessor queue mutation"),
         ('"replacement independence regression"', "replacement independence mutation"),
+        ('"session topology capacity bound"', "topology capacity mutation"),
+        ('"media checkpoint regression"', "media checkpoint mutation"),
+        ('"local display commit serialization"', "local topology serialization mutation"),
         ('"terminal invalid switch"', "controlled finality mutation"),
         ('"independent verifier dispatch"', "independent dispatch mutation"),
     ):
@@ -19478,8 +19484,8 @@ def validate_display_selection_finality_contract(sources):
             "if (!await selectRemoteDisplays(ffi, expectedSessionId, displays))",
             "return false;",
             "ffi.imageModel.clearImage();",
-            "ffi.ffiModel.switchToNewDisplay(",
-            "return true;",
+            "return ffi.ffiModel.switchToNewDisplay(",
+            "i, expectedSessionId, ffi.id",
         ),
         "independent Dart selection admission before local commit",
     )
@@ -19499,6 +19505,7 @@ def validate_display_selection_finality_contract(sources):
             "displays: requestedDisplays",
             "if (addRes != '')",
             "return activeSessionId;",
+            "ffiModel._beginDisplayTopologyMutation(activeSessionId)",
             "ffiModel.pi.currentDisplay = display;",
             "stream = bind.sessionStart(",
         ),
@@ -19541,26 +19548,26 @@ def validate_display_selection_finality_contract(sources):
     )
     owner = extract_between(
         sources["model_dart"],
-        "class _DisplaySelectionOwner",
+        "class _SessionOwner",
         "class _MobileSessionStartRequest",
-        "independent immutable Dart display-selection owner",
+        "independent immutable Dart session owner",
     )
     require_order(
         owner,
         (
             "final SessionID sessionId;",
             "final SessionID clientOwnerId;",
-            "other is _DisplaySelectionOwner",
+            "other is _SessionOwner",
             "sessionId == other.sessionId",
             "clientOwnerId == other.clientOwnerId",
             "Object.hash(sessionId, clientOwnerId)",
         ),
-        "independent display-selection owner value identity",
+        "independent session owner value identity",
     )
     submit_selection = extract_between(
         sources["model_dart"],
         "Future<bool> submitDisplaySelection(",
-        "void _installDisplaySelectionOwner(",
+        "Future<SessionEventDisposition> submitSessionEvent(",
         "independent owner-bound Dart display-selection submission",
     )
     require_order(
@@ -19568,8 +19575,8 @@ def validate_display_selection_finality_contract(sources):
         (
             "SessionID expectedSessionId",
             "SessionID expectedClientOwnerId",
-            "_DisplaySelectionOwner(expectedSessionId, expectedClientOwnerId)",
-            "if (expectedOwner != _displaySelectionOwner)",
+            "_SessionOwner(expectedSessionId, expectedClientOwnerId)",
+            "if (expectedOwner != _sessionOwner)",
             "return Future.value(false);",
             "_displaySelections.submit(expectedOwner, operation)",
         ),
@@ -19577,19 +19584,22 @@ def validate_display_selection_finality_contract(sources):
     )
     owner_lifecycle = extract_between(
         sources["model_dart"],
-        "void _installDisplaySelectionOwner(",
+        "void _installSessionOwner(",
         "FFI(SessionID? sId)",
         "independent display-selection owner lifecycle",
     )
     require_order(
         owner_lifecycle,
         (
-            "_DisplaySelectionOwner(nextSessionId, clientOwnerId)",
-            "_displaySelectionOwner = nextOwner;",
+            "_SessionOwner(nextSessionId, clientOwnerId)",
+            "_sessionOwner = nextOwner;",
             "_displaySelections = DisplaySelectionQueue(nextOwner);",
-            "void _retireDisplaySelectionOwner(",
-            "_DisplaySelectionOwner(retiringSessionId, clientOwnerId)",
-            "if (!_displaySelections.retire(retiringOwner))",
+            "_sessionEvents = SessionEventQueue(nextOwner);",
+            "void _retireSessionOwner(",
+            "_SessionOwner(retiringSessionId, clientOwnerId)",
+            "_sessionEvents.retire(retiringOwner)",
+            "_displaySelections.retire(retiringOwner)",
+            "if (!sessionEventsRetired || !displaySelectionsRetired)",
             "throw StateError(",
         ),
         "independent install and fail-closed exact retirement",
@@ -19604,10 +19614,10 @@ def validate_display_selection_finality_contract(sources):
         mobile_start,
         (
             "final previousSessionId = sessionId;",
-            "_retireDisplaySelectionOwner(previousSessionId);",
+            "_retireSessionOwner(previousSessionId);",
             "mobileReset(previousSessionId);",
             "sessionId = Uuid().v4obj();",
-            "_installDisplaySelectionOwner(sessionId);",
+            "_installSessionOwner(sessionId);",
         ),
         "independent retire-old/reset/rotate/install ordering",
     )
@@ -19623,7 +19633,7 @@ def validate_display_selection_finality_contract(sources):
             "final closingSessionId = expectedSessionId ?? sessionId;",
             "if (closingSessionId == sessionId)",
             "closed = true;",
-            "_retireDisplaySelectionOwner(closingSessionId);",
+            "_retireSessionOwner(closingSessionId);",
             "if (sessionId != closingSessionId)",
         ),
         "independent current-session retirement before asynchronous close",
@@ -19639,7 +19649,7 @@ def validate_display_selection_finality_contract(sources):
         (
             "if (!isCurrentSession(expectedSessionId))",
             "closed = true;",
-            "_retireDisplaySelectionOwner(expectedSessionId);",
+            "_retireSessionOwner(expectedSessionId);",
             "dialogManager.dismissAll();",
             "unawaited(_closeNativeSession(expectedSessionId));",
         ),
@@ -19647,7 +19657,7 @@ def validate_display_selection_finality_contract(sources):
     )
     expected_close = extract_between(
         sources["model_dart"],
-        'if (message.field0 == "close") {',
+        "if (message.field0 == 'close') {",
         "debugPrint('Exit session event loop');",
         "independent Dart expected stream-close finality",
     )
@@ -19655,12 +19665,264 @@ def validate_display_selection_finality_contract(sources):
         expected_close,
         (
             "streamFinality.acceptExpectedClose();",
-            "if (sessionId == activeSessionId)",
+            "sessionEvents.retire(streamOwner);",
+            "if (isCurrentSessionOwner(",
             "closed = true;",
-            "_retireDisplaySelectionOwner(activeSessionId);",
+            "_retireSessionOwner(activeSessionId);",
         ),
         "independent expected stream close retires exact queue",
     )
+    session_queue = extract_between(
+        sources["session_event_queue_dart"],
+        "class SessionEventQueue",
+        "class _SessionEventEntry",
+        "independent bounded session topology queue",
+    )
+    require_order(
+        session_queue,
+        (
+            "SessionEventQueue(this.owner, {this.maxPending = 32})",
+            "final Queue<_SessionEventEntry> _pending",
+            "int _acceptedGeneration = 0;",
+            "int _completedGeneration = 0;",
+            "if (_retired || expectedOwner != owner)",
+            "if (_pending.length >= maxPending)",
+            "_retireCurrentAndPending();",
+            "_SessionEventEntry(++_acceptedGeneration, operation)",
+            "_pending.addLast(entry);",
+            "SessionEventCheckpoint<Owner> checkpoint(",
+            "final tail = _pending.isEmpty ? _running : _pending.last;",
+            "checkpoint.generation == _acceptedGeneration",
+            "_completedGeneration >= checkpoint.generation",
+            "await entry.operation();",
+            "_completedGeneration = entry.generation;",
+            "entry.completeError(error, stackTrace);",
+            "_retireCurrentAndPending();",
+            "_pending.removeFirst()",
+        ),
+        "independent bounded FIFO/checkpoint/failure topology order",
+    )
+    queue_submit = extract_between(
+        sources["session_event_queue_dart"],
+        "Future<SessionEventDisposition> submit(",
+        "SessionEventCheckpoint<Owner> checkpoint(",
+        "independent exact-owner session topology queue submission",
+    )
+    require_order(
+        queue_submit,
+        (
+            "if (_retired || expectedOwner != owner)",
+            "Future.value(SessionEventDisposition.retired)",
+            "if (_pending.length >= maxPending)",
+        ),
+        "independent exact-owner session topology queue submission",
+    )
+    queue_checkpoint = extract_between(
+        sources["session_event_queue_dart"],
+        "SessionEventCheckpoint<Owner> checkpoint(",
+        "bool isCurrent(SessionEventCheckpoint<Owner> checkpoint)",
+        "independent exact-owner media topology checkpoint",
+    )
+    require_order(
+        queue_checkpoint,
+        (
+            "if (_retired || expectedOwner != owner)",
+            "Future.value(SessionEventDisposition.retired)",
+            "final tail = _pending.isEmpty ? _running : _pending.last;",
+        ),
+        "independent exact-owner media topology checkpoint",
+    )
+    for forbidden in ("Timer(", "Future.delayed(", "Isolate", "compute("):
+        require_absent(
+            session_queue,
+            forbidden,
+            "session topology timer/worker recovery",
+        )
+    session_submit = extract_between(
+        sources["model_dart"],
+        "Future<SessionEventDisposition> submitSessionEvent(",
+        "void _installSessionOwner(",
+        "independent exact-owner topology submission",
+    )
+    require_order(
+        session_submit,
+        (
+            "_SessionOwner(expectedSessionId, expectedClientOwnerId)",
+            "if (expectedOwner != _sessionOwner)",
+            "Future.value(SessionEventDisposition.retired)",
+            "_sessionEvents.submit(expectedOwner, operation)",
+        ),
+        "independent exact-owner topology submission",
+    )
+    event_listener = extract_between(
+        sources["model_dart"],
+        "StreamEventHandler startEventListener(",
+        "Future<void> _handleSessionEvent(",
+        "independent ordered session event callback",
+    )
+    require_order(
+        event_listener,
+        (
+            "final expectedClientOwnerId = parent.target!.clientOwnerId;",
+            "_orderedSessionTopologyEvents.contains(name)",
+            "await ffi.submitSessionEvent(",
+            "sessionId, expectedClientOwnerId, operation",
+            "ffi._reportSessionStreamFailure(",
+            "await operation();",
+        ),
+        "independent topology-only event serialization",
+    )
+    platform_additions = extract_between(
+        sources["model_dart"],
+        "Future<void> handlePlatformAdditions(",
+        "Future<void> handleFollowCurrentDisplay(",
+        "independent platform-additions topology mutation",
+    )
+    require_order(
+        platform_additions,
+        (
+            "_beginDisplayTopologyMutation(sessionId)",
+            "if (topologyRevision == null) return;",
+            "final updateData = evt['platform_additions'] as String?;",
+            "cachedPeerData.peerInfo['platform_additions']",
+        ),
+        "independent platform additions invalidate in-flight media",
+    )
+    require_text(
+        platform_additions,
+        "final updateJson = json.decode(updateData) as Map<String, dynamic>;",
+        "independent fallible platform-additions decode",
+    )
+    require_absent(
+        platform_additions,
+        "catch (",
+        "independent log-and-continue malformed platform additions",
+    )
+    local_switch = extract_between(
+        sources["model_dart"],
+        "Future<bool> switchToNewDisplay(",
+        "Future<bool> _applyDisplaySwitch(",
+        "independent local display topology commit",
+    )
+    require_order(
+        local_switch,
+        (
+            "if (expectedTopologyRevision == null)",
+            "final expectedClientOwnerId = ffi.clientOwnerId;",
+            "await ffi.submitSessionEvent(",
+            "applied = await _applyDisplaySwitch(",
+            "disposition == SessionEventDisposition.completed",
+            "ffi.isCurrentSessionOwner(sessionId, expectedClientOwnerId)",
+        ),
+        "independent local display commit topology serialization",
+    )
+    stream_listener = extract_between(
+        sources["model_dart"],
+        "void _listenToSessionStream(",
+        "SessionID start(",
+        "independent exact-owner session stream listener",
+    )
+    require_order(
+        stream_listener,
+        (
+            "final streamOwner = _SessionOwner(activeSessionId, clientOwnerId);",
+            "if (streamOwner != _sessionOwner)",
+            "final sessionEvents = _sessionEvents;",
+            "final cachedState = sessionEvents.submit(streamOwner, () async {",
+            "_observeQueuedSessionState(cachedState, activeSessionId, peerId);",
+            "streamFinality.acceptExpectedClose();",
+            "sessionEvents.retire(streamOwner);",
+            "decoded is! Map<String, dynamic>",
+            "_reportSessionStreamFailure(activeSessionId, peerId,",
+            "_handleSoftwareRgba(sessionEvents, streamOwner, activeSessionId,",
+            "_handleTextureRgba(sessionEvents, streamOwner, activeSessionId,",
+        ),
+        "independent cached/event/media/terminal stream ordering",
+    )
+    require_absent(
+        stream_listener,
+        "Future.delayed(Duration.zero",
+        "independent detached cached-state continuation",
+    )
+    require_absent(
+        stream_listener,
+        "      () async {",
+        "independent detached per-message continuation",
+    )
+    checkpoint = extract_between(
+        sources["model_dart"],
+        "Future<int?> _displayTopologyAfterCheckpoint(",
+        "Future<void> _handleSoftwareRgba(",
+        "independent media topology checkpoint",
+    )
+    require_order(
+        checkpoint,
+        (
+            "sessionEvents.checkpoint(streamOwner)",
+            "await checkpoint.done",
+            "disposition != SessionEventDisposition.completed",
+            "!sessionEvents.isCurrent(checkpoint)",
+            "!isCurrentSessionOwner(activeSessionId, streamOwner.clientOwnerId)",
+            "currentDisplayTopologyRevision(activeSessionId)",
+        ),
+        "independent capacity-free media topology checkpoint",
+    )
+    image_decode = extract_between(
+        sources["model_dart"],
+        "Future<bool> decodeAndUpdate(",
+        "Future<bool> update(ui.Image? image",
+        "independent topology-bound image decode",
+    )
+    require_order(
+        image_decode,
+        (
+            "required int expectedDisplayTopologyRevision",
+            "isCurrentDisplayTopology(",
+            "getDisplayRect(display)",
+            "await img.decodeImageFromPixels(",
+            "isCurrentDisplayTopology(",
+            "image.dispose();",
+            "expectedDisplayTopologyRevision: expectedDisplayTopologyRevision",
+        ),
+        "independent pre/post-decode topology finality",
+    )
+    first_image = extract_between(
+        sources["model_dart"],
+        "Future<bool> onEvent2UIRgba(",
+        "/// Login with [password]",
+        "independent exact first-image initialization",
+    )
+    require_order(
+        first_image,
+        (
+            "isCurrentDisplayTopology(",
+            "final inProgress = _firstImageInitialization;",
+            "if (inProgress != null)",
+            "_firstImageInitialization = initialization;",
+            "if (identical(_firstImageInitialization, initialization))",
+            "_firstImageInitialization = null;",
+        ),
+        "independent single exact first-image transaction",
+    )
+    require_order(
+        first_image,
+        (
+            "final completed = await inProgress;",
+            "if (completed) return true;",
+            "continue;",
+            "final initialization = _initializeFirstImage(",
+        ),
+        "independent stale first-image retry",
+    )
+    for text, label in (
+        ("runs bounded session-state work in native stream order", "session topology FIFO regression"),
+        ("media checkpoints neither consume capacity nor survive later state", "media checkpoint regression"),
+        ("capacity failure retires running and queued session-state work", "session topology capacity regression"),
+        ("task failure is terminal and does not run retained successors", "session topology failure regression"),
+        ("mismatched owners are refused before invocation", "session topology exact-owner regression"),
+        ("exact retirement cannot block a replacement session", "session topology replacement regression"),
+    ):
+        require_text(sources["session_event_queue_test"], text, label)
     require_text(
         sources["display_selection_queue_test"],
         "keeps one running display selection and only the latest successor",
@@ -19683,6 +19945,11 @@ def validate_display_selection_finality_contract(sources):
         sources["model_dart"],
         "await handleSyncPeerInfo(evt, sessionId, peerId);",
         "awaited live-topology selection event",
+    )
+    require_text(
+        sources["model_dart"],
+        "await handlePlatformAdditions(evt, sessionId, peerId);",
+        "awaited platform-additions topology event",
     )
     require_text(
         sources["model_dart"],
@@ -19754,6 +20021,7 @@ def validate_display_selection_finality_contract(sources):
         ("verify", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "shared focused gate"),
         ("dart_verify", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "generated-bridge focused gate"),
         ("dart_verify", "flutter test --no-pub test/display_selection_queue_test.dart", "generated-bridge bounded display-selection test gate"),
+        ("dart_verify", "flutter test --no-pub test/session_event_queue_test.dart", "generated-bridge session topology queue test gate"),
         ("dart_verify", "display selection is not a normal worker-pool bridge call", "generated display-selection worker-mode gate"),
         ("apple", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "Apple/shared focused gate"),
         ("requirements", '<div class="req"><span class="id">R-S11go</span>', "R-S11go requirement"),
@@ -19761,9 +20029,12 @@ def validate_display_selection_finality_contract(sources):
         ("requirements", "<tr><td>350</td>", "Appendix C #350"),
         ("requirements", '<div class="req"><span class="id">R-S11gp</span>', "R-S11gp requirement"),
         ("requirements", "<tr><td>351</td>", "Appendix C #351"),
+        ("requirements", '<div class="req"><span class="id">R-S11gq</span>', "R-S11gq requirement"),
+        ("requirements", "<tr><td>352</td>", "Appendix C #352"),
         ("requirements", "first refreshed keyframe cannot outrun local display ownership", "normative local-before-network finality"),
         ("hardening", "### R-S11go/R-S11e-227 — ordered exact-owner display-selection finality", "R-S11go hardening ledger"),
         ("hardening", "### R-S11gp/R-S11e-228 — exact-session display-selection queue lifetime", "R-S11gp hardening ledger"),
+        ("hardening", "### R-S11gq/R-S11e-229 — exact-session topology and presentation ordering", "R-S11gq hardening ledger"),
     ):
         require_text(sources[key], text, label)
 
@@ -23580,7 +23851,7 @@ def validate_android_voice_call_ownership_contract(sources):
         (
             "if (!isCurrentSession(expectedSessionId))",
             "closed = true;",
-            "_retireDisplaySelectionOwner(expectedSessionId);",
+            "_retireSessionOwner(expectedSessionId);",
             "dialogManager.dismissAll();",
             "'title': 'Connection Error'",
             "_closeNativeSession(expectedSessionId)",
@@ -23598,9 +23869,11 @@ def validate_android_voice_call_ownership_contract(sources):
         (
             "final streamFinality = SessionStreamFinality();",
             "streamFinality.acceptExpectedClose();",
-            "if (sessionId == activeSessionId)",
+            "sessionEvents.retire(streamOwner);",
+            "if (isCurrentSessionOwner(",
+            "activeSessionId, streamOwner.clientOwnerId)",
             "closed = true;",
-            "_retireDisplaySelectionOwner(activeSessionId);",
+            "_retireSessionOwner(activeSessionId);",
             "onError:",
             "onDone:",
         ),
@@ -61004,8 +61277,8 @@ def run_source_mutations(sources):
         ),
         (
             "viewer_rgba_mailbox_verifier",
-            '"final publication = message.field1;"',
-            '"final publication = 0;"',
+            '"message.field0, message.field1)"',
+            '"message.field0, 0)"',
             "viewer RGBA Dart publication propagation contract",
         ),
         (
@@ -61179,38 +61452,188 @@ def run_source_mutations(sources):
             "independent exact-owner one-running/one-latest-pending Dart admission order",
         ),
         (
-            "model_dart",
-            "if (expectedOwner != _displaySelectionOwner)",
+            "session_event_queue_dart",
+            "Future<SessionEventDisposition> submit(\n"
+            "      Owner expectedOwner, Future<void> Function() operation) {\n"
+            "    if (_retired || expectedOwner != owner)",
+            "Future<SessionEventDisposition> submit(\n"
+            "      Owner expectedOwner, Future<void> Function() operation) {\n"
+            "    if (_retired)",
+            "independent bounded FIFO/checkpoint/failure topology order",
+        ),
+        (
+            "session_event_queue_dart",
+            "SessionEventCheckpoint<Owner> checkpoint(Owner expectedOwner) {\n"
+            "    if (_retired || expectedOwner != owner)",
+            "SessionEventCheckpoint<Owner> checkpoint(Owner expectedOwner) {\n"
+            "    if (_retired)",
+            "independent exact-owner media topology checkpoint",
+        ),
+        (
+            "session_event_queue_dart",
+            "if (_pending.length >= maxPending)",
             "if (false)",
+            "independent bounded FIFO/checkpoint/failure topology order",
+        ),
+        (
+            "session_event_queue_dart",
+            "_pending.addLast(entry);",
+            "_pending.addFirst(entry);",
+            "independent bounded FIFO/checkpoint/failure topology order",
+        ),
+        (
+            "session_event_queue_dart",
+            "final tail = _pending.isEmpty ? _running : _pending.last;",
+            "final tail = _running;",
+            "independent bounded FIFO/checkpoint/failure topology order",
+        ),
+        (
+            "session_event_queue_dart",
+            "checkpoint.generation == _acceptedGeneration",
+            "checkpoint.generation <= _acceptedGeneration",
+            "independent bounded FIFO/checkpoint/failure topology order",
+        ),
+        (
+            "session_event_queue_dart",
+            "_completedGeneration = entry.generation;",
+            "_completedGeneration = _acceptedGeneration;",
+            "independent bounded FIFO/checkpoint/failure topology order",
+        ),
+        (
+            "model_dart",
+            "_sessionEvents = SessionEventQueue(nextOwner);",
+            "_sessionEvents = SessionEventQueue(_SessionOwner(Uuid().v4obj(), clientOwnerId));",
+            "independent install and fail-closed exact retirement",
+        ),
+        (
+            "model_dart",
+            "final sessionEventsRetired = _sessionEvents.retire(retiringOwner);",
+            "final sessionEventsRetired = true;",
+            "independent install and fail-closed exact retirement",
+        ),
+        (
+            "model_dart",
+            "_orderedSessionTopologyEvents.contains(name)",
+            "false",
+            "independent topology-only event serialization",
+        ),
+        (
+            "model_dart",
+            "final cachedState = sessionEvents.submit(streamOwner, () async {",
+            "final cachedState = Future.value(SessionEventDisposition.completed);\n        Future.delayed(Duration.zero, () async {",
+            "independent cached/event/media/terminal stream ordering",
+        ),
+        (
+            "model_dart",
+            "if (decoded is! Map<String, dynamic>)",
+            "if (false)",
+            "independent cached/event/media/terminal stream ordering",
+        ),
+        (
+            "model_dart",
+            "!sessionEvents.isCurrent(checkpoint)",
+            "false",
+            "independent capacity-free media topology checkpoint",
+        ),
+        (
+            "model_dart",
+            "return ffiModel.currentDisplayTopologyRevision(activeSessionId);",
+            "return 0;",
+            "independent capacity-free media topology checkpoint",
+        ),
+        (
+            "model_dart",
+            "final inProgress = _firstImageInitialization;",
+            "final inProgress = null;",
+            "independent single exact first-image transaction",
+        ),
+        (
+            "model_dart",
+            "if (completed) return true;\n        continue;",
+            "return completed;",
+            "independent stale first-image retry",
+        ),
+        (
+            "session_event_queue_test",
+            "media checkpoints neither consume capacity nor survive later state",
+            "media checkpoints consume capacity",
+            "media checkpoint regression",
+        ),
+        (
+            "session_event_queue_test",
+            "capacity failure retires running and queued session-state work",
+            "capacity failure retains session-state work",
+            "session topology capacity regression",
+        ),
+        (
+            "session_event_queue_test",
+            "mismatched owners are refused before invocation",
+            "mismatched owners may invoke work",
+            "session topology exact-owner regression",
+        ),
+        (
+            "model_dart",
+            "Future<bool> submitDisplaySelection(\n"
+            "      SessionID expectedSessionId,\n"
+            "      SessionID expectedClientOwnerId,\n"
+            "      Future<bool> Function() operation) {\n"
+            "    final expectedOwner =\n"
+            "        _SessionOwner(expectedSessionId, expectedClientOwnerId);\n"
+            "    if (expectedOwner != _sessionOwner)",
+            "Future<bool> submitDisplaySelection(\n"
+            "      SessionID expectedSessionId,\n"
+            "      SessionID expectedClientOwnerId,\n"
+            "      Future<bool> Function() operation) {\n"
+            "    final expectedOwner =\n"
+            "        _SessionOwner(expectedSessionId, expectedClientOwnerId);\n"
+            "    if (false)",
             "independent exact-pair display-selection submission",
         ),
         (
             "model_dart",
-            "_retireDisplaySelectionOwner(previousSessionId);\n      mobileReset(previousSessionId);",
+            "Future<SessionEventDisposition> submitSessionEvent(\n"
+            "      SessionID expectedSessionId,\n"
+            "      SessionID expectedClientOwnerId,\n"
+            "      Future<void> Function() operation) {\n"
+            "    final expectedOwner =\n"
+            "        _SessionOwner(expectedSessionId, expectedClientOwnerId);\n"
+            "    if (expectedOwner != _sessionOwner)",
+            "Future<SessionEventDisposition> submitSessionEvent(\n"
+            "      SessionID expectedSessionId,\n"
+            "      SessionID expectedClientOwnerId,\n"
+            "      Future<void> Function() operation) {\n"
+            "    final expectedOwner =\n"
+            "        _SessionOwner(expectedSessionId, expectedClientOwnerId);\n"
+            "    if (false)",
+            "independent exact-owner topology submission",
+        ),
+        (
+            "model_dart",
+            "_retireSessionOwner(previousSessionId);\n      mobileReset(previousSessionId);",
             "mobileReset(previousSessionId);",
             "independent retire-old/reset/rotate/install ordering",
         ),
         (
             "model_dart",
-            "sessionId = Uuid().v4obj();\n      _installDisplaySelectionOwner(sessionId);",
+            "sessionId = Uuid().v4obj();\n      _installSessionOwner(sessionId);",
             "sessionId = Uuid().v4obj();",
             "independent retire-old/reset/rotate/install ordering",
         ),
         (
             "model_dart",
-            "closed = true;\n      _retireDisplaySelectionOwner(closingSessionId);",
+            "closed = true;\n      _retireSessionOwner(closingSessionId);",
             "closed = true;",
             "independent current-session retirement before asynchronous close",
         ),
         (
             "model_dart",
-            "closed = true;\n    _retireDisplaySelectionOwner(expectedSessionId);",
+            "closed = true;\n    _retireSessionOwner(expectedSessionId);",
             "closed = true;",
             "independent stream failure retires exact queue before UI/native cleanup",
         ),
         (
             "model_dart",
-            "closed = true;\n              _retireDisplaySelectionOwner(activeSessionId);",
+            "closed = true;\n            _retireSessionOwner(activeSessionId);",
             "closed = true;",
             "independent expected stream close retires exact queue",
         ),
@@ -61234,6 +61657,12 @@ def run_source_mutations(sources):
         ),
         (
             "dart_verify",
+            "flutter test --no-pub test/session_event_queue_test.dart",
+            "true # session event queue test disabled",
+            "generated-bridge session topology queue test gate",
+        ),
+        (
+            "dart_verify",
             "display selection is not a normal worker-pool bridge call",
             "display selection worker mode is unchecked",
             "generated display-selection worker-mode gate",
@@ -61249,6 +61678,27 @@ def run_source_mutations(sources):
             "await handleSyncPeerInfo(evt, sessionId, peerId);",
             "handleSyncPeerInfo(evt, sessionId, peerId);",
             "awaited live-topology selection event",
+        ),
+        (
+            "model_dart",
+            "await handlePlatformAdditions(evt, sessionId, peerId);",
+            "handlePlatformAdditions(evt, sessionId, peerId);",
+            "awaited platform-additions topology event",
+        ),
+        (
+            "model_dart",
+            "final topologyRevision = _beginDisplayTopologyMutation(sessionId);\n"
+            "    if (topologyRevision == null) return;\n"
+            "    final updateData = evt['platform_additions'] as String?;",
+            "const topologyRevision = 0;\n"
+            "    final updateData = evt['platform_additions'] as String?;",
+            "independent platform additions invalidate in-flight media",
+        ),
+        (
+            "model_dart",
+            "final updateJson = json.decode(updateData) as Map<String, dynamic>;",
+            "final updateJson = <String, dynamic>{};",
+            "independent fallible platform-additions decode",
         ),
         (
             "model_dart",
@@ -61311,6 +61761,18 @@ def run_source_mutations(sources):
             "Appendix C #351",
         ),
         (
+            "requirements",
+            '<div class="req"><span class="id">R-S11gq</span>',
+            '<div class="req"><span class="id">R-S11gq-disabled</span>',
+            "R-S11gq requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>352</td>",
+            "<tr><td>352-disabled</td>",
+            "Appendix C #352",
+        ),
+        (
             "hardening",
             "### R-S11go/R-S11e-227 — ordered exact-owner display-selection finality",
             "### R-S11go-disabled/R-S11e-227 — ordered exact-owner display-selection finality",
@@ -61321,6 +61783,12 @@ def run_source_mutations(sources):
             "### R-S11gp/R-S11e-228 — exact-session display-selection queue lifetime",
             "### R-S11gp-disabled/R-S11e-228 — exact-session display-selection queue lifetime",
             "R-S11gp hardening ledger",
+        ),
+        (
+            "hardening",
+            "### R-S11gq/R-S11e-229 — exact-session topology and presentation ordering",
+            "### R-S11gq-disabled/R-S11e-229 — exact-session topology and presentation ordering",
+            "R-S11gq hardening ledger",
         ),
         (
             "workspace_verifier",
@@ -73018,8 +73486,10 @@ def run_source_mutations(sources):
         (
             "model_dart",
             "}, onError: (Object error, StackTrace stackTrace) {\n"
+            "      sessionEvents.retire(streamOwner);\n"
             "      if (!streamFinality.acceptUnexpectedTermination())",
             "}, onErrorDisabled: (Object error, StackTrace stackTrace) {\n"
+            "      sessionEvents.retire(streamOwner);\n"
             "      if (!streamFinality.acceptUnexpectedTermination())",
             "Android expected-close versus error/end source",
         ),
@@ -73626,6 +74096,21 @@ def run_source_mutations(sources):
         ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
+    for key, old, new, expected in mutations:
+        # Reject stale or unreachable fixtures before spending time executing
+        # the complete mutation catalog.
+        offsets = mutation_offsets(sources[key], old)
+        if not offsets:
+            raise VerificationError(f"mutation fixture target is absent: {old}")
+        if key in ("workspace_verifier", "finalizer"):
+            candidates = python_mutation_scopes(sources[key], offsets)
+        else:
+            candidates = [
+                (offset, f"line {sources[key].count(chr(10), 0, offset) + 1}")
+                for offset in offsets
+            ]
+        if not candidates:
+            raise VerificationError(f"mutation fixture has no runtime target: {expected}")
     for key, old, new, expected in mutations:
         offsets = mutation_offsets(sources[key], old)
         if not offsets:
@@ -74293,6 +74778,9 @@ def main():
             "display_selection_queue_dart": (
                 repo / "flutter/lib/models/display_selection_queue.dart"
             ).read_text(encoding="utf-8"),
+            "session_event_queue_dart": (
+                repo / "flutter/lib/models/session_event_queue.dart"
+            ).read_text(encoding="utf-8"),
             "session_stream_finality_dart": (
                 repo / "flutter/lib/models/session_stream_finality.dart"
             ).read_text(encoding="utf-8"),
@@ -74334,6 +74822,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "display_selection_queue_test": (
                 repo / "flutter/test/display_selection_queue_test.dart"
+            ).read_text(encoding="utf-8"),
+            "session_event_queue_test": (
+                repo / "flutter/test/session_event_queue_test.dart"
             ).read_text(encoding="utf-8"),
             "session_stream_finality_test": (
                 repo / "flutter/test/session_stream_finality_test.dart"

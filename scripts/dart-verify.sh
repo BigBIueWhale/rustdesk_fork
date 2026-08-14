@@ -203,6 +203,7 @@ local_docker run --rm --pull=never --network=none --read-only \
       third_party/texture_rgba_renderer/lib/texture_rgba_renderer.dart \
       lib/models/mobile_session_start_queue.dart \
       lib/models/display_selection_queue.dart \
+      lib/models/session_event_queue.dart \
       lib/models/session_stream_finality.dart \
       lib/models/presentation_recovery.dart \
       lib/models/rgba_publication_order.dart \
@@ -215,6 +216,7 @@ local_docker run --rm --pull=never --network=none --read-only \
       test/desktop_texture_lifecycle_test.dart \
       test/mobile_session_start_queue_test.dart \
       test/display_selection_queue_test.dart \
+      test/session_event_queue_test.dart \
       test/session_stream_finality_test.dart \
       test/presentation_recovery_test.dart \
       test/rgba_publication_order_test.dart \
@@ -253,6 +255,8 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/mobile_session_start_queue_test.dart
     echo "  == R-S11go flutter test: display admission is ordered, bounded, and latest-wins =="
     flutter test --no-pub test/display_selection_queue_test.dart
+    echo "  == R-S11gq flutter test: exact-session topology events are bounded and ordered =="
+    flutter test --no-pub test/session_event_queue_test.dart
     echo "  == R-S11eo flutter test: expected close and unexpected stream failure stay distinct =="
     flutter test --no-pub test/session_stream_finality_test.dart
     echo "  == R-S11ex flutter test: desktop texture lifecycle exact finality =="

@@ -451,7 +451,9 @@ def validate(sources: Dict[str, str]) -> None:
             "final expectedClientOwnerId = ffi.clientOwnerId;",
             "display < -0x80000000 || display > 0x7fffffff",
             "final requestedDisplays = Int32List.fromList(displays);",
-            "return ffi.submitDisplaySelection(() async {",
+            "return ffi.submitDisplaySelection(",
+            "expectedSessionId, expectedClientOwnerId",
+            "() async {",
             "ffi.isCurrentSessionOwner(",
             "await bind.sessionSwitchDisplay(",
             "clientOwnerId: expectedClientOwnerId",
@@ -471,27 +473,187 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         queue,
         (
+            "DisplaySelectionQueue(this.owner);",
+            "final Owner owner;",
             "_DisplaySelectionEntry? _running;",
             "_DisplaySelectionEntry? _pending;",
+            "bool _retired = false;",
+            "Owner expectedOwner",
+            "if (_retired || expectedOwner != owner)",
             "if (_running == null)",
             "unawaited(_drain());",
             "_pending?.complete(false);",
             "_pending = entry;",
-            "entry.complete(await entry.operation());",
+            "bool retire(Owner expectedOwner)",
+            "if (expectedOwner != owner)",
+            "_retired = true;",
+            "_running?.complete(false);",
+            "_pending?.complete(false);",
+            "final admitted = await entry.operation();",
+            "entry.complete(_retired ? false : admitted);",
+            "if (_retired)",
+            "_running = null;",
             "_running = _pending;",
             "_pending = null;",
         ),
-        "one-running/one-latest-pending Dart admission order",
+        "exact-owner one-running/one-latest-pending Dart admission order",
     )
-    require(
+    owner = extract_braced_item(
         sources["model_dart"],
-        "_displaySelections.submit(operation)",
-        "per-FFI bounded display-selection sequencer",
+        "class _DisplaySelectionOwner",
+        "immutable Dart display-selection owner",
+    )
+    require_order(
+        owner,
+        (
+            "final SessionID sessionId;",
+            "final SessionID clientOwnerId;",
+            "other is _DisplaySelectionOwner",
+            "sessionId == other.sessionId",
+            "clientOwnerId == other.clientOwnerId",
+            "Object.hash(sessionId, clientOwnerId)",
+        ),
+        "display-selection owner value identity",
+    )
+    submit_selection = extract_braced_item(
+        sources["model_dart"],
+        "Future<bool> submitDisplaySelection(",
+        "owner-bound Dart display-selection submission",
+    )
+    require_order(
+        submit_selection,
+        (
+            "SessionID expectedSessionId",
+            "SessionID expectedClientOwnerId",
+            "_DisplaySelectionOwner(expectedSessionId, expectedClientOwnerId)",
+            "if (expectedOwner != _displaySelectionOwner)",
+            "return Future.value(false);",
+            "_displaySelections.submit(expectedOwner, operation)",
+        ),
+        "exact-pair display-selection submission",
+    )
+    install_owner = extract_braced_item(
+        sources["model_dart"],
+        "void _installDisplaySelectionOwner(",
+        "fresh Dart display-selection owner installation",
+    )
+    require_order(
+        install_owner,
+        (
+            "_DisplaySelectionOwner(nextSessionId, clientOwnerId)",
+            "_displaySelectionOwner = nextOwner;",
+            "_displaySelections = DisplaySelectionQueue(nextOwner);",
+        ),
+        "fresh exact-pair queue installation",
+    )
+    retire_owner = extract_braced_item(
+        sources["model_dart"],
+        "void _retireDisplaySelectionOwner(",
+        "exact Dart display-selection owner retirement",
+    )
+    require_order(
+        retire_owner,
+        (
+            "_DisplaySelectionOwner(retiringSessionId, clientOwnerId)",
+            "if (!_displaySelections.retire(retiringOwner))",
+            "throw StateError(",
+        ),
+        "fail-closed exact-pair queue retirement",
+    )
+    mobile_start = extract_between(
+        sources["model_dart"],
+        "if (isMobile) {\n      final previousSessionId = sessionId;",
+        "final activeSessionId = sessionId;",
+        "mobile display-selection owner rotation",
+    )
+    require_order(
+        mobile_start,
+        (
+            "final previousSessionId = sessionId;",
+            "_retireDisplaySelectionOwner(previousSessionId);",
+            "mobileReset(previousSessionId);",
+            "sessionId = Uuid().v4obj();",
+            "_installDisplaySelectionOwner(sessionId);",
+        ),
+        "retire-old/reset/rotate/install before mobile connection start",
+    )
+    close = extract_braced_item(
+        sources["model_dart"],
+        "Future<void> close(",
+        "Dart exact-session close",
+    )
+    require_order(
+        close,
+        (
+            "final closingSessionId = expectedSessionId ?? sessionId;",
+            "if (closingSessionId == sessionId)",
+            "closed = true;",
+            "_retireDisplaySelectionOwner(closingSessionId);",
+            "if (sessionId != closingSessionId)",
+        ),
+        "current exact-session queue retirement before asynchronous close",
+    )
+    stream_failure = extract_braced_item(
+        sources["model_dart"],
+        "void _reportSessionStreamFailure(",
+        "Dart stream-failure finality",
+    )
+    require_order(
+        stream_failure,
+        (
+            "if (!isCurrentSession(expectedSessionId))",
+            "closed = true;",
+            "_retireDisplaySelectionOwner(expectedSessionId);",
+            "dialogManager.dismissAll();",
+            "unawaited(_closeNativeSession(expectedSessionId));",
+        ),
+        "stream failure retires exact display-selection owner before UI/native cleanup",
+    )
+    expected_close = extract_between(
+        sources["model_dart"],
+        'if (message.field0 == "close") {',
+        "debugPrint('Exit session event loop');",
+        "Dart expected stream-close finality",
+    )
+    require_order(
+        expected_close,
+        (
+            "streamFinality.acceptExpectedClose();",
+            "if (sessionId == activeSessionId)",
+            "closed = true;",
+            "_retireDisplaySelectionOwner(activeSessionId);",
+        ),
+        "expected stream close retires exact display-selection owner",
     )
     require(
         sources["selection_queue_test"],
         "keeps one running display selection and only the latest successor",
         "bounded latest-wins display-selection regression",
+    )
+    require(
+        sources["selection_queue_test"],
+        "a stale owner cannot enter the display selection sequencer",
+        "stale owner refusal regression",
+    )
+    require(
+        sources["selection_queue_test"],
+        "a retired session cannot block its replacement session",
+        "retired/replacement session independence regression",
+    )
+    require(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11gp</span>',
+        "R-S11gp normative owner-lifetime requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>351</td>",
+        "Appendix C #351 disposition",
+    )
+    require(
+        sources["hardening"],
+        "### R-S11gp/R-S11e-228 — exact-session display-selection queue lifetime",
+        "R-S11gp hardening ledger",
     )
     same_tab = extract_braced_item(
         sources["common_dart"],
@@ -800,15 +962,26 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("common_dart", "final expectedClientOwnerId = ffi.clientOwnerId;", "final expectedClientOwnerId = Uuid().v4obj();", "Dart captured owner"),
     ("common_dart", "display < -0x80000000 || display > 0x7fffffff", "display < 0", "Dart exact i32 representation"),
     ("common_dart", "final requestedDisplays = Int32List.fromList(displays);", "final requestedDisplays = displays;", "Dart invocation-time selection snapshot"),
-    ("common_dart", "return ffi.submitDisplaySelection(() async {", "return Future<bool>(() async {", "bounded Dart admission sequencing"),
+    ("common_dart", "return ffi.submitDisplaySelection(\n      expectedSessionId, expectedClientOwnerId, () async {", "return Future<bool>(() async {", "bounded Dart admission sequencing"),
     ("model_dart", "!displays.contains(display)", "false", "startup selected-display coherence"),
     ("model_dart", "candidate < -0x80000000 || candidate > 0x7fffffff", "candidate < 0", "startup exact i32 representation"),
     ("model_dart", "final requestedDisplays = Int32List.fromList(displays);", "final requestedDisplays = displays;", "startup invocation-time selection snapshot"),
     ("common_dart", "if (!await selectRemoteDisplays(ffi, expectedSessionId, displays))", "if (false)", "Dart await before commit"),
     ("common_dart", "await bind.sessionSwitchDisplay(", "await bind.sessionSwitchDisplay(isDesktop: isDesktop,", "Dart native-union authority"),
     ("model_dart", "clientOwnerId == expectedClientOwnerId", "true", "Dart owner recheck"),
+    ("selection_queue_dart", "if (_retired || expectedOwner != owner)", "if (_retired)", "exact queue owner admission"),
     ("selection_queue_dart", "_pending?.complete(false);", "_pending = null;", "latest pending supersession"),
+    ("selection_queue_dart", "_running?.complete(false);", "// retired running caller retained", "running caller retirement"),
+    ("selection_queue_dart", "entry.complete(_retired ? false : admitted);", "entry.complete(admitted);", "post-operation retirement decision"),
+    ("model_dart", "if (expectedOwner != _displaySelectionOwner)", "if (false)", "FFI exact queue owner admission"),
+    ("model_dart", "_retireDisplaySelectionOwner(previousSessionId);\n      mobileReset(previousSessionId);", "mobileReset(previousSessionId);", "mobile predecessor queue retirement"),
+    ("model_dart", "sessionId = Uuid().v4obj();\n      _installDisplaySelectionOwner(sessionId);", "sessionId = Uuid().v4obj();", "mobile replacement queue installation"),
+    ("model_dart", "closed = true;\n      _retireDisplaySelectionOwner(closingSessionId);", "closed = true;", "current-session close queue retirement"),
+    ("model_dart", "closed = true;\n    _retireDisplaySelectionOwner(expectedSessionId);", "closed = true;", "stream-failure queue retirement"),
+    ("model_dart", "closed = true;\n              _retireDisplaySelectionOwner(activeSessionId);", "closed = true;", "expected stream-close queue retirement"),
     ("selection_queue_test", "keeps one running display selection and only the latest successor", "runs all pending display selections", "bounded display-selection regression"),
+    ("selection_queue_test", "a stale owner cannot enter the display selection sequencer", "a stale owner enters the display selection sequencer", "stale owner regression"),
+    ("selection_queue_test", "a retired session cannot block its replacement session", "a retired session blocks its replacement session", "replacement independence regression"),
     ("model_dart", "await handleSyncPeerInfo(evt, sessionId, peerId);", "handleSyncPeerInfo(evt, sessionId, peerId);", "awaited topology selection"),
     ("model_dart", "await handleFollowCurrentDisplay(evt, sessionId, peerId);", "handleFollowCurrentDisplay(evt, sessionId, peerId);", "awaited follow-display selection"),
     ("model_dart", "    stream = bind.sessionStart(\n        sessionId: activeSessionId", "    stream = bind.sessionStartWithDisplays(\n        sessionId: activeSessionId", "single startup admission"),
@@ -825,7 +998,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<div class="req"><span class="id">R-S11go</span>', '<div class="req"><span class="id">R-S11go-disabled</span>', "normative requirement"),
     ("requirements", "one sequencer per live connection/UI-owner pair retaining exactly one running request and at most the latest pending request", "an unbounded per-UI-owner sequencer", "normative bounded multi-worker bridge sequencing"),
     ("requirements", "<tr><td>350</td>", "<tr><td>350-disabled</td>", "Appendix disposition"),
+    ("requirements", '<div class="req"><span class="id">R-S11gp</span>', '<div class="req"><span class="id">R-S11gp-disabled</span>', "exact queue lifetime requirement"),
+    ("requirements", "<tr><td>351</td>", "<tr><td>351-disabled</td>", "exact queue lifetime Appendix disposition"),
     ("hardening", "### R-S11go/R-S11e-227 — ordered exact-owner display-selection finality", "### R-S11go-disabled/R-S11e-227 — ordered exact-owner display-selection finality", "hardening ledger"),
+    ("hardening", "### R-S11gp/R-S11e-228 — exact-session display-selection queue lifetime", "### R-S11gp-disabled/R-S11e-228 — exact-session display-selection queue lifetime", "exact queue lifetime ledger"),
     ("verify", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "python3 scripts/verify-display-selection-finality.py --repo .", "shared gate"),
     ("dart_verify", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "python3 scripts/verify-display-selection-finality.py --repo .", "generated gate"),
     ("dart_verify", "flutter test --no-pub test/display_selection_queue_test.dart", "true # display selection queue test disabled", "generated bounded display-selection test gate"),

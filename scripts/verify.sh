@@ -10681,7 +10681,7 @@ grep -qF 'sessions::session_has_client_owner(session_id, client_owner_id)' src/f
   || android_client_owner_bad="$android_client_owner_bad start-owner-association-check-missing"
 grep -qF 'excluded_session_id: Option<&SessionID>' src/flutter.rs \
   || android_client_owner_bad="$android_client_owner_bad display-reconciliation-exclusion-not-explicit"
-if [ "$(grep -cF 'check_remove_unused_displays(None, None, session, &handlers);' src/flutter.rs)" -ne 2 ]; then
+if [ "$(grep -cF 'check_remove_unused_displays(None, session, &handlers);' src/flutter.rs)" -ne 2 ]; then
   android_client_owner_bad="$android_client_owner_bad post-drain-display-reconciliation-not-all-remaining"
 fi
 grep -qF 'close_all_sessions' src/flutter.rs src/flutter_ffi.rs \

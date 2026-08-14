@@ -9,7 +9,7 @@ void main() {
     final firstEntered = Completer<void>();
     final releaseFirst = Completer<void>();
     final executed = <String>[];
-    final queue = DisplaySelectionQueue();
+    final queue = DisplaySelectionQueue('session-a');
 
     Future<bool> operation(String value) async {
       executed.add(value);
@@ -20,10 +20,10 @@ void main() {
       return true;
     }
 
-    final first = queue.submit(() => operation('first'));
+    final first = queue.submit('session-a', () => operation('first'));
     await firstEntered.future;
-    final second = queue.submit(() => operation('second'));
-    final third = queue.submit(() => operation('third'));
+    final second = queue.submit('session-a', () => operation('second'));
+    final third = queue.submit('session-a', () => operation('third'));
 
     expect(await second, isFalse);
     expect(executed, ['first']);
@@ -37,13 +37,13 @@ void main() {
   test('a refused display selection does not wedge its bounded successor',
       () async {
     final executed = <String>[];
-    final queue = DisplaySelectionQueue();
+    final queue = DisplaySelectionQueue('session-a');
 
-    final first = queue.submit(() async {
+    final first = queue.submit('session-a', () async {
       executed.add('first');
       return false;
     });
-    final second = queue.submit(() async {
+    final second = queue.submit('session-a', () async {
       executed.add('second');
       return true;
     });
@@ -58,16 +58,16 @@ void main() {
     final firstEntered = Completer<void>();
     final releaseFirst = Completer<void>();
     final executed = <String>[];
-    final queue = DisplaySelectionQueue();
+    final queue = DisplaySelectionQueue('session-a');
 
-    final first = queue.submit(() async {
+    final first = queue.submit('session-a', () async {
       executed.add('first');
       firstEntered.complete();
       await releaseFirst.future;
       throw StateError('expected failure');
     });
     await firstEntered.future;
-    final second = queue.submit(() async {
+    final second = queue.submit('session-a', () async {
       executed.add('second');
       return true;
     });
@@ -76,5 +76,59 @@ void main() {
     await expectLater(first, throwsStateError);
     expect(await second, isTrue);
     expect(executed, ['first', 'second']);
+  });
+
+  test('a stale owner cannot enter the display selection sequencer', () async {
+    var executed = false;
+    final queue = DisplaySelectionQueue('session-a');
+
+    final admitted = await queue.submit('session-b', () async {
+      executed = true;
+      return true;
+    });
+
+    expect(admitted, isFalse);
+    expect(executed, isFalse);
+  });
+
+  test('a retired session cannot block its replacement session', () async {
+    final oldEntered = Completer<void>();
+    final releaseOld = Completer<void>();
+    final oldFinished = Completer<void>();
+    final executed = <String>[];
+    final oldQueue = DisplaySelectionQueue('session-a');
+
+    final oldRunning = oldQueue.submit('session-a', () async {
+      executed.add('old-running');
+      oldEntered.complete();
+      await releaseOld.future;
+      oldFinished.complete();
+      return true;
+    });
+    await oldEntered.future;
+    final oldPending = oldQueue.submit('session-a', () async {
+      executed.add('old-pending');
+      return true;
+    });
+
+    expect(oldQueue.retire('session-b'), isFalse);
+    expect(oldQueue.retire('session-a'), isTrue);
+    expect(await oldRunning, isFalse);
+    expect(await oldPending, isFalse);
+    expect(await oldQueue.submit('session-a', () async => true), isFalse);
+
+    final replacementQueue = DisplaySelectionQueue('session-b');
+    expect(
+        await replacementQueue.submit('session-b', () async {
+          executed.add('replacement');
+          return true;
+        }),
+        isTrue);
+    expect(executed, ['old-running', 'replacement']);
+
+    releaseOld.complete();
+    await oldFinished.future;
+    expect(oldQueue.retire('session-a'), isTrue);
+    expect(executed, ['old-running', 'replacement']);
   });
 }

@@ -3186,7 +3186,8 @@ Future<bool> selectRemoteDisplays(
     return Future.value(false);
   }
   final requestedDisplays = Int32List.fromList(displays);
-  return ffi.submitDisplaySelection(() async {
+  return ffi.submitDisplaySelection(
+      expectedSessionId, expectedClientOwnerId, () async {
     if (!ffi.isCurrentSessionOwner(
         expectedSessionId, expectedClientOwnerId)) {
       return false;

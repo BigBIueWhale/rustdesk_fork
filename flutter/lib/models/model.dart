@@ -54,6 +54,22 @@ typedef ReconnectHandle = Function(OverlayDialogManager, SessionID);
 // below; conflating the two lets a delayed dispose from an old route close its replacement.
 final _mobileClientOwnerId = Uuid().v4obj();
 
+class _DisplaySelectionOwner {
+  const _DisplaySelectionOwner(this.sessionId, this.clientOwnerId);
+
+  final SessionID sessionId;
+  final SessionID clientOwnerId;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _DisplaySelectionOwner &&
+      sessionId == other.sessionId &&
+      clientOwnerId == other.clientOwnerId;
+
+  @override
+  int get hashCode => Object.hash(sessionId, clientOwnerId);
+}
+
 class _MobileSessionStartRequest {
   const _MobileSessionStartRequest({
     required this.sessionId,
@@ -3490,7 +3506,8 @@ class FFI {
   late final Peers favoritePeersModel; // global
   late final MobileSessionStartQueue<_MobileSessionStartRequest>
       _mobileSessionStarts;
-  final DisplaySelectionQueue _displaySelections = DisplaySelectionQueue();
+  late _DisplaySelectionOwner _displaySelectionOwner;
+  late DisplaySelectionQueue<_DisplaySelectionOwner> _displaySelections;
 
   // Terminal model registry for multiple terminals
   final Map<int, TerminalModel> _terminalModels = {};
@@ -3506,8 +3523,31 @@ class FFI {
       isCurrentSession(expectedSessionId) &&
       clientOwnerId == expectedClientOwnerId;
 
-  Future<bool> submitDisplaySelection(Future<bool> Function() operation) =>
-      _displaySelections.submit(operation);
+  Future<bool> submitDisplaySelection(
+      SessionID expectedSessionId,
+      SessionID expectedClientOwnerId,
+      Future<bool> Function() operation) {
+    final expectedOwner =
+        _DisplaySelectionOwner(expectedSessionId, expectedClientOwnerId);
+    if (expectedOwner != _displaySelectionOwner) {
+      return Future.value(false);
+    }
+    return _displaySelections.submit(expectedOwner, operation);
+  }
+
+  void _installDisplaySelectionOwner(SessionID nextSessionId) {
+    final nextOwner = _DisplaySelectionOwner(nextSessionId, clientOwnerId);
+    _displaySelectionOwner = nextOwner;
+    _displaySelections = DisplaySelectionQueue(nextOwner);
+  }
+
+  void _retireDisplaySelectionOwner(SessionID retiringSessionId) {
+    final retiringOwner =
+        _DisplaySelectionOwner(retiringSessionId, clientOwnerId);
+    if (!_displaySelections.retire(retiringOwner)) {
+      throw StateError('display selection owner changed before retirement');
+    }
+  }
 
   FFI(SessionID? sId) {
     sessionId = sId ?? Uuid().v4obj();
@@ -3515,6 +3555,7 @@ class FFI {
     // UUID. The UI owner must still change so delayed work from the old view
     // cannot mutate the replacement handler.
     clientOwnerId = isMobile ? _mobileClientOwnerId : Uuid().v4obj();
+    _installDisplaySelectionOwner(sessionId);
     imageModel = ImageModel(WeakReference(this));
     ffiModel = FfiModel(WeakReference(this));
     cursorModel = CursorModel(WeakReference(this));
@@ -3645,6 +3686,8 @@ class FFI {
     if (!isCurrentSession(expectedSessionId)) {
       return;
     }
+    closed = true;
+    _retireDisplaySelectionOwner(expectedSessionId);
     dialogManager.dismissAll();
     ffiModel.handleMsgBox({
       'type': 'error',
@@ -3653,7 +3696,6 @@ class FFI {
       'link': '',
       'hasRetry': 'false',
     }, expectedSessionId, peerId);
-    closed = true;
     unawaited(_closeNativeSession(expectedSessionId));
   }
 
@@ -3714,6 +3756,7 @@ class FFI {
             streamFinality.acceptExpectedClose();
             if (sessionId == activeSessionId) {
               closed = true;
+              _retireDisplaySelectionOwner(activeSessionId);
             }
             debugPrint('Exit session event loop');
             return;
@@ -3781,8 +3824,10 @@ class FFI {
   }) {
     if (isMobile) {
       final previousSessionId = sessionId;
+      _retireDisplaySelectionOwner(previousSessionId);
       mobileReset(previousSessionId);
       sessionId = Uuid().v4obj();
+      _installDisplaySelectionOwner(sessionId);
     }
     final activeSessionId = sessionId;
     closed = false;
@@ -3947,6 +3992,7 @@ class FFI {
     final closingSessionId = expectedSessionId ?? sessionId;
     if (closingSessionId == sessionId) {
       closed = true;
+      _retireDisplaySelectionOwner(closingSessionId);
     }
     if (sessionId != closingSessionId) {
       if (closeSession) {

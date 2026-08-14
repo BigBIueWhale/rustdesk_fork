@@ -24580,7 +24580,7 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   the reported Android persistent-service recovery symptom and Windows focus-loss display-only delay; they do not prove
   causation for the weeks-old deployed binaries.
 - The correction snapshots an exactly `i32`-representable selection at Dart invocation and feeds generated normal-worker
-  calls through one per-FFI latest-wins sequencer bounded to one running and one pending request; a superseded pending
+  calls through one per-live-session/UI-owner latest-wins sequencer bounded to one running and one pending request; a superseded pending
   request completes false without native submission or UI commit. It carries the exact connection-session UUID and
   current UI-owner UUID through a fallible bridge. Under the exact handler-owner lock it validates one nonempty,
   distinct set against current bounded peer inventory. Native code on every platform derives the capture set as that
@@ -24639,12 +24639,55 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   The user's explicit requirement that the whole connection flow—not only complained-about paths—be correct and
   performant on every supported platform remains binding and guides later slices.
 
+### R-S11gp/R-S11e-228 — exact-session display-selection queue lifetime (2026-08-14)
+
+- **SOURCE IMPLEMENTED; FOCUSED 84-MUTATION, ADJACENT ANDROID 532-MUTATION, AND INDEPENDENT 4,320-MUTATION SOURCE EVIDENCE PASS; NATIVE/RELEASE EVIDENCE OPEN.** Review of the immediately preceding
+  R-S11go implementation found that its bounded Dart display-selection queue was actually one field on each `FFI`, not
+  one queue per exact live `(session UUID, UI-owner UUID)` pair as the requirement stated. This distinction is material
+  on Android: `gFFI` is intentionally permanent for the app process and keeps one stable UI-owner UUID, while `start()`
+  rotates the connection UUID. An old display operation that remained inside the generated normal-worker/native call
+  could therefore retain `_running` and prevent every display selection for the replacement session from reaching
+  native code. Activity task-swipe/reopen preserves the process and persistent service, whereas Force Stop destroys
+  them; that is a concrete source mechanism matching the user's recovery shape. It does not prove causation for the
+  older Android or Windows binaries currently deployed, which predate this new queue implementation.
+- The queue now has immutable exact owner value `(sessionId, clientOwnerId)` and a terminal retired state. Submission
+  with a mismatched owner or after retirement returns false before invoking the operation. Retirement is exact-owner
+  checked and idempotent, immediately resolves the running caller and retained pending caller false, discards the
+  pending operation, and prevents a late value or error from reviving the queue or surfacing into replacement-session
+  UI. Any already-entered native call still carries only its captured old session and owner. The reusable mobile model
+  retires its predecessor queue before reset, rotates its session UUID, and installs a fresh independently draining
+  queue before native insertion. Explicit current-session close, stream failure, and expected stream close all retire
+  the current queue before asynchronous cleanup; a stale old close cannot retire the replacement session.
+- This is deliberately a lifecycle correction to the existing bounded sequencer, not a second recovery system. It adds
+  no timer, polling loop, task, isolate, runtime, native/background worker, transport queue, retry, or reconnect fallback.
+  It neither stops nor weakens Android's persistent `MainService`; task-swipe may continue to leave that service alive.
+  The behavioral regression holds an old operation open, retires its exact queue, proves both old callers are refused,
+  proves stale-owner submission and retirement are refused, and proves a fresh replacement queue completes without
+  waiting for the old operation. The focused verifier binds exact owner admission, retirement finality, mobile rotation,
+  explicit/stream terminal paths, test selection, requirements, and ledger; the independent workspace verifier checks
+  the product contract separately and deliberately mutates each critical edge. The exact-pair focused verifier rejects
+  84 mutations, and the adjacent Android lifecycle/voice-call ownership verifier rejects 532. The independent baseline
+  passes and expands its complete catalog to 4,320 effective source-mutation targets. A first unsliced run reached one
+  diagnostic-label collision after correctly rejecting removal of `mobileReset(previousSessionId)` at the new,
+  stronger retire/reset/rotate/install validator before the older reset validator; only that expected label was rebound.
+  The final frozen-source unsliced run restarted at mutation one and returned terminal
+  `verify-verifier-workspace: ok`. The catalog-size receipt used an explicitly non-authoritative counter hook only to
+  enumerate effective runtime targets; the final 4,320-target pass used the real validators without that hook.
+- This source slice changes no host service, process, listener, firewall, network namespace, persistent Android service,
+  or OS privilege boundary. No root/sudo/privileged container, image pull/build/tag, port publication, RustDesk process,
+  VM, or release build is part of this evidence. Exact generated-bridge and Dart compilation/test execution, exact-current
+  physical Android task-swipe/reopen/Force-Stop recovery, Windows focus/minimize behavior, Linux/macOS/iOS lifecycle,
+  deployed/cross-version behavior, capture-through-presentation timestamps and latency budgets, sustained reconnect/
+  focus/resource soak, cold R-B2/R-B10 equality, independent reproduction, and external review all remain open. The
+  user's broader requirement that the whole connection flow be correct and performant on every supported platform is
+  unchanged.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-bcc7f2851da2ab9b39ffe8c656ffb2f2e722a7fd975a29676aee0f85dc7ae283  requirements.html
+91064322264fd173f18dce533faa3861eca51024fc770e1e4e21375405b2eec5  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -24702,3 +24745,4 @@ The same identity additionally binds R-S11gl and Appendix C #347.
 The same identity additionally binds R-S11gm and Appendix C #348.
 The same identity additionally binds R-S11gn and Appendix C #349.
 The same identity additionally binds R-S11go and Appendix C #350.
+The same identity additionally binds R-S11gp and Appendix C #351.

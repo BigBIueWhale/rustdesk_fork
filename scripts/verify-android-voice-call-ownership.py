@@ -1064,11 +1064,14 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "client_owner_id: SessionID",
             "acquire_android_client_owner(&client_owner_id)?",
-            "sessions::insert_peer_session_id(",
+            "let result = sessions::replace_peer_session_display_owner(",
+            "session_id,",
             "client_owner_id,",
+            "displays,",
             "drop(owner_admission)",
+            "result",
         ),
-        "owner-bound existing-session attachment",
+        "owner-bound atomic existing-session attachment",
     )
     session_add = extract_item(
         flutter, "pub fn session_add(", "Rust outgoing-session insertion"
@@ -1168,7 +1171,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         take_previous,
-        "check_remove_unused_displays(None, None, session, &handlers);",
+        "check_remove_unused_displays(None, session, &handlers);",
         "replacement drain display reconciliation includes the preserved exact session",
     )
     take_owner = extract_item(
@@ -1183,7 +1186,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         take_owner,
-        "check_remove_unused_displays(None, None, session, &handlers);",
+        "check_remove_unused_displays(None, session, &handlers);",
         "Activity-owner drain display reconciliation includes every remaining session",
     )
     display_reconciliation = extract_item(
@@ -1198,8 +1201,8 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         display_reconciliation,
-        "if excluded_session_id == Some(k)",
-        "optional live-handler exclusion predicate",
+        "remaining_displays(excluded_session_id, handlers)",
+        "optional live-handler exclusion delegated to exact derivation",
     )
     require(
         flutter,
@@ -1498,11 +1501,12 @@ def validate(sources: Dict[str, str]) -> None:
         stream_failure,
         (
             "if (!isCurrentSession(expectedSessionId))",
+            "closed = true;",
+            "_retireDisplaySelectionOwner(expectedSessionId);",
             "dialogManager.dismissAll();",
             "'title': 'Connection Error',",
             "'hasRetry': 'false',",
             "expectedSessionId, peerId",
-            "closed = true;",
             "_closeNativeSession(expectedSessionId)",
         ),
         "current-exact bounded visible failure and native retirement",
@@ -1520,6 +1524,9 @@ def validate(sources: Dict[str, str]) -> None:
             "if (closed || sessionId != activeSessionId) return;",
             'if (message.field0 == "close")',
             "streamFinality.acceptExpectedClose();",
+            "if (sessionId == activeSessionId)",
+            "closed = true;",
+            "_retireDisplaySelectionOwner(activeSessionId);",
             "onError: (Object error, StackTrace stackTrace)",
             "streamFinality.acceptUnexpectedTermination()",
             "_reportSessionStreamFailure(",
@@ -1627,14 +1634,27 @@ def validate(sources: Dict[str, str]) -> None:
         "UnsupportedError('Mobile session preparation is unavailable on web')",
         "web bridge mobile-add refusal",
     )
+    mobile_add_gate_start = sources["dart_verify"].find(
+        'mobile_add_line="$(grep -nF "  Future<void> sessionAddMobile("'
+    )
+    mobile_add_gate_end = sources["dart_verify"].find(
+        'display_selection_line="$(grep -nF "  Future<void> sessionSwitchDisplay("',
+        mobile_add_gate_start,
+    )
+    if mobile_add_gate_start < 0 or mobile_add_gate_end <= mobile_add_gate_start:
+        raise VerificationError("missing bounded generated mobile-add bridge gate")
+    mobile_add_bridge_gate = sources["dart_verify"][
+        mobile_add_gate_start:mobile_add_gate_end
+    ]
     require(
-        sources["dart_verify"],
+        mobile_add_bridge_gate,
         'Future<void> sessionAddMobile(',
         "generated asynchronous mobile-add bridge gate",
     )
     require(
-        sources["dart_verify"],
-        "_platform.executeNormal(FlutterRustBridgeTask(",
+        mobile_add_bridge_gate,
+        'printf "%s\\n" "$mobile_add_impl" | grep -qF '
+        '"_platform.executeNormal(FlutterRustBridgeTask("',
         "generated normal worker-pool mobile-add gate",
     )
     require(
@@ -2666,7 +2686,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["verify"],
-        "if [ \"$(grep -cF 'check_remove_unused_displays(None, None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then",
+        "if [ \"$(grep -cF 'check_remove_unused_displays(None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then",
         "shared post-drain all-remaining-display reconciliation gate",
     )
     require(
@@ -3539,7 +3559,8 @@ def validate(sources: Dict[str, str]) -> None:
             "self.inner.id(),",
             "self.video_source(),",
             "request.sid.clone(),",
-            "self.refresh_video_display(Some(display));",
+            "if !self.refresh_video_display(Some(display))",
+            "return false;",
         ),
         "bounded exact-connection controlled screenshot admission",
     )
@@ -5388,8 +5409,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "take_previous_android_mobile_client_sessions(client_owner_id, session_id)?", "sessions::ClientOwnerDrain::default()", "replacement pre-insertion drain"),
     ("flutter", "sessions::session_has_client_owner(session_id, client_owner_id)", "true", "start-time owner association"),
     ("flutter", "handler_session_id != session_id\n                        || handler.client_owner_id.as_ref() != Some(client_owner_id)", "handler_session_id != session_id\n                        && handler.client_owner_id.as_ref() != Some(client_owner_id)", "exact owner-and-session preservation"),
-    ("flutter", "check_remove_unused_displays(None, None, session, &handlers);", "check_remove_unused_displays(None, Some(session_id), session, &handlers);", "replacement display reconciliation includes preserved exact session"),
-    ("flutter", "if owned_handler_ids.is_empty() {\n                continue;\n            }\n            if handlers.is_empty() {\n                removed_keys.push(key.clone());\n            } else {\n                check_remove_unused_displays(None, None, session, &handlers);", "if owned_handler_ids.is_empty() {\n                continue;\n            }\n            if handlers.is_empty() {\n                removed_keys.push(key.clone());\n            } else {\n                check_remove_unused_displays(None, Some(client_owner_id), session, &handlers);", "Activity-owner display reconciliation includes all remaining sessions"),
+    ("flutter", "check_remove_unused_displays(None, session, &handlers);", "check_remove_unused_displays(Some(session_id), session, &handlers);", "replacement display reconciliation includes preserved exact session"),
+    ("flutter", "if owned_handler_ids.is_empty() {\n                continue;\n            }\n            if handlers.is_empty() {\n                removed_keys.push(key.clone());\n            } else {\n                check_remove_unused_displays(None, session, &handlers);", "if owned_handler_ids.is_empty() {\n                continue;\n            }\n            if handlers.is_empty() {\n                removed_keys.push(key.clone());\n            } else {\n                check_remove_unused_displays(Some(client_owner_id), session, &handlers);", "Activity-owner display reconciliation includes all remaining sessions"),
     ("flutter", "excluded_session_id: Option<&SessionID>", "excluded_session_id: &SessionID", "optional display-reconciliation exclusion"),
     ("flutter", "fn stale_mobile_session_close_cannot_select_replacement_from_same_owner()", "fn stale_mobile_session_close_can_select_replacement_from_same_owner()", "same-owner stale-close behavior proof"),
     ("flutter", "const ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY: usize = 1;", "const ANDROID_CLIENT_DRAIN_QUEUE_CAPACITY: usize = 2;", "one-slot Android client lifecycle drain"),
@@ -5730,7 +5751,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("verify", 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="', 'echo "== Android MediaProjection/input lifecycle finality (R-S14/R-S11ei-disabled/R-S11ek/R-S11em/R-S11en/R-S11eu/R-S11e-153/R-S11e-169/R-S11e-174/R-S11e-175/R-S11e-182/R-T4) =="', "shared controlled-input/audio/status generation ownership gate"),
     ("verify", "android-controlled-input-owner-test.kt", "android-controlled-input-owner-test-disabled.kt", "shared controlled-input behavior fixture gate"),
     ("verify", "grep -qF 'take_previous_android_mobile_client_sessions(client_owner_id, session_id)?' src/flutter.rs", "true # replacement-drain shared gate disabled", "shared mobile replacement-drain gate"),
-    ("verify", "if [ \"$(grep -cF 'check_remove_unused_displays(None, None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then", "if false; then # post-drain display gate disabled", "shared post-drain display-reconciliation gate"),
+    ("verify", "if [ \"$(grep -cF 'check_remove_unused_displays(None, session, &handlers);' src/flutter.rs)\" -ne 2 ]; then", "if false; then # post-drain display gate disabled", "shared post-drain display-reconciliation gate"),
     ("dart_verify", "cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \\\n      flutter::mobile_session_lifecycle_tests:: -- --test-threads=1", "true # generated-bridge mobile lifecycle tests disabled", "generated-bridge mobile lifecycle behavior gate"),
     ("dart_verify", "flutter test --no-pub test/mobile_file_session_lifecycle_test.dart", "true # mobile file-session lifecycle test disabled", "mobile file-session lifecycle behavior gate"),
     ("mobile_file_lifecycle_test", "expect(directory.path, path);", "expect(directory.path, isEmpty);", "retired file timeout replacement behavior proof"),
@@ -5768,6 +5789,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "rollback_failed_session_start(session_id);", "// failed-start rollback omitted", "false failed-start rollback"),
     ("flutter", "fn rollback_failed_session_start(session_id: &SessionID) {\n    if let Some(session) = sessions::remove_session_by_session_id(session_id) {", "fn rollback_failed_session_start(session_id: &SessionID) {\n    if let Some(session) = sessions::get_session_by_session_id(session_id) {\n        session.close_event_stream(*session_id);\n    }\n    if let Some(session) = sessions::remove_session_by_session_id(session_id) {", "failed-start normal-close marker refusal"),
     ("flutter", "fn failed_session_start_rolls_back_and_joins_only_the_exact_session()", "fn failed_session_start_rollback_is_unchecked()", "failed-start exact rollback behavior proof"),
+    ("flutter", "let result = sessions::replace_peer_session_display_owner(", "sessions::insert_peer_session_id(", "atomic existing-session display-owner replacement"),
     ("flutter_ffi", "static ref MOBILE_SESSION_ADD_TRANSACTION: Mutex<()> = Mutex::new(());", "static ref MOBILE_SESSION_ADD_TRANSACTION_DISABLED: Mutex<()> = Mutex::new(());", "serialized mobile-add transaction owner"),
     ("flutter_ffi", "pub fn session_add_mobile(", "pub fn session_add_mobile_sync(", "asynchronous mobile-add entry"),
     ("flutter_ffi", "    conn_token: Option<String>,\n) -> Result<()> {\n    if !cfg!(any(target_os = \"android\", target_os = \"ios\"))", "    conn_token: Option<String>,\n) -> ResultType<()> {\n    if !cfg!(any(target_os = \"android\", target_os = \"ios\"))", "concrete codegen-compatible mobile-add result"),
@@ -5789,7 +5811,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("dart_model", "await _closeNativeSession(request.sessionId);", "await _closeNativeSession(sessionId);", "stale preparation exact close"),
     ("dart_model", "_mobileSessionStarts.cancelPendingOrGetRunning(", "_mobileSessionStarts.cancelPending(", "exact pending-or-running close finality"),
     ("dart_model", "await _awaitMobileSessionStart(closingSessionId);", "// preparation finality omitted", "stale-entry mobile close preparation finality"),
-    ("dart_model", "if (!isCurrentSession(expectedSessionId)) {\n      return;\n    }\n    dialogManager.dismissAll();", "if (true) {\n      // stale stream failure accepted\n    }\n    dialogManager.dismissAll();", "stale stream-failure refusal"),
+    ("dart_model", "if (!isCurrentSession(expectedSessionId)) {\n      return;\n    }\n    closed = true;\n    _retireDisplaySelectionOwner(expectedSessionId);\n    dialogManager.dismissAll();", "if (true) {\n      // stale stream failure accepted\n    }\n    closed = true;\n    _retireDisplaySelectionOwner(expectedSessionId);\n    dialogManager.dismissAll();", "stale stream-failure refusal"),
+    ("dart_model", "closed = true;\n    _retireDisplaySelectionOwner(expectedSessionId);", "closed = true;", "stream-failure display queue retirement"),
+    ("dart_model", "closed = true;\n              _retireDisplaySelectionOwner(activeSessionId);", "closed = true;", "expected-close display queue retirement"),
     ("dart_model", "streamFinality.acceptExpectedClose();", "// expected close identity erased", "expected exact-close stream marker"),
     ("dart_model", "}, onError: (Object error, StackTrace stackTrace) {\n      if (!streamFinality.acceptUnexpectedTermination())", "}, onErrorDisabled: (Object error, StackTrace stackTrace) {\n      if (!streamFinality.acceptUnexpectedTermination())", "session stream error handler"),
     ("dart_model", "onDone: () {\n      if (!streamFinality.acceptUnexpectedTermination())", "onDone: () {\n      if (true)", "session stream end handler"),
@@ -5800,7 +5824,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("web_bridge", "Future<void> sessionAddMobile(", "void sessionAddMobile(", "web mobile-add interface parity"),
     ("dart_verify", "test/mobile_session_start_queue_test.dart", "test/mobile_session_start_queue_test_disabled.dart", "mobile-start queue behavior gate"),
     ("dart_verify", "test/session_stream_finality_test.dart", "test/session_stream_finality_test_disabled.dart", "stream-finality behavior gate"),
-    ("dart_verify", "_platform.executeNormal(FlutterRustBridgeTask(", "_platform.executeSync(FlutterRustBridgeSyncTask(", "generated asynchronous mobile-add gate"),
+    ("dart_verify", 'printf "%s\\n" "$mobile_add_impl" | grep -qF "_platform.executeNormal(FlutterRustBridgeTask("', 'printf "%s\\n" "$mobile_add_impl" | grep -qF "_platform.executeSync(FlutterRustBridgeSyncTask("', "generated asynchronous mobile-add gate"),
     ("requirements", '<span class="id">R-S11eo</span>', '<span class="id">R-S11eo-disabled</span>', "mobile preparation requirement"),
     ("requirements", "<tr><td>297</td>", "<tr><td>297-disabled</td>", "mobile preparation disposition"),
     ("hardening", "R-S11eo/R-S11e-176", "R-S11eo-disabled/R-S11e-176", "mobile preparation hardening ledger"),

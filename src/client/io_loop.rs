@@ -11,7 +11,8 @@ use crate::{
     client::{
         self, new_voice_call_request, Client, Data, Interface, LoginConfigHandler, MediaData,
         OwnedMediaThread, OwnedVideoThread, QualityStatus, VideoControl, VideoControlAdmission,
-        VideoFrameAdmission, ViewerCommandReceiver, ViewerCommandSender, MILLI1, SEC30,
+        VideoFrameAdmission, ViewerCommandReceiver, ViewerCommandSender, MAX_PEER_VIDEO_DISPLAYS,
+        MILLI1, SEC30,
     },
     common::get_default_sound_input,
     ui_session_interface::{InvokeUiSession, Session},
@@ -62,7 +63,6 @@ use std::{
     },
 };
 
-const MAX_PEER_VIDEO_DISPLAYS: usize = 16;
 const MAX_PENDING_SCREENSHOT_RESPONSES: usize = 8;
 const MAX_PEER_INFO_PLATFORM_ADDITIONS_BYTES: usize = 8 * 1024;
 const MAX_PEER_INFO_RESOLUTIONS: usize = 256;
@@ -250,6 +250,20 @@ fn is_video_refresh_message(message: &Message) -> bool {
                 Some(
                     misc::Union::RefreshVideo(_)
                         | misc::Union::RefreshVideoDisplay(_)
+                )
+            )
+    )
+}
+
+fn is_display_control_message(message: &Message) -> bool {
+    matches!(
+        &message.union,
+        Some(message::Union::Misc(misc))
+            if matches!(
+                &misc.union,
+                Some(
+                    misc::Union::SwitchDisplay(_)
+                        | misc::Union::CaptureDisplays(_)
                 )
             )
     )
@@ -1795,6 +1809,10 @@ impl<T: InvokeUiSession> Remote<T> {
                     log::error!("refusing viewer video refresh on the generic command queue");
                     return false;
                 }
+                if is_display_control_message(&msg) {
+                    log::error!("refusing viewer display control on the generic command queue");
+                    return false;
+                }
                 if matches!(msg.union.as_ref(), Some(message::Union::FileAction(_))) {
                     let context =
                         ViewerFileWriteContext::control(None, -1, "generic-queue file command");
@@ -1809,6 +1827,45 @@ impl<T: InvokeUiSession> Remote<T> {
                         log::error!("failed to send viewer command to peer: {err}");
                         return false;
                     }
+                }
+            }
+            Data::DisplaySelection(command) => {
+                let (switch_display, capture_set, refresh) = command.into_parts();
+                if let Some(switch_display) = switch_display {
+                    let message = super::DisplaySelectionCommand::switch_message(switch_display);
+                    if let Err(err) = peer.send(&message).await {
+                        log::error!("failed to send ordered display switch to peer: {err}");
+                        return false;
+                    }
+                }
+                let message = super::DisplaySelectionCommand::capture_message(&capture_set);
+                if let Err(err) = peer.send(&message).await {
+                    log::error!("failed to send ordered display capture set to peer: {err}");
+                    return false;
+                }
+                match refresh {
+                    Some(super::DisplaySelectionRefresh::All) => {
+                        if !self
+                            .handle_video_refresh(ViewerVideoRefreshRequest::All, peer)
+                            .await
+                        {
+                            return false;
+                        }
+                    }
+                    Some(super::DisplaySelectionRefresh::Displays(displays)) => {
+                        for display in displays {
+                            if !self
+                                .handle_video_refresh(
+                                    ViewerVideoRefreshRequest::Display(display),
+                                    peer,
+                                )
+                                .await
+                            {
+                                return false;
+                            }
+                        }
+                    }
+                    None => {}
                 }
             }
             Data::FileMessage(msg) => {

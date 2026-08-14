@@ -93,6 +93,7 @@ pub const SEC30: Duration = Duration::from_secs(30);
 pub const MEDIA_DATA_QUEUE_CAPACITY: usize = 8;
 pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 8;
 pub const MAX_VIDEO_FRAME_QUEUE_AGE: Duration = Duration::from_secs(1);
+pub(crate) const MAX_PEER_VIDEO_DISPLAYS: usize = 16;
 const MAX_DECODE_FAIL_COUNTER: usize = 3;
 
 #[cfg(target_os = "linux")]
@@ -3813,6 +3814,204 @@ pub trait Interface: Send + Clone + 'static + Sized {
 }
 
 /// Data used by the client interface.
+const DISPLAY_SELECTION_MAX_REFRESH_TARGETS: usize = MAX_PEER_VIDEO_DISPLAYS;
+const DISPLAY_SELECTION_MAX_DIMENSION: i32 = 16_384;
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum DisplaySelectionRefresh {
+    All,
+    Displays(Box<[usize]>),
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct DisplaySelectionSwitch {
+    display: i32,
+    width: i32,
+    height: i32,
+}
+
+impl DisplaySelectionSwitch {
+    pub(crate) fn new(display: i32, width: i32, height: i32) -> Self {
+        Self {
+            display,
+            width,
+            height,
+        }
+    }
+
+    pub(crate) fn display(self) -> i32 {
+        self.display
+    }
+}
+
+#[derive(Clone)]
+pub struct DisplaySelectionCommand {
+    switch_display: Option<DisplaySelectionSwitch>,
+    capture_set: Box<[i32]>,
+    refresh: Option<DisplaySelectionRefresh>,
+}
+
+impl DisplaySelectionCommand {
+    pub(crate) fn selection(
+        switch_display: Option<DisplaySelectionSwitch>,
+        capture_set: Vec<i32>,
+        refresh: DisplaySelectionRefresh,
+    ) -> ResultType<Self> {
+        Self::validated(switch_display, capture_set, Some(refresh))
+    }
+
+    pub(crate) fn capture_set(capture_set: Vec<i32>) -> ResultType<Self> {
+        Self::validated(None, capture_set, None)
+    }
+
+    fn validated(
+        switch_display: Option<DisplaySelectionSwitch>,
+        capture_set: Vec<i32>,
+        refresh: Option<DisplaySelectionRefresh>,
+    ) -> ResultType<Self> {
+        if capture_set.is_empty() {
+            bail!("display selection capture set is empty");
+        }
+        if capture_set.len() > MAX_PEER_VIDEO_DISPLAYS {
+            bail!("display selection capture set exceeds the peer display cap");
+        }
+        let mut capture_seen = HashSet::with_capacity(capture_set.len());
+        for display in &capture_set {
+            let display_index = usize::try_from(*display).map_err(|_| {
+                hbb_common::anyhow::anyhow!("display selection capture index is negative")
+            })?;
+            if display_index >= MAX_PEER_VIDEO_DISPLAYS {
+                bail!("display selection capture index exceeds the peer display cap");
+            }
+            if !capture_seen.insert(display_index) {
+                bail!("display selection capture set contains a duplicate");
+            }
+        }
+
+        if let Some(switch) = switch_display.as_ref() {
+            let display_index = usize::try_from(switch.display).map_err(|_| {
+                hbb_common::anyhow::anyhow!("display selection switch index is negative")
+            })?;
+            if display_index >= MAX_PEER_VIDEO_DISPLAYS {
+                bail!("display selection switch index exceeds the peer display cap");
+            }
+            if !capture_seen.contains(&display_index) {
+                bail!("display selection switch index is absent from its capture set");
+            }
+            if switch.width < 0
+                || switch.height < 0
+                || switch.width > DISPLAY_SELECTION_MAX_DIMENSION
+                || switch.height > DISPLAY_SELECTION_MAX_DIMENSION
+                || (switch.width == 0) != (switch.height == 0)
+            {
+                bail!("display selection switch resolution is invalid");
+            }
+        }
+
+        let refresh = match refresh {
+            Some(DisplaySelectionRefresh::All) => Some(DisplaySelectionRefresh::All),
+            Some(DisplaySelectionRefresh::Displays(displays)) => {
+                if displays.is_empty() {
+                    bail!("display selection exact refresh set is empty");
+                }
+                if displays.len() > DISPLAY_SELECTION_MAX_REFRESH_TARGETS {
+                    bail!("display selection has too many refresh targets");
+                }
+                let mut refresh_seen = HashSet::with_capacity(displays.len());
+                for display in &displays {
+                    if *display >= MAX_PEER_VIDEO_DISPLAYS {
+                        bail!("display selection refresh index exceeds the peer display cap");
+                    }
+                    if !capture_seen.contains(display) {
+                        bail!("display selection refresh index is absent from its capture set");
+                    }
+                    if !refresh_seen.insert(*display) {
+                        bail!("display selection refresh set contains a duplicate");
+                    }
+                }
+                Some(DisplaySelectionRefresh::Displays(displays))
+            }
+            None => None,
+        };
+
+        Ok(Self {
+            switch_display,
+            capture_set: capture_set.into_boxed_slice(),
+            refresh,
+        })
+    }
+
+    fn switch_message(switch: DisplaySelectionSwitch) -> Message {
+        let mut misc = Misc::new();
+        misc.set_switch_display(SwitchDisplay {
+            display: switch.display,
+            width: switch.width,
+            height: switch.height,
+            ..Default::default()
+        });
+        let mut message = Message::new();
+        message.set_misc(misc);
+        message
+    }
+
+    fn capture_message(capture_set: &[i32]) -> Message {
+        let mut misc = Misc::new();
+        misc.set_capture_displays(CaptureDisplays {
+            set: capture_set.to_vec(),
+            ..Default::default()
+        });
+        let mut message = Message::new();
+        message.set_misc(misc);
+        message
+    }
+
+    fn payload_bytes(&self) -> Option<usize> {
+        let capture_storage = self
+            .capture_set
+            .len()
+            .checked_mul(std::mem::size_of::<i32>())?;
+        let refresh_storage = match self.refresh.as_ref() {
+            Some(DisplaySelectionRefresh::Displays(displays)) => {
+                displays.len().checked_mul(std::mem::size_of::<usize>())?
+            }
+            Some(DisplaySelectionRefresh::All) | None => 0,
+        };
+        let mut total = capture_storage.checked_add(refresh_storage)?;
+        if let Some(switch) = self.switch_display.as_ref() {
+            total = total
+                .checked_add(usize::try_from(Self::switch_message(*switch).compute_size()).ok()?)?;
+        }
+        total = total.checked_add(
+            usize::try_from(Self::capture_message(&self.capture_set).compute_size()).ok()?,
+        )?;
+        match self.refresh.as_ref() {
+            Some(DisplaySelectionRefresh::All) => total
+                .checked_add(usize::try_from(LoginConfigHandler::refresh().compute_size()).ok()?),
+            Some(DisplaySelectionRefresh::Displays(displays)) => {
+                displays.iter().try_fold(total, |total, display| {
+                    total.checked_add(
+                        usize::try_from(
+                            LoginConfigHandler::refresh_display(*display).compute_size(),
+                        )
+                        .ok()?,
+                    )
+                })
+            }
+            None => Some(total),
+        }
+    }
+
+    pub(crate) fn into_parts(
+        self,
+    ) -> (
+        Option<DisplaySelectionSwitch>,
+        Box<[i32]>,
+        Option<DisplaySelectionRefresh>,
+    ) {
+        (self.switch_display, self.capture_set, self.refresh)
+    }
+}
+
 #[derive(Clone)]
 pub enum Data {
     Close,
@@ -3847,6 +4046,7 @@ pub enum Data {
     NewVoiceCall,
     CloseVoiceCall,
     ResetDecoder(Option<usize>),
+    DisplaySelection(DisplaySelectionCommand),
     RenameFile((i32, String, String, bool)),
     TakeScreenshot((i32, String)),
 }
@@ -4034,6 +4234,7 @@ impl Data {
             Self::Message(message) | Self::FileMessage(message) => {
                 usize::try_from(message.compute_size()).ok()
             }
+            Self::DisplaySelection(command) => command.payload_bytes(),
             Self::SendFiles((_, _, path, to, _, _, _))
             | Self::AddJob((_, _, path, to, _, _, _)) => checked_string_bytes(&[path, to]),
             Self::RemoveDirAll((_, path, _, _))
@@ -4069,6 +4270,24 @@ impl ViewerCommandSender {
     }
 
     pub(crate) fn send(&self, data: Data) -> Result<(), ViewerCommandAdmissionError> {
+        self.send_with_commit(data, || {})
+    }
+
+    pub(crate) fn send_display_selection_with_commit<F>(
+        &self,
+        command: DisplaySelectionCommand,
+        commit: F,
+    ) -> Result<(), ViewerCommandAdmissionError>
+    where
+        F: FnOnce(),
+    {
+        self.send_with_commit(Data::DisplaySelection(command), commit)
+    }
+
+    fn send_with_commit<F>(&self, data: Data, commit: F) -> Result<(), ViewerCommandAdmissionError>
+    where
+        F: FnOnce(),
+    {
         if matches!(&data, Data::Close) {
             return self.close();
         }
@@ -4096,16 +4315,30 @@ impl ViewerCommandSender {
             return Err(ViewerCommandAdmissionError::Failed(failure));
         }
 
-        if self.commands.capacity() == 0 {
-            let failure = ViewerCommandFailure::CommandCapacity {
-                queued: self.limits.capacity,
-                limit: self.limits.capacity,
-            };
-            self.set_terminal_locked(&mut terminal, ViewerCommandTerminal::Failed(failure));
-            return Err(ViewerCommandAdmissionError::Failed(failure));
-        }
+        let command_permit = match self.commands.try_reserve() {
+            Ok(permit) => permit,
+            Err(hbb_common::tokio::sync::mpsc::error::TrySendError::Full(())) => {
+                let failure = ViewerCommandFailure::CommandCapacity {
+                    queued: self.limits.capacity,
+                    limit: self.limits.capacity,
+                };
+                self.set_terminal_locked(&mut terminal, ViewerCommandTerminal::Failed(failure));
+                return Err(ViewerCommandAdmissionError::Failed(failure));
+            }
+            Err(hbb_common::tokio::sync::mpsc::error::TrySendError::Closed(())) => {
+                self.set_terminal_locked(&mut terminal, ViewerCommandTerminal::ReceiverGone);
+                return Err(ViewerCommandAdmissionError::ReceiverGone);
+            }
+        };
 
-        let accounted_bytes = accounted_bytes.unwrap_or_default();
+        let accounted_bytes = match accounted_bytes {
+            Some(accounted_bytes) => accounted_bytes,
+            None => {
+                let failure = ViewerCommandFailure::AccountingOverflow;
+                self.set_terminal_locked(&mut terminal, ViewerCommandTerminal::Failed(failure));
+                return Err(ViewerCommandAdmissionError::Failed(failure));
+            }
+        };
         let permit_count = match u32::try_from(accounted_bytes) {
             Ok(count) => count,
             Err(_) => {
@@ -4117,6 +4350,7 @@ impl ViewerCommandSender {
         let bytes = match Arc::clone(&self.bytes).try_acquire_many_owned(permit_count) {
             Ok(permit) => permit,
             Err(_) => {
+                drop(command_permit);
                 let failure = ViewerCommandFailure::ByteCapacity {
                     queued_bytes: self
                         .limits
@@ -4130,24 +4364,15 @@ impl ViewerCommandSender {
             }
         };
 
-        match self.commands.try_send(QueuedViewerCommand {
+        // The queue slot and its byte budget are exact-round admission. The caller's
+        // infallible local ownership commit happens while the slot remains reserved,
+        // so the sole network loop cannot observe the command first.
+        commit();
+        command_permit.send(QueuedViewerCommand {
             data,
             _bytes: bytes,
-        }) {
-            Ok(()) => Ok(()),
-            Err(hbb_common::tokio::sync::mpsc::error::TrySendError::Full(_)) => {
-                let failure = ViewerCommandFailure::CommandCapacity {
-                    queued: self.limits.capacity,
-                    limit: self.limits.capacity,
-                };
-                self.set_terminal_locked(&mut terminal, ViewerCommandTerminal::Failed(failure));
-                Err(ViewerCommandAdmissionError::Failed(failure))
-            }
-            Err(hbb_common::tokio::sync::mpsc::error::TrySendError::Closed(_)) => {
-                self.set_terminal_locked(&mut terminal, ViewerCommandTerminal::ReceiverGone);
-                Err(ViewerCommandAdmissionError::ReceiverGone)
-            }
-        }
+        });
+        Ok(())
     }
 
     pub(crate) fn close(&self) -> Result<(), ViewerCommandAdmissionError> {
@@ -4443,6 +4668,144 @@ mod tests {
             max_payload_bytes,
             max_queued_bytes,
         }
+    }
+
+    #[test]
+    fn r_s11go_display_selection_command_is_shape_and_byte_bounded() {
+        assert!(DisplaySelectionCommand::capture_set(Vec::new()).is_err());
+        assert!(DisplaySelectionCommand::capture_set(vec![0, 0]).is_err());
+        assert!(DisplaySelectionCommand::capture_set(vec![-1]).is_err());
+        assert!(
+            DisplaySelectionCommand::capture_set(vec![MAX_PEER_VIDEO_DISPLAYS as i32]).is_err()
+        );
+        assert!(DisplaySelectionCommand::selection(
+            None,
+            vec![0],
+            DisplaySelectionRefresh::Displays(Vec::new().into_boxed_slice()),
+        )
+        .is_err());
+        assert!(DisplaySelectionCommand::selection(
+            None,
+            vec![0],
+            DisplaySelectionRefresh::Displays(vec![0, 0].into_boxed_slice()),
+        )
+        .is_err());
+        assert!(DisplaySelectionCommand::selection(
+            Some(DisplaySelectionSwitch::new(1, 0, 0)),
+            vec![0],
+            DisplaySelectionRefresh::Displays(vec![0].into_boxed_slice()),
+        )
+        .is_err());
+
+        let switch = DisplaySelectionSwitch::new(1, 1920, 1080);
+        let capture_set = vec![0, 1];
+        let refresh_displays = vec![0, 1];
+        let expected_bytes = capture_set.len() * std::mem::size_of::<i32>()
+            + refresh_displays.len() * std::mem::size_of::<usize>()
+            + DisplaySelectionCommand::switch_message(switch).compute_size() as usize
+            + DisplaySelectionCommand::capture_message(&capture_set).compute_size() as usize
+            + refresh_displays
+                .iter()
+                .map(|display| {
+                    LoginConfigHandler::refresh_display(*display).compute_size() as usize
+                })
+                .sum::<usize>();
+        let command = DisplaySelectionCommand::selection(
+            Some(switch),
+            capture_set,
+            DisplaySelectionRefresh::Displays(refresh_displays.into_boxed_slice()),
+        )
+        .expect("the bounded display-selection shape is valid");
+        assert_eq!(
+            Data::DisplaySelection(command.clone()).viewer_command_payload_bytes(),
+            Some(expected_bytes)
+        );
+        let (switch, capture_set, refresh) = command.into_parts();
+        assert_eq!(switch.map(DisplaySelectionSwitch::display), Some(1));
+        assert_eq!(&*capture_set, &[0, 1]);
+        assert!(matches!(
+            refresh,
+            Some(DisplaySelectionRefresh::Displays(displays)) if &*displays == [0, 1]
+        ));
+        assert!(
+            DisplaySelectionCommand::selection(None, vec![0], DisplaySelectionRefresh::All,)
+                .is_ok()
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11go_display_selection_commit_precedes_network_visibility() {
+        let (sender, mut receiver) = viewer_command_channel();
+        let command = DisplaySelectionCommand::selection(
+            Some(DisplaySelectionSwitch::new(0, 0, 0)),
+            vec![0],
+            DisplaySelectionRefresh::Displays(vec![0].into_boxed_slice()),
+        )
+        .expect("the exact display-selection command is valid");
+        let committed = std::cell::Cell::new(false);
+
+        sender
+            .send_display_selection_with_commit(command, || {
+                assert!(matches!(
+                    receiver.commands.try_recv(),
+                    Err(hbb_common::tokio::sync::mpsc::error::TryRecvError::Empty)
+                ));
+                committed.set(true);
+            })
+            .expect("the exact round reserves, commits, and publishes the command");
+
+        assert!(committed.get());
+        assert!(matches!(
+            receiver.recv().await,
+            Some(Ok(Data::DisplaySelection(_)))
+        ));
+    }
+
+    #[test]
+    fn r_s11go_display_selection_refusal_does_not_commit_local_ownership() {
+        let command = || {
+            DisplaySelectionCommand::selection(
+                Some(DisplaySelectionSwitch::new(0, 0, 0)),
+                vec![0],
+                DisplaySelectionRefresh::Displays(vec![0].into_boxed_slice()),
+            )
+            .expect("the exact display-selection command is valid")
+        };
+
+        let (count_sender, _count_receiver) =
+            viewer_command_channel_with_limits(ViewerCommandLimits {
+                capacity: 1,
+                max_payload_bytes: VIEWER_COMMAND_MAX_PAYLOAD_BYTES,
+                max_queued_bytes: VIEWER_COMMAND_QUEUE_MAX_BYTES,
+            });
+        count_sender
+            .send(Data::RecordScreen(false))
+            .expect("the first command fills the exact count slot");
+        let count_committed = std::cell::Cell::new(false);
+        assert!(matches!(
+            count_sender
+                .send_display_selection_with_commit(command(), || { count_committed.set(true) }),
+            Err(ViewerCommandAdmissionError::Failed(
+                ViewerCommandFailure::CommandCapacity { .. }
+            ))
+        ));
+        assert!(!count_committed.get());
+
+        let (byte_sender, _byte_receiver) =
+            viewer_command_channel_with_limits(ViewerCommandLimits {
+                capacity: 1,
+                max_payload_bytes: VIEWER_COMMAND_MAX_PAYLOAD_BYTES,
+                max_queued_bytes: 0,
+            });
+        let byte_committed = std::cell::Cell::new(false);
+        assert!(matches!(
+            byte_sender
+                .send_display_selection_with_commit(command(), || { byte_committed.set(true) }),
+            Err(ViewerCommandAdmissionError::Failed(
+                ViewerCommandFailure::ByteCapacity { .. }
+            ))
+        ));
+        assert!(!byte_committed.get());
     }
 
     #[tokio::test(flavor = "current_thread")]

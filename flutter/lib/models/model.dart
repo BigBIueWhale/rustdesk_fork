@@ -35,6 +35,7 @@ import 'package:vector_math/vector_math.dart' show Vector2;
 import '../common.dart';
 import '../utils/image.dart' as img;
 import '../common/widgets/dialog.dart';
+import 'display_selection_queue.dart';
 import 'input_model.dart';
 import 'mobile_session_start_queue.dart';
 import 'platform_model.dart';
@@ -383,7 +384,7 @@ class FfiModel with ChangeNotifier {
       } else if (name == 'peer_info') {
         await handlePeerInfo(evt, peerId, false, sessionId);
       } else if (name == 'sync_peer_info') {
-        handleSyncPeerInfo(evt, sessionId, peerId);
+        await handleSyncPeerInfo(evt, sessionId, peerId);
       } else if (name == 'sync_platform_additions') {
         handlePlatformAdditions(evt, sessionId, peerId);
       } else if (name == 'connection_ready') {
@@ -477,7 +478,7 @@ class FfiModel with ChangeNotifier {
       } else if (name == 'sync_peer_option') {
         _handleSyncPeerOption(evt, peerId);
       } else if (name == 'follow_current_display') {
-        handleFollowCurrentDisplay(evt, sessionId, peerId);
+        await handleFollowCurrentDisplay(evt, sessionId, peerId);
       } else if (name == 'use_texture_render') {
         _handleUseTextureRender(evt, sessionId, peerId);
       } else if (name == "selected_files") {
@@ -1132,11 +1133,11 @@ class FfiModel with ChangeNotifier {
     // 0 is assumed to be the primary display here, for now.
 
     // move to the first display and set fullscreen
-    bind.sessionSwitchDisplay(
-      isDesktop: isDesktop,
-      sessionId: expectedSessionId,
-      value: Int32List.fromList([0]),
-    );
+    final ffi = parent.target;
+    if (ffi == null ||
+        !await selectRemoteDisplays(ffi, expectedSessionId, [0])) {
+      return;
+    }
     _pi.currentDisplay = 0;
     try {
       CurrentDisplayState.find(peerId).value = _pi.currentDisplay;
@@ -1276,11 +1277,11 @@ class FfiModel with ChangeNotifier {
                     pi.primaryDisplay >= pi.displays.length;
             final newDisplay =
                 isPeerPrimaryDisplayValid ? 0 : pi.primaryDisplay;
-            bind.sessionSwitchDisplay(
-              isDesktop: isDesktop,
-              sessionId: sessionId,
-              value: Int32List.fromList([newDisplay]),
-            );
+            final ffi = parent.target;
+            if (ffi == null ||
+                !await selectRemoteDisplays(ffi, sessionId, [newDisplay])) {
+              return;
+            }
 
             if (_pi.isSupportMultiUiSession) {
               // If the peer supports multi-ui-session, no switch display message will be send back.
@@ -1332,17 +1333,18 @@ class FfiModel with ChangeNotifier {
       if (pi.currentDisplay == kAllDisplayValue) {
         return;
       }
-      _pi.currentDisplay = int.parse(evt['display_idx']);
+      final display = int.parse(evt['display_idx']);
+      final ffi = parent.target;
+      if (ffi == null ||
+          !await selectRemoteDisplays(ffi, sessionId, [display])) {
+        return;
+      }
+      _pi.currentDisplay = display;
       try {
         CurrentDisplayState.find(peerId).value = _pi.currentDisplay;
       } catch (e) {
         //
       }
-      bind.sessionSwitchDisplay(
-        isDesktop: isDesktop,
-        sessionId: sessionId,
-        value: Int32List.fromList([_pi.currentDisplay]),
-      );
     }
     notifyListeners();
   }
@@ -3488,6 +3490,7 @@ class FFI {
   late final Peers favoritePeersModel; // global
   late final MobileSessionStartQueue<_MobileSessionStartRequest>
       _mobileSessionStarts;
+  final DisplaySelectionQueue _displaySelections = DisplaySelectionQueue();
 
   // Terminal model registry for multiple terminals
   final Map<int, TerminalModel> _terminalModels = {};
@@ -3497,6 +3500,14 @@ class FFI {
 
   bool isCurrentSession(SessionID expectedSessionId) =>
       !closed && sessionId == expectedSessionId;
+
+  bool isCurrentSessionOwner(
+          SessionID expectedSessionId, SessionID expectedClientOwnerId) =>
+      isCurrentSession(expectedSessionId) &&
+      clientOwnerId == expectedClientOwnerId;
+
+  Future<bool> submitDisplaySelection(Future<bool> Function() operation) =>
+      _displaySelections.submit(operation);
 
   FFI(SessionID? sId) {
     sessionId = sId ?? Uuid().v4obj();
@@ -3848,11 +3859,21 @@ class FFI {
             'Unreachable, failed to add existed session to $id, the displays is null while display is $display');
         return activeSessionId;
       }
+      if (!displays.contains(display) ||
+          displays.any((candidate) =>
+              candidate < -0x80000000 || candidate > 0x7fffffff)) {
+        debugPrint(
+            'Unreachable, failed to add existed session to $id, the selected display is incoherent or outside the protocol range');
+        _reportSessionStreamFailure(
+            activeSessionId, id, 'The connection could not be started');
+        return activeSessionId;
+      }
+      final requestedDisplays = Int32List.fromList(displays);
       final addRes = bind.sessionAddExistedSync(
           id: id,
           sessionId: activeSessionId,
           clientOwnerId: clientOwnerId,
-          displays: Int32List.fromList(displays),
+          displays: requestedDisplays,
           isViewCamera: isViewCamera);
       if (addRes != '') {
         debugPrint(
@@ -3876,22 +3897,15 @@ class FFI {
       inputModel.updateTrackpadSpeed();
     }
 
-    // CAUTION: `sessionStart()` and `sessionStartWithDisplays()` are an async functions.
-    // Though the stream is returned immediately, the stream may not be ready.
-    // Any operations that depend on the stream should be carefully handled.
+    // CAUTION: sessionStart() returns the stream immediately. Existing-window
+    // capture admission is therefore completed by sessionAddExistedSync above;
+    // no display command may depend on asynchronous stream attachment.
     late final Stream<EventToUI> stream;
-    if (isNewPeer || display == null || displays == null) {
-      stream = bind.sessionStart(
-          sessionId: activeSessionId, clientOwnerId: clientOwnerId, id: id);
-    } else {
-      // We have to put displays in `sessionStart()` to make sure the stream is ready
-      // and then the displays' capturing requests can be sent.
-      stream = bind.sessionStartWithDisplays(
-          sessionId: activeSessionId,
-          clientOwnerId: clientOwnerId,
-          id: id,
-          displays: Int32List.fromList(displays));
-    }
+    // Existing-window display capture was admitted synchronously by
+    // sessionAddExistedSync before local currentDisplay state was committed.
+    // Stream attachment must not submit a second, independently ordered capture.
+    stream = bind.sessionStart(
+        sessionId: activeSessionId, clientOwnerId: clientOwnerId, id: id);
     _listenToSessionStream(stream, activeSessionId, id, tabWindowId, display);
     return activeSessionId;
   }

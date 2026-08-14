@@ -9367,10 +9367,17 @@ else
   echo "  FAIL R-S11ew/R-S11fr: Flutter software RGBA publication regained stale, cross-session, cross-stream, unbounded, stranded-recovery, out-of-order-commit, or borrowed-pointer state"
   rc=1
 fi
+if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then
+  echo "  ok  R-S11go native Flutter display selection is exact-owner, typed, ordered, bounded, and failure-visible"
+else
+  echo "  FAIL R-S11go: display selection regained stale-owner, generic-message, split-refresh, premature-local-commit, or controlled-side divergence"
+  rc=1
+fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ex_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gf_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ff_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11go_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib fs::tests::r_s11fg_read_step_returns_the_exact_file_frame_receipt --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::io_loop::tests::r_s11fg_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config server::connection::controlled_file_write_tests::r_s11fh_ --color never

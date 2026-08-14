@@ -1203,10 +1203,11 @@ void showOptions(
         Theme.of(context).colorScheme.primary.withOpacity(0.6);
     for (var i = 0; i < pi.displays.length; ++i) {
       children.add(InkWell(
-          onTap: () {
+          onTap: () async {
             if (i == cur) return;
-            openMonitorInTheSameTab(i, gFFI, pi);
-            gFFI.dialogManager.dismissAll();
+            if (await openMonitorInTheSameTab(i, gFFI, pi)) {
+              gFFI.dialogManager.dismissAll();
+            }
           },
           child: Ink(
               width: 40,

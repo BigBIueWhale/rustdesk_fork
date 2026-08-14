@@ -171,6 +171,23 @@ local_docker run --rm --pull=never --network=none --read-only \
       echo "DART-VERIFY: FAILED — mobile session add regained synchronous UI-isolate execution" >&2
       exit 1
     fi
+    display_selection_line="$(grep -nF "  Future<void> sessionSwitchDisplay(" lib/generated_bridge.dart \
+      | tail -n 1 | cut -d: -f1)"
+    [ -n "$display_selection_line" ] \
+      || { echo "DART-VERIFY: FAILED — generated bridge lacks fallible display selection" >&2; exit 1; }
+    display_selection_impl="$(sed -n "${display_selection_line},$((display_selection_line + 90))p" lib/generated_bridge.dart)"
+    printf "%s\n" "$display_selection_impl" | grep -qF "required UuidValue clientOwnerId" \
+      || { echo "DART-VERIFY: FAILED — generated display selection lacks the exact UI owner" >&2; exit 1; }
+    printf "%s\n" "$display_selection_impl" | grep -qF "_platform.executeNormal(FlutterRustBridgeTask(" \
+      || { echo "DART-VERIFY: FAILED — display selection is not a normal worker-pool bridge call" >&2; exit 1; }
+    if printf "%s\n" "$display_selection_impl" | grep -qF "_platform.executeSync("; then
+      echo "DART-VERIFY: FAILED — display selection moved onto the synchronous UI isolate" >&2
+      exit 1
+    fi
+    if grep -qF "sessionStartWithDisplays" lib/generated_bridge.dart; then
+      echo "DART-VERIFY: FAILED — generated bridge retained the second display-capture startup surface" >&2
+      exit 1
+    fi
     if grep -qE "GpuTexture|gpu_texture|AdapterLuid|adapter_luid|mainHasHwcodec|mainHasVram|main_has_hwcodec|main_has_vram" \
       lib/generated_bridge.dart lib/generated_bridge.freezed.dart; then
       echo "DART-VERIFY: FAILED — freshly generated bridge retained the retired GPU/VRAM presentation surface" >&2
@@ -185,6 +202,7 @@ local_docker run --rm --pull=never --network=none --read-only \
       lib/models/desktop_texture_lifecycle.dart \
       third_party/texture_rgba_renderer/lib/texture_rgba_renderer.dart \
       lib/models/mobile_session_start_queue.dart \
+      lib/models/display_selection_queue.dart \
       lib/models/session_stream_finality.dart \
       lib/models/presentation_recovery.dart \
       lib/models/rgba_publication_order.dart \
@@ -196,6 +214,7 @@ local_docker run --rm --pull=never --network=none --read-only \
       lib/web/bridge.dart \
       test/desktop_texture_lifecycle_test.dart \
       test/mobile_session_start_queue_test.dart \
+      test/display_selection_queue_test.dart \
       test/session_stream_finality_test.dart \
       test/presentation_recovery_test.dart \
       test/rgba_publication_order_test.dart \
@@ -232,6 +251,8 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/mobile_file_session_lifecycle_test.dart
     echo "  == R-S11eo flutter test: mobile session preparation is bounded and latest-wins =="
     flutter test --no-pub test/mobile_session_start_queue_test.dart
+    echo "  == R-S11go flutter test: display admission is ordered, bounded, and latest-wins =="
+    flutter test --no-pub test/display_selection_queue_test.dart
     echo "  == R-S11eo flutter test: expected close and unexpected stream failure stay distinct =="
     flutter test --no-pub test/session_stream_finality_test.dart
     echo "  == R-S11ex flutter test: desktop texture lifecycle exact finality =="
@@ -344,7 +365,13 @@ PY
       -o /tmp/texture_rgba_windows_core_test
     /tmp/texture_rgba_windows_core_test
     cd /src
-    rustfmt --edition 2021 --check src/flutter.rs src/flutter_ffi.rs src/client/io_loop.rs
+    python3 scripts/verify-display-selection-finality.py --repo . --self-test
+    rustfmt --edition 2021 --check \
+      src/client.rs \
+      src/client/io_loop.rs \
+      src/flutter.rs \
+      src/flutter_ffi.rs \
+      src/ui_session_interface.rs
     echo "  == shipped Debian Rust library check: flutter,unix-file-copy-paste =="
     cargo check --offline --locked --features flutter,unix-file-copy-paste --lib --color never
     echo "  == R-S11eb generated-bridge mobile session lifecycle regressions =="
@@ -353,6 +380,9 @@ PY
     echo "  == R-S11ff generated-bridge exact-owner viewer refresh regression =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       flutter::mobile_session_lifecycle_tests::r_s11ff_video_refresh_requires_the_current_exact_ui_owner -- --test-threads=1
+    echo "  == R-S11go generated-bridge ordered exact-owner display-selection finality regression =="
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      r_s11go_ -- --test-threads=1
     echo "  == R-S11fr generated-bridge software RGBA recovery regressions =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       flutter::mobile_session_lifecycle_tests::r_s11fr_ -- --test-threads=1

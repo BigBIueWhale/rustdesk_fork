@@ -92,6 +92,21 @@ const INPUT_KEY_SEQUENCE_MAX_BYTES: usize = 1024;
 const INPUT_MODIFIER_MAX_ENTRIES: usize = 16;
 const INPUT_SCROLL_MAX_DELTA: i32 = 64;
 
+fn capture_display_has_exactly_one_operation(displays: &CaptureDisplays) -> bool {
+    usize::from(!displays.add.is_empty())
+        + usize::from(!displays.sub.is_empty())
+        + usize::from(!displays.set.is_empty())
+        == 1
+}
+
+fn switch_display_resolution_is_well_formed(width: i32, height: i32) -> bool {
+    (width == 0 && height == 0)
+        || (width > 0
+            && height > 0
+            && width <= MAX_PEER_DISPLAY_DIMENSION
+            && height <= MAX_PEER_DISPLAY_DIMENSION)
+}
+
 #[derive(Default)]
 struct DisplayControlRejectLog {
     last_log_at: Option<Instant>,
@@ -3639,6 +3654,50 @@ impl Subscriber for ConnInner {
 }
 
 #[cfg(test)]
+mod display_control_validation_tests {
+    use super::*;
+
+    #[test]
+    fn r_s11go_controlled_display_requests_are_exact_or_terminal() {
+        assert!(!capture_display_has_exactly_one_operation(
+            &CaptureDisplays::new()
+        ));
+        for displays in [
+            CaptureDisplays {
+                add: vec![0],
+                ..Default::default()
+            },
+            CaptureDisplays {
+                sub: vec![0],
+                ..Default::default()
+            },
+            CaptureDisplays {
+                set: vec![0],
+                ..Default::default()
+            },
+        ] {
+            assert!(capture_display_has_exactly_one_operation(&displays));
+        }
+        assert!(!capture_display_has_exactly_one_operation(
+            &CaptureDisplays {
+                add: vec![0],
+                set: vec![0],
+                ..Default::default()
+            }
+        ));
+
+        assert!(switch_display_resolution_is_well_formed(0, 0));
+        assert!(switch_display_resolution_is_well_formed(1, 1));
+        assert!(!switch_display_resolution_is_well_formed(1, 0));
+        assert!(!switch_display_resolution_is_well_formed(-1, -1));
+        assert!(!switch_display_resolution_is_well_formed(
+            MAX_PEER_DISPLAY_DIMENSION + 1,
+            MAX_PEER_DISPLAY_DIMENSION + 1,
+        ));
+    }
+}
+
+#[cfg(test)]
 mod cm_process_generation_tests {
     use super::*;
 
@@ -4882,7 +4941,10 @@ impl Connection {
                             }
                         }
                         VideoEgressItem::RefreshRequired { display } => {
-                            conn.refresh_video_display(Some(display));
+                            if !conn.refresh_video_display(Some(display)) {
+                                conn.on_close("video service retired before refresh", false).await;
+                                break;
+                            }
                         }
                     }
                 },
@@ -4913,7 +4975,10 @@ impl Connection {
                             }
                         }
                         Some(message::Union::PeerInfo(_pi)) => {
-                            conn.refresh_video_display(None);
+                            if !conn.refresh_video_display(None) {
+                                conn.on_close("video service retired before refresh", false).await;
+                                break;
+                            }
                             #[cfg(target_os = "macos")]
                             conn.retina.set_displays(&_pi.displays);
                         }
@@ -7472,17 +7537,16 @@ impl Connection {
                 },
                 Some(message::Union::Misc(misc)) => match misc.union {
                     Some(misc::Union::SwitchDisplay(s)) => {
-                        self.handle_switch_display(s).await;
+                        if !self.handle_switch_display(s).await {
+                            return false;
+                        }
                     }
                     Some(misc::Union::CaptureDisplays(displays)) => {
-                        let non_empty_ops = usize::from(!displays.add.is_empty())
-                            + usize::from(!displays.sub.is_empty())
-                            + usize::from(!displays.set.is_empty());
-                        if non_empty_ops > 1 {
+                        if !capture_display_has_exactly_one_operation(&displays) {
                             self.note_display_control_reject(format_args!(
-                                "capture display message has multiple non-empty operations"
+                                "capture display message must have exactly one non-empty operation"
                             ));
-                            return true;
+                            return false;
                         }
                         if !self.validate_peer_display_indexes_syntax(&displays.add, "capture add")
                             || !self
@@ -7490,33 +7554,35 @@ impl Connection {
                             || !self
                                 .validate_peer_display_indexes_syntax(&displays.set, "capture set")
                         {
-                            return true;
+                            return false;
                         }
                         let Some(display_count) = self.peer_display_count() else {
-                            return true;
+                            return false;
                         };
                         let Some(add) = self.validate_peer_display_indexes(
                             &displays.add,
                             "capture add",
                             display_count,
                         ) else {
-                            return true;
+                            return false;
                         };
                         let Some(sub) = self.validate_peer_display_indexes(
                             &displays.sub,
                             "capture sub",
                             display_count,
                         ) else {
-                            return true;
+                            return false;
                         };
                         let Some(set) = self.validate_peer_display_indexes(
                             &displays.set,
                             "capture set",
                             display_count,
                         ) else {
-                            return true;
+                            return false;
                         };
-                        self.capture_displays(&add, &sub, &set).await;
+                        if !self.capture_displays(&add, &sub, &set).await {
+                            return false;
+                        }
                     }
                     #[cfg(windows)]
                     Some(misc::Union::ToggleVirtualDisplay(t)) => {
@@ -7547,15 +7613,20 @@ impl Connection {
                         if r {
                             // Refresh all videos.
                             // Compatibility with old versions and sciter(remote).
-                            self.refresh_video_display(None);
+                            if !self.refresh_video_display(None) {
+                                return false;
+                            }
                         }
                         self.update_auto_disconnect_timer();
                     }
                     Some(misc::Union::RefreshVideoDisplay(display)) => {
-                        if let Some(display) =
+                        let Some(display) =
                             self.validate_peer_display_index(display, "refresh video display")
-                        {
-                            self.refresh_video_display(Some(display));
+                        else {
+                            return false;
+                        };
+                        if !self.refresh_video_display(Some(display)) {
+                            return false;
                         }
                         self.update_auto_disconnect_timer();
                     }
@@ -7766,7 +7837,9 @@ impl Connection {
                             request.sid.clone(),
                             tx,
                         ) {
-                            self.refresh_video_display(Some(display));
+                            if !self.refresh_video_display(Some(display)) {
+                                return false;
+                            }
                         }
                     }
                 }
@@ -7884,14 +7957,20 @@ impl Connection {
     // the last consumer (the terminal OS-credential scope). The sole live online-guess limiter is now
     // the bounded, decaying, per-v4-source GUESS_FAILURES in cpace.rs (R-P14c).
 
-    fn refresh_video_display(&self, display: Option<usize>) {
-        self.server.upgrade().map(|s| {
-            s.read().unwrap().set_video_service_opt(
-                display.map(|d| (self.video_source(), d)),
-                video_service::OPTION_REFRESH,
-                super::service::SERVICE_OPTION_VALUE_TRUE,
+    fn refresh_video_display(&self, display: Option<usize>) -> bool {
+        let Some(server) = self.server.upgrade() else {
+            log::warn!(
+                "refusing video refresh after the controlled server owner retired: conn_id={}",
+                self.inner.id()
             );
-        });
+            return false;
+        };
+        server.read().unwrap().set_video_service_opt(
+            display.map(|d| (self.video_source(), d)),
+            video_service::OPTION_REFRESH,
+            super::service::SERVICE_OPTION_VALUE_TRUE,
+        );
+        true
     }
 
     fn note_display_control_reject(&mut self, detail: fmt::Arguments<'_>) {
@@ -8075,31 +8154,44 @@ impl Connection {
         true
     }
 
-    async fn handle_switch_display(&mut self, s: SwitchDisplay) {
+    async fn handle_switch_display(&mut self, s: SwitchDisplay) -> bool {
+        if !switch_display_resolution_is_well_formed(s.width, s.height) {
+            self.note_display_control_reject(format_args!(
+                "switch display resolution: invalid dimensions {}x{}",
+                s.width, s.height
+            ));
+            return false;
+        }
+        #[cfg(any(target_os = "android", target_os = "ios"))]
+        if s.width != 0 {
+            self.note_display_control_reject(format_args!(
+                "switch display resolution is unsupported on this controlled platform"
+            ));
+            return false;
+        }
         let Some(display_idx) = self.validate_peer_display_index(s.display, "switch display")
         else {
-            return;
+            return false;
+        };
+        let Some(server) = self.server.upgrade() else {
+            self.note_display_control_reject(format_args!(
+                "switch display server owner is no longer active"
+            ));
+            return false;
         };
         if self.display_idx != display_idx {
-            if let Some(server) = self.server.upgrade() {
-                self.switch_display_to(display_idx, server.clone());
+            self.switch_display_to(display_idx, server);
 
-                #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                if s.width != 0 && s.height != 0 {
-                    self.change_resolution(
-                        None,
-                        &Resolution {
-                            width: s.width,
-                            height: s.height,
-                            ..Default::default()
-                        },
-                    );
-                } else if s.width != 0 || s.height != 0 {
-                    self.note_display_control_reject(format_args!(
-                        "switch display resolution: partial dimensions {}x{}",
-                        s.width, s.height
-                    ));
-                }
+            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            if s.width != 0 && s.height != 0 {
+                self.change_resolution(
+                    None,
+                    &Resolution {
+                        width: s.width,
+                        height: s.height,
+                        ..Default::default()
+                    },
+                );
             }
 
             // Send display changed message.
@@ -8112,6 +8204,7 @@ impl Connection {
                 self.send(msg_out).await;
             }
         }
+        true
     }
 
     fn video_source(&self) -> VideoSource {
@@ -8139,33 +8232,37 @@ impl Connection {
         self.display_idx = display_idx;
     }
 
-    async fn capture_displays(&mut self, add: &[usize], sub: &[usize], set: &[usize]) {
+    async fn capture_displays(&mut self, add: &[usize], sub: &[usize], set: &[usize]) -> bool {
         let video_source = self.video_source();
-        if let Some(sever) = self.server.upgrade() {
-            let mut lock = sever.write().unwrap();
-            for display in add.iter() {
-                lock.ensure_video_service(video_source, *display);
-            }
-            for display in set.iter() {
-                lock.ensure_video_service(video_source, *display);
-            }
-            if !add.is_empty() {
-                lock.capture_displays(self.inner.clone(), video_source, add, true, false);
-            } else if !sub.is_empty() {
-                lock.capture_displays(self.inner.clone(), video_source, sub, false, true);
-            } else {
-                lock.capture_displays(self.inner.clone(), video_source, set, true, true);
-            }
-            self.multi_ui_session = lock.get_subbed_displays_count(self.inner.id()) > 1;
-            if self.follow_remote_window {
-                lock.subscribe(
-                    NAME_WINDOW_FOCUS,
-                    self.inner.clone(),
-                    !self.multi_ui_session,
-                );
-            }
-            drop(lock);
+        let Some(server) = self.server.upgrade() else {
+            self.note_display_control_reject(format_args!(
+                "capture display server owner is no longer active"
+            ));
+            return false;
+        };
+        let mut lock = server.write().unwrap();
+        for display in add.iter() {
+            lock.ensure_video_service(video_source, *display);
         }
+        for display in set.iter() {
+            lock.ensure_video_service(video_source, *display);
+        }
+        if !add.is_empty() {
+            lock.capture_displays(self.inner.clone(), video_source, add, true, false);
+        } else if !sub.is_empty() {
+            lock.capture_displays(self.inner.clone(), video_source, sub, false, true);
+        } else {
+            lock.capture_displays(self.inner.clone(), video_source, set, true, true);
+        }
+        self.multi_ui_session = lock.get_subbed_displays_count(self.inner.id()) > 1;
+        if self.follow_remote_window {
+            lock.subscribe(
+                NAME_WINDOW_FOCUS,
+                self.inner.clone(),
+                !self.multi_ui_session,
+            );
+        }
+        true
     }
 
     #[cfg(windows)]

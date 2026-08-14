@@ -1728,10 +1728,16 @@ pub fn session_add_existed(
     } else {
         ConnType::DEFAULT_CONN
     };
-    sessions::insert_peer_session_id(peer_id, conn_type, session_id, client_owner_id, displays);
+    let result = sessions::replace_peer_session_display_owner(
+        peer_id,
+        conn_type,
+        session_id,
+        client_owner_id,
+        displays,
+    );
     #[cfg(target_os = "android")]
     drop(owner_admission);
-    Ok(())
+    result
 }
 
 /// Create a new remote session with the given id.
@@ -2573,7 +2579,7 @@ pub mod sessions {
                     if write_lock.is_empty() {
                         remove_peer_key = Some(peer_key.clone());
                     } else {
-                        check_remove_unused_displays(None, None, s, &write_lock);
+                        check_remove_unused_displays(None, s, &write_lock);
                     }
                     break;
                 }
@@ -2604,21 +2610,16 @@ pub mod sessions {
         false
     }
 
-    fn check_remove_unused_displays(
-        current: Option<usize>,
-        excluded_session_id: Option<&SessionID>,
-        session: &FlutterSession,
+    fn remaining_displays(
+        excluded: Option<&SessionID>,
         handlers: &HashMap<SessionID, SessionHandler>,
-    ) {
-        // Set capture displays if some are not used any more.
+    ) -> ResultType<Vec<i32>> {
         let mut remains_displays = HashSet::new();
-        if let Some(current) = current {
-            remains_displays.insert(current);
-        }
         for (k, h) in handlers.iter() {
-            if excluded_session_id == Some(k) {
+            if excluded == Some(k) {
                 continue;
             }
+            remains_displays.extend(h.displays.iter().copied());
             remains_displays.extend(
                 h.renderer
                     .map_display_sessions
@@ -2628,70 +2629,125 @@ pub mod sessions {
                     .cloned(),
             );
         }
+        let mut remains_displays = remains_displays
+            .into_iter()
+            .map(|display| {
+                i32::try_from(display)
+                    .map_err(|_| anyhow!("viewer display index does not fit the peer protocol"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        remains_displays.sort_unstable();
+        Ok(remains_displays)
+    }
+
+    fn check_remove_unused_displays(
+        excluded_session_id: Option<&SessionID>,
+        session: &FlutterSession,
+        handlers: &HashMap<SessionID, SessionHandler>,
+    ) {
+        // Set capture displays if some are not used any more.
+        let remains_displays = match remaining_displays(excluded_session_id, handlers) {
+            Ok(displays) => displays,
+            Err(err) => {
+                log::error!("failed to derive the remaining display capture set: {err}");
+                return;
+            }
+        };
         if !remains_displays.is_empty() {
-            session.capture_displays(
-                vec![],
-                vec![],
-                remains_displays.iter().map(|d| *d as i32).collect(),
-            );
+            if let Err(error) = session.try_capture_displays(remains_displays) {
+                log::error!("failed to admit the remaining display capture set: {error}");
+            }
         }
     }
 
-    pub fn session_switch_display(is_desktop: bool, session_id: SessionID, value: Vec<i32>) {
+    fn validate_display_selection(
+        session: &FlutterSession,
+        value: &[i32],
+    ) -> ResultType<Vec<usize>> {
+        if value.is_empty() {
+            bail!("viewer display selection is empty");
+        }
+        let peer_info = session.ui_handler.peer_info.read().unwrap();
+        let display_count = peer_info.displays.len();
+        if value.len() > display_count {
+            bail!(
+                "viewer display selection has {} entries for an inventory of {display_count}",
+                value.len()
+            );
+        }
+        let mut seen = HashSet::with_capacity(value.len());
+        value
+            .iter()
+            .map(|display| {
+                let display = usize::try_from(*display)
+                    .map_err(|_| anyhow!("viewer display selection is negative"))?;
+                if display >= display_count {
+                    bail!(
+                        "viewer display selection {display} is outside the peer inventory of {display_count}"
+                    );
+                }
+                if !seen.insert(display) {
+                    bail!("viewer display selection repeats display {display}");
+                }
+                Ok(display)
+            })
+            .collect()
+    }
+
+    pub(super) fn ordered_display_selection_refresh(
+        session: &FlutterSession,
+        displays: &[usize],
+    ) -> DisplaySelectionRefresh {
+        if crate::common::is_support_multi_ui_session_num(session.lc.read().unwrap().version) {
+            DisplaySelectionRefresh::Displays(displays.to_vec().into_boxed_slice())
+        } else {
+            DisplaySelectionRefresh::All
+        }
+    }
+
+    pub fn session_switch_display(
+        session_id: SessionID,
+        client_owner_id: SessionID,
+        value: Vec<i32>,
+    ) -> ResultType<()> {
         for s in SESSIONS.read().unwrap().values() {
             let mut write_lock = s.ui_handler.session_handlers.write().unwrap();
-            if let Some(h) = write_lock.get_mut(&session_id) {
-                h.displays = value.iter().map(|x| *x as usize).collect::<_>();
-                s.ui_handler
-                    .retire_rgba_displays_except(&session_id, &value);
-                #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                let displays_refresh = value.clone();
-                if value.len() == 1 {
-                    // Switch display.
-                    // This operation will also cause the peer to send a switch display message.
-                    // The switch display message will contain `SupportedResolutions`, which is useful when changing resolutions.
-                    s.switch_display(value[0]);
-
-                    if !is_desktop {
-                        s.capture_displays(vec![], vec![], value);
-                    } else {
-                        // Check if other displays are needed.
-                        if value.len() == 1 {
-                            check_remove_unused_displays(
-                                Some(value[0] as _),
-                                Some(&session_id),
-                                &s,
-                                &write_lock,
-                            );
-                        }
-                    }
-                } else {
-                    // Try capture all displays.
-                    s.capture_displays(vec![], vec![], value);
+            if let Some(handler) = write_lock.get(&session_id) {
+                if handler.client_owner_id.as_ref() != Some(&client_owner_id) {
+                    bail!("viewer display selection is not owned by this UI client");
                 }
+                let displays = validate_display_selection(s, &value)?;
+
+                let switch_display = (value.len() == 1).then_some(value[0]);
+                // Capture ownership follows the native session inventory on every
+                // platform; a caller-supplied platform flag must not be able to drop
+                // displays retained by another live UI owner.
+                let mut capture_set = remaining_displays(Some(&session_id), &write_lock)?;
+                capture_set.extend(value.iter().copied());
+                capture_set.sort_unstable();
+                capture_set.dedup();
                 // When switching display, we also need to send "Refresh display" message.
                 // On the controlled side:
                 // 1. If this display is not currently captured -> Refresh -> Message "Refresh display" is not required.
                 // One more key frame (first frame) will be sent because the refresh message.
                 // 2. If this display is currently captured -> Not refresh -> Message "Refresh display" is required.
                 // Without the message, the control side cannot see the latest display image.
-                #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                {
-                    let is_support_multi_ui_session = crate::common::is_support_multi_ui_session(
-                        &s.ui_handler.peer_info.read().unwrap().version,
-                    );
-                    if is_support_multi_ui_session {
-                        for display in displays_refresh.iter() {
-                            if let Err(err) = s.refresh_video(*display) {
-                                log::error!("failed to refresh switched display {display}: {err}");
-                                break;
-                            }
-                        }
-                    }
-                }
-                break;
+                let refresh = ordered_display_selection_refresh(s, &displays);
+
+                let handler = write_lock
+                    .get_mut(&session_id)
+                    .ok_or_else(|| anyhow!("viewer display selection owner disappeared"))?;
+                // Reserve the exact command round first, commit local renderer
+                // ownership while the command is still invisible, then publish it.
+                s.try_select_displays(switch_display, capture_set, refresh, || {
+                    handler.displays = displays;
+                    s.ui_handler
+                        .retire_rgba_displays_except(&session_id, &value);
+                })?;
+                return Ok(());
             }
         }
+        bail!("viewer display selection session is no longer active")
     }
 
     #[inline]
@@ -2718,35 +2774,40 @@ pub mod sessions {
     }
 
     #[inline]
-    pub fn insert_peer_session_id(
+    pub fn replace_peer_session_display_owner(
         peer_id: String,
         conn_type: ConnType,
         session_id: SessionID,
         client_owner_id: SessionID,
         displays: Vec<i32>,
-    ) -> bool {
+    ) -> ResultType<()> {
         if let Some(s) = SESSIONS.read().unwrap().get(&(peer_id, conn_type)) {
+            let validated_displays = validate_display_selection(s, &displays)?;
+            let mut handlers = s.ui_handler.session_handlers.write().unwrap();
+            let mut capture_set = remaining_displays(Some(&session_id), &handlers)?;
+            capture_set.extend(displays.iter().copied());
+            capture_set.sort_unstable();
+            capture_set.dedup();
+            let refresh = ordered_display_selection_refresh(s, &validated_displays);
             let mut h = SessionHandler {
                 client_owner_id: Some(client_owner_id),
                 ..Default::default()
             };
-            h.displays = displays.iter().map(|x| *x as usize).collect::<_>();
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            let is_support_multi_ui_session = crate::common::is_support_multi_ui_session(
-                &s.ui_handler.peer_info.read().unwrap().version,
-            );
+            let is_support_multi_ui_session =
+                crate::common::is_support_multi_ui_session_num(s.lc.read().unwrap().version);
             #[cfg(any(target_os = "android", target_os = "ios"))]
             let is_support_multi_ui_session = false;
             h.renderer.is_support_multi_ui_session = is_support_multi_ui_session;
-            let _ = s
-                .ui_handler
-                .session_handlers
-                .write()
-                .unwrap()
-                .insert(session_id, h);
-            true
+            h.displays = validated_displays;
+            s.try_select_displays(None, capture_set, refresh, || {
+                handlers.insert(session_id, h);
+                s.ui_handler
+                    .retire_rgba_displays_except(&session_id, &displays);
+            })?;
+            Ok(())
         } else {
-            false
+            bail!("existing viewer peer session is no longer active")
         }
     }
 
@@ -2826,7 +2887,7 @@ pub mod sessions {
             if handlers.is_empty() {
                 removed_keys.push(key.clone());
             } else {
-                check_remove_unused_displays(None, None, session, &handlers);
+                check_remove_unused_displays(None, session, &handlers);
             }
         }
 
@@ -2867,7 +2928,7 @@ pub mod sessions {
             if handlers.is_empty() {
                 removed_keys.push(key.clone());
             } else {
-                check_remove_unused_displays(None, None, session, &handlers);
+                check_remove_unused_displays(None, session, &handlers);
             }
         }
 
@@ -3240,6 +3301,160 @@ mod mobile_session_lifecycle_tests {
     use std::time::Duration;
 
     static TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11go_display_selection_is_exact_owned_ordered_and_commit_after_admission() {
+        let _guard = TEST_LOCK.lock().unwrap();
+        sessions::clear_for_test();
+
+        let session_id = SessionID::new_v4();
+        let current_owner = SessionID::new_v4();
+        let stale_owner = SessionID::new_v4();
+        let session = sessions::insert_test_session_for_owner(
+            session_id,
+            current_owner,
+            "display-selection-host",
+            ConnType::DEFAULT_CONN,
+        );
+        let mut peer_info = PeerInfo::new();
+        peer_info.version = "1.4.7".to_owned();
+        peer_info.displays = (0..3).map(|_| DisplayInfo::new()).collect();
+        *session.ui_handler.peer_info.write().unwrap() = peer_info.clone();
+        {
+            let mut lc = session.lc.write().unwrap();
+            lc.version = hbb_common::get_version_number("1.4.7");
+            // Live topology belongs to FlutterHandler::peer_info. Keep the
+            // login snapshot deliberately stale so the regression proves
+            // display selection does not validate against it.
+            lc.peer_info = Some(PeerInfo::new());
+        }
+
+        let mut old_frame = vec![1; 4];
+        session
+            .ui_handler
+            .offer_rgba_to_sessions(&[session_id], 0, &mut old_frame);
+        let mut selected_frame = vec![2; 4];
+        session
+            .ui_handler
+            .offer_rgba_to_sessions(&[session_id], 1, &mut selected_frame);
+
+        assert!(sessions::session_switch_display(session_id, stale_owner, vec![1]).is_err());
+        assert!(sessions::session_switch_display(session_id, current_owner, vec![-1]).is_err());
+        assert!(sessions::session_switch_display(session_id, current_owner, vec![1, 1],).is_err());
+        assert!(sessions::session_switch_display(session_id, current_owner, vec![3]).is_err());
+        assert!(sessions::session_switch_display(session_id, current_owner, vec![1]).is_err());
+        {
+            let handlers = session.ui_handler.session_handlers.read().unwrap();
+            assert!(handlers.get(&session_id).unwrap().displays.is_empty());
+        }
+        {
+            let mailboxes = session.ui_handler.display_rgbas.read().unwrap();
+            assert!(mailboxes.contains_key(&(session_id, 0)));
+            assert!(mailboxes.contains_key(&(session_id, 1)));
+        }
+
+        let (sender, mut receiver) = viewer_command_channel();
+        *session.sender.write().unwrap() = Some(sender);
+        sessions::session_switch_display(session_id, current_owner, vec![1])
+            .expect("the exact current owner may admit one ordered display selection");
+
+        let command = receiver
+            .recv()
+            .await
+            .expect("the admitted display selection remains owned by its round")
+            .expect("the viewer command round remains healthy");
+        let Data::DisplaySelection(command) = command else {
+            panic!("display selection must use its typed ordered command");
+        };
+        let (switch_display, capture_set, refresh) = command.into_parts();
+        assert_eq!(switch_display.map(DisplaySelectionSwitch::display), Some(1));
+        assert_eq!(&*capture_set, &[1]);
+        assert!(matches!(
+            refresh,
+            Some(DisplaySelectionRefresh::Displays(displays)) if &*displays == [1]
+        ));
+        {
+            let handlers = session.ui_handler.session_handlers.read().unwrap();
+            assert_eq!(handlers.get(&session_id).unwrap().displays, vec![1]);
+        }
+        {
+            let mailboxes = session.ui_handler.display_rgbas.read().unwrap();
+            assert!(!mailboxes.contains_key(&(session_id, 0)));
+            assert!(mailboxes.contains_key(&(session_id, 1)));
+        }
+
+        let second_session_id = SessionID::new_v4();
+        let second_owner = SessionID::new_v4();
+        let invalid_session_id = SessionID::new_v4();
+        let replacement_owner = SessionID::new_v4();
+        let admitted_sender = session
+            .sender
+            .write()
+            .unwrap()
+            .take()
+            .expect("the test round sender is installed");
+        assert!(session_add_existed(
+            "display-selection-host".to_owned(),
+            session_id,
+            replacement_owner,
+            vec![2],
+            false,
+        )
+        .is_err());
+        {
+            let handlers = session.ui_handler.session_handlers.read().unwrap();
+            let handler = handlers.get(&session_id).unwrap();
+            assert_eq!(handler.client_owner_id, Some(current_owner));
+            assert_eq!(handler.displays, vec![1]);
+        }
+        *session.sender.write().unwrap() = Some(admitted_sender);
+        assert!(session_add_existed(
+            "display-selection-host".to_owned(),
+            invalid_session_id,
+            second_owner,
+            vec![-1],
+            false,
+        )
+        .is_err());
+        session_add_existed(
+            "display-selection-host".to_owned(),
+            second_session_id,
+            second_owner,
+            vec![2],
+            false,
+        )
+        .expect("a valid second exact UI owner may admit its startup capture");
+        assert!(sessions::session_switch_display(second_session_id, stale_owner, vec![2]).is_err());
+
+        let command = receiver
+            .recv()
+            .await
+            .expect("the ordered capture selection remains owned by its round")
+            .expect("the viewer command round remains healthy");
+        let Data::DisplaySelection(command) = command else {
+            panic!("startup capture selection must use its typed ordered command");
+        };
+        let (switch_display, capture_set, refresh) = command.into_parts();
+        assert!(switch_display.is_none());
+        assert_eq!(&*capture_set, &[1, 2]);
+        assert!(matches!(
+            refresh,
+            Some(DisplaySelectionRefresh::Displays(displays)) if &*displays == [2]
+        ));
+        {
+            let handlers = session.ui_handler.session_handlers.read().unwrap();
+            assert!(!handlers.contains_key(&invalid_session_id));
+            assert_eq!(handlers.get(&second_session_id).unwrap().displays, vec![2]);
+        }
+
+        session.lc.write().unwrap().version = 0;
+        assert_eq!(
+            sessions::ordered_display_selection_refresh(&session, &[2]),
+            DisplaySelectionRefresh::All
+        );
+
+        sessions::clear_for_test();
+    }
 
     #[test]
     fn r_s11ff_video_refresh_requires_the_current_exact_ui_owner() {

@@ -19213,6 +19213,433 @@ def validate_viewer_rgba_mailbox_contract(sources):
     )
 
 
+def validate_display_selection_finality_contract(sources):
+    focused = sources["display_selection_finality_verifier"]
+    validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "display-selection focused runtime validation",
+    )
+    ordering_helper = extract_between(
+        focused,
+        "def require_order(source: str, needles: Tuple[str, ...], label: str) -> None:",
+        "\n\ndef extract_braced_item",
+        "display-selection focused strict ordering helper",
+    )
+    require_order(
+        ordering_helper,
+        (
+            "cursor = 0",
+            "position = source.find(needle, cursor)",
+            "if position < 0:",
+            "cursor = position + len(needle)",
+        ),
+        "display-selection focused strict ordering helper",
+    )
+    for text, label in (
+        ("def extract_braced_item(", "display-selection braced-item parser"),
+        ("def validate(sources", "display-selection semantic entry"),
+        ('"Displays(Box<[usize]>)"', "exact retained refresh plan"),
+        ('"switch_display: Option<DisplaySelectionSwitch>"', "minimal typed switch"),
+        ('"let command_permit = match self.commands.try_reserve()"', "exact queue-slot reservation"),
+        ('"commit();"', "local ownership commit"),
+        ('"command_permit.send(QueuedViewerCommand"', "post-commit command publication"),
+        ('"remaining_displays(Some(&session_id), &write_lock)?"', "native cross-owner capture union"),
+        ('"pub fn replace_peer_session_display_owner("', "atomic startup owner replacement"),
+        ('"send_display_selection_with_commit(command, commit)"', "reserved typed selection admission"),
+        ('"await bind.sessionSwitchDisplay("', "awaited Dart admission"),
+        ("capture_display_has_exactly_one_operation", "controlled exact capture operation"),
+        ('"return false;"', "controlled invalid-request finality"),
+        ("MUTATIONS: Tuple[Mutation, ...]", "display-selection mutation inventory"),
+        ("run_self_test(sources)", "display-selection mutation dispatch"),
+    ):
+        source = focused if text.startswith("def ") or text.startswith("MUTATIONS") or text.startswith("run_self") else validation
+        require_text(source, text, label)
+
+    for text, label in (
+        ('("client", "Displays(Box<[usize]>)", "Displays(Vec<usize>)", "exact refresh storage"),', "exact refresh mutation"),
+        ('("client", "let command_permit = match self.commands.try_reserve()",', "queue reservation mutation"),
+        ('"local commit before publication"', "commit/publication mutation"),
+        ('"admission refusal preserves local ownership"', "admission-refusal mutation"),
+        ('"native cross-owner display union"', "native union mutation"),
+        ('"atomic startup owner replacement"', "startup replacement mutation"),
+        ('"Dart await before commit"', "Dart ordering mutation"),
+        ('"terminal invalid switch"', "controlled finality mutation"),
+        ('"independent verifier dispatch"', "independent dispatch mutation"),
+    ):
+        require_text(focused, text, label)
+
+    command = extract_between(
+        sources["client_source"],
+        "pub(crate) enum DisplaySelectionRefresh",
+        "#[derive(Clone)]\npub enum Data",
+        "independent typed display-selection command",
+    )
+    require_order(
+        command,
+        (
+            "Displays(Box<[usize]>)",
+            "pub(crate) struct DisplaySelectionSwitch",
+            "switch_display: Option<DisplaySelectionSwitch>",
+            "capture_set: Box<[i32]>",
+            "refresh: Option<DisplaySelectionRefresh>",
+            "if capture_set.is_empty()",
+            "!capture_seen.insert(display_index)",
+            "!capture_seen.contains(&display_index)",
+            "capture_set: capture_set.into_boxed_slice()",
+        ),
+        "independent bounded typed display-selection shape",
+    )
+    require_absent(command, "Option<SwitchDisplay>", "protobuf switch retained as ambient command state")
+    admission = extract_between(
+        sources["client_source"],
+        "fn send_with_commit<F>(",
+        "\n    pub(crate) fn close(",
+        "independent viewer-command reservation transaction",
+    )
+    require_order(
+        admission,
+        (
+            "self.commands.try_reserve()",
+            "try_acquire_many_owned(permit_count)",
+            "commit();",
+            "command_permit.send(QueuedViewerCommand",
+        ),
+        "independent reserve-byte-commit-publish ordering",
+    )
+    require_text(
+        sources["client_source"],
+        "fn r_s11go_display_selection_commit_precedes_network_visibility()",
+        "independent commit-before-network regression",
+    )
+    require_text(
+        sources["client_source"],
+        "fn r_s11go_display_selection_refusal_does_not_commit_local_ownership()",
+        "independent admission-refusal preserves local ownership regression",
+    )
+
+    generic = extract_between(
+        sources["client_io_loop"],
+        "Data::Message(msg) => {",
+        "Data::DisplaySelection(command) => {",
+        "independent generic viewer-command refusal",
+    )
+    require_order(
+        generic,
+        ("if is_video_refresh_message(&msg)", "return false;", "if is_display_control_message(&msg)", "return false;"),
+        "independent generic refresh/display refusal",
+    )
+    ordered = extract_between(
+        sources["client_io_loop"],
+        "Data::DisplaySelection(command) => {",
+        "Data::FileMessage(msg) => {",
+        "independent ordered display-selection network branch",
+    )
+    require_order(
+        ordered,
+        (
+            "if let Some(switch_display)",
+            "switch_message(switch_display)",
+            "peer.send(&message).await",
+            "capture_message(&capture_set)",
+            "peer.send(&message).await",
+            "DisplaySelectionRefresh::All",
+            "ViewerVideoRefreshRequest::All",
+            "DisplaySelectionRefresh::Displays(displays)",
+            "ViewerVideoRefreshRequest::Display(display)",
+        ),
+        "independent switch-capture-decoder-peer-refresh ordering",
+    )
+    require_absent(ordered, "tokio::spawn", "display selection background-task bypass")
+    require_absent(ordered, "retry", "display selection retry bypass")
+
+    typed_sender = extract_between(
+        sources["ui_session_source"],
+        "pub fn try_select_displays<F>(",
+        "\n    #[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n    pub fn enter",
+        "independent typed display-selection sender",
+    )
+    require_order(
+        typed_sender,
+        (
+            "commit: F",
+            "Some(DisplaySelectionSwitch::new(display, width, height))",
+            "DisplaySelectionCommand::selection(switch_display, capture_set, refresh)?",
+            "send_display_selection_with_commit(command, commit)",
+        ),
+        "independent typed display-selection admission",
+    )
+
+    inventory_validation = extract_between(
+        sources["flutter_source"],
+        "fn validate_display_selection(",
+        "\n    pub(super) fn ordered_display_selection_refresh(",
+        "independent current peer-inventory validation",
+    )
+    require_order(
+        inventory_validation,
+        (
+            "if value.is_empty()",
+            "let peer_info = session.ui_handler.peer_info.read().unwrap();",
+            "let display_count = peer_info.displays.len();",
+            "if value.len() > display_count",
+            "usize::try_from(*display)",
+            "if display >= display_count",
+            "if !seen.insert(display)",
+        ),
+        "independent nonempty distinct current-inventory validation",
+    )
+
+    selection = extract_between(
+        sources["flutter_source"],
+        "pub fn session_switch_display(",
+        "\n    #[inline]\n    pub fn insert_session(",
+        "independent exact-owner native display selection",
+    )
+    require_order(
+        selection,
+        (
+            "handler.client_owner_id.as_ref() != Some(&client_owner_id)",
+            "validate_display_selection(s, &value)?",
+            "remaining_displays(Some(&session_id), &write_lock)?",
+            "capture_set.extend(value.iter().copied())",
+            "s.try_select_displays(switch_display, capture_set, refresh, || {",
+            "handler.displays = displays;",
+            "retire_rgba_displays_except(&session_id, &value);",
+        ),
+        "independent owner-union-reserve-local-commit ordering",
+    )
+    require_absent(selection, "is_desktop", "caller-selected native union policy")
+    replacement = extract_between(
+        sources["flutter_source"],
+        "pub fn replace_peer_session_display_owner(",
+        "\n    #[inline]\n    pub fn get_sessions(",
+        "independent atomic startup owner replacement",
+    )
+    require_order(
+        replacement,
+        (
+            "validate_display_selection(s, &displays)?",
+            "remaining_displays(Some(&session_id), &handlers)?",
+            "s.try_select_displays(None, capture_set, refresh, || {",
+            "handlers.insert(session_id, h);",
+            "retire_rgba_displays_except(&session_id, &displays);",
+        ),
+        "independent startup reservation before replacement",
+    )
+    for retired in ("pub fn insert_peer_session_id(", "pub fn session_capture_displays(", "pub fn ensure_display_selection_committed("):
+        require_absent(sources["flutter_source"], retired, "retired split display-startup surface")
+
+    ffi = extract_between(
+        sources["flutter_ffi_source"],
+        "pub fn session_switch_display(",
+        "\npub fn session_handle_flutter_key_event(",
+        "independent exact-owner display-selection FFI",
+    )
+    require_order(
+        ffi,
+        ("session_id: SessionID", "client_owner_id: SessionID", "value: Vec<i32>", ") -> ResultType<()>", "sessions::session_switch_display(session_id, client_owner_id, value)"),
+        "independent fallible connection/UI-owner FFI",
+    )
+    require_absent(ffi, "is_desktop", "FFI platform-policy flag")
+    require_absent(sources["flutter_ffi_source"], "session_start_with_displays", "second native startup capture")
+
+    dart_selection = extract_between(
+        sources["common_dart"],
+        "Future<bool> selectRemoteDisplays(",
+        "\nFuture<bool> openMonitorInTheSameTab(",
+        "independent awaited Dart display selection",
+    )
+    require_order(
+        dart_selection,
+        ("final expectedClientOwnerId = ffi.clientOwnerId;", "display < -0x80000000 || display > 0x7fffffff", "final requestedDisplays = Int32List.fromList(displays);", "return ffi.submitDisplaySelection(() async {", "ffi.isCurrentSessionOwner(", "await bind.sessionSwitchDisplay(", "clientOwnerId: expectedClientOwnerId", "value: requestedDisplays", "ffi.isCurrentSessionOwner("),
+        "independent Dart pre/post-await owner proof",
+    )
+    require_absent(dart_selection, "isDesktop:", "Dart platform-policy flag")
+    same_tab = extract_between(
+        sources["common_dart"],
+        "Future<bool> openMonitorInTheSameTab(",
+        "\n// Open new tab or window to show this monitor.",
+        "independent same-tab display selection",
+    )
+    require_order(
+        same_tab,
+        (
+            "if (!await selectRemoteDisplays(ffi, expectedSessionId, displays))",
+            "return false;",
+            "ffi.imageModel.clearImage();",
+            "ffi.ffiModel.switchToNewDisplay(",
+            "return true;",
+        ),
+        "independent Dart selection admission before local commit",
+    )
+    startup_dart = extract_between(
+        sources["model_dart"],
+        "if (!displays.contains(display)",
+        "_listenToSessionStream(stream, activeSessionId, id, tabWindowId, display);",
+        "independent existing-window Dart startup",
+    )
+    require_order(
+        startup_dart,
+        (
+            "!displays.contains(display)",
+            "candidate < -0x80000000 || candidate > 0x7fffffff",
+            "final requestedDisplays = Int32List.fromList(displays);",
+            "final addRes = bind.sessionAddExistedSync(",
+            "displays: requestedDisplays",
+            "if (addRes != '')",
+            "return activeSessionId;",
+            "ffiModel.pi.currentDisplay = display;",
+            "stream = bind.sessionStart(",
+        ),
+        "independent startup i32/set/snapshot before local commit",
+    )
+    require_text(sources["model_dart"], "clientOwnerId == expectedClientOwnerId", "immutable Dart owner conjunction")
+    queue = extract_between(
+        sources["display_selection_queue_dart"],
+        "class DisplaySelectionQueue",
+        "class _DisplaySelectionEntry",
+        "independent bounded Dart display-selection sequencer",
+    )
+    require_order(
+        queue,
+        (
+            "_DisplaySelectionEntry? _running;",
+            "_DisplaySelectionEntry? _pending;",
+            "if (_running == null)",
+            "unawaited(_drain());",
+            "_pending?.complete(false);",
+            "_pending = entry;",
+            "entry.complete(await entry.operation());",
+            "_running = _pending;",
+            "_pending = null;",
+        ),
+        "independent one-running/one-latest-pending Dart admission order",
+    )
+    require_text(
+        sources["model_dart"],
+        "_displaySelections.submit(operation)",
+        "independent per-FFI bounded display-selection sequencing",
+    )
+    require_text(
+        sources["display_selection_queue_test"],
+        "keeps one running display selection and only the latest successor",
+        "independent bounded display-selection regression",
+    )
+    require_absent(sources["model_dart"], "sessionStartWithDisplays", "second Dart startup capture")
+    require_absent(sources["web_bridge_dart"], "sessionStartWithDisplays", "second web startup capture")
+    require_text(sources["web_bridge_dart"], "required UuidValue clientOwnerId", "web UI-owner-shaped compatibility signature")
+    require_text(
+        sources["model_dart"],
+        "await handleSyncPeerInfo(evt, sessionId, peerId);",
+        "awaited live-topology selection event",
+    )
+    require_text(
+        sources["model_dart"],
+        "await handleFollowCurrentDisplay(evt, sessionId, peerId);",
+        "awaited follow-display selection event",
+    )
+    for key in ("mobile_remote_page_dart", "mobile_camera_page_dart"):
+        require_text(sources[key], "await openMonitorInTheSameTab", f"{key} awaited selection")
+
+    capture_policy = extract_between(
+        sources["connection_source"],
+        "fn capture_display_has_exactly_one_operation",
+        "\nfn switch_display_resolution_is_well_formed",
+        "independent controlled capture operation policy",
+    )
+    require_text(capture_policy, "== 1", "independent exactly-one capture operation")
+    controlled = extract_between(
+        sources["connection_source"],
+        "Some(misc::Union::SwitchDisplay(s)) => {",
+        "Some(misc::Union::RestartRemoteDevice(_)) => {",
+        "independent controlled display finality",
+    )
+    require_order(
+        controlled,
+        ("if !self.handle_switch_display(s).await", "return false;", "if !capture_display_has_exactly_one_operation(&displays)", "return false;", "validate_peer_display_indexes_syntax", "return false;", "if !self.capture_displays(&add, &sub, &set).await", "return false;", "Some(misc::Union::RefreshVideoDisplay(display))", "validate_peer_display_index(display, \"refresh video display\")", "return false;", "if !self.refresh_video_display(Some(display))", "return false;"),
+        "independent invalid controlled display termination",
+    )
+    require_text(sources["connection_source"], "fn r_s11go_controlled_display_requests_are_exact_or_terminal()", "controlled display regression")
+    switch_handler = extract_between(
+        sources["connection_source"],
+        "async fn handle_switch_display",
+        "fn video_source(&self)",
+        "independent controlled switch execution",
+    )
+    require_order(
+        switch_handler,
+        (
+            "switch display server owner is no longer active",
+            "return false;",
+            "self.switch_display_to(display_idx, server);",
+            "true",
+        ),
+        "independent controlled switch live-owner finality",
+    )
+    refresh_handler = extract_between(
+        sources["connection_source"],
+        "fn refresh_video_display",
+        "fn note_display_control_reject",
+        "independent controlled refresh execution",
+    )
+    require_order(
+        refresh_handler,
+        ("-> bool", "let Some(server) = self.server.upgrade() else", "return false;", "set_video_service_opt(", "true"),
+        "independent controlled refresh live-owner finality",
+    )
+    capture_handler = extract_between(
+        sources["connection_source"],
+        "async fn capture_displays",
+        "#[cfg(windows)]",
+        "independent controlled capture execution",
+    )
+    require_order(
+        capture_handler,
+        ("-> bool", "capture display server owner is no longer active", "return false;", "lock.capture_displays(", "true"),
+        "independent controlled capture live-owner finality",
+    )
+
+    for key, text, label in (
+        ("verify", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "shared focused gate"),
+        ("dart_verify", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "generated-bridge focused gate"),
+        ("dart_verify", "flutter test --no-pub test/display_selection_queue_test.dart", "generated-bridge bounded display-selection test gate"),
+        ("dart_verify", "display selection is not a normal worker-pool bridge call", "generated display-selection worker-mode gate"),
+        ("apple", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "Apple/shared focused gate"),
+        ("requirements", '<div class="req"><span class="id">R-S11go</span>', "R-S11go requirement"),
+        ("requirements", "one sequencer per live connection/UI-owner pair retaining exactly one running request and at most the latest pending request", "normative bounded multi-worker bridge sequencing"),
+        ("requirements", "<tr><td>350</td>", "Appendix C #350"),
+        ("requirements", "first refreshed keyframe cannot outrun local display ownership", "normative local-before-network finality"),
+        ("hardening", "### R-S11go/R-S11e-227 — ordered exact-owner display-selection finality", "R-S11go hardening ledger"),
+    ):
+        require_text(sources[key], text, label)
+
+    workspace_module = ast.parse(sources["workspace_verifier"])
+    validate_sources_function = next(
+        (
+            node
+            for node in workspace_module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "validate_sources"
+        ),
+        None,
+    )
+    if validate_sources_function is None:
+        raise VerificationError("display-selection independent workspace dispatch is absent")
+    dispatches = [
+        node
+        for node in validate_sources_function.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "validate_display_selection_finality_contract"
+    ]
+    if len(dispatches) != 1:
+        raise VerificationError(
+            "display-selection independent workspace dispatch must occur exactly once"
+        )
+
+
 def validate_desktop_texture_lifecycle_contract(sources):
     focused = sources["desktop_texture_lifecycle_verifier"]
     validation = extract_between(
@@ -22815,7 +23242,7 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         replacement_drain,
-        "check_remove_unused_displays(None, None, session, &handlers);",
+        "check_remove_unused_displays(None, session, &handlers);",
         "Android replacement drain all-remaining-display reconciliation source",
     )
     owner_drain = extract_between(
@@ -22826,7 +23253,7 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         owner_drain,
-        "check_remove_unused_displays(None, None, session, &handlers);",
+        "check_remove_unused_displays(None, session, &handlers);",
         "Android Activity-owner drain all-remaining-display reconciliation source",
     )
     session_start = extract_between(
@@ -23096,7 +23523,7 @@ def validate_android_voice_call_ownership_contract(sources):
     require_exact_count(
         authored_session_bridge,
         "client_owner_id: SessionID,",
-        5,
+        4,
         "Android authored add/attach/start dual-identity bridge source",
     )
     require_exact_count(
@@ -23181,9 +23608,16 @@ def validate_android_voice_call_ownership_contract(sources):
         2,
         "Android session-stream finality behavior gate source",
     )
-    require_text(
+    mobile_add_bridge_gate = extract_between(
         sources["dart_verify"],
-        "_platform.executeNormal(FlutterRustBridgeTask(",
+        'mobile_add_line="$(grep -nF "  Future<void> sessionAddMobile("',
+        'display_selection_line="$(grep -nF "  Future<void> sessionSwitchDisplay("',
+        "Android generated asynchronous mobile-add gate source",
+    )
+    require_text(
+        mobile_add_bridge_gate,
+        'printf "%s\\n" "$mobile_add_impl" | grep -qF '
+        '"_platform.executeNormal(FlutterRustBridgeTask("',
         "Android generated asynchronous mobile-add gate source",
     )
     require_text(
@@ -24008,7 +24442,8 @@ def validate_android_voice_call_ownership_contract(sources):
             "self.inner.id(),",
             "self.video_source(),",
             "request.sid.clone(),",
-            "self.refresh_video_display(Some(display));",
+            "if !self.refresh_video_display(Some(display))",
+            "return false;",
         ),
         "bounded exact-connection controlled screenshot admission source",
     )
@@ -42998,6 +43433,7 @@ def validate_sources(sources):
     validate_viewer_video_mailbox_contract(sources)
     validate_viewer_file_finality_contract(sources)
     validate_viewer_rgba_mailbox_contract(sources)
+    validate_display_selection_finality_contract(sources)
     validate_desktop_texture_lifecycle_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
     validate_android_client_lifecycle_drain_contract(sources)
@@ -60453,6 +60889,228 @@ def run_source_mutations(sources):
             "viewer RGBA asynchronous ordering regression",
         ),
         (
+            "display_selection_finality_verifier",
+            "cursor = position + len(needle)",
+            "cursor = 0",
+            "display-selection focused strict ordering helper",
+        ),
+        (
+            "display_selection_finality_verifier",
+            '            "let command_permit = match self.commands.try_reserve()",\n'
+            '            "try_acquire_many_owned(permit_count)",',
+            '            "let command_permit = match self.commands.try_send(())",\n'
+            '            "try_acquire_many_owned(permit_count)",',
+            "exact queue-slot reservation",
+        ),
+        (
+            "display_selection_finality_verifier",
+            '"native cross-owner display union"',
+            '"caller-selected display union"',
+            "native union mutation",
+        ),
+        (
+            "client_source",
+            "let command_permit = match self.commands.try_reserve()",
+            "let command_permit = match self.commands.try_send(())",
+            "independent reserve-byte-commit-publish ordering",
+        ),
+        (
+            "client_source",
+            "commit();\n        command_permit.send(QueuedViewerCommand",
+            "command_permit.send(QueuedViewerCommand",
+            "independent reserve-byte-commit-publish ordering",
+        ),
+        (
+            "client_source",
+            "fn r_s11go_display_selection_refusal_does_not_commit_local_ownership()",
+            "fn display_selection_refusal_does_not_commit_local_ownership()",
+            "independent admission-refusal preserves local ownership regression",
+        ),
+        (
+            "client_io_loop",
+            "if is_display_control_message(&msg)",
+            "if false && is_display_control_message(&msg)",
+            "independent generic refresh/display refusal",
+        ),
+        (
+            "client_io_loop",
+            "let message = super::DisplaySelectionCommand::capture_message(&capture_set);",
+            "let message = super::DisplaySelectionCommand::switch_message(switch_display);",
+            "independent switch-capture-decoder-peer-refresh ordering",
+        ),
+        (
+            "ui_session_source",
+            "send_display_selection_with_commit(command, commit)",
+            "send(Data::DisplaySelection(command))",
+            "independent typed display-selection admission",
+        ),
+        (
+            "flutter_source",
+            "let peer_info = session.ui_handler.peer_info.read().unwrap();",
+            "let peer_info = session.lc.read().unwrap();",
+            "independent nonempty distinct current-inventory validation",
+        ),
+        (
+            "flutter_source",
+            "remaining_displays(Some(&session_id), &write_lock)?",
+            "value.clone()",
+            "independent owner-union-reserve-local-commit ordering",
+        ),
+        (
+            "flutter_source",
+            "pub fn replace_peer_session_display_owner(",
+            "pub fn insert_peer_session_id(",
+            "independent atomic startup owner replacement",
+        ),
+        (
+            "flutter_ffi_source",
+            "sessions::session_switch_display(session_id, client_owner_id, value)",
+            "sessions::session_switch_display(session_id, SessionID::default(), value)",
+            "independent fallible connection/UI-owner FFI",
+        ),
+        (
+            "common_dart",
+            "display < -0x80000000 || display > 0x7fffffff",
+            "display < 0",
+            "independent Dart pre/post-await owner proof",
+        ),
+        (
+            "common_dart",
+            "final requestedDisplays = Int32List.fromList(displays);",
+            "final requestedDisplays = displays;",
+            "independent Dart pre/post-await owner proof",
+        ),
+        (
+            "common_dart",
+            "return ffi.submitDisplaySelection(() async {",
+            "return Future<bool>(() async {",
+            "independent Dart pre/post-await owner proof",
+        ),
+        (
+            "model_dart",
+            "!displays.contains(display)",
+            "false",
+            "independent existing-window Dart startup",
+        ),
+        (
+            "model_dart",
+            "candidate < -0x80000000 || candidate > 0x7fffffff",
+            "candidate < 0",
+            "independent startup i32/set/snapshot before local commit",
+        ),
+        (
+            "model_dart",
+            "final requestedDisplays = Int32List.fromList(displays);",
+            "final requestedDisplays = displays;",
+            "independent startup i32/set/snapshot before local commit",
+        ),
+        (
+            "display_selection_queue_dart",
+            "_pending?.complete(false);",
+            "_pending = null;",
+            "independent one-running/one-latest-pending Dart admission order",
+        ),
+        (
+            "model_dart",
+            "_displaySelections.submit(operation)",
+            "operation()",
+            "independent per-FFI bounded display-selection sequencing",
+        ),
+        (
+            "display_selection_queue_test",
+            "keeps one running display selection and only the latest successor",
+            "runs all pending display selections",
+            "independent bounded display-selection regression",
+        ),
+        (
+            "dart_verify",
+            "flutter test --no-pub test/display_selection_queue_test.dart",
+            "true # display selection queue test disabled",
+            "generated-bridge bounded display-selection test gate",
+        ),
+        (
+            "dart_verify",
+            "display selection is not a normal worker-pool bridge call",
+            "display selection worker mode is unchecked",
+            "generated display-selection worker-mode gate",
+        ),
+        (
+            "common_dart",
+            "if (!await selectRemoteDisplays(ffi, expectedSessionId, displays))",
+            "if (false)",
+            "independent Dart selection admission before local commit",
+        ),
+        (
+            "model_dart",
+            "await handleSyncPeerInfo(evt, sessionId, peerId);",
+            "handleSyncPeerInfo(evt, sessionId, peerId);",
+            "awaited live-topology selection event",
+        ),
+        (
+            "model_dart",
+            "await handleFollowCurrentDisplay(evt, sessionId, peerId);",
+            "handleFollowCurrentDisplay(evt, sessionId, peerId);",
+            "awaited follow-display selection event",
+        ),
+        (
+            "connection_source",
+            "if !self.handle_switch_display(s).await",
+            "if false && !self.handle_switch_display(s).await",
+            "independent invalid controlled display termination",
+        ),
+        (
+            "connection_source",
+            "switch display server owner is no longer active",
+            "switch display server owner absence is ignored",
+            "independent controlled switch live-owner finality",
+        ),
+        (
+            "connection_source",
+            "if !self.capture_displays(&add, &sub, &set).await",
+            "if false",
+            "independent invalid controlled display termination",
+        ),
+        (
+            "connection_source",
+            "capture display server owner is no longer active",
+            "capture display server owner absence is ignored",
+            "independent controlled capture live-owner finality",
+        ),
+        (
+            "connection_source",
+            "fn refresh_video_display(&self, display: Option<usize>) -> bool",
+            "fn refresh_video_display(&self, display: Option<usize>)",
+            "independent controlled refresh live-owner finality",
+        ),
+        (
+            "requirements",
+            "first refreshed keyframe cannot outrun local display ownership",
+            "first refreshed keyframe may outrun local display ownership",
+            "normative local-before-network finality",
+        ),
+        (
+            "requirements",
+            "one sequencer per live connection/UI-owner pair retaining exactly one running request and at most the latest pending request",
+            "an unbounded per-UI-owner sequencer",
+            "normative bounded multi-worker bridge sequencing",
+        ),
+        (
+            "hardening",
+            "### R-S11go/R-S11e-227 — ordered exact-owner display-selection finality",
+            "### R-S11go-disabled/R-S11e-227 — ordered exact-owner display-selection finality",
+            "R-S11go hardening ledger",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_viewer_rgba_mailbox_contract(sources)\n"
+            "    validate_display_selection_finality_contract(sources)\n"
+            "    validate_desktop_texture_lifecycle_contract(sources)",
+            "    validate_viewer_rgba_mailbox_contract(sources)\n"
+            "    validate_display_selection_finality_contract_disabled(sources)\n"
+            "    validate_desktop_texture_lifecycle_contract(sources)",
+            "display-selection independent workspace dispatch",
+        ),
+        (
             "desktop_texture_lifecycle_verifier",
             '"return _retireFuture ??= _retire();",\n'
             '        ),\n'
@@ -60654,7 +61312,7 @@ def run_source_mutations(sources):
             "client_io_loop",
             "if is_video_refresh_message(&msg)",
             "if false && is_video_refresh_message(&msg)",
-            "independent generic command-queue refresh refusal",
+            "independent generic refresh/display refusal",
         ),
         (
             "ui_session_source",
@@ -63099,7 +63757,7 @@ def run_source_mutations(sources):
             "            if handlers.is_empty() {\n"
             "                removed_keys.push(key.clone());\n"
             "            } else {\n"
-            "                check_remove_unused_displays(None, None, session, &handlers);",
+            "                check_remove_unused_displays(None, session, &handlers);",
             "for stale_handler_id in stale_handler_ids {\n"
             "                if let Some(handler) = handlers.remove(&stale_handler_id) {\n"
             "                    session.ui_handler.retire_rgba_session(&stale_handler_id);\n"
@@ -63109,7 +63767,7 @@ def run_source_mutations(sources):
             "            if handlers.is_empty() {\n"
             "                removed_keys.push(key.clone());\n"
             "            } else {\n"
-            "                check_remove_unused_displays(None, Some(session_id), session, &handlers);",
+            "                check_remove_unused_displays(Some(session_id), session, &handlers);",
             "Android replacement drain all-remaining-display reconciliation source",
         ),
         (
@@ -63120,14 +63778,14 @@ def run_source_mutations(sources):
             "            if handlers.is_empty() {\n"
             "                removed_keys.push(key.clone());\n"
             "            } else {\n"
-            "                check_remove_unused_displays(None, None, session, &handlers);",
+            "                check_remove_unused_displays(None, session, &handlers);",
             "if owned_handler_ids.is_empty() {\n"
             "                continue;\n"
             "            }\n"
             "            if handlers.is_empty() {\n"
             "                removed_keys.push(key.clone());\n"
             "            } else {\n"
-            "                check_remove_unused_displays(None, Some(client_owner_id), session, &handlers);",
+            "                check_remove_unused_displays(Some(client_owner_id), session, &handlers);",
             "Android Activity-owner drain all-remaining-display reconciliation source",
         ),
         (
@@ -63181,18 +63839,6 @@ def run_source_mutations(sources):
             "    session_id: SessionID,\n"
             "    client_owner_id: SessionID,",
             "pub fn session_start(\n"
-            "    events2ui: StreamSink<EventToUI>,\n"
-            "    session_id: SessionID,\n"
-            "    client_owner_id: String,",
-            "Android authored add/attach/start dual-identity bridge source",
-        ),
-        (
-            "flutter_ffi_source",
-            "pub fn session_start_with_displays(\n"
-            "    events2ui: StreamSink<EventToUI>,\n"
-            "    session_id: SessionID,\n"
-            "    client_owner_id: SessionID,",
-            "pub fn session_start_with_displays(\n"
             "    events2ui: StreamSink<EventToUI>,\n"
             "    session_id: SessionID,\n"
             "    client_owner_id: String,",
@@ -63652,7 +64298,7 @@ def run_source_mutations(sources):
             "client_source",
             "try_acquire_many_owned(permit_count)",
             "acquire_many_owned(permit_count)",
-            "viewer command nonblocking byte admission source",
+            "independent reserve-byte-commit-publish ordering",
         ),
         (
             "client_source",
@@ -72240,8 +72886,10 @@ def run_source_mutations(sources):
         ),
         (
             "dart_verify",
-            "_platform.executeNormal(FlutterRustBridgeTask(",
-            "_platform.executeSync(FlutterRustBridgeSyncTask(",
+            'printf "%s\\n" "$mobile_add_impl" | grep -qF '
+            '"_platform.executeNormal(FlutterRustBridgeTask("',
+            'printf "%s\\n" "$mobile_add_impl" | grep -qF '
+            '"_platform.executeSync(FlutterRustBridgeSyncTask("',
             "Android generated asynchronous mobile-add gate source",
         ),
         (
@@ -73420,6 +74068,9 @@ def main():
             "mobile_session_start_queue_dart": (
                 repo / "flutter/lib/models/mobile_session_start_queue.dart"
             ).read_text(encoding="utf-8"),
+            "display_selection_queue_dart": (
+                repo / "flutter/lib/models/display_selection_queue.dart"
+            ).read_text(encoding="utf-8"),
             "session_stream_finality_dart": (
                 repo / "flutter/lib/models/session_stream_finality.dart"
             ).read_text(encoding="utf-8"),
@@ -73458,6 +74109,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "mobile_session_start_queue_test": (
                 repo / "flutter/test/mobile_session_start_queue_test.dart"
+            ).read_text(encoding="utf-8"),
+            "display_selection_queue_test": (
+                repo / "flutter/test/display_selection_queue_test.dart"
             ).read_text(encoding="utf-8"),
             "session_stream_finality_test": (
                 repo / "flutter/test/session_stream_finality_test.dart"
@@ -73680,6 +74334,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "viewer_rgba_mailbox_verifier": (
                 repo / "scripts/verify-viewer-rgba-mailbox.py"
+            ).read_text(encoding="utf-8"),
+            "display_selection_finality_verifier": (
+                repo / "scripts/verify-display-selection-finality.py"
             ).read_text(encoding="utf-8"),
             "desktop_texture_lifecycle_verifier": (
                 repo / "scripts/verify-desktop-texture-lifecycle.py"

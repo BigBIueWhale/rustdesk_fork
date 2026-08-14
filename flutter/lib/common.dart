@@ -3168,8 +3168,56 @@ Future<List<Rect>> getScreenRectList() async {
       : await getScreenListNotWayland();
 }
 
-openMonitorInTheSameTab(int i, FFI ffi, PeerInfo pi,
-    {bool updateCursorPos = true}) {
+Future<bool> selectRemoteDisplays(
+    FFI ffi, SessionID expectedSessionId, List<int> displays) {
+  final expectedClientOwnerId = ffi.clientOwnerId;
+  if (displays.any(
+      (display) => display < -0x80000000 || display > 0x7fffffff)) {
+    if (ffi.isCurrentSessionOwner(
+        expectedSessionId, expectedClientOwnerId)) {
+      ffi.ffiModel.handleMsgBox({
+        'type': 'error',
+        'title': 'Connection Error',
+        'text': 'Display selection is outside the supported protocol range',
+        'link': '',
+        'hasRetry': 'false',
+      }, expectedSessionId, ffi.id);
+    }
+    return Future.value(false);
+  }
+  final requestedDisplays = Int32List.fromList(displays);
+  return ffi.submitDisplaySelection(() async {
+    if (!ffi.isCurrentSessionOwner(
+        expectedSessionId, expectedClientOwnerId)) {
+      return false;
+    }
+    try {
+      await bind.sessionSwitchDisplay(
+        sessionId: expectedSessionId,
+        clientOwnerId: expectedClientOwnerId,
+        value: requestedDisplays,
+      );
+    } catch (error) {
+      if (ffi.isCurrentSessionOwner(
+          expectedSessionId, expectedClientOwnerId)) {
+        debugPrint('Display selection failed: $error');
+        ffi.ffiModel.handleMsgBox({
+          'type': 'error',
+          'title': 'Connection Error',
+          'text': 'Display selection failed: $error',
+          'link': '',
+          'hasRetry': 'false',
+        }, expectedSessionId, ffi.id);
+      }
+      return false;
+    }
+    return ffi.isCurrentSessionOwner(
+        expectedSessionId, expectedClientOwnerId);
+  });
+}
+
+Future<bool> openMonitorInTheSameTab(int i, FFI ffi, PeerInfo pi,
+    {bool updateCursorPos = true}) async {
   final displays = i == kAllDisplayValue
       ? List.generate(pi.displays.length, (index) => index)
       : [i];
@@ -3180,16 +3228,16 @@ openMonitorInTheSameTab(int i, FFI ffi, PeerInfo pi,
   // 4. Switch to multi-displays `kAllDisplayValue`
   // 5. Switch to Display 2.
   // Then the remote page will display last picture of Display 1 at the beginning.
+  final expectedSessionId = ffi.sessionId;
+  if (!await selectRemoteDisplays(ffi, expectedSessionId, displays)) {
+    return false;
+  }
   if (pi.forceTextureRender && i != kAllDisplayValue) {
     ffi.imageModel.clearImage();
   }
-  bind.sessionSwitchDisplay(
-    isDesktop: isDesktop,
-    sessionId: ffi.sessionId,
-    value: Int32List.fromList(displays),
-  );
   ffi.ffiModel.switchToNewDisplay(i, ffi.sessionId, ffi.id,
       updateCursorPos: updateCursorPos);
+  return true;
 }
 
 // Open new tab or window to show this monitor.

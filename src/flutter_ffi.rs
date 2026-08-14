@@ -242,24 +242,6 @@ pub fn session_start(
     session_start_(&session_id, &client_owner_id, &id, events2ui)
 }
 
-pub fn session_start_with_displays(
-    events2ui: StreamSink<EventToUI>,
-    session_id: SessionID,
-    client_owner_id: SessionID,
-    id: String,
-    displays: Vec<i32>,
-) -> ResultType<()> {
-    session_start_(&session_id, &client_owner_id, &id, events2ui)?;
-
-    let session = sessions::get_session_by_session_id(&session_id)
-        .ok_or_else(|| hbb_common::anyhow::anyhow!("new viewer session is no longer active"))?;
-    session.capture_displays(displays.clone(), vec![], vec![]);
-    for display in displays {
-        sessions::request_video_refresh_for_exact_ui_owner(&session_id, &client_owner_id, display)?;
-    }
-    Ok(())
-}
-
 pub fn session_get_remember(session_id: SessionID) -> Option<bool> {
     if let Some(session) = sessions::get_session_by_session_id(&session_id) {
         Some(session.get_remember())
@@ -627,8 +609,12 @@ pub fn session_ctrl_alt_del(session_id: SessionID) {
     }
 }
 
-pub fn session_switch_display(is_desktop: bool, session_id: SessionID, value: Vec<i32>) {
-    sessions::session_switch_display(is_desktop, session_id, value);
+pub fn session_switch_display(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+    value: Vec<i32>,
+) -> ResultType<()> {
+    sessions::session_switch_display(session_id, client_owner_id, value)
 }
 
 pub fn session_handle_flutter_key_event(

@@ -1184,7 +1184,7 @@ class _MonitorMenu extends StatelessWidget {
     );
   }
 
-  onPressed(int i, PeerInfo pi, bool isMulti) {
+  Future<void> onPressed(int i, PeerInfo pi, bool isMulti) async {
     if (!isMulti) {
       // If show monitors in toolbar(`buildMultiMonitorMenu()`), then the menu will dismiss automatically.
       _menuDismissCallback(ffi);
@@ -1198,7 +1198,8 @@ class _MonitorMenu extends StatelessWidget {
       if (isChooseDisplayToOpenInNewWindow) {
         openMonitorInNewTabOrWindow(i, ffi.id, pi);
       } else {
-        openMonitorInTheSameTab(i, ffi, pi, updateCursorPos: !isMulti);
+        await openMonitorInTheSameTab(i, ffi, pi,
+            updateCursorPos: !isMulti);
       }
     }
   }

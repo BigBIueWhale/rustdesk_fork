@@ -3521,6 +3521,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c2a) R-S11go exact-owner ordered display-selection finality =="
+if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then
+  note "ok  R-S11go Apple/shared display selection is exact-owner, typed, ordered, bounded, and failure-visible"
+else
+  echo "  FAIL R-S11go Apple/shared display selection regained stale-owner, generic-message, split-refresh, premature-local-commit, or controlled-side divergence"
+  rc=1
+fi
+
 echo "== (2g-c3) R-S11ex/R-S11gf desktop Flutter texture lifecycle and Linux plugin load authority =="
 if python3 scripts/verify-desktop-texture-lifecycle.py --repo . --self-test; then
   note "ok  R-S11ex/R-S11fa/R-S11fs/R-S11gf Apple/shared Flutter texture finality and presentation resumption, including pointer-evidenced missing-focus recovery, plus Linux plugin load authority have exact bounded owners"

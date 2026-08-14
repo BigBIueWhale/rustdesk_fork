@@ -24558,12 +24558,93 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   feature interaction; sustained reconnect/focus/resource/performance soak; independent reproduction; and external
   review all remain explicit release blockers.
 
+### R-S11go/R-S11e-227 — ordered exact-owner display-selection finality (2026-08-13)
+
+- **SOURCE IMPLEMENTED; FOCUSED 70-MUTATION AND INDEPENDENT 4,129-MUTATION SOURCE EVIDENCE PASS; NATIVE/RELEASE EVIDENCE OPEN.**
+  The audit proved several shared connection-flow defects. Native Flutter display switching exposed a void FFI carrying
+  only the connection UUID; Dart cleared or changed visible state without awaiting native admission. Signed display IDs
+  were cast before validation, missing/closed rounds were silently consumed, and local handler/RGBA state could change
+  before an operation was accepted. Switch/capture and refresh were independently schedulable, while the controlled
+  side logged invalid switch/capture/exact-refresh requests and continued the connection. A caller-supplied desktop flag
+  decided whether displays owned by other live UI sessions survived, although that ownership fact exists only in the
+  native handler inventory. Normal generated Flutter bridge calls execute on a four-worker pool, so separately awaited
+  UI/event callbacks could still enter native display selection out of order. Dart also copied the mutable selection only
+  inside that delayed worker call and could narrow a non-`i32` value before Rust validation. Controlled switch, capture,
+  and refresh helpers silently reported success when their weak server owner had already retired.
+- Two subtler defects remained after the first ordered-command draft and were corrected in this slice. First,
+  `ViewerCommandSender::try_send` could publish the typed command to the network receiver before local handler/RGBA
+  ownership committed. A fast peer's first refreshed keyframe could therefore outrun its local owner and be discarded,
+  plausibly leaving display presentation waiting for a later keyframe while input remained immediate. Second,
+  existing-window startup inserted/replaced a same-session handler before capture admission and removed the entry on
+  refusal, destroying the valid predecessor it had just replaced. These are source-level mechanisms consistent with
+  the reported Android persistent-service recovery symptom and Windows focus-loss display-only delay; they do not prove
+  causation for the weeks-old deployed binaries.
+- The correction snapshots an exactly `i32`-representable selection at Dart invocation and feeds generated normal-worker
+  calls through one per-FFI latest-wins sequencer bounded to one running and one pending request; a superseded pending
+  request completes false without native submission or UI commit. It carries the exact connection-session UUID and
+  current UI-owner UUID through a fallible bridge. Under the exact handler-owner lock it validates one nonempty,
+  distinct set against current bounded peer inventory. Native code on every platform derives the capture set as that
+  selection plus the union retained by every other live UI owner; the Dart/web/native `isDesktop` policy flag is gone.
+  One `DisplaySelectionCommand` contains only an optional minimal typed switch, one mandatory boxed capture set, and
+  either one legacy refresh-all plan or one boxed exact refresh set. Construction validates capture/switch/refresh
+  coherence, dimensions, indices, duplicates, cardinality, retained heap, and serialized work before admission.
+- Admission is now an explicit reserve/commit/publish transaction. The sender first reserves the exact bounded MPSC
+  slot and checked byte semaphore budget. While that slot remains invisible to the sole network loop, an infallible
+  callback commits the new handler/display ownership and retires only obsolete exact RGBA mailboxes. Only then is the
+  command published. The network loop performs optional switch, mandatory capture set, decoder refresh, and peer
+  refresh in order. Thus the first refreshed keyframe cannot outrun local display ownership. Generic display-control or
+  refresh messages terminate the round. The bounded Dart admission sequencer adds no isolate or native/background task;
+  no additional transport queue, runtime, timer, polling loop, retry, reconnect fallback, unbounded queue, or
+  generic-message bypass exists.
+- Existing-window startup now performs the same synchronous reservation and commits the replacement handler only in the
+  invisible-slot callback. Refusal leaves a same-session predecessor exactly intact; the former staged insert/rollback,
+  `sessionStartWithDisplays`, second capture FFI, and stream-time capture are deleted. Dart awaits native admission and
+  rechecks the same connection/UI owner before clearing an image, changing `currentDisplay`, moving a window, dismissing
+  the mobile selector, or reporting success. Invalid controlled-side switch/capture/exact-refresh requests terminate
+  their authenticated connection instead of preserving silent viewer/controlled divergence. A controlled server-owner
+  disappearance during switch/capture/refresh and a later viewer transport failure likewise terminate the exact round.
+  Local admission and ordered transport remain distinct from peer-operation acknowledgement, which the current wire
+  protocol does not provide.
+- The source regressions now cover command shape/byte bounds; queue invisibility during local commit; stale UI owner;
+  negative, duplicate, and out-of-inventory displays; missing round; old handler/RGBA preservation on refusal; ordered
+  typed selection; exact and legacy refresh plans; cross-owner capture union; failed same-session replacement preserving
+  its predecessor; valid startup replacement; the one-running/one-latest-pending Dart sequencer; exact typed-list
+  representation; existing-window selected-display/set coherence and exact typed snapshot; and controlled-side
+  exact-or-terminal execution. The focused verifier currently binds 70 deliberate
+  mutations. The independent workspace verifier reads the focused verifier and independently checks product source,
+  Flutter/UI/FFI ordering, bounded sequencing, startup replacement, controlled finality, requirements/ledger/gate
+  wiring, and its own source-mutation cases. `verify.sh`, `dart-verify.sh`, and `apple-conform-check.sh` invoke the focused
+  self-test; the generated Dart gate selects the sequencer behavior test; shared and generated-bridge Rust gates select
+  all `r_s11go_` regressions.
+- The final independent evidence used the canonical unsliced
+  `verify-verifier-workspace.py --source-mutations-only` entry point and ran from mutation one through terminal
+  `verify-verifier-workspace: ok` against the exact final source. The complete catalog contains 4,129 mutations.
+  Preliminary complete runs were not counted as passes: they exposed and closed an ambiguous focused queue-reservation
+  target, two stale expected-label collisions where the new independent transaction validator correctly rejected an
+  older mutation first, and an older generated-mobile-add mutation whose formerly global worker-pool token became
+  non-unique after the display-selection gate was added. The final mobile-add validator now extracts only the
+  `sessionAddMobile` gate block and its mutation targets the unique `$mobile_add_impl` assertion. The focused ordering
+  helper was also corrected to advance a strict cursor, and deliberate mutation of that cursor and of the independent
+  workspace dispatch is itself rejected. Targeted full-validator probes, a 593-fixture later-source overlap audit, the
+  independent baseline, Python parsing, and the focused 70-mutation self-test preceded the final complete pass.
+- This slice changes no OS-privilege boundary, host service/configuration, listener, firewall, network namespace, or
+  unrelated project. No root/sudo/privileged container, image pull/build/tag, published port, product process, VM, or
+  full release ran. A confined exact-lock targeted Rust test attempt verified 36 clean exact-commit Git packages and 845
+  registry archives against their lockfile SHA-256 values, then stopped offline before compilation because the cleaned
+  cache lacks `crossbeam-epoch 0.9.20`, `memmap2 0.9.11`, and `rustls-pki-types 1.12.0`; no substitute version was used.
+  Exact generated-bridge/Rust/Dart compilation and test execution, peer-operation acknowledgement, physical Android
+  persistent-service task-swipe/reopen/Force-Stop recovery, native Windows focus/minimize behavior, installed
+  Linux/macOS/iOS, cross-version behavior, capture-through-presentation timestamps and budgets, sustained
+  reconnect/focus/resource soak, cold R-B2/R-B10 equality, independent reproduction, and external review remain open.
+  The user's explicit requirement that the whole connection flow—not only complained-about paths—be correct and
+  performant on every supported platform remains binding and guides later slices.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-130f5ad894ba0b41c5f8ce291d1af35a6d59ed201dca2eb52a95cf9c4dc0d319  requirements.html
+bcc7f2851da2ab9b39ffe8c656ffb2f2e722a7fd975a29676aee0f85dc7ae283  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -24619,3 +24700,5 @@ The same identity additionally binds R-S11gj and Appendix C #345.
 The same identity additionally binds R-S11gk and Appendix C #346.
 The same identity additionally binds R-S11gl and Appendix C #347.
 The same identity additionally binds R-S11gm and Appendix C #348.
+The same identity additionally binds R-S11gn and Appendix C #349.
+The same identity additionally binds R-S11go and Appendix C #350.

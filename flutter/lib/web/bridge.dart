@@ -125,15 +125,6 @@ class RustdeskImpl {
     return Stream.empty();
   }
 
-  Stream<EventToUI> sessionStartWithDisplays(
-      {required UuidValue sessionId,
-      required UuidValue clientOwnerId,
-      required String id,
-      required Int32List displays,
-      dynamic hint}) {
-    throw UnimplementedError("sessionStartWithDisplays");
-  }
-
   Future<bool?> sessionGetRemember(
       {required UuidValue sessionId, dynamic hint}) {
     return Future(
@@ -403,15 +394,15 @@ class RustdeskImpl {
   }
 
   Future<void> sessionSwitchDisplay(
-      {required bool isDesktop,
-      required UuidValue sessionId,
+      {required UuidValue sessionId,
+      required UuidValue clientOwnerId,
       required Int32List value,
       dynamic hint}) {
     return Future(() => js.context.callMethod('setByName', [
           'switch_display',
           jsonEncode({
-            'isDesktop': isDesktop,
             'sessionId': sessionId.toString(),
+            'clientOwnerId': clientOwnerId.toString(),
             'value': value
           })
         ]));

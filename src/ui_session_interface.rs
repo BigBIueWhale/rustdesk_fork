@@ -47,7 +47,8 @@ use crate::client::io_loop::{
 use crate::client::PortForwardTarget;
 use crate::client::{
     check_if_retry, handle_login_error, handle_login_from_ui, handle_test_delay, send_mouse,
-    send_pointer_device_event, viewer_command_channel, FileManager, Key, LoginConfigHandler,
+    send_pointer_device_event, viewer_command_channel, DisplaySelectionCommand,
+    DisplaySelectionRefresh, DisplaySelectionSwitch, FileManager, Key, LoginConfigHandler,
     QualityStatus, ViewerCommandAdmissionError, ViewerCommandSender, KEY_MAP,
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -946,39 +947,43 @@ impl<T: InvokeUiSession> Session<T> {
         self.send(Data::Message(msg_out));
     }
 
-    pub fn capture_displays(&self, add: Vec<i32>, sub: Vec<i32>, set: Vec<i32>) {
-        let mut misc = Misc::new();
-        misc.set_capture_displays(CaptureDisplays {
-            add,
-            sub,
-            set,
-            ..Default::default()
-        });
-        let mut msg_out = Message::new();
-        msg_out.set_misc(misc);
-        self.send(Data::Message(msg_out));
+    pub fn try_capture_displays(&self, set: Vec<i32>) -> ResultType<()> {
+        let command = DisplaySelectionCommand::capture_set(set)?;
+        self.try_send(Data::DisplaySelection(command))
     }
 
-    pub fn switch_display(&self, display: i32) {
-        let (w, h) = match self.lc.read().unwrap().get_custom_resolution(display) {
-            Some((w, h)) => (w, h),
-            None => (0, 0),
+    pub fn try_select_displays<F>(
+        &self,
+        switch_display: Option<i32>,
+        capture_set: Vec<i32>,
+        refresh: DisplaySelectionRefresh,
+        commit: F,
+    ) -> ResultType<()>
+    where
+        F: FnOnce(),
+    {
+        let switch_display = if let Some(display) = switch_display {
+            let (width, height) = self
+                .lc
+                .read()
+                .unwrap()
+                .get_custom_resolution(display)
+                .unwrap_or_default();
+            Some(DisplaySelectionSwitch::new(display, width, height))
+        } else {
+            None
         };
-
-        let mut misc = Misc::new();
-        misc.set_switch_display(SwitchDisplay {
-            display,
-            width: w,
-            height: h,
-            ..Default::default()
-        });
-        let mut msg_out = Message::new();
-        msg_out.set_misc(misc);
-        self.send(Data::Message(msg_out));
-
-        if !use_texture_render() {
-            self.capture_displays(vec![], vec![], vec![display]);
-        }
+        let command = DisplaySelectionCommand::selection(switch_display, capture_set, refresh)?;
+        let sender = self
+            .sender
+            .read()
+            .unwrap()
+            .as_ref()
+            .cloned()
+            .ok_or_else(|| anyhow!("no active viewer connection round"))?;
+        sender
+            .send_display_selection_with_commit(command, commit)
+            .map_err(|err| anyhow!(err.to_string()))
     }
 
     #[cfg(not(any(target_os = "android", target_os = "ios")))]

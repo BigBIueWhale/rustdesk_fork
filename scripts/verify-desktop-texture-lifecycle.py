@@ -275,7 +275,7 @@ def validate(sources: Dict[str, str]) -> None:
             (
                 "selected: true,",
                 "if (!mounted || !gFFI.isCurrentSession(sessionId)) return;",
-                "sessionId, gFFI.clientOwnerId, gFFI.ffiModel.pi);",
+                "sessionRefreshVideo(sessionId, gFFI.clientOwnerId);",
             ),
             f"{label} exact-session presentation refresh",
         )
@@ -349,7 +349,7 @@ def validate(sources: Dict[str, str]) -> None:
                 "_presentationRecovery.resume(",
                 "selected: _isPresentationSelected,",
                 "if (!mounted || !_ffi.isCurrentSession(sessionId)) return;",
-                "sessionId, _ffi.clientOwnerId, _ffi.ffiModel.pi);",
+                "sessionRefreshVideo(sessionId, _ffi.clientOwnerId);",
             ),
             f"{label} selected exact-session refresh",
         )
@@ -430,29 +430,26 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         refresh_helper,
         (
-            "SessionID sessionId, SessionID clientOwnerId, PeerInfo pi",
-            "if (pi.displays.isEmpty)",
-            "throw StateError('Viewer display inventory is empty');",
+            "SessionID sessionId, SessionID clientOwnerId",
             "bind.sessionRefresh(",
-            "sessionId: sessionId, clientOwnerId: clientOwnerId, display: i",
-            "bind.sessionRefresh(",
-            "clientOwnerId: clientOwnerId,",
-            "display: pi.currentDisplay",
+            "sessionId: sessionId, clientOwnerId: clientOwnerId",
         ),
-        "result-bearing exact-owner Dart refresh bridge",
+        "single exact-owner Dart refresh bridge",
     )
+    forbid(refresh_helper, "PeerInfo", "Dart-owned refresh display inventory")
+    forbid(refresh_helper, "display:", "Dart-supplied refresh display policy")
     require(
         sources["toolbar"],
-        "sessionRefreshVideo(sessionId, ffi.clientOwnerId, pi)",
+        "sessionRefreshVideo(sessionId, ffi.clientOwnerId)",
         "manual refresh exact UI owner",
     )
     for needle, label in (
         (
-            "sessionRefreshVideo(sessionId, ffi.clientOwnerId, pi)",
+            "sessionRefreshVideo(sessionId, ffi.clientOwnerId)",
             "recording refresh exact UI owner",
         ),
         (
-            "activeSessionId, clientOwnerId, ffiModel.pi",
+            "sessionRefreshVideo(activeSessionId, clientOwnerId)",
             "transferred-session refresh exact UI owner",
         ),
     ):
@@ -467,6 +464,7 @@ def validate(sources: Dict[str, str]) -> None:
         "required UuidValue clientOwnerId",
         "web refresh exact-owner API shape",
     )
+    forbid(web_refresh, "required int display", "web caller-supplied refresh display")
 
     refresh_state = extract_braced_item(
         sources["io_loop"],
@@ -684,14 +682,20 @@ def validate(sources: Dict[str, str]) -> None:
             "let sessions = SESSIONS.read().unwrap();",
             "let handlers = session.ui_handler.session_handlers.read().unwrap();",
             "handler.client_owner_id.as_ref() != Some(client_owner_id)",
-            "let display_index = usize::try_from(display)",
+            "if handler.displays.is_empty()",
+            "for display in &handler.displays",
             "session.ui_handler.rearm_rgba_for_presentation_recovery(",
+            "*display",
             "handler.event_stream.as_ref()",
-            "handler.renderer.notify_pending_frame(display_index)?;",
-            "return session.refresh_video(display);",
+            "handler.renderer.notify_pending_frame(*display)?;",
+            "for display in &handler.displays",
+            "let display = i32::try_from(*display)",
+            "session.refresh_video(display)?;",
+            "return Ok(());",
         ),
-        "UI-owner lock held through software re-arm, pending-frame re-notification, and refresh admission",
+        "UI-owner lock held while its complete native display set is re-armed, re-notified, and admitted",
     )
+    forbid(exact_owner, "display: i32", "caller-selected native refresh display")
     ffi_refresh = extract_braced_item(
         sources["ffi"], "pub fn session_refresh(", "result-bearing refresh FFI"
     )
@@ -700,11 +704,26 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "client_owner_id: SessionID",
             ") -> Result<()>",
-            "i32::try_from(display)",
             "sessions::request_video_refresh_for_exact_ui_owner",
-            "&session_id, &client_owner_id, display",
+            "&session_id, &client_owner_id",
         ),
         "typed exact-owner refresh FFI",
+    )
+    forbid(ffi_refresh, "display:", "FFI caller-selected refresh display")
+    require(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11gs</span>',
+        "native refresh-display authority requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>354</td>",
+        "native refresh-display authority Appendix C row",
+    )
+    require(
+        sources["hardening"],
+        "### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority",
+        "native refresh-display authority hardening ledger",
     )
     for key, test, label in (
         (
@@ -734,8 +753,8 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         (
             "flutter",
-            "r_s11ff_video_refresh_requires_the_current_exact_ui_owner",
-            "refresh UI-owner regression",
+            "r_s11ff_r_s11gs_video_refresh_derives_the_current_exact_ui_owner_displays",
+            "refresh UI-owner/display-authority regression",
         ),
         (
             "ui_session",
@@ -1359,11 +1378,27 @@ def validate(sources: Dict[str, str]) -> None:
             "software texture event consumer",
         ),
         (
-            "final display = message.field0;",
-            'debugPrint("EventToUI_Texture display:$display");',
-            "onEvent2UIRgba(activeSessionId);",
+            "_observeSessionTask(",
+            "_handleTextureRgba(sessionEvents, streamOwner, activeSessionId,",
+            "message.field0)",
+            "'Texture presentation'",
         ),
-        "one-field software texture event consumption",
+        "one-field topology-checked software texture event consumption",
+    )
+    texture_handler = extract_braced_item(
+        model, "Future<void> _handleTextureRgba(", "software texture event handler"
+    )
+    require_order(
+        texture_handler,
+        (
+            "_displayTopologyAfterCheckpoint(",
+            "sessionEvents, streamOwner, activeSessionId",
+            "if (topologyRevision == null) return;",
+            'debugPrint(\'EventToUI_Texture display:$display\');',
+            "onEvent2UIRgba(activeSessionId, topologyRevision,",
+            "imageGeometryInitialized: false",
+        ),
+        "software texture topology checkpoint and first-image admission",
     )
     forbid(
         extract_between(
@@ -1698,7 +1733,13 @@ def validate(sources: Dict[str, str]) -> None:
             "& $cmakeExe --build $flutterBuildRoot --config Release --target texture_rgba_renderer_windows_core_test -- /p:BuildProjectReferences=false",
             "if (-not (Test-Path -LiteralPath $textureCoreTest -PathType Leaf))",
             "[void](Get-OrdinaryPathItem $textureCoreTest $true)",
-            "& $textureCoreTest",
+            "$textureCoreExit = Invoke-BoundedNativeProcess",
+            "-Path $textureCoreTest",
+            "-ArgumentList ([string[]]@())",
+            "-WorkingDirectory (Split-Path -Parent $textureCoreTest)",
+            "-TimeoutSeconds 60",
+            "-Description 'native Windows texture callback-core test'",
+            "if ($textureCoreExit -ne 0)",
             'Die "native Windows texture callback-core test failed',
         ),
         "stale-safe native Windows pinned-wrapper callback-core build and execution",
@@ -2416,8 +2457,8 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         (
             "dart_verify",
-            "flutter::mobile_session_lifecycle_tests::r_s11ff_video_refresh_requires_the_current_exact_ui_owner",
-            "fresh-bridge exact UI-owner refresh behavior gate",
+            "flutter::mobile_session_lifecycle_tests::r_s11ff_r_s11gs_video_refresh_derives_the_current_exact_ui_owner_displays",
+            "fresh-bridge exact UI-owner/display-authority refresh behavior gate",
         ),
         (
             "dart_verify",
@@ -2523,8 +2564,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "mobile_camera",
-        "          await sessionRefreshVideo(\n"
-        "              sessionId, gFFI.clientOwnerId, gFFI.ffiModel.pi);",
+        "          await sessionRefreshVideo(sessionId, gFFI.clientOwnerId);",
         "          return;",
         "mobile camera exact-session refresh",
     ),
@@ -2578,14 +2618,14 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "common",
-        "SessionID sessionId, SessionID clientOwnerId, PeerInfo pi",
-        "SessionID sessionId, PeerInfo pi",
+        "sessionRefreshVideo(SessionID sessionId, SessionID clientOwnerId)",
+        "sessionRefreshVideo(SessionID sessionId, SessionID ignoredOwnerId)",
         "Dart refresh exact UI owner",
     ),
     (
         "toolbar",
-        "sessionRefreshVideo(sessionId, ffi.clientOwnerId, pi)",
-        "sessionRefreshVideo(sessionId, sessionId, pi)",
+        "sessionRefreshVideo(sessionId, ffi.clientOwnerId)",
+        "sessionRefreshVideo(sessionId, sessionId)",
         "manual refresh exact UI owner",
     ),
     (
@@ -2657,12 +2697,6 @@ MUTATIONS: Tuple[Mutation, ...] = (
         "refresh publication/retirement serialization",
     ),
     (
-        "common",
-        "if (pi.displays.isEmpty)",
-        "if (false)",
-        "empty viewer display inventory rejection",
-    ),
-    (
         "flutter",
         "if handler.client_owner_id.as_ref() != Some(client_owner_id)",
         "if false",
@@ -2670,9 +2704,21 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "ffi",
-        "    client_owner_id: SessionID,\n    display: usize,\n) -> Result<()>",
-        "    display: usize,\n) -> Result<()>",
+        "pub fn session_refresh(session_id: SessionID, client_owner_id: SessionID)",
+        "pub fn session_refresh(session_id: SessionID, ignored_owner_id: SessionID)",
         "result-bearing exact-owner refresh FFI",
+    ),
+    (
+        "flutter",
+        "if handler.displays.is_empty()",
+        "if false",
+        "empty exact-owner refresh display refusal",
+    ),
+    (
+        "flutter",
+        "for display in &handler.displays {\n                    session.ui_handler.rearm_rgba_for_presentation_recovery(",
+        "for display in &[0usize] {\n                    session.ui_handler.rearm_rgba_for_presentation_recovery(",
+        "native exact-owner refresh display derivation",
     ),
     (
         "io_loop",
@@ -2682,9 +2728,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "flutter",
-        "r_s11ff_video_refresh_requires_the_current_exact_ui_owner",
+        "r_s11ff_r_s11gs_video_refresh_derives_the_current_exact_ui_owner_displays",
         "video_refresh_accepts_a_stale_ui_owner",
-        "refresh exact-owner behavior regression",
+        "refresh exact-owner/display-authority behavior regression",
     ),
     (
         "ui_session",
@@ -2813,7 +2859,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "model",
-        'debugPrint("EventToUI_Texture display:$display");',
+        "debugPrint('EventToUI_Texture display:$display');",
         "final gpuTexture = message.field1;",
         "retired GPU event consumption",
     ),
@@ -2884,7 +2930,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "flutter",
-        "handler.renderer.notify_pending_frame(display_index)?;",
+        "handler.renderer.notify_pending_frame(*display)?;",
         "// pending texture was not re-notified\n",
         "exact-owner pending-frame re-notification ordering",
     ),
@@ -3104,8 +3150,8 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ),
     (
         "build_windows",
-        "& $textureCoreTest\n    if ($LASTEXITCODE -ne 0)",
-        "true # native Windows texture callback-core execution disabled\n    if ($LASTEXITCODE -ne 0)",
+        "    $textureCoreExit = Invoke-BoundedNativeProcess `\n        -Path $textureCoreTest `",
+        "    $textureCoreExit = 0 # native Windows texture callback-core execution disabled",
         "native Windows pinned-wrapper callback-core execution gate",
     ),
     (
@@ -3371,11 +3417,14 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("hardening", "**R-S11fp/R-S11e-203 exact desktop pending-texture re-notification", "**R-S11fp-disabled/R-S11e-203 exact desktop pending-texture re-notification", "pending-texture re-notification hardening ledger"),
     ("hardening", "**R-S11fr/R-S11e-205 exact software-RGBA presentation recovery", "**R-S11fr-disabled/R-S11e-205 exact software-RGBA presentation recovery", "software-RGBA recovery hardening ledger"),
     ("hardening", "**R-S11fs/R-S11e-206 pointer-evidenced desktop presentation recovery", "**R-S11fs-disabled/R-S11e-206 pointer-evidenced desktop presentation recovery", "pointer-evidenced presentation recovery hardening ledger"),
+    ("requirements", '<div class="req"><span class="id">R-S11gs</span>', '<div class="req"><span class="id">R-S11gs-disabled</span>', "native refresh-display authority requirement"),
+    ("requirements", "<tr><td>354</td>", "<tr><td>354-disabled</td>", "native refresh-display authority Appendix C row"),
+    ("hardening", "### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority", "### R-S11gs-disabled/R-S11e-231 — exact-owner presentation-refresh display authority", "native refresh-display authority hardening ledger"),
     ("hardening", "**R-S11gf/R-S11e-218 Linux Flutter texture-plugin load authority", "**R-S11gf-disabled/R-S11e-218 Linux Flutter texture-plugin load authority", "Linux texture-plugin load-authority hardening ledger"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never", "true # first-image admission behavior gate disabled", "shared first-image admission behavior gate"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11gf_ --color never", "true # Linux texture-plugin path tests disabled", "shared Linux texture-plugin path behavior gate"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11ff_ --color never", "true # viewer refresh admission behavior gate disabled", "shared viewer refresh admission behavior gate"),
-    ("dart_verify", "flutter::mobile_session_lifecycle_tests::r_s11ff_video_refresh_requires_the_current_exact_ui_owner", "flutter::mobile_session_lifecycle_tests::viewer_refresh_disabled", "fresh-bridge viewer refresh behavior gate"),
+    ("dart_verify", "flutter::mobile_session_lifecycle_tests::r_s11ff_r_s11gs_video_refresh_derives_the_current_exact_ui_owner_displays", "flutter::mobile_session_lifecycle_tests::viewer_refresh_disabled", "fresh-bridge viewer refresh behavior gate"),
     ("dart_verify", "flutter::linux_texture_plugin_path_tests::r_s11gf_", "flutter::linux_texture_plugin_path_tests::disabled", "fresh-bridge Linux texture-plugin path behavior gate"),
     ("dart_verify", "flutter test --no-pub test/desktop_texture_lifecycle_test.dart", "true # desktop texture lifecycle test disabled", "Dart behavior gate"),
     ("dart_verify", "\n    /tmp/texture_rgba_renderer_plugin_test\n", "\n    true # Linux native callback behavior gate disabled\n", "Linux native callback behavior gate"),

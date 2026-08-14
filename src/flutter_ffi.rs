@@ -292,15 +292,8 @@ pub fn session_close(session_id: SessionID) {
     }
 }
 
-pub fn session_refresh(
-    session_id: SessionID,
-    client_owner_id: SessionID,
-    display: usize,
-) -> Result<()> {
-    let display = i32::try_from(display).map_err(|_| {
-        hbb_common::anyhow::anyhow!("viewer video refresh display does not fit the protocol")
-    })?;
-    sessions::request_video_refresh_for_exact_ui_owner(&session_id, &client_owner_id, display)
+pub fn session_refresh(session_id: SessionID, client_owner_id: SessionID) -> Result<()> {
+    sessions::request_video_refresh_for_exact_ui_owner(&session_id, &client_owner_id)
 }
 
 pub fn session_take_screenshot(session_id: SessionID, display: usize) {

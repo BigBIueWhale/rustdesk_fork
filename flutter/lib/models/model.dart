@@ -3588,10 +3588,9 @@ class RecordingModel with ChangeNotifier {
     final ffi = parent.target;
     if (ffi == null) return;
     final sessionId = ffi.sessionId;
-    final pi = ffi.ffiModel.pi;
     bool value = !_start;
     if (value) {
-      await sessionRefreshVideo(sessionId, ffi.clientOwnerId, pi);
+      await sessionRefreshVideo(sessionId, ffi.clientOwnerId);
     }
     await bind.sessionRecordScreen(sessionId: sessionId, start: value);
   }
@@ -4033,8 +4032,7 @@ class FFI {
           ffiModel.setPermissions(data.permissions);
           await ffiModel.handleCachedPeerData(data, peerId, activeSessionId);
           if (!isCurrentSession(activeSessionId)) return;
-          await sessionRefreshVideo(
-              activeSessionId, clientOwnerId, ffiModel.pi);
+          await sessionRefreshVideo(activeSessionId, clientOwnerId);
           if (!isCurrentSession(activeSessionId)) return;
           await bind.sessionRequestNewDisplayInitMsgs(
               sessionId: activeSessionId, display: ffiModel.pi.currentDisplay);

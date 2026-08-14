@@ -24790,12 +24790,62 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   timestamps and budgets, sustained reconnect/focus/resource soak, cold R-B2/R-B10 equality, installed-service proof,
   independent reproduction, and external review remain open.
 
+### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority (2026-08-14)
+
+- **SOURCE IMPLEMENTED; FOCUSED AND COMPLETE EXACT-BYTES SOURCE/MUTATION VERIFICATION GREEN; EXACT
+  DART/NATIVE/DEVICE/RELEASE EVIDENCE OPEN.** Read-only tracing of
+  the shared focus/background recovery path found a remaining authority inversion. `sessionRefreshVideo` accepted the
+  mutable Dart `PeerInfo`, selected `currentDisplay` or enumerated `displays`, and awaited one generated native call per
+  index. Focus/resume, the Windows missed-focus pointer fallback, manual Refresh, recording start, and transferred-window
+  initialization all used that helper. A native topology event could update the shared object between awaits, and the
+  FFI accepted the resulting caller-selected display even though the exact native UI handler already owns the
+  authoritative bounded set. Recovery could therefore become partial or target a stale/no-longer-owned display while
+  input/control remained on the live connection. This is a current shared source defect consistent with display-only
+  incoherence; it is not causal proof for the weeks-old deployed Android, Windows, or Debian binaries and is not native
+  reproduction of their symptoms.
+- Presentation refresh is now one call carrying only the immutable connection-session UUID and UI-owner UUID. The Dart
+  helper, web compatibility bridge, and Rust FFI no longer accept `PeerInfo` or a display index. Under the exact handler-
+  owner read guard, native code rejects a stale owner or empty display set, then walks only `handler.displays`: every
+  owned software-RGBA mailbox is re-armed, every owned desktop pending texture is re-notified where applicable, and the
+  viewer refresh mailbox receives the same complete set before the owner guard is released. Concurrent replacement
+  therefore linearizes wholly before or after the transaction; a caller cannot select another UI owner's display.
+  Existing bounded/coalescing refresh mailboxes and peer-inventory validation remain the admission boundary.
+- This deletes caller display policy rather than adding a second recovery system. It adds no retry, reconnect, timer,
+  poller, queue, worker, isolate, runtime, service restart, protocol field, listener, port, dependency, or privilege
+  transition. The exact-owner Rust regression now covers stale owner, empty set, a handler-owned display outside the
+  current peer inventory, and ordered two-display derivation. Focused presentation and display/session validators plus
+  the independent workspace validator bind the native authority, Dart/web/FFI surface removal, all seven production
+  callers, normative R-S11gs/Appendix C #354, and their deliberate mutations.
+- Numeric-nonroot, networkless, capability-free, read-only-source verification passed in-memory Python parsing, shell
+  syntax, exact requirements-hash consistency, the viewer-RGBA self-test with all 63 deliberate mutations rejected,
+  the desktop presentation self-test with all 206 deliberate mutations rejected, the display/session self-test with
+  all 145 deliberate mutations rejected, and the independent workspace baseline. Review also found that the separately
+  wired viewer-RGBA focused verifier still encoded the deleted single-display refresh shape; that stale gate now binds
+  the same exact-owner display derivation, empty-set refusal, pending-texture notification, native regression, and
+  normative identity, with independent meta/mutation coverage. Preliminary complete-catalog runs are not counted as
+  passes: they exposed stronger-earlier diagnostic collisions, ambiguous meta-mutation targets, and a meta-check that
+  failed to distinguish the two intentional native display loops. Each problem was corrected without weakening product
+  validation. The complete unsliced independent source-mutation catalog then restarted from mutation one against the
+  frozen tracked bytes and returned terminal `verify-verifier-workspace: ok`, exit zero. After that evidence-ledger
+  freeze, the mandatory final exact-bytes catalog restarted from mutation one and again returned terminal
+  `verify-verifier-workspace: ok`, exit zero; no preliminary result alone authorized commit. The available verifier
+  image has Python and Bash but no Rust, Dart, Flutter, or generated-bridge toolchain, and the previously named immutable
+  builder image is absent locally, so no compilation, native test, generated-bridge, device, VM, artifact,
+  focus-performance, or release result is claimed.
+- No host RustDesk service/process/configuration, listener, firewall, network namespace, persistent Android service,
+  unrelated image, VM, or OS privilege boundary is inspected or changed by this source slice. Exact-current physical
+  Android task-swipe/reopen/Force-Stop recovery; real Windows full-peer focus/minimize behavior; Linux/macOS/iOS and web
+  behavior; deployed/cross-version operation; concurrent feature interaction; capture-through-compositor timestamps
+  and explicit budgets; sustained reconnect/focus/resource/performance soak; cold R-B2/R-B10 equality; installed-service
+  proof; independent reproduction; external review; and the user's requirement that the whole connection flow be
+  correct and performant on every supported platform remain open release obligations.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-720ae8c52b5b428623389e9164898c80e9eb312541ba5ac4b40fedb5b7ea447c  requirements.html
+10e9fe3676967fa5b59d7161b242e34ad432372103a38ce54d83c8a42274ac06  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -24856,3 +24906,4 @@ The same identity additionally binds R-S11go and Appendix C #350.
 The same identity additionally binds R-S11gp and Appendix C #351.
 The same identity additionally binds R-S11gq and Appendix C #352.
 The same identity additionally binds R-S11gr and Appendix C #353.
+The same identity additionally binds R-S11gs and Appendix C #354.

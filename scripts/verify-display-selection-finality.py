@@ -1087,6 +1087,21 @@ def validate(sources: Dict[str, str]) -> None:
         "generated-bridge bounded web-frame behavior gate",
     )
     require(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11gs</span>',
+        "R-S11gs normative native refresh-display authority requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>354</td>",
+        "Appendix C #354 disposition",
+    )
+    require(
+        sources["hardening"],
+        "### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority",
+        "R-S11gs hardening ledger",
+    )
+    require(
         sources["selection_queue_test"],
         "keeps one running display selection and only the latest successor",
         "bounded latest-wins display-selection regression",
@@ -1521,10 +1536,13 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", "<tr><td>352</td>", "<tr><td>352-disabled</td>", "session topology ordering Appendix disposition"),
     ("requirements", '<div class="req"><span class="id">R-S11gr</span>', '<div class="req"><span class="id">R-S11gr-disabled</span>', "bounded web-frame requirement"),
     ("requirements", "<tr><td>353</td>", "<tr><td>353-disabled</td>", "bounded web-frame Appendix disposition"),
+    ("requirements", '<div class="req"><span class="id">R-S11gs</span>', '<div class="req"><span class="id">R-S11gs-disabled</span>', "native refresh-display authority requirement"),
+    ("requirements", "<tr><td>354</td>", "<tr><td>354-disabled</td>", "native refresh-display authority Appendix disposition"),
     ("hardening", "### R-S11go/R-S11e-227 — ordered exact-owner display-selection finality", "### R-S11go-disabled/R-S11e-227 — ordered exact-owner display-selection finality", "hardening ledger"),
     ("hardening", "### R-S11gp/R-S11e-228 — exact-session display-selection queue lifetime", "### R-S11gp-disabled/R-S11e-228 — exact-session display-selection queue lifetime", "exact queue lifetime ledger"),
     ("hardening", "### R-S11gq/R-S11e-229 — exact-session topology and presentation ordering", "### R-S11gq-disabled/R-S11e-229 — exact-session topology and presentation ordering", "session topology ordering ledger"),
     ("hardening", "### R-S11gr/R-S11e-230 — bounded exact-session web frame ownership", "### R-S11gr-disabled/R-S11e-230 — bounded exact-session web frame ownership", "bounded web-frame ledger"),
+    ("hardening", "### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority", "### R-S11gs-disabled/R-S11e-231 — exact-owner presentation-refresh display authority", "native refresh-display authority ledger"),
     ("verify", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "python3 scripts/verify-display-selection-finality.py --repo .", "shared gate"),
     ("dart_verify", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "python3 scripts/verify-display-selection-finality.py --repo .", "generated gate"),
     ("dart_verify", "flutter test --no-pub test/display_selection_queue_test.dart", "true # display selection queue test disabled", "generated bounded display-selection test gate"),

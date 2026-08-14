@@ -308,13 +308,23 @@ def validate(sources: Dict[str, str]) -> None:
         exact_refresh_owner,
         (
             "handler.client_owner_id.as_ref() != Some(client_owner_id)",
-            "let display_index = usize::try_from(display)",
+            "if handler.displays.is_empty()",
+            "for display in &handler.displays",
             "session.ui_handler.rearm_rgba_for_presentation_recovery(",
+            "*display",
             "handler.event_stream.as_ref()",
-            "handler.renderer.notify_pending_frame(display_index)?;",
-            "return session.refresh_video(display);",
+            "handler.renderer.notify_pending_frame(*display)?;",
+            "for display in &handler.displays",
+            "let display = i32::try_from(*display)",
+            "session.refresh_video(display)?;",
+            "return Ok(());",
         ),
-        "software publication before native pending-frame and peer refresh admission",
+        "exact-owner display-set software publication before native pending-frame and peer refresh admission",
+    )
+    forbid(
+        exact_refresh_owner,
+        "display: i32",
+        "caller-selected native presentation-refresh display",
     )
 
     soft_render = extract_braced_item(
@@ -602,6 +612,7 @@ def validate(sources: Dict[str, str]) -> None:
         "r_s11fr_rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame",
         "r_s11fr_rgba_rearm_is_idle_without_a_publication_and_fails_closed_on_exhaustion",
         "r_s11fr_failed_rgba_rearm_retires_the_exact_mailbox",
+        "r_s11ff_r_s11gs_video_refresh_derives_the_current_exact_ui_owner_displays",
     ):
         require(flutter, f"fn {test}()", f"{test} behavior regression")
 
@@ -630,8 +641,14 @@ def validate(sources: Dict[str, str]) -> None:
             '<div class="req"><span class="id">R-S11fr</span>',
             "R-S11fr requirement",
         ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11gs</span>',
+            "R-S11gs requirement",
+        ),
         ("requirements", "<tr><td>305</td>", "Appendix C #305"),
         ("requirements", "<tr><td>326</td>", "Appendix C #326"),
+        ("requirements", "<tr><td>354</td>", "Appendix C #354"),
         (
             "hardening",
             "**R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication",
@@ -641,6 +658,11 @@ def validate(sources: Dict[str, str]) -> None:
             "hardening",
             "**R-S11fr/R-S11e-205 exact software-RGBA presentation recovery",
             "software RGBA recovery hardening ledger",
+        ),
+        (
+            "hardening",
+            "### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority",
+            "exact-owner refresh-display authority hardening ledger",
         ),
         (
             "verify",
@@ -707,6 +729,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "std::mem::swap(&mut self.data, &mut latest);", "self.data = latest;", "re-arm latest-frame promotion"),
     ("flutter", "fn rearm_rgba_for_presentation_recovery(", "fn rearm_rgba_for_presentation_recovery_disabled(", "exact recovery notification"),
     ("flutter", "session.ui_handler.rearm_rgba_for_presentation_recovery(", "session.ui_handler.replay_ready_rgba(", "refresh-owned software re-arm"),
+    ("flutter", "if let Some(handler) = handlers.get(session_id) {\n                if handler.client_owner_id.as_ref() != Some(client_owner_id)", "if let Some(handler) = handlers.get(session_id) {\n                if false", "refresh exact UI owner"),
+    ("flutter", "if handler.displays.is_empty()", "if false", "empty exact-owner refresh display refusal"),
+    ("flutter", "for display in &handler.displays {\n                    session.ui_handler.rearm_rgba_for_presentation_recovery(", "for display in &[0usize] {\n                    session.ui_handler.rearm_rgba_for_presentation_recovery(", "native exact-owner refresh display derivation"),
+    ("flutter", "handler.renderer.notify_pending_frame(*display)?;", "// pending native texture was not re-notified", "exact-owner pending native texture notification"),
     ("flutter", ".filter(|next| *next <= i64::MAX as u64)", ".filter(|_| true)", "Dart token bound"),
     ("flutter", ".entry((*session_id, display))", ".entry((SessionID::nil(), display))", "independent session copy"),
     ("flutter", ".and_then(|rgba| rgba.copy(publication))", ".map(|rgba| rgba.data.clone())", "exact public copy"),
@@ -736,12 +762,16 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("ios_app", "dummy_method_to_enforce_bundling();", "dummy_method_to_enforce_bundling();\n    session_get_rgba(nil, 0);", "iOS raw pointer"),
     ("flutter", "fn r_s11ew_rgba_publication_exhaustion_fails_closed()", "fn rgba_publication_exhaustion_fails_closed()", "exhaustion regression"),
     ("flutter", "fn r_s11fr_rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame()", "fn rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame()", "re-arm behavior regression"),
+    ("flutter", "fn r_s11ff_r_s11gs_video_refresh_derives_the_current_exact_ui_owner_displays()", "fn video_refresh_accepts_caller_selected_displays()", "exact-owner display authority behavior regression"),
     ("requirements", '<div class="req"><span class="id">R-S11ew</span>', '<div class="req"><span class="id">R-S11ew-disabled</span>', "normative requirement"),
     ("requirements", '<div class="req"><span class="id">R-S11fr</span>', '<div class="req"><span class="id">R-S11fr-disabled</span>', "recovery normative requirement"),
+    ("requirements", '<div class="req"><span class="id">R-S11gs</span>', '<div class="req"><span class="id">R-S11gs-disabled</span>', "refresh-display authority normative requirement"),
     ("requirements", "<tr><td>305</td>", "<tr><td>305-disabled</td>", "Appendix disposition"),
     ("requirements", "<tr><td>326</td>", "<tr><td>326-disabled</td>", "recovery Appendix disposition"),
+    ("requirements", "<tr><td>354</td>", "<tr><td>354-disabled</td>", "refresh-display authority Appendix disposition"),
     ("hardening", "**R-S11ew/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication", "**R-S11ew-disabled/R-S11e-184 exact, bounded, latest-wins Flutter software-RGBA publication", "hardening ledger"),
     ("hardening", "**R-S11fr/R-S11e-205 exact software-RGBA presentation recovery", "**R-S11fr-disabled/R-S11e-205 exact software-RGBA presentation recovery", "recovery hardening ledger"),
+    ("hardening", "### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority", "### R-S11gs-disabled/R-S11e-231 — exact-owner presentation-refresh display authority", "refresh-display authority hardening ledger"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11ew_ --color never", "cargo test --lib --features linux-pkg-config,flutter disabled_ --color never", "shared behavior gate"),
     ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11fr_ --color never", "cargo test --lib --features linux-pkg-config,flutter disabled_ --color never", "shared recovery behavior gate"),
     ("dart_verify", "flutter test --no-pub test/rgba_publication_order_test.dart", "true # RGBA publication ordering test removed", "Dart behavior gate"),

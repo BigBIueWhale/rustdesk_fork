@@ -2832,7 +2832,6 @@ pub mod sessions {
     pub fn request_video_refresh_for_exact_ui_owner(
         session_id: &SessionID,
         client_owner_id: &SessionID,
-        display: i32,
     ) -> ResultType<()> {
         let sessions = SESSIONS.read().unwrap();
         for session in sessions.values() {
@@ -2844,16 +2843,24 @@ pub mod sessions {
                 // Keep the exact UI-owner read guard until nonblocking admission has
                 // linearized. Concurrent replacement therefore wins wholly before or after
                 // this request; a stale owner cannot select its successor.
-                let display_index = usize::try_from(display)
-                    .map_err(|_| anyhow!("viewer video refresh display is invalid"))?;
-                session.ui_handler.rearm_rgba_for_presentation_recovery(
-                    session_id,
-                    display_index,
-                    handler.event_stream.as_ref(),
-                )?;
-                #[cfg(not(any(target_os = "android", target_os = "ios")))]
-                handler.renderer.notify_pending_frame(display_index)?;
-                return session.refresh_video(display);
+                if handler.displays.is_empty() {
+                    bail!("viewer video refresh has no exact UI-owner displays");
+                }
+                for display in &handler.displays {
+                    session.ui_handler.rearm_rgba_for_presentation_recovery(
+                        session_id,
+                        *display,
+                        handler.event_stream.as_ref(),
+                    )?;
+                    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+                    handler.renderer.notify_pending_frame(*display)?;
+                }
+                for display in &handler.displays {
+                    let display = i32::try_from(*display)
+                        .map_err(|_| anyhow!("viewer video refresh display is invalid"))?;
+                    session.refresh_video(display)?;
+                }
+                return Ok(());
             }
         }
         bail!("viewer video refresh session is no longer active")
@@ -3457,7 +3464,7 @@ mod mobile_session_lifecycle_tests {
     }
 
     #[test]
-    fn r_s11ff_video_refresh_requires_the_current_exact_ui_owner() {
+    fn r_s11ff_r_s11gs_video_refresh_derives_the_current_exact_ui_owner_displays() {
         let _guard = TEST_LOCK.lock().unwrap();
         sessions::clear_for_test();
 
@@ -3480,20 +3487,41 @@ mod mobile_session_lifecycle_tests {
         let (sender, receiver) = viewer_video_refresh_channel();
         *session.video_refresh_sender.write().unwrap() = Some(sender);
 
-        assert!(
-            sessions::request_video_refresh_for_exact_ui_owner(&session_id, &stale_owner, 4,)
-                .is_err()
-        );
+        assert!(sessions::request_video_refresh_for_exact_ui_owner(
+            &session_id,
+            &stale_owner,
+        )
+        .is_err());
         assert_eq!(receiver.try_recv(), None);
 
-        assert!(
-            sessions::request_video_refresh_for_exact_ui_owner(&session_id, &current_owner, 5,)
-                .is_err()
-        );
+        assert!(sessions::request_video_refresh_for_exact_ui_owner(
+            &session_id,
+            &current_owner,
+        )
+        .is_err());
         assert_eq!(receiver.try_recv(), None);
 
-        sessions::request_video_refresh_for_exact_ui_owner(&session_id, &current_owner, 4)
+        {
+            let mut handlers = session.ui_handler.session_handlers.write().unwrap();
+            handlers.get_mut(&session_id).unwrap().displays = vec![5];
+        }
+        assert!(sessions::request_video_refresh_for_exact_ui_owner(
+            &session_id,
+            &current_owner,
+        )
+        .is_err());
+        assert_eq!(receiver.try_recv(), None);
+
+        {
+            let mut handlers = session.ui_handler.session_handlers.write().unwrap();
+            handlers.get_mut(&session_id).unwrap().displays = vec![1, 4];
+        }
+        sessions::request_video_refresh_for_exact_ui_owner(&session_id, &current_owner)
             .expect("the current exact UI owner may admit a refresh");
+        assert_eq!(
+            receiver.try_recv(),
+            Some(ViewerVideoRefreshRequest::Display(1))
+        );
         assert_eq!(
             receiver.try_recv(),
             Some(ViewerVideoRefreshRequest::Display(4))

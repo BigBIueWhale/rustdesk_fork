@@ -3090,22 +3090,9 @@ String getDesktopTabLabel(String peerId, String alias) {
   return label;
 }
 
-sessionRefreshVideo(
-    SessionID sessionId, SessionID clientOwnerId, PeerInfo pi) async {
-  if (pi.displays.isEmpty) {
-    throw StateError('Viewer display inventory is empty');
-  }
-  if (pi.currentDisplay == kAllDisplayValue) {
-    for (int i = 0; i < pi.displays.length; i++) {
-      await bind.sessionRefresh(
-          sessionId: sessionId, clientOwnerId: clientOwnerId, display: i);
-    }
-  } else {
-    await bind.sessionRefresh(
-        sessionId: sessionId,
-        clientOwnerId: clientOwnerId,
-        display: pi.currentDisplay);
-  }
+sessionRefreshVideo(SessionID sessionId, SessionID clientOwnerId) async {
+  await bind.sessionRefresh(
+      sessionId: sessionId, clientOwnerId: clientOwnerId);
 }
 
 Future<List<Rect>> getScreenListWayland() async {

@@ -156,8 +156,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
         selected: true,
         refresh: () async {
           if (!mounted || !gFFI.isCurrentSession(sessionId)) return;
-          await sessionRefreshVideo(
-              sessionId, gFFI.clientOwnerId, gFFI.ffiModel.pi);
+          await sessionRefreshVideo(sessionId, gFFI.clientOwnerId);
         },
         onError: (error, stackTrace) {
           debugPrint(

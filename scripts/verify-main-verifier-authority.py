@@ -152,7 +152,8 @@ def validate_contract(sources):
             "grep -qF 'media_thread: OwnedVideoThread' src/client/io_loop.rs",
             "grep -qF 'round.targets.extend(' src/server/video_service.rs",
             "grep -qF '.wait_timeout_while(round, timeout, |round| !round.capture_may_advance())' src/server/video_service.rs",
-            'session_start.index(\n            "rollback_failed_session_start(session_id);",\n            session_start.index("match session.start_io_thread()"),',
+            'session_start.index(\n            "rollback_failed_session_start(session_id, client_owner_id);",\n            session_start.index("match s.start_io_thread_with_lock(&mut thread_lock)"),',
+            'session_start.index("let mut thread_lock = s.thread.lock().unwrap();")\n        < session_start.index("let mut handlers = s.session_handlers.write().unwrap();")',
             "grep -qE '^\\s*reserved +2, *9, *12, *14;' libs/hbb_common/protos/message.proto",
             "code_splits=$(sed -n '1,/^#\\[cfg(test)\\]/p' libs/hbb_common/src/tcp.rs",
             "verify-desktop-texture-lifecycle|verify-verifier-workspace",
@@ -789,9 +790,15 @@ MUTATIONS = (
     ),
     Mutation(
         "shell",
-        'session_start.index(\n            "rollback_failed_session_start(session_id);",\n            session_start.index("match session.start_io_thread()"),',
-        'session_start.index(\n            "rollback_failed_session_start(session_id);",\n            0,',
+        'session_start.index(\n            "rollback_failed_session_start(session_id, client_owner_id);",\n            session_start.index("match s.start_io_thread_with_lock(&mut thread_lock)"),',
+        'session_start.index(\n            "rollback_failed_session_start(session_id, client_owner_id);",\n            0,',
         "post-worker-admission rollback selection",
+    ),
+    Mutation(
+        "shell",
+        'session_start.index("let mut thread_lock = s.thread.lock().unwrap();")\n        < session_start.index("let mut handlers = s.session_handlers.write().unwrap();")',
+        'session_start.index("let mut handlers = s.session_handlers.write().unwrap();")\n        < session_start.index("let mut thread_lock = s.thread.lock().unwrap();")',
+        "worker-slot before handler-owner session-start lock order",
     ),
     Mutation(
         "shell",

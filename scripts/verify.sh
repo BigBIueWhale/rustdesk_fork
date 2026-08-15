@@ -9377,6 +9377,7 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gf_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11fc_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ff_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gt_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11go_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib fs::tests::r_s11fg_read_step_returns_the_exact_file_frame_receipt --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::io_loop::tests::r_s11fg_ --color never
@@ -11106,6 +11107,10 @@ failed_start_rollback = rust[
     rust.index("fn rollback_failed_session_start("):
     rust.index("fn try_send_close_event(")
 ]
+failed_start_removal = rust[
+    rust.index("pub(super) fn remove_failed_start_by_exact_ui_owner("):
+    rust.index("/// Check if removing a session by session_id")
+]
 ffi_add_existed = flutter_ffi[
     flutter_ffi.index("pub fn session_add_existed_sync("):
     flutter_ffi.index("pub fn session_add_sync(")
@@ -11188,15 +11193,22 @@ ok = (
     and "close_and_join" not in replacement_take
     and session_start.index("acquire_android_client_owner(client_owner_id)")
         < session_start.index("sessions::session_has_client_owner(session_id, client_owner_id)")
-        < session_start.index("match session.start_io_thread()")
+        < session_start.index("let mut thread_lock = s.thread.lock().unwrap();")
+        < session_start.index("let mut handlers = s.session_handlers.write().unwrap();")
+        < session_start.index("h.client_owner_id.as_ref() != Some(client_owner_id)")
+        < session_start.index("match s.start_io_thread_with_lock(&mut thread_lock)")
         < session_start.index(
-            "rollback_failed_session_start(session_id);",
-            session_start.index("match session.start_io_thread()"),
+            "rollback_failed_session_start(session_id, client_owner_id);",
+            session_start.index("match s.start_io_thread_with_lock(&mut thread_lock)"),
         )
         < session_start.index("drop(owner_admission)")
-    and session_start.count("rollback_failed_session_start(session_id);") == 3
-    and failed_start_rollback.index("sessions::remove_session_by_session_id(session_id)")
+    and session_start.count("rollback_failed_session_start(session_id, client_owner_id);") == 2
+    and failed_start_rollback.index("client_owner_id: &SessionID")
+        < failed_start_rollback.index("remove_failed_start_by_exact_ui_owner(session_id, client_owner_id)")
         < failed_start_rollback.index("session.close_and_join();")
+    and failed_start_removal.index("handlers.get(id)")
+        < failed_start_removal.index("handler.client_owner_id.as_ref() != Some(client_owner_id)")
+        < failed_start_removal.index("if handlers.remove(id).is_none()")
     and "close_event_stream" not in failed_start_rollback
     and "failed_session_start_rolls_back_and_joins_only_the_exact_session" in rust
     and ffi_add_existed.index('if cfg!(any(target_os = "android", target_os = "ios"))')

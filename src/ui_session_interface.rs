@@ -308,6 +308,18 @@ impl<T: InvokeUiSession> Session<T> {
         conn_type == ConnType::PORT_FORWARD || conn_type == ConnType::RDP
     }
 
+    pub(crate) fn bind_initial_display_owner(
+        &self,
+        current_display: i32,
+        display_count: usize,
+    ) -> ResultType<()> {
+        if self.is_file_transfer() || self.is_port_forward() || self.is_terminal() {
+            return Ok(());
+        }
+        self.ui_handler
+            .bind_initial_display_owner(current_display, display_count)
+    }
+
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     pub fn is_rdp(&self) -> bool {
         self.lc.read().unwrap().conn_type.eq(&ConnType::RDP)
@@ -1493,8 +1505,13 @@ impl<T: InvokeUiSession> Session<T> {
         Ok((thread, start))
     }
 
-    pub fn start_io_thread(&self) -> std::io::Result<bool> {
-        let mut thread_lock = self.thread.lock().unwrap();
+    pub(crate) fn start_io_thread_with_lock(
+        &self,
+        thread_lock: &mut std::sync::MutexGuard<
+            '_,
+            Option<std::thread::JoinHandle<()>>,
+        >,
+    ) -> std::io::Result<bool> {
         if thread_lock.is_some() || self.close_requested.load(Ordering::Acquire) {
             return Ok(false);
         }
@@ -1530,6 +1547,11 @@ impl<T: InvokeUiSession> Session<T> {
                 Err(err)
             }
         }
+    }
+
+    pub fn start_io_thread(&self) -> std::io::Result<bool> {
+        let mut thread_lock = self.thread.lock().unwrap();
+        self.start_io_thread_with_lock(&mut thread_lock)
     }
 
     /// R-S13/A3 (prompt-before-keying): set the connect-time password entered into the
@@ -1853,6 +1875,11 @@ pub trait InvokeUiSession: Send + Sync + Clone + 'static + Sized + Default {
     fn set_cursor_position(&self, cp: CursorPosition);
     fn set_display(&self, x: i32, y: i32, w: i32, h: i32, cursor_embedded: bool, scale: f64);
     fn switch_display(&self, display: &SwitchDisplay);
+    fn bind_initial_display_owner(
+        &self,
+        current_display: i32,
+        display_count: usize,
+    ) -> ResultType<()>;
     fn set_peer_info(&self, peer_info: &PeerInfo); // flutter
     fn set_displays(&self, displays: &Vec<DisplayInfo>);
     fn set_platform_additions(&self, data: &str);

@@ -720,9 +720,13 @@ class FfiModel with ChangeNotifier {
   Future<bool> updateCurDisplay(
       SessionID sessionId, int expectedTopologyRevision,
       {updateCursorPos = false}) async {
-    if (!isCurrentDisplayTopology(sessionId, expectedTopologyRevision)) {
+    final ffi = parent.target;
+    if (ffi == null ||
+        !ffi.isCurrentSession(sessionId) ||
+        !isCurrentDisplayTopology(sessionId, expectedTopologyRevision)) {
       return false;
     }
+    final expectedClientOwnerId = ffi.clientOwnerId;
     final newRect = displaysRect();
     if (newRect == null) {
       return isCurrentDisplayTopology(sessionId, expectedTopologyRevision);
@@ -740,10 +744,11 @@ class FfiModel with ChangeNotifier {
           refreshMousePos: updateCursorPos,
           expectedSessionId: sessionId,
           expectedDisplayTopologyRevision: expectedTopologyRevision);
-      if (!isCurrentDisplayTopology(sessionId, expectedTopologyRevision)) {
+      if (!ffi.isCurrentSessionOwner(sessionId, expectedClientOwnerId) ||
+          !isCurrentDisplayTopology(sessionId, expectedTopologyRevision)) {
         return false;
       }
-      _updateSessionWidthHeight(sessionId);
+      await _updateSessionWidthHeight(sessionId, expectedClientOwnerId);
 
       // Keep pointer lock center in sync when using relative mouse mode.
       // Note: updatePointerLockCenter is async-safe (handles errors internally),
@@ -1019,7 +1024,8 @@ class FfiModel with ChangeNotifier {
     });
   }
 
-  _updateSessionWidthHeight(SessionID sessionId) {
+  Future<void> _updateSessionWidthHeight(
+      SessionID sessionId, SessionID expectedClientOwnerId) async {
     if (_rect == null) return;
     if (_rect!.width <= 0 || _rect!.height <= 0) {
       debugPrintStack(
@@ -1027,8 +1033,9 @@ class FfiModel with ChangeNotifier {
     } else {
       final displays = _pi.getCurDisplays();
       if (displays.length == 1) {
-        bind.sessionSetSize(
+        await bind.sessionSetSize(
           sessionId: sessionId,
+          clientOwnerId: expectedClientOwnerId,
           display:
               pi.currentDisplay == kAllDisplayValue ? 0 : pi.currentDisplay,
           width: displays[0].width,
@@ -1036,8 +1043,9 @@ class FfiModel with ChangeNotifier {
         );
       } else {
         for (int i = 0; i < displays.length; ++i) {
-          bind.sessionSetSize(
+          await bind.sessionSetSize(
             sessionId: sessionId,
+            clientOwnerId: expectedClientOwnerId,
             display: i,
             width: displays[i].width,
             height: displays[i].height,
@@ -1053,6 +1061,9 @@ class FfiModel with ChangeNotifier {
     final topologyRevision =
         _beginDisplayTopologyMutation(expectedSessionId);
     if (topologyRevision == null) return;
+    final previousCurrentDisplay = _pi.currentDisplay;
+    final restoreDisplaySelection = !isCache && _pi.isSet.value;
+    final preserveDisplaySelection = isCache || restoreDisplaySelection;
     parent.target?.chatModel.voiceCallStatus.value = VoiceCallStatus.notStarted;
 
     // Map clone is required here, otherwise "evt" may be changed by other threads through the reference.
@@ -1088,9 +1099,10 @@ class FfiModel with ChangeNotifier {
       _pi.primaryDisplay = currentDisplay;
     }
 
-    if (bind.peerGetSessionsCount(
-            id: peerId, connType: parent.target!.connType.index) <=
-        1) {
+    if (!preserveDisplaySelection &&
+        bind.peerGetSessionsCount(
+                id: peerId, connType: parent.target!.connType.index) <=
+            1) {
       _pi.currentDisplay = currentDisplay;
     }
 
@@ -1143,6 +1155,22 @@ class FfiModel with ChangeNotifier {
       }
       _pi.displays.value = newDisplays;
       _pi.displaysCount.value = _pi.displays.length;
+      if (restoreDisplaySelection) {
+        final ffi = parent.target;
+        final reconnectDisplays = previousCurrentDisplay == kAllDisplayValue
+            ? List.generate(_pi.displays.length, (index) => index)
+            : [previousCurrentDisplay];
+        if (ffi == null ||
+            reconnectDisplays.isEmpty ||
+            !await selectRemoteDisplays(
+                ffi, expectedSessionId, reconnectDisplays)) {
+          ffi?._reportSessionStreamFailure(expectedSessionId, peerId,
+              'The previous display selection could not be restored');
+          return;
+        }
+        if (!isCurrentDisplayTopology(
+            expectedSessionId, topologyRevision)) return;
+      }
       if (_pi.currentDisplay < _pi.displays.length) {
         if (!await updateCurDisplay(
             expectedSessionId, topologyRevision)) return;

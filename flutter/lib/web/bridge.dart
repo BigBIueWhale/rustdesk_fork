@@ -678,6 +678,7 @@ class RustdeskImpl {
 
   Future<void> sessionSetSize(
       {required UuidValue sessionId,
+      required UuidValue clientOwnerId,
       required int display,
       required int width,
       required int height,

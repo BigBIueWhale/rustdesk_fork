@@ -9,7 +9,9 @@ use crate::{
     client::QualityStatus,
     ui_session_interface::{InvokeUiSession, Session},
 };
-use hbb_common::{message_proto::*, rendezvous_proto::ConnType, VIDEO_FRAME_RECEIPT_VERSION};
+use hbb_common::{
+    message_proto::*, rendezvous_proto::ConnType, ResultType, VIDEO_FRAME_RECEIPT_VERSION,
+};
 use sha2::{Digest, Sha256};
 use std::{
     collections::HashSet,
@@ -36,6 +38,7 @@ const MIN_DISTINCT_FRAMES: usize = 10;
 struct ViewerPipelineState {
     connected: bool,
     peer_info: bool,
+    initial_display_owner: Option<usize>,
     connection_type: Option<String>,
     advertised_dimensions: Option<(usize, usize)>,
     published_dimensions: Option<(usize, usize)>,
@@ -59,6 +62,7 @@ impl ViewerPipelineState {
     fn complete(&self) -> bool {
         self.connected
             && self.peer_info
+            && self.initial_display_owner == Some(0)
             && self.connection_type.as_deref() == Some("TCP")
             && self.advertised_dimensions == Some((EXPECTED_WIDTH, EXPECTED_HEIGHT))
             && self.published_dimensions == Some((EXPECTED_WIDTH, EXPECTED_HEIGHT))
@@ -131,8 +135,48 @@ impl InvokeUiSession for ViewerPipelineUi {
 
     fn switch_display(&self, _display: &SwitchDisplay) {}
 
+    fn bind_initial_display_owner(
+        &self,
+        current_display: i32,
+        display_count: usize,
+    ) -> ResultType<()> {
+        let display = usize::try_from(current_display)
+            .map_err(|_| hbb_common::anyhow::anyhow!("negative initial display"))?;
+        if display >= display_count {
+            return Err(hbb_common::anyhow::anyhow!(
+                "initial display is outside the peer inventory"
+            ));
+        }
+        let (state, ready) = &*self.state;
+        let mut state = state.lock().unwrap();
+        if state.initial_display_owner.is_none() {
+            if state.peer_info {
+                return Err(hbb_common::anyhow::anyhow!(
+                    "initial display ownership was admitted after peer publication"
+                ));
+            }
+            state.initial_display_owner = Some(display);
+        } else if !state.peer_info {
+            return Err(hbb_common::anyhow::anyhow!(
+                "initial display ownership was rebound before peer publication"
+            ));
+        }
+        drop(state);
+        ready.notify_all();
+        Ok(())
+    }
+
     fn set_peer_info(&self, peer_info: &PeerInfo) {
         self.update(|state| {
+            if state.initial_display_owner.is_none()
+                || (!state.peer_info
+                    && state.initial_display_owner
+                        != usize::try_from(peer_info.current_display).ok())
+            {
+                state.record_error(
+                    "peer information preceded exact initial display ownership".to_owned(),
+                );
+            }
             if peer_info.video_frame_receipt_version != VIDEO_FRAME_RECEIPT_VERSION {
                 state.record_error(format!(
                     "peer receipt version {} != {}",

@@ -24840,12 +24840,100 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   proof; independent reproduction; external review; and the user's requirement that the whole connection flow be
   correct and performant on every supported platform remain open release obligations.
 
+### R-S11gt/R-S11e-232 — explicit initial and ongoing native display ownership (2026-08-15)
+
+- **SOURCE IMPLEMENTED; EXACT DART/NATIVE/DEVICE/RELEASE EVIDENCE OPEN.** Read-only tracing found that the first
+  ordinary viewer's native `SessionHandler` began with an empty `displays` set and initial `PeerInfo.current_display`
+  never committed it. The one-handler software path nevertheless accepted every decoded display. Desktop texture
+  delivery for peers without multi-UI support selected the first renderer `HashMap` entry rather than the decoded
+  display; texture dispatch did not first prove handler membership; and `remaining_displays` treated registered
+  renderer resources as capture ownership. Renderer sizing both created display authority and carried only the
+  reusable connection UUID, allowing delayed work from a retired view to target a replacement owner after a
+  tab/window transfer reused that UUID. Exact-owner refresh could consequently reject an empty initial set while
+  ordinary frames followed different implicit or stale authority. This is current shared source debt consistent with
+  display-only incoherence while control remains responsive; it is not causal proof for the older deployed Android,
+  Windows, or Debian binaries and is not native/device reproduction.
+- Before its first fresh video network round starts, only the exact first unselected UI handler is now marked as awaiting
+  initial ownership. Every initial login response, including reconnects, preserves the peer's claimed
+  `PeerInfo.current_display` before generic bounding can normalize it to zero and validates the original claim against
+  the bounded inventory. Before an existing explicit selection is preserved, every committed handler display is also
+  validated against that new bounded inventory; a stale selection fails before decoder metadata, persistence, or UI
+  publication. A fresh marked handler binds that display once before decoder metadata, persistent peer
+  configuration, or Flutter publication consumes the peer information. A reconnect or already-connected
+  existing-window route with no marker is admitted only when every live handler already has a nonempty explicit native
+  selection; those selections are preserved rather than rebound to the peer's default display. No handler, an
+  unselected handler without its marker, multiple markers, or an invalid/conflicting marker or claim returns an error
+  through the result-bearing network/UI boundary, reports the visible connection failure, and terminates the exact
+  round. File transfer, port forwarding, terminal, stream replacement, and explicitly selected existing-window
+  handlers never use this marker. Only a first, streamless, unselected handler starts peer I/O; a marker-bearing
+  pre-`PeerInfo` stream replacement may attach without restarting it, even if no prior UI stream remains; and stream attachment for an explicitly selected
+  existing-window replacement cannot restart the already-running connection merely because its new handler has no
+  event stream yet. Any other unselected video route is refused before its stream is touched instead of hanging on an
+  existing connection with no display owner and no guaranteed new `PeerInfo`. Immediately before any existing stream
+  is closed/replaced or that marker and peer start are admitted, the exact client-owner UUID is rechecked while the same
+  handler map is write-locked. The peer worker slot is acquired before that handler-owner guard, and both are retained
+  through the actual worker-start call; this avoids inversion with reconnect/final teardown, which can hold the worker
+  slot while joining an old worker whose terminal event delivery needs the handler guard. The earlier association lookup
+  cannot authorize mutation of a concurrently installed replacement owner. Start-admission,
+  worker-start, and pending-frame replay failures carry the same exact UI-owner UUID into rollback; a tab/window
+  replacement that reused the connection UUID is refused rather than removed. Later topology messages have no
+  initial-binding path and cannot rebind ownership.
+- A new controlled-side connection begins on its own current/primary display, so native-owner preservation alone would
+  leave an established display-2 or all-monitor view waiting for a capture the new round never subscribed. On fresh,
+  noncached `peer_info`, an already-established Dart model now preserves its prior single-display or all-display intent
+  and resubmits that bounded set through the existing ordered exact-owner display transaction before geometry sizing.
+  Cached existing-window state preserves the selection already admitted by `sessionAddExistedSync` and does not submit
+  a duplicate transaction. Invalid, stale, or refused restoration visibly retires the exact session rather than
+  leaving control responsive against divergent display capture. No new reconnect path, queue, worker, or timer is used.
+- Software RGBA and desktop texture dispatch now require exact handler display membership regardless of handler count,
+  render mode, or peer version. Texture frame writes and pending-frame notifications use only the exact display-keyed
+  renderer slot; the old first-map-entry/version fallback is deleted. Cross-owner capture derivation uses only committed
+  `handler.displays`; texture registration, size, pointer, and notification resources are presentation state, never
+  capture authority. Dart captures the exact UI-owner UUID before asynchronous display-geometry work, rechecks that
+  same session/owner pair afterward, and carries both UUIDs through the FFI. Each bounded size call is awaited inside
+  the existing topology lane instead of being detached onto the bridge worker pool; native admission is result-bearing,
+  holds the handler-owner guard, and visibly refuses a missing session, retired owner, or unowned display. An older
+  topology therefore cannot silently execute after and overwrite a newer renderer size, mutate a replacement renderer,
+  or add display authority. Old-peer compatibility remains only in the typed wire refresh plan. The correction adds no timer,
+  retry, reconnect, queue, worker, isolate, runtime, service restart, protocol field, listener, port, dependency,
+  privilege transition, or background-service change.
+- Deterministic Rust regressions bind one-time fresh exact initial ownership, reconnect preservation, missing/ambiguous/invalid/conflicting refusal,
+  and renderer-resource exclusion from capture authority. Focused software-RGBA, desktop-texture, and display-selection
+  validators plus the independent workspace validator bind raw-claim preservation before generic normalization, early
+  result-bearing terminal admission, initial marker/start order, exact software/texture membership, exact renderer
+  lookup, reconnect selection restoration, awaited/result-bearing exact-owner renderer sizing and non-authority,
+  fresh/pre-`PeerInfo`/explicit attachment state admission, unselected-route refusal, and under-guard exact-owner stream
+  admission, capture-resource separation, normative R-S11gt/Appendix C #355, behavior-test wiring, and deliberate
+  mutations. In the approved immutable, nonroot, networkless, read-only Python/Bash verifier image, the normal
+  software-RGBA, display-selection, desktop-texture, Android ownership, main-verifier-authority, and independent
+  workspace baselines passed on the pre-ledger-freeze source bytes. Their focused self-tests rejected all 115, 186,
+  253, 534, and 137 deliberate mutations respectively. Earlier preliminary attempts are excluded: source review first
+  invalidated a candidate by finding the pre-admission normalization and renderer-size authority defects described
+  above; later complete-catalog attempts correctly rejected mutations under broader/different diagnostics or exposed
+  ambiguous mutation-inventory and exact-cardinality checks. Exact-condition extraction, mutation-inventory scoping,
+  function-boundary selection, cardinality checks, and duplicate expected-diagnostic accounting were corrected rather
+  than counting those attempts as passes. A zero-identical-mutation/divergent-diagnostic inventory audit then passed,
+  and a complete independent workspace source-mutation catalog restarted from mutation one and terminated with
+  `verify-verifier-workspace: ok`. Those are source-verifier construction results, not a substitute for the final
+  frozen-byte rerun: Python syntax, Bash syntax, every normal baseline, every focused self-test, the complete workspace
+  source-mutation catalog, ledger-hash equality, and diff hygiene remain mandatory again on the exact bytes admitted to
+  commit, with their terminal results bound by the commit/audit receipt. The available verifier image contains Python
+  and Bash but no Rust, Dart, Flutter, generated-bridge, or native platform toolchain, so no compilation, formatting,
+  native test, device, artifact, focus-performance, or release result is claimed.
+- No host RustDesk service/process/configuration, listener, firewall, network namespace, persistent Android service,
+  unrelated image, VM, or OS privilege boundary is inspected or changed by this source slice. Exact Rust/Dart/Flutter
+  compilation and tests, generated bridge, physical Android task-swipe/reopen/Force-Stop behavior, real Windows full-
+  peer focus/minimize behavior, Linux/macOS/iOS/web and cross-version operation, concurrent-feature interaction,
+  capture-through-compositor timestamps and explicit latency budgets, sustained reconnect/focus/resource/performance
+  soak, cold R-B2/R-B10 equality, installed-service proof, independent reproduction, external review, and the user's
+  requirement that the complete connection flow be correct and performant remain open release obligations.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-10e9fe3676967fa5b59d7161b242e34ad432372103a38ce54d83c8a42274ac06  requirements.html
+37e8f192d5b6ddfd0cc0b14b62b0ddc08fb0de3e226a7ad6ec89dcc95516bcb3  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -24907,3 +24995,4 @@ The same identity additionally binds R-S11gp and Appendix C #351.
 The same identity additionally binds R-S11gq and Appendix C #352.
 The same identity additionally binds R-S11gr and Appendix C #353.
 The same identity additionally binds R-S11gs and Appendix C #354.
+The same identity additionally binds R-S11gt and Appendix C #355.

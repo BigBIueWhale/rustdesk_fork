@@ -328,6 +328,297 @@ def validate(sources: Dict[str, str]) -> None:
         ),
         "nonempty distinct current-inventory validation",
     )
+    remaining = extract_braced_item(
+        flutter, "fn remaining_displays(", "cross-owner capture authority"
+    )
+    require_order(
+        remaining,
+        (
+            "let mut remains_displays = HashSet::new();",
+            "for (k, h) in handlers.iter()",
+            "if excluded == Some(k)",
+            "remains_displays.extend(h.displays.iter().copied());",
+            "i32::try_from(display)",
+            "remains_displays.sort_unstable();",
+        ),
+        "capture union derives only committed native handler displays",
+    )
+    forbid(
+        remaining,
+        "map_display_sessions",
+        "renderer resource keys as capture authority",
+    )
+    initial_owner = extract_braced_item(
+        flutter, "fn bind_initial_display_owner(", "initial display-owner binding"
+    )
+    require_order(
+        initial_owner,
+        (
+            "usize::try_from(current_display)",
+            "if display >= display_count",
+            ".flat_map(|handler| handler.displays.iter())",
+            ".any(|owned_display| *owned_display >= display_count)",
+            "handler.awaiting_initial_display.then_some(*session_id)",
+            "if pending.len() > 1",
+            "if handlers.is_empty() || handlers.values().any(|handler| handler.displays.is_empty())",
+            "return Ok(());",
+            "other_session_id != session_id && handler.displays.is_empty()",
+            "let handler = handlers",
+            ".get_mut(session_id)",
+            "if !handler.displays.is_empty()",
+            "handler.displays.push(display);",
+            "handler.awaiting_initial_display = false;",
+        ),
+        "bounded fresh binding or reconnect preservation of explicit display ownership",
+    )
+    forbid(
+        initial_owner,
+        "handlers.values_mut()",
+        "reconnect mutation of already-explicit display owners",
+    )
+    login_peer_info = sources["io_loop"].find(
+        "Some(login_response::Union::PeerInfo(pi)) =>"
+    )
+    sync_peer_info = sources["io_loop"].find(
+        "Some(message::Union::PeerInfo(pi)) =>", login_peer_info + 1
+    )
+    if login_peer_info < 0 or sync_peer_info < 0:
+        raise VerificationError("missing initial/synchronized peer-information dispatch")
+    require_order(
+        sources["io_loop"][login_peer_info:sync_peer_info],
+        (
+            "let initial_display = pi.current_display;",
+            "let pi = bound_peer_info(pi);",
+            ".bind_initial_display_owner(initial_display, pi.displays.len())",
+            "self.handler.on_error(&message);",
+            "return false;",
+            "self.set_peer_info(&pi);",
+        ),
+        "raw initial display authority before bounded peer-state consumption",
+    )
+    renderer_size = extract_braced_item(
+        flutter, "fn set_owned_display_size(", "owned-display renderer sizing"
+    )
+    require_order(
+        renderer_size,
+        (
+            "if !self.displays.contains(&display)",
+            "return false;",
+            "self.renderer.set_size(display, width, height);",
+            "true",
+        ),
+        "renderer sizing requires committed display ownership",
+    )
+    session_size = extract_braced_item(
+        flutter, "pub fn session_set_size(", "session renderer sizing"
+    )
+    require_order(
+        session_size,
+        (
+            "client_owner_id: SessionID",
+            "display: usize",
+            "width: usize",
+            "height: usize",
+            "-> ResultType<()>",
+            "s.ui_handler.set_exact_owned_display_size(",
+            "&session_id",
+            "&client_owner_id",
+            "display",
+            "width",
+            "height",
+            "if admitted",
+            "return Ok(());",
+            "bail!(",
+        ),
+        "result-bearing exact-owner renderer-size admission",
+    )
+    forbid(session_size, "h.displays.push(display)", "renderer-size-created capture authority")
+    exact_owned_size = extract_braced_item(
+        flutter,
+        "fn set_exact_owned_display_size(",
+        "exact-owner renderer sizing",
+    )
+    require_order(
+        exact_owned_size,
+        (
+            "let handler = handlers.get_mut(session_id)?;",
+            "if handler.client_owner_id.as_ref() != Some(client_owner_id)",
+            "return Some(false);",
+            "Some(handler.set_owned_display_size(display, width, height))",
+        ),
+        "renderer sizing requires the exact current UI owner",
+    )
+    ffi_size = extract_braced_item(ffi, "pub fn session_set_size(", "renderer-size FFI")
+    require_order(
+        ffi_size,
+        (
+            "client_owner_id: SessionID",
+            "-> Result<()>",
+            "super::flutter::session_set_size(session_id, client_owner_id, display, width, height)",
+        ),
+        "renderer-size FFI exact-owner forwarding",
+    )
+    dart_size_region = extract_between(
+        sources["model_dart"],
+        "Future<bool> updateCurDisplay(",
+        "/// Handle the peer info event",
+        "Dart exact-owner renderer sizing",
+    )
+    require_order(
+        dart_size_region,
+        (
+            "final expectedClientOwnerId = ffi.clientOwnerId;",
+            "ffi.isCurrentSessionOwner(sessionId, expectedClientOwnerId)",
+            "await _updateSessionWidthHeight(sessionId, expectedClientOwnerId);",
+            "SessionID sessionId",
+            "SessionID expectedClientOwnerId",
+            "async {",
+        ),
+        "Dart renderer sizing retains and rechecks the exact UI owner",
+    )
+    if dart_size_region.count("clientOwnerId: expectedClientOwnerId") != 2:
+        raise VerificationError(
+            "Dart renderer sizing must pass the exact UI owner in both display shapes"
+        )
+    if dart_size_region.count("await bind.sessionSetSize(") != 2:
+        raise VerificationError(
+            "Dart renderer sizing must await both bounded bridge-call shapes"
+        )
+    dart_peer_info = extract_between(
+        sources["model_dart"],
+        "Future<void> handlePeerInfo(",
+        "Future<void> tryUseAllMyDisplaysForTheRemoteSession(",
+        "Dart peer information",
+    )
+    require_order(
+        dart_peer_info,
+        (
+            "final previousCurrentDisplay = _pi.currentDisplay;",
+            "final restoreDisplaySelection = !isCache && _pi.isSet.value;",
+            "final preserveDisplaySelection = isCache || restoreDisplaySelection;",
+            "if (!preserveDisplaySelection &&",
+            "_pi.currentDisplay = currentDisplay;",
+            "_pi.displays.value = newDisplays;",
+            "if (restoreDisplaySelection)",
+            "previousCurrentDisplay == kAllDisplayValue",
+            "List.generate(_pi.displays.length, (index) => index)",
+            "!await selectRemoteDisplays(",
+            "'The previous display selection could not be restored'",
+            "if (_pi.currentDisplay < _pi.displays.length)",
+            "await updateCurDisplay(",
+        ),
+        "established reconnect restores exact display selection before geometry",
+    )
+    web_size = extract_between(
+        sources["web_dart"],
+        "Future<void> sessionSetSize(",
+        "\n  Future<void> sessionSendSelectedSessionId(",
+        "web renderer sizing",
+    )
+    require_order(
+        web_size,
+        (
+            "required UuidValue sessionId",
+            "required UuidValue clientOwnerId",
+        ),
+        "web renderer-size exact-owner parity",
+    )
+    session_start = extract_between(
+        flutter,
+        "pub fn session_start_(",
+        "\nfn rollback_failed_session_start",
+        "exact-owner UI stream start",
+    )
+    require_order(
+        session_start,
+        (
+            "let mut thread_lock = s.thread.lock().unwrap();",
+            "let mut handlers = s.session_handlers.write().unwrap();",
+            "if let Some(h) = handlers.get_mut(session_id)",
+        ),
+        "worker-slot before handler-owner session-start lock order",
+    )
+    start_admission = extract_braced_item(
+        flutter,
+        "fn admit_session_start(",
+        "display-owned session-start admission",
+    )
+    require_order(
+        start_admission,
+        (
+            "let starts_peer_connection =",
+            "!has_ui_stream",
+            "&& is_first_ui_session",
+            "&& is_unselected_ui_session",
+            "&& !is_awaiting_initial_display",
+            "if is_video_session",
+            "&& is_unselected_ui_session",
+            "&& !starts_peer_connection",
+            "&& !is_awaiting_initial_display",
+            'bail!("Outgoing video UI session has no explicit display owner")',
+            "Ok(starts_peer_connection)",
+        ),
+        "fresh, pending-marker, or explicit-owner session-start admission",
+    )
+    start_guard = extract_braced_item(
+        session_start,
+        "if let Some(h) = handlers.get_mut(session_id)",
+        "exact-owner session-start critical section",
+    )
+    require_order(
+        start_guard,
+        (
+            "h.client_owner_id.as_ref() != Some(client_owner_id)",
+            'bail!("Outgoing session is not owned by the active mobile/desktop client owner")',
+            "let starts_peer_connection = match admit_session_start(",
+            "is_video_session",
+            "h.event_stream.is_some()",
+            "is_first_ui_session",
+            "h.displays.is_empty()",
+            "h.awaiting_initial_display",
+            "Err(error)",
+            "start_failure = Some(error);",
+            "try_send_close_event(&h.event_stream);",
+            "h.event_stream = Some(event_stream);",
+            "if starts_peer_connection && is_video_session",
+            "h.awaiting_initial_display = true;",
+            "match s.start_io_thread_with_lock(&mut thread_lock)",
+            "Ok(false)",
+            "Err(error) => start_failure = Some(error.into())",
+        ),
+        "under-guard exact-owner and display-owned stream admission through peer-I/O start",
+    )
+    require_order(
+        session_start,
+        (
+            "if let Some(error) = start_failure",
+            "rollback_failed_session_start(session_id, client_owner_id);",
+            "return Err(error);",
+            ".replay_ready_rgba(session_id, client_owner_id)",
+            "rollback_failed_session_start(session_id, client_owner_id);",
+        ),
+        "exact-owner failed-start and replay rollback",
+    )
+    require(
+        flutter,
+        "r_s11gt_capture_authority_excludes_renderer_resource_keys",
+        "renderer-resource capture-authority exclusion regression",
+    )
+    require(
+        flutter,
+        "r_s11gt_reconnect_preserves_explicit_display_owners_without_rebinding",
+        "reconnect display-owner preservation regression",
+    )
+    require(
+        flutter,
+        "r_s11gt_session_start_requires_fresh_or_explicit_display_authority",
+        "display-owned session-start admission regression",
+    )
+    require(
+        flutter,
+        "r_s11gt_renderer_size_requires_exact_current_ui_owner",
+        "renderer-size exact-owner regression",
+    )
     refresh_region = extract_between(
         flutter,
         "fn ordered_display_selection_refresh(",
@@ -1102,6 +1393,26 @@ def validate(sources: Dict[str, str]) -> None:
         "R-S11gs hardening ledger",
     )
     require(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11gt</span>',
+        "R-S11gt explicit native display-owner requirement",
+    )
+    require(
+        sources["requirements"],
+        "<tr><td>355</td>",
+        "Appendix C #355 disposition",
+    )
+    require(
+        sources["hardening"],
+        "### R-S11gt/R-S11e-232 — explicit initial and ongoing native display ownership",
+        "R-S11gt hardening ledger",
+    )
+    require(
+        sources["verify"],
+        "cargo test --lib --features linux-pkg-config,flutter r_s11gt_ --color never",
+        "R-S11gt behavior-test wiring",
+    )
+    require(
         sources["selection_queue_test"],
         "keeps one running display selection and only the latest successor",
         "bounded latest-wins display-selection regression",
@@ -1430,6 +1741,43 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "if value.is_empty()", "if false", "nonempty live selection"),
     ("flutter", "let peer_info = session.ui_handler.peer_info.read().unwrap();", "let peer_info = session.lc.read().unwrap();", "current native display inventory"),
     ("flutter", "if !seen.insert(display)", "if false", "duplicate live selection"),
+    ("flutter", "remains_displays.extend(h.displays.iter().copied());", "remains_displays.extend(h.displays.iter().copied());\n            remains_displays.extend(h.renderer.map_display_sessions.read().unwrap().keys().copied());", "renderer resources excluded from capture authority"),
+    ("flutter", "fn bind_initial_display_owner(\n    handlers: &mut HashMap<SessionID, SessionHandler>,", "fn bind_initial_display_owner_disabled(\n    handlers: &mut HashMap<SessionID, SessionHandler>,", "initial display-owner binding"),
+    ("flutter", "if handlers.is_empty() || handlers.values().any(|handler| handler.displays.is_empty())", "if false", "missing explicit initial display-owner refusal"),
+    ("flutter", "if pending.len() > 1", "if false", "ambiguous initial display-owner refusal"),
+    ("flutter", "other_session_id != session_id && handler.displays.is_empty()", "false", "unmarked empty initial display-owner refusal"),
+    ("flutter", "if display >= display_count {\n        bail!(\n            \"initial peer display", "if display > display_count {\n        bail!(\n            \"initial peer display", "initial display inventory bound"),
+    ("flutter", "handler.awaiting_initial_display = false;", "handler.awaiting_initial_display = true;", "one-time initial display-owner finality"),
+    ("io_loop", "let initial_display = pi.current_display;", "let initial_display = 0;", "raw claimed initial display preservation"),
+    ("io_loop", ".bind_initial_display_owner(initial_display, pi.displays.len())", ".bind_initial_display_owner(pi.current_display, pi.displays.len())", "initial display admission before normalized use"),
+    ("flutter", "if !self.displays.contains(&display)", "if false", "renderer-size exact display ownership"),
+    ("flutter", "let handler = handlers.get_mut(session_id)?;\n        if handler.client_owner_id.as_ref() != Some(client_owner_id)", "let handler = handlers.get_mut(session_id)?;\n        if false", "renderer size exact UI owner"),
+    ("flutter", "s.ui_handler.set_exact_owned_display_size(\n            &session_id,\n            &client_owner_id,", "s.ui_handler.set_exact_owned_display_size(\n            &session_id,\n            &session_id,", "renderer size exact owner forwarding"),
+    ("flutter", ") -> ResultType<()> {\n    for s in sessions::get_sessions() {\n        if let Some(admitted) = s.ui_handler.set_exact_owned_display_size(", ") {\n    for s in sessions::get_sessions() {\n        if let Some(admitted) = s.ui_handler.set_exact_owned_display_size(", "result-bearing renderer size admission"),
+    ("ffi", "super::flutter::session_set_size(session_id, client_owner_id, display, width, height)", "super::flutter::session_set_size(session_id, session_id, display, width, height)", "renderer size FFI owner forwarding"),
+    ("ffi", ") -> Result<()> {\n    super::flutter::session_set_size(session_id, client_owner_id, display, width, height)", ") {\n    super::flutter::session_set_size(session_id, client_owner_id, display, width, height)", "result-bearing renderer size FFI"),
+    ("model_dart", "await _updateSessionWidthHeight(sessionId, expectedClientOwnerId);", "await _updateSessionWidthHeight(sessionId, sessionId);", "Dart renderer size owner propagation"),
+    ("model_dart", "await bind.sessionSetSize(", "bind.sessionSetSize(", "awaited Dart renderer size finality"),
+    ("model_dart", "clientOwnerId: expectedClientOwnerId", "clientOwnerId: sessionId", "Dart renderer size owner bridge argument"),
+    ("model_dart", "final restoreDisplaySelection = !isCache && _pi.isSet.value;", "final restoreDisplaySelection = false;", "established reconnect display restoration"),
+    ("model_dart", "if (!preserveDisplaySelection &&", "if (true &&", "reconnect display-state preservation"),
+    ("model_dart", "!await selectRemoteDisplays(\n                ffi, expectedSessionId, reconnectDisplays)", "false", "awaited reconnect display restoration"),
+    ("model_dart", "'The previous display selection could not be restored'", "'Reconnect display failure ignored'", "terminal reconnect display restoration failure"),
+    ("web_dart", "Future<void> sessionSetSize(\n      {required UuidValue sessionId,\n      required UuidValue clientOwnerId", "Future<void> sessionSetSize(\n      {required UuidValue sessionId,\n      required UuidValue retiredClientOwnerId", "web renderer size owner parity"),
+    ("flutter", "fn admit_session_start(\n    is_video_session: bool,", "fn admit_session_start_disabled(\n    is_video_session: bool,", "display-owned session-start admission"),
+    ("flutter", "let starts_peer_connection = !has_ui_stream\n        && is_first_ui_session\n        && is_unselected_ui_session\n        && !is_awaiting_initial_display;", "let starts_peer_connection = !has_ui_stream\n        && is_first_ui_session\n        && !is_awaiting_initial_display;", "first unselected peer-connection start"),
+    ("flutter", "&& is_unselected_ui_session\n        && !is_awaiting_initial_display;\n    if is_video_session", "&& is_unselected_ui_session;\n    if is_video_session", "pending initial owner cannot restart peer connection"),
+    ("flutter", "&& !starts_peer_connection\n        && !is_awaiting_initial_display", "&& !starts_peer_connection\n        && false", "unselected video-route refusal"),
+    ("flutter", "if let Some(h) = handlers.get_mut(session_id) {\n            if h.client_owner_id.as_ref() != Some(client_owner_id)", "if let Some(h) = handlers.get_mut(session_id) {\n            if false", "under-guard exact-owner stream admission"),
+    ("flutter", "let mut thread_lock = s.thread.lock().unwrap();\n        let mut handlers = s.session_handlers.write().unwrap();", "let mut handlers = s.session_handlers.write().unwrap();\n        let mut thread_lock = s.thread.lock().unwrap();", "worker-slot before handler-owner lock order"),
+    ("flutter", "match s.start_io_thread_with_lock(&mut thread_lock)", "match s.start_io_thread()", "peer-I/O start inside exact-owner guard"),
+    ("flutter", ".any(|owned_display| *owned_display >= display_count)", ".any(|_| false)", "preserved display-owner inventory bound"),
+    ("flutter", ".replay_ready_rgba(session_id, client_owner_id)", ".replay_ready_rgba(session_id, session_id)", "exact-owner stream replay"),
+    ("flutter", "rollback_failed_session_start(session_id, client_owner_id);", "rollback_failed_session_start(session_id, session_id);", "exact-owner failed-start rollback"),
+    ("flutter", "r_s11gt_capture_authority_excludes_renderer_resource_keys", "capture_authority_includes_renderer_resource_keys", "renderer-resource exclusion regression"),
+    ("flutter", "r_s11gt_reconnect_preserves_explicit_display_owners_without_rebinding", "reconnect_implicitly_rebinds_display_owners", "reconnect display-owner preservation regression"),
+    ("flutter", "r_s11gt_session_start_requires_fresh_or_explicit_display_authority", "session_start_accepts_unselected_existing_video_routes", "display-owned session-start regression"),
+    ("flutter", "r_s11gt_renderer_size_requires_exact_current_ui_owner", "renderer_size_accepts_a_reused_session_id", "renderer-size exact-owner regression"),
     ("flutter", "DisplaySelectionRefresh::All", "DisplaySelectionRefresh::Displays(Vec::new().into_boxed_slice())", "cross-version refresh"),
     ("flutter", "handler.client_owner_id.as_ref() != Some(&client_owner_id)", "false", "exact UI owner"),
     ("flutter", "remaining_displays(Some(&session_id), &write_lock)?", "value.clone()", "native cross-owner display union"),
@@ -1538,11 +1886,15 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", "<tr><td>353</td>", "<tr><td>353-disabled</td>", "bounded web-frame Appendix disposition"),
     ("requirements", '<div class="req"><span class="id">R-S11gs</span>', '<div class="req"><span class="id">R-S11gs-disabled</span>', "native refresh-display authority requirement"),
     ("requirements", "<tr><td>354</td>", "<tr><td>354-disabled</td>", "native refresh-display authority Appendix disposition"),
+    ("requirements", '<div class="req"><span class="id">R-S11gt</span>', '<div class="req"><span class="id">R-S11gt-disabled</span>', "explicit native display-owner requirement"),
+    ("requirements", "<tr><td>355</td>", "<tr><td>355-disabled</td>", "explicit native display-owner Appendix disposition"),
     ("hardening", "### R-S11go/R-S11e-227 — ordered exact-owner display-selection finality", "### R-S11go-disabled/R-S11e-227 — ordered exact-owner display-selection finality", "hardening ledger"),
     ("hardening", "### R-S11gp/R-S11e-228 — exact-session display-selection queue lifetime", "### R-S11gp-disabled/R-S11e-228 — exact-session display-selection queue lifetime", "exact queue lifetime ledger"),
     ("hardening", "### R-S11gq/R-S11e-229 — exact-session topology and presentation ordering", "### R-S11gq-disabled/R-S11e-229 — exact-session topology and presentation ordering", "session topology ordering ledger"),
     ("hardening", "### R-S11gr/R-S11e-230 — bounded exact-session web frame ownership", "### R-S11gr-disabled/R-S11e-230 — bounded exact-session web frame ownership", "bounded web-frame ledger"),
     ("hardening", "### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority", "### R-S11gs-disabled/R-S11e-231 — exact-owner presentation-refresh display authority", "native refresh-display authority ledger"),
+    ("hardening", "### R-S11gt/R-S11e-232 — explicit initial and ongoing native display ownership", "### R-S11gt-disabled/R-S11e-232 — explicit initial and ongoing native display ownership", "explicit native display-owner ledger"),
+    ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11gt_ --color never", "cargo test --lib --features linux-pkg-config,flutter disabled_ --color never", "explicit native display-owner behavior gate"),
     ("verify", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "python3 scripts/verify-display-selection-finality.py --repo .", "shared gate"),
     ("dart_verify", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "python3 scripts/verify-display-selection-finality.py --repo .", "generated gate"),
     ("dart_verify", "flutter test --no-pub test/display_selection_queue_test.dart", "true # display selection queue test disabled", "generated bounded display-selection test gate"),

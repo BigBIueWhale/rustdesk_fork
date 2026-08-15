@@ -395,6 +395,10 @@ struct SessionHandler {
     // displays of current session.
     // We need this variable to check if the display is in use before pushing rgba to flutter.
     displays: Vec<usize>,
+    // The first video UI route has no caller-selected display yet. Bind the peer's bounded initial
+    // display to this exact handler once, before PeerInfo is consumed or published. Existing-window
+    // routes arrive with an explicit display selection and never use this marker.
+    awaiting_initial_display: bool,
     renderer: VideoRenderer,
     // One admitted peer screenshot belongs to this exact UI session. It is cleared when a new
     // request starts, consumed only through this session's UUID, and dropped with the handler.
@@ -604,7 +608,6 @@ struct DisplaySessionInfo {
 // Video Texture Renderer in Flutter
 #[derive(Clone)]
 struct VideoRenderer {
-    is_support_multi_ui_session: bool,
     map_display_sessions: Arc<RwLock<HashMap<usize, DisplaySessionInfo>>>,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     on_rgba_func: Option<Symbol<'static, FlutterRgbaRendererPluginTryOnRgba>>,
@@ -659,7 +662,6 @@ impl Default for VideoRenderer {
         };
         Self {
             map_display_sessions: Default::default(),
-            is_support_multi_ui_session: false,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             on_rgba_func,
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -730,12 +732,7 @@ impl VideoRenderer {
         F: FnOnce() -> bool,
     {
         let mut write_lock = self.map_display_sessions.write().unwrap();
-        let opt_info = if !self.is_support_multi_ui_session {
-            write_lock.values_mut().next()
-        } else {
-            write_lock.get_mut(&display)
-        };
-        let Some(info) = opt_info else {
+        let Some(info) = write_lock.get_mut(&display) else {
             return false;
         };
         if info.texture_rgba_ptr == usize::default() {
@@ -783,12 +780,7 @@ impl VideoRenderer {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     fn notify_pending_frame(&self, display: usize) -> ResultType<()> {
         let sessions = self.map_display_sessions.read().unwrap();
-        let info = if !self.is_support_multi_ui_session {
-            sessions.values().next()
-        } else {
-            sessions.get(&display)
-        };
-        let Some(info) = info else {
+        let Some(info) = sessions.get(&display) else {
             return Ok(());
         };
         if info.texture_rgba_ptr == usize::default() {
@@ -805,6 +797,22 @@ impl VideoRenderer {
 }
 
 impl FlutterHandler {
+    fn set_exact_owned_display_size(
+        &self,
+        session_id: &SessionID,
+        client_owner_id: &SessionID,
+        display: usize,
+        width: usize,
+        height: usize,
+    ) -> Option<bool> {
+        let mut handlers = self.session_handlers.write().unwrap();
+        let handler = handlers.get_mut(session_id)?;
+        if handler.client_owner_id.as_ref() != Some(client_owner_id) {
+            return Some(false);
+        }
+        Some(handler.set_owned_display_size(display, width, height))
+    }
+
     fn with_exact_ui_owner_renderer<F>(
         &self,
         session_id: &SessionID,
@@ -841,6 +849,73 @@ impl SessionHandler {
         self.renderer.reset_all_display_notification();
         // rgba array render will notify every frame
     }
+
+    fn set_owned_display_size(
+        &mut self,
+        display: usize,
+        width: usize,
+        height: usize,
+    ) -> bool {
+        if !self.displays.contains(&display) {
+            return false;
+        }
+        self.renderer.set_size(display, width, height);
+        true
+    }
+}
+
+fn bind_initial_display_owner(
+    handlers: &mut HashMap<SessionID, SessionHandler>,
+    current_display: i32,
+    display_count: usize,
+) -> ResultType<()> {
+    let display = usize::try_from(current_display)
+        .map_err(|_| anyhow!("initial peer display is negative"))?;
+    if display >= display_count {
+        bail!(
+            "initial peer display {display} is outside the peer inventory of {}",
+            display_count
+        );
+    }
+    if handlers
+        .values()
+        .flat_map(|handler| handler.displays.iter())
+        .any(|owned_display| *owned_display >= display_count)
+    {
+        bail!("an explicit UI display owner is outside the new peer inventory");
+    }
+    let pending = handlers
+        .iter()
+        .filter_map(|(session_id, handler)| {
+            handler.awaiting_initial_display.then_some(*session_id)
+        })
+        .collect::<Vec<_>>();
+    if pending.len() > 1 {
+        bail!("more than one UI owner is awaiting the initial peer display");
+    }
+    let Some(session_id) = pending.first() else {
+        if handlers.is_empty() || handlers.values().any(|handler| handler.displays.is_empty()) {
+            bail!("no explicit UI owner exists for the initial peer display");
+        }
+        // A reconnect or an already-connected existing-window route retains explicit native
+        // display ownership. Validate the new round's raw peer claim above, but never overwrite
+        // that committed UI selection implicitly.
+        return Ok(());
+    };
+    if handlers.iter().any(|(other_session_id, handler)| {
+        other_session_id != session_id && handler.displays.is_empty()
+    }) {
+        bail!("an unmarked UI owner has no explicit initial display selection");
+    }
+    let handler = handlers
+        .get_mut(session_id)
+        .ok_or_else(|| anyhow!("initial peer display owner disappeared"))?;
+    if !handler.displays.is_empty() {
+        bail!("initial peer display owner already has an explicit display selection");
+    }
+    handler.displays.push(display);
+    handler.awaiting_initial_display = false;
+    Ok(())
 }
 
 impl FlutterHandler {
@@ -1070,14 +1145,25 @@ impl FlutterHandler {
             .collect()
     }
 
-    fn replay_ready_rgba(&self, session_id: &SessionID) -> bool {
+    fn replay_ready_rgba(
+        &self,
+        session_id: &SessionID,
+        client_owner_id: &SessionID,
+    ) -> bool {
         let publications = self.ready_rgba_publications(session_id);
         if publications.is_empty() {
-            return true;
+            return self
+                .session_handlers
+                .read()
+                .unwrap()
+                .get(session_id)
+                .and_then(|handler| handler.client_owner_id.as_ref())
+                == Some(client_owner_id);
         }
         let handlers = self.session_handlers.read().unwrap();
         let Some(stream) = handlers
             .get(session_id)
+            .filter(|handler| handler.client_owner_id.as_ref() == Some(client_owner_id))
             .and_then(|handler| handler.event_stream.as_ref())
         else {
             return false;
@@ -1355,6 +1441,18 @@ impl InvokeUiSession for FlutterHandler {
         self.on_rgba_soft_render(display, rgba);
     }
 
+    fn bind_initial_display_owner(
+        &self,
+        current_display: i32,
+        display_count: usize,
+    ) -> ResultType<()> {
+        bind_initial_display_owner(
+            &mut self.session_handlers.write().unwrap(),
+            current_display,
+            display_count,
+        )
+    }
+
     fn set_peer_info(&self, pi: &PeerInfo) {
         let displays = Self::make_displays_msg(&pi.displays);
         let mut features: HashMap<&str, bool> = Default::default();
@@ -1368,17 +1466,6 @@ impl InvokeUiSession for FlutterHandler {
         let features = serde_json::ser::to_string(&features).unwrap_or("".to_owned());
         let resolutions = serialize_resolutions(&pi.resolutions.resolutions);
         *self.peer_info.write().unwrap() = pi.clone();
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        let is_support_multi_ui_session = crate::common::is_support_multi_ui_session(&pi.version);
-        #[cfg(any(target_os = "android", target_os = "ios"))]
-        let is_support_multi_ui_session = false;
-        self.session_handlers
-            .write()
-            .unwrap()
-            .values_mut()
-            .for_each(|h| {
-                h.renderer.is_support_multi_ui_session = is_support_multi_ui_session;
-            });
         self.push_event(
             "peer_info",
             &[
@@ -1649,7 +1736,6 @@ impl FlutterHandler {
             }
         }
         let handlers = self.session_handlers.read().unwrap();
-        let is_multi_sessions = handlers.len() > 1;
         let session_ids = handlers
             .iter()
             .filter_map(|(session_id, handler)| {
@@ -1657,8 +1743,9 @@ impl FlutterHandler {
                 if handler.displays.len() > 1 {
                     return None;
                 }
-                // If there are multiple UI sessions, notify only sessions using this display.
-                if is_multi_sessions && !handler.displays.contains(&display) {
+                // A decoded frame is presentation-authorized only for an exact handler that owns
+                // this display, regardless of handler count or peer version.
+                if !handler.displays.contains(&display) {
                     return None;
                 }
                 handler.event_stream.as_ref().map(|_| *session_id)
@@ -1700,6 +1787,9 @@ impl FlutterHandler {
         rgba: &mut scrap::ImageRgb,
     ) {
         for (_, session) in self.session_handlers.read().unwrap().iter() {
+            if !session.displays.contains(&display) {
+                continue;
+            }
             if use_texture_render || session.displays.len() > 1 {
                 let Some(stream) = &session.event_stream else {
                     continue;
@@ -1857,6 +1947,27 @@ pub fn session_add(
     Ok(session)
 }
 
+fn admit_session_start(
+    is_video_session: bool,
+    has_ui_stream: bool,
+    is_first_ui_session: bool,
+    is_unselected_ui_session: bool,
+    is_awaiting_initial_display: bool,
+) -> ResultType<bool> {
+    let starts_peer_connection = !has_ui_stream
+        && is_first_ui_session
+        && is_unselected_ui_session
+        && !is_awaiting_initial_display;
+    if is_video_session
+        && is_unselected_ui_session
+        && !starts_peer_connection
+        && !is_awaiting_initial_display
+    {
+        bail!("Outgoing video UI session has no explicit display owner");
+    }
+    Ok(starts_peer_connection)
+}
+
 /// start a session with the given id.
 ///
 /// # Arguments
@@ -1876,16 +1987,65 @@ pub fn session_start_(
         bail!("Outgoing session is not owned by the active mobile/desktop client owner");
     }
 
-    // is_connected is used to indicate whether to start a peer connection. For two cases:
-    // 1. "Move tab to new window"
-    // 2. multi ui session within the same peer connection.
-    let mut is_connected = false;
     let mut is_found = false;
+    let mut start_failure = None;
     for s in sessions::get_sessions() {
-        if let Some(h) = s.session_handlers.write().unwrap().get_mut(session_id) {
-            is_connected = h.event_stream.is_some();
+        // This unlocked association probe is only a routing optimization. The exact owner is
+        // rechecked after taking the worker slot and handler-owner guard below.
+        if !s
+            .session_handlers
+            .read()
+            .unwrap()
+            .contains_key(session_id)
+        {
+            continue;
+        }
+        let is_video_session =
+            !s.is_file_transfer() && !s.is_port_forward() && !s.is_terminal();
+        // Reconnect/final teardown also owns this slot while it joins the old worker. Take it
+        // before the handler map so that worker event delivery can never invert these locks.
+        let mut thread_lock = s.thread.lock().unwrap();
+        let mut handlers = s.session_handlers.write().unwrap();
+        let is_first_ui_session = handlers.len() == 1;
+        if let Some(h) = handlers.get_mut(session_id) {
+            if h.client_owner_id.as_ref() != Some(client_owner_id) {
+                bail!("Outgoing session is not owned by the active mobile/desktop client owner");
+            }
+            let starts_peer_connection = match admit_session_start(
+                is_video_session,
+                h.event_stream.is_some(),
+                is_first_ui_session,
+                h.displays.is_empty(),
+                h.awaiting_initial_display,
+            ) {
+                Ok(starts_peer_connection) => starts_peer_connection,
+                Err(error) => {
+                    start_failure = Some(error);
+                    is_found = true;
+                    break;
+                }
+            };
             try_send_close_event(&h.event_stream);
             h.event_stream = Some(event_stream);
+            if starts_peer_connection && is_video_session {
+                h.awaiting_initial_display = true;
+            }
+            if starts_peer_connection {
+                log::info!(
+                    "Session {} start, use texture render: {}",
+                    id,
+                    s.use_texture_render.load(Ordering::Relaxed)
+                );
+                match s.start_io_thread_with_lock(&mut thread_lock) {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        start_failure = Some(anyhow!(
+                            "Outgoing viewer session is already active or has retired"
+                        ));
+                    }
+                    Err(error) => start_failure = Some(error.into()),
+                }
+            }
             is_found = true;
             break;
         }
@@ -1897,30 +2057,18 @@ pub fn session_start_(
             session_id.to_string()
         );
     }
+    if let Some(error) = start_failure {
+        rollback_failed_session_start(session_id, client_owner_id);
+        return Err(error);
+    }
 
     if let Some(session) = sessions::get_session_by_session_id(session_id) {
-        if !session.ui_handler.replay_ready_rgba(session_id) {
-            rollback_failed_session_start(session_id);
+        if !session
+            .ui_handler
+            .replay_ready_rgba(session_id, client_owner_id)
+        {
+            rollback_failed_session_start(session_id, client_owner_id);
             bail!("Outgoing session event stream rejected pending video");
-        }
-        let is_first_ui_session = session.session_handlers.read().unwrap().len() == 1;
-        if !is_connected && is_first_ui_session {
-            log::info!(
-                "Session {} start, use texture render: {}",
-                id,
-                session.use_texture_render.load(Ordering::Relaxed)
-            );
-            match session.start_io_thread() {
-                Ok(true) => {}
-                Ok(false) => {
-                    rollback_failed_session_start(session_id);
-                    bail!("Outgoing viewer session is already active or has retired");
-                }
-                Err(error) => {
-                    rollback_failed_session_start(session_id);
-                    return Err(error.into());
-                }
-            }
         }
         #[cfg(target_os = "android")]
         drop(owner_admission);
@@ -1930,8 +2078,10 @@ pub fn session_start_(
     }
 }
 
-fn rollback_failed_session_start(session_id: &SessionID) {
-    if let Some(session) = sessions::remove_session_by_session_id(session_id) {
+fn rollback_failed_session_start(session_id: &SessionID, client_owner_id: &SessionID) {
+    if let Some(session) =
+        sessions::remove_failed_start_by_exact_ui_owner(session_id, client_owner_id)
+    {
         session.close_and_join();
     }
 }
@@ -2246,24 +2396,30 @@ pub fn session_next_rgba(session_id: SessionID, display: usize, publication: u64
 }
 
 #[inline]
-pub fn session_set_size(session_id: SessionID, display: usize, width: usize, height: usize) {
+pub fn session_set_size(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+    display: usize,
+    width: usize,
+    height: usize,
+) -> ResultType<()> {
     for s in sessions::get_sessions() {
-        if let Some(h) = s
-            .ui_handler
-            .session_handlers
-            .write()
-            .unwrap()
-            .get_mut(&session_id)
-        {
-            // If the session is the first connection, displays is not set yet.
-            // `displays`` is set while switching displays or adding a new session.
-            if !h.displays.contains(&display) {
-                h.displays.push(display);
+        if let Some(admitted) = s.ui_handler.set_exact_owned_display_size(
+            &session_id,
+            &client_owner_id,
+            display,
+            width,
+            height,
+        ) {
+            if admitted {
+                return Ok(());
             }
-            h.renderer.set_size(display, width, height);
-            break;
+            bail!(
+                "renderer size is not owned by this UI client or display for session {session_id}"
+            );
         }
     }
+    bail!("renderer-size session {session_id} is no longer active")
 }
 
 #[inline]
@@ -2590,6 +2746,33 @@ pub mod sessions {
         s
     }
 
+    pub(super) fn remove_failed_start_by_exact_ui_owner(
+        id: &SessionID,
+        client_owner_id: &SessionID,
+    ) -> Option<FlutterSession> {
+        let mut remove_peer_key = None;
+        for (peer_key, session) in SESSIONS.write().unwrap().iter_mut() {
+            let mut handlers = session.ui_handler.session_handlers.write().unwrap();
+            let Some(handler) = handlers.get(id) else {
+                continue;
+            };
+            if handler.client_owner_id.as_ref() != Some(client_owner_id) {
+                return None;
+            }
+            if handlers.remove(id).is_none() {
+                return None;
+            }
+            session.ui_handler.retire_rgba_session(id);
+            if handlers.is_empty() {
+                remove_peer_key = Some(peer_key.clone());
+            } else {
+                check_remove_unused_displays(None, session, &handlers);
+            }
+            break;
+        }
+        SESSIONS.write().unwrap().remove(&remove_peer_key?)
+    }
+
     /// Check if removing a session by session_id would result in removing the entire peer.
     ///
     /// Returns:
@@ -2610,7 +2793,7 @@ pub mod sessions {
         false
     }
 
-    fn remaining_displays(
+    pub(super) fn remaining_displays(
         excluded: Option<&SessionID>,
         handlers: &HashMap<SessionID, SessionHandler>,
     ) -> ResultType<Vec<i32>> {
@@ -2620,14 +2803,6 @@ pub mod sessions {
                 continue;
             }
             remains_displays.extend(h.displays.iter().copied());
-            remains_displays.extend(
-                h.renderer
-                    .map_display_sessions
-                    .read()
-                    .unwrap()
-                    .keys()
-                    .cloned(),
-            );
         }
         let mut remains_displays = remains_displays
             .into_iter()
@@ -2793,12 +2968,6 @@ pub mod sessions {
                 client_owner_id: Some(client_owner_id),
                 ..Default::default()
             };
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
-            let is_support_multi_ui_session =
-                crate::common::is_support_multi_ui_session_num(s.lc.read().unwrap().version);
-            #[cfg(any(target_os = "android", target_os = "ios"))]
-            let is_support_multi_ui_session = false;
-            h.renderer.is_support_multi_ui_session = is_support_multi_ui_session;
             h.displays = validated_displays;
             s.try_select_displays(None, capture_set, refresh, || {
                 handlers.insert(session_id, h);
@@ -3461,6 +3630,297 @@ mod mobile_session_lifecycle_tests {
         );
 
         sessions::clear_for_test();
+    }
+
+    #[test]
+    fn r_s11gt_initial_peer_info_binds_one_exact_display_owner_once() {
+        let initial_session = SessionID::new_v4();
+        let explicit_session = SessionID::new_v4();
+        let mut handlers = HashMap::new();
+        handlers.insert(
+            initial_session,
+            SessionHandler {
+                awaiting_initial_display: true,
+                ..Default::default()
+            },
+        );
+        handlers.insert(
+            explicit_session,
+            SessionHandler {
+                displays: vec![0],
+                ..Default::default()
+            },
+        );
+        let mut peer_info = PeerInfo::new();
+        peer_info.displays = (0..3).map(|_| DisplayInfo::new()).collect();
+        peer_info.current_display = 2;
+
+        bind_initial_display_owner(
+            &mut handlers,
+            peer_info.current_display,
+            peer_info.displays.len(),
+        )
+        .expect("the bounded initial display binds to the sole marked UI owner");
+        assert_eq!(handlers.get(&initial_session).unwrap().displays, vec![2]);
+        assert!(!handlers
+            .get(&initial_session)
+            .unwrap()
+            .awaiting_initial_display);
+        assert_eq!(handlers.get(&explicit_session).unwrap().displays, vec![0]);
+
+        peer_info.current_display = 1;
+        bind_initial_display_owner(
+            &mut handlers,
+            peer_info.current_display,
+            peer_info.displays.len(),
+        )
+        .expect("a reconnect preserves every already-explicit native display owner");
+        assert_eq!(handlers.get(&initial_session).unwrap().displays, vec![2]);
+        assert_eq!(handlers.get(&explicit_session).unwrap().displays, vec![0]);
+    }
+
+    #[test]
+    fn r_s11gt_initial_display_binding_refuses_ambiguous_or_invalid_authority() {
+        let first = SessionID::new_v4();
+        let second = SessionID::new_v4();
+        let mut peer_info = PeerInfo::new();
+        peer_info.displays = (0..2).map(|_| DisplayInfo::new()).collect();
+
+        let mut ambiguous = HashMap::new();
+        for session_id in [first, second] {
+            ambiguous.insert(
+                session_id,
+                SessionHandler {
+                    awaiting_initial_display: true,
+                    ..Default::default()
+                },
+            );
+        }
+        assert!(bind_initial_display_owner(
+            &mut ambiguous,
+            peer_info.current_display,
+            peer_info.displays.len(),
+        )
+        .is_err());
+        assert!(ambiguous.values().all(|handler| handler.displays.is_empty()));
+
+        let mut missing = HashMap::from([(first, SessionHandler::default())]);
+        assert!(bind_initial_display_owner(
+            &mut missing,
+            peer_info.current_display,
+            peer_info.displays.len(),
+        )
+        .is_err());
+        assert!(missing.get(&first).unwrap().displays.is_empty());
+
+        let mut stale_explicit = HashMap::from([(
+            first,
+            SessionHandler {
+                displays: vec![2],
+                ..Default::default()
+            },
+        )]);
+        assert!(bind_initial_display_owner(
+            &mut stale_explicit,
+            peer_info.current_display,
+            peer_info.displays.len(),
+        )
+        .is_err());
+        assert_eq!(stale_explicit.get(&first).unwrap().displays, vec![2]);
+
+        let mut unmarked_empty = HashMap::from([
+            (
+                first,
+                SessionHandler {
+                    awaiting_initial_display: true,
+                    ..Default::default()
+                },
+            ),
+            (second, SessionHandler::default()),
+        ]);
+        assert!(bind_initial_display_owner(
+            &mut unmarked_empty,
+            peer_info.current_display,
+            peer_info.displays.len(),
+        )
+        .is_err());
+        assert!(unmarked_empty
+            .values()
+            .all(|handler| handler.displays.is_empty()));
+
+        let mut outside_inventory = HashMap::new();
+        outside_inventory.insert(
+            first,
+            SessionHandler {
+                awaiting_initial_display: true,
+                ..Default::default()
+            },
+        );
+        peer_info.current_display = 2;
+        assert!(bind_initial_display_owner(
+            &mut outside_inventory,
+            peer_info.current_display,
+            peer_info.displays.len(),
+        )
+        .is_err());
+        assert!(outside_inventory.get(&first).unwrap().displays.is_empty());
+
+        let mut negative = HashMap::new();
+        negative.insert(
+            first,
+            SessionHandler {
+                awaiting_initial_display: true,
+                ..Default::default()
+            },
+        );
+        assert!(
+            bind_initial_display_owner(&mut negative, -1, peer_info.displays.len()).is_err()
+        );
+        assert!(negative.get(&first).unwrap().displays.is_empty());
+
+        let mut conflicting = HashMap::new();
+        conflicting.insert(
+            first,
+            SessionHandler {
+                displays: vec![0],
+                awaiting_initial_display: true,
+                ..Default::default()
+            },
+        );
+        peer_info.current_display = 0;
+        assert!(bind_initial_display_owner(
+            &mut conflicting,
+            peer_info.current_display,
+            peer_info.displays.len(),
+        )
+        .is_err());
+        assert_eq!(conflicting.get(&first).unwrap().displays, vec![0]);
+    }
+
+    #[test]
+    fn r_s11gt_reconnect_preserves_explicit_display_owners_without_rebinding() {
+        let first = SessionID::new_v4();
+        let second = SessionID::new_v4();
+        let mut handlers = HashMap::from([
+            (
+                first,
+                SessionHandler {
+                    displays: vec![2],
+                    ..Default::default()
+                },
+            ),
+            (
+                second,
+                SessionHandler {
+                    displays: vec![0, 1],
+                    ..Default::default()
+                },
+            ),
+        ]);
+
+        bind_initial_display_owner(&mut handlers, 1, 3)
+            .expect("a reconnect with complete explicit ownership is admissible");
+        assert_eq!(handlers.get(&first).unwrap().displays, vec![2]);
+        assert_eq!(handlers.get(&second).unwrap().displays, vec![0, 1]);
+        assert!(handlers
+            .values()
+            .all(|handler| !handler.awaiting_initial_display));
+    }
+
+    #[test]
+    fn r_s11gt_session_start_requires_fresh_or_explicit_display_authority() {
+        assert!(admit_session_start(true, false, true, true, false)
+            .expect("a first fresh video UI route starts the peer connection"));
+        assert!(!admit_session_start(true, true, true, true, true)
+            .expect("a marker-bearing pre-PeerInfo stream replacement may attach"));
+        assert!(!admit_session_start(true, false, true, true, true)
+            .expect("a marker-bearing streamless attachment cannot restart peer I/O"));
+        assert!(!admit_session_start(true, false, false, true, true)
+            .expect("a pending initial owner remains attachable beside an explicit owner"));
+        assert!(!admit_session_start(true, false, false, false, false)
+            .expect("an explicitly selected existing video UI route may attach"));
+        assert!(admit_session_start(true, false, false, true, false).is_err());
+        assert!(admit_session_start(true, true, true, true, false).is_err());
+        assert!(!admit_session_start(false, false, false, true, false)
+            .expect("a second nonvideo UI route does not require display ownership"));
+    }
+
+    #[test]
+    fn r_s11gt_capture_authority_excludes_renderer_resource_keys() {
+        let session_id = SessionID::new_v4();
+        let mut handler = SessionHandler {
+            displays: vec![1],
+            ..Default::default()
+        };
+        assert!(!handler.set_owned_display_size(4, 640, 480));
+        assert!(handler
+            .renderer
+            .map_display_sessions
+            .read()
+            .unwrap()
+            .is_empty());
+        handler.renderer.register_pixelbuffer_texture(4, 41);
+        let handlers = HashMap::from([(session_id, handler)]);
+
+        assert_eq!(
+            sessions::remaining_displays(None, &handlers)
+                .expect("the exact native handler display set is protocol-representable"),
+            vec![1]
+        );
+    }
+
+    #[test]
+    fn r_s11gt_renderer_size_requires_exact_current_ui_owner() {
+        let flutter = FlutterHandler::default();
+        let session_id = SessionID::new_v4();
+        let current_owner = SessionID::new_v4();
+        let stale_owner = SessionID::new_v4();
+        flutter.session_handlers.write().unwrap().insert(
+            session_id,
+            SessionHandler {
+                client_owner_id: Some(current_owner),
+                displays: vec![1],
+                ..Default::default()
+            },
+        );
+
+        assert_eq!(
+            flutter.set_exact_owned_display_size(&session_id, &stale_owner, 1, 320, 240),
+            Some(false)
+        );
+        assert_eq!(
+            flutter.set_exact_owned_display_size(&session_id, &current_owner, 4, 320, 240),
+            Some(false)
+        );
+        assert!(flutter
+            .session_handlers
+            .read()
+            .unwrap()
+            .get(&session_id)
+            .unwrap()
+            .renderer
+            .map_display_sessions
+            .read()
+            .unwrap()
+            .is_empty());
+
+        assert_eq!(
+            flutter.set_exact_owned_display_size(&session_id, &current_owner, 1, 640, 480),
+            Some(true)
+        );
+        assert_eq!(
+            flutter.set_exact_owned_display_size(&session_id, &stale_owner, 1, 800, 600),
+            Some(false)
+        );
+        let handlers = flutter.session_handlers.read().unwrap();
+        let renderer = handlers
+            .get(&session_id)
+            .unwrap()
+            .renderer
+            .map_display_sessions
+            .read()
+            .unwrap();
+        assert_eq!(renderer.get(&1).unwrap().size, (640, 480));
     }
 
     #[test]
@@ -4173,6 +4633,12 @@ mod mobile_session_lifecycle_tests {
             ConnType::FILE_TRANSFER,
         );
         let close_requested = failed.close_requested.clone();
+        rollback_failed_session_start(&failed_session_id, &SessionID::new_v4());
+        assert!(sessions::contains_peer(
+            "host-failed",
+            ConnType::DEFAULT_CONN
+        ));
+        assert!(!close_requested.load(Ordering::Acquire));
         let (worker_reached_close_tx, worker_reached_close_rx) = mpsc::channel();
         let (release_worker_tx, release_worker_rx) = mpsc::channel();
         *failed.thread.lock().unwrap() = Some(std::thread::spawn(move || {
@@ -4185,7 +4651,7 @@ mod mobile_session_lifecycle_tests {
 
         let (rollback_done_tx, rollback_done_rx) = mpsc::channel();
         let rollback = std::thread::spawn(move || {
-            rollback_failed_session_start(&failed_session_id);
+            rollback_failed_session_start(&failed_session_id, &owner);
             rollback_done_tx.send(()).unwrap();
         });
         worker_reached_close_rx.recv().unwrap();

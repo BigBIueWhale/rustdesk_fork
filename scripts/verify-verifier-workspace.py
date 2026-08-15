@@ -18887,6 +18887,12 @@ def validate_viewer_rgba_mailbox_contract(sources):
         "\n\nMutation = Tuple[str, str, str, str]",
         "viewer RGBA mailbox focused runtime validation",
     )
+    mutation_inventory = extract_between(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "\n)\n\n\ndef run_self_test",
+        "viewer RGBA focused mutation inventory",
+    )
     for text, label in (
         ("def extract_braced_item(", "viewer RGBA braced-item parser"),
         ("def extract_async_dart_item(", "viewer RGBA async-Dart item parser"),
@@ -18964,6 +18970,72 @@ def validate_viewer_rgba_mailbox_contract(sources):
         (
             '"r_s11ff_r_s11gs_video_refresh_derives_the_current_exact_ui_owner_displays"',
             "viewer RGBA exact-owner display authority regression",
+        ),
+        (
+            '"fn bind_initial_display_owner("',
+            "viewer RGBA initial display-owner binding contract",
+        ),
+        (
+            '"awaiting_initial_display: bool"',
+            "viewer RGBA explicit initial display-owner state contract",
+        ),
+        (
+            '"h.client_owner_id.as_ref() != Some(client_owner_id)",\n'
+            '            \'bail!("Outgoing session is not owned by the active mobile/desktop client owner")\',',
+            "viewer RGBA under-guard exact-owner stream admission contract",
+        ),
+        (
+            '"under-guard exact-owner stream admission and peer-I/O start"',
+            "viewer RGBA owner-guarded peer-I/O start contract",
+        ),
+        (
+            '"worker-slot before handler-owner session-start lock order"',
+            "viewer RGBA worker-slot/handler-owner lock-order contract",
+        ),
+        (
+            '"failed-start rollback preserves replacement owners"',
+            "viewer RGBA exact-owner failed-start rollback contract",
+        ),
+        (
+            '"fn admit_session_start("',
+            "viewer RGBA display-owned session-start admission contract",
+        ),
+        (
+            '"&& !is_awaiting_initial_display",\n'
+            '            \'bail!("Outgoing video UI session has no explicit display owner")\',',
+            "viewer RGBA unselected video-route refusal contract",
+        ),
+        (
+            '"if !handler.displays.contains(&display)"',
+            "viewer RGBA exact display-membership contract",
+        ),
+        (
+            '".bind_initial_display_owner(initial_display, pi.displays.len())"',
+            "viewer RGBA early initial-owner admission contract",
+        ),
+        (
+            '"fn set_owned_display_size("',
+            "viewer RGBA renderer-size ownership contract",
+        ),
+        (
+            '"fn set_exact_owned_display_size("',
+            "viewer RGBA renderer-size exact-owner contract",
+        ),
+        (
+            '"Dart renderer sizing retains and rechecks the exact UI owner"',
+            "viewer RGBA Dart renderer-size owner contract",
+        ),
+        (
+            '"r_s11gt_initial_peer_info_binds_one_exact_display_owner_once"',
+            "viewer RGBA initial display-owner regression",
+        ),
+        (
+            '"r_s11gt_session_start_requires_fresh_or_explicit_display_authority"',
+            "viewer RGBA display-owned session-start regression",
+        ),
+        (
+            '"r_s11gt_renderer_size_requires_exact_current_ui_owner"',
+            "viewer RGBA renderer-size exact-owner regression",
         ),
         (
             '"out-of-order asynchronous completions commit only the latest"',
@@ -19076,6 +19148,92 @@ def validate_viewer_rgba_mailbox_contract(sources):
             "viewer RGBA exact-owner display authority regression",
         ),
         (
+            '("flutter", "fn bind_initial_display_owner(\\n    handlers: &mut HashMap<SessionID, SessionHandler>,", '
+            '"fn bind_initial_display_owner_disabled(\\n    handlers: &mut HashMap<SessionID, SessionHandler>,", '
+            '"initial display-owner binding"),',
+            "viewer RGBA initial display-owner mutation contract",
+        ),
+        (
+            '"under-guard exact-owner stream admission"),',
+            "viewer RGBA under-guard exact-owner stream-admission mutation contract",
+        ),
+        (
+            '"worker-slot before handler-owner lock order"),',
+            "viewer RGBA worker-slot/handler-owner mutation contract",
+        ),
+        (
+            '"display-owned session-start admission"),',
+            "viewer RGBA display-owned session-start mutation contract",
+        ),
+        (
+            '"first unselected peer connection start"),',
+            "viewer RGBA first-unselected start-predicate mutation contract",
+        ),
+        (
+            '"pending initial owner cannot restart peer connection"),',
+            "viewer RGBA pending-marker no-restart mutation contract",
+        ),
+        (
+            '"unselected video route refusal"),',
+            "viewer RGBA unselected video-route refusal mutation contract",
+        ),
+        (
+            '("flutter", "if !handler.displays.contains(&display)", '
+            '"if false", "software exact display membership"),',
+            "viewer RGBA exact display-membership mutation contract",
+        ),
+        (
+            '("io_loop", "let initial_display = pi.current_display;", '
+            '"let initial_display = 0;", "raw claimed initial display preservation"),',
+            "viewer RGBA raw initial-display mutation contract",
+        ),
+        (
+            '("flutter", "if !self.displays.contains(&display)", '
+            '"if false", "renderer size exact display membership"),',
+            "viewer RGBA renderer-size ownership mutation contract",
+        ),
+        (
+            '"renderer size exact UI owner"),',
+            "viewer RGBA renderer-size exact-owner mutation contract",
+        ),
+        (
+            '"renderer size exact owner forwarding"),',
+            "viewer RGBA renderer-size owner-forwarding mutation contract",
+        ),
+        (
+            '"Dart renderer size owner propagation"),',
+            "viewer RGBA Dart renderer-size owner mutation contract",
+        ),
+        (
+            '"renderer-size exact-owner regression"),',
+            "viewer RGBA renderer-size exact-owner regression mutation contract",
+        ),
+        (
+            '"display-owned session-start regression"),',
+            "viewer RGBA display-owned session-start regression mutation contract",
+        ),
+        (
+            '"preserved display-owner inventory bound"),',
+            "viewer RGBA preserved-display-inventory mutation contract",
+        ),
+        (
+            '"exact-owner stream replay"),',
+            "viewer RGBA exact-owner stream-replay mutation contract",
+        ),
+        (
+            '"exact-owner failed-start rollback"),',
+            "viewer RGBA exact-owner rollback mutation contract",
+        ),
+        (
+            '"failed-start replacement-owner preservation"),',
+            "viewer RGBA replacement-owner rollback mutation contract",
+        ),
+        (
+            '("ui_session", ".bind_initial_display_owner(current_display, display_count)", '
+            '".bind_initial_display_owner(0, 0)", "exact initial display-owner delegation"),',
+            "viewer RGBA exact session-delegation mutation contract",
+        ),
+        (
             '("publication_order_test", '
             '"out-of-order asynchronous completions commit only the latest", '
             '"out-of-order asynchronous completions commit both", '
@@ -19083,7 +19241,7 @@ def validate_viewer_rgba_mailbox_contract(sources):
             "viewer RGBA asynchronous ordering regression",
         ),
     ):
-        require_text(focused, text, label)
+        require_text(mutation_inventory, text, label)
 
     rgba_rearm = extract_between(
         sources["flutter_source"],
@@ -19147,6 +19305,508 @@ def validate_viewer_rgba_mailbox_contract(sources):
         ),
         "independent exact-owner display derivation and software re-arm before native notifier and peer refresh",
     )
+    initial_owner = extract_between(
+        sources["flutter_source"],
+        "fn bind_initial_display_owner(\n"
+        "    handlers: &mut HashMap<SessionID, SessionHandler>,",
+        "\n}\n\nimpl FlutterHandler {",
+        "independent initial display-owner binding",
+    )
+    require_text(
+        initial_owner,
+        ".any(|owned_display| *owned_display >= display_count)",
+        "independent preserved display-owner inventory bound",
+    )
+    require_order(
+        initial_owner,
+        (
+            "usize::try_from(current_display)",
+            "if display >= display_count",
+            ".flat_map(|handler| handler.displays.iter())",
+            ".any(|owned_display| *owned_display >= display_count)",
+            "handler.awaiting_initial_display.then_some(*session_id)",
+            "if pending.len() > 1",
+            "if handlers.is_empty() || handlers.values().any(|handler| handler.displays.is_empty())",
+            "return Ok(());",
+            "other_session_id != session_id && handler.displays.is_empty()",
+            "let handler = handlers",
+            ".get_mut(session_id)",
+            "if !handler.displays.is_empty()",
+            "handler.displays.push(display);",
+            "handler.awaiting_initial_display = false;",
+        ),
+        "independent bounded fresh binding or reconnect preservation of explicit display ownership",
+    )
+    require_absent(
+        initial_owner,
+        "handlers.values_mut()",
+        "independent bounded fresh binding or reconnect preservation of explicit display ownership",
+    )
+    session_handler_state = extract_between(
+        sources["flutter_source"],
+        "struct SessionHandler {",
+        "\n}\n\nstruct OwnedScreenshot",
+        "independent UI session handler state",
+    )
+    require_text(
+        session_handler_state,
+        "awaiting_initial_display: bool",
+        "independent initial display-owner state",
+    )
+    require_text(
+        sources["ui_session_source"],
+        "fn bind_initial_display_owner(\n        &self,\n        current_display: i32,\n        display_count: usize,\n    ) -> ResultType<()>;",
+        "independent result-bearing UI display-owner trait",
+    )
+    session_start = extract_between(
+        sources["flutter_source"],
+        "pub fn session_start_(",
+        "\nfn rollback_failed_session_start",
+        "independent first video UI start",
+    )
+    start_round = extract_between(
+        sources["ui_session_source"],
+        "pub(crate) fn start_io_thread_with_lock(",
+        "\n    pub fn start_io_thread(&self)",
+        "independent prelocked viewer worker-start helper",
+    )
+    require_order(
+        start_round,
+        (
+            "thread_lock: &mut std::sync::MutexGuard<",
+            "if thread_lock.is_some() || self.close_requested.load(Ordering::Acquire)",
+            "self.connection_round_owner.begin()",
+            "Self::spawn_io_thread(self.clone(), round)",
+            "self.activate_video_refresh_round(",
+            "*thread_lock = Some(thread);",
+        ),
+        "independent prelocked viewer worker-start helper",
+    )
+    start_wrapper = extract_between(
+        sources["ui_session_source"],
+        "pub fn start_io_thread(&self)",
+        "\n    /// R-S13/A3",
+        "independent public viewer worker start",
+    )
+    require_order(
+        start_wrapper,
+        (
+            "let mut thread_lock = self.thread.lock().unwrap();",
+            "self.start_io_thread_with_lock(&mut thread_lock)",
+        ),
+        "independent public viewer-start worker-slot delegation",
+    )
+    peer_start = extract_between(
+        sources["flutter_source"],
+        "fn admit_session_start(",
+        "\n}\n\n/// start a session with the given id.",
+        "independent display-owned session-start admission",
+    )
+    start_predicate = extract_between(
+        peer_start,
+        "let starts_peer_connection =",
+        ";\n    if is_video_session",
+        "independent peer-start predicate",
+    )
+    require_exact_count(
+        start_predicate,
+        "&& is_unselected_ui_session",
+        1,
+        "independent first unselected handler starts peer I/O",
+    )
+    require_exact_count(
+        start_predicate,
+        "&& !is_awaiting_initial_display",
+        1,
+        "independent pending initial owner cannot restart peer I/O",
+    )
+    refusal_predicate = extract_between(
+        peer_start,
+        "if is_video_session",
+        "\n    {",
+        "independent unselected video-route refusal predicate",
+    )
+    require_exact_count(
+        refusal_predicate,
+        "&& !is_awaiting_initial_display",
+        1,
+        "independent unselected video-route refusal",
+    )
+    require_order(
+        peer_start,
+        (
+            "let starts_peer_connection =",
+            "!has_ui_stream",
+            "&& is_first_ui_session",
+            "&& is_unselected_ui_session",
+            "&& !is_awaiting_initial_display",
+            "if is_video_session",
+            "&& is_unselected_ui_session",
+            "&& !starts_peer_connection",
+            "&& !is_awaiting_initial_display",
+            'bail!("Outgoing video UI session has no explicit display owner")',
+            "Ok(starts_peer_connection)",
+        ),
+        "independent fresh, pending-marker, or explicit-owner session-start admission",
+    )
+    require_text(
+        session_start,
+        "if let Some(h) = handlers.get_mut(session_id) {\n"
+        "            if h.client_owner_id.as_ref() != Some(client_owner_id)",
+        "independent under-guard exact-owner stream admission",
+    )
+    require_text(
+        session_start,
+        "let mut thread_lock = s.thread.lock().unwrap();\n"
+        "        let mut handlers = s.session_handlers.write().unwrap();",
+        "independent worker-slot before handler-owner lock order",
+    )
+    require_text(
+        session_start,
+        "match s.start_io_thread_with_lock(&mut thread_lock)",
+        "independent peer-I/O start inside exact-owner guard",
+    )
+    require_text(
+        session_start,
+        ".replay_ready_rgba(session_id, client_owner_id)",
+        "independent exact-owner stream replay",
+    )
+    require_exact_count(
+        session_start,
+        "rollback_failed_session_start(session_id, client_owner_id);",
+        2,
+        "independent exact-owner failed-start rollback",
+    )
+    require_text(
+        session_start,
+        "if starts_peer_connection && is_video_session",
+        "independent exact first-unselected-video owner marking before network start",
+    )
+    require_text(
+        session_start,
+        "h.awaiting_initial_display = true;",
+        "independent exact first-unselected-video owner marking before network start",
+    )
+    require_order(
+        session_start,
+        (
+            "let is_video_session =",
+            "!s.is_file_transfer()",
+            "&& !s.is_port_forward()",
+            "&& !s.is_terminal();",
+            "let mut thread_lock = s.thread.lock().unwrap();",
+            "let mut handlers = s.session_handlers.write().unwrap();",
+            "is_first_ui_session = handlers.len() == 1;",
+            "if let Some(h) = handlers.get_mut(session_id)",
+            "h.client_owner_id.as_ref() != Some(client_owner_id)",
+            'bail!("Outgoing session is not owned by the active mobile/desktop client owner")',
+            "let starts_peer_connection = match admit_session_start(",
+            "is_video_session",
+            "h.event_stream.is_some()",
+            "is_first_ui_session",
+            "h.displays.is_empty()",
+            "h.awaiting_initial_display",
+            "Err(error)",
+            "start_failure = Some(error);",
+            "try_send_close_event(&h.event_stream);",
+            "h.event_stream = Some(event_stream);",
+            "if starts_peer_connection && is_video_session",
+            "h.awaiting_initial_display = true;",
+            "match s.start_io_thread_with_lock(&mut thread_lock)",
+            "Ok(false)",
+            "Err(error) => start_failure = Some(error.into())",
+            "is_found = true;",
+            "if !is_found",
+            "if let Some(error) = start_failure",
+            "rollback_failed_session_start(session_id, client_owner_id);",
+            "return Err(error);",
+            ".replay_ready_rgba(session_id, client_owner_id)",
+            "rollback_failed_session_start(session_id, client_owner_id);",
+        ),
+        "independent under-guard exact-owner and display-owned stream admission through network start and rollback",
+    )
+    failed_start_rollback = extract_between(
+        sources["flutter_source"],
+        "fn rollback_failed_session_start(",
+        "\n#[inline]\nfn try_send_close_event(",
+        "independent exact-owner failed-start rollback",
+    )
+    require_order(
+        failed_start_rollback,
+        (
+            "client_owner_id: &SessionID",
+            "remove_failed_start_by_exact_ui_owner(session_id, client_owner_id)",
+            "session.close_and_join();",
+        ),
+        "independent failed-start rollback preserves replacement owners",
+    )
+    failed_start_removal = extract_between(
+        sources["flutter_source"],
+        "pub(super) fn remove_failed_start_by_exact_ui_owner(",
+        "\n    /// Check if removing a session by session_id",
+        "independent exact-owner failed-start removal",
+    )
+    require_text(
+        failed_start_removal,
+        "handler.client_owner_id.as_ref() != Some(client_owner_id) {\n"
+        "                return None;\n"
+        "            }\n"
+        "            if handlers.remove(id).is_none()",
+        "independent failed-start replacement-owner preservation",
+    )
+    require_order(
+        failed_start_removal,
+        (
+            "handlers.get(id)",
+            "handler.client_owner_id.as_ref() != Some(client_owner_id)",
+            "return None;",
+            "if handlers.remove(id).is_none()",
+            "retire_rgba_session(id);",
+        ),
+        "independent failed-start removal checks exact owner before mutation",
+    )
+    peer_publication = extract_between(
+        sources["flutter_source"],
+        "fn set_peer_info(&self, pi: &PeerInfo)",
+        "\n    fn set_displays",
+        "independent peer-information publication",
+    )
+    require_order(
+        peer_publication,
+        (
+            "*self.peer_info.write().unwrap() = pi.clone();",
+            'self.push_event(\n            "peer_info"',
+        ),
+        "independent peer-information presentation after external admission",
+    )
+    require_absent(
+        peer_publication,
+        "bind_initial_display_owner",
+        "late initial display ownership inside peer publication",
+    )
+    soft_render = extract_between(
+        sources["flutter_source"],
+        "fn on_rgba_soft_render",
+        "\n    #[inline]\n    #[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n    fn on_rgba_flutter_texture_render",
+        "independent software RGBA display admission",
+    )
+    require_order(
+        soft_render,
+        (
+            "let handlers = self.session_handlers.read().unwrap();",
+            "if !handler.displays.contains(&display)",
+            "handler.event_stream.as_ref().map(|_| *session_id)",
+            "self.offer_rgba_to_sessions(&session_ids, display, &mut rgba.raw)",
+        ),
+        "independent exact software RGBA display membership",
+    )
+    require_absent(soft_render, "is_multi_sessions", "handler-count software presentation authority")
+    ui_session_impl = sources["ui_session_source"].find(
+        "impl<T: InvokeUiSession> Session<T>"
+    )
+    if ui_session_impl < 0:
+        raise VerificationError("missing Flutter Session implementation")
+    session_owner_admission = extract_between(
+        sources["ui_session_source"][ui_session_impl:],
+        "fn bind_initial_display_owner(\n        &self,\n        current_display: i32,",
+        "\n    fn handle_peer_info(&self, mut pi: PeerInfo)",
+        "independent session display-owner admission",
+    )
+    require_order(
+        session_owner_admission,
+        (
+            "if self.is_file_transfer() || self.is_port_forward() || self.is_terminal()",
+            "return Ok(());",
+            ".bind_initial_display_owner(current_display, display_count)",
+        ),
+        "independent video-only initial display-owner requirement",
+    )
+    login_peer_info = sources["client_io_loop"].find(
+        "Some(login_response::Union::PeerInfo(pi)) =>"
+    )
+    sync_peer_info = sources["client_io_loop"].find(
+        "Some(message::Union::PeerInfo(pi)) =>", login_peer_info + 1
+    )
+    if login_peer_info < 0 or sync_peer_info < 0:
+        raise VerificationError("missing initial/synchronized peer-information dispatch")
+    initial_peer_dispatch = sources["client_io_loop"][login_peer_info:sync_peer_info]
+    require_order(
+        initial_peer_dispatch,
+        (
+            "let initial_display = pi.current_display;",
+            "let pi = bound_peer_info(pi);",
+            ".bind_initial_display_owner(initial_display, pi.displays.len())",
+            "self.handler.on_error(&message);",
+            "return false;",
+            "self.set_peer_info(&pi);",
+            "self.handler.handle_peer_info(pi);",
+        ),
+        "independent raw initial display admission before peer-state consumption",
+    )
+    owned_renderer_size = extract_between(
+        sources["flutter_source"],
+        "fn set_owned_display_size(",
+        "\n}\n\nfn bind_initial_display_owner(",
+        "independent owned-display renderer sizing",
+    )
+    require_order(
+        owned_renderer_size,
+        (
+            "if !self.displays.contains(&display)",
+            "return false;",
+            "self.renderer.set_size(display, width, height);",
+            "true",
+        ),
+        "independent renderer sizing requires committed display ownership",
+    )
+    session_renderer_size = extract_between(
+        sources["flutter_source"],
+        "pub fn session_set_size(",
+        "\n#[inline]\npub fn session_register_pixelbuffer_texture(",
+        "independent session renderer sizing",
+    )
+    require_text(
+        session_renderer_size,
+        "s.ui_handler.set_exact_owned_display_size(\n"
+        "            &session_id,\n"
+        "            &client_owner_id,",
+        "independent exact-owner renderer-size admission",
+    )
+    require_order(
+        session_renderer_size,
+        (
+            "client_owner_id: SessionID",
+            "display: usize",
+            "width: usize",
+            "height: usize",
+            "-> ResultType<()>",
+            "s.ui_handler.set_exact_owned_display_size(",
+            "&session_id",
+            "&client_owner_id",
+            "display",
+            "width",
+            "height",
+            "if admitted",
+            "return Ok(());",
+            "bail!(",
+        ),
+        "independent result-bearing exact-owner renderer-size admission",
+    )
+    require_absent(
+        session_renderer_size,
+        "h.displays.push(display)",
+        "independent renderer-size-created display ownership",
+    )
+    exact_owner_renderer_size = extract_between(
+        sources["flutter_source"],
+        "fn set_exact_owned_display_size(",
+        "\n    fn with_exact_ui_owner_renderer",
+        "independent exact-owner renderer sizing",
+    )
+    require_order(
+        exact_owner_renderer_size,
+        (
+            "let handler = handlers.get_mut(session_id)?;",
+            "if handler.client_owner_id.as_ref() != Some(client_owner_id)",
+            "return Some(false);",
+            "Some(handler.set_owned_display_size(display, width, height))",
+        ),
+        "independent renderer sizing requires the exact current UI owner",
+    )
+    renderer_size_ffi = extract_between(
+        sources["flutter_ffi_source"],
+        "pub fn session_set_size(",
+        "\npub fn session_send_selected_session_id(",
+        "independent renderer-size FFI",
+    )
+    require_order(
+        renderer_size_ffi,
+        (
+            "client_owner_id: SessionID",
+            "-> Result<()>",
+            "super::flutter::session_set_size(session_id, client_owner_id, display, width, height)",
+        ),
+        "independent renderer-size FFI exact-owner forwarding",
+    )
+    dart_renderer_size = extract_between(
+        sources["model_dart"],
+        "Future<bool> updateCurDisplay(",
+        "/// Handle the peer info event",
+        "independent Dart exact-owner renderer sizing",
+    )
+    require_order(
+        dart_renderer_size,
+        (
+            "final expectedClientOwnerId = ffi.clientOwnerId;",
+            "ffi.isCurrentSessionOwner(sessionId, expectedClientOwnerId)",
+            "await _updateSessionWidthHeight(sessionId, expectedClientOwnerId);",
+            "SessionID sessionId",
+            "SessionID expectedClientOwnerId",
+            "async {",
+        ),
+        "independent Dart renderer sizing retains and rechecks the exact UI owner",
+    )
+    if dart_renderer_size.count("clientOwnerId: expectedClientOwnerId") != 2:
+        raise VerificationError(
+            "independent Dart renderer sizing must pass the exact UI owner in both display shapes"
+        )
+    if dart_renderer_size.count("await bind.sessionSetSize(") != 2:
+        raise VerificationError(
+            "independent Dart renderer sizing must await both bounded bridge-call shapes"
+        )
+    dart_peer_info = extract_between(
+        sources["model_dart"],
+        "Future<void> handlePeerInfo(",
+        "Future<void> tryUseAllMyDisplaysForTheRemoteSession(",
+        "independent Dart peer information",
+    )
+    require_order(
+        dart_peer_info,
+        (
+            "final previousCurrentDisplay = _pi.currentDisplay;",
+            "final restoreDisplaySelection = !isCache && _pi.isSet.value;",
+            "final preserveDisplaySelection = isCache || restoreDisplaySelection;",
+            "if (!preserveDisplaySelection &&",
+            "_pi.currentDisplay = currentDisplay;",
+            "_pi.displays.value = newDisplays;",
+            "if (restoreDisplaySelection)",
+            "previousCurrentDisplay == kAllDisplayValue",
+            "List.generate(_pi.displays.length, (index) => index)",
+            "!await selectRemoteDisplays(",
+            "'The previous display selection could not be restored'",
+            "if (_pi.currentDisplay < _pi.displays.length)",
+            "await updateCurDisplay(",
+        ),
+        "independent established reconnect restores exact display selection before geometry",
+    )
+    web_renderer_size = extract_between(
+        sources["web_bridge_source"],
+        "Future<void> sessionSetSize(",
+        "\n  Future<void> sessionSendSelectedSessionId(",
+        "independent web renderer sizing",
+    )
+    require_order(
+        web_renderer_size,
+        (
+            "required UuidValue sessionId",
+            "required UuidValue clientOwnerId",
+        ),
+        "independent web renderer-size exact-owner parity",
+    )
+    require_text(
+        sources["flutter_source"],
+        "fn r_s11gt_capture_authority_excludes_renderer_resource_keys()",
+        "independent renderer-resource capture-authority exclusion regression",
+    )
+    for test in (
+        "r_s11gt_initial_peer_info_binds_one_exact_display_owner_once",
+        "r_s11gt_initial_display_binding_refuses_ambiguous_or_invalid_authority",
+        "r_s11gt_reconnect_preserves_explicit_display_owners_without_rebinding",
+        "r_s11gt_session_start_requires_fresh_or_explicit_display_authority",
+        "r_s11gt_capture_authority_excludes_renderer_resource_keys",
+        "r_s11gt_renderer_size_requires_exact_current_ui_owner",
+    ):
+        require_text(sources["flutter_source"], test, f"independent {test} regression")
     require_order(
         sources["rgba_publication_order_dart"],
         (
@@ -19250,6 +19910,36 @@ def validate_viewer_rgba_mailbox_contract(sources):
         "flutter test --no-pub test/rgba_publication_order_test.dart",
         "viewer RGBA publication-order Dart behavior gate",
     )
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11gt</span>',
+        "explicit native display-owner requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "acquire the exact peer worker slot before acquiring the handler-owner guard",
+        "normative worker-slot before handler-owner lock order",
+    )
+    require_text(
+        sources["requirements"],
+        "every committed display in every live handler",
+        "normative preserved display-owner inventory bound",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>355</td>",
+        "explicit native display-owner Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "### R-S11gt/R-S11e-232 — explicit initial and ongoing native display ownership",
+        "explicit native display-owner hardening ledger",
+    )
+    require_text(
+        sources["verify"],
+        "cargo test --lib --features linux-pkg-config,flutter r_s11gt_ --color never",
+        "explicit native display-owner shared behavior gate",
+    )
 
 
 def validate_display_selection_finality_contract(sources):
@@ -19259,6 +19949,12 @@ def validate_display_selection_finality_contract(sources):
         "def validate(sources: Dict[str, str]) -> None:",
         "\n\nMutation = Tuple[str, str, str, str]",
         "display-selection focused runtime validation",
+    )
+    mutation_inventory = extract_between(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "\n)\n\n\ndef run_self_test",
+        "display-selection focused mutation inventory",
     )
     ordering_helper = extract_between(
         focused,
@@ -19285,6 +19981,33 @@ def validate_display_selection_finality_contract(sources):
         ('"commit();"', "local ownership commit"),
         ('"command_permit.send(QueuedViewerCommand"', "post-commit command publication"),
         ('"remaining_displays(Some(&session_id), &write_lock)?"', "native cross-owner capture union"),
+        ('"fn remaining_displays("', "native capture-authority derivation"),
+        ('"map_display_sessions"', "renderer-resource capture-authority exclusion"),
+        ('"r_s11gt_capture_authority_excludes_renderer_resource_keys"', "renderer-resource exclusion regression"),
+        ('"raw initial display authority before bounded peer-state consumption"', "raw initial display admission"),
+        ('"renderer sizing requires committed display ownership"', "renderer-size ownership admission"),
+        ('"fn set_exact_owned_display_size("', "renderer-size exact-owner admission"),
+        ('"Dart renderer sizing retains and rechecks the exact UI owner"', "Dart renderer-size owner propagation"),
+        ('"r_s11gt_renderer_size_requires_exact_current_ui_owner"', "renderer-size exact-owner regression"),
+        (
+            '        "fn admit_session_start(",\n'
+            '        "display-owned session-start admission",',
+            "display-selection focused session-start admission",
+        ),
+        (
+            '        "r_s11gt_session_start_requires_fresh_or_explicit_display_authority",\n'
+            '        "display-owned session-start admission regression",',
+            "display-selection focused session-start regression",
+        ),
+        ('"display-owned session-start admission"', "display-owned session-start admission"),
+        ('"under-guard exact-owner and display-owned stream admission through peer-I/O start"', "under-guard exact-owner stream admission"),
+        (
+            '"h.client_owner_id.as_ref() != Some(client_owner_id)",\n'
+            '            \'bail!("Outgoing session is not owned by the active mobile/desktop client owner")\',',
+            "display-selection focused under-guard exact-owner stream admission",
+        ),
+        ('"worker-slot before handler-owner session-start lock order"', "display-selection focused worker-slot/handler-owner lock order"),
+        ('"r_s11gt_session_start_requires_fresh_or_explicit_display_authority"', "display-owned session-start regression"),
         ('"pub fn replace_peer_session_display_owner("', "atomic startup owner replacement"),
         ('"send_display_selection_with_commit(command, commit)"', "reserved typed selection admission"),
         ('"await bind.sessionSwitchDisplay("', "awaited Dart admission"),
@@ -19299,6 +20022,11 @@ def validate_display_selection_finality_contract(sources):
         ('"required int expectedDisplayTopologyRevision"', "display-topology stale completion guard"),
         ("capture_display_has_exactly_one_operation", "controlled exact capture operation"),
         ('"return false;"', "controlled invalid-request finality"),
+        (
+            '"&& !is_awaiting_initial_display",\n'
+            '            \'bail!("Outgoing video UI session has no explicit display owner")\',',
+            "display-selection focused unselected video-route refusal contract",
+        ),
         ("MUTATIONS: Tuple[Mutation, ...]", "display-selection mutation inventory"),
         ("run_self_test(sources)", "display-selection mutation dispatch"),
     ):
@@ -19311,6 +20039,23 @@ def validate_display_selection_finality_contract(sources):
         ('"local commit before publication"', "commit/publication mutation"),
         ('"admission refusal preserves local ownership"', "admission-refusal mutation"),
         ('"native cross-owner display union"', "native union mutation"),
+        ('"renderer resources excluded from capture authority"', "renderer-resource exclusion mutation"),
+        ('"initial display-owner binding"', "initial display-owner mutation"),
+        ('"renderer size exact UI owner"', "renderer-size exact-owner mutation"),
+        ('"renderer size exact owner forwarding"', "renderer-size owner-forwarding mutation"),
+        ('"Dart renderer size owner propagation"', "Dart renderer-size owner mutation"),
+        ('"renderer-size exact-owner regression"', "renderer-size exact-owner regression mutation"),
+        ('"under-guard exact-owner stream admission"', "under-guard exact-owner stream-admission mutation"),
+        ('"display-owned session-start admission"', "display-owned session-start mutation"),
+        ('"first unselected peer-connection start"', "first-unselected session-start mutation"),
+        ('"pending initial owner cannot restart peer connection"', "pending-marker no-restart mutation"),
+        ('"unselected video-route refusal"', "unselected video-route refusal mutation"),
+        ('"display-owned session-start regression"', "display-owned session-start regression mutation"),
+        ('"peer-I/O start inside exact-owner guard"', "owner-guarded peer-I/O start mutation"),
+        ('"worker-slot before handler-owner lock order"', "display-selection focused worker-slot/handler-owner mutation"),
+        ('"preserved display-owner inventory bound"', "display-selection focused preserved-inventory mutation"),
+        ('"exact-owner stream replay"', "exact-owner stream-replay mutation"),
+        ('"exact-owner failed-start rollback"', "exact-owner rollback mutation"),
         ('"atomic startup owner replacement"', "startup replacement mutation"),
         ('"Dart await before commit"', "Dart ordering mutation"),
         ('"exact queue owner admission"', "exact queue owner mutation"),
@@ -19322,7 +20067,7 @@ def validate_display_selection_finality_contract(sources):
         ('"terminal invalid switch"', "controlled finality mutation"),
         ('"independent verifier dispatch"', "independent dispatch mutation"),
     ):
-        require_text(focused, text, label)
+        require_text(mutation_inventory, text, label)
 
     command = extract_between(
         sources["client_source"],
@@ -19443,6 +20188,34 @@ def validate_display_selection_finality_contract(sources):
             "if !seen.insert(display)",
         ),
         "independent nonempty distinct current-inventory validation",
+    )
+    remaining = extract_between(
+        sources["flutter_source"],
+        "fn remaining_displays(",
+        "\n    fn check_remove_unused_displays",
+        "independent cross-owner capture authority",
+    )
+    require_order(
+        remaining,
+        (
+            "let mut remains_displays = HashSet::new();",
+            "for (k, h) in handlers.iter()",
+            "if excluded == Some(k)",
+            "remains_displays.extend(h.displays.iter().copied());",
+            "i32::try_from(display)",
+            "remains_displays.sort_unstable();",
+        ),
+        "independent capture union from committed native handler displays",
+    )
+    require_absent(
+        remaining,
+        "map_display_sessions",
+        "independent renderer resources as capture authority",
+    )
+    require_text(
+        sources["flutter_source"],
+        "r_s11gt_capture_authority_excludes_renderer_resource_keys",
+        "independent renderer-resource capture-authority exclusion regression",
     )
 
     selection = extract_between(
@@ -20253,12 +21026,16 @@ def validate_display_selection_finality_contract(sources):
         ("requirements", "<tr><td>353</td>", "Appendix C #353"),
         ("requirements", '<div class="req"><span class="id">R-S11gs</span>', "R-S11gs requirement"),
         ("requirements", "<tr><td>354</td>", "Appendix C #354"),
+        ("requirements", '<div class="req"><span class="id">R-S11gt</span>', "R-S11gt requirement"),
+        ("requirements", "<tr><td>355</td>", "Appendix C #355"),
         ("requirements", "first refreshed keyframe cannot outrun local display ownership", "normative local-before-network finality"),
         ("hardening", "### R-S11go/R-S11e-227 — ordered exact-owner display-selection finality", "R-S11go hardening ledger"),
         ("hardening", "### R-S11gp/R-S11e-228 — exact-session display-selection queue lifetime", "R-S11gp hardening ledger"),
         ("hardening", "### R-S11gq/R-S11e-229 — exact-session topology and presentation ordering", "R-S11gq hardening ledger"),
         ("hardening", "### R-S11gr/R-S11e-230 — bounded exact-session web frame ownership", "R-S11gr hardening ledger"),
         ("hardening", "### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority", "R-S11gs hardening ledger"),
+        ("hardening", "### R-S11gt/R-S11e-232 — explicit initial and ongoing native display ownership", "R-S11gt hardening ledger"),
+        ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11gt_ --color never", "R-S11gt behavior-test wiring"),
     ):
         require_text(sources[key], text, label)
 
@@ -20294,6 +21071,19 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "def validate(sources: Dict[str, str]) -> None:",
         "\n\nMutation = Tuple[str, str, str, str]",
         "desktop texture lifecycle focused validation",
+    )
+    mutation_inventory = extract_between(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "\n)\n\n\ndef run_self_test",
+        "desktop texture focused mutation inventory",
+    )
+    require_exact_count(
+        validation,
+        '"if handler.client_owner_id.as_ref() != Some(client_owner_id)",\n'
+        '            "return Some(false);",',
+        2,
+        "native exact desktop UI-owner admission",
     )
     for text, label in (
         ("def extract_braced_item(", "desktop texture braced-item parser"),
@@ -20345,6 +21135,90 @@ def validate_desktop_texture_lifecycle_contract(sources):
         (
             '"if handler.client_owner_id.as_ref() != Some(client_owner_id)"',
             "native exact desktop UI-owner admission",
+        ),
+        (
+            '"write_lock.get_mut(&display)"',
+            "native exact decoded-display texture slot contract",
+        ),
+        (
+            '"sessions.get(&display)"',
+            "native exact pending-frame texture slot contract",
+        ),
+        (
+            '"if !session.displays.contains(&display)"',
+            "native texture dispatch display-membership contract",
+        ),
+        (
+            '"fn bind_initial_display_owner("',
+            "native initial display-owner contract",
+        ),
+        (
+            '"raw initial display admission before peer-state consumption"',
+            "native raw initial-display admission contract",
+        ),
+        (
+            '"renderer sizing cannot create display ownership"',
+            "native renderer-size ownership contract",
+        ),
+        (
+            '"fn set_exact_owned_display_size("',
+            "native renderer-size exact-owner contract",
+        ),
+        (
+            '"Dart renderer sizing retains and rechecks the exact UI owner"',
+            "Dart renderer-size owner contract",
+        ),
+        (
+            '"r_s11gt_renderer_size_requires_exact_current_ui_owner"',
+            "native renderer-size exact-owner regression contract",
+        ),
+        (
+            '"r_s11gt_initial_peer_info_binds_one_exact_display_owner_once"',
+            "native initial display-owner regression contract",
+        ),
+        (
+            '        "fn admit_session_start(",\n'
+            '        "display-owned session-start admission",',
+            "desktop-texture focused session-start admission",
+        ),
+        (
+            '        "r_s11gt_session_start_requires_fresh_or_explicit_display_authority",\n'
+            '        "display-owned session-start admission regression",',
+            "desktop-texture focused session-start regression",
+        ),
+        (
+            '"display-owned session-start admission"',
+            "native display-owned session-start admission contract",
+        ),
+        (
+            '"under-guard exact-owner and display-owned stream admission through peer-I/O start"',
+            "native under-guard exact-owner stream admission contract",
+        ),
+        (
+            '"h.client_owner_id.as_ref() != Some(client_owner_id)",\n'
+            '            \'bail!("Outgoing session is not owned by the active mobile/desktop client owner")\',',
+            "desktop-texture focused under-guard exact-owner stream admission",
+        ),
+        (
+            '"worker-slot before handler-owner session-start lock order"',
+            "desktop-texture focused worker-slot/handler-owner lock order",
+        ),
+        (
+            '"pub(crate) fn start_io_thread_with_lock("',
+            "native prelocked viewer worker-start helper contract",
+        ),
+        (
+            '"self.start_io_thread_with_lock(&mut thread_lock)"',
+            "native public viewer-start worker-slot delegation contract",
+        ),
+        (
+            '"r_s11gt_session_start_requires_fresh_or_explicit_display_authority"',
+            "native display-owned session-start regression contract",
+        ),
+        (
+            '"&& !is_awaiting_initial_display",\n'
+            '            \'bail!("Outgoing video UI session has no explicit display owner")\',',
+            "desktop-texture focused unselected video-route refusal contract",
         ),
         (
             '"final textureDisposal = _ffi.textureModel.dispose();"',
@@ -20774,6 +21648,74 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "presentation in-flight follow-up mutation",
         ),
         (
+            '"renderer size exact UI owner"',
+            "renderer-size exact-owner mutation",
+        ),
+        (
+            '"renderer size exact owner forwarding"',
+            "renderer-size owner-forwarding mutation",
+        ),
+        (
+            '"Dart renderer size owner propagation"',
+            "Dart renderer-size owner mutation",
+        ),
+        (
+            '"renderer-size exact-owner regression"',
+            "renderer-size exact-owner regression mutation",
+        ),
+        (
+            '"under-guard exact-owner stream admission"',
+            "under-guard exact-owner stream-admission mutation",
+        ),
+        (
+            '"prelocked viewer worker-start helper"',
+            "desktop-texture focused prelocked worker-start mutation",
+        ),
+        (
+            '"public viewer-start worker-slot delegation"',
+            "desktop-texture focused public worker-start delegation mutation",
+        ),
+        (
+            '"worker-slot before handler-owner lock order"',
+            "desktop-texture focused worker-slot/handler-owner mutation",
+        ),
+        (
+            '"preserved display-owner inventory bound"',
+            "desktop-texture focused preserved-inventory mutation",
+        ),
+        (
+            '"display-owned session-start admission"',
+            "display-owned session-start mutation",
+        ),
+        (
+            '"first unselected peer-connection start"',
+            "first-unselected session-start mutation",
+        ),
+        (
+            '"pending initial owner cannot restart peer connection"',
+            "pending-marker no-restart mutation",
+        ),
+        (
+            '"unselected video-route refusal"',
+            "unselected video-route refusal mutation",
+        ),
+        (
+            '"display-owned session-start regression"',
+            "display-owned session-start regression mutation",
+        ),
+        (
+            '"peer-I/O start inside exact-owner guard"',
+            "owner-guarded peer-I/O start mutation",
+        ),
+        (
+            '"exact-owner stream replay"',
+            "exact-owner stream-replay mutation",
+        ),
+        (
+            '"exact-owner failed-start rollback"',
+            "exact-owner rollback mutation",
+        ),
+        (
             '"native frame rejection cannot consume first-image notification"',
             "native rejection retry mutation",
         ),
@@ -21085,7 +22027,7 @@ def validate_desktop_texture_lifecycle_contract(sources):
             "pointer-evidenced presentation recovery hardening-ledger mutation",
         ),
     ):
-        require_text(focused, text, label)
+        require_text(mutation_inventory, text, label)
 
     require_text(
         sources["requirements"],
@@ -21467,22 +22409,89 @@ def validate_desktop_texture_lifecycle_contract(sources):
         "display: i32",
         "independent caller-selected native refresh display",
     )
-    require_order(
+    renderer_loader = extract_between(
         sources["flutter_source"],
+        "impl Default for VideoRenderer",
+        "\nimpl VideoRenderer {",
+        "independent desktop texture symbol loader",
+    )
+    require_order(
+        renderer_loader,
         (
             "lib.symbol::<FlutterRgbaRendererPluginTryNotifyPending>(",
             '"FlutterRgbaRendererPluginTryNotifyPending",',
-            "fn notify_pending_frame(&self, display: usize)",
+            "Ok(sym) => Some(sym)",
+            "Err(e) =>",
+            "None",
+        ),
+        "independent versioned exact-display pending-frame notifier",
+    )
+    pending_notification = extract_between(
+        sources["flutter_source"],
+        "fn notify_pending_frame(&self, display: usize)",
+        "\n}\n\nimpl FlutterHandler",
+        "independent exact-display pending-frame notifier",
+    )
+    require_order(
+        pending_notification,
+        (
             "let sessions = self.map_display_sessions.read().unwrap();",
-            "if !self.is_support_multi_ui_session",
-            "sessions.values().next()",
             "sessions.get(&display)",
+            "if info.texture_rgba_ptr == usize::default()",
             "let Some(func) = &self.notify_pending_func else",
             'bail!("desktop texture pending-frame notifier is unavailable")',
             "if unsafe { func(info.texture_rgba_ptr as _) } == 0",
             'bail!("desktop texture pending-frame notification failed")',
         ),
-        "independent versioned exact-display pending-frame notifier",
+        "independent exact pending-frame texture slot",
+    )
+    require_absent(
+        pending_notification,
+        "values().next()",
+        "independent arbitrary pending-frame texture slot",
+    )
+    renderer_admission = extract_between(
+        sources["flutter_source"],
+        "pub fn on_rgba<F>",
+        "\n    pub fn reset_all_display_notification",
+        "independent desktop texture frame admission",
+    )
+    require_order(
+        renderer_admission,
+        (
+            "let mut write_lock = self.map_display_sessions.write().unwrap();",
+            "write_lock.get_mut(&display)",
+            "let Some(func) = &self.on_rgba_func else",
+            "let frame_admitted = unsafe",
+            "commit_first_texture_notification(",
+        ),
+        "independent exact decoded-display texture slot",
+    )
+    require_absent(
+        renderer_admission,
+        "values_mut().next()",
+        "independent arbitrary decoded-frame texture slot",
+    )
+    texture_dispatch = extract_between(
+        sources["flutter_source"],
+        "fn on_rgba_flutter_texture_render(",
+        "\n}\n\n// This function is only used for the default connection session.",
+        "independent exact texture dispatch",
+    )
+    require_order(
+        texture_dispatch,
+        (
+            "if !session.displays.contains(&display)",
+            "continue;",
+            "let Some(stream) = &session.event_stream else",
+            ".on_rgba(display, rgba, || stream.add(EventToUI::Texture(display)))",
+        ),
+        "independent exact handler/display texture presentation",
+    )
+    require_absent(
+        sources["flutter_source"],
+        "renderer.is_support_multi_ui_session",
+        "independent peer-version local texture authority",
     )
     ffi_refresh = extract_between(
         sources["flutter_ffi_source"],
@@ -21665,6 +22674,26 @@ def validate_desktop_texture_lifecycle_contract(sources):
         sources["hardening"],
         "### R-S11gs/R-S11e-231 — exact-owner presentation-refresh display authority",
         "native refresh-display authority hardening ledger",
+    )
+    require_text(
+        sources["requirements"],
+        '<div class="req"><span class="id">R-S11gt</span>',
+        "explicit native display-owner requirement",
+    )
+    require_text(
+        sources["requirements"],
+        "<tr><td>355</td>",
+        "explicit native display-owner Appendix C row",
+    )
+    require_text(
+        sources["hardening"],
+        "### R-S11gt/R-S11e-232 — explicit initial and ongoing native display ownership",
+        "explicit native display-owner hardening ledger",
+    )
+    require_text(
+        sources["verify"],
+        "cargo test --lib --features linux-pkg-config,flutter r_s11gt_ --color never",
+        "explicit native display-owner shared behavior gate",
     )
 
     retired_gpu_tokens = (
@@ -23058,6 +24087,12 @@ def validate_android_voice_call_ownership_contract(sources):
         "\n\nMutation = Tuple[str, str, str, str]",
         "Android voice-call ownership focused validation",
     )
+    mutation_inventory = extract_between(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "\n)\n\n\ndef run_self_test",
+        "Android voice-call ownership focused mutation inventory",
+    )
     for text, label in (
         ("def extract_item(", "Android ownership item parser"),
         ("def validate(sources", "Android ownership semantic entry"),
@@ -23090,8 +24125,8 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android replacement drain-before-insertion contract",
         ),
         (
-            '"owner-associated outgoing worker start"',
-            "Android owner-associated worker-start contract",
+            '"owner-guarded outgoing worker start and rollback"',
+            "Android owner-guarded worker-start contract",
         ),
         (
             '"fresh mobile identity, asynchronous mobile admission, and desktop start"',
@@ -23106,8 +24141,12 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android dual exact-close count contract",
         ),
         (
-            '"replay/false/error session-start rollback"',
-            "Android session-start triple rollback contract",
+            '"admission/start and replay exact-owner session-start rollback"',
+            "Android session-start exact-owner rollback contract",
+        ),
+        (
+            '"failed-start removal preserves a replacement UI owner"',
+            "Android failed-start replacement-owner contract",
         ),
         (
             '"normal-close marker that would hide failed-start stream error"',
@@ -23419,6 +24458,14 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android focused failed-start marker mutation",
         ),
         (
+            '"failed-start replacement-owner preservation"',
+            "Android focused replacement-owner mutation",
+        ),
+        (
+            '"worker-slot before handler-owner lock order"',
+            "Android focused worker-slot/handler-owner mutation",
+        ),
+        (
             '"complete mobile add transaction serialization"',
             "Android focused mobile-add serialization mutation",
         ),
@@ -23455,7 +24502,7 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android focused shared-gate mutation",
         ),
     ):
-        require_text(focused, text, label)
+        require_text(mutation_inventory, text, label)
     require_exact_count(
         focused,
         '"shared dual close-preparation finality gate"',
@@ -23586,12 +24633,12 @@ def validate_android_voice_call_ownership_contract(sources):
         ),
         (
             "flutter_source",
-            "match session.start_io_thread()",
+            "match s.start_io_thread_with_lock(&mut thread_lock)",
             "Android fallible outgoing worker-start transaction source",
         ),
         (
             "flutter_source",
-            "fn rollback_failed_session_start(session_id: &SessionID)",
+            "fn rollback_failed_session_start(session_id: &SessionID, client_owner_id: &SessionID)",
             "Android exact failed-start rollback source",
         ),
         (
@@ -23998,19 +25045,24 @@ def validate_android_voice_call_ownership_contract(sources):
     require_order(
         session_start,
         (
-            "match session.start_io_thread()",
+            "let mut thread_lock = s.thread.lock().unwrap();",
+            "let mut handlers = s.session_handlers.write().unwrap();",
+            "h.client_owner_id.as_ref() != Some(client_owner_id)",
+            "match s.start_io_thread_with_lock(&mut thread_lock)",
             "Ok(false)",
-            "rollback_failed_session_start(session_id);",
             "Err(error)",
-            "rollback_failed_session_start(session_id);",
+            "if let Some(error) = start_failure",
+            "rollback_failed_session_start(session_id, client_owner_id);",
+            ".replay_ready_rgba(session_id, client_owner_id)",
+            "rollback_failed_session_start(session_id, client_owner_id);",
         ),
-        "Android replay/failed-start rollback source",
+        "Android exact-owner admission/start and replay rollback source",
     )
     require_exact_count(
         session_start,
-        "rollback_failed_session_start(session_id);",
-        3,
-        "Android replay/false/error session-start rollback source",
+        "rollback_failed_session_start(session_id, client_owner_id);",
+        2,
+        "Android admission/start and replay exact-owner rollback source",
     )
     failed_start_rollback = extract_between(
         sources["flutter_source"],
@@ -24021,15 +25073,32 @@ def validate_android_voice_call_ownership_contract(sources):
     require_order(
         failed_start_rollback,
         (
-            "sessions::remove_session_by_session_id(session_id)",
+            "client_owner_id: &SessionID",
+            "remove_failed_start_by_exact_ui_owner(session_id, client_owner_id)",
             "session.close_and_join();",
         ),
-        "Android exact failed-start removal and join source",
+        "Android exact-owner failed-start removal and join source",
     )
     require_absent(
         failed_start_rollback,
         "close_event_stream",
         "Android failed-start forged normal-close marker",
+    )
+    failed_start_removal = extract_between(
+        sources["flutter_source"],
+        "pub(super) fn remove_failed_start_by_exact_ui_owner(",
+        "\n    /// Check if removing a session by session_id",
+        "Android exact-owner failed-start removal source",
+    )
+    require_order(
+        failed_start_removal,
+        (
+            "handlers.get(id)",
+            "handler.client_owner_id.as_ref() != Some(client_owner_id)",
+            "return None;",
+            "if handlers.remove(id).is_none()",
+        ),
+        "Android failed-start removal preserves replacement owner",
     )
     existing_add = extract_between(
         sources["flutter_ffi_source"],
@@ -24366,7 +25435,7 @@ def validate_android_voice_call_ownership_contract(sources):
     )
     require_text(
         sources["verify"],
-        'and session_start.count("rollback_failed_session_start(session_id);") == 3',
+        'and session_start.count("rollback_failed_session_start(session_id, client_owner_id);") == 2',
         "Android shared session-start rollback gate source",
     )
     require_text(
@@ -61660,6 +62729,422 @@ def run_source_mutations(sources):
             "viewer RGBA asynchronous ordering regression",
         ),
         (
+            "viewer_rgba_mailbox_verifier",
+            '        flutter, "fn bind_initial_display_owner(", "initial display-owner binding"\n'
+            '    )',
+            '        flutter, "fn bind_initial_display_owner_disabled(", "initial display-owner binding"\n'
+            '    )',
+            "viewer RGBA initial display-owner binding contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '        session_handler,\n'
+            '        "awaiting_initial_display: bool",\n'
+            '        "explicit initial display-owner state",',
+            '        session_handler,\n'
+            '        "initial_display_unknown: bool",\n'
+            '        "explicit initial display-owner state",',
+            "viewer RGBA explicit initial display-owner state contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '            "h.client_owner_id.as_ref() != Some(client_owner_id)",\n'
+            '            \'bail!("Outgoing session is not owned by the active mobile/desktop client owner")\',',
+            '            "if false",\n'
+            '            \'bail!("Outgoing session is not owned by the active mobile/desktop client owner")\',',
+            "viewer RGBA under-guard exact-owner stream admission contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '"worker-slot before handler-owner session-start lock order"',
+            '"handler-owner before worker-slot session-start lock order"',
+            "viewer RGBA worker-slot/handler-owner lock-order contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '"worker-slot before handler-owner lock order"',
+            '"handler-owner before worker-slot lock order"',
+            "viewer RGBA worker-slot/handler-owner mutation contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '        "fn admit_session_start(",\n'
+            '        "display-owned session-start admission",',
+            '        "fn admit_session_start_disabled(",\n'
+            '        "display-owned session-start admission",',
+            "viewer RGBA display-owned session-start admission contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '            "&& !is_awaiting_initial_display",\n'
+            '            \'bail!("Outgoing video UI session has no explicit display owner")\',',
+            '            "&& false",\n'
+            '            \'bail!("Outgoing video UI session has no explicit display owner")\',',
+            "viewer RGBA unselected video-route refusal contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '            "if !handler.displays.contains(&display)",\n'
+            '            "handler.event_stream.as_ref().map(|_| *session_id)",',
+            '            "if false",\n'
+            '            "handler.event_stream.as_ref().map(|_| *session_id)",',
+            "viewer RGBA exact display-membership contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '            ".bind_initial_display_owner(initial_display, pi.displays.len())",\n'
+            '            "self.handler.on_error(&message);",',
+            '            ".bind_initial_display_owner(pi.current_display, pi.displays.len())",\n'
+            '            "self.handler.on_error(&message);",',
+            "viewer RGBA early initial-owner admission contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '        flutter, "fn set_owned_display_size(", "owned-display renderer-size helper"\n'
+            '    )',
+            '        flutter, "fn set_unowned_display_size(", "owned-display renderer-size helper"\n'
+            '    )',
+            "viewer RGBA renderer-size ownership contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '        "fn set_exact_owned_display_size(",\n'
+            '        "exact-UI-owner renderer-size helper",',
+            '        "fn set_retired_owner_display_size(",\n'
+            '        "exact-UI-owner renderer-size helper",',
+            "viewer RGBA renderer-size exact-owner contract",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '        "r_s11gt_initial_peer_info_binds_one_exact_display_owner_once",\n'
+            '        "r_s11gt_initial_display_binding_refuses_ambiguous_or_invalid_authority",',
+            '        "initial_peer_info_implicitly_selects_a_display",\n'
+            '        "r_s11gt_initial_display_binding_refuses_ambiguous_or_invalid_authority",',
+            "viewer RGBA initial display-owner regression",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '        "r_s11gt_session_start_requires_fresh_or_explicit_display_authority",\n'
+            '        "r_s11gt_capture_authority_excludes_renderer_resource_keys",',
+            '        "session_start_accepts_unselected_existing_video_routes",\n'
+            '        "r_s11gt_capture_authority_excludes_renderer_resource_keys",',
+            "viewer RGBA display-owned session-start regression",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '        "r_s11gt_renderer_size_requires_exact_current_ui_owner",\n'
+            '    ):',
+            '        "renderer_size_accepts_a_reused_session_id",\n'
+            '    ):',
+            "viewer RGBA renderer-size exact-owner regression",
+        ),
+        (
+            "viewer_rgba_mailbox_verifier",
+            '"preserved display-owner inventory bound"',
+            '"preserved display-owner inventory ignored"',
+            "viewer RGBA preserved-display-inventory mutation contract",
+        ),
+        (
+            "flutter_source",
+            "    awaiting_initial_display: bool,\n    renderer: VideoRenderer,",
+            "    initial_display_unknown: bool,\n    renderer: VideoRenderer,",
+            "independent initial display-owner state",
+        ),
+        (
+            "flutter_source",
+            "fn admit_session_start(\n    is_video_session: bool,",
+            "fn admit_session_start_disabled(\n    is_video_session: bool,",
+            "independent display-owned session-start admission",
+        ),
+        (
+            "flutter_source",
+            "let starts_peer_connection = !has_ui_stream\n        && is_first_ui_session\n        && is_unselected_ui_session\n        && !is_awaiting_initial_display;",
+            "let starts_peer_connection = !has_ui_stream\n        && is_first_ui_session\n        && !is_awaiting_initial_display;",
+            "independent first unselected handler starts peer I/O",
+        ),
+        (
+            "flutter_source",
+            "&& is_unselected_ui_session\n        && !is_awaiting_initial_display;\n    if is_video_session",
+            "&& is_unselected_ui_session;\n    if is_video_session",
+            "independent pending initial owner cannot restart peer I/O",
+        ),
+        (
+            "flutter_source",
+            "&& !starts_peer_connection\n        && !is_awaiting_initial_display",
+            "&& !starts_peer_connection\n        && false",
+            "independent unselected video-route refusal",
+        ),
+        (
+            "flutter_source",
+            "if let Some(h) = handlers.get_mut(session_id) {\n            if h.client_owner_id.as_ref() != Some(client_owner_id)",
+            "if let Some(h) = handlers.get_mut(session_id) {\n            if false",
+            "independent under-guard exact-owner stream admission",
+        ),
+        (
+            "flutter_source",
+            "let mut thread_lock = s.thread.lock().unwrap();\n        let mut handlers = s.session_handlers.write().unwrap();",
+            "let mut handlers = s.session_handlers.write().unwrap();\n        let mut thread_lock = s.thread.lock().unwrap();",
+            "independent worker-slot before handler-owner lock order",
+        ),
+        (
+            "flutter_source",
+            "match s.start_io_thread_with_lock(&mut thread_lock)",
+            "match session.start_io_thread()",
+            "independent peer-I/O start inside exact-owner guard",
+        ),
+        (
+            "ui_session_source",
+            "pub(crate) fn start_io_thread_with_lock(",
+            "pub(crate) fn start_io_thread_without_lock(",
+            "independent prelocked viewer worker-start helper",
+        ),
+        (
+            "ui_session_source",
+            "self.start_io_thread_with_lock(&mut thread_lock)",
+            "self.start_io_thread()",
+            "independent public viewer-start worker-slot delegation",
+        ),
+        (
+            "flutter_source",
+            ".replay_ready_rgba(session_id, client_owner_id)",
+            ".replay_ready_rgba(session_id, session_id)",
+            "independent exact-owner stream replay",
+        ),
+        (
+            "flutter_source",
+            "rollback_failed_session_start(session_id, client_owner_id);",
+            "rollback_failed_session_start(session_id, session_id);",
+            "independent exact-owner failed-start rollback",
+        ),
+        (
+            "flutter_source",
+            "handler.client_owner_id.as_ref() != Some(client_owner_id) {\n                return None;\n            }\n            if handlers.remove(id).is_none()",
+            "false {\n                return None;\n            }\n            if handlers.remove(id).is_none()",
+            "independent failed-start replacement-owner preservation",
+        ),
+        (
+            "flutter_source",
+            "if starts_peer_connection && is_video_session",
+            "if is_video_session",
+            "independent exact first-unselected-video owner marking before network start",
+        ),
+        (
+            "flutter_source",
+            "h.awaiting_initial_display = true;",
+            "h.awaiting_initial_display = false;",
+            "independent exact first-unselected-video owner marking before network start",
+        ),
+        (
+            "flutter_source",
+            "fn bind_initial_display_owner(\n    handlers: &mut HashMap<SessionID, SessionHandler>,",
+            "fn bind_initial_display_owner_disabled(\n    handlers: &mut HashMap<SessionID, SessionHandler>,",
+            "independent initial display-owner binding",
+        ),
+        (
+            "flutter_source",
+            "if handlers.is_empty() || handlers.values().any(|handler| handler.displays.is_empty())",
+            "if false",
+            "independent bounded fresh binding or reconnect preservation of explicit display ownership",
+        ),
+        (
+            "flutter_source",
+            "if pending.len() > 1",
+            "if false",
+            "independent bounded fresh binding or reconnect preservation of explicit display ownership",
+        ),
+        (
+            "flutter_source",
+            "// that committed UI selection implicitly.\n        return Ok(());",
+            "// that committed UI selection implicitly.\n        handlers.values_mut().for_each(|handler| handler.displays.clear());\n        return Ok(());",
+            "independent bounded fresh binding or reconnect preservation of explicit display ownership",
+        ),
+        (
+            "flutter_source",
+            "other_session_id != session_id && handler.displays.is_empty()",
+            "false",
+            "independent bounded fresh binding or reconnect preservation of explicit display ownership",
+        ),
+        (
+            "flutter_source",
+            "if !handler.displays.is_empty()",
+            "if false",
+            "independent bounded fresh binding or reconnect preservation of explicit display ownership",
+        ),
+        (
+            "flutter_source",
+            "if display >= display_count {\n        bail!(\n            \"initial peer display",
+            "if display > display_count {\n        bail!(\n            \"initial peer display",
+            "independent bounded fresh binding or reconnect preservation of explicit display ownership",
+        ),
+        (
+            "flutter_source",
+            ".any(|owned_display| *owned_display >= display_count)",
+            ".any(|_| false)",
+            "independent preserved display-owner inventory bound",
+        ),
+        (
+            "flutter_source",
+            "handler.awaiting_initial_display = false;",
+            "handler.awaiting_initial_display = true;",
+            "independent bounded fresh binding or reconnect preservation of explicit display ownership",
+        ),
+        (
+            "flutter_source",
+            "if !handler.displays.contains(&display)",
+            "if false",
+            "independent exact software RGBA display membership",
+        ),
+        (
+            "ui_session_source",
+            "fn bind_initial_display_owner(\n        &self,\n        current_display: i32,\n        display_count: usize,\n    ) -> ResultType<()>;",
+            "fn bind_initial_display_owner(&self, current_display: i32, display_count: usize);",
+            "independent result-bearing UI display-owner trait",
+        ),
+        (
+            "client_io_loop",
+            "let initial_display = pi.current_display;",
+            "let initial_display = 0;",
+            "independent raw initial display admission before peer-state consumption",
+        ),
+        (
+            "client_io_loop",
+            ".bind_initial_display_owner(initial_display, pi.displays.len())",
+            ".bind_initial_display_owner(pi.current_display, pi.displays.len())",
+            "independent raw initial display admission before peer-state consumption",
+        ),
+        (
+            "client_io_loop",
+            "self.handler.on_error(&message);\n                            return false;",
+            "self.handler.on_error(&message);\n                            continue;",
+            "independent raw initial display admission before peer-state consumption",
+        ),
+        (
+            "ui_session_source",
+            "if self.is_file_transfer() || self.is_port_forward() || self.is_terminal()",
+            "if true",
+            "independent video-only initial display-owner requirement",
+        ),
+        (
+            "ui_session_source",
+            ".bind_initial_display_owner(current_display, display_count)",
+            ".bind_initial_display_owner(0, 0)",
+            "independent video-only initial display-owner requirement",
+        ),
+        (
+            "flutter_source",
+            "if !self.displays.contains(&display)",
+            "if false",
+            "independent renderer sizing requires committed display ownership",
+        ),
+        (
+            "flutter_source",
+            "let handler = handlers.get_mut(session_id)?;\n        if handler.client_owner_id.as_ref() != Some(client_owner_id)",
+            "let handler = handlers.get_mut(session_id)?;\n        if false",
+            "independent renderer sizing requires the exact current UI owner",
+        ),
+        (
+            "flutter_source",
+            "s.ui_handler.set_exact_owned_display_size(\n            &session_id,\n            &client_owner_id,",
+            "s.ui_handler.set_exact_owned_display_size(\n            &session_id,\n            &session_id,",
+            "independent exact-owner renderer-size admission",
+        ),
+        (
+            "flutter_source",
+            ") -> ResultType<()> {\n    for s in sessions::get_sessions() {\n        if let Some(admitted) = s.ui_handler.set_exact_owned_display_size(",
+            ") {\n    for s in sessions::get_sessions() {\n        if let Some(admitted) = s.ui_handler.set_exact_owned_display_size(",
+            "independent result-bearing exact-owner renderer-size admission",
+        ),
+        (
+            "flutter_ffi_source",
+            "super::flutter::session_set_size(session_id, client_owner_id, display, width, height)",
+            "super::flutter::session_set_size(session_id, session_id, display, width, height)",
+            "independent renderer-size FFI exact-owner forwarding",
+        ),
+        (
+            "flutter_ffi_source",
+            ") -> Result<()> {\n    super::flutter::session_set_size(session_id, client_owner_id, display, width, height)",
+            ") {\n    super::flutter::session_set_size(session_id, client_owner_id, display, width, height)",
+            "independent renderer-size FFI exact-owner forwarding",
+        ),
+        (
+            "model_dart",
+            "await _updateSessionWidthHeight(sessionId, expectedClientOwnerId);",
+            "await _updateSessionWidthHeight(sessionId, sessionId);",
+            "independent Dart renderer sizing retains and rechecks the exact UI owner",
+        ),
+        (
+            "model_dart",
+            "await bind.sessionSetSize(",
+            "bind.sessionSetSize(",
+            "independent Dart renderer sizing must await both bounded bridge-call shapes",
+        ),
+        (
+            "model_dart",
+            "clientOwnerId: expectedClientOwnerId",
+            "clientOwnerId: sessionId",
+            "independent Dart renderer sizing must pass the exact UI owner in both display shapes",
+        ),
+        (
+            "model_dart",
+            "final restoreDisplaySelection = !isCache && _pi.isSet.value;",
+            "final restoreDisplaySelection = false;",
+            "independent established reconnect restores exact display selection before geometry",
+        ),
+        (
+            "model_dart",
+            "if (!preserveDisplaySelection &&",
+            "if (true &&",
+            "independent established reconnect restores exact display selection before geometry",
+        ),
+        (
+            "model_dart",
+            "!await selectRemoteDisplays(\n                ffi, expectedSessionId, reconnectDisplays)",
+            "false",
+            "independent established reconnect restores exact display selection before geometry",
+        ),
+        (
+            "model_dart",
+            "'The previous display selection could not be restored'",
+            "'Reconnect display failure ignored'",
+            "independent established reconnect restores exact display selection before geometry",
+        ),
+        (
+            "web_bridge_source",
+            "Future<void> sessionSetSize(\n      {required UuidValue sessionId,\n      required UuidValue clientOwnerId",
+            "Future<void> sessionSetSize(\n      {required UuidValue sessionId,\n      required UuidValue retiredClientOwnerId",
+            "independent web renderer-size exact-owner parity",
+        ),
+        (
+            "flutter_source",
+            "fn r_s11gt_initial_peer_info_binds_one_exact_display_owner_once()",
+            "fn initial_peer_info_implicitly_selects_a_display()",
+            "independent r_s11gt_initial_peer_info_binds_one_exact_display_owner_once regression",
+        ),
+        (
+            "flutter_source",
+            "fn r_s11gt_initial_display_binding_refuses_ambiguous_or_invalid_authority()",
+            "fn initial_display_binding_accepts_ambiguous_authority()",
+            "independent r_s11gt_initial_display_binding_refuses_ambiguous_or_invalid_authority regression",
+        ),
+        (
+            "flutter_source",
+            "fn r_s11gt_reconnect_preserves_explicit_display_owners_without_rebinding()",
+            "fn reconnect_implicitly_rebinds_display_owners()",
+            "independent r_s11gt_reconnect_preserves_explicit_display_owners_without_rebinding regression",
+        ),
+        (
+            "flutter_source",
+            "fn r_s11gt_session_start_requires_fresh_or_explicit_display_authority()",
+            "fn session_start_accepts_unselected_existing_video_routes()",
+            "independent r_s11gt_session_start_requires_fresh_or_explicit_display_authority regression",
+        ),
+        (
+            "flutter_source",
+            "fn r_s11gt_renderer_size_requires_exact_current_ui_owner()",
+            "fn renderer_size_accepts_a_reused_session_id()",
+            "independent r_s11gt_renderer_size_requires_exact_current_ui_owner regression",
+        ),
+        (
             "display_selection_finality_verifier",
             "cursor = position + len(needle)",
             "cursor = 0",
@@ -61678,6 +63163,98 @@ def run_source_mutations(sources):
             '"native cross-owner display union"',
             '"caller-selected display union"',
             "native union mutation",
+        ),
+        (
+            "display_selection_finality_verifier",
+            '"renderer resources excluded from capture authority"',
+            '"renderer resources provide capture authority"',
+            "renderer-resource exclusion mutation",
+        ),
+        (
+            "display_selection_finality_verifier",
+            '        "r_s11gt_capture_authority_excludes_renderer_resource_keys",\n'
+            '        "renderer-resource capture-authority exclusion regression",',
+            '        "capture_authority_includes_renderer_resource_keys",\n'
+            '        "renderer-resource capture-authority exclusion regression",',
+            "renderer-resource exclusion regression",
+        ),
+        (
+            "display_selection_finality_verifier",
+            '        "fn set_exact_owned_display_size(",\n'
+            '        "exact-owner renderer sizing",',
+            '        "fn set_retired_owner_display_size(",\n'
+            '        "exact-owner renderer sizing",',
+            "renderer-size exact-owner admission",
+        ),
+        (
+            "display_selection_finality_verifier",
+            '        "r_s11gt_renderer_size_requires_exact_current_ui_owner",\n'
+            '        "renderer-size exact-owner regression",',
+            '        "renderer_size_accepts_a_reused_session_id",\n'
+            '        "renderer-size exact-owner regression",',
+            "renderer-size exact-owner regression",
+        ),
+        (
+            "display_selection_finality_verifier",
+            '            "h.client_owner_id.as_ref() != Some(client_owner_id)",\n'
+            '            \'bail!("Outgoing session is not owned by the active mobile/desktop client owner")\',',
+            '            "if false",\n'
+            '            \'bail!("Outgoing session is not owned by the active mobile/desktop client owner")\',',
+            "display-selection focused under-guard exact-owner stream admission",
+        ),
+        (
+            "display_selection_finality_verifier",
+            '"worker-slot before handler-owner session-start lock order"',
+            '"handler-owner before worker-slot session-start lock order"',
+            "display-selection focused worker-slot/handler-owner lock order",
+        ),
+        (
+            "display_selection_finality_verifier",
+            '"worker-slot before handler-owner lock order"',
+            '"handler-owner before worker-slot lock order"',
+            "display-selection focused worker-slot/handler-owner mutation",
+        ),
+        (
+            "display_selection_finality_verifier",
+            '"preserved display-owner inventory bound"',
+            '"preserved display-owner inventory ignored"',
+            "display-selection focused preserved-inventory mutation",
+        ),
+        (
+            "display_selection_finality_verifier",
+            '        "fn admit_session_start(",\n'
+            '        "display-owned session-start admission",',
+            '        "fn admit_session_start_disabled(",\n'
+            '        "display-owned session-start admission",',
+            "display-selection focused session-start admission",
+        ),
+        (
+            "display_selection_finality_verifier",
+            '        "r_s11gt_session_start_requires_fresh_or_explicit_display_authority",\n'
+            '        "display-owned session-start admission regression",',
+            '        "session_start_accepts_unselected_existing_video_routes",\n'
+            '        "display-owned session-start admission regression",',
+            "display-selection focused session-start regression",
+        ),
+        (
+            "display_selection_finality_verifier",
+            '            "&& !is_awaiting_initial_display",\n'
+            '            \'bail!("Outgoing video UI session has no explicit display owner")\',',
+            '            "&& false",\n'
+            '            \'bail!("Outgoing video UI session has no explicit display owner")\',',
+            "display-selection focused unselected video-route refusal contract",
+        ),
+        (
+            "flutter_source",
+            "remains_displays.extend(h.displays.iter().copied());",
+            "remains_displays.extend(h.displays.iter().copied());\n            remains_displays.extend(h.renderer.map_display_sessions.read().unwrap().keys().copied());",
+            "independent renderer resources as capture authority",
+        ),
+        (
+            "flutter_source",
+            "fn r_s11gt_capture_authority_excludes_renderer_resource_keys()",
+            "fn capture_authority_includes_renderer_resource_keys()",
+            "independent renderer-resource capture-authority exclusion regression",
         ),
         (
             "client_source",
@@ -62259,6 +63836,42 @@ def run_source_mutations(sources):
             "R-S11gs hardening ledger",
         ),
         (
+            "requirements",
+            '<div class="req"><span class="id">R-S11gt</span>',
+            '<div class="req"><span class="id">R-S11gt-disabled</span>',
+            "explicit native display-owner requirement",
+        ),
+        (
+            "requirements",
+            "acquire the exact peer worker slot before acquiring the handler-owner guard",
+            "acquire the handler-owner guard before acquiring the exact peer worker slot",
+            "normative worker-slot before handler-owner lock order",
+        ),
+        (
+            "requirements",
+            "every committed display in every live handler",
+            "at least one committed display in some live handler",
+            "normative preserved display-owner inventory bound",
+        ),
+        (
+            "requirements",
+            "<tr><td>355</td>",
+            "<tr><td>355-disabled</td>",
+            "explicit native display-owner Appendix C row",
+        ),
+        (
+            "hardening",
+            "### R-S11gt/R-S11e-232 — explicit initial and ongoing native display ownership",
+            "### R-S11gt-disabled/R-S11e-232 — explicit initial and ongoing native display ownership",
+            "explicit native display-owner hardening ledger",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11gt_ --color never",
+            "cargo test --lib --features linux-pkg-config,flutter disabled_ --color never",
+            "explicit native display-owner shared behavior gate",
+        ),
+        (
             "workspace_verifier",
             "    validate_viewer_rgba_mailbox_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)\n"
@@ -62309,6 +63922,126 @@ def run_source_mutations(sources):
             '"if false",\n'
             '            "return Some(false);",',
             "native exact desktop UI-owner admission",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '        "fn set_exact_owned_display_size(",\n'
+            '        "exact-owner renderer sizing",',
+            '        "fn set_retired_owner_display_size(",\n'
+            '        "exact-owner renderer sizing",',
+            "native renderer-size exact-owner contract",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '        "r_s11gt_renderer_size_requires_exact_current_ui_owner",\n'
+            '        "renderer-size exact-owner regression",',
+            '        "renderer_size_accepts_a_reused_session_id",\n'
+            '        "renderer-size exact-owner regression",',
+            "native renderer-size exact-owner regression contract",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '            "h.client_owner_id.as_ref() != Some(client_owner_id)",\n'
+            '            \'bail!("Outgoing session is not owned by the active mobile/desktop client owner")\',',
+            '            "if false",\n'
+            '            \'bail!("Outgoing session is not owned by the active mobile/desktop client owner")\',',
+            "desktop-texture focused under-guard exact-owner stream admission",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '"worker-slot before handler-owner session-start lock order"',
+            '"handler-owner before worker-slot session-start lock order"',
+            "desktop-texture focused worker-slot/handler-owner lock order",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '"prelocked viewer worker-start helper"',
+            '"unlocked viewer worker-start helper"',
+            "desktop-texture focused prelocked worker-start mutation",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '"public viewer-start worker-slot delegation"',
+            '"public viewer-start recursive delegation"',
+            "desktop-texture focused public worker-start delegation mutation",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '"worker-slot before handler-owner lock order"',
+            '"handler-owner before worker-slot lock order"',
+            "desktop-texture focused worker-slot/handler-owner mutation",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '"preserved display-owner inventory bound"',
+            '"preserved display-owner inventory ignored"',
+            "desktop-texture focused preserved-inventory mutation",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '        "fn admit_session_start(",\n'
+            '        "display-owned session-start admission",',
+            '        "fn admit_session_start_disabled(",\n'
+            '        "display-owned session-start admission",',
+            "desktop-texture focused session-start admission",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '        "r_s11gt_session_start_requires_fresh_or_explicit_display_authority",\n'
+            '        "display-owned session-start admission regression",',
+            '        "session_start_accepts_unselected_existing_video_routes",\n'
+            '        "display-owned session-start admission regression",',
+            "desktop-texture focused session-start regression",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '            "&& !is_awaiting_initial_display",\n'
+            '            \'bail!("Outgoing video UI session has no explicit display owner")\',',
+            '            "&& false",\n'
+            '            \'bail!("Outgoing video UI session has no explicit display owner")\',',
+            "desktop-texture focused unselected video-route refusal contract",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '            "write_lock.get_mut(&display)",\n'
+            '            "let Some(func) = &self.on_rgba_func else",',
+            '            "write_lock.values_mut().next()",\n'
+            '            "let Some(func) = &self.on_rgba_func else",',
+            "native exact decoded-display texture slot contract",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '            "sessions.get(&display)",\n'
+            '            "return Ok(());",',
+            '            "sessions.values().next()",\n'
+            '            "return Ok(());",',
+            "native exact pending-frame texture slot contract",
+        ),
+        (
+            "desktop_texture_lifecycle_verifier",
+            '            "if !session.displays.contains(&display)",\n'
+            '            "continue;",',
+            '            "if false",\n'
+            '            "continue;",',
+            "native texture dispatch display-membership contract",
+        ),
+        (
+            "flutter_source",
+            "let Some(info) = write_lock.get_mut(&display) else {",
+            "let Some(info) = write_lock.values_mut().next() else {",
+            "independent exact decoded-display texture slot",
+        ),
+        (
+            "flutter_source",
+            "let Some(info) = sessions.get(&display) else {",
+            "let Some(info) = sessions.values().next() else {",
+            "independent exact pending-frame texture slot",
+        ),
+        (
+            "flutter_source",
+            "if !session.displays.contains(&display) {",
+            "if false {",
+            "independent exact handler/display texture presentation",
         ),
         (
             "desktop_texture_lifecycle_verifier",
@@ -73847,9 +75580,9 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
-            '"replay/false/error session-start rollback"',
+            '"admission/start and replay exact-owner session-start rollback"',
             '"unchecked initial worker-start failure"',
-            "Android session-start triple rollback contract",
+            "Android session-start exact-owner rollback contract",
         ),
         (
             "android_voice_call_ownership_verifier",
@@ -73883,6 +75616,12 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
+            '"worker-slot before handler-owner lock order"',
+            '"handler-owner before worker-slot lock order"',
+            "Android focused worker-slot/handler-owner mutation",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
             '"unbounded mobile-start backlog refusal"',
             '"unbounded mobile-start backlog accepted"',
             "Android focused bounded-start mutation",
@@ -73907,20 +75646,28 @@ def run_source_mutations(sources):
         ),
         (
             "flutter_source",
-            "match session.start_io_thread()",
-            "if session.start_io_thread().is_ok()",
-            "Android fallible outgoing worker-start transaction source",
+            "match s.start_io_thread_with_lock(&mut thread_lock)",
+            "if s.start_io_thread().is_ok()",
+            "independent peer-I/O start inside exact-owner guard",
         ),
         (
             "flutter_source",
-            "fn rollback_failed_session_start(session_id: &SessionID) {\n"
-            "    if let Some(session) = sessions::remove_session_by_session_id(session_id) {",
-            "fn rollback_failed_session_start(session_id: &SessionID) {\n"
+            "fn rollback_failed_session_start(session_id: &SessionID, client_owner_id: &SessionID) {\n"
+            "    if let Some(session) =\n"
+            "        sessions::remove_failed_start_by_exact_ui_owner(session_id, client_owner_id)\n",
+            "fn rollback_failed_session_start(session_id: &SessionID, client_owner_id: &SessionID) {\n"
             "    if let Some(session) = sessions::get_session_by_session_id(session_id) {\n"
             "        session.close_event_stream(*session_id);\n"
             "    }\n"
-            "    if let Some(session) = sessions::remove_session_by_session_id(session_id) {",
+            "    if let Some(session) =\n"
+            "        sessions::remove_failed_start_by_exact_ui_owner(session_id, client_owner_id)\n",
             "Android failed-start forged normal-close marker",
+        ),
+        (
+            "flutter_source",
+            "handler.client_owner_id.as_ref() != Some(client_owner_id) {\n                return None;\n            }\n            if handlers.remove(id).is_none()",
+            "false {\n                return None;\n            }\n            if handlers.remove(id).is_none()",
+            "independent failed-start replacement-owner preservation",
         ),
         (
             "flutter_source",
@@ -74125,8 +75872,8 @@ def run_source_mutations(sources):
         ),
         (
             "verify",
-            'and session_start.count("rollback_failed_session_start(session_id);") == 3',
-            'and session_start.count("rollback_failed_session_start(session_id);") >= 0',
+            'and session_start.count("rollback_failed_session_start(session_id, client_owner_id);") == 2',
+            'and session_start.count("rollback_failed_session_start(session_id, client_owner_id);") >= 0',
             "Android shared session-start rollback gate source",
         ),
         (

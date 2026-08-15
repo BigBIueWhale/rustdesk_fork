@@ -386,6 +386,9 @@ PY
     echo "  == R-S11ff generated-bridge exact-owner viewer refresh regression =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       flutter::mobile_session_lifecycle_tests::r_s11ff_r_s11gs_video_refresh_derives_the_current_exact_ui_owner_displays -- --test-threads=1
+    echo "  == R-S11gt generated-bridge explicit initial display-owner regressions =="
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      flutter::mobile_session_lifecycle_tests::r_s11gt_ -- --test-threads=1
     echo "  == R-S11go generated-bridge ordered exact-owner display-selection finality regression =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       r_s11go_ -- --test-threads=1

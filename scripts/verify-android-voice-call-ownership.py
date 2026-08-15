@@ -1123,17 +1123,20 @@ def validate(sources: Dict[str, str]) -> None:
             "client_owner_id: &SessionID",
             "acquire_android_client_owner(client_owner_id)?",
             "sessions::session_has_client_owner(session_id, client_owner_id)",
-            "match session.start_io_thread()",
-            "rollback_failed_session_start(session_id);",
+            "let mut thread_lock = s.thread.lock().unwrap();",
+            "let mut handlers = s.session_handlers.write().unwrap();",
+            "h.client_owner_id.as_ref() != Some(client_owner_id)",
+            "match s.start_io_thread_with_lock(&mut thread_lock)",
+            "rollback_failed_session_start(session_id, client_owner_id);",
             "drop(owner_admission)",
         ),
-        "owner-associated outgoing worker start",
+        "owner-guarded outgoing worker start and rollback",
     )
     require_count(
         session_start,
-        "rollback_failed_session_start(session_id);",
-        3,
-        "replay/false/error session-start rollback",
+        "rollback_failed_session_start(session_id, client_owner_id);",
+        2,
+        "admission/start and replay exact-owner session-start rollback",
     )
     failed_start_rollback = extract_item(
         flutter,
@@ -1143,10 +1146,26 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         failed_start_rollback,
         (
-            "sessions::remove_session_by_session_id(session_id)",
+            "client_owner_id: &SessionID",
+            "remove_failed_start_by_exact_ui_owner(session_id, client_owner_id)",
             "session.close_and_join();",
         ),
-        "exact handler removal and worker join after start failure",
+        "exact-owner handler removal and worker join after start failure",
+    )
+    exact_failed_start_removal = extract_item(
+        flutter,
+        "pub(super) fn remove_failed_start_by_exact_ui_owner(",
+        "exact-owner failed-session-start removal",
+    )
+    require_order(
+        exact_failed_start_removal,
+        (
+            "handlers.get(id)",
+            "handler.client_owner_id.as_ref() != Some(client_owner_id)",
+            "return None;",
+            "if handlers.remove(id).is_none()",
+        ),
+        "failed-start removal preserves a replacement UI owner",
     )
     forbid(
         failed_start_rollback,
@@ -1720,7 +1739,7 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         sources["verify"],
-        'and session_start.count("rollback_failed_session_start(session_id);") == 3',
+        'and session_start.count("rollback_failed_session_start(session_id, client_owner_id);") == 2',
         "shared failed-start rollback-count gate",
     )
     require(
@@ -5413,7 +5432,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "take_previous_android_mobile_client_sessions(client_owner_id, session_id)?", "sessions::ClientOwnerDrain::default()", "replacement pre-insertion drain"),
     ("flutter", "sessions::session_has_client_owner(session_id, client_owner_id)", "true", "start-time owner association"),
     ("flutter", "handler_session_id != session_id\n                        || handler.client_owner_id.as_ref() != Some(client_owner_id)", "handler_session_id != session_id\n                        && handler.client_owner_id.as_ref() != Some(client_owner_id)", "exact owner-and-session preservation"),
-    ("flutter", "check_remove_unused_displays(None, session, &handlers);", "check_remove_unused_displays(Some(session_id), session, &handlers);", "replacement display reconciliation includes preserved exact session"),
+    ("flutter", "if handlers.is_empty() {\n                removed_keys.push(key.clone());\n            } else {\n                check_remove_unused_displays(None, session, &handlers);", "if handlers.is_empty() {\n                removed_keys.push(key.clone());\n            } else {\n                check_remove_unused_displays(Some(session_id), session, &handlers);", "replacement display reconciliation includes preserved exact session"),
     ("flutter", "if owned_handler_ids.is_empty() {\n                continue;\n            }\n            if handlers.is_empty() {\n                removed_keys.push(key.clone());\n            } else {\n                check_remove_unused_displays(None, session, &handlers);", "if owned_handler_ids.is_empty() {\n                continue;\n            }\n            if handlers.is_empty() {\n                removed_keys.push(key.clone());\n            } else {\n                check_remove_unused_displays(Some(client_owner_id), session, &handlers);", "Activity-owner display reconciliation includes all remaining sessions"),
     ("flutter", "excluded_session_id: Option<&SessionID>", "excluded_session_id: &SessionID", "optional display-reconciliation exclusion"),
     ("flutter", "fn stale_mobile_session_close_cannot_select_replacement_from_same_owner()", "fn stale_mobile_session_close_can_select_replacement_from_same_owner()", "same-owner stale-close behavior proof"),
@@ -5789,9 +5808,11 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("verify", "grep -qF 'stale_android_activity_cannot_reclaim_the_replacement_owner' src/flutter.rs", "grep -qF 'resumed_android_activity_reclaims_owner_without_reusing_a_stale_generation' src/flutter.rs", "shared stale-Activity takeover-refusal regression gate"),
     ("verify", 'and owner_resume.index("ANDROID_CLIENT_OWNER")\n        < owner_resume.index(".read()")\n        < owner_resume.index(".resume(generation, session_id)")', 'and owner_resume.index("ANDROID_CLIENT_OWNER.write()")\n        < owner_resume.index(".resume(generation, session_id)")', "shared read-only Rust Activity-resume gate"),
     ("verify", 'and "close_sessions_owned_by" not in owner_resume', 'and "close_sessions_owned_by" in owner_resume', "shared resume-without-takeover gate"),
-    ("flutter", "match session.start_io_thread()", "if session.start_io_thread().is_ok()", "failed-start transactional match"),
-    ("flutter", "rollback_failed_session_start(session_id);", "// failed-start rollback omitted", "false failed-start rollback"),
-    ("flutter", "fn rollback_failed_session_start(session_id: &SessionID) {\n    if let Some(session) = sessions::remove_session_by_session_id(session_id) {", "fn rollback_failed_session_start(session_id: &SessionID) {\n    if let Some(session) = sessions::get_session_by_session_id(session_id) {\n        session.close_event_stream(*session_id);\n    }\n    if let Some(session) = sessions::remove_session_by_session_id(session_id) {", "failed-start normal-close marker refusal"),
+    ("flutter", "match s.start_io_thread_with_lock(&mut thread_lock)", "match s.start_io_thread()", "failed-start transactional match"),
+    ("flutter", "let mut thread_lock = s.thread.lock().unwrap();\n        let mut handlers = s.session_handlers.write().unwrap();", "let mut handlers = s.session_handlers.write().unwrap();\n        let mut thread_lock = s.thread.lock().unwrap();", "worker-slot before handler-owner lock order"),
+    ("flutter", "rollback_failed_session_start(session_id, client_owner_id);", "// failed-start rollback omitted", "false failed-start rollback"),
+    ("flutter", "fn rollback_failed_session_start(session_id: &SessionID, client_owner_id: &SessionID) {\n    if let Some(session) =\n        sessions::remove_failed_start_by_exact_ui_owner(session_id, client_owner_id)", "fn rollback_failed_session_start(session_id: &SessionID, client_owner_id: &SessionID) {\n    if let Some(session) = sessions::get_session_by_session_id(session_id) {\n        session.close_event_stream(*session_id);\n    }\n    if let Some(session) =\n        sessions::remove_failed_start_by_exact_ui_owner(session_id, client_owner_id)", "failed-start normal-close marker refusal"),
+    ("flutter", "handler.client_owner_id.as_ref() != Some(client_owner_id) {\n                return None;\n            }\n            if handlers.remove(id).is_none()", "false {\n                return None;\n            }\n            if handlers.remove(id).is_none()", "failed-start replacement-owner preservation"),
     ("flutter", "fn failed_session_start_rolls_back_and_joins_only_the_exact_session()", "fn failed_session_start_rollback_is_unchecked()", "failed-start exact rollback behavior proof"),
     ("flutter", "let result = sessions::replace_peer_session_display_owner(", "sessions::insert_peer_session_id(", "atomic existing-session display-owner replacement"),
     ("flutter_ffi", "static ref MOBILE_SESSION_ADD_TRANSACTION: Mutex<()> = Mutex::new(());", "static ref MOBILE_SESSION_ADD_TRANSACTION_DISABLED: Mutex<()> = Mutex::new(());", "serialized mobile-add transaction owner"),
@@ -5837,7 +5858,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("hardening", "R-S11eq/R-S11e-178 Android component-thread outgoing-owner retirement", "R-S11eq-disabled/R-S11e-178 Android component-thread outgoing-owner retirement", "Android lifecycle-drain hardening ledger"),
     ("verify", "python3 scripts/verify-android-client-lifecycle-drain.py --repo . --self-test", "true # Android lifecycle-drain focused gate disabled", "shared Android lifecycle-drain focused gate"),
     ("verify", "grep -qF 'test/mobile_session_start_queue_test.dart' scripts/dart-verify.sh", "true # mobile preparation shared queue gate disabled", "shared mobile preparation queue gate"),
-    ("verify", "and session_start.count(\"rollback_failed_session_start(session_id);\") == 3", "and session_start.count(\"rollback_failed_session_start(session_id);\") >= 0", "shared session-start rollback-count gate"),
+    ("verify", "and session_start.count(\"rollback_failed_session_start(session_id, client_owner_id);\") == 2", "and session_start.count(\"rollback_failed_session_start(session_id, client_owner_id);\") >= 0", "shared session-start rollback-count gate"),
     ("verify", "and dart_close.count(\"await _awaitMobileSessionStart(closingSessionId);\") == 2", "and dart_close.count(\"await _awaitMobileSessionStart(closingSessionId);\") >= 0", "shared dual close-preparation finality gate"),
     ("verify", "python3 scripts/verify-android-voice-call-ownership.py --repo . --self-test", "true # Android voice-call ownership gate removed", "shared gate wiring"),
 )

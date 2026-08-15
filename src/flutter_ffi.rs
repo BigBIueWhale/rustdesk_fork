@@ -958,8 +958,14 @@ pub fn session_change_resolution(session_id: SessionID, display: i32, width: i32
     }
 }
 
-pub fn session_set_size(session_id: SessionID, display: usize, width: usize, height: usize) {
-    super::flutter::session_set_size(session_id, display, width, height)
+pub fn session_set_size(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+    display: usize,
+    width: usize,
+    height: usize,
+) -> Result<()> {
+    super::flutter::session_set_size(session_id, client_owner_id, display, width, height)
 }
 
 pub fn session_send_selected_session_id(session_id: SessionID, sid: String) {

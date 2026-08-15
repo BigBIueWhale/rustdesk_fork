@@ -2815,6 +2815,7 @@ impl<T: InvokeUiSession> Remote<T> {
                         }
                     }
                     Some(login_response::Union::PeerInfo(pi)) => {
+                        let initial_display = pi.current_display;
                         let pi = bound_peer_info(pi);
                         if (self.handler.is_default() || self.handler.is_view_camera())
                             && pi.video_frame_receipt_version != VIDEO_FRAME_RECEIPT_VERSION
@@ -2825,6 +2826,16 @@ impl<T: InvokeUiSession> Remote<T> {
                                 "Upgrade both RustDesk peers to a version with exact video receipt support.",
                                 "",
                             );
+                            return false;
+                        }
+                        if let Err(error) = self
+                            .handler
+                            .bind_initial_display_owner(initial_display, pi.displays.len())
+                        {
+                            let message =
+                                format!("Failed to establish the initial display owner: {error}");
+                            log::error!("{message}");
+                            self.handler.on_error(&message);
                             return false;
                         }
                         self.video_frame_receipts_negotiated =

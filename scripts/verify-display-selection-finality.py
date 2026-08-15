@@ -580,7 +580,7 @@ def validate(sources: Dict[str, str]) -> None:
             "start_failure = Some(error);",
             "try_send_close_event(&h.event_stream);",
             "h.event_stream = Some(event_stream);",
-            "if starts_peer_connection && is_video_session",
+            "if start_failure.is_none() && starts_peer_connection && is_video_session",
             "h.awaiting_initial_display = true;",
             "match s.start_io_thread_with_lock(&mut thread_lock)",
             "Ok(false)",
@@ -1903,7 +1903,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("dart_verify", "display selection is not a normal worker-pool bridge call", "display selection worker mode is unchecked", "generated display-selection worker-mode gate"),
     ("apple", "python3 scripts/verify-display-selection-finality.py --repo . --self-test", "python3 scripts/verify-display-selection-finality.py --repo .", "Apple gate"),
     ("workspace", '"display_selection_finality_verifier": (', '"display_selection_finality_verifier_disabled": (', "independent source binding"),
-    ("workspace", "    validate_viewer_rgba_mailbox_contract(sources)\n    validate_display_selection_finality_contract(sources)\n    validate_desktop_texture_lifecycle_contract(sources)", "    validate_viewer_rgba_mailbox_contract(sources)\n    validate_display_selection_finality_contract_disabled(sources)\n    validate_desktop_texture_lifecycle_contract(sources)", "independent verifier dispatch"),
+    ("workspace", "    validate_viewer_cursor_mailbox_contract(sources)\n    validate_display_selection_finality_contract(sources)\n    validate_desktop_texture_lifecycle_contract(sources)", "    validate_viewer_cursor_mailbox_contract(sources)\n    validate_display_selection_finality_contract_disabled(sources)\n    validate_desktop_texture_lifecycle_contract(sources)", "independent verifier dispatch"),
 )
 
 

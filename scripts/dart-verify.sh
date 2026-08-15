@@ -371,6 +371,7 @@ PY
       -o /tmp/texture_rgba_windows_core_test
     /tmp/texture_rgba_windows_core_test
     cd /src
+    python3 scripts/verify-viewer-cursor-mailbox.py --repo . --self-test
     python3 scripts/verify-display-selection-finality.py --repo . --self-test
     rustfmt --edition 2021 --check \
       src/client.rs \
@@ -389,6 +390,9 @@ PY
     echo "  == R-S11gt generated-bridge explicit initial display-owner regressions =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       flutter::mobile_session_lifecycle_tests::r_s11gt_ -- --test-threads=1
+    echo "  == R-S11gu generated-bridge bounded exact-owner cursor publication regressions =="
+    cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
+      flutter::mobile_session_lifecycle_tests::r_s11gu_ -- --test-threads=1
     echo "  == R-S11go generated-bridge ordered exact-owner display-selection finality regression =="
     cargo test --offline --locked --lib --features flutter,unix-file-copy-paste \
       r_s11go_ -- --test-threads=1

@@ -177,7 +177,9 @@ def validate(sources: Dict[str, str]) -> None:
     require(copy, "self.data.clone()", "owned bridge result")
 
     acknowledge = extract_braced_item(
-        flutter, "fn acknowledge<F>", "exact publication acknowledgement"
+        flutter,
+        "fn acknowledge<F>(&mut self, publication: u64",
+        "exact publication acknowledgement",
     )
     require_order(
         acknowledge,
@@ -198,7 +200,9 @@ def validate(sources: Dict[str, str]) -> None:
     )
 
     rearm = extract_braced_item(
-        flutter, "fn rearm<F>", "presentation recovery publication re-arm"
+        flutter,
+        "fn rearm<F>(&mut self, next_publication: F) -> RgbaRearm",
+        "presentation recovery publication re-arm",
     )
     require_order(
         rearm,
@@ -413,7 +417,7 @@ def validate(sources: Dict[str, str]) -> None:
             "start_failure = Some(error);",
             "try_send_close_event(&h.event_stream);",
             "h.event_stream = Some(event_stream);",
-            "if starts_peer_connection && is_video_session",
+            "if start_failure.is_none() && starts_peer_connection && is_video_session",
             "h.awaiting_initial_display = true;",
             "match s.start_io_thread_with_lock(&mut thread_lock)",
             "Ok(false)",
@@ -914,6 +918,18 @@ def validate(sources: Dict[str, str]) -> None:
         "web acknowledgement signature parity",
     )
     web_bridge = sources["web_bridge"]
+    web_rgba_event = extract_braced_item(
+        web_bridge, "class EventToUI_Rgba", "web RGBA event parity"
+    )
+    require_order(
+        web_rgba_event,
+        (
+            "final int f0;",
+            "final int f1;",
+            "int get field1 => f1;",
+        ),
+        "web event display/publication parity",
+    )
     require_order(
         web_bridge,
         (
@@ -921,11 +937,8 @@ def validate(sources: Dict[str, str]) -> None:
             "int field0,",
             "int field1,",
             "class EventToUI_Rgba",
-            "final int f0;",
-            "final int f1;",
-            "int get field1 => f1;",
         ),
-        "web event display/publication parity",
+        "web event factory parity",
     )
     require(
         web_bridge,
@@ -1075,9 +1088,9 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "self.valid && self.publication == publication", "self.valid", "copy token check"),
     ("flutter", "self.data.clone()", "Vec::new()", "owned copy bytes"),
     ("flutter", "if !self.valid || self.publication != publication", "if !self.valid", "stale acknowledgement"),
-    ("flutter", "let Some(publication) = next_publication()", "let publication = self.publication", "promotion token"),
-    ("flutter", "fn rearm<F>", "fn rearm_disabled<F>", "presentation recovery re-arm"),
-    ("flutter", "self.pending = None;", "self.pending.take();", "re-arm exhaustion retirement"),
+    ("flutter", "            return RgbaAcknowledgement::Drained;\n        };\n        let Some(publication) = next_publication()", "            return RgbaAcknowledgement::Drained;\n        };\n        let publication = self.publication", "promotion token"),
+    ("flutter", "fn rearm<F>(&mut self, next_publication: F) -> RgbaRearm", "fn rearm_disabled<F>(&mut self, next_publication: F) -> RgbaRearm", "presentation recovery re-arm"),
+    ("flutter", "            self.publication = 0;\n            self.pending = None;\n            return RgbaRearm::Exhausted;", "            self.publication = 0;\n            self.pending.take();\n            return RgbaRearm::Exhausted;", "re-arm exhaustion retirement"),
     ("flutter", "std::mem::swap(&mut self.data, &mut latest);", "self.data = latest;", "re-arm latest-frame promotion"),
     ("flutter", "fn rearm_rgba_for_presentation_recovery(", "fn rearm_rgba_for_presentation_recovery_disabled(", "exact recovery notification"),
     ("flutter", "session.ui_handler.rearm_rgba_for_presentation_recovery(", "session.ui_handler.replay_ready_rgba(", "refresh-owned software re-arm"),
@@ -1085,14 +1098,14 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "if handler.displays.is_empty()", "if false", "empty exact-owner refresh display refusal"),
     ("flutter", "for display in &handler.displays {\n                    session.ui_handler.rearm_rgba_for_presentation_recovery(", "for display in &[0usize] {\n                    session.ui_handler.rearm_rgba_for_presentation_recovery(", "native exact-owner refresh display derivation"),
     ("flutter", "handler.renderer.notify_pending_frame(*display)?;", "// pending native texture was not re-notified", "exact-owner pending native texture notification"),
-    ("flutter", "    awaiting_initial_display: bool,\n    renderer: VideoRenderer,", "    initial_display_unknown: bool,\n    renderer: VideoRenderer,", "initial display-owner state"),
+    ("flutter", "    awaiting_initial_display: bool,", "    initial_display_unknown: bool,", "initial display-owner state"),
     ("flutter", "fn admit_session_start(\n    is_video_session: bool,", "fn admit_session_start_disabled(\n    is_video_session: bool,", "display-owned session-start admission"),
     ("flutter", "let starts_peer_connection = !has_ui_stream\n        && is_first_ui_session\n        && is_unselected_ui_session\n        && !is_awaiting_initial_display;", "let starts_peer_connection = !has_ui_stream\n        && is_first_ui_session\n        && !is_awaiting_initial_display;", "first unselected peer connection start"),
     ("flutter", "&& is_unselected_ui_session\n        && !is_awaiting_initial_display;\n    if is_video_session", "&& is_unselected_ui_session;\n    if is_video_session", "pending initial owner cannot restart peer connection"),
     ("flutter", "&& !starts_peer_connection\n        && !is_awaiting_initial_display", "&& !starts_peer_connection\n        && false", "unselected video route refusal"),
     ("flutter", "if let Some(h) = handlers.get_mut(session_id) {\n            if h.client_owner_id.as_ref() != Some(client_owner_id)", "if let Some(h) = handlers.get_mut(session_id) {\n            if false", "under-guard exact-owner stream admission"),
     ("flutter", "let mut thread_lock = s.thread.lock().unwrap();\n        let mut handlers = s.session_handlers.write().unwrap();", "let mut handlers = s.session_handlers.write().unwrap();\n        let mut thread_lock = s.thread.lock().unwrap();", "worker-slot before handler-owner lock order"),
-    ("flutter", "if starts_peer_connection && is_video_session", "if is_video_session", "initial owner marker follows exact peer start"),
+    ("flutter", "if start_failure.is_none() && starts_peer_connection && is_video_session", "if is_video_session", "initial owner marker follows exact peer start"),
     ("flutter", "h.awaiting_initial_display = true;", "h.awaiting_initial_display = false;", "initial display-owner marker commit"),
     ("flutter", "fn bind_initial_display_owner(\n    handlers: &mut HashMap<SessionID, SessionHandler>,", "fn bind_initial_display_owner_disabled(\n    handlers: &mut HashMap<SessionID, SessionHandler>,", "initial display-owner binding"),
     ("flutter", "if handlers.is_empty() || handlers.values().any(|handler| handler.displays.is_empty())", "if false", "missing explicit initial owner refusal"),
@@ -1125,7 +1138,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("model", "!await selectRemoteDisplays(\n                ffi, expectedSessionId, reconnectDisplays)", "false", "awaited reconnect display restoration"),
     ("model", "'The previous display selection could not be restored'", "'Reconnect display failure ignored'", "terminal reconnect display restoration failure"),
     ("web_bridge", "Future<void> sessionSetSize(\n      {required UuidValue sessionId,\n      required UuidValue clientOwnerId", "Future<void> sessionSetSize(\n      {required UuidValue sessionId,\n      required UuidValue retiredClientOwnerId", "web renderer size owner parity"),
-    ("flutter", ".filter(|next| *next <= i64::MAX as u64)", ".filter(|_| true)", "Dart token bound"),
+    ("flutter", "self.rgba_publication_counter\n            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {\n                current\n                    .checked_add(1)\n                    .filter(|next| *next <= i64::MAX as u64)", "self.rgba_publication_counter\n            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {\n                current\n                    .checked_add(1)\n                    .filter(|_| true)", "Dart token bound"),
     ("flutter", ".entry((*session_id, display))", ".entry((SessionID::nil(), display))", "independent session copy"),
     ("flutter", ".and_then(|rgba| rgba.copy(publication))", ".map(|rgba| rgba.data.clone())", "exact public copy"),
     ("flutter", "mailbox.acknowledge(publication", "mailbox.acknowledge(0", "exact acknowledgement"),
@@ -1152,7 +1165,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("publication_order", "admission.revision == _revision", "true", "exact asynchronous commit revision"),
     ("publication_order_test", "a newer publication invalidates an older asynchronous completion", "an older completion is allowed", "Dart ordering regression"),
     ("publication_order_test", "out-of-order asynchronous completions commit only the latest", "out-of-order asynchronous completions commit both", "Dart asynchronous ordering regression"),
-    ("web_bridge", "final int f1;", "final bool f1;", "web token parity"),
+    ("web_bridge", "class EventToUI_Rgba implements EventToUI {\n  const EventToUI_Rgba(final int field0, final int field1)\n      : f0 = field0,\n        f1 = field1;\n  final int f0;\n  final int f1;", "class EventToUI_Rgba implements EventToUI {\n  const EventToUI_Rgba(final int field0, final int field1)\n      : f0 = field0,\n        f1 = field1;\n  final int f0;\n  final bool f1;", "web token parity"),
     ("ios_app", "dummy_method_to_enforce_bundling();", "dummy_method_to_enforce_bundling();\n    session_get_rgba(nil, 0);", "iOS raw pointer"),
     ("flutter", "fn r_s11ew_rgba_publication_exhaustion_fails_closed()", "fn rgba_publication_exhaustion_fails_closed()", "exhaustion regression"),
     ("flutter", "fn r_s11fr_rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame()", "fn rgba_rearm_replaces_the_token_and_promotes_only_the_latest_frame()", "re-arm behavior regression"),

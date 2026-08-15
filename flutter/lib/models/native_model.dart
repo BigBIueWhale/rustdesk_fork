@@ -107,6 +107,14 @@ class PlatformFFI {
   void nextRgba(SessionID sessionId, int display, int publication) =>
       _ffiBind.sessionNextRgba(
           sessionId: sessionId, display: display, publication: publication);
+  bool takeCursorPosition(SessionID sessionId, SessionID clientOwnerId, int x,
+          int y, int publication) =>
+      _ffiBind.sessionTakeCursorPosition(
+          sessionId: sessionId,
+          clientOwnerId: clientOwnerId,
+          x: x,
+          y: y,
+          publication: publication);
   void registerPixelbufferTexture(
           SessionID sessionId, SessionID clientOwnerId, int display, int ptr) =>
       _ffiBind.sessionRegisterPixelbufferTexture(

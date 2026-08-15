@@ -72,6 +72,13 @@ class _SessionOwner {
   int get hashCode => Object.hash(sessionId, clientOwnerId);
 }
 
+class _WebCursorPosition {
+  const _WebCursorPosition(this.x, this.y);
+
+  final int x;
+  final int y;
+}
+
 class _MobileSessionStartRequest {
   const _MobileSessionStartRequest({
     required this.sessionId,
@@ -100,6 +107,8 @@ class _MobileSessionStartRequest {
 
 const int kMaxRemoteCursorPixels = 1024 * 1024;
 const int kMaxRemoteCursorRgbaBytes = kMaxRemoteCursorPixels * 4;
+const int _minSigned32 = -0x80000000;
+const int _maxSigned32 = 0x7fffffff;
 const _orderedSessionTopologyEvents = <String>{
   'peer_info',
   'sync_peer_info',
@@ -108,6 +117,18 @@ const _orderedSessionTopologyEvents = <String>{
   'follow_current_display',
   'use_texture_render',
 };
+
+int? _webCursorCoordinate(Object? value) {
+  final parsed = value is int
+      ? value
+      : value is String
+          ? int.tryParse(value)
+          : null;
+  if (parsed == null || parsed < _minSigned32 || parsed > _maxSigned32) {
+    return null;
+  }
+  return parsed;
+}
 
 int? _remoteCursorRgbaLen(int width, int height) {
   if (width <= 0 || height <= 0) {
@@ -420,6 +441,25 @@ class FfiModel with ChangeNotifier {
       if (!_isCurrentSession(sessionId)) return;
       final name = evt['name'];
       final operation = () => _handleSessionEvent(evt, sessionId, peerId);
+      if (name == 'cursor_position' && isWeb) {
+        final ffi = parent.target;
+        final x = _webCursorCoordinate(evt['x']);
+        final y = _webCursorCoordinate(evt['y']);
+        if (ffi == null || x == null || y == null) {
+          ffi?._reportSessionStreamFailure(sessionId, peerId,
+              'The remote session state became inconsistent');
+          return;
+        }
+        try {
+          await ffi.submitWebCursorPosition(
+              sessionId, expectedClientOwnerId, peerId, x, y);
+        } catch (error) {
+          debugPrint('Web cursor publication failed: ${error.runtimeType}');
+          ffi._reportSessionStreamFailure(sessionId, peerId,
+              'The remote session state became inconsistent');
+        }
+        return;
+      }
       if (name is String && _orderedSessionTopologyEvents.contains(name)) {
         final ffi = parent.target;
         if (ffi == null) return;
@@ -467,9 +507,6 @@ class FfiModel with ChangeNotifier {
     } else if (name == 'cursor_id') {
       updateLastCursorId(evt);
       handleCursorId(evt);
-    } else if (name == 'cursor_position') {
-      await parent.target?.cursorModel
-          .updateCursorPosition(evt, peerId, sessionId);
     } else if (name == 'clipboard') {
       Clipboard.setData(ClipboardData(text: evt['content']));
     } else if (name == 'permission') {
@@ -3425,21 +3462,26 @@ class CursorModel with ChangeNotifier {
   }
 
   /// Update the cursor position.
-  updateCursorPosition(
-      Map<String, dynamic> evt, String id, SessionID expectedSessionId) async {
-    if (parent.target?.isCurrentSession(expectedSessionId) != true) return;
+  bool updateCursorPosition(int x, int y, String id,
+      SessionID expectedSessionId, int expectedDisplayTopologyRevision) {
+    if (parent.target?.ffiModel.isCurrentDisplayTopology(
+            expectedSessionId, expectedDisplayTopologyRevision) !=
+        true) {
+      return false;
+    }
     if (!isConnIn2Secs()) {
       gotMouseControl = false;
       _lastPeerMouse = DateTime.now();
     }
-    _x = double.parse(evt['x']);
-    _y = double.parse(evt['y']);
+    _x = x.toDouble();
+    _y = y.toDouble();
     try {
       RemoteCursorMovedState.find(id).value = true;
     } catch (e) {
       //
     }
     notifyListeners();
+    return true;
   }
 
   updateDisplayOrigin(double x, double y, {updateCursorPos = true}) {
@@ -3679,6 +3721,8 @@ class FFI {
   late DisplaySelectionQueue<_SessionOwner> _displaySelections;
   late SessionEventQueue<_SessionOwner> _sessionEvents;
   late LatestFrameQueue<_SessionOwner, int, Uint8List> _webRgbaFrames;
+  late LatestFrameQueue<_SessionOwner, int, _WebCursorPosition>
+      _webCursorPositions;
   Future<bool>? _firstImageInitialization;
 
   // Terminal model registry for multiple terminals
@@ -3719,12 +3763,35 @@ class FFI {
     return _sessionEvents.submit(expectedOwner, operation);
   }
 
+  Future<LatestFrameDisposition> submitWebCursorPosition(
+      SessionID expectedSessionId,
+      SessionID expectedClientOwnerId,
+      String peerId,
+      int x,
+      int y) {
+    final expectedOwner =
+        _SessionOwner(expectedSessionId, expectedClientOwnerId);
+    if (expectedOwner != _sessionOwner) {
+      return Future.value(LatestFrameDisposition.retired);
+    }
+    final sessionEvents = _sessionEvents;
+    return _webCursorPositions.submit(
+        expectedOwner, 0, _WebCursorPosition(x, y), (position) async {
+      final topologyRevision = await _displayTopologyAfterCheckpoint(
+          sessionEvents, expectedOwner, expectedSessionId);
+      if (topologyRevision == null) return;
+      cursorModel.updateCursorPosition(position.x, position.y, peerId,
+          expectedSessionId, topologyRevision);
+    });
+  }
+
   void _installSessionOwner(SessionID nextSessionId) {
     final nextOwner = _SessionOwner(nextSessionId, clientOwnerId);
     _sessionOwner = nextOwner;
     _displaySelections = DisplaySelectionQueue(nextOwner);
     _sessionEvents = SessionEventQueue(nextOwner);
     _webRgbaFrames = LatestFrameQueue(nextOwner);
+    _webCursorPositions = LatestFrameQueue(nextOwner, maxKeys: 1);
     _firstImageInitialization = null;
   }
 
@@ -3734,9 +3801,12 @@ class FFI {
     final sessionEventsRetired = _sessionEvents.retire(retiringOwner);
     final displaySelectionsRetired = _displaySelections.retire(retiringOwner);
     final webRgbaFramesRetired = _webRgbaFrames.retire(retiringOwner);
+    final webCursorPositionsRetired =
+        _webCursorPositions.retire(retiringOwner);
     if (!sessionEventsRetired ||
         !displaySelectionsRetired ||
-        !webRgbaFramesRetired) {
+        !webRgbaFramesRetired ||
+        !webCursorPositionsRetired) {
       throw StateError('session owner changed before retirement');
     }
     _firstImageInitialization = null;
@@ -3946,6 +4016,27 @@ class FFI {
     }
   }
 
+  Future<void> _handleCursorPosition(
+      SessionEventQueue<_SessionOwner> sessionEvents,
+      _SessionOwner streamOwner,
+      SessionID activeSessionId,
+      String peerId,
+      int x,
+      int y,
+      int publication) async {
+    final topologyRevision = await _displayTopologyAfterCheckpoint(
+        sessionEvents, streamOwner, activeSessionId);
+    final accepted = platformFFI.takeCursorPosition(
+        activeSessionId,
+        streamOwner.clientOwnerId,
+        x,
+        y,
+        publication);
+    if (!accepted || topologyRevision == null) return;
+    cursorModel.updateCursorPosition(
+        x, y, peerId, activeSessionId, topologyRevision);
+  }
+
   Future<void> _handleTextureRgba(
       SessionEventQueue<_SessionOwner> sessionEvents,
       _SessionOwner streamOwner,
@@ -4098,6 +4189,18 @@ class FFI {
                 message.field0, message.field1),
             activeSessionId,
             'Software RGBA presentation');
+      } else if (message is EventToUI_CursorPosition) {
+        _observeSessionTask(
+            _handleCursorPosition(
+                sessionEvents,
+                streamOwner,
+                activeSessionId,
+                peerId,
+                message.field0,
+                message.field1,
+                message.field2),
+            activeSessionId,
+            'Cursor-position presentation');
       } else if (message is EventToUI_Texture) {
         _observeSessionTask(
             _handleTextureRgba(sessionEvents, streamOwner, activeSessionId,

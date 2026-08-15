@@ -1547,7 +1547,7 @@ def validate(sources: Dict[str, str]) -> None:
             "start_failure = Some(error);",
             "try_send_close_event(&h.event_stream);",
             "h.event_stream = Some(event_stream);",
-            "if starts_peer_connection && is_video_session",
+            "if start_failure.is_none() && starts_peer_connection && is_video_session",
             "h.awaiting_initial_display = true;",
             "match s.start_io_thread_with_lock(&mut thread_lock)",
             "Ok(false)",
@@ -3486,7 +3486,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("remote", "await _awaitCleanup('texture retirement', textureDisposal);", "unawaited(textureDisposal);", "RemoteDesktop texture finality"),
     ("camera", "await _awaitCleanup('texture retirement', textureDisposal);", "unawaited(textureDisposal);", "ViewCamera texture finality"),
     ("flutter", "if handler.client_owner_id.as_ref() != Some(client_owner_id)", "if false", "native exact owner admission"),
-    ("flutter", "&client_owner_id,", "&session_id,", "native owner propagation"),
+    ("flutter", ".register_pixelbuffer_texture(&session_id, &client_owner_id, display, ptr)", ".register_pixelbuffer_texture(&session_id, &session_id, display, ptr)", "native owner propagation"),
     (
         "flutter",
         "if !frame_admitted || *render_notified || !notify()",

@@ -24928,12 +24928,104 @@ correct-from-the-first-place. This section supersedes the "Inert dead-code lefto
   soak, cold R-B2/R-B10 equality, installed-service proof, independent reproduction, external review, and the user's
   requirement that the complete connection flow be correct and performant remain open release obligations.
 
+### R-S11gu/R-S11e-233 — bounded exact-owner native-to-Dart cursor publication (2026-08-15)
+
+**SOURCE IMPLEMENTED; CONFINED FOCUSED 59-MUTATION, ADJACENT 115/186/253-MUTATION, AND COMPLETE INDEPENDENT
+SOURCE-MUTATION EVIDENCE PASS; ALL NATIVE/DEVICE/RELEASE EVIDENCE OPEN.** Follow-up review of the shared viewer
+stream found a concrete bound placed on the wrong side of the Flutter bridge:
+
+- `src/server/input_service.rs` samples changed controlled cursor position every 33 milliseconds and sends each change;
+  `src/client/io_loop.rs` forwards every received `CursorPosition` to `FlutterHandler::set_cursor_position`. The latter
+  serialized every sample as generic `cursor_position` JSON and called `StreamSink::add` for every live UI handler.
+  Flutter Rust Bridge 1.80.1 implements that call as an immediate `Dart_PostCObject` post. Its boolean means only that
+  the post was accepted; it supplies no capacity or consumer acknowledgement. Dart's official
+  [`SendPort.send`](https://api.dart.dev/dart-isolate/SendPort/send.html) contract likewise says sending is asynchronous,
+  does not block until receipt, and delivers when the receiver's event loop is ready, while
+  [`ReceivePort`](https://api.dart.dev/dart-isolate/ReceivePort-class.html) explicitly buffers incoming messages before
+  a listener. Flutter's official
+  [`AppLifecycleState.paused`](https://api.flutter.dev/flutter/dart-ui/AppLifecycleState.html) contract additionally
+  stops begin-frame/draw-frame callbacks on Android and iOS. Consequently the bounded Dart topology lane and exact
+  software-RGBA mailbox acted only after cursor messages had already crossed this unacknowledged handoff. Replacing or
+  killing the Dart port destroys such retained work, matching the recovery shape without proving device causation.
+- The same review found a narrower ledger/source contradiction: Appendix C #352 said stale cursor commits were rejected
+  by display-topology revision, but the actual generic handler checked only the connection UUID and parsed string
+  coordinates. That is a source-proven shared Android/iOS/Windows/Linux/macOS correctness defect irrespective of
+  whether the reported weeks-old binaries contained it. It is a plausible contributor to display-only delay while
+  outbound input/control remains responsive, not proof that it is the sole cause of the reported Android or Windows
+  symptoms.
+- On native Flutter platforms, cursor movement no longer enters the generic JSON event bus. Every exact native `SessionHandler` owns one
+  `CursorPositionMailbox` containing at most one typed published `(x, y, token)` and one latest pending coordinate pair.
+  The connection handler allocates positive, checked, nonreused Dart-compatible tokens. While a publication is
+  outstanding, arbitrarily many new positions replace the single pending value and do not call the Dart port. An exact
+  take drains it or promotes and posts exactly one latest successor. A stale connection, UI owner, coordinate pair, or
+  token returns refusal without releasing current state. Failed delivery clears only that exact handler mailbox;
+  exhaustion clears retained cursor state rather than wrapping.
+- Cursor work remains outside the bounded topology FIFO and adds no topology head-of-line capacity. Dart first awaits a
+  capacity-free exact-session/UI-owner topology checkpoint, then atomically takes the exact native publication. A
+  checkpoint invalidated by later topology suppresses the stale coordinate commit but still performs that exact take, so
+  it can drain the predecessor or promote post-topology latest state instead of stranding the mailbox. Stream replacement
+  first assigns a fresh token, so a delayed old take cannot release replacement state; a retired handler has no mailbox to
+  take. A successful take commits integral coordinates synchronously only while the captured display-topology revision
+  remains current. Before native code posts any ordered peer/display/platform/render topology event, it takes the same handler
+  write guard, discards only a pending cursor sample observed before that barrier, and posts the topology event before
+  later cursor work can enter. Thus a pre-topology retained coordinate cannot be promoted after and interpreted against
+  new geometry, while post-topology movement remains latest-wins.
+- Web is intentionally separate: its JS/Wasm callback transport does not consume the native `EventToUI` stream. The
+  existing `cursor_position` JSON name is therefore admitted only by an explicit `isWeb` branch, accepts only integral
+  signed-32-bit coordinates, and enters one exact-session/UI-owner, one-key `LatestFrameQueue` lane. That lane retains
+  one running value and only its latest pending successor, checkpoints all previously observed topology work, and
+  commits synchronously only under the resulting current topology revision. Exact session-owner retirement retires
+  the web cursor lane. This preserves web cursor behavior without restoring the unacknowledged native Dart-port path.
+- Stream replacement linearizes under the existing exact handler-owner guard: it invalidates the old cursor token,
+  selects the latest retained value, allocates a fresh token, and posts it to the replacement stream before peer-start
+  continuation. A refused post or exhausted token becomes the existing exact-owner start failure and rollback; a stale
+  old stream cannot take or release the replacement publication. Handler removal inherently retires the mailbox. The
+  correction adds no retry, reconnect, timer, worker, isolate, runtime, service restart, network transport queue,
+  listener, port, dependency, privilege transition, or Android persistent-service change.
+- Three deterministic Rust regressions bind one-published/one-latest native semantics, exact-coordinate/token refusal and
+  promotion, pre-topology-pending retirement with post-topology promotion, fresh-token latest-state stream re-arm, stale
+  token refusal, drain, and exhaustion; the existing latest-value queue regressions bind the web lane's one-running/
+  one-latest and exact-retirement behavior. `scripts/verify-viewer-cursor-mailbox.py` independently binds the 33-millisecond
+  producer path, typed native and bounded web/Dart/FFI surfaces, exact-owner take, topology barrier/checkpoint/revision, replacement,
+  tests, requirements/ledger, gate wiring, and requirements hash with deliberate mutations. The shared verifier,
+  generated-bridge verifier, Apple conformance gate, and independent workspace validator are wired to recheck it.
+  Final frozen-byte source verification ran in the pre-existing immutable image
+  `sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3` as numeric UID/GID 1000:1000 with
+  `--pull=never`, no network, a read-only root and source mount, all capabilities dropped, `no-new-privileges`, bounded
+  PIDs/CPU/memory, a private no-exec tmpfs, no published port, device, Docker socket, host namespace, or writable
+  project path. The focused cursor verifier passed all 59 deliberate mutations. The adjacent software-RGBA,
+  display-selection-finality, and desktop-texture lifecycle verifiers passed 115, 186, and 253 deliberate mutations
+  respectively. The independent workspace validator passed its normal baseline and then its complete unfiltered
+  `--source-mutations-only` catalog from mutation one through `verify-verifier-workspace: ok`. Python AST parsing of
+  all five changed verifier modules, Bash syntax for all three changed gate scripts, and both the native-codec-watch
+  normal check and self-test passed. `git diff --check` passed on the same admitted repository bytes.
+- The independent mutation run first exposed real evidence-construction defects rather than product failures: several
+  mutation targets were nonunique, some diagnostics did not identify the invariant actually tested, and broad
+  assertions allowed an unrelated surviving marker to satisfy a narrower contract. The catalog now uses unique local
+  mutation contexts and dedicated assertions for native coordinates/tokens, exact handler ownership, topology locking,
+  replacement notification/cleanup, wrapper forwarding, and exhaustion; its focused-verifier validation extracts the
+  executable `validate` body so mutation-catalog text cannot satisfy the contract it is meant to test. Every earlier
+  obsolete, interrupted, or expected-red diagnostic run is uncounted. During that repair, the cursor verifier and
+  independent workspace baseline were accidentally invoked once each through host `python3`. Both were read-only and
+  passed, created no bytecode cache, and changed no source, service, process, listener, network, firewall, or
+  configuration, but they violated the all-code-in-container rule and are explicitly disqualified. All admitted
+  results above were rerun under the immutable confinement. That image contains Python and Bash but no Rust compiler,
+  Cargo, rustfmt, Dart, Flutter, tree-sitter, generated-bridge toolchain, or native platform SDK, so no unexecuted
+  Rust/Dart/Flutter/generated-bridge compilation, formatting, or native result is claimed.
+- Exact Rust/Dart/Flutter compilation and tests, generated bridge execution, physical Android task-swipe/reopen/Force-
+  Stop and Windows focus/minimize reproduction, Linux/macOS/iOS and cross-version behavior, concurrent-feature
+  interaction, capture-through-compositor timestamps and explicit latency budgets, sustained reconnect/focus/resource/
+  performance soak, cold R-B2/R-B10 equality, packaged-artifact evidence, independent reproduction, external review,
+  and the user's requirement that the entire connection flow be correct and performant remain open release obligations.
+  No host RustDesk process/configuration, firewall, listener, network namespace, VM, unrelated image, persistent Android
+  service, or OS privilege boundary was inspected or changed by this source slice.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-37e8f192d5b6ddfd0cc0b14b62b0ddc08fb0de3e226a7ad6ec89dcc95516bcb3  requirements.html
+4e862f6f0b3107ad1bc629233b4170cd4ee9de8e6019bf30511dfd87c594fc61  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -24996,3 +25088,4 @@ The same identity additionally binds R-S11gq and Appendix C #352.
 The same identity additionally binds R-S11gr and Appendix C #353.
 The same identity additionally binds R-S11gs and Appendix C #354.
 The same identity additionally binds R-S11gt and Appendix C #355.
+The same identity additionally binds R-S11gu and Appendix C #356.

@@ -26,6 +26,11 @@ sealed class EventToUI {
   const factory EventToUI.texture(
     int field0,
   ) = EventToUI_Texture;
+  const factory EventToUI.cursorPosition(
+    int field0,
+    int field1,
+    int field2,
+  ) = EventToUI_CursorPosition;
 }
 
 class EventToUI_Event implements EventToUI {
@@ -48,6 +53,20 @@ class EventToUI_Texture implements EventToUI {
   const EventToUI_Texture(final int field0) : f0 = field0;
   final int f0;
   int get field0 => f0;
+}
+
+class EventToUI_CursorPosition implements EventToUI {
+  const EventToUI_CursorPosition(
+      final int field0, final int field1, final int field2)
+      : f0 = field0,
+        f1 = field1,
+        f2 = field2;
+  final int f0;
+  final int f1;
+  final int f2;
+  int get field0 => f0;
+  int get field1 => f1;
+  int get field2 => f2;
 }
 
 class RustdeskImpl {
@@ -1206,6 +1225,16 @@ class RustdeskImpl {
       required int display,
       required int publication,
       dynamic hint}) {}
+
+  bool sessionTakeCursorPosition(
+      {required UuidValue sessionId,
+      required UuidValue clientOwnerId,
+      required int x,
+      required int y,
+      required int publication,
+      dynamic hint}) {
+    return false;
+  }
 
   void sessionRegisterPixelbufferTexture(
       {required UuidValue sessionId,

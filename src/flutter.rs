@@ -399,6 +399,9 @@ struct SessionHandler {
     // display to this exact handler once, before PeerInfo is consumed or published. Existing-window
     // routes arrive with an explicit display selection and never use this marker.
     awaiting_initial_display: bool,
+    // Cursor movement is high-rate presentation state, not a generic unbounded Dart event. Keep
+    // one exact publication and only its latest successor for this UI stream.
+    cursor_position: CursorPositionMailbox,
     renderer: VideoRenderer,
     // One admitted peer screenshot belongs to this exact UI session. It is cleared when a new
     // request starts, consumed only through this session's UUID, and dropped with the handler.
@@ -422,6 +425,7 @@ pub struct FlutterHandler {
     // publication from delayed completion of an older Flutter event, including across stream
     // replacement for the same UI session UUID.
     rgba_publication_counter: Arc<AtomicU64>,
+    cursor_position_publication_counter: Arc<AtomicU64>,
     peer_info: Arc<RwLock<PeerInfo>>,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     hooks: Arc<RwLock<HashMap<String, SessionHook>>>,
@@ -434,6 +438,7 @@ impl Default for FlutterHandler {
             session_handlers: Default::default(),
             display_rgbas: Default::default(),
             rgba_publication_counter: Default::default(),
+            cursor_position_publication_counter: Default::default(),
             peer_info: Default::default(),
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             hooks: Default::default(),
@@ -442,6 +447,146 @@ impl Default for FlutterHandler {
             ),
         }
     }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CursorPositionValue {
+    x: i32,
+    y: i32,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct CursorPositionPublication {
+    position: CursorPositionValue,
+    publication: u64,
+}
+
+#[derive(Default)]
+struct CursorPositionMailbox {
+    published: Option<CursorPositionPublication>,
+    pending: Option<CursorPositionValue>,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum CursorPositionOffer {
+    Pending,
+    Published(CursorPositionPublication),
+    Exhausted,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum CursorPositionAcknowledgement {
+    Ignored,
+    Drained,
+    Promoted(CursorPositionPublication),
+    Exhausted,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum CursorPositionRearm {
+    Idle,
+    Rearmed(CursorPositionPublication),
+    Exhausted,
+}
+
+impl CursorPositionMailbox {
+    fn offer<F>(&mut self, position: CursorPositionValue, next_publication: F) -> CursorPositionOffer
+    where
+        F: FnOnce() -> Option<u64>,
+    {
+        if self.published.is_some() {
+            self.pending = Some(position);
+            return CursorPositionOffer::Pending;
+        }
+        let Some(publication) = next_publication() else {
+            return CursorPositionOffer::Exhausted;
+        };
+        let published = CursorPositionPublication {
+            position,
+            publication,
+        };
+        self.published = Some(published);
+        CursorPositionOffer::Published(published)
+    }
+
+    fn acknowledge<F>(
+        &mut self,
+        expected: CursorPositionPublication,
+        next_publication: F,
+    ) -> CursorPositionAcknowledgement
+    where
+        F: FnOnce() -> Option<u64>,
+    {
+        if self.published != Some(expected) {
+            return CursorPositionAcknowledgement::Ignored;
+        }
+        let Some(position) = self.pending.take() else {
+            self.published = None;
+            return CursorPositionAcknowledgement::Drained;
+        };
+        let Some(publication) = next_publication() else {
+            self.published = None;
+            return CursorPositionAcknowledgement::Exhausted;
+        };
+        let published = CursorPositionPublication {
+            position,
+            publication,
+        };
+        self.published = Some(published);
+        CursorPositionAcknowledgement::Promoted(published)
+    }
+
+    fn rearm<F>(&mut self, next_publication: F) -> CursorPositionRearm
+    where
+        F: FnOnce() -> Option<u64>,
+    {
+        let Some(current) = self.published else {
+            return CursorPositionRearm::Idle;
+        };
+        let position = self.pending.take().unwrap_or(current.position);
+        let Some(publication) = next_publication() else {
+            self.published = None;
+            return CursorPositionRearm::Exhausted;
+        };
+        let published = CursorPositionPublication {
+            position,
+            publication,
+        };
+        self.published = Some(published);
+        CursorPositionRearm::Rearmed(published)
+    }
+
+    fn discard_pending(&mut self) {
+        self.pending = None;
+    }
+
+    fn clear(&mut self) {
+        self.published = None;
+        self.pending = None;
+    }
+}
+
+fn is_cursor_position_topology_barrier(name: &str) -> bool {
+    matches!(
+        name,
+        "peer_info"
+            | "sync_peer_info"
+            | "sync_platform_additions"
+            | "switch_display"
+            | "follow_current_display"
+            | "use_texture_render"
+    )
+}
+
+fn post_cursor_position(
+    stream: &StreamSink<EventToUI>,
+    publication: CursorPositionPublication,
+) -> bool {
+    stream.add(EventToUI::CursorPosition(
+        publication.position.x,
+        publication.position.y,
+        publication.publication,
+    ))
 }
 
 #[derive(Default)]
@@ -954,21 +1099,76 @@ impl FlutterHandler {
         debug_assert!(h.get("name").is_none());
         h.insert("name", json!(name));
         let out = serde_json::ser::to_string(&h).unwrap_or("".to_owned());
-        for (sid, session) in self.session_handlers.read().unwrap().iter() {
-            let mut push = false;
+        let should_push = |sid: &SessionID| {
             if includes.is_empty() {
-                if !excludes.contains(&sid) {
-                    push = true;
-                }
+                !excludes.contains(&sid)
             } else {
-                if includes.contains(&sid) {
-                    push = true;
+                includes.contains(&sid)
+            }
+        };
+        if is_cursor_position_topology_barrier(name) {
+            let mut sessions = self.session_handlers.write().unwrap();
+            for (sid, session) in sessions.iter_mut() {
+                if should_push(sid) {
+                    // A retained cursor sample observed before this topology event cannot be
+                    // published afterward and interpreted against the new geometry.
+                    session.cursor_position.discard_pending();
+                    if let Some(stream) = &session.event_stream {
+                        stream.add(EventToUI::Event(out.clone()));
+                    }
                 }
             }
-            if push {
-                if let Some(stream) = &session.event_stream {
-                    stream.add(EventToUI::Event(out.clone()));
+        } else {
+            for (sid, session) in self.session_handlers.read().unwrap().iter() {
+                if should_push(sid) {
+                    if let Some(stream) = &session.event_stream {
+                        stream.add(EventToUI::Event(out.clone()));
+                    }
                 }
+            }
+        }
+    }
+
+    fn next_cursor_position_publication(&self) -> Option<u64> {
+        self.cursor_position_publication_counter
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                current
+                    .checked_add(1)
+                    .filter(|next| *next <= i64::MAX as u64)
+            })
+            .ok()
+            .and_then(|previous| previous.checked_add(1))
+    }
+
+    fn take_cursor_position(
+        &self,
+        session_id: &SessionID,
+        client_owner_id: &SessionID,
+        expected: CursorPositionPublication,
+    ) -> bool {
+        let mut handlers = self.session_handlers.write().unwrap();
+        let Some(handler) = handlers
+            .get_mut(session_id)
+            .filter(|handler| handler.client_owner_id.as_ref() == Some(client_owner_id))
+        else {
+            return false;
+        };
+        match handler.cursor_position.acknowledge(expected, || {
+            self.next_cursor_position_publication()
+        }) {
+            CursorPositionAcknowledgement::Ignored => false,
+            CursorPositionAcknowledgement::Drained => true,
+            CursorPositionAcknowledgement::Promoted(next) => {
+                if let Some(stream) = &handler.event_stream {
+                    if !post_cursor_position(stream, next) {
+                        handler.cursor_position.clear();
+                    }
+                }
+                true
+            }
+            CursorPositionAcknowledgement::Exhausted => {
+                log::error!("cursor-position publication space exhausted");
+                true
             }
         }
     }
@@ -1257,11 +1457,26 @@ impl InvokeUiSession for FlutterHandler {
     }
 
     fn set_cursor_position(&self, cp: CursorPosition) {
-        self.push_event(
-            "cursor_position",
-            &[("x", &cp.x.to_string()), ("y", &cp.y.to_string())],
-            &[],
-        );
+        let position = CursorPositionValue { x: cp.x, y: cp.y };
+        for handler in self.session_handlers.write().unwrap().values_mut() {
+            let Some(stream) = handler.event_stream.as_ref() else {
+                continue;
+            };
+            match handler.cursor_position.offer(position, || {
+                self.next_cursor_position_publication()
+            }) {
+                CursorPositionOffer::Pending => {}
+                CursorPositionOffer::Published(publication) => {
+                    if !post_cursor_position(stream, publication) {
+                        handler.cursor_position.clear();
+                    }
+                }
+                CursorPositionOffer::Exhausted => {
+                    log::error!("cursor-position publication space exhausted");
+                    handler.cursor_position.clear();
+                }
+            }
+        }
     }
 
     /// unused in flutter, use switch_display or set_peer_info
@@ -2027,10 +2242,32 @@ pub fn session_start_(
             };
             try_send_close_event(&h.event_stream);
             h.event_stream = Some(event_stream);
-            if starts_peer_connection && is_video_session {
+            match h.cursor_position.rearm(|| {
+                s.ui_handler.next_cursor_position_publication()
+            }) {
+                CursorPositionRearm::Idle => {}
+                CursorPositionRearm::Rearmed(publication) => {
+                    let delivered = h
+                        .event_stream
+                        .as_ref()
+                        .is_some_and(|stream| post_cursor_position(stream, publication));
+                    if !delivered {
+                        h.cursor_position.clear();
+                        start_failure = Some(anyhow!(
+                            "Outgoing session event stream rejected pending cursor position"
+                        ));
+                    }
+                }
+                CursorPositionRearm::Exhausted => {
+                    start_failure = Some(anyhow!(
+                        "Outgoing session cursor-position publication is exhausted"
+                    ));
+                }
+            }
+            if start_failure.is_none() && starts_peer_connection && is_video_session {
                 h.awaiting_initial_display = true;
             }
-            if starts_peer_connection {
+            if start_failure.is_none() && starts_peer_connection {
                 log::info!(
                     "Session {} start, use texture render: {}",
                     id,
@@ -2393,6 +2630,25 @@ pub fn session_next_rgba(session_id: SessionID, display: usize, publication: u64
     if let Some(s) = sessions::get_session_by_session_id(&session_id) {
         s.ui_handler.next_rgba(&session_id, display, publication);
     }
+}
+
+pub fn session_take_cursor_position(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+    x: i32,
+    y: i32,
+    publication: u64,
+) -> bool {
+    sessions::get_session_by_session_id(&session_id).is_some_and(|session| {
+        session.ui_handler.take_cursor_position(
+            &session_id,
+            &client_owner_id,
+            CursorPositionPublication {
+                position: CursorPositionValue { x, y },
+                publication,
+            },
+        )
+    })
 }
 
 #[inline]
@@ -4037,6 +4293,151 @@ mod mobile_session_lifecycle_tests {
             },
         ));
         assert_eq!(notification_attempts, 2);
+    }
+
+    #[test]
+    fn r_s11gu_cursor_position_mailbox_retains_one_publication_and_only_the_latest_successor() {
+        let first = CursorPositionValue { x: 10, y: 20 };
+        let second = CursorPositionValue { x: 30, y: 40 };
+        let latest = CursorPositionValue { x: 50, y: 60 };
+        let mut mailbox = CursorPositionMailbox::default();
+
+        let CursorPositionOffer::Published(first_publication) =
+            mailbox.offer(first, || Some(1))
+        else {
+            panic!("first cursor position was not published");
+        };
+        assert_eq!(mailbox.offer(second, || Some(2)), CursorPositionOffer::Pending);
+        assert_eq!(mailbox.offer(latest, || Some(3)), CursorPositionOffer::Pending);
+        assert_eq!(mailbox.published, Some(first_publication));
+        assert_eq!(mailbox.pending, Some(latest));
+
+        assert_eq!(
+            mailbox.acknowledge(
+                CursorPositionPublication {
+                    position: second,
+                    publication: 1,
+                },
+                || Some(2),
+            ),
+            CursorPositionAcknowledgement::Ignored
+        );
+        assert_eq!(
+            mailbox.acknowledge(
+                CursorPositionPublication {
+                    position: first,
+                    publication: first_publication.publication + 1,
+                },
+                || Some(2),
+            ),
+            CursorPositionAcknowledgement::Ignored
+        );
+        let CursorPositionAcknowledgement::Promoted(latest_publication) =
+            mailbox.acknowledge(first_publication, || Some(2))
+        else {
+            panic!("latest cursor position was not promoted");
+        };
+        assert_eq!(latest_publication.position, latest);
+        assert_eq!(latest_publication.publication, 2);
+        assert!(mailbox.pending.is_none());
+        assert_eq!(
+            mailbox.acknowledge(latest_publication, || Some(3)),
+            CursorPositionAcknowledgement::Drained
+        );
+        assert!(mailbox.published.is_none());
+    }
+
+    #[test]
+    fn r_s11gu_cursor_topology_barrier_discards_only_pre_topology_pending_state() {
+        let before = CursorPositionValue { x: 10, y: 20 };
+        let pre_topology_pending = CursorPositionValue { x: 30, y: 40 };
+        let after = CursorPositionValue { x: 50, y: 60 };
+        let mut mailbox = CursorPositionMailbox::default();
+        let CursorPositionOffer::Published(before_publication) =
+            mailbox.offer(before, || Some(1))
+        else {
+            panic!("first cursor position was not published");
+        };
+        assert_eq!(
+            mailbox.offer(pre_topology_pending, || Some(2)),
+            CursorPositionOffer::Pending
+        );
+        mailbox.discard_pending();
+        assert_eq!(mailbox.published, Some(before_publication));
+        assert!(mailbox.pending.is_none());
+
+        assert_eq!(mailbox.offer(after, || Some(2)), CursorPositionOffer::Pending);
+        let CursorPositionAcknowledgement::Promoted(after_publication) =
+            mailbox.acknowledge(before_publication, || Some(2))
+        else {
+            panic!("post-topology cursor position was not promoted");
+        };
+        assert_eq!(after_publication.position, after);
+        assert!(is_cursor_position_topology_barrier("peer_info"));
+        assert!(is_cursor_position_topology_barrier("switch_display"));
+        assert!(!is_cursor_position_topology_barrier("clipboard"));
+    }
+
+    #[test]
+    fn r_s11gu_cursor_stream_rearm_replaces_the_token_and_keeps_only_latest_state() {
+        let first = CursorPositionValue { x: 10, y: 20 };
+        let latest = CursorPositionValue { x: 50, y: 60 };
+        let mut mailbox = CursorPositionMailbox::default();
+        let CursorPositionOffer::Published(first_publication) =
+            mailbox.offer(first, || Some(1))
+        else {
+            panic!("first cursor position was not published");
+        };
+        assert_eq!(mailbox.offer(latest, || Some(2)), CursorPositionOffer::Pending);
+        let CursorPositionRearm::Rearmed(rearmed) = mailbox.rearm(|| Some(2)) else {
+            panic!("cursor position was not re-armed for the replacement stream");
+        };
+        assert_eq!(rearmed.position, latest);
+        assert_eq!(rearmed.publication, 2);
+        assert_eq!(
+            mailbox.acknowledge(first_publication, || Some(3)),
+            CursorPositionAcknowledgement::Ignored
+        );
+        assert_eq!(
+            mailbox.acknowledge(rearmed, || Some(3)),
+            CursorPositionAcknowledgement::Drained
+        );
+
+        let CursorPositionOffer::Published(exhausted_publication) =
+            mailbox.offer(first, || Some(3))
+        else {
+            panic!("cursor position was not republished after drain");
+        };
+        assert_eq!(mailbox.offer(latest, || Some(4)), CursorPositionOffer::Pending);
+        assert_eq!(
+            mailbox.acknowledge(exhausted_publication, || None),
+            CursorPositionAcknowledgement::Exhausted
+        );
+        assert!(mailbox.published.is_none());
+        assert!(mailbox.pending.is_none());
+
+        assert_eq!(
+            mailbox.offer(first, || None),
+            CursorPositionOffer::Exhausted
+        );
+        assert!(mailbox.published.is_none());
+        assert!(mailbox.pending.is_none());
+
+        let CursorPositionOffer::Published(_) =
+            mailbox.offer(first, || Some(4))
+        else {
+            panic!("cursor position was not published before re-arm exhaustion");
+        };
+        assert_eq!(
+            mailbox.offer(latest, || Some(5)),
+            CursorPositionOffer::Pending
+        );
+        assert_eq!(
+            mailbox.rearm(|| None),
+            CursorPositionRearm::Exhausted
+        );
+        assert!(mailbox.published.is_none());
+        assert!(mailbox.pending.is_none());
     }
 
     #[test]

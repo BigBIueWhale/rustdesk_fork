@@ -3521,7 +3521,15 @@ else
   rc=1
 fi
 
-echo "== (2g-c2a) R-S11go exact-owner ordered display-selection finality =="
+echo "== (2g-c2a) R-S11gu bounded exact-owner native-to-Dart cursor publication =="
+if python3 scripts/verify-viewer-cursor-mailbox.py --repo . --self-test; then
+  note "ok  R-S11gu Apple/shared cursor publication is exact-owner, topology-ordered, bounded, latest-wins, and stream-recoverable"
+else
+  echo "  FAIL R-S11gu Apple/shared cursor publication regained generic, stale-owner, stale-topology, unbounded, or stranded stream state"
+  rc=1
+fi
+
+echo "== (2g-c2b) R-S11go exact-owner ordered display-selection finality =="
 if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then
   note "ok  R-S11go Apple/shared display selection is exact-owner, typed, ordered, bounded, and failure-visible"
 else

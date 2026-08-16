@@ -16510,6 +16510,13 @@ def validate_service_ipc_protocol_authority_contract(sources):
         "\n\n    #[test]\n    fn windows_service_sas_channel_uses_closed_directional_protocol()",
         "service directional protocol regression",
     )
+    require_text(
+        ipc,
+        '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n'
+        "    #[test]\n"
+        "    fn service_channel_uses_closed_directional_protocol()",
+        "desktop-wide service directional protocol regression",
+    )
     sas_protocol_test = extract_between(
         ipc,
         "fn windows_service_sas_channel_uses_closed_directional_protocol()",
@@ -16526,8 +16533,24 @@ def validate_service_ipc_protocol_authority_contract(sources):
                 'assert_eq!(response, br#"{"t":"Liveness"}"#)',
                 'br#"{"t":"LivenessProbe","c":null}"#',
                 'br#"{"t":"Liveness","c":null}"#',
+                'br#"{"t":"EnsurePasswordRightReady"}"#',
+                'br#"{"t":"PasswordRightReady","ready":true}"#',
+                'br#"{"t":"EnsurePasswordRightReady","c":null}"#',
+                'br#"{"t":"PasswordRightReady","ready":true,"c":null}"#',
+                'br#"{"t":"SetShareRdp","enabled":true}"#',
+                'br#"{"t":"ShareRdpSet","accepted":true}"#',
+                'br#"{"t":"SetShareRdp","enabled":true,"c":null}"#',
+                'br#"{"t":"ShareRdpSet","accepted":true,"c":null}"#',
                 "serde_json::from_slice::<ServiceIpcResponse>(&request).is_err()",
                 "serde_json::from_slice::<ServiceIpcRequest>(&response).is_err()",
+                "serde_json::from_slice::<ServiceIpcRequest>(&readiness_request).unwrap()",
+                "serde_json::from_slice::<ServiceIpcResponse>(&readiness_request).is_err()",
+                "serde_json::from_slice::<ServiceIpcResponse>(&readiness_response).unwrap()",
+                "serde_json::from_slice::<ServiceIpcRequest>(&readiness_response).is_err()",
+                "serde_json::from_slice::<ServiceIpcRequest>(&share_rdp_request).unwrap()",
+                "serde_json::from_slice::<ServiceIpcResponse>(&share_rdp_request).is_err()",
+                "serde_json::from_slice::<ServiceIpcResponse>(&share_rdp_response).unwrap()",
+                "serde_json::from_slice::<ServiceIpcRequest>(&share_rdp_response).is_err()",
                 "serde_json::from_slice::<ServiceIpcRequest>(&cross_purpose).is_err()",
                 "serde_json::from_slice::<ServiceIpcResponse>(&cross_purpose).is_err()",
                 'br#"{"t":"PermanentPasswordSnapshot"}"#',
@@ -16564,6 +16587,10 @@ def validate_service_ipc_protocol_authority_contract(sources):
             "WindowsServiceSasIpcResponse",
             "R-S11dx",
             "R-S11e-142",
+            'br#"{"t":"EnsurePasswordRightReady"}"#',
+            'br#"{"t":"PasswordRightReady","ready":true}"#',
+            'br#"{"t":"SetShareRdp","enabled":true}"#',
+            'br#"{"t":"ShareRdpSet","accepted":true}"#',
         ):
             require_text(gate, text, f"{label}: {text}")
     bounded_codec_regression = (
@@ -16596,6 +16623,11 @@ def validate_service_ipc_protocol_authority_contract(sources):
         sources["hardening"],
         "R-S11dx/R-S11e-142 — privileged service-control and SAS protocol type",
         "service protocol authority hardening ledger",
+    )
+    require_text(
+        sources["hardening"],
+        "PLATFORM-WIRE REGRESSION\n  COVERAGE STRENGTHENED 2026-08-16",
+        "platform-specific service wire regression hardening ledger",
     )
     for text, label in (
         (
@@ -62259,6 +62291,112 @@ def run_source_mutations(sources):
             "service exact wire/direction/cross-purpose regression",
         ),
         (
+            "ipc_source",
+            '#[cfg(not(any(target_os = "android", target_os = "ios")))]\n'
+            "    #[test]\n"
+            "    fn service_channel_uses_closed_directional_protocol()",
+            '#[cfg(any(target_os = "linux", target_os = "macos"))]\n'
+            "    #[test]\n"
+            "    fn service_channel_uses_closed_directional_protocol()",
+            "desktop-wide service directional protocol regression",
+        ),
+        (
+            "ipc_source",
+            'br#"{"t":"EnsurePasswordRightReady"}"#',
+            'br#"{"t":"EnsurePasswordRightReady","c":null}"#',
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
+            "ipc_source",
+            'br#"{"t":"PasswordRightReady","ready":true}"#',
+            'br#"{"t":"PasswordRightReady","ready":false}"#',
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
+            "ipc_source",
+            'br#"{"t":"EnsurePasswordRightReady","c":null}"#',
+            'br#"{"t":"EnsurePasswordRightReady","ignored":null}"#',
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
+            "ipc_source",
+            'br#"{"t":"PasswordRightReady","ready":true,"c":null}"#',
+            'br#"{"t":"PasswordRightReady","ready":true,"ignored":null}"#',
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
+            "ipc_source",
+            "serde_json::from_slice::<ServiceIpcRequest>(&readiness_request).unwrap()",
+            "serde_json::from_slice::<ServiceIpcRequest>(&readiness_request).is_err()",
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
+            "ipc_source",
+            "serde_json::from_slice::<ServiceIpcResponse>(&readiness_request).is_err()",
+            "serde_json::from_slice::<ServiceIpcResponse>(&readiness_request).is_ok()",
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
+            "ipc_source",
+            "serde_json::from_slice::<ServiceIpcResponse>(&readiness_response).unwrap()",
+            "serde_json::from_slice::<ServiceIpcResponse>(&readiness_response).is_err()",
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
+            "ipc_source",
+            "serde_json::from_slice::<ServiceIpcRequest>(&readiness_response).is_err()",
+            "serde_json::from_slice::<ServiceIpcRequest>(&readiness_response).is_ok()",
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
+            "ipc_source",
+            'br#"{"t":"SetShareRdp","enabled":true}"#',
+            'br#"{"t":"SetShareRdp","enabled":false}"#',
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
+            "ipc_source",
+            'br#"{"t":"ShareRdpSet","accepted":true}"#',
+            'br#"{"t":"ShareRdpSet","accepted":false}"#',
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
+            "ipc_source",
+            'br#"{"t":"SetShareRdp","enabled":true,"c":null}"#',
+            'br#"{"t":"SetShareRdp","enabled":true,"ignored":null}"#',
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
+            "ipc_source",
+            'br#"{"t":"ShareRdpSet","accepted":true,"c":null}"#',
+            'br#"{"t":"ShareRdpSet","accepted":true,"ignored":null}"#',
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
+            "ipc_source",
+            "serde_json::from_slice::<ServiceIpcRequest>(&share_rdp_request).unwrap()",
+            "serde_json::from_slice::<ServiceIpcRequest>(&share_rdp_request).is_err()",
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
+            "ipc_source",
+            "serde_json::from_slice::<ServiceIpcResponse>(&share_rdp_request).is_err()",
+            "serde_json::from_slice::<ServiceIpcResponse>(&share_rdp_request).is_ok()",
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
+            "ipc_source",
+            "serde_json::from_slice::<ServiceIpcResponse>(&share_rdp_response).unwrap()",
+            "serde_json::from_slice::<ServiceIpcResponse>(&share_rdp_response).is_err()",
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
+            "ipc_source",
+            "serde_json::from_slice::<ServiceIpcRequest>(&share_rdp_response).is_err()",
+            "serde_json::from_slice::<ServiceIpcRequest>(&share_rdp_response).is_ok()",
+            "service exact wire/direction/cross-purpose regression",
+        ),
+        (
             "ipc_fs_source",
             ".send_service_request_timeout(&ServiceIpcRequest::LivenessProbe {}, 1000)",
             ".send(&Data::Test)",
@@ -62291,6 +62429,12 @@ def run_source_mutations(sources):
             "R-S11dx/R-S11e-142 — privileged service-control and SAS protocol type",
             "R-S11dx/R-S11e-142 — privileged service protocols remain cross-purpose",
             "service protocol authority hardening ledger",
+        ),
+        (
+            "hardening",
+            "PLATFORM-WIRE REGRESSION\n  COVERAGE STRENGTHENED 2026-08-16",
+            "PLATFORM-WIRE REGRESSION\n  COVERAGE DEFERRED",
+            "platform-specific service wire regression hardening ledger",
         ),
         (
             "macos_service_credential_ipc_verifier",

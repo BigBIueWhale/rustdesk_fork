@@ -22831,8 +22831,10 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   open. No host RustDesk/service/configuration/firewall/network state was
   inspected or mutated, and the broader Ralph-loop goal remains active.
 - **R-S11dx/R-S11e-142 — privileged service-control and SAS protocol type
-  authority — SOURCE CLOSED/GATED 2026-07-27; CONFINED LINUX
-  RUST/SOURCE/MUTATION VERIFIED;
+  authority — SOURCE CLOSED/GATED 2026-07-27; PLATFORM-WIRE REGRESSION
+  COVERAGE STRENGTHENED 2026-08-16; CURRENT CONFINED SOURCE/4,404-MUTATION
+  VERIFIED; CURRENT RUST COMPILE UNAVAILABLE BECAUSE THE PINNED IMAGE IS
+  ABSENT; PRIOR 2026-07-27 LINUX RUST EVIDENCE RETAINED;
   COLD INSTALLED/NATIVE/DEVICE/EXTERNAL EVIDENCE PENDING.** A fresh
   endpoint-to-action trace covered the Unix and Windows `_service` listener,
   its incumbent-liveness probe, macOS authorization-right readiness and
@@ -22860,16 +22862,49 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
   are removed from `Data`.
 
   R-S11dx and Appendix C #277 make the independent protocol boundaries
-  normative. Linux-runnable directional serialization regressions cover
-  the exact tag-only wire shapes, accepted request/response frames,
+  normative. The desktop-wide directional serialization regression covers
+  the exact tag-only liveness wire shapes, accepted request/response frames,
   unknown-field refusal, opposite-direction refusal, and cross-purpose
-  `Data::Close` refusal. The shared verifier and Apple source checker bind
+  `Data::Close` refusal. Platform-cfg cases in that same regression now cover
+  exact accepted request/result bytes, unknown-field refusal, and
+  opposite-direction refusal for macOS authorization-right readiness and
+  Windows service-owned share-RDP mutation. This closes a 2026-08-16
+  evidence gap found by re-deriving every generic `_service` producer,
+  admission gate, receiver authorization check, and native sink: the runtime
+  authority remained closed, but the Rust regression had been cfg-excluded
+  from Windows and exercised only liveness on macOS. The shared verifier and
+  Apple source checker bind
   the exact enum inventories, typed Unix/Windows dispatch, every macOS
   snapshot/readiness and Windows RDP/SAS caller, old-union absence, and
+  the desktop-wide/platform-specific wire regressions in addition to the
   deliberate shape/dispatch/caller/residue mutations. The independent
-  workspace catalog binds the same source and documentary contract.
+  workspace catalog binds the same source and documentary contract, including
+  mutations that restore the old Linux/macOS-only test scope or weaken any
+  platform-specific accepted-wire, unknown-field, or direction assertion.
 
-  Confined Linux compilation and focused execution used immutable image
+  Current 2026-08-16 verification used the already-present immutable generic
+  image as numeric UID/GID 1000:1000 with no pull/network, read-only root and
+  repository, dropped capabilities, no-new-privileges, finite resource limits,
+  and no Docker/libvirt/service-manager socket, host namespace, device, port,
+  or host-configuration mount. Shell/Python syntax, the independent semantic
+  baseline, and the Apple structural checker all pass; the Apple checker
+  rejects all 40 embedded mutations with empty findings. The first complete
+  independent-catalog attempt correctly rejected the first new macOS
+  exact-wire weakening but stopped because its new fixture label did not match
+  the validator's actual diagnostic. After correcting every new label to the
+  emitted contract diagnostic, a fresh uninterrupted run from mutation one
+  rejected all 4,404 source mutations and exited zero.
+
+  Current focused Rust compilation/execution was attempted only with
+  `--pull=never` against the exact pinned devcheck image and could not start
+  because that image is absent locally. No image was pulled, built, tagged, or
+  substituted, and no host Rust execution was used. Therefore the new
+  macOS/Windows cfg branches have current source/mutation evidence but still
+  require native compilation/execution in the future; the prior Linux Rust
+  evidence is retained rather than silently promoted to this change.
+
+  The retained 2026-07-27 confined Linux compilation and focused execution
+  used immutable image
   `sha256:da876c1ffa017736b2f63d56f8b106956d6b4d730ebbf3e99feffda42ac0b91c`
   as numeric UID/GID 1000:1000 with no pull/network, read-only root and
   repository, recursive bind inclusion disabled, capabilities dropped,

@@ -9205,7 +9205,7 @@ mod test {
         assert!(main_config_key("permanent-password-storage-and-salt").is_none());
     }
 
-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
     #[test]
     fn service_channel_uses_closed_directional_protocol() {
         let request = serde_json::to_vec(&ServiceIpcRequest::LivenessProbe {}).unwrap();
@@ -9233,6 +9233,86 @@ mod test {
             serde_json::from_slice::<ServiceIpcResponse>(br#"{"t":"Liveness","c":null}"#)
                 .is_err()
         );
+
+        #[cfg(target_os = "macos")]
+        {
+            let readiness_request =
+                serde_json::to_vec(&ServiceIpcRequest::EnsurePasswordRightReady {}).unwrap();
+            assert_eq!(
+                readiness_request,
+                br#"{"t":"EnsurePasswordRightReady"}"#
+            );
+            assert_eq!(
+                serde_json::from_slice::<ServiceIpcRequest>(&readiness_request).unwrap(),
+                ServiceIpcRequest::EnsurePasswordRightReady {}
+            );
+            assert!(
+                serde_json::from_slice::<ServiceIpcResponse>(&readiness_request).is_err()
+            );
+            assert!(serde_json::from_slice::<ServiceIpcRequest>(
+                br#"{"t":"EnsurePasswordRightReady","c":null}"#
+            )
+            .is_err());
+
+            let readiness_response = serde_json::to_vec(
+                &ServiceIpcResponse::PasswordRightReady { ready: true },
+            )
+            .unwrap();
+            assert_eq!(
+                readiness_response,
+                br#"{"t":"PasswordRightReady","ready":true}"#
+            );
+            assert_eq!(
+                serde_json::from_slice::<ServiceIpcResponse>(&readiness_response).unwrap(),
+                ServiceIpcResponse::PasswordRightReady { ready: true }
+            );
+            assert!(
+                serde_json::from_slice::<ServiceIpcRequest>(&readiness_response).is_err()
+            );
+            assert!(serde_json::from_slice::<ServiceIpcResponse>(
+                br#"{"t":"PasswordRightReady","ready":true,"c":null}"#
+            )
+            .is_err());
+        }
+
+        #[cfg(target_os = "windows")]
+        {
+            let share_rdp_request =
+                serde_json::to_vec(&ServiceIpcRequest::SetShareRdp { enabled: true }).unwrap();
+            assert_eq!(
+                share_rdp_request,
+                br#"{"t":"SetShareRdp","enabled":true}"#
+            );
+            assert_eq!(
+                serde_json::from_slice::<ServiceIpcRequest>(&share_rdp_request).unwrap(),
+                ServiceIpcRequest::SetShareRdp { enabled: true }
+            );
+            assert!(
+                serde_json::from_slice::<ServiceIpcResponse>(&share_rdp_request).is_err()
+            );
+            assert!(serde_json::from_slice::<ServiceIpcRequest>(
+                br#"{"t":"SetShareRdp","enabled":true,"c":null}"#
+            )
+            .is_err());
+
+            let share_rdp_response =
+                serde_json::to_vec(&ServiceIpcResponse::ShareRdpSet { accepted: true }).unwrap();
+            assert_eq!(
+                share_rdp_response,
+                br#"{"t":"ShareRdpSet","accepted":true}"#
+            );
+            assert_eq!(
+                serde_json::from_slice::<ServiceIpcResponse>(&share_rdp_response).unwrap(),
+                ServiceIpcResponse::ShareRdpSet { accepted: true }
+            );
+            assert!(
+                serde_json::from_slice::<ServiceIpcRequest>(&share_rdp_response).is_err()
+            );
+            assert!(serde_json::from_slice::<ServiceIpcResponse>(
+                br#"{"t":"ShareRdpSet","accepted":true,"c":null}"#
+            )
+            .is_err());
+        }
 
         let cross_purpose = serde_json::to_vec(&Data::Close).unwrap();
         assert!(serde_json::from_slice::<ServiceIpcRequest>(&cross_purpose).is_err());

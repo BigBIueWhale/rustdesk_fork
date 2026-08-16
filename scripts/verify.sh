@@ -2850,6 +2850,27 @@ if echo "$ipc_data_enum" | grep -Eq '(^|[[:space:]])Test,|MacosServiceOwned|Requ
 fi
 grep -q 'service_channel_uses_closed_directional_protocol' src/ipc.rs || r_s11b="$r_s11b service-directional-regression-missing"
 grep -q 'windows_service_sas_channel_uses_closed_directional_protocol' src/ipc.rs || r_s11b="$r_s11b windows-sas-directional-regression-missing"
+service_protocol_test=$(awk '/fn service_channel_uses_closed_directional_protocol\(\)/,/^    }/' src/ipc.rs)
+service_protocol_test_header=$(grep -B2 -m1 'fn service_channel_uses_closed_directional_protocol()' src/ipc.rs)
+echo "$service_protocol_test_header" | grep -Fq '#[cfg(not(any(target_os = "android", target_os = "ios")))]' || r_s11b="$r_s11b service-directional-regression-not-desktop-wide"
+for exact_wire in \
+  'br#"{"t":"EnsurePasswordRightReady"}"#' \
+  'br#"{"t":"PasswordRightReady","ready":true}"#' \
+  'br#"{"t":"EnsurePasswordRightReady","c":null}"#' \
+  'br#"{"t":"PasswordRightReady","ready":true,"c":null}"#' \
+  'br#"{"t":"SetShareRdp","enabled":true}"#' \
+  'br#"{"t":"ShareRdpSet","accepted":true}"#' \
+  'br#"{"t":"SetShareRdp","enabled":true,"c":null}"#' \
+  'br#"{"t":"ShareRdpSet","accepted":true,"c":null}"#'; do
+  echo "$service_protocol_test" | grep -Fq "$exact_wire" || r_s11b="$r_s11b platform-service-wire-regression-missing"
+done
+for directional_check in \
+  'serde_json::from_slice::<ServiceIpcResponse>(&readiness_request).is_err()' \
+  'serde_json::from_slice::<ServiceIpcRequest>(&readiness_response).is_err()' \
+  'serde_json::from_slice::<ServiceIpcResponse>(&share_rdp_request).is_err()' \
+  'serde_json::from_slice::<ServiceIpcRequest>(&share_rdp_response).is_err()'; do
+  echo "$service_protocol_test" | grep -Fq "$directional_check" || r_s11b="$r_s11b platform-service-direction-regression-missing"
+done
 grep -Fq 'R-S11dx' requirements.html || r_s11b="$r_s11b typed-service-protocol-requirement-missing"
 grep -Fq 'R-S11dx/R-S11e-142' HARDENING_STATUS.md || r_s11b="$r_s11b typed-service-protocol-ledger-missing"
 grep -q 'new_listener(password::SERVICE_PASSWORD_IPC_POSTFIX)' src/ipc.rs || r_s11b="$r_s11b raw-service-password-listener-missing"

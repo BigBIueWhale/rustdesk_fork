@@ -43,17 +43,29 @@ const MAX_DECOMPRESSED: usize = 64 * 1024 * 1024;
 /// (empty — the same fail-safe the previous `unwrap_or_default` already returned
 /// on a decode error, which every caller handles), never silently truncated
 /// (truncation would corrupt a legitimately-large payload).
-pub fn decompress(data: &[u8]) -> Vec<u8> {
+pub fn decompress_with_limit(data: &[u8], max_decompressed: usize) -> Vec<u8> {
     use io::Read;
     let Ok(decoder) = zstd::stream::read::Decoder::new(data) else {
         return Vec::new();
     };
+    let Ok(max_decompressed) = u64::try_from(max_decompressed) else {
+        return Vec::new();
+    };
+    let Some(read_limit) = max_decompressed.checked_add(1) else {
+        return Vec::new();
+    };
     // take(MAX+1) so an over-cap stream is *detected* (len > MAX) and rejected
     // rather than truncated; allocation is bounded to MAX+1.
-    let mut limited = decoder.take(MAX_DECOMPRESSED as u64 + 1);
+    let mut limited = decoder.take(read_limit);
     let mut out = Vec::new();
-    if limited.read_to_end(&mut out).is_err() || out.len() > MAX_DECOMPRESSED {
+    if limited.read_to_end(&mut out).is_err()
+        || u64::try_from(out.len()).map_or(true, |length| length > max_decompressed)
+    {
         return Vec::new();
     }
     out
+}
+
+pub fn decompress(data: &[u8]) -> Vec<u8> {
+    decompress_with_limit(data, MAX_DECOMPRESSED)
 }

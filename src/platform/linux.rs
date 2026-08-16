@@ -392,12 +392,19 @@ pub fn get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
                         cd.hoty = (*img).yhot as _;
                         cd.width = (*img).width as _;
                         cd.height = (*img).height as _;
+                        let Some(rgba_len) = super::cursor_rgba_len(cd.width, cd.height) else {
+                            XFree(img as _);
+                            return;
+                        };
+                        if (*img).pixels.is_null() {
+                            XFree(img as _);
+                            return;
+                        }
                         // to-do: how about if it is 0
                         cd.id = (*img).cursor_serial as _;
-                        let pixels =
-                            std::slice::from_raw_parts((*img).pixels, (cd.width * cd.height) as _);
+                        let pixels = std::slice::from_raw_parts((*img).pixels, rgba_len / 4);
                         // cd.colors.resize(pixels.len() * 4, 0);
-                        let mut cd_colors = vec![0_u8; pixels.len() * 4];
+                        let mut cd_colors = vec![0_u8; rgba_len];
                         for y in 0..cd.height {
                             for x in 0..cd.width {
                                 let pos = (y * cd.width + x) as usize;

@@ -263,6 +263,8 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/session_stream_finality_test.dart
     echo "  == R-S11ex flutter test: desktop texture lifecycle exact finality =="
     flutter test --no-pub test/desktop_texture_lifecycle_test.dart
+    echo "  == R-S11gv flutter test: exact bounded custom-cursor resource finality =="
+    flutter test --no-pub test/custom_cursor_registry_test.dart
     echo "  == desktop tab removal awaits engine-backed resource retirement =="
     flutter test --no-pub test/desktop_tab_retirement_test.dart
     echo "  == viewer presentation recovery coalesces background and focus transitions =="
@@ -372,6 +374,7 @@ PY
     /tmp/texture_rgba_windows_core_test
     cd /src
     python3 scripts/verify-viewer-cursor-mailbox.py --repo . --self-test
+    python3 scripts/verify-viewer-cursor-resources.py --repo . --self-test
     python3 scripts/verify-display-selection-finality.py --repo . --self-test
     rustfmt --edition 2021 --check \
       src/client.rs \

@@ -141,7 +141,7 @@ class _RemotePageState extends State<RemotePage> with WidgetsBindingObserver {
       gFFI.dialogManager.hideMobileActionsOverlay(store: false);
       gFFI.inputModel.listenToMouse(false);
       gFFI.imageModel.disposeImage();
-      gFFI.cursorModel.disposeImages();
+      gFFI.cursorModel.retireCursorResources();
       await gFFI.invokeMethod("enable_soft_keyboard", true);
       if (gFFI.sessionId == sessionId) {
         inputModel.keyboardInputAllowed = true;

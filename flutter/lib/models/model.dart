@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:collection';
 import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
@@ -23,7 +24,6 @@ import 'package:flutter_hbb/models/desktop_render_texture.dart';
 import 'package:flutter_hbb/models/terminal_model.dart';
 import 'package:flutter_hbb/common/shared_state.dart';
 import 'package:flutter_hbb/utils/multi_window_manager.dart';
-import 'package:tuple/tuple.dart';
 import 'package:image/image.dart' as img2;
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:get/get.dart';
@@ -79,6 +79,38 @@ class _WebCursorPosition {
   final int y;
 }
 
+class _WebCursorShapeSource {
+  const _WebCursorShapeSource({
+    required this.id,
+    required this.revision,
+    required this.hotx,
+    required this.hoty,
+    required this.width,
+    required this.height,
+    required this.rgba,
+  });
+
+  final String id;
+  final int revision;
+  final int hotx;
+  final int hoty;
+  final int width;
+  final int height;
+  final Uint8List rgba;
+}
+
+class _WebCursorShape {
+  const _WebCursorShape({
+    required this.id,
+    required this.sequence,
+    this.source,
+  });
+
+  final String id;
+  final int sequence;
+  final _WebCursorShapeSource? source;
+}
+
 class _MobileSessionStartRequest {
   const _MobileSessionStartRequest({
     required this.sessionId,
@@ -107,6 +139,9 @@ class _MobileSessionStartRequest {
 
 const int kMaxRemoteCursorPixels = 1024 * 1024;
 const int kMaxRemoteCursorRgbaBytes = kMaxRemoteCursorPixels * 4;
+const int kCursorShapeCacheMaxEntries = 64;
+const int kCursorShapeCacheMaxRgbaBytes = 16 * 1024 * 1024;
+const String _maxRemoteCursorId = '18446744073709551615';
 const int _minSigned32 = -0x80000000;
 const int _maxSigned32 = 0x7fffffff;
 const _orderedSessionTopologyEvents = <String>{
@@ -141,11 +176,25 @@ int? _remoteCursorRgbaLen(int width, int height) {
   return pixels * 4;
 }
 
+bool _isRemoteCursorId(String id) {
+  if (id.isEmpty || id.length > _maxRemoteCursorId.length) {
+    return false;
+  }
+  for (final codeUnit in id.codeUnits) {
+    if (codeUnit < 0x30 || codeUnit > 0x39) {
+      return false;
+    }
+  }
+  if (id.codeUnitAt(0) == 0x30) {
+    return false;
+  }
+  return id.length < _maxRemoteCursorId.length ||
+      id.compareTo(_maxRemoteCursorId) <= 0;
+}
+
 class CachedPeerData {
   Map<String, dynamic> updatePrivacyMode = {};
   Map<String, dynamic> peerInfo = {};
-  List<Map<String, dynamic>> cursorDataList = [];
-  Map<String, dynamic> lastCursorId = {};
   Map<String, bool> permissions = {};
 
   // R-G3: the `secure`/`direct` cache fields are removed — the fork's channel is always
@@ -160,8 +209,6 @@ class CachedPeerData {
     return jsonEncode({
       'updatePrivacyMode': updatePrivacyMode,
       'peerInfo': peerInfo,
-      'cursorDataList': cursorDataList,
-      'lastCursorId': lastCursorId,
       'permissions': permissions,
       'streamType': streamType,
     });
@@ -173,10 +220,6 @@ class CachedPeerData {
       final data = CachedPeerData();
       data.updatePrivacyMode = map['updatePrivacyMode'];
       data.peerInfo = map['peerInfo'];
-      for (final cursorData in map['cursorDataList']) {
-        data.cursorDataList.add(cursorData);
-      }
-      data.lastCursorId = map['lastCursorId'];
       map['permissions'].forEach((key, value) {
         data.permissions[key] = value;
       });
@@ -421,17 +464,6 @@ class FfiModel with ChangeNotifier {
     if (!_isCurrentSession(expectedSessionId)) return;
     setConnectionType(peerId, data.streamType);
     await handlePeerInfo(data.peerInfo, peerId, true, expectedSessionId);
-    if (!_isCurrentSession(expectedSessionId)) return;
-    for (final element in data.cursorDataList) {
-      if (!_isCurrentSession(expectedSessionId)) return;
-      updateLastCursorId(element);
-      await handleCursorData(element, expectedSessionId);
-    }
-    if (!_isCurrentSession(expectedSessionId)) return;
-    if (data.lastCursorId.isNotEmpty) {
-      updateLastCursorId(data.lastCursorId);
-      handleCursorId(data.lastCursorId);
-    }
   }
 
   // todo: why called by two position
@@ -458,6 +490,32 @@ class FfiModel with ChangeNotifier {
           ffi._reportSessionStreamFailure(sessionId, peerId,
               'The remote session state became inconsistent');
         }
+        return;
+      }
+      if ((name == 'cursor_data' || name == 'cursor_id') && isWeb) {
+        final ffi = parent.target;
+        final shape = ffi?.cursorModel.admitWebCursorShape(evt, sessionId);
+        if (ffi == null || shape == null) {
+          ffi?._reportSessionStreamFailure(sessionId, peerId,
+              'The remote session state became inconsistent');
+          return;
+        }
+        try {
+          await ffi.submitWebCursorShape(
+              sessionId, expectedClientOwnerId, shape);
+        } catch (error) {
+          debugPrint('Web cursor-shape publication failed: '
+              '${error.runtimeType}');
+          ffi._reportSessionStreamFailure(sessionId, peerId,
+              'The remote session state became inconsistent');
+        }
+        return;
+      }
+      if (name == 'cursor_position' ||
+          name == 'cursor_data' ||
+          name == 'cursor_id') {
+        parent.target?._reportSessionStreamFailure(sessionId, peerId,
+            'The remote session state became inconsistent');
         return;
       }
       if (name is String && _orderedSessionTopologyEvents.contains(name)) {
@@ -501,12 +559,6 @@ class FfiModel with ChangeNotifier {
     } else if (name == 'switch_display') {
       // switch display is kept for backward compatibility
       await handleSwitchDisplay(evt, sessionId, peerId);
-    } else if (name == 'cursor_data') {
-      updateLastCursorId(evt);
-      await handleCursorData(evt, sessionId);
-    } else if (name == 'cursor_id') {
-      updateLastCursorId(evt);
-      handleCursorId(evt);
     } else if (name == 'clipboard') {
       Clipboard.setData(ClipboardData(text: evt['content']));
     } else if (name == 'permission') {
@@ -1380,24 +1432,6 @@ class FfiModel with ChangeNotifier {
       }
     }
     return d;
-  }
-
-  updateLastCursorId(Map<String, dynamic> evt) {
-    // int.parse(evt['id']) may cause FormatException
-    // Unhandled Exception: FormatException: Positive input exceeds the limit of integer 18446744071749110741
-    parent.target?.cursorModel.id = evt['id'];
-  }
-
-  handleCursorId(Map<String, dynamic> evt) {
-    cachedPeerData.lastCursorId = evt;
-    parent.target?.cursorModel.updateCursorId(evt);
-  }
-
-  Future<void> handleCursorData(
-      Map<String, dynamic> evt, SessionID expectedSessionId) async {
-    if (!_isCurrentSession(expectedSessionId)) return;
-    cachedPeerData.cursorDataList.add(evt);
-    await parent.target?.cursorModel.updateCursorData(evt, expectedSessionId);
   }
 
   /// Handle the peer info synchronization event based on [evt].
@@ -2752,80 +2786,140 @@ class CanvasModel with ChangeNotifier {
 
 // data for cursor
 class CursorData {
-  final String peerId;
   final String id;
+  final int revision;
   final img2.Image image;
-  double scale;
-  Uint8List? data;
+  final Uint8List baseData;
   final double hotxOrigin;
   final double hotyOrigin;
-  double hotx;
-  double hoty;
   final int width;
   final int height;
 
   CursorData({
-    required this.peerId,
     required this.id,
+    required this.revision,
     required this.image,
-    required this.scale,
-    required this.data,
+    required this.baseData,
     required this.hotxOrigin,
     required this.hotyOrigin,
     required this.width,
     required this.height,
-  })  : hotx = hotxOrigin * scale,
-        hoty = hotxOrigin * scale;
+  });
 
-  int _doubleToInt(double v) => (v * 10e6).round().toInt();
-
-  double _checkUpdateScale(double scale) {
-    double oldScale = this.scale;
-    if (scale != 1.0) {
-      // Update data if scale changed.
-      final tgtWidth = (width * scale).toInt();
-      final tgtHeight = (width * scale).toInt();
-      if (tgtWidth < kMinCursorSize || tgtHeight < kMinCursorSize) {
-        double sw = kMinCursorSize.toDouble() / width;
-        double sh = kMinCursorSize.toDouble() / height;
-        scale = sw < sh ? sh : sw;
-      }
+  CursorScaleTarget? scaleTarget(double requestedScale) {
+    if (!requestedScale.isFinite || requestedScale <= 0) {
+      return null;
     }
+    var scale = requestedScale;
+    var scaledWidth = width * scale;
+    var scaledHeight = height * scale;
+    if (!scaledWidth.isFinite || !scaledHeight.isFinite) {
+      return null;
+    }
+    if (scaledWidth > kMaxRemoteCursorPixels ||
+        scaledHeight > kMaxRemoteCursorPixels) {
+      return null;
+    }
+    if (scaledWidth < kMinCursorSize || scaledHeight < kMinCursorSize) {
+      scale = max(kMinCursorSize / width, kMinCursorSize / height);
+      scaledWidth = width * scale;
+      scaledHeight = height * scale;
+    }
+    if (!scaledWidth.isFinite ||
+        !scaledHeight.isFinite ||
+        scaledWidth < 1 ||
+        scaledHeight < 1 ||
+        scaledWidth > kMaxRemoteCursorPixels ||
+        scaledHeight > kMaxRemoteCursorPixels) {
+      return null;
+    }
+    final targetWidth = scaledWidth.toInt();
+    final targetHeight = scaledHeight.toInt();
+    final rgbaBytes = _remoteCursorRgbaLen(targetWidth, targetHeight);
+    if (rgbaBytes == null) {
+      return null;
+    }
+    final maxHotX = max(0, targetWidth - 1).toDouble();
+    final maxHotY = max(0, targetHeight - 1).toDouble();
+    return CursorScaleTarget(
+      logicalKey: '${id}_${revision}_${targetWidth}x$targetHeight',
+      width: targetWidth,
+      height: targetHeight,
+      hotx: (hotxOrigin * scale).clamp(0.0, maxHotX).toDouble(),
+      hoty: (hotyOrigin * scale).clamp(0.0, maxHotY).toDouble(),
+      rgbaBytes: rgbaBytes,
+    );
+  }
 
-    if (_doubleToInt(oldScale) != _doubleToInt(scale)) {
+  Uint8List? dataForTarget(CursorScaleTarget target) {
+    try {
+      if (target.width == width && target.height == height) {
+        return baseData;
+      }
+      final resized = img2.copyResize(
+        image,
+        width: target.width,
+        height: target.height,
+        interpolation: img2.Interpolation.average,
+      );
       if (isWindows) {
-        data = img2
-            .copyResize(
-              image,
-              width: (width * scale).toInt(),
-              height: (height * scale).toInt(),
-              interpolation: img2.Interpolation.average,
-            )
-            .getBytes(order: img2.ChannelOrder.bgra);
-      } else {
-        data = Uint8List.fromList(
-          img2.encodePng(
-            img2.copyResize(
-              image,
-              width: (width * scale).toInt(),
-              height: (height * scale).toInt(),
-              interpolation: img2.Interpolation.average,
-            ),
-          ),
-        );
+        return resized.getBytes(order: img2.ChannelOrder.bgra);
       }
+      return Uint8List.fromList(img2.encodePng(resized));
+    } catch (_) {
+      return null;
     }
-
-    this.scale = scale;
-    hotx = hotxOrigin * scale;
-    hoty = hotyOrigin * scale;
-    return scale;
   }
+}
 
-  String updateGetKey(double scale) {
-    scale = _checkUpdateScale(scale);
-    return '${peerId}_${id}_${_doubleToInt(width * scale)}_${_doubleToInt(height * scale)}';
-  }
+class CursorScaleTarget {
+  const CursorScaleTarget({
+    required this.logicalKey,
+    required this.width,
+    required this.height,
+    required this.hotx,
+    required this.hoty,
+    required this.rgbaBytes,
+  });
+
+  final String logicalKey;
+  final int width;
+  final int height;
+  final double hotx;
+  final double hoty;
+  final int rgbaBytes;
+}
+
+class _PreparedCursorShape {
+  const _PreparedCursorShape({
+    required this.id,
+    required this.revision,
+    required this.image,
+    required this.cursorData,
+    required this.rgbaBytes,
+  });
+
+  final String id;
+  final int revision;
+  final ui.Image image;
+  final CursorData cursorData;
+  final int rgbaBytes;
+
+  void dispose() => image.dispose();
+}
+
+class _CursorShapeCacheEntry {
+  const _CursorShapeCacheEntry({
+    required this.revision,
+    required this.image,
+    required this.cursorData,
+    required this.rgbaBytes,
+  });
+
+  final int revision;
+  final ui.Image image;
+  final CursorData cursorData;
+  final int rgbaBytes;
 }
 
 const _forbiddenCursorPng =
@@ -2882,7 +2976,6 @@ class PredefinedCursor {
           print("decodeImageFromPixels failed, pre-defined cursor $id");
           return;
         }
-        double scale = 1.0;
         if (isWindows) {
           data = _image2!.getBytes(order: img2.ChannelOrder.bgra);
         } else {
@@ -2890,11 +2983,10 @@ class PredefinedCursor {
         }
 
         _cache = CursorData(
-          peerId: '',
           id: id,
+          revision: 1,
           image: _image2!.clone(),
-          scale: scale,
-          data: data,
+          baseData: data,
           hotxOrigin:
               hotxGetter != null ? hotxGetter!(_image2!.width.toDouble()) : 0,
           hotyOrigin:
@@ -2909,10 +3001,18 @@ class PredefinedCursor {
 
 class CursorModel with ChangeNotifier {
   ui.Image? _image;
-  final _images = <String, Tuple3<ui.Image, double, double>>{};
   CursorData? _cache;
-  final _cacheMap = <String, CursorData>{};
-  final _cacheKeys = <String>{};
+  final LinkedHashMap<String, _CursorShapeCacheEntry> _shapeCache =
+      LinkedHashMap();
+  int _shapeCacheRgbaBytes = 0;
+  final LinkedHashMap<String, _WebCursorShapeSource> _webShapeSources =
+      LinkedHashMap();
+  int _webShapeSourceRgbaBytes = 0;
+  int _webCursorRevision = 0;
+  int _webCursorSequence = 0;
+  int _webDesiredCursorSequence = 0;
+  String _customCursorOwner = Uuid().v4();
+  bool _customCursorOwnerRetired = false;
   double _x = -10000;
   double _y = -10000;
   // int.parse(evt['id']) may cause FormatException
@@ -3008,8 +3108,6 @@ class CursorModel with ChangeNotifier {
   double get hotx => _hotx;
   double get hoty => _hoty;
 
-  set id(String id) => _id = id;
-
   bool get isPeerControlProtected =>
       DateTime.now().difference(_lastPeerMouse).inMilliseconds <
       kMouseControlTimeoutMSec;
@@ -3025,8 +3123,25 @@ class CursorModel with ChangeNotifier {
 
   CursorModel(this.parent);
 
-  Set<String> get cachedKeys => _cacheKeys;
-  addKey(String key) => _cacheKeys.add(key);
+  String get customCursorOwner => _customCursorOwner;
+
+  void retireCursorResources() {
+    if (!_customCursorOwnerRetired) {
+      _customCursorOwnerRetired = true;
+      retireCustomCursorOwner(_customCursorOwner);
+    }
+    _id = kPreDefaultCursorId;
+    _image = null;
+    _cache = null;
+    _hotx = 0;
+    _hoty = 0;
+    _disposeImages();
+    _webShapeSources.clear();
+    _webShapeSourceRgbaBytes = 0;
+    _webCursorRevision = 0;
+    _webCursorSequence = 0;
+    _webDesiredCursorSequence = 0;
+  }
 
   // remote physical display coordinate
   // For update pan (mobile), onOneFingerPanStart, onOneFingerPanUpdate, onHoldDragUpdate
@@ -3317,147 +3432,352 @@ class CursorModel with ChangeNotifier {
     notifyListeners();
   }
 
-  disposeImages() {
-    _images.forEach((_, v) => v.item1.dispose());
-    _images.clear();
+  void _disposeImages() {
+    for (final entry in _shapeCache.values) {
+      entry.image.dispose();
+    }
+    _shapeCache.clear();
+    _shapeCacheRgbaBytes = 0;
   }
 
-  updateCursorData(
-      Map<String, dynamic> evt, SessionID expectedSessionId) async {
-    if (parent.target?.isCurrentSession(expectedSessionId) != true) return;
+  Future<_PreparedCursorShape?> prepareCursorShape({
+    required String id,
+    required int revision,
+    required int hotx,
+    required int hoty,
+    required int width,
+    required int height,
+    required Uint8List rgba,
+    required SessionID expectedSessionId,
+  }) {
+    return _prepareCursorShape(
+      id: id,
+      revision: revision,
+      hotx: hotx.toDouble(),
+      hoty: hoty.toDouble(),
+      width: width,
+      height: height,
+      rgba: rgba,
+      expectedSessionId: expectedSessionId,
+    );
+  }
+
+  _WebCursorShape? admitWebCursorShape(
+      Map<String, dynamic> evt, SessionID expectedSessionId) {
+    if (_customCursorOwnerRetired ||
+        parent.target?.isCurrentSession(expectedSessionId) != true) {
+      return null;
+    }
+    final name = evt['name'];
     final id = evt['id']?.toString();
-    final hotx = double.tryParse(evt['hotx']?.toString() ?? '');
-    final hoty = double.tryParse(evt['hoty']?.toString() ?? '');
+    if (id == null || !_isRemoteCursorId(id)) {
+      return null;
+    }
+    final sequence = _nextWebCursorSequence();
+    if (sequence == null) {
+      return null;
+    }
+    if (name == 'cursor_id') {
+      final source = _webShapeSources.remove(id);
+      if (source != null) {
+        _webShapeSources[id] = source;
+      }
+      _webDesiredCursorSequence = sequence;
+      return _WebCursorShape(id: id, sequence: sequence, source: source);
+    }
+    if (name != 'cursor_data') {
+      return null;
+    }
+    final previous = _webShapeSources.remove(id);
+    if (previous != null) {
+      _webShapeSourceRgbaBytes -= previous.rgba.length;
+    }
+    final hotx = _webCursorCoordinate(evt['hotx']);
+    final hoty = _webCursorCoordinate(evt['hoty']);
     final width = int.tryParse(evt['width']?.toString() ?? '');
     final height = int.tryParse(evt['height']?.toString() ?? '');
-    if (id == null ||
-        hotx == null ||
+    if (hotx == null ||
         hoty == null ||
         width == null ||
         height == null) {
-      return;
+      _webDesiredCursorSequence = sequence;
+      return _WebCursorShape(id: id, sequence: sequence);
     }
 
     final expectedLen = _remoteCursorRgbaLen(width, height);
     final colorsJson = evt['colors'];
     if (expectedLen == null ||
+        hotx < 0 ||
+        hoty < 0 ||
+        hotx >= width ||
+        hoty >= height ||
         colorsJson is! String ||
         colorsJson.length > expectedLen * 4 + 2) {
-      return;
+      _webDesiredCursorSequence = sequence;
+      return _WebCursorShape(id: id, sequence: sequence);
     }
 
     dynamic decoded;
     try {
       decoded = json.decode(colorsJson);
     } catch (_) {
-      return;
+      _webDesiredCursorSequence = sequence;
+      return _WebCursorShape(id: id, sequence: sequence);
     }
     if (decoded is! List || decoded.length != expectedLen) {
-      return;
+      _webDesiredCursorSequence = sequence;
+      return _WebCursorShape(id: id, sequence: sequence);
     }
     final rgba = Uint8List(expectedLen);
     for (var i = 0; i < decoded.length; i++) {
       final value = decoded[i];
       if (value is! int || value < 0 || value > 255) {
-        return;
+        _webDesiredCursorSequence = sequence;
+        return _WebCursorShape(id: id, sequence: sequence);
       }
       rgba[i] = value;
     }
-    final image = await img.decodeImageFromPixels(
-        rgba, width, height, ui.PixelFormat.rgba8888);
-    if (image == null) {
-      return;
+    if (_webCursorRevision >= 0x1fffffffffffff) {
+      _webShapeSources.clear();
+      _webShapeSourceRgbaBytes = 0;
+      _webDesiredCursorSequence = sequence;
+      return _WebCursorShape(id: id, sequence: sequence);
     }
-    if (parent.target?.isCurrentSession(expectedSessionId) != true) {
-      image.dispose();
-      return;
-    }
-    if (await _updateCache(
-        rgba, image, id, hotx, hoty, width, height, expectedSessionId)) {
-      if (parent.target?.isCurrentSession(expectedSessionId) != true) {
-        image.dispose();
-        return;
+    _webCursorRevision += 1;
+    final source = _WebCursorShapeSource(
+      id: id,
+      revision: _webCursorRevision,
+      hotx: hotx,
+      hoty: hoty,
+      width: width,
+      height: height,
+      rgba: rgba,
+    );
+    _webShapeSources[id] = source;
+    _webShapeSourceRgbaBytes += rgba.length;
+    while (_webShapeSources.length > kCursorShapeCacheMaxEntries ||
+        _webShapeSourceRgbaBytes > kCursorShapeCacheMaxRgbaBytes) {
+      final victim = _webShapeSources.keys.first;
+      final removed = _webShapeSources.remove(victim);
+      if (removed != null) {
+        _webShapeSourceRgbaBytes -= removed.rgba.length;
       }
-      _images[id]?.item1.dispose();
-      _images[id] = Tuple3(image, hotx, hoty);
-    } else {
-      image.dispose();
-      return;
     }
-
-    // Update last cursor data.
-    // Do not use the previous `image` and `id`, because `_id` may be changed.
-    _updateCurData();
+    _webDesiredCursorSequence = sequence;
+    return _WebCursorShape(id: id, sequence: sequence, source: source);
   }
 
-  Future<bool> _updateCache(
-    Uint8List rgba,
-    ui.Image image,
-    String id,
-    double hotx,
-    double hoty,
-    int w,
-    int h,
-    SessionID expectedSessionId,
-  ) async {
-    if (parent.target?.isCurrentSession(expectedSessionId) != true) {
-      return false;
+  int? _nextWebCursorSequence() {
+    if (_webCursorSequence >= 0x1fffffffffffff) {
+      _webShapeSources.clear();
+      _webShapeSourceRgbaBytes = 0;
+      _webDesiredCursorSequence = 0;
+      return null;
     }
-    Uint8List? data;
-    img2.Image imgOrigin = img2.Image.fromBytes(
-        width: w, height: h, bytes: rgba.buffer, order: img2.ChannelOrder.rgba);
-    if (isWindows) {
-      data = imgOrigin.getBytes(order: img2.ChannelOrder.bgra);
-    } else {
-      ByteData? imgBytes =
-          await image.toByteData(format: ui.ImageByteFormat.png);
-      if (imgBytes == null) {
-        return false;
-      }
-      data = imgBytes.buffer.asUint8List();
+    _webCursorSequence += 1;
+    return _webCursorSequence;
+  }
+
+  bool isCurrentWebCursorShape(
+          _WebCursorShape shape, SessionID expectedSessionId) =>
+      parent.target?.isCurrentSession(expectedSessionId) == true &&
+      shape.sequence == _webDesiredCursorSequence;
+
+  Future<_PreparedCursorShape?> prepareWebCursorShape(
+      _WebCursorShape shape, SessionID expectedSessionId) {
+    final source = shape.source;
+    if (source == null || !isCurrentWebCursorShape(shape, expectedSessionId)) {
+      return Future.value(null);
     }
-    if (parent.target?.isCurrentSession(expectedSessionId) != true) {
-      return false;
-    }
-    final cache = CursorData(
-      peerId: peerId,
-      id: id,
-      image: imgOrigin,
-      scale: 1.0,
-      data: data,
-      hotxOrigin: hotx,
-      hotyOrigin: hoty,
-      width: w,
-      height: h,
+    return _prepareCursorShape(
+      id: source.id,
+      revision: source.revision,
+      hotx: source.hotx.toDouble(),
+      hoty: source.hoty.toDouble(),
+      width: source.width,
+      height: source.height,
+      rgba: source.rgba,
+      expectedSessionId: expectedSessionId,
     );
-    _cacheMap[id] = cache;
+  }
+
+  Future<_PreparedCursorShape?> _prepareCursorShape({
+    required String id,
+    required int revision,
+    required double hotx,
+    required double hoty,
+    required int width,
+    required int height,
+    required Uint8List rgba,
+    required SessionID expectedSessionId,
+  }) async {
+    if (parent.target?.isCurrentSession(expectedSessionId) != true ||
+        _customCursorOwnerRetired ||
+        !_isRemoteCursorId(id) ||
+        revision <= 0 ||
+        !hotx.isFinite ||
+        !hoty.isFinite ||
+        hotx < 0 ||
+        hoty < 0 ||
+        hotx >= width ||
+        hoty >= height) {
+      return null;
+    }
+    final expectedLen = _remoteCursorRgbaLen(width, height);
+    if (expectedLen == null || rgba.length != expectedLen) {
+      return null;
+    }
+    final ownedRgba = Uint8List.fromList(rgba);
+    ui.Image? decodedImage;
+    try {
+      decodedImage = await img.decodeImageFromPixels(
+          ownedRgba, width, height, ui.PixelFormat.rgba8888);
+      if (decodedImage == null) {
+        return null;
+      }
+      if (_customCursorOwnerRetired ||
+          parent.target?.isCurrentSession(expectedSessionId) != true) {
+        decodedImage.dispose();
+        return null;
+      }
+      final image = img2.Image.fromBytes(
+        width: width,
+        height: height,
+        bytes: ownedRgba.buffer,
+        order: img2.ChannelOrder.rgba,
+      );
+      final baseData = isWindows
+          ? image.getBytes(order: img2.ChannelOrder.bgra)
+          : Uint8List.fromList(img2.encodePng(image));
+      if (_customCursorOwnerRetired ||
+          parent.target?.isCurrentSession(expectedSessionId) != true) {
+        decodedImage.dispose();
+        return null;
+      }
+      return _PreparedCursorShape(
+        id: id,
+        revision: revision,
+        image: decodedImage,
+        cursorData: CursorData(
+          id: id,
+          revision: revision,
+          image: image,
+          baseData: baseData,
+          hotxOrigin: hotx,
+          hotyOrigin: hoty,
+          width: width,
+          height: height,
+        ),
+        rgbaBytes: expectedLen,
+      );
+    } catch (_) {
+      decodedImage?.dispose();
+      return null;
+    }
+  }
+
+  bool commitCursorShape(
+      _PreparedCursorShape prepared, SessionID expectedSessionId) {
+    if (_customCursorOwnerRetired ||
+        parent.target?.isCurrentSession(expectedSessionId) != true) {
+      prepared.dispose();
+      return false;
+    }
+    final previous = _shapeCache.remove(prepared.id);
+    if (previous != null) {
+      _shapeCacheRgbaBytes -= previous.rgbaBytes;
+      previous.image.dispose();
+    }
+    _shapeCache[prepared.id] = _CursorShapeCacheEntry(
+      revision: prepared.revision,
+      image: prepared.image,
+      cursorData: prepared.cursorData,
+      rgbaBytes: prepared.rgbaBytes,
+    );
+    _shapeCacheRgbaBytes += prepared.rgbaBytes;
+    _id = prepared.id;
+    _evictCursorShapes();
+    return _activateCursorShape(prepared.id, prepared.revision);
+  }
+
+  bool activateCursorShape(
+      String id, int? revision, SessionID expectedSessionId) {
+    if (_customCursorOwnerRetired ||
+        parent.target?.isCurrentSession(expectedSessionId) != true) {
+      return false;
+    }
+    if (_activateCursorShape(id, revision)) {
+      return true;
+    }
+    setCursorUnavailable(expectedSessionId);
+    return false;
+  }
+
+  bool hasCursorShape(
+      String id, int revision, SessionID expectedSessionId) {
+    if (_customCursorOwnerRetired ||
+        parent.target?.isCurrentSession(expectedSessionId) != true) {
+      return false;
+    }
+    return _shapeCache[id]?.revision == revision;
+  }
+
+  bool _activateCursorShape(String id, int? revision) {
+    final entry = _shapeCache[id];
+    if (entry == null || (revision != null && entry.revision != revision)) {
+      return false;
+    }
+    _shapeCache.remove(id);
+    _shapeCache[id] = entry;
+    _id = id;
+    _image = entry.image;
+    _cache = entry.cursorData;
+    _hotx = entry.cursorData.hotxOrigin;
+    _hoty = entry.cursorData.hotyOrigin;
+    _notifyCursorListeners();
     return true;
   }
 
-  bool _updateCurData() {
-    _cache = _cacheMap[_id];
-    final tmp = _images[_id];
-    if (tmp != null) {
-      _image = tmp.item1;
-      _hotx = tmp.item2;
-      _hoty = tmp.item3;
-      try {
-        // may throw exception, because the listener maybe already dispose
-        notifyListeners();
-      } catch (e) {
-        debugPrint(
-            'WARNING: updateCursorId $_id, without notifyListeners(). $e');
+  void _evictCursorShapes() {
+    while (_shapeCache.length > kCursorShapeCacheMaxEntries ||
+        _shapeCacheRgbaBytes > kCursorShapeCacheMaxRgbaBytes) {
+      String? victim;
+      for (final id in _shapeCache.keys) {
+        if (id != _id) {
+          victim = id;
+          break;
+        }
       }
-      return true;
-    } else {
-      return false;
+      if (victim == null) {
+        break;
+      }
+      final removed = _shapeCache.remove(victim);
+      if (removed != null) {
+        _shapeCacheRgbaBytes -= removed.rgbaBytes;
+        removed.image.dispose();
+      }
     }
   }
 
-  updateCursorId(Map<String, dynamic> evt) {
-    if (!_updateCurData()) {
+  void setCursorUnavailable(SessionID expectedSessionId) {
+    if (_customCursorOwnerRetired ||
+        parent.target?.isCurrentSession(expectedSessionId) != true) {
+      return;
+    }
+    _id = kPreDefaultCursorId;
+    _image = null;
+    _cache = null;
+    _hotx = 0;
+    _hoty = 0;
+    _notifyCursorListeners();
+  }
+
+  void _notifyCursorListeners() {
+    try {
+      notifyListeners();
+    } catch (error) {
       debugPrint(
-          'WARNING: updateCursorId $_id, cache is ${_cache == null ? "null" : "not null"}. without notifyListeners()');
+          'Cursor-shape listener notification failed: ${error.runtimeType}');
     }
   }
 
@@ -3507,6 +3827,9 @@ class CursorModel with ChangeNotifier {
   }
 
   clear() {
+    retireCursorResources();
+    _customCursorOwner = Uuid().v4();
+    _customCursorOwnerRetired = false;
     _x = -10000;
     _y = -10000;
     _id = "-1";
@@ -3514,7 +3837,6 @@ class CursorModel with ChangeNotifier {
     _hoty = 0;
     _displayOriginX = 0;
     _displayOriginY = 0;
-    _image = null;
     _firstUpdateMouseTime = null;
     _windowRect = null;
     _remoteWindowCoords.clear();
@@ -3527,21 +3849,6 @@ class CursorModel with ChangeNotifier {
     _lastKeyboardIsVisible = false;
     _blockedRects.clear();
     _blockEvents = false;
-    disposeImages();
-
-    _clearCache();
-    _cacheKeys.clear();
-    _cache = null;
-    _cacheMap.clear();
-  }
-
-  _clearCache() {
-    final keys = {...cachedKeys};
-    for (var k in keys) {
-      debugPrint("deleting cursor with key $k");
-      deleteCustomCursor(k);
-    }
-    resetSystemCursor();
   }
 
   trySetRemoteWindowCoords() {
@@ -3723,6 +4030,8 @@ class FFI {
   late LatestFrameQueue<_SessionOwner, int, Uint8List> _webRgbaFrames;
   late LatestFrameQueue<_SessionOwner, int, _WebCursorPosition>
       _webCursorPositions;
+  late LatestFrameQueue<_SessionOwner, int, _WebCursorShape>
+      _webCursorShapes;
   Future<bool>? _firstImageInitialization;
 
   // Terminal model registry for multiple terminals
@@ -3785,6 +4094,19 @@ class FFI {
     });
   }
 
+  Future<LatestFrameDisposition> submitWebCursorShape(
+      SessionID expectedSessionId,
+      SessionID expectedClientOwnerId,
+      _WebCursorShape shape) {
+    final expectedOwner =
+        _SessionOwner(expectedSessionId, expectedClientOwnerId);
+    if (expectedOwner != _sessionOwner) {
+      return Future.value(LatestFrameDisposition.retired);
+    }
+    return _webCursorShapes.submit(expectedOwner, 0, shape, (current) =>
+        _handleWebCursorShape(expectedOwner, expectedSessionId, current));
+  }
+
   void _installSessionOwner(SessionID nextSessionId) {
     final nextOwner = _SessionOwner(nextSessionId, clientOwnerId);
     _sessionOwner = nextOwner;
@@ -3792,6 +4114,7 @@ class FFI {
     _sessionEvents = SessionEventQueue(nextOwner);
     _webRgbaFrames = LatestFrameQueue(nextOwner);
     _webCursorPositions = LatestFrameQueue(nextOwner, maxKeys: 1);
+    _webCursorShapes = LatestFrameQueue(nextOwner, maxKeys: 1);
     _firstImageInitialization = null;
   }
 
@@ -3803,12 +4126,15 @@ class FFI {
     final webRgbaFramesRetired = _webRgbaFrames.retire(retiringOwner);
     final webCursorPositionsRetired =
         _webCursorPositions.retire(retiringOwner);
+    final webCursorShapesRetired = _webCursorShapes.retire(retiringOwner);
     if (!sessionEventsRetired ||
         !displaySelectionsRetired ||
         !webRgbaFramesRetired ||
-        !webCursorPositionsRetired) {
+        !webCursorPositionsRetired ||
+        !webCursorShapesRetired) {
       throw StateError('session owner changed before retirement');
     }
+    cursorModel.retireCursorResources();
     _firstImageInitialization = null;
   }
 
@@ -4037,6 +4363,106 @@ class FFI {
         x, y, peerId, activeSessionId, topologyRevision);
   }
 
+  Future<void> _handleCursorData(
+      _SessionOwner streamOwner,
+      SessionID activeSessionId,
+      String id,
+      int revision,
+      int hotx,
+      int hoty,
+      int width,
+      int height,
+      Uint8List rgba,
+      int publication) async {
+    final prepared = await cursorModel.prepareCursorShape(
+      id: id,
+      revision: revision,
+      hotx: hotx,
+      hoty: hoty,
+      width: width,
+      height: height,
+      rgba: rgba,
+      expectedSessionId: activeSessionId,
+    );
+    final currentOwner = isCurrentSessionOwner(
+        activeSessionId, streamOwner.clientOwnerId);
+    final shape = prepared;
+    final canCommit = currentOwner && shape != null;
+    final accepted = platformFFI.takeCursorShape(
+      activeSessionId,
+      streamOwner.clientOwnerId,
+      id,
+      revision,
+      publication,
+      canCommit,
+    );
+    if (!accepted) {
+      shape?.dispose();
+      return;
+    }
+    if (canCommit && shape != null) {
+      final committed = cursorModel.commitCursorShape(shape, activeSessionId);
+      if (!committed && currentOwner) {
+        cursorModel.setCursorUnavailable(activeSessionId);
+      }
+    } else {
+      shape?.dispose();
+      if (currentOwner) {
+        cursorModel.setCursorUnavailable(activeSessionId);
+      }
+    }
+  }
+
+  Future<void> _handleCursorId(
+      _SessionOwner streamOwner,
+      SessionID activeSessionId,
+      String id,
+      int revision,
+      int publication) async {
+    final currentOwner = isCurrentSessionOwner(
+        activeSessionId, streamOwner.clientOwnerId);
+    final canActivate = currentOwner &&
+        cursorModel.hasCursorShape(id, revision, activeSessionId);
+    final accepted = platformFFI.takeCursorShape(
+      activeSessionId,
+      streamOwner.clientOwnerId,
+      id,
+      revision,
+      publication,
+      canActivate,
+    );
+    if (!accepted) {
+      return;
+    }
+    if (!canActivate ||
+        !cursorModel.activateCursorShape(
+            id, revision, activeSessionId)) {
+      if (currentOwner) {
+        cursorModel.setCursorUnavailable(activeSessionId);
+      }
+    }
+  }
+
+  Future<void> _handleCursorUnavailable(
+      _SessionOwner streamOwner,
+      SessionID activeSessionId,
+      String id,
+      int publication) async {
+    final currentOwner = isCurrentSessionOwner(
+        activeSessionId, streamOwner.clientOwnerId);
+    final accepted = platformFFI.takeCursorShape(
+      activeSessionId,
+      streamOwner.clientOwnerId,
+      id,
+      0,
+      publication,
+      false,
+    );
+    if (accepted && currentOwner) {
+      cursorModel.setCursorUnavailable(activeSessionId);
+    }
+  }
+
   Future<void> _handleTextureRgba(
       SessionEventQueue<_SessionOwner> sessionEvents,
       _SessionOwner streamOwner,
@@ -4064,6 +4490,28 @@ class FFI {
     if (presented) {
       await onEvent2UIRgba(activeSessionId, topologyRevision,
           imageGeometryInitialized: true);
+    }
+  }
+
+  Future<void> _handleWebCursorShape(
+      _SessionOwner streamOwner,
+      SessionID activeSessionId,
+      _WebCursorShape shape) async {
+    final prepared =
+        await cursorModel.prepareWebCursorShape(shape, activeSessionId);
+    final current = isCurrentSessionOwner(
+            activeSessionId, streamOwner.clientOwnerId) &&
+        cursorModel.isCurrentWebCursorShape(shape, activeSessionId);
+    if (!current) {
+      prepared?.dispose();
+      return;
+    }
+    if (prepared == null) {
+      cursorModel.setCursorUnavailable(activeSessionId);
+      return;
+    }
+    if (!cursorModel.commitCursorShape(prepared, activeSessionId)) {
+      cursorModel.setCursorUnavailable(activeSessionId);
     }
   }
 
@@ -4201,6 +4649,40 @@ class FFI {
                 message.field2),
             activeSessionId,
             'Cursor-position presentation');
+      } else if (message is EventToUI_CursorData) {
+        _observeSessionTask(
+            _handleCursorData(
+                streamOwner,
+                activeSessionId,
+                message.field0,
+                message.field1,
+                message.field2,
+                message.field3,
+                message.field4,
+                message.field5,
+                message.field6,
+                message.field7),
+            activeSessionId,
+            'Cursor-shape presentation');
+      } else if (message is EventToUI_CursorId) {
+        _observeSessionTask(
+            _handleCursorId(
+                streamOwner,
+                activeSessionId,
+                message.field0,
+                message.field1,
+                message.field2),
+            activeSessionId,
+            'Cursor-shape reference');
+      } else if (message is EventToUI_CursorUnavailable) {
+        _observeSessionTask(
+            _handleCursorUnavailable(
+                streamOwner,
+                activeSessionId,
+                message.field0,
+                message.field1),
+            activeSessionId,
+            'Cursor-shape fallback');
       } else if (message is EventToUI_Texture) {
         _observeSessionTask(
             _handleTextureRgba(sessionEvents, streamOwner, activeSessionId,

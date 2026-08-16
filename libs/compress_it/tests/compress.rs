@@ -6,7 +6,7 @@
 //! rejects (empty) anything larger. These tests pin: a normal payload round-trips,
 //! a within-cap payload survives, and a bomb is refused rather than allocated.
 
-use hbb_common::compress::{compress, decompress};
+use hbb_common::compress::{compress, decompress, decompress_with_limit};
 
 #[test]
 fn roundtrip_small_payload() {
@@ -47,4 +47,12 @@ fn r_s7_rejects_a_decompression_bomb() {
 fn garbage_input_is_empty_not_a_panic() {
     // A non-zstd blob must fail safe (empty), matching the prior unwrap_or_default.
     assert!(decompress(b"not a zstd stream at all").is_empty());
+}
+
+#[test]
+fn caller_specific_limit_rejects_before_the_global_ceiling() {
+    let src = vec![9u8; 4096];
+    let compressed = compress(&src);
+    assert_eq!(decompress_with_limit(&compressed, src.len()), src);
+    assert!(decompress_with_limit(&compressed, src.len() - 1).is_empty());
 }

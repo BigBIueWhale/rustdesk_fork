@@ -288,19 +288,28 @@ pub fn get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
         } else {
             bm_mask.bmHeight / 2
         };
-        let cbits_size = width * height * 4;
+        let cbits_size = super::cursor_rgba_len(width, height)
+            .ok_or_else(|| anyhow!("cursor bitmap dimensions exceed the presentation bound"))?;
         if cbits_size < 16 {
             bail!("Invalid icon: too small"); // solve some crash
         }
-        let mut cbits: Vec<u8> = Vec::new();
-        cbits.resize(cbits_size as _, 0);
-        let mut mbits: Vec<u8> = Vec::new();
-        mbits.resize((bm_mask.bmWidthBytes * bm_mask.bmHeight) as _, 0);
-        let r = GetBitmapBits(ii.0.hbmMask, mbits.len() as _, mbits.as_mut_ptr() as _);
+        let mask_width = usize::try_from(bm_mask.bmWidthBytes)
+            .map_err(|_| anyhow!("cursor mask row width is negative"))?;
+        let mask_height = usize::try_from(bm_mask.bmHeight)
+            .map_err(|_| anyhow!("cursor mask height is negative"))?;
+        let mask_size = mask_width
+            .checked_mul(mask_height)
+            .filter(|size| *size <= super::MAX_CURSOR_RGBA_BYTES)
+            .ok_or_else(|| anyhow!("cursor mask dimensions exceed the presentation bound"))?;
+        let mask_size_i32 = i32::try_from(mask_size)
+            .map_err(|_| anyhow!("cursor mask size is not representable by Win32"))?;
+        let mut cbits = vec![0; cbits_size];
+        let mut mbits = vec![0; mask_size];
+        let r = GetBitmapBits(ii.0.hbmMask, mask_size_i32, mbits.as_mut_ptr() as _);
         if r == 0 {
             bail!("Failed to copy bitmap data");
         }
-        if r != (mbits.len() as i32) {
+        if r != mask_size_i32 {
             bail!(
                 "Invalid mask cursor buffer size, got {} bytes, expected {}",
                 r,
@@ -315,7 +324,7 @@ pub fn get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
                 &mut cbits,
                 width as _,
                 height as _,
-                bm_mask.bmWidthBytes as _,
+                mask_width,
             );
         } else {
             do_outline = handleMask(
@@ -328,27 +337,51 @@ pub fn get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
             ) > 0;
         }
         if do_outline {
-            let mut outline = Vec::new();
-            outline.resize(((width + 2) * (height + 2) * 4) as _, 0);
+            let outlined_width = width
+                .checked_add(2)
+                .ok_or_else(|| anyhow!("outlined cursor width overflowed"))?;
+            let outlined_height = height
+                .checked_add(2)
+                .ok_or_else(|| anyhow!("outlined cursor height overflowed"))?;
+            let outline_size = super::cursor_rgba_len(outlined_width, outlined_height)
+                .ok_or_else(|| anyhow!("outlined cursor exceeds the presentation bound"))?;
+            let outline_size_i32 = i32::try_from(outline_size)
+                .map_err(|_| anyhow!("outlined cursor size is not representable by Win32"))?;
+            let mut outline = vec![0; outline_size];
             drawOutline(
                 outline.as_mut_ptr(),
                 cbits.as_ptr(),
                 width,
                 height,
-                outline.len() as _,
+                outline_size_i32,
             );
             cbits = outline;
-            width += 2;
-            height += 2;
-            ii.0.xHotspot += 1;
-            ii.0.yHotspot += 1;
+            width = outlined_width;
+            height = outlined_height;
+            ii.0.xHotspot = ii
+                .0
+                .xHotspot
+                .checked_add(1)
+                .ok_or_else(|| anyhow!("outlined cursor hotspot overflowed"))?;
+            ii.0.yHotspot = ii
+                .0
+                .yHotspot
+                .checked_add(1)
+                .ok_or_else(|| anyhow!("outlined cursor hotspot overflowed"))?;
+        }
+        let hotx = i32::try_from(ii.0.xHotspot)
+            .map_err(|_| anyhow!("cursor horizontal hotspot is not representable"))?;
+        let hoty = i32::try_from(ii.0.yHotspot)
+            .map_err(|_| anyhow!("cursor vertical hotspot is not representable"))?;
+        if hotx >= width || hoty >= height {
+            bail!("cursor hotspot lies outside the bitmap");
         }
 
         Ok(CursorData {
             id: hcursor,
             colors: cbits.into(),
-            hotx: ii.0.xHotspot as _,
-            hoty: ii.0.yHotspot as _,
+            hotx,
+            hoty,
             width: width as _,
             height: height as _,
             ..Default::default()

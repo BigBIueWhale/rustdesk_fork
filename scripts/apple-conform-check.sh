@@ -3529,6 +3529,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c2aa) R-S11gv exact bounded cursor-shape resources =="
+if python3 scripts/verify-viewer-cursor-resources.py --repo . --self-test; then
+  note "ok  R-S11gv Apple/shared cursor capture, identity, publication, presentation, and retirement are exact and bounded"
+else
+  echo "  FAIL R-S11gv Apple/shared cursor resources regained unchecked capture, stale identity, unacknowledged publication, unbounded registration, or incomplete teardown"
+  rc=1
+fi
+
 echo "== (2g-c2b) R-S11go exact-owner ordered display-selection finality =="
 if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then
   note "ok  R-S11go Apple/shared display selection is exact-owner, typed, ordered, bounded, and failure-visible"

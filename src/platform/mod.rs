@@ -30,6 +30,36 @@ use std::sync::{Arc, Mutex};
 #[cfg(not(any(target_os = "macos", target_os = "android", target_os = "ios")))]
 pub const SERVICE_INTERVAL: u64 = 300;
 
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) const MAX_CURSOR_RGBA_BYTES: usize = 4 * 1024 * 1024;
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
+pub(crate) fn cursor_rgba_len(width: i32, height: i32) -> Option<usize> {
+    let width = usize::try_from(width).ok()?;
+    let height = usize::try_from(height).ok()?;
+    if width == 0 || height == 0 {
+        return None;
+    }
+    width
+        .checked_mul(height)?
+        .checked_mul(4)
+        .filter(|bytes| *bytes <= MAX_CURSOR_RGBA_BYTES)
+}
+
+#[cfg(all(test, not(any(target_os = "android", target_os = "ios"))))]
+mod cursor_bounds_tests {
+    use super::*;
+
+    #[test]
+    fn r_s11gv_cursor_allocation_bound_is_checked_before_platform_copy() {
+        assert_eq!(cursor_rgba_len(1024, 1024), Some(MAX_CURSOR_RGBA_BYTES));
+        assert_eq!(cursor_rgba_len(1025, 1024), None);
+        assert_eq!(cursor_rgba_len(0, 1), None);
+        assert_eq!(cursor_rgba_len(-1, 1), None);
+        assert_eq!(cursor_rgba_len(i32::MAX, i32::MAX), None);
+    }
+}
+
 lazy_static::lazy_static! {
     static ref INSTALLING_SERVICE: Arc<Mutex<bool>>= Default::default();
 }

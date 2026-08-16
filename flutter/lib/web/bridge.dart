@@ -31,6 +31,25 @@ sealed class EventToUI {
     int field1,
     int field2,
   ) = EventToUI_CursorPosition;
+  const factory EventToUI.cursorData(
+    String field0,
+    int field1,
+    int field2,
+    int field3,
+    int field4,
+    int field5,
+    Uint8List field6,
+    int field7,
+  ) = EventToUI_CursorData;
+  const factory EventToUI.cursorId(
+    String field0,
+    int field1,
+    int field2,
+  ) = EventToUI_CursorId;
+  const factory EventToUI.cursorUnavailable(
+    String field0,
+    int field1,
+  ) = EventToUI_CursorUnavailable;
 }
 
 class EventToUI_Event implements EventToUI {
@@ -67,6 +86,66 @@ class EventToUI_CursorPosition implements EventToUI {
   int get field0 => f0;
   int get field1 => f1;
   int get field2 => f2;
+}
+
+class EventToUI_CursorData implements EventToUI {
+  const EventToUI_CursorData(
+      final String field0,
+      final int field1,
+      final int field2,
+      final int field3,
+      final int field4,
+      final int field5,
+      final Uint8List field6,
+      final int field7)
+      : f0 = field0,
+        f1 = field1,
+        f2 = field2,
+        f3 = field3,
+        f4 = field4,
+        f5 = field5,
+        f6 = field6,
+        f7 = field7;
+  final String f0;
+  final int f1;
+  final int f2;
+  final int f3;
+  final int f4;
+  final int f5;
+  final Uint8List f6;
+  final int f7;
+  String get field0 => f0;
+  int get field1 => f1;
+  int get field2 => f2;
+  int get field3 => f3;
+  int get field4 => f4;
+  int get field5 => f5;
+  Uint8List get field6 => f6;
+  int get field7 => f7;
+}
+
+class EventToUI_CursorId implements EventToUI {
+  const EventToUI_CursorId(
+      final String field0, final int field1, final int field2)
+      : f0 = field0,
+        f1 = field1,
+        f2 = field2;
+  final String f0;
+  final int f1;
+  final int f2;
+  String get field0 => f0;
+  int get field1 => f1;
+  int get field2 => f2;
+}
+
+class EventToUI_CursorUnavailable implements EventToUI {
+  const EventToUI_CursorUnavailable(final String field0, final int field1)
+      : f0 = field0,
+        f1 = field1;
+  final String f0;
+  final int f1;
+  String get field0 => f0;
+  int get field1 => f1;
 }
 
 class RustdeskImpl {
@@ -1232,6 +1311,17 @@ class RustdeskImpl {
       required int x,
       required int y,
       required int publication,
+      dynamic hint}) {
+    return false;
+  }
+
+  bool sessionTakeCursorShape(
+      {required UuidValue sessionId,
+      required UuidValue clientOwnerId,
+      required String id,
+      required int revision,
+      required int publication,
+      required bool accepted,
       dynamic hint}) {
     return false;
   }

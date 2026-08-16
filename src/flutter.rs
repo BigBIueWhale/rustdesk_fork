@@ -48,6 +48,8 @@ pub(crate) const APP_TYPE_CM: &str = "main";
 
 const MAX_REMOTE_CURSOR_PIXELS: usize = 1024 * 1024;
 const MAX_REMOTE_CURSOR_RGBA_BYTES: usize = MAX_REMOTE_CURSOR_PIXELS * 4;
+const CURSOR_SHAPE_CACHE_MAX_ENTRIES: usize = 64;
+const CURSOR_SHAPE_CACHE_MAX_RGBA_BYTES: usize = 16 * 1024 * 1024;
 
 pub type FlutterSession = Arc<Session<FlutterHandler>>;
 
@@ -138,7 +140,17 @@ fn remote_cursor_rgba_len(width: i32, height: i32) -> Option<usize> {
 
 fn remote_cursor_rgba_for_ui(cd: &CursorData) -> Option<Vec<u8>> {
     let expected = remote_cursor_rgba_len(cd.width, cd.height)?;
-    let colors = hbb_common::compress::decompress(&cd.colors);
+    if cd.hotx < 0 || cd.hoty < 0 || cd.hotx >= cd.width || cd.hoty >= cd.height {
+        log::warn!(
+            "dropping remote cursor with invalid hotspot before Flutter handoff: hotx={}, hoty={}, width={}, height={}",
+            cd.hotx,
+            cd.hoty,
+            cd.width,
+            cd.height
+        );
+        return None;
+    }
+    let colors = hbb_common::compress::decompress_with_limit(&cd.colors, expected);
     if colors.len() != expected || colors.len() > MAX_REMOTE_CURSOR_RGBA_BYTES {
         log::warn!(
             "dropping invalid remote cursor payload before Flutter handoff: width={}, height={}, bytes={}, expected={}, max={}",
@@ -402,6 +414,12 @@ struct SessionHandler {
     // Cursor movement is high-rate presentation state, not a generic unbounded Dart event. Keep
     // one exact publication and only its latest successor for this UI stream.
     cursor_position: CursorPositionMailbox,
+    // Cursor shape/data follows the same exact UI stream but owns a separate low-rate mailbox so
+    // decoding or registering a custom cursor cannot queue unbounded Dart-port work.
+    cursor_shape: CursorShapeMailbox,
+    // Only an exact Dart acknowledgement proves that this handler has decoded a shape. This
+    // bounded mirror decides whether a later reference may use the ID-only typed event.
+    known_cursor_shapes: CursorShapeKnowledge,
     renderer: VideoRenderer,
     // One admitted peer screenshot belongs to this exact UI session. It is cleared when a new
     // request starts, consumed only through this session's UUID, and dropped with the handler.
@@ -426,6 +444,10 @@ pub struct FlutterHandler {
     // replacement for the same UI session UUID.
     rgba_publication_counter: Arc<AtomicU64>,
     cursor_position_publication_counter: Arc<AtomicU64>,
+    cursor_shape_publication_counter: Arc<AtomicU64>,
+    cursor_shape_revision_counter: Arc<AtomicU64>,
+    cursor_shapes: Arc<RwLock<CursorShapeCache>>,
+    current_cursor: Arc<RwLock<CurrentCursorPresentation>>,
     peer_info: Arc<RwLock<PeerInfo>>,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     hooks: Arc<RwLock<HashMap<String, SessionHook>>>,
@@ -439,6 +461,10 @@ impl Default for FlutterHandler {
             display_rgbas: Default::default(),
             rgba_publication_counter: Default::default(),
             cursor_position_publication_counter: Default::default(),
+            cursor_shape_publication_counter: Default::default(),
+            cursor_shape_revision_counter: Default::default(),
+            cursor_shapes: Default::default(),
+            current_cursor: Default::default(),
             peer_info: Default::default(),
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             hooks: Default::default(),
@@ -464,7 +490,14 @@ struct CursorPositionPublication {
 #[derive(Default)]
 struct CursorPositionMailbox {
     published: Option<CursorPositionPublication>,
-    pending: Option<CursorPositionValue>,
+    current: Option<CursorPositionValue>,
+    delivery_failed: bool,
+}
+
+#[derive(Default)]
+struct CurrentCursorPresentation {
+    shape: Option<CursorShapeValue>,
+    position: Option<CursorPositionValue>,
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -494,11 +527,12 @@ impl CursorPositionMailbox {
     where
         F: FnOnce() -> Option<u64>,
     {
-        if self.published.is_some() {
-            self.pending = Some(position);
+        self.current = Some(position);
+        if self.published.is_some() || self.delivery_failed {
             return CursorPositionOffer::Pending;
         }
         let Some(publication) = next_publication() else {
+            self.clear();
             return CursorPositionOffer::Exhausted;
         };
         let published = CursorPositionPublication {
@@ -520,12 +554,15 @@ impl CursorPositionMailbox {
         if self.published != Some(expected) {
             return CursorPositionAcknowledgement::Ignored;
         }
-        let Some(position) = self.pending.take() else {
-            self.published = None;
+        self.published = None;
+        let Some(position) = self.current else {
             return CursorPositionAcknowledgement::Drained;
         };
+        if position == expected.position {
+            return CursorPositionAcknowledgement::Drained;
+        }
         let Some(publication) = next_publication() else {
-            self.published = None;
+            self.clear();
             return CursorPositionAcknowledgement::Exhausted;
         };
         let published = CursorPositionPublication {
@@ -540,12 +577,13 @@ impl CursorPositionMailbox {
     where
         F: FnOnce() -> Option<u64>,
     {
-        let Some(current) = self.published else {
+        self.delivery_failed = false;
+        let Some(position) = self.current else {
+            self.published = None;
             return CursorPositionRearm::Idle;
         };
-        let position = self.pending.take().unwrap_or(current.position);
         let Some(publication) = next_publication() else {
-            self.published = None;
+            self.clear();
             return CursorPositionRearm::Exhausted;
         };
         let published = CursorPositionPublication {
@@ -556,13 +594,408 @@ impl CursorPositionMailbox {
         CursorPositionRearm::Rearmed(published)
     }
 
-    fn discard_pending(&mut self) {
-        self.pending = None;
+    fn invalidate_current(&mut self) {
+        self.current = None;
+    }
+
+    fn delivery_failed(&mut self) {
+        self.published = None;
+        self.delivery_failed = true;
+    }
+
+    fn retain_current(&mut self, position: CursorPositionValue) {
+        self.current = Some(position);
     }
 
     fn clear(&mut self) {
         self.published = None;
-        self.pending = None;
+        self.current = None;
+        self.delivery_failed = false;
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct RemoteCursorShape {
+    id: String,
+    revision: u64,
+    hotx: i32,
+    hoty: i32,
+    width: i32,
+    height: i32,
+    rgba: Vec<u8>,
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum CursorShapeState {
+    Available(Arc<RemoteCursorShape>),
+    Unavailable(String),
+}
+
+impl CursorShapeState {
+    fn identity(&self) -> (&str, u64) {
+        match self {
+            Self::Available(shape) => (&shape.id, shape.revision),
+            Self::Unavailable(id) => (id, 0),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CursorShapeValue {
+    state: CursorShapeState,
+    include_data: bool,
+}
+
+impl CursorShapeValue {
+    fn bind_to_knowledge(mut self, known: &mut CursorShapeKnowledge) -> Self {
+        if let CursorShapeState::Available(shape) = &self.state {
+            self.include_data = !known.contains(shape);
+        }
+        self
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct CursorShapePublication {
+    value: CursorShapeValue,
+    publication: u64,
+}
+
+#[derive(Default)]
+struct CursorShapeMailbox {
+    published: Option<CursorShapePublication>,
+    current: Option<CursorShapeValue>,
+    delivery_failed: bool,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum CursorShapeOffer {
+    Pending,
+    Published(CursorShapePublication),
+    Exhausted,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum CursorShapeAcknowledgement {
+    Ignored,
+    Drained,
+    Promoted(CursorShapePublication),
+    Exhausted,
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum CursorShapeRearm {
+    Idle,
+    Rearmed(CursorShapePublication),
+    Exhausted,
+}
+
+impl CursorShapeMailbox {
+    fn offer<F>(&mut self, value: CursorShapeValue, next_publication: F) -> CursorShapeOffer
+    where
+        F: FnOnce() -> Option<u64>,
+    {
+        self.current = Some(value.clone());
+        if self.published.is_some() || self.delivery_failed {
+            return CursorShapeOffer::Pending;
+        }
+        let Some(publication) = next_publication() else {
+            self.clear();
+            return CursorShapeOffer::Exhausted;
+        };
+        let published = CursorShapePublication { value, publication };
+        self.published = Some(published.clone());
+        CursorShapeOffer::Published(published)
+    }
+
+    fn acknowledge<F>(
+        &mut self,
+        id: &str,
+        revision: u64,
+        publication: u64,
+        next_publication: F,
+    ) -> CursorShapeAcknowledgement
+    where
+        F: FnOnce() -> Option<u64>,
+    {
+        let Some(published) = self.published.as_ref() else {
+            return CursorShapeAcknowledgement::Ignored;
+        };
+        if published.value.state.identity() != (id, revision)
+            || published.publication != publication
+        {
+            return CursorShapeAcknowledgement::Ignored;
+        }
+        let acknowledged = published.clone();
+        self.published = None;
+        let Some(current) = self.current.clone() else {
+            return CursorShapeAcknowledgement::Drained;
+        };
+        if current == acknowledged.value {
+            return CursorShapeAcknowledgement::Drained;
+        }
+        let Some(publication) = next_publication() else {
+            self.clear();
+            return CursorShapeAcknowledgement::Exhausted;
+        };
+        let promoted = CursorShapePublication {
+            value: current,
+            publication,
+        };
+        self.published = Some(promoted.clone());
+        CursorShapeAcknowledgement::Promoted(promoted)
+    }
+
+    fn rearm<F>(&mut self, next_publication: F) -> CursorShapeRearm
+    where
+        F: FnOnce() -> Option<u64>,
+    {
+        self.delivery_failed = false;
+        let Some(mut current) = self.current.clone() else {
+            self.published = None;
+            return CursorShapeRearm::Idle;
+        };
+        if matches!(&current.state, CursorShapeState::Available(_)) {
+            current.include_data = true;
+        }
+        let Some(publication) = next_publication() else {
+            self.clear();
+            return CursorShapeRearm::Exhausted;
+        };
+        let rearmed = CursorShapePublication {
+            value: current,
+            publication,
+        };
+        self.published = Some(rearmed.clone());
+        CursorShapeRearm::Rearmed(rearmed)
+    }
+
+    fn delivery_failed(&mut self) {
+        self.published = None;
+        self.delivery_failed = true;
+    }
+
+    fn require_data_for(&mut self, publication: &CursorShapePublication) {
+        if publication.value.include_data {
+            return;
+        }
+        if let Some(current) = self.current.as_mut() {
+            if current.state == publication.value.state {
+                current.include_data = true;
+            }
+        }
+    }
+
+    fn retain_current(&mut self, value: CursorShapeValue) {
+        self.current = Some(value);
+    }
+
+    fn clear(&mut self) {
+        self.published = None;
+        self.current = None;
+        self.delivery_failed = false;
+    }
+}
+
+struct CursorShapeCacheEntry {
+    shape: Arc<RemoteCursorShape>,
+    rgba_bytes: usize,
+    last_used: u64,
+}
+
+#[derive(Default)]
+struct CursorShapeCache {
+    entries: HashMap<String, CursorShapeCacheEntry>,
+    rgba_bytes: usize,
+    use_counter: u64,
+}
+
+struct CursorShapeKnowledgeEntry {
+    revision: u64,
+    rgba_bytes: usize,
+    last_used: u64,
+}
+
+#[derive(Default)]
+struct CursorShapeKnowledge {
+    entries: HashMap<String, CursorShapeKnowledgeEntry>,
+    rgba_bytes: usize,
+    use_counter: u64,
+}
+
+impl CursorShapeKnowledge {
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.rgba_bytes = 0;
+        self.use_counter = 0;
+    }
+
+    fn next_use(&mut self) -> u64 {
+        let Some(next) = self.use_counter.checked_add(1) else {
+            self.clear();
+            self.use_counter = 1;
+            return 1;
+        };
+        self.use_counter = next;
+        next
+    }
+
+    fn contains(&mut self, shape: &RemoteCursorShape) -> bool {
+        if !self
+            .entries
+            .get(&shape.id)
+            .is_some_and(|entry| entry.revision == shape.revision)
+        {
+            return false;
+        }
+        let last_used = self.next_use();
+        let Some(entry) = self.entries.get_mut(&shape.id) else {
+            return false;
+        };
+        entry.last_used = last_used;
+        true
+    }
+
+    fn remove(&mut self, id: &str, revision: Option<u64>) {
+        let should_remove = self.entries.get(id).is_some_and(|entry| {
+            revision.map_or(true, |revision| entry.revision == revision)
+        });
+        if !should_remove {
+            return;
+        }
+        if let Some(removed) = self.entries.remove(id) {
+            self.rgba_bytes = self.rgba_bytes.saturating_sub(removed.rgba_bytes);
+        }
+    }
+
+    fn insert(&mut self, shape: &RemoteCursorShape) -> bool {
+        let rgba_bytes = shape.rgba.len();
+        if rgba_bytes == 0 || rgba_bytes > MAX_REMOTE_CURSOR_RGBA_BYTES {
+            return false;
+        }
+        if let Some(previous) = self.entries.remove(&shape.id) {
+            self.rgba_bytes = self.rgba_bytes.saturating_sub(previous.rgba_bytes);
+        }
+        let last_used = self.next_use();
+        while self.entries.len() >= CURSOR_SHAPE_CACHE_MAX_ENTRIES
+            || self
+                .rgba_bytes
+                .checked_add(rgba_bytes)
+                .map_or(true, |total| total > CURSOR_SHAPE_CACHE_MAX_RGBA_BYTES)
+        {
+            let Some(oldest) = self
+                .entries
+                .iter()
+                .min_by_key(|(_, entry)| entry.last_used)
+                .map(|(id, _)| id.clone())
+            else {
+                return false;
+            };
+            if let Some(removed) = self.entries.remove(&oldest) {
+                self.rgba_bytes = self.rgba_bytes.saturating_sub(removed.rgba_bytes);
+            }
+        }
+        self.rgba_bytes = match self.rgba_bytes.checked_add(rgba_bytes) {
+            Some(total) => total,
+            None => return false,
+        };
+        self.entries.insert(
+            shape.id.clone(),
+            CursorShapeKnowledgeEntry {
+                revision: shape.revision,
+                rgba_bytes,
+                last_used,
+            },
+        );
+        true
+    }
+}
+
+impl CursorShapeCache {
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.rgba_bytes = 0;
+        self.use_counter = 0;
+    }
+
+    fn next_use(&mut self) -> u64 {
+        let Some(next) = self.use_counter.checked_add(1) else {
+            self.clear();
+            self.use_counter = 1;
+            return 1;
+        };
+        self.use_counter = next;
+        next
+    }
+
+    fn get(&mut self, id: &str) -> Option<Arc<RemoteCursorShape>> {
+        if !self.entries.contains_key(id) {
+            return None;
+        }
+        let last_used = self.next_use();
+        let entry = self.entries.get_mut(id)?;
+        entry.last_used = last_used;
+        Some(Arc::clone(&entry.shape))
+    }
+
+    fn contains(&self, shape: &RemoteCursorShape) -> bool {
+        self.entries
+            .get(&shape.id)
+            .is_some_and(|entry| entry.shape.revision == shape.revision)
+    }
+
+    fn remove(&mut self, id: &str, revision: Option<u64>) {
+        let should_remove = self.entries.get(id).is_some_and(|entry| {
+            revision.map_or(true, |revision| entry.shape.revision == revision)
+        });
+        if !should_remove {
+            return;
+        }
+        if let Some(removed) = self.entries.remove(id) {
+            self.rgba_bytes = self.rgba_bytes.saturating_sub(removed.rgba_bytes);
+        }
+    }
+
+    fn insert(&mut self, shape: Arc<RemoteCursorShape>) -> bool {
+        let rgba_bytes = shape.rgba.len();
+        if rgba_bytes == 0 || rgba_bytes > MAX_REMOTE_CURSOR_RGBA_BYTES {
+            return false;
+        }
+        if let Some(previous) = self.entries.remove(&shape.id) {
+            self.rgba_bytes = self.rgba_bytes.saturating_sub(previous.rgba_bytes);
+        }
+        let last_used = self.next_use();
+        while self.entries.len() >= CURSOR_SHAPE_CACHE_MAX_ENTRIES
+            || self
+                .rgba_bytes
+                .checked_add(rgba_bytes)
+                .map_or(true, |total| total > CURSOR_SHAPE_CACHE_MAX_RGBA_BYTES)
+        {
+            let Some(oldest) = self
+                .entries
+                .iter()
+                .min_by_key(|(_, entry)| entry.last_used)
+                .map(|(id, _)| id.clone())
+            else {
+                return false;
+            };
+            if let Some(removed) = self.entries.remove(&oldest) {
+                self.rgba_bytes = self.rgba_bytes.saturating_sub(removed.rgba_bytes);
+            }
+        }
+        self.rgba_bytes = match self.rgba_bytes.checked_add(rgba_bytes) {
+            Some(total) => total,
+            None => return false,
+        };
+        self.entries.insert(
+            shape.id.clone(),
+            CursorShapeCacheEntry {
+                shape,
+                rgba_bytes,
+                last_used,
+            },
+        );
+        true
     }
 }
 
@@ -587,6 +1020,35 @@ fn post_cursor_position(
         publication.position.y,
         publication.publication,
     ))
+}
+
+fn post_cursor_shape(
+    stream: &StreamSink<EventToUI>,
+    publication: &CursorShapePublication,
+) -> bool {
+    match &publication.value.state {
+        CursorShapeState::Available(shape) if publication.value.include_data => {
+            stream.add(EventToUI::CursorData(
+                shape.id.clone(),
+                shape.revision,
+                shape.hotx,
+                shape.hoty,
+                shape.width,
+                shape.height,
+                shape.rgba.clone(),
+                publication.publication,
+            ))
+        }
+        CursorShapeState::Available(shape) => stream.add(EventToUI::CursorId(
+            shape.id.clone(),
+            shape.revision,
+            publication.publication,
+        )),
+        CursorShapeState::Unavailable(id) => stream.add(EventToUI::CursorUnavailable(
+            id.clone(),
+            publication.publication,
+        )),
+    }
 }
 
 #[derive(Default)]
@@ -942,6 +1404,23 @@ impl VideoRenderer {
 }
 
 impl FlutterHandler {
+    fn session_handler_for_cursor_state(
+        client_owner_id: SessionID,
+        current: &CurrentCursorPresentation,
+    ) -> SessionHandler {
+        let mut handler = SessionHandler {
+            client_owner_id: Some(client_owner_id),
+            ..Default::default()
+        };
+        if let Some(shape) = current.shape.clone() {
+            handler.cursor_shape.retain_current(shape);
+        }
+        if let Some(position) = current.position {
+            handler.cursor_position.retain_current(position);
+        }
+        handler
+    }
+
     fn set_exact_owned_display_size(
         &self,
         session_id: &SessionID,
@@ -1107,17 +1586,21 @@ impl FlutterHandler {
             }
         };
         if is_cursor_position_topology_barrier(name) {
+            let mut current_cursor = self.current_cursor.write().unwrap();
+            current_cursor.position = None;
             let mut sessions = self.session_handlers.write().unwrap();
             for (sid, session) in sessions.iter_mut() {
                 if should_push(sid) {
                     // A retained cursor sample observed before this topology event cannot be
                     // published afterward and interpreted against the new geometry.
-                    session.cursor_position.discard_pending();
+                    session.cursor_position.invalidate_current();
                     if let Some(stream) = &session.event_stream {
                         stream.add(EventToUI::Event(out.clone()));
                     }
                 }
             }
+            drop(sessions);
+            drop(current_cursor);
         } else {
             for (sid, session) in self.session_handlers.read().unwrap().iter() {
                 if should_push(sid) {
@@ -1131,6 +1614,28 @@ impl FlutterHandler {
 
     fn next_cursor_position_publication(&self) -> Option<u64> {
         self.cursor_position_publication_counter
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                current
+                    .checked_add(1)
+                    .filter(|next| *next <= i64::MAX as u64)
+            })
+            .ok()
+            .and_then(|previous| previous.checked_add(1))
+    }
+
+    fn next_cursor_shape_publication(&self) -> Option<u64> {
+        self.cursor_shape_publication_counter
+            .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
+                current
+                    .checked_add(1)
+                    .filter(|next| *next <= i64::MAX as u64)
+            })
+            .ok()
+            .and_then(|previous| previous.checked_add(1))
+    }
+
+    fn next_cursor_shape_revision(&self) -> Option<u64> {
+        self.cursor_shape_revision_counter
             .fetch_update(Ordering::Relaxed, Ordering::Relaxed, |current| {
                 current
                     .checked_add(1)
@@ -1161,7 +1666,7 @@ impl FlutterHandler {
             CursorPositionAcknowledgement::Promoted(next) => {
                 if let Some(stream) = &handler.event_stream {
                     if !post_cursor_position(stream, next) {
-                        handler.cursor_position.clear();
+                        handler.cursor_position.delivery_failed();
                     }
                 }
                 true
@@ -1171,6 +1676,106 @@ impl FlutterHandler {
                 true
             }
         }
+    }
+
+    fn take_cursor_shape(
+        &self,
+        session_id: &SessionID,
+        client_owner_id: &SessionID,
+        id: &str,
+        revision: u64,
+        publication: u64,
+        accepted: bool,
+    ) -> bool {
+        let mut handlers = self.session_handlers.write().unwrap();
+        let Some(handler) = handlers
+            .get_mut(session_id)
+            .filter(|handler| handler.client_owner_id.as_ref() == Some(client_owner_id))
+        else {
+            return false;
+        };
+        let Some(acknowledged) = handler
+            .cursor_shape
+            .published
+            .as_ref()
+            .filter(|published| {
+                published.value.state.identity() == (id, revision)
+                    && published.publication == publication
+            })
+            .cloned()
+        else {
+            return false;
+        };
+        match &acknowledged.value.state {
+            CursorShapeState::Available(shape) if accepted => {
+                if !handler.known_cursor_shapes.insert(shape) {
+                    log::warn!("cursor-shape knowledge cache refused a bounded entry");
+                }
+            }
+            CursorShapeState::Available(shape) => {
+                handler
+                    .known_cursor_shapes
+                    .remove(&shape.id, Some(shape.revision));
+                handler.cursor_shape.require_data_for(&acknowledged);
+            }
+            CursorShapeState::Unavailable(unavailable_id) => {
+                handler.known_cursor_shapes.remove(unavailable_id, None);
+            }
+        }
+        match handler.cursor_shape.acknowledge(
+            id,
+            revision,
+            publication,
+            || self.next_cursor_shape_publication(),
+        ) {
+            CursorShapeAcknowledgement::Ignored => false,
+            CursorShapeAcknowledgement::Drained => true,
+            CursorShapeAcknowledgement::Promoted(mut next) => {
+                next.value = next
+                    .value
+                    .bind_to_knowledge(&mut handler.known_cursor_shapes);
+                if let Some(stream) = &handler.event_stream {
+                    if !post_cursor_shape(stream, &next) {
+                        handler.cursor_shape.delivery_failed();
+                    }
+                }
+                true
+            }
+            CursorShapeAcknowledgement::Exhausted => {
+                log::error!("cursor-shape publication space exhausted");
+                true
+            }
+        }
+    }
+
+    fn offer_cursor_shape(&self, value: CursorShapeValue) {
+        let mut current_cursor = self.current_cursor.write().unwrap();
+        current_cursor.shape = Some(value.clone());
+        for handler in self.session_handlers.write().unwrap().values_mut() {
+            let value = value
+                .clone()
+                .bind_to_knowledge(&mut handler.known_cursor_shapes);
+            let Some(stream) = handler.event_stream.as_ref() else {
+                handler.cursor_shape.retain_current(value);
+                continue;
+            };
+            match handler
+                .cursor_shape
+                .offer(value, || self.next_cursor_shape_publication())
+            {
+                CursorShapeOffer::Pending => {}
+                CursorShapeOffer::Published(publication) => {
+                    if !post_cursor_shape(stream, &publication) {
+                        handler.cursor_shape.delivery_failed();
+                    }
+                }
+                CursorShapeOffer::Exhausted => {
+                    log::error!("cursor-shape publication space exhausted");
+                    handler.cursor_shape.clear();
+                }
+            }
+        }
+        drop(current_cursor);
     }
 
     pub(crate) fn close_event_stream(&self, session_id: SessionID) {
@@ -1432,34 +2037,65 @@ impl FlutterHandler {
 
 impl InvokeUiSession for FlutterHandler {
     fn set_cursor_data(&self, cd: CursorData) {
+        let id = cd.id.to_string();
         let Some(colors) = remote_cursor_rgba_for_ui(&cd) else {
+            self.cursor_shapes.write().unwrap().remove(&id, None);
+            self.offer_cursor_shape(CursorShapeValue {
+                state: CursorShapeState::Unavailable(id),
+                include_data: false,
+            });
             return;
         };
-        self.push_event(
-            "cursor_data",
-            &[
-                ("id", &cd.id.to_string()),
-                ("hotx", &cd.hotx.to_string()),
-                ("hoty", &cd.hoty.to_string()),
-                ("width", &cd.width.to_string()),
-                ("height", &cd.height.to_string()),
-                (
-                    "colors",
-                    &serde_json::ser::to_string(&colors).unwrap_or("".to_owned()),
-                ),
-            ],
-            &[],
-        );
+        let Some(revision) = self.next_cursor_shape_revision() else {
+            log::error!("cursor-shape revision space exhausted");
+            self.cursor_shapes.write().unwrap().clear();
+            self.offer_cursor_shape(CursorShapeValue {
+                state: CursorShapeState::Unavailable(id),
+                include_data: false,
+            });
+            return;
+        };
+        let shape = Arc::new(RemoteCursorShape {
+            id,
+            revision,
+            hotx: cd.hotx,
+            hoty: cd.hoty,
+            width: cd.width,
+            height: cd.height,
+            rgba: colors,
+        });
+        if !self.cursor_shapes.write().unwrap().insert(Arc::clone(&shape)) {
+            log::warn!("cursor-shape cache refused a bounded entry");
+            self.offer_cursor_shape(CursorShapeValue {
+                state: CursorShapeState::Unavailable(shape.id.clone()),
+                include_data: false,
+            });
+            return;
+        }
+        self.offer_cursor_shape(CursorShapeValue {
+            state: CursorShapeState::Available(shape),
+            include_data: true,
+        });
     }
 
     fn set_cursor_id(&self, id: String) {
-        self.push_event("cursor_id", &[("id", &id.to_string())], &[]);
+        let shape = self.cursor_shapes.write().unwrap().get(&id);
+        self.offer_cursor_shape(CursorShapeValue {
+            state: match shape {
+                Some(shape) => CursorShapeState::Available(shape),
+                None => CursorShapeState::Unavailable(id),
+            },
+            include_data: false,
+        });
     }
 
     fn set_cursor_position(&self, cp: CursorPosition) {
         let position = CursorPositionValue { x: cp.x, y: cp.y };
+        let mut current_cursor = self.current_cursor.write().unwrap();
+        current_cursor.position = Some(position);
         for handler in self.session_handlers.write().unwrap().values_mut() {
             let Some(stream) = handler.event_stream.as_ref() else {
+                handler.cursor_position.retain_current(position);
                 continue;
             };
             match handler.cursor_position.offer(position, || {
@@ -1468,7 +2104,7 @@ impl InvokeUiSession for FlutterHandler {
                 CursorPositionOffer::Pending => {}
                 CursorPositionOffer::Published(publication) => {
                     if !post_cursor_position(stream, publication) {
-                        handler.cursor_position.clear();
+                        handler.cursor_position.delivery_failed();
                     }
                 }
                 CursorPositionOffer::Exhausted => {
@@ -1477,6 +2113,7 @@ impl InvokeUiSession for FlutterHandler {
                 }
             }
         }
+        drop(current_cursor);
     }
 
     /// unused in flutter, use switch_display or set_peer_info
@@ -2242,26 +2879,52 @@ pub fn session_start_(
             };
             try_send_close_event(&h.event_stream);
             h.event_stream = Some(event_stream);
-            match h.cursor_position.rearm(|| {
-                s.ui_handler.next_cursor_position_publication()
-            }) {
-                CursorPositionRearm::Idle => {}
-                CursorPositionRearm::Rearmed(publication) => {
+            h.known_cursor_shapes.clear();
+            match h
+                .cursor_shape
+                .rearm(|| s.ui_handler.next_cursor_shape_publication())
+            {
+                CursorShapeRearm::Idle => {}
+                CursorShapeRearm::Rearmed(publication) => {
                     let delivered = h
                         .event_stream
                         .as_ref()
-                        .is_some_and(|stream| post_cursor_position(stream, publication));
+                        .is_some_and(|stream| post_cursor_shape(stream, &publication));
                     if !delivered {
-                        h.cursor_position.clear();
+                        h.cursor_shape.delivery_failed();
                         start_failure = Some(anyhow!(
-                            "Outgoing session event stream rejected pending cursor position"
+                            "Outgoing session event stream rejected current cursor shape"
                         ));
                     }
                 }
-                CursorPositionRearm::Exhausted => {
+                CursorShapeRearm::Exhausted => {
                     start_failure = Some(anyhow!(
-                        "Outgoing session cursor-position publication is exhausted"
+                        "Outgoing session cursor-shape publication is exhausted"
                     ));
+                }
+            }
+            if start_failure.is_none() {
+                match h.cursor_position.rearm(|| {
+                    s.ui_handler.next_cursor_position_publication()
+                }) {
+                    CursorPositionRearm::Idle => {}
+                    CursorPositionRearm::Rearmed(publication) => {
+                        let delivered = h
+                            .event_stream
+                            .as_ref()
+                            .is_some_and(|stream| post_cursor_position(stream, publication));
+                        if !delivered {
+                            h.cursor_position.delivery_failed();
+                            start_failure = Some(anyhow!(
+                                "Outgoing session event stream rejected current cursor position"
+                            ));
+                        }
+                    }
+                    CursorPositionRearm::Exhausted => {
+                        start_failure = Some(anyhow!(
+                            "Outgoing session cursor-position publication is exhausted"
+                        ));
+                    }
                 }
             }
             if start_failure.is_none() && starts_peer_connection && is_video_session {
@@ -2647,6 +3310,26 @@ pub fn session_take_cursor_position(
                 position: CursorPositionValue { x, y },
                 publication,
             },
+        )
+    })
+}
+
+pub fn session_take_cursor_shape(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+    id: String,
+    revision: u64,
+    publication: u64,
+    accepted: bool,
+) -> bool {
+    sessions::get_session_by_session_id(&session_id).is_some_and(|session| {
+        session.ui_handler.take_cursor_shape(
+            &session_id,
+            &client_owner_id,
+            &id,
+            revision,
+            publication,
+            accepted,
         )
     })
 }
@@ -3188,20 +3871,21 @@ pub mod sessions {
         conn_type: ConnType,
         session: FlutterSession,
     ) {
-        let handler = SessionHandler {
-            client_owner_id: Some(client_owner_id),
-            ..Default::default()
-        };
-        SESSIONS
-            .write()
-            .unwrap()
+        let mut sessions = SESSIONS.write().unwrap();
+        let peer_session = sessions
             .entry((session.get_id(), conn_type))
-            .or_insert(session)
-            .ui_handler
+            .or_insert(session);
+        let current_cursor = peer_session.ui_handler.current_cursor.read().unwrap();
+        let handler = FlutterHandler::session_handler_for_cursor_state(
+            client_owner_id,
+            &current_cursor,
+        );
+        peer_session
             .session_handlers
             .write()
             .unwrap()
             .insert(session_id, handler);
+        drop(current_cursor);
     }
 
     #[inline]
@@ -3214,22 +3898,25 @@ pub mod sessions {
     ) -> ResultType<()> {
         if let Some(s) = SESSIONS.read().unwrap().get(&(peer_id, conn_type)) {
             let validated_displays = validate_display_selection(s, &displays)?;
+            let current_cursor = s.ui_handler.current_cursor.read().unwrap();
+            let mut h = FlutterHandler::session_handler_for_cursor_state(
+                client_owner_id,
+                &current_cursor,
+            );
             let mut handlers = s.ui_handler.session_handlers.write().unwrap();
             let mut capture_set = remaining_displays(Some(&session_id), &handlers)?;
             capture_set.extend(displays.iter().copied());
             capture_set.sort_unstable();
             capture_set.dedup();
             let refresh = ordered_display_selection_refresh(s, &validated_displays);
-            let mut h = SessionHandler {
-                client_owner_id: Some(client_owner_id),
-                ..Default::default()
-            };
             h.displays = validated_displays;
             s.try_select_displays(None, capture_set, refresh, || {
                 handlers.insert(session_id, h);
                 s.ui_handler
                     .retire_rgba_displays_except(&session_id, &displays);
             })?;
+            drop(handlers);
+            drop(current_cursor);
             Ok(())
         } else {
             bail!("existing viewer peer session is no longer active")
@@ -4310,7 +4997,7 @@ mod mobile_session_lifecycle_tests {
         assert_eq!(mailbox.offer(second, || Some(2)), CursorPositionOffer::Pending);
         assert_eq!(mailbox.offer(latest, || Some(3)), CursorPositionOffer::Pending);
         assert_eq!(mailbox.published, Some(first_publication));
-        assert_eq!(mailbox.pending, Some(latest));
+        assert_eq!(mailbox.current, Some(latest));
 
         assert_eq!(
             mailbox.acknowledge(
@@ -4339,12 +5026,17 @@ mod mobile_session_lifecycle_tests {
         };
         assert_eq!(latest_publication.position, latest);
         assert_eq!(latest_publication.publication, 2);
-        assert!(mailbox.pending.is_none());
         assert_eq!(
             mailbox.acknowledge(latest_publication, || Some(3)),
             CursorPositionAcknowledgement::Drained
         );
         assert!(mailbox.published.is_none());
+        assert_eq!(mailbox.current, Some(latest));
+        let CursorPositionRearm::Rearmed(replayed) = mailbox.rearm(|| Some(3)) else {
+            panic!("the acknowledged current position was not replayed");
+        };
+        assert_eq!(replayed.position, latest);
+        assert_eq!(replayed.publication, 3);
     }
 
     #[test]
@@ -4362,9 +5054,9 @@ mod mobile_session_lifecycle_tests {
             mailbox.offer(pre_topology_pending, || Some(2)),
             CursorPositionOffer::Pending
         );
-        mailbox.discard_pending();
+        mailbox.invalidate_current();
         assert_eq!(mailbox.published, Some(before_publication));
-        assert!(mailbox.pending.is_none());
+        assert!(mailbox.current.is_none());
 
         assert_eq!(mailbox.offer(after, || Some(2)), CursorPositionOffer::Pending);
         let CursorPositionAcknowledgement::Promoted(after_publication) =
@@ -4402,9 +5094,21 @@ mod mobile_session_lifecycle_tests {
             mailbox.acknowledge(rearmed, || Some(3)),
             CursorPositionAcknowledgement::Drained
         );
+        assert_eq!(mailbox.current, Some(latest));
+
+        let CursorPositionRearm::Rearmed(replayed_after_drain) =
+            mailbox.rearm(|| Some(3))
+        else {
+            panic!("the current cursor position was not replayed after acknowledgement");
+        };
+        assert_eq!(replayed_after_drain.position, latest);
+        assert_eq!(
+            mailbox.acknowledge(replayed_after_drain, || Some(4)),
+            CursorPositionAcknowledgement::Drained
+        );
 
         let CursorPositionOffer::Published(exhausted_publication) =
-            mailbox.offer(first, || Some(3))
+            mailbox.offer(first, || Some(4))
         else {
             panic!("cursor position was not republished after drain");
         };
@@ -4414,14 +5118,14 @@ mod mobile_session_lifecycle_tests {
             CursorPositionAcknowledgement::Exhausted
         );
         assert!(mailbox.published.is_none());
-        assert!(mailbox.pending.is_none());
+        assert!(mailbox.current.is_none());
 
         assert_eq!(
             mailbox.offer(first, || None),
             CursorPositionOffer::Exhausted
         );
         assert!(mailbox.published.is_none());
-        assert!(mailbox.pending.is_none());
+        assert!(mailbox.current.is_none());
 
         let CursorPositionOffer::Published(_) =
             mailbox.offer(first, || Some(4))
@@ -4437,7 +5141,308 @@ mod mobile_session_lifecycle_tests {
             CursorPositionRearm::Exhausted
         );
         assert!(mailbox.published.is_none());
-        assert!(mailbox.pending.is_none());
+        assert!(mailbox.current.is_none());
+    }
+
+    fn test_cursor_shape(id: &str, revision: u64, byte: u8) -> Arc<RemoteCursorShape> {
+        Arc::new(RemoteCursorShape {
+            id: id.to_owned(),
+            revision,
+            hotx: 0,
+            hoty: 0,
+            width: 1,
+            height: 1,
+            rgba: vec![byte; 4],
+        })
+    }
+
+    #[test]
+    fn r_s11gv_cursor_shape_mailbox_is_exact_latest_wins_and_replayable() {
+        let first = test_cursor_shape("1", 1, 1);
+        let superseded = test_cursor_shape("2", 2, 2);
+        let latest = test_cursor_shape("3", 3, 3);
+        let mut mailbox = CursorShapeMailbox::default();
+        let CursorShapeOffer::Published(first_publication) = mailbox.offer(
+            CursorShapeValue {
+                state: CursorShapeState::Available(Arc::clone(&first)),
+                include_data: true,
+            },
+            || Some(1),
+        ) else {
+            panic!("the first cursor shape was not published");
+        };
+        assert_eq!(
+            mailbox.offer(
+                CursorShapeValue {
+                    state: CursorShapeState::Available(superseded),
+                    include_data: true,
+                },
+                || Some(2),
+            ),
+            CursorShapeOffer::Pending
+        );
+        assert_eq!(
+            mailbox.offer(
+                CursorShapeValue {
+                    state: CursorShapeState::Available(Arc::clone(&latest)),
+                    include_data: false,
+                },
+                || Some(3),
+            ),
+            CursorShapeOffer::Pending
+        );
+        assert_eq!(
+            mailbox.acknowledge("2", 1, first_publication.publication, || Some(2)),
+            CursorShapeAcknowledgement::Ignored
+        );
+        assert_eq!(
+            mailbox.acknowledge("1", 1, first_publication.publication + 1, || Some(2)),
+            CursorShapeAcknowledgement::Ignored
+        );
+        let CursorShapeAcknowledgement::Promoted(latest_publication) = mailbox.acknowledge(
+            "1",
+            1,
+            first_publication.publication,
+            || Some(2),
+        ) else {
+            panic!("the latest cursor shape was not promoted");
+        };
+        assert_eq!(latest_publication.value.state.identity(), ("3", 3));
+        assert!(!latest_publication.value.include_data);
+        assert_eq!(
+            mailbox.acknowledge("3", 3, latest_publication.publication, || Some(3)),
+            CursorShapeAcknowledgement::Drained
+        );
+        assert!(mailbox.published.is_none());
+
+        let CursorShapeRearm::Rearmed(replayed) = mailbox.rearm(|| Some(3)) else {
+            panic!("the acknowledged cursor shape was not replayed");
+        };
+        assert_eq!(replayed.value.state.identity(), ("3", 3));
+        assert!(replayed.value.include_data);
+        assert_eq!(
+            mailbox.acknowledge("3", 3, replayed.publication, || Some(4)),
+            CursorShapeAcknowledgement::Drained
+        );
+        assert_eq!(
+            mailbox.current.as_ref().map(|value| value.state.identity()),
+            Some(("3", 3))
+        );
+    }
+
+    #[test]
+    fn r_s11gv_cursor_shape_mailbox_bounds_failure_unavailable_and_exhaustion() {
+        let shape = test_cursor_shape("1", 1, 1);
+        let mut mailbox = CursorShapeMailbox::default();
+        let CursorShapeOffer::Published(first) = mailbox.offer(
+            CursorShapeValue {
+                state: CursorShapeState::Available(shape),
+                include_data: true,
+            },
+            || Some(1),
+        ) else {
+            panic!("the cursor shape was not published");
+        };
+        mailbox.delivery_failed();
+        assert!(mailbox.published.is_none());
+        assert!(mailbox.current.is_some());
+        assert_eq!(
+            mailbox.acknowledge("1", 1, first.publication, || Some(2)),
+            CursorShapeAcknowledgement::Ignored
+        );
+        assert_eq!(
+            mailbox.offer(
+                CursorShapeValue {
+                    state: CursorShapeState::Unavailable("missing".to_owned()),
+                    include_data: false,
+                },
+                || Some(2),
+            ),
+            CursorShapeOffer::Pending
+        );
+        let CursorShapeRearm::Rearmed(unavailable) = mailbox.rearm(|| Some(2)) else {
+            panic!("the latest unavailable cursor state was not rearmed");
+        };
+        assert_eq!(unavailable.value.state.identity(), ("missing", 0));
+        assert_eq!(
+            mailbox.acknowledge("missing", 0, unavailable.publication, || None),
+            CursorShapeAcknowledgement::Drained
+        );
+        assert_eq!(mailbox.rearm(|| None), CursorShapeRearm::Exhausted);
+        assert!(mailbox.current.is_none());
+    }
+
+    #[test]
+    fn r_s11gv_negative_id_ack_republishes_full_data_exactly_once() {
+        let shape = test_cursor_shape("known", 7, 7);
+        let mut mailbox = CursorShapeMailbox::default();
+        let CursorShapeOffer::Published(id_only) = mailbox.offer(
+            CursorShapeValue {
+                state: CursorShapeState::Available(shape),
+                include_data: false,
+            },
+            || Some(1),
+        ) else {
+            panic!("the ID-only cursor shape was not published");
+        };
+        mailbox.require_data_for(&id_only);
+        let CursorShapeAcknowledgement::Promoted(full_data) = mailbox.acknowledge(
+            "known",
+            7,
+            id_only.publication,
+            || Some(2),
+        ) else {
+            panic!("the rejected ID-only shape was not repaired with full data");
+        };
+        assert!(full_data.value.include_data);
+        assert_eq!(
+            mailbox.acknowledge("known", 7, full_data.publication, || Some(3)),
+            CursorShapeAcknowledgement::Drained
+        );
+    }
+
+    #[test]
+    fn r_s11gv_cursor_shape_cache_evicts_by_count_bytes_and_recency() {
+        let mut cache = CursorShapeCache::default();
+        for revision in 1..=CURSOR_SHAPE_CACHE_MAX_ENTRIES as u64 {
+            let id = revision.to_string();
+            assert!(cache.insert(test_cursor_shape(&id, revision, revision as u8)));
+        }
+        assert_eq!(cache.entries.len(), CURSOR_SHAPE_CACHE_MAX_ENTRIES);
+        assert!(cache.get("1").is_some());
+        assert!(cache.insert(test_cursor_shape("replacement", 65, 65)));
+        assert!(cache.get("2").is_none());
+        assert!(cache.get("1").is_some());
+        assert!(cache.get("replacement").is_some());
+        assert_eq!(cache.entries.len(), CURSOR_SHAPE_CACHE_MAX_ENTRIES);
+        assert_eq!(cache.rgba_bytes, CURSOR_SHAPE_CACHE_MAX_ENTRIES * 4);
+
+        cache.use_counter = u64::MAX;
+        assert!(cache.get("1").is_none());
+        assert!(cache.entries.is_empty());
+        assert_eq!(cache.rgba_bytes, 0);
+    }
+
+    #[test]
+    fn r_s11gv_cursor_shape_id_is_used_only_after_exact_decoded_knowledge() {
+        let shape = test_cursor_shape("known", 7, 7);
+        let id_reference = CursorShapeValue {
+            state: CursorShapeState::Available(Arc::clone(&shape)),
+            include_data: false,
+        };
+        let mut known = CursorShapeKnowledge::default();
+
+        assert!(id_reference
+            .clone()
+            .bind_to_knowledge(&mut known)
+            .include_data);
+        assert!(known.insert(&shape));
+        assert!(!id_reference
+            .clone()
+            .bind_to_knowledge(&mut known)
+            .include_data);
+
+        known.remove(&shape.id, Some(shape.revision + 1));
+        assert!(!id_reference
+            .clone()
+            .bind_to_knowledge(&mut known)
+            .include_data);
+        known.remove(&shape.id, Some(shape.revision));
+        assert!(id_reference.bind_to_knowledge(&mut known).include_data);
+    }
+
+    #[test]
+    fn r_s11gv_cursor_shape_knowledge_is_metadata_only_and_bounded() {
+        let mut known = CursorShapeKnowledge::default();
+        for revision in 1..=CURSOR_SHAPE_CACHE_MAX_ENTRIES as u64 {
+            let shape = RemoteCursorShape {
+                id: revision.to_string(),
+                revision,
+                hotx: 0,
+                hoty: 0,
+                width: 1,
+                height: 1,
+                rgba: vec![revision as u8; 4],
+            };
+            assert!(known.insert(&shape));
+        }
+        assert_eq!(known.entries.len(), CURSOR_SHAPE_CACHE_MAX_ENTRIES);
+        assert_eq!(known.rgba_bytes, CURSOR_SHAPE_CACHE_MAX_ENTRIES * 4);
+
+        let first = RemoteCursorShape {
+            id: "1".to_owned(),
+            revision: 1,
+            hotx: 0,
+            hoty: 0,
+            width: 1,
+            height: 1,
+            rgba: vec![1; 4],
+        };
+        assert!(known.contains(&first));
+
+        let replacement = RemoteCursorShape {
+            id: "replacement".to_owned(),
+            revision: 65,
+            hotx: 0,
+            hoty: 0,
+            width: 1,
+            height: 1,
+            rgba: vec![65; 4],
+        };
+        assert!(known.insert(&replacement));
+        assert!(known.entries.contains_key("1"));
+        assert!(!known.entries.contains_key("2"));
+        assert!(known.contains(&replacement));
+        assert_eq!(known.entries.len(), CURSOR_SHAPE_CACHE_MAX_ENTRIES);
+        assert_eq!(known.rgba_bytes, CURSOR_SHAPE_CACHE_MAX_ENTRIES * 4);
+    }
+
+    #[test]
+    fn r_s11gv_new_ui_handler_inherits_current_shape_and_position_for_replay() {
+        let flutter = FlutterHandler::default();
+        let shape = test_cursor_shape("current", 9, 9);
+        let mut current = flutter.current_cursor.write().unwrap();
+        current.shape = Some(CursorShapeValue {
+            state: CursorShapeState::Available(Arc::clone(&shape)),
+            include_data: false,
+        });
+        current.position = Some(CursorPositionValue { x: 31, y: 47 });
+
+        let owner = SessionID::new_v4();
+        let mut handler =
+            FlutterHandler::session_handler_for_cursor_state(owner, &current);
+        drop(current);
+        assert_eq!(handler.client_owner_id, Some(owner));
+        assert_eq!(
+            handler
+                .cursor_shape
+                .current
+                .as_ref()
+                .map(|value| value.state.identity()),
+            Some(("current", 9))
+        );
+        assert!(handler
+            .cursor_shape
+            .current
+            .as_ref()
+            .is_some_and(|value| !value.include_data));
+        assert_eq!(
+            handler.cursor_position.current,
+            Some(CursorPositionValue { x: 31, y: 47 })
+        );
+
+        let CursorShapeRearm::Rearmed(replayed_shape) =
+            handler.cursor_shape.rearm(|| Some(1))
+        else {
+            panic!("the inherited cursor shape was not replayable");
+        };
+        assert!(replayed_shape.value.include_data);
+        let CursorPositionRearm::Rearmed(replayed_position) =
+            handler.cursor_position.rearm(|| Some(2))
+        else {
+            panic!("the inherited cursor position was not replayable");
+        };
+        assert_eq!(replayed_position.position, CursorPositionValue { x: 31, y: 47 });
     }
 
     #[test]

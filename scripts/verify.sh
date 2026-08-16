@@ -9362,6 +9362,7 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ew_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11fr_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gu_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gv_ --color never
 if python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test; then
   echo "  ok  R-S11ew/R-S11fr Flutter software RGBA publication is exact-session/token-owned, bounded, latest-wins, recoverable, commit-ordered, and pointer-free"
 else
@@ -9372,6 +9373,12 @@ if python3 scripts/verify-viewer-cursor-mailbox.py --repo . --self-test; then
   echo "  ok  R-S11gu native-to-Dart cursor publication is exact-owner, topology-ordered, bounded, latest-wins, and stream-recoverable"
 else
   echo "  FAIL R-S11gu: native-to-Dart cursor publication regained generic, stale-owner, stale-topology, unbounded, or stranded stream state"
+  rc=1
+fi
+if python3 scripts/verify-viewer-cursor-resources.py --repo . --self-test; then
+  echo "  ok  R-S11gv remote cursor capture, identity, publication, presentation, and retirement are exact and bounded"
+else
+  echo "  FAIL R-S11gv: remote cursor resources regained unchecked capture, stale identity, unacknowledged publication, unbounded registration, or incomplete teardown"
   rc=1
 fi
 if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then

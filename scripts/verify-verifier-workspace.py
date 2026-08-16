@@ -561,6 +561,25 @@ def extract_between(source, start_token, end_token, label):
     return source[start:end]
 
 
+def extract_braced_item(source, signature, label):
+    start = source.find(signature)
+    if start < 0:
+        raise VerificationError(f"{label}: missing declaration {signature!r}")
+    open_brace = source.find("{", start + len(signature))
+    if open_brace < 0:
+        raise VerificationError(f"{label}: missing body")
+    depth = 0
+    for offset in range(open_brace, len(source)):
+        character = source[offset]
+        if character == "{":
+            depth += 1
+        elif character == "}":
+            depth -= 1
+            if depth == 0:
+                return source[start : offset + 1]
+    raise VerificationError(f"{label}: unterminated body")
+
+
 def extract_through(source, start_token, end_token, label):
     start = source.find(start_token)
     if start < 0:
@@ -20075,6 +20094,13 @@ def validate_display_selection_finality_contract(sources):
         ('"local display commit serialization"', "local topology serialization mutation"),
         ('"terminal invalid switch"', "controlled finality mutation"),
         ('"independent verifier dispatch"', "independent dispatch mutation"),
+        (
+            '"workspace", "    validate_viewer_cursor_mailbox_contract(sources)\\n'
+            '    validate_viewer_cursor_resources_contract(sources)\\n'
+            '    validate_display_selection_finality_contract(sources)\\n'
+            '    validate_desktop_texture_lifecycle_contract(sources)",',
+            "display-selection current independent dispatch fixture",
+        ),
     ):
         require_text(mutation_inventory, text, label)
 
@@ -21090,7 +21116,7 @@ def validate_viewer_cursor_mailbox_contract(sources):
     )
     require_text(
         focused_contract,
-        '"pending: Option<CursorPositionValue>"',
+        '"current: Option<CursorPositionValue>"',
         "focused latest-only cursor mailbox assertion",
     )
     require_text(
@@ -21187,25 +21213,27 @@ def validate_viewer_cursor_mailbox_contract(sources):
     mailbox = extract_between(
         sources["flutter_source"],
         "struct CursorPositionMailbox {",
-        "\n}\n\n#[derive(Debug, Eq, PartialEq)]\nenum CursorPositionOffer",
+        "\n}\n\n#[derive(Default)]\nstruct CurrentCursorPresentation",
         "independent cursor mailbox state",
     )
     require_order(
         mailbox,
         (
             "published: Option<CursorPositionPublication>",
-            "pending: Option<CursorPositionValue>",
+            "current: Option<CursorPositionValue>",
+            "delivery_failed: bool",
         ),
         "independent one-published/one-latest cursor bound",
     )
     mailbox_fields = [line.strip() for line in mailbox.splitlines()[1:] if line.strip()]
     if mailbox_fields != [
         "published: Option<CursorPositionPublication>,",
-        "pending: Option<CursorPositionValue>,",
+        "current: Option<CursorPositionValue>,",
+        "delivery_failed: bool,",
     ]:
         raise VerificationError(
             "independent exact cursor mailbox field inventory: must have exactly one "
-            "published and one pending field"
+            "published/current state and one failed-delivery bit"
         )
     for forbidden in ("Vec<", "VecDeque", "Sender", "Receiver"):
         require_absent(mailbox, forbidden, "independent unbounded cursor state")
@@ -21213,7 +21241,7 @@ def validate_viewer_cursor_mailbox_contract(sources):
     next_publication = extract_between(
         sources["flutter_source"],
         "fn next_cursor_position_publication(",
-        "\n    fn take_cursor_position(",
+        "\n    fn next_cursor_shape_publication(",
         "independent cursor publication allocation",
     )
     require_order(
@@ -21237,8 +21265,8 @@ def validate_viewer_cursor_mailbox_contract(sources):
     require_order(
         offer,
         (
-            "if self.published.is_some()",
-            "self.pending = Some(position);",
+            "self.current = Some(position);",
+            "if self.published.is_some() || self.delivery_failed",
             "return CursorPositionOffer::Pending;",
             "let Some(publication) = next_publication()",
             "self.published = Some(published);",
@@ -21257,8 +21285,10 @@ def validate_viewer_cursor_mailbox_contract(sources):
         (
             "if self.published != Some(expected)",
             "CursorPositionAcknowledgement::Ignored",
-            "let Some(position) = self.pending.take()",
+            "self.published = None;",
+            "let Some(position) = self.current",
             "CursorPositionAcknowledgement::Drained",
+            "if position == expected.position",
             "let Some(publication) = next_publication()",
             "CursorPositionAcknowledgement::Exhausted",
             "CursorPositionAcknowledgement::Promoted(published)",
@@ -21268,17 +21298,19 @@ def validate_viewer_cursor_mailbox_contract(sources):
     rearm = extract_between(
         sources["flutter_source"],
         "fn rearm<F>(&mut self, next_publication: F) -> CursorPositionRearm",
-        "\n    fn discard_pending",
+        "\n    fn invalidate_current",
         "independent cursor stream re-arm",
     )
     require_order(
         rearm,
         (
-            "let Some(current) = self.published",
-            "self.pending.take().unwrap_or(current.position)",
-            "let Some(publication) = next_publication()",
+            "self.delivery_failed = false;",
+            "let Some(position) = self.current",
             "self.published = None;",
+            "CursorPositionRearm::Idle",
+            "let Some(publication) = next_publication()",
             "CursorPositionRearm::Exhausted",
+            "self.published = Some(published);",
             "CursorPositionRearm::Rearmed(published)",
         ),
         "independent fresh-token latest-state stream replacement",
@@ -21336,10 +21368,10 @@ def validate_viewer_cursor_mailbox_contract(sources):
         (
             "if is_cursor_position_topology_barrier(name)",
             "let mut sessions = self.session_handlers.write().unwrap();",
-            "session.cursor_position.discard_pending();",
+            "session.cursor_position.invalidate_current();",
             "stream.add(EventToUI::Event(out.clone()));",
         ),
-        "independent pre-topology pending retirement",
+        "independent pre-topology current retirement",
     )
     setter = extract_between(
         sources["flutter_source"],
@@ -21355,8 +21387,9 @@ def validate_viewer_cursor_mailbox_contract(sources):
             "CursorPositionOffer::Pending",
             "CursorPositionOffer::Published(publication)",
             "post_cursor_position(stream, publication)",
-            "handler.cursor_position.clear();",
+            "handler.cursor_position.delivery_failed();",
             "CursorPositionOffer::Exhausted",
+            "handler.cursor_position.clear();",
         ),
         "independent bounded typed cursor handoff",
     )
@@ -21376,7 +21409,7 @@ def validate_viewer_cursor_mailbox_contract(sources):
     require_text(
         native_take,
         "if !post_cursor_position(stream, next) {\n"
-        "                        handler.cursor_position.clear();\n"
+        "                        handler.cursor_position.delivery_failed();\n"
         "                    }",
         "independent promoted cursor failure cleanup",
     )
@@ -21390,7 +21423,7 @@ def validate_viewer_cursor_mailbox_contract(sources):
             "CursorPositionAcknowledgement::Drained => true",
             "CursorPositionAcknowledgement::Promoted(next)",
             "post_cursor_position(stream, next)",
-            "handler.cursor_position.clear();",
+            "handler.cursor_position.delivery_failed();",
             "CursorPositionAcknowledgement::Exhausted",
         ),
         "independent exact session/owner/token take",
@@ -21414,7 +21447,7 @@ def validate_viewer_cursor_mailbox_contract(sources):
     public_take = extract_between(
         sources["flutter_source"],
         "pub fn session_take_cursor_position(",
-        "\n#[inline]\npub fn session_set_size(",
+        "\npub fn session_take_cursor_shape(",
         "independent public cursor take",
     )
     require_text(
@@ -21422,12 +21455,10 @@ def validate_viewer_cursor_mailbox_contract(sources):
         "position: CursorPositionValue { x, y }",
         "independent exact public cursor take coordinates",
     )
-    require_order(
+    require_text(
         public_take,
-        (
-            "position: CursorPositionValue { x, y }",
-            "publication,",
-        ),
+        "position: CursorPositionValue { x, y },\n"
+        "                publication,",
         "independent exact public cursor take token",
     )
     require_order(
@@ -21493,7 +21524,7 @@ def validate_viewer_cursor_mailbox_contract(sources):
     )
     require_text(
         session_start,
-        "if !delivered {\n                        h.cursor_position.clear();",
+        "if !delivered {\n                            h.cursor_position.delivery_failed();",
         "independent replacement stream cursor failure cleanup",
     )
     require_order(
@@ -21504,7 +21535,7 @@ def validate_viewer_cursor_mailbox_contract(sources):
             "h.cursor_position.rearm(",
             "CursorPositionRearm::Rearmed(publication)",
             "post_cursor_position(stream, publication)",
-            "h.cursor_position.clear();",
+            "h.cursor_position.delivery_failed();",
             "start_failure = Some(anyhow!(",
             "CursorPositionRearm::Exhausted",
             "if start_failure.is_none() && starts_peer_connection",
@@ -21744,12 +21775,14 @@ def validate_viewer_cursor_mailbox_contract(sources):
     )
     require_text(
         cursor_rearm_test,
-        "mailbox.offer(first, || None)",
+        "mailbox.offer(first, || None),\n"
+        "            CursorPositionOffer::Exhausted",
         "independent initial cursor publication exhaustion regression",
     )
     require_text(
         cursor_rearm_test,
-        "mailbox.rearm(|| None)",
+        "mailbox.rearm(|| None),\n"
+        "            CursorPositionRearm::Exhausted",
         "independent stream re-arm exhaustion regression",
     )
     require_order(
@@ -21800,6 +21833,283 @@ def validate_viewer_cursor_mailbox_contract(sources):
     if len(dispatches) != 1:
         raise VerificationError(
             "cursor-mailbox independent workspace dispatch must occur exactly once"
+        )
+
+
+def validate_viewer_cursor_resources_contract(sources):
+    """Independently bind exact bounded viewer cursor resources and finality."""
+
+    focused = sources["viewer_cursor_resources_verifier"]
+    focused_contract = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMUTATIONS:",
+        "focused cursor-resource contract validation function",
+    )
+    for marker, label in (
+        ("MAX_CURSOR_RGBA_BYTES: usize = 4 * 1024 * 1024", "focused platform capture ceiling"),
+        ("cursor_data_digest", "focused content-derived cursor identity"),
+        ("struct CursorShapeMailbox", "focused exact shape mailbox"),
+        ("take_cursor_shape", "focused exact shape acknowledgement"),
+        ("retireCursorResources", "focused Dart cursor owner retirement"),
+        ("CustomCursorPresentationCoordinator", "focused platform presentation finality"),
+        ("Finalizer<CustomCursorPresentationToken>", "focused missing-dispose retirement"),
+        ("throwing diagnostic", "focused diagnostic finality regression"),
+        ("R-S11gv", "focused normative and ledger binding"),
+    ):
+        require_text(focused_contract, marker, label)
+    require_text(
+        focused,
+        "MUTATIONS: Tuple[Tuple[str, str, str, str], ...] = (",
+        "focused cursor-resource deliberate-mutation inventory",
+    )
+
+    require_text(
+        sources["platform_source"],
+        "pub(crate) const MAX_CURSOR_RGBA_BYTES: usize = 4 * 1024 * 1024;",
+        "independent cursor capture byte ceiling",
+    )
+    require_order(
+        extract_braced_item(
+            sources["platform_source"],
+            "pub(crate) fn cursor_rgba_len(",
+            "independent checked cursor geometry",
+        ),
+        (
+            ".checked_mul(height)?",
+            ".checked_mul(4)",
+            ".filter(|bytes| *bytes <= MAX_CURSOR_RGBA_BYTES)",
+        ),
+        "independent checked cursor geometry",
+    )
+    require_text(
+        sources["windows_source"],
+        "if r != mask_size_i32",
+        "independent exact Windows cursor-mask copy",
+    )
+    require_text(
+        sources["linux_source"],
+        "if (*img).pixels.is_null()",
+        "independent Linux cursor pointer admission",
+    )
+    require_text(
+        sources["macos_source"],
+        "let rep = cursor_bitmap_rep(img)?;",
+        "independent bounded macOS bitmap representation",
+    )
+    require_absent(
+        extract_braced_item(
+            sources["macos_source"],
+            "fn unsafe_get_cursor_data(",
+            "independent macOS cursor capture",
+        ),
+        "TIFFRepresentation",
+        "independent unbounded macOS TIFF cursor materialization",
+    )
+
+    input_source = sources["desktop_input_source"]
+    require_text(
+        input_source,
+        "const CURSOR_CACHE_MAX_ENTRIES: usize = 64;",
+        "independent controlled cursor cache count",
+    )
+    require_text(
+        input_source,
+        "const CURSOR_CACHE_MAX_RGBA_BYTES: usize = 16 * 1024 * 1024;",
+        "independent controlled cursor cache bytes",
+    )
+    require_order(
+        extract_braced_item(
+            input_source,
+            "fn cursor_data_digest(",
+            "independent cursor content digest",
+        ),
+        (
+            "data.hotx.to_le_bytes()",
+            "data.hoty.to_le_bytes()",
+            "data.width.to_le_bytes()",
+            "data.height.to_le_bytes()",
+            "&data.colors",
+        ),
+        "independent cursor content digest",
+    )
+    require_text(
+        input_source,
+        "data.id = state.next_protocol_cursor_id()?;",
+        "independent content/protocol cursor identity separation",
+    )
+
+    flutter = sources["flutter_source"]
+    shape_mailbox = extract_braced_item(
+        flutter, "struct CursorShapeMailbox", "independent cursor shape mailbox"
+    )
+    for field in (
+        "published: Option<CursorShapePublication>",
+        "current: Option<CursorShapeValue>",
+        "delivery_failed: bool",
+    ):
+        require_text(shape_mailbox, field, f"independent cursor mailbox field {field}")
+    for event in (
+        "EventToUI::CursorData(",
+        "EventToUI::CursorId(",
+        "EventToUI::CursorUnavailable(",
+    ):
+        require_text(flutter, event, f"independent typed cursor event {event}")
+    take_shape = extract_braced_item(
+        flutter, "fn take_cursor_shape(", "independent exact cursor acknowledgement"
+    )
+    require_text(
+        take_shape,
+        "handler.cursor_shape.require_data_for(&acknowledged);",
+        "independent negative ID acknowledgement repair",
+    )
+    require_order(
+        take_shape,
+        (
+            "client_owner_id.as_ref() == Some(client_owner_id)",
+            "published.value.state.identity() == (id, revision)",
+            "published.publication == publication",
+            "known_cursor_shapes.insert(shape)",
+            "handler.cursor_shape.require_data_for(&acknowledged);",
+            "handler.cursor_shape.acknowledge(",
+        ),
+        "independent exact positive/negative cursor acknowledgement",
+    )
+    for test in (
+        "r_s11gv_cursor_shape_mailbox_is_exact_latest_wins_and_replayable",
+        "r_s11gv_negative_id_ack_republishes_full_data_exactly_once",
+        "r_s11gv_cursor_shape_knowledge_is_metadata_only_and_bounded",
+        "r_s11gv_new_ui_handler_inherits_current_shape_and_position_for_replay",
+    ):
+        require_text(flutter, test, f"independent {test} regression")
+
+    model = sources["model_dart"]
+    require_text(
+        model,
+        "const String _maxRemoteCursorId = '18446744073709551615';",
+        "independent Dart unsigned-64-bit cursor identity",
+    )
+    cursor_retirement = extract_braced_item(
+        model,
+        "void retireCursorResources()",
+        "independent Dart cursor retirement",
+    )
+    require_text(
+        cursor_retirement,
+        "retireCustomCursorOwner(_customCursorOwner);",
+        "independent platform cursor owner retirement",
+    )
+    require_order(
+        cursor_retirement,
+        (
+            "_customCursorOwnerRetired = true;",
+            "retireCustomCursorOwner(_customCursorOwner);",
+            "_disposeImages();",
+            "_webShapeSources.clear();",
+        ),
+        "independent owner-before-resource cursor retirement",
+    )
+    require_absent(model, "cursorDataList", "independent unbounded Dart cursor history")
+
+    registry = sources["custom_cursor_registry_source"]
+    cursor_activation = extract_between(
+        registry,
+        "Future<bool> activate({",
+        "\n  Future<void> activateFallback({",
+        "independent platform cursor activation",
+    )
+    require_text(
+        cursor_activation,
+        "final ready = await lease.ready;",
+        "independent cursor registration readiness",
+    )
+    require_order(
+        cursor_activation,
+        (
+            "_desiredRequest = request;",
+            "final ready = await lease.ready;",
+            "await _activations.schedule(() async",
+            "await present(lease.platformKey);",
+            "previous?.release();",
+        ),
+        "independent desire, readiness, serialization, and replacement order",
+    )
+    cursor_registration = extract_braced_item(
+        registry,
+        "Future<bool> _initializeEntry(",
+        "independent exact cursor registration",
+    )
+    require_text(
+        cursor_registration,
+        "for (final retired in retiredResources)",
+        "independent cursor delete-before-register ordering",
+    )
+    require_order(
+        cursor_registration,
+        (
+            "for (final retired in retiredResources)",
+            "if (!await retired)",
+            "registered = await register(entry.platformKey);",
+            "_resourceStateUncertain = true;",
+        ),
+        "independent delete-before-register and uncertainty finality",
+    )
+    require_text(
+        registry,
+        "void _reportCustomCursorError(",
+        "independent diagnostic finality isolation",
+    )
+    for key in ("native_custom_cursor_source", "web_custom_cursor_source"):
+        require_text(
+            sources[key],
+            "Finalizer<CustomCursorPresentationToken>",
+            f"independent {key} finalizer-safe retirement",
+        )
+        require_text(
+            sources[key],
+            "_cursorPresentationFinalizer.detach(this);",
+            f"independent {key} explicit finalizer detach",
+        )
+    require_text(
+        sources["custom_cursor_registry_test"],
+        "throwing registry diagnostics cannot strand registration finality",
+        "independent throwing-diagnostic finality regression",
+    )
+
+    for key, text, label in (
+        ("verify", "python3 scripts/verify-viewer-cursor-resources.py --repo . --self-test", "shared cursor-resource focused gate"),
+        ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11gv_ --color never", "shared cursor-resource Rust gate"),
+        ("dart_verify", "python3 scripts/verify-viewer-cursor-resources.py --repo . --self-test", "generated-bridge cursor-resource focused gate"),
+        ("dart_verify", "flutter test --no-pub test/custom_cursor_registry_test.dart", "Dart cursor-resource behavior gate"),
+        ("apple", "python3 scripts/verify-viewer-cursor-resources.py --repo . --self-test", "Apple cursor-resource focused gate"),
+        ("requirements", '<div class="req"><span class="id">R-S11gv</span>', "R-S11gv requirement"),
+        ("requirements", "<tr><td>357</td>", "Appendix C #357"),
+        ("hardening", "### R-S11gv/R-S11e-234 — exact bounded cursor-shape identity, publication, presentation, and retirement", "R-S11gv hardening ledger"),
+    ):
+        require_text(sources[key], text, label)
+
+    workspace_module = ast.parse(sources["workspace_verifier"])
+    validate_sources_function = next(
+        (
+            node
+            for node in workspace_module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "validate_sources"
+        ),
+        None,
+    )
+    if validate_sources_function is None:
+        raise VerificationError("cursor-resource independent workspace dispatch is absent")
+    dispatches = [
+        node
+        for node in validate_sources_function.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "validate_viewer_cursor_resources_contract"
+    ]
+    if len(dispatches) != 1:
+        raise VerificationError(
+            "cursor-resource independent workspace dispatch must occur exactly once"
         )
 
 
@@ -45981,6 +46291,7 @@ def validate_sources(sources):
     validate_viewer_file_finality_contract(sources)
     validate_viewer_rgba_mailbox_contract(sources)
     validate_viewer_cursor_mailbox_contract(sources)
+    validate_viewer_cursor_resources_contract(sources)
     validate_display_selection_finality_contract(sources)
     validate_desktop_texture_lifecycle_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
@@ -64657,20 +64968,31 @@ def run_source_mutations(sources):
         ),
         (
             "flutter_source",
-            "pending: Option<CursorPositionValue>",
-            "pending: Vec<CursorPositionValue>",
+            "current: Option<CursorPositionValue>",
+            "current: Vec<CursorPositionValue>",
             "independent one-published/one-latest cursor bound",
         ),
         (
             "flutter_source",
-            "pending: Option<CursorPositionValue>,",
-            "pending: Option<CursorPositionValue>,\n    retained: Option<CursorPositionValue>,",
+            "struct CursorPositionMailbox {\n"
+            "    published: Option<CursorPositionPublication>,\n"
+            "    current: Option<CursorPositionValue>,\n"
+            "    delivery_failed: bool,\n"
+            "}",
+            "struct CursorPositionMailbox {\n"
+            "    published: Option<CursorPositionPublication>,\n"
+            "    current: Option<CursorPositionValue>,\n"
+            "    delivery_failed: bool,\n"
+            "    retained: Option<CursorPositionValue>,\n"
+            "}",
             "independent exact cursor mailbox field inventory",
         ),
         (
             "flutter_source",
-            "self.pending = Some(position);",
-            "self.pending.get_or_insert(position);",
+            "self.current = Some(position);\n"
+            "        if self.published.is_some() || self.delivery_failed",
+            "self.current.get_or_insert(position);\n"
+            "        if self.published.is_some() || self.delivery_failed",
             "independent bounded latest-wins cursor admission",
         ),
         (
@@ -64681,8 +65003,8 @@ def run_source_mutations(sources):
         ),
         (
             "flutter_source",
-            "self.pending.take().unwrap_or(current.position)",
-            "current.position",
+            "self.delivery_failed = false;\n        let Some(position) = self.current",
+            "self.delivery_failed = true;\n        let Some(position) = self.current",
             "independent fresh-token latest-state stream replacement",
         ),
         (
@@ -64707,22 +65029,34 @@ def run_source_mutations(sources):
         ),
         (
             "flutter_source",
-            "session.cursor_position.discard_pending();",
+            "session.cursor_position.invalidate_current();",
             "session.cursor_position.clear();",
-            "independent pre-topology pending retirement",
+            "independent pre-topology current retirement",
         ),
         (
             "flutter_source",
-            "let mut sessions = self.session_handlers.write().unwrap();",
-            "let sessions = self.session_handlers.read().unwrap();",
+            "let mut current_cursor = self.current_cursor.write().unwrap();\n"
+            "            current_cursor.position = None;\n"
+            "            let mut sessions = self.session_handlers.write().unwrap();",
+            "let mut current_cursor = self.current_cursor.write().unwrap();\n"
+            "            current_cursor.position = None;\n"
+            "            let sessions = self.session_handlers.read().unwrap();",
             "independent topology/cursor write-lock linearization",
         ),
         (
             "flutter_source",
             ".get_mut(session_id)\n"
-            "            .filter(|handler| handler.client_owner_id.as_ref() == Some(client_owner_id))",
+            "            .filter(|handler| handler.client_owner_id.as_ref() == Some(client_owner_id))\n"
+            "        else {\n"
+            "            return false;\n"
+            "        };\n"
+            "        match handler.cursor_position.acknowledge(expected",
             ".get_mut(session_id)\n"
-            "            .filter(|_| true)",
+            "            .filter(|_| true)\n"
+            "        else {\n"
+            "            return false;\n"
+            "        };\n"
+            "        match handler.cursor_position.acknowledge(expected",
             "independent exact session/owner/token take",
         ),
         (
@@ -64751,7 +65085,7 @@ def run_source_mutations(sources):
         ),
         (
             "flutter_source",
-            "if !post_cursor_position(stream, next) {\n                        handler.cursor_position.clear();\n                    }",
+            "if !post_cursor_position(stream, next) {\n                        handler.cursor_position.delivery_failed();\n                    }",
             "if !post_cursor_position(stream, next) {\n                        // failed promoted cursor notification was ignored\n                    }",
             "independent promoted cursor failure cleanup",
         ),
@@ -64769,8 +65103,8 @@ def run_source_mutations(sources):
         ),
         (
             "flutter_source",
-            "if !delivered {\n                        h.cursor_position.clear();",
-            "if !delivered {\n                        // failed replacement cursor state was retained",
+            "if !delivered {\n                            h.cursor_position.delivery_failed();",
+            "if !delivered {\n                            // failed replacement cursor state was ignored",
             "independent replacement stream cursor failure cleanup",
         ),
         (
@@ -64991,9 +65325,9 @@ def run_source_mutations(sources):
         (
             "viewer_cursor_mailbox_verifier",
             '"published: Option<CursorPositionPublication>",\n'
-            '            "pending: Option<CursorPositionValue>",',
+            '            "current: Option<CursorPositionValue>",',
             '"published: Option<CursorPositionPublication>",\n'
-            '            "pending cursor state is unconstrained",',
+            '            "current cursor state is unconstrained",',
             "focused latest-only cursor mailbox assertion",
         ),
         (
@@ -65063,14 +65397,132 @@ def run_source_mutations(sources):
             "cursor-mailbox independent workspace dispatch must occur exactly once",
         ),
         (
+            "viewer_cursor_resources_verifier",
+            '        platform,\n'
+            '        "pub(crate) const MAX_CURSOR_RGBA_BYTES: usize = 4 * 1024 * 1024;",\n'
+            '        "4 MiB platform cursor allocation ceiling",',
+            '        platform,\n'
+            '        "pub(crate) const MAX_CURSOR_RGBA_BYTES: usize = 8 * 1024 * 1024;",\n'
+            '        "4 MiB platform cursor allocation ceiling",',
+            "focused platform capture ceiling",
+        ),
+        (
+            "platform_source",
+            "pub(crate) const MAX_CURSOR_RGBA_BYTES: usize = 4 * 1024 * 1024;",
+            "pub(crate) const MAX_CURSOR_RGBA_BYTES: usize = 8 * 1024 * 1024;",
+            "independent cursor capture byte ceiling",
+        ),
+        (
+            "desktop_input_source",
+            "data.id = state.next_protocol_cursor_id()?;",
+            "data.id = hcursor;",
+            "independent content/protocol cursor identity separation",
+        ),
+        (
+            "flutter_source",
+            "current: Option<CursorShapeValue>",
+            "current: Vec<CursorShapeValue>",
+            "independent cursor mailbox field current: Option<CursorShapeValue>",
+        ),
+        (
+            "flutter_source",
+            "handler.cursor_shape.require_data_for(&acknowledged);",
+            "handler.cursor_shape.clear();",
+            "independent negative ID acknowledgement repair",
+        ),
+        (
+            "model_dart",
+            "retireCustomCursorOwner(_customCursorOwner);",
+            "// platform cursor owner retained",
+            "independent platform cursor owner retirement",
+        ),
+        (
+            "custom_cursor_registry_source",
+            "final ready = await lease.ready;",
+            "const ready = true;",
+            "independent cursor registration readiness",
+        ),
+        (
+            "custom_cursor_registry_source",
+            "for (final retired in retiredResources)",
+            "for (final retired in <Future<bool>>[])",
+            "independent cursor delete-before-register ordering",
+        ),
+        (
+            "native_custom_cursor_source",
+            "Finalizer<CustomCursorPresentationToken>",
+            "Finalizer<Object>",
+            "independent native_custom_cursor_source finalizer-safe retirement",
+        ),
+        (
+            "web_custom_cursor_source",
+            "_cursorPresentationFinalizer.detach(this);",
+            "// web finalizer remains attached",
+            "independent web_custom_cursor_source explicit finalizer detach",
+        ),
+        (
+            "custom_cursor_registry_test",
+            "throwing registry diagnostics cannot strand registration finality",
+            "throwing registry diagnostics may strand registration finality",
+            "independent throwing-diagnostic finality regression",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-viewer-cursor-resources.py --repo . --self-test",
+            "true # cursor-resource verifier disabled",
+            "shared cursor-resource focused gate",
+        ),
+        (
+            "dart_verify",
+            "flutter test --no-pub test/custom_cursor_registry_test.dart",
+            "true # cursor-resource Dart test disabled",
+            "Dart cursor-resource behavior gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11gv</span>',
+            '<div class="req"><span class="id">R-S11gv-disabled</span>',
+            "R-S11gv requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>357</td>",
+            "<tr><td>357-disabled</td>",
+            "Appendix C #357",
+        ),
+        (
             "workspace_verifier",
             "    validate_viewer_cursor_mailbox_contract(sources)\n"
+            "    validate_viewer_cursor_resources_contract(sources)\n"
+            "    validate_display_selection_finality_contract(sources)",
+            "    validate_viewer_cursor_mailbox_contract(sources)\n"
+            "    validate_viewer_cursor_resources_contract_disabled(sources)\n"
+            "    validate_display_selection_finality_contract(sources)",
+            "cursor-resource independent workspace dispatch must occur exactly once",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_viewer_cursor_mailbox_contract(sources)\n"
+            "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)\n"
             "    validate_desktop_texture_lifecycle_contract(sources)",
             "    validate_viewer_cursor_mailbox_contract(sources)\n"
+            "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_display_selection_finality_contract_disabled(sources)\n"
             "    validate_desktop_texture_lifecycle_contract(sources)",
             "display-selection independent workspace dispatch",
+        ),
+        (
+            "display_selection_finality_verifier",
+            '"workspace", "    validate_viewer_cursor_mailbox_contract(sources)\\n'
+            '    validate_viewer_cursor_resources_contract(sources)\\n'
+            '    validate_display_selection_finality_contract(sources)\\n'
+            '    validate_desktop_texture_lifecycle_contract(sources)",',
+            '"workspace", "    validate_viewer_cursor_mailbox_contract(sources)\\n'
+            '    validate_viewer_cursor_resources_contract_disabled(sources)\\n'
+            '    validate_display_selection_finality_contract(sources)\\n'
+            '    validate_desktop_texture_lifecycle_contract(sources)",',
+            "display-selection current independent dispatch fixture",
         ),
         (
             "desktop_texture_lifecycle_verifier",
@@ -78225,6 +78677,18 @@ def main():
                 )
             ),
             "model_dart": (repo / "flutter/lib/models/model.dart").read_text(encoding="utf-8"),
+            "custom_cursor_registry_source": (
+                repo / "flutter/lib/models/custom_cursor_registry.dart"
+            ).read_text(encoding="utf-8"),
+            "native_custom_cursor_source": (
+                repo / "flutter/lib/native/custom_cursor.dart"
+            ).read_text(encoding="utf-8"),
+            "web_custom_cursor_source": (
+                repo / "flutter/lib/web/custom_cursor.dart"
+            ).read_text(encoding="utf-8"),
+            "custom_cursor_registry_test": (
+                repo / "flutter/test/custom_cursor_registry_test.dart"
+            ).read_text(encoding="utf-8"),
             "mobile_session_start_queue_dart": (
                 repo / "flutter/lib/models/mobile_session_start_queue.dart"
             ).read_text(encoding="utf-8"),
@@ -78512,6 +78976,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "viewer_cursor_mailbox_verifier": (
                 repo / "scripts/verify-viewer-cursor-mailbox.py"
+            ).read_text(encoding="utf-8"),
+            "viewer_cursor_resources_verifier": (
+                repo / "scripts/verify-viewer-cursor-resources.py"
             ).read_text(encoding="utf-8"),
             "display_selection_finality_verifier": (
                 repo / "scripts/verify-display-selection-finality.py"

@@ -271,7 +271,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
     DesktopMultiWindow.removeListener(this);
     _ffi.dialogManager.hideMobileActionsOverlay();
     _ffi.imageModel.disposeImage();
-    _ffi.cursorModel.disposeImages();
+    _ffi.cursorModel.retireCursorResources();
     _timer?.cancel();
     _timer = null;
 

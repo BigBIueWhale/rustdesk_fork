@@ -154,19 +154,21 @@ def validate(sources: Dict[str, str]) -> None:
         mailbox,
         (
             "published: Option<CursorPositionPublication>",
-            "pending: Option<CursorPositionValue>",
+            "current: Option<CursorPositionValue>",
+            "delivery_failed: bool",
         ),
-        "one published and one latest-pending cursor state",
+        "one published, one current, and one failed-delivery bit",
     )
     mailbox_fields = [
         line.strip() for line in mailbox.splitlines()[1:-1] if line.strip()
     ]
     if mailbox_fields != [
         "published: Option<CursorPositionPublication>,",
-        "pending: Option<CursorPositionValue>,",
+        "current: Option<CursorPositionValue>,",
+        "delivery_failed: bool,",
     ]:
         raise VerificationError(
-            f"cursor mailbox must have exactly one published and one pending field: {mailbox_fields!r}"
+            f"cursor mailbox must have exactly one published/current state and one failure bit: {mailbox_fields!r}"
         )
     for forbidden in ("Vec<", "VecDeque", "HashMap", "Sender", "Receiver"):
         forbid(mailbox, forbidden, "unbounded or detached cursor mailbox state")
@@ -179,8 +181,8 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         offer,
         (
-            "if self.published.is_some()",
-            "self.pending = Some(position);",
+            "self.current = Some(position);",
+            "if self.published.is_some() || self.delivery_failed",
             "return CursorPositionOffer::Pending;",
             "let Some(publication) = next_publication()",
             "self.published = Some(published);",
@@ -198,9 +200,10 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "if self.published != Some(expected)",
             "CursorPositionAcknowledgement::Ignored",
-            "let Some(position) = self.pending.take()",
             "self.published = None;",
+            "let Some(position) = self.current",
             "CursorPositionAcknowledgement::Drained",
+            "if position == expected.position",
             "let Some(publication) = next_publication()",
             "CursorPositionAcknowledgement::Exhausted",
             "self.published = Some(published);",
@@ -216,11 +219,11 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         rearm,
         (
-            "let Some(current) = self.published",
-            "CursorPositionRearm::Idle",
-            "self.pending.take().unwrap_or(current.position)",
-            "let Some(publication) = next_publication()",
+            "self.delivery_failed = false;",
+            "let Some(position) = self.current",
             "self.published = None;",
+            "CursorPositionRearm::Idle",
+            "let Some(publication) = next_publication()",
             "CursorPositionRearm::Exhausted",
             "self.published = Some(published);",
             "CursorPositionRearm::Rearmed(published)",
@@ -260,8 +263,10 @@ def validate(sources: Dict[str, str]) -> None:
         push_event,
         (
             "if is_cursor_position_topology_barrier(name)",
+            "let mut current_cursor = self.current_cursor.write().unwrap();",
+            "current_cursor.position = None;",
             "let mut sessions = self.session_handlers.write().unwrap();",
-            "session.cursor_position.discard_pending();",
+            "session.cursor_position.invalidate_current();",
             "stream.add(EventToUI::Event(out.clone()));",
         ),
         "pre-topology pending cursor retirement before ordered event publication",
@@ -287,12 +292,14 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         setter,
         (
+            "let mut current_cursor = self.current_cursor.write().unwrap();",
+            "current_cursor.position = Some(position);",
             "self.session_handlers.write().unwrap().values_mut()",
             "handler.cursor_position.offer(position",
             "CursorPositionOffer::Pending",
             "CursorPositionOffer::Published(publication)",
             "post_cursor_position(stream, publication)",
-            "handler.cursor_position.clear();",
+            "handler.cursor_position.delivery_failed();",
             "CursorPositionOffer::Exhausted",
         ),
         "bounded per-handler cursor handoff and failed-stream retirement",
@@ -318,7 +325,7 @@ def validate(sources: Dict[str, str]) -> None:
             "CursorPositionAcknowledgement::Drained => true",
             "CursorPositionAcknowledgement::Promoted(next)",
             "post_cursor_position(stream, next)",
-            "handler.cursor_position.clear();",
+            "handler.cursor_position.delivery_failed();",
             "CursorPositionAcknowledgement::Exhausted",
         ),
         "exact session/owner/publication take and successor delivery",
@@ -372,7 +379,7 @@ def validate(sources: Dict[str, str]) -> None:
             "h.cursor_position.rearm(",
             "CursorPositionRearm::Rearmed(publication)",
             "post_cursor_position(stream, publication)",
-            "h.cursor_position.clear();",
+            "h.cursor_position.delivery_failed();",
             "start_failure = Some(anyhow!(",
             "CursorPositionRearm::Exhausted",
             "if start_failure.is_none() && starts_peer_connection",
@@ -603,14 +610,14 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("input", "&svc.clone(), 33, run_pos", "&svc.clone(), 3, run_pos", "controlled cursor cadence"),
     ("cargo", 'flutter_rust_bridge = { version = "=1.80"', 'flutter_rust_bridge = { version = "1.80"', "exact Flutter Rust Bridge dependency"),
     ("lock", 'name = "flutter_rust_bridge"\nversion = "1.80.1"', 'name = "flutter_rust_bridge"\nversion = "1.80.0"', "exact locked Flutter Rust Bridge identity"),
-    ("flutter", "pending: Option<CursorPositionValue>", "pending: Vec<CursorPositionValue>", "latest-only mailbox"),
-    ("flutter", "pending: Option<CursorPositionValue>,", "pending: Option<CursorPositionValue>,\n    retained: Option<CursorPositionValue>,", "exact cursor mailbox field inventory"),
-    ("flutter", "self.pending = Some(position);", "self.pending.get_or_insert(position);", "latest-wins replacement"),
+    ("flutter", "current: Option<CursorPositionValue>", "current: Vec<CursorPositionValue>", "latest-only mailbox"),
+    ("flutter", "delivery_failed: bool,", "delivery_failed: bool,\n    retained: Option<CursorPositionValue>,", "exact cursor mailbox field inventory"),
+    ("flutter", "self.current = Some(position);", "self.current.get_or_insert(position);", "latest-wins replacement"),
     ("flutter", "if self.published != Some(expected)", "if self.published.is_none()", "exact publication take"),
-    ("flutter", "self.pending.take().unwrap_or(current.position)", "current.position", "latest-state stream rearm"),
+    ("flutter", "let Some(position) = self.current", "let Some(position) = self.published.map(|value| value.position)", "latest-state stream rearm"),
     ("flutter", '"switch_display"', '"switch_display_disabled"', "topology barrier inventory"),
     ("flutter", "stream.add(EventToUI::CursorPosition(\n        publication.position.x,\n        publication.position.y,\n        publication.publication,\n    ))", "stream.add(EventToUI::CursorPosition(\n        publication.position.y,\n        publication.position.x,\n        0,\n    ))", "exact typed cursor event payload"),
-    ("flutter", "session.cursor_position.discard_pending();", "session.cursor_position.clear();", "topology ordering"),
+    ("flutter", "session.cursor_position.invalidate_current();", "session.cursor_position.clear();", "topology ordering"),
     ("flutter", "let mut sessions = self.session_handlers.write().unwrap();", "let sessions = self.session_handlers.read().unwrap();", "topology/cursor write-lock linearization"),
     (
         "flutter",
@@ -630,11 +637,11 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("flutter", "CursorPositionAcknowledgement::Ignored => false", "CursorPositionAcknowledgement::Ignored => true", "stale take refusal"),
     ("flutter", "post_cursor_position(stream, publication)", "true", "initial cursor notification"),
     ("flutter", "post_cursor_position(stream, next)", "true", "promoted cursor notification"),
-    ("flutter", "if !post_cursor_position(stream, next) {\n                        handler.cursor_position.clear();\n                    }", "if !post_cursor_position(stream, next) {\n                        // failed promoted cursor notification was ignored\n                    }", "promoted cursor failure cleanup"),
+    ("flutter", "if !post_cursor_position(stream, next) {\n                        handler.cursor_position.delivery_failed();\n                    }", "if !post_cursor_position(stream, next) {\n                        // failed promoted cursor notification was ignored\n                    }", "promoted cursor failure cleanup"),
     ("flutter", "let position = CursorPositionValue { x: cp.x, y: cp.y };", "self.push_event(\"cursor_position\", &[(\"x\", &cp.x.to_string()), (\"y\", &cp.y.to_string())], &[]);\n        let position = CursorPositionValue { x: cp.x, y: cp.y };", "native generic JSON cursor event absence"),
     ("flutter", "h.cursor_position.rearm(", "CursorPositionMailbox::default().rearm(", "replacement stream replay"),
     ("flutter", ".is_some_and(|stream| post_cursor_position(stream, publication));", ".is_some_and(|_| true);", "replacement stream cursor notification"),
-    ("flutter", "if !delivered {\n                        h.cursor_position.clear();", "if !delivered {\n                        // failed replacement cursor state was retained", "replacement stream cursor failure cleanup"),
+    ("flutter", "if !delivered {\n                            h.cursor_position.delivery_failed();", "if !delivered {\n                            // failed replacement cursor state was retained", "replacement stream cursor failure cleanup"),
     ("flutter", "fn r_s11gu_cursor_position_mailbox_retains_one_publication_and_only_the_latest_successor", "fn cursor_position_mailbox_is_unbounded", "mailbox regression"),
     ("flutter", "fn r_s11gu_cursor_topology_barrier_discards_only_pre_topology_pending_state", "fn cursor_topology_barrier_is_disabled", "topology regression"),
     ("flutter", "fn r_s11gu_cursor_stream_rearm_replaces_the_token_and_keeps_only_latest_state", "fn cursor_stream_rearm_reuses_the_token", "rearm regression"),

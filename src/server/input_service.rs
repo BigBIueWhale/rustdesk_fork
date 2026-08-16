@@ -11,12 +11,14 @@ use hbb_common::{
     protobuf::EnumOrUnknown,
 };
 use rdev::{self, EventType, Key as RdevKey, KeyCode, RawKey};
+use sha2::{Digest, Sha256};
 #[cfg(target_os = "macos")]
 use rdev::{CGEventSourceStateID, CGEventTapLocation, VirtualInput};
 #[cfg(target_os = "linux")]
 use std::sync::mpsc;
 use std::{
     convert::TryFrom,
+    hash::Hash,
     ops::{Deref, DerefMut},
     sync::atomic::{AtomicBool, Ordering},
     thread,
@@ -32,6 +34,136 @@ use winapi::um::winuser::{
 const INVALID_CURSOR_POS: i32 = i32::MIN;
 const INVALID_DISPLAY_IDX: i32 = -1;
 const INPUT_SCROLL_MAX_DELTA: i32 = 64;
+const CURSOR_CACHE_MAX_ENTRIES: usize = 64;
+const CURSOR_CACHE_MAX_RGBA_BYTES: usize = 16 * 1024 * 1024;
+
+#[derive(Clone)]
+struct BoundedCursorCacheEntry<V> {
+    value: V,
+    rgba_bytes: usize,
+    last_used: u64,
+}
+
+#[derive(Clone)]
+struct BoundedCursorCache<K, V> {
+    entries: HashMap<K, BoundedCursorCacheEntry<V>>,
+    rgba_bytes: usize,
+    use_counter: u64,
+    max_entries: usize,
+    max_rgba_bytes: usize,
+}
+
+impl<K, V> Default for BoundedCursorCache<K, V> {
+    fn default() -> Self {
+        Self {
+            entries: HashMap::new(),
+            rgba_bytes: 0,
+            use_counter: 0,
+            max_entries: CURSOR_CACHE_MAX_ENTRIES,
+            max_rgba_bytes: CURSOR_CACHE_MAX_RGBA_BYTES,
+        }
+    }
+}
+
+impl<K, V> BoundedCursorCache<K, V>
+where
+    K: Clone + Eq + Hash,
+    V: Clone,
+{
+    #[cfg(test)]
+    fn with_limits(max_entries: usize, max_rgba_bytes: usize) -> Self {
+        Self {
+            max_entries,
+            max_rgba_bytes,
+            ..Default::default()
+        }
+    }
+
+    fn clear(&mut self) {
+        self.entries.clear();
+        self.rgba_bytes = 0;
+        self.use_counter = 0;
+    }
+
+    fn next_use(&mut self) -> u64 {
+        let Some(next) = self.use_counter.checked_add(1) else {
+            self.clear();
+            self.use_counter = 1;
+            return 1;
+        };
+        self.use_counter = next;
+        next
+    }
+
+    fn get_cloned(&mut self, key: &K) -> Option<V> {
+        if !self.entries.contains_key(key) {
+            return None;
+        }
+        let last_used = self.next_use();
+        let entry = self.entries.get_mut(key)?;
+        entry.last_used = last_used;
+        Some(entry.value.clone())
+    }
+
+    fn insert(&mut self, key: K, value: V, rgba_bytes: usize) -> bool {
+        if rgba_bytes == 0
+            || rgba_bytes > self.max_rgba_bytes
+            || self.max_entries == 0
+            || self.max_rgba_bytes == 0
+        {
+            return false;
+        }
+        if let Some(previous) = self.entries.remove(&key) {
+            self.rgba_bytes = self.rgba_bytes.saturating_sub(previous.rgba_bytes);
+        }
+        let last_used = self.next_use();
+        while self.entries.len() >= self.max_entries
+            || self
+                .rgba_bytes
+                .checked_add(rgba_bytes)
+                .map_or(true, |total| total > self.max_rgba_bytes)
+        {
+            let Some(oldest) = self
+                .entries
+                .iter()
+                .min_by_key(|(_, entry)| entry.last_used)
+                .map(|(key, _)| key.clone())
+            else {
+                return false;
+            };
+            if let Some(removed) = self.entries.remove(&oldest) {
+                self.rgba_bytes = self.rgba_bytes.saturating_sub(removed.rgba_bytes);
+            }
+        }
+        self.rgba_bytes = match self.rgba_bytes.checked_add(rgba_bytes) {
+            Some(total) => total,
+            None => return false,
+        };
+        self.entries.insert(
+            key,
+            BoundedCursorCacheEntry {
+                value,
+                rgba_bytes,
+                last_used,
+            },
+        );
+        true
+    }
+}
+
+fn cursor_rgba_bytes(width: i32, height: i32) -> Option<usize> {
+    crate::platform::cursor_rgba_len(width, height)
+}
+
+fn cursor_data_digest(data: &CursorData) -> [u8; 32] {
+    let mut digest = Sha256::new();
+    digest.update(data.hotx.to_le_bytes());
+    digest.update(data.hoty.to_le_bytes());
+    digest.update(data.width.to_le_bytes());
+    digest.update(data.height.to_le_bytes());
+    digest.update(&data.colors);
+    digest.finalize().into()
+}
 
 fn validate_scroll_delta(delta: i32) -> ResultType<()> {
     let magnitude = delta
@@ -312,9 +444,23 @@ fn control_key_to_rdev_key(value: i32) -> Option<RdevKey> {
 
 #[derive(Default)]
 struct StateCursor {
-    hcursor: u64,
+    hcursor: Option<u64>,
+    cursor_digest: Option<[u8; 32]>,
     cursor_data: Arc<Message>,
-    cached_cursor_data: HashMap<u64, Arc<Message>>,
+    next_protocol_cursor_id: u64,
+    cached_cursor_data: BoundedCursorCache<[u8; 32], Arc<Message>>,
+}
+
+impl StateCursor {
+    fn next_protocol_cursor_id(&mut self) -> ResultType<u64> {
+        let next = self
+            .next_protocol_cursor_id
+            .checked_add(1)
+            .filter(|next| *next != 0)
+            .ok_or_else(|| hbb_common::anyhow::anyhow!("cursor identity space exhausted"))?;
+        self.next_protocol_cursor_id = next;
+        Ok(next)
+    }
 }
 
 impl super::service::Reset for StateCursor {
@@ -388,14 +534,14 @@ struct Input {
 #[derive(Clone, Default)]
 pub struct MouseCursorSub {
     inner: ConnInner,
-    cached: HashMap<u64, Arc<Message>>,
+    cached: BoundedCursorCache<u64, Arc<Message>>,
 }
 
 impl From<ConnInner> for MouseCursorSub {
     fn from(inner: ConnInner) -> Self {
         Self {
             inner,
-            cached: HashMap::new(),
+            cached: BoundedCursorCache::default(),
         }
     }
 }
@@ -409,14 +555,18 @@ impl Subscriber for MouseCursorSub {
     #[inline]
     fn send(&mut self, msg: Arc<Message>) {
         if let Some(message::Union::CursorData(cd)) = &msg.union {
-            if let Some(msg) = self.cached.get(&cd.id) {
-                self.inner.send(msg.clone());
+            if let Some(cached) = self.cached.get_cloned(&cd.id) {
+                self.inner.send(cached);
             } else {
                 self.inner.send(msg.clone());
                 let mut tmp = Message::new();
                 // only send id out, require client side cache also
                 tmp.set_cursor_id(cd.id);
-                self.cached.insert(cd.id, Arc::new(tmp));
+                if let Some(rgba_bytes) = cursor_rgba_bytes(cd.width, cd.height) {
+                    if !self.cached.insert(cd.id, Arc::new(tmp), rgba_bytes) {
+                        log::warn!("cursor identity cache refused a bounded entry");
+                    }
+                }
             }
         } else {
             self.inner.send(msg);
@@ -640,23 +790,49 @@ fn run_pos(sp: EmptyExtraFieldService, state: &mut StatePos) -> ResultType<()> {
 
 fn run_cursor(sp: MouseCursorService, state: &mut StateCursor) -> ResultType<()> {
     if let Some(hcursor) = crate::get_cursor()? {
-        if hcursor != state.hcursor {
-            let msg;
-            if let Some(cached) = state.cached_cursor_data.get(&hcursor) {
-                super::log::trace!("Cursor data cached, hcursor: {}", hcursor);
-                msg = cached.clone();
+        // Windows cursor handles are reusable identities and animated cursors may keep one
+        // handle while their pixels change, so sample their bounded bitmap every tick. macOS
+        // reaches this branch only after its cursor seed changes; do not suppress that change just
+        // because the platform's lossy cursor hint collides. XFixes supplies a real cursor serial
+        // and can retain the cheaper generation guard.
+        if cfg!(any(target_os = "windows", target_os = "macos"))
+            || state.hcursor != Some(hcursor)
+        {
+            let mut data = crate::get_cursor_data(hcursor)?;
+            let rgba_bytes = cursor_rgba_bytes(data.width, data.height)
+                .filter(|expected| *expected == data.colors.len())
+                .ok_or_else(|| hbb_common::anyhow::anyhow!("invalid local cursor dimensions"))?;
+            let digest = cursor_data_digest(&data);
+            if state.cursor_digest.as_ref() == Some(&digest) {
+                state.hcursor = Some(hcursor);
             } else {
-                let mut data = crate::get_cursor_data(hcursor)?;
-                data.colors = hbb_common::compress::compress(&data.colors[..]).into();
-                let mut tmp = Message::new();
-                tmp.set_cursor_data(data);
-                msg = Arc::new(tmp);
-                state.cached_cursor_data.insert(hcursor, msg.clone());
-                super::log::trace!("Cursor data updated, hcursor: {}", hcursor);
+                let msg = if let Some(cached) = state.cached_cursor_data.get_cloned(&digest) {
+                    super::log::trace!("Cursor data cached, hcursor: {}", hcursor);
+                    cached
+                } else {
+                    data.id = state.next_protocol_cursor_id()?;
+                    let compressed = hbb_common::compress::compress(&data.colors);
+                    if compressed.is_empty() {
+                        bail!("failed to compress local cursor data");
+                    }
+                    data.colors = compressed.into();
+                    let mut tmp = Message::new();
+                    tmp.set_cursor_data(data);
+                    let msg = Arc::new(tmp);
+                    if !state
+                        .cached_cursor_data
+                        .insert(digest, msg.clone(), rgba_bytes)
+                    {
+                        bail!("cursor content cache refused a bounded entry");
+                    }
+                    super::log::trace!("Cursor data updated, hcursor: {}", hcursor);
+                    msg
+                };
+                state.hcursor = Some(hcursor);
+                state.cursor_digest = Some(digest);
+                sp.send_shared(msg.clone());
+                state.cursor_data = msg;
             }
-            state.hcursor = hcursor;
-            sp.send_shared(msg.clone());
-            state.cursor_data = msg;
         }
     }
     sp.snapshot(|sps| {
@@ -1043,6 +1219,59 @@ pub fn release_device_modifiers() {
 mod input_state_tests {
     use super::*;
     use std::sync::atomic::AtomicUsize;
+
+    #[test]
+    fn r_s11gv_cursor_cache_bounds_count_bytes_and_touches_lru() {
+        let mut cache = BoundedCursorCache::with_limits(2, 8);
+        assert!(cache.insert("first", 1, 4));
+        assert!(cache.insert("second", 2, 4));
+        assert_eq!(cache.get_cloned(&"first"), Some(1));
+        assert!(cache.insert("third", 3, 4));
+        assert_eq!(cache.get_cloned(&"second"), None);
+        assert_eq!(cache.get_cloned(&"first"), Some(1));
+        assert_eq!(cache.get_cloned(&"third"), Some(3));
+        assert_eq!(cache.entries.len(), 2);
+        assert_eq!(cache.rgba_bytes, 8);
+
+        assert!(cache.insert("first", 4, 2));
+        assert_eq!(cache.get_cloned(&"first"), Some(4));
+        assert_eq!(cache.rgba_bytes, 6);
+        assert!(!cache.insert("oversized", 5, 9));
+        assert_eq!(cache.entries.len(), 2);
+    }
+
+    #[test]
+    fn r_s11gv_cursor_cache_counter_exhaustion_discards_old_identity_state() {
+        let mut cache = BoundedCursorCache::with_limits(2, 8);
+        assert!(cache.insert("old", 1, 4));
+        cache.use_counter = u64::MAX;
+        assert_eq!(cache.get_cloned(&"old"), None);
+        assert!(cache.entries.is_empty());
+        assert_eq!(cache.rgba_bytes, 0);
+        assert!(cache.insert("replacement", 2, 4));
+        assert_eq!(cache.get_cloned(&"replacement"), Some(2));
+    }
+
+    #[test]
+    fn r_s11gv_cursor_content_identity_covers_geometry_hotspot_and_rgba() {
+        let mut cursor = CursorData {
+            id: 99,
+            hotx: 1,
+            hoty: 2,
+            width: 2,
+            height: 2,
+            colors: vec![7; 16].into(),
+            ..Default::default()
+        };
+        let original = cursor_data_digest(&cursor);
+        cursor.id = 100;
+        assert_eq!(cursor_data_digest(&cursor), original);
+        cursor.hotx = 0;
+        assert_ne!(cursor_data_digest(&cursor), original);
+        cursor.hotx = 1;
+        cursor.colors = [vec![7; 15], vec![8]].concat().into();
+        assert_ne!(cursor_data_digest(&cursor), original);
+    }
 
     #[cfg(target_os = "linux")]
     #[test]

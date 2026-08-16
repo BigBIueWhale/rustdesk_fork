@@ -774,6 +774,61 @@ pub fn reset_input_cache() {
     }
 }
 
+fn cursor_image_geometry(
+    size: NSSize,
+    hotspot: NSPoint,
+    pixels_wide: cocoa::foundation::NSInteger,
+    pixels_high: cocoa::foundation::NSInteger,
+) -> ResultType<(i32, i32, i32, i32, usize)> {
+    if !size.width.is_finite()
+        || !size.height.is_finite()
+        || !hotspot.x.is_finite()
+        || !hotspot.y.is_finite()
+        || size.width <= 0.0
+        || size.height <= 0.0
+        || hotspot.x < 0.0
+        || hotspot.y < 0.0
+        || hotspot.x >= size.width
+        || hotspot.y >= size.height
+    {
+        bail!("cursor image point geometry is invalid");
+    }
+    let width = i32::try_from(pixels_wide)
+        .map_err(|_| anyhow!("cursor bitmap width is not representable"))?;
+    let height = i32::try_from(pixels_high)
+        .map_err(|_| anyhow!("cursor bitmap height is not representable"))?;
+    let rgba_len = super::cursor_rgba_len(width, height)
+        .ok_or_else(|| anyhow!("cursor bitmap dimensions exceed the presentation bound"))?;
+    let hotx = (hotspot.x * f64::from(width) / size.width).floor() as i32;
+    let hoty = (hotspot.y * f64::from(height) / size.height).floor() as i32;
+    if hotx < 0 || hoty < 0 || hotx >= width || hoty >= height {
+        bail!("cursor bitmap hotspot is invalid");
+    }
+    Ok((width, height, hotx, hoty, rgba_len))
+}
+
+fn cursor_bitmap_rep(image: id) -> ResultType<id> {
+    unsafe {
+        let representations: id = msg_send![image, representations];
+        if representations == nil {
+            bail!("Failed to call [NSImage representations]");
+        }
+        let count: usize = msg_send![representations, count];
+        let bitmap_class = class!(NSBitmapImageRep);
+        for index in 0..count {
+            let representation: id = msg_send![representations, objectAtIndex: index];
+            if representation == nil {
+                continue;
+            }
+            let is_bitmap: BOOL = msg_send![representation, isKindOfClass: bitmap_class];
+            if is_bitmap == YES {
+                return Ok(representation);
+            }
+        }
+        bail!("cursor image has no bounded bitmap representation")
+    }
+}
+
 fn get_cursor_id() -> ResultType<(id, u64)> {
     unsafe {
         let c: id = msg_send![class!(NSCursor), currentSystemCursor];
@@ -786,35 +841,27 @@ fn get_cursor_id() -> ResultType<(id, u64)> {
             bail!("Failed to call [NSCursor image]");
         }
         let size: NSSize = msg_send![img, size];
-        let tif: id = msg_send![img, TIFFRepresentation];
-        if tif == nil {
-            bail!("Failed to call [NSImage TIFFRepresentation]");
-        }
-        let rep: id = msg_send![class!(NSBitmapImageRep), imageRepWithData: tif];
-        if rep == nil {
-            bail!("Failed to call [NSBitmapImageRep imageRepWithData]");
-        }
-        let rep_size: NSSize = msg_send![rep, size];
-        let mut hcursor =
-            size.width + size.height + hotspot.x + hotspot.y + rep_size.width + rep_size.height;
-        let x = (rep_size.width * hotspot.x / size.width) as usize;
-        let y = (rep_size.height * hotspot.y / size.height) as usize;
-        for i in 0..2 {
-            let mut x2 = x + i;
-            if x2 >= rep_size.width as usize {
-                x2 = rep_size.width as usize - 1;
-            }
-            let mut y2 = y + i;
-            if y2 >= rep_size.height as usize {
-                y2 = rep_size.height as usize - 1;
-            }
-            let color: id = msg_send![rep, colorAtX:x2 y:y2];
+        let rep = cursor_bitmap_rep(img)?;
+        let pixels_wide: cocoa::foundation::NSInteger = msg_send![rep, pixelsWide];
+        let pixels_high: cocoa::foundation::NSInteger = msg_send![rep, pixelsHigh];
+        let (width, height, hotx, hoty, _) =
+            cursor_image_geometry(size, hotspot, pixels_wide, pixels_high)?;
+        let mut hcursor = size.width
+            + size.height
+            + f64::from(hotx)
+            + f64::from(hoty)
+            + f64::from(width)
+            + f64::from(height);
+        for offset in 0..2 {
+            let x = (hotx + offset).min(width - 1) as cocoa::foundation::NSInteger;
+            let y = (hoty + offset).min(height - 1) as cocoa::foundation::NSInteger;
+            let color: id = msg_send![rep, colorAtX:x y:y];
             if color != nil {
                 let r: f64 = msg_send![color, redComponent];
                 let g: f64 = msg_send![color, greenComponent];
                 let b: f64 = msg_send![color, blueComponent];
                 let a: f64 = msg_send![color, alphaComponent];
-                hcursor += (r + g + b + a) * (255 << i) as f64;
+                hcursor += (r + g + b + a) * (255 << offset) as f64;
             }
         }
         Ok((c, hcursor as _))
@@ -835,30 +882,26 @@ fn unsafe_get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
         let hotspot: NSPoint = msg_send![c, hotSpot];
         let img: id = msg_send![c, image];
         let size: NSSize = msg_send![img, size];
-        let reps: id = msg_send![img, representations];
-        if reps == nil {
-            bail!("Failed to call [NSImage representations]");
-        }
-        let nreps: usize = msg_send![reps, count];
-        if nreps == 0 {
-            bail!("Get empty [NSImage representations]");
-        }
-        let rep: id = msg_send![reps, objectAtIndex: 0];
+        let rep = cursor_bitmap_rep(img)?;
         /*
         let n: id = msg_send![class!(NSNumber), numberWithFloat:1.0];
         let props: id = msg_send![class!(NSDictionary), dictionaryWithObject:n forKey:NSString::alloc(nil).init_str("NSImageCompressionFactor")];
         let image_data: id = msg_send![rep, representationUsingType:2 properties:props];
         let () = msg_send![image_data, writeToFile:NSString::alloc(nil).init_str("cursor.jpg") atomically:0];
         */
-        let mut colors: Vec<u8> = Vec::new();
-        colors.reserve((size.height * size.width) as usize * 4);
+        let pixels_wide: cocoa::foundation::NSInteger = msg_send![rep, pixelsWide];
+        let pixels_high: cocoa::foundation::NSInteger = msg_send![rep, pixelsHigh];
+        let (width, height, hotx, hoty, rgba_len) =
+            cursor_image_geometry(size, hotspot, pixels_wide, pixels_high)?;
+        let mut colors = Vec::with_capacity(rgba_len);
         // TIFF is rgb colorspace, no need to convert
         // let cs: id = msg_send![class!(NSColorSpace), sRGBColorSpace];
-        for y in 0..(size.height as _) {
-            for x in 0..(size.width as _) {
+        for y in 0..height {
+            for x in 0..width {
                 let color: id = msg_send![rep, colorAtX:x as cocoa::foundation::NSInteger y:y as cocoa::foundation::NSInteger];
                 // let color: id = msg_send![color, colorUsingColorSpace: cs];
                 if color == nil {
+                    colors.extend_from_slice(&[0, 0, 0, 0]);
                     continue;
                 }
                 let r: f64 = msg_send![color, redComponent];
@@ -874,10 +917,10 @@ fn unsafe_get_cursor_data(hcursor: u64) -> ResultType<CursorData> {
         Ok(CursorData {
             id: hcursor,
             colors: colors.into(),
-            hotx: hotspot.x as _,
-            hoty: hotspot.y as _,
-            width: size.width as _,
-            height: size.height as _,
+            hotx,
+            hoty,
+            width,
+            height,
             ..Default::default()
         })
     }

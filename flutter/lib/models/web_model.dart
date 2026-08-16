@@ -109,6 +109,15 @@ class PlatformFFI {
           x: x,
           y: y,
           publication: publication);
+  bool takeCursorShape(SessionID sessionId, SessionID clientOwnerId, String id,
+          int revision, int publication, bool accepted) =>
+      _ffiBind.sessionTakeCursorShape(
+          sessionId: sessionId,
+          clientOwnerId: clientOwnerId,
+          id: id,
+          revision: revision,
+          publication: publication,
+          accepted: accepted);
   void registerPixelbufferTexture(
           SessionID sessionId, SessionID clientOwnerId, int display, int ptr) =>
       _ffiBind.sessionRegisterPixelbufferTexture(

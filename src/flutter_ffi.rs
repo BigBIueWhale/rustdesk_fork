@@ -117,6 +117,10 @@ pub enum EventToUI {
     Rgba(usize, u64), // (display, exact publication)
     Texture(usize),   // display
     CursorPosition(i32, i32, u64), // (x, y, exact publication)
+    CursorData(String, u64, i32, i32, i32, i32, Vec<u8>, u64),
+    // (id, revision, hotx, hoty, width, height, rgba, exact publication)
+    CursorId(String, u64, u64), // (id, revision, exact publication)
+    CursorUnavailable(String, u64), // (id, exact publication)
 }
 
 // This function is only used to count the number of control sessions.
@@ -2000,6 +2004,24 @@ pub fn session_take_cursor_position(
         x,
         y,
         publication,
+    ))
+}
+
+pub fn session_take_cursor_shape(
+    session_id: SessionID,
+    client_owner_id: SessionID,
+    id: String,
+    revision: u64,
+    publication: u64,
+    accepted: bool,
+) -> SyncReturn<bool> {
+    SyncReturn(super::flutter::session_take_cursor_shape(
+        session_id,
+        client_owner_id,
+        id,
+        revision,
+        publication,
+        accepted,
     ))
 }
 

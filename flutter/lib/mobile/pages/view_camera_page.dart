@@ -131,7 +131,7 @@ class _ViewCameraPageState extends State<ViewCameraPage>
       gFFI.dialogManager.hideMobileActionsOverlay(store: false);
       gFFI.inputModel.listenToMouse(false);
       gFFI.imageModel.disposeImage();
-      gFFI.cursorModel.disposeImages();
+      gFFI.cursorModel.retireCursorResources();
       await gFFI.invokeMethod("enable_soft_keyboard", true);
     }
     await closeFuture;

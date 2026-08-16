@@ -776,6 +776,15 @@ fn cm_file_response_matches_connection(
         && constant_time_eq(response_token.as_bytes(), expected_token.as_bytes())
 }
 
+fn cm_file_request_session_authorized(
+    authorized: bool,
+    is_file_transfer: bool,
+    file_capability: bool,
+    cm_file_login_published: bool,
+) -> bool {
+    authorized && is_file_transfer && file_capability && cm_file_login_published
+}
+
 fn cm_read_file_num_authorized(
     authority: &CmReadAuthority,
     file_num: i32,
@@ -3520,6 +3529,7 @@ pub struct Connection {
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     cm_ipc_owner: Option<oneshot::Sender<()>>,
     cm_auth_token: String,
+    cm_file_login_published: bool,
     auto_disconnect_timer: Option<(Instant, u64)>,
     authed_conn_id: Option<self::raii::AuthedConnID>,
     file_remove_log_control: FileRemoveLogControl,
@@ -4566,6 +4576,7 @@ impl Connection {
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             cm_ipc_owner: Some(cm_ipc_owner),
             cm_auth_token,
+            cm_file_login_published: false,
             auto_disconnect_timer: None,
             authed_conn_id: None,
             file_remove_log_control: FileRemoveLogControl::new(id),
@@ -5960,7 +5971,11 @@ impl Connection {
         } else {
             ipc::CmAuthConnType::Remote
         };
-        self.send_to_cm(ipc::Data::Login {
+        let publishes_file_authority = authorized
+            && self.file
+            && cm_conn_type == ipc::CmAuthConnType::FileTransfer;
+        self.cm_file_login_published = false;
+        let login = ipc::Data::Login {
             id: self.inner.id(),
             is_file_transfer: self.file_transfer.is_some(),
             is_view_camera: self.view_camera,
@@ -5978,7 +5993,15 @@ impl Connection {
             file_transfer_enabled: self.file,
             privacy_mode: self.privacy_mode,
             cm_auth_token: self.cm_auth_token.clone(),
-        });
+        };
+        if self.tx_to_cm.send(login).is_ok() {
+            self.cm_file_login_published = publishes_file_authority;
+        } else {
+            log::warn!(
+                "Failed to publish connection-manager login: conn_id={}",
+                self.inner.id()
+            );
+        }
     }
 
     #[inline]
@@ -5988,6 +6011,14 @@ impl Connection {
 
     #[inline]
     fn send_fs(&mut self, data: ipc::FS) -> Result<(), String> {
+        if !cm_file_request_session_authorized(
+            self.authorized,
+            self.file_transfer.is_some(),
+            self.file,
+            self.cm_file_login_published,
+        ) {
+            return Err("connection-manager file authority is not published".to_owned());
+        }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         let data = ipc::Data::AuthorizedFS {
             cm_auth_token: self.cm_auth_token.clone(),
@@ -10240,6 +10271,15 @@ impl Connection {
 #[cfg(test)]
 mod cm_file_response_authority_tests {
     use super::*;
+
+    #[test]
+    fn request_binding_requires_published_authorized_file_transfer_login() {
+        assert!(cm_file_request_session_authorized(true, true, true, true));
+        assert!(!cm_file_request_session_authorized(false, true, true, true));
+        assert!(!cm_file_request_session_authorized(true, false, true, true));
+        assert!(!cm_file_request_session_authorized(true, true, false, true));
+        assert!(!cm_file_request_session_authorized(true, true, true, false));
+    }
 
     #[test]
     fn session_binding_requires_exact_file_transfer_connection_and_token() {

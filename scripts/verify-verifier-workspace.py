@@ -46163,6 +46163,77 @@ def validate_windows_terminal_synchronous_io_cancellation_contract(sources):
 
 def validate_cm_file_login_order_contract(sources):
     connection = sources["connection_source"]
+    request_authority = extract_braced_item(
+        connection,
+        "fn cm_file_request_session_authorized(",
+        "common CM filesystem producer authority",
+    )
+    require_text(
+        request_authority,
+        "authorized && is_file_transfer && file_capability && cm_file_login_published",
+        "common CM filesystem producer authority conjunction",
+    )
+    connection_state = extract_braced_item(
+        connection,
+        "pub struct Connection {",
+        "Connection authority state",
+    )
+    require_text(
+        connection_state,
+        "cm_file_login_published: bool",
+        "per-connection CM file-login publication state",
+    )
+    for text, label in (
+        ("cm_file_login_published: false", "closed initial CM file-login publication state"),
+        (
+            "fn request_binding_requires_published_authorized_file_transfer_login()",
+            "CM filesystem producer authority regression",
+        ),
+    ):
+        require_text(connection, text, label)
+
+    producer = extract_braced_item(
+        connection,
+        "fn try_start_cm(&mut self",
+        "CM login producer",
+    )
+    require_text(
+        producer,
+        "authorized\n            && self.file\n            && cm_conn_type == ipc::CmAuthConnType::FileTransfer",
+        "authorized file-capable FileTransfer publication derivation",
+    )
+    require_order(
+        producer,
+        (
+            "self.cm_file_login_published = false;",
+            "if self.tx_to_cm.send(login).is_ok()",
+            "self.cm_file_login_published = publishes_file_authority;",
+        ),
+        "CM file-login publication success linearization",
+    )
+
+    filesystem_sender = extract_braced_item(
+        connection,
+        "fn send_fs(&mut self",
+        "common CM filesystem sender",
+    )
+    for text, label in (
+        ("self.authorized", "live connection authorization input"),
+        ("self.file_transfer.is_some()", "FileTransfer connection-type input"),
+        ("self.file", "live file-capability input"),
+        ("self.cm_file_login_published", "successful Login-publication input"),
+    ):
+        require_text(filesystem_sender, text, label)
+    require_order(
+        filesystem_sender,
+        (
+            "if !cm_file_request_session_authorized(",
+            "let data = ipc::Data::AuthorizedFS {",
+            ".send(data)",
+        ),
+        "common CM filesystem gate before desktop wrap and enqueue",
+    )
+
     response = extract_between(
         connection,
         "async fn send_logon_response_and_keep_alive(&mut self)",
@@ -46210,14 +46281,54 @@ def validate_cm_file_login_order_contract(sources):
             "shared CM login-order gate",
         ),
         (
+            sources["verify"],
+            "producer-login-publication-not-success-linearized",
+            "shared successful CM-login publication gate",
+        ),
+        (
+            sources["verify"],
+            "producer-file-gate-not-before-send",
+            "shared common filesystem producer gate",
+        ),
+        (
+            sources["apple"],
+            "producer-login-publication-not-success-linearized",
+            "Apple successful CM-login publication gate",
+        ),
+        (
+            sources["apple"],
+            "producer-file-gate-not-before-send",
+            "Apple common filesystem producer gate",
+        ),
+        (
+            sources["verify"],
+            "current-source-native-evidence-boundary-missing",
+            "shared current-source native-evidence boundary gate",
+        ),
+        (
+            sources["apple"],
+            "current-source-native-evidence-boundary-missing",
+            "Apple current-source native-evidence boundary gate",
+        ),
+        (
             sources["requirements"],
             "must enqueue its validated <code>Data::Login</code> before its first <code>Data::AuthorizedFS</code>",
             "normative CM login-order requirement",
         ),
         (
             sources["hardening"],
-            "R-S11c-4c — CM login publication precedes initial file work",
+            "R-S11c-4c — CM login publication precedes every file operation",
             "CM login-order hardening ledger",
+        ),
+        (
+            sources["hardening"],
+            "Correctness therefore no longer depends on the initial-directory caller being the only early producer.",
+            "complete CM filesystem producer disposition",
+        ),
+        (
+            sources["hardening"],
+            "so no current Rust compile/test or installed operation was run",
+            "current-source native CM filesystem evidence boundary",
         ),
     ):
         require_text(source, text, label)
@@ -50285,6 +50396,66 @@ def run_source_mutations(sources):
         ),
         (
             "connection_source",
+            "authorized && is_file_transfer && file_capability && cm_file_login_published",
+            "authorized && is_file_transfer && file_capability",
+            "common CM filesystem producer authority conjunction",
+        ),
+        (
+            "connection_source",
+            "    cm_auth_token: String,\n    cm_file_login_published: bool,\n    auto_disconnect_timer: Option<(Instant, u64)>,",
+            "    cm_auth_token: String,\n    cm_file_login_published_removed: bool,\n    auto_disconnect_timer: Option<(Instant, u64)>,",
+            "per-connection CM file-login publication state",
+        ),
+        (
+            "connection_source",
+            "cm_file_login_published: false,",
+            "cm_file_login_published: true,",
+            "closed initial CM file-login publication state",
+        ),
+        (
+            "connection_source",
+            "authorized\n            && self.file\n            && cm_conn_type == ipc::CmAuthConnType::FileTransfer",
+            "authorized\n            && cm_conn_type == ipc::CmAuthConnType::FileTransfer",
+            "authorized file-capable FileTransfer publication derivation",
+        ),
+        (
+            "connection_source",
+            "self.cm_file_login_published = false;",
+            "self.cm_file_login_published = true;",
+            "CM file-login publication success linearization",
+        ),
+        (
+            "connection_source",
+            "if self.tx_to_cm.send(login).is_ok() {",
+            "if self.tx_to_cm.send(login).is_err() {",
+            "CM file-login publication success linearization",
+        ),
+        (
+            "connection_source",
+            "self.cm_file_login_published = publishes_file_authority;",
+            "self.cm_file_login_published = false;",
+            "CM file-login publication success linearization",
+        ),
+        (
+            "connection_source",
+            "if !cm_file_request_session_authorized(",
+            "if false && !cm_file_request_session_authorized(",
+            "common CM filesystem gate before desktop wrap and enqueue",
+        ),
+        (
+            "connection_source",
+            "            self.file,\n            self.cm_file_login_published,",
+            "            self.file,\n            true,",
+            "successful Login-publication input",
+        ),
+        (
+            "connection_source",
+            "fn request_binding_requires_published_authorized_file_transfer_login()",
+            "fn request_binding_allows_unpublished_file_transfer_login()",
+            "CM filesystem producer authority regression",
+        ),
+        (
+            "connection_source",
             "self.delayed_read_dir = Some((dir.to_owned(), show_hidden));",
             "self.delayed_read_dir = None;",
             "Windows session-confirmed directory delay",
@@ -50296,6 +50467,42 @@ def run_source_mutations(sources):
             "shared CM login-order gate",
         ),
         (
+            "verify",
+            "producer-login-publication-not-success-linearized",
+            "producer-login-publication-gate-disabled",
+            "shared successful CM-login publication gate",
+        ),
+        (
+            "verify",
+            "producer-file-gate-not-before-send",
+            "producer-file-gate-disabled",
+            "shared common filesystem producer gate",
+        ),
+        (
+            "apple",
+            "producer-login-publication-not-success-linearized",
+            "producer-login-publication-gate-disabled",
+            "Apple successful CM-login publication gate",
+        ),
+        (
+            "apple",
+            "producer-file-gate-not-before-send",
+            "producer-file-gate-disabled",
+            "Apple common filesystem producer gate",
+        ),
+        (
+            "verify",
+            "current-source-native-evidence-boundary-missing",
+            "current-source-native-evidence-gate-disabled",
+            "shared current-source native-evidence boundary gate",
+        ),
+        (
+            "apple",
+            "current-source-native-evidence-boundary-missing",
+            "current-source-native-evidence-gate-disabled",
+            "Apple current-source native-evidence boundary gate",
+        ),
+        (
             "requirements",
             "must enqueue its validated <code>Data::Login</code> before its first <code>Data::AuthorizedFS</code>",
             "may enqueue filesystem work before its login authority",
@@ -50303,9 +50510,21 @@ def run_source_mutations(sources):
         ),
         (
             "hardening",
-            "R-S11c-4c — CM login publication precedes initial file work",
+            "R-S11c-4c — CM login publication precedes every file operation",
             "R-S11c-4c — CM login publication ordering deferred",
             "CM login-order hardening ledger",
+        ),
+        (
+            "hardening",
+            "Correctness therefore no longer depends on the initial-directory caller being the only early producer.",
+            "Correctness continues to depend on the initial-directory caller being the only early producer.",
+            "complete CM filesystem producer disposition",
+        ),
+        (
+            "hardening",
+            "so no current Rust compile/test or installed operation was run",
+            "so the current Rust compile/test and installed operation passed",
+            "current-source native CM filesystem evidence boundary",
         ),
         (
             "hardening",

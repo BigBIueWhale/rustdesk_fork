@@ -1817,6 +1817,28 @@ grep -q 'conn_type.allows_file_authority()' "$REPO/src/server/connection.rs" || 
 grep -q 'Rejected CM login without matching authorized server connection' "$REPO/src/ui_cm_interface.rs" || r_s11c4="$r_s11c4 desktop-invalid-login-reject-log-missing"
 grep -q 'Rejected CM AuthorizedFS without matching authorized file-capable login' "$REPO/src/ui_cm_interface.rs" || r_s11c4="$r_s11c4 desktop-authorizedfs-reject-log-missing"
 grep -q 'Rejected unauthenticated CM Data::FS on desktop IPC' "$REPO/src/ui_cm_interface.rs" || r_s11c4="$r_s11c4 desktop-plain-fs-reject-log-missing"
+grep -qF 'cm_file_login_published: bool' "$REPO/src/server/connection.rs" || r_s11c4="$r_s11c4 producer-login-publication-state-missing"
+grep -qF 'cm_file_login_published: false' "$REPO/src/server/connection.rs" || r_s11c4="$r_s11c4 producer-login-publication-state-not-closed"
+grep -qF 'so no current Rust compile/test or installed operation was run' "$REPO/HARDENING_STATUS.md" || r_s11c4="$r_s11c4 current-source-native-evidence-boundary-missing"
+cm_login_producer_block=$(awk '/fn try_start_cm\(/,/fn send_to_cm\(/' "$REPO/src/server/connection.rs")
+cm_login_reset_line=$(echo "$cm_login_producer_block" | grep -nF 'self.cm_file_login_published = false;' | head -1 | cut -d: -f1 || true)
+cm_login_send_line=$(echo "$cm_login_producer_block" | grep -nF 'if self.tx_to_cm.send(login).is_ok()' | head -1 | cut -d: -f1 || true)
+cm_login_commit_line=$(echo "$cm_login_producer_block" | grep -nF 'self.cm_file_login_published = publishes_file_authority;' | head -1 | cut -d: -f1 || true)
+if [ -z "$cm_login_reset_line" ] || [ -z "$cm_login_send_line" ] || [ -z "$cm_login_commit_line" ] \
+    || [ "$cm_login_reset_line" -ge "$cm_login_send_line" ] \
+    || [ "$cm_login_send_line" -ge "$cm_login_commit_line" ]; then
+  r_s11c4="$r_s11c4 producer-login-publication-not-success-linearized"
+fi
+cm_fs_producer_block=$(awk '/fn send_fs\(/,/async fn send_login_error/' "$REPO/src/server/connection.rs")
+cm_fs_producer_gate_line=$(echo "$cm_fs_producer_block" | grep -nF 'if !cm_file_request_session_authorized(' | head -1 | cut -d: -f1 || true)
+cm_fs_producer_send_line=$(echo "$cm_fs_producer_block" | grep -nF '.send(data)' | head -1 | cut -d: -f1 || true)
+for authority_input in 'self.authorized' 'self.file_transfer.is_some()' 'self.file' 'self.cm_file_login_published'; do
+  echo "$cm_fs_producer_block" | grep -Fq "$authority_input" || r_s11c4="$r_s11c4 producer-file-gate-missing-$authority_input"
+done
+if [ -z "$cm_fs_producer_gate_line" ] || [ -z "$cm_fs_producer_send_line" ] \
+    || [ "$cm_fs_producer_gate_line" -ge "$cm_fs_producer_send_line" ]; then
+  r_s11c4="$r_s11c4 producer-file-gate-not-before-send"
+fi
 desktop_cm_login_block=$(awk '/Data::Login{id/,/self.cm.add_connection/' "$REPO/src/ui_cm_interface.rs")
 desktop_validate_line=$(echo "$desktop_cm_login_block" | grep -n 'validate_cm_connection_authority' | head -1 | cut -d: -f1 || true)
 desktop_add_line=$(echo "$desktop_cm_login_block" | grep -n 'self.cm.add_connection' | head -1 | cut -d: -f1 || true)
@@ -1833,7 +1855,7 @@ if [ -n "$r_s11c4" ]; then
   echo "  FAIL R-S11c-4a macOS CM pre-login file IPC closure:$r_s11c4"
   rc=1
 else
-  note "ok  R-S11c-4a macOS CM rejects forged desktop login/plain FS unless the main server validates the active connection id/type/token"
+  note "ok  R-S11c-4a macOS file producers require a successfully published authorized FileTransfer login before the common filesystem-send choke point, and CM rejects forged desktop login/plain FS unless the main server validates the active connection id/type/token"
 fi
 
 echo "== (2b-iii-a2) R-G9 Apple shared presentation serialization contract =="

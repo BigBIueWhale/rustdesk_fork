@@ -6445,25 +6445,35 @@ network configuration was inspected or changed.
   before `add_connection`, desktop `AuthorizedFS` token matching, desktop legacy `Data::FS` rejection,
   and Android pre-`handle_fs` gating; `scripts/apple-conform-check.sh` mirrors the desktop source
   assertion for macOS.
-- **R-S11c-4c — CM login publication precedes initial file work — SOURCE IMPLEMENTED / GATED;
-  EXACT-CURRENT INSTALLED-WINDOWS ORDERING GREEN, FULL TRANSACTION BLOCKED LATER (2026-08-12).** Platform: every controlled-side
+- **R-S11c-4c — CM login publication precedes every file operation — SOURCE IMPLEMENTED / GATED;
+  NAMED-COMMIT INSTALLED-WINDOWS LOGIN/DIRECTORY LIFECYCLE GREEN; CURRENT-SOURCE NATIVE COMPILE AND
+  COMPLETE FILE-OPERATION TRANSACTION EVIDENCE PENDING (2026-08-16).** Platform: every controlled-side
   FileTransfer producer; natively exposed by the installed LocalSystem Windows service and its active-user CM.
   The receiver's fail-closed authority gate was correct, but the producer violated it deterministically:
   `send_logon_response_and_keep_alive` queued the initial `Data::AuthorizedFS(ReadDir)` before its caller
   queued `Data::Login`. The shared unbounded channel preserved precisely that incorrect FIFO order. CM therefore
   saw `conn_id=0`, rejected the filesystem operation, closed the IPC task, and was relaunched for each retry.
   The correction represents the initial directory as a typed `CmLoginFollowup`, queues `Data::Login` first, and
-  only then reserves/sends the directory request. The distinct Windows multi-session path retains
+  only then reserves/sends the directory request. The producer now also records successful publication of an
+  authorized, file-capable FileTransfer login as explicit per-connection state. The common `send_fs` choke point
+  refuses every directory, enumeration, read, write, block, digest, confirmation, cancellation, create, remove,
+  and rename request unless that state and the live connection's authorization/type/file capability all remain
+  true. Correctness therefore no longer depends on the initial-directory caller being the only early producer.
+  The distinct Windows multi-session path retains
   `delayed_read_dir` until `SelectedSid`; CM continues to reject, rather than buffer or infer authority for,
   every pre-login filesystem operation. `scripts/verify.sh` gates the absence of `read_dir` from response
-  construction and exact Login→follow-up→ReadDir ordering. The independent semantic verifier checks the same
-  structure and deliberately mutates the pre-login send, login publication, Windows delayed state, shared gate,
+  construction, exact Login→follow-up→ReadDir ordering, successful-publication transition, and common producer
+  gate. The independent semantic verifier checks the same structure and deliberately mutates the pre-login send,
+  successful-publication state, common producer gate, Windows delayed state, shared receiver gate,
   normative requirement, and this disposition. Exact commit `1f54b5adb565b50695e00ae853fed33f989fb7a8`
   subsequently proved the corrected native ordering: active-user CM logs received `Data::Login` with real positive
   connection IDs and no longer received pre-login `AuthorizedFS` with `conn_id=0`. That run then failed inside the
   Login authority check on the separate cross-integrity main-IPC connection, before CM could admit the login or
   consume the queued directory continuation. This is positive evidence for the FIFO ordering edge only, not a
-  positive file round trip or installed lifecycle result; the full exact installed transaction remains mandatory.
+  positive file round trip or installed lifecycle result. The present common producer-gate strengthening has
+  confined semantic and complete source-mutation evidence only: the exact native compiler image is unavailable,
+  so no current Rust compile/test or installed operation was run. A current clean native compile and the full exact
+  installed transaction remain mandatory.
 - **R-S11c-22 — Windows CM non-file clipboard authority — CLOSED 2026-07-11.**
   Platform: Windows installed/root server mode. Endpoint/action: the root clipboard service's helper
   request to `_cm` for non-file host clipboard content. Boundary: authenticated helper endpoint proof

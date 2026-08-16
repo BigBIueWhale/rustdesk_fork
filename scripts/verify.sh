@@ -6843,9 +6843,33 @@ grep -q 'Rejected unauthenticated CM Data::FS on desktop IPC' src/ui_cm_interfac
 grep -q 'Rejected Android CM Data::FS before authorized file-capable login' src/ui_cm_interface.rs || r_s11c4="$r_s11c4 android-reject-log-missing"
 grep -qF 'enum CmLoginFollowup {' src/server/connection.rs || r_s11c4="$r_s11c4 cm-login-followup-type-missing"
 grep -qF 'ReadInitialDirectory {' src/server/connection.rs || r_s11c4="$r_s11c4 initial-directory-followup-missing"
+grep -qF 'cm_file_login_published: bool' src/server/connection.rs || r_s11c4="$r_s11c4 producer-login-publication-state-missing"
+grep -qF 'cm_file_login_published: false' src/server/connection.rs || r_s11c4="$r_s11c4 producer-login-publication-state-not-closed"
+grep -qF 'fn cm_file_request_session_authorized(' src/server/connection.rs || r_s11c4="$r_s11c4 producer-file-authority-gate-missing"
+grep -qF 'fn request_binding_requires_published_authorized_file_transfer_login()' src/server/connection.rs || r_s11c4="$r_s11c4 producer-file-authority-regression-missing"
+grep -qF 'so no current Rust compile/test or installed operation was run' HARDENING_STATUS.md || r_s11c4="$r_s11c4 current-source-native-evidence-boundary-missing"
 logon_response_block=$(awk '/async fn send_logon_response_and_keep_alive/,/fn try_sub_camera_displays/' src/server/connection.rs)
 if echo "$logon_response_block" | grep -qF 'self.read_dir('; then
   r_s11c4="$r_s11c4 initial-directory-still-enqueued-before-cm-login"
+fi
+cm_login_producer_block=$(awk '/fn try_start_cm\(/,/fn send_to_cm\(/' src/server/connection.rs)
+cm_login_reset_line=$(echo "$cm_login_producer_block" | grep -nF 'self.cm_file_login_published = false;' | head -1 | cut -d: -f1)
+cm_login_send_line=$(echo "$cm_login_producer_block" | grep -nF 'if self.tx_to_cm.send(login).is_ok()' | head -1 | cut -d: -f1)
+cm_login_commit_line=$(echo "$cm_login_producer_block" | grep -nF 'self.cm_file_login_published = publishes_file_authority;' | head -1 | cut -d: -f1)
+if [ -z "$cm_login_reset_line" ] || [ -z "$cm_login_send_line" ] || [ -z "$cm_login_commit_line" ] \
+    || [ "$cm_login_reset_line" -ge "$cm_login_send_line" ] \
+    || [ "$cm_login_send_line" -ge "$cm_login_commit_line" ]; then
+  r_s11c4="$r_s11c4 producer-login-publication-not-success-linearized"
+fi
+cm_fs_producer_block=$(awk '/fn send_fs\(/,/async fn send_login_error/' src/server/connection.rs)
+cm_fs_producer_gate_line=$(echo "$cm_fs_producer_block" | grep -nF 'if !cm_file_request_session_authorized(' | head -1 | cut -d: -f1)
+cm_fs_producer_send_line=$(echo "$cm_fs_producer_block" | grep -nF '.send(data)' | head -1 | cut -d: -f1)
+for authority_input in 'self.authorized' 'self.file_transfer.is_some()' 'self.file' 'self.cm_file_login_published'; do
+  echo "$cm_fs_producer_block" | grep -Fq "$authority_input" || r_s11c4="$r_s11c4 producer-file-gate-missing-$authority_input"
+done
+if [ -z "$cm_fs_producer_gate_line" ] || [ -z "$cm_fs_producer_send_line" ] \
+    || [ "$cm_fs_producer_gate_line" -ge "$cm_fs_producer_send_line" ]; then
+  r_s11c4="$r_s11c4 producer-file-gate-not-before-send"
 fi
 cm_login_activation_block=$(awk '/let Some\(cm_login_followup\) =/,/self.send_login_error\(err_msg\).await;/' src/server/connection.rs)
 cm_login_publish_line=$(echo "$cm_login_activation_block" | grep -nF 'self.try_start_cm(' | head -1 | cut -d: -f1)
@@ -6875,7 +6899,7 @@ if [ -z "$android_gate_line" ] || [ -z "$android_handle_line" ] || [ "$android_g
   r_s11c4="$r_s11c4 android-fs-gate-not-before-handle_fs"
 fi
 if [ -n "$r_s11c4" ]; then echo "  FAIL R-S11c-4 CM file IPC authority closure:$r_s11c4"; rc=1; else
-  echo "  ok  R-S11c-4 CM login authority is published before initial filesystem work; forged desktop login/FS remains rejected and Android in-process FS remains login-gated"; fi
+  echo "  ok  R-S11c-4 CM login authority is success-published before every common-choke-point filesystem send; forged desktop login/FS remains rejected and Android in-process FS remains login-gated"; fi
 
 echo "== (3b-iii-f0) CM cannot select authenticated peer message types (R-S11e-17) =="
 r_s11e17=

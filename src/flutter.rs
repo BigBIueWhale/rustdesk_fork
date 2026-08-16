@@ -3197,11 +3197,14 @@ pub mod connection_manager {
     }
 
     #[cfg(target_os = "android")]
-    use hbb_common::tokio::sync::mpsc::{UnboundedReceiver, UnboundedSender};
+    use hbb_common::tokio::sync::mpsc::{Receiver, UnboundedSender};
 
     #[cfg(target_os = "android")]
     pub fn start_channel(
-        rx: UnboundedReceiver<crate::ipc::Data>,
+        rx: Receiver<crate::ipc::Data>,
+        terminal: hbb_common::tokio::sync::oneshot::Receiver<
+            crate::ui_cm_interface::CmConnectionTerminal,
+        >,
         tx: UnboundedSender<crate::ipc::Data>,
         service_generation: u64,
     ) {
@@ -3209,7 +3212,7 @@ pub mod connection_manager {
         let cm = crate::ui_cm_interface::ConnectionManager {
             ui_handler: FlutterHandler { service_generation },
         };
-        std::thread::spawn(move || start_listen(cm, rx, tx));
+        std::thread::spawn(move || start_listen(cm, rx, terminal, tx));
     }
 }
 

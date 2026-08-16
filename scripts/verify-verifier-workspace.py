@@ -9225,8 +9225,12 @@ def validate_linux_headless_cm_parent_contract(sources):
             "live-owner CM completion regression",
         ),
         (
-            "fn completed_bootstrap_drains_bridge_after_owner_closure()",
-            "post-bootstrap bridge-drain regression",
+            "fn completed_bootstrap_allows_bounded_terminal_completion_after_owner_closure()",
+            "post-bootstrap bounded-terminal regression",
+        ),
+        (
+            "fn cm_command_queue_has_exact_capacity_and_recovers_after_dequeue()",
+            "finite CM command-queue regression",
         ),
     ):
         require_text(startup_lifecycle, text, label)
@@ -9249,8 +9253,12 @@ def validate_linux_headless_cm_parent_contract(sources):
         ("biased;", "CM completed-state precedence"),
         ("result = &mut task => Some(result)", "CM task completion outcome"),
         (
-            "_ = &mut bootstrap_complete => Some(task.await)",
-            "post-bootstrap bridge drain outcome",
+            "_ = &mut bootstrap_complete => {",
+            "post-bootstrap bounded completion state",
+        ),
+        (
+            "time::timeout(CM_OWNER_TERMINAL_DRAIN_TIMEOUT, &mut task)",
+            "post-bootstrap bounded terminal completion",
         ),
         ("_ = &mut owner_closed => None", "CM owner-loss outcome"),
     ):
@@ -9299,11 +9307,11 @@ def validate_linux_headless_cm_parent_contract(sources):
     require_order(
         connection_drop,
         (
+            "self.publish_cm_terminal(crate::ui_cm_interface::CmConnectionTerminal::Close);",
             "drop(self.cm_ipc_owner.take());",
             "drop(self.voice_call_input.take());",
-            "self.tx_to_cm.send(ipc::Data::Close)",
         ),
-        "CM task cancellation-before-connection cleanup ordering",
+        "CM terminal publication before owner retirement and connection cleanup",
     )
 
     startup = extract_between(
@@ -9422,8 +9430,12 @@ def validate_linux_headless_cm_parent_contract(sources):
             "dedicated CM owner cancellation requirement",
         ),
         (
-            "drain its command receiver rather than race owner cancellation",
-            "post-bootstrap CM drain requirement",
+            "independent one-shot terminal lane",
+            "post-bootstrap exact terminal-lane requirement",
+        ),
+        (
+            "bounded completion rather than draining arbitrary commands",
+            "post-bootstrap bounded completion requirement",
         ),
         (
             "must perform no further bootstrap work once owner closure is observed",
@@ -40478,7 +40490,7 @@ def validate_android_media_projection_finality_contract(sources):
     )
     require_text(
         server_connection,
-        "start_channel(rx_to_cm, tx_from_cm, conn.android_server_generation)",
+        "start_channel(\n            rx_to_cm,\n            cm_terminal_rx,\n            tx_from_cm,\n            conn.android_server_generation,",
         "Android connection generation transfer into callback channel",
     )
     require_text(
@@ -46206,7 +46218,7 @@ def validate_cm_file_login_order_contract(sources):
         producer,
         (
             "self.cm_file_login_published = false;",
-            "if self.tx_to_cm.send(login).is_ok()",
+            "if self.send_to_cm(login).await",
             "self.cm_file_login_published = publishes_file_authority;",
         ),
         "CM file-login publication success linearization",
@@ -46268,7 +46280,7 @@ def validate_cm_file_login_order_contract(sources):
         activation,
         (
             "self.send_logon_response_and_keep_alive().await",
-            "self.try_start_cm(lr.my_id, lr.my_name, self.authorized);",
+            "self.try_start_cm(lr.my_id, lr.my_name, self.authorized)",
             "if let CmLoginFollowup::ReadInitialDirectory",
             "self.read_dir(&path, include_hidden)",
         ),
@@ -46334,6 +46346,281 @@ def validate_cm_file_login_order_contract(sources):
         require_text(source, text, label)
 
 
+def validate_cm_command_lifetime_contract(sources):
+    connection = sources["connection_source"]
+    ui_cm = sources["ui_cm_source"]
+    flutter = sources["flutter_source"]
+    requirements = sources["requirements"]
+    hardening = sources["hardening"]
+
+    for source, text, label in (
+        (
+            sources["verify"],
+            "bounded exact-owner CM command publication (R-S11c-4d/R-T4)",
+            "shared CM command-lifetime source gate",
+        ),
+        (
+            sources["apple"],
+            'echo "== (2b-iii-a1) R-S11c-4d bounded exact-owner macOS CM command publication =="',
+            "Apple CM command-lifetime source gate",
+        ),
+        (
+            connection,
+            "const CM_COMMAND_QUEUE_CAPACITY: usize = 2;",
+            "finite CM command-queue capacity",
+        ),
+        (
+            connection,
+            "const CM_COMMAND_QUEUE_SEND_TIMEOUT: Duration = Duration::from_secs(5);",
+            "CM command admission deadline",
+        ),
+        (
+            connection,
+            "const CM_OWNER_TERMINAL_DRAIN_TIMEOUT: Duration = Duration::from_secs(6);",
+            "bounded desktop terminal-completion deadline",
+        ),
+        (
+            connection,
+            "let (tx_to_cm, rx_to_cm) = mpsc::channel::<ipc::Data>(CM_COMMAND_QUEUE_CAPACITY);",
+            "bounded CM command channel construction",
+        ),
+        (
+            connection,
+            "fn cm_command_queue_has_exact_capacity_and_recovers_after_dequeue()",
+            "finite CM command-queue regression",
+        ),
+        (
+            connection,
+            "fn completed_bootstrap_allows_bounded_terminal_completion_after_owner_closure()",
+            "bounded terminal-completion regression",
+        ),
+    ):
+        require_text(source, text, label)
+    require_absent(
+        connection,
+        "let (tx_to_cm, rx_to_cm) = mpsc::unbounded_channel",
+        "unbounded Connection-to-CM command channel",
+    )
+    require_absent(
+        connection,
+        "self.tx_to_cm.send(ipc::Data::Close)",
+        "terminal intent on ordinary CM command queue",
+    )
+
+    state = extract_braced_item(
+        connection, "pub struct Connection {", "Connection CM command-lifetime state"
+    )
+    for text, label in (
+        ("tx_to_cm: mpsc::Sender<ipc::Data>", "bounded CM command sender field"),
+        (
+            "cm_terminal: Option<oneshot::Sender<crate::ui_cm_interface::CmConnectionTerminal>>",
+            "exact terminal sender field",
+        ),
+        ("cm_command_failure: Option<String>", "CM publication failure state"),
+    ):
+        require_text(state, text, label)
+
+    command_sender = extract_braced_item(
+        connection, "async fn send_to_cm(&mut self", "bounded ordinary CM command publisher"
+    )
+    require_order(
+        command_sender,
+        (
+            "time::timeout(",
+            "CM_COMMAND_QUEUE_SEND_TIMEOUT,",
+            "self.tx_to_cm.send(data)",
+            ".await",
+            "self.cm_command_failure = Some(error);",
+        ),
+        "deadline-backed ordinary CM command publication",
+    )
+    for text, label in (
+        (
+            "connection-manager command queue is closed",
+            "closed ordinary CM command queue outcome",
+        ),
+        (
+            "connection-manager command queue backpressure timed out",
+            "saturated ordinary CM command queue outcome",
+        ),
+    ):
+        require_text(command_sender, text, label)
+
+    file_sender = extract_braced_item(
+        connection, "async fn send_fs(&mut self", "bounded CM filesystem publisher"
+    )
+    require_order(
+        file_sender,
+        (
+            "if !cm_file_request_session_authorized(",
+            "let result = match time::timeout(",
+            "CM_COMMAND_QUEUE_SEND_TIMEOUT,",
+            "self.tx_to_cm.send(data)",
+            ".await",
+            "self.cm_command_failure = Some(result.clone());",
+        ),
+        "authority-gated deadline-backed CM filesystem publication",
+    )
+
+    terminal_type = extract_braced_item(
+        ui_cm, "pub(crate) enum CmConnectionTerminal {", "typed CM terminal intent"
+    )
+    require_text(terminal_type, "Close,", "typed CM close intent")
+    require_text(terminal_type, "Disconnected,", "typed CM disconnected intent")
+    terminal_mapping = extract_braced_item(
+        ui_cm, "impl CmConnectionTerminal {", "CM terminal wire mapping"
+    )
+    require_order(
+        terminal_mapping,
+        (
+            "Self::Close => ipc::Data::Close",
+            "Self::Disconnected => ipc::Data::Disconnected",
+        ),
+        "exact CM terminal wire mapping",
+    )
+    for text, label in (
+        ("let (cm_terminal, cm_terminal_rx) = oneshot::channel();", "terminal channel construction"),
+        ("cm_terminal: Some(cm_terminal)", "terminal sender wiring"),
+        ("cm_terminal: cm_terminal_rx", "desktop terminal receiver wiring"),
+        ("p.cm_terminal,", "desktop terminal receiver handoff"),
+        ("self.publish_cm_terminal(terminal);", "graceful terminal publication"),
+    ):
+        require_text(connection, text, label)
+
+    connection_drop = extract_between(
+        connection,
+        "impl Drop for Connection {",
+        '\n#[cfg(target_os = "linux")]\nstruct LinuxHeadlessHandle',
+        "Connection terminal Drop finality",
+    )
+    require_order(
+        connection_drop,
+        (
+            "if !self.closed {",
+            "self.publish_cm_terminal(crate::ui_cm_interface::CmConnectionTerminal::Close);",
+            "drop(self.cm_ipc_owner.take());",
+        ),
+        "hard-Drop terminal publication before desktop owner retirement",
+    )
+
+    owner_wrapper = extract_braced_item(
+        connection,
+        "async fn run_cm_ipc_until_owner_closed<F, T>(",
+        "bounded desktop CM task owner",
+    )
+    require_order(
+        owner_wrapper,
+        (
+            "_ = &mut bootstrap_complete => {",
+            "_ = &mut owner_closed => {",
+            "time::timeout(CM_OWNER_TERMINAL_DRAIN_TIMEOUT, &mut task)",
+            ".await",
+            ".ok()",
+        ),
+        "post-bootstrap bounded terminal completion",
+    )
+    require_absent(
+        owner_wrapper,
+        "_ = &mut bootstrap_complete => Some(task.await)",
+        "unbounded post-bootstrap CM bridge drain",
+    )
+
+    desktop_bridge = extract_between(
+        connection,
+        "async fn start_ipc(",
+        "\n// in case screen is sleep and blank",
+        "desktop CM live bridge",
+    )
+    require_order(
+        desktop_bridge,
+        (
+            "loop {",
+            "tokio::select! {",
+            "biased;",
+            "terminal = &mut cm_terminal => {",
+            ".into_data();",
+            "timeout(",
+            "CM_IPC_COMMAND_SEND_TIMEOUT_MS,",
+            "stream.send(&terminal)",
+            "return Ok(());",
+            "event = async {",
+            "res = rx_to_cm.recv()",
+        ),
+        "desktop terminal-first bridge finality",
+    )
+    write_block = extract_between(
+        desktop_bridge,
+        "if let Data::AuthorizedFS { cm_auth_token, fs: ipc::FS::WriteBlock",
+        "} else {",
+        "desktop CM WriteBlock publication",
+    )
+    require_order(
+        write_block,
+        (
+            "timeout(",
+            "CM_IPC_COMMAND_SEND_TIMEOUT_MS,",
+            "async {",
+            "stream.send(&Data::AuthorizedFS {",
+            "stream.send_raw(data).await",
+            ".await??;",
+        ),
+        "single deadline for CM WriteBlock metadata and raw payload",
+    )
+
+    android_bridge = extract_between(
+        ui_cm,
+        "pub async fn start_listen<T: InvokeUiCM>(",
+        "\n#[cfg(not(any(target_os = \"ios\")))]\nfn get_transfer_job_for_connection",
+        "Android in-process CM bridge",
+    )
+    require_text(android_bridge, "mut rx: mpsc::Receiver<Data>", "bounded Android CM receiver")
+    require_order(
+        android_bridge,
+        (
+            "let command = tokio::select! {",
+            "biased;",
+            "terminal = &mut terminal => {",
+            "Some(terminal.into_data())",
+            "command = rx.recv() => command",
+        ),
+        "Android terminal-first command selection",
+    )
+    flutter_channel = extract_braced_item(
+        flutter, "pub fn start_channel(", "Android bounded CM channel handoff"
+    )
+    for text, label in (
+        ("rx: Receiver<crate::ipc::Data>", "Android bounded receiver handoff"),
+        (
+            "oneshot::Receiver<\n            crate::ui_cm_interface::CmConnectionTerminal",
+            "Android terminal receiver handoff",
+        ),
+        ("start_listen(cm, rx, terminal, tx)", "Android terminal-aware consumer launch"),
+    ):
+        require_text(flutter_channel, text, label)
+
+    requirement = extract_html_requirement(
+        requirements, "R-S11c-4d", "finite exact-owner CM command requirement"
+    )
+    for text, label in (
+        ("finite per-connection CM command queue", "finite CM command budget"),
+        ("bounded deadline-backed publication", "deadline-backed CM publication"),
+        ("independently owned one-shot terminal lane", "independent terminal finality"),
+        ("no still-queued filesystem or other CM command may begin afterward", "post-terminal work prohibition"),
+    ):
+        require_text(requirement, text, label)
+    require_text(requirements, "<tr><td>204</td>", "CM lifetime Appendix C row")
+    require_text(
+        hardening,
+        "R-S11c-4d — bounded exact-owner CM command publication",
+        "CM command-lifetime hardening ledger",
+    )
+    require_text(
+        hardening,
+        "no current native compile/test is claimed",
+        "current-source native evidence boundary",
+    )
+
+
 def validate_sources(sources):
     validate_verify_workspace(sources["verify"])
     validate_build_release(sources["build"])
@@ -46374,6 +46661,7 @@ def validate_sources(sources):
     validate_windows_native_credential_evidence_scope_contract(sources)
     validate_windows_terminal_synchronous_io_cancellation_contract(sources)
     validate_cm_file_login_order_contract(sources)
+    validate_cm_command_lifetime_contract(sources)
     validate_windows_privacy_broker_contract(sources)
     validate_windows_process_state_contract(sources)
     validate_linux_headless_cm_parent_contract(sources)
@@ -50390,8 +50678,8 @@ def run_source_mutations(sources):
         ),
         (
             "connection_source",
-            "                self.try_start_cm(lr.my_id, lr.my_name, self.authorized);",
-            "                // CM login publication removed",
+            "self.try_start_cm(lr.my_id, lr.my_name, self.authorized)",
+            "cm_login_publication_removed(lr.my_id, lr.my_name, self.authorized)",
             "CM login publication before initial filesystem work",
         ),
         (
@@ -50426,8 +50714,8 @@ def run_source_mutations(sources):
         ),
         (
             "connection_source",
-            "if self.tx_to_cm.send(login).is_ok() {",
-            "if self.tx_to_cm.send(login).is_err() {",
+            "if self.send_to_cm(login).await {",
+            "if false {",
             "CM file-login publication success linearization",
         ),
         (
@@ -50525,6 +50813,192 @@ def run_source_mutations(sources):
             "so no current Rust compile/test or installed operation was run",
             "so the current Rust compile/test and installed operation passed",
             "current-source native CM filesystem evidence boundary",
+        ),
+        (
+            "connection_source",
+            "const CM_COMMAND_QUEUE_CAPACITY: usize = 2;",
+            "const CM_COMMAND_QUEUE_CAPACITY: usize = usize::MAX;",
+            "finite CM command-queue capacity",
+        ),
+        (
+            "connection_source",
+            "const CM_COMMAND_QUEUE_SEND_TIMEOUT: Duration = Duration::from_secs(5);",
+            "const CM_COMMAND_QUEUE_SEND_TIMEOUT: Duration = Duration::MAX;",
+            "CM command admission deadline",
+        ),
+        (
+            "connection_source",
+            "const CM_OWNER_TERMINAL_DRAIN_TIMEOUT: Duration = Duration::from_secs(6);",
+            "const CM_OWNER_TERMINAL_DRAIN_TIMEOUT: Duration = Duration::MAX;",
+            "bounded desktop terminal-completion deadline",
+        ),
+        (
+            "connection_source",
+            "let (tx_to_cm, rx_to_cm) = mpsc::channel::<ipc::Data>(CM_COMMAND_QUEUE_CAPACITY);",
+            "let (tx_to_cm, rx_to_cm) = mpsc::unbounded_channel::<ipc::Data>();",
+            "bounded CM command channel construction",
+        ),
+        (
+            "connection_source",
+            "tx_to_cm: mpsc::Sender<ipc::Data>",
+            "tx_to_cm: mpsc::UnboundedSender<ipc::Data>",
+            "bounded CM command sender field",
+        ),
+        (
+            "connection_source",
+            "cm_terminal: Option<oneshot::Sender<crate::ui_cm_interface::CmConnectionTerminal>>",
+            "cm_terminal_removed: Option<oneshot::Sender<crate::ui_cm_interface::CmConnectionTerminal>>",
+            "exact terminal sender field",
+        ),
+        (
+            "connection_source",
+            "cm_command_failure: Option<String>",
+            "cm_command_failure_removed: Option<String>",
+            "CM publication failure state",
+        ),
+        (
+            "connection_source",
+            "async fn send_to_cm(&mut self, data: ipc::Data) -> bool",
+            "fn send_to_cm(&mut self, data: ipc::Data) -> bool",
+            "bounded ordinary CM command publisher",
+        ),
+        (
+            "connection_source",
+            "let error = match time::timeout(\n            CM_COMMAND_QUEUE_SEND_TIMEOUT,",
+            "let error = match unbounded_wait(\n            CM_COMMAND_QUEUE_SEND_TIMEOUT,",
+            "deadline-backed ordinary CM command publication",
+        ),
+        (
+            "connection_source",
+            "self.cm_command_failure = Some(error);",
+            "let _ignored_cm_command_failure = error;",
+            "deadline-backed ordinary CM command publication",
+        ),
+        (
+            "connection_source",
+            "let result = match time::timeout(\n            CM_COMMAND_QUEUE_SEND_TIMEOUT,",
+            "let result = match unbounded_wait(\n            CM_COMMAND_QUEUE_SEND_TIMEOUT,",
+            "authority-gated deadline-backed CM filesystem publication",
+        ),
+        (
+            "connection_source",
+            "self.cm_command_failure = Some(result.clone());",
+            "let _ignored_cm_file_failure = result.clone();",
+            "authority-gated deadline-backed CM filesystem publication",
+        ),
+        (
+            "ui_cm_source",
+            "pub(crate) enum CmConnectionTerminal {",
+            "pub(crate) enum CmConnectionTerminalDisabled {",
+            "typed CM terminal intent",
+        ),
+        (
+            "ui_cm_source",
+            "Self::Close => ipc::Data::Close",
+            "Self::Close => ipc::Data::Disconnected",
+            "exact CM terminal wire mapping",
+        ),
+        (
+            "connection_source",
+            "cm_terminal: Some(cm_terminal),",
+            "cm_terminal: None,",
+            "terminal sender wiring",
+        ),
+        (
+            "connection_source",
+            "cm_terminal: cm_terminal_rx,",
+            "cm_terminal: oneshot::channel().1,",
+            "desktop terminal receiver wiring",
+        ),
+        (
+            "connection_source",
+            "p.cm_terminal,",
+            "oneshot::channel().1,",
+            "desktop terminal receiver handoff",
+        ),
+        (
+            "connection_source",
+            "self.publish_cm_terminal(crate::ui_cm_interface::CmConnectionTerminal::Close);",
+            "let _ = self.tx_to_cm.try_send(ipc::Data::Close);",
+            "hard-Drop terminal publication before desktop owner retirement",
+        ),
+        (
+            "connection_source",
+            "        tokio::select! {\n            biased;\n            terminal = &mut cm_terminal => {",
+            "        tokio::select! {\n            terminal_disabled = &mut cm_terminal => {",
+            "desktop terminal-first bridge finality",
+        ),
+        (
+            "connection_source",
+            "timeout(\n                                    CM_IPC_COMMAND_SEND_TIMEOUT_MS,\n                                    async {",
+            "unbounded_wait(\n                                    CM_IPC_COMMAND_SEND_TIMEOUT_MS,\n                                    async {",
+            "single deadline for CM WriteBlock metadata and raw payload",
+        ),
+        (
+            "ui_cm_source",
+            "        let command = tokio::select! {\n            biased;\n            terminal = &mut terminal => {",
+            "        let command = tokio::select! {\n            terminal_disabled = &mut terminal => {",
+            "Android terminal-first command selection",
+        ),
+        (
+            "flutter_source",
+            "rx: Receiver<crate::ipc::Data>",
+            "rx: UnboundedReceiver<crate::ipc::Data>",
+            "Android bounded receiver handoff",
+        ),
+        (
+            "connection_source",
+            "fn cm_command_queue_has_exact_capacity_and_recovers_after_dequeue()",
+            "fn cm_command_queue_capacity_is_not_checked()",
+            "finite CM command-queue regression",
+        ),
+        (
+            "requirements",
+            '<span class="id">R-S11c-4d</span>',
+            '<span class="id">R-S11c-4d-disabled</span>',
+            "finite exact-owner CM command requirement",
+        ),
+        (
+            "requirements",
+            "finite per-connection CM command queue",
+            "unbounded per-connection CM command queue",
+            "finite CM command budget",
+        ),
+        (
+            "requirements",
+            "no still-queued filesystem or other CM command may begin afterward",
+            "still-queued filesystem and other CM commands may begin afterward",
+            "post-terminal work prohibition",
+        ),
+        (
+            "hardening",
+            "R-S11c-4d — bounded exact-owner CM command publication",
+            "R-S11c-4d — unbounded shared CM command publication",
+            "CM command-lifetime hardening ledger",
+        ),
+        (
+            "hardening",
+            "no current native compile/test is claimed",
+            "current native compile/test is claimed",
+            "current-source native evidence boundary",
+        ),
+        (
+            "verify",
+            "bounded exact-owner CM command publication (R-S11c-4d/R-T4)",
+            "unbounded CM command publication (R-S11c-4d/R-T4)",
+            "shared CM command-lifetime source gate",
+        ),
+        (
+            "apple",
+            'echo "== (2b-iii-a1) R-S11c-4d bounded exact-owner macOS CM command publication =="',
+            'echo "== (2b-iii-a1) R-S11c-4d unbounded macOS CM command publication =="',
+            "Apple CM command-lifetime source gate",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_cm_file_login_order_contract(sources)\n    validate_cm_command_lifetime_contract(sources)\n    validate_windows_privacy_broker_contract(sources)",
+            "    validate_cm_file_login_order_contract(sources)\n    validate_windows_privacy_broker_contract(sources)",
+            "CM command-lifetime workspace dispatch",
         ),
         (
             "hardening",
@@ -53768,9 +54242,9 @@ def run_source_mutations(sources):
         ),
         (
             "connection_source",
-            "_ = &mut bootstrap_complete => Some(task.await)",
-            "_ = &mut bootstrap_complete => None",
-            "post-bootstrap bridge drain outcome",
+            "time::timeout(CM_OWNER_TERMINAL_DRAIN_TIMEOUT, &mut task)",
+            "task.await",
+            "post-bootstrap bounded terminal completion",
         ),
         (
             "connection_source",
@@ -53786,9 +54260,9 @@ def run_source_mutations(sources):
         ),
         (
             "connection_source",
-            "drop(self.cm_ipc_owner.take());",
-            "let _ = self.cm_ipc_owner.take();",
-            "CM task cancellation-before-connection cleanup ordering",
+            "self.publish_cm_terminal(crate::ui_cm_interface::CmConnectionTerminal::Close);",
+            "let _terminal_publication_removed = &self.cm_terminal;",
+            "hard-Drop terminal publication before desktop owner retirement",
         ),
         (
             "connection_source",
@@ -53798,9 +54272,9 @@ def run_source_mutations(sources):
         ),
         (
             "connection_source",
-            "fn completed_bootstrap_drains_bridge_after_owner_closure()",
-            "fn completed_bootstrap_cancels_bridge_after_owner_closure()",
-            "post-bootstrap bridge-drain regression",
+            "fn completed_bootstrap_allows_bounded_terminal_completion_after_owner_closure()",
+            "fn completed_bootstrap_cancels_terminal_after_owner_closure()",
+            "bounded terminal-completion regression",
         ),
         (
             "connection_source",
@@ -53828,15 +54302,21 @@ def run_source_mutations(sources):
         ),
         (
             "requirements",
-            "drain its command receiver rather than race owner cancellation",
-            "drop its command receiver after owner cancellation",
-            "post-bootstrap CM drain requirement",
+            "independent one-shot terminal lane",
+            "ordinary queued terminal command",
+            "post-bootstrap exact terminal-lane requirement",
+        ),
+        (
+            "requirements",
+            "bounded completion rather than draining arbitrary commands",
+            "unbounded completion by draining arbitrary commands",
+            "post-bootstrap bounded completion requirement",
         ),
         (
             "requirements",
             "<tr><td>204</td>",
             "<tr><td>204-disabled</td>",
-            "Linux CM bootstrap cancellation Appendix C row",
+            "CM lifetime Appendix C row",
         ),
         (
             "hardening",
@@ -79943,6 +80423,15 @@ def validate_workspace_verifier_self_contract(source):
         module = ast.parse(source)
     except SyntaxError as exc:
         raise VerificationError(f"managed command signal ownership: Python source does not parse: {exc}") from exc
+    source_dispatch = extract_python_definition(
+        source, module, "validate_sources", "workspace semantic-validator dispatch"
+    )
+    require_exact_count(
+        source_dispatch,
+        "validate_cm_command_lifetime_contract(sources)",
+        1,
+        "CM command-lifetime workspace dispatch",
+    )
     readiness_mode_validator = extract_python_definition(
         source,
         module,

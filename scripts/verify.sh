@@ -4478,8 +4478,10 @@ if [ -n "$r_s11e44" ]; then echo "  FAIL R-S11e-44 Linux headless CM parent auth
 
 # (3b-iii-d9c3a) R-T4/R-S11c-27t: the per-connection CM bridge may be
 # started before the CM endpoint exists. Loss of the owning connection is a
-# terminal cancellation signal throughout bootstrap; a closed desktop-ready
-# channel is not a wake event that can spin the headless-user loop.
+# terminal cancellation signal throughout bootstrap; after bootstrap an
+# independent terminal lane preempts bounded commands instead of draining stale
+# work. A closed desktop-ready channel is not a wake event that can spin the
+# headless-user loop.
 echo "== (3b-iii-d9c3a) Linux CM bootstrap owner-loss cancellation (R-T4/R-S11c-27t) =="
 "${RUN[@]}" cargo test --lib --features linux-pkg-config cm_startup_lifecycle_tests --color never
 r_s11c27t=
@@ -4502,7 +4504,8 @@ for binding in \
   'fn desktop_readiness_signal_remains_a_wake_only()' \
   'fn connection_owner_closure_cancels_pending_cm_bootstrap()' \
   'fn live_connection_allows_cm_bootstrap_completion()' \
-  'fn completed_bootstrap_drains_bridge_after_owner_closure()'; do
+  'fn completed_bootstrap_allows_bounded_terminal_completion_after_owner_closure()' \
+  'fn cm_command_queue_has_exact_capacity_and_recovers_after_dequeue()'; do
   grep -qF "$binding" <<<"$cm_startup_lifecycle" || r_s11c27t="$r_s11c27t readiness-lifecycle-binding-missing"
 done
 for binding in \
@@ -4513,7 +4516,8 @@ for binding in \
   'tokio::select! {' \
   'biased;' \
   'result = &mut task => Some(result)' \
-  '_ = &mut bootstrap_complete => Some(task.await)' \
+  '_ = &mut bootstrap_complete => {' \
+  'time::timeout(CM_OWNER_TERMINAL_DRAIN_TIMEOUT, &mut task)' \
   '_ = &mut owner_closed => None'; do
   grep -qF "$binding" <<<"$cm_task_owner" || r_s11c27t="$r_s11c27t task-owner-binding-missing"
 done
@@ -4522,6 +4526,7 @@ for binding in \
   'Self::run_cm_ipc_until_owner_closed(' \
   'p.owner_closed,' \
   'bootstrap_completed,' \
+  'p.cm_terminal,' \
   'bootstrap_complete,' \
   'if let Some(Err(err)) = result'; do
   grep -qF "$binding" <<<"$cm_task_start" || r_s11c27t="$r_s11c27t task-owner-wrapper-missing"
@@ -4536,12 +4541,12 @@ for binding in \
   [ "$(grep -cF "$binding" src/server/connection.rs)" = 1 ] \
     || r_s11c27t="$r_s11c27t owner-channel-wiring-invalid"
 done
+drop_terminal_line=$(grep -nF -m 1 'self.publish_cm_terminal(crate::ui_cm_interface::CmConnectionTerminal::Close);' <<<"$cm_connection_drop" | cut -d: -f1)
 drop_owner_line=$(grep -nF -m 1 'drop(self.cm_ipc_owner.take());' <<<"$cm_connection_drop" | cut -d: -f1)
 drop_voice_line=$(grep -nF -m 1 'drop(self.voice_call_input.take());' <<<"$cm_connection_drop" | cut -d: -f1)
-drop_cm_line=$(grep -nF -m 1 'self.tx_to_cm.send(ipc::Data::Close)' <<<"$cm_connection_drop" | cut -d: -f1)
-if [ -z "$drop_owner_line" ] || [ -z "$drop_voice_line" ] || [ -z "$drop_cm_line" ] \
-  || [ "$drop_owner_line" -ge "$drop_voice_line" ] || [ "$drop_voice_line" -ge "$drop_cm_line" ]; then
-  r_s11c27t="$r_s11c27t owner-cancellation-not-first-in-drop"
+if [ -z "$drop_terminal_line" ] || [ -z "$drop_owner_line" ] || [ -z "$drop_voice_line" ] \
+  || [ "$drop_terminal_line" -ge "$drop_owner_line" ] || [ "$drop_owner_line" -ge "$drop_voice_line" ]; then
+  r_s11c27t="$r_s11c27t terminal-owner-cancellation-not-first-in-drop"
 fi
 [ "$(grep -cF 'if rx_to_cm.is_closed() {' <<<"$cm_ipc_bootstrap")" = 4 ] \
   || r_s11c27t="$r_s11c27t connection-owner-check-count-invalid"
@@ -4554,6 +4559,12 @@ if [ -z "$bootstrap_signal_line" ] || [ -z "$bootstrap_send_line" ] || [ -z "$st
   || [ "$bootstrap_send_line" -ge "$stream_ready_line" ] \
   || [ "$stream_ready_line" -ge "$live_bridge_line" ]; then
   r_s11c27t="$r_s11c27t bootstrap-complete-live-bridge-order-invalid"
+fi
+terminal_select_line=$(grep -nF -m 1 'terminal = &mut cm_terminal =>' <<<"$cm_ipc_bootstrap" | cut -d: -f1)
+ordinary_event_line=$(grep -nF -m 1 'event = async {' <<<"$cm_ipc_bootstrap" | cut -d: -f1)
+if [ -z "$terminal_select_line" ] || [ -z "$ordinary_event_line" ] \
+  || [ "$terminal_select_line" -ge "$ordinary_event_line" ]; then
+  r_s11c27t="$r_s11c27t terminal-does-not-preempt-live-bridge-commands"
 fi
 prelogin_owner_line=$(grep -nF -m 1 'if rx_to_cm.is_closed() {' <<<"$cm_prelogin_wait" | cut -d: -f1)
 prelogin_state_line=$(grep -nF -m 1 'crate::platform::is_headless_no_console_user()' <<<"$cm_prelogin_wait" | cut -d: -f1)
@@ -4594,11 +4605,13 @@ grep -qF 'Every pre-bridge connection-manager wait' requirements.html \
   || r_s11c27t="$r_s11c27t normative-cancellation-clause-missing"
 grep -qF 'dedicated per-connection cancellation receiver' requirements.html \
   || r_s11c27t="$r_s11c27t normative-owner-channel-clause-missing"
+grep -qF 'independent one-shot terminal lane' requirements.html \
+  || r_s11c27t="$r_s11c27t normative-terminal-lane-clause-missing"
 grep -qF '<tr><td>204</td>' requirements.html || r_s11c27t="$r_s11c27t appendix-row-missing"
 grep -qF 'R-S11c-27t/R-T4 — Linux headless CM bootstrap cancellation ownership' HARDENING_STATUS.md \
   || r_s11c27t="$r_s11c27t hardening-ledger-missing"
 if [ -n "$r_s11c27t" ]; then echo "  FAIL R-T4/R-S11c-27t Linux CM bootstrap owner-loss cancellation:$r_s11c27t"; rc=1; else
-  echo "  ok  R-T4/R-S11c-27t connection-owner loss terminates every CM pre-bridge retry and a closed headless readiness channel cannot spin"; fi
+  echo "  ok  R-T4/R-S11c-27t connection-owner loss terminates every CM pre-bridge retry; bounded live commands cannot outrun or starve exact terminal ownership"; fi
 
 # (3b-iii-d9c4) R-S11ae/R-S11e-45: the final current-image process-table
 # consumers are deleted. Selected logind state and the retained Child own
@@ -6854,7 +6867,7 @@ if echo "$logon_response_block" | grep -qF 'self.read_dir('; then
 fi
 cm_login_producer_block=$(awk '/fn try_start_cm\(/,/fn send_to_cm\(/' src/server/connection.rs)
 cm_login_reset_line=$(echo "$cm_login_producer_block" | grep -nF 'self.cm_file_login_published = false;' | head -1 | cut -d: -f1)
-cm_login_send_line=$(echo "$cm_login_producer_block" | grep -nF 'if self.tx_to_cm.send(login).is_ok()' | head -1 | cut -d: -f1)
+cm_login_send_line=$(echo "$cm_login_producer_block" | grep -nF 'if self.send_to_cm(login).await {' | head -1 | cut -d: -f1)
 cm_login_commit_line=$(echo "$cm_login_producer_block" | grep -nF 'self.cm_file_login_published = publishes_file_authority;' | head -1 | cut -d: -f1)
 if [ -z "$cm_login_reset_line" ] || [ -z "$cm_login_send_line" ] || [ -z "$cm_login_commit_line" ] \
     || [ "$cm_login_reset_line" -ge "$cm_login_send_line" ] \
@@ -6900,6 +6913,81 @@ if [ -z "$android_gate_line" ] || [ -z "$android_handle_line" ] || [ "$android_g
 fi
 if [ -n "$r_s11c4" ]; then echo "  FAIL R-S11c-4 CM file IPC authority closure:$r_s11c4"; rc=1; else
   echo "  ok  R-S11c-4 CM login authority is success-published before every common-choke-point filesystem send; forged desktop login/FS remains rejected and Android in-process FS remains login-gated"; fi
+
+echo "== (3b-iii-e9) bounded exact-owner CM command publication (R-S11c-4d/R-T4) =="
+r_s11c4d=
+cm_command_sender=$(awk '/async fn send_to_cm\(/,/fn publish_cm_terminal/' src/server/connection.rs)
+cm_file_sender=$(awk '/async fn send_fs\(/,/async fn send_login_error/' src/server/connection.rs)
+cm_android_bridge=$(awk '/pub async fn start_listen/,/fn get_transfer_job_for_connection/' src/ui_cm_interface.rs)
+for binding in \
+  'const CM_COMMAND_QUEUE_CAPACITY: usize = 2;' \
+  'const CM_COMMAND_QUEUE_SEND_TIMEOUT: Duration = Duration::from_secs(5);' \
+  'let (tx_to_cm, rx_to_cm) = mpsc::channel::<ipc::Data>(CM_COMMAND_QUEUE_CAPACITY);' \
+  'tx_to_cm: mpsc::Sender<ipc::Data>' \
+  'rx_to_cm: mpsc::Receiver<ipc::Data>' \
+  'cm_command_failure: Option<String>' \
+  'fn cm_command_queue_has_exact_capacity_and_recovers_after_dequeue()'; do
+  grep -qF "$binding" src/server/connection.rs || r_s11c4d="$r_s11c4d bounded-command-binding-missing"
+done
+if grep -qF 'let (tx_to_cm, rx_to_cm) = mpsc::unbounded_channel' src/server/connection.rs; then
+  r_s11c4d="$r_s11c4d unbounded-connection-to-cm-command-channel-present"
+fi
+for binding in \
+  'async fn send_to_cm(&mut self, data: ipc::Data) -> bool' \
+  'time::timeout(' \
+  'CM_COMMAND_QUEUE_SEND_TIMEOUT,' \
+  'self.tx_to_cm.send(data)' \
+  'connection-manager command queue backpressure timed out' \
+  'self.cm_command_failure = Some(error);'; do
+  grep -qF "$binding" <<<"$cm_command_sender" || r_s11c4d="$r_s11c4d bounded-control-publication-missing"
+done
+for binding in \
+  'async fn send_fs(&mut self, data: ipc::FS) -> Result<(), String>' \
+  'CM_COMMAND_QUEUE_SEND_TIMEOUT,' \
+  'self.tx_to_cm.send(data)' \
+  'self.cm_command_failure = Some(result.clone());'; do
+  grep -qF "$binding" <<<"$cm_file_sender" || r_s11c4d="$r_s11c4d bounded-file-publication-missing"
+done
+for binding in \
+  'pub(crate) enum CmConnectionTerminal {' \
+  'Close,' \
+  'Disconnected,' \
+  'pub(crate) fn into_data(self) -> ipc::Data'; do
+  grep -qF "$binding" src/ui_cm_interface.rs || r_s11c4d="$r_s11c4d typed-terminal-lane-missing"
+done
+for binding in \
+  'let (cm_terminal, cm_terminal_rx) = oneshot::channel();' \
+  'cm_terminal: Option<oneshot::Sender<crate::ui_cm_interface::CmConnectionTerminal>>' \
+  'cm_terminal: oneshot::Receiver<crate::ui_cm_interface::CmConnectionTerminal>' \
+  'cm_terminal: Some(cm_terminal)' \
+  'p.cm_terminal,' \
+  'self.publish_cm_terminal(terminal);'; do
+  grep -qF "$binding" src/server/connection.rs || r_s11c4d="$r_s11c4d terminal-wiring-missing"
+done
+drop_terminal_line=$(grep -nF -m 1 'self.publish_cm_terminal(crate::ui_cm_interface::CmConnectionTerminal::Close);' <<<"$cm_connection_drop" | cut -d: -f1)
+drop_owner_line=$(grep -nF -m 1 'drop(self.cm_ipc_owner.take());' <<<"$cm_connection_drop" | cut -d: -f1)
+if [ -z "$drop_terminal_line" ] || [ -z "$drop_owner_line" ] || [ "$drop_terminal_line" -ge "$drop_owner_line" ]; then
+  r_s11c4d="$r_s11c4d terminal-not-published-before-owner-retirement"
+fi
+desktop_terminal_line=$(grep -nF -m 1 'terminal = &mut cm_terminal =>' <<<"$cm_ipc_bootstrap" | cut -d: -f1)
+desktop_command_line=$(grep -nF -m 1 'event = async {' <<<"$cm_ipc_bootstrap" | cut -d: -f1)
+if [ -z "$desktop_terminal_line" ] || [ -z "$desktop_command_line" ] || [ "$desktop_terminal_line" -ge "$desktop_command_line" ]; then
+  r_s11c4d="$r_s11c4d desktop-terminal-not-before-ordinary-command"
+fi
+android_terminal_line=$(grep -nF -m 1 'terminal = &mut terminal =>' <<<"$cm_android_bridge" | cut -d: -f1)
+android_command_line=$(grep -nF -m 1 'command = rx.recv() => command' <<<"$cm_android_bridge" | cut -d: -f1)
+if [ -z "$android_terminal_line" ] || [ -z "$android_command_line" ] || [ "$android_terminal_line" -ge "$android_command_line" ]; then
+  r_s11c4d="$r_s11c4d android-terminal-not-before-ordinary-command"
+fi
+if grep -qF 'self.tx_to_cm.send(ipc::Data::Close)' src/server/connection.rs; then
+  r_s11c4d="$r_s11c4d terminal-still-shares-ordinary-command-queue"
+fi
+grep -qF 'finite per-connection CM command queue' requirements.html \
+  || r_s11c4d="$r_s11c4d normative-command-budget-missing"
+grep -qF 'R-S11c-4d — bounded exact-owner CM command publication' HARDENING_STATUS.md \
+  || r_s11c4d="$r_s11c4d hardening-ledger-missing"
+if [ -n "$r_s11c4d" ]; then echo "  FAIL R-S11c-4d bounded exact-owner CM command publication:$r_s11c4d"; rc=1; else
+  echo "  ok  R-S11c-4d every Connection-to-CM command is finitely queued and deadline-backed; exact terminal ownership preempts queued work on desktop and Android"; fi
 
 echo "== (3b-iii-f0) CM cannot select authenticated peer message types (R-S11e-17) =="
 r_s11e17=
@@ -12685,13 +12773,14 @@ fi
 # at its await), not only in the normal post-loop tail. The CM lifecycle is shared on Linux headless
 # (connection.rs first reuses an existing uid-scoped `_cm` socket), so a literal per-connection
 # kill_on_drop would kill a CM still serving another connection. The equivalent invariant is now
-# explicit and gated: Drop sends Data::Close to the CM IPC client synchronously; `--cm-no-ui` opts
+# explicit and gated: Drop publishes exact Close intent on the independent terminal lane before
+# retiring the desktop bridge owner; `--cm-no-ui` opts
 # into idle-exit; and the CM process exits once its last IPC client is removed. The global
 # CHILD_PROCESS list is only the zombie reaper for spawned children, not the lifecycle control.
 r_t4_missing=
 grep -q 'the per-connection cleanup that was previously straight-line' src/server/connection.rs || r_t4_missing="$r_t4_missing drop-cleanup"
 grep -q 'have MOVED into' src/server/connection.rs || r_t4_missing="$r_t4_missing tail-note"
-grep -qF 'self.tx_to_cm.send(ipc::Data::Close)' src/server/connection.rs || r_t4_missing="$r_t4_missing drop-cm-close"
+grep -qF 'self.publish_cm_terminal(crate::ui_cm_interface::CmConnectionTerminal::Close);' src/server/connection.rs || r_t4_missing="$r_t4_missing drop-cm-close"
 grep -q 'static EXIT_ON_IDLE: AtomicBool' src/ui_cm_interface.rs || r_t4_missing="$r_t4_missing cm-idle-flag"
 grep -q 'set_exit_on_idle(true)' src/flutter.rs || r_t4_missing="$r_t4_missing cm-no-ui-idle-wire"
 grep -q 'no-ui connection manager idle after last IPC client; exiting' src/ui_cm_interface.rs || r_t4_missing="$r_t4_missing cm-idle-exit"

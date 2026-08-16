@@ -82,6 +82,10 @@ const DISPLAY_CONTROL_LOG_INTERVAL: Duration = Duration::from_secs(5);
 const MAX_CM_FILE_ERROR_BYTES: usize = 4096;
 const MAX_PENDING_CM_FILE_REQUESTS: usize = 32;
 const CM_FILE_BLOCK_READ_TIMEOUT_MS: u64 = 5_000;
+const CM_COMMAND_QUEUE_CAPACITY: usize = 2;
+const CM_COMMAND_QUEUE_SEND_TIMEOUT: Duration = Duration::from_secs(5);
+const CM_IPC_COMMAND_SEND_TIMEOUT_MS: u64 = 5_000;
+const CM_OWNER_TERMINAL_DRAIN_TIMEOUT: Duration = Duration::from_secs(6);
 const MAX_PENDING_CONTROLLED_FILE_WRITES: usize = 256;
 const MAX_PENDING_CONTROLLED_FILE_WRITE_BYTES: usize = hbb_common::cpace::MAX_SESSION_PACKET * 2;
 const CONTROLLED_FILE_WRITE_TIMEOUT: Duration = Duration::from_secs(30);
@@ -3377,7 +3381,8 @@ pub struct SessionKey {
 struct StartCmIpcPara {
     conn_id: i32,
     cm_auth_token: String,
-    rx_to_cm: mpsc::UnboundedReceiver<ipc::Data>,
+    rx_to_cm: mpsc::Receiver<ipc::Data>,
+    cm_terminal: oneshot::Receiver<crate::ui_cm_interface::CmConnectionTerminal>,
     tx_from_cm: mpsc::UnboundedSender<ipc::Data>,
     rx_desktop_ready: mpsc::Receiver<()>,
     tx_cm_stream_ready: mpsc::Sender<()>,
@@ -3469,7 +3474,7 @@ pub struct Connection {
     // to the local target is raw. `port_forward_address` is surfaced to the CM for display.
     port_forward_socket: Option<Framed<TcpStream, BytesCodec>>,
     port_forward_address: String,
-    tx_to_cm: mpsc::UnboundedSender<ipc::Data>,
+    tx_to_cm: mpsc::Sender<ipc::Data>,
     authorized: bool,
     credential_generation: u64,
     #[cfg(target_os = "android")]
@@ -3528,6 +3533,8 @@ pub struct Connection {
     start_cm_ipc_para: Option<StartCmIpcPara>,
     #[cfg(not(any(target_os = "android", target_os = "ios")))]
     cm_ipc_owner: Option<oneshot::Sender<()>>,
+    cm_terminal: Option<oneshot::Sender<crate::ui_cm_interface::CmConnectionTerminal>>,
+    cm_command_failure: Option<String>,
     cm_auth_token: String,
     cm_file_login_published: bool,
     auto_disconnect_timer: Option<(Instant, u64)>,
@@ -4475,7 +4482,8 @@ impl Connection {
         let (tx_from_cm_holder, mut rx_from_cm) = mpsc::unbounded_channel::<ipc::Data>();
         // holding tx_from_cm_holder to avoid cpu burning of rx_from_cm.recv when all sender closed
         let tx_from_cm = tx_from_cm_holder.clone();
-        let (tx_to_cm, rx_to_cm) = mpsc::unbounded_channel::<ipc::Data>();
+        let (tx_to_cm, rx_to_cm) = mpsc::channel::<ipc::Data>(CM_COMMAND_QUEUE_CAPACITY);
+        let (cm_terminal, cm_terminal_rx) = oneshot::channel();
         let (tx, mut rx) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();
         let (tx_video, rx_video) = video_egress_channel();
         let (tx_audio, mut rx_audio) = audio_egress_channel();
@@ -4568,6 +4576,7 @@ impl Connection {
                 conn_id: id,
                 cm_auth_token: cm_auth_token.clone(),
                 rx_to_cm,
+                cm_terminal: cm_terminal_rx,
                 tx_from_cm,
                 rx_desktop_ready,
                 tx_cm_stream_ready,
@@ -4575,6 +4584,8 @@ impl Connection {
             }),
             #[cfg(not(any(target_os = "android", target_os = "ios")))]
             cm_ipc_owner: Some(cm_ipc_owner),
+            cm_terminal: Some(cm_terminal),
+            cm_command_failure: None,
             cm_auth_token,
             cm_file_login_published: false,
             auto_disconnect_timer: None,
@@ -4608,7 +4619,12 @@ impl Connection {
             return;
         }
         #[cfg(target_os = "android")]
-        start_channel(rx_to_cm, tx_from_cm, conn.android_server_generation);
+        start_channel(
+            rx_to_cm,
+            cm_terminal_rx,
+            tx_from_cm,
+            conn.android_server_generation,
+        );
         #[cfg(target_os = "android")]
         conn.send_permission(Permission::Keyboard, conn.keyboard)
             .await;
@@ -4672,6 +4688,14 @@ impl Connection {
         let shutdown = crate::server::shutdown_token();
 
         loop {
+            if let Some(error) = conn.cm_command_failure.take() {
+                conn.on_close(
+                    &format!("connection-manager command publication failed: {error}"),
+                    false,
+                )
+                .await;
+                break;
+            }
             if let Some((context, error)) = conn.file_flow_failure.take() {
                 let reason = format!(
                     "controlled {} failed before peer operation completion (job={:?}, file={}): {}",
@@ -4871,7 +4895,11 @@ impl Connection {
                 },
                 _ = conn.file_timer.tick(), if !conn.file_writes.has_transfer_data() => {
                     if !conn.read_jobs.is_empty() {
-                        conn.send_to_cm(ipc::Data::FileTransferLog(("transfer".to_string(), fs::serialize_transfer_jobs(&conn.read_jobs))));
+                        conn.send_to_cm(ipc::Data::FileTransferLog((
+                            "transfer".to_string(),
+                            fs::serialize_transfer_jobs(&conn.read_jobs),
+                        )))
+                        .await;
                         let context = conn
                             .read_jobs
                             .iter()
@@ -4894,7 +4922,11 @@ impl Connection {
                         ).await {
                             Ok(log) => {
                                 if !log.is_empty() {
-                                    conn.send_to_cm(ipc::Data::FileTransferLog(("transfer".to_string(), log)));
+                                    conn.send_to_cm(ipc::Data::FileTransferLog((
+                                        "transfer".to_string(),
+                                        log,
+                                    )))
+                                    .await;
                                 }
                             }
                             Err(err) =>  {
@@ -5052,7 +5084,9 @@ impl Connection {
                             break;
                         }
                     }
-                    conn.file_remove_log_control.on_timer().drain(..).map(|x| conn.send_to_cm(x)).count();
+                    for data in conn.file_remove_log_control.on_timer().drain(..) {
+                        conn.send_to_cm(data).await;
+                    }
                     #[cfg(feature = "hwcodec")]
                     conn.update_supported_encoding();
                 }
@@ -5959,7 +5993,7 @@ impl Connection {
             && crate::get_builtin_option(keys::OPTION_ONE_WAY_FILE_TRANSFER) != "Y"
     }
 
-    fn try_start_cm(&mut self, peer_id: String, name: String, authorized: bool) {
+    async fn try_start_cm(&mut self, peer_id: String, name: String, authorized: bool) {
         let cm_conn_type = if self.file_transfer.is_some() {
             ipc::CmAuthConnType::FileTransfer
         } else if self.view_camera {
@@ -5994,23 +6028,47 @@ impl Connection {
             privacy_mode: self.privacy_mode,
             cm_auth_token: self.cm_auth_token.clone(),
         };
-        if self.tx_to_cm.send(login).is_ok() {
+        if self.send_to_cm(login).await {
             self.cm_file_login_published = publishes_file_authority;
-        } else {
+        }
+    }
+
+    #[inline]
+    async fn send_to_cm(&mut self, data: ipc::Data) -> bool {
+        let error = match time::timeout(
+            CM_COMMAND_QUEUE_SEND_TIMEOUT,
+            self.tx_to_cm.send(data),
+        )
+        .await
+        {
+            Ok(Ok(())) => return true,
+            Ok(Err(_)) => "connection-manager command queue is closed".to_owned(),
+            Err(_) => "connection-manager command queue backpressure timed out".to_owned(),
+        };
+        log::error!("#{}: {}", self.inner.id(), error);
+        if self.cm_command_failure.is_none() {
+            self.cm_command_failure = Some(error);
+        }
+        false
+    }
+
+    fn publish_cm_terminal(
+        &mut self,
+        terminal: crate::ui_cm_interface::CmConnectionTerminal,
+    ) {
+        let Some(sender) = self.cm_terminal.take() else {
+            return;
+        };
+        if sender.send(terminal).is_err() {
             log::warn!(
-                "Failed to publish connection-manager login: conn_id={}",
+                "#{}: connection-manager terminal receiver retired first",
                 self.inner.id()
             );
         }
     }
 
     #[inline]
-    fn send_to_cm(&mut self, data: ipc::Data) {
-        self.tx_to_cm.send(data).ok();
-    }
-
-    #[inline]
-    fn send_fs(&mut self, data: ipc::FS) -> Result<(), String> {
+    async fn send_fs(&mut self, data: ipc::FS) -> Result<(), String> {
         if !cm_file_request_session_authorized(
             self.authorized,
             self.file_transfer.is_some(),
@@ -6026,9 +6084,21 @@ impl Connection {
         };
         #[cfg(any(target_os = "android", target_os = "ios"))]
         let data = ipc::Data::FS(data);
-        self.tx_to_cm
-            .send(data)
-            .map_err(|_| "connection manager IPC is unavailable".to_owned())
+        let result = match time::timeout(
+            CM_COMMAND_QUEUE_SEND_TIMEOUT,
+            self.tx_to_cm.send(data),
+        )
+        .await
+        {
+            Ok(Ok(())) => return Ok(()),
+            Ok(Err(_)) => "connection-manager command queue is closed".to_owned(),
+            Err(_) => "connection-manager command queue backpressure timed out".to_owned(),
+        };
+        log::error!("#{}: {}", self.inner.id(), result);
+        if self.cm_command_failure.is_none() {
+            self.cm_command_failure = Some(result.clone());
+        }
+        Err(result)
     }
 
     async fn send_login_error<T: std::string::ToString>(&mut self, err: T) {
@@ -6289,7 +6359,16 @@ impl Connection {
         tokio::select! {
             biased;
             result = &mut task => Some(result),
-            _ = &mut bootstrap_complete => Some(task.await),
+            _ = &mut bootstrap_complete => {
+                tokio::select! {
+                    result = &mut task => Some(result),
+                    _ = &mut owner_closed => {
+                        time::timeout(CM_OWNER_TERMINAL_DRAIN_TIMEOUT, &mut task)
+                            .await
+                            .ok()
+                    }
+                }
+            }
             _ = &mut owner_closed => None,
         }
     }
@@ -6306,6 +6385,7 @@ impl Connection {
                     bootstrap_completed,
                     start_ipc(
                         p.rx_to_cm,
+                        p.cm_terminal,
                         p.tx_from_cm,
                         p.rx_desktop_ready,
                         p.tx_cm_stream_ready,
@@ -6501,13 +6581,14 @@ impl Connection {
                 else {
                     return false;
                 };
-                self.try_start_cm(lr.my_id, lr.my_name, self.authorized);
+                self.try_start_cm(lr.my_id, lr.my_name, self.authorized)
+                    .await;
                 if let CmLoginFollowup::ReadInitialDirectory {
                     path,
                     include_hidden,
                 } = cm_login_followup
                 {
-                    if let Err(error) = self.read_dir(&path, include_hidden) {
+                    if let Err(error) = self.read_dir(&path, include_hidden).await {
                         log::error!(
                             "Failed to reserve initial file directory request after CM login: {}",
                             error
@@ -6977,7 +7058,7 @@ impl Connection {
                         // latent dependence on approve-mode-pin ordering (CM-seeded file_transfer_enabled).
                         #[cfg(target_os = "windows")]
                         if self.clipboard && self.file {
-                            self.send_to_cm(ipc::Data::ClipboardFile(clip));
+                            self.send_to_cm(ipc::Data::ClipboardFile(clip)).await;
                         }
                         // R-A2 / R-S16 policy parity: gate inbound clipboard-FILE processing on the SAME
                         // capability as the subscription (can_sub_file_clipboard_service = clipboard +
@@ -7071,13 +7152,15 @@ impl Connection {
                         match fa.union {
                             Some(file_action::Union::ReadEmptyDirs(rd)) => {
                                 if let Err(error) =
-                                    self.read_empty_dirs(&rd.path, rd.include_hidden)
+                                    self.read_empty_dirs(&rd.path, rd.include_hidden).await
                                 {
                                     self.send(fs::new_error(0, error, 0)).await;
                                 }
                             }
                             Some(file_action::Union::ReadDir(rd)) => {
-                                if let Err(error) = self.read_dir(&rd.path, rd.include_hidden) {
+                                if let Err(error) =
+                                    self.read_dir(&rd.path, rd.include_hidden).await
+                                {
                                     self.send(fs::new_error(0, error, 0)).await;
                                 }
                             }
@@ -7101,7 +7184,9 @@ impl Connection {
                                         include_hidden: f.include_hidden,
                                         conn_id: self.inner.id(),
                                         request_id,
-                                    }) {
+                                    })
+                                    .await
+                                    {
                                         self.cm_file_requests.remove(&request_id);
                                         self.send(fs::new_error(f.id, error, -1)).await;
                                         return true;
@@ -7181,7 +7266,9 @@ impl Connection {
                                                 conn_id: self.inner.id(),
                                                 overwrite_detection: od,
                                                 generation,
-                                            }) {
+                                            })
+                                            .await
+                                            {
                                                 self.cm_read_jobs.remove(&id);
                                                 self.send(fs::new_error(id, error, s.file_num))
                                                     .await;
@@ -7249,7 +7336,9 @@ impl Connection {
                                     total_size: r.total_size,
                                     conn_id: self.inner.id(),
                                     generation,
-                                }) {
+                                })
+                                .await
+                                {
                                     self.cm_write_jobs.remove(&r.id);
                                     self.send(fs::new_error(r.id, error, r.file_num)).await;
                                     return true;
@@ -7279,7 +7368,9 @@ impl Connection {
                                     id: d.id,
                                     recursive: d.recursive,
                                     request_id,
-                                }) {
+                                })
+                                .await
+                                {
                                     self.cm_file_requests.remove(&request_id);
                                     self.send(fs::new_error(d.id, error, 0)).await;
                                     return true;
@@ -7308,7 +7399,9 @@ impl Connection {
                                     id: f.id,
                                     file_num: f.file_num,
                                     request_id,
-                                }) {
+                                })
+                                .await
+                                {
                                     self.cm_file_requests.remove(&request_id);
                                     self.send(fs::new_error(f.id, error, f.file_num)).await;
                                     return true;
@@ -7336,7 +7429,9 @@ impl Connection {
                                     path: c.path.clone(),
                                     id: c.id,
                                     request_id,
-                                }) {
+                                })
+                                .await
+                                {
                                     self.cm_file_requests.remove(&request_id);
                                     self.send(fs::new_error(c.id, error, 0)).await;
                                     return true;
@@ -7350,7 +7445,8 @@ impl Connection {
                                         dir: true,
                                     })
                                     .unwrap_or_default(),
-                                )));
+                                )))
+                                .await;
                             }
                             Some(file_action::Union::Cancel(c)) => {
                                 if let Some(authority) = self.cm_write_jobs.remove(&c.id) {
@@ -7358,7 +7454,9 @@ impl Connection {
                                         id: c.id,
                                         conn_id: self.inner.id(),
                                         generation: authority.generation,
-                                    }) {
+                                    })
+                                    .await
+                                    {
                                         log::warn!(
                                             "Failed to cancel CM write job {}: {}",
                                             c.id,
@@ -7371,7 +7469,9 @@ impl Connection {
                                         id: c.id,
                                         conn_id: self.inner.id(),
                                         generation: authority.generation,
-                                    }) {
+                                    })
+                                    .await
+                                    {
                                         log::warn!(
                                             "Failed to cancel CM read job {}: {}",
                                             c.id,
@@ -7383,7 +7483,8 @@ impl Connection {
                                     self.send_to_cm(ipc::Data::FileTransferLog((
                                         "transfer".to_string(),
                                         fs::serialize_transfer_job(&job, false, true, ""),
-                                    )));
+                                    )))
+                                    .await;
                                 }
                             }
                             Some(file_action::Union::SendConfirm(r)) => {
@@ -7399,7 +7500,9 @@ impl Connection {
                                         offset_blk: r.offset_blk(),
                                         conn_id: self.inner.id(),
                                         generation,
-                                    }) {
+                                    })
+                                    .await
+                                    {
                                         self.cm_read_jobs.remove(&r.id);
                                         self.send(fs::new_error(r.id, error, r.file_num)).await;
                                     }
@@ -7415,7 +7518,9 @@ impl Connection {
                                         offset_blk: r.offset_blk(),
                                         conn_id: self.inner.id(),
                                         generation,
-                                    }) {
+                                    })
+                                    .await
+                                    {
                                         self.cm_write_jobs.remove(&r.id);
                                         self.send(fs::new_error(r.id, error, r.file_num)).await;
                                     }
@@ -7444,7 +7549,9 @@ impl Connection {
                                     path: r.path.clone(),
                                     new_name: r.new_name.clone(),
                                     request_id,
-                                }) {
+                                })
+                                .await
+                                {
                                     self.cm_file_requests.remove(&request_id);
                                     self.send(fs::new_error(r.id, error, 0)).await;
                                     return true;
@@ -7457,7 +7564,8 @@ impl Connection {
                                         new_name: r.new_name,
                                     })
                                     .unwrap_or_default(),
-                                )));
+                                )))
+                                .await;
                             }
                             _ => {}
                         }
@@ -7476,7 +7584,9 @@ impl Connection {
                             data: block.data,
                             compressed: block.compressed,
                             generation,
-                        }) {
+                        })
+                        .await
+                        {
                             self.cm_write_jobs.remove(&block.id);
                             self.send(fs::new_error(block.id, error, block.file_num))
                                 .await;
@@ -7494,7 +7604,9 @@ impl Connection {
                             file_num: d.file_num,
                             conn_id: self.inner.id(),
                             generation,
-                        }) {
+                        })
+                        .await
+                        {
                             self.cm_write_jobs.remove(&d.id);
                             self.send(fs::new_error(d.id, error, d.file_num)).await;
                         }
@@ -7523,7 +7635,8 @@ impl Connection {
                             request_id,
                             file_num: d.file_num,
                         };
-                        if let Err(error) = self.send_fs(ipc::FS::CheckDigest {
+                        if let Err(error) = self
+                            .send_fs(ipc::FS::CheckDigest {
                             id: d.id,
                             file_num: d.file_num,
                             conn_id: self.inner.id(),
@@ -7533,7 +7646,9 @@ impl Connection {
                             is_resume: d.is_resume,
                             generation,
                             request_id,
-                        }) {
+                        })
+                            .await
+                        {
                             self.cm_write_jobs.remove(&d.id);
                             self.send(fs::new_error(d.id, error, d.file_num)).await;
                         }
@@ -7553,13 +7668,16 @@ impl Connection {
                             Some(generation) => generation,
                             None => return true,
                         };
-                        if let Err(error) = self.send_fs(ipc::FS::WriteError {
+                        if let Err(error) = self
+                            .send_fs(ipc::FS::WriteError {
                             id: e.id,
                             file_num: e.file_num,
                             conn_id: self.inner.id(),
                             err: peer_error,
                             generation,
-                        }) {
+                        })
+                            .await
+                        {
                             self.cm_write_jobs.remove(&e.id);
                             self.send(fs::new_error(e.id, error, e.file_num)).await;
                         }
@@ -7624,7 +7742,7 @@ impl Connection {
                     }
                     Some(misc::Union::ChatMessage(c)) => {
                         if let Some(text) = self.peer_text_gate.admit_chat(c.text) {
-                            self.send_to_cm(ipc::Data::ChatMessage { text });
+                            self.send_to_cm(ipc::Data::ChatMessage { text }).await;
                             self.chat_unanswered = true;
                         }
                         self.update_auto_disconnect_timer();
@@ -7768,7 +7886,7 @@ impl Connection {
                             }
                             if self.file_transfer.is_some() {
                                 if let Some((dir, show_hidden)) = self.delayed_read_dir.take() {
-                                    if let Err(error) = self.read_dir(&dir, show_hidden) {
+                                    if let Err(error) = self.read_dir(&dir, show_hidden).await {
                                         self.send(fs::new_error(0, error, 0)).await;
                                     }
                                 }
@@ -7837,7 +7955,7 @@ impl Connection {
                                 .unwrap_or(NonZeroI64::new(get_time()).unwrap()),
                         );
                         // Notify the connection manager.
-                        self.send_to_cm(Data::VoiceCallIncoming);
+                        self.send_to_cm(Data::VoiceCallIncoming).await;
                     } else {
                         self.close_voice_call().await;
                     }
@@ -8482,9 +8600,9 @@ impl Connection {
             };
             let msg = new_voice_call_response(ts.get(), accepted);
             if accepted {
-                self.send_to_cm(Data::StartVoiceCall);
+                self.send_to_cm(Data::StartVoiceCall).await;
             } else {
-                self.send_to_cm(Data::CloseVoiceCall("".to_owned()));
+                self.send_to_cm(Data::CloseVoiceCall("".to_owned())).await;
             }
             self.send(msg).await;
             if self.is_authed_view_camera_conn() {
@@ -8515,7 +8633,7 @@ impl Connection {
         }
         drop(self.voice_call_input.take());
         self.voice_call_request_timestamp = None;
-        self.send_to_cm(Data::CloseVoiceCall("".to_owned()));
+        self.send_to_cm(Data::CloseVoiceCall("".to_owned())).await;
         if self.is_authed_view_camera_conn() {
             if let Some(s) = self.server.upgrade() {
                 s.write()
@@ -8633,7 +8751,8 @@ impl Connection {
                 #[cfg(target_os = "windows")]
                 self.send_to_cm(ipc::Data::ClipboardFileEnabled(
                     self.file_transfer_enabled(),
-                ));
+                ))
+                .await;
                 #[cfg(feature = "unix-file-copy-paste")]
                 if !self.enable_file_transfer {
                     self.try_empty_file_clipboard();
@@ -8984,16 +9103,16 @@ impl Connection {
             Self::lock_screen_with_input_arbiter();
         }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
-        let data = if self.chat_unanswered || self.file_transferred && cfg!(feature = "flutter") {
-            ipc::Data::Disconnected
+        let terminal = if self.chat_unanswered || self.file_transferred && cfg!(feature = "flutter") {
+            crate::ui_cm_interface::CmConnectionTerminal::Disconnected
         } else {
-            ipc::Data::Close
+            crate::ui_cm_interface::CmConnectionTerminal::Close
         };
         #[cfg(any(target_os = "android", target_os = "ios"))]
-        let data = ipc::Data::Close;
-        self.tx_to_cm.send(data).ok();
-        // Set this only after the synchronous CM notification. If this future is
-        // cancelled while waiting for a worker above, Drop still sends Close.
+        let terminal = crate::ui_cm_interface::CmConnectionTerminal::Close;
+        self.publish_cm_terminal(terminal);
+        // Set this only after the synchronous terminal publication. If this future
+        // is cancelled while waiting for a worker above, Drop still publishes Close.
         self.closed = true;
         // R-F1/R-S5: drop the dialed LOCAL target socket promptly on close (try_port_forward_loop
         // already took it for a running tunnel; this covers a tunnel that closed BEFORE relaying).
@@ -9637,11 +9756,14 @@ impl Connection {
                     }
                     ipc::CmWriteDigestResult::Error(error) => {
                         self.cm_write_jobs.remove(&id);
-                        if let Err(cancel_error) = self.send_fs(ipc::FS::CancelWrite {
-                            id,
-                            conn_id: self.inner.id(),
-                            generation,
-                        }) {
+                        if let Err(cancel_error) = self
+                            .send_fs(ipc::FS::CancelWrite {
+                                id,
+                                conn_id: self.inner.id(),
+                                generation,
+                            })
+                            .await
+                        {
                             log::warn!("Failed to cancel CM write job {}: {}", id, cancel_error);
                         }
                         self.send(fs::new_error(
@@ -9831,34 +9953,44 @@ impl Connection {
         self.file_timer = crate::rustdesk_interval(time::interval(MILLI1));
     }
 
-    fn read_empty_dirs(&mut self, dir: &str, include_hidden: bool) -> Result<(), String> {
+    async fn read_empty_dirs(
+        &mut self,
+        dir: &str,
+        include_hidden: bool,
+    ) -> Result<(), String> {
         let dir = dir.to_string();
         let request_id =
             self.reserve_cm_file_request(CmFileRequestAuthority::ReadEmptyDirectories {
                 path: dir.clone(),
             })?;
-        if let Err(error) = self.send_fs(ipc::FS::ReadEmptyDirs {
-            dir,
-            include_hidden,
-            request_id,
-        }) {
+        if let Err(error) = self
+            .send_fs(ipc::FS::ReadEmptyDirs {
+                dir,
+                include_hidden,
+                request_id,
+            })
+            .await
+        {
             self.cm_file_requests.remove(&request_id);
             return Err(error);
         }
         Ok(())
     }
 
-    fn read_dir(&mut self, dir: &str, include_hidden: bool) -> Result<(), String> {
+    async fn read_dir(&mut self, dir: &str, include_hidden: bool) -> Result<(), String> {
         let request_id = self.reserve_cm_file_request(CmFileRequestAuthority::ReadDirectory {
             id: 0,
             path: dir.to_owned(),
         })?;
         let dir = dir.to_string();
-        if let Err(error) = self.send_fs(ipc::FS::ReadDir {
-            dir,
-            include_hidden,
-            request_id,
-        }) {
+        if let Err(error) = self
+            .send_fs(ipc::FS::ReadDir {
+                dir,
+                include_hidden,
+                request_id,
+            })
+            .await
+        {
             self.cm_file_requests.remove(&request_id);
             return Err(error);
         }
@@ -10519,7 +10651,7 @@ mod cm_startup_lifecycle_tests {
     }
 
     #[tokio::test(flavor = "current_thread")]
-    async fn completed_bootstrap_drains_bridge_after_owner_closure() {
+    async fn completed_bootstrap_allows_bounded_terminal_completion_after_owner_closure() {
         let (owner, owner_closed) = oneshot::channel::<()>();
         let (bootstrap, bootstrap_complete) = oneshot::channel::<()>();
         let (bridge_started, bridge_is_running) = oneshot::channel::<()>();
@@ -10540,6 +10672,22 @@ mod cm_startup_lifecycle_tests {
         finish_bridge.send(()).unwrap();
 
         assert_eq!(task.await.unwrap(), Some(7));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn cm_command_queue_has_exact_capacity_and_recovers_after_dequeue() {
+        let (sender, mut receiver) = mpsc::channel(CM_COMMAND_QUEUE_CAPACITY);
+        sender.try_send(ipc::Data::ClickTime(1)).unwrap();
+        sender.try_send(ipc::Data::ClickTime(2)).unwrap();
+        assert!(matches!(
+            sender.try_send(ipc::Data::ClickTime(3)),
+            Err(mpsc::error::TrySendError::Full(_))
+        ));
+
+        assert!(matches!(receiver.recv().await, Some(ipc::Data::ClickTime(1))));
+        sender.try_send(ipc::Data::ClickTime(3)).unwrap();
+        assert!(matches!(receiver.recv().await, Some(ipc::Data::ClickTime(2))));
+        assert!(matches!(receiver.recv().await, Some(ipc::Data::ClickTime(3))));
     }
 }
 
@@ -10656,7 +10804,8 @@ pub(crate) async fn connect_authenticated_cm(
 // - Resolve target CM socket (headless/non-headless, optional UID-scoped path on Linux).
 // - Start CM when missing, then bridge bidirectional messages between this task and CM IPC.
 async fn start_ipc(
-    mut rx_to_cm: mpsc::UnboundedReceiver<ipc::Data>,
+    mut rx_to_cm: mpsc::Receiver<ipc::Data>,
+    mut cm_terminal: oneshot::Receiver<crate::ui_cm_interface::CmConnectionTerminal>,
     tx_from_cm: mpsc::UnboundedSender<ipc::Data>,
     mut _rx_desktop_ready: mpsc::Receiver<()>,
     tx_stream_ready: mpsc::Sender<()>,
@@ -10926,7 +11075,25 @@ async fn start_ipc(
     let mut cm_file_response_enabled = false;
     loop {
         tokio::select! {
-            res = stream.next() => {
+            biased;
+            terminal = &mut cm_terminal => {
+                let terminal = terminal
+                    .map_err(|_| anyhow!("connection-manager terminal owner disappeared"))?
+                    .into_data();
+                timeout(
+                    CM_IPC_COMMAND_SEND_TIMEOUT_MS,
+                    stream.send(&terminal),
+                )
+                .await??;
+                return Ok(());
+            }
+            event = async {
+                tokio::select! {
+                    res = stream.next() => hbb_common::futures::future::Either::Left(res),
+                    res = rx_to_cm.recv() => hbb_common::futures::future::Either::Right(res),
+                }
+            } => match event {
+            hbb_common::futures::future::Either::Left(res) => {
                 match res {
                     Err(err) => {
                         return Err(err.into());
@@ -10936,7 +11103,11 @@ async fn start_ipc(
                             ipc::Data::ClickTime(_)=> {
                                 let ct = CLICK_TIME.load(Ordering::SeqCst);
                                 let data = ipc::Data::ClickTime(ct);
-                                stream.send(&data).await?;
+                                timeout(
+                                    CM_IPC_COMMAND_SEND_TIMEOUT_MS,
+                                    stream.send(&data),
+                                )
+                                .await??;
                             }
                             ipc::Data::CmFileResponse(mut envelope)
                                 if matches!(
@@ -10976,7 +11147,7 @@ async fn start_ipc(
                     _ => {}
                 }
             }
-            res = rx_to_cm.recv() => {
+            hbb_common::futures::future::Either::Right(res) => {
                 match res {
                     Some(data) => {
                         if let Data::Login {
@@ -10996,13 +11167,23 @@ async fn start_ipc(
                             data,
                             compressed,
                             generation} } = data {
-                                stream.send(&Data::AuthorizedFS {
-                                    cm_auth_token,
-                                    fs: ipc::FS::WriteBlock{id, file_num, conn_id, data: Bytes::new(), compressed, generation},
-                                }).await?;
-                                stream.send_raw(data).await?;
+                                timeout(
+                                    CM_IPC_COMMAND_SEND_TIMEOUT_MS,
+                                    async {
+                                        stream.send(&Data::AuthorizedFS {
+                                            cm_auth_token,
+                                            fs: ipc::FS::WriteBlock{id, file_num, conn_id, data: Bytes::new(), compressed, generation},
+                                        }).await?;
+                                        stream.send_raw(data).await
+                                    },
+                                )
+                                .await??;
                         } else {
-                            stream.send(&data).await?;
+                            timeout(
+                                CM_IPC_COMMAND_SEND_TIMEOUT_MS,
+                                stream.send(&data),
+                            )
+                            .await??;
                         }
                     }
                     None => {
@@ -11010,6 +11191,7 @@ async fn start_ipc(
                     }
                 }
             }
+            },
         }
     }
 }
@@ -11214,6 +11396,13 @@ impl Default for PortableState {
 
 impl Drop for Connection {
     fn drop(&mut self) {
+        if !self.closed {
+            // R-T4: cancellation can drop the run-loop future at any `.await`, skipping
+            // `on_close()`. The dedicated one-shot terminal path cannot be starved by the bounded
+            // command queue, so publish Close at the start of Drop; the normal path consumes the
+            // sender in `on_close()` and does not double-send.
+            self.publish_cm_terminal(crate::ui_cm_interface::CmConnectionTerminal::Close);
+        }
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
         drop(self.cm_ipc_owner.take());
         drop(self.voice_call_input.take());
@@ -11235,13 +11424,6 @@ impl Drop for Connection {
         let id = self.inner.id();
         if let Some(tx) = self.inner.tx.as_ref() {
             video_service::cancel_take_screenshot(id, tx);
-        }
-        if !self.closed {
-            // R-T4: cancellation can drop the run-loop future at any `.await`, skipping
-            // `on_close()`. The CM notification is synchronous on this unbounded sender, so send
-            // it from Drop too; the normal path sets `closed=true` in `on_close()` and does not
-            // double-send.
-            let _ = self.tx_to_cm.send(ipc::Data::Close);
         }
         if let Some(video_privacy_conn_id) = privacy_mode::get_privacy_mode_conn_id() {
             if video_privacy_conn_id == id {

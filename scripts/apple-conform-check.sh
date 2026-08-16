@@ -803,7 +803,7 @@ grep -Fq 'CM_FILE_BLOCK_READ_TIMEOUT_MS' "$REPO/src/server/connection.rs" || r_s
 grep -Fq 'cm_file_job_ids_seen: HashSet<i32>' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 job-id-nonreuse-missing"
 grep -Fq 'pub enum CmFileOperation' "$REPO/src/ipc.rs" || r_s11e17="$r_s11e17 operation-descriptor-missing"
 grep -Fq 'expected_operation == &operation' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 operation-descriptor-match-missing"
-grep -Fq 'fn send_fs(&mut self, data: ipc::FS) -> Result<(), String>' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 helper-enqueue-result-missing"
+grep -Fq 'async fn send_fs(&mut self, data: ipc::FS) -> Result<(), String>' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 helper-enqueue-result-missing"
 grep -Fq 'connection manager IPC is unavailable' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 helper-enqueue-failure-not-explicit"
 grep -Fq 'file_count: Option<usize>' "$REPO/src/server/connection.rs" || r_s11e17="$r_s11e17 read-file-number-authority-missing"
 grep -Fq 'matches!(self, Self::FileTransfer)' "$REPO/src/ipc.rs" || r_s11e17="$r_s11e17 file-authority-not-filetransfer-only"
@@ -1822,7 +1822,7 @@ grep -qF 'cm_file_login_published: false' "$REPO/src/server/connection.rs" || r_
 grep -qF 'so no current Rust compile/test or installed operation was run' "$REPO/HARDENING_STATUS.md" || r_s11c4="$r_s11c4 current-source-native-evidence-boundary-missing"
 cm_login_producer_block=$(awk '/fn try_start_cm\(/,/fn send_to_cm\(/' "$REPO/src/server/connection.rs")
 cm_login_reset_line=$(echo "$cm_login_producer_block" | grep -nF 'self.cm_file_login_published = false;' | head -1 | cut -d: -f1 || true)
-cm_login_send_line=$(echo "$cm_login_producer_block" | grep -nF 'if self.tx_to_cm.send(login).is_ok()' | head -1 | cut -d: -f1 || true)
+cm_login_send_line=$(echo "$cm_login_producer_block" | grep -nF 'if self.send_to_cm(login).await {' | head -1 | cut -d: -f1 || true)
 cm_login_commit_line=$(echo "$cm_login_producer_block" | grep -nF 'self.cm_file_login_published = publishes_file_authority;' | head -1 | cut -d: -f1 || true)
 if [ -z "$cm_login_reset_line" ] || [ -z "$cm_login_send_line" ] || [ -z "$cm_login_commit_line" ] \
     || [ "$cm_login_reset_line" -ge "$cm_login_send_line" ] \
@@ -1856,6 +1856,62 @@ if [ -n "$r_s11c4" ]; then
   rc=1
 else
   note "ok  R-S11c-4a macOS file producers require a successfully published authorized FileTransfer login before the common filesystem-send choke point, and CM rejects forged desktop login/plain FS unless the main server validates the active connection id/type/token"
+fi
+
+echo "== (2b-iii-a1) R-S11c-4d bounded exact-owner macOS CM command publication =="
+r_s11c4d=
+cm_command_sender=$(awk '/async fn send_to_cm\(/,/fn publish_cm_terminal/' "$REPO/src/server/connection.rs")
+cm_file_sender=$(awk '/async fn send_fs\(/,/async fn send_login_error/' "$REPO/src/server/connection.rs")
+cm_connection_drop=$(awk '/impl Drop for Connection \{/,/struct LinuxHeadlessHandle/' "$REPO/src/server/connection.rs")
+cm_ipc_bootstrap=$(awk '/async fn start_ipc\(/,/\/\/ in case screen is sleep and blank/' "$REPO/src/server/connection.rs")
+for binding in \
+  'const CM_COMMAND_QUEUE_CAPACITY: usize = 2;' \
+  'let (tx_to_cm, rx_to_cm) = mpsc::channel::<ipc::Data>(CM_COMMAND_QUEUE_CAPACITY);' \
+  'tx_to_cm: mpsc::Sender<ipc::Data>' \
+  'rx_to_cm: mpsc::Receiver<ipc::Data>' \
+  'fn cm_command_queue_has_exact_capacity_and_recovers_after_dequeue()'; do
+  grep -qF "$binding" "$REPO/src/server/connection.rs" || r_s11c4d="$r_s11c4d bounded-command-binding-missing"
+done
+grep -qF 'let (tx_to_cm, rx_to_cm) = mpsc::unbounded_channel' "$REPO/src/server/connection.rs" \
+  && r_s11c4d="$r_s11c4d unbounded-command-channel-present"
+for binding in \
+  'async fn send_to_cm(&mut self, data: ipc::Data) -> bool' \
+  'CM_COMMAND_QUEUE_SEND_TIMEOUT,' \
+  'self.tx_to_cm.send(data)' \
+  'connection-manager command queue backpressure timed out'; do
+  grep -qF "$binding" <<<"$cm_command_sender" || r_s11c4d="$r_s11c4d bounded-control-publication-missing"
+done
+for binding in \
+  'async fn send_fs(&mut self, data: ipc::FS) -> Result<(), String>' \
+  'CM_COMMAND_QUEUE_SEND_TIMEOUT,' \
+  'self.tx_to_cm.send(data)'; do
+  grep -qF "$binding" <<<"$cm_file_sender" || r_s11c4d="$r_s11c4d bounded-file-publication-missing"
+done
+for binding in \
+  'pub(crate) enum CmConnectionTerminal {' \
+  'cm_terminal: Option<oneshot::Sender<crate::ui_cm_interface::CmConnectionTerminal>>' \
+  'cm_terminal: oneshot::Receiver<crate::ui_cm_interface::CmConnectionTerminal>' \
+  'self.publish_cm_terminal(terminal);'; do
+  grep -qF "$binding" "$REPO/src/server/connection.rs" "$REPO/src/ui_cm_interface.rs" \
+    || r_s11c4d="$r_s11c4d terminal-lane-binding-missing"
+done
+drop_terminal_line=$(grep -nF -m 1 'self.publish_cm_terminal(crate::ui_cm_interface::CmConnectionTerminal::Close);' <<<"$cm_connection_drop" | cut -d: -f1 || true)
+drop_owner_line=$(grep -nF -m 1 'drop(self.cm_ipc_owner.take());' <<<"$cm_connection_drop" | cut -d: -f1 || true)
+desktop_terminal_line=$(grep -nF -m 1 'terminal = &mut cm_terminal =>' <<<"$cm_ipc_bootstrap" | cut -d: -f1 || true)
+desktop_command_line=$(grep -nF -m 1 'event = async {' <<<"$cm_ipc_bootstrap" | cut -d: -f1 || true)
+if [ -z "$drop_terminal_line" ] || [ -z "$drop_owner_line" ] || [ "$drop_terminal_line" -ge "$drop_owner_line" ] \
+    || [ -z "$desktop_terminal_line" ] || [ -z "$desktop_command_line" ] || [ "$desktop_terminal_line" -ge "$desktop_command_line" ]; then
+  r_s11c4d="$r_s11c4d terminal-finality-order-invalid"
+fi
+grep -qF 'finite per-connection CM command queue' "$REPO/requirements.html" \
+  || r_s11c4d="$r_s11c4d normative-command-budget-missing"
+grep -qF 'R-S11c-4d — bounded exact-owner CM command publication' "$REPO/HARDENING_STATUS.md" \
+  || r_s11c4d="$r_s11c4d hardening-ledger-missing"
+if [ -n "$r_s11c4d" ]; then
+  echo "  FAIL R-S11c-4d bounded exact-owner macOS CM command publication:$r_s11c4d"
+  rc=1
+else
+  note "ok  R-S11c-4d macOS Connection-to-CM commands use bounded deadline-backed publication and an exact terminal lane preempts queued work"
 fi
 
 echo "== (2b-iii-a2) R-G9 Apple shared presentation serialization contract =="

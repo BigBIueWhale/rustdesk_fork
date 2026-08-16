@@ -6474,6 +6474,38 @@ network configuration was inspected or changed.
   confined semantic and complete source-mutation evidence only: the exact native compiler image is unavailable,
   so no current Rust compile/test or installed operation was run. A current clean native compile and the full exact
   installed transaction remain mandatory.
+- **R-S11c-4d — bounded exact-owner CM command publication — SOURCE IMPLEMENTED / GATED;
+  CURRENT-SOURCE NATIVE COMPILE AND INSTALLED/DESKTOP/ANDROID EVIDENCE PENDING (2026-08-16).**
+  Platforms: Linux, Windows, and macOS controlled-side desktop connections plus Android's in-process CM consumer.
+  Endpoint/action: every per-connection `Connection`→CM login, filesystem, clipboard, chat, voice, presentation,
+  and audit command, and the final `Close`/`Disconnected` notification. Boundary: authenticated network
+  `Connection` lifetime and peer-driven command rate ↔ local CM queue, filesystem dispatcher, and connection UI.
+  The inherited producer used `mpsc::unbounded_channel`, while R-S11c-27t's first lifetime correction intentionally
+  drained that receiver after authenticated bootstrap so an ordinary queued close could reach CM. Consequently an
+  authenticated peer could accumulate an unbounded local backlog, filesystem work queued ahead of close could begin
+  after the exact network owner retired, and finality competed with the backlog it needed to terminate.
+
+  Each `Connection` now owns a two-slot bounded command queue. Every ordinary producer uses cancellation-safe async
+  publication with a five-second admission deadline; closed, saturated, or timed-out publication is recorded and
+  closes the network connection instead of silently losing a command while continuing. The queue preserves the
+  required Login→initial-operation FIFO without turning peer traffic into unbounded memory. Exact terminal intent is
+  independently owned by one one-shot sender, consumed once by graceful close or hard `Drop`. Hard `Drop` publishes
+  `Close` before retiring the desktop bridge owner. Both the desktop IPC bridge and Android consumer use biased
+  terminal-first selection: no command still queued when terminal becomes observable may start. A command already
+  selected may finish only under the existing five-second CM IPC write deadline; paired `WriteBlock` metadata and raw
+  bytes share that single deadline. After bootstrap, desktop owner loss permits at most a six-second terminal
+  completion window and never restores arbitrary receiver draining.
+
+  Focused current-thread tests bind exact queue capacity/backpressure recovery and bounded terminal completion after
+  owner closure. `scripts/verify.sh` and `scripts/apple-conform-check.sh` source-gate the bounded channel and sender/
+  receiver types, timed ordinary and file publication, recorded failure, exact terminal wiring and Drop order,
+  terminal-first desktop/Android consumers, bounded owner completion, the normative requirement, and this ledger row.
+  The independent semantic verifier deliberately mutates those same invariants. Evidence boundary: this is current
+  source and confined verifier evidence only. The locally available immutable verifier image has no Rust compiler or
+  rustfmt, so no current native compile/test is claimed. No installed desktop lifecycle, complete file-operation
+  transaction, Android device swipe/force-stop/reconnect sequence, final release build, independent reproduction, or
+  external review is claimed. The broader connection-flow, performance, R-B2/R-B10, and release obligations remain
+  **OPEN**.
 - **R-S11c-22 — Windows CM non-file clipboard authority — CLOSED 2026-07-11.**
   Platform: Windows installed/root server mode. Endpoint/action: the root clipboard service's helper
   request to `_cm` for non-file host clipboard content. Boundary: authenticated helper endpoint proof
@@ -13468,17 +13500,20 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
     disappear immediately before CM launch or during the bounded endpoint retry without stopping those actions.
 
     Every desktop `Connection` now owns the sole sender of a dedicated one-shot lifetime channel. The bootstrap
-    future is raced against its receiver, and `Connection::Drop` closes that lifetime before any other connection
-    cleanup; owner loss therefore cancels an async pre-bridge wait without requiring command traffic. Once
-    authenticated bootstrap signals completion, biased selection transitions to draining the live bridge instead
-    of cancelling it, so the queued graceful/hard-Drop CM close notification is forwarded before command-receiver
-    closure terminates the bridge. The command receiver remains an additional fail-closed authority before each
+    future is raced against its receiver; owner loss therefore cancels an async pre-bridge wait without requiring
+    command traffic. R-S11c-4d subsequently corrected the inherited post-bootstrap drain and changed hard-Drop
+    ordering: exact terminal intent is published on an independent one-shot lane before `Connection::Drop` retires
+    the desktop lifetime owner. Once authenticated bootstrap signals completion, owner loss permits only a bounded
+    terminal-completion window; the bridge never drains arbitrary queued commands. The finite command receiver
+    remains an additional fail-closed authority before each
     target/prelogin selection, headless-user iteration, CM launch, and post-launch endpoint attempt. A small
     Linux-only readiness result distinguishes
     `OwnerClosed` from `Wake`: timeout and an actual signal remain bounded state-recheck events, while sender closure
-    is terminal before username refresh. Five current-thread async regressions prove closed/signaled readiness,
-    closed/live connection-owner outcomes, and post-bootstrap bridge drain after owner closure. The source gate and independent semantic mutation verifier bind the
-    lifetime channel construction/wiring, owner/task `select!`, cancellation-before-cleanup order, four command
+    is terminal before username refresh. The original five current-thread async regressions proved closed/signaled
+    readiness, closed/live connection-owner outcomes, and the then-current post-bootstrap drain. R-S11c-4d replaces
+    the last regression with bounded terminal completion and adds exact finite-queue coverage. The source gate and
+    independent semantic mutation verifier now bind the lifetime channel construction/wiring, owner/task `select!`,
+    terminal-publication-before-owner-retirement order, four command
     checks and their state/launch/retry ordering, terminal closed-readiness handling, removal of the inherited
     TODO/ignored timeout shape, R-T4, Appendix C #204, and this row.
 
@@ -13493,7 +13528,7 @@ git-fork SHA pins (R-B12), and the upstream-doc-link removal.
 
     Evidence boundary: this is a source-level lifecycle and local availability correction. It does not claim that
     the Tokio bridge task is synchronously joined by `Connection::Drop`; owner loss cancels its future at the outer
-    `select!` only before authenticated bootstrap completes, after which command closure drains it. A bounded
+    `select!` before authenticated bootstrap completes and permits only bounded terminal completion afterward. A bounded
     synchronous launch already admitted before concurrent owner loss may finish before that future is polled, after
     which no remaining bootstrap work continues. R-S11ad separately kernel-binds any
     launched no-UI CM child to its exact server parent. No native packaged artifact, Android swipe/relaunch device
@@ -25177,7 +25212,7 @@ cursor-shape path found several independent ownership boundaries that had never 
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-cec04b70ec47be5fca7a8f20d1c8a3e0a7eb7882ac7ae3ff770ea79d161da914  requirements.html
+0dcdab2396a029bff4080c1a3ecdbf3bff8e034633acf195dc0554c4579ec35c  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,

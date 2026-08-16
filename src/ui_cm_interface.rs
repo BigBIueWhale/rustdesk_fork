@@ -43,6 +43,21 @@ use std::{
     },
 };
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CmConnectionTerminal {
+    Close,
+    Disconnected,
+}
+
+impl CmConnectionTerminal {
+    pub(crate) fn into_data(self) -> ipc::Data {
+        match self {
+            Self::Close => ipc::Data::Close,
+            Self::Disconnected => ipc::Data::Disconnected,
+        }
+    }
+}
+
 /// Default maximum number of files allowed per transfer request.
 /// Unit: number of files (not bytes).
 #[cfg(not(any(target_os = "ios")))]
@@ -982,7 +997,8 @@ pub async fn start_ipc<T: InvokeUiCM>(cm: ConnectionManager<T>) {
 #[tokio::main(flavor = "current_thread")]
 pub async fn start_listen<T: InvokeUiCM>(
     cm: ConnectionManager<T>,
-    mut rx: mpsc::UnboundedReceiver<Data>,
+    mut rx: mpsc::Receiver<Data>,
+    mut terminal: tokio::sync::oneshot::Receiver<CmConnectionTerminal>,
     tx: mpsc::UnboundedSender<Data>,
 ) {
     let mut current_id = 0;
@@ -990,7 +1006,17 @@ pub async fn start_listen<T: InvokeUiCM>(
     let mut file_authority = CmFileAuthority::absent();
     let mut write_jobs: Vec<CmTransferJob> = Vec::new();
     loop {
-        match rx.recv().await {
+        let command = tokio::select! {
+            biased;
+            terminal = &mut terminal => {
+                match terminal {
+                    Ok(terminal) => Some(terminal.into_data()),
+                    Err(_) => None,
+                }
+            }
+            command = rx.recv() => command,
+        };
+        match command {
             Some(Data::Login {
                 id,
                 is_file_transfer,

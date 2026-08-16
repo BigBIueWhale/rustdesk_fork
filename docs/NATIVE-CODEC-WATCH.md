@@ -1,7 +1,7 @@
 # Native Codec Advisory Watch
 
 Native-Codec-Watch-Version: 1
-Requirements hash: cec04b70ec47be5fca7a8f20d1c8a3e0a7eb7882ac7ae3ff770ea79d161da914
+Requirements hash: 0dcdab2396a029bff4080c1a3ecdbf3bff8e034633acf195dc0554c4579ec35c
 The same identity additionally binds R-S11gv and Appendix C #357.
 
 This ledger covers the native C/C++ codec and media-adjacent libraries pulled by

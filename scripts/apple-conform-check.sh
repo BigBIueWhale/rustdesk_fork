@@ -3635,6 +3635,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c2ab) R-S11gw bounded controlled-side service egress =="
+if python3 scripts/verify-controlled-control-egress.py --repo . --self-test; then
+  note "ok  R-S11gw Apple/shared controlled-side synchronous service egress is ordered, bounded, and failure-visible"
+else
+  echo "  FAIL R-S11gw Apple/shared controlled-side service egress regained unbounded, reordered, oversized, silently dropped, or stranded state"
+  rc=1
+fi
+
 echo "== (2g-c2b) R-S11go exact-owner ordered display-selection finality =="
 if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then
   note "ok  R-S11go Apple/shared display selection is exact-owner, typed, ordered, bounded, and failure-visible"

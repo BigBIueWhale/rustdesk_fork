@@ -9496,6 +9496,7 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11fr_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gu_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gv_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gw_ --color never
 if python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test; then
   echo "  ok  R-S11ew/R-S11fr Flutter software RGBA publication is exact-session/token-owned, bounded, latest-wins, recoverable, commit-ordered, and pointer-free"
 else
@@ -9512,6 +9513,12 @@ if python3 scripts/verify-viewer-cursor-resources.py --repo . --self-test; then
   echo "  ok  R-S11gv remote cursor capture, identity, publication, presentation, and retirement are exact and bounded"
 else
   echo "  FAIL R-S11gv: remote cursor resources regained unchecked capture, stale identity, unacknowledged publication, unbounded registration, or incomplete teardown"
+  rc=1
+fi
+if python3 scripts/verify-controlled-control-egress.py --repo . --self-test; then
+  echo "  ok  R-S11gw controlled-side synchronous service egress is ordered, bounded, and failure-visible"
+else
+  echo "  FAIL R-S11gw: controlled-side service egress regained unbounded, reordered, oversized, silently dropped, or stranded state"
   rc=1
 fi
 if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then

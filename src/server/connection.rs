@@ -68,7 +68,6 @@ use std::{
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use system_shutdown;
-pub type Sender = mpsc::UnboundedSender<(Instant, Arc<Message>)>;
 // R-F1/R-D6/R-S5/R-A9: port-forward/RDP relay tuning. The R-T3 writer-task refactor removed the old
 // SEND_TIMEOUT_*/H1 consts, so the sealed tunnel loop carries its own. SEND bounds a write to the
 // LOCAL target socket (a stuck local service must not stall the relay); IDLE tears down a silent
@@ -876,6 +875,383 @@ pub static CLICK_TIME: AtomicI64 = AtomicI64::new(0);
 const AUDIO_EGRESS_WAKE_CAPACITY: usize = 1;
 const VIDEO_EGRESS_WAKE_CAPACITY: usize = 1;
 const VIDEO_EGRESS_MAX_DISPLAYS: usize = 32;
+const CONTROL_EGRESS_WAKE_CAPACITY: usize = 1;
+const CONTROL_EGRESS_MAX_MESSAGES: usize = 256;
+const CONTROL_EGRESS_MAX_PAYLOAD_BYTES: usize =
+    hbb_common::cpace::MAX_SESSION_PACKET - hbb_common::sodiumoxide::crypto::secretbox::MACBYTES;
+const CONTROL_EGRESS_MAX_QUEUED_BYTES: usize = hbb_common::cpace::MAX_SESSION_PACKET * 2
+    + std::mem::size_of::<QueuedControlEgress>() * CONTROL_EGRESS_MAX_MESSAGES;
+
+#[derive(Clone, Copy)]
+struct ControlEgressLimits {
+    max_messages: usize,
+    max_payload_bytes: usize,
+    max_queued_bytes: usize,
+}
+
+const CONTROL_EGRESS_LIMITS: ControlEgressLimits = ControlEgressLimits {
+    max_messages: CONTROL_EGRESS_MAX_MESSAGES,
+    max_payload_bytes: CONTROL_EGRESS_MAX_PAYLOAD_BYTES,
+    max_queued_bytes: CONTROL_EGRESS_MAX_QUEUED_BYTES,
+};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ControlEgressFailure {
+    WrongMessageClass,
+    MessageTooLarge {
+        payload_bytes: usize,
+        limit: usize,
+    },
+    MessageCapacity {
+        queued: usize,
+        limit: usize,
+    },
+    ByteCapacity {
+        queued_bytes: usize,
+        message_bytes: usize,
+        limit: usize,
+    },
+    AccountingOverflow,
+}
+
+impl fmt::Display for ControlEgressFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::WrongMessageClass => {
+                write!(f, "media message reached the controlled control egress")
+            }
+            Self::MessageTooLarge {
+                payload_bytes,
+                limit,
+            } => write!(
+                f,
+                "controlled control message is too large ({payload_bytes} bytes; limit {limit})"
+            ),
+            Self::MessageCapacity { queued, limit } => write!(
+                f,
+                "controlled control message capacity reached ({queued} queued; limit {limit})"
+            ),
+            Self::ByteCapacity {
+                queued_bytes,
+                message_bytes,
+                limit,
+            } => write!(
+                f,
+                "controlled control byte capacity reached ({queued_bytes} queued + {message_bytes} message bytes; limit {limit})"
+            ),
+            Self::AccountingOverflow => {
+                write!(f, "controlled control message size accounting overflowed")
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum ControlEgressAdmissionError {
+    Failed(ControlEgressFailure),
+    ReceiverGone,
+}
+
+impl fmt::Display for ControlEgressAdmissionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Failed(failure) => write!(f, "{failure}"),
+            Self::ReceiverGone => write!(f, "controlled control receiver is gone"),
+        }
+    }
+}
+
+struct QueuedControlEgress {
+    message: Arc<Message>,
+    retained_bytes: usize,
+}
+
+struct ControlEgressState {
+    queue: VecDeque<QueuedControlEgress>,
+    queued_bytes: usize,
+    terminal: Option<ControlEgressFailure>,
+    receiver_open: bool,
+}
+
+impl Default for ControlEgressState {
+    fn default() -> Self {
+        Self {
+            queue: VecDeque::new(),
+            queued_bytes: 0,
+            terminal: None,
+            receiver_open: true,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct Sender {
+    state: Arc<StdMutex<ControlEgressState>>,
+    wake: mpsc::Sender<()>,
+    limits: ControlEgressLimits,
+}
+
+pub(crate) struct ControlEgressReceiver {
+    state: Arc<StdMutex<ControlEgressState>>,
+    wake: mpsc::Receiver<()>,
+}
+
+pub(crate) enum ControlEgressItem {
+    Message(Arc<Message>),
+    Failed(ControlEgressFailure),
+}
+
+pub(crate) fn control_egress_channel() -> (Sender, ControlEgressReceiver) {
+    control_egress_channel_with_limits(CONTROL_EGRESS_LIMITS)
+}
+
+fn control_egress_channel_with_limits(
+    limits: ControlEgressLimits,
+) -> (Sender, ControlEgressReceiver) {
+    let state = Arc::new(StdMutex::new(ControlEgressState::default()));
+    let (wake, receiver) = mpsc::channel(CONTROL_EGRESS_WAKE_CAPACITY);
+    (
+        Sender {
+            state: Arc::clone(&state),
+            wake,
+            limits,
+        },
+        ControlEgressReceiver {
+            state,
+            wake: receiver,
+        },
+    )
+}
+
+fn lock_control_egress_state(
+    state: &StdMutex<ControlEgressState>,
+) -> std::sync::MutexGuard<'_, ControlEgressState> {
+    match state.lock() {
+        Ok(state) => state,
+        Err(poisoned) => {
+            log::error!("controlled control egress state was poisoned");
+            poisoned.into_inner()
+        }
+    }
+}
+
+fn is_cursor_position(message: &Message) -> bool {
+    matches!(&message.union, Some(message::Union::CursorPosition(_)))
+}
+
+fn is_control_egress_message(message: &Message) -> bool {
+    match &message.union {
+        Some(message::Union::AudioFrame(_)) | Some(message::Union::VideoFrame(_)) => false,
+        Some(message::Union::Misc(misc)) => !matches!(
+            &misc.union,
+            Some(misc::Union::AudioFormat(_) | misc::Union::SwitchDisplay(_))
+        ),
+        _ => true,
+    }
+}
+
+impl Sender {
+    fn wake_receiver(&self) -> Result<(), ControlEgressAdmissionError> {
+        match self.wake.try_send(()) {
+            Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => Ok(()),
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                let mut state = lock_control_egress_state(&self.state);
+                state.receiver_open = false;
+                state.queue.clear();
+                state.queued_bytes = 0;
+                Err(ControlEgressAdmissionError::ReceiverGone)
+            }
+        }
+    }
+
+    fn fail(&self, failure: ControlEgressFailure) -> Result<(), ControlEgressAdmissionError> {
+        let state = lock_control_egress_state(&self.state);
+        self.fail_with_state(state, failure)
+    }
+
+    fn fail_with_state(
+        &self,
+        mut state: std::sync::MutexGuard<'_, ControlEgressState>,
+        failure: ControlEgressFailure,
+    ) -> Result<(), ControlEgressAdmissionError> {
+        if !state.receiver_open {
+            return Err(ControlEgressAdmissionError::ReceiverGone);
+        }
+        if let Some(existing) = state.terminal {
+            return Err(ControlEgressAdmissionError::Failed(existing));
+        }
+        state.queue.clear();
+        state.queued_bytes = 0;
+        state.terminal = Some(failure);
+        drop(state);
+        self.wake_receiver()?;
+        Err(ControlEgressAdmissionError::Failed(failure))
+    }
+
+    pub(crate) fn send(&self, message: Arc<Message>) -> Result<(), ControlEgressAdmissionError> {
+        // R-S11gw: service callbacks are synchronous, but their exact connection writer can be
+        // back-pressured. Bound retained work before the async transport; only a trailing cursor
+        // position has latest-value semantics. Exact messages never disappear behind coalescing.
+        if !is_control_egress_message(&message) {
+            return self.fail(ControlEgressFailure::WrongMessageClass);
+        }
+        let payload_bytes = match usize::try_from(message.compute_size()) {
+            Ok(payload_bytes) => payload_bytes,
+            Err(_) => return self.fail(ControlEgressFailure::AccountingOverflow),
+        };
+        if payload_bytes > self.limits.max_payload_bytes {
+            return self.fail(ControlEgressFailure::MessageTooLarge {
+                payload_bytes,
+                limit: self.limits.max_payload_bytes,
+            });
+        }
+        let retained_bytes =
+            match payload_bytes.checked_add(std::mem::size_of::<QueuedControlEgress>()) {
+                Some(retained_bytes) => retained_bytes,
+                None => return self.fail(ControlEgressFailure::AccountingOverflow),
+            };
+        let replace_cursor = is_cursor_position(&message);
+        {
+            let mut state = lock_control_egress_state(&self.state);
+            if !state.receiver_open {
+                return Err(ControlEgressAdmissionError::ReceiverGone);
+            }
+            if let Some(failure) = state.terminal {
+                return Err(ControlEgressAdmissionError::Failed(failure));
+            }
+
+            let replaced_bytes = if replace_cursor {
+                state
+                    .queue
+                    .back()
+                    .filter(|queued| is_cursor_position(&queued.message))
+                    .map(|queued| queued.retained_bytes)
+            } else {
+                None
+            };
+            let Some(next_count) = state
+                .queue
+                .len()
+                .checked_add(usize::from(replaced_bytes.is_none()))
+            else {
+                return self.fail_with_state(state, ControlEgressFailure::AccountingOverflow);
+            };
+            if next_count > self.limits.max_messages {
+                return self.fail_with_state(
+                    state,
+                    ControlEgressFailure::MessageCapacity {
+                        queued: next_count,
+                        limit: self.limits.max_messages,
+                    },
+                );
+            }
+            let replaced_bytes = replaced_bytes.unwrap_or(0);
+            let Some(queued_bytes) = state.queued_bytes.checked_sub(replaced_bytes) else {
+                return self.fail_with_state(state, ControlEgressFailure::AccountingOverflow);
+            };
+            let Some(next_bytes) = queued_bytes.checked_add(retained_bytes) else {
+                return self.fail_with_state(state, ControlEgressFailure::AccountingOverflow);
+            };
+            if next_bytes > self.limits.max_queued_bytes {
+                return self.fail_with_state(
+                    state,
+                    ControlEgressFailure::ByteCapacity {
+                        queued_bytes,
+                        message_bytes: retained_bytes,
+                        limit: self.limits.max_queued_bytes,
+                    },
+                );
+            }
+            if replaced_bytes != 0 {
+                state.queue.pop_back();
+            }
+            state.queue.push_back(QueuedControlEgress {
+                message,
+                retained_bytes,
+            });
+            state.queued_bytes = next_bytes;
+        }
+        self.wake_receiver()
+    }
+
+    pub(crate) fn same_channel(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.state, &other.state)
+    }
+}
+
+impl ControlEgressReceiver {
+    fn take_next(&mut self) -> Result<Option<ControlEgressItem>, ()> {
+        let mut state = lock_control_egress_state(&self.state);
+        if let Some(failure) = state.terminal.take() {
+            state.receiver_open = false;
+            state.queue.clear();
+            state.queued_bytes = 0;
+            return Ok(Some(ControlEgressItem::Failed(failure)));
+        }
+        if !state.receiver_open {
+            return Err(());
+        }
+        let Some(queued) = state.queue.pop_front() else {
+            return Ok(None);
+        };
+        let Some(queued_bytes) = state.queued_bytes.checked_sub(queued.retained_bytes) else {
+            state.receiver_open = false;
+            state.queue.clear();
+            state.queued_bytes = 0;
+            return Ok(Some(ControlEgressItem::Failed(
+                ControlEgressFailure::AccountingOverflow,
+            )));
+        };
+        state.queued_bytes = queued_bytes;
+        Ok(Some(ControlEgressItem::Message(queued.message)))
+    }
+
+    pub(crate) async fn recv(&mut self) -> Option<ControlEgressItem> {
+        loop {
+            match self.take_next() {
+                Ok(Some(item)) => return Some(item),
+                Ok(None) => {}
+                Err(()) => return None,
+            }
+            if self.wake.recv().await.is_none() {
+                let mut state = lock_control_egress_state(&self.state);
+                state.receiver_open = false;
+                state.queue.clear();
+                state.queued_bytes = 0;
+                return None;
+            }
+        }
+    }
+
+    #[cfg(test)]
+    fn blocking_recv(&mut self) -> Option<ControlEgressItem> {
+        loop {
+            match self.take_next() {
+                Ok(Some(item)) => return Some(item),
+                Ok(None) => {}
+                Err(()) => return None,
+            }
+            if self.wake.blocking_recv().is_none() {
+                let mut state = lock_control_egress_state(&self.state);
+                state.receiver_open = false;
+                state.queue.clear();
+                state.queued_bytes = 0;
+                return None;
+            }
+        }
+    }
+}
+
+impl Drop for ControlEgressReceiver {
+    fn drop(&mut self) {
+        self.wake.close();
+        let mut state = lock_control_egress_state(&self.state);
+        state.receiver_open = false;
+        state.queue.clear();
+        state.queued_bytes = 0;
+        state.terminal = None;
+    }
+}
 
 #[derive(Default)]
 struct AudioEgressState {
@@ -3662,8 +4038,10 @@ impl Subscriber for ConnInner {
                 }
             }
             _ => {
-                if let Some(tx) = self.tx.as_mut() {
-                    allow_err!(tx.send((Instant::now(), msg)));
+                if let Some(tx) = self.tx.as_ref() {
+                    if let Err(err) = tx.send(msg) {
+                        log::warn!("controlled control egress rejected a service message: {err}");
+                    }
                 }
             }
         }
@@ -3876,6 +4254,233 @@ mod cm_process_generation_tests {
 }
 
 #[cfg(test)]
+mod control_egress_tests {
+    use super::*;
+
+    fn control() -> Arc<Message> {
+        Arc::new(Message::new())
+    }
+
+    fn cursor(x: i32) -> Arc<Message> {
+        let mut message = Message::new();
+        message.set_cursor_position(CursorPosition {
+            x,
+            y: x,
+            ..Default::default()
+        });
+        Arc::new(message)
+    }
+
+    fn screenshot(bytes: usize) -> Arc<Message> {
+        let mut message = Message::new();
+        message.set_screenshot_response(ScreenshotResponse {
+            data: vec![0; bytes].into(),
+            ..Default::default()
+        });
+        Arc::new(message)
+    }
+
+    fn received_message(item: ControlEgressItem) -> Arc<Message> {
+        match item {
+            ControlEgressItem::Message(message) => message,
+            ControlEgressItem::Failed(failure) => {
+                panic!("expected a message, got terminal failure: {failure}")
+            }
+        }
+    }
+
+    #[test]
+    fn r_s11gw_cursor_positions_replace_only_the_trailing_cursor() {
+        let (sender, mut receiver) = control_egress_channel();
+        let first_cursor = cursor(1);
+        let barrier = control();
+        let latest_cursor = cursor(3);
+
+        sender.send(Arc::clone(&first_cursor)).unwrap();
+        sender.send(Arc::clone(&barrier)).unwrap();
+        sender.send(cursor(2)).unwrap();
+        sender.send(Arc::clone(&latest_cursor)).unwrap();
+
+        let first = received_message(receiver.blocking_recv().unwrap());
+        let second = received_message(receiver.blocking_recv().unwrap());
+        let third = received_message(receiver.blocking_recv().unwrap());
+        assert!(Arc::ptr_eq(&first, &first_cursor));
+        assert!(Arc::ptr_eq(&second, &barrier));
+        assert!(Arc::ptr_eq(&third, &latest_cursor));
+        assert!(receiver.take_next().unwrap().is_none());
+    }
+
+    #[test]
+    fn r_s11gw_count_saturation_is_terminal_and_releases_exact_messages() {
+        let limits = ControlEgressLimits {
+            max_messages: 2,
+            max_payload_bytes: CONTROL_EGRESS_MAX_PAYLOAD_BYTES,
+            max_queued_bytes: CONTROL_EGRESS_MAX_QUEUED_BYTES,
+        };
+        let (sender, mut receiver) = control_egress_channel_with_limits(limits);
+        let first = control();
+        let second = control();
+        let first_weak = Arc::downgrade(&first);
+        let second_weak = Arc::downgrade(&second);
+        sender.send(first).unwrap();
+        sender.send(second).unwrap();
+
+        assert_eq!(
+            sender.send(control()),
+            Err(ControlEgressAdmissionError::Failed(
+                ControlEgressFailure::MessageCapacity {
+                    queued: 3,
+                    limit: 2,
+                }
+            ))
+        );
+        assert!(first_weak.upgrade().is_none());
+        assert!(second_weak.upgrade().is_none());
+        assert!(matches!(
+            receiver.blocking_recv(),
+            Some(ControlEgressItem::Failed(
+                ControlEgressFailure::MessageCapacity {
+                    queued: 3,
+                    limit: 2
+                }
+            ))
+        ));
+        assert!(receiver.blocking_recv().is_none());
+    }
+
+    #[test]
+    fn r_s11gw_byte_and_wire_bounds_fail_the_exact_round_closed() {
+        let small_cursor = cursor(1);
+        let large_cursor = cursor(i32::MAX);
+        let small_cursor_weak = Arc::downgrade(&small_cursor);
+        let large_payload_bytes = usize::try_from(large_cursor.compute_size()).unwrap();
+        let large_retained_bytes = large_payload_bytes + std::mem::size_of::<QueuedControlEgress>();
+        let (sender, mut receiver) = control_egress_channel_with_limits(ControlEgressLimits {
+            max_messages: 1,
+            max_payload_bytes: large_payload_bytes,
+            max_queued_bytes: large_retained_bytes,
+        });
+        sender.send(small_cursor).unwrap();
+        sender.send(Arc::clone(&large_cursor)).unwrap();
+        assert!(small_cursor_weak.upgrade().is_none());
+        let replaced = received_message(receiver.blocking_recv().unwrap());
+        assert!(Arc::ptr_eq(&replaced, &large_cursor));
+        let after_drain = cursor(i32::MAX);
+        sender.send(Arc::clone(&after_drain)).unwrap();
+        let drained = received_message(receiver.blocking_recv().unwrap());
+        assert!(Arc::ptr_eq(&drained, &after_drain));
+
+        let message = screenshot(64);
+        let payload_bytes = usize::try_from(message.compute_size()).unwrap();
+        let retained_bytes = payload_bytes + std::mem::size_of::<QueuedControlEgress>();
+        let (sender, mut receiver) = control_egress_channel_with_limits(ControlEgressLimits {
+            max_messages: 2,
+            max_payload_bytes: payload_bytes,
+            max_queued_bytes: retained_bytes - 1,
+        });
+        assert!(matches!(
+            sender.send(message),
+            Err(ControlEgressAdmissionError::Failed(
+                ControlEgressFailure::ByteCapacity { .. }
+            ))
+        ));
+        assert!(matches!(
+            receiver.blocking_recv(),
+            Some(ControlEgressItem::Failed(
+                ControlEgressFailure::ByteCapacity { .. }
+            ))
+        ));
+
+        let message = screenshot(64);
+        let payload_bytes = usize::try_from(message.compute_size()).unwrap();
+        let (sender, mut receiver) = control_egress_channel_with_limits(ControlEgressLimits {
+            max_messages: 2,
+            max_payload_bytes: payload_bytes - 1,
+            max_queued_bytes: CONTROL_EGRESS_MAX_QUEUED_BYTES,
+        });
+        assert_eq!(
+            sender.send(message),
+            Err(ControlEgressAdmissionError::Failed(
+                ControlEgressFailure::MessageTooLarge {
+                    payload_bytes,
+                    limit: payload_bytes - 1,
+                }
+            ))
+        );
+        assert!(matches!(
+            receiver.blocking_recv(),
+            Some(ControlEgressItem::Failed(
+                ControlEgressFailure::MessageTooLarge { .. }
+            ))
+        ));
+    }
+
+    #[test]
+    fn r_s11gw_media_bypass_and_receiver_retirement_are_visible() {
+        let mut audio = Message::new();
+        audio.set_audio_frame(AudioFrame::default());
+        let mut audio_misc = Misc::new();
+        audio_misc.set_audio_format(AudioFormat::default());
+        let mut audio_format = Message::new();
+        audio_format.set_misc(audio_misc);
+        let mut video = Message::new();
+        video.set_video_frame(VideoFrame::default());
+        let mut switch_misc = Misc::new();
+        switch_misc.set_switch_display(SwitchDisplay::default());
+        let mut switch_display = Message::new();
+        switch_display.set_misc(switch_misc);
+
+        for media in [audio, audio_format, video, switch_display] {
+            let (sender, mut receiver) = control_egress_channel();
+            assert_eq!(
+                sender.send(Arc::new(media)),
+                Err(ControlEgressAdmissionError::Failed(
+                    ControlEgressFailure::WrongMessageClass
+                ))
+            );
+            assert!(matches!(
+                receiver.blocking_recv(),
+                Some(ControlEgressItem::Failed(
+                    ControlEgressFailure::WrongMessageClass
+                ))
+            ));
+        }
+
+        let (sender, receiver) = control_egress_channel();
+        let pending = control();
+        let pending_weak = Arc::downgrade(&pending);
+        sender.send(pending).unwrap();
+        drop(receiver);
+        assert!(pending_weak.upgrade().is_none());
+        assert_eq!(
+            sender.send(control()),
+            Err(ControlEgressAdmissionError::ReceiverGone)
+        );
+    }
+
+    #[tokio::test]
+    async fn r_s11gw_async_receiver_waits_without_polling_and_closes() {
+        let (sender, mut receiver) = control_egress_channel();
+        assert!(time::timeout(Duration::from_millis(20), receiver.recv())
+            .await
+            .is_err());
+        let expected = control();
+        sender.send(Arc::clone(&expected)).unwrap();
+        let actual = time::timeout(Duration::from_secs(1), receiver.recv())
+            .await
+            .unwrap()
+            .map(received_message)
+            .unwrap();
+        assert!(Arc::ptr_eq(&actual, &expected));
+        drop(sender);
+        assert!(time::timeout(Duration::from_secs(1), receiver.recv())
+            .await
+            .unwrap()
+            .is_none());
+    }
+}
+
+#[cfg(test)]
 mod audio_egress_tests {
     use super::*;
 
@@ -3970,7 +4575,7 @@ mod audio_egress_tests {
 
     #[test]
     fn r_s11eh_conn_inner_routes_audio_away_from_control_and_video() {
-        let (control_sender, mut control_receiver) = mpsc::unbounded_channel();
+        let (control_sender, mut control_receiver) = control_egress_channel();
         let (video_sender, mut video_receiver) = video_egress_channel();
         let (audio_sender, mut audio_receiver) = audio_egress_channel();
         let mut subscriber = ConnInner::with_audio(
@@ -3993,11 +4598,17 @@ mod audio_egress_tests {
         });
         subscriber.send_video_frame(Arc::new(video), VideoSource::Monitor, 0, 1);
 
-        let (_, actual_control) = control_receiver
-            .try_recv()
-            .expect("control traffic must retain its existing channel");
+        let actual_control = match control_receiver
+            .blocking_recv()
+            .expect("control traffic must retain its existing channel")
+        {
+            ControlEgressItem::Message(message) => message,
+            ControlEgressItem::Failed(failure) => {
+                panic!("control traffic became terminal: {failure}")
+            }
+        };
         assert!(Arc::ptr_eq(&actual_control, &control));
-        assert!(control_receiver.try_recv().is_err());
+        assert!(control_receiver.take_next().unwrap().is_none());
         assert!(matches!(
             video_receiver.take_next(),
             Some(VideoEgressItem::Frame(_))
@@ -4484,7 +5095,7 @@ impl Connection {
         let tx_from_cm = tx_from_cm_holder.clone();
         let (tx_to_cm, rx_to_cm) = mpsc::channel::<ipc::Data>(CM_COMMAND_QUEUE_CAPACITY);
         let (cm_terminal, cm_terminal_rx) = oneshot::channel();
-        let (tx, mut rx) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();
+        let (tx, mut rx) = control_egress_channel();
         let (tx_video, rx_video) = video_egress_channel();
         let (tx_audio, mut rx_audio) = audio_egress_channel();
         #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -5002,7 +5613,18 @@ impl Connection {
                         break;
                     }
                 },
-                Some((_instant, value)) = rx.recv() => {
+                item = rx.recv() => {
+                    let Some(item) = item else {
+                        conn.on_close("controlled control egress retired", false).await;
+                        break;
+                    };
+                    let value = match item {
+                        ControlEgressItem::Message(message) => message,
+                        ControlEgressItem::Failed(failure) => {
+                            conn.on_close(&failure.to_string(), false).await;
+                            break;
+                        }
+                    };
                     #[allow(unused_mut)]
                     let mut msg = value;
 
@@ -6124,7 +6746,9 @@ impl Connection {
         misc.set_back_notification(back_notification);
         let mut msg_out = Message::new();
         msg_out.set_misc(misc);
-        s.send((Instant::now(), Arc::new(msg_out))).ok();
+        if let Err(err) = s.send(Arc::new(msg_out)) {
+            log::warn!("controlled control egress rejected a block-input response: {err}");
+        }
     }
 
     #[inline]

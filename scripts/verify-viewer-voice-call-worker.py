@@ -353,8 +353,8 @@ def validate(sources: Dict[str, str]) -> None:
         "format-first event-driven audio receive",
     )
     require(
-        connection,
-        "#[cfg(test)]\n    fn blocking_recv(&mut self)",
+        audio_receiver,
+        "#[cfg(test)]\n    fn blocking_recv(&mut self) -> Option<(Instant, Arc<Message>)>",
         "test-only blocking audio receiver",
     )
     for forbidden in ("try_recv", "thread::sleep", "Runtime::new", "block_on"):
@@ -408,18 +408,19 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         controlled,
         (
-            "let (tx, mut rx) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();",
+            "let (tx, mut rx) = control_egress_channel();",
             "let (tx_audio, mut rx_audio) = audio_egress_channel();",
             "ConnInner::with_audio(id, Some(tx), Some(tx_video), Some(tx_audio))",
             "Some((instant, value)) = rx_audio.recv()",
             "instant.elapsed() > Duration::from_secs(1)",
             "Some(message::Union::AudioFrame(_))",
             "conn.stream.send(&value as &Message).await",
-            "Some((_instant, value)) = rx.recv()",
+            "item = rx.recv() =>",
+            "ControlEgressItem::Message(message)",
         ),
         "controlled bounded audio branch before general queue branch",
     )
-    general_start = controlled.index("Some((_instant, value)) = rx.recv()")
+    general_start = controlled.index("item = rx.recv() =>")
     general_end = controlled.index("_ = second_timer.tick()", general_start)
     if "AudioFrame" in controlled[general_start:general_end]:
         raise VerificationError("general controlled queue regained audio-frame handling")
@@ -670,10 +671,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("connection", "mpsc::channel(AUDIO_EGRESS_WAKE_CAPACITY)", "mpsc::unbounded_channel()", "bounded audio wake channel"),
     ("connection", "state.frame = Some(queued);", "state.frames.push(queued);", "latest-frame coalescing"),
     ("connection", "state.format = Some(queued);", "state.formats.push(queued);", "single format replacement"),
-    ("connection", "self.wake.try_send(())", "self.wake.blocking_send(())", "nonblocking producer wake"),
+    ("connection", "match self.wake.try_send(()) {\n            Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}", "match self.wake.blocking_send(()) {\n            Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}", "nonblocking producer wake"),
     ("connection", "state.format.take().or_else(|| state.frame.take())", "state.frame.take().or_else(|| state.format.take())", "format-before-frame ordering"),
     ("connection", "self.wake.recv().await?", "self.wake.try_recv().ok()?;", "event-driven async receive"),
-    ("connection", "#[cfg(test)]\n    fn blocking_recv(&mut self)", "fn blocking_recv(&mut self)", "test-only blocking receive"),
+    ("connection", "#[cfg(test)]\n    fn blocking_recv(&mut self) -> Option<(Instant, Arc<Message>)>", "fn blocking_recv(&mut self) -> Option<(Instant, Arc<Message>)>", "test-only blocking receive"),
     ("connection", "impl Drop for AudioEgressReceiver", "impl AudioEgressReceiver", "receiver retained-state retirement"),
     ("connection", "if tx_by_audio {", "if false && tx_by_audio {", "audio route admission"),
     ("connection", "video frame bypassed exact acknowledgement-round enqueue", "video frame accepted outside exact acknowledgement-round enqueue", "video frame acknowledgement-route isolation"),

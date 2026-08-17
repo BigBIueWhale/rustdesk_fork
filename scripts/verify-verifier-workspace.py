@@ -20141,6 +20141,7 @@ def validate_display_selection_finality_contract(sources):
         (
             '"workspace", "    validate_viewer_cursor_mailbox_contract(sources)\\n'
             '    validate_viewer_cursor_resources_contract(sources)\\n'
+            '    validate_controlled_control_egress_contract(sources)\\n'
             '    validate_display_selection_finality_contract(sources)\\n'
             '    validate_desktop_texture_lifecycle_contract(sources)",',
             "display-selection current independent dispatch fixture",
@@ -22154,6 +22155,302 @@ def validate_viewer_cursor_resources_contract(sources):
     if len(dispatches) != 1:
         raise VerificationError(
             "cursor-resource independent workspace dispatch must occur exactly once"
+        )
+
+
+def validate_controlled_control_egress_contract(sources):
+    """Independently bind bounded controlled-side service publication."""
+
+    focused = sources["controlled_control_egress_verifier"]
+    focused_contract = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "focused controlled-egress contract validation function",
+    )
+    for marker, label in (
+        ("CONTROL_EGRESS_MAX_MESSAGES", "focused message-count ceiling"),
+        ("MAX_SESSION_PACKET - hbb_common::sodiumoxide::crypto::secretbox::MACBYTES", "focused wire-payload ceiling"),
+        ("payload_bytes.checked_add(std::mem::size_of::<QueuedControlEgress>())", "focused checked entry-byte accounting"),
+        ("filter(|queued| is_cursor_position(&queued.message))", "focused trailing-cursor semantics"),
+        (".checked_add(usize::from(replaced_bytes.is_none()))", "focused checked count accounting"),
+        ("let Some(queued_bytes) = state.queued_bytes.checked_sub(replaced_bytes)", "focused checked replacement accounting"),
+        ("let Some(next_bytes) = queued_bytes.checked_add(retained_bytes)", "focused checked retained-byte accounting"),
+        ("fn fail_with_state(", "focused atomic terminal transition"),
+        ("state.queue.clear();", "focused terminal retained-work release"),
+        ("ControlEgressItem::Failed(failure)", "focused receiver failure finality"),
+        ("self.wake.close();", "focused receiver retirement"),
+        ("mpsc::unbounded_channel::<(Instant, Arc<Message>)>()", "focused obsolete-channel absence"),
+        ("short in-process state mutex", "focused short synchronous state-mutex authority"),
+        ("R-S11gw", "focused normative and ledger binding"),
+    ):
+        require_text(focused_contract, marker, label)
+    require_text(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "focused controlled-egress deliberate-mutation inventory",
+    )
+    require_text(
+        focused,
+        '("const CONTROL_EGRESS_MAX_MESSAGES: usize = 256;", "message-count ceiling")',
+        "focused controlled-egress message-count assertion",
+    )
+
+    connection = sources["connection_source"]
+    require_absent(
+        connection,
+        "pub type Sender = mpsc::UnboundedSender<(Instant, Arc<Message>)>;",
+        "independent unbounded controlled sender alias",
+    )
+    require_absent(
+        connection,
+        "mpsc::unbounded_channel::<(Instant, Arc<Message>)>()",
+        "independent unbounded controlled channel",
+    )
+    for marker, label in (
+        ("const CONTROL_EGRESS_WAKE_CAPACITY: usize = 1;", "independent one-slot wake"),
+        ("const CONTROL_EGRESS_MAX_MESSAGES: usize = 256;", "independent message-count ceiling"),
+        ("const CONTROL_EGRESS_MAX_PAYLOAD_BYTES: usize =", "independent wire-payload ceiling"),
+        ("const CONTROL_EGRESS_MAX_QUEUED_BYTES: usize =", "independent retained-byte ceiling"),
+        ("struct ControlEgressState", "independent mailbox state"),
+        ("queue: VecDeque<QueuedControlEgress>", "independent bounded FIFO state"),
+        ("terminal: Option<ControlEgressFailure>", "independent typed terminal state"),
+        ("let (tx, mut rx) = control_egress_channel();", "independent connection mailbox construction"),
+    ):
+        require_text(connection, marker, label)
+
+    classification = extract_braced_item(
+        connection,
+        "fn is_control_egress_message(",
+        "independent controlled-egress media classification",
+    )
+    require_order(
+        classification,
+        (
+            "Some(message::Union::AudioFrame(_)) | Some(message::Union::VideoFrame(_)) => false",
+            "Some(misc::Union::AudioFormat(_) | misc::Union::SwitchDisplay(_))",
+        ),
+        "independent exact media-class separation",
+    )
+
+    sender = extract_between(
+        connection,
+        "impl Sender {",
+        "impl ControlEgressReceiver {",
+        "independent controlled egress producer",
+    )
+    send = extract_braced_item(
+        sender,
+        "pub(crate) fn send(",
+        "independent synchronous controlled-egress admission",
+    )
+    require_order(
+        send,
+        (
+            "if !is_control_egress_message(&message)",
+            "message.compute_size()",
+            "payload_bytes > self.limits.max_payload_bytes",
+            "payload_bytes.checked_add(std::mem::size_of::<QueuedControlEgress>())",
+            "filter(|queued| is_cursor_position(&queued.message))",
+            ".checked_add(usize::from(replaced_bytes.is_none()))",
+            "next_count > self.limits.max_messages",
+            "let Some(queued_bytes) = state.queued_bytes.checked_sub(replaced_bytes)",
+            "let Some(next_bytes) = queued_bytes.checked_add(retained_bytes)",
+            "next_bytes > self.limits.max_queued_bytes",
+            "state.queue.pop_back();",
+            "state.queue.push_back(QueuedControlEgress {",
+            "self.wake_receiver()",
+        ),
+        "independent checked trailing-cursor/FIFO admission",
+    )
+    if send.count("return self.fail_with_state(") != 5:
+        raise VerificationError(
+            "independent controlled-egress in-guard failures do not share one atomic transition"
+        )
+    for forbidden, label in (
+        ("drop(state);", "independent producer failure re-lock"),
+        ("saturating_sub", "independent lossy producer accounting"),
+        (".await", "independent awaiting synchronous producer"),
+        ("blocking_send", "independent blocking synchronous producer"),
+        ("tokio::spawn", "independent detached producer task"),
+        ("Runtime::new", "independent nested producer runtime"),
+    ):
+        require_absent(send, forbidden, label)
+    producer_failure = extract_braced_item(
+        sender, "fn fail_with_state(", "independent atomic controlled egress failure"
+    )
+    require_order(
+        producer_failure,
+        (
+            "state.queue.clear();",
+            "state.queued_bytes = 0;",
+            "state.terminal = Some(failure);",
+            "drop(state);",
+            "self.wake_receiver()?;",
+            "Err(ControlEgressAdmissionError::Failed(failure))",
+        ),
+        "independent terminal publication and retained-work release",
+    )
+
+    receiver = extract_between(
+        connection,
+        "impl ControlEgressReceiver {",
+        "impl Drop for ControlEgressReceiver {",
+        "independent controlled egress receiver",
+    )
+    require_order(
+        receiver,
+        (
+            "if let Some(failure) = state.terminal.take()",
+            "state.receiver_open = false;",
+            "state.queue.pop_front()",
+            "state.queued_bytes.checked_sub(queued.retained_bytes)",
+            "ControlEgressItem::Message(queued.message)",
+            "self.wake.recv().await",
+        ),
+        "independent terminal-first checked FIFO drain",
+    )
+    receiver_drop = extract_braced_item(
+        connection,
+        "impl Drop for ControlEgressReceiver",
+        "independent controlled-egress receiver retirement",
+    )
+    require_order(
+        receiver_drop,
+        (
+            "self.wake.close();",
+            "state.receiver_open = false;",
+            "state.queue.clear();",
+            "state.queued_bytes = 0;",
+            "state.terminal = None;",
+        ),
+        "independent receiver retirement closes and releases retained state",
+    )
+    subscriber = extract_braced_item(
+        connection,
+        "impl Subscriber for ConnInner",
+        "independent service subscriber routing",
+    )
+    require_order(
+        subscriber,
+        (
+            "if tx_by_audio",
+            "tx.send(msg);",
+            "Some(message::Union::VideoFrame(_))",
+            "tx.send_switch_display(msg)",
+            "if let Some(tx) = self.tx.as_ref()",
+            "if let Err(err) = tx.send(msg)",
+        ),
+        "shared audio route precedes general and video routes; independent media separation and failure-visible control routing",
+    )
+    connection_start = extract_braced_item(
+        connection, "pub async fn start(", "independent controlled connection loop"
+    )
+    control_arm = extract_between(
+        connection_start,
+        "item = rx.recv() => {",
+        "_ = second_timer.tick()",
+        "independent controlled-egress select arm",
+    )
+    require_order(
+        control_arm,
+        (
+            "let Some(item) = item else",
+            'conn.on_close("controlled control egress retired", false).await;',
+            "ControlEgressItem::Message(message)",
+            "ControlEgressItem::Failed(failure)",
+            "conn.on_close(&failure.to_string(), false).await;",
+            "conn.stream.send(msg).await",
+        ),
+        "independent controlled-egress connection finality",
+    )
+    for test in (
+        "r_s11gw_cursor_positions_replace_only_the_trailing_cursor",
+        "r_s11gw_count_saturation_is_terminal_and_releases_exact_messages",
+        "r_s11gw_byte_and_wire_bounds_fail_the_exact_round_closed",
+        "r_s11gw_media_bypass_and_receiver_retirement_are_visible",
+        "r_s11gw_async_receiver_waits_without_polling_and_closes",
+    ):
+        require_text(connection, test, f"independent {test} regression")
+    for marker, label in (
+        ("audio.set_audio_frame(AudioFrame::default());", "independent audio-frame bypass regression"),
+        ("audio_misc.set_audio_format(AudioFormat::default());", "independent audio-format bypass regression"),
+        ("video.set_video_frame(VideoFrame::default());", "independent video-frame bypass regression"),
+        ("switch_misc.set_switch_display(SwitchDisplay::default());", "independent switch-display bypass regression"),
+        ("small_cursor_weak.upgrade().is_none()", "independent replacement-byte release regression"),
+        ("sender.send(Arc::clone(&after_drain)).unwrap();", "independent drain-byte reuse regression"),
+    ):
+        require_text(connection, marker, label)
+
+    require_text(
+        sources["desktop_input_source"],
+        "GenericService::repeat::<StatePos, _, _>(&svc.clone(), 33, run_pos);",
+        "independent 33-millisecond cursor producer",
+    )
+    screenshot_send = extract_braced_item(
+        sources["video_service_source"],
+        "fn send_screenshot_response(",
+        "independent screenshot response producer",
+    )
+    require_text(
+        screenshot_send,
+        "tx.send(Arc::new(msg_out))",
+        "independent screenshot bounded egress",
+    )
+    block_input_send = extract_braced_item(
+        connection,
+        "pub fn send_block_input_error(",
+        "independent block-input response producer",
+    )
+    require_order(
+        block_input_send,
+        (
+            "msg_out.set_misc(misc);",
+            "s.send(Arc::new(msg_out))",
+            'log::warn!("controlled control egress rejected a block-input response: {err}")',
+        ),
+        "independent failure-visible bounded block-input response",
+    )
+    for key, text, label in (
+        ("verify", "python3 scripts/verify-controlled-control-egress.py --repo . --self-test", "shared controlled-egress focused gate"),
+        ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11gw_ --color never", "shared controlled-egress behavior gate"),
+        ("apple", "python3 scripts/verify-controlled-control-egress.py --repo . --self-test", "Apple controlled-egress focused gate"),
+        ("requirements", '<div class="req"><span class="id">R-S11gw</span>', "R-S11gw requirement"),
+        ("requirements", "may hold only this mailbox's short in-process state mutex while mutating bounded state", "R-S11gw short state-mutex authority"),
+        ("requirements", "<tr><td>358</td>", "Appendix C #358"),
+        ("hardening", "### R-S11gw/R-S11e-235 — bounded controlled-side service-to-connection egress", "R-S11gw hardening ledger"),
+    ):
+        require_text(sources[key], text, label)
+    require_text(
+        sources["workspace_verifier"],
+        '"controlled_control_egress_verifier": (\n'
+        '                repo / "scripts/verify-controlled-control-egress.py"\n'
+        '            ).read_text(encoding="utf-8"),',
+        "controlled-egress independent source binding",
+    )
+
+    workspace_module = ast.parse(sources["workspace_verifier"])
+    validate_sources_function = next(
+        (
+            node
+            for node in workspace_module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "validate_sources"
+        ),
+        None,
+    )
+    if validate_sources_function is None:
+        raise VerificationError("controlled-egress independent workspace dispatch is absent")
+    dispatches = [
+        node
+        for node in validate_sources_function.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "validate_controlled_control_egress_contract"
+    ]
+    if len(dispatches) != 1:
+        raise VerificationError(
+            "controlled-egress independent workspace dispatch must occur exactly once"
         )
 
 
@@ -29141,7 +29438,7 @@ def validate_android_voice_call_ownership_contract(sources):
     require_order(
         connection_start,
         (
-            "let (tx, mut rx) = mpsc::unbounded_channel::<(Instant, Arc<Message>)>();",
+            "let (tx, mut rx) = control_egress_channel();",
             "let (tx_video, rx_video) = video_egress_channel();",
             "let (tx_audio, mut rx_audio) = audio_egress_channel();",
             "ConnInner::with_audio(id, Some(tx), Some(tx_video), Some(tx_audio))",
@@ -29149,11 +29446,12 @@ def validate_android_voice_call_ownership_contract(sources):
             "instant.elapsed() > Duration::from_secs(1)",
             "Some(message::Union::AudioFrame(_))",
             "conn.stream.send(&value as &Message).await",
-            "Some((_instant, value)) = rx.recv()",
+            "item = rx.recv() =>",
+            "ControlEgressItem::Message(message)",
         ),
         "controlled bounded audio receiver to sole stream writer source",
     )
-    general_start = connection_start.index("Some((_instant, value)) = rx.recv()")
+    general_start = connection_start.index("item = rx.recv() =>")
     general_end = connection_start.index("_ = second_timer.tick()", general_start)
     require_absent(
         connection_start[general_start:general_end],
@@ -46723,6 +47021,7 @@ def validate_sources(sources):
     validate_viewer_rgba_mailbox_contract(sources)
     validate_viewer_cursor_mailbox_contract(sources)
     validate_viewer_cursor_resources_contract(sources)
+    validate_controlled_control_egress_contract(sources)
     validate_display_selection_finality_contract(sources)
     validate_desktop_texture_lifecycle_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
@@ -66337,9 +66636,11 @@ def run_source_mutations(sources):
             "workspace_verifier",
             "    validate_viewer_cursor_mailbox_contract(sources)\n"
             "    validate_viewer_cursor_resources_contract(sources)\n"
+            "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "    validate_viewer_cursor_mailbox_contract(sources)\n"
             "    validate_viewer_cursor_resources_contract_disabled(sources)\n"
+            "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "cursor-resource independent workspace dispatch must occur exactly once",
         ),
@@ -66347,10 +66648,12 @@ def run_source_mutations(sources):
             "workspace_verifier",
             "    validate_viewer_cursor_mailbox_contract(sources)\n"
             "    validate_viewer_cursor_resources_contract(sources)\n"
+            "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)\n"
             "    validate_desktop_texture_lifecycle_contract(sources)",
             "    validate_viewer_cursor_mailbox_contract(sources)\n"
             "    validate_viewer_cursor_resources_contract(sources)\n"
+            "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_display_selection_finality_contract_disabled(sources)\n"
             "    validate_desktop_texture_lifecycle_contract(sources)",
             "display-selection independent workspace dispatch",
@@ -66359,13 +66662,211 @@ def run_source_mutations(sources):
             "display_selection_finality_verifier",
             '"workspace", "    validate_viewer_cursor_mailbox_contract(sources)\\n'
             '    validate_viewer_cursor_resources_contract(sources)\\n'
+            '    validate_controlled_control_egress_contract(sources)\\n'
             '    validate_display_selection_finality_contract(sources)\\n'
             '    validate_desktop_texture_lifecycle_contract(sources)",',
             '"workspace", "    validate_viewer_cursor_mailbox_contract(sources)\\n'
             '    validate_viewer_cursor_resources_contract_disabled(sources)\\n'
+            '    validate_controlled_control_egress_contract(sources)\\n'
             '    validate_display_selection_finality_contract(sources)\\n'
             '    validate_desktop_texture_lifecycle_contract(sources)",',
             "display-selection current independent dispatch fixture",
+        ),
+        (
+            "connection_source",
+            "const CONTROL_EGRESS_WAKE_CAPACITY: usize = 1;",
+            "const CONTROL_EGRESS_WAKE_CAPACITY: usize = 64;",
+            "independent one-slot wake",
+        ),
+        (
+            "connection_source",
+            "const CONTROL_EGRESS_MAX_MESSAGES: usize = 256;",
+            "const CONTROL_EGRESS_MAX_MESSAGES: usize = usize::MAX;",
+            "independent message-count ceiling",
+        ),
+        (
+            "connection_source",
+            "Some(message::Union::AudioFrame(_)) | Some(message::Union::VideoFrame(_))",
+            "Some(message::Union::AudioFrame(_))",
+            "independent exact media-class separation",
+        ),
+        (
+            "connection_source",
+            "Some(misc::Union::AudioFormat(_) | misc::Union::SwitchDisplay(_))",
+            "Some(misc::Union::AudioFormat(_))",
+            "independent exact media-class separation",
+        ),
+        (
+            "connection_source",
+            "payload_bytes.checked_add(std::mem::size_of::<QueuedControlEgress>())",
+            "Some(payload_bytes + std::mem::size_of::<QueuedControlEgress>())",
+            "independent checked trailing-cursor/FIFO admission",
+        ),
+        (
+            "connection_source",
+            "filter(|queued| is_cursor_position(&queued.message))",
+            "filter(|_| true)",
+            "independent checked trailing-cursor/FIFO admission",
+        ),
+        (
+            "connection_source",
+            ".checked_add(usize::from(replaced_bytes.is_none()))",
+            ".checked_add(0)",
+            "independent checked trailing-cursor/FIFO admission",
+        ),
+        (
+            "connection_source",
+            "return self.fail_with_state(state, ControlEgressFailure::AccountingOverflow);",
+            "return self.fail(ControlEgressFailure::AccountingOverflow);",
+            "independent controlled-egress in-guard failures do not share one atomic transition",
+        ),
+        (
+            "connection_source",
+            "next_count > self.limits.max_messages",
+            "false",
+            "independent checked trailing-cursor/FIFO admission",
+        ),
+        (
+            "connection_source",
+            "let Some(queued_bytes) = state.queued_bytes.checked_sub(replaced_bytes)",
+            "let Some(queued_bytes) = Some(state.queued_bytes)",
+            "independent checked trailing-cursor/FIFO admission",
+        ),
+        (
+            "connection_source",
+            "let Some(next_bytes) = queued_bytes.checked_add(retained_bytes)",
+            "let Some(next_bytes) = Some(queued_bytes + retained_bytes)",
+            "independent checked trailing-cursor/FIFO admission",
+        ),
+        (
+            "connection_source",
+            "next_bytes > self.limits.max_queued_bytes",
+            "false",
+            "independent checked trailing-cursor/FIFO admission",
+        ),
+        (
+            "connection_source",
+            "state.queue.pop_back();",
+            "state.queue.pop_front();",
+            "independent checked trailing-cursor/FIFO admission",
+        ),
+        (
+            "connection_source",
+            "fn fail_with_state(",
+            "fn fail_after_relock(",
+            "independent atomic controlled egress failure",
+        ),
+        (
+            "connection_source",
+            "if let Some(existing) = state.terminal {\n"
+            "            return Err(ControlEgressAdmissionError::Failed(existing));\n"
+            "        }\n"
+            "        state.queue.clear();",
+            "if let Some(existing) = state.terminal {\n"
+            "            return Err(ControlEgressAdmissionError::Failed(existing));\n"
+            "        }",
+            "independent terminal publication and retained-work release",
+        ),
+        (
+            "connection_source",
+            "self.wake.close();\n"
+            "        let mut state = lock_control_egress_state(&self.state);",
+            "let mut state = lock_control_egress_state(&self.state);",
+            "independent receiver retirement closes and releases retained state",
+        ),
+        (
+            "connection_source",
+            "let (tx, mut rx) = control_egress_channel();",
+            "let (tx, mut rx) = mpsc::unbounded_channel();",
+            "independent connection mailbox construction",
+        ),
+        (
+            "connection_source",
+            "ControlEgressItem::Failed(failure) => {\n"
+            "                            conn.on_close(&failure.to_string(), false).await;",
+            "ControlEgressItem::Failed(_failure) => {\n"
+            "                            conn.on_close(\"controlled egress failed\", false).await;",
+            "independent controlled-egress connection finality",
+        ),
+        (
+            "video_service_source",
+            "tx.send(Arc::new(msg_out))",
+            "drop(msg_out); Ok(())",
+            "independent screenshot bounded egress",
+        ),
+        (
+            "connection_source",
+            "s.send(Arc::new(msg_out))",
+            "drop(msg_out); Ok(())",
+            "independent failure-visible bounded block-input response",
+        ),
+        (
+            "connection_source",
+            "audio.set_audio_frame(AudioFrame::default());",
+            "audio.clear_audio_frame();",
+            "independent audio-frame bypass regression",
+        ),
+        (
+            "controlled_control_egress_verifier",
+            '        ("const CONTROL_EGRESS_MAX_MESSAGES: usize = 256;", "message-count ceiling"),',
+            '        ("const CONTROL_EGRESS_MAX_MESSAGES: usize = usize::MAX;", "message-count ceiling"),',
+            "focused controlled-egress message-count assertion",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-controlled-control-egress.py --repo . --self-test",
+            "true # controlled egress verifier disabled",
+            "shared controlled-egress focused gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-controlled-control-egress.py --repo . --self-test",
+            "true # controlled egress verifier disabled",
+            "Apple controlled-egress focused gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11gw</span>',
+            '<div class="req"><span class="id">R-S11gw-disabled</span>',
+            "R-S11gw requirement",
+        ),
+        (
+            "requirements",
+            "may hold only this mailbox's short in-process state mutex while mutating bounded state",
+            "may hold arbitrary locks while publishing",
+            "R-S11gw short state-mutex authority",
+        ),
+        (
+            "requirements",
+            "<tr><td>358</td>",
+            "<tr><td>358-disabled</td>",
+            "Appendix C #358",
+        ),
+        (
+            "hardening",
+            "### R-S11gw/R-S11e-235 — bounded controlled-side service-to-connection egress",
+            "### R-S11gw-disabled/R-S11e-235 — bounded controlled-side service-to-connection egress",
+            "R-S11gw hardening ledger",
+        ),
+        (
+            "workspace_verifier",
+            '            "controlled_control_egress_verifier": (\n'
+            '                repo / "scripts/verify-controlled-control-egress.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "controlled_control_egress_verifier_disabled": (\n'
+            '                repo / "scripts/verify-controlled-control-egress.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "controlled-egress independent source binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_viewer_cursor_resources_contract(sources)\n"
+            "    validate_controlled_control_egress_contract(sources)\n"
+            "    validate_display_selection_finality_contract(sources)",
+            "    validate_viewer_cursor_resources_contract(sources)\n"
+            "    validate_controlled_control_egress_contract_disabled(sources)\n"
+            "    validate_display_selection_finality_contract(sources)",
+            "controlled-egress independent workspace dispatch",
         ),
         (
             "desktop_texture_lifecycle_verifier",
@@ -79822,6 +80323,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "viewer_cursor_resources_verifier": (
                 repo / "scripts/verify-viewer-cursor-resources.py"
+            ).read_text(encoding="utf-8"),
+            "controlled_control_egress_verifier": (
+                repo / "scripts/verify-controlled-control-egress.py"
             ).read_text(encoding="utf-8"),
             "display_selection_finality_verifier": (
                 repo / "scripts/verify-display-selection-finality.py"

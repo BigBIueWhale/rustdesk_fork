@@ -1862,7 +1862,7 @@ fn send_screenshot_response(tx: &Sender, sid: String, msg: String, data: bytes::
     response.data = data;
     let mut msg_out = Message::new();
     msg_out.set_screenshot_response(response);
-    if let Err(err) = tx.send((hbb_common::tokio::time::Instant::now(), Arc::new(msg_out))) {
+    if let Err(err) = tx.send(Arc::new(msg_out)) {
         log::error!("Failed to send screenshot: {err}");
     }
 }
@@ -2234,7 +2234,7 @@ mod screenshot_ownership_tests {
     use super::*;
 
     fn sender() -> Sender {
-        let (tx, _rx) = hbb_common::tokio::sync::mpsc::unbounded_channel();
+        let (tx, _rx) = crate::server::connection::control_egress_channel();
         tx
     }
 

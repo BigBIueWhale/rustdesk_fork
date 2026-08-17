@@ -6,10 +6,11 @@ use crate::ipc::Data;
 use crate::{clipboard::ClipboardSide, ipc::ClipboardNonFile};
 #[cfg(target_os = "windows")]
 use clipboard::ContextSend;
+#[cfg(target_os = "windows")]
+use hbb_common::config::keys::*;
 #[cfg(not(any(target_os = "ios")))]
 use hbb_common::fs::serialize_transfer_job;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use hbb_common::tokio::sync::mpsc::unbounded_channel;
 use hbb_common::{
     allow_err, bail,
     config::{keys::OPTION_FILE_TRANSFER_MAX_FILES, Config},
@@ -26,8 +27,6 @@ use hbb_common::{
     },
     ResultType,
 };
-#[cfg(target_os = "windows")]
-use hbb_common::{config::keys::*, tokio::sync::Mutex as TokioMutex};
 use serde_derive::Serialize;
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
 use std::iter::FromIterator;
@@ -907,34 +906,26 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
         let is_authorized = self.cm.is_authorized(self.conn_id);
 
         #[cfg(target_os = "windows")]
-        let rx_clip_holder;
-        let mut rx_clip;
-        let _tx_clip;
-        #[cfg(target_os = "windows")]
-        if self.conn_id > 0 && is_authorized {
+        let (_tx_clip, mut rx_clip, _cliprdr_route) = if self.conn_id > 0 && is_authorized {
             log::debug!("Clipboard is enabled from client peer: type 1");
-            let conn_id = self.conn_id;
-            rx_clip_holder = (
-                clipboard::get_rx_cliprdr_server(conn_id),
-                Some(crate::SimpleCallOnReturn {
-                    b: true,
-                    f: Box::new(move || {
-                        clipboard::remove_channel_by_conn_id(conn_id);
-                    }),
-                }),
-            );
-            rx_clip = rx_clip_holder.0.lock().await;
+            match clipboard::register_cliprdr_controlled(self.conn_id) {
+                Ok((receiver, route)) => (None, receiver, Some(route)),
+                Err(error) => {
+                    log::error!(
+                        "failed to register exact CM file-clipboard route for {}: {}",
+                        self.conn_id,
+                        error
+                    );
+                    return;
+                }
+            }
         } else {
             log::debug!("Clipboard is enabled from client peer, actually useless: type 2");
-            let rx_clip2;
-            (_tx_clip, rx_clip2) = mpsc::unbounded_channel();
-            rx_clip_holder = (Arc::new(TokioMutex::new(rx_clip2)), None);
-            rx_clip = rx_clip_holder.0.lock().await;
-        }
+            let (sender, receiver) = clipboard::clipboard_file_egress_channel();
+            (Some(sender), receiver, None)
+        };
         #[cfg(not(target_os = "windows"))]
-        {
-            (_tx_clip, rx_clip) = unbounded_channel::<i32>();
-        }
+        let (_tx_clip, mut rx_clip) = clipboard::clipboard_file_egress_channel();
 
         #[cfg(target_os = "windows")]
         {
@@ -1235,10 +1226,10 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                     }
                 },
                 clip_file = rx_clip.recv() => match clip_file {
-                    Some(_clip) => {
+                    Some(clipboard::ClipboardFileEgressItem::Message(clip)) => {
                         #[cfg(target_os = "windows")]
                         {
-                            let is_stopping_allowed = _clip.is_stopping_allowed();
+                            let is_stopping_allowed = clip.is_stopping_allowed();
                             let is_clipboard_enabled = ContextSend::is_enabled();
                             let file_transfer_enabled = self.file_transfer_enabled;
                             let file_transfer_enabled_peer = self.file_transfer_enabled_peer;
@@ -1249,17 +1240,22 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                             if stop {
                                 ContextSend::set_is_stopped();
                             } else {
-                                if _clip.is_beginning_message() && crate::get_builtin_option(OPTION_ONE_WAY_FILE_TRANSFER) == "Y" {
+                                if clip.is_beginning_message() && crate::get_builtin_option(OPTION_ONE_WAY_FILE_TRANSFER) == "Y" {
                                     // If one way file transfer is enabled, don't send clipboard file to client
                                     // Don't call `ContextSend::set_is_stopped()`, because it will stop bidirectional file copy&paste.
                                 } else {
-                                    allow_err!(self.tx.send(Data::ClipboardFile(_clip)));
+                                    allow_err!(self.tx.send(Data::ClipboardFile(clip)));
                                 }
                             }
                         }
                     }
+                    Some(clipboard::ClipboardFileEgressItem::Failed(failure)) => {
+                        log::error!("connection-manager file-clipboard route failed: {failure}");
+                        break;
+                    }
                     None => {
-                        //
+                        log::error!("connection-manager file-clipboard route closed before its IPC owner");
+                        break;
                     }
                 },
                 Some(job_log) = rx_log.recv() => {

@@ -25,8 +25,6 @@ use crate::{clipboard::try_empty_clipboard_files, clipboard_file::unix_file_clip
 ))]
 use clipboard::ContextSend;
 use hbb_common::futures::{future::BoxFuture, stream::FuturesUnordered, FutureExt, StreamExt};
-#[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
-use hbb_common::tokio::sync::Mutex as TokioMutex;
 #[cfg(any(
     target_os = "windows",
     all(target_os = "macos", feature = "unix-file-copy-paste")
@@ -1322,31 +1320,23 @@ impl<T: InvokeUiSession> Remote<T> {
                     return;
                 }
 
-                // just build for now
-                #[cfg(not(any(target_os = "windows", feature = "unix-file-copy-paste")))]
-                let (_tx_holder, mut rx_clip_client) = mpsc::unbounded_channel::<i32>();
-
+                let (_tx_holder, mut rx_clip_client) = clipboard::clipboard_file_egress_channel();
                 #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
-                let (_tx_holder, rx) = mpsc::unbounded_channel();
-                #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
-                let mut rx_clip_client_holder = (Arc::new(TokioMutex::new(rx)), None);
-                #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
-                {
+                let _cliprdr_route = {
                     if self.handler.is_default() {
-                        (self.client_conn_id, rx_clip_client_holder.0) =
-                            clipboard::get_rx_cliprdr_client(&self.handler.get_id());
-                        log::debug!("get cliprdr client for conn_id {}", self.client_conn_id);
-                        let client_conn_id = self.client_conn_id;
-                        rx_clip_client_holder.1 = Some(crate::SimpleCallOnReturn {
-                            b: true,
-                            f: Box::new(move || {
-                                clipboard::remove_channel_by_conn_id(client_conn_id);
-                            }),
-                        });
-                    };
-                }
-                #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
-                let mut rx_clip_client = rx_clip_client_holder.0.lock().await;
+                        let (conn_id, receiver, route) =
+                            clipboard::register_cliprdr_viewer(&self.handler.get_id());
+                        self.client_conn_id = conn_id;
+                        rx_clip_client = receiver;
+                        log::debug!(
+                            "registered exact viewer cliprdr route {}",
+                            self.client_conn_id
+                        );
+                        Some(route)
+                    } else {
+                        None
+                    }
+                };
 
                 let mut status_timer =
                     crate::rustdesk_interval(time::interval(Duration::new(1, 0)));
@@ -1462,9 +1452,23 @@ impl<T: InvokeUiSession> Remote<T> {
                                 break;
                             }
                         }
-                        _msg = rx_clip_client.recv() => {
-                            #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
-                            self.handle_local_clipboard_msg(&mut peer, _msg).await;
+                        clip_item = rx_clip_client.recv() => {
+                            match clip_item {
+                                Some(clipboard::ClipboardFileEgressItem::Message(clip)) => {
+                                    #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
+                                    self.handle_local_clipboard_msg(&mut peer, clip).await;
+                                }
+                                Some(clipboard::ClipboardFileEgressItem::Failed(failure)) => {
+                                    let reason = format!("viewer file-clipboard route failed: {failure}");
+                                    log::error!("{reason}");
+                                    self.handler.msgbox("error", "Clipboard", &reason, "");
+                                    break;
+                                }
+                                None => {
+                                    log::error!("viewer file-clipboard route closed before its network round");
+                                    break;
+                                }
+                            }
                         }
                         _ = self.timer.tick(), if !self.file_writes.has_transfer_data() => {
                             if last_recv_time.elapsed() >= SEC30 {
@@ -1570,54 +1574,45 @@ impl<T: InvokeUiSession> Remote<T> {
     }
 
     #[cfg(any(target_os = "windows", feature = "unix-file-copy-paste"))]
-    async fn handle_local_clipboard_msg(
-        &self,
-        peer: &mut Stream,
-        msg: Option<clipboard::ClipboardFile>,
-    ) {
-        match msg {
-            Some(clip) => match clip {
-                clipboard::ClipboardFile::NotifyCallback {
-                    r#type,
-                    title,
-                    text,
-                } => {
-                    self.handler.msgbox(&r#type, &title, &text, "");
-                }
-                _ => {
-                    let is_stopping_allowed = clip.is_stopping_allowed();
-                    let server_file_transfer_enabled =
-                        *self.handler.server_file_transfer_enabled.read().unwrap();
-                    let file_transfer_enabled =
-                        self.handler.lc.read().unwrap().enable_file_copy_paste.v;
-                    let view_only = self.handler.lc.read().unwrap().view_only.v;
-                    let stop = is_stopping_allowed
-                        && (view_only
-                            || !self.is_connected
-                            || !(server_file_transfer_enabled && file_transfer_enabled));
-                    log::debug!(
+    async fn handle_local_clipboard_msg(&self, peer: &mut Stream, clip: clipboard::ClipboardFile) {
+        match clip {
+            clipboard::ClipboardFile::NotifyCallback {
+                r#type,
+                title,
+                text,
+            } => {
+                self.handler.msgbox(&r#type, &title, &text, "");
+            }
+            clip => {
+                let is_stopping_allowed = clip.is_stopping_allowed();
+                let server_file_transfer_enabled =
+                    *self.handler.server_file_transfer_enabled.read().unwrap();
+                let file_transfer_enabled =
+                    self.handler.lc.read().unwrap().enable_file_copy_paste.v;
+                let view_only = self.handler.lc.read().unwrap().view_only.v;
+                let stop = is_stopping_allowed
+                    && (view_only
+                        || !self.is_connected
+                        || !(server_file_transfer_enabled && file_transfer_enabled));
+                log::debug!(
                         "Process clipboard message from system, stop: {}, is_stopping_allowed: {}, view_only: {}, server_file_transfer_enabled: {}, file_transfer_enabled: {}",
-                        view_only, stop, is_stopping_allowed, server_file_transfer_enabled, file_transfer_enabled
-                    );
-                    if stop {
-                        #[cfg(target_os = "windows")]
-                        {
-                            ContextSend::set_is_stopped();
-                        }
-                    } else {
-                        #[cfg(target_os = "windows")]
-                        if let Err(e) = ContextSend::make_sure_enabled() {
-                            log::error!("failed to restart clipboard context: {}", e);
-                            // to-do: Show msgbox with "Don't show again" option
-                        };
-                        log::debug!("Send system clipboard message to remote");
-                        let msg = crate::clipboard_file::clip_2_msg(clip);
-                        allow_err!(peer.send(&msg).await);
+                        stop, is_stopping_allowed, view_only, server_file_transfer_enabled, file_transfer_enabled
+                );
+                if stop {
+                    #[cfg(target_os = "windows")]
+                    {
+                        ContextSend::set_is_stopped();
                     }
+                } else {
+                    #[cfg(target_os = "windows")]
+                    if let Err(e) = ContextSend::make_sure_enabled() {
+                        log::error!("failed to restart clipboard context: {}", e);
+                        // to-do: Show msgbox with "Don't show again" option
+                    };
+                    log::debug!("Send system clipboard message to remote");
+                    let msg = crate::clipboard_file::clip_2_msg(clip);
+                    allow_err!(peer.send(&msg).await);
                 }
-            },
-            None => {
-                // unreachable!()
             }
         }
     }
@@ -3841,7 +3836,8 @@ impl<T: InvokeUiSession> Remote<T> {
         #[cfg(feature = "flutter")]
         if let Some(hbb_common::message_proto::cliprdr::Union::FormatList(_)) = &clip.union {
             if self.client_conn_id
-                != clipboard::get_client_conn_id(&crate::flutter::get_cur_peer_id()).unwrap_or(0)
+                != clipboard::current_cliprdr_viewer_id(&crate::flutter::get_cur_peer_id())
+                    .unwrap_or(0)
             {
                 return;
             }

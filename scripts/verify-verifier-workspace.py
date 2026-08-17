@@ -20143,6 +20143,7 @@ def validate_display_selection_finality_contract(sources):
             '    validate_viewer_cursor_resources_contract(sources)\\n'
             '    validate_controlled_control_egress_contract(sources)\\n'
             '    validate_cm_egress_budget_contract(sources)\\n'
+            '    validate_clipboard_route_budget_contract(sources)\\n'
             '    validate_keyed_writer_budget_contract(sources)\\n'
             '    validate_display_selection_finality_contract(sources)\\n'
             '    validate_desktop_texture_lifecycle_contract(sources)",',
@@ -22808,6 +22809,348 @@ def validate_cm_egress_budget_contract(sources):
     ]
     if len(dispatches) != 1:
         raise VerificationError("CM-egress independent workspace dispatch must occur exactly once")
+
+
+def validate_clipboard_route_budget_contract(sources):
+    """Independently bind exact bounded file-clipboard route ownership."""
+
+    focused = sources["clipboard_route_budget_verifier"]
+    focused_contract = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "focused file-clipboard route contract",
+    )
+    for marker, label in (
+        ("CLIPBOARD_FILE_EGRESS_MAX_MESSAGES", "focused message ceiling"),
+        ("clipboard_file_heap_bytes", "focused retained-heap accounting"),
+        ("state.queue.len().checked_add(1)", "focused checked count"),
+        ("state.queued_bytes.checked_add(retained_bytes)", "focused checked bytes"),
+        ("state.queued_bytes.checked_sub(queued.retained_bytes)", "focused checked drain"),
+        ("ClipboardFileRouteLease", "focused exact route lease"),
+        ("register_cliprdr_viewer", "focused fresh viewer route"),
+        ("register_cliprdr_controlled", "focused controlled route"),
+        ("R-S11gz", "focused normative binding"),
+    ):
+        require_text(focused_contract, marker, label)
+    require_text(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "focused file-clipboard mutation inventory",
+    )
+    require_text(
+        focused_contract,
+        '("const CLIPBOARD_FILE_EGRESS_MAX_MESSAGES: usize = 256;", "message-count ceiling")',
+        "focused file-clipboard message-count assertion",
+    )
+
+    clipboard = sources["clipboard_source"]
+    client = sources["client_io_loop"]
+    connection = sources["connection_source"]
+    ui_cm = sources["ui_cm_source"]
+    for source, needle, label in (
+        (clipboard, "UnboundedSender<ClipboardFile>", "independent unbounded sender"),
+        (clipboard, "UnboundedReceiver<ClipboardFile>", "independent unbounded receiver"),
+        (clipboard, "struct MsgChannel", "independent legacy shared channel"),
+        (clipboard, "get_rx_cliprdr_client", "independent reused viewer receiver"),
+        (clipboard, "get_rx_cliprdr_server", "independent reused controlled receiver"),
+        (clipboard, "remove_channel_by_conn_id", "independent identity-only cleanup"),
+    ):
+        require_absent(source, needle, label)
+    for marker, label in (
+        ("const CLIPBOARD_FILE_EGRESS_WAKE_CAPACITY: usize = 1;", "independent one-slot wake"),
+        ("const CLIPBOARD_FILE_EGRESS_MAX_MESSAGES: usize = 256;", "independent message ceiling"),
+        (
+            "const CLIPBOARD_FILE_EGRESS_MAX_MESSAGE_HEAP_BYTES: usize = hbb_common::cpace::MAX_SESSION_PACKET;",
+            "independent message heap ceiling",
+        ),
+        ("hbb_common::cpace::MAX_SESSION_PACKET * 2", "independent aggregate heap ceiling"),
+        (
+            "std::mem::size_of::<QueuedClipboardFile>() * CLIPBOARD_FILE_EGRESS_MAX_MESSAGES",
+            "independent fixed entry accounting",
+        ),
+        ("queue: VecDeque<QueuedClipboardFile>", "independent finite FIFO"),
+        ("terminal: Option<ClipboardFileEgressFailure>", "independent typed terminal"),
+        ("receiver_open: bool", "independent receiver lifetime"),
+    ):
+        require_text(clipboard, marker, label)
+
+    sizing = extract_braced_item(
+        clipboard,
+        "fn clipboard_file_heap_bytes(",
+        "independent file-clipboard heap sizing",
+    )
+    for marker, label in (
+        ("r#type.capacity()", "independent notification type capacity"),
+        ("title.capacity()", "independent notification title capacity"),
+        ("text.capacity()", "independent notification text capacity"),
+        ("checked_allocation_bytes::<(i32, String)>(format_list.capacity())", "independent format-list allocation"),
+        ("format.capacity()", "independent nested format capacity"),
+        ("format_data.capacity()", "independent format-data capacity"),
+        ("requested_data.capacity()", "independent file-content capacity"),
+        ("checked_allocation_bytes::<(String, u64)>(files.capacity())", "independent file-list allocation"),
+        ("path.capacity()", "independent nested path capacity"),
+    ):
+        require_text(sizing, marker, label)
+    require_absent(sizing, "saturating_", "independent lossy heap accounting")
+
+    sender = extract_between(
+        clipboard,
+        "impl ClipboardFileEgressSender {",
+        "impl ClipboardFileEgressReceiver {",
+        "independent file-clipboard producer",
+    )
+    send = extract_braced_item(sender, "fn send(", "independent checked admission")
+    require_order(
+        send,
+        (
+            "clipboard_file_heap_bytes(&data)",
+            "heap_bytes > self.limits.max_message_heap_bytes",
+            "heap_bytes.checked_add(std::mem::size_of::<QueuedClipboardFile>())",
+            "state.queue.len().checked_add(1)",
+            "next_count > self.limits.max_messages",
+            "state.queued_bytes.checked_add(retained_bytes)",
+            "next_bytes > self.limits.max_queued_bytes",
+            "state.queue.push_back(QueuedClipboardFile {",
+            "self.wake_receiver()",
+        ),
+        "independent checked FIFO nonwaiting admission",
+    )
+    if send.count("return self.fail_with_state(") != 4:
+        raise VerificationError(
+            "independent file-clipboard guarded failures do not share one atomic transition"
+        )
+    for forbidden, label in (
+        (".await", "independent awaiting producer"),
+        ("blocking_send", "independent blocking producer"),
+        ("saturating_", "independent lossy producer"),
+        ("tokio::spawn", "independent detached producer"),
+        ("Runtime::new", "independent nested runtime"),
+    ):
+        require_absent(send, forbidden, label)
+    failure = extract_braced_item(
+        sender, "fn fail_with_state(", "independent atomic terminal failure"
+    )
+    require_order(
+        failure,
+        (
+            "state.queue.clear();",
+            "state.queued_bytes = 0;",
+            "state.terminal = Some(failure);",
+            "drop(state);",
+            "self.wake_receiver()?;",
+        ),
+        "independent terminal clear-before-wake finality",
+    )
+
+    receiver = extract_between(
+        clipboard,
+        "impl ClipboardFileEgressReceiver {",
+        "impl Drop for ClipboardFileEgressReceiver {",
+        "independent file-clipboard receiver",
+    )
+    require_order(
+        receiver,
+        (
+            "if let Some(failure) = state.terminal.take()",
+            "state.receiver_open = false;",
+            "state.queue.pop_front()",
+            "state.queued_bytes.checked_sub(queued.retained_bytes)",
+            "ClipboardFileEgressItem::Message(queued.data)",
+            "self.wake.recv().await",
+        ),
+        "independent terminal-first checked FIFO drain",
+    )
+    receiver_drop = extract_braced_item(
+        clipboard,
+        "impl Drop for ClipboardFileEgressReceiver",
+        "independent receiver retirement",
+    )
+    require_order(
+        receiver_drop,
+        (
+            "self.wake.close();",
+            "state.receiver_open = false;",
+            "state.queue.clear();",
+            "state.queued_bytes = 0;",
+            "state.terminal = None;",
+        ),
+        "independent receiver retirement releases retained state",
+    )
+
+    route = extract_between(
+        clipboard,
+        "enum ClipboardFileRouteOwner",
+        "impl ClipboardFile {",
+        "independent sender-only route registry",
+    )
+    for marker, label in (
+        ("Viewer { peer_id: String }", "independent viewer route class"),
+        ("Controlled", "independent controlled route class"),
+        ("struct ClipboardFileRoute", "independent route record"),
+        ("route_generation: u64", "independent route generation"),
+        ("sender: ClipboardFileEgressSender", "independent sender-only route"),
+        ("struct ClipboardFileRouteLease", "independent route lease"),
+    ):
+        require_text(route, marker, label)
+    require_absent(route, "ClipboardFileEgressReceiver", "independent receiver registry ownership")
+    route_drop = extract_braced_item(
+        clipboard,
+        "impl Drop for ClipboardFileRouteLease",
+        "independent exact route cleanup",
+    )
+    require_order(
+        route_drop,
+        (
+            "route.conn_id == self.conn_id",
+            "route.route_generation == self.route_generation",
+            "routes.remove(index);",
+        ),
+        "independent generation-bound cleanup",
+    )
+    viewer_id = extract_braced_item(
+        clipboard, "fn next_viewer_conn_id(", "independent viewer identity"
+    )
+    require_text(viewer_id, "lock.checked_sub(1)", "independent negative viewer identity")
+    viewer_route = extract_braced_item(
+        clipboard, "pub fn register_cliprdr_viewer(", "independent fresh viewer route"
+    )
+    require_order(
+        viewer_route,
+        (
+            "next_viewer_conn_id()",
+            "next_route_generation()",
+            "clipboard_file_egress_channel()",
+            "ClipboardFileRouteOwner::Viewer",
+            "ClipboardFileRouteLease",
+        ),
+        "independent fresh viewer route ownership",
+    )
+    controlled_route = extract_braced_item(
+        clipboard,
+        "pub fn register_cliprdr_controlled(",
+        "independent controlled route",
+    )
+    require_order(
+        controlled_route,
+        (
+            "if conn_id <= 0",
+            "routes.iter().any(|route| route.conn_id == conn_id)",
+            "ClipboardFileRouteOwner::Controlled",
+            "ClipboardFileRouteLease",
+        ),
+        "independent positive exclusive controlled route",
+    )
+    sender_lookup = extract_braced_item(
+        clipboard, "fn send_data_to_channel(", "independent sender snapshot"
+    )
+    require_order(
+        sender_lookup,
+        (
+            "CLIPBOARD_FILE_ROUTES",
+            ".read()",
+            ".map(|route| route.sender.clone())",
+            ".ok_or_else(",
+            "sender\n        .send(data)",
+        ),
+        "independent registry-lock release before admission",
+    )
+
+    require_text(
+        sources["clipboard_windows_source"],
+        "conn_id = (*clip_format_list).connID as i32;",
+        "independent Windows viewer identity restoration",
+    )
+    require_text(
+        sources["clipboard_windows_source"],
+        "conn_id = (*file_contents_response).connID as i32;",
+        "independent Windows response identity restoration",
+    )
+    require_order(
+        client,
+        (
+            "clipboard::register_cliprdr_viewer(&self.handler.get_id())",
+            "rx_clip_client = receiver;",
+            "ClipboardFileEgressItem::Failed(failure)",
+            "break;",
+        ),
+        "independent viewer exact-round ownership and finality",
+    )
+    require_order(
+        connection,
+        (
+            '#[cfg(all(feature = "unix-file-copy-paste", not(target_os = "windows")))]',
+            "clipboard::register_cliprdr_controlled(id)",
+            "ClipboardFileEgressItem::Failed(failure)",
+            "conn.on_close(",
+            "break;",
+        ),
+        "independent Unix controlled-route ownership and finality",
+    )
+    require_order(
+        ui_cm,
+        (
+            "clipboard::register_cliprdr_controlled(self.conn_id)",
+            "ClipboardFileEgressItem::Failed(failure)",
+            "break;",
+        ),
+        "independent Windows CM controlled-route ownership and finality",
+    )
+
+    for test in (
+        "r_s11gz_file_clipboard_egress_is_fifo_and_releases_capacity",
+        "r_s11gz_file_clipboard_egress_capacity_failure_is_terminal_and_clears_payloads",
+        "r_s11gz_file_clipboard_egress_counts_retained_capacity_and_total_bytes",
+        "r_s11gz_file_clipboard_egress_wakes_and_receiver_retirement_is_final",
+        "r_s11gz_viewer_routes_are_fresh_negative_and_controlled_routes_are_disjoint",
+    ):
+        require_text(clipboard, test, f"independent {test} regression")
+    require_text(
+        sources["clipboard_fuse_source"],
+        "crate::register_cliprdr_controlled(conn_id).unwrap();",
+        "independent FUSE exact-route regression wiring",
+    )
+
+    for key, text, label in (
+        ("verify", "python3 scripts/verify-clipboard-route-budget.py --repo . --self-test", "shared file-clipboard gate"),
+        ("verify", "cargo test -p clipboard --features unix-file-copy-paste --lib r_s11gz_ --color never", "shared file-clipboard Rust gate"),
+        ("apple", "python3 scripts/verify-clipboard-route-budget.py --repo . --self-test", "Apple file-clipboard gate"),
+        ("requirements", '<div class="req"><span class="id">R-S11gz</span>', "R-S11gz requirement"),
+        ("requirements", "<tr><td>361</td>", "Appendix C #361"),
+        ("hardening", "### R-S11gz/R-S11e-238 — exact bounded file-clipboard route ownership", "R-S11gz ledger"),
+    ):
+        require_text(sources[key], text, label)
+    require_text(
+        sources["workspace_verifier"],
+        '            "clipboard_route_budget_verifier": (\n'
+        '                repo / "scripts/verify-clipboard-route-budget.py"\n'
+        '            ).read_text(encoding="utf-8"),',
+        "file-clipboard independent verifier binding",
+    )
+
+    workspace_module = ast.parse(sources["workspace_verifier"])
+    validate_sources_function = next(
+        (
+            node
+            for node in workspace_module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "validate_sources"
+        ),
+        None,
+    )
+    if validate_sources_function is None:
+        raise VerificationError("file-clipboard independent workspace dispatch is absent")
+    dispatches = [
+        node
+        for node in validate_sources_function.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "validate_clipboard_route_budget_contract"
+    ]
+    if len(dispatches) != 1:
+        raise VerificationError(
+            "file-clipboard independent workspace dispatch must occur exactly once"
+        )
 
 
 def validate_keyed_writer_budget_contract(sources):
@@ -30158,7 +30501,7 @@ def validate_android_voice_call_ownership_contract(sources):
         "voice_call_audio = recv_voice_call_audio(&mut self.voice_call_audio)"
     )
     outgoing_branch_end = outgoing_round.index(
-        "_msg = rx_clip_client.recv()", outgoing_branch_start
+        "clip_item = rx_clip_client.recv()", outgoing_branch_start
     )
     for retired in ("self.sender.send", "Data::Message", "tokio::spawn", "std::thread"):
         require_absent(
@@ -47640,6 +47983,7 @@ def validate_sources(sources):
     validate_viewer_cursor_resources_contract(sources)
     validate_controlled_control_egress_contract(sources)
     validate_cm_egress_budget_contract(sources)
+    validate_clipboard_route_budget_contract(sources)
     validate_keyed_writer_budget_contract(sources)
     validate_display_selection_finality_contract(sources)
     validate_desktop_texture_lifecycle_contract(sources)
@@ -67257,12 +67601,14 @@ def run_source_mutations(sources):
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "    validate_viewer_cursor_mailbox_contract(sources)\n"
             "    validate_viewer_cursor_resources_contract_disabled(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "cursor-resource independent workspace dispatch must occur exactly once",
@@ -67273,6 +67619,7 @@ def run_source_mutations(sources):
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)\n"
             "    validate_desktop_texture_lifecycle_contract(sources)",
@@ -67280,6 +67627,7 @@ def run_source_mutations(sources):
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract_disabled(sources)\n"
             "    validate_desktop_texture_lifecycle_contract(sources)",
@@ -67291,6 +67639,7 @@ def run_source_mutations(sources):
             '    validate_viewer_cursor_resources_contract(sources)\\n'
             '    validate_controlled_control_egress_contract(sources)\\n'
             '    validate_cm_egress_budget_contract(sources)\\n'
+            '    validate_clipboard_route_budget_contract(sources)\\n'
             '    validate_keyed_writer_budget_contract(sources)\\n'
             '    validate_display_selection_finality_contract(sources)\\n'
             '    validate_desktop_texture_lifecycle_contract(sources)",',
@@ -67494,11 +67843,13 @@ def run_source_mutations(sources):
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract_disabled(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "controlled-egress independent workspace dispatch",
@@ -67726,11 +68077,211 @@ def run_source_mutations(sources):
             "workspace_verifier",
             "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)",
             "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_cm_egress_budget_contract_disabled(sources)\n"
+            "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)",
             "CM-egress independent workspace dispatch",
+        ),
+        (
+            "clipboard_source",
+            "const CLIPBOARD_FILE_EGRESS_WAKE_CAPACITY: usize = 1;",
+            "const CLIPBOARD_FILE_EGRESS_WAKE_CAPACITY: usize = 64;",
+            "independent one-slot wake",
+        ),
+        (
+            "clipboard_source",
+            "const CLIPBOARD_FILE_EGRESS_MAX_MESSAGES: usize = 256;",
+            "const CLIPBOARD_FILE_EGRESS_MAX_MESSAGES: usize = usize::MAX;",
+            "independent message ceiling",
+        ),
+        (
+            "clipboard_source",
+            "hbb_common::cpace::MAX_SESSION_PACKET * 2",
+            "hbb_common::cpace::MAX_SESSION_PACKET * 8",
+            "independent aggregate heap ceiling",
+        ),
+        (
+            "clipboard_source",
+            "r#type.capacity()",
+            "r#type.len()",
+            "independent notification type capacity",
+        ),
+        (
+            "clipboard_source",
+            "checked_allocation_bytes::<(i32, String)>(format_list.capacity())",
+            "format_list.len()",
+            "independent format-list allocation",
+        ),
+        (
+            "clipboard_source",
+            "format_data.capacity()",
+            "format_data.len()",
+            "independent format-data capacity",
+        ),
+        (
+            "clipboard_source",
+            "state.queue.len().checked_add(1)",
+            "Some(state.queue.len() + 1)",
+            "independent checked FIFO nonwaiting admission",
+        ),
+        (
+            "clipboard_source",
+            "next_count > self.limits.max_messages",
+            "false",
+            "independent checked FIFO nonwaiting admission",
+        ),
+        (
+            "clipboard_source",
+            "state.queued_bytes.checked_add(retained_bytes)",
+            "Some(state.queued_bytes + retained_bytes)",
+            "independent checked FIFO nonwaiting admission",
+        ),
+        (
+            "clipboard_source",
+            "next_bytes > self.limits.max_queued_bytes",
+            "false",
+            "independent checked FIFO nonwaiting admission",
+        ),
+        (
+            "clipboard_source",
+            "state.queue.push_back(QueuedClipboardFile {",
+            "state.queue.push_front(QueuedClipboardFile {",
+            "independent checked FIFO nonwaiting admission",
+        ),
+        (
+            "clipboard_source",
+            "state.queue.clear();\n"
+            "        state.queued_bytes = 0;\n"
+            "        state.terminal = Some(failure);",
+            "state.terminal = Some(failure);",
+            "independent terminal clear-before-wake finality",
+        ),
+        (
+            "clipboard_source",
+            "state.queued_bytes.checked_sub(queued.retained_bytes)",
+            "Some(state.queued_bytes)",
+            "independent terminal-first checked FIFO drain",
+        ),
+        (
+            "clipboard_source",
+            "struct ClipboardFileRoute {",
+            "struct MsgChannel {",
+            "independent legacy shared channel",
+        ),
+        (
+            "clipboard_source",
+            "sender: ClipboardFileEgressSender,",
+            "receiver: ClipboardFileEgressReceiver,",
+            "independent sender-only route",
+        ),
+        (
+            "clipboard_source",
+            "route.route_generation == self.route_generation",
+            "true",
+            "independent generation-bound cleanup",
+        ),
+        (
+            "clipboard_source",
+            "lock.checked_sub(1)",
+            "lock.checked_add(1)",
+            "independent negative viewer identity",
+        ),
+        (
+            "clipboard_source",
+            "if conn_id <= 0",
+            "if false",
+            "independent positive exclusive controlled route",
+        ),
+        (
+            "clipboard_source",
+            "routes.iter().any(|route| route.conn_id == conn_id)",
+            "false",
+            "independent positive exclusive controlled route",
+        ),
+        (
+            "client_io_loop",
+            "clipboard::register_cliprdr_viewer(&self.handler.get_id())",
+            "clipboard::current_cliprdr_viewer_id(&self.handler.get_id())",
+            "independent viewer exact-round ownership and finality",
+        ),
+        (
+            "connection_source",
+            '#[cfg(all(feature = "unix-file-copy-paste", not(target_os = "windows")))]\n'
+            "        let (mut rx_clip, _cliprdr_route)",
+            '#[cfg(feature = "unix-file-copy-paste")]\n'
+            "        let (mut rx_clip, _cliprdr_route)",
+            "independent Unix controlled-route ownership and finality",
+        ),
+        (
+            "ui_cm_source",
+            "clipboard::register_cliprdr_controlled(self.conn_id)",
+            "clipboard::clipboard_file_egress_channel()",
+            "independent Windows CM controlled-route ownership and finality",
+        ),
+        (
+            "clipboard_windows_source",
+            "conn_id = (*clip_format_list).connID as i32;",
+            "conn_id = (*clip_format_list).connID as i16 as i32;",
+            "independent Windows viewer identity restoration",
+        ),
+        (
+            "clipboard_route_budget_verifier",
+            '        ("const CLIPBOARD_FILE_EGRESS_MAX_MESSAGES: usize = 256;", "message-count ceiling"),',
+            '        ("const CLIPBOARD_FILE_EGRESS_MAX_MESSAGES_DISABLED: usize = 256;", "message-count ceiling"),',
+            "focused file-clipboard message-count assertion",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-clipboard-route-budget.py --repo . --self-test",
+            "true # file-clipboard verifier disabled",
+            "shared file-clipboard gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-clipboard-route-budget.py --repo . --self-test",
+            "true # file-clipboard verifier disabled",
+            "Apple file-clipboard gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11gz</span>',
+            '<div class="req"><span class="id">R-S11gz-disabled</span>',
+            "R-S11gz requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>361</td>",
+            "<tr><td>361-disabled</td>",
+            "Appendix C #361",
+        ),
+        (
+            "hardening",
+            "### R-S11gz/R-S11e-238 — exact bounded file-clipboard route ownership",
+            "### R-S11gz-disabled/R-S11e-238 — exact bounded file-clipboard route ownership",
+            "R-S11gz ledger",
+        ),
+        (
+            "workspace_verifier",
+            '            "clipboard_route_budget_verifier": (\n'
+            '                repo / "scripts/verify-clipboard-route-budget.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "clipboard_route_budget_verifier_disabled": (\n'
+            '                repo / "scripts/verify-clipboard-route-budget.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "file-clipboard independent verifier binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_route_budget_contract(sources)\n"
+            "    validate_keyed_writer_budget_contract(sources)",
+            "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_route_budget_contract_disabled(sources)\n"
+            "    validate_keyed_writer_budget_contract(sources)",
+            "file-clipboard independent workspace dispatch must occur exactly once",
         ),
         (
             "tcp_source",
@@ -67878,10 +68429,12 @@ def run_source_mutations(sources):
             "workspace_verifier",
             "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract_disabled(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "keyed-writer independent dispatch",
@@ -81360,6 +81913,9 @@ def main():
             "cm_egress_budget_verifier": (
                 repo / "scripts/verify-cm-egress-budget.py"
             ).read_text(encoding="utf-8"),
+            "clipboard_route_budget_verifier": (
+                repo / "scripts/verify-clipboard-route-budget.py"
+            ).read_text(encoding="utf-8"),
             "keyed_writer_budget_verifier": (
                 repo / "scripts/verify-keyed-writer-budget.py"
             ).read_text(encoding="utf-8"),
@@ -81687,6 +82243,15 @@ def main():
             ).read_text(encoding="utf-8"),
             "server_source": (repo / "src/server.rs").read_text(encoding="utf-8"),
             "ui_cm_source": (repo / "src/ui_cm_interface.rs").read_text(encoding="utf-8"),
+            "clipboard_source": (repo / "libs/clipboard/src/lib.rs").read_text(
+                encoding="utf-8"
+            ),
+            "clipboard_windows_source": (
+                repo / "libs/clipboard/src/platform/windows.rs"
+            ).read_text(encoding="utf-8"),
+            "clipboard_fuse_source": (
+                repo / "libs/clipboard/src/platform/unix/fuse/cs.rs"
+            ).read_text(encoding="utf-8"),
             "whiteboard_server": (repo / "src/whiteboard/server.rs").read_text(encoding="utf-8"),
             "direct_service": (repo / "src/direct_service.rs").read_text(encoding="utf-8"),
             "connection_source": (repo / "src/server/connection.rs").read_text(encoding="utf-8"),

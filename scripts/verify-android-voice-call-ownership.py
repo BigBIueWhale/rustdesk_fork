@@ -4684,7 +4684,7 @@ def validate(sources: Dict[str, str]) -> None:
     branch_start = outgoing_round.index(
         "voice_call_audio = recv_voice_call_audio(&mut self.voice_call_audio)"
     )
-    branch_end = outgoing_round.index("_msg = rx_clip_client.recv()", branch_start)
+    branch_end = outgoing_round.index("clip_item = rx_clip_client.recv()", branch_start)
     for retired in ("self.sender.send", "Data::Message", "tokio::spawn", "std::thread"):
         forbid(
             outgoing_round[branch_start:branch_end],

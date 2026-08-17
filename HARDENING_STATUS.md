@@ -25452,12 +25452,105 @@ task-swipe/reopen, replacement, capture, transport, decode, compositor publicati
 control, file-transfer coexistence, and teardown remain correct and performant are all
 explicitly open.
 
+### R-S11gz/R-S11e-238 — exact bounded file-clipboard route ownership (2026-08-17)
+
+Source review found a narrower shared lifecycle defect beneath the reported cleanup
+pattern. `libs/clipboard/src/lib.rs` retained both senders and receivers in one
+process-global registry. A viewer connection round looked up a route by peer ID and
+reused its receiver, while `src/client/io_loop.rs` held that receiver for the complete
+network round. A replacement round could therefore contend with the stale round rather
+than owning fresh state. Viewer-generated IDs and controlled connection IDs also shared
+the positive `i32` namespace, cleanup removed a route by ID without a generation,
+payload-bearing `ClipboardFile` values crossed unbounded channels, and an accidental
+Windows build with `unix-file-copy-paste` could create both a direct controlled consumer
+and the connection-manager consumer. This is source-proven ownership/resource/finality
+debt consistent with cleanup-mediated recovery. It is not proof that the unidentified
+weeks-old Android, Windows, or Debian artifacts contained or exercised this path and is
+not a causation claim for the reported display-only delay.
+
+The registry now contains only `ClipboardFileEgressSender` route endpoints. Each viewer
+network round creates and exclusively owns one fresh receiver and a strictly negative,
+checked monotonic ID. Controlled routes accept only one unique positive connection ID;
+zero remains the Unix broadcast sentinel. The Windows ABI continues to carry the opaque
+identity as `UINT32`, and every native callback restores the exact bits as `i32`. A
+monotonic route-generation lease removes only an exact `(conn_id, generation)` record,
+so stale teardown cannot delete a replacement. Windows controlled callbacks have exactly
+the authorized CM-owned route, while the direct controlled route is Unix-only. FUSE
+tests now acquire the same exact controlled-route ownership instead of reaching into a
+receiver-sharing API.
+
+Each route owns one nonblocking wake token, a 256-message FIFO ceiling, an individual
+retained-heap ceiling equal to the 32 MiB `MAX_SESSION_PACKET`, and an aggregate budget
+of two maximum heap payloads plus fixed accounting for all 256 entry slots. Sizing uses
+allocation capacity for every nested `String` and `Vec`, checked element-size
+multiplication for vector storage, checked count and retained-byte addition, and checked
+drain subtraction. Individual oversize, count/byte saturation, and accounting failure
+atomically clear retained payloads, preserve one typed terminal cause, and wake the
+owner. Receiver retirement closes admission and clears state despite stale sender
+clones; final producer retirement closes a waiting receiver. Viewer, Unix-controlled,
+and Windows-CM consumers terminate their exact round on terminal failure or unexpected
+closure. Point sends and broadcasts snapshot senders and release the registry read lock
+before sizing/admission; broadcast refusal is visible. No retry, reconnect, message
+coalescing, timer, poller, worker, task, thread, runtime, listener, port, dependency,
+privilege transition, service restart, alternate transport, or Android persistent-
+background-service change was added.
+
+Five deterministic Rust regressions bind FIFO/post-drain recovery, terminal count and
+byte failure with payload release, allocation-capacity rather than length accounting,
+one-slot asynchronous wake, receiver and final-producer retirement, fresh viewer route
+state, negative/positive role separation, duplicate controlled-route refusal, current-
+route fallback after exact lease retirement, and exact point delivery. Existing Unix
+FUSE regressions now bind exact route acquisition, response, send failure, and timeout.
+`scripts/verify-clipboard-route-budget.py` binds the implementation, Windows ID round
+trip, viewer/controlled/CM consumers, regressions, requirements, Appendix C #361,
+R-S11e-238, digest, and shared/Apple/independent wiring with deliberate mutations. The
+independent workspace validator separately parses the production topology and call sites
+and carries its own weakening catalog.
+
+In the immutable local verifier image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
+with `--pull=never`, networking disabled, a read-only root and repository, all
+capabilities dropped, no-new-privileges, numeric UID/GID 1000, and bounded
+CPU/memory/PIDs/private tmpfs, the focused file-clipboard verifier rejected all 38
+deliberate mutations. Its independently parsed narrowed workspace catalog rejected all
+31 separate weakenings and the unmodified independent workspace baseline passed.
+Adjacent viewer voice-call, controlled-egress, CM-egress, keyed-writer,
+display-finality, Android voice-call ownership, and Windows production-listener DACL
+gates rejected 63, 51, 50, 25, 186, 534, and 36 mutations respectively. Bash syntax,
+in-memory Python AST parsing, the synchronized requirements digest, and the native-codec
+gate passed. Exact Rust 1.75 formatting passed the complete modified clipboard library,
+viewer loop, CM interface, and FUSE test source. The formatter reported no difference at
+the modified controlled-connection hunk; that large file retains pre-existing formatter
+differences elsewhere. The first complete independent source-mutation run correctly
+rejected the new one-slot-wake weakening but exposed a diagnostic-label mismatch in the
+new mutation fixture. The second complete run then proved that the independent validator
+bound the focused message ceiling only by a generic constant-name marker; that weakening
+was accepted, so the validator was tightened to require the exact focused assertion.
+After both verifier defects were corrected without weakening a production requirement,
+the real canonically isolated narrowed catalog rejected all 31 unique new targets and one
+uninterrupted complete independently parsed 4,574-entry source-mutation catalog passed
+against the frozen tree. No image was pulled, built, or tagged; no host Rust command,
+root identity, Docker socket mount, listener, published port, host
+service/configuration, firewall/network state, VM, or unrelated workload was used,
+inspected, or changed.
+
+This remains source, format, and adversarial-gate evidence, not native behavior or
+release readiness. The exact pinned Debian, Apple, and dev-check builder images and the
+authenticated Cargo-vendor closure are absent, so no exact-current Rust/Dart/Flutter/
+native compilation or execution is claimed. Physical Android task-swipe/reopen/
+Force-Stop and Windows focus/minimize reproduction; Linux/macOS/iOS and cross-version
+behavior; capture-through-compositor timestamps and explicit latency budgets; sustained
+connection/reconnect/focus/background/file-control coexistence/backpressure/resource/
+performance soak; clean cold R-B2/R-B10 equality; installed process/service/package
+behavior; independent reproduction; R-V3 external review; causation; and proof that the
+whole connection flow is correct and performant remain explicitly open.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-2487311dac25ecf0cc855956aeb52226b72d8c4693e764db74285661409dc216  requirements.html
+dd38ec84482b8387d5fc700ea8e04e991069093b87ebeeeec3508245600d71af  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -25525,3 +25618,4 @@ The same identity additionally binds R-S11gv and Appendix C #357.
 The same identity additionally binds R-S11gw and Appendix C #358.
 The same identity additionally binds R-S11gx and Appendix C #359.
 The same identity additionally binds R-S11gy and Appendix C #360.
+The same identity additionally binds R-S11gz and Appendix C #361.

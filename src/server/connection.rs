@@ -5271,27 +5271,19 @@ impl Connection {
         let mut second_timer = crate::rustdesk_interval(time::interval(Duration::from_secs(1)));
         let mut pending_video_delivery: Option<PendingVideoDelivery> = None;
 
-        #[cfg(feature = "unix-file-copy-paste")]
-        let rx_clip_holder;
-        let mut rx_clip;
-        let _tx_clip: mpsc::UnboundedSender<i32>;
-        #[cfg(feature = "unix-file-copy-paste")]
-        {
-            rx_clip_holder = (
-                clipboard::get_rx_cliprdr_server(id),
-                crate::SimpleCallOnReturn {
-                    b: true,
-                    f: Box::new(move || {
-                        clipboard::remove_channel_by_conn_id(id);
-                    }),
-                },
-            );
-            rx_clip = rx_clip_holder.0.lock().await;
-        }
-        #[cfg(not(feature = "unix-file-copy-paste"))]
-        {
-            (_tx_clip, rx_clip) = mpsc::unbounded_channel::<i32>();
-        }
+        #[cfg(all(feature = "unix-file-copy-paste", not(target_os = "windows")))]
+        let (mut rx_clip, _cliprdr_route) = match clipboard::register_cliprdr_controlled(id) {
+            Ok(route) => route,
+            Err(error) => {
+                let reason =
+                    format!("failed to register exact controlled file-clipboard route: {error}");
+                log::error!("#{id} {reason}");
+                conn.on_close(&reason, false).await;
+                return;
+            }
+        };
+        #[cfg(not(all(feature = "unix-file-copy-paste", not(target_os = "windows"))))]
+        let (_tx_clip, mut rx_clip) = clipboard::clipboard_file_egress_channel();
 
         // R-T9 (§20): an owned clone of the process-wide shutdown token, selected on below so a
         // SIGTERM/SIGINT drains this session gracefully. Bound outside the loop because
@@ -5742,15 +5734,28 @@ impl Connection {
                     }
                 }
                 clip_file = rx_clip.recv() => match clip_file {
-                    Some(_clip) => {
-                        #[cfg(feature = "unix-file-copy-paste")]
+                    Some(clipboard::ClipboardFileEgressItem::Message(clip)) => {
+                        #[cfg(all(feature = "unix-file-copy-paste", not(target_os = "windows")))]
                         if crate::is_support_file_copy_paste(&conn.lr.version)
                         {
-                            conn.handle_file_clip(_clip).await;
+                            conn.handle_file_clip(clip).await;
                         }
                     }
+                    Some(clipboard::ClipboardFileEgressItem::Failed(failure)) => {
+                        conn.on_close(
+                            &format!("controlled file-clipboard route failed: {failure}"),
+                            false,
+                        )
+                        .await;
+                        break;
+                    }
                     None => {
-                        //
+                        conn.on_close(
+                            "controlled file-clipboard route closed before its network round",
+                            false,
+                        )
+                        .await;
+                        break;
                     }
                 },
             }

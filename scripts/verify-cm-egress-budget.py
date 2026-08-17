@@ -519,7 +519,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<div class="req"><span class="id">R-S11gy</span>', '<div class="req"><span class="id">R-S11gy-disabled</span>', "normative requirement"),
     ("requirements", "<tr><td>360</td>", "<tr><td>360-disabled</td>", "Appendix disposition"),
     ("hardening", "### R-S11gy/R-S11e-237 — bounded connection-manager result ownership", "### R-S11gy-disabled/R-S11e-237 — bounded connection-manager result ownership", "hardening ledger"),
-    ("workspace", "    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)", "    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract_disabled(sources)\n    validate_keyed_writer_budget_contract(sources)", "independent dispatch"),
+    ("workspace", "    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)", "    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract_disabled(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)", "independent dispatch"),
 )
 
 

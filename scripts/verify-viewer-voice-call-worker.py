@@ -191,7 +191,7 @@ def validate(sources: Dict[str, str]) -> None:
     audio_branch_start = io_round.index(
         "voice_call_audio = recv_voice_call_audio(&mut self.voice_call_audio)"
     )
-    audio_branch_end = io_round.index("_msg = rx_clip_client.recv()", audio_branch_start)
+    audio_branch_end = io_round.index("clip_item = rx_clip_client.recv()", audio_branch_start)
     audio_branch = io_round[audio_branch_start:audio_branch_end]
     for forbidden in (
         "self.sender.send",

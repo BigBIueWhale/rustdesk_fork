@@ -9499,6 +9499,7 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gw_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib r_s11gx_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never
+"${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib r_s11gz_ --color never
 if python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test; then
   echo "  ok  R-S11ew/R-S11fr Flutter software RGBA publication is exact-session/token-owned, bounded, latest-wins, recoverable, commit-ordered, and pointer-free"
 else
@@ -9533,6 +9534,12 @@ if python3 scripts/verify-cm-egress-budget.py --repo . --self-test; then
   echo "  ok  R-S11gy connection-manager results have closed count-and-byte ownership at both desktop hops and Android"
 else
   echo "  FAIL R-S11gy: connection-manager results regained an unbounded hop, incomplete raw-byte accounting, or nonterminal refusal"
+  rc=1
+fi
+if python3 scripts/verify-clipboard-route-budget.py --repo . --self-test; then
+  echo "  ok  R-S11gz file-clipboard callbacks have exact connection-round routes and finite count-and-byte ownership"
+else
+  echo "  FAIL R-S11gz: file-clipboard routing regained a shared receiver, colliding identity, stale cleanup, unbounded retention, or nonterminal refusal"
   rc=1
 fi
 if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then

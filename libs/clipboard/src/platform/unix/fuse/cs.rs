@@ -1284,7 +1284,7 @@ mod fuse_test {
     #[test]
     fn read_node_routes_response_after_request() {
         let conn_id = 31337;
-        let rx = crate::get_rx_cliprdr_server(conn_id);
+        let (mut rx, _route) = crate::register_cliprdr_controlled(conn_id).unwrap();
 
         let (mut server, router) = FuseServer::new(Duration::from_millis(500));
         server
@@ -1298,7 +1298,12 @@ mod fuse_test {
         let response_router = router.clone();
 
         let response_thread = std::thread::spawn(move || {
-            let request = rx.blocking_lock().blocking_recv().unwrap();
+            let request = match rx.blocking_recv().unwrap() {
+                crate::ClipboardFileEgressItem::Message(request) => request,
+                crate::ClipboardFileEgressItem::Failed(failure) => {
+                    panic!("file-clipboard route failed before request: {failure}")
+                }
+            };
             let ClipboardFile::FileContentsRequest {
                 stream_id: request_stream_id,
                 ..
@@ -1342,13 +1347,11 @@ mod fuse_test {
         let data = server.read_node(node, 0, 5).unwrap();
         response_thread.join().unwrap();
         assert_eq!(data, b"right");
-
-        crate::remove_channel_by_conn_id(conn_id);
     }
 
     #[test]
     fn read_node_drops_route_when_send_fails() {
-        let conn_id = 31337;
+        let conn_id = 31338;
         let (mut server, router) = FuseServer::new(Duration::from_millis(50));
         server
             .load_file_list(vec![desc_gen_for_conn(
@@ -1367,8 +1370,8 @@ mod fuse_test {
 
     #[test]
     fn read_node_drops_route_when_response_times_out() {
-        let conn_id = 31337;
-        let _rx = crate::get_rx_cliprdr_server(conn_id);
+        let conn_id = 31339;
+        let (_rx, _route) = crate::register_cliprdr_controlled(conn_id).unwrap();
         let (mut server, router) = FuseServer::new(Duration::from_millis(1));
         server
             .load_file_list(vec![desc_gen_for_conn(
@@ -1383,8 +1386,6 @@ mod fuse_test {
         let err = server.read_node(node, 0, 5).unwrap_err();
         assert_eq!(err.kind(), std::io::ErrorKind::TimedOut);
         assert_eq!(router.active_route_count(), 0);
-
-        crate::remove_channel_by_conn_id(conn_id);
     }
 
     #[test]

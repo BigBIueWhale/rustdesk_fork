@@ -3659,6 +3659,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c2ae) R-S11gz exact bounded file-clipboard route ownership =="
+if python3 scripts/verify-clipboard-route-budget.py --repo . --self-test; then
+  note "ok  R-S11gz Apple/shared file-clipboard callbacks have exact connection-round routes and finite count-and-byte ownership"
+else
+  echo "  FAIL R-S11gz Apple/shared file-clipboard routing regained a shared receiver, colliding identity, stale cleanup, unbounded retention, or nonterminal refusal"
+  rc=1
+fi
+
 echo "== (2g-c2b) R-S11go exact-owner ordered display-selection finality =="
 if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then
   note "ok  R-S11go Apple/shared display selection is exact-owner, typed, ordered, bounded, and failure-visible"

@@ -455,7 +455,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("connection", "self.wake.close();", "// wake left open", "receiver retirement"),
     ("connection", "let (tx, mut rx) = control_egress_channel();", "let (tx, mut rx) = mpsc::unbounded_channel();", "connection channel"),
     ("connection", "ControlEgressItem::Failed(failure) => {\n                            conn.on_close(&failure.to_string(), false).await;", "ControlEgressItem::Failed(_failure) => {\n                            conn.on_close(\"controlled egress failed\", false).await;", "terminal select arm"),
-    ("connection", "conn.on_close(&failure.to_string(), false).await;", "continue;", "failure-visible connection close"),
+    ("connection", "ControlEgressItem::Failed(failure) => {\n                            conn.on_close(&failure.to_string(), false).await;\n                            break;", "ControlEgressItem::Failed(_failure) => {\n                            continue;", "failure-visible connection close"),
     ("connection", "if let Err(err) = tx.send(msg)", "let _ = tx.send(msg)", "producer failure visibility"),
     ("video", "tx.send(Arc::new(msg_out))", "drop(msg_out); Ok(())", "screenshot bounded egress"),
     ("connection", "s.send(Arc::new(msg_out))", "drop(msg_out); Ok(())", "block-input bounded egress"),
@@ -475,7 +475,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", "may hold only this mailbox's short in-process state mutex while mutating bounded state", "may hold arbitrary locks while publishing", "short synchronous state-mutex authority"),
     ("requirements", "<tr><td>358</td>", "<tr><td>358-disabled</td>", "Appendix disposition"),
     ("hardening", "### R-S11gw/R-S11e-235 — bounded controlled-side service-to-connection egress", "### R-S11gw-disabled/R-S11e-235 — bounded controlled-side service-to-connection egress", "hardening ledger"),
-    ("workspace", "    validate_viewer_cursor_resources_contract(sources)\n    validate_controlled_control_egress_contract(sources)\n    validate_keyed_writer_budget_contract(sources)\n    validate_display_selection_finality_contract(sources)", "    validate_viewer_cursor_resources_contract(sources)\n    validate_controlled_control_egress_contract_disabled(sources)\n    validate_keyed_writer_budget_contract(sources)\n    validate_display_selection_finality_contract(sources)", "independent dispatch"),
+    ("workspace", "    validate_viewer_cursor_resources_contract(sources)\n    validate_controlled_control_egress_contract(sources)\n    validate_cm_egress_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)\n    validate_display_selection_finality_contract(sources)", "    validate_viewer_cursor_resources_contract(sources)\n    validate_controlled_control_egress_contract_disabled(sources)\n    validate_cm_egress_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)\n    validate_display_selection_finality_contract(sources)", "independent dispatch"),
 )
 
 

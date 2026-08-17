@@ -3759,7 +3759,7 @@ struct StartCmIpcPara {
     cm_auth_token: String,
     rx_to_cm: mpsc::Receiver<ipc::Data>,
     cm_terminal: oneshot::Receiver<crate::ui_cm_interface::CmConnectionTerminal>,
-    tx_from_cm: mpsc::UnboundedSender<ipc::Data>,
+    tx_from_cm: crate::ui_cm_interface::CmEgressSender,
     rx_desktop_ready: mpsc::Receiver<()>,
     tx_cm_stream_ready: mpsc::Sender<()>,
     owner_closed: oneshot::Receiver<()>,
@@ -5090,7 +5090,7 @@ impl Connection {
         let _raii_control_permissions_id =
             raii::ControlPermissionsID::new(id, &control_permissions);
         // R-T15c: no legacy `Hash` challenge is constructed/sent -- CPace is the sole authenticator.
-        let (tx_from_cm_holder, mut rx_from_cm) = mpsc::unbounded_channel::<ipc::Data>();
+        let (tx_from_cm_holder, mut rx_from_cm) = crate::ui_cm_interface::cm_egress_channel();
         // holding tx_from_cm_holder to avoid cpu burning of rx_from_cm.recv when all sender closed
         let tx_from_cm = tx_from_cm_holder.clone();
         let (tx_to_cm, rx_to_cm) = mpsc::channel::<ipc::Data>(CM_COMMAND_QUEUE_CAPACITY);
@@ -5354,7 +5354,14 @@ impl Connection {
                     break;
                 }
 
-                Some(data) = rx_from_cm.recv() => {
+                Some(item) = rx_from_cm.recv() => {
+                    let data = match item {
+                        crate::ui_cm_interface::CmEgressItem::Data(data) => data,
+                        crate::ui_cm_interface::CmEgressItem::Failed(failure) => {
+                            conn.on_close(&failure.to_string(), false).await;
+                            break;
+                        }
+                    };
                     match data {
                         ipc::Data::Close => {
                             conn.chat_unanswered = false; // seen
@@ -6885,7 +6892,7 @@ impl Connection {
     // (tcp.rs R-A3) anyway; here it is simply absent so every relayed byte stays inside the seal.
     async fn try_port_forward_loop(
         &mut self,
-        rx_from_cm: &mut mpsc::UnboundedReceiver<ipc::Data>,
+        rx_from_cm: &mut crate::ui_cm_interface::CmEgressReceiver,
     ) -> ResultType<()> {
         if let Some(mut forward) = self.port_forward_socket.take() {
             log::info!("Running port forwarding loop");
@@ -6893,7 +6900,13 @@ impl Connection {
             let mut idle_timer = crate::rustdesk_interval(time::interval(Duration::from_secs(1)));
             loop {
                 tokio::select! {
-                    Some(data) = rx_from_cm.recv() => {
+                    Some(item) = rx_from_cm.recv() => {
+                        let data = match item {
+                            crate::ui_cm_interface::CmEgressItem::Data(data) => data,
+                            crate::ui_cm_interface::CmEgressItem::Failed(failure) => {
+                                bail!(failure.to_string());
+                            }
+                        };
                         match data {
                             ipc::Data::Close => {
                                 bail!("Close requested from connection manager");
@@ -11430,7 +11443,7 @@ pub(crate) async fn connect_authenticated_cm(
 async fn start_ipc(
     mut rx_to_cm: mpsc::Receiver<ipc::Data>,
     mut cm_terminal: oneshot::Receiver<crate::ui_cm_interface::CmConnectionTerminal>,
-    tx_from_cm: mpsc::UnboundedSender<ipc::Data>,
+    tx_from_cm: crate::ui_cm_interface::CmEgressSender,
     mut _rx_desktop_ready: mpsc::Receiver<()>,
     tx_stream_ready: mpsc::Sender<()>,
     conn_id: i32,

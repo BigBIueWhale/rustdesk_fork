@@ -20142,6 +20142,7 @@ def validate_display_selection_finality_contract(sources):
             '"workspace", "    validate_viewer_cursor_mailbox_contract(sources)\\n'
             '    validate_viewer_cursor_resources_contract(sources)\\n'
             '    validate_controlled_control_egress_contract(sources)\\n'
+            '    validate_cm_egress_budget_contract(sources)\\n'
             '    validate_keyed_writer_budget_contract(sources)\\n'
             '    validate_display_selection_finality_contract(sources)\\n'
             '    validate_desktop_texture_lifecycle_contract(sources)",',
@@ -22453,6 +22454,360 @@ def validate_controlled_control_egress_contract(sources):
         raise VerificationError(
             "controlled-egress independent workspace dispatch must occur exactly once"
         )
+
+
+def validate_cm_egress_budget_contract(sources):
+    """Independently bind bounded connection-manager result ownership."""
+
+    focused = sources["cm_egress_budget_verifier"]
+    focused_contract = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "focused CM-egress contract validation function",
+    )
+    for marker, label in (
+        ("CM_EGRESS_MAX_MESSAGES", "focused message-count ceiling"),
+        ("CM_IPC_MAX_FRAME_BYTES", "focused structured-message ceiling"),
+        ("CM_FILE_BLOCK_MAX_FRAME_BYTES", "focused raw-block ceiling"),
+        ("serde_json::to_writer", "focused nonallocating size count"),
+        ("ReadBlock { data, .. } => data.len()", "focused serde-skipped raw-byte ownership"),
+        ("encoded_bytes.checked_add(std::mem::size_of::<QueuedCmEgress>())", "focused entry-byte accounting"),
+        ("state.queue.len().checked_add(1)", "focused count accounting"),
+        ("state.queued_bytes.checked_add(retained_bytes)", "focused retained-byte accounting"),
+        ("state.queued_bytes.checked_sub(queued.retained_bytes)", "focused drain accounting"),
+        ("fn fail_with_state(", "focused atomic terminal transition"),
+        ("CmEgressItem::Failed(failure)", "focused failure finality"),
+        ("cm_egress_sender(id)", "focused registry-lock release"),
+        ("R-S11gy", "focused normative and ledger binding"),
+    ):
+        require_text(focused_contract, marker, label)
+    require_text(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "focused CM-egress deliberate-mutation inventory",
+    )
+    require_text(
+        focused_contract,
+        '("const CM_EGRESS_MAX_MESSAGES: usize = 256;", "message-count ceiling")',
+        "focused CM message-count assertion",
+    )
+
+    ui_cm = sources["ui_cm_source"]
+    connection = sources["connection_source"]
+    flutter = sources["flutter_source"]
+    for source, needle, label in (
+        (ui_cm, "mpsc::unbounded_channel::<Data>()", "independent first unbounded CM-result hop"),
+        (ui_cm, "tx: mpsc::UnboundedSender<Data>", "independent unbounded CM-result sender"),
+        (connection, "mpsc::unbounded_channel::<ipc::Data>()", "independent second unbounded CM-result hop"),
+        (flutter, "tx: UnboundedSender<crate::ipc::Data>", "independent Android unbounded CM-result sender"),
+    ):
+        require_absent(source, needle, label)
+    for marker, label in (
+        ("const CM_EGRESS_WAKE_CAPACITY: usize = 1;", "independent one-slot wake"),
+        ("const CM_EGRESS_MAX_MESSAGES: usize = 256;", "independent message-count ceiling"),
+        ("ipc::CM_IPC_MAX_FRAME_BYTES + ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES", "independent complete individual-message ceiling"),
+        ("CM_EGRESS_MAX_MESSAGE_BYTES * 2", "independent retained payload ceiling"),
+        ("std::mem::size_of::<QueuedCmEgress>() * CM_EGRESS_MAX_MESSAGES", "independent fixed entry accounting"),
+        ("queue: VecDeque<QueuedCmEgress>", "independent finite FIFO"),
+        ("terminal: Option<CmEgressFailure>", "independent typed terminal"),
+        ("receiver_open: bool", "independent receiver lifetime"),
+    ):
+        require_text(ui_cm, marker, label)
+    require_text(
+        sources["ipc_source"],
+        "pub(crate) const CM_IPC_MAX_FRAME_BYTES: usize = 128 * 1024 * 1024;",
+        "independent 128 MiB structured ceiling",
+    )
+    require_text(
+        sources["ipc_source"],
+        "pub(crate) const CM_FILE_BLOCK_MAX_FRAME_BYTES: usize = 256 * 1024;",
+        "independent 256 KiB raw ceiling",
+    )
+
+    classification = extract_braced_item(
+        ui_cm, "fn is_cm_egress_data(", "independent closed CM-result vocabulary"
+    )
+    for marker, label in (
+        ("Data::Close\n        | Data::ClickTime(_)", "independent close and click-time results"),
+        ("Data::ClickTime(_)", "independent click-time result"),
+        ("Data::CmErr(_)", "independent CM-error result"),
+        ("Data::ChatMessage { .. }", "independent chat result"),
+        ("Data::CmFileResponse(_)", "independent typed file result"),
+        ("Data::PrivacyModeState(_)", "independent privacy-state result"),
+        ("Data::VoiceCallResponse(_)", "independent voice response"),
+        ("Data::CloseVoiceCall(_)", "independent voice close"),
+        ("Data::ClipboardFile(_)", "independent Windows file clipboard"),
+        ("_ => false", "independent closed default"),
+    ):
+        require_text(classification, marker, label)
+    require_absent(classification, "Data::Disconnected", "independent ambient result class")
+    require_absent(
+        classification,
+        "Data::FS",
+        "independent untyped filesystem result class",
+    )
+
+    counter = extract_braced_item(
+        ui_cm, "impl Write for CmEgressSizeCounter", "independent CM size counter"
+    )
+    require_order(
+        counter,
+        (
+            "self.bytes.checked_add(buf.len())",
+            "self.failure = Some(CmEgressFailure::AccountingOverflow);",
+            "if next > self.limit",
+            "self.failure = Some(CmEgressFailure::MessageTooLarge);",
+            "self.bytes = next;",
+        ),
+        "independent checked nonallocating size count",
+    )
+    sizing = extract_braced_item(
+        ui_cm, "fn cm_egress_encoded_bytes(", "independent complete result sizing"
+    )
+    require_order(
+        sizing,
+        (
+            "ReadBlock { data, .. } => data.len()",
+            "raw_bytes > ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES",
+            "limit: limit.min(ipc::CM_IPC_MAX_FRAME_BYTES)",
+            "serde_json::to_writer(&mut counter, data)",
+            "counter.failure.unwrap_or(CmEgressFailure::Encoding)",
+            ".checked_add(raw_bytes)",
+            ".filter(|bytes| *bytes <= limit)",
+        ),
+        "independent structured-plus-raw checked ownership",
+    )
+    require_absent(sizing, "serde_json::to_vec", "independent duplicate encoded allocation")
+    require_absent(sizing, "saturating_add", "independent lossy result sizing")
+
+    sender = extract_between(
+        ui_cm,
+        "impl CmEgressSender {",
+        "impl CmEgressReceiver {",
+        "independent CM-result producer",
+    )
+    send = extract_braced_item(
+        sender, "pub(crate) fn send(", "independent CM-result admission"
+    )
+    require_order(
+        send,
+        (
+            "if !is_cm_egress_data(&data)",
+            "cm_egress_encoded_bytes(&data, self.limits.max_message_bytes)",
+            "encoded_bytes.checked_add(std::mem::size_of::<QueuedCmEgress>())",
+            "state.queue.len().checked_add(1)",
+            "next_count > self.limits.max_messages",
+            "state.queued_bytes.checked_add(retained_bytes)",
+            "next_bytes > self.limits.max_queued_bytes",
+            "state.queue.push_back(QueuedCmEgress {",
+            "self.wake_receiver()",
+        ),
+        "independent checked FIFO nonwaiting admission",
+    )
+    if send.count("return self.fail_with_state(") != 4:
+        raise VerificationError(
+            "independent CM-result in-guard failures do not share one atomic transition"
+        )
+    for forbidden, label in (
+        (".await", "independent awaiting producer"),
+        ("blocking_send", "independent blocking producer"),
+        ("saturating_", "independent lossy producer accounting"),
+        ("tokio::spawn", "independent detached producer"),
+        ("Runtime::new", "independent nested producer runtime"),
+    ):
+        require_absent(send, forbidden, label)
+    producer_failure = extract_braced_item(
+        sender, "fn fail_with_state(", "independent atomic CM-result failure"
+    )
+    require_order(
+        producer_failure,
+        (
+            "state.queue.clear();",
+            "state.queued_bytes = 0;",
+            "state.terminal = Some(failure);",
+            "drop(state);",
+            "self.wake_receiver()?;",
+            "Err(CmEgressAdmissionError::Failed(failure))",
+        ),
+        "independent terminal clear-before-wake finality",
+    )
+
+    receiver = extract_between(
+        ui_cm,
+        "impl CmEgressReceiver {",
+        "impl Drop for CmEgressReceiver {",
+        "independent CM-result receiver",
+    )
+    require_order(
+        receiver,
+        (
+            "if let Some(failure) = state.terminal.take()",
+            "state.receiver_open = false;",
+            "state.queue.pop_front()",
+            "state.queued_bytes.checked_sub(queued.retained_bytes)",
+            "CmEgressItem::Data(queued.data)",
+            "self.wake.recv().await",
+        ),
+        "independent terminal-first checked FIFO drain",
+    )
+    receiver_drop = extract_braced_item(
+        ui_cm, "impl Drop for CmEgressReceiver", "independent CM receiver retirement"
+    )
+    require_order(
+        receiver_drop,
+        (
+            "self.wake.close();",
+            "state.receiver_open = false;",
+            "state.queue.clear();",
+            "state.queued_bytes = 0;",
+            "state.terminal = None;",
+        ),
+        "independent receiver retirement releases retained state",
+    )
+
+    sender_lookup = extract_braced_item(
+        ui_cm, "fn cm_egress_sender(", "independent exact sender snapshot"
+    )
+    require_order(
+        sender_lookup,
+        ("CLIENTS", ".read()", ".get(&id)", ".map(|client| client.tx.clone())"),
+        "independent registry lock ends at sender snapshot",
+    )
+    ipc_task = extract_braced_item(
+        ui_cm, "async fn ipc_task(", "independent desktop CM IPC task"
+    )
+    require_text(
+        ipc_task,
+        "let (tx, rx) = cm_egress_channel();",
+        "independent bounded first desktop hop",
+    )
+    ipc_runner = extract_braced_item(
+        ui_cm, "async fn run(&mut self)", "independent desktop CM IPC runner"
+    )
+    require_order(
+        ipc_runner,
+        (
+            "Some(item) = self.rx.recv()",
+            "CmEgressItem::Failed(failure)",
+            'log::error!("connection-manager output retired: {failure}");',
+            "break;",
+            "self.stream.send(&data).await",
+        ),
+        "independent first-hop terminal finality",
+    )
+
+    connection_start = extract_braced_item(
+        connection, "pub async fn start(", "independent controlled connection loop"
+    )
+    require_text(
+        connection_start,
+        "let (tx_from_cm_holder, mut rx_from_cm) = crate::ui_cm_interface::cm_egress_channel();",
+        "independent bounded second desktop/Android hop",
+    )
+    require_order(
+        connection_start,
+        (
+            "Some(item) = rx_from_cm.recv()",
+            "CmEgressItem::Failed(failure)",
+            "conn.on_close(&failure.to_string(), false).await;",
+            "break;",
+        ),
+        "independent main connection terminal finality",
+    )
+    port_forward = extract_braced_item(
+        connection,
+        "async fn try_port_forward_loop(",
+        "independent port-forward CM-result loop",
+    )
+    require_order(
+        port_forward,
+        (
+            "rx_from_cm: &mut crate::ui_cm_interface::CmEgressReceiver",
+            "CmEgressItem::Failed(failure)",
+            "bail!(failure.to_string())",
+        ),
+        "independent port-forward terminal finality",
+    )
+    bridge = extract_braced_item(
+        connection, "async fn start_ipc(", "independent desktop CM bridge"
+    )
+    require_order(
+        bridge,
+        (
+            "tx_from_cm: crate::ui_cm_interface::CmEgressSender",
+            "tx_from_cm.send(ipc::Data::CmFileResponse(envelope))?;",
+            "tx_from_cm.send(data)?;",
+        ),
+        "independent bridge failure propagation",
+    )
+    android_channel = extract_braced_item(
+        flutter, "pub fn start_channel(", "independent Android CM channel"
+    )
+    require_order(
+        android_channel,
+        (
+            "tx: crate::ui_cm_interface::CmEgressSender",
+            "std::thread::spawn(move || start_listen(cm, rx, terminal, tx))",
+        ),
+        "independent Android shared bounded result mailbox",
+    )
+
+    for test in (
+        "r_s11gy_cm_egress_is_fifo_and_releases_capacity_on_receive",
+        "r_s11gy_cm_egress_capacity_and_wrong_class_are_terminal",
+        "r_s11gy_cm_egress_encoded_byte_limits_are_terminal",
+        "r_s11gy_cm_egress_accounts_serde_skipped_raw_blocks_and_receiver_retirement",
+        "r_s11gy_cm_egress_wakes_without_polling_and_sender_retirement_closes",
+    ):
+        require_text(ui_cm, test, f"independent {test} regression")
+    for marker, label in (
+        ("assert!(state.queue.is_empty());", "independent terminal payload release regression"),
+        ("structured_only + 64", "independent raw-byte regression"),
+        ("CM_FILE_BLOCK_MAX_FRAME_BYTES + 1", "independent raw oversize regression"),
+        ("assert!(!waiting.is_finished());", "independent asynchronous wait regression"),
+        ("Err(CmEgressAdmissionError::ReceiverGone)", "independent stale-sender regression"),
+    ):
+        require_text(ui_cm, marker, label)
+
+    for key, text, label in (
+        ("verify", "python3 scripts/verify-cm-egress-budget.py --repo . --self-test", "shared CM-egress focused gate"),
+        ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never", "shared CM-egress behavior gate"),
+        ("apple", "python3 scripts/verify-cm-egress-budget.py --repo . --self-test", "Apple CM-egress focused gate"),
+        ("requirements", '<div class="req"><span class="id">R-S11gy</span>', "R-S11gy requirement"),
+        ("requirements", "<tr><td>360</td>", "Appendix C #360"),
+        ("hardening", "### R-S11gy/R-S11e-237 — bounded connection-manager result ownership", "R-S11gy ledger"),
+    ):
+        require_text(sources[key], text, label)
+    require_text(
+        sources["workspace_verifier"],
+        '            "cm_egress_budget_verifier": (\n'
+        '                repo / "scripts/verify-cm-egress-budget.py"\n'
+        '            ).read_text(encoding="utf-8"),',
+        "CM-egress independent source binding",
+    )
+
+    workspace_module = ast.parse(sources["workspace_verifier"])
+    validate_sources_function = next(
+        (
+            node
+            for node in workspace_module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "validate_sources"
+        ),
+        None,
+    )
+    if validate_sources_function is None:
+        raise VerificationError("CM-egress independent workspace dispatch is absent")
+    dispatches = [
+        node
+        for node in validate_sources_function.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "validate_cm_egress_budget_contract"
+    ]
+    if len(dispatches) != 1:
+        raise VerificationError("CM-egress independent workspace dispatch must occur exactly once")
 
 
 def validate_keyed_writer_budget_contract(sources):
@@ -47284,6 +47639,7 @@ def validate_sources(sources):
     validate_viewer_cursor_mailbox_contract(sources)
     validate_viewer_cursor_resources_contract(sources)
     validate_controlled_control_egress_contract(sources)
+    validate_cm_egress_budget_contract(sources)
     validate_keyed_writer_budget_contract(sources)
     validate_display_selection_finality_contract(sources)
     validate_desktop_texture_lifecycle_contract(sources)
@@ -66900,11 +67256,13 @@ def run_source_mutations(sources):
             "    validate_viewer_cursor_mailbox_contract(sources)\n"
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
+            "    validate_cm_egress_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "    validate_viewer_cursor_mailbox_contract(sources)\n"
             "    validate_viewer_cursor_resources_contract_disabled(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
+            "    validate_cm_egress_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "cursor-resource independent workspace dispatch must occur exactly once",
@@ -66914,12 +67272,14 @@ def run_source_mutations(sources):
             "    validate_viewer_cursor_mailbox_contract(sources)\n"
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
+            "    validate_cm_egress_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)\n"
             "    validate_desktop_texture_lifecycle_contract(sources)",
             "    validate_viewer_cursor_mailbox_contract(sources)\n"
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
+            "    validate_cm_egress_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract_disabled(sources)\n"
             "    validate_desktop_texture_lifecycle_contract(sources)",
@@ -66930,12 +67290,14 @@ def run_source_mutations(sources):
             '"workspace", "    validate_viewer_cursor_mailbox_contract(sources)\\n'
             '    validate_viewer_cursor_resources_contract(sources)\\n'
             '    validate_controlled_control_egress_contract(sources)\\n'
+            '    validate_cm_egress_budget_contract(sources)\\n'
             '    validate_keyed_writer_budget_contract(sources)\\n'
             '    validate_display_selection_finality_contract(sources)\\n'
             '    validate_desktop_texture_lifecycle_contract(sources)",',
             '"workspace", "    validate_viewer_cursor_mailbox_contract(sources)\\n'
             '    validate_viewer_cursor_resources_contract_disabled(sources)\\n'
             '    validate_controlled_control_egress_contract(sources)\\n'
+            '    validate_cm_egress_budget_contract(sources)\\n'
             '    validate_keyed_writer_budget_contract(sources)\\n'
             '    validate_display_selection_finality_contract(sources)\\n'
             '    validate_desktop_texture_lifecycle_contract(sources)",',
@@ -67131,13 +67493,244 @@ def run_source_mutations(sources):
             "workspace_verifier",
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
+            "    validate_cm_egress_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract_disabled(sources)\n"
+            "    validate_cm_egress_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "controlled-egress independent workspace dispatch",
+        ),
+        (
+            "ui_cm_source",
+            "const CM_EGRESS_WAKE_CAPACITY: usize = 1;",
+            "const CM_EGRESS_WAKE_CAPACITY: usize = 64;",
+            "independent one-slot wake",
+        ),
+        (
+            "ui_cm_source",
+            "const CM_EGRESS_MAX_MESSAGES: usize = 256;",
+            "const CM_EGRESS_MAX_MESSAGES: usize = usize::MAX;",
+            "independent message-count ceiling",
+        ),
+        (
+            "ui_cm_source",
+            "CM_EGRESS_MAX_MESSAGE_BYTES * 2",
+            "CM_EGRESS_MAX_MESSAGE_BYTES * 8",
+            "independent retained payload ceiling",
+        ),
+        (
+            "ui_cm_source",
+            "Data::CmFileResponse(_)",
+            "Data::FS(_)\n        | Data::CmFileResponse(_)",
+            "independent untyped filesystem result class",
+        ),
+        (
+            "ui_cm_source",
+            "#[cfg(target_os = \"windows\")]\n"
+            "        Data::ClipboardFile(_) => true,\n"
+            "        _ => false,",
+            "#[cfg(target_os = \"windows\")]\n"
+            "        Data::ClipboardFile(_) => true,\n"
+            "        _ => true,",
+            "independent closed default",
+        ),
+        (
+            "ui_cm_source",
+            "self.bytes.checked_add(buf.len())",
+            "Some(self.bytes + buf.len())",
+            "independent checked nonallocating size count",
+        ),
+        (
+            "ui_cm_source",
+            "ReadBlock { data, .. } => data.len()",
+            "ReadBlock { .. } => 0",
+            "independent structured-plus-raw checked ownership",
+        ),
+        (
+            "ui_cm_source",
+            "raw_bytes > ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES",
+            "false",
+            "independent structured-plus-raw checked ownership",
+        ),
+        (
+            "ui_cm_source",
+            "limit: limit.min(ipc::CM_IPC_MAX_FRAME_BYTES)",
+            "limit",
+            "independent structured-plus-raw checked ownership",
+        ),
+        (
+            "ui_cm_source",
+            ".checked_add(raw_bytes)",
+            ".saturating_add(raw_bytes)",
+            "independent structured-plus-raw checked ownership",
+        ),
+        (
+            "ui_cm_source",
+            "if !is_cm_egress_data(&data)",
+            "if false && !is_cm_egress_data(&data)",
+            "independent checked FIFO nonwaiting admission",
+        ),
+        (
+            "ui_cm_source",
+            "encoded_bytes.checked_add(std::mem::size_of::<QueuedCmEgress>())",
+            "Some(encoded_bytes)",
+            "independent checked FIFO nonwaiting admission",
+        ),
+        (
+            "ui_cm_source",
+            "state.queue.len().checked_add(1)",
+            "Some(state.queue.len() + 1)",
+            "independent checked FIFO nonwaiting admission",
+        ),
+        (
+            "ui_cm_source",
+            "next_count > self.limits.max_messages",
+            "false",
+            "independent checked FIFO nonwaiting admission",
+        ),
+        (
+            "ui_cm_source",
+            "state.queued_bytes.checked_add(retained_bytes)",
+            "Some(state.queued_bytes + retained_bytes)",
+            "independent checked FIFO nonwaiting admission",
+        ),
+        (
+            "ui_cm_source",
+            "next_bytes > self.limits.max_queued_bytes",
+            "false",
+            "independent checked FIFO nonwaiting admission",
+        ),
+        (
+            "ui_cm_source",
+            "state.queue.push_back(QueuedCmEgress {",
+            "state.queue.push_front(QueuedCmEgress {",
+            "independent checked FIFO nonwaiting admission",
+        ),
+        (
+            "ui_cm_source",
+            "fn fail_with_state(",
+            "fn fail_after_relock(",
+            "independent atomic CM-result failure",
+        ),
+        (
+            "ui_cm_source",
+            "state.queue.clear();\n"
+            "        state.queued_bytes = 0;\n"
+            "        state.terminal = Some(failure);",
+            "state.terminal = Some(failure);",
+            "independent terminal clear-before-wake finality",
+        ),
+        (
+            "ui_cm_source",
+            "state.queued_bytes.checked_sub(queued.retained_bytes)",
+            "Some(state.queued_bytes)",
+            "independent terminal-first checked FIFO drain",
+        ),
+        (
+            "ui_cm_source",
+            "self.wake.close();\n"
+            "        let mut state = lock_cm_egress(&self.state);",
+            "let mut state = lock_cm_egress(&self.state);",
+            "independent receiver retirement releases retained state",
+        ),
+        (
+            "ui_cm_source",
+            "let (tx, rx) = cm_egress_channel();",
+            "let (tx, rx) = mpsc::unbounded_channel::<Data>();",
+            "independent first unbounded CM-result hop",
+        ),
+        (
+            "ui_cm_source",
+            "CmEgressItem::Failed(failure) => {\n"
+            "                            log::error!(\"connection-manager output retired: {failure}\");\n"
+            "                            break;",
+            "CmEgressItem::Failed(failure) => {\n"
+            "                            log::error!(\"{failure}\");\n"
+            "                            continue;",
+            "independent first-hop terminal finality",
+        ),
+        (
+            "connection_source",
+            "crate::ui_cm_interface::cm_egress_channel();",
+            "mpsc::unbounded_channel::<ipc::Data>();",
+            "independent second unbounded CM-result hop",
+        ),
+        (
+            "connection_source",
+            "tx_from_cm.send(data)?;",
+            "let _ = tx_from_cm.send(data);",
+            "independent bridge failure propagation",
+        ),
+        (
+            "flutter_source",
+            "tx: crate::ui_cm_interface::CmEgressSender,",
+            "tx: UnboundedSender<crate::ipc::Data>,",
+            "independent Android unbounded CM-result sender",
+        ),
+        (
+            "ui_cm_source",
+            "structured_only + 64",
+            "structured_only",
+            "independent raw-byte regression",
+        ),
+        (
+            "cm_egress_budget_verifier",
+            '        ("const CM_EGRESS_MAX_MESSAGES: usize = 256;", "message-count ceiling"),',
+            '        ("const CM_EGRESS_MAX_MESSAGES_DISABLED: usize = 256;", "message-count ceiling"),',
+            "focused CM message-count assertion",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-cm-egress-budget.py --repo . --self-test",
+            "true # CM egress verifier disabled",
+            "shared CM-egress focused gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-cm-egress-budget.py --repo . --self-test",
+            "true # CM egress verifier disabled",
+            "Apple CM-egress focused gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11gy</span>',
+            '<div class="req"><span class="id">R-S11gy-disabled</span>',
+            "R-S11gy requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>360</td>",
+            "<tr><td>360-disabled</td>",
+            "Appendix C #360",
+        ),
+        (
+            "hardening",
+            "### R-S11gy/R-S11e-237 — bounded connection-manager result ownership",
+            "### R-S11gy-disabled/R-S11e-237 — bounded connection-manager result ownership",
+            "R-S11gy ledger",
+        ),
+        (
+            "workspace_verifier",
+            '            "cm_egress_budget_verifier": (\n'
+            '                repo / "scripts/verify-cm-egress-budget.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "cm_egress_budget_verifier_disabled": (\n'
+            '                repo / "scripts/verify-cm-egress-budget.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "CM-egress independent source binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_controlled_control_egress_contract(sources)\n"
+            "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_keyed_writer_budget_contract(sources)",
+            "    validate_controlled_control_egress_contract(sources)\n"
+            "    validate_cm_egress_budget_contract_disabled(sources)\n"
+            "    validate_keyed_writer_budget_contract(sources)",
+            "CM-egress independent workspace dispatch",
         ),
         (
             "tcp_source",
@@ -67284,9 +67877,11 @@ def run_source_mutations(sources):
         (
             "workspace_verifier",
             "    validate_controlled_control_egress_contract(sources)\n"
+            "    validate_cm_egress_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "    validate_controlled_control_egress_contract(sources)\n"
+            "    validate_cm_egress_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract_disabled(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "keyed-writer independent dispatch",
@@ -80761,6 +81356,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "controlled_control_egress_verifier": (
                 repo / "scripts/verify-controlled-control-egress.py"
+            ).read_text(encoding="utf-8"),
+            "cm_egress_budget_verifier": (
+                repo / "scripts/verify-cm-egress-budget.py"
             ).read_text(encoding="utf-8"),
             "keyed_writer_budget_verifier": (
                 repo / "scripts/verify-keyed-writer-budget.py"

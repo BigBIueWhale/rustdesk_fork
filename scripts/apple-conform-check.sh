@@ -3651,6 +3651,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c2ad) R-S11gy bounded connection-manager result ownership =="
+if python3 scripts/verify-cm-egress-budget.py --repo . --self-test; then
+  note "ok  R-S11gy Apple/shared connection-manager results have closed count-and-byte ownership at every in-process hop"
+else
+  echo "  FAIL R-S11gy Apple/shared connection-manager results regained an unbounded hop, incomplete raw-byte accounting, or nonterminal refusal"
+  rc=1
+fi
+
 echo "== (2g-c2b) R-S11go exact-owner ordered display-selection finality =="
 if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then
   note "ok  R-S11go Apple/shared display selection is exact-owner, typed, ordered, bounded, and failure-visible"

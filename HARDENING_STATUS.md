@@ -25357,12 +25357,107 @@ cold R-B2/R-B10 equality and exact installed artifacts/service behavior; indepen
 R-V3 external review; causation of the reported operational delay; and proof that the complete
 connection flow remains correct and performant.
 
+### R-S11gy/R-S11e-237 — bounded connection-manager result ownership (2026-08-17)
+
+**SOURCE IMPLEMENTED; CONFINED FOCUSED, ADJACENT, COMPLETE INDEPENDENT
+SOURCE-MUTATION, SYNTAX, AND FORMAT EVIDENCE GREEN; EXACT
+RUST/DART/FLUTTER/NATIVE, DEVICE, PERFORMANCE, AND RELEASE EVIDENCE OPEN.**
+Platforms: the two desktop connection-manager result hops on Windows, Linux,
+and macOS, plus Android's direct in-process connection-manager result hop. Surface:
+synchronous UI, clipboard, voice, and file-result producers -> desktop CM IPC writer ->
+desktop connection bridge, or Android connection manager -> exact controlled connection.
+
+Read-only source tracing found that desktop exact results crossed two consecutive
+unbounded Tokio `Data` queues: `IpcTaskRunner` retained producer results before CM IPC,
+then `Connection::start` retained the decoded CM responses before the network loop.
+Android used the latter unbounded shape directly. This traffic includes chat and
+click-time exchange, voice-call state, privacy state, Windows file clipboard, and typed
+CM file responses. A read-block may retain a separately framed 256 KiB `Bytes` payload
+that serde deliberately omits from the JSON envelope, while other structured CM frames
+may reach the 128 MiB IPC ceiling. A busy connection loop, blocked IPC writer, or stalled
+transport could therefore retain arbitrary messages and bytes. Dropping/reconnecting the
+exact connection destroyed the old queues. This is shared source-proven resource and
+finality debt consistent with cleanup-mediated recovery, not proof that the unidentified
+weeks-old Android, Windows, or Debian artifacts contained or exercised it and not a
+causation claim for the reported display-only delay.
+
+Both desktop hops and Android now use one `CmEgressSender`/`CmEgressReceiver` primitive.
+It owns a finite FIFO under a short synchronous mutex, one nonblocking wake token, at most
+256 entries, a 128 MiB structured JSON ceiling, a separately enforced 256 KiB raw-block
+ceiling, and an aggregate budget of two maximum complete messages plus fixed accounting
+for all 256 entry slots. `CmEgressSizeCounter` passes each serde write through checked
+arithmetic without allocating a duplicate encoded message; `ReadBlock.data.len()` is
+added explicitly after structured sizing. Entry, count, retained-byte, structured-plus-
+raw, and drain arithmetic are checked. Producers snapshot the exact sender and release
+the global client registry lock before sizing or admission.
+
+The accepted direction is closed to `Close`, click-time, CM error, chat, typed CM file
+response, Windows file clipboard, privacy state, voice-call response, and voice-call
+close. Wrong class, encoding failure, structured or raw oversize, count or byte
+saturation, and accounting failure atomically clear queued work, preserve one typed
+terminal cause, and wake the exact receiver. The desktop IPC writer exits on that cause;
+the ordinary and sealed port-forward connection loops close the exact connection; and
+the desktop bridge propagates admission failure instead of discarding it. Receiver drop
+closes admission and clears every payload even if a UI, clipboard, voice, or file-worker
+sender clone survives. No result coalescing, retry, reconnect, timer, poller, task,
+thread, runtime, listener, port, dependency, privilege transition, service restart,
+alternate result route, or Android persistent-background-service weakening was added.
+
+Five deterministic Rust regressions bind FIFO and post-drain capacity recovery, terminal
+count and byte saturation, the closed message vocabulary, terminal queue/byte clearing,
+stale-sender refusal, individual structured oversize, complete serde-skipped raw-byte
+accounting and raw oversize, receiver retirement, asynchronous wake without polling, and
+last-producer retirement. `scripts/verify-cm-egress-budget.py` binds the implementation,
+both desktop hops, Android wiring, regressions, requirements, Appendix C #360, ledger,
+digest, and shared/Apple/independent wiring with deliberate mutations.
+
+In the immutable local verifier image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
+with `--pull=never`, networking disabled, a read-only root and repository, all
+capabilities dropped, no-new-privileges, numeric UID/GID 1000, and bounded
+CPU/memory/PIDs/private tmpfs, the focused CM-egress verifier rejected all 50 deliberate
+mutations. Adjacent controlled-egress, keyed-writer, display-finality, Android voice-call
+ownership, and Windows production-listener DACL gates rejected 51, 25, 186, 534, and 36
+mutations respectively; the CM process-ownership self-test and independent unmodified
+baseline passed. One uninterrupted
+`/usr/bin/python3 -I -S scripts/verify-verifier-workspace.py --repo .
+--source-mutations-only` execution then passed the complete independently parsed
+4,543-entry source-mutation catalog. The exact Rust 1.75 formatter passed the complete
+modified `src/ui_cm_interface.rs`; its diagnostics for the two partially modified Rust
+files contained only pre-existing, nonintersecting hunks. Bash syntax for both changed
+entry points, in-memory Python AST parsing for the verifier set, `git diff --check`, the
+native-codec gate, and the synchronized requirements digest also passed.
+
+Failure accounting: early complete-catalog attempts exposed stale mutation-fixture and
+expected-diagnostic bookkeeping, including the focused count assertion, independent
+one-slot wake, checked raw-byte addition, and workspace-dispatch labels. In every case the
+weakened source had already been rejected; the fixture was made exact without removing or
+weakening a production requirement, then the narrowed new-slice matrix and the complete
+catalog passed. The newly added asynchronous Rust regressions were also corrected before
+the counted full run to use Tokio's current-thread test harness rather than manually
+constructing a runtime. No image was pulled, built, or tagged; no host Rust command, root
+identity, Docker socket mount, listener, published port, host service/configuration,
+firewall/network state, VM, or unrelated workload was used, inspected, or changed.
+
+This remains source and format evidence, not native behavior or release evidence. The
+exact pinned Debian, Apple, and dev-check builder images are absent, so no exact-current
+Rust/Dart/Flutter/native compilation or execution is claimed. Generated bridge
+generation/compilation; physical Android task-swipe/reopen/Force-Stop and real Windows
+focus/minimize reproduction; Linux/macOS/iOS and cross-version behavior;
+capture-through-compositor timestamps and explicit latency budgets; sustained
+reconnect/focus/backpressure/resource/performance soak; clean cold R-B2/R-B10 equality;
+installed process/service/package behavior; independent reproduction; R-V3 external
+review; causation; and proof that initial connection, reconnect, focus/background,
+task-swipe/reopen, replacement, capture, transport, decode, compositor publication,
+control, file-transfer coexistence, and teardown remain correct and performant are all
+explicitly open.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-170778afa3ca95123b795c46fa995954d74c6d85df844c997b7d975d08287553  requirements.html
+2487311dac25ecf0cc855956aeb52226b72d8c4693e764db74285661409dc216  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -25428,3 +25523,5 @@ The same identity additionally binds R-S11gt and Appendix C #355.
 The same identity additionally binds R-S11gu and Appendix C #356.
 The same identity additionally binds R-S11gv and Appendix C #357.
 The same identity additionally binds R-S11gw and Appendix C #358.
+The same identity additionally binds R-S11gx and Appendix C #359.
+The same identity additionally binds R-S11gy and Appendix C #360.

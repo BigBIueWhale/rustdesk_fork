@@ -3197,7 +3197,7 @@ pub mod connection_manager {
     }
 
     #[cfg(target_os = "android")]
-    use hbb_common::tokio::sync::mpsc::{Receiver, UnboundedSender};
+    use hbb_common::tokio::sync::mpsc::Receiver;
 
     #[cfg(target_os = "android")]
     pub fn start_channel(
@@ -3205,7 +3205,7 @@ pub mod connection_manager {
         terminal: hbb_common::tokio::sync::oneshot::Receiver<
             crate::ui_cm_interface::CmConnectionTerminal,
         >,
-        tx: UnboundedSender<crate::ipc::Data>,
+        tx: crate::ui_cm_interface::CmEgressSender,
         service_generation: u64,
     ) {
         use crate::ui_cm_interface::start_listen;

@@ -1,7 +1,6 @@
 use crate::ipc;
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 use crate::ipc::Connection;
-#[cfg(not(any(target_os = "ios")))]
 use crate::ipc::Data;
 #[cfg(target_os = "windows")]
 use crate::{clipboard::ClipboardSide, ipc::ClipboardNonFile};
@@ -35,11 +34,13 @@ use std::iter::FromIterator;
 #[cfg(not(any(target_os = "ios")))]
 use std::path::PathBuf;
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
+    fmt,
+    io::{self, Write},
     ops::{Deref, DerefMut},
     sync::{
         atomic::{AtomicBool, AtomicI64, Ordering},
-        Arc, OnceLock, RwLock,
+        Arc, Mutex as StdMutex, OnceLock, RwLock,
     },
 };
 
@@ -55,6 +56,357 @@ impl CmConnectionTerminal {
             Self::Close => ipc::Data::Close,
             Self::Disconnected => ipc::Data::Disconnected,
         }
+    }
+}
+
+// R-S11gy: desktop CM results cross two in-process ownership hops (producer -> CM IPC and
+// CM IPC -> Connection); Android uses the second shape directly. Keep one common nonblocking,
+// count-and-byte-bounded, exact-connection mailbox so a stalled consumer cannot turn either hop
+// into ambient process-lifetime retention. ReadBlock bytes are serde-skipped and counted separately.
+const CM_EGRESS_WAKE_CAPACITY: usize = 1;
+const CM_EGRESS_MAX_MESSAGES: usize = 256;
+const CM_EGRESS_MAX_MESSAGE_BYTES: usize =
+    ipc::CM_IPC_MAX_FRAME_BYTES + ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES;
+const CM_EGRESS_MAX_QUEUED_BYTES: usize = CM_EGRESS_MAX_MESSAGE_BYTES * 2
+    + std::mem::size_of::<QueuedCmEgress>() * CM_EGRESS_MAX_MESSAGES;
+
+#[derive(Clone, Copy)]
+struct CmEgressLimits {
+    max_messages: usize,
+    max_message_bytes: usize,
+    max_queued_bytes: usize,
+}
+
+const CM_EGRESS_LIMITS: CmEgressLimits = CmEgressLimits {
+    max_messages: CM_EGRESS_MAX_MESSAGES,
+    max_message_bytes: CM_EGRESS_MAX_MESSAGE_BYTES,
+    max_queued_bytes: CM_EGRESS_MAX_QUEUED_BYTES,
+};
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CmEgressFailure {
+    WrongMessageClass,
+    MessageTooLarge,
+    MessageCapacity,
+    ByteCapacity,
+    Encoding,
+    AccountingOverflow,
+}
+
+impl fmt::Display for CmEgressFailure {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let reason = match self {
+            Self::WrongMessageClass => "unexpected message class",
+            Self::MessageTooLarge => "message exceeds the encoded-byte ceiling",
+            Self::MessageCapacity => "message-count capacity reached",
+            Self::ByteCapacity => "retained-byte capacity reached",
+            Self::Encoding => "message size could not be encoded",
+            Self::AccountingOverflow => "resource accounting overflowed",
+        };
+        write!(f, "connection-manager egress {reason}")
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum CmEgressAdmissionError {
+    Failed(CmEgressFailure),
+    ReceiverGone,
+}
+
+impl fmt::Display for CmEgressAdmissionError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Failed(failure) => write!(f, "{failure}"),
+            Self::ReceiverGone => write!(f, "connection-manager egress receiver is gone"),
+        }
+    }
+}
+
+impl std::error::Error for CmEgressAdmissionError {}
+
+struct CmEgressSizeCounter {
+    bytes: usize,
+    limit: usize,
+    failure: Option<CmEgressFailure>,
+}
+
+impl Write for CmEgressSizeCounter {
+    fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
+        let Some(next) = self.bytes.checked_add(buf.len()) else {
+            self.failure = Some(CmEgressFailure::AccountingOverflow);
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "CM egress size overflow",
+            ));
+        };
+        if next > self.limit {
+            self.failure = Some(CmEgressFailure::MessageTooLarge);
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                "CM egress message too large",
+            ));
+        }
+        self.bytes = next;
+        Ok(buf.len())
+    }
+
+    fn flush(&mut self) -> io::Result<()> {
+        Ok(())
+    }
+}
+
+fn is_cm_egress_data(data: &Data) -> bool {
+    match data {
+        Data::Close
+        | Data::ClickTime(_)
+        | Data::CmErr(_)
+        | Data::ChatMessage { .. }
+        | Data::CmFileResponse(_)
+        | Data::PrivacyModeState(_)
+        | Data::VoiceCallResponse(_)
+        | Data::CloseVoiceCall(_) => true,
+        #[cfg(target_os = "windows")]
+        Data::ClipboardFile(_) => true,
+        _ => false,
+    }
+}
+
+fn cm_egress_encoded_bytes(data: &Data, limit: usize) -> Result<usize, CmEgressFailure> {
+    let raw_bytes = match data {
+        Data::CmFileResponse(envelope) => match envelope.response.as_ref() {
+            ipc::CmFileResponseKind::ReadBlock { data, .. } => data.len(),
+            _ => 0,
+        },
+        _ => 0,
+    };
+    if raw_bytes > ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES {
+        return Err(CmEgressFailure::MessageTooLarge);
+    }
+    let mut counter = CmEgressSizeCounter {
+        bytes: 0,
+        limit: limit.min(ipc::CM_IPC_MAX_FRAME_BYTES),
+        failure: None,
+    };
+    if serde_json::to_writer(&mut counter, data).is_err() {
+        return Err(counter.failure.unwrap_or(CmEgressFailure::Encoding));
+    }
+    counter
+        .bytes
+        .checked_add(raw_bytes)
+        .filter(|bytes| *bytes <= limit)
+        .ok_or(CmEgressFailure::MessageTooLarge)
+}
+
+struct QueuedCmEgress {
+    data: Data,
+    retained_bytes: usize,
+}
+
+struct CmEgressState {
+    queue: VecDeque<QueuedCmEgress>,
+    queued_bytes: usize,
+    terminal: Option<CmEgressFailure>,
+    receiver_open: bool,
+}
+
+impl Default for CmEgressState {
+    fn default() -> Self {
+        Self {
+            queue: VecDeque::new(),
+            queued_bytes: 0,
+            terminal: None,
+            receiver_open: true,
+        }
+    }
+}
+
+#[derive(Clone)]
+pub(crate) struct CmEgressSender {
+    state: Arc<StdMutex<CmEgressState>>,
+    wake: mpsc::Sender<()>,
+    limits: CmEgressLimits,
+}
+
+pub(crate) struct CmEgressReceiver {
+    state: Arc<StdMutex<CmEgressState>>,
+    wake: mpsc::Receiver<()>,
+}
+
+pub(crate) enum CmEgressItem {
+    Data(Data),
+    Failed(CmEgressFailure),
+}
+
+pub(crate) fn cm_egress_channel() -> (CmEgressSender, CmEgressReceiver) {
+    cm_egress_channel_with_limits(CM_EGRESS_LIMITS)
+}
+
+fn cm_egress_channel_with_limits(limits: CmEgressLimits) -> (CmEgressSender, CmEgressReceiver) {
+    let state = Arc::new(StdMutex::new(CmEgressState::default()));
+    let (wake, receiver) = mpsc::channel(CM_EGRESS_WAKE_CAPACITY);
+    (
+        CmEgressSender {
+            state: Arc::clone(&state),
+            wake,
+            limits,
+        },
+        CmEgressReceiver {
+            state,
+            wake: receiver,
+        },
+    )
+}
+
+fn lock_cm_egress(state: &StdMutex<CmEgressState>) -> std::sync::MutexGuard<'_, CmEgressState> {
+    match state.lock() {
+        Ok(state) => state,
+        Err(poisoned) => {
+            log::error!("connection-manager egress state was poisoned");
+            poisoned.into_inner()
+        }
+    }
+}
+
+impl CmEgressSender {
+    fn wake_receiver(&self) -> Result<(), CmEgressAdmissionError> {
+        match self.wake.try_send(()) {
+            Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => Ok(()),
+            Err(mpsc::error::TrySendError::Closed(_)) => {
+                let mut state = lock_cm_egress(&self.state);
+                state.receiver_open = false;
+                state.queue.clear();
+                state.queued_bytes = 0;
+                Err(CmEgressAdmissionError::ReceiverGone)
+            }
+        }
+    }
+
+    fn fail_with_state(
+        &self,
+        mut state: std::sync::MutexGuard<'_, CmEgressState>,
+        failure: CmEgressFailure,
+    ) -> Result<(), CmEgressAdmissionError> {
+        if !state.receiver_open {
+            return Err(CmEgressAdmissionError::ReceiverGone);
+        }
+        if let Some(existing) = state.terminal {
+            return Err(CmEgressAdmissionError::Failed(existing));
+        }
+        state.queue.clear();
+        state.queued_bytes = 0;
+        state.terminal = Some(failure);
+        drop(state);
+        self.wake_receiver()?;
+        Err(CmEgressAdmissionError::Failed(failure))
+    }
+
+    fn fail(&self, failure: CmEgressFailure) -> Result<(), CmEgressAdmissionError> {
+        self.fail_with_state(lock_cm_egress(&self.state), failure)
+    }
+
+    pub(crate) fn send(&self, data: Data) -> Result<(), CmEgressAdmissionError> {
+        // Exact responses have no coalescing semantics. Any refusal retires the complete mailbox;
+        // continuing after one response disappeared would make CM and Connection state diverge.
+        if !is_cm_egress_data(&data) {
+            return self.fail(CmEgressFailure::WrongMessageClass);
+        }
+        {
+            let state = lock_cm_egress(&self.state);
+            if !state.receiver_open {
+                return Err(CmEgressAdmissionError::ReceiverGone);
+            }
+            if let Some(failure) = state.terminal {
+                return Err(CmEgressAdmissionError::Failed(failure));
+            }
+        }
+        let encoded_bytes = match cm_egress_encoded_bytes(&data, self.limits.max_message_bytes) {
+            Ok(bytes) => bytes,
+            Err(failure) => return self.fail(failure),
+        };
+        let retained_bytes = match encoded_bytes.checked_add(std::mem::size_of::<QueuedCmEgress>())
+        {
+            Some(bytes) => bytes,
+            None => return self.fail(CmEgressFailure::AccountingOverflow),
+        };
+        {
+            let mut state = lock_cm_egress(&self.state);
+            if !state.receiver_open {
+                return Err(CmEgressAdmissionError::ReceiverGone);
+            }
+            if let Some(failure) = state.terminal {
+                return Err(CmEgressAdmissionError::Failed(failure));
+            }
+            let Some(next_count) = state.queue.len().checked_add(1) else {
+                return self.fail_with_state(state, CmEgressFailure::AccountingOverflow);
+            };
+            if next_count > self.limits.max_messages {
+                return self.fail_with_state(state, CmEgressFailure::MessageCapacity);
+            }
+            let Some(next_bytes) = state.queued_bytes.checked_add(retained_bytes) else {
+                return self.fail_with_state(state, CmEgressFailure::AccountingOverflow);
+            };
+            if next_bytes > self.limits.max_queued_bytes {
+                return self.fail_with_state(state, CmEgressFailure::ByteCapacity);
+            }
+            state.queue.push_back(QueuedCmEgress {
+                data,
+                retained_bytes,
+            });
+            state.queued_bytes = next_bytes;
+        }
+        self.wake_receiver()
+    }
+}
+
+impl CmEgressReceiver {
+    fn take_next(&mut self) -> Result<Option<CmEgressItem>, ()> {
+        let mut state = lock_cm_egress(&self.state);
+        if let Some(failure) = state.terminal.take() {
+            state.receiver_open = false;
+            state.queue.clear();
+            state.queued_bytes = 0;
+            return Ok(Some(CmEgressItem::Failed(failure)));
+        }
+        if !state.receiver_open {
+            return Err(());
+        }
+        let Some(queued) = state.queue.pop_front() else {
+            return Ok(None);
+        };
+        let Some(next_bytes) = state.queued_bytes.checked_sub(queued.retained_bytes) else {
+            state.receiver_open = false;
+            state.queue.clear();
+            state.queued_bytes = 0;
+            return Ok(Some(CmEgressItem::Failed(
+                CmEgressFailure::AccountingOverflow,
+            )));
+        };
+        state.queued_bytes = next_bytes;
+        Ok(Some(CmEgressItem::Data(queued.data)))
+    }
+
+    pub(crate) async fn recv(&mut self) -> Option<CmEgressItem> {
+        loop {
+            match self.take_next() {
+                Ok(Some(item)) => return Some(item),
+                Ok(None) => {}
+                Err(()) => return None,
+            }
+            if self.wake.recv().await.is_none() {
+                return None;
+            }
+        }
+    }
+}
+
+impl Drop for CmEgressReceiver {
+    fn drop(&mut self) {
+        self.wake.close();
+        let mut state = lock_cm_egress(&self.state);
+        state.receiver_open = false;
+        state.queue.clear();
+        state.queued_bytes = 0;
+        state.terminal = None;
     }
 }
 
@@ -176,15 +528,15 @@ pub struct Client {
     pub incoming_voice_call: bool,
     #[serde(skip)]
     #[cfg(not(any(target_os = "ios")))]
-    tx: UnboundedSender<Data>,
+    tx: CmEgressSender,
 }
 
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 struct IpcTaskRunner<T: InvokeUiCM> {
     stream: Connection,
     cm: ConnectionManager<T>,
-    tx: mpsc::UnboundedSender<Data>,
-    rx: mpsc::UnboundedReceiver<Data>,
+    tx: CmEgressSender,
+    rx: CmEgressReceiver,
     close: bool,
     running: bool,
     conn_id: i32,
@@ -245,7 +597,7 @@ struct CmTransferJob {
 #[cfg(not(any(target_os = "ios")))]
 #[derive(Clone, Copy)]
 struct CmFileResponder<'a> {
-    tx: &'a UnboundedSender<Data>,
+    tx: &'a CmEgressSender,
     conn_id: i32,
     cm_auth_token: &'a str,
 }
@@ -305,6 +657,28 @@ static CLICK_TIME: AtomicI64 = AtomicI64::new(0);
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 static EXIT_ON_IDLE: AtomicBool = AtomicBool::new(false);
 
+#[cfg(not(any(target_os = "ios")))]
+fn cm_egress_sender(id: i32) -> Option<CmEgressSender> {
+    CLIENTS
+        .read()
+        .unwrap()
+        .get(&id)
+        .map(|client| client.tx.clone())
+}
+
+#[cfg(windows)]
+fn cm_egress_senders(id: i32) -> Vec<CmEgressSender> {
+    let clients = CLIENTS.read().unwrap();
+    if id == 0 {
+        clients.values().map(|client| client.tx.clone()).collect()
+    } else {
+        clients
+            .get(&id)
+            .map(|client| vec![client.tx.clone()])
+            .unwrap_or_default()
+    }
+}
+
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
 pub fn set_exit_on_idle(exit_on_idle: bool) {
     EXIT_ON_IDLE.store(exit_on_idle, Ordering::SeqCst);
@@ -363,7 +737,7 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
         audio: bool,
         file: bool,
         privacy_mode: bool,
-        #[cfg(not(any(target_os = "ios")))] tx: mpsc::UnboundedSender<Data>,
+        #[cfg(not(any(target_os = "ios")))] tx: CmEgressSender,
     ) {
         let client = Client {
             id,
@@ -462,8 +836,8 @@ impl<T: InvokeUiCM> ConnectionManager<T> {
 #[inline]
 #[cfg(not(any(target_os = "ios")))]
 pub fn check_click_time(id: i32) {
-    if let Some(client) = CLIENTS.read().unwrap().get(&id) {
-        allow_err!(client.tx.send(Data::ClickTime(0)));
+    if let Some(tx) = cm_egress_sender(id) {
+        allow_err!(tx.send(Data::ClickTime(0)));
     };
 }
 
@@ -475,8 +849,8 @@ pub fn get_click_time() -> i64 {
 #[inline]
 #[cfg(not(any(target_os = "ios")))]
 pub fn close(id: i32) {
-    if let Some(client) = CLIENTS.read().unwrap().get(&id) {
-        allow_err!(client.tx.send(Data::Close));
+    if let Some(tx) = cm_egress_sender(id) {
+        allow_err!(tx.send(Data::Close));
     };
 }
 
@@ -489,9 +863,8 @@ pub fn remove(id: i32) {
 #[inline]
 #[cfg(not(any(target_os = "ios")))]
 pub fn send_chat(id: i32, text: String) {
-    let clients = CLIENTS.read().unwrap();
-    if let Some(client) = clients.get(&id) {
-        allow_err!(client.tx.send(Data::ChatMessage { text }));
+    if let Some(tx) = cm_egress_sender(id) {
+        allow_err!(tx.send(Data::ChatMessage { text }));
     }
 }
 
@@ -833,7 +1206,14 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                         _ => {}
                     }
                 }
-                Some(mut data) = self.rx.recv() => {
+                Some(item) = self.rx.recv() => {
+                    let mut data = match item {
+                        CmEgressItem::Data(data) => data,
+                        CmEgressItem::Failed(failure) => {
+                            log::error!("connection-manager output retired: {failure}");
+                            break;
+                        }
+                    };
                     let raw_block = match &mut data {
                         Data::CmFileResponse(envelope) => match envelope.response.as_mut() {
                             ipc::CmFileResponseKind::ReadBlock { data, .. } => {
@@ -912,7 +1292,7 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
 
     async fn ipc_task(stream: Connection, cm: ConnectionManager<T>) {
         log::debug!("ipc task begin");
-        let (tx, rx) = mpsc::unbounded_channel::<Data>();
+        let (tx, rx) = cm_egress_channel();
         let mut task_runner = Self {
             stream,
             cm,
@@ -999,7 +1379,7 @@ pub async fn start_listen<T: InvokeUiCM>(
     cm: ConnectionManager<T>,
     mut rx: mpsc::Receiver<Data>,
     mut terminal: tokio::sync::oneshot::Receiver<CmConnectionTerminal>,
-    tx: mpsc::UnboundedSender<Data>,
+    tx: CmEgressSender,
 ) {
     let mut current_id = 0;
     let mut current_cm_auth_token = String::new();
@@ -2034,35 +2414,33 @@ async fn remove_dir(
 
 #[cfg(windows)]
 fn cm_inner_send(id: i32, data: Data) {
-    let lock = CLIENTS.read().unwrap();
-    if id != 0 {
-        if let Some(s) = lock.get(&id) {
-            allow_err!(s.tx.send(data));
-        }
-    } else {
-        for s in lock.values() {
-            allow_err!(s.tx.send(data.clone()));
-        }
+    let mut senders = cm_egress_senders(id);
+    let Some(last) = senders.pop() else {
+        return;
+    };
+    for tx in senders {
+        allow_err!(tx.send(data.clone()));
     }
+    allow_err!(last.send(data));
 }
 
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
 #[inline]
 pub fn handle_incoming_voice_call(id: i32, accept: bool) {
-    if let Some(client) = CLIENTS.read().unwrap().get(&id) {
-        // Not handled in iOS yet.
-        #[cfg(not(any(target_os = "ios")))]
-        allow_err!(client.tx.send(Data::VoiceCallResponse(accept)));
+    // Not handled in iOS yet.
+    #[cfg(not(any(target_os = "ios")))]
+    if let Some(tx) = cm_egress_sender(id) {
+        allow_err!(tx.send(Data::VoiceCallResponse(accept)));
     };
 }
 
 #[cfg(any(target_os = "android", target_os = "ios", feature = "flutter"))]
 #[inline]
 pub fn close_voice_call(id: i32) {
-    if let Some(client) = CLIENTS.read().unwrap().get(&id) {
-        // Not handled in iOS yet.
-        #[cfg(not(any(target_os = "ios")))]
-        allow_err!(client.tx.send(Data::CloseVoiceCall("".to_owned())));
+    // Not handled in iOS yet.
+    #[cfg(not(any(target_os = "ios")))]
+    if let Some(tx) = cm_egress_sender(id) {
+        allow_err!(tx.send(Data::CloseVoiceCall("".to_owned())));
     };
 }
 
@@ -2079,8 +2457,209 @@ mod tests {
     use super::*;
 
     use crate::ipc::Data;
-    use hbb_common::tokio::{runtime::Runtime, sync::mpsc::unbounded_channel};
+    use hbb_common::tokio::runtime::Runtime;
     use std::fs;
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11gy_cm_egress_is_fifo_and_releases_capacity_on_receive() {
+        let sample = Data::ChatMessage {
+            text: "one".to_owned(),
+        };
+        let sample_bytes =
+            cm_egress_encoded_bytes(&sample, 1024).unwrap() + std::mem::size_of::<QueuedCmEgress>();
+        let (tx, mut rx) = cm_egress_channel_with_limits(CmEgressLimits {
+            max_messages: 1,
+            max_message_bytes: 1024,
+            max_queued_bytes: sample_bytes,
+        });
+        tx.send(sample).unwrap();
+        match rx.recv().await.unwrap() {
+            CmEgressItem::Data(Data::ChatMessage { text }) => assert_eq!(text, "one"),
+            _ => panic!("unexpected CM egress item"),
+        }
+        tx.send(Data::ChatMessage {
+            text: "two".to_owned(),
+        })
+        .unwrap();
+        match rx.recv().await.unwrap() {
+            CmEgressItem::Data(Data::ChatMessage { text }) => assert_eq!(text, "two"),
+            _ => panic!("unexpected CM egress item"),
+        }
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11gy_cm_egress_capacity_and_wrong_class_are_terminal() {
+        let (tx, mut rx) = cm_egress_channel_with_limits(CmEgressLimits {
+            max_messages: 1,
+            max_message_bytes: 1024,
+            max_queued_bytes: 4096,
+        });
+        tx.send(Data::Close).unwrap();
+        assert_eq!(
+            tx.send(Data::Close),
+            Err(CmEgressAdmissionError::Failed(
+                CmEgressFailure::MessageCapacity
+            ))
+        );
+        {
+            let state = lock_cm_egress(&tx.state);
+            assert!(state.queue.is_empty());
+            assert_eq!(state.queued_bytes, 0);
+            assert_eq!(state.terminal, Some(CmEgressFailure::MessageCapacity));
+        }
+        assert_eq!(
+            tx.send(Data::ChatMessage {
+                text: "stale".to_owned(),
+            }),
+            Err(CmEgressAdmissionError::Failed(
+                CmEgressFailure::MessageCapacity
+            ))
+        );
+        assert!(matches!(
+            rx.recv().await,
+            Some(CmEgressItem::Failed(CmEgressFailure::MessageCapacity))
+        ));
+        assert_eq!(
+            tx.send(Data::Close),
+            Err(CmEgressAdmissionError::ReceiverGone)
+        );
+
+        let (tx, mut rx) = cm_egress_channel_with_limits(CmEgressLimits {
+            max_messages: 1,
+            max_message_bytes: 1024,
+            max_queued_bytes: 4096,
+        });
+        assert_eq!(
+            tx.send(Data::Disconnected),
+            Err(CmEgressAdmissionError::Failed(
+                CmEgressFailure::WrongMessageClass
+            ))
+        );
+        assert!(matches!(
+            rx.recv().await,
+            Some(CmEgressItem::Failed(CmEgressFailure::WrongMessageClass))
+        ));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11gy_cm_egress_encoded_byte_limits_are_terminal() {
+        let small = Data::ChatMessage {
+            text: "bounded".to_owned(),
+        };
+        let retained =
+            cm_egress_encoded_bytes(&small, 1024).unwrap() + std::mem::size_of::<QueuedCmEgress>();
+        let (tx, mut rx) = cm_egress_channel_with_limits(CmEgressLimits {
+            max_messages: 2,
+            max_message_bytes: 1024,
+            max_queued_bytes: retained,
+        });
+        tx.send(small).unwrap();
+        assert_eq!(
+            tx.send(Data::Close),
+            Err(CmEgressAdmissionError::Failed(
+                CmEgressFailure::ByteCapacity
+            ))
+        );
+        assert!(matches!(
+            rx.recv().await,
+            Some(CmEgressItem::Failed(CmEgressFailure::ByteCapacity))
+        ));
+
+        let (tx, mut rx) = cm_egress_channel_with_limits(CmEgressLimits {
+            max_messages: 1,
+            max_message_bytes: 32,
+            max_queued_bytes: 4096,
+        });
+        assert_eq!(
+            tx.send(Data::ChatMessage {
+                text: "x".repeat(64),
+            }),
+            Err(CmEgressAdmissionError::Failed(
+                CmEgressFailure::MessageTooLarge
+            ))
+        );
+        assert!(matches!(
+            rx.recv().await,
+            Some(CmEgressItem::Failed(CmEgressFailure::MessageTooLarge))
+        ));
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11gy_cm_egress_accounts_serde_skipped_raw_blocks_and_receiver_retirement() {
+        let read_block = |len| {
+            Data::CmFileResponse(ipc::CmFileResponse {
+                conn_id: 7,
+                cm_auth_token: "token".to_owned(),
+                response: Box::new(ipc::CmFileResponseKind::ReadBlock {
+                    id: 1,
+                    generation: 2,
+                    file_num: 3,
+                    data: bytes::Bytes::from(vec![0xa5; len]),
+                    compressed: false,
+                }),
+            })
+        };
+        let data = read_block(64);
+        let structured_only = cm_egress_encoded_bytes(&read_block(0), 4096).unwrap();
+        let with_raw = cm_egress_encoded_bytes(&data, 4096).unwrap();
+        assert_eq!(with_raw, structured_only + 64);
+
+        let (tx, mut rx) = cm_egress_channel_with_limits(CmEgressLimits {
+            max_messages: 1,
+            max_message_bytes: with_raw,
+            max_queued_bytes: with_raw + std::mem::size_of::<QueuedCmEgress>(),
+        });
+        tx.send(data).unwrap();
+        match rx.recv().await.unwrap() {
+            CmEgressItem::Data(Data::CmFileResponse(response)) => match *response.response {
+                ipc::CmFileResponseKind::ReadBlock { data, .. } => assert_eq!(data.len(), 64),
+                _ => panic!("unexpected CM file response"),
+            },
+            _ => panic!("unexpected CM egress item"),
+        }
+
+        let (tx, mut rx) = cm_egress_channel();
+        assert_eq!(
+            tx.send(read_block(ipc::CM_FILE_BLOCK_MAX_FRAME_BYTES + 1)),
+            Err(CmEgressAdmissionError::Failed(
+                CmEgressFailure::MessageTooLarge
+            ))
+        );
+        assert!(matches!(
+            rx.recv().await,
+            Some(CmEgressItem::Failed(CmEgressFailure::MessageTooLarge))
+        ));
+
+        let (tx, rx) = cm_egress_channel();
+        drop(rx);
+        assert_eq!(
+            tx.send(Data::Close),
+            Err(CmEgressAdmissionError::ReceiverGone)
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11gy_cm_egress_wakes_without_polling_and_sender_retirement_closes() {
+        let (tx, mut rx) = cm_egress_channel();
+        let waiting = tokio::spawn(async move { rx.recv().await });
+        tokio::task::yield_now().await;
+        assert!(!waiting.is_finished());
+        tx.send(Data::ChatMessage {
+            text: "wake".to_owned(),
+        })
+        .unwrap();
+        assert!(matches!(
+            waiting.await.unwrap(),
+            Some(CmEgressItem::Data(Data::ChatMessage { text })) if text == "wake"
+        ));
+
+        let (tx, mut rx) = cm_egress_channel();
+        let waiting = tokio::spawn(async move { rx.recv().await });
+        tokio::task::yield_now().await;
+        assert!(!waiting.is_finished());
+        drop(tx);
+        assert!(waiting.await.unwrap().is_none());
+    }
 
     #[cfg(not(any(target_os = "ios")))]
     fn cm_authority(valid: bool, file: bool) -> ipc::CmConnectionAuthority {
@@ -2239,7 +2818,7 @@ mod tests {
         }
         assert!(!login_payload.contains_key("from_switch"));
 
-        let (tx, _rx) = unbounded_channel();
+        let (tx, _rx) = cm_egress_channel();
         let client = Client {
             id: 7,
             authorized: true,
@@ -2290,7 +2869,7 @@ mod tests {
     fn read_all_files_success() {
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
-            let (tx, mut rx) = unbounded_channel();
+            let (tx, mut rx) = cm_egress_channel();
             let dir = std::env::temp_dir().join("rustdesk_read_all_test");
             let _ = fs::remove_dir_all(&dir);
             fs::create_dir_all(&dir).unwrap();
@@ -2311,7 +2890,7 @@ mod tests {
             .await;
 
             match rx.recv().await.unwrap() {
-                Data::CmFileResponse(response) => match *response.response {
+                CmEgressItem::Data(Data::CmFileResponse(response)) => match *response.response {
                     ipc::CmFileResponseKind::AllFiles { request_id, result } => {
                         assert_eq!(request_id, 2);
                         assert!(!result.unwrap().entries.is_empty());
@@ -2329,7 +2908,7 @@ mod tests {
     fn read_dir_success() {
         let rt = Runtime::new().unwrap();
         rt.block_on(async {
-            let (tx, mut rx) = unbounded_channel();
+            let (tx, mut rx) = cm_egress_channel();
             let dir = std::env::temp_dir().join("rustdesk_read_dir_test");
             let _ = fs::remove_dir_all(&dir);
             fs::create_dir_all(&dir).unwrap();
@@ -2347,7 +2926,7 @@ mod tests {
             .await;
 
             match rx.recv().await.unwrap() {
-                Data::CmFileResponse(response) => match *response.response {
+                CmEgressItem::Data(Data::CmFileResponse(response)) => match *response.response {
                     ipc::CmFileResponseKind::ReadDirectory {
                         request_id,
                         path,

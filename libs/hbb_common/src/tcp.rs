@@ -25,7 +25,7 @@ use std::{
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     net::{lookup_host, TcpListener, TcpSocket, ToSocketAddrs},
-    sync::{mpsc, oneshot},
+    sync::{mpsc, oneshot, OwnedSemaphorePermit, Semaphore, TryAcquireError},
     task::JoinHandle,
 };
 use tokio_util::codec::{Decoder, Encoder, Framed};
@@ -189,8 +189,8 @@ impl Encoder<Bytes> for SecretboxCodec {
 ///
 /// # Field layout
 /// `state` the keying-state machine — pre-key holds the whole [`Framed`]; post-key (R-T3) holds the
-/// read half ([`SplitStream`]) plus the send-side [`SealCipher`] and the bounded channel to the
-/// dedicated writer task · `local_addr` peer addr · `poison` flag (R-T2).
+/// read half ([`SplitStream`]) plus the send-side [`SealCipher`], exact writer admission, and the
+/// bounded channel to the dedicated writer task · `local_addr` peer addr · `poison` flag (R-T2).
 pub struct FramedStream {
     state: StreamState,
     local_addr: SocketAddr,
@@ -227,9 +227,11 @@ struct KeyedStream {
     /// The send-side cipher (R-T3): `send_bytes` seals on this single-producer enqueue side so the
     /// nonce advances in exact channel-FIFO order.
     seal: SealCipher,
-    /// Bounded channel of ALREADY-SEALED frames to the sole writer task (R-T8). A full channel is
-    /// the back-pressure liveness signal — `send_bytes` drops the connection rather than block.
+    /// Bounded FIFO of already-sealed frames to the sole writer task (R-T8). R-T18's separate
+    /// admission remains held after dequeue; either admission or channel refusal is fatal.
     writer_tx: mpsc::Sender<WriterCommand>,
+    /// Nonblocking count-and-ciphertext admission held through the exact sink send (R-T18).
+    writer_admission: WriterAdmission,
     /// A handle to the codec's recv counter, so `recv_counter` can read `read_seq` after the codec
     /// is moved into `read` (the `SplitStream` exposes no codec accessor).
     read_seq: Arc<AtomicU64>,
@@ -246,9 +248,115 @@ struct KeyedStream {
 enum WriterCommand {
     Frame {
         bytes: Bytes,
+        reservation: WriterFrameReservation,
         completion: Option<oneshot::Sender<io::Result<()>>>,
     },
     Drain(oneshot::Sender<io::Result<()>>),
+}
+
+/// Exact retained-frame and ciphertext-byte ownership for one keyed writer command (R-T18).
+///
+/// Tokio's channel capacity is returned when the receiver dequeues a command, before the sink send
+/// completes. These owned permits therefore travel with the command and remain held while the sole
+/// writer is blocked in `sink.send`, so active plus queued retention has one exact finite owner.
+struct WriterFrameReservation {
+    _frame: OwnedSemaphorePermit,
+    _ciphertext_bytes: OwnedSemaphorePermit,
+    ciphertext_bytes: usize,
+}
+
+/// Shared nonblocking admission for the sole keyed writer producer and consumer (R-T18).
+#[derive(Clone)]
+struct WriterAdmission {
+    frames: Arc<Semaphore>,
+    ciphertext_bytes: Arc<Semaphore>,
+    max_ciphertext_bytes: usize,
+    max_retained_ciphertext_bytes: usize,
+}
+
+impl WriterAdmission {
+    fn new(max_ciphertext_bytes: usize) -> Self {
+        let mac_bytes = sodiumoxide::crypto::secretbox::MACBYTES;
+        assert!(
+            max_ciphertext_bytes >= mac_bytes,
+            "R-T18: keyed packet ceiling cannot hold the secretbox authenticator"
+        );
+        assert!(
+            max_ciphertext_bytes <= u32::MAX as usize,
+            "R-T18: keyed packet ceiling is not representable by Tokio byte admission"
+        );
+        assert!(
+            max_ciphertext_bytes
+                <= Semaphore::MAX_PERMITS / WRITER_RETAINED_CIPHERTEXT_PACKETS,
+            "R-T18: keyed writer retained-byte ceiling exceeds Tokio semaphore capacity"
+        );
+        let max_retained_ciphertext_bytes =
+            max_ciphertext_bytes * WRITER_RETAINED_CIPHERTEXT_PACKETS;
+        Self {
+            frames: Arc::new(Semaphore::new(WRITER_CHANNEL_CAP)),
+            ciphertext_bytes: Arc::new(Semaphore::new(max_retained_ciphertext_bytes)),
+            max_ciphertext_bytes,
+            max_retained_ciphertext_bytes,
+        }
+    }
+
+    fn reserve_plaintext(&self, plaintext_bytes: usize) -> ResultType<WriterFrameReservation> {
+        let ciphertext_bytes = plaintext_bytes
+            .checked_add(sodiumoxide::crypto::secretbox::MACBYTES)
+            .ok_or_else(|| anyhow::anyhow!("R-T18: outbound keyed frame size overflow"))?;
+        self.reserve_ciphertext(ciphertext_bytes)
+    }
+
+    fn reserve_ciphertext(
+        &self,
+        ciphertext_bytes: usize,
+    ) -> ResultType<WriterFrameReservation> {
+        if ciphertext_bytes > self.max_ciphertext_bytes {
+            bail!(
+                "R-T18: outbound keyed frame exceeds the engaged packet ceiling ({} bytes; limit {})",
+                ciphertext_bytes,
+                self.max_ciphertext_bytes
+            );
+        }
+        let permit_count = u32::try_from(ciphertext_bytes)
+            .map_err(|_| anyhow::anyhow!("R-T18: outbound keyed frame size is not representable"))?;
+        let frame = match Arc::clone(&self.frames).try_acquire_owned() {
+            Ok(permit) => permit,
+            Err(TryAcquireError::NoPermits) => {
+                bail!(
+                    "R-T18: keyed writer retained-frame capacity reached (limit {})",
+                    WRITER_CHANNEL_CAP
+                );
+            }
+            Err(TryAcquireError::Closed) => {
+                bail!("R-T18: keyed writer admission is closed");
+            }
+        };
+        let ciphertext = match Arc::clone(&self.ciphertext_bytes)
+            .try_acquire_many_owned(permit_count)
+        {
+            Ok(permit) => permit,
+            Err(TryAcquireError::NoPermits) => {
+                bail!(
+                    "R-T18: keyed writer retained-byte capacity reached (limit {} bytes)",
+                    self.max_retained_ciphertext_bytes
+                );
+            }
+            Err(TryAcquireError::Closed) => {
+                bail!("R-T18: keyed writer admission is closed");
+            }
+        };
+        Ok(WriterFrameReservation {
+            _frame: frame,
+            _ciphertext_bytes: ciphertext,
+            ciphertext_bytes,
+        })
+    }
+
+    fn close(&self) {
+        self.frames.close();
+        self.ciphertext_bytes.close();
+    }
 }
 
 /// Exact completion of one frame handed to the sole post-key transport sink.
@@ -467,7 +575,7 @@ impl FramedStream {
         if r.is_err() {
             // R-T2: a send error (a write failure, or the R-T3 writer channel full/closed) is fatal
             // — poison so a later edit cannot reuse the stream and re-flush under an advanced nonce.
-            self.poison = true;
+            self.poison_and_retire_writer();
         }
         r
     }
@@ -487,7 +595,7 @@ impl FramedStream {
         }
         let result = self.send_bytes_raw_with_receipt(bytes).await;
         if result.is_err() {
-            self.poison = true;
+            self.poison_and_retire_writer();
         }
         result
     }
@@ -502,16 +610,22 @@ impl FramedStream {
                 framed.send(bytes).await?;
             }
             StreamState::Keyed(k) => {
-                // R-T3 (§20): seal on THIS single-producer enqueue side so the nonce advances in
-                // exact channel-FIFO order (R-T8: the writer task is the sole consumer, so flush
-                // order == seal order == wire order), then enqueue NON-BLOCKING. A full bounded
-                // channel is the back-pressure liveness signal (replacing R-T2's per-write timeout):
-                // the peer can't drain, so the connection is dropped here (`try_send` Err →
-                // `send_bytes` poisons) rather than the run-loop blocking inside a `select!` branch.
+                // R-T18 validates and reserves count plus exact ciphertext bytes BEFORE sealing, so
+                // refusal allocates no ciphertext and advances no nonce. The owned reservation then
+                // follows the frame through the sole sink send; active and queued frames share one
+                // finite budget even though Tokio returns channel capacity at dequeue.
+                let reservation = k.writer_admission.reserve_plaintext(bytes.len())?;
+                // R-T3 (§20): seal on THIS single-producer enqueue side so nonce order remains exact
+                // channel-FIFO order, then enqueue NON-BLOCKING. Full/closed remains fatal rather
+                // than blocking the connection run-loop inside a `select!` branch.
                 let sealed = Bytes::from(k.seal.seal(&bytes));
+                if sealed.len() != reservation.ciphertext_bytes {
+                    bail!("R-T18: secretbox ciphertext length disagrees with reserved bytes");
+                }
                 k.writer_tx
                     .try_send(WriterCommand::Frame {
                         bytes: sealed,
+                        reservation,
                         completion: None,
                     })
                     .map_err(|e| match e {
@@ -535,10 +649,15 @@ impl FramedStream {
                 bail!("tracked writer completion requires a keyed stream");
             }
             StreamState::Keyed(k) => {
+                let reservation = k.writer_admission.reserve_plaintext(bytes.len())?;
                 let sealed = Bytes::from(k.seal.seal(&bytes));
+                if sealed.len() != reservation.ciphertext_bytes {
+                    bail!("R-T18: secretbox ciphertext length disagrees with reserved bytes");
+                }
                 k.writer_tx
                     .try_send(WriterCommand::Frame {
                         bytes: sealed,
+                        reservation,
                         completion: Some(completion),
                     })
                     .map_err(|e| match e {
@@ -574,28 +693,47 @@ impl FramedStream {
         let result = match &mut self.state {
             StreamState::Unkeyed(framed) => framed.flush().await.map_err(anyhow::Error::from),
             StreamState::Keyed(k) => {
-                let (ack_tx, ack_rx) = oneshot::channel();
-                let writer_tx = k.writer_tx.clone();
-                let enqueue = tokio::time::timeout(
-                    WRITER_DRAIN_TIMEOUT,
-                    writer_tx.send(WriterCommand::Drain(ack_tx)),
-                )
-                .await
-                .map_err(|_| anyhow::anyhow!("R-T9: timed out enqueueing writer drain"))?;
-                enqueue.map_err(|_| anyhow::anyhow!("R-T9: writer task gone before drain"))?;
-
-                tokio::time::timeout(WRITER_DRAIN_TIMEOUT, ack_rx)
+                // Contain `?` inside this local result so every keyed drain failure reaches the
+                // common close-admission-before-abort transition below. Returning directly from
+                // `flush_writer` here would leave the failed writer and its reservations alive.
+                let keyed_result: ResultType<()> = async {
+                    let (ack_tx, ack_rx) = oneshot::channel();
+                    let writer_tx = k.writer_tx.clone();
+                    let enqueue = tokio::time::timeout(
+                        WRITER_DRAIN_TIMEOUT,
+                        writer_tx.send(WriterCommand::Drain(ack_tx)),
+                    )
                     .await
-                    .map_err(|_| anyhow::anyhow!("R-T9: timed out waiting for writer drain"))?
-                    .map_err(|_| anyhow::anyhow!("R-T9: writer task dropped drain ack"))?
-                    .map_err(anyhow::Error::from)
+                    .map_err(|_| anyhow::anyhow!("R-T9: timed out enqueueing writer drain"))?;
+                    enqueue.map_err(|_| anyhow::anyhow!("R-T9: writer task gone before drain"))?;
+
+                    tokio::time::timeout(WRITER_DRAIN_TIMEOUT, ack_rx)
+                        .await
+                        .map_err(|_| anyhow::anyhow!("R-T9: timed out waiting for writer drain"))?
+                        .map_err(|_| anyhow::anyhow!("R-T9: writer task dropped drain ack"))?
+                        .map_err(anyhow::Error::from)
+                }
+                .await;
+                keyed_result
             }
             StreamState::Keying => unreachable!("flush_writer observed a mid-keying stream"),
         };
         if result.is_err() {
-            self.poison = true;
+            self.poison_and_retire_writer();
         }
         result
+    }
+
+    /// Retire keyed admission and its sole writer immediately after a fatal transport outcome.
+    /// Closing admission prevents future internal use; aborting drops the active command and the
+    /// receiver's queued commands, which returns every owned R-T18 permit without waiting for the
+    /// outer connection future to reach `Drop`.
+    fn poison_and_retire_writer(&mut self) {
+        self.poison = true;
+        if let StreamState::Keyed(k) = &self.state {
+            k.writer_admission.close();
+            k.writer.abort();
+        }
     }
 
     #[inline]
@@ -630,7 +768,7 @@ impl FramedStream {
         if matches!(res, Some(Err(_))) {
             // R-T2: a read / framing / decrypt-auth failure is fatal — poison the stream so it is
             // never reused (the decrypt now lives in the codec, so this one check covers both).
-            self.poison = true;
+            self.poison_and_retire_writer();
         }
         res
     }
@@ -666,6 +804,7 @@ impl FramedStream {
             framed.codec().max_packet_length() != usize::MAX,
             "R-A5: keyed stream has an unbounded frame cap (usize::MAX) — the handshake must set MAX_SESSION_PACKET first"
         );
+        let writer_admission = WriterAdmission::new(framed.codec().max_packet_length());
         // Split the keys into the producer's SealCipher + the read-codec's OpenCipher (R-T3); R-A5
         // distinctness is asserted inside split_session_keys.
         let (seal, open) = split_session_keys(&keys);
@@ -680,6 +819,7 @@ impl FramedStream {
             read,
             seal,
             writer_tx,
+            writer_admission,
             read_seq,
             writer,
         });
@@ -696,13 +836,12 @@ impl FramedStream {
     }
 }
 
-/// R-T3 (§20): the bounded writer-channel capacity. The channel buffers already-sealed outbound
-/// frames between the run-loop (producer, non-blocking enqueue) and the dedicated writer task (sole
-/// consumer). It is sized for headroom against normal bursts while keeping a stuck/back-pressured
-/// peer detectable: when it fills, `send_bytes` drops the connection rather than block the loop
-/// (replacing R-T2's per-write timeout). Outbound frames are server-generated (their size bounded by
-/// the encoder, not attacker-controlled), so the buffer is not an attacker-driven memory lever.
+/// R-T3/R-T18 (§20): finite writer admission. The Tokio channel is the FIFO handoff, while the
+/// separate frame permits remain held after dequeue so the active sink frame still counts toward
+/// this 512-frame limit. Exact ciphertext permits cap active plus queued payload at two engaged
+/// keyed packets. All admission is nonblocking; refusal retires the exact connection.
 const WRITER_CHANNEL_CAP: usize = 512;
+const WRITER_RETAINED_CIPHERTEXT_PACKETS: usize = 2;
 const WRITER_DRAIN_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 /// R-T3/R-T8 (§20): the dedicated writer task — the SOLE consumer of the split sink. It drains
@@ -715,14 +854,28 @@ async fn writer_task(
 ) {
     while let Some(cmd) = writer_rx.recv().await {
         match cmd {
-            WriterCommand::Frame { bytes, completion } => {
+            WriterCommand::Frame {
+                bytes,
+                reservation,
+                completion,
+            } => {
                 let result = sink.send(bytes).await;
                 let failed = result.is_err();
+                if failed {
+                    // A failed Framed sink may retain encoded bytes. Drop that sink before releasing
+                    // their exact reservation, then report the failure and retire this writer.
+                    drop(sink);
+                    drop(reservation);
+                    if let Some(completion) = completion {
+                        let _ = completion.send(result);
+                    }
+                    return;
+                }
+                // Successful `SinkExt::send` includes flush completion. Keep the reservation alive
+                // across that await, then release it before publishing exact completion.
+                drop(reservation);
                 if let Some(completion) = completion {
                     let _ = completion.send(result);
-                }
-                if failed {
-                    break;
                 }
             }
             WriterCommand::Drain(done) => {
@@ -747,6 +900,7 @@ impl Drop for FramedStream {
         // connection's lifetime. Dropping `writer_tx` also closes the channel, but an abort is
         // immediate even if the task is parked inside `sink.send`.
         if let StreamState::Keyed(k) = &self.state {
+            k.writer_admission.close();
             k.writer.abort();
         }
     }
@@ -873,6 +1027,82 @@ mod writer_receipt_tests {
         Framed::new(DynTcpStream(Box::new(stream)), SecretboxCodec::new())
     }
 
+    fn writer_frame(
+        admission: &WriterAdmission,
+        bytes: Bytes,
+        completion: Option<oneshot::Sender<io::Result<()>>>,
+    ) -> WriterCommand {
+        let reservation = admission
+            .reserve_ciphertext(bytes.len())
+            .expect("test writer frame must fit exact admission");
+        WriterCommand::Frame {
+            bytes,
+            reservation,
+            completion,
+        }
+    }
+
+    #[test]
+    fn r_s11gx_writer_admission_checks_size_count_and_bytes_before_ownership() {
+        let count_admission = WriterAdmission::new(4_096);
+        let frame_permits = count_admission.frames.available_permits();
+        let byte_permits = count_admission.ciphertext_bytes.available_permits();
+        assert!(count_admission.reserve_plaintext(usize::MAX).is_err());
+        assert!(count_admission.reserve_plaintext(4_081).is_err());
+        assert_eq!(count_admission.frames.available_permits(), frame_permits);
+        assert_eq!(
+            count_admission.ciphertext_bytes.available_permits(),
+            byte_permits
+        );
+
+        let mut retained = Vec::with_capacity(WRITER_CHANNEL_CAP);
+        for _ in 0..WRITER_CHANNEL_CAP {
+            retained.push(
+                count_admission
+                    .reserve_plaintext(0)
+                    .expect("all exact frame slots must be usable"),
+            );
+        }
+        let count_error = match count_admission.reserve_plaintext(0) {
+            Err(error) => error,
+            Ok(_) => panic!("the active-plus-queued frame ceiling must be exact"),
+        };
+        assert!(count_error.to_string().contains("retained-frame capacity"));
+        drop(retained.pop());
+        retained.push(
+            count_admission
+                .reserve_plaintext(0)
+                .expect("dropping one frame owner must return its exact slot"),
+        );
+        drop(retained);
+        assert_eq!(
+            count_admission.frames.available_permits(),
+            WRITER_CHANNEL_CAP
+        );
+        assert_eq!(
+            count_admission.ciphertext_bytes.available_permits(),
+            byte_permits
+        );
+
+        let byte_admission = WriterAdmission::new(64);
+        let first = byte_admission
+            .reserve_plaintext(48)
+            .expect("one ceiling-sized ciphertext must fit");
+        let second = byte_admission
+            .reserve_plaintext(48)
+            .expect("the second ceiling-sized ciphertext must fit");
+        let byte_error = match byte_admission.reserve_plaintext(0) {
+            Err(error) => error,
+            Ok(_) => panic!("two exact packets must exhaust the retained-byte budget"),
+        };
+        assert!(byte_error.to_string().contains("retained-byte capacity"));
+        drop(first);
+        byte_admission
+            .reserve_plaintext(0)
+            .expect("dropping one byte owner must return exact byte capacity");
+        drop(second);
+    }
+
     #[tokio::test]
     async fn r_s11fb_receipt_waits_for_the_exact_sink_send() {
         let (writer_side, reader_side) = duplex(64);
@@ -882,12 +1112,14 @@ mod writer_receipt_tests {
         let writer = tokio::spawn(writer_task(sink, writer_rx));
         let (completion, mut receipt) = oneshot::channel();
         let expected = Bytes::from(vec![0x5a; 4_096]);
+        let admission = WriterAdmission::new(4_096);
 
         writer_tx
-            .send(WriterCommand::Frame {
-                bytes: expected.clone(),
-                completion: Some(completion),
-            })
+            .send(writer_frame(
+                &admission,
+                expected.clone(),
+                Some(completion),
+            ))
             .await
             .expect("writer command must be admitted");
         assert!(
@@ -907,6 +1139,8 @@ mod writer_receipt_tests {
             .await
             .expect("the exact writer must retain completion ownership")
             .expect("the exact sink send must succeed");
+        assert_eq!(admission.frames.available_permits(), WRITER_CHANNEL_CAP);
+        assert_eq!(admission.ciphertext_bytes.available_permits(), 8_192);
 
         drop(writer_tx);
         writer.await.expect("writer task must retire cleanly");
@@ -920,12 +1154,14 @@ mod writer_receipt_tests {
         let (writer_tx, writer_rx) = mpsc::channel(1);
         let writer = tokio::spawn(writer_task(sink, writer_rx));
         let (completion, receipt) = oneshot::channel();
+        let admission = WriterAdmission::new(64);
 
         writer_tx
-            .send(WriterCommand::Frame {
-                bytes: Bytes::from_static(b"failure"),
-                completion: Some(completion),
-            })
+            .send(writer_frame(
+                &admission,
+                Bytes::from_static(b"failure"),
+                Some(completion),
+            ))
             .await
             .expect("writer command must be admitted");
         assert!(
@@ -938,6 +1174,141 @@ mod writer_receipt_tests {
 
         drop(writer_tx);
         writer.await.expect("writer task must retire after failure");
+        assert_eq!(admission.frames.available_permits(), WRITER_CHANNEL_CAP);
+        assert_eq!(admission.ciphertext_bytes.available_permits(), 128);
+    }
+
+    #[tokio::test]
+    async fn r_s11gx_active_and_queued_frames_share_one_exact_budget_until_abort() {
+        let (sender_side, _receiver_side) = duplex(1);
+        let local_addr = SocketAddr::from(([127, 0, 0, 1], 0));
+        let mut sender = FramedStream::from(sender_side, local_addr);
+        sender.set_max_packet_length(64);
+        sender.set_session_keys(DirectionalKeys {
+            send: [0x51; 32],
+            recv: [0x62; 32],
+        });
+        let admission = match &sender.state {
+            StreamState::Keyed(keyed) => keyed.writer_admission.clone(),
+            _ => panic!("test stream must be keyed"),
+        };
+
+        sender
+            .send_bytes(Bytes::from(vec![0x71; 48]))
+            .await
+            .expect("first ceiling-sized frame must be admitted");
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                let active = match &sender.state {
+                    StreamState::Keyed(keyed) => {
+                        keyed.writer_tx.capacity() == WRITER_CHANNEL_CAP
+                            && admission.frames.available_permits() == WRITER_CHANNEL_CAP - 1
+                            && admission.ciphertext_bytes.available_permits() == 64
+                    }
+                    _ => false,
+                };
+                if active {
+                    break;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("the writer must dequeue and retain the active sink frame");
+
+        sender
+            .send_bytes(Bytes::from(vec![0x72; 48]))
+            .await
+            .expect("one queued ceiling-sized frame must share the two-packet budget");
+        assert_eq!(admission.frames.available_permits(), WRITER_CHANNEL_CAP - 2);
+        assert_eq!(admission.ciphertext_bytes.available_permits(), 0);
+        let error = sender
+            .send_bytes(Bytes::new())
+            .await
+            .expect_err("a third ciphertext must retire the back-pressured writer");
+        assert!(error.to_string().contains("retained-byte capacity"));
+
+        tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            while admission.frames.available_permits() != WRITER_CHANNEL_CAP
+                || admission.ciphertext_bytes.available_permits() != 128
+            {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .expect("writer abort must release the active and queued exact reservations");
+    }
+
+    #[tokio::test]
+    async fn r_s11gx_failed_drain_retires_writer_admission() {
+        let (sender_side, _receiver_side) = duplex(64);
+        let local_addr = SocketAddr::from(([127, 0, 0, 1], 0));
+        let mut sender = FramedStream::from(sender_side, local_addr);
+        sender.set_max_packet_length(64);
+        sender.set_session_keys(DirectionalKeys {
+            send: [0xa6; 32],
+            recv: [0xb7; 32],
+        });
+        let admission = match &mut sender.state {
+            StreamState::Keyed(keyed) => {
+                let admission = keyed.writer_admission.clone();
+                keyed.writer.abort();
+                let error = (&mut keyed.writer)
+                    .await
+                    .expect_err("the deliberately aborted writer must not complete normally");
+                assert!(error.is_cancelled());
+                admission
+            }
+            _ => panic!("test stream must be keyed"),
+        };
+
+        let error = sender
+            .flush_writer()
+            .await
+            .expect_err("a missing exact writer must make drain terminal");
+        assert!(error.to_string().contains("writer task gone before drain"));
+        assert!(sender.poison);
+        assert!(admission.frames.is_closed());
+        assert!(admission.ciphertext_bytes.is_closed());
+        assert!(
+            sender.send_bytes(Bytes::new()).await.is_err(),
+            "a failed drain must leave the exact stream terminal"
+        );
+    }
+
+    #[tokio::test]
+    async fn r_s11gx_oversized_plaintext_is_rejected_before_peer_delivery() {
+        let (sender_side, receiver_side) = duplex(64);
+        let local_addr = SocketAddr::from(([127, 0, 0, 1], 0));
+        let mut sender = FramedStream::from(sender_side, local_addr);
+        let mut receiver = FramedStream::from(receiver_side, local_addr);
+        sender.set_max_packet_length(64);
+        receiver.set_max_packet_length(64);
+        sender.set_session_keys(DirectionalKeys {
+            send: [0x73; 32],
+            recv: [0x84; 32],
+        });
+        receiver.set_session_keys(DirectionalKeys {
+            send: [0x84; 32],
+            recv: [0x73; 32],
+        });
+
+        let error = sender
+            .send_bytes(Bytes::from(vec![0x95; 49]))
+            .await
+            .expect_err("plaintext beyond the post-secretbox ceiling must fail locally");
+        assert!(error.to_string().contains("engaged packet ceiling"));
+        assert!(
+            sender.send_bytes(Bytes::new()).await.is_err(),
+            "the failed stream must remain poisoned"
+        );
+        assert_eq!(receiver.recv_counter(), 0);
+        match tokio::time::timeout(std::time::Duration::from_millis(20), receiver.next()).await {
+            Err(_) | Ok(None) => {}
+            Ok(Some(result)) => {
+                panic!("oversized ciphertext reached the peer unexpectedly: {result:?}")
+            }
+        }
     }
 
     #[tokio::test]

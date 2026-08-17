@@ -165,16 +165,18 @@ non-confirmation input can poison the owner's online-guess budget.
   `OpenCipher::open`, `split_session_keys`, and `DirectionalCipher`.
 - `libs/hbb_common/src/tcp.rs`: `SecretboxCodec::decode`,
   `FramedStream::send_bytes`, `FramedStream::next`,
-  `FramedStream::set_session_keys`, `writer_task`, and `FramedStream::drop`.
+  `FramedStream::set_session_keys`, `WriterAdmission`,
+  `WriterFrameReservation`, `writer_task`, and `FramedStream::drop`.
 - `docs/TRANSPORT-SECURITY.md`: the current claim map; verify every claim from
   code rather than treating this project-authored document as evidence.
 
 Review HKDF-SHA512 extraction/expansion and labels, role-to-direction mapping,
 XSalsa20-Poly1305 key/nonce/tag parameters, distinct-key enforcement, monotonic
 counter exhaustion, authenticate-before-parse order, replay/reorder behavior,
-frame caps, poison semantics, cancellation safety, seal/channel/wire ordering,
-back-pressure, graceful drain, task teardown, and every path that can retain or
-reuse a key or nonce after an error.
+frame caps, poison semantics, cancellation safety, reserve-before-seal ordering,
+active-plus-queued count and ciphertext-byte ownership, seal/channel/wire
+ordering, back-pressure, graceful drain, task teardown, and every path that can
+retain or reuse a key or nonce after an error.
 
 ### Evidence and residuals
 

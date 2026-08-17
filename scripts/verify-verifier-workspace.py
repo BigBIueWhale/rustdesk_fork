@@ -20142,6 +20142,7 @@ def validate_display_selection_finality_contract(sources):
             '"workspace", "    validate_viewer_cursor_mailbox_contract(sources)\\n'
             '    validate_viewer_cursor_resources_contract(sources)\\n'
             '    validate_controlled_control_egress_contract(sources)\\n'
+            '    validate_keyed_writer_budget_contract(sources)\\n'
             '    validate_display_selection_finality_contract(sources)\\n'
             '    validate_desktop_texture_lifecycle_contract(sources)",',
             "display-selection current independent dispatch fixture",
@@ -22452,6 +22453,262 @@ def validate_controlled_control_egress_contract(sources):
         raise VerificationError(
             "controlled-egress independent workspace dispatch must occur exactly once"
         )
+
+
+def validate_keyed_writer_budget_contract(sources):
+    """Independently bind exact active-plus-queued keyed-writer ownership."""
+
+    focused = sources["keyed_writer_budget_verifier"]
+    focused_contract = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "focused keyed-writer validation function",
+    )
+    for marker, label in (
+        ("WRITER_RETAINED_CIPHERTEXT_PACKETS", "focused retained-byte budget"),
+        ("reserve_plaintext", "focused plaintext admission"),
+        ("checked_add(sodiumoxide::crypto::secretbox::MACBYTES)", "focused checked ciphertext sizing"),
+        ("try_acquire_many_owned", "focused nonblocking byte ownership"),
+        ("drop(sink);", "focused failed-sink finality"),
+        ("poison_and_retire_writer", "focused fatal retirement"),
+        ("R-T18", "focused transport requirement"),
+        ("R-S11gx", "focused hardening requirement"),
+    ):
+        require_text(focused_contract, marker, label)
+    require_text(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "focused keyed-writer deliberate-mutation inventory",
+    )
+
+    tcp = sources["tcp_source"]
+    require_absent(
+        tcp,
+        "Outbound frames are server-generated",
+        "independent false outbound-size trust claim",
+    )
+    for marker, label in (
+        ("const WRITER_CHANNEL_CAP: usize = 512;", "independent frame ceiling"),
+        (
+            "const WRITER_RETAINED_CIPHERTEXT_PACKETS: usize = 2;",
+            "independent retained-byte ceiling",
+        ),
+        ("struct WriterFrameReservation", "independent exact reservation"),
+        ("_frame: OwnedSemaphorePermit", "independent frame permit"),
+        (
+            "_ciphertext_bytes: OwnedSemaphorePermit",
+            "independent ciphertext-byte permit",
+        ),
+        ("writer_admission: WriterAdmission", "independent keyed-stream owner"),
+        (
+            "reservation: WriterFrameReservation",
+            "independent command reservation owner",
+        ),
+    ):
+        require_text(tcp, marker, label)
+
+    admission = extract_braced_item(tcp, "impl WriterAdmission", "independent writer admission")
+    constructor = extract_braced_item(
+        admission,
+        "fn new(max_ciphertext_bytes: usize)",
+        "independent writer admission constructor",
+    )
+    require_order(
+        constructor,
+        (
+            "max_ciphertext_bytes >= mac_bytes",
+            "max_ciphertext_bytes <= u32::MAX as usize",
+            "Semaphore::MAX_PERMITS / WRITER_RETAINED_CIPHERTEXT_PACKETS",
+            "Semaphore::new(WRITER_CHANNEL_CAP)",
+            "Semaphore::new(max_retained_ciphertext_bytes)",
+        ),
+        "independent representable writer budgets",
+    )
+    reserve_plaintext = extract_braced_item(
+        admission, "fn reserve_plaintext(", "independent plaintext admission"
+    )
+    require_order(
+        reserve_plaintext,
+        (
+            ".checked_add(sodiumoxide::crypto::secretbox::MACBYTES)",
+            "self.reserve_ciphertext(ciphertext_bytes)",
+        ),
+        "independent checked ciphertext size",
+    )
+    reserve_ciphertext = extract_braced_item(
+        admission, "fn reserve_ciphertext(", "independent ciphertext admission"
+    )
+    require_order(
+        reserve_ciphertext,
+        (
+            "if ciphertext_bytes > self.max_ciphertext_bytes",
+            "u32::try_from(ciphertext_bytes)",
+            "try_acquire_owned()",
+            ".try_acquire_many_owned(permit_count)",
+            "WriterFrameReservation {",
+        ),
+        "independent nonblocking count-and-byte admission",
+    )
+    for forbidden, label in (
+        ("saturating_", "independent lossy admission arithmetic"),
+        (".acquire_owned().await", "independent blocking frame admission"),
+        (".acquire_many_owned(permit_count).await", "independent blocking byte admission"),
+    ):
+        require_absent(admission, forbidden, label)
+
+    for signature, label in (
+        ("async fn send_bytes_raw(&mut self, bytes: Bytes)", "independent ordinary send"),
+        (
+            "async fn send_bytes_raw_with_receipt(&mut self, bytes: Bytes)",
+            "independent tracked send",
+        ),
+    ):
+        send = extract_braced_item(tcp, signature, label)
+        require_order(
+            send,
+            (
+                "k.writer_admission.reserve_plaintext(bytes.len())?",
+                "k.seal.seal(&bytes)",
+                "sealed.len() != reservation.ciphertext_bytes",
+                ".try_send(WriterCommand::Frame {",
+                "reservation,",
+            ),
+            f"{label} reserve-before-seal ownership",
+        )
+    if tcp.count("k.writer_admission.reserve_plaintext(bytes.len())?") != 2:
+        raise VerificationError("independent keyed sends do not both reserve before sealing")
+
+    set_keys = extract_braced_item(tcp, "pub fn set_session_keys(", "independent keying transition")
+    require_order(
+        set_keys,
+        (
+            "framed.codec().max_packet_length() != usize::MAX",
+            "WriterAdmission::new(framed.codec().max_packet_length())",
+            "let (sink, read) = framed.split();",
+            "tokio::spawn(writer_task(sink, writer_rx))",
+            "writer_admission,",
+        ),
+        "independent engaged-ceiling admission construction",
+    )
+    writer = extract_braced_item(tcp, "async fn writer_task(", "independent sole writer")
+    require_order(
+        writer,
+        (
+            "reservation,",
+            "sink.send(bytes).await",
+            "if failed {",
+            "drop(sink);",
+            "drop(reservation);",
+            "completion.send(result)",
+            "return;",
+            "drop(reservation);",
+            "completion.send(result)",
+        ),
+        "independent reservation lifetime across sink success and failure",
+    )
+    if writer.count("drop(reservation);") != 2:
+        raise VerificationError("independent writer reservation release count is not exact")
+    poison = extract_braced_item(
+        tcp,
+        "fn poison_and_retire_writer(&mut self)",
+        "independent writer retirement",
+    )
+    require_order(
+        poison,
+        (
+            "self.poison = true;",
+            "k.writer_admission.close();",
+            "k.writer.abort();",
+        ),
+        "independent fatal close-before-abort",
+    )
+    if tcp.count("self.poison_and_retire_writer();") != 4:
+        raise VerificationError("independent fatal transport paths do not share writer retirement")
+    flush = extract_braced_item(tcp, "pub async fn flush_writer(", "independent writer drain")
+    require_order(
+        flush,
+        (
+            "let result = match &mut self.state",
+            "let keyed_result: ResultType<()> = async {",
+            "writer_tx.send(WriterCommand::Drain(ack_tx))",
+            "tokio::time::timeout(WRITER_DRAIN_TIMEOUT, ack_rx)",
+            "}\n                .await;\n                keyed_result",
+            "if result.is_err()",
+            "self.poison_and_retire_writer();",
+        ),
+        "independent keyed drain errors reach fatal retirement",
+    )
+
+    for test in (
+        "r_s11gx_writer_admission_checks_size_count_and_bytes_before_ownership",
+        "r_s11gx_active_and_queued_frames_share_one_exact_budget_until_abort",
+        "r_s11gx_failed_drain_retires_writer_admission",
+        "r_s11gx_oversized_plaintext_is_rejected_before_peer_delivery",
+    ):
+        require_text(tcp, test, f"independent {test} regression")
+    for marker, label in (
+        ("keyed.writer_tx.capacity() == WRITER_CHANNEL_CAP", "independent dequeued-active regression"),
+        (
+            "admission.frames.available_permits() == WRITER_CHANNEL_CAP - 1",
+            "independent active frame permit regression",
+        ),
+        ("assert_eq!(receiver.recv_counter(), 0);", "independent oversize peer regression"),
+    ):
+        require_text(tcp, marker, label)
+
+    require_text(
+        sources["bytes_codec_source"],
+        "if n > self.max_packet_length",
+        "independent receive frame ceiling",
+    )
+    require_text(
+        sources["cpace_source"],
+        "pub const MAX_SESSION_PACKET: usize = 32 * 1024 * 1024;",
+        "independent production packet ceiling",
+    )
+    for key, text, label in (
+        ("transport_security", "Admission is reserved before secretbox sealing", "transport admission claim"),
+        ("transport_security", "active sink frame still owns its permits", "transport active ownership claim"),
+        ("crypto_audit_scope", "WriterAdmission", "external crypto scope anchor"),
+        ("verify", "python3 scripts/verify-keyed-writer-budget.py --repo . --self-test", "shared keyed-writer gate"),
+        ("verify", "cargo test -p hbb_common --lib r_s11gx_ --color never", "shared keyed-writer test"),
+        ("apple", "python3 scripts/verify-keyed-writer-budget.py --repo . --self-test", "Apple keyed-writer gate"),
+        ("requirements", '<div class="req"><span class="id">R-T18</span>', "R-T18 requirement"),
+        ("requirements", '<div class="req"><span class="id">R-S11gx</span>', "R-S11gx requirement"),
+        ("requirements", "<tr><td>359</td>", "Appendix C #359"),
+        ("hardening", "### R-S11gx/R-S11e-236 — exact keyed-writer count-and-byte ownership", "R-S11gx ledger"),
+    ):
+        require_text(sources[key], text, label)
+    require_text(
+        sources["workspace_verifier"],
+        '            "keyed_writer_budget_verifier": (\n'
+        '                repo / "scripts/verify-keyed-writer-budget.py"\n'
+        '            ).read_text(encoding="utf-8"),',
+        "keyed-writer independent source binding",
+    )
+
+    workspace_module = ast.parse(sources["workspace_verifier"])
+    validate_sources_function = next(
+        (
+            node
+            for node in workspace_module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "validate_sources"
+        ),
+        None,
+    )
+    if validate_sources_function is None:
+        raise VerificationError("keyed-writer independent workspace dispatch is absent")
+    dispatches = [
+        node
+        for node in validate_sources_function.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "validate_keyed_writer_budget_contract"
+    ]
+    if len(dispatches) != 1:
+        raise VerificationError("keyed-writer independent dispatch must occur exactly once")
 
 
 def validate_desktop_texture_lifecycle_contract(sources):
@@ -28207,6 +28464,7 @@ def validate_android_voice_call_ownership_contract(sources):
         (
             "Frame {",
             "bytes: Bytes,",
+            "reservation: WriterFrameReservation,",
             "completion: Option<oneshot::Sender<io::Result<()>>>",
             "Drain(oneshot::Sender<io::Result<()>>)",
         ),
@@ -28218,8 +28476,12 @@ def validate_android_voice_call_ownership_contract(sources):
             "pub async fn send_with_receipt",
             "self.send_bytes_raw_with_receipt(bytes).await",
             "async fn writer_task(",
-            "WriterCommand::Frame { bytes, completion }",
+            "WriterCommand::Frame {",
+            "bytes,",
+            "reservation,",
+            "completion,",
             "let result = sink.send(bytes).await;",
+            "drop(reservation);",
             "completion.send(result)",
         ),
         "tracked send reaches exact sole-writer result source",
@@ -47022,6 +47284,7 @@ def validate_sources(sources):
     validate_viewer_cursor_mailbox_contract(sources)
     validate_viewer_cursor_resources_contract(sources)
     validate_controlled_control_egress_contract(sources)
+    validate_keyed_writer_budget_contract(sources)
     validate_display_selection_finality_contract(sources)
     validate_desktop_texture_lifecycle_contract(sources)
     validate_android_voice_call_ownership_contract(sources)
@@ -66637,10 +66900,12 @@ def run_source_mutations(sources):
             "    validate_viewer_cursor_mailbox_contract(sources)\n"
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
+            "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "    validate_viewer_cursor_mailbox_contract(sources)\n"
             "    validate_viewer_cursor_resources_contract_disabled(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
+            "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "cursor-resource independent workspace dispatch must occur exactly once",
         ),
@@ -66649,11 +66914,13 @@ def run_source_mutations(sources):
             "    validate_viewer_cursor_mailbox_contract(sources)\n"
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
+            "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)\n"
             "    validate_desktop_texture_lifecycle_contract(sources)",
             "    validate_viewer_cursor_mailbox_contract(sources)\n"
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
+            "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract_disabled(sources)\n"
             "    validate_desktop_texture_lifecycle_contract(sources)",
             "display-selection independent workspace dispatch",
@@ -66663,11 +66930,13 @@ def run_source_mutations(sources):
             '"workspace", "    validate_viewer_cursor_mailbox_contract(sources)\\n'
             '    validate_viewer_cursor_resources_contract(sources)\\n'
             '    validate_controlled_control_egress_contract(sources)\\n'
+            '    validate_keyed_writer_budget_contract(sources)\\n'
             '    validate_display_selection_finality_contract(sources)\\n'
             '    validate_desktop_texture_lifecycle_contract(sources)",',
             '"workspace", "    validate_viewer_cursor_mailbox_contract(sources)\\n'
             '    validate_viewer_cursor_resources_contract_disabled(sources)\\n'
             '    validate_controlled_control_egress_contract(sources)\\n'
+            '    validate_keyed_writer_budget_contract(sources)\\n'
             '    validate_display_selection_finality_contract(sources)\\n'
             '    validate_desktop_texture_lifecycle_contract(sources)",',
             "display-selection current independent dispatch fixture",
@@ -66862,11 +67131,165 @@ def run_source_mutations(sources):
             "workspace_verifier",
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
+            "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract_disabled(sources)\n"
+            "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "controlled-egress independent workspace dispatch",
+        ),
+        (
+            "tcp_source",
+            "const WRITER_CHANNEL_CAP: usize = 512;",
+            "const WRITER_CHANNEL_CAP: usize = usize::MAX;",
+            "independent frame ceiling",
+        ),
+        (
+            "tcp_source",
+            "const WRITER_RETAINED_CIPHERTEXT_PACKETS: usize = 2;",
+            "const WRITER_RETAINED_CIPHERTEXT_PACKETS: usize = 8;",
+            "independent retained-byte ceiling",
+        ),
+        (
+            "tcp_source",
+            ".checked_add(sodiumoxide::crypto::secretbox::MACBYTES)",
+            ".saturating_add(sodiumoxide::crypto::secretbox::MACBYTES)",
+            "independent checked ciphertext size",
+        ),
+        (
+            "tcp_source",
+            "if ciphertext_bytes > self.max_ciphertext_bytes",
+            "if false",
+            "independent nonblocking count-and-byte admission",
+        ),
+        (
+            "tcp_source",
+            ".try_acquire_many_owned(permit_count)",
+            ".acquire_many_owned(permit_count).await",
+            "independent nonblocking count-and-byte admission",
+        ),
+        (
+            "tcp_source",
+            "reservation: WriterFrameReservation,",
+            "// reservation owner removed",
+            "independent command reservation owner",
+        ),
+        (
+            "tcp_source",
+            "k.writer_admission.reserve_plaintext(bytes.len())?;",
+            "k.writer_admission.reserve_plaintext(0)?;",
+            "reserve-before-seal ownership",
+        ),
+        (
+            "tcp_source",
+            "drop(sink);\n                    drop(reservation);",
+            "drop(reservation);\n                    drop(sink);",
+            "independent reservation lifetime across sink success and failure",
+        ),
+        (
+            "tcp_source",
+            "}\n                .await;\n                keyed_result\n            }",
+            "}\n                .await?;\n                Ok(())\n            }",
+            "independent keyed drain errors reach fatal retirement",
+        ),
+        (
+            "tcp_source",
+            "fn r_s11gx_active_and_queued_frames_share_one_exact_budget_until_abort",
+            "fn active_frame_is_not_counted",
+            "independent r_s11gx_active_and_queued_frames_share_one_exact_budget_until_abort regression",
+        ),
+        (
+            "tcp_source",
+            "fn r_s11gx_failed_drain_retires_writer_admission",
+            "fn failed_drain_keeps_writer_admission_open",
+            "independent r_s11gx_failed_drain_retires_writer_admission regression",
+        ),
+        (
+            "bytes_codec_source",
+            "if n > self.max_packet_length",
+            "if false",
+            "independent receive frame ceiling",
+        ),
+        (
+            "cpace_source",
+            "pub const MAX_SESSION_PACKET: usize = 32 * 1024 * 1024;",
+            "pub const MAX_SESSION_PACKET: usize = usize::MAX;",
+            "independent production packet ceiling",
+        ),
+        (
+            "transport_security",
+            "Admission is reserved before secretbox sealing",
+            "Secretbox sealing precedes admission",
+            "transport admission claim",
+        ),
+        (
+            "crypto_audit_scope",
+            "WriterAdmission",
+            "WriterCapacity",
+            "external crypto scope anchor",
+        ),
+        (
+            "keyed_writer_budget_verifier",
+            '            ".try_acquire_many_owned(permit_count)",',
+            '            ".acquire_many_owned(permit_count).await",',
+            "focused nonblocking byte ownership",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-keyed-writer-budget.py --repo . --self-test",
+            "true # keyed writer verifier disabled",
+            "shared keyed-writer gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-keyed-writer-budget.py --repo . --self-test",
+            "true # keyed writer verifier disabled",
+            "Apple keyed-writer gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-T18</span>',
+            '<div class="req"><span class="id">R-T18-disabled</span>',
+            "R-T18 requirement",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11gx</span>',
+            '<div class="req"><span class="id">R-S11gx-disabled</span>',
+            "R-S11gx requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>359</td>",
+            "<tr><td>359-disabled</td>",
+            "Appendix C #359",
+        ),
+        (
+            "hardening",
+            "### R-S11gx/R-S11e-236 — exact keyed-writer count-and-byte ownership",
+            "### R-S11gx-disabled/R-S11e-236 — exact keyed-writer count-and-byte ownership",
+            "R-S11gx ledger",
+        ),
+        (
+            "workspace_verifier",
+            '            "keyed_writer_budget_verifier": (\n'
+            '                repo / "scripts/verify-keyed-writer-budget.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "keyed_writer_budget_verifier_disabled": (\n'
+            '                repo / "scripts/verify-keyed-writer-budget.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "keyed-writer independent source binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_controlled_control_egress_contract(sources)\n"
+            "    validate_keyed_writer_budget_contract(sources)\n"
+            "    validate_display_selection_finality_contract(sources)",
+            "    validate_controlled_control_egress_contract(sources)\n"
+            "    validate_keyed_writer_budget_contract_disabled(sources)\n"
+            "    validate_display_selection_finality_contract(sources)",
+            "keyed-writer independent dispatch",
         ),
         (
             "desktop_texture_lifecycle_verifier",
@@ -71199,21 +71622,21 @@ def run_source_mutations(sources):
         ),
         (
             "tcp_source",
-            "completion: Option<oneshot::Sender<io::Result<()>>>,",
-            "completion: Option<oneshot::Sender<()>> ,",
+            "completion: Option<oneshot::Sender<io::Result<()>>>,\n    },\n    Drain(oneshot::Sender<io::Result<()>>)",
+            "completion: Option<oneshot::Sender<()>>,\n    },\n    Drain(oneshot::Sender<io::Result<()>>)",
             "exact receipt on existing writer FIFO source",
         ),
         (
             "tcp_source",
             "let result = sink.send(bytes).await;",
             "let result = Ok(());",
-            "tracked send reaches exact sole-writer result source",
+            "independent reservation lifetime across sink success and failure",
         ),
         (
             "tcp_source",
             "let _ = completion.send(result);",
             "drop(completion);",
-            "tracked send reaches exact sole-writer result source",
+            "independent reservation lifetime across sink success and failure",
         ),
         (
             "stream_source",
@@ -79941,6 +80364,18 @@ def main():
                 encoding="utf-8"
             ),
             "tcp_source": (repo / "libs/hbb_common/src/tcp.rs").read_text(encoding="utf-8"),
+            "bytes_codec_source": (repo / "libs/hbb_common/src/bytes_codec.rs").read_text(
+                encoding="utf-8"
+            ),
+            "cpace_source": (repo / "libs/hbb_common/src/cpace.rs").read_text(
+                encoding="utf-8"
+            ),
+            "transport_security": (repo / "docs/TRANSPORT-SECURITY.md").read_text(
+                encoding="utf-8"
+            ),
+            "crypto_audit_scope": (repo / "docs/CRYPTO-AUDIT-SCOPE.md").read_text(
+                encoding="utf-8"
+            ),
             "stream_source": (repo / "libs/hbb_common/src/stream.rs").read_text(
                 encoding="utf-8"
             ),
@@ -80326,6 +80761,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "controlled_control_egress_verifier": (
                 repo / "scripts/verify-controlled-control-egress.py"
+            ).read_text(encoding="utf-8"),
+            "keyed_writer_budget_verifier": (
+                repo / "scripts/verify-keyed-writer-budget.py"
             ).read_text(encoding="utf-8"),
             "display_selection_finality_verifier": (
                 repo / "scripts/verify-display-selection-finality.py"

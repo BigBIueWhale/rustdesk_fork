@@ -112,17 +112,27 @@ advance the counter.
   (`FramedStream::set_session_keys` / `writer_task`). The stream is never
   wrapped in `Arc<Mutex<…>>`; two concurrent
   writers (which would interleave nonces) are structurally impossible.
-* **Non-blocking enqueue + full ⇒ drop (R-T3).** `FramedStream::send_bytes`
-  seals, then `try_send`s into a **bounded** channel
-  (`WRITER_CHANNEL_CAP = 512`, in `tcp.rs`). A full channel means the peer can't
-  drain — the connection is dropped rather than blocking the run-loop inside a
-  `select!`. This bounded channel *replaces* the old per-write timeout as the
-  back-pressure liveness signal. Outbound frame sizes are server-generated
-  (encoder-bounded, not attacker-controlled), so the buffer is not an
-  attacker-driven memory lever.
-* **Poison (R-T2).** Any send/recv error sets `FramedStream::poison`;
-  a poisoned stream refuses all further sends — so a later code path cannot
-  reuse the stream and re-flush under an advanced nonce.
+* **Non-blocking exact admission + refusal ⇒ drop (R-T3 / R-T18).**
+  `FramedStream::send_bytes` computes the checked secretbox ciphertext length
+  and validates it against the exact packet ceiling engaged at keying.
+  Admission is reserved before secretbox sealing, so an oversized or back-pressured frame
+  allocates no ciphertext and advances no nonce. One owned frame permit and the
+  exact ciphertext-byte permits then travel in `WriterCommand::Frame` and remain
+  held through `sink.send`: even after Tokio returns channel capacity at dequeue,
+  the active sink frame still owns its permits. Active plus queued retention is
+  therefore at most 512 frames and two engaged maximum ciphertext packets. Both
+  acquisitions and the FIFO handoff use non-blocking `try_*` operations; any
+  size, count, byte, closed-admission, or channel refusal poisons the stream,
+  closes admission, and aborts the exact writer rather than blocking the run-loop
+  inside a `select!`. On sink failure the encoded sink is dropped before its
+  reservation is released. This replaces the old count-only channel assumption;
+  the shared writer carries peer-influenced media, file, clipboard, tunnel, and
+  control traffic and is not trusted as an encoder-bounded server-only source.
+* **Poison (R-T2).** Any send/recv error calls the single
+  `poison_and_retire_writer` transition. A poisoned stream refuses all further
+  sends, keyed admission closes, and the exact writer is aborted — so a later
+  code path cannot reuse the stream and re-flush under an advanced nonce or
+  retain active/queued ciphertext until outer teardown happens to run.
 * **Drop aborts the writer (`FramedStream::drop`).** Dropping the `FramedStream`
   aborts the writer task immediately, so a write parked on a dead/back-pressured
   socket cannot leak the task (and its half of the split socket) past the

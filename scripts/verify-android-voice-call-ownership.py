@@ -1237,8 +1237,8 @@ def validate(sources: Dict[str, str]) -> None:
     require_count(
         flutter_ffi,
         "client_owner_id: SessionID,",
-        7,
-        "all authored Rust add/attach/start/refresh/test dual-identity entries",
+        9,
+        "all authored Rust dual-identity bridge entries",
     )
     require(
         flutter_ffi,
@@ -1845,13 +1845,13 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         cursor_clear,
         (
+            "retireCursorResources();",
             "_x = -10000;",
             "_y = -10000;",
             '_id = "-1";',
             "_windowRect = null;",
             "_remoteWindowCoords.clear();",
             "_blockedRects.clear();",
-            "_cacheKeys.clear();",
         ),
         "complete reused cursor-state reset",
     )
@@ -2405,7 +2405,7 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "service_generation: u64",
             "FlutterHandler { service_generation }",
-            "start_listen(cm, rx, tx)",
+            "start_listen(cm, rx, terminal, tx)",
         ),
         "connection generation transfer into callback handler",
     )
@@ -2430,7 +2430,12 @@ def validate(sources: Dict[str, str]) -> None:
         require_count(server_connection, helper, expected_count, label)
     require(
         server_connection,
-        "start_channel(rx_to_cm, tx_from_cm, conn.android_server_generation)",
+        "start_channel(\n"
+        "            rx_to_cm,\n"
+        "            cm_terminal_rx,\n"
+        "            tx_from_cm,\n"
+        "            conn.android_server_generation,\n"
+        "        )",
         "generation-bound connection-manager channel start",
     )
     direct_service = sources["direct_service"]
@@ -4104,6 +4109,7 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "Frame {",
             "bytes: Bytes,",
+            "reservation: WriterFrameReservation,",
             "completion: Option<oneshot::Sender<io::Result<()>>>",
             "Drain(oneshot::Sender<io::Result<()>>)",
         ),
@@ -4120,7 +4126,7 @@ def validate(sources: Dict[str, str]) -> None:
             "msg.write_to_bytes()?",
             "self.poison",
             "self.send_bytes_raw_with_receipt(bytes).await",
-            "self.poison = true;",
+            "self.poison_and_retire_writer();",
         ),
         "tracked transport send preserves fatal poison ownership",
     )
@@ -4128,11 +4134,18 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         writer_task,
         (
-            "WriterCommand::Frame { bytes, completion }",
+            "WriterCommand::Frame {",
+            "bytes,",
+            "reservation,",
+            "completion,",
             "let result = sink.send(bytes).await;",
             "let failed = result.is_err();",
-            "completion.send(result)",
             "if failed",
+            "drop(reservation);",
+            "completion.send(result)",
+            "return;",
+            "drop(reservation);",
+            "completion.send(result)",
         ),
         "exact sink result completes tracked writer receipt",
     )
@@ -4575,7 +4588,7 @@ def validate(sources: Dict[str, str]) -> None:
     require_order(
         connection_start,
         (
-            "let (tx, mut rx) = mpsc::unbounded_channel",
+            "let (tx, mut rx) = control_egress_channel();",
             "let (tx_video, rx_video) = video_egress_channel();",
             "let (tx_audio, mut rx_audio) = audio_egress_channel();",
             "ConnInner::with_audio(id, Some(tx), Some(tx_video), Some(tx_audio))",
@@ -4583,11 +4596,13 @@ def validate(sources: Dict[str, str]) -> None:
             "instant.elapsed() > Duration::from_secs(1)",
             "Some(message::Union::AudioFrame(_))",
             "conn.stream.send(&value as &Message).await",
-            "Some((_instant, value)) = rx.recv()",
+            "item = rx.recv()",
+            "ControlEgressItem::Message(message) => message",
+            "ControlEgressItem::Failed(failure)",
         ),
         "controlled bounded audio mailbox to sole stream writer",
     )
-    general_start = connection_start.index("Some((_instant, value)) = rx.recv()")
+    general_start = connection_start.index("item = rx.recv()")
     general_end = connection_start.index("_ = second_timer.tick()", general_start)
     forbid(
         connection_start[general_start:general_end],
@@ -4595,6 +4610,7 @@ def validate(sources: Dict[str, str]) -> None:
         "audio handling in general unbounded connection queue",
     )
     for retired in (
+        "let (tx, mut rx) = mpsc::unbounded_channel",
         "let (tx_audio, mut rx_audio) = mpsc::unbounded_channel",
         "Some((instant, value)) = rx.recv()",
     ):
@@ -5622,13 +5638,35 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("server_connection", "switch_display: Option<(Instant, Arc<Message>)>,", "switch_display: Vec<(Instant, Arc<Message>)>,", "one pending display switch"),
     ("server_connection", "displays: HashMap<usize, VideoDisplayEgress>,", "displays: Vec<VideoDisplayEgress>,", "display-keyed video mailbox"),
     ("server_connection", "awaiting_independent: true,", "awaiting_independent: false,", "fresh display awaits an independent video sequence"),
-    ("server_connection", "self.wake.try_send(())", "self.wake.send(())", "nonblocking video mailbox wake"),
+    (
+        "server_connection",
+        "match self.wake.try_send(()) {\n"
+        "            Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => true,",
+        "match self.wake.send(()) {\n"
+        "            Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => true,",
+        "nonblocking video mailbox wake",
+    ),
     ("server_connection", "let independent = crate::client::io_loop::starts_video_sequence(frame);", "let independent = true;", "GOP-aware video classification"),
     ("server_connection", "slot.awaiting_independent = true;", "slot.awaiting_independent = false;", "dependent replacement closes GOP"),
     ("server_connection", "slot.pending = Some(PendingVideoEgress::RefreshRequired);", "slot.pending = Some(PendingVideoEgress::Frame(queued));", "dependent replacement requests independent sequence"),
     ("server_connection", "if !self.wake_receiver() && !retired.contains(&identity) {", "if false {", "closed video receiver retires stale-subscriber enqueue"),
     ("server_connection", "state.switch_display.take()", "state.ready_displays.pop_front().map(|_| unreachable!())", "display switch precedes video"),
-    ("server_connection", "self.wake.recv().await?", "self.wake.try_recv().ok()?", "event-driven video mailbox receive"),
+    (
+        "server_connection",
+        "pub(crate) async fn recv(&mut self) -> Option<VideoEgressItem> {\n"
+        "        loop {\n"
+        "            if let Some(item) = self.take_next() {\n"
+        "                return Some(item);\n"
+        "            }\n"
+        "            self.wake.recv().await?;",
+        "pub(crate) async fn recv(&mut self) -> Option<VideoEgressItem> {\n"
+        "        loop {\n"
+        "            if let Some(item) = self.take_next() {\n"
+        "                return Some(item);\n"
+        "            }\n"
+        "            self.wake.try_recv().ok()?;",
+        "event-driven video mailbox receive",
+    ),
     ("server_connection", "fn with_connection_owner(mut self, connection_id: i32) -> Self", "fn with_connection_owner(mut self, _connection_id: i32) -> Self", "exact video receiver connection owner"),
     ("server_connection", "video_service::retire_video_frame_connection(connection_id);", "video_service::retire_video_frame_connection(connection_id + 1);", "video receiver exact-owner retirement"),
     ("server_connection", "let mut rx_video = rx_video.with_connection_owner(id);", "let mut rx_video = rx_video;", "video receiver connection-owner installation"),
@@ -5715,10 +5753,39 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("server_connection", "state.frame = Some(queued);", "drop(queued);", "latest audio frame replacement"),
     ("server_connection", "state.format = Some(queued);", "drop(queued);", "latest audio format replacement"),
     ("server_connection", "state.frame = None;", "// old-generation frame retained", "audio format generation retirement"),
-    ("server_connection", "self.wake.try_send(())", "self.wake.send(())", "nonblocking audio wake"),
-    ("server_connection", "Err(mpsc::error::TrySendError::Full(_))", "Err(mpsc::error::TrySendError::Closed(_))", "coalesced full audio wake"),
+    (
+        "server_connection",
+        "match self.wake.try_send(()) {\n"
+        "            Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}",
+        "match self.wake.send(()) {\n"
+        "            Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}",
+        "nonblocking audio wake",
+    ),
+    (
+        "server_connection",
+        "match self.wake.try_send(()) {\n"
+        "            Ok(()) | Err(mpsc::error::TrySendError::Full(_)) => {}",
+        "match self.wake.try_send(()) {\n"
+        "            Ok(()) | Err(mpsc::error::TrySendError::Closed(_)) => {}",
+        "coalesced full audio wake",
+    ),
     ("server_connection", "state.format.take().or_else(|| state.frame.take())", "state.frame.take().or_else(|| state.format.take())", "format-before-frame dequeue"),
-    ("server_connection", "self.wake.recv().await?", "self.wake.try_recv().ok()?", "event-driven async audio receive"),
+    (
+        "server_connection",
+        "pub(crate) async fn recv(&mut self) -> Option<(Instant, Arc<Message>)> {\n"
+        "        loop {\n"
+        "            if let Some(queued) = self.take_next() {\n"
+        "                return Some(queued);\n"
+        "            }\n"
+        "            self.wake.recv().await?;",
+        "pub(crate) async fn recv(&mut self) -> Option<(Instant, Arc<Message>)> {\n"
+        "        loop {\n"
+        "            if let Some(queued) = self.take_next() {\n"
+        "                return Some(queued);\n"
+        "            }\n"
+        "            self.wake.try_recv().ok()?;",
+        "event-driven async audio receive",
+    ),
     ("server_connection", "self.wake.blocking_recv()?", "self.wake.try_recv().ok()?", "event-driven blocking audio receive"),
     ("server_connection", "impl Drop for AudioEgressReceiver", "impl AudioEgressReceiver", "receiver retained-state retirement"),
     ("server_connection", 'log::error!("audio egress state was poisoned")', 'log::debug!("audio egress state was poisoned")', "audio poison diagnostic"),

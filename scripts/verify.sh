@@ -9497,6 +9497,7 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gu_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gv_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gw_ --color never
+"${RUN[@]}" cargo test -p hbb_common --lib r_s11gx_ --color never
 if python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test; then
   echo "  ok  R-S11ew/R-S11fr Flutter software RGBA publication is exact-session/token-owned, bounded, latest-wins, recoverable, commit-ordered, and pointer-free"
 else
@@ -9519,6 +9520,12 @@ if python3 scripts/verify-controlled-control-egress.py --repo . --self-test; the
   echo "  ok  R-S11gw controlled-side synchronous service egress is ordered, bounded, and failure-visible"
 else
   echo "  FAIL R-S11gw: controlled-side service egress regained unbounded, reordered, oversized, silently dropped, or stranded state"
+  rc=1
+fi
+if python3 scripts/verify-keyed-writer-budget.py --repo . --self-test; then
+  echo "  ok  R-S11gx keyed writer admission owns exact active-plus-queued frame and ciphertext budgets before seal"
+else
+  echo "  FAIL R-S11gx: keyed writer regained oversize pre-seal allocation, count/byte retention, active-frame, or abort-finality debt"
   rc=1
 fi
 if python3 scripts/verify-display-selection-finality.py --repo . --self-test; then
@@ -12572,16 +12579,17 @@ fi
 # `seal` before the ciphertext is flushed; reusing a stream after a send error would re-flush
 # stale bytes under an advanced nonce and permanently desync the c2s direction. The poison flag
 # (the `poison: bool` field, after R-T3 restructured FramedStream to the keying-state machine) makes
-# "a send/recv error is fatal-to-the-connection" structural: send_bytes bails when poisoned and sets
-# it on any send error; next() returns EOF when poisoned and sets it on any read OR (now codec-fold)
-# decrypt/auth failure. Presence gate: the short-circuit guard (>=2 sites: send_bytes + next) and
-# the poison-set (>=2 sites: send error, and next's unified read/decrypt error).
+# "a send/recv error is fatal-to-the-connection" structural: send_bytes bails when poisoned, while
+# send, tracked send, drain, and receive errors all call one transition that poisons, closes keyed
+# admission, and aborts the exact writer. Presence gate: the short-circuit guard (>=2 sites:
+# send_bytes + next), one exact poison assignment, and four calls to the common retirement owner.
 r_t2_guard=$(grep -c 'if self.poison {' libs/hbb_common/src/tcp.rs 2>/dev/null || true)
 r_t2_set=$(grep -c 'self.poison = true' libs/hbb_common/src/tcp.rs 2>/dev/null || true)
-if [ "${r_t2_guard:-0}" -ge 2 ] && [ "${r_t2_set:-0}" -ge 2 ]; then
-  echo "  ok  R-T2 FramedStream poison flag present (guard x$r_t2_guard, poison-set x$r_t2_set)"
+r_t2_retire=$(grep -c 'self.poison_and_retire_writer();' libs/hbb_common/src/tcp.rs 2>/dev/null || true)
+if [ "${r_t2_guard:-0}" -ge 2 ] && [ "${r_t2_set:-0}" = 1 ] && [ "${r_t2_retire:-0}" = 4 ]; then
+  echo "  ok  R-T2 FramedStream poison and exact-writer retirement present (guard x$r_t2_guard, poison-set x$r_t2_set, retire x$r_t2_retire)"
 else
-  echo "  FAIL R-T2: poison flag incomplete (guard=$r_t2_guard need>=2, set=$r_t2_set need>=2)"; rc=1
+  echo "  FAIL R-T2: poison/writer retirement incomplete (guard=$r_t2_guard need>=2, set=$r_t2_set need=1, retire=$r_t2_retire need=4)"; rc=1
 fi
 # R-T5 (§20): decryption is FOLDED INTO the Framed-owned codec (SecretboxCodec) — decode()
 # reassembles ONE frame then authenticates+decrypts it, advancing read_seq INSIDE decode, so a
@@ -12718,7 +12726,8 @@ if [ -n "$r_t10_missing" ]; then
 else
   echo "  ok  R-T10 TCP keepalive set on accepted peer sockets (SockRef + TcpKeepalive, app deadline primary)"
 fi
-# R-T3 (§20): the dedicated WRITER TASK so the reader/control channels stay pollable DURING a write.
+# R-T3/R-T18 (§20): the dedicated WRITER TASK so the reader/control channels stay pollable DURING
+# a write, with exact active-plus-queued count and ciphertext admission owned before sealing.
 # set_session_keys splits the keyed Framed — the read half stays on the run-loop (decode + recv-AEAD),
 # the write half moves into a SINGLE dedicated writer task (the sole sink consumer, R-T8) fed an mpsc of
 # ALREADY-SEALED frames. The run-loop's send_bytes SEALS on the single-producer enqueue side (the nonce
@@ -12733,6 +12742,8 @@ grep -q 'const WRITER_CHANNEL_CAP'       libs/hbb_common/src/tcp.rs || r_t3_miss
 grep -q 'try_send(WriterCommand::Frame'  libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing nonblocking-enqueue"
 grep -q 'TrySendError::Full'             libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing full-drops-connection"
 grep -q 'k.seal.seal(&bytes)'            libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing producer-side-seal"
+grep -q 'k.writer_admission.reserve_plaintext(bytes.len())' libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing pre-seal-admission"
+grep -q 'reservation: WriterFrameReservation' libs/hbb_common/src/tcp.rs || r_t3_missing="$r_t3_missing exact-frame-reservation"
 # R-T2's per-write deadline is REPLACED by the channel bound — the keyed session must NOT install a
 # set_send_timeout (a stale one would be a misleading no-op now that the keyed path uses try_send).
 if grep -q 'set_send_timeout' src/server/connection.rs libs/hbb_common/src/stream.rs; then

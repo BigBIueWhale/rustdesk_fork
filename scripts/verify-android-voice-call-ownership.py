@@ -2845,9 +2845,11 @@ def validate(sources: Dict[str, str]) -> None:
         client,
         "struct ClientClipboardWorker {\n"
         "    stop_requested: Arc<AtomicBool>,\n"
+        "    #[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n"
+        "    subscription: clipboard_listener::ClipboardSubscription,\n"
         "    thread: std::thread::JoinHandle<()>,\n"
         "}",
-        "clipboard stop-and-join authority pair",
+        "clipboard stop, subscription, and join authority",
     )
     acquire_clipboard = extract_item(
         client,
@@ -2891,7 +2893,7 @@ def validate(sources: Dict[str, str]) -> None:
             "let worker = state.worker.take()?;",
             "worker.stop_requested.store(true, Ordering::Release);",
             "state.worker_transition = true;",
-            "clipboard_listener::unsubscribe(Self::CLIENT_CLIPBOARD_NAME);",
+            "worker.subscription.close();",
             "Some(worker)",
         ),
         "clipboard admission close before exact-handle transfer",
@@ -5510,6 +5512,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("client", "if !self.active.remove(&lease)", "if !self.active.contains(&lease)", "clipboard exact lease retirement"),
     ("client", "worker: Option<ClientClipboardWorker>,", "worker: Option<()>,", "clipboard retained worker owner"),
     ("client", "worker.stop_requested.store(true, Ordering::Release);", "worker.stop_requested.store(true, Ordering::Relaxed);", "clipboard stop publication"),
+    ("client", "worker.subscription.close();", "// clipboard listener admission left open", "clipboard exact subscription retirement"),
     ("client", "state.worker_transition = true;", "state.worker_transition = false;", "clipboard join transition ownership"),
     ("client", "state.pending_start = None;\n            if state.worker_transition", "if state.worker_transition", "clipboard retired-start cancellation"),
     ("client", "on_complete: Some(MediaWorkerCompletion::ClientClipboard)", "on_complete: None", "clipboard completion callback authority"),

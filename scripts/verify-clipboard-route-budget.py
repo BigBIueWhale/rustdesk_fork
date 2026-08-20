@@ -478,7 +478,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("requirements", '<div class="req"><span class="id">R-S11gz</span>', '<div class="req"><span class="id">R-S11gz-disabled</span>', "normative requirement"),
     ("requirements", "<tr><td>361</td>", "<tr><td>361-disabled</td>", "Appendix disposition"),
     ("hardening", "### R-S11gz/R-S11e-238 — exact bounded file-clipboard route ownership", "### R-S11gz-disabled/R-S11e-238 — exact bounded file-clipboard route ownership", "hardening ledger"),
-    ("workspace", "    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)", "    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_route_budget_contract_disabled(sources)\n    validate_keyed_writer_budget_contract(sources)", "independent dispatch"),
+    ("workspace", "    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract(sources)\n    validate_keyed_writer_budget_contract(sources)", "    validate_cm_egress_budget_contract(sources)\n    validate_clipboard_listener_ownership_contract(sources)\n    validate_clipboard_route_budget_contract_disabled(sources)\n    validate_keyed_writer_budget_contract(sources)", "independent dispatch"),
 )
 
 

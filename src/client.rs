@@ -20,8 +20,7 @@ use std::{
     ops::Deref,
     sync::{
         atomic::{AtomicBool, Ordering},
-        mpsc::{self, RecvTimeoutError},
-        Arc, Condvar, Mutex, RwLock,
+        mpsc, Arc, Condvar, Mutex, RwLock,
     },
 };
 use uuid::Uuid;
@@ -199,6 +198,8 @@ impl ClipboardLeaseSet {
 #[cfg(not(target_os = "ios"))]
 struct ClientClipboardWorker {
     stop_requested: Arc<AtomicBool>,
+    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    subscription: clipboard_listener::ClipboardSubscription,
     thread: std::thread::JoinHandle<()>,
 }
 
@@ -536,14 +537,15 @@ impl Client {
         let context = state.pending_start.take()?;
         #[cfg(feature = "flutter")]
         let _ = context;
-        let (tx_cb_result, rx_cb_result) = mpsc::channel();
-        if let Err(e) =
-            clipboard_listener::subscribe(Self::CLIENT_CLIPBOARD_NAME.to_owned(), tx_cb_result)
-        {
-            log::error!("Failed to subscribe clipboard listener: {}", e);
-            state.pending_start = Some(context);
-            return None;
-        }
+        let (subscription, rx_cb_result) =
+            match clipboard_listener::subscribe(Self::CLIENT_CLIPBOARD_NAME.to_owned()) {
+                Ok(subscription) => subscription,
+                Err(e) => {
+                    log::error!("Failed to subscribe clipboard listener: {}", e);
+                    state.pending_start = Some(context);
+                    return None;
+                }
+            };
 
         let (tx_started, rx_started) = if report_started {
             let (sender, receiver) = unbounded_channel();
@@ -573,38 +575,34 @@ impl Client {
                         break;
                     }
                     match rx_cb_result.recv_timeout(Duration::from_millis(CLIPBOARD_INTERVAL)) {
-                        Ok(CallbackResult::Next) => {
+                        Some(CallbackResult::Next) => {
                             if worker_stop_requested.load(Ordering::Acquire) {
                                 break;
                             }
                             handler.check_clipboard();
                         }
-                        Ok(CallbackResult::Stop) => {
+                        Some(CallbackResult::Stop) => {
                             log::debug!("Clipboard listener stopped");
                             break;
                         }
-                        Ok(CallbackResult::StopWithError(err)) => {
+                        Some(CallbackResult::StopWithError(err)) => {
                             log::error!("Clipboard listener stopped with error: {}", err);
                             break;
                         }
-                        Err(RecvTimeoutError::Timeout) => {}
-                        Err(RecvTimeoutError::Disconnected) => {
-                            log::error!("Clipboard listener disconnected");
-                            break;
-                        }
+                        None => {}
                     }
                 }
                 log::info!("Stop client clipboard loop");
             }) {
             Ok(thread) => thread,
             Err(err) => {
-                clipboard_listener::unsubscribe(Self::CLIENT_CLIPBOARD_NAME);
                 log::error!("Failed to start client clipboard worker: {err}");
                 return None;
             }
         };
         state.worker = Some(ClientClipboardWorker {
             stop_requested,
+            subscription,
             thread,
         });
         rx_started
@@ -663,7 +661,7 @@ impl Client {
         worker.stop_requested.store(true, Ordering::Release);
         state.worker_transition = true;
         #[cfg(not(target_os = "android"))]
-        clipboard_listener::unsubscribe(Self::CLIENT_CLIPBOARD_NAME);
+        worker.subscription.close();
         Some(worker)
     }
 

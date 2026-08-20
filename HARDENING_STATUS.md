@@ -25613,12 +25613,117 @@ obligations. This source slice inspects or changes no host RustDesk process, con
 service, listener, firewall/network state, VM, Android device/service, unrelated workload,
 or OS privilege boundary.
 
+### R-S11hb/R-S11e-240 — exact bounded native clipboard-listener ownership (2026-08-20)
+
+**SOURCE IMPLEMENTED; CONFINED SOURCE/MUTATION VERIFICATION PASSED; EXACT
+RUST/NATIVE, DEVICE, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE OPEN.** Platforms:
+the shared native clipboard-master path compiled on Windows, Linux, and macOS. Android
+does not compile this module; its intentionally persistent `MainService` and separately
+owned outgoing clipboard poller are unchanged. Surface: native operating-system
+clipboard-change callback -> shared listener fan-out -> viewer and controlled clipboard
+workers.
+
+Read-only source tracing found that every native change callback sent a payloadless
+`CallbackResult::Next` into one standard unbounded channel per subscriber. The viewer
+and controlled consumers did not consume an event payload; after dequeue they reread the
+then-current native clipboard. A callback burst or slow clipboard inspection could
+therefore retain an unbounded count of obsolete readiness notifications. The same
+listener inserted a subscriber before master initialization but did not roll it back
+when initialization failed. Controlled-side `StopWithError` used `bail!` before the
+manual unsubscribe statement, leaving its subscription behind, while cleanup by name
+alone had no generation with which to reject a stale owner. A successfully initialized
+master that later returned logged the outcome but did not wake its consumers. These are
+source-proven shared desktop resource, ABA, and finality defects consistent with
+cleanup-mediated recovery. They are not proof that unidentified weeks-old Android,
+Windows, or Debian artifacts contained or exercised this path and are not a causation
+claim for the reported display-only delay.
+
+The callback queue is replaced by a mutex-owned state containing one ordinary
+`change_pending` bit, one typed terminal stop/error slot, receiver liveness, and a
+condition wake. Native change callbacks only set the bit and wake; repeated changes
+coalesce without blocking, allocation, or payload loss because the consumer still
+rereads current clipboard state. Terminal publication clears and outranks ordinary
+readiness. The sole receiver clears a delivered bit, and receiver drop closes admission,
+clears retained state, and retires its exact subscription.
+
+Every subscription now receives a checked monotonic generation. Duplicate live names
+are refused. A retained `ClipboardSubscription` and its sole `CallbackReceiver` both
+carry the exact `(name, generation)` identity, and either RAII finalizer removes only a
+matching current record; a late close cannot delete a replacement. Both master-start
+failure paths remove the exact inserted subscriber, join the startup thread, release the
+global listener lock, and only then drop the receiver. A post-start master error or
+unexpected clean return publishes a terminal error to all current receivers. Exact last
+retirement publishes stop, signals the sole master, and joins its retained handle with a
+visible panic diagnostic. The existing startup result channel remains semantically
+bounded to the single result sent by one startup thread. Viewer retirement publishes its
+existing stop token before closing the retained exact subscription and handing the same
+thread handle to the existing bounded join owner. Controlled service scope owns both its
+subscription and receiver, so every normal, error, and early-return edge invokes exact
+RAII cleanup. No retry, reconnect, timer, poller, new worker/thread/runtime/listener,
+payload queue, dependency, privilege transition, service restart, port, alternate
+clipboard path, or Android persistent-service change was introduced.
+
+Four deterministic Rust regressions bind 1,024 ordinary notifications collapsing into
+one delivery, terminal error superseding an already-pending ordinary change, receiver
+retirement refusing later admission, and stale generation cleanup preserving a current
+replacement. `scripts/verify-clipboard-listener-ownership.py` independently binds the
+mailbox topology, priority, exact subscription admission/removal, both startup rollback
+edges, master finality, viewer and controlled ownership, regressions, requirements,
+Appendix C #363, ledger identity, and shared/Apple/independent wiring with deliberate
+mutations. The separate workspace validator parses the production topology and call
+sites rather than accepting the focused result as authority.
+
+In the immutable local verifier image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
+with `--pull=never`, networking disabled, a read-only root and repository, all
+capabilities dropped, `no-new-privileges`, numeric UID/GID 1000, and finite
+CPU/memory/no-swap/PID/private-tmpfs limits, the focused clipboard-listener verifier
+rejected all 27 deliberate mutations. The adjacent Android/mobile ownership, CM egress,
+file-clipboard route, controlled-egress, keyed-writer, display-finality, and viewer
+voice-worker gates rejected 535, 64, 38, 51, 25, 186, and 63 mutations respectively.
+The independent unmodified workspace baseline passed. A narrowed independent run
+rejected all 22 new R-S11hb catalog entries, and a combined narrowed run rejected those
+entries plus every pre-existing outgoing-clipboard lifecycle mutation whose diagnostic
+could overlap the new contract. One uninterrupted preliminary complete independently
+parsed catalog then rejected all 4,611 source mutations. After this exact evidence text
+was installed, one further uninterrupted complete 4,611-entry catalog passed on the
+actual final tracked bytes. Exact Rust 1.75 formatting of all three changed Rust files,
+in-memory Python AST parsing, Bash syntax for the shared/Apple/native-codec gates, the
+synchronized requirements digest, the native-codec watch, and `git diff --check` also
+passed.
+
+The first complete-catalog attempt correctly rejected the weakened one-bit readiness
+field but its fixture expected a broader diagnostic label than the independent contract
+emitted. A narrowed run then proved that the initial `receiver_alive` selector matched
+both ordinary and terminal admission, each correctly rejected under a different label;
+the selector was narrowed to the ordinary-notification function. A later complete run
+correctly rejected weakened viewer stop publication, but the new combined viewer
+ownership check preempted that established mutation's narrower diagnostic. The new
+independent check was reduced to its distinct subscription concern while the established
+outgoing-clipboard contract retained stop/transition/order authority. No production
+requirement was removed or weakened. Only the final uninterrupted complete pass on the
+ledger-updated bytes is counted as final evidence.
+
+This remains source-level work, not current native behavior or release readiness. The
+exact pinned Debian, Apple, Windows, and dev-check builder images and authenticated Cargo
+vendor closure remain unavailable locally, so no exact-current Rust/native compilation
+or execution is claimed. Physical Android task-swipe/reopen/Force-Stop and real Windows
+focus/minimize reproduction; Linux/macOS/iOS and cross-version behavior; the weeks-old
+deployed artifacts; capture-through-compositor timestamps and explicit latency/queue
+budgets; sustained connection/reconnect/focus/background/file/control coexistence,
+backpressure, resource, and performance soak; clean cold R-B2/R-B10 equality; installed
+process/service/package behavior; independent reproduction; R-V3 external review;
+causation; and proof that the complete connection flow is correct and performant all
+remain explicit release obligations. This slice inspects or changes no host RustDesk
+process, configuration, service, listener, firewall/network state, VM, Android device or
+service, unrelated workload, or OS privilege boundary.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-3e4502bee252bd3d15cef4ae973709463b0460271ae78dd0a59f27a77336c0d3  requirements.html
+a4fa00f31201543fbf2cf18ccedc95d4f798e16017c774ed7f322469bddeee6c  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -25688,3 +25793,4 @@ The same identity additionally binds R-S11gx and Appendix C #359.
 The same identity additionally binds R-S11gy and Appendix C #360.
 The same identity additionally binds R-S11gz and Appendix C #361.
 The same identity additionally binds R-S11ha and Appendix C #362.
+The same identity additionally binds R-S11hb and Appendix C #363.

@@ -1496,55 +1496,190 @@ pub mod clipboard_listener {
         collections::HashMap,
         io,
         sync::mpsc::{channel, Sender},
-        sync::{Arc, Mutex},
+        sync::{Arc, Condvar, Mutex},
         thread::JoinHandle,
+        time::Duration,
     };
 
     lazy_static::lazy_static! {
         pub static ref CLIPBOARD_LISTENER: Arc<Mutex<ClipboardListener>> = Default::default();
     }
 
+    #[derive(Clone, Debug, Eq, PartialEq)]
+    struct SubscriptionIdentity {
+        name: String,
+        generation: u64,
+    }
+
+    enum CallbackTerminal {
+        Stop,
+        Error(String),
+    }
+
+    struct CallbackState {
+        change_pending: bool,
+        terminal: Option<CallbackTerminal>,
+        receiver_alive: bool,
+    }
+
+    struct CallbackMailbox {
+        state: Mutex<CallbackState>,
+        ready: Condvar,
+    }
+
+    #[derive(Clone)]
+    struct CallbackSender {
+        mailbox: Arc<CallbackMailbox>,
+    }
+
+    impl CallbackSender {
+        fn notify_change(&self) -> bool {
+            let mut state = self.mailbox.state.lock().unwrap();
+            if !state.receiver_alive {
+                return false;
+            }
+            if state.terminal.is_none() {
+                state.change_pending = true;
+                self.mailbox.ready.notify_one();
+            }
+            true
+        }
+
+        fn notify_terminal(&self, terminal: CallbackTerminal) -> bool {
+            let mut state = self.mailbox.state.lock().unwrap();
+            if !state.receiver_alive {
+                return false;
+            }
+            if state.terminal.is_none() {
+                state.change_pending = false;
+                state.terminal = Some(terminal);
+                self.mailbox.ready.notify_one();
+            }
+            true
+        }
+    }
+
+    pub struct CallbackReceiver {
+        mailbox: Arc<CallbackMailbox>,
+        identity: Option<Arc<SubscriptionIdentity>>,
+    }
+
+    impl CallbackReceiver {
+        pub fn recv_timeout(&self, timeout: Duration) -> Option<CallbackResult> {
+            let state = self.mailbox.state.lock().unwrap();
+            let (mut state, wait_result) = self
+                .mailbox
+                .ready
+                .wait_timeout_while(state, timeout, |state| {
+                    state.receiver_alive && !state.change_pending && state.terminal.is_none()
+                })
+                .unwrap();
+            if let Some(terminal) = state.terminal.take() {
+                return Some(match terminal {
+                    CallbackTerminal::Stop => CallbackResult::Stop,
+                    CallbackTerminal::Error(message) => {
+                        CallbackResult::StopWithError(io::Error::new(io::ErrorKind::Other, message))
+                    }
+                });
+            }
+            if state.change_pending {
+                state.change_pending = false;
+                return Some(CallbackResult::Next);
+            }
+            if wait_result.timed_out() {
+                return None;
+            }
+            None
+        }
+    }
+
+    impl Drop for CallbackReceiver {
+        fn drop(&mut self) {
+            {
+                let mut state = self.mailbox.state.lock().unwrap();
+                state.receiver_alive = false;
+                state.change_pending = false;
+                state.terminal = None;
+                self.mailbox.ready.notify_all();
+            }
+            if let Some(identity) = self.identity.take() {
+                unsubscribe_exact(&identity);
+            }
+        }
+    }
+
+    pub struct ClipboardSubscription {
+        identity: Arc<SubscriptionIdentity>,
+    }
+
+    impl ClipboardSubscription {
+        pub fn close(&self) {
+            unsubscribe_exact(&self.identity);
+        }
+    }
+
+    impl Drop for ClipboardSubscription {
+        fn drop(&mut self) {
+            self.close();
+        }
+    }
+
+    struct Subscriber {
+        generation: u64,
+        sender: CallbackSender,
+    }
+
+    type Subscribers = Arc<Mutex<HashMap<String, Subscriber>>>;
+
     struct Handler {
-        subscribers: Arc<Mutex<HashMap<String, Sender<CallbackResult>>>>,
+        subscribers: Subscribers,
     }
 
     impl ClipboardHandler for Handler {
         fn on_clipboard_change(&mut self) -> CallbackResult {
-            let sub_lock = self.subscribers.lock().unwrap();
-            for tx in sub_lock.values() {
-                tx.send(CallbackResult::Next).ok();
-            }
+            self.subscribers
+                .lock()
+                .unwrap()
+                .retain(|_, subscriber| subscriber.sender.notify_change());
             CallbackResult::Next
         }
 
         fn on_clipboard_error(&mut self, error: io::Error) -> CallbackResult {
             let msg = format!("Clipboard listener error: {}", error);
-            let sub_lock = self.subscribers.lock().unwrap();
-            for tx in sub_lock.values() {
-                tx.send(CallbackResult::StopWithError(io::Error::new(
-                    io::ErrorKind::Other,
-                    msg.clone(),
-                )))
-                .ok();
-            }
+            notify_subscribers_terminal(&self.subscribers, &msg);
             CallbackResult::Next
         }
     }
 
     #[derive(Default)]
     pub struct ClipboardListener {
-        subscribers: Arc<Mutex<HashMap<String, Sender<CallbackResult>>>>,
+        subscribers: Subscribers,
         handle: Option<(Shutdown, JoinHandle<()>)>,
+        next_generation: u64,
     }
 
-    pub fn subscribe(name: String, tx: Sender<CallbackResult>) -> ResultType<()> {
+    pub fn subscribe(name: String) -> ResultType<(ClipboardSubscription, CallbackReceiver)> {
         log::info!("Subscribe clipboard listener: {}", &name);
         let mut listener_lock = CLIPBOARD_LISTENER.lock().unwrap();
+        if listener_lock
+            .subscribers
+            .lock()
+            .unwrap()
+            .contains_key(&name)
+        {
+            bail!("Clipboard listener subscription already exists: {}", name);
+        }
+        let Some(generation) = listener_lock.next_generation.checked_add(1) else {
+            bail!("Clipboard listener subscription identity exhausted");
+        };
+        listener_lock.next_generation = generation;
+        let identity = Arc::new(SubscriptionIdentity { name, generation });
+        let (sender, receiver) = callback_mailbox(Some(Arc::clone(&identity)));
         listener_lock
             .subscribers
             .lock()
             .unwrap()
-            .insert(name.clone(), tx);
+            .insert(identity.name.clone(), Subscriber { generation, sender });
 
         if listener_lock.handle.is_none() {
             log::info!("Start clipboard listener thread");
@@ -1552,14 +1687,36 @@ pub mod clipboard_listener {
                 subscribers: listener_lock.subscribers.clone(),
             };
             let (tx_start_res, rx_start_res) = channel();
-            let h = start_clipboard_master_thread(handler, tx_start_res);
+            let h = start_clipboard_master_thread(
+                handler,
+                listener_lock.subscribers.clone(),
+                tx_start_res,
+            );
             let shutdown = match rx_start_res.recv() {
                 Ok((Some(s), _)) => s,
                 Ok((None, err)) => {
+                    remove_exact_subscriber(
+                        &mut listener_lock.subscribers.lock().unwrap(),
+                        &identity,
+                    );
+                    if h.join().is_err() {
+                        log::error!("Clipboard listener startup thread terminated by panic");
+                    }
+                    drop(listener_lock);
+                    drop(receiver);
                     bail!(err);
                 }
 
                 Err(e) => {
+                    remove_exact_subscriber(
+                        &mut listener_lock.subscribers.lock().unwrap(),
+                        &identity,
+                    );
+                    if h.join().is_err() {
+                        log::error!("Clipboard listener startup thread terminated by panic");
+                    }
+                    drop(listener_lock);
+                    drop(receiver);
                     bail!("Failed to create clipboard listener: {}", e);
                 }
             };
@@ -1567,17 +1724,25 @@ pub mod clipboard_listener {
             log::info!("Clipboard listener thread started");
         }
 
-        log::info!("Clipboard listener subscribed: {}", name);
-        Ok(())
+        log::info!(
+            "Clipboard listener subscribed: {} generation {}",
+            identity.name,
+            identity.generation
+        );
+        Ok((ClipboardSubscription { identity }, receiver))
     }
 
-    pub fn unsubscribe(name: &str) {
-        log::info!("Unsubscribe clipboard listener: {}", name);
+    fn unsubscribe_exact(identity: &SubscriptionIdentity) {
+        log::info!(
+            "Unsubscribe clipboard listener: {} generation {}",
+            identity.name,
+            identity.generation
+        );
         let mut listener_lock = CLIPBOARD_LISTENER.lock().unwrap();
         let is_empty = {
             let mut sub_lock = listener_lock.subscribers.lock().unwrap();
-            if let Some(tx) = sub_lock.remove(name) {
-                tx.send(CallbackResult::Stop).ok();
+            if let Some(subscriber) = remove_exact_subscriber(&mut sub_lock, identity) {
+                subscriber.sender.notify_terminal(CallbackTerminal::Stop);
             }
             sub_lock.is_empty()
         };
@@ -1585,39 +1750,168 @@ pub mod clipboard_listener {
             if let Some((shutdown, h)) = listener_lock.handle.take() {
                 log::info!("Stop clipboard listener thread");
                 shutdown.signal();
-                h.join().ok();
+                if h.join().is_err() {
+                    log::error!("Clipboard listener thread terminated by panic");
+                }
                 log::info!("Clipboard listener thread stopped");
             }
         }
-        log::info!("Clipboard listener unsubscribed: {}", name);
+        log::info!(
+            "Clipboard listener unsubscribed: {} generation {}",
+            identity.name,
+            identity.generation
+        );
+    }
+
+    fn callback_mailbox(
+        identity: Option<Arc<SubscriptionIdentity>>,
+    ) -> (CallbackSender, CallbackReceiver) {
+        let mailbox = Arc::new(CallbackMailbox {
+            state: Mutex::new(CallbackState {
+                change_pending: false,
+                terminal: None,
+                receiver_alive: true,
+            }),
+            ready: Condvar::new(),
+        });
+        (
+            CallbackSender {
+                mailbox: Arc::clone(&mailbox),
+            },
+            CallbackReceiver { mailbox, identity },
+        )
+    }
+
+    fn remove_exact_subscriber(
+        subscribers: &mut HashMap<String, Subscriber>,
+        identity: &SubscriptionIdentity,
+    ) -> Option<Subscriber> {
+        let is_current = subscribers
+            .get(&identity.name)
+            .map(|subscriber| subscriber.generation == identity.generation)
+            .unwrap_or(false);
+        if is_current {
+            subscribers.remove(&identity.name)
+        } else {
+            None
+        }
+    }
+
+    fn notify_subscribers_terminal(subscribers: &Subscribers, message: &str) {
+        subscribers.lock().unwrap().retain(|_, subscriber| {
+            subscriber
+                .sender
+                .notify_terminal(CallbackTerminal::Error(message.to_owned()))
+        });
     }
 
     fn start_clipboard_master_thread(
         handler: impl ClipboardHandler + Send + 'static,
+        subscribers: Subscribers,
         tx_start_res: Sender<(Option<Shutdown>, String)>,
     ) -> JoinHandle<()> {
         // https://learn.microsoft.com/en-us/windows/win32/api/winuser/nf-winuser-getmessage#:~:text=The%20window%20must%20belong%20to%20the%20current%20thread.
         let h = std::thread::spawn(move || match Master::new(handler) {
             Ok(mut master) => {
-                tx_start_res
+                if tx_start_res
                     .send((Some(master.shutdown_channel()), "".to_owned()))
-                    .ok();
+                    .is_err()
+                {
+                    log::error!("Clipboard listener startup observer retired");
+                    return;
+                }
                 log::debug!("Clipboard listener started");
                 if let Err(err) = master.run() {
                     log::error!("Failed to run clipboard listener: {}", err);
+                    notify_subscribers_terminal(
+                        &subscribers,
+                        &format!("Clipboard listener stopped with error: {}", err),
+                    );
                 } else {
                     log::debug!("Clipboard listener stopped");
+                    notify_subscribers_terminal(
+                        &subscribers,
+                        "Clipboard listener stopped unexpectedly",
+                    );
                 }
             }
             Err(err) => {
-                tx_start_res
+                if tx_start_res
                     .send((
                         None,
                         format!("Failed to create clipboard listener: {}", err),
                     ))
-                    .ok();
+                    .is_err()
+                {
+                    log::error!("Clipboard listener startup failure observer retired");
+                }
             }
         });
         h
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn clipboard_change_wakes_are_coalesced() {
+            let (sender, receiver) = callback_mailbox(None);
+            for _ in 0..1024 {
+                assert!(sender.notify_change());
+            }
+            assert!(matches!(
+                receiver.recv_timeout(Duration::from_millis(1)),
+                Some(CallbackResult::Next)
+            ));
+            assert!(receiver.recv_timeout(Duration::from_millis(1)).is_none());
+        }
+
+        #[test]
+        fn clipboard_terminal_error_supersedes_pending_change() {
+            let (sender, receiver) = callback_mailbox(None);
+            assert!(sender.notify_change());
+            assert!(sender.notify_terminal(CallbackTerminal::Error("listener failed".to_owned())));
+            match receiver.recv_timeout(Duration::from_millis(1)) {
+                Some(CallbackResult::StopWithError(err)) => {
+                    assert_eq!(err.to_string(), "listener failed");
+                }
+                _ => panic!("terminal clipboard error was not delivered first"),
+            }
+            assert!(receiver.recv_timeout(Duration::from_millis(1)).is_none());
+        }
+
+        #[test]
+        fn clipboard_receiver_retirement_closes_admission() {
+            let (sender, receiver) = callback_mailbox(None);
+            drop(receiver);
+            assert!(!sender.notify_change());
+            assert!(!sender.notify_terminal(CallbackTerminal::Stop));
+        }
+
+        #[test]
+        fn stale_clipboard_identity_cannot_remove_replacement() {
+            let (sender, _receiver) = callback_mailbox(None);
+            let mut subscribers = HashMap::new();
+            subscribers.insert(
+                "clipboard".to_owned(),
+                Subscriber {
+                    generation: 2,
+                    sender,
+                },
+            );
+            let stale = SubscriptionIdentity {
+                name: "clipboard".to_owned(),
+                generation: 1,
+            };
+            let current = SubscriptionIdentity {
+                name: "clipboard".to_owned(),
+                generation: 2,
+            };
+            assert!(remove_exact_subscriber(&mut subscribers, &stale).is_none());
+            assert!(subscribers.contains_key("clipboard"));
+            assert!(remove_exact_subscriber(&mut subscribers, &current).is_some());
+            assert!(subscribers.is_empty());
+        }
     }
 }

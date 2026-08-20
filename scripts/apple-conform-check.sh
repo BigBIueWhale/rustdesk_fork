@@ -3659,6 +3659,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c2ada) R-S11hb exact bounded native clipboard-listener ownership =="
+if python3 scripts/verify-clipboard-listener-ownership.py --repo . --self-test; then
+  note "ok  R-S11hb Apple/shared native clipboard-listener callbacks are bounded, exact-generation-owned, and terminal-final"
+else
+  echo "  FAIL R-S11hb Apple/shared native clipboard-listener callbacks regained unbounded retention, name-only cleanup, or incomplete terminal finality"
+  rc=1
+fi
+
 echo "== (2g-c2ae) R-S11gz exact bounded file-clipboard route ownership =="
 if python3 scripts/verify-clipboard-route-budget.py --repo . --self-test; then
   note "ok  R-S11gz Apple/shared file-clipboard callbacks have exact connection-round routes and finite count-and-byte ownership"

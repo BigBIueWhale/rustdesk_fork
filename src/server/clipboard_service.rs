@@ -19,11 +19,7 @@ use clipboard_master::CallbackResult;
 use hbb_common::config::{keys, option2bool};
 #[cfg(target_os = "android")]
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::{
-    io,
-    sync::mpsc::{channel, RecvTimeoutError},
-    time::Duration,
-};
+use std::{io, time::Duration};
 #[cfg(windows)]
 use tokio::runtime::Runtime;
 
@@ -66,9 +62,8 @@ fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
         }
     };
 
-    let (tx_cb_result, rx_cb_result) = channel();
     let ctx = Some(ClipboardContext::new().map_err(|e| io::Error::new(io::ErrorKind::Other, e))?);
-    clipboard_listener::subscribe(sp.name(), tx_cb_result)?;
+    let (_subscription, rx_cb_result) = clipboard_listener::subscribe(sp.name())?;
     let mut handler = Handler {
         ctx,
         #[cfg(target_os = "windows")]
@@ -79,7 +74,7 @@ fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
 
     while sp.ok() {
         match rx_cb_result.recv_timeout(Duration::from_millis(INTERVAL)) {
-            Ok(CallbackResult::Next) => {
+            Some(CallbackResult::Next) => {
                 #[cfg(feature = "unix-file-copy-paste")]
                 if sp.name() == FILE_NAME {
                     handler.check_clipboard_file();
@@ -89,22 +84,16 @@ fn run(sp: EmptyExtraFieldService) -> ResultType<()> {
                     sp.send(msg);
                 }
             }
-            Ok(CallbackResult::Stop) => {
+            Some(CallbackResult::Stop) => {
                 log::debug!("Clipboard listener stopped");
                 break;
             }
-            Ok(CallbackResult::StopWithError(err)) => {
+            Some(CallbackResult::StopWithError(err)) => {
                 bail!("Clipboard listener stopped with error: {}", err);
             }
-            Err(RecvTimeoutError::Timeout) => {}
-            Err(RecvTimeoutError::Disconnected) => {
-                log::error!("Clipboard listener disconnected");
-                break;
-            }
+            None => {}
         }
     }
-
-    clipboard_listener::unsubscribe(&sp.name());
 
     Ok(())
 }

@@ -20143,6 +20143,7 @@ def validate_display_selection_finality_contract(sources):
             '    validate_viewer_cursor_resources_contract(sources)\\n'
             '    validate_controlled_control_egress_contract(sources)\\n'
             '    validate_cm_egress_budget_contract(sources)\\n'
+            '    validate_clipboard_listener_ownership_contract(sources)\\n'
             '    validate_clipboard_route_budget_contract(sources)\\n'
             '    validate_keyed_writer_budget_contract(sources)\\n'
             '    validate_display_selection_finality_contract(sources)\\n'
@@ -22955,6 +22956,264 @@ def validate_cm_egress_budget_contract(sources):
     ]
     if len(dispatches) != 1:
         raise VerificationError("CM-egress independent workspace dispatch must occur exactly once")
+
+
+def validate_clipboard_listener_ownership_contract(sources):
+    """Independently bind exact bounded native clipboard-listener ownership."""
+
+    focused = sources["clipboard_listener_ownership_verifier"]
+    focused_contract = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "focused native clipboard-listener contract",
+    )
+    for marker, label in (
+        ("change_pending: bool", "focused one-bit readiness"),
+        ("terminal: Option<CallbackTerminal>", "focused terminal priority"),
+        ("next_generation.checked_add(1)", "focused checked generation"),
+        ("remove_exact_subscriber", "focused exact removal"),
+        ("ClipboardSubscription", "focused retained owner"),
+        ("R-S11hb", "focused normative binding"),
+    ):
+        require_text(focused_contract, marker, label)
+    require_text(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "focused clipboard-listener mutation inventory",
+    )
+
+    clipboard = sources["native_clipboard_source"]
+    client = sources["client_source"]
+    service = sources["clipboard_service_source"]
+    for source, needle, label in (
+        (clipboard, "HashMap<String, Sender<CallbackResult>>", "independent unbounded subscriber map"),
+        (clipboard, "tx.send(CallbackResult::Next).ok();", "independent unbounded callback send"),
+        (clipboard, "pub fn unsubscribe(name: &str)", "independent name-only unsubscribe"),
+        (client, "let (tx_cb_result, rx_cb_result) = mpsc::channel();", "independent viewer callback queue"),
+        (service, "let (tx_cb_result, rx_cb_result) = channel();", "independent controlled callback queue"),
+    ):
+        require_absent(source, needle, label)
+
+    for marker, label in (
+        ("change_pending: bool", "independent one-bit readiness"),
+        ("terminal: Option<CallbackTerminal>", "independent typed terminal"),
+        ("receiver_alive: bool", "independent receiver lifetime"),
+        ("next_generation: u64", "independent generation allocator"),
+        ("pub struct ClipboardSubscription", "independent retained subscription"),
+    ):
+        require_text(clipboard, marker, label)
+    mailbox = extract_braced_item(
+        clipboard, "struct CallbackMailbox", "independent callback mailbox"
+    )
+    require_text(mailbox, "ready: Condvar,", "independent condition wake")
+
+    change = extract_braced_item(
+        clipboard, "fn notify_change(&self) -> bool", "independent change admission"
+    )
+    require_order(
+        change,
+        (
+            "if !state.receiver_alive",
+            "if state.terminal.is_none()",
+            "state.change_pending = true;",
+            "self.mailbox.ready.notify_one();",
+        ),
+        "independent coalesced nonblocking readiness",
+    )
+    terminal = extract_braced_item(
+        clipboard,
+        "fn notify_terminal(&self, terminal: CallbackTerminal) -> bool",
+        "independent terminal admission",
+    )
+    require_order(
+        terminal,
+        (
+            "if !state.receiver_alive",
+            "if state.terminal.is_none()",
+            "state.change_pending = false;",
+            "state.terminal = Some(terminal);",
+            "self.mailbox.ready.notify_one();",
+        ),
+        "independent terminal-over-readiness priority",
+    )
+    receive = extract_braced_item(
+        clipboard,
+        "pub fn recv_timeout(&self, timeout: Duration) -> Option<CallbackResult>",
+        "independent callback receiver",
+    )
+    require_order(
+        receive,
+        (
+            "wait_timeout_while(state, timeout",
+            "if let Some(terminal) = state.terminal.take()",
+            "if state.change_pending",
+            "state.change_pending = false;",
+            "Some(CallbackResult::Next)",
+        ),
+        "independent terminal-first bounded drain",
+    )
+    receiver_drop = extract_braced_item(
+        clipboard, "impl Drop for CallbackReceiver", "independent receiver finalizer"
+    )
+    require_order(
+        receiver_drop,
+        (
+            "state.receiver_alive = false;",
+            "state.change_pending = false;",
+            "if let Some(identity) = self.identity.take()",
+            "unsubscribe_exact(&identity);",
+        ),
+        "independent receiver close and exact cleanup",
+    )
+    subscribe = extract_braced_item(
+        clipboard,
+        "pub fn subscribe(name: String) -> ResultType<(ClipboardSubscription, CallbackReceiver)>",
+        "independent subscription admission",
+    )
+    require_order(
+        subscribe,
+        (
+            ".contains_key(&name)",
+            "next_generation.checked_add(1)",
+            "Subscriber { generation, sender }",
+            "start_clipboard_master_thread(",
+            "remove_exact_subscriber(",
+            "drop(listener_lock);",
+            "drop(receiver);",
+            "Ok((ClipboardSubscription { identity }, receiver))",
+        ),
+        "independent duplicate refusal, startup rollback, and exact owner return",
+    )
+    if subscribe.count("remove_exact_subscriber(") != 2:
+        raise VerificationError("independent clipboard startup rollback is not complete")
+    remove_exact = extract_braced_item(
+        clipboard,
+        "fn remove_exact_subscriber(",
+        "independent exact subscription removal",
+    )
+    require_order(
+        remove_exact,
+        (
+            ".get(&identity.name)",
+            "subscriber.generation == identity.generation",
+            "subscribers.remove(&identity.name)",
+        ),
+        "independent generation-bound removal",
+    )
+    unsubscribe = extract_braced_item(
+        clipboard,
+        "fn unsubscribe_exact(identity: &SubscriptionIdentity)",
+        "independent exact unsubscribe",
+    )
+    require_order(
+        unsubscribe,
+        (
+            "remove_exact_subscriber(&mut sub_lock, identity)",
+            "notify_terminal(CallbackTerminal::Stop)",
+            "sub_lock.is_empty()",
+            "shutdown.signal();",
+            "h.join().is_err()",
+        ),
+        "independent exact last-owner finality",
+    )
+    master = extract_braced_item(
+        clipboard,
+        "fn start_clipboard_master_thread(",
+        "independent master finality",
+    )
+    require_order(
+        master,
+        (
+            "master.run()",
+            "notify_subscribers_terminal(",
+            '"Clipboard listener stopped with error: {}"',
+            '"Clipboard listener stopped unexpectedly"',
+        ),
+        "independent master exit terminal publication",
+    )
+
+    for test in (
+        "clipboard_change_wakes_are_coalesced",
+        "clipboard_terminal_error_supersedes_pending_change",
+        "clipboard_receiver_retirement_closes_admission",
+        "stale_clipboard_identity_cannot_remove_replacement",
+    ):
+        require_text(clipboard, test, f"independent {test} regression")
+    require_order(
+        client,
+        (
+            "subscription: clipboard_listener::ClipboardSubscription,",
+            "clipboard_listener::subscribe(Self::CLIENT_CLIPBOARD_NAME.to_owned())",
+            "state.worker = Some(ClientClipboardWorker {",
+            "subscription,",
+            "worker.subscription.close();",
+        ),
+        "independent viewer subscription ownership and retirement",
+    )
+    controlled = extract_braced_item(
+        service, "fn run(sp: EmptyExtraFieldService)", "independent controlled clipboard service"
+    )
+    require_order(
+        controlled,
+        (
+            "let (_subscription, rx_cb_result) = clipboard_listener::subscribe(sp.name())?;",
+            "while sp.ok()",
+            "Some(CallbackResult::StopWithError(err))",
+            'bail!("Clipboard listener stopped with error: {}", err);',
+        ),
+        "independent controlled RAII finality",
+    )
+    require_absent(
+        controlled,
+        "clipboard_listener::unsubscribe",
+        "independent manual controlled cleanup",
+    )
+
+    for key, text, label in (
+        ("verify", "python3 scripts/verify-clipboard-listener-ownership.py --repo . --self-test", "shared clipboard-listener gate"),
+        ("verify", "cargo test --lib --features linux-pkg-config,flutter clipboard_listener::tests:: --color never", "shared clipboard-listener behavior gate"),
+        ("apple", "python3 scripts/verify-clipboard-listener-ownership.py --repo . --self-test", "Apple clipboard-listener gate"),
+        ("requirements", '<div class="req"><span class="id">R-S11hb</span>', "R-S11hb requirement"),
+        ("requirements", "<tr><td>363</td>", "Appendix C #363"),
+        ("hardening", "### R-S11hb/R-S11e-240 — exact bounded native clipboard-listener ownership", "R-S11hb ledger"),
+    ):
+        require_text(sources[key], text, label)
+    require_text(
+        sources["workspace_verifier"],
+        '            "clipboard_listener_ownership_verifier": (\n'
+        '                repo / "scripts/verify-clipboard-listener-ownership.py"\n'
+        '            ).read_text(encoding="utf-8"),',
+        "clipboard-listener independent verifier binding",
+    )
+    workspace_module = ast.parse(sources["workspace_verifier"])
+    validate_sources_function = next(
+        (
+            node
+            for node in workspace_module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "validate_sources"
+        ),
+        None,
+    )
+    if validate_sources_function is None:
+        raise VerificationError("clipboard-listener independent workspace dispatch is absent")
+    dispatches = [
+        node
+        for node in validate_sources_function.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "validate_clipboard_listener_ownership_contract"
+    ]
+    if len(dispatches) != 1:
+        raise VerificationError(
+            "clipboard-listener independent workspace dispatch must occur exactly once"
+        )
+    require_text(
+        focused,
+        '("clipboard", "change_pending: bool,", "change_pending: usize,", "one-bit readiness state"),',
+        "focused clipboard-listener readiness mutation",
+    )
 
 
 def validate_clipboard_route_budget_contract(sources):
@@ -27970,8 +28229,10 @@ def validate_android_voice_call_ownership_contract(sources):
     require_text(
         client,
         "stop_requested: Arc<AtomicBool>,\n"
+        "    #[cfg(not(any(target_os = \"android\", target_os = \"ios\")))]\n"
+        "    subscription: clipboard_listener::ClipboardSubscription,\n"
         "    thread: std::thread::JoinHandle<()>,",
-        "outgoing clipboard stop-and-join authority source",
+        "outgoing clipboard stop, subscription, and join authority source",
     )
     require_text(
         client_io_loop,
@@ -28034,7 +28295,7 @@ def validate_android_voice_call_ownership_contract(sources):
             "let worker = state.worker.take()?;",
             "worker.stop_requested.store(true, Ordering::Release);",
             "state.worker_transition = true;",
-            "clipboard_listener::unsubscribe(Self::CLIENT_CLIPBOARD_NAME);",
+            "worker.subscription.close();",
             "handoff_client_clipboard_worker(worker);",
             "Client::finish_client_clipboard_worker_transition();",
         ),
@@ -48129,6 +48390,7 @@ def validate_sources(sources):
     validate_viewer_cursor_resources_contract(sources)
     validate_controlled_control_egress_contract(sources)
     validate_cm_egress_budget_contract(sources)
+    validate_clipboard_listener_ownership_contract(sources)
     validate_clipboard_route_budget_contract(sources)
     validate_keyed_writer_budget_contract(sources)
     validate_display_selection_finality_contract(sources)
@@ -67747,6 +68009,7 @@ def run_source_mutations(sources):
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_listener_ownership_contract(sources)\n"
             "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
@@ -67754,6 +68017,7 @@ def run_source_mutations(sources):
             "    validate_viewer_cursor_resources_contract_disabled(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_listener_ownership_contract(sources)\n"
             "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
@@ -67765,6 +68029,7 @@ def run_source_mutations(sources):
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_listener_ownership_contract(sources)\n"
             "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)\n"
@@ -67773,6 +68038,7 @@ def run_source_mutations(sources):
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_listener_ownership_contract(sources)\n"
             "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract_disabled(sources)\n"
@@ -67785,6 +68051,7 @@ def run_source_mutations(sources):
             '    validate_viewer_cursor_resources_contract(sources)\\n'
             '    validate_controlled_control_egress_contract(sources)\\n'
             '    validate_cm_egress_budget_contract(sources)\\n'
+            '    validate_clipboard_listener_ownership_contract(sources)\\n'
             '    validate_clipboard_route_budget_contract(sources)\\n'
             '    validate_keyed_writer_budget_contract(sources)\\n'
             '    validate_display_selection_finality_contract(sources)\\n'
@@ -67793,6 +68060,7 @@ def run_source_mutations(sources):
             '    validate_viewer_cursor_resources_contract_disabled(sources)\\n'
             '    validate_controlled_control_egress_contract(sources)\\n'
             '    validate_cm_egress_budget_contract(sources)\\n'
+            '    validate_clipboard_listener_ownership_contract(sources)\\n'
             '    validate_keyed_writer_budget_contract(sources)\\n'
             '    validate_display_selection_finality_contract(sources)\\n'
             '    validate_desktop_texture_lifecycle_contract(sources)",',
@@ -67989,12 +68257,14 @@ def run_source_mutations(sources):
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_listener_ownership_contract(sources)\n"
             "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "    validate_viewer_cursor_resources_contract(sources)\n"
             "    validate_controlled_control_egress_contract_disabled(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_listener_ownership_contract(sources)\n"
             "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
@@ -68223,6 +68493,7 @@ def run_source_mutations(sources):
             "workspace_verifier",
             "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_listener_ownership_contract(sources)\n"
             "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)",
             "    validate_controlled_control_egress_contract(sources)\n"
@@ -68327,6 +68598,150 @@ def run_source_mutations(sources):
             "### R-S11ha/R-S11e-239 — exact-command CM file-job log ownership",
             "### R-S11ha-disabled/R-S11e-239 — exact-command CM file-job log ownership",
             "R-S11ha ledger",
+        ),
+        (
+            "native_clipboard_source",
+            "change_pending: bool,",
+            "change_pending: usize,",
+            "independent one-bit readiness",
+        ),
+        (
+            "native_clipboard_source",
+            "terminal: Option<CallbackTerminal>,",
+            "terminal: Vec<CallbackTerminal>,",
+            "independent typed terminal",
+        ),
+        (
+            "native_clipboard_source",
+            "fn notify_change(&self) -> bool {\n"
+            "            let mut state = self.mailbox.state.lock().unwrap();\n"
+            "            if !state.receiver_alive {",
+            "fn notify_change(&self) -> bool {\n"
+            "            let mut state = self.mailbox.state.lock().unwrap();\n"
+            "            if false && !state.receiver_alive {",
+            "independent coalesced nonblocking readiness",
+        ),
+        (
+            "native_clipboard_source",
+            "state.change_pending = false;\n                state.terminal = Some(terminal);",
+            "state.terminal = Some(terminal);",
+            "independent terminal-over-readiness priority",
+        ),
+        (
+            "native_clipboard_source",
+            "if let Some(terminal) = state.terminal.take()",
+            "if false && state.terminal.is_some()",
+            "independent terminal-first bounded drain",
+        ),
+        (
+            "native_clipboard_source",
+            "next_generation.checked_add(1)",
+            "next_generation.wrapping_add(1).into()",
+            "independent duplicate refusal, startup rollback, and exact owner return",
+        ),
+        (
+            "native_clipboard_source",
+            "subscriber.generation == identity.generation",
+            "true",
+            "independent generation-bound removal",
+        ),
+        (
+            "native_clipboard_source",
+            "fn clipboard_change_wakes_are_coalesced",
+            "fn clipboard_changes_may_accumulate",
+            "independent clipboard_change_wakes_are_coalesced regression",
+        ),
+        (
+            "native_clipboard_source",
+            "fn clipboard_terminal_error_supersedes_pending_change",
+            "fn clipboard_error_may_follow_change",
+            "independent clipboard_terminal_error_supersedes_pending_change regression",
+        ),
+        (
+            "native_clipboard_source",
+            "fn stale_clipboard_identity_cannot_remove_replacement",
+            "fn stale_clipboard_identity_may_remove_replacement",
+            "independent stale_clipboard_identity_cannot_remove_replacement regression",
+        ),
+        (
+            "client_source",
+            "subscription: clipboard_listener::ClipboardSubscription,",
+            "subscription: (),",
+            "independent viewer subscription ownership and retirement",
+        ),
+        (
+            "client_source",
+            "worker.subscription.close();",
+            "// viewer clipboard subscription left active",
+            "independent viewer subscription ownership and retirement",
+        ),
+        (
+            "clipboard_service_source",
+            "let (_subscription, rx_cb_result) = clipboard_listener::subscribe(sp.name())?;",
+            "let (_, rx_cb_result) = clipboard_listener::subscribe(sp.name())?;",
+            "independent controlled RAII finality",
+        ),
+        (
+            "clipboard_listener_ownership_verifier",
+            '("clipboard", "change_pending: bool,", "change_pending: usize,", "one-bit readiness state"),',
+            '("clipboard", "change_pending_disabled: bool,", "change_pending: usize,", "one-bit readiness state"),',
+            "focused clipboard-listener readiness mutation",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-clipboard-listener-ownership.py --repo . --self-test",
+            "true # clipboard-listener verifier disabled",
+            "shared clipboard-listener gate",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter clipboard_listener::tests:: --color never",
+            "true # clipboard-listener tests disabled",
+            "shared clipboard-listener behavior gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-clipboard-listener-ownership.py --repo . --self-test",
+            "true # clipboard-listener verifier disabled",
+            "Apple clipboard-listener gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11hb</span>',
+            '<div class="req"><span class="id">R-S11hb-disabled</span>',
+            "R-S11hb requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>363</td>",
+            "<tr><td>363-disabled</td>",
+            "Appendix C #363",
+        ),
+        (
+            "hardening",
+            "### R-S11hb/R-S11e-240 — exact bounded native clipboard-listener ownership",
+            "### R-S11hb-disabled/R-S11e-240 — exact bounded native clipboard-listener ownership",
+            "R-S11hb ledger",
+        ),
+        (
+            "workspace_verifier",
+            '            "clipboard_listener_ownership_verifier": (\n'
+            '                repo / "scripts/verify-clipboard-listener-ownership.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "clipboard_listener_ownership_verifier_disabled": (\n'
+            '                repo / "scripts/verify-clipboard-listener-ownership.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "clipboard-listener independent verifier binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_listener_ownership_contract(sources)\n"
+            "    validate_clipboard_route_budget_contract(sources)",
+            "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_listener_ownership_contract_disabled(sources)\n"
+            "    validate_clipboard_route_budget_contract(sources)",
+            "clipboard-listener independent workspace dispatch must occur exactly once",
         ),
         (
             "clipboard_source",
@@ -68519,9 +68934,11 @@ def run_source_mutations(sources):
         (
             "workspace_verifier",
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_listener_ownership_contract(sources)\n"
             "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)",
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_listener_ownership_contract(sources)\n"
             "    validate_clipboard_route_budget_contract_disabled(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)",
             "file-clipboard independent workspace dispatch must occur exactly once",
@@ -68672,11 +69089,13 @@ def run_source_mutations(sources):
             "workspace_verifier",
             "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_listener_ownership_contract(sources)\n"
             "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
             "    validate_controlled_control_egress_contract(sources)\n"
             "    validate_cm_egress_budget_contract(sources)\n"
+            "    validate_clipboard_listener_ownership_contract(sources)\n"
             "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract_disabled(sources)\n"
             "    validate_display_selection_finality_contract(sources)",
@@ -82156,6 +82575,9 @@ def main():
             "cm_egress_budget_verifier": (
                 repo / "scripts/verify-cm-egress-budget.py"
             ).read_text(encoding="utf-8"),
+            "clipboard_listener_ownership_verifier": (
+                repo / "scripts/verify-clipboard-listener-ownership.py"
+            ).read_text(encoding="utf-8"),
             "clipboard_route_budget_verifier": (
                 repo / "scripts/verify-clipboard-route-budget.py"
             ).read_text(encoding="utf-8"),
@@ -82486,6 +82908,12 @@ def main():
             ).read_text(encoding="utf-8"),
             "server_source": (repo / "src/server.rs").read_text(encoding="utf-8"),
             "ui_cm_source": (repo / "src/ui_cm_interface.rs").read_text(encoding="utf-8"),
+            "native_clipboard_source": (repo / "src/clipboard.rs").read_text(
+                encoding="utf-8"
+            ),
+            "clipboard_service_source": (
+                repo / "src/server/clipboard_service.rs"
+            ).read_text(encoding="utf-8"),
             "clipboard_source": (repo / "libs/clipboard/src/lib.rs").read_text(
                 encoding="utf-8"
             ),

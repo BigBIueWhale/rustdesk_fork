@@ -21129,6 +21129,37 @@ def validate_display_selection_finality_contract(sources):
         require_text(sources[key], text, label)
 
     workspace_module = ast.parse(sources["workspace_verifier"])
+    main_function = next(
+        (
+            node
+            for node in workspace_module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "main"
+        ),
+        None,
+    )
+    if main_function is None:
+        raise VerificationError("tray mailbox independent source map is absent")
+    source_maps = [
+        node.value
+        for node in ast.walk(main_function)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Dict)
+        and any(
+            isinstance(target, ast.Name) and target.id == "sources"
+            for target in node.targets
+        )
+    ]
+    if len(source_maps) != 1:
+        raise VerificationError("tray mailbox independent source map is not singular")
+    source_map_keys = [
+        key.value
+        for key in source_maps[0].keys
+        if isinstance(key, ast.Constant) and isinstance(key.value, str)
+    ]
+    if source_map_keys.count("tray_session_count_mailbox_verifier") != 1:
+        raise VerificationError("tray mailbox independent verifier binding is absent")
+    if source_map_keys.count("tray_source") != 1:
+        raise VerificationError("tray source independent binding is absent")
     validate_sources_function = next(
         (
             node
@@ -23213,6 +23244,200 @@ def validate_clipboard_listener_ownership_contract(sources):
         focused,
         '("clipboard", "change_pending: bool,", "change_pending: usize,", "one-bit readiness state"),',
         "focused clipboard-listener readiness mutation",
+    )
+
+
+def validate_tray_session_count_mailbox_contract(sources):
+    """Independently bind latest-state Windows tray session-count ownership."""
+
+    focused = sources["tray_session_count_mailbox_verifier"]
+    focused_contract = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "focused tray session-count contract",
+    )
+    for marker, label in (
+        ("tokio::sync::watch::channel(0)", "focused latest-state watch"),
+        ("receiver.borrow_and_update()", "focused revision acknowledgement"),
+        ("sender.is_closed()", "focused receiver finality"),
+        ("R-S11hc", "focused normative binding"),
+    ):
+        require_text(focused_contract, marker, label)
+    require_text(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "focused tray session-count mutation inventory",
+    )
+
+    tray = sources["tray_source"]
+    for needle, label in (
+        (
+            "std::sync::mpsc::channel::<usize>()",
+            "independent unbounded tray session-count queue",
+        ),
+        ("sender.send(count).ok();", "independent ignored tray publication"),
+        (
+            "start_query_session_count(ipc_sender.clone());",
+            "independent retained tray publisher clone",
+        ),
+    ):
+        require_absent(tray, needle, label)
+
+    update = extract_braced_item(
+        tray,
+        "enum TraySessionCountUpdate",
+        "independent tray update classification",
+    )
+    require_order(
+        update,
+        ("Unchanged", "Count(usize)", "Closed"),
+        "independent latest-state and closed classification",
+    )
+    channel = extract_braced_item(
+        tray,
+        "fn tray_session_count_channel()",
+        "independent tray session-count channel",
+    )
+    require_text(
+        channel,
+        "tokio::sync::watch::channel(0)",
+        "independent zero-initialized watch",
+    )
+    publish = extract_braced_item(
+        tray,
+        "fn publish_tray_session_count(",
+        "independent tray publication",
+    )
+    require_order(
+        publish,
+        (
+            "let changed = {",
+            "let current = sender.borrow();",
+            "*current != count",
+            "if changed && sender.send(count).is_err()",
+            "return false;",
+            "!sender.is_closed()",
+        ),
+        "independent read-release-before-write and receiver finality",
+    )
+    receive = extract_braced_item(
+        tray,
+        "fn take_tray_session_count_update(",
+        "independent tray receive",
+    )
+    require_order(
+        receive,
+        (
+            "match receiver.has_changed()",
+            "Ok(true) => TraySessionCountUpdate::Count(*receiver.borrow_and_update())",
+            "Ok(false) => TraySessionCountUpdate::Unchanged",
+            "Err(_) => TraySessionCountUpdate::Closed",
+        ),
+        "independent one-revision latest-state receive",
+    )
+    owner = extract_braced_item(tray, "fn make_tray()", "independent tray owner")
+    require_order(
+        owner,
+        (
+            "let (ipc_sender, ipc_receiver) = tray_session_count_channel();",
+            "let mut ipc_receiver = Some(ipc_receiver);",
+            "start_query_session_count(ipc_sender);",
+            "ipc_receiver.as_mut().map(take_tray_session_count_update)",
+            "Some(TraySessionCountUpdate::Count(count))",
+            "t.set_tooltip(Some(tooltip(count)))",
+            "Some(TraySessionCountUpdate::Closed)",
+            "ipc_receiver = None;",
+        ),
+        "independent sole publisher handoff and UI receiver retirement",
+    )
+    poller = extract_braced_item(
+        tray,
+        "async fn start_query_session_count(",
+        "independent tray poller",
+    )
+    require_order(
+        poller,
+        (
+            "if sender.is_closed()",
+            "crate::ipc::get_controlled_session_count(1000).await",
+            "if !publish_tray_session_count(&sender, count)",
+            "return;",
+            "hbb_common::sleep(1.).await;",
+        ),
+        "independent receiver-final existing poller",
+    )
+    for test in (
+        "tray_session_count_publication_is_latest_state_only",
+        "unchanged_tray_session_count_does_not_wake_the_ui",
+        "tray_session_count_receiver_retirement_closes_publication",
+        "tray_session_count_publisher_retirement_is_observable",
+    ):
+        require_text(tray, test, f"independent {test} regression")
+
+    for key, text, label in (
+        (
+            "verify",
+            "python3 scripts/verify-tray-session-count-mailbox.py --repo . --self-test",
+            "shared tray mailbox gate",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter tray::tests:: --color never",
+            "shared tray mailbox behavior gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11hc</span>',
+            "R-S11hc requirement",
+        ),
+        ("requirements", "<tr><td>364</td>", "Appendix C #364"),
+        (
+            "hardening",
+            "### R-S11hc/R-S11e-241 — latest-state Windows tray session-count ownership",
+            "R-S11hc ledger",
+        ),
+    ):
+        require_text(sources[key], text, label)
+    require_text(
+        sources["workspace_verifier"],
+        '            "tray_session_count_mailbox_verifier": (\n'
+        '                repo / "scripts/verify-tray-session-count-mailbox.py"\n'
+        '            ).read_text(encoding="utf-8"),',
+        "tray mailbox independent verifier binding",
+    )
+    require_text(
+        sources["workspace_verifier"],
+        '            "tray_source": (repo / "src/tray.rs").read_text(encoding="utf-8"),',
+        "tray source independent binding",
+    )
+    workspace_module = ast.parse(sources["workspace_verifier"])
+    validate_sources_function = next(
+        (
+            node
+            for node in workspace_module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "validate_sources"
+        ),
+        None,
+    )
+    if validate_sources_function is None:
+        raise VerificationError("tray mailbox independent workspace dispatch is absent")
+    dispatches = [
+        node
+        for node in validate_sources_function.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "validate_tray_session_count_mailbox_contract"
+    ]
+    if len(dispatches) != 1:
+        raise VerificationError(
+            "tray mailbox independent workspace dispatch must occur exactly once"
+        )
+    require_text(
+        focused,
+        '("tray", "tokio::sync::watch::channel(0)", "tokio::sync::mpsc::unbounded_channel()", "latest-state channel"),',
+        "focused tray latest-state mutation",
     )
 
 
@@ -48428,6 +48653,7 @@ def validate_sources(sources):
     validate_android_media_projection_finality_contract(sources)
     validate_android_frame_raw_generation_contract(sources)
     validate_android_main_service_status_contract(sources)
+    validate_tray_session_count_mailbox_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
     validate_direct_only_viewer_contract(sources)
@@ -68744,6 +68970,166 @@ def run_source_mutations(sources):
             "clipboard-listener independent workspace dispatch must occur exactly once",
         ),
         (
+            "tray_source",
+            "tokio::sync::watch::channel(0)",
+            "tokio::sync::mpsc::unbounded_channel()",
+            "independent zero-initialized watch",
+        ),
+        (
+            "tray_source",
+            "let current = sender.borrow();",
+            "let current = count;",
+            "independent read-release-before-write and receiver finality",
+        ),
+        (
+            "tray_source",
+            "*current != count",
+            "true",
+            "independent read-release-before-write and receiver finality",
+        ),
+        (
+            "tray_source",
+            "if changed && sender.send(count).is_err()",
+            "if false && sender.send(count).is_err()",
+            "independent read-release-before-write and receiver finality",
+        ),
+        (
+            "tray_source",
+            "!sender.is_closed()",
+            "true",
+            "independent read-release-before-write and receiver finality",
+        ),
+        (
+            "tray_source",
+            "match receiver.has_changed()",
+            "match Ok(false)",
+            "independent one-revision latest-state receive",
+        ),
+        (
+            "tray_source",
+            "receiver.borrow_and_update()",
+            "receiver.borrow()",
+            "independent one-revision latest-state receive",
+        ),
+        (
+            "tray_source",
+            "Err(_) => TraySessionCountUpdate::Closed",
+            "Err(_) => TraySessionCountUpdate::Unchanged",
+            "independent one-revision latest-state receive",
+        ),
+        (
+            "tray_source",
+            "let mut ipc_receiver = Some(ipc_receiver);",
+            "let mut ipc_receiver = None;",
+            "independent sole publisher handoff and UI receiver retirement",
+        ),
+        (
+            "tray_source",
+            "start_query_session_count(ipc_sender);",
+            "start_query_session_count(ipc_sender.clone());",
+            "independent retained tray publisher clone",
+        ),
+        (
+            "tray_source",
+            "ipc_receiver = None;",
+            "// closed tray receiver retained",
+            "independent sole publisher handoff and UI receiver retirement",
+        ),
+        (
+            "tray_source",
+            "if sender.is_closed() {",
+            "if false && sender.is_closed() {",
+            "independent receiver-final existing poller",
+        ),
+        (
+            "tray_source",
+            "if !publish_tray_session_count(&sender, count) {",
+            "if false && !publish_tray_session_count(&sender, count) {",
+            "independent receiver-final existing poller",
+        ),
+        (
+            "tray_source",
+            "fn tray_session_count_publication_is_latest_state_only",
+            "fn tray_session_count_publication_may_queue_history",
+            "independent tray_session_count_publication_is_latest_state_only regression",
+        ),
+        (
+            "tray_source",
+            "fn unchanged_tray_session_count_does_not_wake_the_ui",
+            "fn unchanged_tray_session_count_may_wake_the_ui",
+            "independent unchanged_tray_session_count_does_not_wake_the_ui regression",
+        ),
+        (
+            "tray_source",
+            "fn tray_session_count_receiver_retirement_closes_publication",
+            "fn tray_session_count_receiver_retirement_is_advisory",
+            "independent tray_session_count_receiver_retirement_closes_publication regression",
+        ),
+        (
+            "tray_source",
+            "fn tray_session_count_publisher_retirement_is_observable",
+            "fn tray_session_count_publisher_retirement_is_hidden",
+            "independent tray_session_count_publisher_retirement_is_observable regression",
+        ),
+        (
+            "tray_session_count_mailbox_verifier",
+            '("tray", "tokio::sync::watch::channel(0)", "tokio::sync::mpsc::unbounded_channel()", "latest-state channel"),',
+            '("tray", "tokio::sync::watch::channel_disabled(0)", "tokio::sync::mpsc::unbounded_channel()", "latest-state channel"),',
+            "focused tray latest-state mutation",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-tray-session-count-mailbox.py --repo . --self-test",
+            "true # tray mailbox verifier disabled",
+            "shared tray mailbox gate",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter tray::tests:: --color never",
+            "true # tray mailbox tests disabled",
+            "shared tray mailbox behavior gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11hc</span>',
+            '<div class="req"><span class="id">R-S11hc-disabled</span>',
+            "R-S11hc requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>364</td>",
+            "<tr><td>364-disabled</td>",
+            "Appendix C #364",
+        ),
+        (
+            "hardening",
+            "### R-S11hc/R-S11e-241 — latest-state Windows tray session-count ownership",
+            "### R-S11hc-disabled/R-S11e-241 — latest-state Windows tray session-count ownership",
+            "R-S11hc ledger",
+        ),
+        (
+            "workspace_verifier",
+            '            "tray_session_count_mailbox_verifier": (\n'
+            '                repo / "scripts/verify-tray-session-count-mailbox.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "tray_session_count_mailbox_verifier_disabled": (\n'
+            '                repo / "scripts/verify-tray-session-count-mailbox.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "tray mailbox independent verifier binding",
+        ),
+        (
+            "workspace_verifier",
+            '            "tray_source": (repo / "src/tray.rs").read_text(encoding="utf-8"),',
+            '            "tray_source_disabled": (repo / "src/tray.rs").read_text(encoding="utf-8"),',
+            "tray source independent binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_tray_session_count_mailbox_contract(sources)\n",
+            "    validate_tray_session_count_mailbox_contract_disabled(sources)\n",
+            "tray mailbox independent workspace dispatch must occur exactly once",
+        ),
+        (
             "clipboard_source",
             "const CLIPBOARD_FILE_EGRESS_WAKE_CAPACITY: usize = 1;",
             "const CLIPBOARD_FILE_EGRESS_WAKE_CAPACITY: usize = 64;",
@@ -82578,6 +82964,9 @@ def main():
             "clipboard_listener_ownership_verifier": (
                 repo / "scripts/verify-clipboard-listener-ownership.py"
             ).read_text(encoding="utf-8"),
+            "tray_session_count_mailbox_verifier": (
+                repo / "scripts/verify-tray-session-count-mailbox.py"
+            ).read_text(encoding="utf-8"),
             "clipboard_route_budget_verifier": (
                 repo / "scripts/verify-clipboard-route-budget.py"
             ).read_text(encoding="utf-8"),
@@ -82898,6 +83287,7 @@ def main():
             "platform_source": (repo / "src/platform/mod.rs").read_text(encoding="utf-8"),
             "linux_source": (repo / "src/platform/linux.rs").read_text(encoding="utf-8"),
             "windows_source": (repo / "src/platform/windows.rs").read_text(encoding="utf-8"),
+            "tray_source": (repo / "src/tray.rs").read_text(encoding="utf-8"),
             "windows_native_source": (repo / "src/platform/windows.cc").read_text(encoding="utf-8"),
             "windows_privacy_input_source": (
                 repo / "src/privacy_mode/win_input.rs"

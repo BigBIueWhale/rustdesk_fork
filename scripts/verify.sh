@@ -9501,6 +9501,7 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ha_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter clipboard_listener::tests:: --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter tray::tests:: --color never
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib r_s11gz_ --color never
 if python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test; then
   echo "  ok  R-S11ew/R-S11fr Flutter software RGBA publication is exact-session/token-owned, bounded, latest-wins, recoverable, commit-ordered, and pointer-free"
@@ -9542,6 +9543,12 @@ if python3 scripts/verify-clipboard-listener-ownership.py --repo . --self-test; 
   echo "  ok  R-S11hb native clipboard-listener callbacks are bounded, exact-generation-owned, and terminal-final"
 else
   echo "  FAIL R-S11hb: native clipboard-listener callbacks regained unbounded retention, name-only cleanup, or incomplete terminal finality"
+  rc=1
+fi
+if python3 scripts/verify-tray-session-count-mailbox.py --repo . --self-test; then
+  echo "  ok  R-S11hc Windows tray session-count publication is latest-state bounded and receiver-final"
+else
+  echo "  FAIL R-S11hc: Windows tray session-count publication regained an unbounded queue, stale history, or incomplete retirement"
   rc=1
 fi
 if python3 scripts/verify-clipboard-route-budget.py --repo . --self-test; then

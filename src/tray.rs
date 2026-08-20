@@ -1,10 +1,49 @@
 use crate::client::translate;
-#[cfg(windows)]
+#[cfg(any(windows, test))]
 use hbb_common::tokio;
 use hbb_common::{allow_err, log};
 use std::sync::{Arc, Mutex};
 #[cfg(windows)]
 use std::time::Duration;
+
+#[cfg(any(windows, test))]
+#[derive(Debug, Eq, PartialEq)]
+enum TraySessionCountUpdate {
+    Unchanged,
+    Count(usize),
+    Closed,
+}
+
+#[cfg(any(windows, test))]
+fn tray_session_count_channel() -> (
+    tokio::sync::watch::Sender<usize>,
+    tokio::sync::watch::Receiver<usize>,
+) {
+    tokio::sync::watch::channel(0)
+}
+
+#[cfg(any(windows, test))]
+fn publish_tray_session_count(sender: &tokio::sync::watch::Sender<usize>, count: usize) -> bool {
+    let changed = {
+        let current = sender.borrow();
+        *current != count
+    };
+    if changed && sender.send(count).is_err() {
+        return false;
+    }
+    !sender.is_closed()
+}
+
+#[cfg(any(windows, test))]
+fn take_tray_session_count_update(
+    receiver: &mut tokio::sync::watch::Receiver<usize>,
+) -> TraySessionCountUpdate {
+    match receiver.has_changed() {
+        Ok(true) => TraySessionCountUpdate::Count(*receiver.borrow_and_update()),
+        Ok(false) => TraySessionCountUpdate::Unchanged,
+        Err(_) => TraySessionCountUpdate::Closed,
+    }
+}
 
 pub fn start_tray() {
     if crate::ui_interface::get_builtin_option(hbb_common::config::keys::OPTION_HIDE_TRAY) == "Y" {
@@ -99,7 +138,9 @@ fn make_tray() -> hbb_common::ResultType<()> {
     let menu_channel = MenuEvent::receiver();
     let tray_channel = TrayEvent::receiver();
     #[cfg(windows)]
-    let (ipc_sender, ipc_receiver) = std::sync::mpsc::channel::<usize>();
+    let (ipc_sender, ipc_receiver) = tray_session_count_channel();
+    #[cfg(windows)]
+    let mut ipc_receiver = Some(ipc_receiver);
 
     let open_func = move || {
         if cfg!(not(feature = "flutter")) {
@@ -128,7 +169,7 @@ fn make_tray() -> hbb_common::ResultType<()> {
 
     #[cfg(windows)]
     std::thread::spawn(move || {
-        start_query_session_count(ipc_sender.clone());
+        start_query_session_count(ipc_sender);
     });
     #[cfg(windows)]
     let mut last_click = std::time::Instant::now();
@@ -215,25 +256,36 @@ fn make_tray() -> hbb_common::ResultType<()> {
         }
 
         #[cfg(windows)]
-        if let Ok(count) = ipc_receiver.try_recv() {
-            _tray_icon
-                .lock()
-                .unwrap()
-                .as_mut()
-                .map(|t| t.set_tooltip(Some(tooltip(count))));
+        {
+            let update = ipc_receiver.as_mut().map(take_tray_session_count_update);
+            match update {
+                Some(TraySessionCountUpdate::Count(count)) => {
+                    _tray_icon
+                        .lock()
+                        .unwrap()
+                        .as_mut()
+                        .map(|t| t.set_tooltip(Some(tooltip(count))));
+                }
+                Some(TraySessionCountUpdate::Closed) => {
+                    log::debug!("Windows tray session-count publisher stopped");
+                    ipc_receiver = None;
+                }
+                Some(TraySessionCountUpdate::Unchanged) | None => {}
+            }
         }
     });
 }
 
 #[cfg(windows)]
 #[tokio::main(flavor = "current_thread")]
-async fn start_query_session_count(sender: std::sync::mpsc::Sender<usize>) {
-    let mut last_count = 0;
+async fn start_query_session_count(sender: tokio::sync::watch::Sender<usize>) {
     loop {
+        if sender.is_closed() {
+            return;
+        }
         if let Ok(count) = crate::ipc::get_controlled_session_count(1000).await {
-            if count != last_count {
-                last_count = count;
-                sender.send(count).ok();
+            if !publish_tray_session_count(&sender, count) {
+                return;
             }
         }
         hbb_common::sleep(1.).await;
@@ -257,4 +309,58 @@ fn load_icon_from_asset() -> Option<image::DynamicImage> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tray_session_count_publication_is_latest_state_only() {
+        let (sender, mut receiver) = tray_session_count_channel();
+        assert_eq!(
+            take_tray_session_count_update(&mut receiver),
+            TraySessionCountUpdate::Unchanged
+        );
+
+        assert!(publish_tray_session_count(&sender, 1));
+        assert!(publish_tray_session_count(&sender, 2));
+        assert!(publish_tray_session_count(&sender, 3));
+
+        assert_eq!(
+            take_tray_session_count_update(&mut receiver),
+            TraySessionCountUpdate::Count(3)
+        );
+        assert_eq!(
+            take_tray_session_count_update(&mut receiver),
+            TraySessionCountUpdate::Unchanged
+        );
+    }
+
+    #[test]
+    fn unchanged_tray_session_count_does_not_wake_the_ui() {
+        let (sender, mut receiver) = tray_session_count_channel();
+        assert!(publish_tray_session_count(&sender, 0));
+        assert_eq!(
+            take_tray_session_count_update(&mut receiver),
+            TraySessionCountUpdate::Unchanged
+        );
+    }
+
+    #[test]
+    fn tray_session_count_receiver_retirement_closes_publication() {
+        let (sender, receiver) = tray_session_count_channel();
+        drop(receiver);
+        assert!(!publish_tray_session_count(&sender, 1));
+    }
+
+    #[test]
+    fn tray_session_count_publisher_retirement_is_observable() {
+        let (sender, mut receiver) = tray_session_count_channel();
+        drop(sender);
+        assert_eq!(
+            take_tray_session_count_update(&mut receiver),
+            TraySessionCountUpdate::Closed
+        );
+    }
 }

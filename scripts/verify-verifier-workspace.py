@@ -22481,6 +22481,9 @@ def validate_cm_egress_budget_contract(sources):
         ("CmEgressItem::Failed(failure)", "focused failure finality"),
         ("cm_egress_sender(id)", "focused registry-lock release"),
         ("R-S11gy", "focused normative and ledger binding"),
+        ("return_job_log: bool", "focused direct CM file-job log result"),
+        ("r_s11ha_cm_file_job_log_is_returned", "focused direct-log regression"),
+        ("R-S11ha", "focused direct-log normative binding"),
     ):
         require_text(focused_contract, marker, label)
     require_text(
@@ -22493,6 +22496,11 @@ def validate_cm_egress_budget_contract(sources):
         '("const CM_EGRESS_MAX_MESSAGES: usize = 256;", "message-count ceiling")',
         "focused CM message-count assertion",
     )
+    require_text(
+        focused_contract,
+        '("mpsc::unbounded_channel::<String>()", "unbounded CM file-job log queue")',
+        "focused unbounded file-job log absence assertion",
+    )
 
     ui_cm = sources["ui_cm_source"]
     connection = sources["connection_source"]
@@ -22504,6 +22512,13 @@ def validate_cm_egress_budget_contract(sources):
         (flutter, "tx: UnboundedSender<crate::ipc::Data>", "independent Android unbounded CM-result sender"),
     ):
         require_absent(source, needle, label)
+    for needle, label in (
+        ("mpsc::unbounded_channel::<String>()", "independent unbounded CM file-job log queue"),
+        ("UnboundedSender<String>", "independent unbounded CM file-job log sender"),
+        ("tx_log", "independent detached CM file-job log producer"),
+        ("rx_log", "independent detached CM file-job log consumer"),
+    ):
+        require_absent(ui_cm, needle, label)
     for marker, label in (
         ("const CM_EGRESS_WAKE_CAPACITY: usize = 1;", "independent one-slot wake"),
         ("const CM_EGRESS_MAX_MESSAGES: usize = 256;", "independent message-count ceiling"),
@@ -22697,6 +22712,94 @@ def validate_cm_egress_budget_contract(sources):
         ),
         "independent first-hop terminal finality",
     )
+    file_handler = extract_braced_item(
+        ui_cm,
+        "async fn handle_fs(",
+        "independent exact-command CM file handler",
+    )
+    if file_handler.count("\n    return_job_log: bool,\n") != 1:
+        raise VerificationError(
+            "independent CM file handler lacks one explicit direct-log policy"
+        )
+    require_order(
+        file_handler,
+        (
+            "return_job_log: bool,",
+            ") -> Option<String>",
+            "let mut job_log = None;",
+            "match fs {",
+            "job_log",
+        ),
+        "independent direct optional file-job log result",
+    )
+    if file_handler.count("if return_job_log {") != 4:
+        raise VerificationError(
+            "independent CM file handler does not bind all four direct terminal-log paths"
+        )
+    if file_handler.count(
+        'job_log = Some(serialize_transfer_job(&job.job, false, true, ""));'
+    ) != 2:
+        raise VerificationError(
+            "independent CM file handler does not bind both direct cancellation logs"
+        )
+    for marker, label in (
+        (
+            'job_log = Some(serialize_transfer_job(&job.job, true, false, ""));',
+            "independent direct completion log",
+        ),
+        (
+            "job_log = Some(serialize_transfer_job(&job.job, false, false, &err));",
+            "independent direct error log",
+        ),
+    ):
+        require_text(file_handler, marker, label)
+    for forbidden, label in (
+        ("mpsc::", "independent channel use inside exact-command file handler"),
+        ("tokio::spawn", "independent detached file-log task"),
+        ("std::thread", "independent detached file-log thread"),
+    ):
+        require_absent(file_handler, forbidden, label)
+    desktop_file_commands = extract_between(
+        ipc_runner,
+        "Data::AuthorizedFS { cm_auth_token, mut fs } => {",
+        "Data::FS(_) => {",
+        "independent desktop authorized file-command branch",
+    )
+    require_order(
+        desktop_file_commands,
+        (
+            "let job_log = if let ipc::FS::WriteBlock",
+            "handle_fs(",
+            "true,",
+            ".await",
+            "if let Some(job_log) = job_log",
+            'self.cm.ui_handler.file_transfer_log("transfer", &job_log);',
+            "if !self.read_jobs.is_empty()",
+        ),
+        "independent exact desktop command-to-log ordering",
+    )
+    if desktop_file_commands.count("handle_fs(") != 2:
+        raise VerificationError(
+            "independent desktop file-command branch lacks exactly two handler calls"
+        )
+    if desktop_file_commands.count("\n                                                true,\n") != 1:
+        raise VerificationError(
+            "independent desktop raw-block command does not request its direct log"
+        )
+    if desktop_file_commands.count("\n                                            true,\n") != 1:
+        raise VerificationError(
+            "independent desktop ordinary command does not request its direct log"
+        )
+    require_absent(
+        desktop_file_commands,
+        "\n                                            false,\n",
+        "independent desktop file-command log omission",
+    )
+    require_absent(
+        ipc_runner,
+        "rx_log.recv()",
+        "independent select-driven file-job log drain",
+    )
 
     connection_start = extract_braced_item(
         connection, "pub async fn start(", "independent controlled connection loop"
@@ -22753,6 +22856,41 @@ def validate_cm_egress_budget_contract(sources):
         ),
         "independent Android shared bounded result mailbox",
     )
+    android_listener = extract_braced_item(
+        ui_cm,
+        "pub async fn start_listen<",
+        "independent Android CM listener",
+    )
+    android_file_commands = extract_between(
+        android_listener,
+        "Some(Data::FS(fs)) => {",
+        "Some(Data::Close) => {",
+        "independent Android authorized file-command branch",
+    )
+    require_order(
+        android_file_commands,
+        (
+            "Some(Data::FS(fs))",
+            "let _ = handle_fs(",
+            "CmFileResponder {",
+            "false,",
+            ".await;",
+        ),
+        "independent Android direct-log omission",
+    )
+    if android_file_commands.count("handle_fs(") != 1:
+        raise VerificationError(
+            "independent Android file-command branch lacks exactly one handler call"
+        )
+    if android_file_commands.count("\n                    false,\n") != 1:
+        raise VerificationError(
+            "independent Android file command does not omit its direct log"
+        )
+    require_absent(
+        android_file_commands,
+        "\n                    true,\n",
+        "independent Android file-command log construction",
+    )
 
     for test in (
         "r_s11gy_cm_egress_is_fifo_and_releases_capacity_on_receive",
@@ -22760,6 +22898,8 @@ def validate_cm_egress_budget_contract(sources):
         "r_s11gy_cm_egress_encoded_byte_limits_are_terminal",
         "r_s11gy_cm_egress_accounts_serde_skipped_raw_blocks_and_receiver_retirement",
         "r_s11gy_cm_egress_wakes_without_polling_and_sender_retirement_closes",
+        "r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner",
+        "r_s11ha_cm_file_job_log_can_be_omitted_without_retaining_the_job",
     ):
         require_text(ui_cm, test, f"independent {test} regression")
     for marker, label in (
@@ -22768,16 +22908,22 @@ def validate_cm_egress_budget_contract(sources):
         ("CM_FILE_BLOCK_MAX_FRAME_BYTES + 1", "independent raw oversize regression"),
         ("assert!(!waiting.is_finished());", "independent asynchronous wait regression"),
         ("Err(CmEgressAdmissionError::ReceiverGone)", "independent stale-sender regression"),
+        ('terminal_log.get("cancel")', "independent direct terminal-log regression"),
+        ("assert!(write_jobs.is_empty());", "independent terminal job-retirement regression"),
     ):
         require_text(ui_cm, marker, label)
 
     for key, text, label in (
         ("verify", "python3 scripts/verify-cm-egress-budget.py --repo . --self-test", "shared CM-egress focused gate"),
         ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never", "shared CM-egress behavior gate"),
+        ("verify", "cargo test --lib --features linux-pkg-config,flutter r_s11ha_ --color never", "shared direct-log behavior gate"),
         ("apple", "python3 scripts/verify-cm-egress-budget.py --repo . --self-test", "Apple CM-egress focused gate"),
         ("requirements", '<div class="req"><span class="id">R-S11gy</span>', "R-S11gy requirement"),
         ("requirements", "<tr><td>360</td>", "Appendix C #360"),
         ("hardening", "### R-S11gy/R-S11e-237 — bounded connection-manager result ownership", "R-S11gy ledger"),
+        ("requirements", '<div class="req"><span class="id">R-S11ha</span>', "R-S11ha requirement"),
+        ("requirements", "<tr><td>362</td>", "Appendix C #362"),
+        ("hardening", "### R-S11ha/R-S11e-239 — exact-command CM file-job log ownership", "R-S11ha ledger"),
     ):
         require_text(sources[key], text, label)
     require_text(
@@ -68084,6 +68230,103 @@ def run_source_mutations(sources):
             "    validate_clipboard_route_budget_contract(sources)\n"
             "    validate_keyed_writer_budget_contract(sources)",
             "CM-egress independent workspace dispatch",
+        ),
+        (
+            "ui_cm_source",
+            "        self.running = false;",
+            "        let (_tx_log, mut rx_log) = mpsc::unbounded_channel::<String>();\n"
+            "        self.running = false;",
+            "independent unbounded CM file-job log queue",
+        ),
+        (
+            "ui_cm_source",
+            "    return_job_log: bool,",
+            "    _return_job_log: bool,",
+            "independent CM file handler lacks one explicit direct-log policy",
+        ),
+        (
+            "ui_cm_source",
+            "    let mut job_log = None;",
+            "    let job_log = None;",
+            "independent direct optional file-job log result",
+        ),
+        (
+            "ui_cm_source",
+            'job_log = Some(serialize_transfer_job(&job.job, false, true, ""));',
+            'let _ = serialize_transfer_job(&job.job, false, true, "");',
+            "independent CM file handler does not bind both direct cancellation logs",
+        ),
+        (
+            "ui_cm_source",
+            'job_log = Some(serialize_transfer_job(&job.job, true, false, ""));',
+            'let _ = serialize_transfer_job(&job.job, true, false, "");',
+            "independent direct completion log",
+        ),
+        (
+            "ui_cm_source",
+            "job_log = Some(serialize_transfer_job(&job.job, false, false, &err));",
+            "let _ = serialize_transfer_job(&job.job, false, false, &err);",
+            "independent direct error log",
+        ),
+        (
+            "ui_cm_source",
+            "if let Some(job_log) = job_log {\n"
+            "                                        self.cm.ui_handler.file_transfer_log(\"transfer\", &job_log);",
+            "if false && job_log.is_some() {\n"
+            "                                        self.cm.ui_handler.file_transfer_log(\"transfer\", job_log.as_deref().unwrap_or_default());",
+            "independent exact desktop command-to-log ordering",
+        ),
+        (
+            "ui_cm_source",
+            "                    false,\n"
+            "                )\n"
+            "                .await;",
+            "                    true,\n"
+            "                )\n"
+            "                .await;",
+            "independent Android direct-log omission",
+        ),
+        (
+            "ui_cm_source",
+            "fn r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner",
+            "fn direct_log_may_detach",
+            "independent r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner regression",
+        ),
+        (
+            "ui_cm_source",
+            "fn r_s11ha_cm_file_job_log_can_be_omitted_without_retaining_the_job",
+            "fn omitted_log_may_retain_job",
+            "independent r_s11ha_cm_file_job_log_can_be_omitted_without_retaining_the_job regression",
+        ),
+        (
+            "cm_egress_budget_verifier",
+            '("mpsc::unbounded_channel::<String>()", "unbounded CM file-job log queue")',
+            '("mpsc::unbounded_channel::<String>_disabled()", "unbounded CM file-job log queue")',
+            "focused unbounded file-job log absence assertion",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter r_s11ha_ --color never",
+            "true # direct CM file-log tests disabled",
+            "shared direct-log behavior gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11ha</span>',
+            '<div class="req"><span class="id">R-S11ha-disabled</span>',
+            "R-S11ha requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>362</td>",
+            "<tr><td>362-disabled</td>",
+            "Appendix C #362",
+        ),
+        (
+            "hardening",
+            "### R-S11ha/R-S11e-239 — exact-command CM file-job log ownership",
+            "### R-S11ha-disabled/R-S11e-239 — exact-command CM file-job log ownership",
+            "R-S11ha ledger",
         ),
         (
             "clipboard_source",

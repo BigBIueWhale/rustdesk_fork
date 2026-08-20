@@ -25545,12 +25545,80 @@ performance soak; clean cold R-B2/R-B10 equality; installed process/service/pack
 behavior; independent reproduction; R-V3 external review; causation; and proof that the
 whole connection flow is correct and performant remain explicitly open.
 
+### R-S11ha/R-S11e-239 — exact-command CM file-job log ownership (2026-08-20)
+
+**SOURCE IMPLEMENTED; CONFINED SOURCE/MUTATION VERIFICATION PASSED; EXACT
+RUST/DART/FLUTTER/NATIVE, DEVICE, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE OPEN.** Platforms: the desktop
+connection manager on Windows, Linux, and macOS, with Android's shared in-process
+filesystem handler kept explicitly log-free. Surface: authorized CM filesystem command
+handling -> terminal transfer-job serialization -> local connection-manager UI.
+
+Read-only source tracing found that `IpcTaskRunner::run` created an unbounded Tokio
+`String` channel, passed its sender to `handle_fs`, and consumed the receiver in a
+separate branch of that same task's `select!`. Write cancellation, successful write
+completion, write failure, and read cancellation could each serialize one peer-derived
+transfer job into this channel. There was no concurrent producer or separate authority:
+the handler was awaited by the sole consumer task. A continuously ready filesystem
+stream could therefore retain an unbounded count of serialized terminal job strings
+until selection reached the log branch; connection retirement destroyed the backlog.
+This is source-proven desktop resource/finality debt and a cleanup-mediated recovery
+mechanism. It is not proof that the unidentified weeks-old Android, Windows, or Debian
+artifacts contained or exercised the path and is not a causation claim for the reported
+display-only delay.
+
+The log sender, receiver, and `select!` branch are deleted. `handle_fs` now returns at
+most one owned `Option<String>` terminal log to the exact command caller. Cancellation,
+completion, and error paths still remove the exact connection-ID/generation job before
+constructing that result. The desktop CM task consumes the value immediately after the
+awaited handler and before activating later read work or accepting another command.
+Android explicitly requests no log construction and still retires the matching job; it
+does not gain a presentation queue or an alternate route. The direct return provides
+natural command-owner backpressure and cannot outlive the stack transaction. No sender,
+receiver, wake, FIFO, retry, reconnect, timer, poller, worker, task, thread, runtime,
+listener, port, dependency, privilege transition, service restart, alternate log path,
+or Android persistent-background-service change was added.
+
+Two current-thread Rust regressions construct exact write jobs, prove start produces no
+terminal log, prove cancellation removes the exact job and directly returns the expected
+terminal JSON when requested, and prove the Android-shaped omission path returns no log
+without retaining the retired job. The extended
+`scripts/verify-cm-egress-budget.py` contract rejects the old unbounded `String` route,
+binds all four direct terminal-log paths, desktop consume-before-next-work ordering,
+Android omission, regressions, R-S11ha, Appendix C #362, and this ledger. Its deliberate
+mutations and the independently parsed workspace contract bind the same topology without
+treating the focused result as sufficient. In the exact confined verifier image, with the
+repository mounted read-only, networking disabled, all capabilities dropped,
+`no-new-privileges`, a non-root numeric user, and bounded CPU/memory/PIDs/private tmpfs,
+the focused CM egress/log gate rejected all 64 mutations. The adjacent file-clipboard,
+controlled-command, keyed-writer, display-finality, viewer voice-worker, and Android
+voice/session ownership gates rejected 38, 51, 25, 186, 63, and 534 mutations
+respectively. The independent workspace baseline passed; a narrowed independent run
+rejected all 15 newly added R-S11ha mutations; and the complete independent source matrix
+rejected all 4,589 mutations on the frozen final tracked bytes. Python AST parsing of both
+changed verifiers, Bash parsing of the shared gate, exact Rust 1.75 `rustfmt --check`, the
+requirements-ledger digest check, and `git diff --check` also passed. The exact pinned
+Debian/Apple/Windows builder images and authenticated Cargo vendor closure are unavailable
+locally, so neither the two new Rust regressions nor any native compilation/execution is
+claimed.
+
+The broader user mandate remains unchanged and open: exact-current Rust/Dart/Flutter and
+generated-bridge compilation/execution; physical Android task-swipe/reopen/Force-Stop and
+real Windows focus/minimize reproduction; Linux/macOS/iOS/web and cross-version behavior;
+the weeks-old deployed artifacts; capture-through-compositor timestamps and explicit
+latency/queue budgets; sustained connection/reconnect/focus/background/file/control
+coexistence/resource/performance soak; clean cold R-B2/R-B10 equality; installed process,
+service, and package behavior; independent reproduction; R-V3 external review; causation;
+and proof that the complete connection flow is correct and performant all remain release
+obligations. This source slice inspects or changes no host RustDesk process, configuration,
+service, listener, firewall/network state, VM, Android device/service, unrelated workload,
+or OS privilege boundary.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-dd38ec84482b8387d5fc700ea8e04e991069093b87ebeeeec3508245600d71af  requirements.html
+3e4502bee252bd3d15cef4ae973709463b0460271ae78dd0a59f27a77336c0d3  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -25619,3 +25687,4 @@ The same identity additionally binds R-S11gw and Appendix C #358.
 The same identity additionally binds R-S11gx and Appendix C #359.
 The same identity additionally binds R-S11gy and Appendix C #360.
 The same identity additionally binds R-S11gz and Appendix C #361.
+The same identity additionally binds R-S11ha and Appendix C #362.

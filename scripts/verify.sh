@@ -9499,6 +9499,7 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gw_ --color never
 "${RUN[@]}" cargo test -p hbb_common --lib r_s11gx_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gy_ --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ha_ --color never
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib r_s11gz_ --color never
 if python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test; then
   echo "  ok  R-S11ew/R-S11fr Flutter software RGBA publication is exact-session/token-owned, bounded, latest-wins, recoverable, commit-ordered, and pointer-free"

@@ -19,10 +19,7 @@ use hbb_common::{
     message_proto::*,
     tokio::{
         self,
-        sync::{
-            mpsc::{self, UnboundedSender},
-            OwnedSemaphorePermit, Semaphore,
-        },
+        sync::{mpsc, OwnedSemaphorePermit, Semaphore},
         task::spawn_blocking,
     },
     ResultType,
@@ -938,8 +935,6 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                 );
             }
         }
-        let (tx_log, mut rx_log) = mpsc::unbounded_channel::<String>();
-
         self.running = false;
         loop {
             tokio::select! {
@@ -1022,7 +1017,7 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                         );
                                         break;
                                     }
-                                    if let ipc::FS::WriteBlock { id, file_num, conn_id, data: _, compressed, generation } = fs {
+                                    let job_log = if let ipc::FS::WriteBlock { id, file_num, conn_id, data: _, compressed, generation } = fs {
                                         if let Ok(bytes) = self.stream.next_raw().await {
                                             fs = ipc::FS::WriteBlock{id, file_num, conn_id, data:bytes.into(), compressed, generation};
                                             handle_fs(
@@ -1034,9 +1029,11 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                                     conn_id: self.conn_id,
                                                     cm_auth_token: &self.cm_auth_token,
                                                 },
-                                                Some(&tx_log),
+                                                true,
                                             )
-                                            .await;
+                                            .await
+                                        } else {
+                                            None
                                         }
                                     } else {
                                         handle_fs(
@@ -1048,9 +1045,12 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                                                 conn_id: self.conn_id,
                                                 cm_auth_token: &self.cm_auth_token,
                                             },
-                                            Some(&tx_log),
+                                            true,
                                         )
-                                        .await;
+                                        .await
+                                    };
+                                    if let Some(job_log) = job_log {
+                                        self.cm.ui_handler.file_transfer_log("transfer", &job_log);
                                     }
                                     // Activate fast timer immediately when read jobs exist.
                                     // This ensures new jobs start processing without waiting for the slow 30s timer.
@@ -1258,9 +1258,6 @@ impl<T: InvokeUiCM> IpcTaskRunner<T> {
                         break;
                     }
                 },
-                Some(job_log) = rx_log.recv() => {
-                    self.cm.ui_handler.file_transfer_log("transfer", &job_log);
-                }
                 _ = file_timer.tick() => {
                     if !self.read_jobs.is_empty() {
                         let conn_id = self.conn_id;
@@ -1458,7 +1455,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                 }
                 // Android doesn't need CM-side file reading (no need_validate_file_read_access)
                 let mut read_jobs_placeholder: Vec<CmTransferJob> = Vec::new();
-                handle_fs(
+                let _ = handle_fs(
                     fs,
                     &mut write_jobs,
                     &mut read_jobs_placeholder,
@@ -1467,7 +1464,7 @@ pub async fn start_listen<T: InvokeUiCM>(
                         conn_id: current_id,
                         cm_auth_token: &current_cm_auth_token,
                     },
-                    None,
+                    false,
                 )
                 .await;
             }
@@ -1563,8 +1560,9 @@ async fn handle_fs(
     write_jobs: &mut Vec<CmTransferJob>,
     read_jobs: &mut Vec<CmTransferJob>,
     responder: CmFileResponder<'_>,
-    tx_log: Option<&UnboundedSender<String>>,
-) {
+    return_job_log: bool,
+) -> Option<String> {
+    let mut job_log = None;
     match fs {
         ipc::FS::ReadEmptyDirs {
             dir,
@@ -1616,7 +1614,7 @@ async fn handle_fs(
                     file_num,
                     "write job connection authority mismatch".to_owned(),
                 );
-                return;
+                return None;
             }
             if has_job_for_connection(write_jobs, id, conn_id) {
                 reject_write_job(
@@ -1626,7 +1624,7 @@ async fn handle_fs(
                     file_num,
                     format!("duplicate write job id {}", id),
                 );
-                return;
+                return None;
             }
             if active_jobs_for_connection(write_jobs, conn_id)
                 >= fs::MAX_ACTIVE_FILE_TRANSFER_WRITE_JOBS_PER_CONN
@@ -1641,11 +1639,11 @@ async fn handle_fs(
                         fs::MAX_ACTIVE_FILE_TRANSFER_WRITE_JOBS_PER_CONN
                     ),
                 );
-                return;
+                return None;
             }
             if let Err(msg) = check_file_count_limit(files.len()) {
                 reject_write_job(responder, id, generation, file_num, msg);
-                return;
+                return None;
             }
             // Convert files to FileEntry
             let file_entries: Vec<FileEntry> = files
@@ -1672,7 +1670,7 @@ async fn handle_fs(
             if let Err(e) = job.set_files_with_limit(file_entries, get_max_validated_files()) {
                 log::warn!("Reject unsafe transfer file list for {}: {}", path, e);
                 reject_write_job(responder, id, generation, file_num, e.to_string());
-                return;
+                return None;
             }
             job.total_size = total_size;
             job.conn_id = conn_id;
@@ -1687,10 +1685,8 @@ async fn handle_fs(
                 remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)
             {
                 job.job.remove_download_file();
-                if let Some(tx) = tx_log {
-                    if let Err(e) = tx.send(serialize_transfer_job(&job.job, false, true, "")) {
-                        log::error!("error sending transfer job log via IPC: {}", e);
-                    }
+                if return_job_log {
+                    job_log = Some(serialize_transfer_job(&job.job, false, true, ""));
                 }
             }
         }
@@ -1704,10 +1700,8 @@ async fn handle_fs(
                 remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)
             {
                 job.job.modify_time();
-                if let Some(tx) = tx_log {
-                    if let Err(err) = tx.send(serialize_transfer_job(&job.job, true, false, "")) {
-                        log::error!("error sending transfer job log via IPC: {}", err);
-                    }
+                if return_job_log {
+                    job_log = Some(serialize_transfer_job(&job.job, true, false, ""));
                 }
                 Ok(())
             } else {
@@ -1732,12 +1726,8 @@ async fn handle_fs(
             let result = if let Some(job) =
                 remove_transfer_job_for_connection(write_jobs, id, conn_id, generation)
             {
-                if let Some(tx) = tx_log {
-                    if let Err(log_err) =
-                        tx.send(serialize_transfer_job(&job.job, false, false, &err))
-                    {
-                        log::error!("error sending transfer job log via IPC: {}", log_err);
-                    }
+                if return_job_log {
+                    job_log = Some(serialize_transfer_job(&job.job, false, false, &err));
                 }
                 Ok(())
             } else {
@@ -1920,10 +1910,8 @@ async fn handle_fs(
             if let Some(job) =
                 remove_transfer_job_for_connection(read_jobs, id, conn_id, generation)
             {
-                if let Some(tx) = tx_log {
-                    if let Err(e) = tx.send(serialize_transfer_job(&job.job, false, true, "")) {
-                        log::error!("error sending transfer job log via IPC: {}", e);
-                    }
+                if return_job_log {
+                    job_log = Some(serialize_transfer_job(&job.job, false, true, ""));
                 }
             }
         }
@@ -1937,7 +1925,7 @@ async fn handle_fs(
         } => {
             if let Some(job) = get_transfer_job_for_connection(read_jobs, id, conn_id, generation) {
                 if job.job.file_num() != file_num {
-                    return;
+                    return None;
                 }
                 let req = FileTransferSendConfirmRequest {
                     id,
@@ -1968,6 +1956,7 @@ async fn handle_fs(
             read_all_files(path, include_hidden, id, request_id, responder).await;
         }
     }
+    job_log
 }
 
 /// Start a read job in CM for file transfer from server to client (Windows only).
@@ -2655,6 +2644,112 @@ mod tests {
         assert!(!waiting.is_finished());
         drop(tx);
         assert!(waiting.await.unwrap().is_none());
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11ha_cm_file_job_log_is_returned_to_the_exact_command_owner() {
+        let (tx, _rx) = cm_egress_channel();
+        let mut write_jobs = Vec::new();
+        let mut read_jobs = Vec::new();
+        let responder = CmFileResponder {
+            tx: &tx,
+            conn_id: 41,
+            cm_auth_token: "token",
+        };
+        let started = handle_fs(
+            ipc::FS::NewWrite {
+                path: std::env::temp_dir()
+                    .join("rustdesk-r-s11ha-direct-log")
+                    .to_string_lossy()
+                    .into_owned(),
+                id: 9,
+                file_num: 0,
+                files: vec![("sample.txt".to_owned(), 0)],
+                overwrite_detection: false,
+                total_size: 0,
+                conn_id: 41,
+                generation: 7,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            true,
+        )
+        .await;
+        assert!(started.is_none());
+        assert_eq!(write_jobs.len(), 1);
+
+        let terminal_log = handle_fs(
+            ipc::FS::CancelWrite {
+                id: 9,
+                conn_id: 41,
+                generation: 7,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            true,
+        )
+        .await
+        .expect("cancelled exact job must return its terminal log");
+        assert!(write_jobs.is_empty());
+        let terminal_log: serde_json::Value = serde_json::from_str(&terminal_log).unwrap();
+        assert_eq!(
+            terminal_log.get("cancel").and_then(|v| v.as_bool()),
+            Some(true)
+        );
+        assert_eq!(
+            terminal_log.get("done").and_then(|v| v.as_bool()),
+            Some(false)
+        );
+    }
+
+    #[tokio::test(flavor = "current_thread")]
+    async fn r_s11ha_cm_file_job_log_can_be_omitted_without_retaining_the_job() {
+        let (tx, _rx) = cm_egress_channel();
+        let mut write_jobs = Vec::new();
+        let mut read_jobs = Vec::new();
+        let responder = CmFileResponder {
+            tx: &tx,
+            conn_id: 42,
+            cm_auth_token: "token",
+        };
+        assert!(handle_fs(
+            ipc::FS::NewWrite {
+                path: std::env::temp_dir()
+                    .join("rustdesk-r-s11ha-omitted-log")
+                    .to_string_lossy()
+                    .into_owned(),
+                id: 10,
+                file_num: 0,
+                files: vec![("sample.txt".to_owned(), 0)],
+                overwrite_detection: false,
+                total_size: 0,
+                conn_id: 42,
+                generation: 8,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .is_none());
+        assert_eq!(write_jobs.len(), 1);
+        assert!(handle_fs(
+            ipc::FS::CancelWrite {
+                id: 10,
+                conn_id: 42,
+                generation: 8,
+            },
+            &mut write_jobs,
+            &mut read_jobs,
+            responder,
+            false,
+        )
+        .await
+        .is_none());
+        assert!(write_jobs.is_empty());
     }
 
     #[cfg(not(any(target_os = "ios")))]

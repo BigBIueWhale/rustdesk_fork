@@ -25915,12 +25915,125 @@ all remain explicit release obligations. This slice inspects or changes no host 
 process, configuration, service, listener, firewall/network state, VM, Android device or
 service, unrelated workload, or OS privilege boundary.
 
+### R-S11he/R-S11e-243 — serialized controlled-side status refresh ownership (2026-08-21)
+
+**SOURCE IMPLEMENTED; CONFINED SOURCE/MUTATION VERIFICATION PASSED; EXACT
+DART/FLUTTER/NATIVE, DEVICE LIFECYCLE, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE
+OPEN.** Platform: shared Flutter controlled-side path on Android, iOS, Windows,
+Linux, and macOS, with connection-manager-specific client/window work on desktop.
+Surface: process-owned `ServerModel` option, password-status, controlled-client,
+and CM-window reconciliation. Android's intentionally persistent `MainService`,
+the host RustDesk service, media transport, capture, decode, and viewer presentation
+state machines are not changed by this slice.
+
+Read-only source tracing found that the inherited `ServerModel` constructor started
+both an async zero-delay refresh and an unretained `Timer.periodic` async callback
+every 500 milliseconds. A slow platform or IPC turn did not delay admission of the
+next periodic turn. Every turn also invoked `updatePasswordModel()` without awaiting
+it. A connection-manager client-count mismatch invoked `updateClientState(res)`
+without awaiting it; that function ignored the supplied `res`, performed another IPC
+query, and detached the resulting CM window show/hide operation. Older option,
+client, or window results could therefore commit after newer results and the number
+of live operations had no source bound when any dependency was slower than the poll
+interval. Blame attributes the inherited polling path to commit `c2abd3b3` from
+2026-06-19; it was not introduced by this correction. Process retirement, Android
+Force Stop, or equivalent cleanup destroyed those live operations, making this a
+shared source-proven resource, ordering, state-coherence, and finality defect and a
+cleanup-mediated recovery mechanism. This is not proof that an unidentified deployed
+artifact exercised the path, and this status/password/CM poller is not the video
+pipeline, so no causation claim is made for the reported display-only delay.
+
+The process-owned `ServerModel` now owns one `ServerStatusRefreshLoop`. It has one
+one-shot `Timer`, one optional active-turn future, explicit single-start state, and
+terminal closed state; it has no periodic timer, queue, catch-up loop, isolate, worker,
+or secondary owner. Start arms one zero-delay timer and passes the existing option
+readiness operation only to that first turn. A false initial readiness result skips
+that turn and schedules the next ordinary interval without repeatedly gating status
+observation. Each timer releases its own handle before beginning one turn. Only after
+that complete future settles is the active handle cleared and a new 500-millisecond
+one-shot timer armed. Consequently slow IPC creates natural backpressure: it cannot
+overlap another turn and receives a full interval before the next admission.
+
+One complete turn awaits the CM client-count check where applicable; consumes the
+exact returned mismatch snapshot instead of discarding it for a duplicate query;
+awaits the complete client-list and CM show/hide reconciliation; and finally awaits
+both password-status option reads and their notifier update. The retained ordinary
+CM widget initialization call is explicitly marked `unawaited` because it belongs to
+that synchronous UI lifecycle callback, while service start now awaits the same
+client reconciliation and reports its failure separately rather than allowing it to
+escape or falsely rolling back an already-running native service. Refresh failures
+are reported with their stack trace and do not wedge the next interval. Exact close
+marks the owner terminal before cancelling and
+releasing a pending timer, waits for the sole active turn if one exists, and cannot
+rearm. Duplicate start and start after close are explicit invariant failures. The
+current owner is deliberately process-lifetime: individual viewer/session close does
+not retire it, restart the controlled-side process, or weaken Android's persistent
+foreground service.
+
+Five deterministic Flutter regressions bind slow-turn nonoverlap plus a complete
+post-completion interval, one-time initial readiness, visible failure plus later
+progress, close/drain/no-rearm finality, and duplicate/restart refusal. `scripts/verify-server-status-refresh-loop.py`
+binds the production owner, old periodic/detached paths' absence, exact operation
+ordering, returned-snapshot reuse, tests, requirements, Appendix C #366, ledger
+identity, and shared/Apple/independent wiring with deliberate mutations. The separate
+workspace validator parses the production Dart owner, `ServerModel` integration,
+tests, actual source map, and dispatch independently instead of accepting the focused
+verifier's outcome as authority.
+
+In the immutable local verifier image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
+with `--pull=never`, networking disabled, a read-only root and repository, all
+capabilities dropped, `no-new-privileges`, numeric UID/GID 1000, and finite
+CPU/memory/no-swap/PID/private-tmpfs limits, the focused status-refresh verifier
+rejected all 40 deliberate mutations. The adjacent coherent wakelock, Windows tray,
+native clipboard-listener, Android persistent-service status, Android lifecycle-drain,
+CM egress, controlled egress, and display-selection gates rejected 50, 24, 27, 35,
+39, 64, 51, and 186 mutations respectively. The independent unmodified workspace
+baseline passed, and a narrowed independent run rejected all 44 new R-S11he catalog
+entries. On these exact ledger bytes, one final uninterrupted complete independently
+parsed catalog rejected all 4,734 source mutations. In-memory Python AST parsing,
+shared and Apple Bash syntax, the synchronized requirements digest, HTML tokenization,
+the native-codec watch, and `git diff --check` also passed.
+
+The first narrowed independent run exposed only a verifier-fixture classification:
+the same awaited CM show/hide shape occurs in both the status turn and shared client
+reconciliation method, and their independent validators intentionally emitted two
+different precise diagnostics. The catalog expectation was broadened only to their
+common reconciliation classification; no production requirement or check was removed.
+A second narrowed run then exposed that the independent Dart gate was accepting the
+format-list occurrence of the test filename after the execution command was mutated.
+The validator now requires the exact `flutter test --no-pub` command. Subsequent
+narrowed runs, including the final service-start/client-observation separation entries,
+passed. Only the later uninterrupted complete pass on these final bytes is counted as
+final catalog evidence.
+
+No retry, reconnect, timer beyond the one existing-interval one-shot schedule, queue,
+catch-up work, worker, task, isolate, thread, runtime, listener, port, dependency,
+privilege transition, service restart, alternate connection route, network change,
+host action, or Android persistent-service behavior is added or changed. This slice
+does not inspect or mutate a host RustDesk process, configuration, service, listener,
+firewall/network state, VM, Android device or service, unrelated workload, or OS
+privilege boundary.
+
+Exact Dart formatting, analysis, and Flutter test execution remain unavailable in the
+only authorized immutable local verifier image, which carries Python and shell tools
+but not a Dart/Flutter SDK; the exact platform builder images are also unavailable.
+Those regressions are wired into the authenticated generated-bridge/Dart release gate
+but are not claimed executed here. Physical Android task-swipe/reopen/Force-Stop and
+Windows focus/minimize/reconnect behavior; Linux/macOS/iOS/web and cross-version
+behavior; the weeks-old deployed artifacts; capture-through-compositor timestamps and
+explicit latency/queue budgets; sustained connection/reconnect/focus/background/file/
+control coexistence, resource, and performance soak; clean cold R-B2/R-B10 equality;
+installed process/service/package behavior; independent reproduction; R-V3 external
+review; causation; and proof that the complete connection flow is correct and
+performant all remain explicit release obligations.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-7b2b4bce57656afa7a79c0ee356585d6215c36294ede125f948ea2ff7e750be3  requirements.html
+7f94ca594260c82ab16d674f91df110f7ce3ddb89f869297cc4de2e259806896  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -25993,3 +26106,4 @@ The same identity additionally binds R-S11ha and Appendix C #362.
 The same identity additionally binds R-S11hb and Appendix C #363.
 The same identity additionally binds R-S11hc and Appendix C #364.
 The same identity additionally binds R-S11hd and Appendix C #365.
+The same identity additionally binds R-S11he and Appendix C #366.

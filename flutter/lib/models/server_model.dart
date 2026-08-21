@@ -16,6 +16,7 @@ import '../desktop/pages/desktop_home_page.dart' show setPasswordDialog;
 import '../desktop/widgets/tabbar_widget.dart';
 import '../mobile/pages/server_page.dart';
 import 'model.dart';
+import 'server_status_refresh_loop.dart';
 
 const kLoginDialogTag = "LOGIN";
 
@@ -48,6 +49,8 @@ class ServerModel with ChangeNotifier {
   final List<Client> _clients = [];
 
   Timer? cmHiddenTimer;
+
+  late final ServerStatusRefreshLoop _statusRefreshLoop;
 
   final _wakelockKey = UniqueKey();
 
@@ -96,35 +99,16 @@ class ServerModel with ChangeNotifier {
     }
     */
 
-    timerCallback() async {
-      if (desktopType == DesktopType.cm) {
-        final res = await bind.cmCheckClientsLength(length: _clients.length);
-        if (res != null) {
-          debugPrint("clients not match!");
-          updateClientState(res);
-        } else {
-          if (_clients.isEmpty) {
-            // R-S11gic: the server owns this CM generation across sessions. Keep its UI hidden
-            // while idle; closing the window here exits the process and defeats exact reuse.
-            hideCmWindow();
-          } else {
-            if (!hideCm) showCmWindow();
-          }
-        }
-      }
-
-      updatePasswordModel();
-    }
-
+    _statusRefreshLoop = ServerStatusRefreshLoop(
+      interval: const Duration(milliseconds: 500),
+      refresh: _refreshStatus,
+      onError: (error, stackTrace) => debugPrintStack(
+        label: 'Server status refresh failed: $error',
+        stackTrace: stackTrace,
+      ),
+    );
     if (!isTest) {
-      Future.delayed(Duration.zero, () async {
-        if (await bind.optionSynced()) {
-          await timerCallback();
-        }
-      });
-      Timer.periodic(Duration(milliseconds: 500), (timer) async {
-        await timerCallback();
-      });
+      _statusRefreshLoop.start(initialReady: () => bind.optionSynced());
     }
 
     // M2 / R-S16: the inherited "initial keyboard status off on mobile" write
@@ -132,6 +116,24 @@ class ServerModel with ChangeNotifier {
     // (config.rs PINNED_SETTINGS), so is_option_can_save rejected it: a dead no-op fired at every
     // mobile startup. Remote input is gated by the on-device AccessibilityService grant (inputOk),
     // not by this option, so nothing depends on the write.
+  }
+
+  Future<void> _refreshStatus() async {
+    if (desktopType == DesktopType.cm) {
+      final res = await bind.cmCheckClientsLength(length: _clients.length);
+      if (res != null) {
+        debugPrint("clients not match!");
+        await updateClientState(res);
+      } else if (_clients.isEmpty) {
+        // R-S11gic: the server owns this CM generation across sessions. Keep its UI hidden while
+        // idle; closing the window here exits the process and defeats exact reuse.
+        await hideCmWindow();
+      } else if (!hideCm) {
+        await showCmWindow();
+      }
+    }
+
+    await updatePasswordModel();
   }
 
   /// M1: reflect the on-device OS runtime-permission state into the capability flags.
@@ -151,7 +153,7 @@ class ServerModel with ChangeNotifier {
     notifyListeners();
   }
 
-  updatePasswordModel() async {
+  Future<void> updatePasswordModel() async {
     var update = false;
     final verificationMethod =
         await bind.mainGetOption(key: kOptionVerificationMethod);
@@ -379,7 +381,6 @@ class ServerModel with ChangeNotifier {
       // R-D7a: the direct listener is service-owned — MainService.onCreate (bound by init_service)
       // starts it via JNI startServer; there is no separate service-enable config write.
       await parent.target?.invokeMethod("init_service");
-      updateClientState();
     } catch (e) {
       // Honest status (§19/R-G7): the "service running / reachable on :21118" surface is driven
       // by _isStart, so a start that did NOT actually complete must not leave it asserting a
@@ -390,6 +391,16 @@ class ServerModel with ChangeNotifier {
       _isStart = false;
       notifyListeners();
       return;
+    }
+    try {
+      await updateClientState();
+    } catch (error, stackTrace) {
+      // The native service is already running. Keep that status honest while making the failed
+      // UI reconciliation visible; a client-list observation failure is not a service-start failure.
+      debugPrintStack(
+        label: 'Initial client-state refresh failed: $error',
+        stackTrace: stackTrace,
+      );
     }
     if (isAndroid) {
       androidUpdatekeepScreenOn();
@@ -433,9 +444,9 @@ class ServerModel with ChangeNotifier {
   }
 
   // force
-  updateClientState([String? json]) async {
+  Future<void> updateClientState([String? json]) async {
     if (isTest) return;
-    var res = await bind.cmGetClientsState();
+    final res = json ?? await bind.cmGetClientsState();
     List<dynamic> clientsJson;
     try {
       clientsJson = jsonDecode(res);
@@ -459,9 +470,9 @@ class ServerModel with ChangeNotifier {
     }
     if (desktopType == DesktopType.cm) {
       if (_clients.isEmpty) {
-        hideCmWindow();
+        await hideCmWindow();
       } else if (!hideCm) {
-        showCmWindow();
+        await showCmWindow();
       }
     }
     if (_clients.length != oldClientLenght) {

@@ -3675,6 +3675,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c2adc) R-S11he serialized controlled-side status refresh ownership =="
+if python3 scripts/verify-server-status-refresh-loop.py --repo . --self-test; then
+  note "ok  R-S11he Apple/shared controlled-side status refresh is sequential, failure-visible, and drainable"
+else
+  echo "  FAIL R-S11he Apple/shared status refresh regained overlapping timers, detached reconciliation, or incomplete finality"
+  rc=1
+fi
+
 echo "== (2g-c2ae) R-S11gz exact bounded file-clipboard route ownership =="
 if python3 scripts/verify-clipboard-route-budget.py --repo . --self-test; then
   note "ok  R-S11gz Apple/shared file-clipboard callbacks have exact connection-round routes and finite count-and-byte ownership"

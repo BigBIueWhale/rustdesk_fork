@@ -9558,6 +9558,12 @@ else
   echo "  FAIL R-S11hd: controlled-side wakelock snapshots regained an unbounded queue, split-state read, stale overwrite, or hidden retirement"
   rc=1
 fi
+if python3 scripts/verify-server-status-refresh-loop.py --repo . --self-test; then
+  echo "  ok  R-S11he controlled-side status refresh is sequential, failure-visible, and drainable"
+else
+  echo "  FAIL R-S11he: controlled-side status refresh regained overlapping timers, detached reconciliation, or incomplete finality"
+  rc=1
+fi
 if python3 scripts/verify-clipboard-route-budget.py --repo . --self-test; then
   echo "  ok  R-S11gz file-clipboard callbacks have exact connection-round routes and finite count-and-byte ownership"
 else

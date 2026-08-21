@@ -126,7 +126,7 @@ class ConnectionManagerState extends State<ConnectionManager> {
 
   @override
   void initState() {
-    gFFI.serverModel.updateClientState();
+    unawaited(gFFI.serverModel.updateClientState());
     super.initState();
   }
 

@@ -23806,6 +23806,322 @@ def validate_wakelock_snapshot_mailbox_contract(sources):
     )
 
 
+def validate_server_status_refresh_loop_contract(sources):
+    """Independently bind serialized process-owned Dart status refresh."""
+
+    focused = sources["server_status_refresh_loop_verifier"]
+    focused_contract = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "focused server status refresh contract",
+    )
+    for marker, label in (
+        ("Timer? _timer;", "focused single timer"),
+        ("Future<void>? _activeTurn;", "focused one active turn"),
+        ("await updateClientState(res);", "focused awaited client reconciliation"),
+        ("await updatePasswordModel();", "focused awaited password reconciliation"),
+        ("R-S11he", "focused normative binding"),
+    ):
+        require_text(focused_contract, marker, label)
+    require_text(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "focused server status refresh mutation inventory",
+    )
+
+    loop = sources["server_status_refresh_loop_dart"]
+    model = sources["server_model_dart"]
+    server_page = sources["server_page_dart"]
+    tests = sources["server_status_refresh_loop_test"]
+
+    for source, needle, label in (
+        (loop, "Timer.periodic", "independent periodic refresh timer"),
+        (loop, "StreamController", "independent refresh event stream"),
+        (loop, "List<Future", "independent retained refresh backlog"),
+        (model, "Timer.periodic", "independent ServerModel periodic callback"),
+    ):
+        require_absent(source, needle, label)
+
+    owner = extract_braced_item(
+        loop,
+        "class ServerStatusRefreshLoop",
+        "independent process-owned refresh scheduler",
+    )
+    require_order(
+        owner,
+        (
+            "final Duration _interval;",
+            "final Future<void> Function() _refresh;",
+            "final void Function(Object error, StackTrace stackTrace) _onError;",
+            "Timer? _timer;",
+            "Future<void>? _activeTurn;",
+            "bool _started = false;",
+            "bool _closed = false;",
+        ),
+        "independent single timer, turn, and terminal owner state",
+    )
+    start = extract_braced_item(
+        loop,
+        "void start({Future<bool> Function()? initialReady})",
+        "independent refresh start",
+    )
+    require_order(
+        start,
+        (
+            "if (_started)",
+            "if (_closed)",
+            "_started = true;",
+            "_arm(Duration.zero, initialReady);",
+        ),
+        "independent single-start initial-readiness admission",
+    )
+    close = extract_braced_item(
+        loop, "Future<void> close()", "independent refresh finality"
+    )
+    require_order(
+        close,
+        (
+            "_closed = true;",
+            "_timer?.cancel();",
+            "_timer = null;",
+            "final activeTurn = _activeTurn;",
+            "await activeTurn;",
+        ),
+        "independent cancel and active-turn drain",
+    )
+    arm = extract_braced_item(loop, "void _arm(", "independent one-shot arm")
+    require_order(
+        arm,
+        (
+            "if (_closed) return;",
+            "if (_timer != null || _activeTurn != null)",
+            "_timer = Timer(delay, ()",
+            "_timer = null;",
+            "_beginTurn(initialReady);",
+        ),
+        "independent one-shot scheduling invariant",
+    )
+    begin = extract_braced_item(
+        loop, "void _beginTurn(", "independent refresh turn owner"
+    )
+    require_order(
+        begin,
+        (
+            "final turn = _runTurn(initialReady);",
+            "_activeTurn = turn;",
+            "unawaited(turn.whenComplete(() ",
+            "if (identical(_activeTurn, turn))",
+            "_activeTurn = null;",
+            "if (!_closed)",
+            "_arm(_interval, null);",
+        ),
+        "independent completion-before-rearm ordering",
+    )
+    run = extract_braced_item(
+        loop, "Future<void> _runTurn(", "independent complete refresh turn"
+    )
+    require_order(
+        run,
+        (
+            "if (initialReady == null || await initialReady())",
+            "await _refresh();",
+            "catch (error, stackTrace)",
+            "_onError(error, stackTrace);",
+        ),
+        "independent readiness, awaited work, and visible failure",
+    )
+
+    constructor = extract_braced_item(
+        model,
+        "ServerModel(this.parent)",
+        "independent process-owned ServerModel constructor",
+    )
+    require_absent(
+        constructor,
+        "Future.delayed",
+        "independent detached initial status refresh",
+    )
+    for text, label in (
+        (
+            "late final ServerStatusRefreshLoop _statusRefreshLoop;",
+            "independent process-owned refresh field",
+        ),
+        ("interval: const Duration(milliseconds: 500)", "independent interval"),
+        ("refresh: _refreshStatus", "independent complete-turn callback"),
+        ("Server status refresh failed: $error", "independent visible failure"),
+        (
+            "_statusRefreshLoop.start(initialReady: () => bind.optionSynced());",
+            "independent initial-readiness start",
+        ),
+    ):
+        require_text(model, text, label)
+    refresh = extract_braced_item(
+        model,
+        "Future<void> _refreshStatus()",
+        "independent ServerModel complete refresh",
+    )
+    require_order(
+        refresh,
+        (
+            "await bind.cmCheckClientsLength(length: _clients.length)",
+            "await updateClientState(res);",
+            "await hideCmWindow();",
+            "await showCmWindow();",
+            "await updatePasswordModel();",
+        ),
+        "independent CM and password reconciliation order",
+    )
+    for bare, label in (
+        ("updateClientState(res);", "independent detached client refresh"),
+        ("hideCmWindow();", "independent detached CM hide"),
+        ("showCmWindow();", "independent detached CM show"),
+        ("updatePasswordModel();", "independent detached password refresh"),
+    ):
+        if any(line.strip() == bare for line in refresh.splitlines()):
+            raise VerificationError(label)
+    update_clients = extract_braced_item(
+        model,
+        "Future<void> updateClientState([String? json])",
+        "independent client-state reconciliation",
+    )
+    require_order(
+        update_clients,
+        (
+            "final res = json ?? await bind.cmGetClientsState();",
+            "clientsJson = jsonDecode(res);",
+            "await hideCmWindow();",
+            "await showCmWindow();",
+        ),
+        "independent exact snapshot and complete CM window reconciliation",
+    )
+    require_text(
+        model,
+        "Future<void> updatePasswordModel() async",
+        "independent typed password refresh completion",
+    )
+    require_text(
+        server_page,
+        "unawaited(gFFI.serverModel.updateClientState());",
+        "independent explicit UI-event asynchronous refresh",
+    )
+    start_service = extract_braced_item(
+        model,
+        "Future<void> startService()",
+        "independent controlled service start",
+    )
+    require_order(
+        start_service,
+        (
+            'await parent.target?.invokeMethod("init_service");',
+            "} catch (e)",
+            "_isStart = false;",
+            "return;",
+            "await updateClientState();",
+            "} catch (error, stackTrace)",
+            "Initial client-state refresh failed: $error",
+            "if (isAndroid)",
+        ),
+        "independent service success and client observation remain distinct",
+    )
+
+    for name in (
+        "never overlaps a slow refresh and waits a full interval",
+        "initial readiness is checked once before periodic refresh",
+        "a failed turn is visible and does not wedge later turns",
+        "close drains the active turn and prevents rearming",
+        "refuses duplicate start and restart after close",
+    ):
+        require_text(tests, name, f"independent {name} regression")
+
+    gate = "python3 scripts/verify-server-status-refresh-loop.py --repo . --self-test"
+    for key, text, label in (
+        (
+            "dart_verify",
+            "flutter test --no-pub test/server_status_refresh_loop_test.dart",
+            "Dart behavior gate",
+        ),
+        ("verify", gate, "shared status-refresh gate"),
+        ("apple", gate, "Apple/shared status-refresh gate"),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11he</span>',
+            "R-S11he requirement",
+        ),
+        ("requirements", "<tr><td>366</td>", "Appendix C #366"),
+        (
+            "hardening",
+            "### R-S11he/R-S11e-243 — serialized controlled-side status refresh ownership",
+            "R-S11he ledger",
+        ),
+    ):
+        require_text(sources[key], text, label)
+    require_text(
+        focused,
+        '("loop", "await _refresh();", "unawaited(_refresh());", "one-shot readiness and visible refresh failure"),',
+        "focused awaited-refresh mutation",
+    )
+
+    workspace_module = ast.parse(sources["workspace_verifier"])
+    main_function = next(
+        (
+            node
+            for node in workspace_module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "main"
+        ),
+        None,
+    )
+    if main_function is None:
+        raise VerificationError("independent status-refresh source map is absent")
+    source_maps = [
+        node.value
+        for node in ast.walk(main_function)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Dict)
+        and any(
+            isinstance(target, ast.Name) and target.id == "sources"
+            for target in node.targets
+        )
+    ]
+    if len(source_maps) != 1:
+        raise VerificationError("independent status-refresh source map is not singular")
+    source_map_keys = [
+        key.value
+        for key in source_maps[0].keys
+        if isinstance(key, ast.Constant) and isinstance(key.value, str)
+    ]
+    for key in (
+        "server_status_refresh_loop_dart",
+        "server_status_refresh_loop_test",
+        "server_status_refresh_loop_verifier",
+    ):
+        if source_map_keys.count(key) != 1:
+            raise VerificationError(f"independent status-refresh binding is absent: {key}")
+
+    validate_sources_function = next(
+        (
+            node
+            for node in workspace_module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "validate_sources"
+        ),
+        None,
+    )
+    if validate_sources_function is None:
+        raise VerificationError("independent status-refresh dispatch owner is absent")
+    dispatches = [
+        node
+        for node in validate_sources_function.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "validate_server_status_refresh_loop_contract"
+    ]
+    if len(dispatches) != 1:
+        raise VerificationError(
+            "independent status-refresh dispatch must occur exactly once"
+        )
+
+
 def validate_clipboard_route_budget_contract(sources):
     """Independently bind exact bounded file-clipboard route ownership."""
 
@@ -49020,6 +49336,7 @@ def validate_sources(sources):
     validate_android_main_service_status_contract(sources)
     validate_tray_session_count_mailbox_contract(sources)
     validate_wakelock_snapshot_mailbox_contract(sources)
+    validate_server_status_refresh_loop_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
     validate_direct_only_viewer_contract(sources)
@@ -69818,6 +70135,270 @@ def run_source_mutations(sources):
             "wakelock independent workspace dispatch must occur exactly once",
         ),
         (
+            "server_status_refresh_loop_dart",
+            "Timer? _timer;",
+            "List<Timer> _timer = [];",
+            "independent single timer, turn, and terminal owner state",
+        ),
+        (
+            "server_status_refresh_loop_dart",
+            "Future<void>? _activeTurn;",
+            "List<Future<void>> _activeTurn = [];",
+            "independent retained refresh backlog",
+        ),
+        (
+            "server_status_refresh_loop_dart",
+            "bool _started = false;",
+            "bool _started = true;",
+            "independent single timer, turn, and terminal owner state",
+        ),
+        (
+            "server_status_refresh_loop_dart",
+            "bool _closed = false;",
+            "bool _closed = true;",
+            "independent single timer, turn, and terminal owner state",
+        ),
+        (
+            "server_status_refresh_loop_dart",
+            "if (_started) {",
+            "if (false) {",
+            "independent single-start initial-readiness admission",
+        ),
+        (
+            "server_status_refresh_loop_dart",
+            "_started = true;",
+            "_started = false;",
+            "independent single-start initial-readiness admission",
+        ),
+        (
+            "server_status_refresh_loop_dart",
+            "_timer?.cancel();",
+            "// pending timer cancellation disabled",
+            "independent cancel and active-turn drain",
+        ),
+        (
+            "server_status_refresh_loop_dart",
+            "await activeTurn;",
+            "unawaited(activeTurn);",
+            "independent cancel and active-turn drain",
+        ),
+        (
+            "server_status_refresh_loop_dart",
+            "if (_timer != null || _activeTurn != null) {",
+            "if (false) {",
+            "independent one-shot scheduling invariant",
+        ),
+        (
+            "server_status_refresh_loop_dart",
+            "_timer = Timer(delay, () {",
+            "_timer = Timer.periodic(delay, (_) {",
+            "independent periodic refresh timer",
+        ),
+        (
+            "server_status_refresh_loop_dart",
+            "_activeTurn = turn;",
+            "// active refresh turn not retained",
+            "independent completion-before-rearm ordering",
+        ),
+        (
+            "server_status_refresh_loop_dart",
+            "if (identical(_activeTurn, turn)) {",
+            "if (false) {",
+            "independent completion-before-rearm ordering",
+        ),
+        (
+            "server_status_refresh_loop_dart",
+            "if (!_closed) {",
+            "if (true) {",
+            "independent completion-before-rearm ordering",
+        ),
+        (
+            "server_status_refresh_loop_dart",
+            "_arm(_interval, null);",
+            "_arm(Duration.zero, null);",
+            "independent completion-before-rearm ordering",
+        ),
+        (
+            "server_status_refresh_loop_dart",
+            "if (initialReady == null || await initialReady()) {",
+            "if (true) {",
+            "independent readiness, awaited work, and visible failure",
+        ),
+        (
+            "server_status_refresh_loop_dart",
+            "await _refresh();",
+            "unawaited(_refresh());",
+            "independent readiness, awaited work, and visible failure",
+        ),
+        (
+            "server_status_refresh_loop_dart",
+            "_onError(error, stackTrace);",
+            "// refresh error discarded",
+            "independent readiness, awaited work, and visible failure",
+        ),
+        (
+            "server_model_dart",
+            "late final ServerStatusRefreshLoop _statusRefreshLoop;",
+            "late final Timer _statusRefreshLoop;",
+            "independent process-owned refresh field",
+        ),
+        (
+            "server_model_dart",
+            "interval: const Duration(milliseconds: 500),",
+            "interval: Duration.zero,",
+            "independent interval",
+        ),
+        (
+            "server_model_dart",
+            "refresh: _refreshStatus,",
+            "refresh: updatePasswordModel,",
+            "independent complete-turn callback",
+        ),
+        (
+            "server_model_dart",
+            "Server status refresh failed: $error",
+            "Server status refresh ignored: $error",
+            "independent visible failure",
+        ),
+        (
+            "server_model_dart",
+            "_statusRefreshLoop.start(initialReady: () => bind.optionSynced());",
+            "_statusRefreshLoop.start();",
+            "independent initial-readiness start",
+        ),
+        (
+            "server_model_dart",
+            "await updateClientState(res);",
+            "updateClientState(res);",
+            "independent CM and password reconciliation order",
+        ),
+        (
+            "server_model_dart",
+            "        await hideCmWindow();\n      } else if (!hideCm) {\n        await showCmWindow();",
+            "        hideCmWindow();\n      } else if (!hideCm) {\n        showCmWindow();",
+            "reconciliation",
+        ),
+        (
+            "server_model_dart",
+            "final res = json ?? await bind.cmGetClientsState();",
+            "final res = await bind.cmGetClientsState();",
+            "independent exact snapshot and complete CM window reconciliation",
+        ),
+        (
+            "server_page_dart",
+            "unawaited(gFFI.serverModel.updateClientState());",
+            "gFFI.serverModel.updateClientState();",
+            "independent explicit UI-event asynchronous refresh",
+        ),
+        (
+            "server_model_dart",
+            "    try {\n      await updateClientState();\n    } catch (error, stackTrace) {",
+            "    unawaited(updateClientState());\n    try {\n    } catch (error, stackTrace) {",
+            "independent service success and client observation remain distinct",
+        ),
+        (
+            "server_model_dart",
+            "Initial client-state refresh failed: $error",
+            "Initial client-state refresh ignored: $error",
+            "independent service success and client observation remain distinct",
+        ),
+        (
+            "server_status_refresh_loop_test",
+            "never overlaps a slow refresh and waits a full interval",
+            "allows overlapping slow refreshes",
+            "independent never overlaps a slow refresh and waits a full interval regression",
+        ),
+        (
+            "server_status_refresh_loop_test",
+            "initial readiness is checked once before periodic refresh",
+            "initial readiness is never checked",
+            "independent initial readiness is checked once before periodic refresh regression",
+        ),
+        (
+            "server_status_refresh_loop_test",
+            "a failed turn is visible and does not wedge later turns",
+            "a failed turn wedges later turns",
+            "independent a failed turn is visible and does not wedge later turns regression",
+        ),
+        (
+            "server_status_refresh_loop_test",
+            "close drains the active turn and prevents rearming",
+            "close abandons the active turn",
+            "independent close drains the active turn and prevents rearming regression",
+        ),
+        (
+            "server_status_refresh_loop_test",
+            "refuses duplicate start and restart after close",
+            "allows duplicate start and restart",
+            "independent refuses duplicate start and restart after close regression",
+        ),
+        (
+            "dart_verify",
+            "flutter test --no-pub test/server_status_refresh_loop_test.dart",
+            "true # server status refresh test disabled",
+            "Dart behavior gate",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-server-status-refresh-loop.py --repo . --self-test",
+            "true # server status refresh gate disabled",
+            "shared status-refresh gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-server-status-refresh-loop.py --repo . --self-test",
+            "true # server status refresh gate disabled",
+            "Apple/shared status-refresh gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11he</span>',
+            '<div class="req"><span class="id">R-S11he-disabled</span>',
+            "R-S11he requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>366</td>",
+            "<tr><td>366-disabled</td>",
+            "Appendix C #366",
+        ),
+        (
+            "hardening",
+            "### R-S11he/R-S11e-243 — serialized controlled-side status refresh ownership",
+            "### R-S11he-disabled/R-S11e-243 — serialized controlled-side status refresh ownership",
+            "R-S11he ledger",
+        ),
+        (
+            "server_status_refresh_loop_verifier",
+            '("loop", "await _refresh();", "unawaited(_refresh());", "one-shot readiness and visible refresh failure"),',
+            '("loop", "await _refresh_disabled();", "unawaited(_refresh());", "one-shot readiness and visible refresh failure"),',
+            "focused awaited-refresh mutation",
+        ),
+        (
+            "workspace_verifier",
+            '            "server_status_refresh_loop_dart": (\n                repo / "flutter/lib/models/server_status_refresh_loop.dart"\n            ).read_text(encoding="utf-8"),',
+            '            "server_status_refresh_loop_dart_disabled": (\n                repo / "flutter/lib/models/server_status_refresh_loop.dart"\n            ).read_text(encoding="utf-8"),',
+            "independent status-refresh binding is absent",
+        ),
+        (
+            "workspace_verifier",
+            '            "server_status_refresh_loop_test": (\n                repo / "flutter/test/server_status_refresh_loop_test.dart"\n            ).read_text(encoding="utf-8"),',
+            '            "server_status_refresh_loop_test_disabled": (\n                repo / "flutter/test/server_status_refresh_loop_test.dart"\n            ).read_text(encoding="utf-8"),',
+            "independent status-refresh binding is absent",
+        ),
+        (
+            "workspace_verifier",
+            '            "server_status_refresh_loop_verifier": (\n                repo / "scripts/verify-server-status-refresh-loop.py"\n            ).read_text(encoding="utf-8"),',
+            '            "server_status_refresh_loop_verifier_disabled": (\n                repo / "scripts/verify-server-status-refresh-loop.py"\n            ).read_text(encoding="utf-8"),',
+            "independent status-refresh binding is absent",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_server_status_refresh_loop_contract(sources)\n",
+            "    validate_server_status_refresh_loop_contract_disabled(sources)\n",
+            "independent status-refresh dispatch must occur exactly once",
+        ),
+        (
             "clipboard_source",
             "const CLIPBOARD_FILE_EGRESS_WAKE_CAPACITY: usize = 1;",
             "const CLIPBOARD_FILE_EGRESS_WAKE_CAPACITY: usize = 64;",
@@ -83427,6 +84008,12 @@ def main():
             "server_model_dart": (repo / "flutter/lib/models/server_model.dart").read_text(
                 encoding="utf-8"
             ),
+            "server_status_refresh_loop_dart": (
+                repo / "flutter/lib/models/server_status_refresh_loop.dart"
+            ).read_text(encoding="utf-8"),
+            "server_page_dart": (
+                repo / "flutter/lib/desktop/pages/server_page.dart"
+            ).read_text(encoding="utf-8"),
             "peers_view_dart": (
                 repo / "flutter/lib/common/widgets/peers_view.dart"
             ).read_text(encoding="utf-8"),
@@ -83462,6 +84049,9 @@ def main():
             "server_model_test": (repo / "flutter/test/server_model_test.dart").read_text(
                 encoding="utf-8"
             ),
+            "server_status_refresh_loop_test": (
+                repo / "flutter/test/server_status_refresh_loop_test.dart"
+            ).read_text(encoding="utf-8"),
             "desktop_home_dart": (
                 repo / "flutter/lib/desktop/pages/desktop_home_page.dart"
             ).read_text(encoding="utf-8"),
@@ -83657,6 +84247,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "wakelock_snapshot_mailbox_verifier": (
                 repo / "scripts/verify-wakelock-snapshot-mailbox.py"
+            ).read_text(encoding="utf-8"),
+            "server_status_refresh_loop_verifier": (
+                repo / "scripts/verify-server-status-refresh-loop.py"
             ).read_text(encoding="utf-8"),
             "clipboard_route_budget_verifier": (
                 repo / "scripts/verify-clipboard-route-budget.py"

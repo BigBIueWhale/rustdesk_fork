@@ -23441,6 +23441,371 @@ def validate_tray_session_count_mailbox_contract(sources):
     )
 
 
+def validate_wakelock_snapshot_mailbox_contract(sources):
+    """Independently bind coherent latest-state wakelock snapshot ownership."""
+
+    focused = sources["wakelock_snapshot_mailbox_verifier"]
+    focused_contract = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "focused wakelock snapshot contract",
+    )
+    for marker, label in (
+        ("state: StdMutex<WakelockSnapshotState>", "focused latest-state cell"),
+        ("changed: Condvar", "focused blocking observation"),
+        ("state.pending = false;", "focused revision acknowledgement"),
+        ("drop(authed_conns);", "focused mutation/publication ordering"),
+        ("R-S11hd", "focused normative binding"),
+    ):
+        require_text(focused_contract, marker, label)
+    require_text(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "focused wakelock snapshot mutation inventory",
+    )
+
+    connection = sources["connection_source"]
+    for needle, label in (
+        ("static ref WAKELOCK_SENDER", "independent old wakelock event sender"),
+        ("fn start_wakelock_thread()", "independent detached wakelock worker"),
+        (
+            "std::sync::mpsc::channel::<(usize, usize)>()",
+            "independent unbounded wakelock snapshot queue",
+        ),
+        (
+            "allow_err!(WAKELOCK_SENDER",
+            "independent silently ignored wakelock publication",
+        ),
+    ):
+        require_absent(connection, needle, label)
+
+    type_start = connection.find("struct WakelockSnapshot")
+    type_end = connection.find(
+        '#[cfg(target_os = "linux")]\nlazy_static::lazy_static! {', type_start
+    )
+    worker_start = connection.find("fn wakelock_snapshot_channel()", type_end)
+    worker_end = connection.find("#[cfg(windows)]\npub struct PortableState", worker_start)
+    if min(type_start, type_end, worker_start, worker_end) < 0:
+        raise VerificationError("independent wakelock ownership region is incomplete")
+    wakelock_region = connection[type_start:type_end] + connection[worker_start:worker_end]
+    for needle, label in (
+        ("std::sync::mpsc", "independent standard event queue in wakelock region"),
+        ("std_mpsc", "independent aliased standard queue in wakelock region"),
+        ("mpsc::unbounded", "independent Tokio unbounded queue in wakelock region"),
+        ("VecDeque<WakelockSnapshot>", "independent wakelock snapshot history"),
+        (
+            "#[derive(Clone)]\nstruct WakelockSnapshotPublisher",
+            "independent cloneable wakelock publisher",
+        ),
+        (
+            "#[derive(Clone)]\nstruct WakelockSnapshotReceiver",
+            "independent cloneable wakelock receiver",
+        ),
+    ):
+        require_absent(wakelock_region, needle, label)
+
+    snapshot = extract_braced_item(
+        connection, "struct WakelockSnapshot", "independent typed wakelock snapshot"
+    )
+    require_order(
+        snapshot,
+        ("connection_count: usize", "remote_count: usize"),
+        "independent coherent wakelock snapshot fields",
+    )
+    owner = extract_braced_item(
+        connection, "struct WakelockWorker", "independent wakelock worker owner"
+    )
+    require_order(
+        owner,
+        (
+            "sender: WakelockSnapshotPublisher",
+            "_thread: Option<std::thread::JoinHandle<()>>",
+        ),
+        "independent latest-state publisher and retained worker",
+    )
+    require_text(
+        connection,
+        "static ref WAKELOCK_WORKER: WakelockWorker = start_wakelock_worker();",
+        "independent single process-owned worker",
+    )
+
+    state = extract_braced_item(
+        connection,
+        "struct WakelockSnapshotState",
+        "independent wakelock latest-state storage",
+    )
+    require_order(
+        state,
+        (
+            "snapshot: WakelockSnapshot",
+            "pending: bool",
+            "publisher_alive: bool",
+            "receiver_alive: bool",
+        ),
+        "independent one snapshot, readiness bit, and bidirectional finality",
+    )
+    cell = extract_braced_item(
+        connection,
+        "struct WakelockSnapshotCell",
+        "independent wakelock latest-state cell",
+    )
+    require_order(
+        cell,
+        ("state: StdMutex<WakelockSnapshotState>", "changed: Condvar"),
+        "independent synchronized bounded latest-state cell",
+    )
+
+    channel = extract_braced_item(
+        connection,
+        "fn wakelock_snapshot_channel()",
+        "independent wakelock snapshot channel",
+    )
+    require_order(
+        channel,
+        (
+            "snapshot: WakelockSnapshot::default()",
+            "pending: false",
+            "publisher_alive: true",
+            "receiver_alive: true",
+            "changed: Condvar::new()",
+            "WakelockSnapshotPublisher",
+            "WakelockSnapshotReceiver",
+        ),
+        "independent zero-initialized one-bit latest-state cell",
+    )
+    publish = extract_braced_item(
+        connection,
+        "fn publish_wakelock_snapshot(",
+        "independent wakelock snapshot publication",
+    )
+    require_order(
+        publish,
+        (
+            "let mut state = sender.inner.state.lock().unwrap();",
+            "if !state.receiver_alive",
+            "return false;",
+            "state.snapshot = snapshot;",
+            "state.pending = true;",
+            "drop(state);",
+            "sender.inner.changed.notify_one();",
+            "true",
+        ),
+        "independent nonblocking replacement and receiver-final wake",
+    )
+    receive = extract_braced_item(
+        connection,
+        "fn wait_for_wakelock_snapshot(",
+        "independent wakelock snapshot receive",
+    )
+    require_order(
+        receive,
+        (
+            "let mut state = receiver.inner.state.lock().unwrap();",
+            "while !state.pending && state.publisher_alive",
+            "receiver.inner.changed.wait(state).unwrap()",
+            "if !state.publisher_alive",
+            "state.pending = false;",
+            "return None;",
+            "state.pending = false;",
+            "Some(state.snapshot)",
+        ),
+        "independent blocking one-bit acknowledgement and publisher finality",
+    )
+    publisher_drop = extract_braced_item(
+        connection,
+        "impl Drop for WakelockSnapshotPublisher",
+        "independent wakelock publisher retirement",
+    )
+    require_order(
+        publisher_drop,
+        (
+            "state.publisher_alive = false;",
+            "drop(state);",
+            "self.inner.changed.notify_one();",
+        ),
+        "independent publisher-retirement terminal wake",
+    )
+    receiver_drop = extract_braced_item(
+        connection,
+        "impl Drop for WakelockSnapshotReceiver",
+        "independent wakelock receiver retirement",
+    )
+    require_order(
+        receiver_drop,
+        (
+            "state.receiver_alive = false;",
+            "state.pending = false;",
+            "drop(state);",
+            "self.inner.changed.notify_one();",
+        ),
+        "independent receiver-retirement closure and retained-state release",
+    )
+
+    worker = extract_braced_item(
+        connection, "fn run_wakelock_worker(", "independent wakelock worker loop"
+    )
+    require_order(
+        worker,
+        (
+            "wait_for_wakelock_snapshot(&mut receiver)",
+            'log::error!("wakelock snapshot publisher stopped")',
+            "config::Config::get_bool_option(",
+            "*WAKELOCK_KEEP_AWAKE_OPTION.lock().unwrap() = Some(keep_awake);",
+            "snapshot.connection_count == 0",
+            "snapshot.remote_count > 0",
+        ),
+        "independent latest snapshot and preserved option/platform behavior",
+    )
+    start = extract_braced_item(
+        connection, "fn start_wakelock_worker()", "independent wakelock worker start"
+    )
+    require_order(
+        start,
+        (
+            "let (sender, receiver) = wakelock_snapshot_channel();",
+            "std::thread::Builder::new()",
+            '.name("rustdesk-wakelock".to_owned())',
+            ".spawn(move || run_wakelock_worker(receiver))",
+            "Ok(thread) => Some(thread)",
+            'log::error!("failed to start wakelock worker: {err}")',
+            "_thread: thread",
+        ),
+        "independent named retained worker with visible startup failure",
+    )
+
+    check = extract_braced_item(
+        connection, "fn check_wake_lock()", "independent coherent snapshot producer"
+    )
+    if check.count("AUTHED_CONNS.lock().unwrap()") != 1:
+        raise VerificationError(
+            "independent wakelock snapshot must use exactly one connection lock"
+        )
+    require_order(
+        check,
+        (
+            "let authed_conns = AUTHED_CONNS.lock().unwrap();",
+            "connection_count: authed_conns.len()",
+            "remote_count: authed_conns",
+            "conn.conn_type == AuthConnType::Remote",
+            "let published = publish_wakelock_snapshot(&WAKELOCK_WORKER.sender, snapshot);",
+            "drop(authed_conns);",
+            "if !published",
+            'log::error!("wakelock worker stopped before snapshot publication")',
+        ),
+        "independent coherent mutation-ordered snapshot and visible finality",
+    )
+    setting = extract_braced_item(
+        connection,
+        "pub fn check_wake_lock_on_setting_changed()",
+        "independent wakelock option reevaluation",
+    )
+    require_order(
+        setting,
+        ("cached != Some(current)", "Self::check_wake_lock();"),
+        "independent option-change reevaluation route",
+    )
+
+    for test in (
+        "wakelock_publication_keeps_only_the_latest_coherent_snapshot",
+        "identical_wakelock_snapshot_requests_option_reevaluation",
+        "wakelock_receiver_retirement_closes_publication",
+        "wakelock_publisher_retirement_is_observable",
+    ):
+        require_text(connection, test, f"independent {test} regression")
+
+    for key, text, label in (
+        (
+            "verify",
+            "python3 scripts/verify-wakelock-snapshot-mailbox.py --repo . --self-test",
+            "shared wakelock snapshot gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-wakelock-snapshot-mailbox.py --repo . --self-test",
+            "Apple/shared wakelock snapshot gate",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter server::connection::wakelock_snapshot_tests:: --color never",
+            "shared wakelock snapshot behavior gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11hd</span>',
+            "R-S11hd requirement",
+        ),
+        ("requirements", "<tr><td>365</td>", "Appendix C #365"),
+        (
+            "hardening",
+            "### R-S11hd/R-S11e-242 — coherent latest-state wakelock snapshot ownership",
+            "R-S11hd ledger",
+        ),
+    ):
+        require_text(sources[key], text, label)
+
+    workspace_module = ast.parse(sources["workspace_verifier"])
+    main_function = next(
+        (
+            node
+            for node in workspace_module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "main"
+        ),
+        None,
+    )
+    if main_function is None:
+        raise VerificationError("wakelock independent source map is absent")
+    source_maps = [
+        node.value
+        for node in ast.walk(main_function)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Dict)
+        and any(
+            isinstance(target, ast.Name) and target.id == "sources"
+            for target in node.targets
+        )
+    ]
+    if len(source_maps) != 1:
+        raise VerificationError("wakelock independent source map is not singular")
+    source_map_keys = [
+        key.value
+        for key in source_maps[0].keys
+        if isinstance(key, ast.Constant) and isinstance(key.value, str)
+    ]
+    if source_map_keys.count("wakelock_snapshot_mailbox_verifier") != 1:
+        raise VerificationError("wakelock independent verifier binding is absent")
+    if source_map_keys.count("connection_source") != 1:
+        raise VerificationError("wakelock connection source binding is absent")
+
+    validate_sources_function = next(
+        (
+            node
+            for node in workspace_module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "validate_sources"
+        ),
+        None,
+    )
+    if validate_sources_function is None:
+        raise VerificationError("wakelock independent workspace dispatch is absent")
+    dispatches = [
+        node
+        for node in validate_sources_function.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "validate_wakelock_snapshot_mailbox_contract"
+    ]
+    if len(dispatches) != 1:
+        raise VerificationError(
+            "wakelock independent workspace dispatch must occur exactly once"
+        )
+    require_text(
+        focused,
+        '("connection", "pending: bool,", "pending: usize,", "one-bit readiness"),',
+        "focused wakelock one-bit mutation",
+    )
+
+
 def validate_clipboard_route_budget_contract(sources):
     """Independently bind exact bounded file-clipboard route ownership."""
 
@@ -48654,6 +49019,7 @@ def validate_sources(sources):
     validate_android_frame_raw_generation_contract(sources)
     validate_android_main_service_status_contract(sources)
     validate_tray_session_count_mailbox_contract(sources)
+    validate_wakelock_snapshot_mailbox_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
     validate_direct_only_viewer_contract(sources)
@@ -69130,6 +69496,328 @@ def run_source_mutations(sources):
             "tray mailbox independent workspace dispatch must occur exactly once",
         ),
         (
+            "connection_source",
+            "sender: WakelockSnapshotPublisher",
+            "sender: mpsc::UnboundedSender<WakelockSnapshot>",
+            "independent latest-state publisher and retained worker",
+        ),
+        (
+            "connection_source",
+            "_thread: Option<std::thread::JoinHandle<()>>",
+            "_thread: ()",
+            "independent latest-state publisher and retained worker",
+        ),
+        (
+            "connection_source",
+            "static ref WAKELOCK_WORKER: WakelockWorker = start_wakelock_worker();",
+            "static ref WAKELOCK_WORKER_DISABLED: WakelockWorker = start_wakelock_worker();",
+            "independent single process-owned worker",
+        ),
+        (
+            "connection_source",
+            "struct WakelockSnapshotState {\n    snapshot: WakelockSnapshot,",
+            "struct WakelockSnapshotState {\n    snapshot: Vec<WakelockSnapshot>,",
+            "independent one snapshot, readiness bit, and bidirectional finality",
+        ),
+        (
+            "connection_source",
+            "pending: bool,",
+            "pending: usize,",
+            "independent one snapshot, readiness bit, and bidirectional finality",
+        ),
+        (
+            "connection_source",
+            "state: StdMutex<WakelockSnapshotState>",
+            "state: Vec<WakelockSnapshotState>",
+            "independent synchronized bounded latest-state cell",
+        ),
+        (
+            "connection_source",
+            "struct WakelockSnapshotCell {\n    state: StdMutex<WakelockSnapshotState>,\n    changed: Condvar",
+            "struct WakelockSnapshotCell {\n    state: StdMutex<WakelockSnapshotState>,\n    changed: ()",
+            "independent synchronized bounded latest-state cell",
+        ),
+        (
+            "connection_source",
+            "state: StdMutex<WakelockSnapshotState>,\n    changed: Condvar,",
+            "state: StdMutex<WakelockSnapshotState>,\n    changed: Condvar,\n    history: VecDeque<WakelockSnapshot>,",
+            "independent wakelock snapshot history",
+        ),
+        (
+            "connection_source",
+            "struct WakelockSnapshotPublisher {",
+            "#[derive(Clone)]\nstruct WakelockSnapshotPublisher {",
+            "independent cloneable wakelock publisher",
+        ),
+        (
+            "connection_source",
+            "struct WakelockSnapshotReceiver {",
+            "#[derive(Clone)]\nstruct WakelockSnapshotReceiver {",
+            "independent cloneable wakelock receiver",
+        ),
+        (
+            "connection_source",
+            "snapshot: WakelockSnapshot::default()",
+            "snapshot: WakelockSnapshot { connection_count: 1, remote_count: 1 }",
+            "independent zero-initialized one-bit latest-state cell",
+        ),
+        (
+            "connection_source",
+            "pending: false,",
+            "pending: true,",
+            "independent zero-initialized one-bit latest-state cell",
+        ),
+        (
+            "connection_source",
+            "publisher_alive: true,",
+            "publisher_alive: false,",
+            "independent zero-initialized one-bit latest-state cell",
+        ),
+        (
+            "connection_source",
+            "receiver_alive: true,",
+            "receiver_alive: false,",
+            "independent zero-initialized one-bit latest-state cell",
+        ),
+        (
+            "connection_source",
+            "receiver_alive: true,\n        }),\n        changed: Condvar::new(),",
+            "receiver_alive: true,\n        }),\n        changed: Condvar::default(),",
+            "independent zero-initialized one-bit latest-state cell",
+        ),
+        (
+            "connection_source",
+            "if !state.receiver_alive {",
+            "if false && !state.receiver_alive {",
+            "independent nonblocking replacement and receiver-final wake",
+        ),
+        (
+            "connection_source",
+            "state.snapshot = snapshot;",
+            "// snapshot replacement disabled",
+            "independent nonblocking replacement and receiver-final wake",
+        ),
+        (
+            "connection_source",
+            "state.pending = true;",
+            "state.pending = false;",
+            "independent nonblocking replacement and receiver-final wake",
+        ),
+        (
+            "connection_source",
+            "sender.inner.changed.notify_one();",
+            "// wakelock publisher wake disabled",
+            "independent nonblocking replacement and receiver-final wake",
+        ),
+        (
+            "connection_source",
+            "while !state.pending && state.publisher_alive {",
+            "while !state.pending && false {",
+            "independent blocking one-bit acknowledgement and publisher finality",
+        ),
+        (
+            "connection_source",
+            "receiver.inner.changed.wait(state).unwrap()",
+            "state",
+            "independent blocking one-bit acknowledgement and publisher finality",
+        ),
+        (
+            "connection_source",
+            "if !state.publisher_alive {",
+            "if false && !state.publisher_alive {",
+            "independent blocking one-bit acknowledgement and publisher finality",
+        ),
+        (
+            "connection_source",
+            "Some(state.snapshot)",
+            "None",
+            "independent blocking one-bit acknowledgement and publisher finality",
+        ),
+        (
+            "connection_source",
+            "state.publisher_alive = false;",
+            "state.publisher_alive = true;",
+            "independent publisher-retirement terminal wake",
+        ),
+        (
+            "connection_source",
+            "state.receiver_alive = false;",
+            "state.receiver_alive = true;",
+            "independent receiver-retirement closure and retained-state release",
+        ),
+        (
+            "connection_source",
+            'log::error!("wakelock snapshot publisher stopped")',
+            'log::debug!("wakelock snapshot publisher stopped")',
+            "independent latest snapshot and preserved option/platform behavior",
+        ),
+        (
+            "connection_source",
+            "snapshot.connection_count == 0",
+            "false",
+            "independent latest snapshot and preserved option/platform behavior",
+        ),
+        (
+            "connection_source",
+            "snapshot.remote_count > 0",
+            "false",
+            "independent latest snapshot and preserved option/platform behavior",
+        ),
+        (
+            "connection_source",
+            '.name("rustdesk-wakelock".to_owned())',
+            '.name("rustdesk-wakelock-disabled".to_owned())',
+            "independent named retained worker with visible startup failure",
+        ),
+        (
+            "connection_source",
+            ".spawn(move || run_wakelock_worker(receiver))",
+            ".spawn(move || drop(receiver))",
+            "independent named retained worker with visible startup failure",
+        ),
+        (
+            "connection_source",
+            "Ok(thread) => Some(thread)",
+            "Ok(_thread) => None",
+            "independent named retained worker with visible startup failure",
+        ),
+        (
+            "connection_source",
+            'log::error!("failed to start wakelock worker: {err}")',
+            'log::debug!("failed to start wakelock worker: {err}")',
+            "independent named retained worker with visible startup failure",
+        ),
+        (
+            "connection_source",
+            "connection_count: authed_conns.len()",
+            "connection_count: 0",
+            "independent coherent mutation-ordered snapshot and visible finality",
+        ),
+        (
+            "connection_source",
+            "conn.conn_type == AuthConnType::Remote",
+            "false",
+            "independent coherent mutation-ordered snapshot and visible finality",
+        ),
+        (
+            "connection_source",
+            "let published = publish_wakelock_snapshot(&WAKELOCK_WORKER.sender, snapshot);",
+            "let published = true;",
+            "independent coherent mutation-ordered snapshot and visible finality",
+        ),
+        (
+            "connection_source",
+            "drop(authed_conns);",
+            "// connection guard retained implicitly",
+            "independent coherent mutation-ordered snapshot and visible finality",
+        ),
+        (
+            "connection_source",
+            "if !published {",
+            "if false && !published {",
+            "independent coherent mutation-ordered snapshot and visible finality",
+        ),
+        (
+            "connection_source",
+            'log::error!("wakelock worker stopped before snapshot publication")',
+            'log::debug!("wakelock worker stopped before snapshot publication")',
+            "independent coherent mutation-ordered snapshot and visible finality",
+        ),
+        (
+            "connection_source",
+            "cached != Some(current)",
+            "false",
+            "independent option-change reevaluation route",
+        ),
+        (
+            "connection_source",
+            "fn wakelock_publication_keeps_only_the_latest_coherent_snapshot",
+            "fn wakelock_publication_may_queue_history",
+            "independent wakelock_publication_keeps_only_the_latest_coherent_snapshot regression",
+        ),
+        (
+            "connection_source",
+            "fn identical_wakelock_snapshot_requests_option_reevaluation",
+            "fn identical_wakelock_snapshot_skips_option_reevaluation",
+            "independent identical_wakelock_snapshot_requests_option_reevaluation regression",
+        ),
+        (
+            "connection_source",
+            "fn wakelock_receiver_retirement_closes_publication",
+            "fn wakelock_receiver_retirement_is_advisory",
+            "independent wakelock_receiver_retirement_closes_publication regression",
+        ),
+        (
+            "connection_source",
+            "fn wakelock_publisher_retirement_is_observable",
+            "fn wakelock_publisher_retirement_is_hidden",
+            "independent wakelock_publisher_retirement_is_observable regression",
+        ),
+        (
+            "wakelock_snapshot_mailbox_verifier",
+            '("connection", "pending: bool,", "pending: usize,", "one-bit readiness"),',
+            '("connection", "pending_disabled: bool,", "pending: usize,", "one-bit readiness"),',
+            "focused wakelock one-bit mutation",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-wakelock-snapshot-mailbox.py --repo . --self-test",
+            "true # wakelock snapshot verifier disabled",
+            "shared wakelock snapshot gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-wakelock-snapshot-mailbox.py --repo . --self-test",
+            "true # wakelock snapshot verifier disabled",
+            "Apple/shared wakelock snapshot gate",
+        ),
+        (
+            "verify",
+            "cargo test --lib --features linux-pkg-config,flutter server::connection::wakelock_snapshot_tests:: --color never",
+            "true # wakelock snapshot tests disabled",
+            "shared wakelock snapshot behavior gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11hd</span>',
+            '<div class="req"><span class="id">R-S11hd-disabled</span>',
+            "R-S11hd requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>365</td>",
+            "<tr><td>365-disabled</td>",
+            "Appendix C #365",
+        ),
+        (
+            "hardening",
+            "### R-S11hd/R-S11e-242 — coherent latest-state wakelock snapshot ownership",
+            "### R-S11hd-disabled/R-S11e-242 — coherent latest-state wakelock snapshot ownership",
+            "R-S11hd ledger",
+        ),
+        (
+            "workspace_verifier",
+            '            "wakelock_snapshot_mailbox_verifier": (\n'
+            '                repo / "scripts/verify-wakelock-snapshot-mailbox.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "wakelock_snapshot_mailbox_verifier_disabled": (\n'
+            '                repo / "scripts/verify-wakelock-snapshot-mailbox.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "wakelock independent verifier binding",
+        ),
+        (
+            "workspace_verifier",
+            '            "connection_source": (repo / "src/server/connection.rs").read_text(encoding="utf-8"),',
+            '            "connection_source_disabled": (repo / "src/server/connection.rs").read_text(encoding="utf-8"),',
+            "wakelock connection source binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_wakelock_snapshot_mailbox_contract(sources)\n",
+            "    validate_wakelock_snapshot_mailbox_contract_disabled(sources)\n",
+            "wakelock independent workspace dispatch must occur exactly once",
+        ),
+        (
             "clipboard_source",
             "const CLIPBOARD_FILE_EGRESS_WAKE_CAPACITY: usize = 1;",
             "const CLIPBOARD_FILE_EGRESS_WAKE_CAPACITY: usize = 64;",
@@ -82966,6 +83654,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "tray_session_count_mailbox_verifier": (
                 repo / "scripts/verify-tray-session-count-mailbox.py"
+            ).read_text(encoding="utf-8"),
+            "wakelock_snapshot_mailbox_verifier": (
+                repo / "scripts/verify-wakelock-snapshot-mailbox.py"
             ).read_text(encoding="utf-8"),
             "clipboard_route_budget_verifier": (
                 repo / "scripts/verify-clipboard-route-budget.py"

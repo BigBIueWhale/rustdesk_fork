@@ -25802,12 +25802,125 @@ remain explicit release obligations. This slice inspects or changes no host Rust
 process, configuration, service, listener, firewall/network state, VM, Android device or
 service, unrelated workload, or OS privilege boundary.
 
+### R-S11hd/R-S11e-242 — coherent latest-state wakelock snapshot ownership (2026-08-21)
+
+**SOURCE IMPLEMENTED; CONFINED SOURCE/MUTATION VERIFICATION PASSED; EXACT RUST/NATIVE,
+DEVICE LIFECYCLE, PERFORMANCE, ARTIFACT, AND RELEASE EVIDENCE OPEN.** Platform:
+shared Android, iOS, Windows, Linux, and macOS controlled-side connection path. Surface:
+authenticated connection admission/removal and keep-awake option reevaluation ->
+process-owned platform wakelock worker. Android's intentionally persistent `MainService`,
+the host RustDesk service, media transport, capture, and viewer presentation state machines
+are not changed by this slice.
+
+Read-only source tracing found that the inherited wakelock path sent one
+`(connection_count, remote_count)` event for every relevant reevaluation through
+`std::sync::mpsc::channel`, whose standard sender is unbounded. The worker may perform
+blocking platform power/display calls, so producers could retain arbitrarily many obsolete
+snapshots even though only current state is meaningful. The two counts were obtained under
+two independent `AUTHED_CONNS` locks, permitting a concurrent mutation to produce a pair
+that never existed as one state. Publication failure was discarded through `allow_err!`,
+and the worker handle was detached. Blame attributes this old path to inherited commit
+`c2abd3b3` from 2026-06-19; it was not introduced by the current correction. This is shared
+source-proven resource, state-coherence, ordering, and finality debt. It is not a privileged
+service bypass, proof that an unidentified deployed artifact exercised the path, or a
+causation claim for the reported display-only delay.
+
+The process now owns one `WakelockWorker` with one standard-library mutex/condition-variable
+latest-state publisher and the retained handle of the existing single named
+`rustdesk-wakelock` thread. Its cell starts with a typed zero `WakelockSnapshot`, one false
+pending bit, and explicit publisher/receiver liveness. Every authenticated-connection
+reevaluation takes exactly one `AUTHED_CONNS` guard, derives both counts, publishes the
+complete snapshot synchronously, then explicitly drops the guard. A later connection
+mutation therefore cannot publish and then be overwritten by an older observation.
+Publication takes only the cell's short mutex,
+never waits for consumer capacity, and returns receiver liveness; arbitrary intermediate
+revisions coalesce to the newest complete value.
+Unlike the changed-only Windows tray state, an identical wakelock snapshot deliberately
+sets the pending revision because the setting-change route requires the worker to reread the
+independently mutable keep-awake option. The sole worker receiver waits in a
+condition-variable predicate loop and atomically clears the pending bit while copying the
+newest complete snapshot. Publisher retirement clears its liveness bit and wakes the
+receiver visibly. Receiver retirement clears its liveness/pending state and makes
+publication fail; worker-start failure is logged while dropping that sole receiver, so
+later publication also fails visibly.
+The exact locked Tokio 1.44.2 crate was inspected after the first draft and does not expose
+`Receiver::blocking_changed`; the final standard-library cell therefore introduces no nested
+or hidden runtime. The worker acquires no connection lock and the short producer guard crosses
+no await, platform I/O, or wakelock operation.
+
+Existing platform behavior after observation is preserved: the same option is reread, the
+same cached option is updated, zero connections or a disabled option drops the wakelock,
+remote-control count determines display intent, Linux retains its display override, and
+Windows/macOS retain their conditional display update. No queue, retry, reconnect, timer,
+poller, additional worker, task, thread, runtime, listener, port, dependency, privilege
+transition, service restart, alternate power-management path, network change, or Android
+persistent-service behavior is added or changed.
+
+Four deterministic Rust regressions bind newest-snapshot collapse, identical-snapshot
+option reevaluation, receiver-retirement refusal, and publisher-retirement observation.
+`scripts/verify-wakelock-snapshot-mailbox.py` binds the production topology, old-path
+absence, coherent count derivation, explicit publication ordering, revision semantics,
+worker ownership, startup/publication/receiver finality, tests, requirements, Appendix C
+#365, ledger identity, and shared/Apple/independent wiring with deliberate mutations. The
+separate workspace validator parses the production source and actual source-map/dispatch
+structure independently instead of accepting the focused verifier's result as authority.
+
+In the immutable local verifier image
+`sha256:2d178f2785b96dfbf62a416ca2e40f50e30150b4ff3320d706f0d96e90600eb3`,
+with `--pull=never`, networking disabled, a read-only root and repository, all
+capabilities dropped, `no-new-privileges`, numeric UID/GID 1000, and finite
+CPU/memory/no-swap/PID/private-tmpfs limits, the focused wakelock verifier rejected all 50
+deliberate mutations. The adjacent Windows tray, native clipboard-listener, Android
+lifecycle-drain, Android voice/input, controlled egress, CM egress, keyed writer,
+display-selection, viewer voice-worker, Android listener-generation, Android persistent
+service-status, Android raw-frame generation, file-clipboard route, viewer-video mailbox,
+and viewer-RGBA mailbox gates rejected 24, 27, 39, 535, 51, 64, 25, 186, 63, 39, 35,
+68, 38, 49, and 115 mutations respectively. The independent unmodified workspace
+baseline passed, and a narrowed independent run rejected all 53 new R-S11hd catalog
+entries. On these exact ledger bytes, one final uninterrupted complete independently
+parsed catalog rejected all 4,690 source mutations.
+
+The first two complete-catalog attempts correctly rejected the new publisher-type and
+retained-handle weakenings but stopped because those entries expected their narrower
+descriptive labels rather than the combined independent owner diagnostic. A first
+monkeypatched narrowing attempt was also ineffective because the verifier intentionally
+re-execs itself under isolated/no-site Python. The catalog expectations were corrected
+without changing production code or weakening an invariant. A current-source in-memory
+module then evaluated the verifier's actual `sources` AST and rejected all 53 R-S11hd
+entries through the real `validate_sources` function with exact diagnostic matching. Only
+the later uninterrupted complete pass on these final bytes is counted as final evidence.
+
+The checksum-authenticated cached Tokio 1.44.2 crate matched the committed Cargo checksum
+`e6b88822cbe49de4185e3a4cbf8321dd487cf5fe0c5c65695fef6346371e9c48` and direct
+source inspection confirmed the unavailable blocking watch operation that the final design
+avoids. Exact Rust 1.75 formatter output matched every R-S11hd-changed source region; the
+large inherited file still has 26 formatter hunks outside this slice, so no whole-file
+rustfmt-clean claim is made. In-memory Python AST parsing, shared and Apple Bash syntax,
+the synchronized requirements digest, the native-codec watch, and `git diff --check` also
+passed. The exact platform builders and authenticated Cargo closure are absent, so the
+wired Rust regressions were not compiled or executed and no native execution claim is
+inferred from the source/mutation evidence.
+
+This remains source-level work, not current native behavior or release readiness. The exact
+pinned Debian, Apple, Windows, and dev-check builder images and authenticated Cargo vendor
+closure remain unavailable locally, so no exact-current Rust/native compilation or
+execution is claimed. Physical Android task-swipe/reopen/Force-Stop and Windows
+focus/minimize/reconnect behavior; Linux/macOS/iOS and cross-version behavior; the
+weeks-old deployed artifacts; capture-through-compositor timestamps and explicit
+latency/queue budgets; sustained connection/reconnect/focus/background/file/control
+coexistence, resource, power-state, and performance soak; clean cold R-B2/R-B10 equality;
+installed process/service/package behavior; independent reproduction; R-V3 external
+review; causation; and proof that the complete connection flow is correct and performant
+all remain explicit release obligations. This slice inspects or changes no host RustDesk
+process, configuration, service, listener, firewall/network state, VM, Android device or
+service, unrelated workload, or OS privilege boundary.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-52cb1ec7dc249dd45de2665986f7ebc51d4171979b4a50bf370e33535381d874  requirements.html
+7b2b4bce57656afa7a79c0ee356585d6215c36294ede125f948ea2ff7e750be3  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -25879,3 +25992,4 @@ The same identity additionally binds R-S11gz and Appendix C #361.
 The same identity additionally binds R-S11ha and Appendix C #362.
 The same identity additionally binds R-S11hb and Appendix C #363.
 The same identity additionally binds R-S11hc and Appendix C #364.
+The same identity additionally binds R-S11hd and Appendix C #365.

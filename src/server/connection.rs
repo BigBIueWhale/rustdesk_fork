@@ -55,7 +55,7 @@ use scrap::camera;
 use serde_derive::Serialize;
 use serde_json::{json, value::Value};
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
-use std::sync::{atomic::AtomicUsize, mpsc as std_mpsc, Condvar};
+use std::sync::{atomic::AtomicUsize, mpsc as std_mpsc};
 use std::{
     collections::{HashMap, HashSet, VecDeque},
     fmt,
@@ -63,7 +63,7 @@ use std::{
     path::PathBuf,
     sync::{
         atomic::{AtomicI64, Ordering},
-        Mutex as StdMutex,
+        Condvar, Mutex as StdMutex,
     },
 };
 #[cfg(not(any(target_os = "android", target_os = "ios")))]
@@ -489,13 +489,44 @@ async fn enqueue_controlled_file_transfer_step(
 // systemd cgroup. A single owner never has this many concurrent sessions.
 const MAX_AUTHED_SESSIONS: usize = 16;
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+struct WakelockSnapshot {
+    connection_count: usize,
+    remote_count: usize,
+}
+
+struct WakelockSnapshotState {
+    snapshot: WakelockSnapshot,
+    pending: bool,
+    publisher_alive: bool,
+    receiver_alive: bool,
+}
+
+struct WakelockSnapshotCell {
+    state: StdMutex<WakelockSnapshotState>,
+    changed: Condvar,
+}
+
+struct WakelockSnapshotPublisher {
+    inner: Arc<WakelockSnapshotCell>,
+}
+
+struct WakelockSnapshotReceiver {
+    inner: Arc<WakelockSnapshotCell>,
+}
+
+struct WakelockWorker {
+    sender: WakelockSnapshotPublisher,
+    _thread: Option<std::thread::JoinHandle<()>>,
+}
+
 lazy_static::lazy_static! {
     // R-T15(b)/R-S10: the inherited LOGIN_FAILURES limiter is excised (see update/check_failure) —
     // an unbounded/never-decaying/full-IPv6-keyed map on dead paths; CPace's GUESS_FAILURES is live.
     static ref ALIVE_CONNS: Arc::<Mutex<Vec<i32>>> = Default::default();
     pub static ref AUTHED_CONNS: Arc::<Mutex<Vec<AuthedConn>>> = Default::default();
     pub static ref CONTROL_PERMISSIONS_ARRAY: Arc::<Mutex<Vec<(i32, ControlPermissions)>>> = Default::default();
-    static ref WAKELOCK_SENDER: Arc::<Mutex<std::sync::mpsc::Sender<(usize, usize)>>> = Arc::new(Mutex::new(start_wakelock_thread()));
+    static ref WAKELOCK_WORKER: WakelockWorker = start_wakelock_worker();
     static ref WAKELOCK_KEEP_AWAKE_OPTION: Arc::<Mutex<Option<bool>>> = Default::default();
 }
 
@@ -11964,56 +11995,192 @@ impl FileRemoveLogControl {
     }
 }
 
-fn start_wakelock_thread() -> std::sync::mpsc::Sender<(usize, usize)> {
+fn wakelock_snapshot_channel() -> (WakelockSnapshotPublisher, WakelockSnapshotReceiver) {
+    let inner = Arc::new(WakelockSnapshotCell {
+        state: StdMutex::new(WakelockSnapshotState {
+            snapshot: WakelockSnapshot::default(),
+            pending: false,
+            publisher_alive: true,
+            receiver_alive: true,
+        }),
+        changed: Condvar::new(),
+    });
+    (
+        WakelockSnapshotPublisher {
+            inner: inner.clone(),
+        },
+        WakelockSnapshotReceiver { inner },
+    )
+}
+
+fn publish_wakelock_snapshot(
+    sender: &WakelockSnapshotPublisher,
+    snapshot: WakelockSnapshot,
+) -> bool {
+    let mut state = sender.inner.state.lock().unwrap();
+    if !state.receiver_alive {
+        return false;
+    }
+    state.snapshot = snapshot;
+    state.pending = true;
+    drop(state);
+    sender.inner.changed.notify_one();
+    true
+}
+
+fn wait_for_wakelock_snapshot(receiver: &mut WakelockSnapshotReceiver) -> Option<WakelockSnapshot> {
+    let mut state = receiver.inner.state.lock().unwrap();
+    while !state.pending && state.publisher_alive {
+        state = receiver.inner.changed.wait(state).unwrap();
+    }
+    if !state.publisher_alive {
+        state.pending = false;
+        return None;
+    }
+    state.pending = false;
+    Some(state.snapshot)
+}
+
+impl Drop for WakelockSnapshotPublisher {
+    fn drop(&mut self) {
+        let mut state = self.inner.state.lock().unwrap();
+        state.publisher_alive = false;
+        drop(state);
+        self.inner.changed.notify_one();
+    }
+}
+
+impl Drop for WakelockSnapshotReceiver {
+    fn drop(&mut self) {
+        let mut state = self.inner.state.lock().unwrap();
+        state.receiver_alive = false;
+        state.pending = false;
+        drop(state);
+        self.inner.changed.notify_one();
+    }
+}
+
+fn run_wakelock_worker(mut receiver: WakelockSnapshotReceiver) {
     // Check if we should keep awake during incoming sessions
     use crate::platform::{get_wakelock, WakeLock};
-    let (tx, rx) = std::sync::mpsc::channel::<(usize, usize)>();
-    std::thread::spawn(move || {
-        let mut wakelock: Option<WakeLock> = None;
-        let mut last_display = false;
-        loop {
-            match rx.recv() {
-                Ok((conn_count, remote_count)) => {
-                    let keep_awake = config::Config::get_bool_option(
-                        keys::OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS,
-                    );
-                    *WAKELOCK_KEEP_AWAKE_OPTION.lock().unwrap() = Some(keep_awake);
-                    if conn_count == 0 || !keep_awake {
-                        if wakelock.is_some() {
-                            wakelock = None;
-                            log::info!("drop wakelock");
+    let mut wakelock: Option<WakeLock> = None;
+    let mut last_display = false;
+    loop {
+        let Some(snapshot) = wait_for_wakelock_snapshot(&mut receiver) else {
+            log::error!("wakelock snapshot publisher stopped");
+            break;
+        };
+        let keep_awake =
+            config::Config::get_bool_option(keys::OPTION_KEEP_AWAKE_DURING_INCOMING_SESSIONS);
+        *WAKELOCK_KEEP_AWAKE_OPTION.lock().unwrap() = Some(keep_awake);
+        if snapshot.connection_count == 0 || !keep_awake {
+            if wakelock.is_some() {
+                wakelock = None;
+                log::info!("drop wakelock");
+            }
+        } else {
+            let mut display = snapshot.remote_count > 0;
+            if let Some(_w) = wakelock.as_mut() {
+                if display != last_display {
+                    #[cfg(any(target_os = "windows", target_os = "macos"))]
+                    {
+                        log::info!("set wakelock display to {display}");
+                        if let Err(e) = _w.set_display(display) {
+                            log::error!("failed to set wakelock display to {display}: {e:?}");
                         }
-                    } else {
-                        let mut display = remote_count > 0;
-                        if let Some(_w) = wakelock.as_mut() {
-                            if display != last_display {
-                                #[cfg(any(target_os = "windows", target_os = "macos"))]
-                                {
-                                    log::info!("set wakelock display to {display}");
-                                    if let Err(e) = _w.set_display(display) {
-                                        log::error!(
-                                            "failed to set wakelock display to {display}: {e:?}"
-                                        );
-                                    }
-                                }
-                            }
-                        } else {
-                            if cfg!(target_os = "linux") {
-                                display = true;
-                            }
-                            wakelock = Some(get_wakelock(display));
-                        }
-                        last_display = display;
                     }
                 }
-                Err(e) => {
-                    log::error!("wakelock receive error: {e:?}");
-                    break;
+            } else {
+                if cfg!(target_os = "linux") {
+                    display = true;
                 }
+                wakelock = Some(get_wakelock(display));
             }
+            last_display = display;
         }
-    });
-    tx
+    }
+}
+
+fn start_wakelock_worker() -> WakelockWorker {
+    let (sender, receiver) = wakelock_snapshot_channel();
+    let thread = match std::thread::Builder::new()
+        .name("rustdesk-wakelock".to_owned())
+        .spawn(move || run_wakelock_worker(receiver))
+    {
+        Ok(thread) => Some(thread),
+        Err(err) => {
+            log::error!("failed to start wakelock worker: {err}");
+            None
+        }
+    };
+    WakelockWorker {
+        sender,
+        _thread: thread,
+    }
+}
+
+#[cfg(test)]
+mod wakelock_snapshot_tests {
+    use super::*;
+
+    #[test]
+    fn wakelock_publication_keeps_only_the_latest_coherent_snapshot() {
+        let (sender, mut receiver) = wakelock_snapshot_channel();
+        assert!(publish_wakelock_snapshot(
+            &sender,
+            WakelockSnapshot {
+                connection_count: 1,
+                remote_count: 1,
+            }
+        ));
+        assert!(publish_wakelock_snapshot(
+            &sender,
+            WakelockSnapshot {
+                connection_count: 2,
+                remote_count: 1,
+            }
+        ));
+
+        assert_eq!(
+            wait_for_wakelock_snapshot(&mut receiver),
+            Some(WakelockSnapshot {
+                connection_count: 2,
+                remote_count: 1,
+            })
+        );
+        assert!(!receiver.inner.state.lock().unwrap().pending);
+    }
+
+    #[test]
+    fn identical_wakelock_snapshot_requests_option_reevaluation() {
+        let (sender, mut receiver) = wakelock_snapshot_channel();
+        assert!(publish_wakelock_snapshot(
+            &sender,
+            WakelockSnapshot::default()
+        ));
+        assert_eq!(
+            wait_for_wakelock_snapshot(&mut receiver),
+            Some(WakelockSnapshot::default())
+        );
+        assert!(!receiver.inner.state.lock().unwrap().pending);
+    }
+
+    #[test]
+    fn wakelock_receiver_retirement_closes_publication() {
+        let (sender, receiver) = wakelock_snapshot_channel();
+        drop(receiver);
+        assert!(!publish_wakelock_snapshot(
+            &sender,
+            WakelockSnapshot::default()
+        ));
+    }
+
+    #[test]
+    fn wakelock_publisher_retirement_is_observable() {
+        let (sender, mut receiver) = wakelock_snapshot_channel();
+        drop(sender);
+        assert_eq!(wait_for_wakelock_snapshot(&mut receiver), None);
+    }
 }
 
 #[cfg(windows)]
@@ -12349,17 +12516,19 @@ mod raii {
         }
 
         fn check_wake_lock() {
-            let conn_count = AUTHED_CONNS.lock().unwrap().len();
-            let remote_count = AUTHED_CONNS
-                .lock()
-                .unwrap()
-                .iter()
-                .filter(|c| c.conn_type == AuthConnType::Remote)
-                .count();
-            allow_err!(WAKELOCK_SENDER
-                .lock()
-                .unwrap()
-                .send((conn_count, remote_count)));
+            let authed_conns = AUTHED_CONNS.lock().unwrap();
+            let snapshot = WakelockSnapshot {
+                connection_count: authed_conns.len(),
+                remote_count: authed_conns
+                    .iter()
+                    .filter(|conn| conn.conn_type == AuthConnType::Remote)
+                    .count(),
+            };
+            let published = publish_wakelock_snapshot(&WAKELOCK_WORKER.sender, snapshot);
+            drop(authed_conns);
+            if !published {
+                log::error!("wakelock worker stopped before snapshot publication");
+            }
         }
 
         pub fn check_wake_lock_on_setting_changed() {

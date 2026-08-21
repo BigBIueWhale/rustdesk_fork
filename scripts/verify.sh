@@ -9502,6 +9502,7 @@ fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ha_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter clipboard_listener::tests:: --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter tray::tests:: --color never
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter server::connection::wakelock_snapshot_tests:: --color never
 "${RUN[@]}" cargo test -p clipboard --features unix-file-copy-paste --lib r_s11gz_ --color never
 if python3 scripts/verify-viewer-rgba-mailbox.py --repo . --self-test; then
   echo "  ok  R-S11ew/R-S11fr Flutter software RGBA publication is exact-session/token-owned, bounded, latest-wins, recoverable, commit-ordered, and pointer-free"
@@ -9549,6 +9550,12 @@ if python3 scripts/verify-tray-session-count-mailbox.py --repo . --self-test; th
   echo "  ok  R-S11hc Windows tray session-count publication is latest-state bounded and receiver-final"
 else
   echo "  FAIL R-S11hc: Windows tray session-count publication regained an unbounded queue, stale history, or incomplete retirement"
+  rc=1
+fi
+if python3 scripts/verify-wakelock-snapshot-mailbox.py --repo . --self-test; then
+  echo "  ok  R-S11hd controlled-side wakelock snapshots are coherent, latest-state bounded, mutation-ordered, and terminal-visible"
+else
+  echo "  FAIL R-S11hd: controlled-side wakelock snapshots regained an unbounded queue, split-state read, stale overwrite, or hidden retirement"
   rc=1
 fi
 if python3 scripts/verify-clipboard-route-budget.py --repo . --self-test; then

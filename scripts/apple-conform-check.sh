@@ -3667,6 +3667,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c2adb) R-S11hd coherent latest-state wakelock snapshot ownership =="
+if python3 scripts/verify-wakelock-snapshot-mailbox.py --repo . --self-test; then
+  note "ok  R-S11hd Apple/shared controlled-side wakelock snapshots are coherent, latest-state bounded, mutation-ordered, and terminal-visible"
+else
+  echo "  FAIL R-S11hd Apple/shared wakelock snapshots regained an unbounded queue, split-state read, stale overwrite, or hidden retirement"
+  rc=1
+fi
+
 echo "== (2g-c2ae) R-S11gz exact bounded file-clipboard route ownership =="
 if python3 scripts/verify-clipboard-route-budget.py --repo . --self-test; then
   note "ok  R-S11gz Apple/shared file-clipboard callbacks have exact connection-round routes and finite count-and-byte ownership"

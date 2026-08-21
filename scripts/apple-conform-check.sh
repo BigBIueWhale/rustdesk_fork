@@ -3683,6 +3683,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c2add) R-S11hf bounded exact-generation global Dart event dispatch =="
+if python3 scripts/verify-global-event-dispatcher.py --repo . --self-test; then
+  note "ok  R-S11hf Apple/shared global Dart event dispatch is bounded, serial, exact-generation-owned, and terminal-visible"
+else
+  echo "  FAIL R-S11hf Apple/shared global Dart event dispatch regained detached, overlapping, stale-generation, unbounded, or hidden-failure state"
+  rc=1
+fi
+
 echo "== (2g-c2ae) R-S11gz exact bounded file-clipboard route ownership =="
 if python3 scripts/verify-clipboard-route-budget.py --repo . --self-test; then
   note "ok  R-S11gz Apple/shared file-clipboard callbacks have exact connection-round routes and finite count-and-byte ownership"

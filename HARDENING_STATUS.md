@@ -26028,12 +26028,166 @@ installed process/service/package behavior; independent reproduction; R-V3 exter
 review; causation; and proof that the complete connection flow is correct and
 performant all remain explicit release obligations.
 
+### R-S11hf/R-S11e-244 — bounded exact-generation global event dispatch (2026-08-21)
+
+**SOURCE IMPLEMENTED; CORRECTED ROUTE-AWARE CONFINED SOURCE AND MUTATION VERIFICATION
+PASSED; EXACT DART/FLUTTER/NATIVE, DEVICE LIFECYCLE, PERFORMANCE, ARTIFACT, AND RELEASE
+EVIDENCE OPEN.** Platforms:
+the shared Flutter process-global event boundary on native Android, iOS, Windows,
+Linux, and macOS, plus the equivalent registered/global JavaScript callbacks on web.
+Surface: low-rate process-global Rust/JavaScript JSON events, named process handlers,
+the current session fallback callback, and the legacy web cursor JSON events only at
+their synchronous handoff into pre-existing exact-owner latest-state lanes. Typed
+per-session media, native cursor, RGBA, audio, file-transfer, and input/control streams
+are not moved into this owner.
+Android's intentionally persistent foreground service and process lifetime remain
+unchanged.
+
+Read-only source tracing proved a concrete inherited ownership and resource defect.
+`PlatformFFI._startListenEvent` created and discarded a new async closure for every
+native global event. That closure decoded JSON, awaited `tryHandle`, and only then
+read the mutable `_eventCallback`. Because the async `tryHandle` call crosses an
+asynchronous boundary even when no named handler exists, callback replacement could
+occur between event receipt and fallback selection: an event accepted while session
+A was current could be delivered to session B's newly installed callback. Every slow
+handler also ran independently, so source order, nonoverlap, retained future count,
+and retained message bytes had no closed owner. Web's `onRegisteredEvent` and
+`onGlobalEvent` callbacks separately invoked async handlers without observing their
+completion. Named registration replacement and unregister mutated a map but did not
+retire already admitted work. Blame attributes both native and web paths to the
+`c2abd3b3` upstream import from 2026-06-19; this correction did not introduce them.
+
+That shape is a plausible cleanup-mediated stale-state mechanism across all Flutter
+clients. An Android task swipe can leave the intentionally persistent process/service
+owner alive, whereas Force Stop destroys it; reconnect or process replacement likewise
+destroys the mutable callback and detached-work population. The defect is source
+proven, but it is not proof that the unidentified weeks-old Android, Windows, or
+Debian artifacts contained or exercised these exact bytes, and it is not a causation
+claim for the reported display-only delay. The process-global lane carries state and
+control notifications rather than decoded video frames, so exact physical reproduction
+and capture-through-compositor timing remain necessary.
+
+`GlobalEventDispatcher` now owns the route decision. Admission validates the raw
+message ceiling before decoding, decodes synchronously only to select the route, and
+captures either a concrete list of exact named-handler bindings or the exact current
+fallback generation before any asynchronous operation starts. For registered and
+low-rate/control routes, the sole retained drain future runs one event to completion at
+a time and preserves admission order. The immutable raw string is decoded again only
+by that serial runner, so queued work does not retain an additional decoded object
+graph. There is no per-message detached future, concurrent control drain, timer,
+catch-up loop, isolate, worker, thread, runtime, or secondary control event controller.
+
+Manual final-diff review caught and rejected an over-broad first draft before commit:
+web `cursor_position`, `cursor_data`, and `cursor_id` arrive through the legacy global
+JSON callback and R-S11gu/R-S11gv already give them stricter high-rate latest-state
+owners. Putting those raw messages behind the 64-entry control FIFO would have created
+a second backlog before the one-running/one-latest cursor lanes and could have blocked
+control behind cursor presentation. The web dispatcher now configures only those three
+names as synchronous fallback handoffs. After exact-generation capture, size validation,
+and parsing, `startEventListener` returns no future for them and transfers validated
+state directly to `LatestFrameQueue.submitObserved`. That API shares the existing exact
+owner/count admission and sole per-key drain, retains no per-event completion future,
+and reports operation failure from the lane itself. A configured synchronous handler
+that returns a future is terminal. Native and every other web event remain on their
+appropriate serial route.
+
+A later precommit type review caught and rejected a second subtle draft defect:
+`FutureOr<void>` cannot soundly distinguish synchronous completion from a returned
+future because a Dart `void` expression may evaluate to any object. Both callback
+contracts now use the unambiguous nullable-future ABI: synchronous handlers return
+`null`, asynchronous handlers return a non-null `Future<void>`, and the configured
+synchronous route fails terminally on any non-null completion. The focused and
+independent mutation catalogs bind both typedefs and the non-null refusal.
+
+The low-rate/control bound is explicit: at most one running entry plus 64 pending entries; at most
+16,777,216 UTF-16 code units per raw JSON string; and a 67,108,864-byte aggregate
+retained charge. Each entry acquires 256 fixed bytes plus two bytes per string code
+unit and 16 bytes per captured named-handler reference before queue insertion and
+releases that charge exactly once after execution or pending retirement. Named-handler
+inventory is capped at 256 exact bindings. These are conservative retained-memory
+charges, not a claim that upstream native/JavaScript message allocation before Dart
+admission is eliminated. Count, per-message, and aggregate refusal are therefore
+finite and visible without pretending the bridge allocation itself is free.
+
+Fallback installation returns a monotonically increasing generation capability.
+Replacement retires its predecessor before publishing the new binding and removes
+only the predecessor's pending entries. Exact session retirement presents that
+capability back to the dispatcher; a stale FFI model cannot clear a replacement
+generation. A handler already invoked before replacement is not cancellable, so it is
+allowed to settle under its captured old session checks, while new work remains behind
+it and cannot overlap. A pending old event is retired and can never migrate into the
+new callback. Named handler replacement and unregister similarly mark the exact old
+binding retired and remove it from pending entries; an entry with no remaining live
+named binding is released instead of rerouted to a session fallback.
+
+Native routing preserves the existing named-handler-first/fallback behavior and now
+routes stream errors and unexpected stream completion into exact fallback failure.
+Web preserves its ABI separation: `onRegisteredEvent` admits only named bindings and
+`onGlobalEvent` admits only the session fallback; the three configured cursor names
+hand off synchronously without entering the control FIFO. Malformed or oversize input, count
+or byte exhaustion, fallback-handler failure, and native stream failure terminate the
+exact current fallback once, release its pending work, and invoke the existing visible
+session inconsistency path. An old handler that fails after replacement cannot close
+the new generation. Named-handler failures are diagnosed without being misattributed
+to a session and do not wedge later drain progress. Session terminal/replacement edges
+clear their exact fallback capability while the process and Android foreground service
+continue normally.
+
+Eleven deterministic dispatcher regressions bind FIFO/nonoverlap and zero retained bytes;
+old-pending non-migration; active-old completion before replacement; count overflow,
+one-shot exact failure, pending retirement, and replacement recovery; message/byte
+refusal; exact named-binding unregister/re-register retirement; web route separation;
+configured synchronous cursor handoff, async-return refusal, and visible named/malformed
+failure with continued drain finality. Two additional latest-frame regressions bind the
+future-free observed handoff, running-plus-latest collapse, visible failure, and exact
+queue retirement. Both Dart tests are wired into the existing authenticated Flutter
+gate. On the final documented bytes, the focused dispatcher verifier rejected all 56
+deliberate weakening mutations; the adjacent cursor-mailbox and display-finality gates
+rejected 61 and 186 mutations; the independent unmodified baseline passed; a narrowed
+90-entry frame/cursor/dispatcher diagnostic catalog passed; and one uninterrupted final
+complete independent source catalog rejected all 4,798 mutations. The first narrowed
+attempt correctly stopped because renaming `submitObserved` invalidated an older parser
+boundary before exercising the intended runtime check; the fixture was narrowed to the
+observed-entry construction, the 90-entry catalog restarted from its first entry, and
+only that corrected pass is counted. Adjacent server-status-refresh,
+Android-main-service-status, and Android-client-lifecycle-drain gates reject 40, 35, and
+39 mutations; shell syntax, HTML tokenization, and native-codec-watch normal/self-test
+checks also pass. Exact Dart formatting, analysis, and test execution are not currently
+claimed because the sole authorized immutable local verifier image contains Python and
+shell but no Dart/Flutter SDK.
+
+`scripts/verify-global-event-dispatcher.py` binds the production owner, native/web
+routes, exact FFI session capability, tests, requirements, Appendix C #367, ledger,
+and shared/Apple/independent wiring with deliberate negative mutations. The independent
+workspace validator parses the production sources, source map, exact dispatch, tests,
+and gates separately rather than trusting the focused verifier's verdict. All recorded
+confined checks execute without network access against a read-only repository mount;
+they are source and mutation evidence only, not substituted device/runtime evidence.
+
+No retry, reconnect, timer, poller, catch-up loop, isolate, worker, thread, runtime,
+listener, port, dependency, service restart, privilege transition, alternate
+connection route, network change, Android activity/service kill, or weakening of the
+persistent Android background service is introduced. The one explicitly bounded control
+FIFO is the sole new scheduling owner; the web cursor lanes are pre-existing exact-owner
+latest-state schedulers whose admission API is made future-free. This slice does not inspect or mutate a host RustDesk
+process, configuration, service, listener, firewall/network state, VM, Android device
+or service, unrelated workload, or OS privilege boundary.
+
+Physical Android task-swipe/reopen/Force-Stop and Windows focus/minimize/reconnect
+behavior; Linux/macOS/iOS/web and cross-version behavior; the weeks-old deployed
+artifacts; capture-through-compositor timestamps and explicit end-to-end latency
+budgets; sustained connection/reconnect/focus/background/file/control coexistence,
+resource, power-state, and performance soak; clean cold R-B2/R-B10 equality; installed
+process/service/package behavior; independent reproduction; R-V3 external review;
+causation; and proof that the complete connection flow is correct and performant all
+remain explicit release obligations and explicit user requests.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-7f94ca594260c82ab16d674f91df110f7ce3ddb89f869297cc4de2e259806896  requirements.html
+d5b94384d3e4e287fdeb1c0e9b96e3b8796b961345fdad1ac6bb88625b40c5b3  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -26107,3 +26261,4 @@ The same identity additionally binds R-S11hb and Appendix C #363.
 The same identity additionally binds R-S11hc and Appendix C #364.
 The same identity additionally binds R-S11hd and Appendix C #365.
 The same identity additionally binds R-S11he and Appendix C #366.
+The same identity additionally binds R-S11hf and Appendix C #367.

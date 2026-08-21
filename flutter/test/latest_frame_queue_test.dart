@@ -54,6 +54,61 @@ void main() {
     expect(await first, LatestFrameDisposition.presented);
   });
 
+  test('observed submissions retain only running and latest without futures',
+      () async {
+    final firstEntered = Completer<void>();
+    final releaseFirst = Completer<void>();
+    final thirdPresented = Completer<void>();
+    final presented = <String>[];
+    final failures = <Object>[];
+    final queue = LatestFrameQueue<String, int, String>('session-a');
+
+    Future<void> present(String frame) async {
+      presented.add(frame);
+      if (frame == 'first') {
+        firstEntered.complete();
+        await releaseFirst.future;
+      } else if (frame == 'third') {
+        thirdPresented.complete();
+      }
+    }
+
+    expect(
+        queue.submitObserved('session-a', 0, 'first', present,
+            onError: (error, stackTrace) => failures.add(error)),
+        isTrue);
+    await firstEntered.future;
+    expect(
+        queue.submitObserved('session-a', 0, 'second', present,
+            onError: (error, stackTrace) => failures.add(error)),
+        isTrue);
+    expect(
+        queue.submitObserved('session-a', 0, 'third', present,
+            onError: (error, stackTrace) => failures.add(error)),
+        isTrue);
+
+    releaseFirst.complete();
+    await thirdPresented.future;
+    expect(presented, ['first', 'third']);
+    expect(failures, isEmpty);
+  });
+
+  test('observed failure is visible and retires its exact queue', () async {
+    final failure = Completer<Object>();
+    final queue = LatestFrameQueue<String, int, String>('session-a');
+
+    expect(
+        queue.submitObserved('session-a', 0, 'failed', (_) async {
+          throw StateError('expected failure');
+        }, onError: (error, stackTrace) => failure.complete(error)),
+        isTrue);
+    expect(await failure.future, isA<StateError>());
+    expect(
+        queue.submitObserved('session-a', 0, 'retired', (_) async {},
+            onError: (error, stackTrace) => fail('unexpected error: $error')),
+        isFalse);
+  });
+
   test('a failed frame retires its retained successor', () async {
     final failedEntered = Completer<void>();
     final releaseFailed = Completer<void>();

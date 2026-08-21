@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:ffi';
 import 'dart:io';
 
@@ -14,8 +13,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../common.dart';
 import '../generated_bridge.dart';
-
-typedef HandleEvent = Future<void> Function(Map<String, dynamic> evt);
+import 'global_event_dispatcher.dart';
 
 /// FFI wrapper around the native Rust core.
 /// Hides the platform differences.
@@ -23,10 +21,12 @@ class PlatformFFI {
   String _dir = '';
   // _homeDir is only needed for Android and IOS.
   String _homeDir = '';
-  final _eventHandlers = <String, Map<String, HandleEvent>>{};
+  final _eventDispatcher = GlobalEventDispatcher(
+    onDiagnostic: (error, stackTrace) =>
+        debugPrint('Global event dispatch failed: ${error.runtimeType}'),
+  );
   late RustdeskImpl _ffiBind;
   late String _appType;
-  StreamEventHandler? _eventCallback;
 
   PlatformFFI._();
 
@@ -74,28 +74,16 @@ class PlatformFFI {
   }
 
   bool registerEventHandler(
-      String eventName, String handlerName, HandleEvent handler, {bool replace = false}) {
+      String eventName, String handlerName, GlobalEventHandler handler,
+      {bool replace = false}) {
     debugPrint('registerEventHandler $eventName $handlerName');
-    var handlers = _eventHandlers[eventName];
-    if (handlers == null) {
-      _eventHandlers[eventName] = {handlerName: handler};
-      return true;
-    } else {
-      if (!replace && handlers.containsKey(handlerName)) {
-        return false;
-      } else {
-        handlers[handlerName] = handler;
-        return true;
-      }
-    }
+    return _eventDispatcher.registerHandler(eventName, handlerName, handler,
+        replace: replace);
   }
 
   void unregisterEventHandler(String eventName, String handlerName) {
     debugPrint('unregisterEventHandler $eventName $handlerName');
-    var handlers = _eventHandlers[eventName];
-    if (handlers != null) {
-      handlers.remove(handlerName);
-    }
+    _eventDispatcher.unregisterHandler(eventName, handlerName);
   }
 
   String translate(String name, String locale) =>
@@ -234,47 +222,26 @@ class PlatformFFI {
     version = await getVersion();
   }
 
-  Future<bool> tryHandle(Map<String, dynamic> evt) async {
-    final name = evt['name'];
-    if (name != null) {
-      final handlers = _eventHandlers[name];
-      if (handlers != null) {
-        if (handlers.isNotEmpty) {
-          for (var handler in handlers.values) {
-            await handler(evt);
-          }
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
   /// Start listening to the Rust core's events and frames.
   void _startListenEvent(RustdeskImpl rustdeskImpl) {
     final appType =
         _appType == kAppTypeDesktopRemote ? '$_appType,$kWindowId' : _appType;
     var sink = rustdeskImpl.startGlobalEventStream(appType: appType);
-    sink.listen((message) {
-      () async {
-        try {
-          Map<String, dynamic> event = json.decode(message);
-          // _tryHandle here may be more flexible than _eventCallback
-          if (!await tryHandle(event)) {
-            if (_eventCallback != null) {
-              await _eventCallback!(event);
-            }
-          }
-        } catch (e) {
-          debugPrint('json.decode fail(): $e');
-        }
-      }();
-    });
+    sink.listen(
+      _eventDispatcher.dispatch,
+      onError: (Object error, StackTrace stackTrace) =>
+          _eventDispatcher.failCurrent(error, stackTrace),
+      onDone: () => _eventDispatcher.failCurrent(
+          StateError('global event stream ended'), StackTrace.current),
+    );
   }
 
-  void setEventCallback(StreamEventHandler fun) async {
-    _eventCallback = fun;
-  }
+  int setEventCallback(StreamEventHandler fun,
+          {required GlobalEventFailureHandler onFailure}) =>
+      _eventDispatcher.replaceFallback(fun, onFailure: onFailure);
+
+  bool clearEventCallback(int generation) =>
+      _eventDispatcher.retireFallback(generation);
 
   void setRgbaCallback(void Function(int, Uint8List) fun) async {}
 

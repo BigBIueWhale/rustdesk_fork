@@ -410,6 +410,11 @@ def validate(sources: Dict[str, str]) -> None:
     event_listener = extract_braced_item(
         model, "StreamEventHandler startEventListener(", "generic/web event ingress"
     )
+    forbid(
+        event_listener,
+        "return (evt) async {",
+        "always-async web cursor ingress",
+    )
     require_order(
         event_listener,
         (
@@ -417,25 +422,27 @@ def validate(sources: Dict[str, str]) -> None:
             "_webCursorCoordinate(evt['x'])",
             "_webCursorCoordinate(evt['y'])",
             "ffi.submitWebCursorPosition(",
-            "return;",
+            "return null;",
             "_orderedSessionTopologyEvents.contains(name)",
         ),
         "web-only cursor ingress before ordered topology admission",
     )
     web_cursor_submit = extract_braced_item(
-        model, "Future<LatestFrameDisposition> submitWebCursorPosition(",
+        model, "bool submitWebCursorPosition(",
         "bounded exact-owner web cursor publication"
     )
     require_order(
         web_cursor_submit,
         (
             "expectedOwner != _sessionOwner",
-            "_webCursorPositions.submit(",
+            "_webCursorPositions.submitObserved(",
             "expectedOwner, 0, _WebCursorPosition(x, y)",
             "await _displayTopologyAfterCheckpoint(",
             "sessionEvents, expectedOwner, expectedSessionId",
             "cursorModel.updateCursorPosition(",
             "expectedSessionId, topologyRevision",
+            "onError: (error, stackTrace)",
+            "_reportSessionStreamFailure(expectedSessionId, peerId,",
         ),
         "one-lane latest web cursor checkpoint and topology-bound commit",
     )
@@ -693,9 +700,11 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("model", "message is EventToUI_CursorPosition", "message is EventToUI_Event", "typed cursor dispatch"),
     ("model", "      return;\n    }\n\n    final cb = ffiModel.startEventListener(activeSessionId, peerId);", "    }\n\n    final cb = ffiModel.startEventListener(activeSessionId, peerId);", "web bypasses native typed cursor stream"),
     ("model", "if (name == 'cursor_position' && isWeb)", "if (name == 'cursor_position')", "web-only cursor ingress"),
+    ("model", "    return (evt) {", "    return (evt) async {", "always-async web cursor ingress"),
     ("model", "parsed < _minSigned32 || parsed > _maxSigned32", "false", "bounded web cursor coordinates"),
     ("model", "_webCursorPositions = LatestFrameQueue(nextOwner, maxKeys: 1);", "_webCursorPositions = LatestFrameQueue(nextOwner);", "bounded web cursor lane"),
     ("model", "expectedOwner, 0, _WebCursorPosition(x, y)", "_sessionOwner, 0, _WebCursorPosition(x, y)", "exact-owner web cursor lane"),
+    ("model", "_webCursorPositions.submitObserved(", "_webCursorPositions.submit(", "one-lane latest web cursor checkpoint and topology-bound commit"),
     (
         "model",
         "final topologyRevision = await _displayTopologyAfterCheckpoint(\n"

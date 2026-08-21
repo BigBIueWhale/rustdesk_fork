@@ -1003,6 +1003,48 @@ def validate(sources: Dict[str, str]) -> None:
         "class LatestFrameQueue",
         "bounded exact-owner per-display frame queue",
     )
+    frame_admit = extract_braced_item(
+        sources["frame_queue_dart"],
+        "_LatestFrameAdmission _admit(",
+        "shared exact-owner per-display frame admission",
+    )
+    require_order(
+        frame_admit,
+        (
+            "if (_retired || expectedOwner != owner)",
+            "return _LatestFrameAdmission.retired;",
+        ),
+        "exact-owner web-frame admission",
+    )
+    require_order(
+        frame_admit,
+        (
+            "if (_lanes.length >= maxKeys)",
+            "_retireAll();",
+            "return _LatestFrameAdmission.exhausted;",
+        ),
+        "terminal web-frame display bound",
+    )
+    require_order(
+        frame_admit,
+        (
+            "_lanes[key] = lane;",
+            "if (lane.running == null)",
+            "unawaited(_drain(key, lane));",
+            "lane.pending?.complete(LatestFrameDisposition.superseded);",
+        ),
+        "superseded web-frame disposition",
+    )
+    require_order(
+        frame_admit,
+        (
+            "if (lane.running == null)",
+            "unawaited(_drain(key, lane));",
+            "lane.pending = entry;",
+            "return _LatestFrameAdmission.accepted;",
+        ),
+        "one-latest-pending web-frame bound",
+    )
     require_order(
         frame_queue,
         (
@@ -1011,15 +1053,22 @@ def validate(sources: Dict[str, str]) -> None:
             "final int maxKeys;",
             "final Map<Key, _LatestFrameLane<Frame>> _lanes = {};",
             "bool _retired = false;",
+            "Future<LatestFrameDisposition> submit(",
+            "final admission = _admit(expectedOwner, key, entry);",
+            "entry.completeError(",
+            "bool submitObserved(",
+            "_LatestFrameEntry.observed(frame, present, onError)",
+            "_LatestFrameAdmission _admit(",
             "if (_retired || expectedOwner != owner)",
             "if (_lanes.length >= maxKeys)",
             "_retireAll();",
-            "Future.error(StateError('frame display capacity exhausted'))",
+            "return _LatestFrameAdmission.exhausted;",
             "_lanes[key] = lane;",
             "if (lane.running == null)",
             "unawaited(_drain(key, lane));",
             "lane.pending?.complete(LatestFrameDisposition.superseded);",
             "lane.pending = entry;",
+            "return _LatestFrameAdmission.accepted;",
             "bool retire(Owner expectedOwner)",
             "await entry.present(entry.frame);",
             "entry.completeError(error, stackTrace);",
@@ -1088,12 +1137,24 @@ def validate(sources: Dict[str, str]) -> None:
             "final expectedClientOwnerId = parent.target!.clientOwnerId;",
             "final operation = () => _handleSessionEvent(evt, sessionId, peerId);",
             "_orderedSessionTopologyEvents.contains(name)",
+            "return _submitOrderedSessionTopologyEvent(",
+            "return operation();",
+        ),
+        "topology-only exact-owner event serialization",
+    )
+    ordered_submit = extract_braced_item(
+        sources["model_dart"],
+        "Future<void> _submitOrderedSessionTopologyEvent(",
+        "ordered session topology submission",
+    )
+    require_order(
+        ordered_submit,
+        (
             "await ffi.submitSessionEvent(",
             "sessionId, expectedClientOwnerId, operation",
             "ffi._reportSessionStreamFailure(",
-            "await operation();",
         ),
-        "topology-only exact-owner event serialization",
+        "session topology callback serialization",
     )
     platform_additions = extract_braced_item(
         sources["model_dart"],
@@ -1826,7 +1887,7 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("model_dart", "_webRgbaFrames = LatestFrameQueue(nextOwner);", "_webRgbaFrames = LatestFrameQueue(_SessionOwner(Uuid().v4obj(), clientOwnerId));", "fresh exact-owner web-frame queue"),
     ("model_dart", "final webRgbaFramesRetired = _webRgbaFrames.retire(retiringOwner);", "final webRgbaFramesRetired = true;", "exact web-frame queue retirement"),
     ("model_dart", "_orderedSessionTopologyEvents.contains(name)", "false", "ordered topology event admission"),
-    ("model_dart", "await ffi.submitSessionEvent(\n              sessionId, expectedClientOwnerId, operation);", "await operation();", "session topology callback serialization"),
+    ("model_dart", "await ffi.submitSessionEvent(\n          sessionId, expectedClientOwnerId, operation);", "await operation();", "session topology callback serialization"),
     ("model_dart", "final disposition = await ffi.submitSessionEvent(\n            sessionId, expectedClientOwnerId, () async {", "final disposition = SessionEventDisposition.completed;\n        if (true) {", "local display commit serialization"),
     ("model_dart", "final cachedState = sessionEvents.submit(streamOwner, () async {", "final cachedState = Future.value(SessionEventDisposition.completed);\n        Future.delayed(Duration.zero, () async {", "cached-state stream ordering"),
     ("model_dart", "if (decoded is! Map<String, dynamic>)", "if (false)", "malformed session event finality"),

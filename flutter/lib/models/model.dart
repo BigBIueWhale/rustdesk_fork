@@ -250,6 +250,8 @@ class FfiModel with ChangeNotifier {
   DateTime? _offlineReconnectStartTime;
   bool _viewOnly = false;
   bool _showMyCursor = false;
+  int? _eventListenerGeneration;
+  SessionID? _eventListenerSessionId;
   WeakReference<FFI> parent;
   SessionID get sessionId => parent.target!.sessionId;
 
@@ -469,8 +471,8 @@ class FfiModel with ChangeNotifier {
   // todo: why called by two position
   StreamEventHandler startEventListener(SessionID sessionId, String peerId) {
     final expectedClientOwnerId = parent.target!.clientOwnerId;
-    return (evt) async {
-      if (!_isCurrentSession(sessionId)) return;
+    return (evt) {
+      if (!_isCurrentSession(sessionId)) return null;
       final name = evt['name'];
       final operation = () => _handleSessionEvent(evt, sessionId, peerId);
       if (name == 'cursor_position' && isWeb) {
@@ -480,17 +482,11 @@ class FfiModel with ChangeNotifier {
         if (ffi == null || x == null || y == null) {
           ffi?._reportSessionStreamFailure(sessionId, peerId,
               'The remote session state became inconsistent');
-          return;
+          return null;
         }
-        try {
-          await ffi.submitWebCursorPosition(
-              sessionId, expectedClientOwnerId, peerId, x, y);
-        } catch (error) {
-          debugPrint('Web cursor publication failed: ${error.runtimeType}');
-          ffi._reportSessionStreamFailure(sessionId, peerId,
-              'The remote session state became inconsistent');
-        }
-        return;
+        ffi.submitWebCursorPosition(
+            sessionId, expectedClientOwnerId, peerId, x, y);
+        return null;
       }
       if ((name == 'cursor_data' || name == 'cursor_id') && isWeb) {
         final ffi = parent.target;
@@ -498,42 +494,43 @@ class FfiModel with ChangeNotifier {
         if (ffi == null || shape == null) {
           ffi?._reportSessionStreamFailure(sessionId, peerId,
               'The remote session state became inconsistent');
-          return;
+          return null;
         }
-        try {
-          await ffi.submitWebCursorShape(
-              sessionId, expectedClientOwnerId, shape);
-        } catch (error) {
-          debugPrint('Web cursor-shape publication failed: '
-              '${error.runtimeType}');
-          ffi._reportSessionStreamFailure(sessionId, peerId,
-              'The remote session state became inconsistent');
-        }
-        return;
+        ffi.submitWebCursorShape(
+            sessionId, expectedClientOwnerId, peerId, shape);
+        return null;
       }
       if (name == 'cursor_position' ||
           name == 'cursor_data' ||
           name == 'cursor_id') {
         parent.target?._reportSessionStreamFailure(sessionId, peerId,
             'The remote session state became inconsistent');
-        return;
+        return null;
       }
       if (name is String && _orderedSessionTopologyEvents.contains(name)) {
         final ffi = parent.target;
-        if (ffi == null) return;
-        try {
-          await ffi.submitSessionEvent(
-              sessionId, expectedClientOwnerId, operation);
-        } catch (error) {
-          debugPrint(
-              'Ordered session topology failed: ${error.runtimeType}');
-          ffi._reportSessionStreamFailure(sessionId, peerId,
-              'The remote session state became inconsistent');
-        }
-        return;
+        if (ffi == null) return null;
+        return _submitOrderedSessionTopologyEvent(
+            ffi, sessionId, expectedClientOwnerId, peerId, operation);
       }
-      await operation();
+      return operation();
     };
+  }
+
+  Future<void> _submitOrderedSessionTopologyEvent(
+      FFI ffi,
+      SessionID sessionId,
+      SessionID expectedClientOwnerId,
+      String peerId,
+      Future<void> Function() operation) async {
+    try {
+      await ffi.submitSessionEvent(
+          sessionId, expectedClientOwnerId, operation);
+    } catch (error) {
+      debugPrint('Ordered session topology failed: ${error.runtimeType}');
+      ffi._reportSessionStreamFailure(sessionId, peerId,
+          'The remote session state became inconsistent');
+    }
   }
 
   Future<void> _handleSessionEvent(Map<String, dynamic> evt,
@@ -792,7 +789,32 @@ class FfiModel with ChangeNotifier {
 
   /// Bind the event listener to receive events from the Rust core.
   updateEventListener(SessionID sessionId, String peerId) {
-    platformFFI.setEventCallback(startEventListener(sessionId, peerId));
+    final ffi = parent.target;
+    if (ffi == null) {
+      return;
+    }
+    final generation = platformFFI.setEventCallback(
+      startEventListener(sessionId, peerId),
+      onFailure: (error, stackTrace) {
+        debugPrint('Global event handoff failed: ${error.runtimeType}');
+        ffi._reportSessionStreamFailure(sessionId, peerId,
+            'The remote session state became inconsistent');
+      },
+    );
+    _eventListenerGeneration = generation;
+    _eventListenerSessionId = sessionId;
+  }
+
+  void retireEventListener(SessionID expectedSessionId) {
+    if (_eventListenerSessionId != expectedSessionId) {
+      return;
+    }
+    final generation = _eventListenerGeneration;
+    if (generation != null) {
+      platformFFI.clearEventCallback(generation);
+    }
+    _eventListenerGeneration = null;
+    _eventListenerSessionId = null;
   }
 
   handleAliasChanged(Map<String, dynamic> evt) {
@@ -4072,7 +4094,7 @@ class FFI {
     return _sessionEvents.submit(expectedOwner, operation);
   }
 
-  Future<LatestFrameDisposition> submitWebCursorPosition(
+  bool submitWebCursorPosition(
       SessionID expectedSessionId,
       SessionID expectedClientOwnerId,
       String peerId,
@@ -4081,30 +4103,44 @@ class FFI {
     final expectedOwner =
         _SessionOwner(expectedSessionId, expectedClientOwnerId);
     if (expectedOwner != _sessionOwner) {
-      return Future.value(LatestFrameDisposition.retired);
+      return false;
     }
     final sessionEvents = _sessionEvents;
-    return _webCursorPositions.submit(
+    return _webCursorPositions.submitObserved(
         expectedOwner, 0, _WebCursorPosition(x, y), (position) async {
       final topologyRevision = await _displayTopologyAfterCheckpoint(
           sessionEvents, expectedOwner, expectedSessionId);
       if (topologyRevision == null) return;
       cursorModel.updateCursorPosition(position.x, position.y, peerId,
           expectedSessionId, topologyRevision);
+    }, onError: (error, stackTrace) {
+      debugPrint('Web cursor publication failed: ${error.runtimeType}');
+      _reportSessionStreamFailure(expectedSessionId, peerId,
+          'The remote session state became inconsistent');
     });
   }
 
-  Future<LatestFrameDisposition> submitWebCursorShape(
+  bool submitWebCursorShape(
       SessionID expectedSessionId,
       SessionID expectedClientOwnerId,
+      String peerId,
       _WebCursorShape shape) {
     final expectedOwner =
         _SessionOwner(expectedSessionId, expectedClientOwnerId);
     if (expectedOwner != _sessionOwner) {
-      return Future.value(LatestFrameDisposition.retired);
+      return false;
     }
-    return _webCursorShapes.submit(expectedOwner, 0, shape, (current) =>
-        _handleWebCursorShape(expectedOwner, expectedSessionId, current));
+    return _webCursorShapes.submitObserved(
+        expectedOwner,
+        0,
+        shape,
+        (current) =>
+            _handleWebCursorShape(expectedOwner, expectedSessionId, current),
+        onError: (error, stackTrace) {
+      debugPrint('Web cursor-shape publication failed: ${error.runtimeType}');
+      _reportSessionStreamFailure(expectedSessionId, peerId,
+          'The remote session state became inconsistent');
+    });
   }
 
   void _installSessionOwner(SessionID nextSessionId) {
@@ -4134,6 +4170,7 @@ class FFI {
         !webCursorShapesRetired) {
       throw StateError('session owner changed before retirement');
     }
+    ffiModel.retireEventListener(retiringSessionId);
     cursorModel.retireCursorResources();
     _firstImageInitialization = null;
   }

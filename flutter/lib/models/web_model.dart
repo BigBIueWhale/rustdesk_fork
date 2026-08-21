@@ -1,6 +1,5 @@
 // ignore_for_file: avoid_web_libraries_in_flutter
 
-import 'dart:convert';
 import 'dart:js_interop';
 import 'dart:typed_data';
 import 'dart:js';
@@ -13,14 +12,21 @@ import 'package:flutter_hbb/models/state_model.dart';
 import 'package:flutter_hbb/web/bridge.dart';
 import 'package:flutter_hbb/common.dart';
 import 'package:uuid/uuid.dart';
+import 'global_event_dispatcher.dart';
 
 final List<StreamSubscription<MouseEvent>> mouseListeners = [];
 final List<StreamSubscription<KeyboardEvent>> keyListeners = [];
 
-typedef HandleEvent = Future<void> Function(Map<String, dynamic> evt);
-
 class PlatformFFI {
-  final _eventHandlers = <String, Map<String, HandleEvent>>{};
+  final _eventDispatcher = GlobalEventDispatcher(
+    onDiagnostic: (error, stackTrace) =>
+        debugPrint('Global event dispatch failed: ${error.runtimeType}'),
+    synchronousFallbackEvents: const {
+      'cursor_position',
+      'cursor_data',
+      'cursor_id',
+    },
+  );
   final RustdeskImpl _ffiBind = RustdeskImpl();
 
   static String getByName(String name, [String arg = '']) {
@@ -50,45 +56,16 @@ class PlatformFFI {
   }
 
   bool registerEventHandler(
-      String eventName, String handlerName, HandleEvent handler,
+      String eventName, String handlerName, GlobalEventHandler handler,
       {bool replace = false}) {
     debugPrint('registerEventHandler $eventName $handlerName');
-    var handlers = _eventHandlers[eventName];
-    if (handlers == null) {
-      _eventHandlers[eventName] = {handlerName: handler};
-      return true;
-    } else {
-      if (!replace && handlers.containsKey(handlerName)) {
-        return false;
-      } else {
-        handlers[handlerName] = handler;
-        return true;
-      }
-    }
+    return _eventDispatcher.registerHandler(eventName, handlerName, handler,
+        replace: replace);
   }
 
   void unregisterEventHandler(String eventName, String handlerName) {
     debugPrint('unregisterEventHandler $eventName $handlerName');
-    var handlers = _eventHandlers[eventName];
-    if (handlers != null) {
-      handlers.remove(handlerName);
-    }
-  }
-
-  Future<bool> tryHandle(Map<String, dynamic> evt) async {
-    final name = evt['name'];
-    if (name != null) {
-      final handlers = _eventHandlers[name];
-      if (handlers != null) {
-        if (handlers.isNotEmpty) {
-          for (var handler in handlers.values) {
-            await handler(evt);
-          }
-          return true;
-        }
-      }
-    }
-    return false;
+    _eventDispatcher.unregisterHandler(eventName, handlerName);
   }
 
   String translate(String name, String locale) =>
@@ -146,26 +123,21 @@ class PlatformFFI {
     });
 
     context['onRegisteredEvent'] = (String message) {
-      try {
-        Map<String, dynamic> event = json.decode(message);
-        tryHandle(event);
-      } catch (e) {
-        print('json.decode fail(): $e');
-      }
+      _eventDispatcher.dispatch(message, allowFallback: false);
     };
     return completer.future;
   }
 
-  void setEventCallback(void Function(Map<String, dynamic>) fun) {
+  int setEventCallback(GlobalEventHandler fun,
+      {required GlobalEventFailureHandler onFailure}) {
     context["onGlobalEvent"] = (String message) {
-      try {
-        Map<String, dynamic> event = json.decode(message);
-        fun(event);
-      } catch (e) {
-        print('json.decode fail(): $e');
-      }
+      _eventDispatcher.dispatch(message, allowRegistered: false);
     };
+    return _eventDispatcher.replaceFallback(fun, onFailure: onFailure);
   }
+
+  bool clearEventCallback(int generation) =>
+      _eventDispatcher.retireFallback(generation);
 
   void setRgbaCallback(void Function(int, Uint8List) fun) {
     context["onRgba"] = (int display, Uint8List? rgba) {

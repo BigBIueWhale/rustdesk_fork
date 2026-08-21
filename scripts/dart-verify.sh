@@ -194,6 +194,7 @@ local_docker run --rm --pull=never --network=none --read-only \
       exit 1
     fi
     dart format --output=none --set-exit-if-changed \
+      lib/common.dart \
       lib/models/model.dart \
       lib/models/file_model.dart \
       lib/desktop/pages/file_manager_page.dart \
@@ -202,6 +203,8 @@ local_docker run --rm --pull=never --network=none --read-only \
       lib/models/desktop_texture_lifecycle.dart \
       third_party/texture_rgba_renderer/lib/texture_rgba_renderer.dart \
       lib/models/mobile_session_start_queue.dart \
+      lib/models/global_event_dispatcher.dart \
+      lib/models/latest_frame_queue.dart \
       lib/models/server_status_refresh_loop.dart \
       lib/models/display_selection_queue.dart \
       lib/models/session_event_queue.dart \
@@ -216,6 +219,8 @@ local_docker run --rm --pull=never --network=none --read-only \
       lib/web/bridge.dart \
       test/desktop_texture_lifecycle_test.dart \
       test/mobile_session_start_queue_test.dart \
+      test/global_event_dispatcher_test.dart \
+      test/latest_frame_queue_test.dart \
       test/server_status_refresh_loop_test.dart \
       test/display_selection_queue_test.dart \
       test/session_event_queue_test.dart \
@@ -253,6 +258,8 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/server_model_test.dart
     echo "  == R-S11he flutter test: server status refresh is serialized and drainable =="
     flutter test --no-pub test/server_status_refresh_loop_test.dart
+    echo "  == R-S11hf flutter test: global event dispatch is bounded and exact-generation-owned =="
+    flutter test --no-pub test/global_event_dispatcher_test.dart
     echo "  == R-S11eb flutter test: retired file timeout cannot remove replacement =="
     flutter test --no-pub test/mobile_file_session_lifecycle_test.dart
     echo "  == R-S11eo flutter test: mobile session preparation is bounded and latest-wins =="

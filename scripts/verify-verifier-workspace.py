@@ -20664,42 +20664,79 @@ def validate_display_selection_finality_contract(sources):
     frame_submit = extract_between(
         sources["latest_frame_queue_dart"],
         "Future<LatestFrameDisposition> submit(",
-        "bool retire(Owner expectedOwner)",
+        "bool submitObserved(",
         "independent exact-owner per-display frame admission",
     )
     require_order(
         frame_submit,
         (
+            "final entry = _LatestFrameEntry(frame, present);",
+            "final admission = _admit(expectedOwner, key, entry);",
+            "if (admission == _LatestFrameAdmission.retired)",
+            "entry.complete(LatestFrameDisposition.retired);",
+            "if (admission == _LatestFrameAdmission.exhausted)",
+            "entry.completeError(",
+            "return entry.done!.future;",
+        ),
+        "independent exact-owner per-display frame admission",
+    )
+    frame_observed = extract_between(
+        sources["latest_frame_queue_dart"],
+        "bool submitObserved(",
+        "_LatestFrameAdmission _admit(",
+        "independent future-free frame admission",
+    )
+    require_order(
+        frame_observed,
+        (
+            "final entry = _LatestFrameEntry.observed(frame, present, onError);",
+            "final admission = _admit(expectedOwner, key, entry);",
+            "if (admission == _LatestFrameAdmission.retired)",
+            "if (admission == _LatestFrameAdmission.exhausted)",
+            "return true;",
+        ),
+        "independent future-free observed frame admission",
+    )
+    frame_admit = extract_between(
+        sources["latest_frame_queue_dart"],
+        "_LatestFrameAdmission _admit(",
+        "bool retire(Owner expectedOwner)",
+        "independent shared exact-owner frame admission",
+    )
+    require_order(
+        frame_admit,
+        (
             "if (_retired || expectedOwner != owner)",
-            "Future.value(LatestFrameDisposition.retired)",
+            "return _LatestFrameAdmission.retired;",
         ),
         "independent exact-owner per-display frame admission",
     )
     require_order(
-        frame_submit,
+        frame_admit,
         (
             "if (_lanes.length >= maxKeys)",
             "_retireAll();",
-            "Future.error(StateError('frame display capacity exhausted'))",
+            "return _LatestFrameAdmission.exhausted;",
         ),
         "independent terminal web-frame display bound",
     )
     require_order(
-        frame_submit,
+        frame_admit,
         (
             "_lanes[key] = lane;",
             "if (lane.running == null)",
+            "unawaited(_drain(key, lane));",
             "lane.pending?.complete(LatestFrameDisposition.superseded);",
         ),
         "independent superseded web-frame finality",
     )
     require_order(
-        frame_submit,
+        frame_admit,
         (
             "if (lane.running == null)",
             "unawaited(_drain(key, lane));",
             "lane.pending = entry;",
-            "return entry.done.future;",
+            "return _LatestFrameAdmission.accepted;",
         ),
         "independent one-latest-pending web-frame bound",
     )
@@ -20734,13 +20771,18 @@ def validate_display_selection_finality_contract(sources):
         (
             "LatestFrameQueue(this.owner, {this.maxKeys = 32})",
             "final Map<Key, _LatestFrameLane<Frame>> _lanes = {};",
+            "Future<LatestFrameDisposition> submit(",
+            "bool submitObserved(",
+            "_LatestFrameAdmission _admit(",
+            "if (_retired || expectedOwner != owner)",
             "if (_lanes.length >= maxKeys)",
             "_retireAll();",
-            "Future.error(StateError('frame display capacity exhausted'))",
+            "return _LatestFrameAdmission.exhausted;",
             "_lanes[key] = lane;",
             "if (lane.running == null)",
             "lane.pending?.complete(LatestFrameDisposition.superseded);",
             "lane.pending = entry;",
+            "return _LatestFrameAdmission.accepted;",
             "bool retire(Owner expectedOwner)",
             "await entry.present(entry.frame);",
             "entry.completeError(error, stackTrace);",
@@ -20777,7 +20819,7 @@ def validate_display_selection_finality_contract(sources):
     event_listener = extract_between(
         sources["model_dart"],
         "StreamEventHandler startEventListener(",
-        "Future<void> _handleSessionEvent(",
+        "Future<void> _submitOrderedSessionTopologyEvent(",
         "independent ordered session event callback",
     )
     require_text(
@@ -20790,12 +20832,25 @@ def validate_display_selection_finality_contract(sources):
         (
             "final expectedClientOwnerId = parent.target!.clientOwnerId;",
             "_orderedSessionTopologyEvents.contains(name)",
+            "return _submitOrderedSessionTopologyEvent(",
+            "return operation();",
+        ),
+        "independent topology-only event serialization",
+    )
+    ordered_submit = extract_between(
+        sources["model_dart"],
+        "Future<void> _submitOrderedSessionTopologyEvent(",
+        "Future<void> _handleSessionEvent(",
+        "independent ordered session topology submission",
+    )
+    require_order(
+        ordered_submit,
+        (
             "await ffi.submitSessionEvent(",
             "sessionId, expectedClientOwnerId, operation",
             "ffi._reportSessionStreamFailure(",
-            "await operation();",
         ),
-        "independent topology-only event serialization",
+        "independent session topology callback serialization",
     )
     platform_additions = extract_between(
         sources["model_dart"],
@@ -21647,6 +21702,11 @@ def validate_viewer_cursor_mailbox_contract(sources):
         "\n  Future<void> _handleSessionEvent(",
         "independent generic/web event ingress",
     )
+    require_absent(
+        generic_ingress,
+        "return (evt) async {",
+        "independent always-async web cursor ingress",
+    )
     require_order(
         generic_ingress,
         (
@@ -21654,14 +21714,14 @@ def validate_viewer_cursor_mailbox_contract(sources):
             "_webCursorCoordinate(evt['x'])",
             "_webCursorCoordinate(evt['y'])",
             "ffi.submitWebCursorPosition(",
-            "return;",
+            "return null;",
             "_orderedSessionTopologyEvents.contains(name)",
         ),
         "independent web-only cursor ingress before topology admission",
     )
     web_cursor_submit = extract_between(
         sources["model_dart"],
-        "Future<LatestFrameDisposition> submitWebCursorPosition(",
+        "bool submitWebCursorPosition(",
         "\n  void _installSessionOwner(",
         "independent bounded exact-owner web cursor publication",
     )
@@ -21669,12 +21729,14 @@ def validate_viewer_cursor_mailbox_contract(sources):
         web_cursor_submit,
         (
             "expectedOwner != _sessionOwner",
-            "_webCursorPositions.submit(",
+            "_webCursorPositions.submitObserved(",
             "expectedOwner, 0, _WebCursorPosition(x, y)",
             "await _displayTopologyAfterCheckpoint(",
             "sessionEvents, expectedOwner, expectedSessionId",
             "cursorModel.updateCursorPosition(",
             "expectedSessionId, topologyRevision",
+            "onError: (error, stackTrace)",
+            "_reportSessionStreamFailure(expectedSessionId, peerId,",
         ),
         "independent one-lane latest web cursor checkpoint and topology-bound commit",
     )
@@ -24119,6 +24181,583 @@ def validate_server_status_refresh_loop_contract(sources):
     if len(dispatches) != 1:
         raise VerificationError(
             "independent status-refresh dispatch must occur exactly once"
+        )
+
+
+def validate_global_event_dispatcher_contract(sources):
+    """Independently bind bounded exact-generation global Dart events."""
+
+    def dart_callable(source, signature, label):
+        start = source.find(signature)
+        if start < 0:
+            raise VerificationError(f"missing {label}")
+        body_marker = source.find(") {", start)
+        if body_marker < 0:
+            raise VerificationError(f"missing body for {label}")
+        open_brace = body_marker + 2
+        depth = 0
+        for offset in range(open_brace, len(source)):
+            character = source[offset]
+            if character == "{":
+                depth += 1
+            elif character == "}":
+                depth -= 1
+                if depth == 0:
+                    return source[start : offset + 1]
+        raise VerificationError(f"unterminated body for {label}")
+
+    focused = sources["global_event_dispatcher_verifier"]
+    focused_contract = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "focused global event contract",
+    )
+    for marker, label in (
+        ("this.maxPending = 64,", "focused pending ceiling"),
+        ("this.maxRetainedBytes = 64 * 1024 * 1024,", "focused byte ceiling"),
+        ("_synchronousFallbackEvents.contains(eventName)", "focused synchronous handoff"),
+        ("submitObserved", "focused future-free latest-state admission"),
+        ("await fallback.handler(decoded);", "focused awaited fallback"),
+        ("retireEventListener", "focused exact session retirement"),
+        ("R-S11hf", "focused normative binding"),
+    ):
+        require_text(focused_contract, marker, label)
+    require_text(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "focused global event mutation inventory",
+    )
+    require_text(
+        focused,
+        '("dispatcher", "await fallback.handler(decoded);", "fallback.handler(decoded);", "FIFO nonoverlap and visible failure"),',
+        "focused awaited fallback mutation",
+    )
+    require_text(
+        focused,
+        '("dispatcher", "_synchronousFallbackEvents.contains(eventName)", "false", "synchronous exact-owner count-and-byte admission"),',
+        "focused synchronous handoff mutation",
+    )
+
+    dispatcher = sources["global_event_dispatcher_dart"]
+    native = sources["native_model_dart"]
+    web = sources["web_model_dart"]
+    model = sources["model_dart"]
+    tests = sources["global_event_dispatcher_test"]
+    owner = extract_braced_item(
+        dispatcher,
+        "class GlobalEventDispatcher",
+        "independent global event owner",
+    )
+    for needle, label in (
+        ("Timer", "independent event-dispatch timer"),
+        ("StreamController", "independent secondary event queue"),
+        ("Future.sync", "independent per-event future chain"),
+        ("List<Future", "independent retained future backlog"),
+    ):
+        require_absent(owner, needle, label)
+    require_order(
+        owner,
+        (
+            "this.maxPending = 64,",
+            "this.maxMessageCodeUnits = 16 * 1024 * 1024,",
+            "this.maxRetainedBytes = 64 * 1024 * 1024,",
+            "this.maxRegisteredHandlers = 256,",
+            "static const int _entryOverheadBytes = 256;",
+            "static const int _handlerReferenceBytes = 16;",
+            "final Set<String> _synchronousFallbackEvents;",
+            "final Queue<_GlobalEventEntry> _pending",
+            "_GlobalEventEntry? _running;",
+            "_FallbackBinding? _fallback;",
+            "Future<void>? _drainFuture;",
+            "int _fallbackGeneration = 0;",
+            "int _registeredHandlerCount = 0;",
+            "int _retainedBytes = 0;",
+        ),
+        "independent one bounded serial process owner",
+    )
+    require_text(
+        dispatcher,
+        "typedef GlobalEventHandler = Future<void>? Function(",
+        "independent unambiguous nullable-future global event result",
+    )
+    require_text(
+        sources["common_dart"],
+        "typedef StreamEventHandler = Future<void>? Function(Map<String, dynamic>);",
+        "independent unambiguous nullable-future session event result",
+    )
+
+    register = dart_callable(
+        dispatcher,
+        "bool registerHandler(",
+        "independent registered-handler admission",
+    )
+    require_order(
+        register,
+        (
+            "if (existing != null)",
+            "existing.retired = true;",
+            "_retirePendingRegisteredHandler(existing);",
+            "if (_registeredHandlerCount >= maxRegisteredHandlers)",
+            "_registeredHandlerCount += 1;",
+        ),
+        "independent bounded exact registered generations",
+    )
+    unregister = dart_callable(
+        dispatcher,
+        "void unregisterHandler(",
+        "independent registered-handler retirement",
+    )
+    require_order(
+        unregister,
+        (
+            "final binding = eventHandlers?.remove(handlerName);",
+            "binding.retired = true;",
+            "_registeredHandlerCount -= 1;",
+            "_retirePendingRegisteredHandler(binding);",
+            "_handlers.remove(eventName);",
+        ),
+        "independent exact registered-handler retirement",
+    )
+    replace = dart_callable(
+        dispatcher, "int replaceFallback(", "independent fallback replacement"
+    )
+    require_order(
+        replace,
+        (
+            "final previous = _fallback;",
+            "_retireFallback(previous);",
+            "++_fallbackGeneration",
+            "_fallback = binding;",
+            "return binding.generation;",
+        ),
+        "independent retire-before-publish fallback replacement",
+    )
+    retire = dart_callable(
+        dispatcher, "bool retireFallback(", "independent fallback retirement"
+    )
+    require_order(
+        retire,
+        (
+            "binding.generation != generation",
+            "_fallback = null;",
+            "_retireFallback(binding);",
+            "return true;",
+        ),
+        "independent generation-capability retirement",
+    )
+    admission = dart_callable(
+        dispatcher, "bool dispatch(", "independent global event admission"
+    )
+    require_order(
+        admission,
+        (
+            "final fallback = allowFallback ? _currentFallback() : null;",
+            "if (message.length > maxMessageCodeUnits)",
+            "final decoded = jsonDecode(message);",
+            "if (decoded is! Map<String, dynamic>)",
+            "if (allowRegistered)",
+            ".toList(growable: true);",
+            "final owner = ownsRegisteredRoute ? null : fallback;",
+            "_synchronousFallbackEvents.contains(eventName)",
+            "final completion = owner.handler(event);",
+            "if (completion != null)",
+            "StateError('synchronous global event handoff returned a future')",
+            "return true;",
+            "message.length * 2",
+            "handlerCount * _handlerReferenceBytes;",
+            "_pending.length >= maxPending",
+            "_retainedBytes > maxRetainedBytes - weight",
+            "_retainedBytes += weight;",
+            "if (_running == null)",
+            "_running = entry;",
+            "_startDrain();",
+            "_pending.addLast(entry);",
+        ),
+        "independent synchronous exact-owner bounded admission",
+    )
+    frame_queue = sources["latest_frame_queue_dart"]
+    observed = dart_callable(
+        frame_queue,
+        "bool submitObserved(",
+        "independent future-free latest-state handoff",
+    )
+    require_order(
+        observed,
+        (
+            "final entry = _LatestFrameEntry.observed(frame, present, onError);",
+            "final admission = _admit(expectedOwner, key, entry);",
+            "if (admission == _LatestFrameAdmission.retired)",
+            "if (admission == _LatestFrameAdmission.exhausted)",
+            "return true;",
+        ),
+        "independent future-free exact-owner latest-state handoff",
+    )
+    shared_admission = dart_callable(
+        frame_queue,
+        "_LatestFrameAdmission _admit(",
+        "independent shared latest-state admission",
+    )
+    require_order(
+        shared_admission,
+        (
+            "if (_retired || expectedOwner != owner)",
+            "if (_lanes.length >= maxKeys)",
+            "_retireAll();",
+            "if (lane.running == null)",
+            "unawaited(_drain(key, lane));",
+            "lane.pending?.complete(LatestFrameDisposition.superseded);",
+            "lane.pending = entry;",
+            "return _LatestFrameAdmission.accepted;",
+        ),
+        "independent shared one-running-plus-latest admission",
+    )
+    require_text(
+        frame_queue,
+        "_LatestFrameEntry.observed(this.frame, this.present, this._onError)\n"
+        "      : done = null;",
+        "independent future-free latest-state entry",
+    )
+    start = dart_callable(
+        dispatcher, "void _startDrain()", "independent sole drain start"
+    )
+    require_order(
+        start,
+        (
+            "if (_drainFuture != null)",
+            "final drain = Future<void>.microtask(_drain);",
+            "_drainFuture = drain;",
+            "if (identical(_drainFuture, drain))",
+            "_drainFuture = null;",
+        ),
+        "independent one retained drain future",
+    )
+    drain = dart_callable(
+        dispatcher, "Future<void> _drain()", "independent serial drain"
+    )
+    require_order(
+        drain,
+        (
+            "final entry = _running;",
+            "if (!_entryRetired(entry))",
+            "await binding.handler(decoded);",
+            "await fallback.handler(decoded);",
+            "catch (error, stackTrace)",
+            "_failFallback(fallback, error, stackTrace);",
+            "finally",
+            "_release(entry);",
+            "_running = _pending.isEmpty ? null : _pending.removeFirst();",
+        ),
+        "independent FIFO nonoverlap and visible failure",
+    )
+    release = dart_callable(
+        dispatcher, "void _release(", "independent retained-byte release"
+    )
+    require_order(
+        release,
+        (
+            "if (entry.released)",
+            "entry.released = true;",
+            "_retainedBytes -= entry.weight;",
+        ),
+        "independent release-once retained accounting",
+    )
+    fail = dart_callable(
+        dispatcher, "void _failFallback(", "independent fallback failure"
+    )
+    require_order(
+        fail,
+        (
+            "if (binding.retired)",
+            "if (identical(_fallback, binding))",
+            "_fallback = null;",
+            "_retireFallback(binding);",
+            "binding.onFailure(error, stackTrace);",
+        ),
+        "independent exact fallback failure finality",
+    )
+
+    for needle, label in (
+        ("final _eventHandlers", "independent native mutable handler map"),
+        ("StreamEventHandler? _eventCallback", "independent late callback read"),
+        ("Future<bool> tryHandle", "independent async native route probe"),
+    ):
+        require_absent(native, needle, label)
+    native_listen = dart_callable(
+        native, "void _startListenEvent(", "independent native stream listener"
+    )
+    require_absent(
+        native_listen,
+        "() async {",
+        "independent detached native event closure",
+    )
+    require_order(
+        native_listen,
+        (
+            "sink.listen(",
+            "_eventDispatcher.dispatch,",
+            "onError:",
+            "_eventDispatcher.failCurrent(error, stackTrace)",
+            "onDone:",
+            "StateError('global event stream ended')",
+        ),
+        "independent native serial terminal route",
+    )
+    for marker, label in (
+        ("_eventDispatcher.registerHandler", "independent native registration"),
+        ("_eventDispatcher.unregisterHandler", "independent native unregister"),
+        ("_eventDispatcher.replaceFallback", "independent native replacement"),
+        ("_eventDispatcher.retireFallback", "independent native retirement"),
+    ):
+        require_text(native, marker, label)
+
+    for needle, label in (
+        ("final _eventHandlers", "independent web mutable handler map"),
+        ("Future<bool> tryHandle", "independent async web route probe"),
+        ("fun(event);", "independent discarded web completion"),
+    ):
+        require_absent(web, needle, label)
+    require_text(
+        web,
+        "_eventDispatcher.dispatch(message, allowFallback: false);",
+        "independent web registered-only route",
+    )
+    require_text(
+        web,
+        "_eventDispatcher.dispatch(message, allowRegistered: false);",
+        "independent web fallback-only route",
+    )
+    require_order(
+        web,
+        (
+            "synchronousFallbackEvents: const {",
+            "'cursor_position',",
+            "'cursor_data',",
+            "'cursor_id',",
+        ),
+        "independent web high-rate synchronous classification",
+    )
+
+    listener = dart_callable(
+        model,
+        "StreamEventHandler startEventListener(",
+        "independent session event listener",
+    )
+    require_absent(
+        listener,
+        "return (evt) async {",
+        "independent always-async high-rate event callback",
+    )
+    require_order(
+        listener,
+        (
+            "return (evt) {",
+            "if (name == 'cursor_position' && isWeb)",
+            "ffi.submitWebCursorPosition(",
+            "return null;",
+            "ffi.submitWebCursorShape(",
+            "return null;",
+            "return _submitOrderedSessionTopologyEvent(",
+            "return operation();",
+        ),
+        "independent synchronous latest-state handoff before awaited control work",
+    )
+    cursor_position = dart_callable(
+        model,
+        "bool submitWebCursorPosition(",
+        "independent future-free cursor-position admission",
+    )
+    require_order(
+        cursor_position,
+        (
+            "expectedOwner != _sessionOwner",
+            "_webCursorPositions.submitObserved(",
+            "expectedOwner, 0, _WebCursorPosition(x, y)",
+            "onError: (error, stackTrace)",
+            "_reportSessionStreamFailure(expectedSessionId, peerId,",
+        ),
+        "independent bounded observed web cursor-position handoff",
+    )
+    cursor_shape = dart_callable(
+        model,
+        "bool submitWebCursorShape(",
+        "independent future-free cursor-shape admission",
+    )
+    require_order(
+        cursor_shape,
+        (
+            "expectedOwner != _sessionOwner",
+            "_webCursorShapes.submitObserved(",
+            "onError: (error, stackTrace)",
+            "_reportSessionStreamFailure(expectedSessionId, peerId,",
+        ),
+        "independent bounded observed web cursor-shape handoff",
+    )
+
+    update = dart_callable(
+        model,
+        "updateEventListener(SessionID",
+        "independent session fallback installation",
+    )
+    require_order(
+        update,
+        (
+            "final ffi = parent.target;",
+            "final generation = platformFFI.setEventCallback(",
+            "onFailure: (error, stackTrace)",
+            "ffi._reportSessionStreamFailure(sessionId, peerId,",
+            "_eventListenerGeneration = generation;",
+            "_eventListenerSessionId = sessionId;",
+        ),
+        "independent exact session generation and visible failure",
+    )
+    retirement = dart_callable(
+        model,
+        "void retireEventListener(",
+        "independent session fallback retirement",
+    )
+    require_order(
+        retirement,
+        (
+            "if (_eventListenerSessionId != expectedSessionId)",
+            "final generation = _eventListenerGeneration;",
+            "platformFFI.clearEventCallback(generation);",
+            "_eventListenerGeneration = null;",
+            "_eventListenerSessionId = null;",
+        ),
+        "independent exact session teardown capability",
+    )
+    retire_owner = dart_callable(
+        model,
+        "void _retireSessionOwner(",
+        "independent complete session retirement",
+    )
+    require_text(
+        retire_owner,
+        "ffiModel.retireEventListener(retiringSessionId);",
+        "independent fallback retirement on session terminal edge",
+    )
+
+    for name in (
+        "runs admitted events in FIFO order without handler overlap",
+        "replacement retires old pending work without migrating its event",
+        "active old work settles before replacement work and never overlaps",
+        "fallback overflow fails once, retires pending work, and recovers",
+        "byte and message bounds fail the exact fallback visibly",
+        "registered handler inventory is finite and reusable after retirement",
+        "registered handlers are captured and retired by exact registration",
+        "registered-only routing never falls through to session fallback",
+        "configured latest-state events hand off synchronously outside FIFO",
+        "configured synchronous handoff fails closed on an async callback",
+        "handler and malformed-input failures remain visible and drainable",
+    ):
+        require_text(tests, name, f"independent {name} regression")
+    for name in (
+        "observed submissions retain only running and latest without futures",
+        "observed failure is visible and retires its exact queue",
+    ):
+        require_text(
+            sources["latest_frame_queue_test"],
+            name,
+            f"independent {name} regression",
+        )
+    require_text(
+        sources["requirements"],
+        'it <span class="kw">MUST NOT</span> retain the raw JSON in a generic control FIFO or allocate one completion future per cursor event',
+        "independent R-S11gu future-free web cursor handoff",
+    )
+    require_text(
+        sources["requirements"],
+        "Their raw strings may not enter the 64-entry FIFO",
+        "independent R-S11hf web cursor FIFO exclusion",
+    )
+
+    gate = "python3 scripts/verify-global-event-dispatcher.py --repo . --self-test"
+    for key, text, label in (
+        (
+            "dart_verify",
+            "flutter test --no-pub test/global_event_dispatcher_test.dart",
+            "independent Dart behavior gate",
+        ),
+        ("verify", gate, "independent shared global-event gate"),
+        ("apple", gate, "independent Apple/shared global-event gate"),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11hf</span>',
+            "independent R-S11hf requirement",
+        ),
+        ("requirements", "<tr><td>367</td>", "independent Appendix C #367"),
+        (
+            "hardening",
+            "### R-S11hf/R-S11e-244 — bounded exact-generation global event dispatch",
+            "independent R-S11hf ledger",
+        ),
+    ):
+        require_text(sources[key], text, label)
+
+    workspace_module = ast.parse(sources["workspace_verifier"])
+    main_function = next(
+        (
+            node
+            for node in workspace_module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "main"
+        ),
+        None,
+    )
+    if main_function is None:
+        raise VerificationError("independent global-event source map is absent")
+    source_maps = [
+        node.value
+        for node in ast.walk(main_function)
+        if isinstance(node, ast.Assign)
+        and isinstance(node.value, ast.Dict)
+        and any(
+            isinstance(target, ast.Name) and target.id == "sources"
+            for target in node.targets
+        )
+    ]
+    if len(source_maps) != 1:
+        raise VerificationError("independent global-event source map is not singular")
+    source_map_keys = [
+        key.value
+        for key in source_maps[0].keys
+        if isinstance(key, ast.Constant) and isinstance(key.value, str)
+    ]
+    for key in (
+        "common_dart",
+        "latest_frame_queue_dart",
+        "latest_frame_queue_test",
+        "global_event_dispatcher_dart",
+        "native_model_dart",
+        "web_model_dart",
+        "global_event_dispatcher_test",
+        "global_event_dispatcher_verifier",
+    ):
+        if source_map_keys.count(key) != 1:
+            raise VerificationError(
+                f"independent global-event binding is absent: {key}"
+            )
+    validate_sources_function = next(
+        (
+            node
+            for node in workspace_module.body
+            if isinstance(node, ast.FunctionDef) and node.name == "validate_sources"
+        ),
+        None,
+    )
+    if validate_sources_function is None:
+        raise VerificationError("independent global-event workspace dispatch is absent")
+    dispatches = [
+        node
+        for node in validate_sources_function.body
+        if isinstance(node, ast.Expr)
+        and isinstance(node.value, ast.Call)
+        and isinstance(node.value.func, ast.Name)
+        and node.value.func.id == "validate_global_event_dispatcher_contract"
+    ]
+    if len(dispatches) != 1:
+        raise VerificationError(
+            "independent global-event workspace dispatch must occur exactly once"
         )
 
 
@@ -49337,6 +49976,7 @@ def validate_sources(sources):
     validate_tray_session_count_mailbox_contract(sources)
     validate_wakelock_snapshot_mailbox_contract(sources)
     validate_server_status_refresh_loop_contract(sources)
+    validate_global_event_dispatcher_contract(sources)
     validate_outgoing_viewer_round_ownership_contract(sources)
     validate_github_automation_authority_verifier_contract(sources)
     validate_direct_only_viewer_contract(sources)
@@ -68673,6 +69313,12 @@ def run_source_mutations(sources):
         ),
         (
             "model_dart",
+            "    return (evt) {",
+            "    return (evt) async {",
+            "independent always-async web cursor ingress",
+        ),
+        (
+            "model_dart",
             "      return;\n    }\n\n    final cb = ffiModel.startEventListener(activeSessionId, peerId);",
             "    }\n\n    final cb = ffiModel.startEventListener(activeSessionId, peerId);",
             "independent web bypass of the native typed cursor stream",
@@ -68693,6 +69339,12 @@ def run_source_mutations(sources):
             "model_dart",
             "expectedOwner, 0, _WebCursorPosition(x, y)",
             "_sessionOwner, 0, _WebCursorPosition(x, y)",
+            "independent one-lane latest web cursor checkpoint and topology-bound commit",
+        ),
+        (
+            "model_dart",
+            "_webCursorPositions.submitObserved(",
+            "_webCursorPositions.submit(",
             "independent one-lane latest web cursor checkpoint and topology-bound commit",
         ),
         (
@@ -70397,6 +71049,380 @@ def run_source_mutations(sources):
             "    validate_server_status_refresh_loop_contract(sources)\n",
             "    validate_server_status_refresh_loop_contract_disabled(sources)\n",
             "independent status-refresh dispatch must occur exactly once",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "this.maxPending = 64,",
+            "this.maxPending = 6400,",
+            "independent one bounded serial process owner",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "this.maxMessageCodeUnits = 16 * 1024 * 1024,",
+            "this.maxMessageCodeUnits = 160 * 1024 * 1024,",
+            "independent one bounded serial process owner",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "this.maxRetainedBytes = 64 * 1024 * 1024,",
+            "this.maxRetainedBytes = 640 * 1024 * 1024,",
+            "independent one bounded serial process owner",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "this.maxRegisteredHandlers = 256,",
+            "this.maxRegisteredHandlers = 2560,",
+            "independent one bounded serial process owner",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "typedef GlobalEventHandler = Future<void>? Function(",
+            "typedef GlobalEventHandler = FutureOr<void> Function(",
+            "independent unambiguous nullable-future global event result",
+        ),
+        (
+            "common_dart",
+            "typedef StreamEventHandler = Future<void>? Function(Map<String, dynamic>);",
+            "typedef StreamEventHandler = FutureOr<void> Function(Map<String, dynamic>);",
+            "independent unambiguous nullable-future session event result",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "existing.retired = true;",
+            "// previous registered binding retained",
+            "independent bounded exact registered generations",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "_retirePendingRegisteredHandler(existing);",
+            "// previous registered pending work retained",
+            "independent bounded exact registered generations",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "binding.retired = true;\n    _registeredHandlerCount -= 1;",
+            "// registered binding retained\n    _registeredHandlerCount -= 1;",
+            "independent exact registered-handler retirement",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "_retirePendingRegisteredHandler(binding);",
+            "// registered pending work retained",
+            "independent exact registered-handler retirement",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "_retireFallback(previous);",
+            "// previous fallback retained",
+            "independent retire-before-publish fallback replacement",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "binding.generation != generation",
+            "false",
+            "independent generation-capability retirement",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "final fallback = allowFallback ? _currentFallback() : null;",
+            "final fallback = _currentFallback();",
+            "independent synchronous exact-owner bounded admission",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "if (message.length > maxMessageCodeUnits)",
+            "if (false)",
+            "independent synchronous exact-owner bounded admission",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "_synchronousFallbackEvents.contains(eventName)",
+            "false",
+            "independent synchronous exact-owner bounded admission",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "if (completion != null)",
+            "if (false)",
+            "independent synchronous exact-owner bounded admission",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "message.length * 2",
+            "message.length",
+            "independent synchronous exact-owner bounded admission",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "_pending.length >= maxPending",
+            "false",
+            "independent synchronous exact-owner bounded admission",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "_retainedBytes > maxRetainedBytes - weight",
+            "false",
+            "independent synchronous exact-owner bounded admission",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "_retainedBytes += weight;",
+            "// retained bytes not acquired",
+            "independent synchronous exact-owner bounded admission",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "final drain = Future<void>.microtask(_drain);",
+            "final drain = _drain();",
+            "independent one retained drain future",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "_drainFuture = drain;",
+            "// drain future not retained",
+            "independent one retained drain future",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "await binding.handler(decoded);",
+            "binding.handler(decoded);",
+            "independent FIFO nonoverlap and visible failure",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "await fallback.handler(decoded);",
+            "fallback.handler(decoded);",
+            "independent FIFO nonoverlap and visible failure",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "      } finally {\n        _release(entry);",
+            "      } finally {\n        // running entry bytes retained",
+            "independent FIFO nonoverlap and visible failure",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "entry.released = true;",
+            "entry.released = false;",
+            "independent release-once retained accounting",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "_retainedBytes -= entry.weight;",
+            "_retainedBytes += entry.weight;",
+            "independent release-once retained accounting",
+        ),
+        (
+            "global_event_dispatcher_dart",
+            "binding.onFailure(error, stackTrace);",
+            "// fallback failure hidden",
+            "independent exact fallback failure finality",
+        ),
+        (
+            "latest_frame_queue_dart",
+            "final entry = _LatestFrameEntry.observed(frame, present, onError);",
+            "final entry = _LatestFrameEntry(frame, present);",
+            "independent future-free observed frame admission",
+        ),
+        (
+            "latest_frame_queue_dart",
+            "_LatestFrameEntry.observed(this.frame, this.present, this._onError)\n"
+            "      : done = null;",
+            "_LatestFrameEntry.observed(this.frame, this.present, this._onError)\n"
+            "      : done = Completer<LatestFrameDisposition>();",
+            "independent future-free latest-state entry",
+        ),
+        (
+            "native_model_dart",
+            "_eventDispatcher.dispatch,",
+            "(message) { _eventDispatcher.dispatch(message); },",
+            "independent native serial terminal route",
+        ),
+        (
+            "native_model_dart",
+            "_eventDispatcher.failCurrent(error, stackTrace)",
+            "debugPrint('$error')",
+            "independent native serial terminal route",
+        ),
+        (
+            "web_model_dart",
+            "_eventDispatcher.dispatch(message, allowFallback: false);",
+            "_eventDispatcher.dispatch(message);",
+            "independent web registered-only route",
+        ),
+        (
+            "web_model_dart",
+            "_eventDispatcher.dispatch(message, allowRegistered: false);",
+            "_eventDispatcher.dispatch(message);",
+            "independent web fallback-only route",
+        ),
+        (
+            "web_model_dart",
+            "      'cursor_position',",
+            "      'cursor_position_disabled',",
+            "independent web high-rate synchronous classification",
+        ),
+        (
+            "model_dart",
+            "_webCursorShapes.submitObserved(",
+            "_webCursorShapes.submit(",
+            "independent bounded observed web cursor-shape handoff",
+        ),
+        (
+            "model_dart",
+            "_eventListenerGeneration = generation;",
+            "_eventListenerGeneration = null;",
+            "independent exact session generation and visible failure",
+        ),
+        (
+            "model_dart",
+            "platformFFI.clearEventCallback(generation);",
+            "// exact fallback callback not cleared",
+            "independent exact session teardown capability",
+        ),
+        (
+            "model_dart",
+            "ffiModel.retireEventListener(retiringSessionId);",
+            "// fallback owner not retired",
+            "independent fallback retirement on session terminal edge",
+        ),
+        (
+            "global_event_dispatcher_test",
+            "replacement retires old pending work without migrating its event",
+            "replacement migrates old pending work",
+            "independent replacement retires old pending work without migrating its event regression",
+        ),
+        (
+            "global_event_dispatcher_test",
+            "fallback overflow fails once, retires pending work, and recovers",
+            "fallback overflow is silently ignored",
+            "independent fallback overflow fails once, retires pending work, and recovers regression",
+        ),
+        (
+            "global_event_dispatcher_test",
+            "registered handler inventory is finite and reusable after retirement",
+            "registered handler inventory is unbounded",
+            "independent registered handler inventory is finite and reusable after retirement regression",
+        ),
+        (
+            "global_event_dispatcher_test",
+            "configured latest-state events hand off synchronously outside FIFO",
+            "configured latest-state events enter the FIFO",
+            "independent configured latest-state events hand off synchronously outside FIFO regression",
+        ),
+        (
+            "global_event_dispatcher_test",
+            "configured synchronous handoff fails closed on an async callback",
+            "configured synchronous handoff accepts an async callback",
+            "independent configured synchronous handoff fails closed on an async callback regression",
+        ),
+        (
+            "latest_frame_queue_test",
+            "observed submissions retain only running and latest without futures",
+            "observed submissions retain detached futures",
+            "independent observed submissions retain only running and latest without futures regression",
+        ),
+        (
+            "latest_frame_queue_test",
+            "observed failure is visible and retires its exact queue",
+            "observed failure is hidden",
+            "independent observed failure is visible and retires its exact queue regression",
+        ),
+        (
+            "dart_verify",
+            "flutter test --no-pub test/global_event_dispatcher_test.dart",
+            "true # global event dispatcher test disabled",
+            "independent Dart behavior gate",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-global-event-dispatcher.py --repo . --self-test",
+            "true # global event gate disabled",
+            "independent shared global-event gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-global-event-dispatcher.py --repo . --self-test",
+            "true # global event gate disabled",
+            "independent Apple/shared global-event gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11hf</span>',
+            '<div class="req"><span class="id">R-S11hf-disabled</span>',
+            "independent R-S11hf requirement",
+        ),
+        (
+            "requirements",
+            'it <span class="kw">MUST NOT</span> retain the raw JSON in a generic control FIFO or allocate one completion future per cursor event',
+            "it may retain raw JSON or one completion future per cursor event",
+            "independent R-S11gu future-free web cursor handoff",
+        ),
+        (
+            "requirements",
+            "Their raw strings may not enter the 64-entry FIFO",
+            "Their raw strings may enter the 64-entry FIFO",
+            "independent R-S11hf web cursor FIFO exclusion",
+        ),
+        (
+            "requirements",
+            "<tr><td>367</td>",
+            "<tr><td>367-disabled</td>",
+            "independent Appendix C #367",
+        ),
+        (
+            "hardening",
+            "### R-S11hf/R-S11e-244 — bounded exact-generation global event dispatch",
+            "### R-S11hf-disabled/R-S11e-244 — bounded exact-generation global event dispatch",
+            "independent R-S11hf ledger",
+        ),
+        (
+            "global_event_dispatcher_verifier",
+            '("dispatcher", "await fallback.handler(decoded);", "fallback.handler(decoded);", "FIFO nonoverlap and visible failure"),',
+            '("dispatcher", "await fallback.handler_disabled(decoded);", "fallback.handler(decoded);", "FIFO nonoverlap and visible failure"),',
+            "focused awaited fallback",
+        ),
+        (
+            "global_event_dispatcher_verifier",
+            '("dispatcher", "_synchronousFallbackEvents.contains(eventName)", "false", "synchronous exact-owner count-and-byte admission"),',
+            '("dispatcher", "_synchronousFallbackEvents.contains_disabled(eventName)", "false", "synchronous exact-owner count-and-byte admission"),',
+            "focused synchronous handoff mutation",
+        ),
+        (
+            "workspace_verifier",
+            '            "global_event_dispatcher_dart": (\n                repo / "flutter/lib/models/global_event_dispatcher.dart"\n            ).read_text(encoding="utf-8"),',
+            '            "global_event_dispatcher_dart_disabled": (\n                repo / "flutter/lib/models/global_event_dispatcher.dart"\n            ).read_text(encoding="utf-8"),',
+            "independent global-event binding is absent",
+        ),
+        (
+            "workspace_verifier",
+            '            "native_model_dart": (\n                repo / "flutter/lib/models/native_model.dart"\n            ).read_text(encoding="utf-8"),',
+            '            "native_model_dart_disabled": (\n                repo / "flutter/lib/models/native_model.dart"\n            ).read_text(encoding="utf-8"),',
+            "independent global-event binding is absent",
+        ),
+        (
+            "workspace_verifier",
+            '            "web_model_dart": (\n                repo / "flutter/lib/models/web_model.dart"\n            ).read_text(encoding="utf-8"),',
+            '            "web_model_dart_disabled": (\n                repo / "flutter/lib/models/web_model.dart"\n            ).read_text(encoding="utf-8"),',
+            "independent global-event binding is absent",
+        ),
+        (
+            "workspace_verifier",
+            '            "global_event_dispatcher_test": (\n                repo / "flutter/test/global_event_dispatcher_test.dart"\n            ).read_text(encoding="utf-8"),',
+            '            "global_event_dispatcher_test_disabled": (\n                repo / "flutter/test/global_event_dispatcher_test.dart"\n            ).read_text(encoding="utf-8"),',
+            "independent global-event binding is absent",
+        ),
+        (
+            "workspace_verifier",
+            '            "global_event_dispatcher_verifier": (\n                repo / "scripts/verify-global-event-dispatcher.py"\n            ).read_text(encoding="utf-8"),',
+            '            "global_event_dispatcher_verifier_disabled": (\n                repo / "scripts/verify-global-event-dispatcher.py"\n            ).read_text(encoding="utf-8"),',
+            "independent global-event binding is absent",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_global_event_dispatcher_contract(sources)\n",
+            "    validate_global_event_dispatcher_contract_disabled(sources)\n",
+            "independent global-event workspace dispatch must occur exactly once",
         ),
         (
             "clipboard_source",
@@ -83921,6 +84947,18 @@ def main():
                 )
             ),
             "model_dart": (repo / "flutter/lib/models/model.dart").read_text(encoding="utf-8"),
+            "global_event_dispatcher_dart": (
+                repo / "flutter/lib/models/global_event_dispatcher.dart"
+            ).read_text(encoding="utf-8"),
+            "native_model_dart": (
+                repo / "flutter/lib/models/native_model.dart"
+            ).read_text(encoding="utf-8"),
+            "web_model_dart": (
+                repo / "flutter/lib/models/web_model.dart"
+            ).read_text(encoding="utf-8"),
+            "global_event_dispatcher_test": (
+                repo / "flutter/test/global_event_dispatcher_test.dart"
+            ).read_text(encoding="utf-8"),
             "custom_cursor_registry_source": (
                 repo / "flutter/lib/models/custom_cursor_registry.dart"
             ).read_text(encoding="utf-8"),
@@ -84250,6 +85288,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "server_status_refresh_loop_verifier": (
                 repo / "scripts/verify-server-status-refresh-loop.py"
+            ).read_text(encoding="utf-8"),
+            "global_event_dispatcher_verifier": (
+                repo / "scripts/verify-global-event-dispatcher.py"
             ).read_text(encoding="utf-8"),
             "clipboard_route_budget_verifier": (
                 repo / "scripts/verify-clipboard-route-budget.py"

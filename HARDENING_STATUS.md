@@ -26282,12 +26282,132 @@ native supervisor/child transactions, malformed/cross-endpoint live named-pipe t
 cold R-B2/R-B10 equality, installed service behavior, independent reproduction, and
 R-V3 external review remain explicit release obligations.
 
+### R-S11hi/R-S11e-246 — bounded format-first peer-audio decoder mailbox (2026-08-22)
+
+**SOURCE IMPLEMENTED; CONFINED SOURCE AND DELIBERATE-MUTATION VERIFICATION RECORDED
+BELOW; EXACT RUST/NATIVE EXECUTION, PHYSICAL/CROSS-PLATFORM AUDIO AND LIFECYCLE
+BEHAVIOR, COLD RELEASE, INDEPENDENT REPRODUCTION, CAUSATION, AND EXTERNAL REVIEW
+EVIDENCE OPEN.** Platform: the shared outgoing viewer on Android, iOS, Windows, Linux,
+and macOS, plus the shared accepted-call peer-audio playback path on the controlled side.
+Endpoint/action: post-transport `AudioFormat`/`AudioFrame` admission into one exact native
+Opus decoder/playback worker. This slice does not change audio capture or output-device
+selection, voice-call authorization, the connection protocol, Android's foreground
+service, any controlled listener, or any video/input/file path.
+
+Read-only current-source and history tracing found one remaining real-time admission
+defect adjacent to, but distinct from, the previously corrected R-S11ev video mailbox.
+Commit `edc8a3b9` (2026-06-27) replaced the inherited unbounded generic `MediaData`
+channel with `mpsc::sync_channel` capacity eight. R-S11ev later removed video frames and
+lossy video wake tokens from that union, but deliberately left audio on the generic
+FIFO. Both outgoing-viewer and accepted controlled peer-audio callers used nonblocking
+`try_send`. A full queue discarded the newly arriving packet, so a decoder/output stall
+could retain the oldest eight frames. If production and consumption later resumed at
+the same rate, each newly opened slot could accept one new packet while the old
+eight-packet offset remained; bounded memory alone therefore did not guarantee real-time
+freshness or convergence.
+
+The generic queue also admitted frames before it had any codec authority. On the
+outgoing viewer, the audio worker is created with the connection, so an out-of-order or
+hostile peer could fill all eight slots with `AudioFrame` messages and make the first
+valid `AudioFormat` the dropped ninth item. The decoder would consume and ignore the
+pre-format frames, never receive a usable format, and remain silent for that connection.
+The controlled accepted-call path creates its decoder only on first format and was not
+reachable through that exact pre-format sequence, but it shared the newest-drop FIFO and
+freshness defect. `AudioHandler` already and intentionally pins the first valid Opus
+sample-rate/channel pair and rejects later changes; changing codecs in place or blindly
+recreating native playback was therefore not the correct repair.
+
+The corrected authority model is explicit. The network/authorization task owns
+synchronous admission but never decoder execution. One `AudioMailboxState` owns at most
+one pending first format, its immutable `(sample_rate, channels)` identity, eight
+timestamped frames, and terminal state under one short standard-library mutex. Its
+condition variable owns only event-driven wakeup, not payload or history. The sole
+`AudioMailboxReceiver` owns dequeue and native decoder invocation. `OwnedMediaThread`
+alone owns the non-cloneable sender plus exact decoder `JoinHandle`; the existing bounded
+media completion pool alone may own a handle after graceful close or hard `Drop`.
+
+First valid format admission commits its identity and pending payload before wake and
+clears impossible pre-generation frame state. A frame is refused until that identity is
+present. Duplicate formats create no replay work; a different format remains a protocol
+refusal instead of mutating live native state. Receive always takes the pending format
+before a frame. Frame admission retains at most eight packets and, at the exact bound,
+retires the oldest before appending the newest. Dequeue skips any packet older than one
+second without expiring the format. Sender or receiver close marks terminal, releases
+the retained format and every frame, and wakes the exact worker. There is no polling
+sleep, timeout loop, retry, asynchronous task, nested runtime, secondary queue, or
+per-message worker.
+
+Outgoing-viewer and controlled callers still enforce the existing native Opus packet,
+sample-rate, and channel limits before mailbox admission and exhaustively handle every
+typed outcome. Controlled playback still requires the accepted-call input lease and
+pins its separate `ControlledAudioThread.format` identity before installation. A fresh
+controlled decoder refusing its validated first format is drained through the exact
+existing close-and-join path rather than installed partially. Close, call termination,
+audio disable, connection retirement, hard-drop behavior, and the bounded worker-reaper
+topology are otherwise unchanged.
+
+Four deterministic Rust regressions cover pre-format refusal plus format-first order,
+duplicate/change coalescing, capacity-eight oldest-frame replacement with exact FIFO
+order among retained frames, and stale-frame refusal before delivery. Existing owner
+regressions continue to cover close-before-join and nonblocking hard-drop handoff. The
+focused `scripts/verify-viewer-audio-mailbox.py` gate independently parses the exact
+state, typed outcomes, admission/receive order, owner/worker topology, both caller
+classes, tests, requirements, ledger, and shared/Apple/independent wiring, then attacks
+those obligations with deliberate mutations. The independent workspace validator
+separately binds the source behavior and focused verifier structure rather than trusting
+the focused gate's verdict.
+
+Final verification uses only the authorized immutable local inspection image with
+network disabled, the repository bind-mounted read-only, UID/GID 1000, all capabilities
+dropped, `no-new-privileges`, a read-only root filesystem, bounded PIDs/memory/CPU, and
+no Docker socket, device, host namespace, or published port. The image contains Python
+and shell but no Rust/Cargo, Flutter/Dart, native audio stack, or platform target
+toolchain. Exact Rust unit execution, native playback, and compilation are therefore not
+claimed; no substitute image, network pull, dependency acquisition, listener, host
+process, or long release build is used. The focused peer-audio mailbox verifier passed
+all 22 deliberate mutations. The adjacent viewer-video mailbox verifier passed all 49
+mutations, and the adjacent Android voice-call ownership verifier rejected all 535
+mutations. The independent workspace validator passed in normal mode, and its complete
+unfiltered 4,832-entry semantic source-mutation catalog passed; every fixture had to be
+rejected at every reachable source occurrence. Earlier exhaustive construction runs
+correctly rejected the mutated product bytes but exposed one missing focused-fixture
+binding and diagnostic-label mismatches in the new independent coverage. Those verifier
+defects were corrected, the audio-specific mutation preflight passed, and the final
+unfiltered catalog then passed unchanged. Both native-codec watch modes passed. The
+three modified Python verifiers parsed through Python's AST without writing bytecode;
+the modified shared and Apple shell gates passed `bash -n`; `requirements.html` passed
+the standard-library HTML parser; and its independently computed SHA-256 was
+`cf622bd47a8d5b0b27c6a171f8e1db34ada551a6b44708fadfd98ab947b45188`.
+The exact R-S11hi Rust regressions and their shared Cargo gate are present and
+source-bound, but the gate was not executed because the authorized image has no Rust or
+Cargo toolchain.
+
+This is source proof of a shared audio resource/order/freshness defect and its bounded
+correction. It is not evidence that an unidentified weeks-old Android, Windows, or
+Debian artifact contained or exercised the defect, not proof that it caused the reported
+display-only delay, and not evidence of exploitation, privilege escalation, compromise,
+public exposure, container escape, or a host RustDesk/service/firewall/listener/network
+change. This slice does not inspect, stop, restart, modify, or connect to a host RustDesk
+process or service; does not inspect or change host firewall/network/listener state; does
+not touch an Android device, VM, Haggai/Desktop_Haggai_computer workload, or unrelated
+container/image; and does not request or acquire root.
+
+Physical Android task-swipe/reopen/Force-Stop and Windows focus/minimize/reconnect
+behavior; Linux/macOS/iOS and cross-version audio behavior; exact weeks-old deployed
+artifacts; capture-through-encode/transport/receive/decode/publication/Dart/compositor
+timestamps and explicit latency/queue/CPU/memory budgets; sustained
+connection/reconnect/focus/background/file/control/audio/resource/power/performance soak;
+clean cold R-B2/R-B10 equality; installed process/service/package behavior; independent
+reproduction; R-V3 external review; causation; and proof that the complete connection
+flow is correct and performant all remain explicit release obligations and explicit user
+requests.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-1b8eed7f43451114b78cf336d29777aed73096479e7104a16a0df87eed2e64aa  requirements.html
+cf622bd47a8d5b0b27c6a171f8e1db34ada551a6b44708fadfd98ab947b45188  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -26363,3 +26483,4 @@ The same identity additionally binds R-S11hd and Appendix C #365.
 The same identity additionally binds R-S11he and Appendix C #366.
 The same identity additionally binds R-S11hf and Appendix C #367.
 The same identity additionally binds R-S11hg and Appendix C #368.
+The same identity additionally binds R-S11hi and Appendix C #369.

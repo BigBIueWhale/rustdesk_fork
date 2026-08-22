@@ -90,11 +90,7 @@ def validate(sources: Dict[str, str]) -> None:
     ):
         require(client, needle, label)
 
-    media_data = extract_rust_item(client, "pub enum MediaData", "audio media enum")
-    require(media_data, "AudioFrame(Box<AudioFrame>)", "audio-frame variant")
-    require(media_data, "AudioFormat(AudioFormat)", "audio-format variant")
-    for forbidden in ("VideoQueue", "VideoFrame", "Reset", "RecordScreen"):
-        forbid(media_data, forbidden, "video/control variant in audio channel")
+    forbid(client, "pub enum MediaData", "retired generic decoder-work union")
 
     state = extract_rust_item(
         client, "struct VideoMailboxState", "viewer video mailbox state"
@@ -582,7 +578,12 @@ Mutation = Tuple[str, str, str, str]
 MUTATIONS: Tuple[Mutation, ...] = (
     ("client", "pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 8;", "pub const VIDEO_FRAME_QUEUE_CAPACITY: usize = 120;", "frame bound"),
     ("client", "    Accepted,\n    RefreshRequired,\n    Closed,", "    AcceptedDisabled,\n    RefreshRequired,\n    Closed,", "control admission outcomes"),
-    ("client", "Duration::from_secs(1)", "Duration::from_secs(10)", "freshness bound"),
+    (
+        "client",
+        "pub const MAX_VIDEO_FRAME_QUEUE_AGE: Duration = Duration::from_secs(1);",
+        "pub const MAX_VIDEO_FRAME_QUEUE_AGE: Duration = Duration::from_secs(10);",
+        "freshness bound",
+    ),
     ("client", "work: VecDeque<VideoWork>", "frames: VecDeque<VideoWork>", "unified work queue"),
     ("client", "state.clear_frames();\n            state.awaiting_keyframe = false;", "state.awaiting_keyframe = false;", "keyframe supersession"),
     ("client", "if state.frame_count >= VIDEO_FRAME_QUEUE_CAPACITY", "if false", "overflow recovery"),

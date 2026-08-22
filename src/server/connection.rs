@@ -20,8 +20,8 @@ use crate::virtual_display_manager;
 use crate::{
     client::{
         native_opus_format_admission, native_opus_format_key, native_opus_format_within_limit,
-        new_voice_call_request, new_voice_call_response, start_audio_thread, MediaData,
-        NativeOpusFormatAdmission, OwnedMediaThread,
+        new_voice_call_request, new_voice_call_response, start_audio_thread,
+        AudioFormatAdmission, AudioFrameAdmission, NativeOpusFormatAdmission, OwnedMediaThread,
     },
     display_service, ipc, privacy_mode, video_service, VERSION,
 };
@@ -8494,18 +8494,21 @@ impl Connection {
                                             format.sample_rate,
                                             format.channels,
                                         );
-                                        if let Err(err) =
-                                            decoder.try_send(MediaData::AudioFormat(format))
-                                        {
-                                            log::warn!(
-                                                "controlled audio decode queue full; dropping peer audio format: {err}"
-                                            );
-                                            decoder.close_and_join().await;
-                                        } else {
-                                            self.controlled_audio = Some(ControlledAudioThread {
-                                                format: format_key,
-                                                decoder,
-                                            });
+                                        match decoder.admit_format(format) {
+                                            AudioFormatAdmission::Queued => {
+                                                self.controlled_audio = Some(ControlledAudioThread {
+                                                    format: format_key,
+                                                    decoder,
+                                                });
+                                            }
+                                            AudioFormatAdmission::Duplicate
+                                            | AudioFormatAdmission::Changed
+                                            | AudioFormatAdmission::Closed => {
+                                                log::error!(
+                                                    "fresh controlled audio decoder refused its first validated format"
+                                                );
+                                                decoder.close_and_join().await;
+                                            }
                                         }
                                     }
                                     NativeOpusFormatAdmission::Duplicate => {
@@ -8592,13 +8595,23 @@ impl Connection {
                     // cleared before controlled_audio admission closes and its exact decoder joins.
                     if !self.disable_audio && self.voice_call_input.is_some() {
                         if let Some(audio) = &self.controlled_audio {
-                            if let Err(err) = audio
-                                .decoder
-                                .try_send(MediaData::AudioFrame(Box::new(frame)))
-                            {
-                                log::warn!(
-                                    "controlled audio decode queue full; dropping peer audio frame: {err}"
-                                );
+                            match audio.decoder.admit_frame(frame) {
+                                AudioFrameAdmission::Queued => {}
+                                AudioFrameAdmission::ReplacedOldest => {
+                                    log::debug!(
+                                        "controlled audio mailbox retired its oldest queued frame"
+                                    );
+                                }
+                                AudioFrameAdmission::AwaitingFormat => {
+                                    log::error!(
+                                        "controlled audio decoder lost its admitted format"
+                                    );
+                                }
+                                AudioFrameAdmission::Closed => {
+                                    log::warn!(
+                                        "controlled audio decoder is closed; dropping peer audio frame"
+                                    );
+                                }
                             }
                         } else {
                             log::warn!(

@@ -9,10 +9,10 @@ use crate::{
 };
 use crate::{
     client::{
-        self, new_voice_call_request, Client, Data, Interface, LoginConfigHandler, MediaData,
-        OwnedMediaThread, OwnedVideoThread, QualityStatus, VideoControl, VideoControlAdmission,
-        VideoFrameAdmission, ViewerCommandReceiver, ViewerCommandSender, MAX_PEER_VIDEO_DISPLAYS,
-        MILLI1, SEC30,
+        self, new_voice_call_request, AudioFormatAdmission, AudioFrameAdmission, Client, Data,
+        Interface, LoginConfigHandler, OwnedMediaThread, OwnedVideoThread, QualityStatus,
+        VideoControl, VideoControlAdmission, VideoFrameAdmission, ViewerCommandReceiver,
+        ViewerCommandSender, MAX_PEER_VIDEO_DISPLAYS, MILLI1, SEC30,
     },
     common::get_default_sound_input,
     ui_session_interface::{InvokeUiSession, Session},
@@ -3232,11 +3232,23 @@ impl<T: InvokeUiSession> Remote<T> {
                 Some(message::Union::Misc(misc)) => match misc.union {
                     Some(misc::Union::AudioFormat(f)) => {
                         if client::native_opus_format_within_limit(f.sample_rate, f.channels) {
-                            if let Err(err) = self.audio_thread.try_send(MediaData::AudioFormat(f))
-                            {
-                                log::warn!(
-                                    "viewer audio decode queue full; dropping peer audio format: {err}"
-                                );
+                            match self.audio_thread.admit_format(f) {
+                                AudioFormatAdmission::Queued => {}
+                                AudioFormatAdmission::Duplicate => {
+                                    log::debug!(
+                                        "dropping repeated peer Opus format before viewer decode"
+                                    );
+                                }
+                                AudioFormatAdmission::Changed => {
+                                    log::warn!(
+                                        "dropping peer Opus format change after viewer audio setup"
+                                    );
+                                }
+                                AudioFormatAdmission::Closed => {
+                                    log::warn!(
+                                        "viewer audio decoder is closed; dropping peer audio format"
+                                    );
+                                }
                             }
                         } else {
                             log::warn!(
@@ -3429,13 +3441,23 @@ impl<T: InvokeUiSession> Remote<T> {
                 Some(message::Union::AudioFrame(frame)) => {
                     if !self.handler.lc.read().unwrap().disable_audio.v {
                         if client::native_opus_packet_within_limit(frame.data.len()) {
-                            if let Err(err) = self
-                                .audio_thread
-                                .try_send(MediaData::AudioFrame(Box::new(frame)))
-                            {
-                                log::warn!(
-                                    "viewer audio decode queue full; dropping peer audio frame: {err}"
-                                );
+                            match self.audio_thread.admit_frame(frame) {
+                                AudioFrameAdmission::Queued => {}
+                                AudioFrameAdmission::ReplacedOldest => {
+                                    log::debug!(
+                                        "viewer audio mailbox retired its oldest queued frame"
+                                    );
+                                }
+                                AudioFrameAdmission::AwaitingFormat => {
+                                    log::debug!(
+                                        "dropping peer audio frame before viewer format admission"
+                                    );
+                                }
+                                AudioFrameAdmission::Closed => {
+                                    log::warn!(
+                                        "viewer audio decoder is closed; dropping peer audio frame"
+                                    );
+                                }
                             }
                         } else {
                             log::warn!(

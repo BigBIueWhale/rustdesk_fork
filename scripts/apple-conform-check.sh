@@ -3630,6 +3630,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c2-0) R-S11hi bounded format-first peer-audio decoder mailbox =="
+if python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test; then
+  note "ok  R-S11hi Apple/shared peer-audio decode admission is bounded, format-first, fresh, and exact-owner final"
+else
+  echo "  FAIL R-S11hi Apple/shared peer-audio decode admission regained generic FIFO drops, stale backlog, pre-format frames, or incomplete finality"
+  rc=1
+fi
+
 echo "== (2g-c2a) R-S11gu bounded exact-owner native-to-Dart cursor publication =="
 if python3 scripts/verify-viewer-cursor-mailbox.py --repo . --self-test; then
   note "ok  R-S11gu Apple/shared cursor publication is exact-owner, topology-ordered, bounded, latest-wins, and stream-recoverable"

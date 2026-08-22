@@ -9473,7 +9473,6 @@ grep -Fq '<tr><td>236</td>' requirements.html ||
 # hostile peer controls VideoFrame.display and keyframe/audio cadence, so the
 # viewer must cap display-thread creation and use bounded media queues.
 echo "== (3c-ii-a) viewer peer media display/thread + queue bounds (Appendix C #2b/R-T0) =="
-"${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::media_data_queue_is_bounded --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::viewer_command_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::r_s11ev_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config client::tests::r_s11fn_ --color never
@@ -9501,6 +9500,13 @@ if python3 scripts/verify-viewer-video-mailbox.py --repo . --self-test; then
   echo "  ok  R-S11ev/R-S11e-183 viewer video frames have one bounded, fresh, generation-aware mailbox with exact teardown"
 else
   echo "  FAIL R-S11ev/R-S11e-183: viewer video mailbox regained split frame/token reachability, stale-GOP, or teardown debt"
+  rc=1
+fi
+"${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter client::tests::r_s11hi_ --color never
+if python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test; then
+  echo "  ok  R-S11hi/R-S11e-246 peer-audio decode admission is bounded, format-first, fresh, and exact-owner final"
+else
+  echo "  FAIL R-S11hi/R-S11e-246: peer-audio decode admission regained generic FIFO drops, stale backlog, pre-format frames, or incomplete finality"
   rc=1
 fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ew_ --color never

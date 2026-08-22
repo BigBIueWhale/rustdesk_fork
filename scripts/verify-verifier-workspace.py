@@ -18713,6 +18713,154 @@ def validate_viewer_video_mailbox_contract(sources):
     )
 
 
+def validate_viewer_audio_mailbox_contract(sources):
+    focused = sources["viewer_audio_mailbox_verifier"]
+    validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "viewer audio mailbox focused runtime validation",
+    )
+    mutation_inventory = extract_between(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "\n)\n\n\ndef run_self_test",
+        "viewer audio mailbox focused mutation inventory",
+    )
+    for text, label in (
+        ("def extract_rust_item(", "focused Rust item parser"),
+        ("def validate(sources", "focused semantic entry"),
+        (
+            '"pub const AUDIO_FRAME_QUEUE_CAPACITY: usize = 8;"',
+            "focused viewer audio frame bound",
+        ),
+        ('"pub const MAX_AUDIO_FRAME_QUEUE_AGE: Duration = Duration::from_secs(1);"', "focused freshness bound"),
+        ('"format_key: Option<(u32, u32)>"', "focused pinned format"),
+        (
+            '"if state.format_key.is_none()"',
+            "focused viewer audio pre-format refusal",
+        ),
+        ('"state.frames.pop_front();"', "focused viewer audio oldest retirement"),
+        ('"if let Some(format) = state.format.take()"', "focused format-first receive"),
+        (
+            '"if audio_frame_is_fresh(frame.queued_at, std::time::Instant::now())"',
+            "focused viewer audio freshness refusal",
+        ),
+        ('"r_s11hi_audio_mailbox_retires_oldest_frame_at_its_exact_bound"', "focused overflow regression"),
+        ("MUTATIONS: Tuple[Mutation, ...]", "focused mutation inventory"),
+        ("run_self_test(sources)", "focused mutation dispatch"),
+    ):
+        source = focused if text.startswith(("def ", "MUTATIONS", "run_")) else validation
+        require_text(source, text, label)
+    for text, label in (
+        (
+            '("client", "pub const AUDIO_FRAME_QUEUE_CAPACITY: usize = 8;", "pub const AUDIO_FRAME_QUEUE_CAPACITY: usize = 8000;", "frame bound"),',
+            "focused viewer audio frame bound",
+        ),
+        (
+            '("client", "if state.format_key.is_none()", "if false && state.format_key.is_none()", "pre-format refusal"),',
+            "focused viewer audio pre-format refusal",
+        ),
+        (
+            '("client", "state.frames.pop_front();", "state.frames.pop_back();", "oldest-frame retirement"),',
+            "focused viewer audio oldest retirement",
+        ),
+        (
+            '("client", "if audio_frame_is_fresh(frame.queued_at", "if true || audio_frame_is_fresh(frame.queued_at", "dequeue freshness"),',
+            "focused viewer audio freshness refusal",
+        ),
+        (
+            '        "    validate_viewer_audio_mailbox_contract(sources)\\n",',
+            "focused independent-dispatch mutation",
+        ),
+    ):
+        require_text(mutation_inventory, text, label)
+
+    client = sources["client_source"]
+    io_loop = sources["client_io_loop"]
+    connection = sources["connection_source"]
+    for text, label in (
+        ("pub const AUDIO_FRAME_QUEUE_CAPACITY: usize = 8;", "independent audio frame bound"),
+        ("pub const MAX_AUDIO_FRAME_QUEUE_AGE: Duration = Duration::from_secs(1);", "independent audio freshness bound"),
+        ("struct AudioMailboxState", "independent audio mailbox state"),
+        ("format: Option<AudioFormat>", "independent pending format"),
+        ("format_key: Option<(u32, u32)>", "independent pinned format identity"),
+        ("frames: VecDeque<QueuedAudioFrame>", "independent bounded frame storage"),
+        ("impl Drop for AudioMailboxSender", "independent sender finality"),
+        ("impl Drop for AudioMailboxReceiver", "independent receiver finality"),
+        ("if state.format_key.is_none()", "independent viewer audio pre-format refusal"),
+        ("if state.frames.len() >= AUDIO_FRAME_QUEUE_CAPACITY", "independent exact capacity check"),
+        ("state.frames.pop_front();", "independent viewer audio oldest retirement"),
+        ("state.frames.push_back(QueuedAudioFrame { queued_at, frame });", "independent newest admission"),
+        ("if let Some(format) = state.format.take()", "independent viewer audio format-first receive"),
+        ("if audio_frame_is_fresh(frame.queued_at", "independent viewer audio freshness refusal"),
+        ("sender: Option<AudioMailboxSender>", "independent exact owner admission"),
+        ("drop(self.sender.take());", "independent close before worker transfer"),
+        ("let (audio_sender, audio_receiver) = audio_mailbox();", "independent mailbox construction"),
+        ("while let Some(data) = audio_receiver.recv()", "independent event-driven decoder receive"),
+        ("fn r_s11hi_audio_mailbox_requires_and_prioritizes_the_first_format()", "independent format priority regression"),
+        ("fn r_s11hi_audio_mailbox_pins_one_format_without_replay_work()", "independent format pin regression"),
+        ("fn r_s11hi_audio_mailbox_retires_oldest_frame_at_its_exact_bound()", "independent viewer audio overflow regression"),
+        ("fn r_s11hi_audio_mailbox_discards_stale_frames_before_delivery()", "independent freshness regression"),
+    ):
+        require_text(client, text, label)
+    for text in (
+        "pub enum MediaData",
+        "pub type MediaSender",
+        "mpsc::sync_channel::<MediaData>",
+        "try_send(MediaData::AudioFrame",
+        "try_send(MediaData::AudioFormat",
+    ):
+        require_absent(client + io_loop + connection, text, "independent retired generic decoder queue")
+    require_order(
+        client,
+        (
+            "if state.format_key.is_none()",
+            "if state.frames.len() >= AUDIO_FRAME_QUEUE_CAPACITY",
+            "state.frames.pop_front();",
+            "state.frames.push_back(QueuedAudioFrame { queued_at, frame });",
+            "self.shared.ready.notify_one();",
+        ),
+        "independent pre-format and oldest-retirement admission",
+    )
+    require_order(
+        client,
+        (
+            "if let Some(format) = state.format.take()",
+            "return Some(AudioMailboxItem::Format(format));",
+            "let Some(frame) = state.frames.pop_front()",
+            "if audio_frame_is_fresh(frame.queued_at, std::time::Instant::now())",
+            "return Some(AudioMailboxItem::Frame(frame.frame));",
+        ),
+        "independent format-first fresh receive",
+    )
+    for source, text, label in (
+        (io_loop, "self.audio_thread.admit_format(f)", "independent viewer audio format caller"),
+        (io_loop, "self.audio_thread.admit_frame(frame)", "independent viewer audio frame caller"),
+        (connection, "match decoder.admit_format(format)", "independent controlled audio first-format caller"),
+        (connection, "audio.decoder.admit_frame(frame)", "independent controlled audio frame caller"),
+        (sources["verify"], "python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test", "viewer audio shared focused gate"),
+        (sources["verify"], "cargo test --lib --features linux-pkg-config,flutter client::tests::r_s11hi_ --color never", "shared behavior gate"),
+        (sources["apple"], "python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test", "viewer audio Apple focused gate"),
+        (sources["requirements"], '<div class="req"><span class="id">R-S11hi</span>', "viewer audio mailbox requirement"),
+        (sources["requirements"], "<tr><td>369</td>", "viewer audio mailbox Appendix C row"),
+        (sources["hardening"], "### R-S11hi/R-S11e-246 — bounded format-first peer-audio decoder mailbox", "viewer audio mailbox hardening ledger"),
+        (
+            sources["workspace_verifier"],
+            '            "viewer_audio_mailbox_verifier": (\n'
+            '                repo / "scripts/verify-viewer-audio-mailbox.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "viewer audio focused-verifier source binding",
+        ),
+        (
+            sources["workspace_verifier"],
+            "    validate_viewer_audio_mailbox_contract(sources)\n",
+            "viewer audio independent validation dispatch",
+        ),
+    ):
+        require_text(source, text, label)
+
+
 def validate_viewer_file_finality_contract(sources):
     focused = sources["viewer_file_finality_verifier"]
     validation = extract_between(
@@ -50128,6 +50276,7 @@ def validate_sources(sources):
     validate_viewer_voice_call_worker_contract(sources)
     validate_x11_capture_shared_memory_contract(sources)
     validate_viewer_video_mailbox_contract(sources)
+    validate_viewer_audio_mailbox_contract(sources)
     validate_viewer_file_finality_contract(sources)
     validate_viewer_rgba_mailbox_contract(sources)
     validate_viewer_cursor_mailbox_contract(sources)
@@ -67604,6 +67753,130 @@ def run_source_mutations(sources):
             "cargo test --lib --features linux-pkg-config client::tests::r_s11fo_ --color never",
             "cargo test --lib --features linux-pkg-config client::tests::disabled_fo_ --color never",
             "viewer video decoder-endpoint shared behavior gate",
+        ),
+        (
+            "viewer_audio_mailbox_verifier",
+            '"pub const AUDIO_FRAME_QUEUE_CAPACITY: usize = 8;"',
+            '"pub const AUDIO_FRAME_QUEUE_CAPACITY: usize = 8000;"',
+            "focused viewer audio frame bound",
+        ),
+        (
+            "viewer_audio_mailbox_verifier",
+            '"if state.format_key.is_none()"',
+            '"if false && state.format_key.is_none()"',
+            "focused viewer audio pre-format refusal",
+        ),
+        (
+            "viewer_audio_mailbox_verifier",
+            '"state.frames.pop_front();"',
+            '"state.frames.pop_back();"',
+            "focused viewer audio oldest retirement",
+        ),
+        (
+            "viewer_audio_mailbox_verifier",
+            '"if audio_frame_is_fresh(frame.queued_at"',
+            '"if true || audio_frame_is_fresh(frame.queued_at"',
+            "focused viewer audio freshness refusal",
+        ),
+        (
+            "client_source",
+            "if state.format_key.is_none()",
+            "if false && state.format_key.is_none()",
+            "independent viewer audio pre-format refusal",
+        ),
+        (
+            "client_source",
+            "if state.frames.len() >= AUDIO_FRAME_QUEUE_CAPACITY {\n            state.frames.pop_front();",
+            "if state.frames.len() >= AUDIO_FRAME_QUEUE_CAPACITY {\n            state.frames.pop_back();",
+            "independent viewer audio oldest retirement",
+        ),
+        (
+            "client_source",
+            "if let Some(format) = state.format.take()",
+            "if false { let Some(format) = state.format.take() else { unreachable!() };",
+            "independent viewer audio format-first receive",
+        ),
+        (
+            "client_source",
+            "if audio_frame_is_fresh(frame.queued_at, std::time::Instant::now())",
+            "if true || audio_frame_is_fresh(frame.queued_at, std::time::Instant::now())",
+            "independent viewer audio freshness refusal",
+        ),
+        (
+            "client_source",
+            "fn r_s11hi_audio_mailbox_retires_oldest_frame_at_its_exact_bound()",
+            "fn audio_mailbox_retires_oldest_frame_at_its_exact_bound()",
+            "independent viewer audio overflow regression",
+        ),
+        (
+            "client_io_loop",
+            "self.audio_thread.admit_format(f)",
+            "self.audio_thread.drop_format(f)",
+            "independent viewer audio format caller",
+        ),
+        (
+            "client_io_loop",
+            "self.audio_thread.admit_frame(frame)",
+            "self.audio_thread.drop_frame(frame)",
+            "independent viewer audio frame caller",
+        ),
+        (
+            "connection_source",
+            "match decoder.admit_format(format)",
+            "match AudioFormatAdmission::Closed",
+            "independent controlled audio first-format caller",
+        ),
+        (
+            "connection_source",
+            "audio.decoder.admit_frame(frame)",
+            "AudioFrameAdmission::Queued",
+            "independent controlled audio frame caller",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test",
+            "true # viewer audio mailbox verifier removed",
+            "viewer audio shared focused gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-viewer-audio-mailbox.py --repo . --self-test",
+            "true # viewer audio mailbox verifier removed",
+            "viewer audio Apple focused gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11hi</span>',
+            '<div class="req"><span class="id">R-S11hi-disabled</span>',
+            "viewer audio mailbox requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>369</td>",
+            "<tr><td>369-disabled</td>",
+            "viewer audio mailbox Appendix C row",
+        ),
+        (
+            "hardening",
+            "### R-S11hi/R-S11e-246 — bounded format-first peer-audio decoder mailbox",
+            "### R-S11hi-disabled/R-S11e-246 — bounded format-first peer-audio decoder mailbox",
+            "viewer audio mailbox hardening ledger",
+        ),
+        (
+            "workspace_verifier",
+            '            "viewer_audio_mailbox_verifier": (\n'
+            '                repo / "scripts/verify-viewer-audio-mailbox.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "viewer_audio_mailbox_verifier_disabled": (\n'
+            '                repo / "scripts/verify-viewer-audio-mailbox.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "viewer audio focused-verifier source binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_viewer_audio_mailbox_contract(sources)\n",
+            "    validate_viewer_audio_mailbox_contract_disabled(sources)\n",
+            "viewer audio independent validation dispatch",
         ),
         (
             "viewer_file_finality_verifier",
@@ -85551,6 +85824,9 @@ def main():
             ),
             "viewer_video_mailbox_verifier": (
                 repo / "scripts/verify-viewer-video-mailbox.py"
+            ).read_text(encoding="utf-8"),
+            "viewer_audio_mailbox_verifier": (
+                repo / "scripts/verify-viewer-audio-mailbox.py"
             ).read_text(encoding="utf-8"),
             "viewer_file_finality_verifier": (
                 repo / "scripts/verify-viewer-file-finality.py"

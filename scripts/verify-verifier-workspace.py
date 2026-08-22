@@ -28858,12 +28858,20 @@ def validate_android_voice_call_ownership_contract(sources):
             "Android prior-peer file-controller reset contract",
         ),
         (
-            "file_dialog_clear = extract_item(",
-            "Android exact file-dialog clear-method extraction contract",
+            "file_dialog_retirement = extract_item(",
+            "Android exact file-dialog retirement-hook extraction contract",
+        ),
+        (
+            "file_session_start = extract_item(",
+            "Android exact file-dialog session-start extraction contract",
+        ),
+        (
+            '"second pending-event retirement owner"',
+            "Android single file-dialog retirement owner contract",
         ),
         (
             '"file-dialog synchronous reset"',
-            "Android file-dialog clear-method scope contract",
+            "Android file-dialog retirement-hook scope contract",
         ),
         (
             '"delayed reconnect exact-session refusal"',
@@ -29141,6 +29149,10 @@ def validate_android_voice_call_ownership_contract(sources):
         (
             '"shared dual close-preparation finality gate"',
             "Android focused shared-gate mutation",
+        ),
+        (
+            '"file-dialog prior-session retirement"',
+            "Android file-dialog retirement mutation contract",
         ),
     ):
         require_text(mutation_inventory, text, label)
@@ -29464,7 +29476,7 @@ def validate_android_voice_call_ownership_contract(sources):
         ),
         (
             "file_model_dart",
-            "void clear() {\n    super.clear();\n    _overrideConfirm = null;\n    _skip = false;",
+            "void onEventsRetired() {\n    _overrideConfirm = null;\n    _skip = false;",
             "Android file-dialog remembered-policy retirement source",
         ),
         (
@@ -45473,6 +45485,344 @@ def validate_account_storage_excision_contract(sources):
         require_text(source, token, label)
 
 
+def validate_file_dialog_event_ownership_contract(sources):
+    focused = sources["file_dialog_event_ownership_verifier"]
+    try:
+        ast.parse(focused, filename="scripts/verify-file-dialog-event-ownership.py")
+    except SyntaxError as exc:
+        raise VerificationError(
+            f"file-dialog focused verifier does not parse: {exc}"
+        ) from exc
+    validation = extract_between(
+        focused,
+        "def validate(sources: Dict[str, str]) -> None:",
+        "\n\nMutation = Tuple[str, str, str, str]",
+        "file-dialog focused runtime validation",
+    )
+    mutation_inventory = extract_between(
+        focused,
+        "MUTATIONS: Tuple[Mutation, ...] = (",
+        "\n)\n\n\ndef run_self_test",
+        "file-dialog focused mutation inventory",
+    )
+    for text, label in (
+        ('"Timer"', "focused timer exclusion"),
+        ('"List<BaseEvent"', "focused list exclusion"),
+        ('"int get ownedEventCount => _events.length + (_eventRunning ? 1 : 0);"', "focused active-work accounting"),
+        ('"scheduleMicrotask(()"', "focused event-driven drain"),
+        ('"currentEvent = _events.removeFirst();"', "focused FIFO removal"),
+        ('"if (_closed || ownedEventCount >= maxOwnedEvents)"', "focused bounded admission"),
+        ('"static const int maxReadPathCodeUnits = 32768;"', "focused path bound"),
+        ('"rawJobId != jobId.toString()"', "focused canonical job identity"),
+        ('"readPath.contains(\'\\\\u0000\')"', "focused NUL refusal"),
+        ('"return evtLoop.pushEvent(_FileDialogEvent(WeakReference(this),"', "focused checked admission"),
+        ('"static const int maxOwnedConfirmations = 64;"', "focused confirmation bound"),
+        ('"ffi.reportFileDialogFailure(fileEvent.expectedSessionId);"', "focused callback failure finality"),
+        ('"flutter test --no-pub test/file_dialog_event_loop_test.dart"', "focused Dart behavior wiring"),
+    ):
+        require_text(validation, text, label)
+    for text, label in (
+        ('("event_loop", "_events.removeFirst()", "_events.removeLast()"', "focused FIFO mutation"),
+        ('("event_loop", "_events.length + (_eventRunning ? 1 : 0)", "_events.length"', "focused active-work mutation"),
+        ('("file_model", "static const int maxReadPathCodeUnits = 32768;"', "focused path-bound mutation"),
+        ('("file_model", "static const int maxOwnedConfirmations = 64;"', "focused count-bound mutation"),
+        ('("model", "!ffi.fileModel.postOverrideFileConfirm(evt, sessionId)"', "focused refusal mutation"),
+        ('"    validate_file_dialog_event_ownership_contract(sources)\\n"', "focused independent-dispatch mutation"),
+    ):
+        require_text(mutation_inventory, text, label)
+    require_text(focused, "run_self_test(sources)", "focused mutation dispatch")
+    require_text(
+        focused,
+        'if signature.rstrip().endswith("("):',
+        "focused named-argument body extraction",
+    )
+    require_text(
+        focused,
+        'raise VerificationError(f"unterminated parameters for {label}")',
+        "focused unterminated-parameter refusal",
+    )
+
+    event_loop = sources["event_loop_dart"]
+    owner = extract_braced_item(
+        event_loop,
+        "abstract class BaseEventLoop<EventType, Data>",
+        "independent bounded file-dialog event owner",
+    )
+    for forbidden, label in (
+        ("Timer", "independent event-loop timer"),
+        ("List<BaseEvent", "independent event-loop list"),
+        ("removeAt(0)", "independent linear head removal"),
+        ("StreamController", "independent secondary event stream"),
+    ):
+        require_absent(owner, forbidden, label)
+    require_order(
+        owner,
+        (
+            "final int maxOwnedEvents;",
+            "final Queue<BaseEvent<EventType, Data>> _events = Queue();",
+            "var _generation = 0;",
+            "var _closed = true;",
+            "var _draining = false;",
+            "var _eventRunning = false;",
+            "int? _scheduledGeneration;",
+            "int get ownedEventCount => _events.length + (_eventRunning ? 1 : 0);",
+            "void _scheduleDrain(int generation)",
+            "scheduleMicrotask(()",
+            "unawaited(_drain(generation));",
+            "Future<void> _drain(int generation)",
+            "currentEvent = _events.removeFirst();",
+            "_eventRunning = true;",
+            "await currentEvent.consume();",
+            "_eventRunning = false;",
+            "_events.clear();",
+            "onTerminalError(currentEvent, error, stackTrace);",
+            "Future<void> close() async",
+            "_events.clear();",
+            "bool pushEvent(",
+            "if (_closed || ownedEventCount >= maxOwnedEvents)",
+            "_events.addLast(event);",
+            "_scheduleDrain(_generation);",
+            "return true;",
+        ),
+        "independent bounded serial exact-generation event loop",
+    )
+    require_text(
+        event_loop,
+        "!_closed && generation == _generation;",
+        "independent exact generation equality",
+    )
+    require_order(
+        event_loop,
+        (
+            "final callback = findCallback(type);",
+            "if (callback == null)",
+            "throw StateError('No callback owns the admitted event');",
+            "await callback(data);",
+        ),
+        "independent missing-callback terminal behavior",
+    )
+
+    file_model = sources["file_model_dart"]
+    payload = extract_between(
+        file_model,
+        "class FileOverrideConfirmation {",
+        "\n}\n\nclass FileModel",
+        "independent typed file confirmation",
+    )
+    require_order(
+        payload,
+        (
+            "static const int maxReadPathCodeUnits = 32768;",
+            "static const int _maxNativeInt = 0x7fffffff;",
+            "final int jobId;",
+            "final int fileNum;",
+            "final String readPath;",
+            "final bool isUpload;",
+            "final bool isIdentical;",
+            "event['name'] != 'override_file_confirm'",
+            "rawJobId is! String",
+            "rawFileNum is! String",
+            "readPath is! String",
+            "rawIsUpload is! String",
+            "rawIsIdentical is! String",
+            "jobId <= 0",
+            "rawJobId != jobId.toString()",
+            "fileNum < 0",
+            "rawFileNum != fileNum.toString()",
+            "readPath.isEmpty",
+            "readPath.length > maxReadPathCodeUnits",
+            "readPath.contains('\\u0000')",
+            "isUpload == null",
+            "isIdentical == null",
+            "return FileOverrideConfirmation(",
+        ),
+        "independent canonical bounded typed payload",
+    )
+    post = extract_between(
+        file_model,
+        "bool postOverrideFileConfirm(",
+        "\n  Future<void> overrideFileConfirm(",
+        "independent file-confirm admission",
+    )
+    require_order(
+        post,
+        (
+            "if (!_isCurrentSession(expectedSessionId)) return false;",
+            "final confirmation = FileOverrideConfirmation.tryParse(event);",
+            "if (confirmation == null) return false;",
+            "return evtLoop.pushEvent(_FileDialogEvent(WeakReference(this),",
+            "expectedSessionId, FileDialogType.overwrite, confirmation));",
+        ),
+        "independent exact-session checked confirmation admission",
+    )
+    consumer = extract_between(
+        file_model,
+        "Future<void> overrideFileConfirm(",
+        "\n  bool fileConfirmCheckboxRemember",
+        "independent file-confirm consumption",
+    )
+    require_order(
+        consumer,
+        (
+            "FileOverrideConfirmation confirmation",
+            "if (!_isCurrentSession(expectedSessionId)) return;",
+            "final id = confirmation.jobId;",
+            "final jobIndex = jobController.getJob(id);",
+            "if (jobIndex == -1)",
+            "throw StateError('File confirmation has no matching job');",
+            "confirmation.readPath",
+            "confirmation.isIdentical",
+            "if (!_isCurrentSession(expectedSessionId)) return;",
+            "await jobController.cancelJob(id);",
+            "if (!_isCurrentSession(expectedSessionId)) return;",
+            "fileNum: confirmation.fileNum,",
+            "isUpload: confirmation.isUpload",
+        ),
+        "independent exact-job typed confirmation consumer",
+    )
+    require_absent(consumer, "int.parse(", "independent late confirmation parse")
+    require_absent(consumer, "evt['", "independent retained raw confirmation map")
+    require_text(
+        file_model,
+        "enum FileDialogType { overwrite }",
+        "independent closed file-dialog operation",
+    )
+    file_loop = extract_braced_item(
+        file_model,
+        "class FileDialogEventLoop",
+        "independent file-dialog loop",
+    )
+    require_order(
+        file_loop,
+        (
+            "extends BaseEventLoop<FileDialogType, FileOverrideConfirmation>",
+            "static const int maxOwnedConfirmations = 64;",
+            "FileDialogEventLoop() : super(maxOwnedEvents: maxOwnedConfirmations);",
+            "void onEventsRetired()",
+            "_overrideConfirm = null;",
+            "_skip = false;",
+            "Future<void> onEventsClear()",
+            "_overrideConfirm = null;",
+            "_skip = false;",
+            "void onTerminalError(",
+            "ffi.reportFileDialogFailure(fileEvent.expectedSessionId);",
+        ),
+        "independent bounded policy-scoped file-dialog finality",
+    )
+    begin = extract_between(
+        file_model,
+        "void beginSession(",
+        "\n  Future<void> onReady(",
+        "independent file-model prior-session retirement",
+    )
+    require_text(begin, "unawaited(evtLoop.close());", "independent event-loop close owner")
+    require_absent(begin, "evtLoop.clear()", "independent second event clear owner")
+
+    session_handler = extract_between(
+        sources["model_dart"],
+        "Future<void> _handleSessionEvent(",
+        "\n  _handleScreenshot(",
+        "independent session event handler",
+    )
+    require_order(
+        session_handler,
+        (
+            "else if (name == 'override_file_confirm')",
+            "!ffi.fileModel.postOverrideFileConfirm(evt, sessionId)",
+            "ffi.reportFileDialogFailure(sessionId);",
+        ),
+        "independent visible confirmation refusal",
+    )
+    report = extract_between(
+        sources["model_dart"],
+        "void reportFileDialogFailure(",
+        "\n  Future<int?> _displayTopologyAfterCheckpoint(",
+        "independent exact file-dialog failure facade",
+    )
+    require_order(
+        report,
+        (
+            "SessionID expectedSessionId",
+            "_reportSessionStreamFailure(expectedSessionId, id,",
+            "'The remote file transfer became inconsistent'",
+        ),
+        "independent existing terminal session finality reuse",
+    )
+
+    producer = extract_between(
+        sources["flutter_source"],
+        "fn override_file_confirm(",
+        "\n    fn job_progress(",
+        "independent native confirmation producer",
+    )
+    require_order(
+        producer,
+        (
+            '"override_file_confirm"',
+            '("id", &id.to_string())',
+            '("file_num", &file_num.to_string())',
+            '("read_path", &to)',
+            '("is_upload", &is_upload.to_string())',
+            '("is_identical", &is_identical.to_string())',
+        ),
+        "independent native-to-typed payload vocabulary",
+    )
+    require_exact_count(
+        sources["client_io_loop"],
+        "self.handler.override_file_confirm(",
+        2,
+        "independent upload/download confirmation producers",
+    )
+
+    test = sources["file_dialog_event_loop_test"]
+    for text, label in (
+        ("bounded event loop consumes admitted work in FIFO order", "independent FIFO regression"),
+        ("capacity counts running and pending events", "independent active capacity regression"),
+        ("close retires pending work and rejects admission while closed", "independent close regression"),
+        ("retired callback cannot consume replacement-generation work", "independent replacement regression"),
+        ("callback failure is terminal and clears successors", "independent failure regression"),
+        ("file confirmation parser owns one exact bounded typed payload", "independent typed parser regression"),
+        ("file confirmation parser rejects malformed scalar authority", "independent scalar negative regression"),
+        ("file confirmation parser rejects unowned path storage", "independent path negative regression"),
+        ("expect(loop.ownedEventCount, 2);", "independent running-plus-pending assertion"),
+        ("FileOverrideConfirmation.maxReadPathCodeUnits + 1", "independent overlong path fixture"),
+    ):
+        require_text(test, text, label)
+    for source, text, label in (
+        (sources["dart_verify"], "flutter test --no-pub test/file_dialog_event_loop_test.dart", "independent Dart behavior gate"),
+        (sources["verify"], "python3 scripts/verify-file-dialog-event-ownership.py --repo . --self-test", "independent shared focused gate"),
+        (sources["apple"], "python3 scripts/verify-file-dialog-event-ownership.py --repo . --self-test", "independent Apple focused gate"),
+        (sources["requirements"], '<div class="req"><span class="id">R-S11hk</span>', "independent R-S11hk requirement"),
+        (sources["requirements"], "<tr><td>371</td>", "independent Appendix C #371"),
+        (sources["hardening"], "### R-S11hk/R-S11e-248 — bounded exact-session file-confirm ownership", "independent R-S11hk ledger"),
+        (
+            sources["workspace_verifier"],
+            '            "file_dialog_event_ownership_verifier": (\n'
+            '                repo / "scripts/verify-file-dialog-event-ownership.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "independent focused-verifier source binding",
+        ),
+        (sources["workspace_verifier"], "    validate_file_dialog_event_ownership_contract(sources)\n", "independent file-dialog validator dispatch"),
+        (
+            sources["workspace_verifier"],
+            '        "\\n  _handleScreenshot(",',
+            "independent exact session-handler closing boundary",
+        ),
+    ):
+        require_text(source, text, label)
+    digest = hashlib.sha256(sources["requirements"].encode("utf-8")).hexdigest()
+    require_text(
+        sources["hardening"],
+        f"{digest}  requirements.html",
+        "independent file-dialog requirements hash",
+    )
+    require_text(
+        sources["native_watch"],
+        f"Requirements hash: {digest}",
+        "independent file-dialog native-watch hash",
+    )
+
+
 def validate_password_confirmation_comparison_contract(sources):
     password = sources["ipc_password_source"]
     core = sources["core_main"]
@@ -50525,6 +50875,7 @@ def validate_sources(sources):
     validate_direct_address_ui_contract(sources)
     validate_account_control_plane_excision_contract(sources)
     validate_account_storage_excision_contract(sources)
+    validate_file_dialog_event_ownership_contract(sources)
     validate_password_confirmation_comparison_contract(sources)
     validate_temporary_password_generator_excision_contract(sources)
     validate_permanent_password_salt_reader_excision_contract(sources)
@@ -74566,15 +74917,33 @@ def run_source_mutations(sources):
         ),
         (
             "android_voice_call_ownership_verifier",
-            "file_dialog_clear = extract_item(",
-            "file_dialog_clear = file_dialog_loop.partition(",
-            "Android exact file-dialog clear-method extraction contract",
+            "file_dialog_retirement = extract_item(",
+            "file_dialog_retirement = file_dialog_loop.partition(",
+            "Android exact file-dialog retirement-hook extraction contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            "file_session_start = extract_item(",
+            "file_session_start = dart_file_model.partition(",
+            "Android exact file-dialog session-start extraction contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"second pending-event retirement owner"',
+            '"second pending-event retirement owner disabled"',
+            "Android single file-dialog retirement owner contract",
+        ),
+        (
+            "android_voice_call_ownership_verifier",
+            '"file-dialog prior-session retirement"',
+            '"file-dialog prior-session retirement disabled"',
+            "Android file-dialog retirement mutation contract",
         ),
         (
             "android_voice_call_ownership_verifier",
             '"file-dialog synchronous reset"',
             '"whole file-dialog class"',
-            "Android file-dialog clear-method scope contract",
+            "Android file-dialog retirement-hook scope contract",
         ),
         (
             "android_voice_call_ownership_verifier",
@@ -75664,8 +76033,8 @@ def run_source_mutations(sources):
         ),
         (
             "file_model_dart",
-            "void clear() {\n    super.clear();\n    _overrideConfirm = null;\n    _skip = false;",
-            "void clear() {\n    super.clear();",
+            "void onEventsRetired() {\n    _overrideConfirm = null;\n    _skip = false;",
+            "void onEventsRetired() {\n    _overrideConfirm = null;\n    _skip = true;",
             "Android file-dialog remembered-policy retirement source",
         ),
         (
@@ -85138,6 +85507,224 @@ def run_source_mutations(sources):
             "    validate_viewer_video_mailbox_contract(sources)",
             "X11 capture shared-memory workspace dispatch",
         ),
+        (
+            "event_loop_dart",
+            "int get ownedEventCount => _events.length + (_eventRunning ? 1 : 0);",
+            "int get ownedEventCount => _events.length;",
+            "independent bounded serial exact-generation event loop",
+        ),
+        (
+            "event_loop_dart",
+            "currentEvent = _events.removeFirst();",
+            "currentEvent = _events.removeLast();",
+            "independent bounded serial exact-generation event loop",
+        ),
+        (
+            "event_loop_dart",
+            "if (_closed || ownedEventCount >= maxOwnedEvents)",
+            "if (ownedEventCount > maxOwnedEvents)",
+            "independent bounded serial exact-generation event loop",
+        ),
+        (
+            "event_loop_dart",
+            "!_closed && generation == _generation;",
+            "!_closed && generation <= _generation;",
+            "Android exact event-loop generation source",
+        ),
+        (
+            "event_loop_dart",
+            "throw StateError('No callback owns the admitted event');",
+            "return;",
+            "independent missing-callback terminal behavior",
+        ),
+        (
+            "event_loop_dart",
+            "_events.clear();\n        onEventsRetired();\n        onTerminalError(currentEvent, error, stackTrace);",
+            "onEventsRetired();\n        onTerminalError(currentEvent, error, stackTrace);",
+            "independent bounded serial exact-generation event loop",
+        ),
+        (
+            "file_model_dart",
+            "static const int maxReadPathCodeUnits = 32768;",
+            "static const int maxReadPathCodeUnits = 32769;",
+            "independent canonical bounded typed payload",
+        ),
+        (
+            "file_model_dart",
+            "event['name'] != 'override_file_confirm' ||",
+            "false ||",
+            "independent canonical bounded typed payload",
+        ),
+        (
+            "file_model_dart",
+            "rawJobId != jobId.toString() ||",
+            "false ||",
+            "independent canonical bounded typed payload",
+        ),
+        (
+            "file_model_dart",
+            "readPath.contains('\\u0000') ||",
+            "false ||",
+            "independent canonical bounded typed payload",
+        ),
+        (
+            "file_model_dart",
+            "bool postOverrideFileConfirm(\n"
+            "      Map<String, dynamic> event, SessionID expectedSessionId) {\n"
+            "    if (!_isCurrentSession(expectedSessionId)) return false;",
+            "bool postOverrideFileConfirm(\n"
+            "      Map<String, dynamic> event, SessionID expectedSessionId) {\n"
+            "    if (parent.target == null) return false;",
+            "independent exact-session checked confirmation admission",
+        ),
+        (
+            "file_model_dart",
+            "if (confirmation == null) return false;",
+            "if (confirmation == null) return true;",
+            "independent exact-session checked confirmation admission",
+        ),
+        (
+            "file_model_dart",
+            "return evtLoop.pushEvent(_FileDialogEvent(WeakReference(this),",
+            "evtLoop.pushEvent(_FileDialogEvent(WeakReference(this),",
+            "independent exact-session checked confirmation admission",
+        ),
+        (
+            "file_model_dart",
+            "throw StateError('File confirmation has no matching job');",
+            "return;",
+            "independent exact-job typed confirmation consumer",
+        ),
+        (
+            "file_model_dart",
+            "static const int maxOwnedConfirmations = 64;",
+            "static const int maxOwnedConfirmations = 65;",
+            "independent bounded policy-scoped file-dialog finality",
+        ),
+        (
+            "file_model_dart",
+            "ffi.reportFileDialogFailure(fileEvent.expectedSessionId);",
+            "return;",
+            "independent bounded policy-scoped file-dialog finality",
+        ),
+        (
+            "file_model_dart",
+            "unawaited(evtLoop.close());",
+            "// event loop retained",
+            "independent event-loop close owner",
+        ),
+        (
+            "model_dart",
+            "!ffi.fileModel.postOverrideFileConfirm(evt, sessionId)",
+            "ffi.fileModel.postOverrideFileConfirm(evt, sessionId)",
+            "independent visible confirmation refusal",
+        ),
+        (
+            "model_dart",
+            "_reportSessionStreamFailure(expectedSessionId, id,\n        'The remote file transfer became inconsistent');",
+            "_reportSessionStreamFailure(sessionId, id,\n        'The remote file transfer became inconsistent');",
+            "independent existing terminal session finality reuse",
+        ),
+        (
+            "flutter_source",
+            '("is_identical", &is_identical.to_string()),',
+            '("is_identical", "false"),',
+            "independent native-to-typed payload vocabulary",
+        ),
+        (
+            "client_io_loop",
+            "self.handler.override_file_confirm(",
+            "self.handler.override_file_confirm_disabled(",
+            "independent upload/download confirmation producers",
+        ),
+        (
+            "file_dialog_event_loop_test",
+            "capacity counts running and pending events",
+            "capacity ignores running events",
+            "independent active capacity regression",
+        ),
+        (
+            "file_dialog_event_loop_test",
+            "retired callback cannot consume replacement-generation work",
+            "retired callback consumes replacement work",
+            "independent replacement regression",
+        ),
+        (
+            "file_dialog_event_loop_test",
+            "file confirmation parser rejects unowned path storage",
+            "file confirmation parser accepts unowned path storage",
+            "independent path negative regression",
+        ),
+        (
+            "dart_verify",
+            "flutter test --no-pub test/file_dialog_event_loop_test.dart",
+            "true # file-dialog behavior gate disabled",
+            "independent Dart behavior gate",
+        ),
+        (
+            "verify",
+            "python3 scripts/verify-file-dialog-event-ownership.py --repo . --self-test",
+            "true # file-dialog focused gate disabled",
+            "independent shared focused gate",
+        ),
+        (
+            "apple",
+            "python3 scripts/verify-file-dialog-event-ownership.py --repo . --self-test",
+            "true # file-dialog Apple gate disabled",
+            "independent Apple focused gate",
+        ),
+        (
+            "requirements",
+            '<div class="req"><span class="id">R-S11hk</span>',
+            '<div class="req"><span class="id">R-S11hk-disabled</span>',
+            "independent R-S11hk requirement",
+        ),
+        (
+            "requirements",
+            "<tr><td>371</td>",
+            "<tr><td>371-disabled</td>",
+            "independent Appendix C #371",
+        ),
+        (
+            "hardening",
+            "### R-S11hk/R-S11e-248 — bounded exact-session file-confirm ownership",
+            "### R-S11hk-disabled/R-S11e-248 — bounded exact-session file-confirm ownership",
+            "independent R-S11hk ledger",
+        ),
+        (
+            "file_dialog_event_ownership_verifier",
+            '("event_loop", "_events.removeFirst()", "_events.removeLast()", "FIFO consumption"),',
+            '("event_loop", "_events.removeFirst_disabled()", "_events.removeLast()", "FIFO consumption"),',
+            "focused FIFO mutation",
+        ),
+        (
+            "file_dialog_event_ownership_verifier",
+            'if signature.rstrip().endswith("("):',
+            'if False and signature.rstrip().endswith("("):',
+            "focused named-argument body extraction",
+        ),
+        (
+            "file_dialog_event_ownership_verifier",
+            '("file_model", "static const int maxOwnedConfirmations = 64;", "static const int maxOwnedConfirmations = 65;", "file-confirm count bound"),',
+            '("file_model", "static const int maxOwnedConfirmations = 64_disabled;", "static const int maxOwnedConfirmations = 65;", "file-confirm count bound"),',
+            "focused count-bound mutation",
+        ),
+        (
+            "workspace_verifier",
+            '            "file_dialog_event_ownership_verifier": (\n'
+            '                repo / "scripts/verify-file-dialog-event-ownership.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            '            "file_dialog_event_ownership_verifier_disabled": (\n'
+            '                repo / "scripts/verify-file-dialog-event-ownership.py"\n'
+            '            ).read_text(encoding="utf-8"),',
+            "independent focused-verifier source binding",
+        ),
+        (
+            "workspace_verifier",
+            "    validate_file_dialog_event_ownership_contract(sources)\n",
+            "    validate_file_dialog_event_ownership_contract_disabled(sources)\n",
+            "independent file-dialog validator dispatch",
+        ),
         ("version", "fork_version_real_date() {", "fork_version_date() {", "real calendar validation"),
     )
     for key, old, new, expected in mutations:
@@ -85903,6 +86490,9 @@ def main():
             "mobile_file_lifecycle_test": (
                 repo / "flutter/test/mobile_file_session_lifecycle_test.dart"
             ).read_text(encoding="utf-8"),
+            "file_dialog_event_loop_test": (
+                repo / "flutter/test/file_dialog_event_loop_test.dart"
+            ).read_text(encoding="utf-8"),
             "mobile_session_start_queue_test": (
                 repo / "flutter/test/mobile_session_start_queue_test.dart"
             ).read_text(encoding="utf-8"),
@@ -86148,6 +86738,9 @@ def main():
             ).read_text(encoding="utf-8"),
             "account_storage_excision_verifier": (
                 repo / "scripts/verify-account-storage-excision.py"
+            ).read_text(encoding="utf-8"),
+            "file_dialog_event_ownership_verifier": (
+                repo / "scripts/verify-file-dialog-event-ownership.py"
             ).read_text(encoding="utf-8"),
             "viewer_file_finality_verifier": (
                 repo / "scripts/verify-viewer-file-finality.py"

@@ -9498,6 +9498,12 @@ else
   echo "  FAIL R-S11hj/R-S11e-247: account/address-book/group persistence, bridge, option, presentation, or detached-worker authority regrew"
   rc=1
 fi
+if python3 scripts/verify-file-dialog-event-ownership.py --repo . --self-test; then
+  echo "  ok  R-S11hk/R-S11e-248 file-confirm events are typed, bounded, FIFO, exact-session-owned, and terminal-visible"
+else
+  echo "  FAIL R-S11hk/R-S11e-248: file-confirm events regained raw maps, polling, unbounded retention, stale generation, silent refusal, or hidden failure"
+  rc=1
+fi
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11ew_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11fr_ --color never
 "${RUN[@]}" cargo test --lib --features linux-pkg-config,flutter r_s11gu_ --color never

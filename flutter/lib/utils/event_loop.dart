@@ -1,103 +1,159 @@
 import 'dart:async';
+import 'dart:collection';
 
 import 'package:flutter/foundation.dart';
 
-typedef EventCallback<Data> = Future<dynamic> Function(Data data);
+typedef EventCallback<Data> = Future<void> Function(Data data);
 
 abstract class BaseEvent<EventType, Data> {
-  EventType type;
-  Data data;
+  final EventType type;
+  final Data data;
 
-  /// Constructor.
   BaseEvent(this.type, this.data);
 
-  /// Consume this event.
   @visibleForTesting
-  Future<dynamic> consume() async {
-    final cb = findCallback(type);
-    if (cb == null) {
-      return null;
-    } else {
-      return cb(data);
+  Future<void> consume() async {
+    final callback = findCallback(type);
+    if (callback == null) {
+      throw StateError('No callback owns the admitted event');
     }
+    await callback(data);
   }
 
   EventCallback<Data>? findCallback(EventType type);
 }
 
 abstract class BaseEventLoop<EventType, Data> {
-  final List<BaseEvent<EventType, Data>> _evts = [];
-  Timer? _timer;
+  BaseEventLoop({required this.maxOwnedEvents}) {
+    if (maxOwnedEvents <= 0) {
+      throw ArgumentError.value(
+          maxOwnedEvents, 'maxOwnedEvents', 'must be positive');
+    }
+  }
+
+  final int maxOwnedEvents;
+  final Queue<BaseEvent<EventType, Data>> _events = Queue();
   var _generation = 0;
   var _closed = true;
+  var _draining = false;
+  var _eventRunning = false;
+  int? _scheduledGeneration;
 
-  List<BaseEvent<EventType, Data>> get evts => _evts;
+  @visibleForTesting
+  int get ownedEventCount => _events.length + (_eventRunning ? 1 : 0);
+
+  @visibleForTesting
+  bool get isClosed => _closed;
 
   Future<void> onReady() async {
     _generation += 1;
-    final generation = _generation;
     _closed = false;
-    _timer?.cancel();
-    // Poll every 100ms.
-    _timer = Timer.periodic(Duration(milliseconds: 100),
-        (timer) => _handleTimer(timer, generation));
+    _scheduleDrain(_generation);
   }
 
-  /// An Event is about to be consumed.
-  Future<void> onPreConsume(BaseEvent<EventType, Data> evt) async {}
+  Future<void> onPreConsume(BaseEvent<EventType, Data> event) async {}
 
-  /// An Event was consumed.
-  Future<void> onPostConsume(BaseEvent<EventType, Data> evt) async {}
+  Future<void> onPostConsume(BaseEvent<EventType, Data> event) async {}
 
-  /// Events are all handled and cleared.
   Future<void> onEventsClear() async {}
 
-  /// Events start to consume.
-  Future<void> onEventsStartConsuming() async {}
+  void onEventsRetired() {}
 
-  bool _isCurrent(int generation) => !_closed && generation == _generation;
+  void onTerminalError(BaseEvent<EventType, Data>? event, Object error,
+      StackTrace stackTrace) {
+    FlutterError.reportError(FlutterErrorDetails(
+      exception: error,
+      stack: stackTrace,
+      library: 'flutter_hbb event loop',
+      context: ErrorDescription('while consuming a bounded event'),
+    ));
+  }
 
-  Future<void> _handleTimer(Timer timer, int generation) async {
-    if (!_isCurrent(generation)) {
-      timer.cancel();
+  bool _isCurrent(int generation) =>
+      !_closed && generation == _generation;
+
+  void _scheduleDrain(int generation) {
+    if (!_isCurrent(generation) ||
+        _draining ||
+        _events.isEmpty ||
+        _scheduledGeneration == generation) {
       return;
     }
-    if (_evts.isEmpty) {
-      return;
+    _scheduledGeneration = generation;
+    scheduleMicrotask(() {
+      if (_scheduledGeneration == generation) {
+        _scheduledGeneration = null;
+      }
+      if (!_isCurrent(generation)) {
+        if (!_closed && _events.isNotEmpty) {
+          _scheduleDrain(_generation);
+        }
+        return;
+      }
+      unawaited(_drain(generation));
+    });
+  }
+
+  Future<void> _drain(int generation) async {
+    if (_draining || !_isCurrent(generation)) return;
+    _draining = true;
+    BaseEvent<EventType, Data>? currentEvent;
+    try {
+      while (_events.isNotEmpty) {
+        currentEvent = _events.removeFirst();
+        _eventRunning = true;
+        try {
+          await onPreConsume(currentEvent);
+          if (!_isCurrent(generation)) return;
+          await currentEvent.consume();
+          if (!_isCurrent(generation)) return;
+          await onPostConsume(currentEvent);
+          if (!_isCurrent(generation)) return;
+        } finally {
+          _eventRunning = false;
+        }
+        currentEvent = null;
+      }
+      await onEventsClear();
+    } catch (error, stackTrace) {
+      if (_isCurrent(generation)) {
+        _closed = true;
+        _generation += 1;
+        _scheduledGeneration = null;
+        _events.clear();
+        onEventsRetired();
+        onTerminalError(currentEvent, error, stackTrace);
+      } else {
+        FlutterError.reportError(FlutterErrorDetails(
+          exception: error,
+          stack: stackTrace,
+          library: 'flutter_hbb event loop',
+          context: ErrorDescription('after an event generation was retired'),
+        ));
+      }
+    } finally {
+      _eventRunning = false;
+      _draining = false;
+      if (!_closed && _events.isNotEmpty) {
+        _scheduleDrain(_generation);
+      }
     }
-    timer.cancel();
-    _timer = null;
-    // Handle the logic.
-    await onEventsStartConsuming();
-    if (!_isCurrent(generation)) return;
-    while (_evts.isNotEmpty) {
-      final evt = _evts.removeAt(0);
-      await onPreConsume(evt);
-      if (!_isCurrent(generation)) return;
-      await evt.consume();
-      if (!_isCurrent(generation)) return;
-      await onPostConsume(evt);
-      if (!_isCurrent(generation)) return;
-    }
-    await onEventsClear();
-    if (!_isCurrent(generation)) return;
-    // Now events are all processed.
-    _timer = Timer.periodic(Duration(milliseconds: 100),
-        (timer) => _handleTimer(timer, generation));
   }
 
   Future<void> close() async {
     _closed = true;
     _generation += 1;
-    _timer?.cancel();
-    _timer = null;
+    _scheduledGeneration = null;
+    _events.clear();
+    onEventsRetired();
   }
 
-  void pushEvent(BaseEvent<EventType, Data> evt) {
-    _evts.add(evt);
-  }
-
-  void clear() {
-    _evts.clear();
+  bool pushEvent(BaseEvent<EventType, Data> event) {
+    if (_closed || ownedEventCount >= maxOwnedEvents) {
+      return false;
+    }
+    _events.addLast(event);
+    _scheduleDrain(_generation);
+    return true;
   }
 }

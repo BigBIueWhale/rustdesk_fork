@@ -26517,12 +26517,131 @@ reproduction, R-V3 external review, causation, and proof that the complete conne
 flow is correct and performant remain explicit release obligations and explicit user
 requests.
 
+### R-S11hk/R-S11e-248 — bounded exact-session file-confirm ownership (2026-08-22)
+
+**SOURCE IMPLEMENTED/GATED; EXACT DART/FLUTTER/NATIVE AND PHYSICAL-PLATFORM
+EVIDENCE OPEN.** Platform: the shared native Flutter viewer on Android, iOS,
+Windows, Linux, and macOS. Endpoint/action: native upload/download digest handling
+publishes `override_file_confirm`; Dart validates, queues, presents, remembers, and
+returns the required overwrite/skip/cancel decision. Boundary: the exact native
+file job and exact Flutter session generation ↔ the one UI dialog callback and
+native confirmation/cancellation call that advances that job.
+
+Read-only source and history review found that the inherited
+`flutter/lib/utils/event_loop.dart` used an unbounded `List`, accepted work while
+closed, removed index zero in linear time, and kept a `Timer.periodic` wakeup
+running every 100 milliseconds while idle. A later exact-generation correction
+prevented a retired callback from committing after replacement, but did not bound
+retention or make refusal terminal. `FileModel` retained the complete decoded raw
+map, parsed integer and boolean fields late and permissively, substituted job ID
+zero on malformed input, exposed an unused `unknown` operation, and ignored the
+queue admission result because there was none. A missing callback returned as if
+the required confirmation had been consumed. When task-swipe/reopen preserves an
+Android process and foreground service while Force Stop destroys them, that shape
+is a plausible cleanup-mediated stale-state mechanism. It is nonetheless shared
+Flutter source and therefore was never Android-only. This is source proof of
+resource/order/finality debt, not proof that an unidentified weeks-old Android,
+Windows, or Debian artifact exercised it and not a cause claim for the separately
+reported display-only delay.
+
+The corrected local abstraction owns one `Queue` and one exact generation. It
+admits at most 64 confirmations total, including the callback currently running,
+only while open; returns a checked boolean result; inserts and removes FIFO; and
+schedules one microtask drain only when work exists. There is no timer, poll,
+retry, concurrent drain, detached callback, head-shifting list, secondary queue,
+silent drop, coalescing, or overwrite. Close invalidates the generation before
+clearing pending work and the remembered overwrite/skip policy. If a prior
+generation's callback is still settling, a replacement generation may retain
+bounded pending work but cannot run it concurrently; the old drain's finalizer
+schedules the current generation after the old callback settles. Stale scheduled
+microtasks cannot clear or redirect a replacement schedule.
+
+The native JSON event is synchronously converted into immutable
+`FileOverrideConfirmation`: exact event name; positive canonical signed-32-bit job
+ID; nonnegative canonical signed-32-bit file number; exact lowercase boolean
+strings; and a nonempty, NUL-free read path bounded to 32,768 UTF-16 code units.
+The raw map is not retained. Consumption validates the matching Dart job before
+showing a dialog or answering native code and uses only typed fields afterward.
+The operation vocabulary is exactly `overwrite`. Remembered policy applies only
+to the current contiguous FIFO batch and resets on empty or retirement.
+
+A malformed payload, closed loop, or running-plus-pending saturation makes
+`postOverrideFileConfirm` return false; the session-event handler immediately
+uses the existing visible exact-session stream-failure path. A missing live job,
+missing callback, or pre/consume/post callback failure terminally closes the loop,
+clears successors and remembered policy, and invokes the same narrow
+`reportFileDialogFailure(expectedSessionId)` facade. That facade reuses
+`_reportSessionStreamFailure`, dismisses only the owning current session, presents
+the generic file-transfer inconsistency error, and initiates exact native-session
+close; a stale failure cannot close a replacement. Required digest confirmations
+are never silently discarded because doing so would strand native file-job
+protocol state.
+
+Eight focused Dart regressions cover FIFO order, running-plus-pending capacity,
+closed admission and pending retirement, active old-generation versus replacement
+serialization, terminal callback failure and successor retirement, valid typed
+parsing, malformed scalar/canonical boolean/ID refusal, and empty/NUL/overlong path
+refusal. The pinned `dart-verify.sh` transaction formats the new source/test and
+runs the focused test with the rest of its exact offline Flutter analysis. The
+focused `scripts/verify-file-dialog-event-ownership.py` validator independently
+parses the native producer, both upload/download producer calls, Dart parser,
+queue, lifecycle, terminal facade, tests, shared/Apple/Dart wiring,
+R-S11hk/Appendix C #371/this ledger/current requirements digest, and attacks the
+contract with deliberate mutations. The older Android exact-generation verifier
+now binds the stronger event-driven retirement shape rather than the deleted
+timer. The independent workspace validator separately parses the focused verifier
+and mutation inventory, derives the product contract directly, and carries its
+own deliberate source mutations.
+
+Confined red/green verification on 2026-08-22 passed the focused validator in
+normal mode and all 40 focused mutations, the older Android/session ownership
+validator in normal mode and all 536 of its mutations, and the independent
+workspace validator in normal mode. The first focused run fail-closed because
+its braced-item helper selected the named-argument brace rather than the Dart
+method body; after exact parameter-depth parsing was added, its self-test then
+identified a non-singular admission mutation and that mutation was scoped to the
+admission method. The independent normal validator separately exposed and
+removed stale `clear()`/double-retirement expectations and corrected its exact
+session-handler boundary. The first complete repository-wide semantic mutation
+run then proved the weakened generation equality was rejected earlier by the
+older Android verifier than the catalog's expected independent-verifier label.
+Only that expected first-rejection label was corrected; a new uninterrupted
+run restarted at mutation one and exited zero with
+`verify-verifier-workspace: ok`. No sampled or earlier run is substituted.
+
+On these documentation bytes, Python AST parsing without bytecode, Bash syntax
+for the modified shared/Apple/Dart/native-codec scripts, requirements HTML
+parsing plus exact hardening/native-watch digest identity, native-codec watch
+normal/self-test, and `git diff --check` also passed. Shared and Apple source
+wiring is thus checked, but neither complete gate was executed. The sole
+authorized image has no Dart/Flutter or Rust/Cargo/native platform toolchain, so
+the eight committed Dart regressions, analyzer/formatter, native compilation,
+and platform execution remain explicitly unexecuted rather than being replaced
+by a host run or an unapproved image.
+
+This correction adds no retry, reconnect, timer, poller, isolate, worker, thread,
+runtime, listener, port, service restart, Android activity/service kill, privilege,
+dependency, alternate route, network change, or weakening of Android's intended
+persistent foreground service. No host RustDesk process, service, binary,
+configuration, listener, firewall/UFW/nftables/iptables state, network setting,
+device, VM, Haggai/Desktop_Haggai_computer workload, or unrelated container/image
+was inspected or changed, and no root/sudo/privileged container was requested or
+used. Exact Dart/Flutter/native execution, current physical Android
+task-swipe/reopen/Force-Stop and Windows focus/minimize/reconnect reproduction,
+Linux/macOS/iOS/web and cross-version transfer behavior, capture-through-compositor
+timestamps and explicit end-to-end latency/queue/CPU/memory budgets, sustained
+connection/reconnect/focus/background/file/control/resource/performance soak,
+clean cold R-B2/R-B10 equality, installed artifacts/service behavior, fresh
+independent reproduction, R-V3 external review, causation, and proof that the
+complete connection flow is correct and performant remain explicit release
+obligations and explicit user requests.
+
 **Active native-codec requirements ledger.** The SHA-256 consumed by
 `scripts/native-codec-watch.sh` and recorded identically in
 `docs/NATIVE-CODEC-WATCH.md` is:
 
 ```text
-03ca0270cebdb90f6051e7932f568e261ef2b9278d7e1bf5efc1a3b2efb0652e  requirements.html
+c68b3305623074bc3a9b68bf9b1e03040a2b3b877d936c0af83dba59febc25cf  requirements.html
 ```
 
 This hash binds the current normative requirements text, including R-B9, R-B13, R-S11n through R-S11dz, R-SV4a,
@@ -26600,3 +26719,4 @@ The same identity additionally binds R-S11hf and Appendix C #367.
 The same identity additionally binds R-S11hg and Appendix C #368.
 The same identity additionally binds R-S11hi and Appendix C #369.
 The same identity additionally binds R-S11hj and Appendix C #370.
+The same identity additionally binds R-S11hk and Appendix C #371.

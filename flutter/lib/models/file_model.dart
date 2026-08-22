@@ -47,6 +47,74 @@ class JobID {
 typedef GetSessionID = SessionID Function();
 typedef GetDialogManager = OverlayDialogManager? Function();
 
+@immutable
+class FileOverrideConfirmation {
+  static const int maxReadPathCodeUnits = 32768;
+  static const int _maxNativeInt = 0x7fffffff;
+
+  const FileOverrideConfirmation({
+    required this.jobId,
+    required this.fileNum,
+    required this.readPath,
+    required this.isUpload,
+    required this.isIdentical,
+  });
+
+  final int jobId;
+  final int fileNum;
+  final String readPath;
+  final bool isUpload;
+  final bool isIdentical;
+
+  static FileOverrideConfirmation? tryParse(Map<String, dynamic> event) {
+    final rawJobId = event['id'];
+    final rawFileNum = event['file_num'];
+    final readPath = event['read_path'];
+    final rawIsUpload = event['is_upload'];
+    final rawIsIdentical = event['is_identical'];
+    if (event['name'] != 'override_file_confirm' ||
+        rawJobId is! String ||
+        rawFileNum is! String ||
+        readPath is! String ||
+        rawIsUpload is! String ||
+        rawIsIdentical is! String) {
+      return null;
+    }
+    final jobId = int.tryParse(rawJobId);
+    final fileNum = int.tryParse(rawFileNum);
+    final isUpload = _tryParseBool(rawIsUpload);
+    final isIdentical = _tryParseBool(rawIsIdentical);
+    if (jobId == null ||
+        jobId <= 0 ||
+        jobId > _maxNativeInt ||
+        rawJobId != jobId.toString() ||
+        fileNum == null ||
+        fileNum < 0 ||
+        fileNum > _maxNativeInt ||
+        rawFileNum != fileNum.toString() ||
+        readPath.isEmpty ||
+        readPath.length > maxReadPathCodeUnits ||
+        readPath.contains('\u0000') ||
+        isUpload == null ||
+        isIdentical == null) {
+      return null;
+    }
+    return FileOverrideConfirmation(
+      jobId: jobId,
+      fileNum: fileNum,
+      readPath: readPath,
+      isUpload: isUpload,
+      isIdentical: isIdentical,
+    );
+  }
+
+  static bool? _tryParseBool(String value) {
+    if (value == 'true') return true;
+    if (value == 'false') return false;
+    return null;
+  }
+}
+
 class FileModel {
   final WeakReference<FFI> parent;
   // late final String sessionId;
@@ -89,7 +157,6 @@ class FileModel {
   void beginSession(SessionID expectedSessionId) {
     if (!_isCurrentSession(expectedSessionId)) return;
     unawaited(evtLoop.close());
-    evtLoop.clear();
     parent.target?.dialogManager.dismissAll();
     fileFetcher.cancelPending();
     jobController.clear();
@@ -164,37 +231,40 @@ class FileModel {
     jobController.jobError(evt);
   }
 
-  Future<void> postOverrideFileConfirm(
-      Map<String, dynamic> evt, SessionID expectedSessionId) async {
-    if (!_isCurrentSession(expectedSessionId)) return;
-    evtLoop.pushEvent(_FileDialogEvent(
-        WeakReference(this), expectedSessionId, FileDialogType.overwrite, evt));
+  bool postOverrideFileConfirm(
+      Map<String, dynamic> event, SessionID expectedSessionId) {
+    if (!_isCurrentSession(expectedSessionId)) return false;
+    final confirmation = FileOverrideConfirmation.tryParse(event);
+    if (confirmation == null) return false;
+    return evtLoop.pushEvent(_FileDialogEvent(WeakReference(this),
+        expectedSessionId, FileDialogType.overwrite, confirmation));
   }
 
-  Future<void> overrideFileConfirm(Map<String, dynamic> evt,
+  Future<void> overrideFileConfirm(FileOverrideConfirmation confirmation,
       {required SessionID expectedSessionId,
       bool? overrideConfirm,
       bool skip = false}) async {
     if (!_isCurrentSession(expectedSessionId)) return;
+    final id = confirmation.jobId;
+    final jobIndex = jobController.getJob(id);
+    if (jobIndex == -1) {
+      throw StateError('File confirmation has no matching job');
+    }
     // If `skip == true`, it means to skip this file without showing dialog.
     // Because `resp` may be null after the user operation or the last remembered operation,
     // and we should distinguish them.
     final resp = overrideConfirm ??
         (!skip
             ? await showFileConfirmDialog(translate("Overwrite"),
-                "${evt['read_path']}", true, evt['is_identical'] == "true")
+                confirmation.readPath, true, confirmation.isIdentical)
             : null);
     if (!_isCurrentSession(expectedSessionId)) return;
-    final id = int.tryParse(evt['id']) ?? 0;
     if (false == resp) {
-      final jobIndex = jobController.getJob(id);
-      if (jobIndex != -1) {
-        await jobController.cancelJob(id);
-        if (!_isCurrentSession(expectedSessionId)) return;
-        final job = jobController.jobTable[jobIndex];
-        job.state = JobState.done;
-        jobController.jobTable.refresh();
-      }
+      await jobController.cancelJob(id);
+      if (!_isCurrentSession(expectedSessionId)) return;
+      final job = jobController.jobTable[jobIndex];
+      job.state = JobState.done;
+      jobController.jobTable.refresh();
     } else {
       var need_override = false;
       if (resp == null) {
@@ -211,10 +281,10 @@ class FileModel {
       await bind.sessionSetConfirmOverrideFile(
           sessionId: expectedSessionId,
           actId: id,
-          fileNum: int.parse(evt['file_num']),
+          fileNum: confirmation.fileNum,
           needOverride: need_override,
           remember: fileConfirmCheckboxRemember,
-          isUpload: evt['is_upload'] == "true");
+          isUpload: confirmation.isUpload);
       if (!_isCurrentSession(expectedSessionId)) return;
     }
     // Update the loop config.
@@ -1914,10 +1984,11 @@ List<Entry> _sortList(List<Entry> list, SortBy sortType, bool ascending) {
 ///
 /// [Visibility]
 /// The `_FileDialogType` and `_DialogEvent` are invisible for other models.
-enum FileDialogType { overwrite, unknown }
+enum FileDialogType { overwrite }
 
-class _FileDialogEvent extends BaseEvent<FileDialogType, Map<String, dynamic>> {
-  WeakReference<FileModel> fileModel;
+class _FileDialogEvent
+    extends BaseEvent<FileDialogType, FileOverrideConfirmation> {
+  final WeakReference<FileModel> fileModel;
   final SessionID expectedSessionId;
   bool? _overrideConfirm;
   bool _skip = false;
@@ -1934,7 +2005,7 @@ class _FileDialogEvent extends BaseEvent<FileDialogType, Map<String, dynamic>> {
   }
 
   @override
-  EventCallback<Map<String, dynamic>>? findCallback(FileDialogType type) {
+  EventCallback<FileOverrideConfirmation>? findCallback(FileDialogType type) {
     final model = fileModel.target;
     if (model == null || !model._isCurrentSession(expectedSessionId)) {
       return null;
@@ -1942,38 +2013,38 @@ class _FileDialogEvent extends BaseEvent<FileDialogType, Map<String, dynamic>> {
     switch (type) {
       case FileDialogType.overwrite:
         return (data) async {
-          return await model.overrideFileConfirm(data,
+          await model.overrideFileConfirm(data,
               expectedSessionId: expectedSessionId,
               overrideConfirm: _overrideConfirm,
               skip: _skip);
         };
-      default:
-        debugPrint("Unknown event type: $type with $data");
-        return null;
     }
   }
 }
 
 class FileDialogEventLoop
-    extends BaseEventLoop<FileDialogType, Map<String, dynamic>> {
+    extends BaseEventLoop<FileDialogType, FileOverrideConfirmation> {
+  static const int maxOwnedConfirmations = 64;
+
+  FileDialogEventLoop() : super(maxOwnedEvents: maxOwnedConfirmations);
+
   bool? _overrideConfirm;
   bool _skip = false;
 
   @override
-  void clear() {
-    super.clear();
+  void onEventsRetired() {
     _overrideConfirm = null;
     _skip = false;
   }
 
   @override
   Future<void> onPreConsume(
-      BaseEvent<FileDialogType, Map<String, dynamic>> evt) async {
-    var event = evt as _FileDialogEvent;
+      BaseEvent<FileDialogType, FileOverrideConfirmation> evt) async {
+    final event = evt as _FileDialogEvent;
     event.setOverrideConfirm(_overrideConfirm);
     event.setSkip(_skip);
     debugPrint(
-        "FileDialogEventLoop: consuming<jobId: ${evt.data['id']} overrideConfirm: $_overrideConfirm, skip: $_skip>");
+        "FileDialogEventLoop: consuming<jobId: ${evt.data.jobId} overrideConfirm: $_overrideConfirm, skip: $_skip>");
   }
 
   @override
@@ -1981,6 +2052,22 @@ class FileDialogEventLoop
     _overrideConfirm = null;
     _skip = false;
     return super.onEventsClear();
+  }
+
+  @override
+  void onTerminalError(
+      BaseEvent<FileDialogType, FileOverrideConfirmation>? event,
+      Object error,
+      StackTrace stackTrace) {
+    final fileEvent = event;
+    if (fileEvent is _FileDialogEvent) {
+      final ffi = fileEvent.fileModel.target?.parent.target;
+      if (ffi != null) {
+        ffi.reportFileDialogFailure(fileEvent.expectedSessionId);
+        return;
+      }
+    }
+    super.onTerminalError(event, error, stackTrace);
   }
 
   void setOverrideConfirm(bool? confirm) {

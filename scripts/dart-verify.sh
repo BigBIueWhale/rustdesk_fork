@@ -197,6 +197,7 @@ local_docker run --rm --pull=never --network=none --read-only \
       lib/common.dart \
       lib/models/model.dart \
       lib/models/file_model.dart \
+      lib/utils/event_loop.dart \
       lib/desktop/pages/file_manager_page.dart \
       lib/mobile/pages/file_manager_page.dart \
       lib/models/desktop_render_texture.dart \
@@ -219,6 +220,7 @@ local_docker run --rm --pull=never --network=none --read-only \
       lib/web/bridge.dart \
       test/desktop_texture_lifecycle_test.dart \
       test/mobile_session_start_queue_test.dart \
+      test/file_dialog_event_loop_test.dart \
       test/global_event_dispatcher_test.dart \
       test/latest_frame_queue_test.dart \
       test/server_status_refresh_loop_test.dart \
@@ -262,6 +264,8 @@ local_docker run --rm --pull=never --network=none --read-only \
     flutter test --no-pub test/global_event_dispatcher_test.dart
     echo "  == R-S11eb flutter test: retired file timeout cannot remove replacement =="
     flutter test --no-pub test/mobile_file_session_lifecycle_test.dart
+    echo "  == R-S11hk flutter test: file confirmations are bounded and exact-session-owned =="
+    flutter test --no-pub test/file_dialog_event_loop_test.dart
     echo "  == R-S11eo flutter test: mobile session preparation is bounded and latest-wins =="
     flutter test --no-pub test/mobile_session_start_queue_test.dart
     echo "  == R-S11go flutter test: display admission is ordered, bounded, and latest-wins =="

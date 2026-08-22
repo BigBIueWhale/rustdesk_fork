@@ -2037,11 +2037,16 @@ def validate(sources: Dict[str, str]) -> None:
         "relative-mouse final exact-session retirement",
     )
     dart_file_model = sources["dart_file_model"]
-    require_order(
+    file_session_start = extract_item(
         dart_file_model,
+        "void beginSession(SessionID expectedSessionId)",
+        "file-transfer connection start",
+    )
+    require_order(
+        file_session_start,
         (
             "void beginSession(SessionID expectedSessionId)",
-            "evtLoop.clear();",
+            "unawaited(evtLoop.close());",
             "parent.target?.dialogManager.dismissAll();",
             "fileFetcher.cancelPending();",
             "jobController.clear();",
@@ -2050,6 +2055,11 @@ def validate(sources: Dict[str, str]) -> None:
             "fileConfirmCheckboxRemember = false;",
         ),
         "file-transfer pending-resource retirement at connection start",
+    )
+    forbid(
+        file_session_start,
+        "evtLoop.clear();",
+        "second pending-event retirement owner",
     )
     file_controller = extract_item(
         dart_file_model, "class FileController", "reused file controller"
@@ -2123,16 +2133,15 @@ def validate(sources: Dict[str, str]) -> None:
         "class FileDialogEventLoop",
         "file-dialog event loop",
     )
-    file_dialog_clear = extract_item(
+    file_dialog_retirement = extract_item(
         file_dialog_loop,
-        "  void clear()",
+        "  void onEventsRetired()",
         "file-dialog synchronous reset",
     )
     require_order(
-        file_dialog_clear,
+        file_dialog_retirement,
         (
-            "void clear()",
-            "super.clear();",
+            "void onEventsRetired()",
             "_overrideConfirm = null;",
             "_skip = false;",
         ),
@@ -2145,8 +2154,8 @@ def validate(sources: Dict[str, str]) -> None:
     )
     require(
         dart_file_model,
-        "evtLoop.pushEvent(_FileDialogEvent(\n"
-        "        WeakReference(this), expectedSessionId, FileDialogType.overwrite, evt));",
+        "return evtLoop.pushEvent(_FileDialogEvent(WeakReference(this),\n"
+        "        expectedSessionId, FileDialogType.overwrite, confirmation));",
         "file-dialog exact-session event identity",
     )
     require(
@@ -2159,9 +2168,11 @@ def validate(sources: Dict[str, str]) -> None:
         (
             "var _generation = 0;",
             "_generation += 1;",
-            "final generation = _generation;",
-            "(timer) => _handleTimer(timer, generation)",
             "bool _isCurrent(int generation)",
+            "void _scheduleDrain(int generation)",
+            "_scheduledGeneration = generation;",
+            "scheduleMicrotask(()",
+            "unawaited(_drain(generation));",
             "if (!_isCurrent(generation)) return;",
         ),
         "event-loop exact-generation restart and callback retirement",
@@ -2177,8 +2188,9 @@ def validate(sources: Dict[str, str]) -> None:
             "Future<void> close() async",
             "_closed = true;",
             "_generation += 1;",
-            "_timer?.cancel();",
-            "_timer = null;",
+            "_scheduledGeneration = null;",
+            "_events.clear();",
+            "onEventsRetired();",
         ),
         "event-loop synchronous generation retirement",
     )
@@ -5488,9 +5500,10 @@ MUTATIONS: Tuple[Mutation, ...] = (
     ("dart_chat_model", "SessionID get sessionId => parent.target!.sessionId;", "late final SessionID sessionId;", "borrowed chat identity"),
     ("dart_relative_mouse", "sessionId: expectedSessionId ?? getSessionId(),", "sessionId: SessionID.nil(),", "borrowed relative-mouse identity"),
     ("dart_relative_mouse", "_performCleanupCore(expectedSessionId: expectedSessionId);", "_performCleanupCore();", "relative-mouse exact retired-session cleanup"),
+    ("dart_file_model", "unawaited(evtLoop.close());", "// prior file dialog retained", "file-dialog prior-session retirement"),
     ("dart_file_model", "fileFetcher.cancelPending();", "// stale file tasks retained", "file-transfer pending-resource retirement"),
     ("dart_file_model", "localController.resetForSession();", "// local controller retained", "file-controller prior-peer state retirement"),
-    ("dart_file_model", "void clear() {\n    super.clear();\n    _overrideConfirm = null;\n    _skip = false;", "void clear() {\n    super.clear();", "file-dialog remembered-policy retirement"),
+    ("dart_file_model", "void onEventsRetired() {\n    _overrideConfirm = null;\n    _skip = false;", "void onEventsRetired() {\n    _overrideConfirm = null;\n    _skip = true;", "file-dialog remembered-policy retirement"),
     ("dart_file_model", "if (model == null || !model._isCurrentSession(expectedSessionId))", "if (model == null)", "file-dialog stale-session callback refusal"),
     ("dart_file_model", "if (identical(tasks[", "if (false && identical(tasks[", "file-fetch timeout exact-completer retirement"),
     ("dart_file_model", "Future<bool> _openDirectoryPath(String path,\n      {bool isBack = false, SessionID? expectedSessionId}) async {\n    final selectedSessionId = expectedSessionId ?? sessionId;", "Future<bool> _openDirectoryPath(String path,\n      {bool isBack = false, SessionID? expectedSessionId}) async {\n    final selectedSessionId = sessionId;", "file-controller captured directory session"),

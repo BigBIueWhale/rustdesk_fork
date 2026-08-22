@@ -3646,6 +3646,14 @@ else
   rc=1
 fi
 
+echo "== (2g-c2-000) R-S11hk bounded exact-session file-confirm ownership =="
+if python3 scripts/verify-file-dialog-event-ownership.py --repo . --self-test; then
+  note "ok  R-S11hk Apple/shared file-confirm events are typed, bounded, FIFO, exact-session-owned, and terminal-visible"
+else
+  echo "  FAIL R-S11hk Apple/shared file-confirm events regained raw maps, polling, unbounded retention, stale generation, silent refusal, or hidden failure"
+  rc=1
+fi
+
 echo "== (2g-c2a) R-S11gu bounded exact-owner native-to-Dart cursor publication =="
 if python3 scripts/verify-viewer-cursor-mailbox.py --repo . --self-test; then
   note "ok  R-S11gu Apple/shared cursor publication is exact-owner, topology-ordered, bounded, latest-wins, and stream-recoverable"

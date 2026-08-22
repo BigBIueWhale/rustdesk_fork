@@ -585,7 +585,11 @@ class FfiModel with ChangeNotifier {
     } else if (name == 'job_error') {
       parent.target?.fileModel.handleJobError(evt);
     } else if (name == 'override_file_confirm') {
-      parent.target?.fileModel.postOverrideFileConfirm(evt, sessionId);
+      final ffi = parent.target;
+      if (ffi != null &&
+          !ffi.fileModel.postOverrideFileConfirm(evt, sessionId)) {
+        ffi.reportFileDialogFailure(sessionId);
+      }
     } else if (name == 'load_last_job') {
       parent.target?.fileModel.jobController.loadLastJob(evt);
     } else if (name == 'update_folder_files') {
@@ -4323,6 +4327,11 @@ class FFI {
       'hasRetry': 'false',
     }, expectedSessionId, peerId);
     unawaited(_closeNativeSession(expectedSessionId));
+  }
+
+  void reportFileDialogFailure(SessionID expectedSessionId) {
+    _reportSessionStreamFailure(expectedSessionId, id,
+        'The remote file transfer became inconsistent');
   }
 
   Future<int?> _displayTopologyAfterCheckpoint(
